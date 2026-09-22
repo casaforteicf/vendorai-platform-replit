@@ -7,6 +7,7 @@ import { loadCachedConceptModel } from "./utils/conceptModelLoader";
 import { createConceptPBRMaterial } from "./utils/conceptMaterialFactory";
 
 type LightingMode = "day" | "sunset" | "night";
+type RenderQuality = "fast" | "realistic" | "ultra";
 
 type Props = {
   lotWidth: number;
@@ -24,6 +25,7 @@ type Props = {
   showRoof: boolean;
   roof: "platibanda" | "aparente" | "misto";
   lightingMode: LightingMode;
+  renderQuality?: RenderQuality;
   cameraPresetDegrees: number;
   cameraZoom: number;
   transformMode?: "translate" | "rotate";
@@ -198,6 +200,7 @@ export default function ConceptWebGLScene({
   showRoof,
   roof,
   lightingMode,
+  renderQuality = "realistic",
   cameraPresetDegrees,
   cameraZoom,
   transformMode = "translate",
@@ -261,12 +264,12 @@ export default function ConceptWebGLScene({
           powerPreference: "high-performance",
           preserveDrawingBuffer: true,
         });
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, renderQuality === "ultra" ? 2.5 : renderQuality === "fast" ? 1.25 : 2));
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         renderer.outputEncoding = THREE.sRGBEncoding;
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 1.05;
+        renderer.toneMappingExposure = renderQuality === "ultra" ? 1.08 : renderQuality === "fast" ? 0.98 : 1.05;
         if ("physicallyCorrectLights" in renderer) renderer.physicallyCorrectLights = true;
         renderer.domElement.className = "h-full w-full touch-none";
         renderer.domElement.dataset.conceptModel3dSource = "true";
@@ -628,6 +631,12 @@ export default function ConceptWebGLScene({
     if (!runtime || engineState !== "ready") return;
 
     const { THREE, scene, modelRoot, transform } = runtime;
+    runtime.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, renderQuality === "ultra" ? 2.5 : renderQuality === "fast" ? 1.25 : 2));
+    runtime.renderer.toneMappingExposure = lightingMode === "night"
+      ? (renderQuality === "ultra" ? 1.18 : 1.10)
+      : lightingMode === "sunset"
+        ? (renderQuality === "ultra" ? 1.10 : 1.04)
+        : (renderQuality === "ultra" ? 1.08 : renderQuality === "fast" ? 0.98 : 1.05);
     transform?.detach?.();
     disposeTree(modelRoot);
     modelRoot.clear();
@@ -660,7 +669,8 @@ export default function ConceptWebGLScene({
     );
     sun.position.set(-lotWidth * 0.75, 18, -lotDepth * 0.45);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
+    const sunShadowSize = renderQuality === "ultra" ? 4096 : renderQuality === "fast" ? 1024 : 2048;
+    sun.shadow.mapSize.set(sunShadowSize, sunShadowSize);
     sun.shadow.camera.left = -40;
     sun.shadow.camera.right = 40;
     sun.shadow.camera.top = 40;
@@ -995,8 +1005,12 @@ export default function ConceptWebGLScene({
           activeFloor * 2.96 + 2.35,
           space.centroid.y - lotDepth / 2,
         );
-        light.castShadow = roomLights.length <= 5;
-        if (light.castShadow) light.shadow.mapSize.set(512, 512);
+        const shadowLightLimit = renderQuality === "ultra" ? 6 : renderQuality === "realistic" ? 3 : 0;
+        light.castShadow = roomLights.indexOf(space) < shadowLightLimit;
+        if (light.castShadow) {
+          const roomShadowSize = renderQuality === "ultra" ? 1024 : 512;
+          light.shadow.mapSize.set(roomShadowSize, roomShadowSize);
+        }
         light.userData.arqdorLight = true;
         scene.add(light);
       }
@@ -1285,6 +1299,7 @@ export default function ConceptWebGLScene({
     interiorMode,
     levels,
     lightingMode,
+    renderQuality,
     lotDepth,
     lotWidth,
     objects,
