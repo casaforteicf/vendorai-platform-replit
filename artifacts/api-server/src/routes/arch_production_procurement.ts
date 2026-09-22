@@ -2172,4 +2172,454 @@ archProductionProcurementRouter.patch("/arch/producao/supplier-orders/:id", asyn
   }
 });
 
+
+const OBRA_ROLE_PERMISSIONS: Record<string, string[]> = {
+  proprietario: ["obra.read","diario.read","diario.write","cronograma.read","cronograma.write","medicoes.read","medicoes.write","custos.read","compras.read","compras.write","projetos.read","projetos.write","equipe.manage","metas.manage","aprovacoes.manage"],
+  administrador: ["obra.read","diario.read","diario.write","cronograma.read","cronograma.write","medicoes.read","medicoes.write","custos.read","compras.read","compras.write","projetos.read","projetos.write","equipe.manage","metas.manage","aprovacoes.manage"],
+  engenheiro: ["obra.read","diario.read","diario.write","cronograma.read","cronograma.write","medicoes.read","medicoes.write","custos.read","compras.read","compras.write","projetos.read","projetos.write","equipe.read","metas.read","aprovacoes.manage"],
+  arquiteto: ["obra.read","diario.read","diario.write","cronograma.read","cronograma.write","medicoes.read","projetos.read","projetos.write","equipe.read","metas.read","aprovacoes.manage"],
+  mestre_obras: ["obra.read","diario.read","diario.write","cronograma.read","cronograma.update_execution","medicoes.read","projetos.read","materiais.request","equipe.read","metas.read","producao.write"],
+  pedreiro: ["obra.read_scoped","diario.write_own","tarefas.read_own","tarefas.update_own","materiais.request","projetos.read_scoped","producao.write_own"],
+  eletricista: ["obra.read_scoped","diario.write_own","tarefas.read_own","tarefas.update_own","materiais.request","projetos.read_scoped","producao.write_own"],
+  encanador: ["obra.read_scoped","diario.write_own","tarefas.read_own","tarefas.update_own","materiais.request","projetos.read_scoped","producao.write_own"],
+  terceiro: ["obra.read_scoped","diario.write_own","tarefas.read_own","tarefas.update_own","materiais.request","projetos.read_scoped","producao.write_own"],
+  campo: ["obra.read_scoped","diario.write_own","tarefas.read_own","tarefas.update_own","materiais.request","producao.write_own"],
+  cliente: ["obra.read_portal","diario.read_approved","cronograma.read_summary","projetos.read_published","aprovacoes.respond"],
+};
+
+function obraPermissionsForRole(role: unknown) {
+  const key = String(role ?? "campo");
+  return OBRA_ROLE_PERMISSIONS[key] ?? OBRA_ROLE_PERMISSIONS.campo ?? [];
+}
+
+function asOptionalText(value: unknown) {
+  if (value === undefined || value === null) return null;
+  const text = String(value).trim();
+  return text || null;
+}
+
+function asOptionalDate(value: unknown) {
+  const text = asOptionalText(value);
+  return text ? text.slice(0, 10) : null;
+}
+
+function asNonNegativeNumber(value: unknown, fallback = 0) {
+  const n = Number(value ?? fallback);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+
+async function requireOwnedConstruction(req: any, res: any) {
+  const tid = requireTenant(req, res);
+  if (!tid) return null;
+  const obraId = String(req.params["obraId"] ?? "");
+  const obra = await ownedObra(tid, obraId);
+  if (!obra) {
+    res.status(404).json({ error: "Obra não encontrada." });
+    return null;
+  }
+  return { tid, obraId, obra };
+}
+
+archProductionProcurementRouter.get("/arch/construction/:obraId/workforce", async (req, res, next) => {
+  try {
+    const scope = await requireOwnedConstruction(req, res);
+    if (!scope) return;
+    const { tid, obraId } = scope;
+
+    const [executoresResult, metasResult, apontamentosResult, etapasResult] = await Promise.all([
+      pool.query(
+        `SELECT e.*,
+                u.name AS linked_user_name,
+                u.email AS linked_user_email
+           FROM obra_executores e
+           LEFT JOIN users u ON u.id = e.user_id AND u.tenant_id = e.tenant_id
+          WHERE e.tenant_id = $1 AND e.obra_id = $2
+          ORDER BY CASE e.status WHEN 'ativo' THEN 0 WHEN 'convidado' THEN 1 WHEN 'bloqueado' THEN 2 ELSE 3 END,
+                   e.nome ASC`,
+        [tid, obraId],
+      ),
+      pool.query(
+        `SELECT m.*,
+                e.nome AS executor_nome,
+                oe.nome AS etapa_nome
+           FROM obra_metas m
+           LEFT JOIN obra_executores e ON e.id = m.executor_id
+           LEFT JOIN obra_etapas oe ON oe.id = m.etapa_id
+          WHERE m.tenant_id = $1 AND m.obra_id = $2
+          ORDER BY CASE m.status WHEN 'ativa' THEN 0 WHEN 'atingida' THEN 1 ELSE 2 END,
+                   m.created_at DESC`,
+        [tid, obraId],
+      ),
+      pool.query(
+        `SELECT a.*,
+                e.nome AS executor_nome,
+                oe.nome AS etapa_nome
+           FROM obra_apontamentos_producao a
+           LEFT JOIN obra_executores e ON e.id = a.executor_id
+           LEFT JOIN obra_etapas oe ON oe.id = a.etapa_id
+          WHERE a.tenant_id = $1 AND a.obra_id = $2
+          ORDER BY a.data DESC, a.created_at DESC
+          LIMIT 500`,
+        [tid, obraId],
+      ),
+      pool.query(
+        `SELECT id, nome, percentual_executado, data_inicio_prevista, data_fim_prevista, status
+           FROM obra_etapas
+          WHERE obra_id = $1
+          ORDER BY ordem ASC, created_at ASC`,
+        [obraId],
+      ),
+    ]);
+
+    const apontamentos = apontamentosResult.rows;
+    const metas = metasResult.rows.map((meta: any) => {
+      const start = meta.data_inicio ? String(meta.data_inicio).slice(0, 10) : null;
+      const end = meta.data_fim ? String(meta.data_fim).slice(0, 10) : null;
+      const matching = apontamentos.filter((row: any) => {
+        const date = row.data ? String(row.data).slice(0, 10) : "";
+        if (meta.executor_id && row.executor_id !== meta.executor_id) return false;
+        if (meta.etapa_id && row.etapa_id !== meta.etapa_id) return false;
+        if (meta.unidade && row.unidade && String(row.unidade).toLowerCase() !== String(meta.unidade).toLowerCase()) return false;
+        if (start && date < start) return false;
+        if (end && date > end) return false;
+        return true;
+      });
+      const realizado = matching.reduce((sum: number, row: any) => sum + Number(row.quantidade ?? 0), 0);
+      const alvo = Number(meta.valor_meta ?? 0);
+      const atingimentoPct = alvo > 0 ? Math.min(999.9, (realizado / alvo) * 100) : 0;
+      return { ...meta, realizado, atingimento_pct: atingimentoPct };
+    });
+
+    const metasAtivas = metas.filter((meta: any) => meta.status === "ativa");
+    const metasAtingidas = metasAtivas.filter((meta: any) => Number(meta.atingimento_pct ?? 0) >= 100).length;
+    const atingimentoMedioPct = metasAtivas.length
+      ? metasAtivas.reduce((sum: number, meta: any) => sum + Number(meta.atingimento_pct ?? 0), 0) / metasAtivas.length
+      : 0;
+    const horasApontadas = apontamentos.reduce((sum: number, row: any) => sum + Number(row.horas ?? 0), 0);
+    const custoMaoObra = apontamentos.reduce((sum: number, row: any) => sum + Number(row.custo_mao_obra ?? 0), 0);
+    const retrabalho = apontamentos.reduce((sum: number, row: any) => sum + Number(row.retrabalho_quantidade ?? 0), 0);
+    const notas = apontamentos.map((row: any) => Number(row.qualidade_nota)).filter((n: number) => Number.isFinite(n));
+    const qualidadeMedia = notas.length ? notas.reduce((a: number, b: number) => a + b, 0) / notas.length : null;
+    const bloqueiosAbertos = apontamentos.filter((row: any) => String(row.bloqueio ?? "").trim().length > 0).length;
+
+    res.json({
+      executores: executoresResult.rows,
+      metas,
+      apontamentos,
+      etapas: etapasResult.rows,
+      rolePermissions: OBRA_ROLE_PERMISSIONS,
+      kpis: {
+        executoresAtivos: executoresResult.rows.filter((row: any) => row.status === "ativo").length,
+        metasAtivas: metasAtivas.length,
+        metasAtingidas,
+        atingimentoMedioPct,
+        horasApontadas,
+        custoMaoObra,
+        retrabalho,
+        qualidadeMedia,
+        bloqueiosAbertos,
+      },
+    });
+  } catch (err) {
+    logger.error({ err }, "arch/construction workforce bundle error");
+    next(err);
+  }
+});
+
+archProductionProcurementRouter.post("/arch/construction/:obraId/workforce/executores", async (req, res, next) => {
+  try {
+    const scope = await requireOwnedConstruction(req, res);
+    if (!scope) return;
+    const { tid, obraId } = scope;
+    const body = req.body ?? {};
+    const nome = String(body.nome ?? "").trim();
+    if (!nome) {
+      res.status(400).json({ error: "Nome do executor é obrigatório." });
+      return;
+    }
+
+    const perfilAcesso = String(body.perfilAcesso ?? body.funcao ?? "campo");
+    const permissoes = Array.isArray(body.permissoes) ? body.permissoes.map(String) : obraPermissionsForRole(perfilAcesso);
+    const userId = asOptionalText(body.userId);
+    if (userId) {
+      const user = await pool.query(`SELECT id FROM users WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [userId, tid]);
+      if (!user.rows[0]) {
+        res.status(400).json({ error: "Usuário vinculado não pertence a este tenant." });
+        return;
+      }
+    }
+
+    const result = await pool.query(
+      `INSERT INTO obra_executores (
+        id, tenant_id, obra_id, user_id, tipo, nome, funcao, especialidade, empresa, telefone, email,
+        responsavel_direto, data_inicio, data_fim, tipo_contratacao, valor_contratado, jornada, centro_custo,
+        acesso_sistema, perfil_acesso, permissoes, status, created_at, updated_at
+      ) VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21::jsonb,$22,now(),now()
+      ) RETURNING *`,
+      [
+        crypto.randomUUID(), tid, obraId, userId,
+        ["pessoa","empresa","equipe"].includes(String(body.tipo)) ? String(body.tipo) : "pessoa",
+        nome,
+        asOptionalText(body.funcao) ?? "outro",
+        asOptionalText(body.especialidade),
+        asOptionalText(body.empresa),
+        asOptionalText(body.telefone),
+        asOptionalText(body.email),
+        asOptionalText(body.responsavelDireto),
+        asOptionalDate(body.dataInicio),
+        asOptionalDate(body.dataFim),
+        asOptionalText(body.tipoContratacao) ?? "hora",
+        asNonNegativeNumber(body.valorContratado),
+        asOptionalText(body.jornada),
+        asOptionalText(body.centroCusto),
+        Boolean(body.acessoSistema),
+        perfilAcesso,
+        JSON.stringify(permissoes),
+        ["convidado","ativo","bloqueado","finalizado"].includes(String(body.status)) ? String(body.status) : "ativo",
+      ],
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err: any) {
+    if (err?.code === "23505") {
+      res.status(409).json({ error: "Este usuário já está vinculado à obra." });
+      return;
+    }
+    next(err);
+  }
+});
+
+archProductionProcurementRouter.patch("/arch/construction/:obraId/workforce/executores/:executorId", async (req, res, next) => {
+  try {
+    const scope = await requireOwnedConstruction(req, res);
+    if (!scope) return;
+    const { tid, obraId } = scope;
+    const executorId = String(req.params["executorId"] ?? "");
+    const current = await pool.query(
+      `SELECT * FROM obra_executores WHERE id = $1 AND tenant_id = $2 AND obra_id = $3 LIMIT 1`,
+      [executorId, tid, obraId],
+    );
+    if (!current.rows[0]) {
+      res.status(404).json({ error: "Executor não encontrado." });
+      return;
+    }
+
+    const body = req.body ?? {};
+    const perfilAcesso = body.perfilAcesso !== undefined ? String(body.perfilAcesso) : String(current.rows[0].perfil_acesso);
+    const permissoes = Array.isArray(body.permissoes)
+      ? body.permissoes.map(String)
+      : body.perfilAcesso !== undefined ? obraPermissionsForRole(perfilAcesso) : current.rows[0].permissoes;
+
+    const result = await pool.query(
+      `UPDATE obra_executores SET
+        nome = COALESCE($4, nome),
+        funcao = COALESCE($5, funcao),
+        especialidade = CASE WHEN $6::boolean THEN $7 ELSE especialidade END,
+        empresa = CASE WHEN $8::boolean THEN $9 ELSE empresa END,
+        telefone = CASE WHEN $10::boolean THEN $11 ELSE telefone END,
+        email = CASE WHEN $12::boolean THEN $13 ELSE email END,
+        data_inicio = CASE WHEN $14::boolean THEN $15::date ELSE data_inicio END,
+        data_fim = CASE WHEN $16::boolean THEN $17::date ELSE data_fim END,
+        tipo_contratacao = COALESCE($18, tipo_contratacao),
+        valor_contratado = COALESCE($19, valor_contratado),
+        jornada = CASE WHEN $20::boolean THEN $21 ELSE jornada END,
+        centro_custo = CASE WHEN $22::boolean THEN $23 ELSE centro_custo END,
+        acesso_sistema = COALESCE($24, acesso_sistema),
+        perfil_acesso = COALESCE($25, perfil_acesso),
+        permissoes = $26::jsonb,
+        status = COALESCE($27, status),
+        updated_at = now()
+       WHERE id = $1 AND tenant_id = $2 AND obra_id = $3
+       RETURNING *`,
+      [
+        executorId, tid, obraId,
+        body.nome !== undefined ? asOptionalText(body.nome) : null,
+        body.funcao !== undefined ? asOptionalText(body.funcao) : null,
+        body.especialidade !== undefined, asOptionalText(body.especialidade),
+        body.empresa !== undefined, asOptionalText(body.empresa),
+        body.telefone !== undefined, asOptionalText(body.telefone),
+        body.email !== undefined, asOptionalText(body.email),
+        body.dataInicio !== undefined, asOptionalDate(body.dataInicio),
+        body.dataFim !== undefined, asOptionalDate(body.dataFim),
+        body.tipoContratacao !== undefined ? asOptionalText(body.tipoContratacao) : null,
+        body.valorContratado !== undefined ? asNonNegativeNumber(body.valorContratado) : null,
+        body.jornada !== undefined, asOptionalText(body.jornada),
+        body.centroCusto !== undefined, asOptionalText(body.centroCusto),
+        body.acessoSistema !== undefined ? Boolean(body.acessoSistema) : null,
+        body.perfilAcesso !== undefined ? perfilAcesso : null,
+        JSON.stringify(permissoes ?? []),
+        body.status !== undefined && ["convidado","ativo","bloqueado","finalizado"].includes(String(body.status)) ? String(body.status) : null,
+      ],
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
+archProductionProcurementRouter.post("/arch/construction/:obraId/workforce/metas", async (req, res, next) => {
+  try {
+    const scope = await requireOwnedConstruction(req, res);
+    if (!scope) return;
+    const { tid, obraId } = scope;
+    const body = req.body ?? {};
+    const nome = String(body.nome ?? "").trim();
+    if (!nome) {
+      res.status(400).json({ error: "Nome da meta é obrigatório." });
+      return;
+    }
+
+    const executorId = asOptionalText(body.executorId);
+    const etapaId = asOptionalText(body.etapaId);
+    if (executorId) {
+      const executor = await pool.query(
+        `SELECT id FROM obra_executores WHERE id = $1 AND tenant_id = $2 AND obra_id = $3 LIMIT 1`,
+        [executorId, tid, obraId],
+      );
+      if (!executor.rows[0]) {
+        res.status(400).json({ error: "Executor da meta não pertence a esta obra." });
+        return;
+      }
+    }
+    if (etapaId) {
+      const etapa = await pool.query(
+        `SELECT id FROM obra_etapas WHERE id = $1 AND obra_id = $2 LIMIT 1`,
+        [etapaId, obraId],
+      );
+      if (!etapa.rows[0]) {
+        res.status(400).json({ error: "Etapa da meta não pertence a esta obra." });
+        return;
+      }
+    }
+
+    const result = await pool.query(
+      `INSERT INTO obra_metas (
+        id, tenant_id, obra_id, executor_id, etapa_id, nome, tipo, valor_meta, unidade, periodo,
+        data_inicio, data_fim, peso, status, created_at, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,now(),now())
+      RETURNING *`,
+      [
+        crypto.randomUUID(), tid, obraId,
+        executorId,
+        etapaId,
+        nome,
+        ["quantidade","prazo","custo","qualidade","produtividade"].includes(String(body.tipo)) ? String(body.tipo) : "quantidade",
+        asNonNegativeNumber(body.valorMeta),
+        asOptionalText(body.unidade),
+        ["diaria","semanal","mensal","etapa","obra"].includes(String(body.periodo)) ? String(body.periodo) : "diaria",
+        asOptionalDate(body.dataInicio),
+        asOptionalDate(body.dataFim),
+        Math.max(0.001, asNonNegativeNumber(body.peso, 1)),
+        ["ativa","atingida","pausada","encerrada"].includes(String(body.status)) ? String(body.status) : "ativa",
+      ],
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
+archProductionProcurementRouter.patch("/arch/construction/:obraId/workforce/metas/:metaId", async (req, res, next) => {
+  try {
+    const scope = await requireOwnedConstruction(req, res);
+    if (!scope) return;
+    const { tid, obraId } = scope;
+    const metaId = String(req.params["metaId"] ?? "");
+    const body = req.body ?? {};
+    const result = await pool.query(
+      `UPDATE obra_metas SET
+        nome = COALESCE($4, nome),
+        valor_meta = COALESCE($5, valor_meta),
+        unidade = CASE WHEN $6::boolean THEN $7 ELSE unidade END,
+        periodo = COALESCE($8, periodo),
+        data_inicio = CASE WHEN $9::boolean THEN $10::date ELSE data_inicio END,
+        data_fim = CASE WHEN $11::boolean THEN $12::date ELSE data_fim END,
+        status = COALESCE($13, status),
+        updated_at = now()
+       WHERE id = $1 AND tenant_id = $2 AND obra_id = $3
+       RETURNING *`,
+      [
+        metaId, tid, obraId,
+        body.nome !== undefined ? asOptionalText(body.nome) : null,
+        body.valorMeta !== undefined ? asNonNegativeNumber(body.valorMeta) : null,
+        body.unidade !== undefined, asOptionalText(body.unidade),
+        body.periodo !== undefined && ["diaria","semanal","mensal","etapa","obra"].includes(String(body.periodo)) ? String(body.periodo) : null,
+        body.dataInicio !== undefined, asOptionalDate(body.dataInicio),
+        body.dataFim !== undefined, asOptionalDate(body.dataFim),
+        body.status !== undefined && ["ativa","atingida","pausada","encerrada"].includes(String(body.status)) ? String(body.status) : null,
+      ],
+    );
+    if (!result.rows[0]) {
+      res.status(404).json({ error: "Meta não encontrada." });
+      return;
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
+archProductionProcurementRouter.post("/arch/construction/:obraId/workforce/apontamentos", async (req, res, next) => {
+  try {
+    const scope = await requireOwnedConstruction(req, res);
+    if (!scope) return;
+    const { tid, obraId } = scope;
+    const body = req.body ?? {};
+    const executorId = asOptionalText(body.executorId);
+    if (!executorId) {
+      res.status(400).json({ error: "Selecione o executor." });
+      return;
+    }
+    const executor = await pool.query(
+      `SELECT id FROM obra_executores WHERE id = $1 AND tenant_id = $2 AND obra_id = $3 LIMIT 1`,
+      [executorId, tid, obraId],
+    );
+    if (!executor.rows[0]) {
+      res.status(400).json({ error: "Executor não pertence a esta obra." });
+      return;
+    }
+    const etapaId = asOptionalText(body.etapaId);
+    if (etapaId) {
+      const etapa = await pool.query(
+        `SELECT id FROM obra_etapas WHERE id = $1 AND obra_id = $2 LIMIT 1`,
+        [etapaId, obraId],
+      );
+      if (!etapa.rows[0]) {
+        res.status(400).json({ error: "Etapa do apontamento não pertence a esta obra." });
+        return;
+      }
+    }
+
+    const qualidade = body.qualidadeNota === "" || body.qualidadeNota === null || body.qualidadeNota === undefined
+      ? null
+      : Math.max(0, Math.min(10, Number(body.qualidadeNota)));
+
+    const result = await pool.query(
+      `INSERT INTO obra_apontamentos_producao (
+        id, tenant_id, obra_id, executor_id, etapa_id, data, quantidade, unidade, horas,
+        custo_mao_obra, retrabalho_quantidade, qualidade_nota, bloqueio, observacao, created_by,
+        created_at, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,now(),now())
+      RETURNING *`,
+      [
+        crypto.randomUUID(), tid, obraId, executorId,
+        etapaId,
+        asOptionalDate(body.data) ?? new Date().toISOString().slice(0, 10),
+        asNonNegativeNumber(body.quantidade),
+        asOptionalText(body.unidade),
+        asNonNegativeNumber(body.horas),
+        asNonNegativeNumber(body.custoMaoObra),
+        asNonNegativeNumber(body.retrabalhoQuantidade),
+        qualidade,
+        asOptionalText(body.bloqueio),
+        asOptionalText(body.observacao),
+        req.user?.sub ?? null,
+      ],
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default archProductionProcurementRouter;
