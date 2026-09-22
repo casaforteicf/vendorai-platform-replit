@@ -184,6 +184,38 @@ function getCatalogPolyHavenSlug(item: RealCatalogProduct) {
   return typeof value === "string" && /^[a-zA-Z0-9_-]+$/.test(value) ? value : undefined;
 }
 
+function getCatalogPolyHavenQuery(item: RealCatalogProduct) {
+  const specs = item.especificacoes;
+  if (!specs || typeof specs !== "object") return undefined;
+  const value = specs.polyHavenQuery;
+  return typeof value === "string" && value.trim().length >= 2 ? value.trim().slice(0, 100) : undefined;
+}
+
+async function resolveCatalogAutoModel(query: string) {
+  try {
+    const search = await fetch(`/api/arch/polyhaven/search?q=${encodeURIComponent(query)}&limit=6`);
+    if (!search.ok) return undefined;
+    const payload = await search.json();
+    const items = Array.isArray(payload?.items) ? payload.items : [];
+    for (const candidate of items.slice(0, 4)) {
+      if (!candidate || typeof candidate.slug !== "string") continue;
+      try {
+        const response = await fetch(`/api/arch/polyhaven/assets/${encodeURIComponent(candidate.slug)}`);
+        if (!response.ok) continue;
+        const asset = await response.json();
+        if (typeof asset?.model3dUrl === "string") {
+          return {
+            model3dUrl: asset.model3dUrl as string,
+            modelLabel: typeof asset?.name === "string" ? asset.name as string : candidate.name,
+            supplier: "Poly Haven",
+          };
+        }
+      } catch {}
+    }
+  } catch {}
+  return undefined;
+}
+
 type ConceptMaterialOption = {
   id: string;
   name: string;
@@ -4798,16 +4830,28 @@ export default function ConceptPlanner() {
                                   onClick={async () => {
                                     rememberRecentItem(realLibraryItemKey(item.id));
                                     let model3dUrl = getCatalogModel3dUrl(item);
+                                    let resolvedSupplier = item.fornecedor ?? undefined;
                                     const polyHavenSlug = getCatalogPolyHavenSlug(item);
+                                    const polyHavenQuery = getCatalogPolyHavenQuery(item);
                                     if (!model3dUrl && polyHavenSlug) {
                                       try {
                                         const response = await fetch(`/api/arch/polyhaven/assets/${encodeURIComponent(polyHavenSlug)}`);
                                         if (response.ok) {
                                           const asset = await response.json();
-                                          if (typeof asset?.model3dUrl === "string") model3dUrl = asset.model3dUrl;
+                                          if (typeof asset?.model3dUrl === "string") {
+                                            model3dUrl = asset.model3dUrl;
+                                            resolvedSupplier = "Poly Haven";
+                                          }
                                         }
                                       } catch {
                                         // Se a resolução remota falhar, o objeto ainda entra com fallback paramétrico.
+                                      }
+                                    }
+                                    if (!model3dUrl && polyHavenQuery) {
+                                      const autoModel = await resolveCatalogAutoModel(polyHavenQuery);
+                                      if (autoModel?.model3dUrl) {
+                                        model3dUrl = autoModel.model3dUrl;
+                                        resolvedSupplier = autoModel.supplier;
                                       }
                                     }
                                     addObjectAt(
@@ -4819,7 +4863,7 @@ export default function ConceptPlanner() {
                                       {
                                         catalogProductId: item.id,
                                         imageUrl,
-                                        supplier: item.fornecedor ?? undefined,
+                                        supplier: resolvedSupplier,
                                         price: price > 0 ? price : undefined,
                                         model3dUrl,
                                       },
@@ -4856,9 +4900,11 @@ export default function ConceptPlanner() {
                                     <span className="absolute left-2 top-2 rounded-full bg-black/70 px-2 py-1 text-[9px] font-bold text-white backdrop-blur">
                                       {starter ? "ARQDOR BASE" : "CATÁLOGO"}
                                     </span>
-                                    {(getCatalogModel3dUrl(item) || getCatalogPolyHavenSlug(item)) && (
+                                    {(getCatalogModel3dUrl(item) || getCatalogPolyHavenSlug(item) || getCatalogPolyHavenQuery(item)) && (
                                       <span className="absolute right-2 top-2 rounded-full bg-orange-500 px-2 py-1 text-[9px] font-bold text-white shadow">
-                                        3D REAL
+                                        {getCatalogPolyHavenQuery(item) && !getCatalogModel3dUrl(item) && !getCatalogPolyHavenSlug(item)
+                                          ? "3D AUTO"
+                                          : "3D REAL"}
                                       </span>
                                     )}
                                   </div>
