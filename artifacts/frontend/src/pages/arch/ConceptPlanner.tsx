@@ -618,7 +618,8 @@ export default function ConceptPlanner() {
     if (typeof window === "undefined") return [];
     try {
       const raw = window.localStorage.getItem("arqdor:library:favorites");
-      return raw ? JSON.parse(raw) : [];
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
     } catch {
       return [];
     }
@@ -627,7 +628,8 @@ export default function ConceptPlanner() {
     if (typeof window === "undefined") return [];
     try {
       const raw = window.localStorage.getItem("arqdor:library:recent");
-      return raw ? JSON.parse(raw) : [];
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
     } catch {
       return [];
     }
@@ -4327,7 +4329,10 @@ export default function ConceptPlanner() {
                           <button
                             key={mode}
                             type="button"
-                            onClick={() => setLibraryMode(mode)}
+                            onClick={() => {
+                              setLibraryMode(mode);
+                              if (mode !== "all") setFurnitureCategory("Todos");
+                            }}
                             className={libraryMode === mode
                               ? "flex h-9 items-center justify-center gap-1.5 rounded-xl bg-slate-950 px-2 text-[11px] font-bold text-white"
                               : "flex h-9 items-center justify-center gap-1.5 rounded-xl border bg-white px-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"}
