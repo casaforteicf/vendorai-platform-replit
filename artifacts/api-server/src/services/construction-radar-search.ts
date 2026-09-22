@@ -66,6 +66,17 @@ function nullableString(value: unknown): string | null {
   return normalized ? normalized : null;
 }
 
+function nullableHttpUrl(value: unknown): string | null {
+  const normalized = nullableString(value);
+  if (!normalized) return null;
+  try {
+    const url = new URL(normalized);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 function normalizeConfidence(value: unknown): number {
   const n = Number(value);
   if (!Number.isFinite(n)) return 50;
@@ -194,7 +205,7 @@ export async function searchConstructionWorkSignals(input: {
       const evidencia = nullableString(raw?.evidencia);
       if (!obra || !evidencia) return null;
 
-      const sourceUrl = nullableString(raw?.sourceUrl);
+      const sourceUrl = nullableHttpUrl(raw?.sourceUrl);
       const ownerTypeRaw = nullableString(raw?.proprietarioTipo);
       const proprietarioTipo: ConstructionWorkSignal["proprietarioTipo"] =
         ownerTypeRaw === "pessoa" ||
