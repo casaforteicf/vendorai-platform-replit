@@ -88,6 +88,8 @@ type ProspectorConfigResponse = {
   } | null;
 };
 
+type ConstructionActorChoice = "auto" | "proprietario" | "responsavel_tecnico" | "construtora" | "incorporadora";
+
 const CATEGORY_OPTIONS: Array<{ value: WorkCategory; label: string; icon: typeof Home; description: string }> = [
   { value: "residencial", label: "Residenciais", icon: Home, description: "Casas, sobrados, geminadas e edifícios residenciais" },
   { value: "comercial", label: "Comerciais", icon: Building2, description: "Lojas, clínicas, hotéis, escolas e outros negócios" },
@@ -205,6 +207,7 @@ export default function ConstructionRadarWorkspace() {
   const [prospectedCompanies, setProspectedCompanies] = useState<Set<string>>(new Set());
   const [prospectedAds, setProspectedAds] = useState<Set<string>>(new Set());
   const [prospectedWorks, setProspectedWorks] = useState<Set<string>>(new Set());
+  const [workActorChoice, setWorkActorChoice] = useState<Record<string, ConstructionActorChoice>>({});
   const [prospectingCompany, setProspectingCompany] = useState<string | null>(null);
   const [prospectingAd, setProspectingAd] = useState<string | null>(null);
   const [prospectingWork, setProspectingWork] = useState<string | null>(null);
@@ -236,6 +239,7 @@ export default function ConstructionRadarWorkspace() {
     setWorks([]);
     setWorkSources([]);
     setProspectedWorks(new Set());
+    setWorkActorChoice({});
     setSourceWarnings([]);
     if (next !== "publica") setModel(MODELS[next][0]);
   }
@@ -401,7 +405,7 @@ export default function ConstructionRadarWorkspace() {
       const response = await fetch("/api/prospector/construction-signals/prospect", {
         method: "POST",
         headers: authHeaders(),
-        body: JSON.stringify({ work, actor: "auto", ...tenantField() }),
+        body: JSON.stringify({ work, actor: workActorChoice[work.id] ?? "auto", ...tenantField() }),
       });
       const data = await response.json() as {
         leadId?: string;
@@ -707,6 +711,26 @@ export default function ConstructionRadarWorkspace() {
                               <p className="font-medium text-foreground">Contato recomendado pelo Prospecctor</p>
                               <p className="mt-0.5 text-muted-foreground">{actorLabel(work)}</p>
                               <p className="mt-1 text-[11px] text-muted-foreground">{work.priorityReason}</p>
+                              <div className="mt-2">
+                                <Select
+                                  value={workActorChoice[work.id] ?? "auto"}
+                                  onValueChange={(value) => setWorkActorChoice((current) => ({
+                                    ...current,
+                                    [work.id]: value as ConstructionActorChoice,
+                                  }))}
+                                >
+                                  <SelectTrigger className="h-8 text-xs">
+                                    <SelectValue placeholder="Escolher contato" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="auto">Automático — usar recomendação</SelectItem>
+                                    {work.proprietario && <SelectItem value="proprietario">Proprietário — {work.proprietario}</SelectItem>}
+                                    {work.responsavelTecnico && <SelectItem value="responsavel_tecnico">Arquiteto/engenheiro — {work.responsavelTecnico}</SelectItem>}
+                                    {work.construtora && <SelectItem value="construtora">Construtora — {work.construtora}</SelectItem>}
+                                    {work.incorporadora && <SelectItem value="incorporadora">Incorporadora — {work.incorporadora}</SelectItem>}
+                                  </SelectContent>
+                                </Select>
+                              </div>
                             </div>
                             <p className="rounded-lg bg-muted/40 p-2.5 leading-5 text-muted-foreground">{work.evidencia}</p>
                             {work.dataReferencia && (
