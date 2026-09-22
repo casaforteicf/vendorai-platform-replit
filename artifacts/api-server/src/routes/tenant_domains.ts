@@ -189,6 +189,7 @@ router.get("/tenants/:tenantId/domains", requireSameTenanOrSuperAdmin(), async (
     subdomainUrl,
     publicSiteUrl,
     domains,
+    infrastructure: getCloudflareCustomDomainConfig(),
   });
 });
 
