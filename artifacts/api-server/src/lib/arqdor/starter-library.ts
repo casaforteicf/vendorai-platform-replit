@@ -48,6 +48,14 @@ const starterRealModels: Record<string, Array<StarterRealModel | null>> = {
       source: "Khronos glTF Sample Assets",
     },
   ],
+  pufes: [
+    {
+      url: `${KH_MODELS}/SpecularSilkPouf/glTF-Binary/SpecularSilkPouf.glb`,
+      label: "Pufe realista em tecido",
+      license: "CC BY 4.0",
+      source: "Khronos glTF Sample Assets / Wayfair",
+    },
+  ],
   iluminacao: [
     {
       url: `${KH_MODELS}/IridescenceLamp/glTF-Binary/IridescenceLamp.glb`,
@@ -60,6 +68,18 @@ const starterRealModels: Record<string, Array<StarterRealModel | null>> = {
       label: "Luminária realista industrial",
       license: "CC BY 4.0",
       source: "Khronos glTF Sample Assets / Wayfair",
+    },
+    {
+      url: `${KH_MODELS}/LightsPunctualLamp/glTF-Binary/LightsPunctualLamp.glb`,
+      label: "Luminária com luz pontual",
+      license: "CC BY 4.0",
+      source: "Khronos glTF Sample Assets / DGG",
+    },
+    {
+      url: `${KH_MODELS}/Lantern/glTF-Binary/Lantern.glb`,
+      label: "Lanterna decorativa",
+      license: "CC0",
+      source: "Khronos glTF Sample Assets / Microsoft",
     },
   ],
   eletros: [
@@ -99,6 +119,12 @@ const starterRealModels: Record<string, Array<StarterRealModel | null>> = {
       label: "Vaso com flores realista",
       license: "CC0",
       source: "Khronos glTF Sample Assets",
+    },
+    {
+      url: `${KH_MODELS}/DiffuseTransmissionTeacup/glTF-Binary/DiffuseTransmissionTeacup.glb`,
+      label: "Xícara decorativa realista",
+      license: "CC0",
+      source: "Khronos glTF Sample Assets / Poly Haven",
     },
   ],
 };
@@ -166,6 +192,9 @@ const familyTemplates: FamilyTemplate[] = [
     { name:"Cadeira jantar madeira", width:0.48, depth:0.54, height:0.88 },
     { name:"Banqueta alta", width:0.45, depth:0.48, height:1.00 },
   ]},
+  { family: "pufes", categoria: "Mobiliário", subcategoria: "Sala", tags: ["sala","pufe","assento"], variants: [
+    { name:"Pufe decorativo", width:0.60, depth:0.60, height:0.45 },
+  ]},
   { family: "cozinha-base", categoria: "Marcenaria", subcategoria: "Cozinha", tags: ["cozinha","modulado"], variants: [
     { name:"Balcão cozinha 60", width:0.60, depth:0.60, height:0.90 },
     { name:"Balcão cozinha 80", width:0.80, depth:0.60, height:0.90 },
@@ -211,6 +240,7 @@ const familyTemplates: FamilyTemplate[] = [
   ]},
   { family: "decoracao-real", categoria: "Decoração", subcategoria: "Objetos decorativos", tags: ["decoração","vaso","flores"], variants: [
     { name:"Vaso decorativo com flores", width:0.42, depth:0.42, height:0.75 },
+    { name:"Xícara decorativa realista", width:0.18, depth:0.14, height:0.12 },
   ]},
   { family: "esquadrias-portas", categoria: "Esquadrias", subcategoria: "Portas", tags: ["porta","esquadria"], variants: [
     { name:"Porta giro 80", width:0.80, depth:0.12, height:2.10 },

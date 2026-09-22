@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import {
   activitiesTable,
   db,
@@ -8,21 +8,25 @@ import {
 import { sendDirectWhatsAppMessage } from "./omnichannel.js";
 import { findLeadByDedup } from "../lib/dedup.js";
 import { randomUUID } from "node:crypto";
+import { classifySupportResolution, declinedSupportRating, extractSupportRating } from "./support-feedback-logic.js";
 
 export type SupportFeedbackResult =
   | { handled: false }
-  | { handled: true; cardId?: string; codigo?: string; result: "resolved" | "reopened" | "ambiguous" | "unrecognized" };
+  | {
+      handled: true;
+      cardId?: string;
+      codigo?: string;
+      result:
+        | "awaiting_rating"
+        | "rated"
+        | "rating_declined"
+        | "reopened"
+        | "ambiguous"
+        | "unrecognized";
+    };
 
 function extractCode(text: string) {
   return text.match(/\bAST-[A-Z0-9]+-[A-Z0-9]+\b/i)?.[0]?.toUpperCase() ?? null;
-}
-
-function classify(text: string): "sim" | "parcial" | "nao" | null {
-  const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  if (/\b(nao|não|negativo|continua|nao resolveu|não resolveu)\b/.test(normalized)) return "nao";
-  if (/\b(parcial|parcialmente|mais ou menos|melhorou)\b/.test(normalized)) return "parcial";
-  if (/\b(sim|resolvido|resolveu|positivo|ok|certo)\b/.test(normalized)) return "sim";
-  return null;
 }
 
 export async function requestSupportFeedback(tenantId: string, workCardId: string, log?: any) {
@@ -47,14 +51,17 @@ export async function requestSupportFeedback(tenantId: string, workCardId: strin
   ].join("\n");
 
   try {
+    const now = new Date();
     await sendDirectWhatsAppMessage(tenantId, lead.telefone, text, log);
     await db.update(workCardsTable).set({
       metadata: {
         ...(card.metadata ?? {}),
-        supportFeedbackRequestedAt: new Date().toISOString(),
+        supportFeedbackRequestedAt: now.toISOString(),
         supportFeedbackStatus: "aguardando",
+        supportFeedbackReminderCount: 0,
+        supportFeedbackLastReminderAt: null,
       },
-      updatedAt: new Date(),
+      updatedAt: now,
     }).where(eq(workCardsTable.id, card.id));
     return { sent: true } as const;
   } catch (error) {
@@ -69,9 +76,6 @@ export async function tryHandleSupportFeedbackMessage(input: {
   text: string;
   log?: any;
 }): Promise<SupportFeedbackResult> {
-  const result = classify(input.text);
-  if (!result) return { handled: false };
-
   const match = await findLeadByDedup(input.tenantId, input.phone, null, null);
   if (!match.found) return { handled: false };
   const lead = match.lead;
@@ -85,14 +89,134 @@ export async function tryHandleSupportFeedbackMessage(input: {
   if (!cards.length) return { handled: false };
 
   const code = extractCode(input.text);
-  let card = code ? cards.find((c) => c.codigo.toUpperCase() === code) : undefined;
+  const rating = extractSupportRating(input.text);
+  const waitingRatingCards = cards.filter(
+    (candidate) =>
+      String((candidate.metadata as Record<string, unknown> | null)?.["supportFeedbackStatus"] ?? "") ===
+      "resolved_waiting_rating",
+  );
+
+  if (rating !== null || declinedSupportRating(input.text)) {
+    let ratingCard = code
+      ? waitingRatingCards.find((candidate) => candidate.codigo.toUpperCase() === code)
+      : undefined;
+    if (!ratingCard && waitingRatingCards.length === 1) ratingCard = waitingRatingCards[0];
+
+    if (!ratingCard && waitingRatingCards.length > 1) {
+      await sendDirectWhatsAppMessage(
+        input.tenantId,
+        input.phone,
+        `Você tem mais de uma assistência aguardando avaliação. Envie a nota junto com o código: ${waitingRatingCards.map((candidate) => candidate.codigo).slice(0, 5).join(", ")}.`,
+        input.log,
+      ).catch(() => undefined);
+      return { handled: true, result: "ambiguous" };
+    }
+
+    if (ratingCard) {
+      const now = new Date();
+      const declined = rating === null;
+      await db.update(workCardsTable).set({
+        etapa: "fechamento_assistencia",
+        dataFimEfetiva: now,
+        metadata: {
+          ...(ratingCard.metadata ?? {}),
+          supportFeedbackStatus: declined ? "rating_declined" : "rated",
+          supportRating: rating,
+          supportRatingText: input.text.slice(0, 5000),
+          supportRatingAt: now.toISOString(),
+          supportCycleOutcome: "resolvido",
+        },
+        updatedAt: now,
+      }).where(eq(workCardsTable.id, ratingCard.id));
+
+      await db.insert(activitiesTable).values({
+        tenantId: input.tenantId,
+        leadId: lead.id,
+        dealId: ratingCard.dealId,
+        tipo: "assistencia",
+        titulo: declined
+          ? `${ratingCard.codigo}: avaliação final não informada`
+          : `${ratingCard.codigo}: avaliação final — ${rating}/5`,
+        descricao: declined
+          ? "Cliente confirmou a resolução, mas preferiu não atribuir nota. Ciclo encerrado."
+          : `Cliente confirmou a resolução e avaliou o atendimento com nota ${rating}/5.`,
+        status: "concluida",
+        concluidaEm: now,
+        responsavelId: ratingCard.responsavelId,
+      });
+
+      if (!declined && rating !== null) {
+        await db.execute(sql`
+          INSERT INTO customer_feedback (
+            tenant_id,
+            lead_id,
+            deal_id,
+            work_card_id,
+            feedback_type,
+            score,
+            scale_min,
+            scale_max,
+            answer,
+            comment,
+            channel,
+            responded_at,
+            metadata
+          ) VALUES (
+            ${input.tenantId},
+            ${lead.id},
+            ${ratingCard.dealId},
+            ${ratingCard.id},
+            'csat',
+            ${rating},
+            1,
+            5,
+            ${String(rating)},
+            ${input.text.slice(0, 5000)},
+            'whatsapp',
+            ${now},
+            ${JSON.stringify({ source: "support_agent", assistanceCode: ratingCard.codigo })}::jsonb
+          )
+        `).catch((error) => {
+          input.log?.warn?.(
+            { err: error, workCardId: ratingCard.id, codigo: ratingCard.codigo },
+            "support-feedback: CSAT official metric insert failed (non-fatal)",
+          );
+        });
+      }
+
+      await sendDirectWhatsAppMessage(
+        input.tenantId,
+        input.phone,
+        declined
+          ? `Tudo certo. Obrigado por confirmar a resolução da assistência ${ratingCard.codigo}. Se precisar novamente, seguimos à disposição.`
+          : `Obrigado pela avaliação ${rating}/5 da assistência ${ratingCard.codigo}. O atendimento foi encerrado e seu feedback ficou registrado.`,
+        input.log,
+      ).catch(() => undefined);
+
+      input.log?.info?.(
+        { workCardId: ratingCard.id, codigo: ratingCard.codigo, rating },
+        "support-feedback: avaliação final registrada",
+      );
+      return {
+        handled: true,
+        cardId: ratingCard.id,
+        codigo: ratingCard.codigo,
+        result: declined ? "rating_declined" : "rated",
+      };
+    }
+  }
+
+  const result = classifySupportResolution(input.text);
+  if (!result) return { handled: false };
+
+  let card = code ? cards.find((candidate) => candidate.codigo.toUpperCase() === code) : undefined;
   if (!card && cards.length === 1) card = cards[0];
   if (!card) {
     try {
       await sendDirectWhatsAppMessage(
         input.tenantId,
         input.phone,
-        `Você tem mais de uma assistência aguardando feedback. Responda incluindo o código AST correspondente: ${cards.map((c) => c.codigo).slice(0, 5).join(", ")}.`,
+        `Você tem mais de uma assistência aguardando feedback. Responda incluindo o código AST correspondente: ${cards.map((candidate) => candidate.codigo).slice(0, 5).join(", ")}.`,
         input.log,
       );
     } catch {}
@@ -101,29 +225,52 @@ export async function tryHandleSupportFeedbackMessage(input: {
 
   const now = new Date();
   const resolved = result === "sim";
-  const feedbackLabel = result === "sim" ? "Resolvido" : result === "parcial" ? "Parcialmente resolvido" : "Não resolvido";
+  const feedbackLabel =
+    result === "sim"
+      ? "Resolvido"
+      : result === "parcial"
+        ? "Parcialmente resolvido"
+        : "Não resolvido";
 
   if (resolved) {
     await db.update(workCardsTable).set({
-      etapa: "fechamento_assistencia",
-      dataFimEfetiva: now,
       metadata: {
         ...(card.metadata ?? {}),
-        supportFeedbackStatus: result,
+        supportFeedbackStatus: "resolved_waiting_rating",
         supportFeedbackText: input.text.slice(0, 5000),
         supportFeedbackAt: now.toISOString(),
-        supportCycleOutcome: "resolvido",
+        supportResolutionConfirmedAt: now.toISOString(),
+        supportFeedbackReminderCount: 0,
+        supportFeedbackLastReminderAt: null,
+        supportCycleOutcome: "resolvido_aguardando_avaliacao",
       },
       updatedAt: now,
     }).where(eq(workCardsTable.id, card.id));
+
     await db.insert(activitiesTable).values({
-      tenantId: input.tenantId, leadId: lead.id, dealId: card.dealId, tipo: "assistencia",
-      titulo: `${card.codigo}: feedback do cliente — ${feedbackLabel}`,
-      descricao: "Cliente confirmou que a assistência resolveu o problema. Ciclo encerrado e preservado no histórico.",
-      status: "concluida", concluidaEm: now, responsavelId: card.responsavelId,
+      tenantId: input.tenantId,
+      leadId: lead.id,
+      dealId: card.dealId,
+      tipo: "assistencia",
+      titulo: `${card.codigo}: problema confirmado como resolvido`,
+      descricao: "Cliente confirmou que o problema foi resolvido. Aguardando somente a avaliação final de satisfação.",
+      status: "concluida",
+      concluidaEm: now,
+      responsavelId: card.responsavelId,
     });
-    input.log?.info?.({ workCardId: card.id, codigo: card.codigo, feedback: result }, "support-feedback: assistência encerrada");
-    return { handled: true, cardId: card.id, codigo: card.codigo, result: "resolved" };
+
+    await sendDirectWhatsAppMessage(
+      input.tenantId,
+      input.phone,
+      `Ótimo, obrigado por confirmar que a assistência ${card.codigo} resolveu o problema. Para finalizar: de 1 a 5, que nota você dá para o atendimento? Responda somente com a nota ou “NOTA 5”, por exemplo.`,
+      input.log,
+    ).catch(() => undefined);
+
+    input.log?.info?.(
+      { workCardId: card.id, codigo: card.codigo },
+      "support-feedback: resolução confirmada; aguardando avaliação final",
+    );
+    return { handled: true, cardId: card.id, codigo: card.codigo, result: "awaiting_rating" };
   }
 
   const reopenCount = Number((card.metadata as any)?.supportReopenCount ?? 0) + 1;
@@ -170,19 +317,38 @@ export async function tryHandleSupportFeedbackMessage(input: {
   }).returning();
 
   await db.insert(activitiesTable).values({
-    tenantId: input.tenantId, leadId: lead.id, dealId: card.dealId, tipo: "assistencia",
+    tenantId: input.tenantId,
+    leadId: lead.id,
+    dealId: card.dealId,
+    tipo: "assistencia",
     titulo: `${card.codigo}: feedback do cliente — ${feedbackLabel}`,
     descricao: `O card anterior foi encerrado sem regressão. Retorno ${returnCard.codigo} criado automaticamente para nova execução.`,
-    status: "concluida", concluidaEm: now, responsavelId: card.responsavelId,
+    status: "concluida",
+    concluidaEm: now,
+    responsavelId: card.responsavelId,
   });
   await db.insert(activitiesTable).values({
-    tenantId: input.tenantId, leadId: lead.id, dealId: card.dealId, tipo: "assistencia",
+    tenantId: input.tenantId,
+    leadId: lead.id,
+    dealId: card.dealId,
+    tipo: "assistencia",
     titulo: `Executar retorno ${returnCard.codigo}`,
     descricao: `Feedback recebido: ${feedbackLabel}. Revisar diagnóstico, definir próxima ação e reagendar se necessário.`,
-    status: "planejado", responsavelId: card.responsavelId,
+    status: "planejado",
+    responsavelId: card.responsavelId,
     dataVencimento: new Date(now.getTime() + 24 * 60 * 60 * 1000),
   });
 
-  input.log?.info?.({ previousWorkCardId: card.id, workCardId: returnCard.id, codigo: returnCard.codigo, feedback: result }, "support-feedback: retorno criado sem regressão");
+  await sendDirectWhatsAppMessage(
+    input.tenantId,
+    input.phone,
+    `Entendi. Como a assistência ${card.codigo} ainda não resolveu completamente, abri o retorno ${returnCard.codigo} para continuarmos o acompanhamento. Você não precisa começar tudo de novo; o histórico ficou vinculado.`,
+    input.log,
+  ).catch(() => undefined);
+
+  input.log?.info?.(
+    { previousWorkCardId: card.id, workCardId: returnCard.id, codigo: returnCard.codigo, feedback: result },
+    "support-feedback: retorno criado sem regressão",
+  );
   return { handled: true, cardId: returnCard.id, codigo: returnCard.codigo, result: "reopened" };
 }
