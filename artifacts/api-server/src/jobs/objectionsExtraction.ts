@@ -39,6 +39,7 @@ interface ExtractedObjection {
   mensagem_indice: number;
   resposta_indice?: number | null;
   gatilho_usado?: string | null;
+  estrategia_resposta?: string | null;
   desfecho?: InferredOutcome;
   confianca?: number;
 }
@@ -160,6 +161,7 @@ Para cada objeção:
 - mensagem_indice: número da mensagem do LEAD onde a objeção aparece;
 - resposta_indice: número da primeira resposta comercial diretamente relacionada, ou null;
 - gatilho_usado: um entre escassez, urgencia, prova_social, autoridade, reciprocidade, compromisso, afeicao, contraste, ancoragem, novidade, garantia, historia, nenhum;
+- estrategia_resposta: resuma em no máximo 180 caracteres a ESTRATÉGIA usada na resposta, sem copiar a frase e sem nomes, telefones, links, valores, percentuais, datas, marcas ou condições comerciais específicas. Exemplo: "validar preço, investigar referência de comparação e propor cálculo com dados do lead";
 - desfecho:
   * advanced = depois da resposta o lead claramente avançou (pediu proposta, reunião, documentos, detalhes de fechamento ou aceitou próximo passo);
   * no_change = a resistência permaneceu ou a conversa seguiu sem avanço;
@@ -181,6 +183,7 @@ Retorne APENAS JSON neste formato:
       "mensagem_indice": 3,
       "resposta_indice": 4,
       "gatilho_usado": "ancoragem",
+      "estrategia_resposta": "validar preço, investigar comparação e propor cálculo com dados reais",
       "desfecho": "advanced",
       "confianca": 0.92
     }
@@ -389,6 +392,7 @@ Se não houver objeções, retorne { "objecoes": [] }.`,
                 confidence: clampConfidence(obj.confianca),
                 metadata: {
                   contexto: obj.contexto ?? null,
+                  responseStrategy: obj.estrategia_resposta?.trim().slice(0, 180) || null,
                   extractedBy: "gpt-4o-mini",
                 },
                 resolvedAt: shouldResolve(outcome) ? new Date() : null,
