@@ -401,6 +401,7 @@ export async function sendSdrFirstApproach(
       nome: leadsTable.nome,
       empresa: leadsTable.empresa,
       mercadoSegmento: leadsTable.mercadoSegmento,
+      source: leadsTable.source,
       metadata: leadsTable.metadata,
     })
     .from(leadsTable)
@@ -430,7 +431,7 @@ export async function sendSdrFirstApproach(
       lead.mercadoSegmento,
       {
         ...((lead.metadata ?? {}) as Record<string, unknown>),
-        lead_source: "prospector",
+        lead_source: lead.source ?? "",
       },
     );
     const message = buildProspectorOpening({
