@@ -573,7 +573,7 @@ export default function ConceptModel3D({
   const [renderQuality, setRenderQuality] = useState<"fast" | "realistic" | "ultra">("realistic");
   const [webglReady, setWebglReady] = useState(false);
   const [transformMode, setTransformMode] = useState<"translate" | "rotate">("translate");
-  const [navigationMode, setNavigationMode] = useState<"orbit" | "walk">("orbit");
+  const [navigationMode, setNavigationMode] = useState<"orbit" | "walk" | "spin">("orbit");
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [orbitGesture, setOrbitGesture] = useState<null | {
     pointerId: number;
@@ -1037,6 +1037,21 @@ export default function ConceptModel3D({
                   : "border-l border-slate-200 px-3 py-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"}
               >
                 Caminhar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setNavigationMode("spin");
+                  setInteriorMode(false);
+                  setShowAllFloors(true);
+                  setShowRoof(true);
+                }}
+                className={navigationMode === "spin"
+                  ? "border-l border-slate-700 bg-slate-900 px-3 py-2 text-[11px] font-semibold text-white"
+                  : "border-l border-slate-200 px-3 py-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"}
+                title="Giro automático de inspeção ao redor do projeto"
+              >
+                Giro 360°
               </button>
             </div>
           )}
