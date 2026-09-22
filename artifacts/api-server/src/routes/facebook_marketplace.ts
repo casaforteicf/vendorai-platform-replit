@@ -3,6 +3,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
+  campaignsTable,
   facebookMarketplaceListingsTable,
   produtosCatalogoTable,
 } from "@workspace/db";
@@ -168,8 +169,9 @@ router.get("/tenants/:tenantId/facebook-marketplace/capabilities", async (req, r
     channel: "facebook_marketplace",
     mode: "assisted",
     directPublishing: false,
-    officialConnectorReady: true,
-    reason: "A publicação assistida é o modo padrão enquanto não existir uma API oficial elegível para a conta do tenant.",
+    officialConnectorConnected: false,
+    connectorContractReady: true,
+    reason: "A publicação assistida é o modo padrão enquanto não existir uma API oficial elegível e conectada para a conta do tenant.",
   });
 });
 
@@ -248,6 +250,24 @@ router.post("/tenants/:tenantId/facebook-marketplace/drafts", async (req, res) =
     return;
   }
 
+  if (parsed.data.campaignId) {
+    const [campaign] = await db
+      .select({ id: campaignsTable.id })
+      .from(campaignsTable)
+      .where(
+        and(
+          eq(campaignsTable.id, parsed.data.campaignId),
+          eq(campaignsTable.tenantId, tenantId),
+        ),
+      )
+      .limit(1);
+
+    if (!campaign) {
+      res.status(422).json({ error: "A campanha selecionada não pertence a esta empresa." });
+      return;
+    }
+  }
+
   const copy = await generateMarketplaceCopy(tenantId, product, parsed.data.category);
   const mediaUrls = uniqueMedia(product, parsed.data.mediaUrls);
 
@@ -323,7 +343,7 @@ router.patch("/tenants/:tenantId/facebook-marketplace/listings/:listingId", asyn
 
   const [listing] = await db
     .update(facebookMarketplaceListingsTable)
-    .set(data)
+    .set(data as any)
     .where(
       and(
         eq(facebookMarketplaceListingsTable.id, listingId),
