@@ -16,6 +16,7 @@ import { resolveAdCampaignFromUtm } from "../lib/adAttribution.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 import { syncBehaviorIntentForLead } from "../jobs/behaviorIntentSync.js";
 import { signToken } from "../lib/jwt.js";
+import { LEAD_FORM_TEMPLATES, getLeadFormTemplate } from "../services/lead-form-templates.js";
 
 export const intakeRouter: IRouter = Router();
 
@@ -68,7 +69,9 @@ const intakeSchema = z.object({
   ticketMedio: z.string().optional(),
   leadsPerMes: z.string().optional(),
   desafioPrincipal: z.string().optional(),
+  mensagem: z.string().optional(),
   objetivo6meses: z.string().optional(),
+  formTemplateId: z.string().trim().max(80).optional(),
   urgencia: z.string().optional(),
   orcamento: z.string().optional(),
   ...trackingFields,
@@ -204,7 +207,12 @@ async function linkBehaviorSessionToLead(params: {
   }
 }
 
-async function ensureWarmupDeal(tenantId: string, leadId: string, title: string): Promise<void> {
+async function ensureWarmupDeal(
+  tenantId: string,
+  leadId: string,
+  title: string,
+  etapa: "em_aquecimento" | "qualificado" | "proposta" = "em_aquecimento",
+): Promise<void> {
   const [lead] = await db
     .select({ pipelineExempt: leadsTable.pipelineExempt })
     .from(leadsTable)
@@ -223,7 +231,7 @@ async function ensureWarmupDeal(tenantId: string, leadId: string, title: string)
     tenantId,
     leadId,
     titulo: title,
-    etapa: "em_aquecimento",
+    etapa,
     probabilidade: 10,
   });
 }
@@ -237,6 +245,50 @@ function slugBase(value: string): string {
     .replace(/^-+|-+$/g, "")
     .slice(0, 30) || "trial";
 }
+
+intakeRouter.get("/public/forms/templates", (_req, res) => {
+  return res.json(LEAD_FORM_TEMPLATES);
+});
+
+intakeRouter.get("/public/:tenantSlug/forms/:templateId", async (req, res) => {
+  const slug = String(req.params["tenantSlug"]);
+  const templateId = String(req.params["templateId"]);
+  const [tenant] = await db.select({ id: tenantsTable.id, name: tenantsTable.name, slug: tenantsTable.slug })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.slug, slug));
+  if (!tenant) return res.status(404).send("Empresa não encontrada");
+
+  const template = getLeadFormTemplate(templateId);
+  if (!template) return res.status(404).send("Formulário não encontrado");
+
+  const escape = (value: string) => value.replace(/[&<>"']/g, (char) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[char] ?? char));
+  const fields = template.fields.map((field) => {
+    const required = field.required ? "required" : "";
+    const common = `name="${escape(field.key)}" ${required} placeholder="${escape(field.placeholder ?? "")}"`;
+    if (field.type === "textarea") return `<label>${escape(field.label)}<textarea ${common}></textarea></label>`;
+    if (field.type === "select") {
+      const options = (field.options ?? []).map((option) => `<option value="${escape(option)}">${escape(option)}</option>`).join("");
+      return `<label>${escape(field.label)}<select ${common}><option value="">Selecione</option>${options}</select></label>`;
+    }
+    const type = field.type === "phone" ? "tel" : field.type === "number" ? "number" : field.type;
+    return `<label>${escape(field.label)}<input type="${type}" ${common}></label>`;
+  }).join("");
+
+  const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${escape(template.name)} — ${escape(tenant.name)}</title>
+<style>body{font-family:Inter,system-ui,sans-serif;background:#f6f7f9;margin:0;color:#111827}.wrap{max-width:680px;margin:40px auto;padding:20px}.card{background:#fff;border:1px solid #e5e7eb;border-radius:18px;padding:28px;box-shadow:0 12px 40px rgba(0,0,0,.06)}h1{margin:0 0 8px;font-size:28px}.sub{color:#6b7280;margin:0 0 24px}form{display:grid;gap:16px}label{display:grid;gap:6px;font-size:14px;font-weight:600}input,textarea,select{width:100%;box-sizing:border-box;padding:12px;border:1px solid #d1d5db;border-radius:10px;font:inherit}textarea{min-height:110px;resize:vertical}button{border:0;border-radius:10px;padding:13px 16px;background:#111827;color:#fff;font-weight:700;cursor:pointer}.ok{display:none;padding:16px;border-radius:10px;background:#ecfdf5;color:#065f46}.err{display:none;padding:12px;border-radius:10px;background:#fef2f2;color:#991b1b}</style></head>
+<body><div class="wrap"><div class="card"><h1>${escape(template.name)}</h1><p class="sub">${escape(template.description)}</p>
+<div id="ok" class="ok">Recebemos seus dados. Em breve entraremos em contato.</div><div id="err" class="err"></div>
+<form id="lead-form">${fields}<label style="font-weight:400"><span><input type="checkbox" name="adDataConsent" value="true" style="width:auto"> Autorizo o uso dos dados para atendimento e medição da origem deste contato.</span></label>
+<button type="submit">${escape(template.submitLabel)}</button></form></div></div>
+<script>
+const form=document.getElementById("lead-form"), ok=document.getElementById("ok"), err=document.getElementById("err");
+form.addEventListener("submit",async(e)=>{e.preventDefault();err.style.display="none";const fd=new FormData(form);const q=new URLSearchParams(location.search);
+const body=Object.fromEntries(fd.entries());body.formTemplateId=${JSON.stringify(template.id)};body.utmCampaign=q.get("utm_campaign")||undefined;body.utmSource=q.get("utm_source")||undefined;body.utmMedium=q.get("utm_medium")||undefined;body.utmContent=q.get("utm_content")||undefined;body.utmTerm=q.get("utm_term")||undefined;body.gclid=q.get("gclid")||undefined;body.fbclid=q.get("fbclid")||undefined;body.pageUrl=location.href;body.referrer=document.referrer||undefined;body.adDataConsent=fd.get("adDataConsent")==="true";
+try{const r=await fetch("/api/public/${encodeURIComponent(slug)}/intake",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});const p=await r.json();if(!r.ok)throw new Error(p.error||"Não foi possível enviar.");form.style.display="none";ok.style.display="block"}catch(ex){err.textContent=ex.message||"Erro ao enviar.";err.style.display="block"}});
+</script></body></html>`;
+  res.type("html").send(html);
+});
 
 intakeRouter.get("/public/:tenantSlug/intake", async (req, res) => {
   const slug = String(req.params["tenantSlug"]);
@@ -284,6 +336,8 @@ intakeRouter.post("/public/:tenantSlug/intake", async (req, res) => {
     ticketMedio: d.ticketMedio,
     objetivo6meses: d.objetivo6meses,
     desafioPrincipal: d.desafioPrincipal,
+    mensagem: d.mensagem,
+    formTemplateId: d.formTemplateId,
     cargo: d.cargo,
     attribution,
     acquisitionStage: "aquecimento",
@@ -341,7 +395,8 @@ intakeRouter.post("/public/:tenantSlug/intake", async (req, res) => {
   }
 
   if (leadId) {
-    await ensureWarmupDeal(tenant.id, leadId, d.empresa || d.nome);
+    const template = getLeadFormTemplate(d.formTemplateId);
+    await ensureWarmupDeal(tenant.id, leadId, d.empresa || d.nome, template?.pipelineStage ?? "em_aquecimento");
   }
 
   await linkBehaviorSessionToLead({
