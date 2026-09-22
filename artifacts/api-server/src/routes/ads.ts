@@ -748,7 +748,7 @@ router.post("/tenants/:tenantId/ads/campaigns/:id/prepare-recommendation", async
   const tenantId = req.params.tenantId as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   const action = req.body?.action;
-  if (!["review_targeting", "improve_destination", "extend_campaign"].includes(action)) {
+  if (!["review_targeting", "improve_destination", "extend_campaign", "scale_winner", "review_lead_quality", "review_trial_activation", "review_trial_conversion"].includes(action)) {
     return res.status(422).json({ error: "Recomendação inválida." });
   }
   const [campaign] = await db.select().from(adCampaignsTable)
@@ -770,8 +770,27 @@ router.post("/tenants/:tenantId/ads/campaigns/:id/prepare-recommendation", async
       totalBudget: Number(campaign.orcamentoDiario) * 5,
     } as any;
     guidance = ["Período adicional de 5 dias preparado.", "Revise o orçamento total.", "Publique somente depois de confirmar."];
+  } else if (action === "scale_winner") {
+    const currentDaily = Number(campaign.orcamentoDiario);
+    const proposedDaily = Number((currentDaily * 1.2).toFixed(2));
+    campaignControl = {
+      ...(currentControl ?? { objective: "lead", specialAdCategory: "NONE" }),
+      totalBudget: Number(((currentControl?.totalBudget ?? currentDaily * 7) * 1.2).toFixed(2)),
+    } as any;
+    copy.orcamentoDiario = String(proposedDaily);
+    guidance = [
+      `Escala conservadora preparada: orçamento diário de R$ ${currentDaily.toFixed(2)} para R$ ${proposedDaily.toFixed(2)} (+20%).`,
+      "Nenhuma verba foi alterada na campanha atual.",
+      "Revise CAC, ROAS e limite total antes de publicar o novo rascunho.",
+    ];
   } else if (action === "review_targeting") {
     guidance = ["Revise cidades, raio e perfil do público.", "Confirme se a oferta corresponde ao nicho escolhido.", "Gere um novo criativo antes de publicar."];
+  } else if (action === "review_lead_quality") {
+    guidance = ["Revise a promessa do anúncio versus o perfil dos leads recebidos.", "Aperte público/termos de intenção e reduza sinais amplos.", "Mantenha a campanha atual intacta até revisar o novo rascunho."];
+  } else if (action === "review_trial_activation") {
+    guidance = ["Revise a experiência após o lead/trial, não apenas o anúncio.", "Direcione o CTA para o primeiro valor operacional.", "Avalie formulário, onboarding e tempo até o primeiro atendimento."];
+  } else if (action === "review_trial_conversion") {
+    guidance = ["Revise oferta, prova de valor e objeções após a ativação.", "Priorize leads/trials de maior intenção para contato comercial.", "Não aumente mídia antes de corrigir o fechamento."];
   } else {
     guidance = ["Confira se o destino abre corretamente no celular.", "Deixe a chamada principal clara.", "Use WhatsApp ou formulário curto para reduzir abandono."];
   }
