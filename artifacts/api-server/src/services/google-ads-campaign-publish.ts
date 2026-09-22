@@ -145,9 +145,19 @@ async function resolveGoogleGeoTargets(accessToken: string, locationNames: strin
 // exige algo que o tenant ainda não tem configurado.
 async function resolveFinalUrl(tenantId: string, campanha: AdCampaign): Promise<string> {
   if (campanha.destinoClique === "formulario_lead") {
-    throw new GoogleAdsPublishError(
-      "Destino \"Formulário de lead nativo\" ainda não implementado — publique com destino Landing Page ou WhatsApp por enquanto.",
-    );
+    const [tenant] = await db
+      .select({ slug: tenantsTable.slug })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, tenantId));
+    if (!tenant?.slug) {
+      throw new GoogleAdsPublishError("Tenant sem slug público — necessário para o formulário de campanha.");
+    }
+    const templateId = campanha.segmentacao?.campaignControl?.leadFormTemplateId ?? "contato_rapido";
+    const url = new URL(`https://appvendorai.com/api/public/${tenant.slug}/forms/${templateId}`);
+    if (campanha.utmCode) url.searchParams.set("utm_campaign", campanha.utmCode);
+    url.searchParams.set("utm_source", campanha.plataforma);
+    url.searchParams.set("utm_medium", "paid");
+    return url.toString();
   }
 
   if (campanha.destinoClique === "whatsapp") {
