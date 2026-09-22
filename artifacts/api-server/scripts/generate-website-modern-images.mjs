@@ -1,32 +1,11 @@
-import { stat, access } from "node:fs/promises";
-import { dirname, extname, resolve } from "node:path";
+import { access, readdir, stat } from "node:fs/promises";
+import { dirname, extname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const mediaRoot = resolve(scriptDir, "../../website/public/media/vendorai-official");
-
-const sources = [
-  "crm-pipeline/desktop-1440.png",
-  "crm-pipeline/mobile-390.png",
-  "prospector/desktop-1440.png",
-  "prospector/mobile-390.png",
-  "omnichannel/desktop-1440.png",
-  "omnichannel/mobile-390.png",
-  "revenue-scout/desktop-1440.png",
-  "revenue-scout/mobile-390.png",
-  "jarvis/desktop-aberto.png",
-  "agenda/desktop-1440.png",
-  "agenda/mobile-390.png",
-  "analytics/desktop-1440.png",
-  "analytics/mobile-390.png",
-  "financeiro-erp/desktop-1440.png",
-  "financeiro-erp/mobile-390.png",
-];
-
-function webpPath(sourcePath) {
-  return sourcePath.slice(0, -extname(sourcePath).length) + ".webp";
-}
+const CONCURRENCY = 4;
 
 async function exists(path) {
   try {
@@ -37,17 +16,29 @@ async function exists(path) {
   }
 }
 
-let originalBytes = 0;
-let modernBytes = 0;
-let converted = 0;
+async function collectPngFiles(dir) {
+  const entries = await readdir(dir, { withFileTypes: true });
+  const files = [];
 
-for (const relativePath of sources) {
-  const source = resolve(mediaRoot, relativePath);
-  if (!(await exists(source))) {
-    console.warn(`[modern-images] fonte ausente: ${relativePath}`);
-    continue;
+  for (const entry of entries) {
+    const absolute = resolve(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await collectPngFiles(absolute)));
+      continue;
+    }
+    if (entry.isFile() && extname(entry.name).toLowerCase() === ".png") {
+      files.push(absolute);
+    }
   }
 
+  return files;
+}
+
+function webpPath(sourcePath) {
+  return sourcePath.slice(0, -extname(sourcePath).length) + ".webp";
+}
+
+async function convert(source) {
   const output = webpPath(source);
   const sourceStat = await stat(source);
   const outputExists = await exists(output);
@@ -55,14 +46,32 @@ for (const relativePath of sources) {
 
   if (!outputStat || outputStat.mtimeMs < sourceStat.mtimeMs) {
     await sharp(source)
-      .webp({ quality: 88, effort: 6, smartSubsample: true })
+      .webp({ quality: 84, effort: 5, smartSubsample: true })
       .toFile(output);
   }
 
   const finalStat = await stat(output);
-  originalBytes += sourceStat.size;
-  modernBytes += finalStat.size;
-  converted += 1;
+  return {
+    sourceBytes: sourceStat.size,
+    modernBytes: finalStat.size,
+    relativePath: relative(mediaRoot, source),
+  };
+}
+
+const sources = await collectPngFiles(mediaRoot);
+let originalBytes = 0;
+let modernBytes = 0;
+let converted = 0;
+
+for (let index = 0; index < sources.length; index += CONCURRENCY) {
+  const batch = sources.slice(index, index + CONCURRENCY);
+  const results = await Promise.all(batch.map(convert));
+
+  for (const result of results) {
+    originalBytes += result.sourceBytes;
+    modernBytes += result.modernBytes;
+    converted += 1;
+  }
 }
 
 const savedBytes = Math.max(0, originalBytes - modernBytes);
@@ -70,5 +79,5 @@ const savedPercent = originalBytes > 0 ? ((savedBytes / originalBytes) * 100).to
 const kb = (bytes) => (bytes / 1024).toFixed(1);
 
 console.log(
-  `[modern-images] ${converted} arquivos: ${kb(originalBytes)} KB PNG -> ${kb(modernBytes)} KB WebP (${savedPercent}% menor)`,
+  `[modern-images] ${converted} arquivos oficiais: ${kb(originalBytes)} KB PNG -> ${kb(modernBytes)} KB WebP (${savedPercent}% menor)`,
 );
