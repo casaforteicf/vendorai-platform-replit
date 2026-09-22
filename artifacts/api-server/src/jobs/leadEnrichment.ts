@@ -27,6 +27,7 @@ import { getSimilarityBonus, storeConvertedEmbedding } from "../lib/prospectorMe
 import { logger as rootLogger } from "../lib/logger.js";
 import { checkHasMetaAds, checkGooglePresence } from "../services/cnpjService.js";
 import { evaluateColdProspectQuality } from "../lib/coldProspectQuality.js";
+import { prospectorEmailAutomationConfigured } from "../services/prospector-email.js";
 
 const COLD_OUTREACH_TRIGGER =
   "[PROSPECÇÃO AUTOMÁTICA] Novo lead enriquecido e priorizado. Use SOMENTE as evidências verificáveis do coldProspectDossier/enrichment_data para personalizar a primeira mensagem. Não afirme perdas, problemas internos ou fatos que não possam ser comprovados externamente.";
@@ -496,11 +497,7 @@ export async function enrichLead(
       whatsapp: Boolean(activeWhatsappConnection || hasLegacyWhatsapp),
       // E-mail só entra em automação fria quando envio + recebimento assinado
       // estão configurados; assim a cadência consegue parar quando houver reply.
-      email: Boolean(
-        process.env["RESEND_API_KEY"] &&
-        process.env["RESEND_WEBHOOK_SECRET"] &&
-        process.env["RESEND_PROSPECTOR_REPLY_DOMAIN"]
-      ),
+      email: prospectorEmailAutomationConfigured(),
       // Instagram exige IGSID obtido após inbound; não é canal de cold-start.
       instagram: false,
     };
