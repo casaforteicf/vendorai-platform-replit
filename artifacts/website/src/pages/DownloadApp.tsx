@@ -9,7 +9,7 @@ import {
   Smartphone,
 } from "lucide-react";
 
-const ANDROID_APK_URL = import.meta.env.VITE_ANDROID_APK_URL || "https://apk-builder-production-78ec.up.railway.app/vendorai.apk";
+const ANDROID_APK_URL = import.meta.env.VITE_ANDROID_APK_URL || "https://apk-builder-production-420f.up.railway.app/vendorai.apk";
 const IOS_APP_URL = import.meta.env.VITE_IOS_APP_URL || "";
 
 function detectPlatform() {
