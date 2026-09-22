@@ -611,6 +611,7 @@ export default function ConceptPlanner() {
   const wallFirstActive = (Array.isArray(wallFirstFloors) ? wallFirstFloors : []).includes(activeFloor);
   const [modelSearch, setModelSearch] = useState("");
   const [modelCategory, setModelCategory] = useState<"todos" | "terreas" | "sobrados" | "lazer">("todos");
+  const [modelGalleryOpen, setModelGalleryOpen] = useState(false);
   const [furnitureSearch, setFurnitureSearch] = useState("");
   const [furnitureCategory, setFurnitureCategory] = useState<"Todos" | "Sala" | "Quarto" | "Jantar" | "Cozinha" | "Escritório" | "Decoração" | "Iluminação" | "Exterior">("Todos");
   const [libraryMode, setLibraryMode] = useState<"all" | "favorites" | "recent">("all");
@@ -3793,6 +3794,17 @@ export default function ConceptPlanner() {
                   <Ruler className="h-4 w-4" />
                 </button>
                 )}
+                {editorView === "plan" && (
+                  <button
+                    type="button"
+                    onClick={() => setModelGalleryOpen(true)}
+                    title="Abrir galeria de modelos"
+                    className="hidden h-10 items-center gap-2 rounded-xl text-slate-300 hover:bg-white/10 sm:inline-flex sm:px-3"
+                  >
+                    <LayoutGrid className="h-4 w-4" />
+                    Modelos
+                  </button>
+                )}
                 {(editorView === "plan" || editorView === "model3d") && (
                   <button
                     type="button"
@@ -3920,6 +3932,118 @@ export default function ConceptPlanner() {
                 design={facadeDesign}
               />
             </div>
+
+            {modelGalleryOpen && (
+              <div className="fixed inset-0 z-[95] flex items-center justify-center p-3 sm:p-6">
+                <button
+                  type="button"
+                  aria-label="Fechar galeria de modelos"
+                  onClick={() => setModelGalleryOpen(false)}
+                  className="absolute inset-0 bg-slate-950/45 backdrop-blur-[2px]"
+                />
+                <div className="relative z-10 max-h-[88vh] w-full max-w-6xl overflow-hidden rounded-3xl border border-white/30 bg-white shadow-2xl">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4 sm:px-6">
+                    <div>
+                      <div className="text-lg font-bold text-slate-950">Comece com um modelo</div>
+                      <div className="mt-0.5 text-xs text-slate-500">Escolha uma base e continue editando normalmente no 2D ou 3D.</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {([
+                        ["todos", "Todos"],
+                        ["terreas", "Térreas"],
+                        ["sobrados", "Sobrados"],
+                        ["lazer", "Lazer"],
+                      ] as const).map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setModelCategory(value)}
+                          className={modelCategory === value
+                            ? "rounded-full bg-slate-950 px-3 py-1.5 text-[11px] font-bold text-white"
+                            : "rounded-full border px-3 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => setModelGalleryOpen(false)}
+                        className="ml-1 grid h-9 w-9 place-items-center rounded-full border text-slate-500 hover:bg-slate-50"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="max-h-[calc(88vh-76px)] overflow-y-auto p-5 sm:p-6">
+                    <label className="mx-auto mb-5 flex h-11 max-w-xl items-center gap-2 rounded-xl border bg-white px-3 shadow-sm">
+                      <Search className="h-4 w-4 text-slate-400" />
+                      <input
+                        value={modelSearch}
+                        onChange={(event) => setModelSearch(event.target.value)}
+                        placeholder="Buscar casa térrea, sobrado, lazer..."
+                        className="w-full bg-transparent text-sm outline-none"
+                        autoFocus
+                      />
+                    </label>
+                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          startBlankPlan();
+                          setModelGalleryOpen(false);
+                        }}
+                        className="group overflow-hidden rounded-2xl border bg-white text-left transition hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-lg"
+                      >
+                        <div className="grid aspect-[4/3] place-items-center bg-gradient-to-br from-slate-50 to-slate-100">
+                          <div className="grid h-16 w-16 place-items-center rounded-2xl border-2 border-dashed border-slate-300 bg-white text-slate-500">
+                            <Plus className="h-7 w-7" />
+                          </div>
+                        </div>
+                        <div className="p-4">
+                          <div className="font-semibold">Projeto vazio</div>
+                          <div className="mt-1 text-xs text-slate-500">Começar desenhando do zero.</div>
+                        </div>
+                      </button>
+                      {filteredTypologies.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => {
+                            applyTypology(item.id);
+                            setModelGalleryOpen(false);
+                            setEditorView("plan");
+                          }}
+                          className={typology === item.id
+                            ? "group overflow-hidden rounded-2xl border-2 border-orange-500 bg-white text-left shadow-md"
+                            : "group overflow-hidden rounded-2xl border bg-white text-left transition hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-lg"}
+                        >
+                          <div className="relative aspect-[4/3] overflow-hidden">
+                            <ConceptTypologyPreview typology={item.id} lotWidth={lotWidth} lotDepth={lotDepth} />
+                            <div className="absolute left-3 top-3 flex gap-2">
+                              <span className="rounded-full bg-white/95 px-2.5 py-1 text-[9px] font-bold shadow-sm">
+                                {item.floors === 1 ? "TÉRREA" : "SOBRADO"}
+                              </span>
+                              {item.rooms.some((room) => room.kind === "piscina" || room.kind === "gourmet") && (
+                                <span className="rounded-full bg-white/95 px-2.5 py-1 text-[9px] font-bold shadow-sm">LAZER</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="p-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="font-semibold text-slate-950">{item.title}</div>
+                                <div className="mt-1 text-xs text-slate-500">{item.subtitle}</div>
+                              </div>
+                              <div className="shrink-0 text-sm font-bold text-slate-700">≈ {item.suggestedArea} m²</div>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="arq-workspace-shell relative min-h-[calc(100dvh-56px)] overflow-hidden bg-[#f6f7f8]">
               <aside className={(selected || selectedCustomWall || selectedOpening || selectedClosedSpace || selectedWall)
@@ -4059,6 +4183,18 @@ export default function ConceptPlanner() {
                           className="w-full bg-transparent text-sm outline-none"
                         />
                       </label>
+
+                      <button
+                        type="button"
+                        onClick={() => setModelGalleryOpen(true)}
+                        className="flex w-full items-center justify-between rounded-xl bg-slate-950 px-3 py-2.5 text-left text-white shadow-sm hover:bg-slate-800"
+                      >
+                        <span>
+                          <span className="block text-xs font-bold">Galeria de modelos</span>
+                          <span className="block text-[10px] text-white/65">Ver opções maiores sobre o canvas</span>
+                        </span>
+                        <LayoutGrid className="h-4 w-4" />
+                      </button>
 
                       <button
                         type="button"
