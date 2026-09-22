@@ -1223,7 +1223,7 @@ async function findSimilarApprovals(
         sql`${prospectApprovalsTable.embedding} IS NOT NULL`,
       ),
     )
-    .orderBy(sql`${prospectApprovalsTable.embedding} <=> ${vec}::vector`)
+    .orderBy(sql`${prospectApprovalsTable.embedding} OPERATOR(extensions.<=>) ${vec}::extensions.vector`)
     .limit(limit);
 
   return rows.map((r) => ({
@@ -2634,7 +2634,7 @@ router.post("/prospector/dedup-check", async (req, res) => {
   if (telefone) conditions.push(eq(leadsTable.telefone, telefone));
   if (nome) {
     const nameNorm = normalizeName(nome);
-    conditions.push(sql`unaccent(lower(${leadsTable.nome})) LIKE '%' || ${nameNorm} || '%'`);
+    conditions.push(sql`extensions.unaccent(lower(${leadsTable.nome})) LIKE '%' || ${nameNorm} || '%'`);
   }
 
   const [existing] = await db
