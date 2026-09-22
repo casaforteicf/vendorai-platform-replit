@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
-import { Building2, Radar, Target, MessageSquare, ShieldCheck } from "lucide-react";
+import { Building2, Globe2, Radar, RotateCcw, Target, MessageSquare, ShieldCheck } from "lucide-react";
 
 export type ProspectorPlaybookForm = {
   version: 1;
@@ -213,7 +213,7 @@ export default function ProspectorPlaybookEditor({ value, onChange }: Props) {
   }
 
   const qualificationLabels: Array<[keyof ProspectorPlaybookForm["qualification"], string]> = [
-    ["terrainDefined", "Terreno/contexto definido"],
+    ["terrainDefined", "Contexto/oportunidade definida"],
     ["projectOrClearIntent", "Projeto ou intenção clara"],
     ["estimatedTimeline", "Prazo estimado"],
     ["declaredPain", "Dor/desafio declarado"],
@@ -223,17 +223,30 @@ export default function ProspectorPlaybookEditor({ value, onChange }: Props) {
   return (
     <div className="space-y-3">
       <Card className="border-primary/20 bg-primary/[0.025] p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold">Playbook operacional do Prospecctor</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Pesquisa → Entende → Confirma → Só então propõe o próximo passo.
-            </p>
+        <div className="flex flex-col gap-4">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <Globe2 className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold">Prospecctor universal — qualquer mercado</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                Pesquisa → Entende → Confirma → Só então propõe o próximo passo. Radar de Obras, CNPJ,
+                Google Maps, redes sociais, diretórios, listas, eventos e Revenue Scout são fontes de
+                oportunidade; nenhuma delas muda sozinha a identidade do agente.
+              </p>
+            </div>
           </div>
-          <Button type="button" size="sm" variant="outline" onClick={() => onChange(clone(CONSTRUCTION_PROSPECTOR_PLAYBOOK))}>
-            <Building2 className="mr-1.5 h-3.5 w-3.5" />
-            Modelo construção residencial
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" size="sm" variant="outline" onClick={() => onChange(clone(GENERIC_PROSPECTOR_PLAYBOOK))}>
+              <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+              Modelo universal
+            </Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => onChange(clone(CONSTRUCTION_PROSPECTOR_PLAYBOOK))}>
+              <Building2 className="mr-1.5 h-3.5 w-3.5" />
+              Preset opcional: Radar/Construção
+            </Button>
+          </div>
         </div>
       </Card>
 
@@ -255,7 +268,7 @@ export default function ProspectorPlaybookEditor({ value, onChange }: Props) {
             <Textarea rows={4} value={listToText(value.signal.observable)} onChange={(e) => patch("signal", { ...value.signal, observable: textToList(e.target.value) })} />
           </div>
           <div>
-            <Label>Fontes — uma por linha</Label>
+            <Label>Fontes de prospecção/sinais — uma por linha</Label>
             <Textarea rows={4} value={listToText(value.signal.sources)} onChange={(e) => patch("signal", { ...value.signal, sources: textToList(e.target.value) })} />
           </div>
           <div className="sm:col-span-2">
