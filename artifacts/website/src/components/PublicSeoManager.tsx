@@ -107,7 +107,32 @@ export default function PublicSeoManager() {
   const [manifest, setManifest] = useState<SeoManifest | null>(null);
   const pathname = useMemo(() => normalizePath(location.split("?")[0]), [location]);
 
-  useEffect(() => { loadManifest().then(setManifest); }, []);
+  useEffect(() => {
+    let timeoutId: number | undefined;
+    let idleId: number | undefined;
+    let cancelled = false;
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+    const load = () => {
+      void loadManifest().then((value) => {
+        if (!cancelled) setManifest(value);
+      });
+    };
+    const schedule = () => {
+      if (idleWindow.requestIdleCallback) idleId = idleWindow.requestIdleCallback(load, { timeout: 1800 });
+      else timeoutId = window.setTimeout(load, 900);
+    };
+    if (document.readyState === "complete") schedule();
+    else window.addEventListener("load", schedule, { once: true });
+    return () => {
+      cancelled = true;
+      window.removeEventListener("load", schedule);
+      if (idleId != null) idleWindow.cancelIdleCallback?.(idleId);
+      if (timeoutId != null) window.clearTimeout(timeoutId);
+    };
+  }, []);
 
   useEffect(() => {
     const requested = new URLSearchParams(window.location.search).get("country")?.toUpperCase() as PublicCountryCode | undefined;
