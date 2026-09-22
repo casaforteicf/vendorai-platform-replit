@@ -13,7 +13,7 @@ const PT = {
     ["4", "Gere e reutilize", "Crie uma ou várias versões e leve o resultado direto para site, campanha, conteúdo ou vídeo."],
   ],
   demoTitle: "Retrato cinematográfico",
-  demoSubtitle: "Exemplo do novo fluxo visual do Prompt Hub",
+  demoSubtitle: "Transforme uma foto comum em um retrato com iluminação de cinema, profundidade e acabamento profissional.",
   preserve: "Preservar identidade",
   keyLight: "Luz principal",
   contrast: "Contraste",
@@ -40,7 +40,7 @@ const ES = {
     ["4", "Genera y reutiliza", "Crea una o varias versiones y lleva el resultado directo al sitio, campaña, contenido o video."],
   ],
   demoTitle: "Retrato cinematográfico",
-  demoSubtitle: "Ejemplo del nuevo flujo visual del Prompt Hub",
+  demoSubtitle: "Convierte una foto común en un retrato con iluminación cinematográfica, profundidad y acabado profesional.",
   preserve: "Preservar identidad",
   keyLight: "Luz principal",
   contrast: "Contraste",
@@ -96,11 +96,11 @@ export default function PromptHubConceptSection() {
         </div>
 
         <div className="mt-10 grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-          <div className="overflow-hidden rounded-[32px] border border-slate-800 bg-slate-950 p-5 shadow-2xl sm:p-7">
+          <div className="overflow-hidden rounded-[28px] border border-slate-800 bg-slate-950 p-4 shadow-2xl sm:rounded-[32px] sm:p-7">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-5">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-orange-400">Prompt Hub</p>
-                <h3 className="mt-1 text-xl font-black text-white">{copy.demoTitle}</h3>
+                <h3 className="mt-1 text-[26px] font-black leading-tight text-white sm:text-xl">{copy.demoTitle}</h3>
                 <p className="mt-1 text-sm text-slate-400">{copy.demoSubtitle}</p>
               </div>
               <div className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-bold text-emerald-300">
@@ -109,17 +109,40 @@ export default function PromptHubConceptSection() {
             </div>
 
             <div className="mt-6 grid gap-5 md:grid-cols-[0.9fr_1.1fr]">
-              <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-4">
-                <div className="aspect-[4/5] overflow-hidden rounded-2xl border border-white/10 bg-[linear-gradient(135deg,#25104a,#4f2290_45%,#0b0d16)] p-4">
-                  <div className="flex h-full items-center justify-center">
-                    <div className="relative h-44 w-32 rounded-[45%_45%_40%_40%] bg-[linear-gradient(90deg,#090b12_0_47%,#f5cfa7_58%_100%)] shadow-[18px_0_45px_rgba(245,207,167,0.30)]">
-                      <div className="absolute inset-y-5 left-0 w-[2px] rounded-full bg-violet-300/70 shadow-[0_0_12px_rgba(196,181,253,.75)]" />
+              <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-3 sm:p-4">
+                <div className="grid grid-cols-2 overflow-hidden rounded-2xl border border-white/10 bg-black">
+                  <div className="relative aspect-[4/5] overflow-hidden">
+                    <img
+                      src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=900&q=85"
+                      alt={isSpanish ? "Retrato original antes de la edición" : "Retrato original antes da edição"}
+                      className="h-full w-full object-cover grayscale contrast-90 brightness-90"
+                      loading="lazy"
+                    />
+                    <div className="absolute inset-x-2 bottom-2 rounded-full bg-black/65 px-2.5 py-1 text-center text-[10px] font-bold uppercase tracking-[0.12em] text-white backdrop-blur">
+                      {isSpanish ? "Original" : "Antes"}
+                    </div>
+                  </div>
+                  <div className="relative aspect-[4/5] overflow-hidden">
+                    <img
+                      src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=900&q=90"
+                      alt={isSpanish ? "Resultado de retrato cinematográfico" : "Resultado de retrato cinematográfico"}
+                      className="h-full w-full object-cover contrast-125 saturate-110 brightness-90"
+                      loading="lazy"
+                    />
+                    <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_68%_32%,rgba(251,146,60,.22),transparent_30%),linear-gradient(120deg,rgba(15,23,42,.62),transparent_48%,rgba(99,102,241,.25))]" />
+                    <div className="absolute inset-x-2 bottom-2 rounded-full bg-orange-500/90 px-2.5 py-1 text-center text-[10px] font-bold uppercase tracking-[0.12em] text-white shadow-lg">
+                      {isSpanish ? "Cinematográfico" : "Resultado"}
                     </div>
                   </div>
                 </div>
+                <p className="mt-3 text-xs leading-5 text-slate-400">
+                  {isSpanish
+                    ? "Misma persona, con identidad preservada. La IA cambia luz, profundidad, contraste y atmósfera."
+                    : "A mesma pessoa, com a identidade preservada. A IA muda luz, profundidade, contraste e atmosfera."}
+                </p>
                 <div className="mt-4 flex items-center gap-2 text-xs font-medium text-slate-300">
                   <Library className="h-4 w-4 text-orange-400" />
-                  Biblioteca de Mídias
+                  {isSpanish ? "Biblioteca de Medios" : "Biblioteca de Mídias"}
                 </div>
               </div>
 
@@ -150,6 +173,14 @@ export default function PromptHubConceptSection() {
                   <p className="mt-3 line-clamp-3 font-mono text-[11px] leading-5 text-slate-300">
                     Preserve exact facial identity and proportions. Reconstruct lighting from scratch. Strong key light camera right, darker camera left, subtle rim light, deep purple-indigo matte background...
                   </p>
+                </div>
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <button className="rounded-xl bg-orange-500 px-3 py-3 text-xs font-black text-white transition hover:bg-orange-400">
+                    {isSpanish ? "Usar este prompt" : "Usar este prompt"}
+                  </button>
+                  <button className="rounded-xl border border-white/15 bg-white/[0.04] px-3 py-3 text-xs font-bold text-white transition hover:bg-white/[0.08]">
+                    {isSpanish ? "Editar prompt" : "Editar prompt"}
+                  </button>
                 </div>
               </div>
             </div>
