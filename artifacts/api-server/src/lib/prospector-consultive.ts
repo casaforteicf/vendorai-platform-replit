@@ -65,14 +65,32 @@ export type ProspectorPlaybook = {
 };
 
 export const COLD_PROSPECT_SOURCES = new Set([
+  // Núcleo universal: estas são origens de prospecção, não segmentos.
   "prospector",
   "prospector_auto",
   "cnpj",
   "recem_aberta",
   "ad_library",
+  "revenue_scout",
+  "business_directory",
+  "public_registry",
+  "google_maps_prospecting",
+  "google_business_profile",
+  "linkedin_prospecting",
+  "instagram_prospecting",
+  "facebook_prospecting",
+  "marketplace_prospecting",
+  "event_prospecting",
+  "referral_prospecting",
+  "imported_prospect_list",
+  "manual_prospecting",
+  "website_prospecting",
+  // Radar de Obras é somente UMA fonte especializada entre várias.
   "construction_radar",
   "obra_radar",
 ]);
+
+const COLD_PROSPECT_SOURCE_PREFIXES = ["prospector_", "cold_", "outbound_"];
 
 const GENERIC_PLAYBOOK: ProspectorPlaybook = {
   version: 1,
@@ -211,25 +229,21 @@ function objectValue(value: unknown): Record<string, unknown> {
     : {};
 }
 
-function isConstructionContext(segment?: string | null, metadata?: Record<string, unknown> | null): boolean {
-  const text = [
-    segment ?? "",
-    String(metadata?.["setor"] ?? ""),
-    String(metadata?.["categoria"] ?? ""),
-    String(metadata?.["source_family"] ?? ""),
-    String(metadata?.["source"] ?? ""),
-    String(metadata?.["lead_source"] ?? ""),
-    String(metadata?.["origem"] ?? ""),
-    String(metadata?.["obra"] ?? ""),
-  ].join(" ").toLocaleLowerCase("pt-BR");
-  return /constru|obra|residenc|arquitet|engenhar|terreno|incorpora/.test(text);
+/**
+ * O Prospecctor é multimercado por definição. Segmento e fonte nunca trocam
+ * silenciosamente o playbook do tenant. Presets especializados só entram
+ * quando o próprio tenant os salva explicitamente na configuração do agente.
+ */
+export function defaultProspectorPlaybook(
+  _segment?: string | null,
+  _metadata?: Record<string, unknown> | null,
+): ProspectorPlaybook {
+  return structuredClone(GENERIC_PLAYBOOK);
 }
 
-export function defaultProspectorPlaybook(
-  segment?: string | null,
-  metadata?: Record<string, unknown> | null,
-): ProspectorPlaybook {
-  return structuredClone(isConstructionContext(segment, metadata) ? CONSTRUCTION_PLAYBOOK : GENERIC_PLAYBOOK);
+/** Preset opcional para tenants que desejam prospecção orientada a obras. */
+export function constructionProspectorPlaybookPreset(): ProspectorPlaybook {
+  return structuredClone(CONSTRUCTION_PLAYBOOK);
 }
 
 export function resolveProspectorPlaybook(
@@ -345,7 +359,10 @@ export function resolveProspectorPlaybook(
 }
 
 export function isColdProspectSource(source?: string | null): boolean {
-  return COLD_PROSPECT_SOURCES.has(source ?? "");
+  const normalized = (source ?? "").trim().toLocaleLowerCase("pt-BR");
+  if (!normalized) return false;
+  return COLD_PROSPECT_SOURCES.has(normalized)
+    || COLD_PROSPECT_SOURCE_PREFIXES.some((prefix) => normalized.startsWith(prefix));
 }
 
 export function prospectorQuestionsForExtraction(playbook: ProspectorPlaybook) {
@@ -365,9 +382,13 @@ function evidenceLabels(metadata?: Record<string, unknown> | null): string[] {
     .sort((a, b) => {
       const aKey = stringValue(a["key"], "");
       const bKey = stringValue(b["key"], "");
-      const aWeight = aKey === "construction_work_signal" ? 3 : aKey === "construction_actor" ? 2 : 1;
-      const bWeight = bKey === "construction_work_signal" ? 3 : bKey === "construction_actor" ? 2 : 1;
-      return bWeight - aWeight;
+      const rank = (item: Record<string, unknown>, key: string) => {
+        const confidence = stringValue(item["confidence"], "").toLocaleLowerCase("pt-BR");
+        const confidenceWeight = confidence === "high" ? 3 : confidence === "medium" ? 2 : confidence === "low" ? 1 : 0;
+        const signalWeight = /signal|sinal|evidence|evidencia/.test(key) ? 4 : /actor|contact|contato|responsavel/.test(key) ? 2 : 1;
+        return signalWeight + confidenceWeight;
+      };
+      return rank(b, bKey) - rank(a, aKey);
     })
     .map((item) => {
       const label = stringValue(item["label"], "");
@@ -438,8 +459,9 @@ export function buildProspectorConsultivePrompt(params: {
 
   return [
     params.customSystemPrompt?.trim() ? `## ORIENTAÇÕES ESPECÍFICAS DO TENANT\n${params.customSystemPrompt.trim()}` : "",
-    "## MODO PROSPECCTOR — PESQUISA CONSULTIVA POR SINAIS",
-    "Você está atuando como Prospecctor, antes do SDR/Closer. Seu papel NÃO é vender nesta fase. Seu papel é pesquisar, entender e qualificar o contexto real.",
+    "## MODO PROSPECCTOR — PROSPECÇÃO CONSULTIVA MULTIMERCADO",
+    "Você está atuando como Prospecctor, antes do SDR/Closer. Seu papel NÃO é vender nesta fase. Seu papel é pesquisar, entender e qualificar o contexto real em qualquer mercado.",
+    "A fonte da oportunidade pode ser Radar de Obras, CNPJ, diretório empresarial, Google Maps, redes sociais, marketplace, evento, lista importada, Revenue Scout ou outra fonte autorizada. A fonte fornece evidência; ela NÃO redefine a identidade do agente.",
     "PRINCÍPIO CENTRAL: Pesquisar → Entender → Confirmar → Só então propor o próximo passo.",
     "REGRAS ABSOLUTAS:",
     "- Trate sinais públicos como evidências externas, nunca como prova de dor interna.",
