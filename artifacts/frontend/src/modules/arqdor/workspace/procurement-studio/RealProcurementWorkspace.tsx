@@ -176,10 +176,13 @@ function statusLabel(status: string) {
     rascunho: "Rascunho",
     cotacao: "Em cotação",
     aprovado: "Cotação aprovada",
+    aprovada: "Aprovada",
     pedido_emitido: "Pedido emitido",
     parcial: "Recebido parcial",
     recebido: "Recebido",
+    efetuada: "Compra efetuada",
     cancelado: "Cancelado",
+    cancelada: "Cancelada",
     quoted: "Cotado",
     approved: "Aprovado",
     rejected: "Não selecionado",
@@ -191,11 +194,11 @@ function statusLabel(status: string) {
 }
 
 function statusClass(status: string) {
-  if (["recebido", "delivered"].includes(status)) return "bg-emerald-100 text-emerald-800";
-  if (["aprovado", "approved"].includes(status)) return "bg-emerald-50 text-emerald-700";
+  if (["recebido", "delivered", "efetuada"].includes(status)) return "bg-emerald-100 text-emerald-800";
+  if (["aprovado", "aprovada", "approved"].includes(status)) return "bg-emerald-50 text-emerald-700";
   if (["pedido_emitido", "ordered", "partial", "parcial"].includes(status)) return "bg-violet-50 text-violet-700";
   if (["cotacao", "quoted"].includes(status)) return "bg-blue-50 text-blue-700";
-  if (["cancelado", "rejected"].includes(status)) return "bg-rose-50 text-rose-700";
+  if (["cancelado", "cancelada", "rejected"].includes(status)) return "bg-rose-50 text-rose-700";
   return "bg-amber-50 text-amber-700";
 }
 
