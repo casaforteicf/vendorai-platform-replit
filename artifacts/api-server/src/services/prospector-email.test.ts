@@ -12,6 +12,7 @@ const env = {
   RESEND_API_KEY: "re_test",
   RESEND_WEBHOOK_SECRET: "whsec_test",
   RESEND_PROSPECTOR_REPLY_DOMAIN: "reply.example.com",
+  RESEND_PROSPECTOR_RECEIVING_VERIFIED: "true",
 } as NodeJS.ProcessEnv;
 
 describe("Prospector email safety", () => {
@@ -19,7 +20,9 @@ describe("Prospector email safety", () => {
     expect(prospectorEmailAutomationConfigured(env)).toBe(true);
     expect(prospectorEmailAutomationConfigured({
       RESEND_API_KEY: "re_test",
+      RESEND_WEBHOOK_SECRET: "whsec_test",
       RESEND_PROSPECTOR_REPLY_DOMAIN: "reply.example.com",
+      RESEND_PROSPECTOR_RECEIVING_VERIFIED: "false",
     } as NodeJS.ProcessEnv)).toBe(false);
   });
 
