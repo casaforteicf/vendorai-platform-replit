@@ -18,6 +18,7 @@ import { db, agentConfigsTable, agendamentosTable, agendasTable } from "@workspa
 import type { Agendamento } from "@workspace/db";
 import { createGoogleEvent } from "../lib/google-calendar.js";
 import { detectMeetingIntent } from "../lib/detect-meeting-intent.js";
+import { prepareSupportAiIntake } from "../services/support-ai-intake.js";
 import { formatCloserWinningResponsesPrompt, loadCloserWinningResponses } from "../lib/closer-winning-response-memory.js";
 import {
   loadContext,
@@ -132,6 +133,33 @@ async function handleAgentProcess(
   // automatically (next business day 10:00 BRT) and get a real Google Meet link
   // before the LLM generates its response — so the link appears in the first reply.
   let closerEnrichedScenario: Record<string, unknown> | undefined;
+  if (agentName === "service") {
+    try {
+      const supportIntake = await prepareSupportAiIntake({
+        tenantId,
+        lead: ctx.lead,
+        recentMessages: ctx.recentMessages,
+        currentMessage: mensagem,
+        log: req.log,
+      });
+      if (supportIntake.state !== "none") {
+        closerEnrichedScenario = {
+          ...(closerEnrichedScenario ?? {}),
+          supportIntake,
+        };
+        req.log.info(
+          { tenantId, leadId, supportIntakeState: supportIntake.state, code: supportIntake.code },
+          "service: support AI intake prepared",
+        );
+      }
+    } catch (err) {
+      req.log.error(
+        { err, tenantId, leadId },
+        "service: support AI intake failed (non-fatal)",
+      );
+    }
+  }
+
   if (agentName === "closer") {
     if (detectMeetingIntent(mensagem)) {
       try {
