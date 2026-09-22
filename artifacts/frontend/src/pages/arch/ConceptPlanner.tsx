@@ -4894,6 +4894,14 @@ export default function ConceptPlanner() {
                       placement={sitePlacement}
                       onPlacementChange={setSitePlacement}
                       onMoveBuilding={moveWholeProjectTo}
+                      onContinue={() => {
+                        setEditorLibraryTab("rooms");
+                        setLibraryOpen(true);
+                      }}
+                      onOpenFacade={() => {
+                        setEditorView("facade");
+                        setLibraryOpen(false);
+                      }}
                     />
                   )}
 
