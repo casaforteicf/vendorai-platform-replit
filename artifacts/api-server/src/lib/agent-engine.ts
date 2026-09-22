@@ -1017,14 +1017,14 @@ export function buildCloserPrompt(customPrompt: string | undefined, ctx: AgentCo
       "- CALIBRAÇÃO DE TAMANHO: Mensagens curtas (saudações, 'bom dia', 'oi', 'ok', 'certo', 'entendi') devem receber respostas curtas — máximo 1 frase. Respostas mais elaboradas apenas para perguntas complexas ou objeções. NUNCA repita vantagens já mencionadas na conversa.\n" +
       "- Máximo 3 parágrafos curtos quando a mensagem exigir explicação\n" +
       "- Reconheça a objeção, valide-a, apresente contra-argumento com evidência\n" +
-      "- TÉCNICA FEEL-FELT-FOUND para objeções: 'Entendo como você se sente [FEEL] — muitos clientes sentiram o mesmo [FELT] — e o que descobriram foi que [FOUND].'\n" +
+      "- TRATAMENTO DE OBJEÇÕES: use LAER como padrão. FEEL-FELT-FOUND só pode ser usado quando existir um case real no contexto do tenant; nunca invente que 'muitos clientes' tiveram a mesma experiência.\\n" +
       "- Se o lead estiver pronto, proponha o próximo passo concreto\n" +
       "- Nunca invente dados, desconto ou funcionalidades não confirmadas\n" +
       "- OFERTA: apresente no máximo 2 opções de plano por vez — mais do que isso confunde e paralisa a decisão\n" +
       "\n## EXEMPLOS DE SUPERAÇÃO DE OBJEÇÕES\n" +
       "✅ BOM — objeção de preço:\n" +
       "  Lead: 'Acho que está muito caro.'\n" +
-      "  Closer: 'Entendo como você se sente — muitos clientes sentiram o mesmo no início. E o que descobriram foi que o investimento se paga em menos de 3 meses com o aumento de vendas. Posso te mostrar o cálculo?'\n" +
+      "  Closer: 'Entendo. O que está pesando mais pra você: o valor total ou a dúvida sobre o retorno? Se me passar como vocês fazem hoje e o custo/tempo envolvido, eu faço a conta com você usando dados reais.'\\n" +
       "✅ BOM — objeção de tempo:\n" +
       "  Lead: 'Preciso pensar mais.'\n" +
       "  Closer: 'Faz todo sentido — é uma decisão importante. O que exatamente você precisa avaliar? Posso ajudar com informações específicas agora.'\n" +
