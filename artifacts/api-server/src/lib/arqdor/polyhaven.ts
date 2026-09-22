@@ -29,6 +29,11 @@ const PT_EN_TERMS: Array<[RegExp, string]> = [
   [/\bvaso\b/gi, "vase"], [/\bdecora[cç][aã]o\b/gi, "decor"], [/\btapete\b/gi, "rug"],
   [/\bespregui[cç]adeira\b/gi, "sun lounger"], [/\bm[óo]veis externos\b/gi, "outdoor furniture"],
   [/\bcozinha\b/gi, "kitchen"], [/\bbanheiro\b/gi, "bathroom"], [/\bescrit[óo]rio\b/gi, "office"],
+  [/\bgabinete\b/gi, "cabinet"], [/\bbalc[aã]o\b/gi, "cabinet"], [/\bilha\b/gi, "island"],
+  [/\bcuba\b/gi, "sink"], [/\blavat[óo]rio\b/gi, "sink"], [/\bvaso sanit[aá]rio\b/gi, "toilet"],
+  [/\bbacia sanit[aá]ria\b/gi, "toilet"], [/\bbanheira\b/gi, "bathtub"], [/\bchuveiro\b/gi, "shower"],
+  [/\bmesa escrit[óo]rio\b/gi, "office desk"], [/\bcadeira escrit[óo]rio\b/gi, "office chair"],
+  [/\bestante escrit[óo]rio\b/gi, "bookshelf"], [/\btorre quente\b/gi, "tall kitchen cabinet"],
 ];
 
 function safeQuery(value: string) {
