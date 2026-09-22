@@ -220,7 +220,7 @@ export default function FacebookMarketplaceManager() {
 
   async function saveEdit(listingId: string) {
     if (!editForm) return;
-    await patchListing(listingId, {
+    const saved = await patchListing(listingId, {
       title: editForm.title.trim(),
       description: editForm.description.trim(),
       price: editForm.price,
@@ -228,12 +228,14 @@ export default function FacebookMarketplaceManager() {
       city: editForm.city.trim() || null,
       state: editForm.state.trim() || null,
     });
-    cancelEdit();
-    toast({ title: "Rascunho atualizado", description: "As alterações foram salvas antes da publicação." });
+    if (saved) {
+      cancelEdit();
+      toast({ title: "Rascunho atualizado", description: "As alterações foram salvas antes da publicação." });
+    }
   }
 
-  async function patchListing(listingId: string, body: Record<string, unknown>) {
-    if (!tenantId) return;
+  async function patchListing(listingId: string, body: Record<string, unknown>): Promise<boolean> {
+    if (!tenantId) return false;
     setBusyId(listingId);
     try {
       const response = await fetch(
@@ -247,12 +249,14 @@ export default function FacebookMarketplaceManager() {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data?.error || "Não foi possível atualizar o anúncio.");
       await loadData();
+      return true;
     } catch (error) {
       toast({
         title: "Falha ao atualizar",
         description: error instanceof Error ? error.message : "Tente novamente.",
         variant: "destructive",
       });
+      return false;
     } finally {
       setBusyId(null);
     }
