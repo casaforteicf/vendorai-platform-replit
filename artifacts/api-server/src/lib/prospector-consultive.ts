@@ -362,6 +362,13 @@ function evidenceLabels(metadata?: Record<string, unknown> | null): string[] {
   const evidence = Array.isArray(dossier["evidence"]) ? dossier["evidence"] as unknown[] : [];
   const dossierLabels = evidence
     .map((item) => objectValue(item))
+    .sort((a, b) => {
+      const aKey = stringValue(a["key"], "");
+      const bKey = stringValue(b["key"], "");
+      const aWeight = aKey === "construction_work_signal" ? 3 : aKey === "construction_actor" ? 2 : 1;
+      const bWeight = bKey === "construction_work_signal" ? 3 : bKey === "construction_actor" ? 2 : 1;
+      return bWeight - aWeight;
+    })
     .map((item) => {
       const label = stringValue(item["label"], "");
       const value = stringValue(item["value"], "");
