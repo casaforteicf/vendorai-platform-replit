@@ -22,7 +22,6 @@ import {
 } from "@workspace/db";
 import { callOpenAI } from "../lib/ai-gateway.js";
 import {
-  calculateBreakRate,
   markResponseConversion,
   mergeResponseStats,
   normalizeObjectionLabel,
@@ -262,6 +261,10 @@ Se não houver objeções, retorne { "objecoes": [] }.`,
                   eq(
                     salesObjectionEventsTable.objectionMessageId,
                     objectionMessage.id,
+                  ),
+                  eq(
+                    salesObjectionEventsTable.normalizedObjection,
+                    normalizedObjection,
                   ),
                 ),
               )
