@@ -21,6 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
+import ProspectorChannelStatus from "./ProspectorChannelStatus";
 
 export type ProspectorNavigationTarget = {
   mode: "empresas" | "obras";
@@ -261,6 +262,8 @@ export default function ProspectorOverview({ onNavigate }: Props) {
           </button>
         </div>
       )}
+
+      <ProspectorChannelStatus />
 
       <Card className="border-primary/25 bg-primary/[0.025]">
         <CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
