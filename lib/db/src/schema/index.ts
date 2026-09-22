@@ -177,6 +177,7 @@ export * from "./media_core";
 export * from "./segment_benchmarks";
 export * from "./sdr_vertical_profiles";
 export * from "./prospecting_objections";
+export * from "./sales_objection_events";
 export * from "./lead_events";
 export * from "./cnae_vertical_map";
 export * from "./arq_objects";
