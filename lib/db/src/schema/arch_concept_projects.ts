@@ -66,6 +66,13 @@ export type ArchConceptConfiguration = {
     model3dUrl?: string;
   }>;
   wallMaterials?: Record<string, string>;
+  savedTourPoints?: Array<{
+    id: string;
+    name: string;
+    floor: number;
+    position: { x: number; y: number; z: number };
+    target: { x: number; y: number; z: number };
+  }>;
 };
 
 export type ArchConceptRoom = {

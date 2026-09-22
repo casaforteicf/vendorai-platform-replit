@@ -34,6 +34,16 @@ type Props = {
   walkSpeed?: number;
   walkResetToken?: number;
   tourPoint?: { x: number; y: number; floor: number; token: number } | null;
+  cameraSnapshotToken?: number;
+  savedCameraViewpoint?: null | {
+    id: string;
+    position: { x: number; y: number; z: number };
+    target: { x: number; y: number; z: number };
+  };
+  onCameraSnapshot?: (snapshot: {
+    position: { x: number; y: number; z: number };
+    target: { x: number; y: number; z: number };
+  }) => void;
   paintTool?: null | { target: "object" | "wall" | "floor"; materialId: string; name: string; swatch: string };
   onReady?: (ready: boolean) => void;
   onSelectObject?: (objectId: string | null) => void;
@@ -215,6 +225,9 @@ export default function ConceptWebGLScene({
   walkSpeed = 0.12,
   walkResetToken = 0,
   tourPoint = null,
+  cameraSnapshotToken = 0,
+  savedCameraViewpoint = null,
+  onCameraSnapshot,
   paintTool = null,
   onReady,
   onSelectObject,
@@ -1368,6 +1381,35 @@ export default function ConceptWebGLScene({
       target: { x: targetX, y: floorY, z: targetZ },
     };
   }, [engineState, lotDepth, lotWidth, navigationMode, tourPoint?.floor, tourPoint?.token, tourPoint?.x, tourPoint?.y]);
+
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+    if (!runtime || engineState !== "ready" || !cameraSnapshotToken) return;
+    onCameraSnapshot?.({
+      position: {
+        x: Number(runtime.camera.position.x.toFixed(4)),
+        y: Number(runtime.camera.position.y.toFixed(4)),
+        z: Number(runtime.camera.position.z.toFixed(4)),
+      },
+      target: {
+        x: Number(runtime.controls.target.x.toFixed(4)),
+        y: Number(runtime.controls.target.y.toFixed(4)),
+        z: Number(runtime.controls.target.z.toFixed(4)),
+      },
+    });
+  }, [cameraSnapshotToken, engineState, onCameraSnapshot]);
+
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+    if (!runtime || engineState !== "ready" || !savedCameraViewpoint) return;
+    runtime.navigationMode = "orbit";
+    runtime.walkKeys.clear();
+    runtime.controls.enabled = true;
+    runtime.cameraGoal = {
+      position: { ...savedCameraViewpoint.position },
+      target: { ...savedCameraViewpoint.target },
+    };
+  }, [engineState, savedCameraViewpoint]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;

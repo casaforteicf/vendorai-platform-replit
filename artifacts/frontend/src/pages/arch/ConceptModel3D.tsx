@@ -63,6 +63,27 @@ type Props = {
   onPaintWall?: (wallId: string, materialId: string) => void;
   onPaintFloor?: (spaceId: string, materialId: string) => void;
   onCancelPaint?: () => void;
+  savedTourPoints?: Array<{
+    id: string;
+    name: string;
+    floor: number;
+    position: { x: number; y: number; z: number };
+    target: { x: number; y: number; z: number };
+  }>;
+  onSavedTourPointsChange?: (points: Array<{
+    id: string;
+    name: string;
+    floor: number;
+    position: { x: number; y: number; z: number };
+    target: { x: number; y: number; z: number };
+  }>) => void;
+  onSavedTourPointActivate?: (point: {
+    id: string;
+    name: string;
+    floor: number;
+    position: { x: number; y: number; z: number };
+    target: { x: number; y: number; z: number };
+  }) => void;
   onRenderView?: (lightingMode: "day" | "sunset" | "night", renderView: "interior" | "exterior") => void;
 };
 
@@ -559,6 +580,9 @@ export default function ConceptModel3D({
   onPaintWall,
   onPaintFloor,
   onCancelPaint,
+  savedTourPoints = [],
+  onSavedTourPointsChange,
+  onSavedTourPointActivate,
   onRenderView,
 }: Props) {
   const [rotation, setRotation] = useState(35);
@@ -579,6 +603,9 @@ export default function ConceptModel3D({
   const [walkControl, setWalkControl] = useState({ forward: 0, strafe: 0 });
   const [walkSpeed, setWalkSpeed] = useState(0.12);
   const [walkResetToken, setWalkResetToken] = useState(0);
+  const [cameraSnapshotToken, setCameraSnapshotToken] = useState(0);
+  const [pendingSavedScene, setPendingSavedScene] = useState(false);
+  const [activeSavedSceneId, setActiveSavedSceneId] = useState<string | null>(null);
   const sceneRootRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [orbitGesture, setOrbitGesture] = useState<null | {
@@ -659,6 +686,32 @@ export default function ConceptModel3D({
     const normalized = ((nextIndex % tourPoints.length) + tourPoints.length) % tourPoints.length;
     setTourIndex(normalized);
     setTourToken((value) => value + 1);
+  };
+
+  const activeSavedScene = savedTourPoints.find((point) => point.id === activeSavedSceneId) ?? null;
+
+  const requestSaveScene = () => {
+    if (!webglReady) return;
+    setPendingSavedScene(true);
+    setCameraSnapshotToken((value) => value + 1);
+  };
+
+  const handleCameraSnapshot = (snapshot: {
+    position: { x: number; y: number; z: number };
+    target: { x: number; y: number; z: number };
+  }) => {
+    if (!pendingSavedScene) return;
+    const point = {
+      id: `scene-${Date.now()}`,
+      name: `Cena ${savedTourPoints.length + 1}`,
+      floor: activeFloor,
+      position: snapshot.position,
+      target: snapshot.target,
+    };
+    onSavedTourPointsChange?.([...savedTourPoints, point]);
+    setActiveSavedSceneId(point.id);
+    setPendingSavedScene(false);
+    setNavigationMode("orbit");
   };
 
   const resetCamera = () => {
@@ -1199,6 +1252,39 @@ export default function ConceptModel3D({
               </button>
             </div>
           )}
+          {webglReady && (
+            <div className="flex items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 p-1">
+              <button
+                type="button"
+                onClick={requestSaveScene}
+                className="rounded-md px-2 py-1.5 text-[10px] font-semibold text-violet-800 hover:bg-violet-100"
+                title="Salvar a posição e direção atuais da câmera"
+              >
+                {pendingSavedScene ? "Salvando..." : "Salvar cena"}
+              </button>
+              {savedTourPoints.length > 0 && (
+                <div className="flex max-w-[38vw] gap-1 overflow-x-auto">
+                  {savedTourPoints.map((point) => (
+                    <button
+                      key={point.id}
+                      type="button"
+                      onClick={() => {
+                        setNavigationMode("orbit");
+                        onSavedTourPointActivate?.(point);
+                        setActiveSavedSceneId(point.id);
+                      }}
+                      className={activeSavedSceneId === point.id
+                        ? "shrink-0 rounded-md bg-violet-600 px-2 py-1.5 text-[10px] font-semibold text-white"
+                        : "shrink-0 rounded-md px-2 py-1.5 text-[10px] font-semibold text-violet-800 hover:bg-violet-100"}
+                      title={`${point.name} · Pavimento ${point.floor + 1}`}
+                    >
+                      {point.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           <div className="flex overflow-hidden rounded-lg border border-slate-200 bg-white" title="Qualidade da visualização 3D">
             {([
               ["fast", "Rápido"],
@@ -1447,6 +1533,9 @@ export default function ConceptModel3D({
         walkControl={walkControl}
         walkSpeed={walkSpeed}
         walkResetToken={walkResetToken}
+        cameraSnapshotToken={cameraSnapshotToken}
+        savedCameraViewpoint={activeSavedScene}
+        onCameraSnapshot={handleCameraSnapshot}
         tourPoint={activeTourPoint ? {
           x: activeTourPoint.x,
           y: activeTourPoint.y,
