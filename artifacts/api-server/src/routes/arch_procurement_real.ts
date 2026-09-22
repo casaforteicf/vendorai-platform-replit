@@ -225,7 +225,7 @@ router.post("/arch/procurement/:obraId/requests", async (req, res, next) => {
        ) VALUES (
          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
          $11,$12,$13,$14,$15,$16,$17,$18,
-         $19,$20,$21,$22,'[]'::jsonb,now(),now()
+         $19,$20,$21,$22,$23::jsonb,now(),now()
        ) RETURNING *`,
       [
         id, tid, obraId, req.body?.insumoId || null, req.body?.codigo || makeCode(), req.body?.etapaId || null,
@@ -234,6 +234,7 @@ router.post("/arch/procurement/:obraId/requests", async (req, res, next) => {
         String(req.body?.prioridade || "media"), String(req.body?.status || "pendente"), req.body?.dataPrevista || null,
         req.body?.dataNecessidade || null, req.user?.sub ?? null, req.user?.email ?? null,
         String(req.body?.origem || "manual"), req.body?.observacoes || null,
+        JSON.stringify(Array.isArray(req.body?.documentos) ? req.body.documentos : []),
       ],
     );
     res.status(201).json({ request: result.rows[0] });
@@ -317,8 +318,15 @@ router.post("/arch/procurement/:obraId/requests/:requestId/quotes", async (req, 
     const request = await ownedRequest(tid, obraId, requestId);
     if (!request) { res.status(404).json({ error: "Solicitação não encontrada" }); return; }
     const supplierName = String(req.body?.supplierName ?? "").trim();
-    const projectId = String(req.body?.projectId ?? "").trim();
-    if (!supplierName || !projectId) { res.status(400).json({ error: "Fornecedor e projectId são obrigatórios" }); return; }
+    let projectId = String(req.body?.projectId ?? "").trim() || null;
+    if (!supplierName) { res.status(400).json({ error: "Fornecedor é obrigatório" }); return; }
+    if (!projectId) {
+      const linkedProject = await pool.query(
+        `SELECT id FROM arch_projetos WHERE obra_id = $1 AND tenant_id = $2 ORDER BY updated_at DESC LIMIT 1`,
+        [obraId, tid],
+      );
+      projectId = linkedProject.rows[0]?.id ?? null;
+    }
 
     const quantity = Math.max(0, num(req.body?.quantity, request.quantidade || 1));
     const estimatedValue = Math.max(0, num(req.body?.estimatedValue, request.valor_total || 0));
@@ -343,6 +351,7 @@ router.post("/arch/procurement/:obraId/requests/:requestId/quotes", async (req, 
         req.body?.paymentTerms || null, req.body?.quoteValidUntil || null,
         req.body?.leadTimeDays == null ? null : Math.max(0, Math.round(num(req.body.leadTimeDays))),
         req.body?.quoteNumber || null, req.body?.expectedDelivery || null, req.body?.notes || null,
+        JSON.stringify(Array.isArray(req.body?.documents) ? req.body.documents : []),
       ],
     );
     await pool.query(`UPDATE compras_obras SET status = CASE WHEN status IN ('pendente','rascunho') THEN 'cotacao' ELSE status END, updated_at = now() WHERE id = $1 AND obra_id = $2 AND tenant_id = $3`, [requestId, obraId, tid]);
