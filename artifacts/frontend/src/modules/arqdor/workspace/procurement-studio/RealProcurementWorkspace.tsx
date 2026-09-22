@@ -623,18 +623,192 @@ button{border:0;border-radius:10px;padding:10px 16px;font-weight:700;cursor:poin
           <Metric label="Comprometido" value={money(metrics.committed)} hint="cotações selecionadas" />
         </section>
 
-        {view === "requests" ? <div className="grid gap-5 2xl:grid-cols-[430px_1fr]">
-          <section className="self-start rounded-[30px] border border-slate-100 bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-semibold">Nova solicitação</h2><p className="mt-1 text-xs text-slate-500">Cadastre o que a obra precisa comprar antes de pedir preços.</p>
-            <div className="mt-4 space-y-3"><input value={requestDraft.item} onChange={(e) => setRequestDraft((v) => ({ ...v, item: e.target.value }))} placeholder="Item ou serviço" className="w-full rounded-xl border px-3 py-2 text-sm" /><div className="grid grid-cols-3 gap-2"><input type="number" min="0" value={requestDraft.quantity} onChange={(e) => setRequestDraft((v) => ({ ...v, quantity: e.target.value }))} placeholder="Qtd." className="rounded-xl border px-3 py-2 text-sm" /><input value={requestDraft.unit} onChange={(e) => setRequestDraft((v) => ({ ...v, unit: e.target.value }))} placeholder="un/m²" className="rounded-xl border px-3 py-2 text-sm" /><input type="number" min="0" value={requestDraft.value} onChange={(e) => setRequestDraft((v) => ({ ...v, value: e.target.value }))} placeholder="Estimativa" className="rounded-xl border px-3 py-2 text-sm" /></div><div className="grid grid-cols-2 gap-2"><select value={requestDraft.stageId} onChange={(e) => setRequestDraft((v) => ({ ...v, stageId: e.target.value }))} className="rounded-xl border px-3 py-2 text-sm"><option value="">Etapa da obra</option>{bundle.stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.name}</option>)}</select><select value={requestDraft.priority} onChange={(e) => setRequestDraft((v) => ({ ...v, priority: e.target.value }))} className="rounded-xl border px-3 py-2 text-sm"><option value="baixa">Baixa</option><option value="media">Média</option><option value="alta">Alta</option><option value="critica">Crítica</option></select></div><div className="grid grid-cols-2 gap-2"><input value={requestDraft.environment} onChange={(e) => setRequestDraft((v) => ({ ...v, environment: e.target.value }))} placeholder="Ambiente/local" className="rounded-xl border px-3 py-2 text-sm" /><input value={requestDraft.discipline} onChange={(e) => setRequestDraft((v) => ({ ...v, discipline: e.target.value }))} placeholder="Disciplina" className="rounded-xl border px-3 py-2 text-sm" /></div><label className="block text-[11px] text-slate-500">Necessário até<input type="date" value={requestDraft.needDate} onChange={(e) => setRequestDraft((v) => ({ ...v, needDate: e.target.value }))} className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" /></label><textarea rows={2} value={requestDraft.notes} onChange={(e) => setRequestDraft((v) => ({ ...v, notes: e.target.value }))} placeholder="Observações" className="w-full rounded-xl border px-3 py-2 text-sm" /><button disabled={!requestDraft.item.trim() || busy === "new-request"} onClick={() => void createRequest()} className="w-full rounded-2xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">{busy === "new-request" ? "Salvando…" : "Criar solicitação"}</button></div>
-          </section>
-          <section className="space-y-3">{bundle.requests.length ? bundle.requests.map((request) => <article key={request.id} onClick={() => setSelectedId(request.id)} className={`cursor-pointer rounded-[28px] border bg-white p-5 shadow-sm ${selectedId === request.id ? "border-violet-300 ring-2 ring-violet-100" : "border-slate-100"}`}><div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between"><div><div className="flex flex-wrap items-center gap-2"><span className="text-xs font-mono text-slate-400">{request.code}</span><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${statusClass(request.status)}`}>{statusLabel(request.status)}</span><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase text-slate-600">{request.priority}</span></div><h3 className="mt-2 text-lg font-semibold">{request.item}</h3><p className="mt-1 text-xs text-slate-500">{request.quantity} {request.unit}{request.environment ? ` · ${request.environment}` : ""}{request.discipline ? ` · ${request.discipline}` : ""}</p></div><div className="text-right"><p className="font-semibold">{money(request.estimatedValue)}</p><p className="text-xs text-slate-400">{bundle.quotes.filter((quote) => quote.requestId === request.id).length} cotação(ões)</p></div></div><div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={(e) => { e.stopPropagation(); setSelectedId(request.id); setView("quotes"); }} className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700">Abrir cotações</button>{!request.supplierOrderId && !request.financeId ? <button type="button" onClick={(e) => { e.stopPropagation(); void deleteRequest(request); }} disabled={busy === request.id} className="rounded-xl border border-rose-100 px-3 py-2 text-xs font-semibold text-rose-600">Excluir</button> : null}</div></article>) : <div className="rounded-3xl border border-dashed p-10 text-center text-sm text-slate-500">Nenhuma solicitação cadastrada.</div>}</section>
-        </div> : null}
+        {view === "requests" ? (
+          <div className="grid gap-5 2xl:grid-cols-[460px_1fr]">
+            <section className="self-start rounded-[30px] border border-slate-100 bg-white p-5 shadow-sm">
+              <div>
+                <h2 className="text-lg font-semibold">Nova solicitação de compra</h2>
+                <p className="mt-1 text-xs text-slate-500">Digite os dados ou anexe um orçamento/pedido para importar as informações.</p>
+              </div>
 
-        {view === "quotes" ? <div className="grid gap-5 2xl:grid-cols-[430px_1fr]">
-          <section className="self-start rounded-[30px] border border-slate-100 bg-white p-5 shadow-sm"><h2 className="text-lg font-semibold">Registrar cotação</h2><select value={selectedId} onChange={(e) => setSelectedId(e.target.value)} className="mt-3 w-full rounded-xl border px-3 py-2 text-sm"><option value="">Selecione a solicitação</option>{bundle.requests.map((request) => <option key={request.id} value={request.id}>{request.code} · {request.item}</option>)}</select>{selected ? <div className="mt-4 space-y-3"><input value={quoteDraft.supplier} onChange={(e) => setQuoteDraft((v) => ({ ...v, supplier: e.target.value }))} placeholder="Fornecedor" className="w-full rounded-xl border px-3 py-2 text-sm" /><div className="grid grid-cols-2 gap-2"><input type="number" min="0" value={quoteDraft.value} onChange={(e) => setQuoteDraft((v) => ({ ...v, value: e.target.value }))} placeholder="Valor" className="rounded-xl border px-3 py-2 text-sm" /><input type="number" min="0" value={quoteDraft.freight} onChange={(e) => setQuoteDraft((v) => ({ ...v, freight: e.target.value }))} placeholder="Frete" className="rounded-xl border px-3 py-2 text-sm" /></div><div className="grid grid-cols-2 gap-2"><input type="number" min="0" value={quoteDraft.discount} onChange={(e) => setQuoteDraft((v) => ({ ...v, discount: e.target.value }))} placeholder="Desconto" className="rounded-xl border px-3 py-2 text-sm" /><input type="number" min="0" value={quoteDraft.taxes} onChange={(e) => setQuoteDraft((v) => ({ ...v, taxes: e.target.value }))} placeholder="Taxas" className="rounded-xl border px-3 py-2 text-sm" /></div><div className="grid grid-cols-2 gap-2"><input type="number" min="0" value={quoteDraft.leadTime} onChange={(e) => setQuoteDraft((v) => ({ ...v, leadTime: e.target.value }))} placeholder="Prazo em dias" className="rounded-xl border px-3 py-2 text-sm" /><input type="date" value={quoteDraft.expectedDelivery} onChange={(e) => setQuoteDraft((v) => ({ ...v, expectedDelivery: e.target.value }))} className="rounded-xl border px-3 py-2 text-sm" /></div><input value={quoteDraft.paymentTerms} onChange={(e) => setQuoteDraft((v) => ({ ...v, paymentTerms: e.target.value }))} placeholder="Condição de pagamento" className="w-full rounded-xl border px-3 py-2 text-sm" /><input value={quoteDraft.quoteNumber} onChange={(e) => setQuoteDraft((v) => ({ ...v, quoteNumber: e.target.value }))} placeholder="Número da proposta" className="w-full rounded-xl border px-3 py-2 text-sm" /><button disabled={!quoteDraft.supplier.trim() || busy === "new-quote"} onClick={() => void createQuote()} className="w-full rounded-2xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">Adicionar cotação</button></div> : <p className="mt-4 text-sm text-slate-500">Selecione uma solicitação.</p>}</section>
-          <section className="space-y-3">{selected ? <div className="rounded-[28px] border border-slate-100 bg-white p-5 shadow-sm"><p className="text-xs font-semibold uppercase text-violet-600">{selected.code}</p><h2 className="mt-1 text-xl font-semibold">{selected.item}</h2><p className="mt-1 text-sm text-slate-500">Compare preço final, prazo e condições. A decisão de aprovação permanece humana.</p></div> : null}{selectedQuotes.length ? selectedQuotes.map((quote, index) => <article key={quote.id} className={`rounded-[28px] border bg-white p-5 shadow-sm ${selected?.selectedQuoteId === quote.id ? "border-emerald-300" : "border-slate-100"}`}><div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between"><div><div className="flex flex-wrap items-center gap-2"><h3 className="text-lg font-semibold">{quote.supplier}</h3><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${statusClass(quote.status)}`}>{statusLabel(quote.status)}</span>{index === 0 ? <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-bold uppercase text-blue-700">Menor valor atual</span> : null}</div><p className="mt-1 text-xs text-slate-500">{quote.leadTimeDays != null ? `${quote.leadTimeDays} dias` : "Prazo não informado"}{quote.expectedDelivery ? ` · entrega ${new Date(`${quote.expectedDelivery}T12:00:00`).toLocaleDateString("pt-BR")}` : ""}{quote.paymentTerms ? ` · ${quote.paymentTerms}` : ""}</p></div><div className="text-right"><p className="text-xl font-semibold">{money(quoteTotal(quote))}</p><p className="text-[11px] text-slate-400">base {money(quote.value)} · frete {money(quote.freight)}</p></div></div><div className="mt-4 flex flex-wrap gap-2">{quote.status === "quoted" ? <button disabled={busy === quote.id} onClick={() => void approveQuote(quote)} className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">Aprovar cotação</button> : null}{quote.status === "approved" && selected?.selectedQuoteId === quote.id ? <button disabled={busy === `order-${selected.id}`} onClick={() => void issueOrder(selected)} className="rounded-xl bg-violet-600 px-3 py-2 text-xs font-semibold text-white">Emitir pedido</button> : null}</div></article>) : <div className="rounded-3xl border border-dashed p-10 text-center text-sm text-slate-500">Nenhuma cotação para a solicitação selecionada.</div>}</section>
-        </div> : null}
+              <label className="mt-4 block cursor-pointer rounded-2xl border border-dashed border-violet-200 bg-violet-50/50 p-4 text-center transition hover:bg-violet-50">
+                <input
+                  type="file"
+                  className="hidden"
+                  accept=".pdf,.png,.jpg,.jpeg,.webp,.csv,.xls,.xlsx,.txt,.xml"
+                  onChange={(e) => { const file = e.target.files?.[0]; void importRequestDocument(file); e.currentTarget.value = ""; }}
+                />
+                <span className="block text-sm font-semibold text-violet-700">{requestImporting ? "Lendo documento…" : "Anexar orçamento ou pedido"}</span>
+                <span className="mt-1 block text-[11px] text-slate-500">PDF, imagem, Excel, CSV, TXT ou XML · os campos são preenchidos para revisão</span>
+              </label>
+
+              {requestDocuments.length ? (
+                <div className="mt-3 space-y-1.5">
+                  {requestDocuments.map((doc, index) => (
+                    <div key={`${doc.url ?? doc.name}-${index}`} className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs">
+                      <a href={doc.url} target="_blank" rel="noreferrer" className="min-w-0 truncate font-medium text-violet-700 hover:underline">{doc.name ?? "Documento anexado"}</a>
+                      <button type="button" className="shrink-0 text-slate-400 hover:text-rose-600" onClick={() => setRequestDocuments((docs) => docs.filter((_, i) => i !== index))}>Remover</button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {requestExtraction?.itens && requestExtraction.itens.length > 1 ? (
+                <label className="mt-3 block text-[11px] font-medium text-slate-500">
+                  Item importado
+                  <select
+                    value={requestItemIndex}
+                    onChange={(e) => applyRequestExtraction(requestExtraction, Number(e.target.value))}
+                    className="mt-1 w-full rounded-xl border px-3 py-2 text-sm text-slate-800"
+                  >
+                    {requestExtraction.itens.map((item, index) => <option key={index} value={index}>{index + 1}. {item.descricao || "Item sem descrição"}</option>)}
+                  </select>
+                </label>
+              ) : null}
+
+              <div className="mt-4 space-y-3">
+                <input value={requestDraft.item} onChange={(e) => setRequestDraft((v) => ({ ...v, item: e.target.value }))} placeholder="Item ou serviço" className="w-full rounded-xl border px-3 py-2 text-sm" />
+                <div className="grid grid-cols-3 gap-2">
+                  <input type="number" min="0" value={requestDraft.quantity} onChange={(e) => setRequestDraft((v) => ({ ...v, quantity: e.target.value }))} placeholder="Qtd." className="rounded-xl border px-3 py-2 text-sm" />
+                  <input value={requestDraft.unit} onChange={(e) => setRequestDraft((v) => ({ ...v, unit: e.target.value }))} placeholder="un/m²" className="rounded-xl border px-3 py-2 text-sm" />
+                  <input type="number" min="0" value={requestDraft.value} onChange={(e) => setRequestDraft((v) => ({ ...v, value: e.target.value }))} placeholder="Estimativa" className="rounded-xl border px-3 py-2 text-sm" />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <select value={requestDraft.stageId} onChange={(e) => setRequestDraft((v) => ({ ...v, stageId: e.target.value }))} className="rounded-xl border px-3 py-2 text-sm">
+                    <option value="">Etapa da obra</option>
+                    {bundle.stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.name}</option>)}
+                  </select>
+                  <select value={requestDraft.priority} onChange={(e) => setRequestDraft((v) => ({ ...v, priority: e.target.value }))} className="rounded-xl border px-3 py-2 text-sm">
+                    <option value="baixa">Baixa</option><option value="media">Média</option><option value="alta">Alta</option><option value="critica">Crítica</option>
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input value={requestDraft.environment} onChange={(e) => setRequestDraft((v) => ({ ...v, environment: e.target.value }))} placeholder="Ambiente/local" className="rounded-xl border px-3 py-2 text-sm" />
+                  <input value={requestDraft.discipline} onChange={(e) => setRequestDraft((v) => ({ ...v, discipline: e.target.value }))} placeholder="Disciplina" className="rounded-xl border px-3 py-2 text-sm" />
+                </div>
+                <label className="block text-[11px] text-slate-500">Necessário até
+                  <input type="date" value={requestDraft.needDate} onChange={(e) => setRequestDraft((v) => ({ ...v, needDate: e.target.value }))} className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" />
+                </label>
+                <textarea rows={3} value={requestDraft.notes} onChange={(e) => setRequestDraft((v) => ({ ...v, notes: e.target.value }))} placeholder="Observações" className="w-full rounded-xl border px-3 py-2 text-sm" />
+                <button disabled={!requestDraft.item.trim() || busy === "new-request" || requestImporting} onClick={() => void createRequest()} className="w-full rounded-2xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">
+                  {busy === "new-request" ? "Salvando…" : "Criar solicitação"}
+                </button>
+              </div>
+            </section>
+
+            <section className="space-y-3">
+              {bundle.requests.length ? bundle.requests.map((request) => (
+                <article key={request.id} onClick={() => setSelectedId(request.id)} className={`cursor-pointer rounded-[28px] border bg-white p-5 shadow-sm ${selectedId === request.id ? "border-violet-300 ring-2 ring-violet-100" : "border-slate-100"}`}>
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-mono text-slate-400">{request.code}</span>
+                        <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${statusClass(request.status)}`}>{statusLabel(request.status)}</span>
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase text-slate-600">{request.priority}</span>
+                      </div>
+                      <h3 className="mt-2 text-lg font-semibold">{request.item}</h3>
+                      <p className="mt-1 text-xs text-slate-500">{request.quantity} {request.unit}{request.environment ? ` · ${request.environment}` : ""}{request.discipline ? ` · ${request.discipline}` : ""}</p>
+                      {request.documents?.length ? (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {request.documents.map((doc, index) => <a key={`${doc.url ?? doc.name}-${index}`} href={doc.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="rounded-lg bg-slate-50 px-2 py-1 text-[11px] font-medium text-violet-700 hover:underline">{doc.name ?? "Anexo"}</a>)}
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="text-right"><p className="font-semibold">{money(request.estimatedValue)}</p><p className="text-xs text-slate-400">{bundle.quotes.filter((quote) => quote.requestId === request.id).length} cotação(ões)</p></div>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button type="button" onClick={(e) => { e.stopPropagation(); openRfq(request); }} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold">Gerar solicitação de cotação</button>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); void copyRfq(request); }} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold">Copiar texto</button>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); setSelectedId(request.id); setView("quotes"); }} className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700">Abrir cotações</button>
+                    {!request.supplierOrderId && !request.financeId ? <button type="button" onClick={(e) => { e.stopPropagation(); void deleteRequest(request); }} disabled={busy === request.id} className="rounded-xl border border-rose-100 px-3 py-2 text-xs font-semibold text-rose-600">Excluir</button> : null}
+                  </div>
+                </article>
+              )) : <div className="rounded-3xl border border-dashed p-10 text-center text-sm text-slate-500">Nenhuma solicitação cadastrada.</div>}
+            </section>
+          </div>
+        ) : null}
+
+        {view === "quotes" ? (
+          <div className="grid gap-5 2xl:grid-cols-[460px_1fr]">
+            <section className="self-start rounded-[30px] border border-slate-100 bg-white p-5 shadow-sm">
+              <h2 className="text-lg font-semibold">Registrar cotação recebida</h2>
+              <p className="mt-1 text-xs text-slate-500">Anexe o orçamento do fornecedor para preencher preço, prazo e condições automaticamente.</p>
+              <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)} className="mt-3 w-full rounded-xl border px-3 py-2 text-sm">
+                <option value="">Selecione a solicitação</option>
+                {bundle.requests.map((request) => <option key={request.id} value={request.id}>{request.code} · {request.item}</option>)}
+              </select>
+              {selected ? (
+                <div className="mt-4 space-y-3">
+                  <label className="block cursor-pointer rounded-2xl border border-dashed border-violet-200 bg-violet-50/50 p-4 text-center transition hover:bg-violet-50">
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept=".pdf,.png,.jpg,.jpeg,.webp,.csv,.xls,.xlsx,.txt,.xml"
+                      onChange={(e) => { const file = e.target.files?.[0]; void importQuoteDocument(file); e.currentTarget.value = ""; }}
+                    />
+                    <span className="block text-sm font-semibold text-violet-700">{quoteImporting ? "Lendo cotação…" : "Anexar orçamento do fornecedor"}</span>
+                    <span className="mt-1 block text-[11px] text-slate-500">O arquivo fica vinculado à cotação para consulta futura</span>
+                  </label>
+
+                  {quoteDocuments.length ? (
+                    <div className="space-y-1.5">
+                      {quoteDocuments.map((doc, index) => (
+                        <div key={`${doc.url ?? doc.name}-${index}`} className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs">
+                          <a href={doc.url} target="_blank" rel="noreferrer" className="min-w-0 truncate font-medium text-violet-700 hover:underline">{doc.name ?? "Cotação anexada"}</a>
+                          <button type="button" className="shrink-0 text-slate-400 hover:text-rose-600" onClick={() => setQuoteDocuments((docs) => docs.filter((_, i) => i !== index))}>Remover</button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  <input value={quoteDraft.supplier} onChange={(e) => setQuoteDraft((v) => ({ ...v, supplier: e.target.value }))} placeholder="Fornecedor" className="w-full rounded-xl border px-3 py-2 text-sm" />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="number" min="0" value={quoteDraft.value} onChange={(e) => setQuoteDraft((v) => ({ ...v, value: e.target.value }))} placeholder="Valor da cotação" className="rounded-xl border px-3 py-2 text-sm" />
+                    <input type="number" min="0" value={quoteDraft.freight} onChange={(e) => setQuoteDraft((v) => ({ ...v, freight: e.target.value }))} placeholder="Frete" className="rounded-xl border px-3 py-2 text-sm" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="number" min="0" value={quoteDraft.discount} onChange={(e) => setQuoteDraft((v) => ({ ...v, discount: e.target.value }))} placeholder="Desconto" className="rounded-xl border px-3 py-2 text-sm" />
+                    <input type="number" min="0" value={quoteDraft.taxes} onChange={(e) => setQuoteDraft((v) => ({ ...v, taxes: e.target.value }))} placeholder="Taxas" className="rounded-xl border px-3 py-2 text-sm" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="number" min="0" value={quoteDraft.leadTime} onChange={(e) => setQuoteDraft((v) => ({ ...v, leadTime: e.target.value }))} placeholder="Prazo em dias" className="rounded-xl border px-3 py-2 text-sm" />
+                    <input type="date" value={quoteDraft.expectedDelivery} onChange={(e) => setQuoteDraft((v) => ({ ...v, expectedDelivery: e.target.value }))} className="rounded-xl border px-3 py-2 text-sm" />
+                  </div>
+                  <input value={quoteDraft.paymentTerms} onChange={(e) => setQuoteDraft((v) => ({ ...v, paymentTerms: e.target.value }))} placeholder="Condição de pagamento" className="w-full rounded-xl border px-3 py-2 text-sm" />
+                  <input value={quoteDraft.quoteNumber} onChange={(e) => setQuoteDraft((v) => ({ ...v, quoteNumber: e.target.value }))} placeholder="Número da proposta" className="w-full rounded-xl border px-3 py-2 text-sm" />
+                  <button disabled={!quoteDraft.supplier.trim() || busy === "new-quote" || quoteImporting} onClick={() => void createQuote()} className="w-full rounded-2xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">
+                    {busy === "new-quote" ? "Salvando…" : "Adicionar cotação"}
+                  </button>
+                </div>
+              ) : <p className="mt-4 text-sm text-slate-500">Selecione uma solicitação.</p>}
+            </section>
+
+            <section className="space-y-3">
+              {selected ? <div className="rounded-[28px] border border-slate-100 bg-white p-5 shadow-sm"><p className="text-xs font-semibold uppercase text-violet-600">{selected.code}</p><h2 className="mt-1 text-xl font-semibold">{selected.item}</h2><p className="mt-1 text-sm text-slate-500">Compare valor final, prazo, frete e condições; selecione a cotação que seguirá para o pedido.</p></div> : null}
+              {selectedQuotes.length ? selectedQuotes.map((quote, index) => (
+                <article key={quote.id} className={`rounded-[28px] border bg-white p-5 shadow-sm ${selected?.selectedQuoteId === quote.id ? "border-emerald-300 ring-2 ring-emerald-50" : "border-slate-100"}`}>
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-lg font-semibold">{quote.supplier}</h3>
+                        <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${statusClass(quote.status)}`}>{statusLabel(quote.status)}</span>
+                        {index === 0 ? <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-bold uppercase text-blue-700">Menor valor atual</span> : null}
+                        {selected?.selectedQuoteId === quote.id ? <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-bold uppercase text-emerald-800">Selecionada para compra</span> : null}
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">{quote.leadTimeDays != null ? `${quote.leadTimeDays} dias` : "Prazo não informado"}{quote.expectedDelivery ? ` · entrega ${new Date(`${quote.expectedDelivery}T12:00:00`).toLocaleDateString("pt-BR")}` : ""}{quote.paymentTerms ? ` · ${quote.paymentTerms}` : ""}</p>
+                      {quote.documents?.length ? <div className="mt-2 flex flex-wrap gap-2">{quote.documents.map((doc, docIndex) => <a key={`${doc.url ?? doc.name}-${docIndex}`} href={doc.url} target="_blank" rel="noreferrer" className="rounded-lg bg-slate-50 px-2 py-1 text-[11px] font-medium text-violet-700 hover:underline">{doc.name ?? "Cotação"}</a>)}</div> : null}
+                    </div>
+                    <div className="text-right"><p className="text-xl font-semibold">{money(quoteTotal(quote))}</p><p className="text-[11px] text-slate-400">base {money(quote.value)} · frete {money(quote.freight)}{quote.discount ? ` · desconto ${money(quote.discount)}` : ""}</p></div>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {quote.status === "quoted" ? <button disabled={busy === quote.id} onClick={() => void approveQuote(quote)} className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">Selecionar cotação</button> : null}
+                    {quote.status === "approved" && selected?.selectedQuoteId === quote.id ? <button disabled={busy === `order-${selected.id}`} onClick={() => void issueOrder(selected)} className="rounded-xl bg-violet-600 px-3 py-2 text-xs font-semibold text-white">Dar sequência · Emitir pedido</button> : null}
+                  </div>
+                </article>
+              )) : <div className="rounded-3xl border border-dashed p-10 text-center text-sm text-slate-500">Nenhuma cotação para a solicitação selecionada.</div>}
+            </section>
+          </div>
+        ) : null}
 
         {view === "orders" ? <section className="space-y-3">{orderedRequests.length ? orderedRequests.map((request) => { const order = bundle.quotes.find((quote) => quote.id === request.supplierOrderId); return <article key={request.id} className="rounded-[28px] border border-slate-100 bg-white p-5 shadow-sm"><div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"><div><div className="flex gap-2"><span className="font-mono text-xs text-slate-400">{request.code}</span><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${statusClass(request.status)}`}>{statusLabel(request.status)}</span></div><h3 className="mt-2 text-lg font-semibold">{request.item}</h3><p className="text-sm text-slate-500">{order?.supplier || request.supplier}{order?.expectedDelivery ? ` · entrega ${new Date(`${order.expectedDelivery}T12:00:00`).toLocaleDateString("pt-BR")}` : ""}</p></div><div className="flex flex-wrap items-center gap-2"><p className="mr-2 text-lg font-semibold">{money(order ? quoteTotal(order) : request.estimatedValue)}</p>{request.financeId ? <span className="rounded-full bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">Financeiro vinculado</span> : <button onClick={() => { setSelectedId(request.id); setView("finance"); }} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold">Enviar ao financeiro</button>}<button onClick={() => { setSelectedId(request.id); setReceiptDraft((v) => ({ ...v, received: String(Math.max(0, request.quantity - selectedReceipts.reduce((sum, r) => sum + r.approved, 0))) })); setView("receiving"); }} className="rounded-xl bg-violet-600 px-3 py-2 text-xs font-semibold text-white">Registrar recebimento</button></div></div></article>; }) : <div className="rounded-3xl border border-dashed p-10 text-center text-sm text-slate-500">Nenhum pedido emitido ainda.</div>}</section> : null}
 
