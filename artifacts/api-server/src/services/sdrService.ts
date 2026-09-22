@@ -19,6 +19,7 @@ import { sendDirectWhatsAppMessage } from "./omnichannel.js";
 import { dispatchAgentBackground } from "./agent-dispatch.js";
 import { ensureColdProspectLandingPage } from "./coldProspectLandingPage.js";
 import type { ColdEvidence } from "../lib/coldProspectQuality.js";
+import { PROSPECTOR_COLD_CADENCE, type ProspectorCadenceStep } from "../lib/prospector-cold-cadence.js";
 import { tenantIsWithinBusinessHours } from "../lib/proactiveMessageGuard.js";
 import { getAgentConfig } from "../lib/agent-engine.js";
 import {
@@ -575,21 +576,7 @@ export async function sendSdrRevelacao(
 
 // ── 48h follow-up ─────────────────────────────────────────────────────────────
 
-export type ProspectorCadenceStepKey = "followup_48h" | "followup_120h" | "followup_216h";
-
-export type ProspectorCadenceStep = {
-  key: ProspectorCadenceStepKey;
-  label: string;
-  instruction: string;
-};
-
-const DEFAULT_PROSPECTOR_FOLLOWUP: ProspectorCadenceStep = {
-  key: "followup_48h",
-  label: "48h",
-  instruction:
-    "Retome a conversa pelo contexto/sinal original sem repetir a primeira mensagem. " +
-    "Faça uma pergunta curta que seja fácil de responder e não apresente produto, preço ou proposta.",
-};
+const DEFAULT_PROSPECTOR_FOLLOWUP: ProspectorCadenceStep = PROSPECTOR_COLD_CADENCE[0]!;
 
 export async function sendSdrFollowup(
   leadId: string,
