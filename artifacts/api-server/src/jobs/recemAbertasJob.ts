@@ -14,10 +14,12 @@ import {
   prospectorConfigTable,
   tenantsTable,
   funisTable,
+  tenantAgentConfigsTable,
 } from "@workspace/db";
 import { searchByCnae, normalizeCnpj } from "../services/cnpjService.js";
 import { enrichLead } from "./leadEnrichment.js";
 import { logger as rootLogger } from "../lib/logger.js";
+import { resolveProspectorEnabledSources } from "../lib/prospector-sources.js";
 
 const BOOST_SCORE = 20;
 const DEFAULT_CNAES = [
@@ -35,7 +37,7 @@ export async function runRecemAbertas(log: Logger = rootLogger): Promise<void> {
   log.info("recem-abertas: starting weekly new-companies scan");
 
   const tenants = await db
-    .select({ id: tenantsTable.id })
+    .select({ id: tenantsTable.id, segmento: tenantsTable.segmento, vertical: tenantsTable.vertical })
     .from(tenantsTable)
     .where(eq(tenantsTable.status, "active"));
 
@@ -43,6 +45,24 @@ export async function runRecemAbertas(log: Logger = rootLogger): Promise<void> {
 
   for (const tenant of tenants) {
     try {
+      const [prospectorAgentConfig] = await db
+        .select({ parametros: tenantAgentConfigsTable.parametros })
+        .from(tenantAgentConfigsTable)
+        .where(and(
+          eq(tenantAgentConfigsTable.tenantId, tenant.id),
+          eq(tenantAgentConfigsTable.agentKey, "prospector"),
+        ))
+        .limit(1);
+      const sourceParams = (prospectorAgentConfig?.parametros ?? {}) as Record<string, unknown>;
+      const enabledSources = resolveProspectorEnabledSources(
+        sourceParams["prospectorSources"],
+        tenant.segmento ?? tenant.vertical ?? null,
+      );
+      if (!enabledSources.includes("cnpj_cnae")) {
+        log.info({ tenantId: tenant.id }, "recem-abertas: CNPJ/CNAE source disabled — skipping tenant");
+        continue;
+      }
+
       // Get tenant prospector config
       const [config] = await db
         .select()
