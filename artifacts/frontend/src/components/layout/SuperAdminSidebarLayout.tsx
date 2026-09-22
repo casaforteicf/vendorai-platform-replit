@@ -6,6 +6,7 @@ import {
   BarChart3,
   Bell,
   BrainCircuit,
+  BookOpen,
   Briefcase,
   Bug,
   Building2,
@@ -86,6 +87,7 @@ export function SuperAdminSidebarLayout({ children }: { children: React.ReactNod
         { name: "Segmentos", href: "/admin/verticais", icon: Building2 },
         { name: "App Builder", href: "/admin/app-builder", icon: Cpu },
         { name: "Produtos da Plataforma", href: "/admin/produtos-internos", icon: Package },
+        { name: "Base Interna", href: "/admin/base-interna", icon: BookOpen },
       ],
     },
     {
