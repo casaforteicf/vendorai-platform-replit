@@ -340,11 +340,28 @@ export function prospectorQuestionsForExtraction(playbook: ProspectorPlaybook) {
 function evidenceLabels(metadata?: Record<string, unknown> | null): string[] {
   const dossier = objectValue(metadata?.["coldProspectDossier"]);
   const evidence = Array.isArray(dossier["evidence"]) ? dossier["evidence"] as unknown[] : [];
-  return evidence
+  const dossierLabels = evidence
     .map((item) => objectValue(item))
-    .map((item) => stringValue(item["label"], stringValue(item["value"], "")))
-    .filter(Boolean)
-    .slice(0, 5);
+    .map((item) => {
+      const label = stringValue(item["label"], "");
+      const value = stringValue(item["value"], "");
+      return label && value && value !== "true" ? `${label}: ${value}` : (label || value);
+    })
+    .filter(Boolean);
+
+  const explicitSignalCandidates = [
+    metadata?.["evidencia"],
+    metadata?.["evidence"],
+    metadata?.["signal"],
+    metadata?.["sinal"],
+    metadata?.["obra_signal"],
+    metadata?.["construction_signal"],
+    metadata?.["source_title"],
+  ]
+    .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    .map((item) => item.trim());
+
+  return [...new Set([...explicitSignalCandidates, ...dossierLabels])].slice(0, 5);
 }
 
 export function buildProspectorOpening(params: {
@@ -355,9 +372,9 @@ export function buildProspectorOpening(params: {
 }): string {
   const { playbook, leadName, companyName, metadata } = params;
   const firstName = (leadName ?? "").trim().split(/\s+/)[0] || "";
-  const observed = evidenceLabels(metadata)[0] ?? playbook.signal.observable[0] ?? "";
+  const observed = evidenceLabels(metadata)[0] ?? "";
   const contextPrefix = observed
-    ? `Vi um sinal público relacionado a ${observed.toLocaleLowerCase("pt-BR")}${companyName ? ` em ${companyName}` : ""}. `
+    ? `Encontrei uma referência pública relacionada a ${observed}${companyName ? ` em ${companyName}` : ""}. `
     : "";
   const greeting = firstName ? `Olá, ${firstName}. ` : "Olá. ";
   return `${greeting}${contextPrefix}${playbook.anchor.opening} ${playbook.anchor.permission}`
