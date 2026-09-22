@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, count, and, gte, or, desc } from "drizzle-orm";
+import { eq, count, and, gte, or, desc, ilike } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import {
   db,
@@ -1042,7 +1042,7 @@ router.get("/superadmin/tenants/prefill", requireRole("super_admin"), async (req
       discoveryData: leadsTable.discoveryData,
     })
     .from(leadsTable)
-    .where(eq(leadsTable.email, email))
+    .where(ilike(leadsTable.email, email))
     .orderBy(desc(leadsTable.updatedAt))
     .limit(1);
 
@@ -1116,7 +1116,7 @@ router.post("/superadmin/tenants/provision", requireRole("super_admin"), async (
       websiteUrl: leadsTable.websiteUrl,
     })
     .from(leadsTable)
-    .where(eq(leadsTable.email, email.trim().toLowerCase()))
+    .where(ilike(leadsTable.email, email.trim()))
     .orderBy(desc(leadsTable.updatedAt))
     .limit(1);
 
@@ -1193,7 +1193,9 @@ router.post("/superadmin/tenants/provision", requireRole("super_admin"), async (
         cnpj: normalizedTaxIdentifier,
         vertical: pj.segmento || existingRegistration.mercadoSegmento || null,
         logoUrl: existingRegistration.logoUrl ?? null,
-        site: existingRegistration.websiteUrl ?? null,
+        discoveryData: existingRegistration.websiteUrl
+          ? { websiteUrl: existingRegistration.websiteUrl }
+          : null,
       }).onConflictDoNothing();
     }
 
