@@ -29,10 +29,11 @@ type Props = {
   cameraPresetDegrees: number;
   cameraZoom: number;
   transformMode?: "translate" | "rotate";
-  navigationMode?: "orbit" | "walk" | "spin";
+  navigationMode?: "orbit" | "walk" | "spin" | "tour";
   walkControl?: { forward: number; strafe: number };
   walkSpeed?: number;
   walkResetToken?: number;
+  tourPoint?: { x: number; y: number; floor: number; token: number } | null;
   paintTool?: null | { target: "object" | "wall" | "floor"; materialId: string; name: string; swatch: string };
   onReady?: (ready: boolean) => void;
   onSelectObject?: (objectId: string | null) => void;
@@ -65,7 +66,7 @@ type Runtime = {
     position: { x: number; y: number; z: number };
     target: { x: number; y: number; z: number };
   };
-  navigationMode: "orbit" | "walk" | "spin";
+  navigationMode: "orbit" | "walk" | "spin" | "tour";
   walkKeys: Set<string>;
   walkControl: { forward: number; strafe: number };
   walkSpeed: number;
@@ -213,6 +214,7 @@ export default function ConceptWebGLScene({
   walkControl = { forward: 0, strafe: 0 },
   walkSpeed = 0.12,
   walkResetToken = 0,
+  tourPoint = null,
   paintTool = null,
   onReady,
   onSelectObject,
@@ -1348,6 +1350,27 @@ export default function ConceptWebGLScene({
 
   useEffect(() => {
     const runtime = runtimeRef.current;
+    if (!runtime || engineState !== "ready" || navigationMode !== "tour" || !tourPoint) return;
+
+    const floorY = tourPoint.floor * 2.96 + 1.62;
+    const x = Math.max(-lotWidth / 2 + 0.45, Math.min(lotWidth / 2 - 0.45, tourPoint.x - lotWidth / 2));
+    const z = Math.max(-lotDepth / 2 + 0.45, Math.min(lotDepth / 2 - 0.45, tourPoint.y - lotDepth / 2));
+
+    const toCenterX = -x;
+    const toCenterZ = -z;
+    const length = Math.max(0.001, Math.hypot(toCenterX, toCenterZ));
+    const lookDistance = 4.2;
+    const targetX = x + (toCenterX / length) * lookDistance;
+    const targetZ = z + (toCenterZ / length) * lookDistance;
+
+    runtime.cameraGoal = {
+      position: { x, y: floorY, z },
+      target: { x: targetX, y: floorY, z: targetZ },
+    };
+  }, [engineState, lotDepth, lotWidth, navigationMode, tourPoint?.floor, tourPoint?.token, tourPoint?.x, tourPoint?.y]);
+
+  useEffect(() => {
+    const runtime = runtimeRef.current;
     if (!runtime || engineState !== "ready" || navigationMode !== "walk") return;
     const floorY = activeFloor * 2.96 + 1.62;
     const startZ = Math.min(lotDepth / 2 - 0.8, 2.5);
@@ -1368,7 +1391,11 @@ export default function ConceptWebGLScene({
     runtime.cameraGoal = null;
     runtime.controls.enabled = navigationMode === "orbit";
 
-    if (navigationMode === "walk") {
+    if (navigationMode === "tour") {
+      runtime.walkPitch = 0;
+      runtime.walkKeys.clear();
+      runtime.walkControl = { forward: 0, strafe: 0 };
+    } else if (navigationMode === "walk") {
       const floorY = activeFloor * 2.96 + 1.62;
       runtime.camera.position.y = floorY;
       runtime.walkYaw = Math.atan2(-runtime.camera.position.x, -runtime.camera.position.z || -1);
