@@ -35,6 +35,7 @@ import {
 import { checkApiQuota, getApiUsage } from "../lib/api-quota.js";
 import { dispatchAgentBackground } from "../services/agent-dispatch.js";
 import { enrichLead } from "../jobs/leadEnrichment.js";
+import { sendSdrFirstApproach } from "../services/sdrService.js";
 import { prospectorEmailAutomationConfigured } from "../services/prospector-email.js";
 import { searchConstructionWorkSignals, scoreConstructionOpportunity } from "../services/construction-radar-search.js";
 import {
@@ -2186,67 +2187,83 @@ router.get("/prospector/fila", async (req, res) => {
 });
 
 // ── POST /prospector/dispatch-sdr/:leadId — dispara SDR manualmente ─────────
+async function dispatchCanonicalProspectorLead(params: {
+  tenantId: string;
+  leadId: string;
+  log: Logger;
+}): Promise<{ sent: boolean; alreadyDispatched: boolean; channel?: string }> {
+  const { tenantId, leadId, log } = params;
+
+  // Recalcula evidências, score e capacidades de canal antes de qualquer envio.
+  // Isso evita usar um dossier antigo após desconexão/reconexão de WhatsApp/E-mail.
+  await enrichLead({ leadId, tenantId, log, scoreBoost: 0, boostReason: "manual_prospector_dispatch" });
+
+  const [afterEnrichment] = await db
+    .select({ enrichmentStatus: leadsTable.enrichmentStatus })
+    .from(leadsTable)
+    .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)))
+    .limit(1);
+
+  // O enrichLead pode ter disparado automaticamente se o lead superou o threshold.
+  if (afterEnrichment?.enrichmentStatus === "dispatched") {
+    return { sent: true, alreadyDispatched: true };
+  }
+
+  const firstApproach = await sendSdrFirstApproach(leadId, null, tenantId, log);
+  if (!firstApproach.sent) {
+    return { sent: false, alreadyDispatched: false };
+  }
+
+  await db
+    .update(leadsTable)
+    .set({ enrichmentStatus: "dispatched", updatedAt: new Date() })
+    .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)));
+
+  return {
+    sent: true,
+    alreadyDispatched: false,
+    channel: firstApproach.channel,
+  };
+}
+
+// ── POST /prospector/dispatch-sdr/:leadId — inicia o Prospecctor manualmente ──
 router.post("/prospector/dispatch-sdr/:leadId", async (req, res) => {
   const tenantId = resolveTenantId(req, undefined);
   const { leadId } = req.params as { leadId: string };
 
   const [lead] = await db
-    .select()
+    .select({ id: leadsTable.id })
     .from(leadsTable)
     .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)))
     .limit(1);
 
   if (!lead) return res.status(404).json({ error: "Lead não encontrado" });
 
-  const segmento = lead.mercadoSegmento?.toLowerCase().replace(/\s+/g, "_") ?? "geral";
-  const enrichData = lead.enrichmentData as Record<string, unknown> | null;
-  const growth = (enrichData?.["growth"] ?? {}) as Record<string, unknown>;
-  const digital = (enrichData?.["digital"] ?? {}) as Record<string, unknown>;
+  try {
+    const result = await dispatchCanonicalProspectorLead({ tenantId, leadId, log: req.log });
+    if (!result.sent) {
+      return res.status(422).json({
+        error: "Nenhum canal seguro e executável está disponível para este prospect agora.",
+        code: "PROSPECTOR_NO_EXECUTABLE_CHANNEL",
+      });
+    }
 
-  const sinalPrincipal = growth["multiplas_unidades"]
-    ? "expansão com múltiplas unidades"
-    : Number(growth["reviews_velocity"] ?? 0) > 5
-      ? "alta velocidade de avaliações"
-      : digital["tem_ecommerce"]
-        ? "presença digital em crescimento"
-        : "oportunidade operacional identificada";
-
-  const roiEstimate = lead.roiEstimate as Record<string, unknown> | null;
-
-  const trigger =
-    `[PROSPECÇÃO MANUAL] Lead selecionado da fila preditiva com score ${lead.propensityScore ?? "?"}. ` +
-    `Use o contexto de inteligência para gerar uma primeira mensagem altamente personalizada. ` +
-    (lead.priorityReason ? `Razão de prioridade: ${lead.priorityReason}.` : "");
-
-  dispatchAgentBackground({
-    tenantId,
-    leadId,
-    mensagem: trigger,
-    log: req.log,
-    forcedAgent: "sdr",
-    scenario: {
-      cold_outreach: true,
-      origem: "prospector_predictive",
-      propensity_score: lead.propensityScore,
-      sinal_growth_principal: sinalPrincipal,
-      perda_estimada: roiEstimate?.["perda_estimada_mes"],
-      dor_digital: !digital["indicio_crm"] ? "sem_crm" : !digital["tem_site"] ? "sem_site" : null,
-      segmento,
-    },
-  });
-
-  await db
-    .update(leadsTable)
-    .set({ enrichmentStatus: "dispatched", updatedAt: new Date() })
-    .where(eq(leadsTable.id, leadId));
-
-  return res.status(200).json({ ok: true, leadId });
+    return res.status(200).json({
+      ok: true,
+      leadId,
+      channel: result.channel ?? null,
+      alreadyDispatched: result.alreadyDispatched,
+    });
+  } catch (err) {
+    req.log.error({ err, leadId, tenantId }, "prospector: manual canonical dispatch failed");
+    return res.status(500).json({ error: "Falha ao iniciar o Prospecctor para este lead" });
+  }
 });
 
-// ── POST /prospector/dispatch-top — dispara SDR nos top N leads ──────────────
+// ── POST /prospector/dispatch-top — inicia o Prospecctor nos top N leads ─────
 router.post("/prospector/dispatch-top", async (req, res) => {
   const tenantId = resolveTenantId(req, undefined);
-  const n = Math.min(Number(req.body?.["n"] ?? 10), 50);
+  const n = Math.min(Math.max(Number(req.body?.["n"] ?? 10), 1), 50);
 
   const leads = await db
     .select({ id: leadsTable.id })
@@ -2261,28 +2278,46 @@ router.post("/prospector/dispatch-top", async (req, res) => {
     .orderBy(desc(leadsTable.propensityScore))
     .limit(n);
 
-  for (const lead of leads) {
-    dispatchAgentBackground({
-      tenantId,
-      leadId: lead.id,
-      mensagem: "[PROSPECÇÃO EM LOTE] Lead da fila preditiva. Gere uma primeira mensagem personalizada.",
-      log: req.log,
-      forcedAgent: "sdr",
-      scenario: { cold_outreach: true, origem: "prospector_predictive" },
-    });
-  }
+  let dispatched = 0;
+  let blocked = 0;
+  const errors: string[] = [];
 
-  await db
-    .update(leadsTable)
-    .set({ enrichmentStatus: "dispatched", updatedAt: new Date() })
-    .where(
-      and(
-        eq(leadsTable.tenantId, tenantId),
-        inArray(leadsTable.id, leads.map((l) => l.id)),
-      ),
+  // Pequenos lotes evitam martelar scanners/APIs externas e ainda reduzem a
+  // latência do botão "top N" em comparação com execução totalmente serial.
+  for (let index = 0; index < leads.length; index += 4) {
+    const chunk = leads.slice(index, index + 4);
+    const results = await Promise.all(
+      chunk.map(async (lead) => {
+        try {
+          const result = await dispatchCanonicalProspectorLead({
+            tenantId,
+            leadId: lead.id,
+            log: req.log,
+          });
+          return { leadId: lead.id, ...result };
+        } catch (err) {
+          req.log.warn({ err, tenantId, leadId: lead.id }, "prospector: batch canonical dispatch failed");
+          return { leadId: lead.id, sent: false, alreadyDispatched: false, error: "dispatch_failed" };
+        }
+      }),
     );
 
-  return res.status(200).json({ ok: true, dispatched: leads.length });
+    for (const result of results) {
+      if (result.sent) dispatched += 1;
+      else {
+        blocked += 1;
+        if ("error" in result && result.error) errors.push(result.leadId);
+      }
+    }
+  }
+
+  return res.status(200).json({
+    ok: true,
+    requested: leads.length,
+    dispatched,
+    blocked,
+    errorLeadIds: errors,
+  });
 });
 
 // ── POST /prospector/fila/discard/:leadId — descarta lead da fila ─────────────
