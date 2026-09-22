@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   BedDouble,
   CarFront,
@@ -34,7 +34,7 @@ function ChoiceButton({
   onClick,
 }: {
   active: boolean;
-  children: React.ReactNode;
+  children: ReactNode;
   onClick: () => void;
 }) {
   return (
@@ -58,7 +58,7 @@ function ToggleCard({
   onClick,
 }: {
   active: boolean;
-  icon: typeof Home;
+  icon: LucideIcon;
   title: string;
   helper: string;
   onClick: () => void;
