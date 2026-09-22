@@ -46,7 +46,12 @@ CREATE TABLE IF NOT EXISTS sales_objection_events (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS sales_objection_events_tenant_message_uidx
-  ON sales_objection_events (tenant_id, conversation_id, objection_message_id);
+  ON sales_objection_events (
+    tenant_id,
+    conversation_id,
+    objection_message_id,
+    normalized_objection
+  );
 
 CREATE INDEX IF NOT EXISTS sales_objection_events_tenant_created_idx
   ON sales_objection_events (tenant_id, created_at DESC);
