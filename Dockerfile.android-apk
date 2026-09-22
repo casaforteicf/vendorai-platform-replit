@@ -36,6 +36,7 @@ RUN cp artifacts/website/public/apple-touch-icon.png artifacts/mobile/assets/ima
 
 FROM nginx:1.27-alpine
 COPY --from=build /app/artifacts/mobile/android/app/build/outputs/apk/debug/app-debug.apk /usr/share/nginx/html/vendorai.apk
-RUN printf 'server { listen ${PORT}; location = / { add_header Content-Type text/plain; return 200 "VendorAI APK Builder OK"; } location = /vendorai.apk { root /usr/share/nginx/html; add_header Content-Type application/vnd.android.package-archive; add_header Content-Disposition "attachment; filename=vendorai.apk"; } }' > /etc/nginx/templates/default.conf.template
+RUN mkdir -p /etc/nginx/templates \
+    && printf 'server { listen ${PORT}; location = / { add_header Content-Type text/plain; return 200 "VendorAI APK Builder OK"; } location = /vendorai.apk { root /usr/share/nginx/html; add_header Content-Type application/vnd.android.package-archive; add_header Content-Disposition "attachment; filename=vendorai.apk"; } }' > /etc/nginx/templates/default.conf.template
 EXPOSE 8080
 CMD ["nginx", "-g", "daemon off;"]
