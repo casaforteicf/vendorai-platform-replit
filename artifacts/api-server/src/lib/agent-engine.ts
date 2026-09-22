@@ -768,7 +768,7 @@ export function buildSdrPrompt(customPrompt: string | undefined, ctx: AgentConte
     const playbook = resolveProspectorPlaybook(
       scenario?.["prospector_playbook"],
       lead.mercadoSegmento,
-      metadata,
+      { ...metadata, lead_source: lead.source ?? "" },
     );
     const state = scenario?.["prospector_state"] && typeof scenario["prospector_state"] === "object"
       ? scenario["prospector_state"] as Record<string, unknown>
