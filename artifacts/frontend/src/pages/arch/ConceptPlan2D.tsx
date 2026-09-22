@@ -409,7 +409,7 @@ export default function ConceptPlan2D({
       setWallDrawPreview(null);
       pendingClosedSpaceSelectRef.current = false;
     }
-  }, [fitView, interactionMode]);
+  }, [interactionMode]);
 
   useEffect(() => {
     const currentIds = new Set(closedSpaces.map((space) => space.id));
@@ -578,7 +578,7 @@ export default function ConceptPlan2D({
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [interactionMode]);
+  }, [fitView, interactionMode]);
 
 
 
