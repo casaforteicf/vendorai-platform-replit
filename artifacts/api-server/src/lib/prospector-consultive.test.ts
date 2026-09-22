@@ -1,15 +1,26 @@
 import { describe, expect, it } from "vitest";
 import {
   buildProspectorOpening,
+  constructionProspectorPlaybookPreset,
   defaultProspectorPlaybook,
   detectProspectorStateFromReply,
   evaluateProspectorQualification,
+  isColdProspectSource,
   resolveProspectorPlaybook,
 } from "./prospector-consultive.js";
 
 describe("prospector consultive playbook", () => {
-  it("selects the construction playbook from construction context", () => {
-    const playbook = defaultProspectorPlaybook("Construção civil residencial");
+  it("keeps the default playbook universal even for construction context", () => {
+    const playbook = defaultProspectorPlaybook("Construção civil residencial", {
+      lead_source: "construction_radar",
+    });
+    expect(playbook.identity.sector).toBe("B2B");
+    expect(playbook.diagnosis.map((q) => q.fieldKey)).toContain("prospector_stage");
+    expect(playbook.diagnosis.map((q) => q.fieldKey)).not.toContain("project_or_permit");
+  });
+
+  it("offers construction as an explicit optional preset instead of an implicit agent mode", () => {
+    const playbook = constructionProspectorPlaybookPreset();
     expect(playbook.identity.offer).toContain("casas de alto padrão");
     expect(playbook.diagnosis.map((q) => q.fieldKey)).toEqual([
       "project_stage",
@@ -75,7 +86,7 @@ describe("prospector consultive playbook", () => {
     expect(message).toContain("Processo 123");
   });
 
-  it("honors tenant qualification criteria and construction radar source", () => {
+  it("honors tenant criteria without letting Radar de Obras redefine the agent", () => {
     const playbook = resolveProspectorPlaybook({
       qualification: {
         terrainDefined: false,
@@ -84,12 +95,20 @@ describe("prospector consultive playbook", () => {
         declaredPain: true,
         acceptsNextStep: true,
       },
-    }, null, { lead_source: "construction_radar" });
+    }, "Arquitetura", { lead_source: "construction_radar" });
 
-    expect(playbook.identity.sector).toBe("Construção civil residencial");
+    expect(playbook.identity.sector).toBe("B2B");
     expect(playbook.qualification.terrainDefined).toBe(false);
     expect(playbook.qualification.estimatedTimeline).toBe(false);
     expect(playbook.qualification.declaredPain).toBe(true);
+  });
+
+  it("recognizes prospecting origins across different markets", () => {
+    expect(isColdProspectSource("construction_radar")).toBe(true);
+    expect(isColdProspectSource("google_maps_prospecting")).toBe(true);
+    expect(isColdProspectSource("linkedin_prospecting")).toBe(true);
+    expect(isColdProspectSource("prospector_custom_vertical")).toBe(true);
+    expect(isColdProspectSource("site_inbound")).toBe(false);
   });
 
   it("only confirms state after an explicit positive reply to the right question", () => {
@@ -111,7 +130,7 @@ describe("prospector consultive playbook", () => {
   });
 
   it("requires all configured diagnosis fields, confirmation and next-step acceptance for SQL", () => {
-    const playbook = resolveProspectorPlaybook(undefined, "Construção civil residencial");
+    const playbook = constructionProspectorPlaybookPreset();
     const complete = Object.fromEntries(playbook.diagnosis.map((q) => [q.fieldKey, "respondido"]));
 
     const beforeAcceptance = evaluateProspectorQualification({
