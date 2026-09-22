@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   buildProspectorReplyAddress,
   extractEmailAddress,
-  isProspectorOptOut,
   parseProspectorReplyAddress,
   prospectorEmailAutomationConfigured,
   sanitizeProspectorInboundText,
 } from "./prospector-email.js";
+import { isProspectorOptOut } from "../lib/prospector-consultive.js";
 
 const env = {
   RESEND_API_KEY: "re_test",
