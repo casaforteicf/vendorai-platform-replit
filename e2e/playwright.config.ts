@@ -13,17 +13,27 @@ function resolveChromium(): string | undefined {
 }
 
 const executablePath = resolveChromium();
+const baseURL = (process.env.E2E_BASE_URL || "http://localhost:80").replace(/\/$/, "");
 
 export default defineConfig({
   testDir: "./tests",
-  timeout: 30_000,
-  retries: 1,
-  reporter: [["list"], ["html", { open: "never" }]],
+  timeout: 45_000,
+  expect: { timeout: 12_000 },
+  retries: process.env.CI ? 1 : 0,
+  workers: process.env.CI ? 1 : undefined,
+  reporter: [
+    ["list"],
+    ["html", { open: "never", outputFolder: "playwright-report" }],
+    ["junit", { outputFile: "test-results/junit.xml" }],
+  ],
   use: {
-    baseURL: "http://localhost:80",
+    baseURL,
     headless: true,
     screenshot: "only-on-failure",
-    video: "off",
+    video: "retain-on-failure",
+    trace: "retain-on-failure",
+    actionTimeout: 12_000,
+    navigationTimeout: 30_000,
     ...(executablePath ? { launchOptions: { executablePath } } : {}),
   },
   projects: [
@@ -32,4 +42,5 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
   ],
+  outputDir: "test-results/artifacts",
 });
