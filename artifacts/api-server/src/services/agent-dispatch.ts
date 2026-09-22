@@ -341,7 +341,7 @@ export async function determineAgent(
     //     customer. Routing them to reactivation is incorrect and causes a
     //     duplicate message (prospector sends frio_teste → lead replies →
     //     reactivation fires a second message). Always fall through to SDR.
-    const isNewOrColdProspect = lead.status === "novo" || lead.source === "prospector";
+    const isNewOrColdProspect = lead.status === "novo" || isColdProspectSource(lead.source);
 
     if (hasAdvancedDeal || hasRecentAgentActivity || leadWasRecentlyActive || isNewOrColdProspect) {
       log.info(
@@ -369,7 +369,13 @@ export async function determineAgent(
     }
   }
 
-  // 2. Lead status → direct mapping
+  // 2. Prospecção ativa → mantém o Prospecctor até concluir o SQL/handoff.
+  // A origem define que este é um lead outbound; ela não define o segmento.
+  const prospectorDiscovery = (lead.discoveryData ?? {}) as Record<string, unknown>;
+  const prospectorCompleted = prospectorDiscovery["prospector_sql_qualified"] === true;
+  if (isColdProspectSource(lead.source) && !prospectorCompleted) return "sdr";
+
+  // 3. Lead status → direct mapping
   if (lead.status === "novo") return "reception";
   if (lead.status === "cliente") {
     // 3a. Fatura vencida/em atraso vinculada a algum deal do cliente → cobrança
