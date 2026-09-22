@@ -73,6 +73,7 @@ import {
   detectProspectorStateFromReply,
   evaluateProspectorQualification,
   isColdProspectSource,
+  isProspectorOptOut,
   prospectorQuestionsForExtraction as buildProspectorQuestionsForExtraction,
   resolveProspectorPlaybook,
   type ProspectorPlaybook,
@@ -479,6 +480,45 @@ export async function processAgentInternal(params: {
     if (ctx.lead.agenteDesativado) {
       log.info({ tenantId, leadId }, "dispatch: agent permanently disabled for this lead — skipping");
       return { status: "skipped", reason: "agent_disabled_permanently" };
+    }
+
+    // 2a2. Cold opt-out is terminal. In outbound prospecting a clear "não tenho
+    // interesse"/"pare de enviar" is not a sales objection to overcome.
+    const isColdConversation =
+      scenario?.["cold_outreach"] === true ||
+      isColdProspectSource(ctx.lead.source);
+    if (isColdConversation && isProspectorOptOut(mensagem)) {
+      const currentMetadata = (ctx.lead.metadata ?? {}) as Record<string, unknown>;
+      const channel = ctx.conversation?.channel === "email" ? "email" : "whatsapp";
+      const now = new Date();
+
+      await db.update(leadsTable)
+        .set({
+          metadata: {
+            ...currentMetadata,
+            doNotContact: true,
+            outreach_status: "opt_out",
+            prospector_opt_out_at: now.toISOString(),
+            prospector_opt_out_channel: channel,
+          },
+          proximaAcao: "Não contatar — opt-out confirmado",
+          updatedAt: now,
+        })
+        .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)));
+
+      await db.insert(activitiesTable).values({
+        tenantId,
+        leadId,
+        tipo: channel,
+        titulo: `Prospecctor — opt-out — ${channel}`,
+        descricao: "Prospect solicitou interrupção das mensagens.",
+        status: "concluida",
+        concluidaEm: now,
+        resultadoExecucao: `prospector_opt_out:${channel}`,
+      });
+
+      log.info({ tenantId, leadId, channel }, "dispatch: cold prospect opt-out recorded — no reply sent");
+      return { status: "skipped", reason: "prospector_opt_out" };
     }
 
     // 2b. Human lock — if lead is locked to a human agent, skip AI dispatch entirely
