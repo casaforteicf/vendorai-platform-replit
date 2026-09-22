@@ -1481,6 +1481,8 @@ export default function ConceptWebGLScene({
 
   }, [
     activeFloor,
+    cameraPresetDegrees,
+    cameraZoom,
     engineState,
     interiorMode,
     levels,
