@@ -50,6 +50,7 @@ import { generateTypologyLayout } from "./conceptTypologyLayout";
 import { buildConceptRenderBrief, svgElementToPngDataUrl } from "./conceptRender";
 import { buildOrthogonalWallTopology, detectClosedSpaces, type ClosedSpace, type WallTopologyEndpointRef } from "./conceptWallNetwork";
 import { conceptStepCta, nextConceptStep, normalizeConceptStep, previousConceptStep } from "./conceptNavigation";
+import { CONCEPT_OPENING_FAMILIES } from "./catalogs/conceptOpeningCatalog";
 import { blockingConceptIssues, buildCompletedRenderPatch, canAdvanceConceptLayout } from "./conceptWorkflow";
 
 type RoomKind =
@@ -106,6 +107,8 @@ type CustomOpening = {
   sillHeight?: number;
   openingStyle?: "hinged" | "sliding" | "fixed" | "tilt_turn";
   swing?: "left" | "right";
+  familyId?: string;
+  familyLabel?: string;
 };
 
 type SpaceProfile = {
@@ -202,7 +205,10 @@ function inferCatalogFurniturePreset(item: RealCatalogProduct): {
   if (/cama|colchão|colchao/.test(text)) return sized("bed", 1.6, 2.0);
   if (/mesa|ilha cozinha/.test(text)) return sized("table", 1.4, 0.8);
   if (/cadeira|banco|banqueta|espreguiçadeira/.test(text)) return sized("chair", 0.55, 0.55);
-  if (/armário|armario|roupeiro|gabinete|balcão|balcao|rack|torre quente|estante|geladeira|refrigerador|forno|micro-ondas|microondas|cooktop|coifa/.test(text)) return sized("cabinet", 1.2, 0.55);
+  if (/geladeira|refrigerador|forno|micro-ondas|microondas|cooktop|coifa|lava-louças|lava louças|lavadora|secadora/.test(text)) return sized("appliance", 0.75, 0.70);
+  if (/vaso sanitário|vaso sanitario|bacia sanitária|bacia sanitaria|cuba|lavatório|lavatorio|banheira/.test(text)) return sized("sanitary", 0.75, 0.70);
+  if (/espreguiçadeira|espreguicadeira|ombrelone|banco externo|sofá externo|sofa externo|cadeira externa/.test(text)) return sized("outdoor", 0.90, 0.90);
+  if (/armário|armario|roupeiro|gabinete|balcão|balcao|rack|torre quente|estante/.test(text)) return sized("cabinet", 1.2, 0.55);
   if (/televis|\btv\b|painel/.test(text)) return sized("tv", 1.6, 0.25);
   if (/planta|vaso|folhagem|flores|árvore|arvore|palmeira|arbusto/.test(text)) return sized("plant", 0.65, 0.65);
   if (/luminária|luminaria|abajur|pendente|plafon|arandela|balizador/.test(text)) return sized("lamp", 0.45, 0.45);
@@ -306,6 +312,11 @@ const CONCEPT_FURNITURE_LIBRARY: Array<{
   { kind: "chair", label: "Cadeira", width: 0.55, depth: 0.55, category: "Jantar" },
   { kind: "cabinet", label: "Balcão", width: 1.20, depth: 0.60, category: "Cozinha" },
   { kind: "cabinet", label: "Armário", width: 1.80, depth: 0.60, category: "Cozinha" },
+  { kind: "appliance", label: "Geladeira", width: 0.78, depth: 0.72, category: "Cozinha" },
+  { kind: "appliance", label: "Forno torre", width: 0.60, depth: 0.60, category: "Cozinha" },
+  { kind: "appliance", label: "Lava-louças", width: 0.60, depth: 0.60, category: "Cozinha" },
+  { kind: "sanitary", label: "Vaso sanitário", width: 0.70, depth: 0.75, category: "Hidráulica" },
+  { kind: "sanitary", label: "Cuba / lavatório", width: 0.65, depth: 0.50, category: "Hidráulica" },
   { kind: "table", label: "Mesa escritório", width: 1.20, depth: 0.60, category: "Escritório" },
   { kind: "chair", label: "Cadeira escritório", width: 0.60, depth: 0.60, category: "Escritório" },
   { kind: "plant", label: "Planta em vaso", width: 0.65, depth: 0.65, category: "Decoração" },
@@ -321,9 +332,10 @@ const CONCEPT_FURNITURE_LIBRARY: Array<{
   { kind: "drain_point", label: "Ponto de esgoto", width: 0.40, depth: 0.40, category: "Hidráulica" },
   { kind: "shower_point", label: "Ponto de chuveiro", width: 0.45, depth: 0.45, category: "Hidráulica" },
   { kind: "faucet_point", label: "Ponto de torneira", width: 0.40, depth: 0.40, category: "Hidráulica" },
-  { kind: "chair", label: "Espreguiçadeira", width: 0.75, depth: 1.90, category: "Exterior" },
+  { kind: "outdoor", label: "Espreguiçadeira", width: 0.75, depth: 1.90, category: "Exterior" },
+  { kind: "outdoor", label: "Sofá externo", width: 1.90, depth: 0.85, category: "Exterior" },
   { kind: "table", label: "Mesa externa", width: 1.40, depth: 0.90, category: "Exterior" },
-  { kind: "chair", label: "Cadeira externa", width: 0.62, depth: 0.62, category: "Exterior" },
+  { kind: "outdoor", label: "Cadeira externa", width: 0.62, depth: 0.62, category: "Exterior" },
   { kind: "plant", label: "Árvore ornamental", width: 1.40, depth: 1.40, category: "Exterior" },
   { kind: "plant", label: "Arbusto", width: 0.80, depth: 0.80, category: "Exterior" },
   { kind: "lamp", label: "Balizador jardim", width: 0.30, depth: 0.30, category: "Exterior" },
@@ -394,6 +406,7 @@ function normalizeLoadedObjects(input: unknown, floorCount: number): ConceptPlan
   if (!Array.isArray(input)) return [];
   const validKinds = new Set<ConceptPlanObject["kind"]>([
     "sofa", "bed", "table", "chair", "cabinet", "tv", "plant", "lamp", "rug",
+    "appliance", "sanitary", "outdoor",
     "outlet", "switch", "light_point", "water_point", "drain_point", "shower_point", "faucet_point",
   ]);
   return input.flatMap((candidate, index) => {
@@ -483,6 +496,8 @@ function normalizeLoadedOpenings(input: unknown, walls: CustomWall[]): CustomOpe
         ? raw.openingStyle
         : type === "door" ? "hinged" : "sliding",
       swing: raw.swing === "right" ? "right" : "left",
+      familyId: typeof raw.familyId === "string" ? raw.familyId : undefined,
+      familyLabel: typeof raw.familyLabel === "string" ? raw.familyLabel : undefined,
     }];
   });
 }
@@ -2635,7 +2650,7 @@ export default function ConceptPlanner() {
 
   const addOpeningPreset = (
     wallId: string,
-    preset: Pick<CustomOpening, "type" | "width" | "height" | "sillHeight" | "openingStyle">,
+    preset: Pick<CustomOpening, "type" | "width" | "height" | "sillHeight" | "openingStyle" | "swing"> & Partial<Pick<CustomOpening, "familyId" | "familyLabel">>,
   ) => {
     const wall = safeCustomWalls.find((item) => item.id === wallId);
     if (!wall) return;
@@ -2650,7 +2665,9 @@ export default function ConceptPlanner() {
       height: preset.height,
       sillHeight: preset.type === "door" ? 0 : preset.sillHeight,
       openingStyle: preset.openingStyle,
-      swing: "left",
+      swing: preset.swing ?? "left",
+      familyId: preset.familyId,
+      familyLabel: preset.familyLabel,
     };
     setCustomOpenings((prev) => [...(Array.isArray(prev) ? prev : []), opening]);
     pushRoomHistory(before);
@@ -4394,22 +4411,29 @@ export default function ConceptPlanner() {
                           <span className="text-[10px] text-slate-400">{selectedCustomWall ? "Parede selecionada" : "Selecione uma parede"}</span>
                         </div>
                         <div className="grid grid-cols-2 gap-2">
-                          {([
-                            ["Porta 90", { type: "door", width: 0.90, height: 2.10, sillHeight: 0, openingStyle: "hinged" }],
-                            ["Porta correr 160", { type: "door", width: 1.60, height: 2.10, sillHeight: 0, openingStyle: "sliding" }],
-                            ["Janela 120", { type: "window", width: 1.20, height: 1.20, sillHeight: 0.90, openingStyle: "sliding" }],
-                            ["Janela 180", { type: "window", width: 1.80, height: 1.20, sillHeight: 0.90, openingStyle: "sliding" }],
-                          ] as const).map(([label, preset]) => (
+                          {CONCEPT_OPENING_FAMILIES.map((family) => (
                             <button
-                              key={label}
+                              key={family.id}
                               type="button"
                               disabled={!selectedCustomWall}
-                              onClick={() => selectedCustomWall && addOpeningPreset(selectedCustomWall.id, preset)}
+                              onClick={() => selectedCustomWall && addOpeningPreset(selectedCustomWall.id, {
+                                type: family.type,
+                                width: family.width,
+                                height: family.height,
+                                sillHeight: family.sillHeight,
+                                openingStyle: family.openingStyle,
+                                swing: family.swing,
+                                familyId: family.id,
+                                familyLabel: family.label,
+                              })}
                               className="rounded-xl border bg-white px-3 py-3 text-left disabled:cursor-not-allowed disabled:opacity-40 hover:border-orange-300 hover:bg-orange-50/40"
                             >
-                              <div className="text-xs font-semibold">{label}</div>
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="text-xs font-semibold">{family.label}</div>
+                                <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-500">{family.type === "door" ? "porta" : "janela"}</span>
+                              </div>
                               <div className="mt-1 text-[10px] text-slate-500">
-                                {preset.width.toFixed(2).replace(".", ",")} × {preset.height.toFixed(2).replace(".", ",")} m
+                                {family.width.toFixed(2).replace(".", ",")} × {family.height.toFixed(2).replace(".", ",")} m · {family.openingStyle === "hinged" ? "giro" : family.openingStyle === "sliding" ? "correr" : family.openingStyle === "fixed" ? "fixa" : "oscilo/maxim"}
                               </div>
                             </button>
                           ))}
