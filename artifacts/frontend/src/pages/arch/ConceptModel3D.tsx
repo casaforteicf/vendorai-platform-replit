@@ -1021,6 +1021,86 @@ export default function ConceptModel3D({
               </label>
             </div>
           )}
+          {webglReady && selectedObject3D && (
+            <div className="absolute bottom-4 left-1/2 z-30 w-[calc(100%-1.5rem)] max-w-md -translate-x-1/2 rounded-2xl border border-slate-200 bg-white/96 p-3 shadow-2xl backdrop-blur lg:hidden">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="truncate text-xs font-bold text-slate-800">{selectedObject3D.label}</div>
+                  <div className="text-[10px] text-slate-500">Editar objeto diretamente no 3D</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onSelectObject?.(null)}
+                  className="rounded-lg px-2 py-1 text-[10px] font-semibold text-slate-500 hover:bg-slate-100"
+                >
+                  Fechar
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {selectedObjectModelVariants.length > 0 && (
+                  <label className="col-span-2 text-[10px] font-semibold text-slate-500">
+                    Modelo 3D
+                    <select
+                      value={selectedObject3D.model3dUrl ?? selectedObjectModelVariants[0]?.url ?? ""}
+                      onChange={(event) => onObjectChange?.(selectedObject3D.id, { model3dUrl: event.target.value || undefined })}
+                      className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700"
+                    >
+                      {selectedObjectModelVariants.map((variant) => (
+                        <option key={variant.id} value={variant.url}>{variant.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                <label className="col-span-2 text-[10px] font-semibold text-slate-500">
+                  Material
+                  <select
+                    value={selectedObject3D.materialId ?? ""}
+                    onChange={(event) => onObjectChange?.(selectedObject3D.id, { materialId: event.target.value || undefined })}
+                    className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700"
+                  >
+                    <option value="">Material do modelo</option>
+                    {pbrFurnitureMaterials.map((material) => (
+                      <option key={material.id} value={material.id}>{material.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="text-[10px] font-semibold text-slate-500">
+                  Escala textura
+                  <input
+                    type="range"
+                    min="0.25"
+                    max="6"
+                    step="0.25"
+                    value={selectedObject3D.materialScale ?? 1}
+                    onChange={(event) => onObjectChange?.(selectedObject3D.id, {
+                      materialScale: Math.max(0.25, Math.min(6, Number(event.target.value) || 1)),
+                    })}
+                    className="mt-2 w-full"
+                  />
+                  <span className="mt-1 block text-center text-[10px] text-slate-600">
+                    {(selectedObject3D.materialScale ?? 1).toFixed(2)}×
+                  </span>
+                </label>
+                <label className="text-[10px] font-semibold text-slate-500">
+                  Rotação textura
+                  <input
+                    type="range"
+                    min="0"
+                    max="355"
+                    step="5"
+                    value={selectedObject3D.materialRotation ?? 0}
+                    onChange={(event) => onObjectChange?.(selectedObject3D.id, {
+                      materialRotation: ((Number(event.target.value) || 0) % 360 + 360) % 360,
+                    })}
+                    className="mt-2 w-full"
+                  />
+                  <span className="mt-1 block text-center text-[10px] text-slate-600">
+                    {Math.round(selectedObject3D.materialRotation ?? 0)}°
+                  </span>
+                </label>
+              </div>
+            </div>
+          )}
           {webglReady && (
             <div className="flex overflow-hidden rounded-lg border border-slate-200 bg-white">
               <button
