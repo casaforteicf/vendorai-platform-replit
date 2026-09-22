@@ -636,7 +636,10 @@ export async function ensureArqdorStarterLibrary(tenantId: string) {
     const shouldUpgrade =
       currentSpecs.model3dUrl !== nextSpecs.model3dUrl ||
       currentSpecs.pbrKey !== nextSpecs.pbrKey ||
-      currentSpecs.source !== nextSpecs.source;
+      currentSpecs.source !== nextSpecs.source ||
+      currentSpecs.polyHavenQuery !== nextSpecs.polyHavenQuery ||
+      currentSpecs.polyHavenSlug !== nextSpecs.polyHavenSlug ||
+      currentSpecs.lod !== nextSpecs.lod;
 
     if (!shouldUpgrade) continue;
 
