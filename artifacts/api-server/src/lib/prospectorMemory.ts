@@ -113,7 +113,7 @@ export async function storeConvertedEmbedding(lead: {
     await db.execute(
       sql`INSERT INTO lead_embeddings (id, tenant_id, lead_id, embedding, segmento, nome)
           VALUES (${crypto.randomUUID()}, ${lead.tenantId}, ${lead.id},
-                  ${vectorLiteral}::vector, ${lead.segmento ?? null}, ${lead.nome ?? null})
+                  ${vectorLiteral}::extensions.vector, ${lead.segmento ?? null}, ${lead.nome ?? null})
           ON CONFLICT DO NOTHING`,
     );
 
@@ -149,10 +149,10 @@ export async function getSimilarityBonus(
     const vectorLiteral = `[${embedding.join(",")}]`;
 
     const rowsResult = await db.execute<{ similarity: number }>(
-      sql`SELECT 1 - (embedding <=> ${vectorLiteral}::vector) AS similarity
+      sql`SELECT 1 - (embedding OPERATOR(extensions.<=>) ${vectorLiteral}::extensions.vector) AS similarity
           FROM lead_embeddings
           WHERE tenant_id = ${tenantId}
-          ORDER BY embedding <=> ${vectorLiteral}::vector
+          ORDER BY embedding OPERATOR(extensions.<=>) ${vectorLiteral}::extensions.vector
           LIMIT 5`,
     );
     const rows = rowsResult.rows;
