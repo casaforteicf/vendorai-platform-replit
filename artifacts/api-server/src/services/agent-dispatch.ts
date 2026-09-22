@@ -1215,7 +1215,10 @@ export async function processAgentInternal(params: {
         const playbook = resolveProspectorPlaybook(
           prospectorParams["prospectorPlaybook"],
           ctx.lead.mercadoSegmento,
-          (ctx.lead.metadata ?? {}) as Record<string, unknown>,
+          {
+            ...((ctx.lead.metadata ?? {}) as Record<string, unknown>),
+            lead_source: ctx.lead.source ?? "",
+          },
         );
         const previousAgentMessage = [...ctx.recentMessages]
           .reverse()
