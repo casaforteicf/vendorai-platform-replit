@@ -1089,13 +1089,13 @@ export default function ConceptPlanner() {
     };
   }, []);
 
-  const saveConcept = async (stepOverride?: number) => {
+  const saveConcept = async (stepOverride?: number, tourPointsOverride?: TourPoint[]) => {
     setSaveState("saving");
     const payload = {
       title: "Meu pré-projeto",
       currentStep: stepOverride ?? step,
       lot: { width: lotWidth, depth: lotDepth },
-      configuration: { floors, desiredArea, typology, layoutPreferences, wallFirstFloors, showDimensions, customWalls, customOpenings, spaceProfiles, objects, wallMaterials, tourPoints },
+      configuration: { floors, desiredArea, typology, layoutPreferences, wallFirstFloors, showDimensions, customWalls, customOpenings, spaceProfiles, objects, wallMaterials, tourPoints: tourPointsOverride ?? tourPoints },
       rooms,
       openingOverrides,
       customerProfile,
@@ -5695,7 +5695,10 @@ export default function ConceptPlanner() {
                       tourPoints={tourPoints}
                       onTourPointsChange={(points) => {
                         setTourPoints(points);
-                        window.setTimeout(() => void saveConcept(), 0);
+                        void saveConcept(undefined, points);
+                      }}
+                      onTourPointActivate={(point) => {
+                        setActiveFloor(Math.max(0, Math.min(floors - 1, point.floor)));
                       }}
                       onRenderView={(lightingMode, renderView) => void generateConceptRender({ source: "model3d", renderView, lightingMode })}
                       onSelectWall={(wallId) => {
