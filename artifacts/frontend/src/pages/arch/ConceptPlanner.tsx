@@ -745,6 +745,7 @@ export default function ConceptPlanner() {
     }
   });
   const [savedTourPoints, setSavedTourPoints] = useState<SavedTourPoint[]>([]);
+  const [tourShareState, setTourShareState] = useState<"idle" | "sharing" | "copied" | "error">("idle");
   const [realCatalogProducts, setRealCatalogProducts] = useState<RealCatalogProduct[]>([]);
   const [realCatalogLoading, setRealCatalogLoading] = useState(false);
   const [polyHavenModels, setPolyHavenModels] = useState<PolyHavenModel[]>([]);
@@ -1122,6 +1123,31 @@ export default function ConceptPlanner() {
     } catch {
       setSaveState("error");
       return null;
+    }
+  };
+
+  const sharePublicTour = async () => {
+    setTourShareState("sharing");
+    const projectId = await saveConcept(4);
+    if (!projectId) {
+      setTourShareState("error");
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/arch/concept-projects/${projectId}/share-tour`, {
+        method: "POST",
+      });
+      if (!response.ok) throw new Error("Falha ao criar link público");
+      const payload = await response.json() as { path?: string };
+      if (!payload.path) throw new Error("Link público inválido");
+      const url = new URL(payload.path, window.location.origin).toString();
+      await navigator.clipboard?.writeText(url);
+      setTourShareState("copied");
+      window.setTimeout(() => setTourShareState("idle"), 2200);
+    } catch {
+      setTourShareState("error");
+      window.setTimeout(() => setTourShareState("idle"), 2600);
     }
   };
 
@@ -4086,9 +4112,18 @@ export default function ConceptPlanner() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => { void navigator.clipboard?.writeText(window.location.href); }}
-                  title="Copiar link do projeto"
-                  className="hidden h-10 w-10 place-items-center rounded-xl bg-orange-500 text-white shadow-sm hover:bg-orange-600 sm:grid"
+                  onClick={() => void sharePublicTour()}
+                  disabled={tourShareState === "sharing"}
+                  title={tourShareState === "copied"
+                    ? "Link público do Tour copiado"
+                    : tourShareState === "error"
+                      ? "Não foi possível gerar o link"
+                      : "Compartilhar Tour 3D com cliente"}
+                  className={tourShareState === "error"
+                    ? "hidden h-10 w-10 place-items-center rounded-xl bg-red-500 text-white shadow-sm hover:bg-red-600 disabled:opacity-60 sm:grid"
+                    : tourShareState === "copied"
+                      ? "hidden h-10 w-10 place-items-center rounded-xl bg-emerald-500 text-white shadow-sm hover:bg-emerald-600 disabled:opacity-60 sm:grid"
+                      : "hidden h-10 w-10 place-items-center rounded-xl bg-orange-500 text-white shadow-sm hover:bg-orange-600 disabled:opacity-60 sm:grid"}
                 >
                   <Share2 className="h-4 w-4" />
                 </button>
