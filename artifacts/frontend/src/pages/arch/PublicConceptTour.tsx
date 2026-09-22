@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRoute } from "wouter";
-import { ChevronLeft, ChevronRight, Eye, Maximize2, RotateCcw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, EyeOff, Maximize2, Play, RotateCcw, Share2 } from "lucide-react";
 import ConceptWebGLScene from "./ConceptWebGLScene";
 import type { ConceptModelLevel } from "./ConceptModel3D";
 import type { ConceptPlanObject } from "./ConceptPlan2D";
@@ -72,6 +72,7 @@ type PublicTourData = {
   facadePreferences?: {
     roof?: "platibanda" | "aparente" | "misto";
   };
+  coverImageUrl?: string | null;
   updatedAt?: string;
 };
 
@@ -195,6 +196,9 @@ export default function PublicConceptTour() {
   const [navigationMode, setNavigationMode] = useState<"orbit" | "tour" | "panorama">("orbit");
   const [webglReady, setWebglReady] = useState(false);
   const [viewToken, setViewToken] = useState(0);
+  const [started, setStarted] = useState(false);
+  const [controlsHidden, setControlsHidden] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -259,6 +263,16 @@ export default function PublicConceptTour() {
     setActiveSceneIndex(normalized);
   };
 
+  const copyTourLink = async () => {
+    try {
+      await navigator.clipboard?.writeText(window.location.href);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setCopied(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="grid min-h-screen place-items-center bg-slate-950 text-white">
@@ -314,6 +328,52 @@ export default function PublicConceptTour() {
         />
       </div>
 
+      {!started && (
+        <div
+          className="absolute inset-0 z-50 grid place-items-center bg-slate-950"
+          style={data.coverImageUrl ? {
+            backgroundImage: `linear-gradient(180deg, rgba(2,6,23,.30), rgba(2,6,23,.88)), url("${data.coverImageUrl}")`,
+            backgroundPosition: "center",
+            backgroundSize: "cover",
+          } : undefined}
+        >
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(2,6,23,.35)_55%,rgba(2,6,23,.92)_100%)]" />
+          <div className="relative mx-auto w-[min(92vw,680px)] rounded-[28px] border border-white/15 bg-slate-950/70 p-6 text-center shadow-2xl backdrop-blur-xl sm:p-9">
+            <div className="mx-auto inline-flex items-center rounded-full border border-orange-400/30 bg-orange-500/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-orange-300">
+              Arqdor Tour
+            </div>
+            <h1 className="mt-4 text-2xl font-black tracking-tight text-white sm:text-4xl">
+              {data.title || "Projeto residencial"}
+            </h1>
+            <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-300 sm:text-base">
+              Explore o projeto em 3D, navegue pelos ambientes e use o modo Panorama 360° para uma experiência imersiva.
+            </p>
+            <div className="mt-5 flex flex-wrap items-center justify-center gap-2 text-[11px] font-semibold text-slate-300">
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
+                {levels.length} pavimento{levels.length === 1 ? "" : "s"}
+              </span>
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
+                {scenes.length} cena{scenes.length === 1 ? "" : "s"}
+              </span>
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">Panorama 360°</span>
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">Tela cheia</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setStarted(true)}
+              className="mt-7 inline-flex h-12 items-center gap-2 rounded-2xl bg-orange-500 px-6 text-sm font-black text-white shadow-[0_16px_50px_rgba(249,115,22,.28)] transition hover:bg-orange-400"
+            >
+              <Play className="h-4 w-4 fill-current" />
+              Entrar no tour
+            </button>
+            <div className="mt-4 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+              Arraste para olhar · selecione um ambiente para navegar
+            </div>
+          </div>
+        </div>
+      )}
+
+      {started && !controlsHidden && (
       <header className="pointer-events-none absolute left-0 right-0 top-0 z-30 flex items-start justify-between gap-4 bg-gradient-to-b from-slate-950/90 via-slate-950/50 to-transparent p-4 sm:p-6">
         <div className="min-w-0 rounded-2xl border border-white/10 bg-slate-950/55 px-4 py-3 shadow-xl backdrop-blur">
           <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-orange-400">Arqdor Tour</div>
@@ -323,7 +383,20 @@ export default function PublicConceptTour() {
           </div>
         </div>
       </header>
+      )}
 
+      {started && controlsHidden && (
+        <button
+          type="button"
+          onClick={() => setControlsHidden(false)}
+          className="absolute right-4 top-4 z-40 inline-flex items-center gap-2 rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-xs font-bold text-white shadow-xl backdrop-blur hover:bg-slate-900 sm:right-6 sm:top-6"
+        >
+          <Eye className="h-4 w-4" />
+          Mostrar controles
+        </button>
+      )}
+
+      {started && !controlsHidden && (
       <div className="absolute right-4 top-28 z-30 flex flex-col gap-2 sm:right-6">
         <button
           type="button"
@@ -350,9 +423,26 @@ export default function PublicConceptTour() {
           <Maximize2 className="h-4 w-4" />
           Tela cheia
         </button>
+        <button
+          type="button"
+          onClick={() => void copyTourLink()}
+          className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-xs font-bold text-white shadow-xl backdrop-blur hover:bg-slate-900"
+        >
+          <Share2 className="h-4 w-4" />
+          {copied ? "Link copiado" : "Compartilhar"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setControlsHidden(true)}
+          className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-xs font-bold text-white shadow-xl backdrop-blur hover:bg-slate-900"
+        >
+          <EyeOff className="h-4 w-4" />
+          Ocultar interface
+        </button>
       </div>
+      )}
 
-      {scenes.length > 0 ? (
+      {started && !controlsHidden && (scenes.length > 0 ? (
         <div className="absolute bottom-4 left-1/2 z-30 w-[min(94vw,760px)] -translate-x-1/2 rounded-2xl border border-white/10 bg-slate-950/80 p-2 shadow-2xl backdrop-blur sm:bottom-6">
           <div className="flex items-center gap-2">
             <button
@@ -393,6 +483,12 @@ export default function PublicConceptTour() {
       ) : (
         <div className="absolute bottom-5 left-1/2 z-30 -translate-x-1/2 rounded-full border border-white/10 bg-slate-950/75 px-4 py-2 text-xs font-semibold text-slate-300 shadow-xl backdrop-blur">
           Arraste para explorar o projeto em 3D
+        </div>
+      ))}
+
+      {started && controlsHidden && activeScene && (
+        <div className="pointer-events-none absolute bottom-5 left-1/2 z-30 -translate-x-1/2 rounded-full border border-white/10 bg-slate-950/70 px-4 py-2 text-xs font-semibold text-white shadow-xl backdrop-blur">
+          {activeScene.name || `Cena ${activeSceneIndex + 1}`} · Pav. {activeScene.floor + 1}
         </div>
       )}
     </div>
