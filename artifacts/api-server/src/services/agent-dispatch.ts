@@ -1209,8 +1209,27 @@ export async function processAgentInternal(params: {
 
     // ── Prospecctor consultivo: cold outbound is research-first, not generic SDR ──
     if (resolvedAgentName === "sdr" && (scenario?.["cold_outreach"] === true || isColdProspectSource(ctx.lead.source))) {
+      let resolvedProspector: Awaited<ReturnType<typeof getAgentConfig>> = null;
       try {
-        const resolvedProspector = await getAgentConfig(tenantId, "prospector");
+        resolvedProspector = await getAgentConfig(tenantId, "prospector");
+      } catch (err) {
+        const code = (err as { code?: string }).code;
+        if (code === "AGENT_NOT_CONFIGURED") {
+          log.info(
+            { tenantId, leadId },
+            "dispatch: Prospecctor explicitly disabled — cold prospect response suppressed",
+          );
+          return { status: "skipped", reason: "prospector_disabled" };
+        }
+        // Falha transitória de configuração nunca deve rebaixar a conversa para
+        // um SDR vendedor genérico. Seguimos com o playbook seguro padrão.
+        log.warn(
+          { err, tenantId, leadId },
+          "dispatch: Prospecctor config unavailable — using safe consultive fallback",
+        );
+      }
+
+      try {
         const prospectorParams = (resolvedProspector?.parametros ?? {}) as Record<string, unknown>;
         const playbook = resolveProspectorPlaybook(
           prospectorParams["prospectorPlaybook"],
@@ -1261,10 +1280,13 @@ export async function processAgentInternal(params: {
           "dispatch: Prospecctor consultive mode injected",
         );
       } catch (err) {
+        // Segurança comercial: em lead frio não responder com o SDR padrão quando
+        // não foi possível montar o modo consultivo.
         log.warn(
           { err, tenantId, leadId },
-          "dispatch: Prospecctor mode unavailable; keeping standard SDR behavior",
+          "dispatch: Prospecctor initialization failed — cold prospect response suppressed",
         );
+        return { status: "skipped", reason: "prospector_init_error" };
       }
     }
 
