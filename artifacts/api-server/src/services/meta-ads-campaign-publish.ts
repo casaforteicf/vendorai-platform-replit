@@ -538,10 +538,16 @@ export async function publishCampaignToMetaAds(tenantId: string, campaignId: str
       : undefined,
     platformReview: { status: "em_analise" as const, reason: "Enviado à Meta para análise automática.", syncedAt: new Date().toISOString() },
   };
-  await db
-    .update(adCampaignsTable)
-    .set({ externalCampaignId: campaignRes.id, status: "pausado", segmentacao: finalSegmentacao, updatedAt: new Date() })
-    .where(eq(adCampaignsTable.id, campaignId));
+  await db.transaction(async (tx) => {
+    await tx
+      .update(adCampaignsTable)
+      .set({ externalCampaignId: campaignRes.id, status: "pausado", segmentacao: finalSegmentacao, updatedAt: new Date() })
+      .where(eq(adCampaignsTable.id, campaignId));
+    await tx
+      .update(adCreativesTable)
+      .set({ externalCreativeId: creativeRes.id, externalAdId: adRes.id })
+      .where(eq(adCreativesTable.id, creative.id));
+  });
 
   logger.info(
     { tenantId, campaignId, externalCampaignId: campaignRes.id },
@@ -603,23 +609,33 @@ export async function fetchMetaAdsCampaignPerformance(tenantId: string, campaign
   if (!campaign?.externalCampaignId) throw new MetaAdsPublishError("Campanha ainda não foi enviada à Meta.");
   const { accessToken } = await getValidAccessToken(tenantId);
   const insights = await metaApi<{ data?: Array<{
+    ad_id?: string;
     impressions?: string;
     clicks?: string;
     spend?: string;
     actions?: Array<{ action_type?: string; value?: string }>;
   }> }>(`${campaign.externalCampaignId}/insights`, accessToken, "GET", {
-    fields: "impressions,clicks,spend,actions",
+    fields: "ad_id,impressions,clicks,spend,actions",
+    level: "ad",
     date_preset: "today",
   });
   const conversionTypes = new Set(["lead", "purchase", "contact", "onsite_conversion.messaging_conversation_started_7d"]);
-  return (insights.data ?? []).reduce((total, row) => ({
-    impressions: total.impressions + Number(row.impressions ?? 0),
-    clicks: total.clicks + Number(row.clicks ?? 0),
-    spend: total.spend + Number(row.spend ?? 0),
-    conversions: total.conversions + (row.actions ?? [])
+  const creatives = (insights.data ?? []).map((row) => ({
+    externalAdId: row.ad_id ?? null,
+    impressions: Number(row.impressions ?? 0),
+    clicks: Number(row.clicks ?? 0),
+    spend: Number(row.spend ?? 0),
+    conversions: (row.actions ?? [])
       .filter((action) => conversionTypes.has(action.action_type ?? ""))
       .reduce((sum, action) => sum + Number(action.value ?? 0), 0),
+  }));
+  const totals = creatives.reduce((total, row) => ({
+    impressions: total.impressions + row.impressions,
+    clicks: total.clicks + row.clicks,
+    spend: total.spend + row.spend,
+    conversions: total.conversions + row.conversions,
   }), { impressions: 0, clicks: 0, spend: 0, conversions: 0 });
+  return { ...totals, creatives };
 }
 
 export async function syncMetaAdsReviewStatus(tenantId: string, campaignId: string) {
