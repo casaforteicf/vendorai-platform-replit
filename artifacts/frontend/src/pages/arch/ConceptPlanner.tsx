@@ -197,31 +197,6 @@ function getCatalogPolyHavenQuery(item: RealCatalogProduct) {
   return typeof value === "string" && value.trim().length >= 2 ? value.trim().slice(0, 100) : undefined;
 }
 
-async function resolveCatalogAutoModel(query: string) {
-  try {
-    const search = await fetch(`/api/arch/polyhaven/search?q=${encodeURIComponent(query)}&limit=6`);
-    if (!search.ok) return undefined;
-    const payload = await search.json();
-    const items = Array.isArray(payload?.items) ? payload.items : [];
-    for (const candidate of items.slice(0, 4)) {
-      if (!candidate || typeof candidate.slug !== "string") continue;
-      try {
-        const response = await fetch(`/api/arch/polyhaven/assets/${encodeURIComponent(candidate.slug)}`);
-        if (!response.ok) continue;
-        const asset = await response.json();
-        if (typeof asset?.model3dUrl === "string") {
-          return {
-            model3dUrl: asset.model3dUrl as string,
-            modelLabel: typeof asset?.name === "string" ? asset.name as string : candidate.name,
-            supplier: "Poly Haven",
-          };
-        }
-      } catch {}
-    }
-  } catch {}
-  return undefined;
-}
-
 type ConceptMaterialOption = {
   id: string;
   name: string;
