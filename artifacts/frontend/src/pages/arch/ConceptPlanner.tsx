@@ -4228,7 +4228,7 @@ export default function ConceptPlanner() {
                               </div>
                               <div className="mt-0.5 text-[11px] text-slate-500">{item.subtitle}</div>
                             </div>
-                          </div>
+                          </button>
                         ))}
                       </div>
                     </div>
@@ -4705,7 +4705,7 @@ export default function ConceptPlanner() {
                                 {width.toFixed(2).replace(".", ",")} × {depth.toFixed(2).replace(".", ",")} m
                               </div>
                             </div>
-                          </button>
+                          </div>
                         ))}
                       </div>
 
