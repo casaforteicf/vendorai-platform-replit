@@ -28,6 +28,9 @@ import {
   Ruler,
   Share2,
   ChevronDown,
+  Heart,
+  Clock3,
+  Box,
   X,
 } from "lucide-react";
 import { buildConceptGeometry, nudgeOpening, validateConceptLayout } from "./conceptGeometry";
@@ -258,7 +261,7 @@ const CONCEPT_FURNITURE_LIBRARY: Array<{
   label: string;
   width: number;
   depth: number;
-  category: "Sala" | "Quarto" | "Jantar" | "Cozinha" | "Escritório" | "Decoração" | "Iluminação" | "Elétrica" | "Hidráulica";
+  category: "Sala" | "Quarto" | "Jantar" | "Cozinha" | "Escritório" | "Decoração" | "Iluminação" | "Exterior" | "Elétrica" | "Hidráulica";
 }> = [
   { kind: "sofa", label: "Sofá 3 lugares", width: 2.20, depth: 0.90, category: "Sala" },
   { kind: "sofa", label: "Sofá 2 lugares", width: 1.70, depth: 0.90, category: "Sala" },
@@ -288,6 +291,12 @@ const CONCEPT_FURNITURE_LIBRARY: Array<{
   { kind: "drain_point", label: "Ponto de esgoto", width: 0.40, depth: 0.40, category: "Hidráulica" },
   { kind: "shower_point", label: "Ponto de chuveiro", width: 0.45, depth: 0.45, category: "Hidráulica" },
   { kind: "faucet_point", label: "Ponto de torneira", width: 0.40, depth: 0.40, category: "Hidráulica" },
+  { kind: "chair", label: "Espreguiçadeira", width: 0.75, depth: 1.90, category: "Exterior" },
+  { kind: "table", label: "Mesa externa", width: 1.40, depth: 0.90, category: "Exterior" },
+  { kind: "chair", label: "Cadeira externa", width: 0.62, depth: 0.62, category: "Exterior" },
+  { kind: "plant", label: "Árvore ornamental", width: 1.40, depth: 1.40, category: "Exterior" },
+  { kind: "plant", label: "Arbusto", width: 0.80, depth: 0.80, category: "Exterior" },
+  { kind: "lamp", label: "Balizador jardim", width: 0.30, depth: 0.30, category: "Exterior" },
 ];
 
 const DEFAULT_FACADE: ConceptFacadePreferences = {
@@ -602,8 +611,30 @@ export default function ConceptPlanner() {
   const wallFirstActive = (Array.isArray(wallFirstFloors) ? wallFirstFloors : []).includes(activeFloor);
   const [modelSearch, setModelSearch] = useState("");
   const [modelCategory, setModelCategory] = useState<"todos" | "terreas" | "sobrados" | "lazer">("todos");
+  const [modelGalleryOpen, setModelGalleryOpen] = useState(false);
   const [furnitureSearch, setFurnitureSearch] = useState("");
-  const [furnitureCategory, setFurnitureCategory] = useState<"Todos" | "Sala" | "Quarto" | "Jantar" | "Cozinha" | "Escritório" | "Decoração" | "Iluminação">("Todos");
+  const [furnitureCategory, setFurnitureCategory] = useState<"Todos" | "Sala" | "Quarto" | "Jantar" | "Cozinha" | "Escritório" | "Decoração" | "Iluminação" | "Exterior">("Todos");
+  const [libraryMode, setLibraryMode] = useState<"all" | "favorites" | "recent">("all");
+  const [favoriteItemIds, setFavoriteItemIds] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = window.localStorage.getItem("arqdor:library:favorites");
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+    } catch {
+      return [];
+    }
+  });
+  const [recentItemIds, setRecentItemIds] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = window.localStorage.getItem("arqdor:library:recent");
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+    } catch {
+      return [];
+    }
+  });
   const [realCatalogProducts, setRealCatalogProducts] = useState<RealCatalogProduct[]>([]);
   const [realCatalogLoading, setRealCatalogLoading] = useState(false);
   const [editorLibraryTab, setEditorLibraryTab] = useState<"site" | "models" | "build" | "rooms" | "furniture" | "materials" | "outdoor">("build");
@@ -631,14 +662,48 @@ export default function ConceptPlanner() {
     });
   }, [modelCategory, modelSearch]);
 
+  const libraryItemKey = (label: string, category: string) => `param:${category}:${label}`;
+  const realLibraryItemKey = (id: string) => `real:${id}`;
+
+  const toggleFavoriteItem = (id: string) => {
+    setFavoriteItemIds((current) => {
+      const next = current.includes(id)
+        ? current.filter((item) => item !== id)
+        : [id, ...current].slice(0, 80);
+      if (typeof window !== "undefined") {
+        try { window.localStorage.setItem("arqdor:library:favorites", JSON.stringify(next)); } catch {}
+      }
+      return next;
+    });
+  };
+
+  const rememberRecentItem = (id: string) => {
+    setRecentItemIds((current) => {
+      const next = [id, ...current.filter((item) => item !== id)].slice(0, 30);
+      if (typeof window !== "undefined") {
+        try { window.localStorage.setItem("arqdor:library:recent", JSON.stringify(next)); } catch {}
+      }
+      return next;
+    });
+  };
+
   const filteredFurniture = useMemo(() => {
     const query = furnitureSearch.trim().toLocaleLowerCase("pt-BR");
     return CONCEPT_FURNITURE_LIBRARY.filter((item) => {
+      const itemId = libraryItemKey(item.label, item.category);
       const categoryMatch = furnitureCategory === "Todos" || item.category === furnitureCategory;
       const queryMatch = !query || `${item.label} ${item.category}`.toLocaleLowerCase("pt-BR").includes(query);
-      return categoryMatch && queryMatch;
+      const modeMatch = libraryMode === "all"
+        || (libraryMode === "favorites" && favoriteItemIds.includes(itemId))
+        || (libraryMode === "recent" && recentItemIds.includes(itemId));
+      return categoryMatch && queryMatch && modeMatch;
+    }).sort((a, b) => {
+      if (libraryMode !== "recent") return 0;
+      const aIndex = recentItemIds.indexOf(libraryItemKey(a.label, a.category));
+      const bIndex = recentItemIds.indexOf(libraryItemKey(b.label, b.category));
+      return aIndex - bIndex;
     });
-  }, [furnitureSearch, furnitureCategory]);
+  }, [favoriteItemIds, furnitureCategory, furnitureSearch, libraryMode, recentItemIds]);
 
   useEffect(() => {
     if (editorLibraryTab !== "furniture" || realCatalogProducts.length || realCatalogLoading) return;
@@ -669,13 +734,31 @@ export default function ConceptPlanner() {
 
   const visibleRealCatalogProducts = useMemo(() => {
     const query = furnitureSearch.trim().toLocaleLowerCase("pt-BR");
+    const categoryRegex: Partial<Record<typeof furnitureCategory, RegExp>> = {
+      Sala: /sofá|sofa|poltrona|chaise|rack|painel|televis|tv|mesa de centro/,
+      Quarto: /cama|colchão|colchao|roupeiro|guarda-roupa|criado|cabeceira/,
+      Jantar: /mesa|cadeira|banco|banqueta/,
+      Cozinha: /cozinha|balcão|balcao|gabinete|armário|armario|ilha/,
+      Escritório: /escritório|escritorio|office|home office|cadeira/,
+      Decoração: /decora|tapete|vaso|planta|folhagem|quadro|espelho/,
+      Iluminação: /luminária|luminaria|abajur|pendente|plafon|arandela/,
+      Exterior: /extern|outdoor|jardim|garden|espreguiçadeira|paisag|varanda|deck/,
+    };
     return realCatalogProducts.filter((item) => {
-      if (!query) return true;
-      return `${item.nome} ${item.categoria ?? ""} ${item.subcategoria ?? ""} ${item.fornecedor ?? ""}`
-        .toLocaleLowerCase("pt-BR")
-        .includes(query);
-    }).slice(0, 12);
-  }, [realCatalogProducts, furnitureSearch]);
+      const text = `${item.nome} ${item.categoria ?? ""} ${item.subcategoria ?? ""} ${item.fornecedor ?? ""}`
+        .toLocaleLowerCase("pt-BR");
+      const queryMatch = !query || text.includes(query);
+      const itemId = realLibraryItemKey(item.id);
+      const categoryMatch = furnitureCategory === "Todos" || categoryRegex[furnitureCategory]?.test(text) === true;
+      const modeMatch = libraryMode === "all"
+        || (libraryMode === "favorites" && favoriteItemIds.includes(itemId))
+        || (libraryMode === "recent" && recentItemIds.includes(itemId));
+      return queryMatch && categoryMatch && modeMatch;
+    }).sort((a, b) => {
+      if (libraryMode !== "recent") return 0;
+      return recentItemIds.indexOf(realLibraryItemKey(a.id)) - recentItemIds.indexOf(realLibraryItemKey(b.id));
+    }).slice(0, 24);
+  }, [favoriteItemIds, furnitureCategory, furnitureSearch, libraryMode, realCatalogProducts, recentItemIds]);
 
   useEffect(() => {
     roomsRef.current = Array.isArray(rooms) ? rooms : [];
@@ -1132,7 +1215,6 @@ export default function ConceptPlanner() {
     setSelectedWallId(null);
     setSelectedCustomWallId(null);
     setSelectedClosedSpaceId(null);
-    setEditorView("plan");
     closeLibraryOnMobile();
     pushRoomHistory(before);
   };
@@ -1745,6 +1827,20 @@ export default function ConceptPlanner() {
 
   const selectedClosedSpace = closedSpaces.find((space) => space.id === selectedClosedSpaceId) ?? null;
   const selectedSpaceProfile = selectedClosedSpace ? spaceAssignments.get(selectedClosedSpace.id) ?? null : null;
+
+  const libraryInsertPoint = useMemo(() => {
+    if (selectedClosedSpace) return selectedClosedSpace.centroid;
+    if (selected) return {
+      x: selected.x + selected.width / 2,
+      y: selected.y + selected.depth / 2,
+    };
+    const activeRooms = safeRooms.filter((room) => room.floor === activeFloor && room.kind !== "piscina");
+    if (activeRooms.length) {
+      const room = activeRooms[0];
+      return { x: room.x + room.width / 2, y: room.y + room.depth / 2 };
+    }
+    return { x: lotWidth / 2, y: lotDepth / 2 };
+  }, [activeFloor, lotDepth, lotWidth, safeRooms, selected, selectedClosedSpace]);
 
   const updateSelectedSpaceProfile = (patch: Partial<Pick<SpaceProfile, "label" | "kind">>) => {
     if (!selectedClosedSpace) return;
@@ -3673,7 +3769,7 @@ export default function ConceptPlanner() {
                       onClick={() => {
                         setStep(4);
                         setEditorView(value);
-                        if (value !== "plan") setLibraryOpen(false);
+                        if (value === "facade" || value === "render") setLibraryOpen(false);
                       }}
                       className={editorView === value
                         ? "shrink-0 snap-center rounded-lg bg-white px-3 py-2 text-xs font-bold text-slate-950 shadow-sm sm:px-4"
@@ -3697,6 +3793,33 @@ export default function ConceptPlanner() {
                 >
                   <Ruler className="h-4 w-4" />
                 </button>
+                )}
+                {editorView === "plan" && (
+                  <button
+                    type="button"
+                    onClick={() => setModelGalleryOpen(true)}
+                    title="Abrir galeria de modelos"
+                    className="hidden h-10 items-center gap-2 rounded-xl text-slate-300 hover:bg-white/10 sm:inline-flex sm:px-3"
+                  >
+                    <LayoutGrid className="h-4 w-4" />
+                    Modelos
+                  </button>
+                )}
+                {(editorView === "plan" || editorView === "model3d") && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditorLibraryTab("furniture");
+                      setLibraryOpen((open) => !(open && editorLibraryTab === "furniture"));
+                    }}
+                    title="Abrir biblioteca de itens"
+                    className={libraryOpen && editorLibraryTab === "furniture"
+                      ? "hidden h-10 items-center gap-2 rounded-xl bg-white px-3 text-xs font-bold text-slate-950 shadow-sm sm:inline-flex"
+                      : "hidden h-10 items-center gap-2 rounded-xl text-slate-300 hover:bg-white/10 sm:inline-flex"}
+                  >
+                    <Box className="h-4 w-4" />
+                    Itens
+                  </button>
                 )}
                 <button
                   type="button"
@@ -3810,6 +3933,118 @@ export default function ConceptPlanner() {
               />
             </div>
 
+            {modelGalleryOpen && (
+              <div className="fixed inset-0 z-[95] flex items-center justify-center p-3 sm:p-6">
+                <button
+                  type="button"
+                  aria-label="Fechar galeria de modelos"
+                  onClick={() => setModelGalleryOpen(false)}
+                  className="absolute inset-0 bg-slate-950/45 backdrop-blur-[2px]"
+                />
+                <div className="relative z-10 max-h-[88vh] w-full max-w-6xl overflow-hidden rounded-3xl border border-white/30 bg-white shadow-2xl">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4 sm:px-6">
+                    <div>
+                      <div className="text-lg font-bold text-slate-950">Comece com um modelo</div>
+                      <div className="mt-0.5 text-xs text-slate-500">Escolha uma base e continue editando normalmente no 2D ou 3D.</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {([
+                        ["todos", "Todos"],
+                        ["terreas", "Térreas"],
+                        ["sobrados", "Sobrados"],
+                        ["lazer", "Lazer"],
+                      ] as const).map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setModelCategory(value)}
+                          className={modelCategory === value
+                            ? "rounded-full bg-slate-950 px-3 py-1.5 text-[11px] font-bold text-white"
+                            : "rounded-full border px-3 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => setModelGalleryOpen(false)}
+                        className="ml-1 grid h-9 w-9 place-items-center rounded-full border text-slate-500 hover:bg-slate-50"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="max-h-[calc(88vh-76px)] overflow-y-auto p-5 sm:p-6">
+                    <label className="mx-auto mb-5 flex h-11 max-w-xl items-center gap-2 rounded-xl border bg-white px-3 shadow-sm">
+                      <Search className="h-4 w-4 text-slate-400" />
+                      <input
+                        value={modelSearch}
+                        onChange={(event) => setModelSearch(event.target.value)}
+                        placeholder="Buscar casa térrea, sobrado, lazer..."
+                        className="w-full bg-transparent text-sm outline-none"
+                        autoFocus
+                      />
+                    </label>
+                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          startBlankPlan();
+                          setModelGalleryOpen(false);
+                        }}
+                        className="group overflow-hidden rounded-2xl border bg-white text-left transition hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-lg"
+                      >
+                        <div className="grid aspect-[4/3] place-items-center bg-gradient-to-br from-slate-50 to-slate-100">
+                          <div className="grid h-16 w-16 place-items-center rounded-2xl border-2 border-dashed border-slate-300 bg-white text-slate-500">
+                            <Plus className="h-7 w-7" />
+                          </div>
+                        </div>
+                        <div className="p-4">
+                          <div className="font-semibold">Projeto vazio</div>
+                          <div className="mt-1 text-xs text-slate-500">Começar desenhando do zero.</div>
+                        </div>
+                      </button>
+                      {filteredTypologies.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => {
+                            applyTypology(item.id);
+                            setModelGalleryOpen(false);
+                            setEditorView("plan");
+                          }}
+                          className={typology === item.id
+                            ? "group overflow-hidden rounded-2xl border-2 border-orange-500 bg-white text-left shadow-md"
+                            : "group overflow-hidden rounded-2xl border bg-white text-left transition hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-lg"}
+                        >
+                          <div className="relative aspect-[4/3] overflow-hidden">
+                            <ConceptTypologyPreview typology={item.id} lotWidth={lotWidth} lotDepth={lotDepth} />
+                            <div className="absolute left-3 top-3 flex gap-2">
+                              <span className="rounded-full bg-white/95 px-2.5 py-1 text-[9px] font-bold shadow-sm">
+                                {item.floors === 1 ? "TÉRREA" : "SOBRADO"}
+                              </span>
+                              {item.rooms.some((room) => room.kind === "piscina" || room.kind === "gourmet") && (
+                                <span className="rounded-full bg-white/95 px-2.5 py-1 text-[9px] font-bold shadow-sm">LAZER</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="p-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="font-semibold text-slate-950">{item.title}</div>
+                                <div className="mt-1 text-xs text-slate-500">{item.subtitle}</div>
+                              </div>
+                              <div className="shrink-0 text-sm font-bold text-slate-700">≈ {item.suggestedArea} m²</div>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="arq-workspace-shell relative min-h-[calc(100dvh-56px)] overflow-hidden bg-[#f6f7f8]">
               <aside className={(selected || selectedCustomWall || selectedOpening || selectedClosedSpace || selectedWall)
                   ? "arq-workspace-sidebar absolute inset-y-0 left-0 z-30 hidden max-w-full border-r bg-white shadow-[8px_0_28px_rgba(15,23,42,0.08)] md:block"
@@ -3822,7 +4057,7 @@ export default function ConceptPlanner() {
                         ["models", LayoutGrid, "Modelos"],
                         ["build", Layers3, "Construir"],
                         ["rooms", Home, "Ambientes"],
-                        ["furniture", LayoutGrid, "Móveis"],
+                        ["furniture", LayoutGrid, "Itens"],
                         ["materials", Sparkles, "Materiais"],
                         ["outdoor", Trees, "Externo"],
                       ] as const).map(([value, Icon, label]) => (
@@ -3859,7 +4094,7 @@ export default function ConceptPlanner() {
                               : editorLibraryTab === "rooms"
                                 ? "Ambientes"
                                 : editorLibraryTab === "furniture"
-                                  ? "Móveis e objetos"
+                                  ? "Biblioteca de itens"
                                   : editorLibraryTab === "materials"
                                     ? "Materiais"
                                     : "Área externa"}
@@ -3874,7 +4109,7 @@ export default function ConceptPlanner() {
                               : editorLibraryTab === "rooms"
                                 ? "Organize os ambientes"
                                 : editorLibraryTab === "furniture"
-                                  ? "Insira e mova itens na planta"
+                                  ? "Pesquise, insira e edite no 2D ou 3D"
                                   : editorLibraryTab === "materials"
                                     ? "Aplique no objeto selecionado"
                                     : "Lazer e área externa"}
@@ -3948,6 +4183,18 @@ export default function ConceptPlanner() {
                           className="w-full bg-transparent text-sm outline-none"
                         />
                       </label>
+
+                      <button
+                        type="button"
+                        onClick={() => setModelGalleryOpen(true)}
+                        className="flex w-full items-center justify-between rounded-xl bg-slate-950 px-3 py-2.5 text-left text-white shadow-sm hover:bg-slate-800"
+                      >
+                        <span>
+                          <span className="block text-xs font-bold">Galeria de modelos</span>
+                          <span className="block text-[10px] text-white/65">Ver opções maiores sobre o canvas</span>
+                        </span>
+                        <LayoutGrid className="h-4 w-4" />
+                      </button>
 
                       <button
                         type="button"
@@ -4192,8 +4439,11 @@ export default function ConceptPlanner() {
                   {editorLibraryTab === "furniture" && (
                     <>
                       <div className="mb-3 flex items-center justify-between">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Móveis e objetos</div>
-                        <span className="text-[10px] text-slate-400">Arraste para a planta</span>
+                        <div>
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Biblioteca de itens</div>
+                          <div className="mt-0.5 text-[10px] text-slate-400">{editorView === "model3d" ? "Clique para inserir sem sair do 3D" : "Arraste para posicionar ou clique para inserir"}</div>
+                        </div>
+                        <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">{visibleRealCatalogProducts.length + filteredFurniture.length}</span>
                       </div>
 
                       <label className="mb-3 flex h-10 items-center gap-2 rounded-xl border bg-white px-3">
@@ -4201,13 +4451,36 @@ export default function ConceptPlanner() {
                         <input
                           value={furnitureSearch}
                           onChange={(event) => setFurnitureSearch(event.target.value)}
-                          placeholder="Buscar sofá, cama, mesa..."
+                          placeholder="Buscar sofá, cama, árvore, luminária..."
                           className="w-full bg-transparent text-sm outline-none"
                         />
                       </label>
 
+                      <div className="mb-3 grid grid-cols-3 gap-2">
+                        {([
+                          ["all", LayoutGrid, "Todos"],
+                          ["favorites", Heart, "Favoritos"],
+                          ["recent", Clock3, "Recentes"],
+                        ] as const).map(([mode, Icon, label]) => (
+                          <button
+                            key={mode}
+                            type="button"
+                            onClick={() => {
+                              setLibraryMode(mode);
+                              if (mode !== "all") setFurnitureCategory("Todos");
+                            }}
+                            className={libraryMode === mode
+                              ? "flex h-9 items-center justify-center gap-1.5 rounded-xl bg-slate-950 px-2 text-[11px] font-bold text-white"
+                              : "flex h-9 items-center justify-center gap-1.5 rounded-xl border bg-white px-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"}
+                          >
+                            <Icon className="h-3.5 w-3.5" />
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+
                       <div className="mb-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                        {(["Todos", "Sala", "Quarto", "Jantar", "Cozinha", "Escritório", "Decoração", "Iluminação"] as const).map((category) => (
+                        {(["Todos", "Sala", "Quarto", "Jantar", "Cozinha", "Escritório", "Decoração", "Iluminação", "Exterior"] as const).map((category) => (
                           <button
                             key={category}
                             type="button"
@@ -4226,7 +4499,7 @@ export default function ConceptPlanner() {
                           <div className="mb-3 flex items-center justify-between gap-2">
                             <div>
                               <div className="text-xs font-bold text-slate-900">Produtos reais do catálogo</div>
-                              <div className="text-[10px] text-slate-500">Imagens cadastradas no tenant · clique para inserir no projeto</div>
+                              <div className="text-[10px] text-slate-500">Produtos do tenant · clique para inserir no ambiente ativo</div>
                             </div>
                             {realCatalogLoading && <span className="text-[10px] font-semibold text-orange-600">Carregando...</span>}
                           </div>
@@ -4238,9 +4511,10 @@ export default function ConceptPlanner() {
                               if (!preset || !imageUrl) return null;
                               const price = Number(item.precoBase ?? 0);
                               return (
-                                <button
+                                <div
                                   key={item.id}
-                                  type="button"
+                                  role="button"
+                                  tabIndex={0}
                                   draggable
                                   onDragStart={(event) => {
                                     event.dataTransfer.effectAllowed = "copy";
@@ -4256,12 +4530,17 @@ export default function ConceptPlanner() {
                                       model3dUrl: getCatalogModel3dUrl(item),
                                     }));
                                   }}
-                                  onClick={() => addObjectAt(
+                                  onKeyDown={(event) => {
+                                    if (event.key === "Enter" || event.key === " ") event.currentTarget.click();
+                                  }}
+                                  onClick={() => {
+                                    rememberRecentItem(realLibraryItemKey(item.id));
+                                    addObjectAt(
                                     preset.kind,
                                     item.nome,
                                     preset.width,
                                     preset.depth,
-                                    undefined,
+                                    libraryInsertPoint,
                                     {
                                       catalogProductId: item.id,
                                       imageUrl,
@@ -4269,10 +4548,24 @@ export default function ConceptPlanner() {
                                       price: price > 0 ? price : undefined,
                                       model3dUrl: getCatalogModel3dUrl(item),
                                     },
-                                  )}
+                                  );
+                                  }}
                                   className="group overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:border-orange-300 hover:shadow-lg"
                                 >
                                   <div className="relative aspect-[4/3] overflow-hidden bg-slate-100">
+                                    <button
+                                      type="button"
+                                      aria-label="Favoritar produto"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        toggleFavoriteItem(realLibraryItemKey(item.id));
+                                      }}
+                                      className={favoriteItemIds.includes(realLibraryItemKey(item.id))
+                                        ? "absolute bottom-2 right-2 z-10 grid h-8 w-8 place-items-center rounded-full bg-white text-rose-500 shadow-md"
+                                        : "absolute bottom-2 right-2 z-10 grid h-8 w-8 place-items-center rounded-full bg-white/90 text-slate-500 shadow-md hover:text-rose-500"}
+                                    >
+                                      <Heart className="h-4 w-4" fill={favoriteItemIds.includes(realLibraryItemKey(item.id)) ? "currentColor" : "none"} />
+                                    </button>
                                     <img
                                       src={imageUrl}
                                       alt={item.nome}
@@ -4299,7 +4592,7 @@ export default function ConceptPlanner() {
                                       </div>
                                     )}
                                   </div>
-                                </button>
+                                </div>
                               );
                             })}
                           </div>
@@ -4315,18 +4608,38 @@ export default function ConceptPlanner() {
 
                       <div className="grid grid-cols-2 gap-3">
                         {filteredFurniture.map(({ kind, label, width, depth, category }) => (
-                          <button
+                          <div
                             key={`${category}-${label}`}
-                            type="button"
+                            role="button"
+                            tabIndex={0}
                             draggable
                             onDragStart={(event) => {
                               event.dataTransfer.effectAllowed = "copy";
                               event.dataTransfer.setData("application/x-arqdor-object", JSON.stringify({ kind, label, width, depth }));
                             }}
-                            onClick={() => addObject(kind, label, width, depth)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") event.currentTarget.click();
+                            }}
+                            onClick={() => {
+                              rememberRecentItem(libraryItemKey(label, category));
+                              addObjectAt(kind, label, width, depth, libraryInsertPoint);
+                            }}
                             className="cursor-grab overflow-hidden rounded-xl border bg-white text-left transition active:cursor-grabbing hover:border-orange-300 hover:shadow-md"
                           >
                             <div className="relative grid h-24 place-items-center overflow-hidden bg-gradient-to-br from-slate-50 via-white to-stone-100">
+                              <button
+                                type="button"
+                                aria-label="Favoritar item"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  toggleFavoriteItem(libraryItemKey(label, category));
+                                }}
+                                className={favoriteItemIds.includes(libraryItemKey(label, category))
+                                  ? "absolute right-2 top-2 z-10 grid h-7 w-7 place-items-center rounded-full bg-white text-rose-500 shadow-sm"
+                                  : "absolute right-2 top-2 z-10 grid h-7 w-7 place-items-center rounded-full bg-white/90 text-slate-400 shadow-sm hover:text-rose-500"}
+                              >
+                                <Heart className="h-3.5 w-3.5" fill={favoriteItemIds.includes(libraryItemKey(label, category)) ? "currentColor" : "none"} />
+                              </button>
                               <div className="absolute left-2 top-2 rounded-full bg-white/90 px-2 py-1 text-[9px] font-semibold text-slate-500 shadow-sm">
                                 {category}
                               </div>
@@ -4392,13 +4705,17 @@ export default function ConceptPlanner() {
                                 {width.toFixed(2).replace(".", ",")} × {depth.toFixed(2).replace(".", ",")} m
                               </div>
                             </div>
-                          </button>
+                          </div>
                         ))}
                       </div>
 
                       {!filteredFurniture.length && (
                         <div className="rounded-xl border border-dashed p-4 text-center text-xs text-slate-500">
-                          Nenhum item encontrado nessa categoria.
+                          {libraryMode === "favorites"
+                            ? "Nenhum favorito ainda. Toque no coração dos itens que você usa mais."
+                            : libraryMode === "recent"
+                              ? "Nenhum item recente ainda. Os últimos itens inseridos aparecerão aqui."
+                              : "Nenhum item encontrado nessa categoria."}
                         </div>
                       )}
                     </>

@@ -1,16 +1,39 @@
 import { Link } from "wouter";
+import { motion } from "framer-motion";
 import { ArrowRight, Check, Sparkles } from "lucide-react";
 import { usePublicCountry } from "@/lib/publicCountry";
 
 const MEDIA = "/media/vendorai-official";
 
 const PT = {
-  kicker: "Veja o VendorAI por dentro",
-  title: "Cada tela aparece onde ela faz sentido.",
+  kicker: "Produto real, função por função",
+  title: "Veja exatamente o que cada parte do VendorAI faz.",
   description:
-    "Em vez de concentrar várias imagens na abertura, distribuímos o produto ao longo da página. Cada tela real acompanha a parte da operação que ela resolve.",
+    "Cada bloco abaixo usa uma tela real do sistema. Você entende a função, o resultado esperado e onde ela entra na operação — sem ilustração genérica.",
   cta: "Ver produto",
   items: [
+    {
+      eyebrow: "CRM",
+      title: "Pipeline comercial com estágio, responsável e próxima ação.",
+      description:
+        "O CRM organiza oportunidades e mantém o histórico comercial visível para pessoas e agentes de IA.",
+      bullets: ["Pipeline visual", "Responsável e próxima ação", "Histórico compartilhado com os agentes"],
+      image: `${MEDIA}/crm-pipeline/desktop-1440.png`,
+      mobile: `${MEDIA}/crm-pipeline/mobile-390.png`,
+      alt: "Tela real do CRM Pipeline do VendorAI",
+      href: "/produtos/crm",
+    },
+    {
+      eyebrow: "Leads",
+      title: "Contexto completo do lead antes de alguém entrar em contato.",
+      description:
+        "Origem, histórico, informações comerciais e sinais ficam reunidos para evitar atendimento sem contexto.",
+      bullets: ["Origem e histórico", "Dados do lead", "Contexto para SDR, Closer e vendedor"],
+      image: `${MEDIA}/crm-leads/desktop-1440.png`,
+      mobile: `${MEDIA}/crm-leads/mobile-390.png`,
+      alt: "Tela real de Leads do VendorAI",
+      href: "/produtos/crm",
+    },
     {
       eyebrow: "Prospecção",
       title: "Encontre novos clientes antes de esperar o próximo lead.",
@@ -55,6 +78,17 @@ const PT = {
       href: "/produtos/jarvis",
     },
     {
+      eyebrow: "Oportunidades de Receita",
+      title: "Sinais comerciais viram ações concretas.",
+      description:
+        "A tela de oportunidades reúne sinais detectados pela inteligência e organiza o que merece abordagem, follow-up ou expansão.",
+      bullets: ["Sinais priorizados", "Motivo da oportunidade", "Próxima ação sugerida"],
+      image: `${MEDIA}/revenue-opportunities/desktop-1440.png`,
+      mobile: `${MEDIA}/revenue-opportunities/mobile-390.png`,
+      alt: "Tela real de Oportunidades de Receita do VendorAI",
+      href: "/produtos/revenue-scout",
+    },
+    {
       eyebrow: "Agenda Inteligente",
       title: "Próxima ação com responsável e prazo.",
       description:
@@ -77,6 +111,17 @@ const PT = {
       href: "/produtos/analytics",
     },
     {
+      eyebrow: "Catálogo",
+      title: "Produto, preço e informação comercial no mesmo fluxo da venda.",
+      description:
+        "O catálogo conecta itens, famílias, aplicações e informações usadas por vendedores, propostas e automações.",
+      bullets: ["Produtos organizados", "Informação comercial centralizada", "Uso em propostas e atendimento"],
+      image: `${MEDIA}/catalogo/desktop-1440.png`,
+      mobile: `${MEDIA}/catalogo/mobile-390.png`,
+      alt: "Tela real do Catálogo do VendorAI",
+      href: "/produtos",
+    },
+    {
       eyebrow: "Financeiro & ERP",
       title: "A operação comercial não termina no fechamento.",
       description:
@@ -91,12 +136,34 @@ const PT = {
 };
 
 const ES = {
-  kicker: "Vea VendorAI por dentro",
-  title: "Cada pantalla aparece donde tiene sentido.",
+  kicker: "Producto real, función por función",
+  title: "Vea exactamente qué hace cada parte de VendorAI.",
   description:
-    "En lugar de concentrar varias imágenes en la apertura, distribuimos el producto a lo largo de la página. Cada pantalla real acompaña la parte de la operación que resuelve.",
+    "Cada bloque utiliza una pantalla real del sistema. Usted entiende la función, el resultado esperado y dónde entra en la operación, sin ilustraciones genéricas.",
   cta: "Ver producto",
   items: [
+    {
+      eyebrow: "CRM",
+      title: "Pipeline comercial con etapa, responsable y próxima acción.",
+      description:
+        "El CRM organiza oportunidades y mantiene el historial comercial visible para personas y agentes de IA.",
+      bullets: ["Pipeline visual", "Responsable y próxima acción", "Historial compartido con los agentes"],
+      image: `${MEDIA}/crm-pipeline/desktop-1440.png`,
+      mobile: `${MEDIA}/crm-pipeline/mobile-390.png`,
+      alt: "Pantalla real de CRM Pipeline de VendorAI",
+      href: "/produtos/crm",
+    },
+    {
+      eyebrow: "Leads",
+      title: "Contexto completo del lead antes de contactar.",
+      description:
+        "Origen, historial, información comercial y señales quedan reunidos para evitar atención sin contexto.",
+      bullets: ["Origen e historial", "Datos del lead", "Contexto para SDR, Closer y vendedor"],
+      image: `${MEDIA}/crm-leads/desktop-1440.png`,
+      mobile: `${MEDIA}/crm-leads/mobile-390.png`,
+      alt: "Pantalla real de Leads de VendorAI",
+      href: "/produtos/crm",
+    },
     {
       eyebrow: "Prospección",
       title: "Encuentre nuevos clientes antes de esperar el próximo lead.",
@@ -141,6 +208,17 @@ const ES = {
       href: "/produtos/jarvis",
     },
     {
+      eyebrow: "Oportunidades de Ingreso",
+      title: "Las señales comerciales se convierten en acciones concretas.",
+      description:
+        "La pantalla de oportunidades reúne señales detectadas por la inteligencia y organiza qué merece contacto, seguimiento o expansión.",
+      bullets: ["Señales priorizadas", "Motivo de la oportunidad", "Próxima acción sugerida"],
+      image: `${MEDIA}/revenue-opportunities/desktop-1440.png`,
+      mobile: `${MEDIA}/revenue-opportunities/mobile-390.png`,
+      alt: "Pantalla real de Oportunidades de Ingreso de VendorAI",
+      href: "/produtos/revenue-scout",
+    },
+    {
       eyebrow: "Agenda Inteligente",
       title: "Próxima acción con responsable y plazo.",
       description:
@@ -161,6 +239,17 @@ const ES = {
       mobile: `${MEDIA}/analytics/mobile-390.png`,
       alt: "Pantalla real de Analytics de VendorAI",
       href: "/produtos/analytics",
+    },
+    {
+      eyebrow: "Catálogo",
+      title: "Producto, precio e información comercial en el mismo flujo de venta.",
+      description:
+        "El catálogo conecta ítems, familias, aplicaciones e información usada por vendedores, propuestas y automatizaciones.",
+      bullets: ["Productos organizados", "Información comercial centralizada", "Uso en propuestas y atención"],
+      image: `${MEDIA}/catalogo/desktop-1440.png`,
+      mobile: `${MEDIA}/catalogo/mobile-390.png`,
+      alt: "Pantalla real del Catálogo de VendorAI",
+      href: "/produtos",
     },
     {
       eyebrow: "Finanzas & ERP",
@@ -203,7 +292,14 @@ export default function DistributedProductScreens() {
           const mobile = "mobile" in item ? item.mobile : undefined;
 
           return (
-            <article key={item.title} className={`border-t border-slate-200 ${bg}`}>
+            <motion.article
+              key={item.title}
+              className={`border-t border-slate-200 ${bg}`}
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, amount: 0.12 }}
+              transition={{ duration: 0.55, ease: "easeOut" }}
+            >
               <div className="mx-auto grid max-w-7xl items-center gap-10 px-6 py-16 lg:grid-cols-2 lg:gap-16 lg:px-8 lg:py-20">
                 <div className={imageFirst ? "lg:order-2" : ""}>
                   <p className="text-xs font-bold uppercase tracking-[0.18em] text-orange-600">{item.eyebrow}</p>
@@ -231,8 +327,14 @@ export default function DistributedProductScreens() {
                   </Link>
                 </div>
 
-                <div className={imageFirst ? "lg:order-1" : ""}>
-                  <div className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.10)]">
+                <motion.div
+                  className={imageFirst ? "lg:order-1" : ""}
+                  initial={{ opacity: 0, x: imageFirst ? -28 : 28, scale: 0.985 }}
+                  whileInView={{ opacity: 1, x: 0, scale: 1 }}
+                  viewport={{ once: true, amount: 0.2 }}
+                  transition={{ duration: 0.65, delay: 0.08, ease: "easeOut" }}
+                >
+                  <div className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.10)] transition duration-500 hover:-translate-y-1 hover:shadow-[0_32px_90px_rgba(15,23,42,0.14)]">
                     <picture>
                       {mobile ? <source type="image/webp" media="(max-width: 640px)" srcSet={modernPath(mobile)} /> : null}
                       <source type="image/webp" srcSet={modernPath(item.image)} />
@@ -246,9 +348,9 @@ export default function DistributedProductScreens() {
                       />
                     </picture>
                   </div>
-                </div>
+                </motion.div>
               </div>
-            </article>
+            </motion.article>
           );
         })}
       </div>

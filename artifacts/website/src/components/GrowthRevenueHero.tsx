@@ -1,4 +1,5 @@
 import { Link } from "wouter";
+import { motion } from "framer-motion";
 import {
   ArrowRight,
   BarChart3,
@@ -13,44 +14,44 @@ import {
 import { usePublicCountry } from "@/lib/publicCountry";
 
 const PT = {
-  eyebrow: "Revenue OS com IA para empresas que querem crescer",
-  title: "Marketing, vendas e atendimento trabalhando como um só sistema.",
-  accent: "Mais demanda. Mais conversão. Mais receita.",
+  eyebrow: "TAD coordena agentes + CRM + canais em uma única operação",
+  title: "Sua operação comercial trabalhando com IA.",
+  accent: "Do primeiro sinal à próxima venda.",
   description:
-    "O VendorAI transforma dados, canais e equipes em um ciclo comercial contínuo: cria campanhas, encontra oportunidades, atende, vende, acompanha e indica a próxima melhor ação.",
+    "O VendorAI conecta prospecção, atendimento, CRM, propostas, follow-up, marketing, cobrança e pós-venda. O TAD entende o contexto e aciona o agente certo em cada etapa.",
   primary: "Testar 5 dias grátis",
   secondary: "Explorar a plataforma",
-  proof: "Sem limite de usuários · implantação autoguiada · suporte em português",
-  enginesIntro: "Um sistema, três motores de crescimento",
+  proof: "5 dias grátis · CRM e histórico preservados · suporte em português",
+  enginesIntro: "Uma operação, três momentos coordenados",
   engines: [
-    { icon: Megaphone, title: "Atrair", text: "Ads, conteúdo, social, sites e landing pages." },
-    { icon: Radar, title: "Encontrar", text: "Prospecta, enriquece e prioriza novas oportunidades." },
-    { icon: Target, title: "Converter e expandir", text: "CRM, agentes de IA, follow-up e Revenue Intelligence." },
+    { icon: Megaphone, title: "Gerar demanda", text: "Ads, conteúdo, social, sites, landing pages e campanhas." },
+    { icon: Radar, title: "Encontrar oportunidades", text: "Prospector, sinais, enriquecimento, priorização e Revenue Scout." },
+    { icon: Target, title: "Converter e expandir", text: "CRM, SDR, Closer, follow-up, propostas, cobrança e pós-venda." },
   ],
   previewLabel: "VendorAI em operação",
-  previewTitle: "Da visita ao fechamento, tudo conectado",
-  previewText: "Veja pipeline, contexto comercial e próxima ação em uma única experiência.",
+  previewTitle: "Tela real do VendorAI em operação",
+  previewText: "Este é o produto real: pipeline, contexto comercial, responsáveis, estágio e próxima ação no mesmo lugar.",
   previewLink: "Conhecer o CRM",
 };
 
 const ES = {
-  eyebrow: "Revenue OS con IA para empresas que quieren crecer",
-  title: "Marketing, ventas y atención trabajando como un solo sistema.",
-  accent: "Más demanda. Más conversión. Más ingresos.",
+  eyebrow: "TAD coordina agentes + CRM + canales en una única operación",
+  title: "Tu operación comercial trabajando con IA.",
+  accent: "Desde la primera señal hasta la próxima venta.",
   description:
-    "VendorAI transforma datos, canales y equipos en un ciclo comercial continuo: crea campañas, encuentra oportunidades, atiende, vende, acompaña e indica la próxima mejor acción.",
+    "VendorAI conecta prospección, atención, CRM, propuestas, seguimiento, marketing, cobranza y posventa. TAD entiende el contexto y activa al agente correcto en cada etapa.",
   primary: "Probar 5 días gratis",
   secondary: "Explorar la plataforma",
-  proof: "Sin límite de usuarios · implementación autoguiada · soporte en español",
-  enginesIntro: "Un sistema, tres motores de crecimiento",
+  proof: "5 días gratis · CRM e historial preservados · soporte en español",
+  enginesIntro: "Una operación, tres momentos coordinados",
   engines: [
-    { icon: Megaphone, title: "Atraer", text: "Ads, contenido, social, sitios y landing pages." },
-    { icon: Radar, title: "Encontrar", text: "Prospecta, enriquece y prioriza nuevas oportunidades." },
-    { icon: Target, title: "Convertir y expandir", text: "CRM, agentes de IA, follow-up y Revenue Intelligence." },
+    { icon: Megaphone, title: "Generar demanda", text: "Ads, contenido, social, sitios, landing pages y campañas." },
+    { icon: Radar, title: "Encontrar oportunidades", text: "Prospector, señales, enriquecimiento, priorización y Revenue Scout." },
+    { icon: Target, title: "Convertir y expandir", text: "CRM, SDR, Closer, seguimiento, propuestas, cobranza y posventa." },
   ],
   previewLabel: "VendorAI en operación",
-  previewTitle: "De la visita al cierre, todo conectado",
-  previewText: "Vea pipeline, contexto comercial y próxima acción en una única experiencia.",
+  previewTitle: "Pantalla real de VendorAI en operación",
+  previewText: "Este es el producto real: pipeline, contexto comercial, responsables, etapa y próxima acción en el mismo lugar.",
   previewLink: "Conocer el CRM",
 };
 
@@ -67,7 +68,12 @@ export default function GrowthRevenueHero() {
       <div className="vendor-home-orb vendor-home-orb-blue" aria-hidden="true" />
 
       <div className="relative mx-auto grid max-w-[1480px] gap-14 px-5 pb-16 pt-14 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-center lg:px-8 lg:pb-24 lg:pt-20 xl:gap-20">
-        <div className="max-w-3xl">
+        <motion.div
+          className="max-w-3xl"
+          initial={{ opacity: 0, y: 26 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.65, ease: "easeOut" }}
+        >
           <div className="vendor-hero-eyebrow mb-7 inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold">
             <WandSparkles className="h-4 w-4" />
             {copy.eyebrow}
@@ -117,9 +123,14 @@ export default function GrowthRevenueHero() {
               })}
             </div>
           </div>
-        </div>
+        </motion.div>
 
-        <div className="relative min-w-0 lg:pl-2">
+        <motion.div
+          className="relative min-w-0 lg:pl-2"
+          initial={{ opacity: 0, x: 34, scale: 0.985 }}
+          animate={{ opacity: 1, x: 0, scale: 1 }}
+          transition={{ duration: 0.78, delay: 0.08, ease: "easeOut" }}
+        >
           <div className="vendor-product-window overflow-hidden rounded-[30px]">
             <div className="flex items-center justify-between gap-4 border-b border-slate-200/70 bg-white/90 px-5 py-4 backdrop-blur-xl sm:px-6">
               <div>
@@ -133,21 +144,21 @@ export default function GrowthRevenueHero() {
               </span>
             </div>
 
-            <picture>
-              <source type="image/webp" media="(max-width: 640px)" srcSet={`${MEDIA}/crm-pipeline/mobile-390.webp`} />
-              <source type="image/webp" srcSet={`${MEDIA}/crm-pipeline/desktop-1440.webp`} />
-              <source media="(max-width: 640px)" srcSet={`${MEDIA}/crm-pipeline/mobile-390.png`} />
-              <img
-                src={`${MEDIA}/crm-pipeline/desktop-1440.png`}
-                alt={copy.previewTitle}
-                width={1440}
-                height={810}
-                loading="eager"
-                decoding="async"
-                fetchPriority="high"
-                className="aspect-[16/9] w-full object-cover object-top"
-              />
-            </picture>
+            <div className="relative aspect-[16/9] overflow-hidden bg-slate-100">
+              <video
+                autoPlay
+                muted
+                loop
+                playsInline
+                preload="metadata"
+                poster={`${MEDIA}/crm-pipeline/desktop-1440.webp`}
+                className="h-full w-full object-cover object-top"
+                aria-label={copy.previewTitle}
+              >
+                <source src={`${MEDIA}/videos/crm-short.webm`} type="video/webm" />
+              </video>
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-white/35 to-transparent" />
+            </div>
 
             <div className="flex flex-col gap-4 border-t border-slate-200/70 bg-white/95 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
               <p className="max-w-xl text-sm leading-6 text-slate-600">{copy.previewText}</p>
@@ -165,7 +176,21 @@ export default function GrowthRevenueHero() {
             <UsersRound className="h-4 w-4 text-emerald-600" />
             <div><strong>CRM + IA</strong><span>Contexto em tempo real</span></div>
           </div>
-        </div>
+          <motion.div
+            className="pointer-events-none absolute -bottom-5 left-8 right-8 hidden items-center justify-between rounded-2xl border border-white/70 bg-white/90 px-4 py-3 text-xs font-semibold text-slate-600 shadow-xl backdrop-blur-xl md:flex"
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.55, delay: 0.65 }}
+          >
+            {["Sinal", "Prospector", "CRM", "SDR", "Closer", "Venda", "Pós-venda"].map((step, index) => (
+              <span key={step} className="flex items-center gap-2">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-orange-50 text-[10px] font-bold text-orange-700">{index + 1}</span>
+                {step}
+                {index < 6 ? <ArrowRight className="h-3 w-3 text-slate-300" /> : null}
+              </span>
+            ))}
+          </motion.div>
+        </motion.div>
       </div>
     </section>
   );

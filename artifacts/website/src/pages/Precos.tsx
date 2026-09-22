@@ -4,30 +4,33 @@ import { ArrowRight, Check, Layers3, Sparkles, UserRound } from "lucide-react";
 const accessCards = [
   {
     icon: UserRound,
-    eyebrow: "Entrada",
-    title: "Vendor CRM Free",
-    description: "Comece com o CRM para organizar leads, contatos, pipeline, tarefas e histórico comercial.",
-    items: ["1 usuário", "CRM completo", "Dados preservados para evoluir depois", "Acesso permanente ao CRM Free"],
-    cta: "Começar com o CRM",
+    eyebrow: "Experimente",
+    title: "5 dias grátis",
+    price: "R$ 0",
+    description: "Entre com sua operação real e veja os agentes trabalhando antes de decidir.",
+    items: ["5 dias corridos de uso", "CRM + agentes principais", "Contexto do seu segmento", "Sem cobrança durante o teste"],
+    cta: "Começar grátis",
     href: "/demo",
   },
   {
     icon: Layers3,
-    eyebrow: "Expansão",
-    title: "Produtos por necessidade",
-    description: "Ative somente as capacidades que fizerem sentido para sua operação, sem transformar cada tela técnica em um produto separado.",
-    items: ["Prospector", "Omnichannel", "Agentes de IA", "Marketing e conteúdo", "Gestão, inteligência e automações"],
-    cta: "Conhecer os produtos",
-    href: "/produtos",
+    eyebrow: "Uso flexível",
+    title: "+5 dias de operação",
+    price: "R$ 399",
+    description: "Compre novos blocos de uso quando precisar, sem perder dados, histórico ou configuração.",
+    items: ["Mais 5 dias corridos", "Continua de onde parou", "Pix ou cartão", "Consulta preservada sem dias ativos"],
+    cta: "Usar por créditos",
+    href: "/demo",
   },
   {
     icon: Sparkles,
-    eyebrow: "Ecossistema completo",
-    title: "VendorAI Growth",
-    description: "Use o ecossistema VendorAI completo para o seu segmento, com usuários ilimitados e franquias claras para operações de custo variável.",
-    items: ["Usuários ilimitados", "Produtos aplicáveis ao segmento", "Franquias de IA e automação", "Capacidade extra quando necessário"],
-    cta: "Conhecer a experiência Growth",
-    href: "/demo",
+    eyebrow: "Operação contínua",
+    title: "VendorAI Anual",
+    price: "Plano anual",
+    description: "Para empresas que querem manter a equipe de IA trabalhando continuamente na operação comercial.",
+    items: ["TAD + equipe de agentes", "Vendor CRM", "Integrações e automações", "Inteligência, marketing e pós-venda"],
+    cta: "Falar sobre o anual",
+    href: "/contato",
   },
 ] as const;
 
@@ -36,9 +39,9 @@ export default function Precos() {
     <div className="min-h-screen bg-slate-50 pb-24 text-slate-950">
       <section className="bg-[#070b14] px-4 py-20 text-center text-white md:py-24">
         <p className="mb-4 text-sm font-bold uppercase tracking-[0.18em] text-orange-300">Formas de acesso</p>
-        <h1 className="mx-auto max-w-4xl text-4xl font-semibold tracking-[-0.045em] md:text-6xl">Comece pelo CRM. Evolua conforme sua operação pedir.</h1>
+        <h1 className="mx-auto max-w-4xl text-4xl font-semibold tracking-[-0.045em] md:text-6xl">Comece em 5 dias. Continue no ritmo da sua operação.</h1>
         <p className="mx-auto mt-6 max-w-3xl text-lg leading-8 text-slate-300 md:text-xl">
-          O site institucional mostra como o VendorAI pode ser usado. As condições comerciais de cada campanha são apresentadas na landing page correspondente e preservadas quando você inicia a experiência.
+          Teste a operação completa com contexto real. Depois escolha entre novos blocos de 5 dias ou operação contínua no plano anual.
         </p>
       </section>
 
@@ -51,7 +54,7 @@ export default function Precos() {
                 <div className="flex w-full flex-col">
                   <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-50 text-orange-600"><Icon className="h-6 w-6" /></div>
                   <p className="mt-6 text-xs font-bold uppercase tracking-[0.16em] text-orange-600">{card.eyebrow}</p>
-                  <h2 className="mt-2 text-3xl font-semibold tracking-[-0.035em]">{card.title}</h2>
+                  <h2 className="mt-2 text-3xl font-semibold tracking-[-0.035em]">{card.title}</h2>\n                  <p className="mt-3 text-2xl font-semibold text-orange-600">{card.price}</p>
                   <p className="mt-4 min-h-[110px] leading-7 text-slate-600">{card.description}</p>
                   <ul className="mt-6 flex-1 space-y-3 border-t border-slate-100 pt-6">
                     {card.items.map((item) => (
@@ -71,14 +74,14 @@ export default function Precos() {
           <div className="grid gap-8 md:grid-cols-[1.2fr_.8fr] md:items-center">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.16em] text-orange-600">Oferta contextual</p>
-              <h2 className="mt-3 text-3xl font-semibold tracking-[-0.03em]">A condição comercial acompanha a origem do cliente.</h2>
+              <h2 className="mt-3 text-3xl font-semibold tracking-[-0.03em]">Sem créditos ativos, seus dados continuam disponíveis.</h2>
               <p className="mt-4 max-w-2xl leading-7 text-slate-600">
-                Se você chegar por uma campanha ou landing page específica, o VendorAI registra aquela origem e a condição apresentada nela. O site geral e as telas genéricas da plataforma não funcionam como tabela pública de preços.
+                Quando um bloco de uso termina, o VendorAI preserva CRM, histórico e informações da operação. Você pode consultar os dados e reativar a execução comprando mais 5 dias ou migrando para o plano anual.
               </p>
             </div>
             <div className="rounded-2xl bg-slate-50 p-6 text-sm leading-7 text-slate-600">
               <strong className="block text-slate-900">Fluxo comercial</strong>
-              Campanha / LP → condição da oferta → cadastro → trial → proposta aceita → cobrança conforme a oferta registrada.
+              Cadastro → 5 dias grátis → mais 5 dias por R$ 399 quando precisar → ou plano anual para operação contínua.
             </div>
           </div>
         </section>
