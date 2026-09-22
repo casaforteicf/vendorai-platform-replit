@@ -12,7 +12,8 @@ import {
   messagesTable,
 } from "@workspace/db";
 import type { Logger } from "pino";
-import { sendSdrFollowup } from "../services/sdrService.js";
+import { sendSdrFirstApproach, sendSdrFollowup } from "../services/sdrService.js";
+import { isColdProspectSource } from "../lib/prospector-consultive.js";
 import {
   PROSPECTOR_COLD_CADENCE,
   nextProspectorCadenceStep,
@@ -50,9 +51,69 @@ async function recordAttributedLifecycleEvent(params: {
   });
 }
 
+async function retryPendingInitialColdOutreach(log: Logger): Promise<number> {
+  const candidates = await db
+    .select({
+      id: leadsTable.id,
+      tenantId: leadsTable.tenantId,
+      source: leadsTable.source,
+      telefone: leadsTable.telefone,
+    })
+    .from(leadsTable)
+    .where(and(
+      eq(leadsTable.enrichmentStatus, "scored"),
+      sql`${leadsTable.metadata}->'coldProspectDossier'->>'status' = 'ready_for_outreach'`,
+    ))
+    .limit(100);
+
+  let retried = 0;
+  for (const lead of candidates) {
+    if (!lead.tenantId || !lead.telefone || !isColdProspectSource(lead.source)) continue;
+    if (!(await tenantIsWithinBusinessHours(lead.tenantId))) continue;
+
+    const [alreadyApproached] = await db
+      .select({ id: activitiesTable.id })
+      .from(activitiesTable)
+      .where(and(
+        eq(activitiesTable.leadId, lead.id),
+        eq(activitiesTable.tenantId, lead.tenantId),
+        eq(activitiesTable.tipo, "whatsapp"),
+        or(
+          sql`${activitiesTable.resultadoExecucao} LIKE '%prospector_consultivo:%'`,
+          sql`${activitiesTable.resultadoExecucao} LIKE 'cenario:%|template_ordem:1%'`,
+        ),
+      ))
+      .limit(1);
+
+    if (alreadyApproached) {
+      await db.update(leadsTable)
+        .set({ enrichmentStatus: "dispatched", updatedAt: new Date() })
+        .where(and(eq(leadsTable.id, lead.id), eq(leadsTable.tenantId, lead.tenantId)));
+      continue;
+    }
+
+    try {
+      const result = await sendSdrFirstApproach(lead.id, null, lead.tenantId, log);
+      if (result.sent) {
+        await db.update(leadsTable)
+          .set({ enrichmentStatus: "dispatched", updatedAt: new Date() })
+          .where(and(eq(leadsTable.id, lead.id), eq(leadsTable.tenantId, lead.tenantId)));
+        retried++;
+      }
+    } catch (err) {
+      // Integração indisponível/opt-out/horário mudando entre as duas checagens:
+      // mantém "scored" para uma próxima rodada, sem fallback comercial genérico.
+      log.warn({ err, leadId: lead.id, tenantId: lead.tenantId }, "sdr-followup: initial cold outreach retry deferred");
+    }
+  }
+
+  return retried;
+}
+
 export async function runSdrFollowup(log: Logger): Promise<void> {
   log.info("sdr-followup: starting");
 
+  const initialRetried = await retryPendingInitialColdOutreach(log);
   const now = new Date();
   const windowStart = new Date(now.getTime() - LOOKBACK_H * 3_600_000);
   const windowEnd = new Date(now.getTime() - FIRST_FOLLOWUP_H * 3_600_000);
@@ -250,5 +311,5 @@ export async function runSdrFollowup(log: Logger): Promise<void> {
     }
   }
 
-  log.info({ sent, recovered, movedToNurture }, "sdr-followup: complete");
+  log.info({ initialRetried, sent, recovered, movedToNurture }, "sdr-followup: complete");
 }
