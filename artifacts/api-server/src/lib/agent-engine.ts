@@ -1040,7 +1040,10 @@ export function buildCloserPrompt(customPrompt: string | undefined, ctx: AgentCo
     if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   }
 
-  // Universal objection handling knowledge. Tenant facts still come from the\n  // configured prompt / Knowledge Base / runtime scenario.\n  parts.push(CLOSER_OBJECTION_PLAYBOOK_PROMPT);\n\n  // ── Meeting link or pending-link injection ──────────────────────────────────
+  // Universal objection handling knowledge. Tenant facts still come from the
+  // configured prompt / Knowledge Base / runtime scenario.
+  parts.push(CLOSER_OBJECTION_PLAYBOOK_PROMPT);
+  // ── Meeting link or pending-link injection ──────────────────────────────────
   // When auto-schedule succeeded: inject the real Google Meet URL.
   // When scheduling intent was detected but Calendar was unavailable: tell the
   // agent to confirm the link is coming — never ask for availability.
