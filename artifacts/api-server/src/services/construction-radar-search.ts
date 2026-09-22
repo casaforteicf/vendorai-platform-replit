@@ -250,13 +250,13 @@ function normalizedPhase(phase: string | null): string {
 export function scoreConstructionOpportunity(work: {
   sourceAuthority: ConstructionSourceAuthority;
   confidence: number;
-  fase: string | null;
-  proprietario: string | null;
-  responsavelTecnico: string | null;
-  construtora: string | null;
-  incorporadora: string | null;
-  endereco: string | null;
-  dataReferencia: string | null;
+  fase: string | null | undefined;
+  proprietario: string | null | undefined;
+  responsavelTecnico: string | null | undefined;
+  construtora: string | null | undefined;
+  incorporadora: string | null | undefined;
+  endereco: string | null | undefined;
+  dataReferencia: string | null | undefined;
 }): {
   score: number;
   priority: "alta" | "media" | "baixa";
