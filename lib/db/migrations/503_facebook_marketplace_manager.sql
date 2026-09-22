@@ -53,7 +53,7 @@ ALTER TABLE facebook_marketplace_listings
 -- mesmo isolamento RLS usado pelo restante do VendorAI.
 ALTER TABLE facebook_marketplace_listings ENABLE ROW LEVEL SECURITY;
 
-DO $ BEGIN
+DO $policy$ BEGIN
   CREATE POLICY vendorai_tenant_access
     ON facebook_marketplace_listings
     AS PERMISSIVE
@@ -67,9 +67,9 @@ DO $ BEGIN
       app_security.is_super_admin()
       OR tenant_id = app_security.current_tenant_id()
     );
-EXCEPTION WHEN duplicate_object THEN NULL; END $;
+EXCEPTION WHEN duplicate_object THEN NULL; END $policy$;
 
-DO $ BEGIN
+DO $policy$ BEGIN
   CREATE POLICY vendorai_tenant_guard
     ON facebook_marketplace_listings
     AS RESTRICTIVE
@@ -83,4 +83,4 @@ DO $ BEGIN
       app_security.is_super_admin()
       OR tenant_id = app_security.current_tenant_id()
     );
-EXCEPTION WHEN duplicate_object THEN NULL; END $;
+EXCEPTION WHEN duplicate_object THEN NULL; END $policy$;
