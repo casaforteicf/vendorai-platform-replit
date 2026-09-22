@@ -43,6 +43,23 @@ type Quote = {
   documents?: Array<Record<string, any>>;
 };
 
+type RfqDelivery = {
+  id: string;
+  requestId: string;
+  supplier: string;
+  channel: "whatsapp" | "email";
+  destination: string;
+  status: string;
+  message?: string | null;
+  providerMessageId?: string | null;
+  errorMessage?: string | null;
+  sentAt?: string | null;
+  viewedAt?: string | null;
+  respondedAt?: string | null;
+  quoteReceivedAt?: string | null;
+  quoteId?: string | null;
+};
+
 type Receipt = {
   id: string;
   requestId: string;
@@ -63,6 +80,7 @@ type Bundle = {
   requests: PurchaseRequest[];
   quotes: Quote[];
   receipts: Receipt[];
+  rfqDeliveries: RfqDelivery[];
   stages: Stage[];
   finance: FinanceLaunch[];
 };
@@ -152,6 +170,25 @@ function normalizeQuote(raw: any): Quote {
   };
 }
 
+function normalizeRfqDelivery(raw: any): RfqDelivery {
+  return {
+    id: String(raw?.id ?? ""),
+    requestId: String(raw?.compra_id ?? ""),
+    supplier: String(raw?.supplier_name ?? "Fornecedor"),
+    channel: raw?.channel === "email" ? "email" : "whatsapp",
+    destination: String(raw?.destination ?? ""),
+    status: String(raw?.status ?? "draft"),
+    message: raw?.message ?? null,
+    providerMessageId: raw?.provider_message_id ?? null,
+    errorMessage: raw?.error_message ?? null,
+    sentAt: raw?.sent_at ?? null,
+    viewedAt: raw?.viewed_at ?? null,
+    respondedAt: raw?.responded_at ?? null,
+    quoteReceivedAt: raw?.quote_received_at ?? null,
+    quoteId: raw?.quote_id ?? null,
+  };
+}
+
 function normalizeReceipt(raw: any): Receipt {
   return {
     id: String(raw?.id ?? ""),
@@ -200,6 +237,27 @@ function statusClass(status: string) {
   if (["cotacao", "quoted"].includes(status)) return "bg-blue-50 text-blue-700";
   if (["cancelado", "cancelada", "rejected"].includes(status)) return "bg-rose-50 text-rose-700";
   return "bg-amber-50 text-amber-700";
+}
+
+function rfqStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    draft: "Preparando",
+    sent: "Enviado",
+    viewed: "Visualizado",
+    responded: "Respondido",
+    quote_received: "Cotação recebida",
+    failed: "Falha no envio",
+  };
+  return labels[status] ?? status;
+}
+
+function rfqStatusClass(status: string) {
+  if (status === "quote_received") return "bg-emerald-100 text-emerald-800";
+  if (status === "responded") return "bg-violet-100 text-violet-800";
+  if (status === "viewed") return "bg-blue-100 text-blue-800";
+  if (status === "sent") return "bg-sky-50 text-sky-700";
+  if (status === "failed") return "bg-rose-100 text-rose-700";
+  return "bg-slate-100 text-slate-600";
 }
 
 
@@ -354,6 +412,8 @@ export default function RealProcurementWorkspace({ arqState = {}, onNavigate, ob
   const [requestItemIndex, setRequestItemIndex] = useState(0);
   const [requestImporting, setRequestImporting] = useState(false);
   const [quoteImporting, setQuoteImporting] = useState(false);
+  const [rfqDraft, setRfqDraft] = useState<{ supplier: string; channel: "whatsapp" | "email"; destination: string; message: string }>({ supplier: "", channel: "whatsapp", destination: "", message: "" });
+  const [quoteDeliveryId, setQuoteDeliveryId] = useState("");
 
   const load = useCallback(async () => {
     if (!directObraId && !meta.id) { setLoading(false); return; }
@@ -374,6 +434,7 @@ export default function RealProcurementWorkspace({ arqState = {}, onNavigate, ob
         requests,
         quotes: (raw.quotes ?? []).map(normalizeQuote),
         receipts: (raw.receipts ?? []).map(normalizeReceipt),
+        rfqDeliveries: (raw.rfqDeliveries ?? []).map(normalizeRfqDelivery),
         stages: (raw.stages ?? []).map((stage: any) => ({ id: String(stage.id), name: String(stage.nome ?? "Etapa") })),
         finance: (raw.finance ?? []).map((item: any) => ({ id: String(item.id), supplier: item.fornecedor ?? null, value: n(item.valor), dueDate: item.data_vencimento ?? null, status: String(item.status ?? "pendente"), description: item.descricao ?? null })),
       };
@@ -389,8 +450,21 @@ export default function RealProcurementWorkspace({ arqState = {}, onNavigate, ob
   useEffect(() => { void load(); }, [load]);
 
   const selected = bundle?.requests.find((request) => request.id === selectedId) ?? null;
+
+  useEffect(() => {
+    if (!selected || !bundle) return;
+    setRfqDraft({
+      supplier: "",
+      channel: "whatsapp",
+      destination: "",
+      message: rfqText(bundle.obra.nome, selected),
+    });
+    setQuoteDeliveryId("");
+  }, [selectedId, bundle?.obra.nome]);
+
   const selectedQuotes = useMemo(() => (bundle?.quotes ?? []).filter((quote) => quote.requestId === selectedId).sort((a, b) => quoteTotal(a) - quoteTotal(b)), [bundle, selectedId]);
   const selectedReceipts = useMemo(() => (bundle?.receipts ?? []).filter((receipt) => receipt.requestId === selectedId), [bundle, selectedId]);
+  const selectedDeliveries = useMemo(() => (bundle?.rfqDeliveries ?? []).filter((delivery) => delivery.requestId === selectedId), [bundle, selectedId]);
   const orderedRequests = (bundle?.requests ?? []).filter((request) => Boolean(request.supplierOrderId));
 
   const metrics = useMemo(() => {
@@ -530,6 +604,65 @@ button{border:0;border-radius:10px;padding:10px 16px;font-weight:700;cursor:poin
     popup.document.close();
   }
 
+  async function sendRfq() {
+    if (!bundle || !selected || !rfqDraft.supplier.trim() || !rfqDraft.destination.trim()) return;
+    setBusy("send-rfq");
+    setError(null);
+    try {
+      await api(`/api/arch/procurement/${bundle.obra.id}/requests/${selected.id}/rfq/send`, {
+        method: "POST",
+        body: JSON.stringify({
+          supplierName: rfqDraft.supplier.trim(),
+          channel: rfqDraft.channel,
+          destination: rfqDraft.destination.trim(),
+          message: rfqDraft.message.trim() || rfqText(bundle.obra.nome, selected),
+        }),
+      });
+      setRfqDraft({
+        supplier: "",
+        channel: "whatsapp",
+        destination: "",
+        message: rfqText(bundle.obra.nome, selected),
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao enviar solicitação de cotação.");
+      await load();
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function updateRfqStatus(delivery: RfqDelivery, status: "viewed" | "responded") {
+    if (!bundle || !selected) return;
+    setBusy(`rfq-${delivery.id}-${status}`);
+    setError(null);
+    try {
+      await api(`/api/arch/procurement/${bundle.obra.id}/requests/${selected.id}/rfq/${delivery.id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao atualizar status do fornecedor.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function prepareQuoteFromDelivery(delivery: RfqDelivery) {
+    setSelectedId(delivery.requestId);
+    setQuoteDeliveryId(delivery.id);
+    setQuoteDraft((value) => ({ ...value, supplier: delivery.supplier }));
+    setView("quotes");
+  }
+
+  function selectQuoteDelivery(deliveryId: string) {
+    setQuoteDeliveryId(deliveryId);
+    const delivery = selectedDeliveries.find((item) => item.id === deliveryId);
+    if (delivery) setQuoteDraft((value) => ({ ...value, supplier: delivery.supplier }));
+  }
+
   async function createRequest() {
     if (!bundle || !requestDraft.item.trim()) return;
     setBusy("new-request"); setError(null);
@@ -556,9 +689,26 @@ button{border:0;border-radius:10px;padding:10px 16px;font-weight:700;cursor:poin
     if (!bundle || !selected || !quoteDraft.supplier.trim()) return;
     setBusy("new-quote"); setError(null);
     try {
-      await api(`/api/arch/procurement/${bundle.obra.id}/requests/${selected.id}/quotes`, { method: "POST", body: JSON.stringify({ projectId: meta.id || undefined, supplierName: quoteDraft.supplier.trim(), confirmedValue: n(quoteDraft.value), freightValue: n(quoteDraft.freight), discountValue: n(quoteDraft.discount), taxValue: n(quoteDraft.taxes), leadTimeDays: quoteDraft.leadTime === "" ? null : n(quoteDraft.leadTime), expectedDelivery: quoteDraft.expectedDelivery || null, paymentTerms: quoteDraft.paymentTerms || null, quoteNumber: quoteDraft.quoteNumber || null, documents: quoteDocuments }) });
+      const delivery = selectedDeliveries.find((item) => item.id === quoteDeliveryId);
+      await api(`/api/arch/procurement/${bundle.obra.id}/requests/${selected.id}/quotes`, { method: "POST", body: JSON.stringify({
+        projectId: meta.id || undefined,
+        supplierName: quoteDraft.supplier.trim(),
+        confirmedValue: n(quoteDraft.value),
+        freightValue: n(quoteDraft.freight),
+        discountValue: n(quoteDraft.discount),
+        taxValue: n(quoteDraft.taxes),
+        leadTimeDays: quoteDraft.leadTime === "" ? null : n(quoteDraft.leadTime),
+        expectedDelivery: quoteDraft.expectedDelivery || null,
+        paymentTerms: quoteDraft.paymentTerms || null,
+        quoteNumber: quoteDraft.quoteNumber || null,
+        documents: quoteDocuments,
+        deliveryId: quoteDeliveryId || undefined,
+        contactPhone: delivery?.channel === "whatsapp" ? delivery.destination : undefined,
+        contactEmail: delivery?.channel === "email" ? delivery.destination : undefined,
+      }) });
       setQuoteDraft({ supplier: "", value: "0", freight: "0", discount: "0", taxes: "0", leadTime: "", expectedDelivery: "", paymentTerms: "", quoteNumber: "" });
       setQuoteDocuments([]);
+      setQuoteDeliveryId("");
       await load();
     } catch (err) { setError(err instanceof Error ? err.message : "Falha ao registrar cotação."); }
     finally { setBusy(null); }
@@ -700,6 +850,93 @@ button{border:0;border-radius:10px;padding:10px 16px;font-weight:700;cursor:poin
             </section>
 
             <section className="space-y-3">
+              {selected ? (
+                <div className="rounded-[30px] border border-violet-100 bg-white p-5 shadow-sm">
+                  <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-violet-600">Tomada de preços</p>
+                      <h2 className="mt-1 text-lg font-semibold">Enviar solicitação aos fornecedores</h2>
+                      <p className="mt-1 text-xs text-slate-500">{selected.code} · {selected.item}</p>
+                    </div>
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-600">{selectedDeliveries.length} fornecedor(es) contatado(s)</span>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    <input
+                      value={rfqDraft.supplier}
+                      onChange={(e) => setRfqDraft((value) => ({ ...value, supplier: e.target.value }))}
+                      placeholder="Nome do fornecedor"
+                      className="rounded-xl border px-3 py-2 text-sm"
+                    />
+                    <select
+                      value={rfqDraft.channel}
+                      onChange={(e) => setRfqDraft((value) => ({ ...value, channel: e.target.value as "whatsapp" | "email", destination: "" }))}
+                      className="rounded-xl border px-3 py-2 text-sm"
+                    >
+                      <option value="whatsapp">WhatsApp</option>
+                      <option value="email">E-mail</option>
+                    </select>
+                    <input
+                      value={rfqDraft.destination}
+                      onChange={(e) => setRfqDraft((value) => ({ ...value, destination: e.target.value }))}
+                      placeholder={rfqDraft.channel === "whatsapp" ? "WhatsApp do fornecedor" : "E-mail do fornecedor"}
+                      className="rounded-xl border px-3 py-2 text-sm md:col-span-2"
+                    />
+                    <textarea
+                      rows={8}
+                      value={rfqDraft.message}
+                      onChange={(e) => setRfqDraft((value) => ({ ...value, message: e.target.value }))}
+                      placeholder="Mensagem da solicitação de cotação"
+                      className="rounded-xl border px-3 py-2 text-sm md:col-span-2"
+                    />
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={!rfqDraft.supplier.trim() || !rfqDraft.destination.trim() || busy === "send-rfq"}
+                      onClick={() => void sendRfq()}
+                      className="rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-semibold text-white disabled:opacity-50"
+                    >
+                      {busy === "send-rfq" ? "Enviando…" : rfqDraft.channel === "whatsapp" ? "Enviar por WhatsApp" : "Enviar por e-mail"}
+                    </button>
+                    <button type="button" onClick={() => openRfq(selected)} className="rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-semibold">Visualizar modelo</button>
+                    <button type="button" onClick={() => void copyRfq(selected)} className="rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-semibold">Copiar texto</button>
+                  </div>
+
+                  {selectedDeliveries.length ? (
+                    <div className="mt-5 border-t pt-4">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <h3 className="text-sm font-semibold">Fornecedores acionados</h3>
+                        <span className="text-[11px] text-slate-400">Enviado → Visualizado → Respondido → Cotação recebida</span>
+                      </div>
+                      <div className="space-y-2">
+                        {selectedDeliveries.map((delivery) => (
+                          <div key={delivery.id} className="rounded-2xl border border-slate-100 bg-slate-50/60 p-3">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="font-medium text-sm">{delivery.supplier}</span>
+                                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${rfqStatusClass(delivery.status)}`}>{rfqStatusLabel(delivery.status)}</span>
+                                </div>
+                                <p className="mt-1 truncate text-xs text-slate-500">{delivery.channel === "whatsapp" ? "WhatsApp" : "E-mail"} · {delivery.destination}</p>
+                                {delivery.sentAt ? <p className="mt-1 text-[10px] text-slate-400">Enviado em {new Date(delivery.sentAt).toLocaleString("pt-BR")}</p> : null}
+                                {delivery.errorMessage ? <p className="mt-1 text-[11px] text-rose-600">{delivery.errorMessage}</p> : null}
+                              </div>
+                              <div className="flex flex-wrap gap-1.5 sm:justify-end">
+                                {delivery.status === "sent" ? <button type="button" disabled={busy === `rfq-${delivery.id}-viewed`} onClick={() => void updateRfqStatus(delivery, "viewed")} className="rounded-lg border bg-white px-2.5 py-1.5 text-[11px] font-semibold">Marcar visualizado</button> : null}
+                                {["sent", "viewed"].includes(delivery.status) ? <button type="button" disabled={busy === `rfq-${delivery.id}-responded`} onClick={() => void updateRfqStatus(delivery, "responded")} className="rounded-lg border bg-white px-2.5 py-1.5 text-[11px] font-semibold">Marcar respondido</button> : null}
+                                {!delivery.quoteId && delivery.status !== "failed" ? <button type="button" onClick={() => prepareQuoteFromDelivery(delivery)} className="rounded-lg bg-violet-600 px-2.5 py-1.5 text-[11px] font-semibold text-white">Registrar cotação</button> : null}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
               {bundle.requests.length ? bundle.requests.map((request) => (
                 <article key={request.id} onClick={() => setSelectedId(request.id)} className={`cursor-pointer rounded-[28px] border bg-white p-5 shadow-sm ${selectedId === request.id ? "border-violet-300 ring-2 ring-violet-100" : "border-slate-100"}`}>
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -717,7 +954,7 @@ button{border:0;border-radius:10px;padding:10px 16px;font-weight:700;cursor:poin
                         </div>
                       ) : null}
                     </div>
-                    <div className="text-right"><p className="font-semibold">{money(request.estimatedValue)}</p><p className="text-xs text-slate-400">{bundle.quotes.filter((quote) => quote.requestId === request.id).length} cotação(ões)</p></div>
+                    <div className="text-right"><p className="font-semibold">{money(request.estimatedValue)}</p><p className="text-xs text-slate-400">{bundle.quotes.filter((quote) => quote.requestId === request.id).length} cotação(ões) · {bundle.rfqDeliveries.filter((delivery) => delivery.requestId === request.id).length} fornecedor(es)</p></div>
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2">
                     <button type="button" onClick={(e) => { e.stopPropagation(); openRfq(request); }} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold">Gerar solicitação de cotação</button>
@@ -742,6 +979,24 @@ button{border:0;border-radius:10px;padding:10px 16px;font-weight:700;cursor:poin
               </select>
               {selected ? (
                 <div className="mt-4 space-y-3">
+                  {selectedDeliveries.length ? (
+                    <label className="block text-[11px] font-medium text-slate-500">
+                      Tomada de preços relacionada
+                      <select
+                        value={quoteDeliveryId}
+                        onChange={(e) => selectQuoteDelivery(e.target.value)}
+                        className="mt-1 w-full rounded-xl border px-3 py-2 text-sm text-slate-800"
+                      >
+                        <option value="">Cotação recebida sem envio vinculado</option>
+                        {selectedDeliveries.map((delivery) => (
+                          <option key={delivery.id} value={delivery.id}>
+                            {delivery.supplier} · {delivery.channel === "whatsapp" ? "WhatsApp" : "E-mail"} · {rfqStatusLabel(delivery.status)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+
                   <label className="block cursor-pointer rounded-2xl border border-dashed border-violet-200 bg-violet-50/50 p-4 text-center transition hover:bg-violet-50">
                     <input
                       type="file"
