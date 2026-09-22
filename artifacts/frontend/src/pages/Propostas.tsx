@@ -4564,7 +4564,13 @@ export default function Propostas() {
   });
 
   const { data: catalog = [] } = useListProdutosCatalogo(tenantId, {
-    query: { queryKey: getListProdutosCatalogoQueryKey(tenantId), enabled: !!tenantId },
+    query: {
+      queryKey: getListProdutosCatalogoQueryKey(tenantId),
+      enabled: !!tenantId,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      staleTime: 300_000,
+    },
   });
 
   const statusMut = useUpdatePropostaStatus();
