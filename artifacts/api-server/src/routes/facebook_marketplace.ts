@@ -8,8 +8,11 @@ import {
   produtosCatalogoTable,
 } from "@workspace/db";
 import { callOpenAI } from "../lib/ai-gateway.js";
+import { requireSameTenanOrSuperAdmin } from "../middlewares/auth.js";
 
 const router: IRouter = Router();
+
+router.use("/tenants/:tenantId/facebook-marketplace", requireSameTenanOrSuperAdmin());
 
 const statusSchema = z.enum([
   "draft",
@@ -160,6 +163,7 @@ async function generateMarketplaceCopy(
 }
 
 router.get("/tenants/:tenantId/facebook-marketplace/capabilities", async (req, res) => {
+  // tenant-audit: reviewed protected by requireSameTenanOrSuperAdmin before tenant data access
   const tenantId = String(req.params.tenantId);
   if (!hasTenantAccess(req, tenantId)) {
     res.status(403).json({ error: "Access denied" });
@@ -176,6 +180,7 @@ router.get("/tenants/:tenantId/facebook-marketplace/capabilities", async (req, r
 });
 
 router.get("/tenants/:tenantId/facebook-marketplace/listings", async (req, res) => {
+  // tenant-audit: reviewed protected by requireSameTenanOrSuperAdmin before tenant data access
   const tenantId = String(req.params.tenantId);
   if (!hasTenantAccess(req, tenantId)) {
     res.status(403).json({ error: "Access denied" });
@@ -222,6 +227,7 @@ router.get("/tenants/:tenantId/facebook-marketplace/listings", async (req, res) 
 });
 
 router.post("/tenants/:tenantId/facebook-marketplace/drafts", async (req, res) => {
+  // tenant-audit: reviewed protected by requireSameTenanOrSuperAdmin before tenant data access
   const tenantId = String(req.params.tenantId);
   if (!hasTenantAccess(req, tenantId)) {
     res.status(403).json({ error: "Access denied" });
@@ -299,6 +305,7 @@ router.post("/tenants/:tenantId/facebook-marketplace/drafts", async (req, res) =
 });
 
 router.patch("/tenants/:tenantId/facebook-marketplace/listings/:listingId", async (req, res) => {
+  // tenant-audit: reviewed protected by requireSameTenanOrSuperAdmin before tenant data access
   const tenantId = String(req.params.tenantId);
   const listingId = String(req.params.listingId);
   if (!hasTenantAccess(req, tenantId)) {
@@ -356,6 +363,7 @@ router.patch("/tenants/:tenantId/facebook-marketplace/listings/:listingId", asyn
 });
 
 router.post("/tenants/:tenantId/facebook-marketplace/listings/:listingId/prepare", async (req, res) => {
+  // tenant-audit: reviewed protected by requireSameTenanOrSuperAdmin before tenant data access
   const tenantId = String(req.params.tenantId);
   const listingId = String(req.params.listingId);
   if (!hasTenantAccess(req, tenantId)) {
@@ -388,7 +396,12 @@ router.post("/tenants/:tenantId/facebook-marketplace/listings/:listingId/prepare
   const [listing] = await db
     .update(facebookMarketplaceListingsTable)
     .set({ status: "ready", metadata, updatedAt: new Date() })
-    .where(eq(facebookMarketplaceListingsTable.id, listingId))
+    .where(
+      and(
+        eq(facebookMarketplaceListingsTable.id, listingId),
+        eq(facebookMarketplaceListingsTable.tenantId, tenantId),
+      ),
+    )
     .returning();
 
   res.json({
@@ -403,6 +416,7 @@ router.post("/tenants/:tenantId/facebook-marketplace/listings/:listingId/prepare
 });
 
 router.delete("/tenants/:tenantId/facebook-marketplace/listings/:listingId", async (req, res) => {
+  // tenant-audit: reviewed protected by requireSameTenanOrSuperAdmin before tenant data access
   const tenantId = String(req.params.tenantId);
   const listingId = String(req.params.listingId);
   if (!hasTenantAccess(req, tenantId)) {
