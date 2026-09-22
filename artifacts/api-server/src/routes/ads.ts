@@ -28,8 +28,8 @@ import { buildResumoItem } from "../lib/adItemSummary.js";
 import { decideVehicleReservation, reserveUniqueVehicle } from "../services/vehicle-reservation.js";
 import { decideItemReservation, reserveUniqueItem } from "../services/item-reservation.js";
 import { enrichAdsSegmentacao } from "../services/ad-audience-plan.js";
-import { setGoogleAdsCampaignStatus, syncGoogleAdsReviewStatus, GoogleAdsPublishError } from "../services/google-ads-campaign-publish.js";
-import { setMetaAdsCampaignStatus, syncMetaAdsReviewStatus, MetaAdsPublishError } from "../services/meta-ads-campaign-publish.js";
+import { setGoogleAdsCampaignStatus, syncGoogleAdsReviewStatus, GoogleAdsPublishError, publishGoogleAdsCreativeVariant, setGoogleAdsCreativeVariantStatus } from "../services/google-ads-campaign-publish.js";
+import { setMetaAdsCampaignStatus, syncMetaAdsReviewStatus, MetaAdsPublishError, publishMetaAdsCreativeVariant, setMetaAdsCreativeVariantStatus } from "../services/meta-ads-campaign-publish.js";
 import { publishCampaignThroughChannelRegistry } from "../services/channelPublishBridge.js";
 import { getAdsOverview, recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 
@@ -473,10 +473,25 @@ router.get("/tenants/:tenantId/ads/campaigns", async (req, res) => {
   for (const creative of creatives) {
     if (!latestByCampaign.has(creative.campaignId)) latestByCampaign.set(creative.campaignId, creative);
   }
-  const creativesByCampaign = new Map<string, typeof creatives>();
+  const performanceRows = await db.select().from(adPerformanceSnapshotsTable)
+    .where(inArray(adPerformanceSnapshotsTable.campaignId, rows.map((row) => row.id)));
+  const performanceByCreative = new Map<string, { impressions: number; clicks: number; spend: number; conversions: number }>();
+  for (const snapshot of performanceRows) {
+    if (!snapshot.creativeId) continue;
+    const current = performanceByCreative.get(snapshot.creativeId) ?? { impressions: 0, clicks: 0, spend: 0, conversions: 0 };
+    current.impressions += Number(snapshot.impressoes ?? 0);
+    current.clicks += Number(snapshot.cliques ?? 0);
+    current.spend += Number(snapshot.custo ?? 0);
+    current.conversions += Number(snapshot.conversoesPlataforma ?? 0);
+    performanceByCreative.set(snapshot.creativeId, current);
+  }
+  const creativesByCampaign = new Map<string, Array<typeof creatives[number] & { performance: { impressions: number; clicks: number; spend: number; conversions: number } }>>();
   for (const creative of creatives) {
     const list = creativesByCampaign.get(creative.campaignId) ?? [];
-    list.push(creative);
+    list.push({
+      ...creative,
+      performance: performanceByCreative.get(creative.id) ?? { impressions: 0, clicks: 0, spend: 0, conversions: 0 },
+    });
     creativesByCampaign.set(creative.campaignId, list);
   }
   return res.json(rows.map((row) => ({
@@ -920,6 +935,77 @@ router.post("/tenants/:tenantId/ads/campaigns/:id/gerar-criativo", async (req, r
     if (error instanceof AdAutomationError) return res.status(error.status).json({ error: error.message });
     req.log.error({ error, tenantId, campaignId: campanha.id }, "ads: falha inesperada ao gerar criativo");
     return res.status(500).json({ error: "Falha inesperada ao gerar criativo." });
+  }
+});
+
+router.post("/tenants/:tenantId/ads/creatives/:id/publish-variant", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  const creativeId = req.params.id as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const [creative] = await db.select({ id: adCreativesTable.id, campaignId: adCreativesTable.campaignId })
+    .from(adCreativesTable)
+    .where(eq(adCreativesTable.id, creativeId))
+    .limit(1);
+  if (!creative) return res.status(404).json({ error: "Criativo não encontrado." });
+
+  const plataforma = await getCampanhaPlataforma(tenantId, creative.campaignId);
+  try {
+    const result = plataforma === "google"
+      ? await publishGoogleAdsCreativeVariant(tenantId, creative.campaignId, creativeId)
+      : plataforma === "meta"
+        ? await publishMetaAdsCreativeVariant(tenantId, creative.campaignId, creativeId)
+        : null;
+    if (!result) return res.status(422).json({ error: "Teste A/B disponível apenas para Google e Meta." });
+    await recordAdCampaignEvent({
+      tenantId,
+      campaignId: creative.campaignId,
+      userId: (req as any).user?.sub,
+      eventType: "creative_variant_published",
+      severity: "success",
+      message: "Variação A/B publicada em modo pausado.",
+      metadata: { creativeId, plataforma },
+    });
+    return res.status(201).json(result);
+  } catch (error) {
+    if (error instanceof GoogleAdsPublishError || error instanceof MetaAdsPublishError) return res.status(422).json({ error: error.message });
+    req.log.error({ error, tenantId, creativeId }, "ads: falha ao publicar variação A/B");
+    return res.status(500).json({ error: "Não foi possível publicar a variação A/B." });
+  }
+});
+
+router.post("/tenants/:tenantId/ads/creatives/:id/:action(ativar|pausar)-variant", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  const creativeId = req.params.id as string;
+  const ativar = req.params.action === "ativar";
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const [creative] = await db.select({ id: adCreativesTable.id, campaignId: adCreativesTable.campaignId })
+    .from(adCreativesTable)
+    .where(eq(adCreativesTable.id, creativeId))
+    .limit(1);
+  if (!creative) return res.status(404).json({ error: "Criativo não encontrado." });
+
+  const plataforma = await getCampanhaPlataforma(tenantId, creative.campaignId);
+  try {
+    if (plataforma === "google") await setGoogleAdsCreativeVariantStatus(tenantId, creative.campaignId, creativeId, ativar);
+    else if (plataforma === "meta") await setMetaAdsCreativeVariantStatus(tenantId, creative.campaignId, creativeId, ativar);
+    else return res.status(422).json({ error: "Teste A/B disponível apenas para Google e Meta." });
+
+    await recordAdCampaignEvent({
+      tenantId,
+      campaignId: creative.campaignId,
+      userId: (req as any).user?.sub,
+      eventType: ativar ? "creative_variant_activated" : "creative_variant_paused",
+      severity: ativar ? "success" : "warning",
+      message: ativar ? "Variação A/B ativada manualmente." : "Variação A/B pausada manualmente.",
+      metadata: { creativeId, plataforma },
+    });
+    return res.json({ success: true, status: ativar ? "active" : "paused" });
+  } catch (error) {
+    if (error instanceof GoogleAdsPublishError || error instanceof MetaAdsPublishError) return res.status(422).json({ error: error.message });
+    req.log.error({ error, tenantId, creativeId }, "ads: falha ao alterar variação A/B");
+    return res.status(500).json({ error: "Não foi possível alterar a variação A/B." });
   }
 });
 
