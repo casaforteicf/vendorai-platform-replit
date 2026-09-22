@@ -17,9 +17,6 @@ import {
   useUpdateObraDiario,
   useDeleteObraDiario,
   useGetObraEstoque,
-  useListObraCompras,
-  useCreateObraCompra,
-  useUpdateCompraObra,
   useListObraOrcamentos,
   useCreateObraOrcamento,
   useGetObraOrcamento,
@@ -38,7 +35,6 @@ import {
   getListObraEtapasQueryKey,
   getListObraDiarioQueryKey,
   getGetObraEstoqueQueryKey,
-  getListObraComprasQueryKey,
   getListObraOrcamentosQueryKey,
   getGetObraOrcamentoQueryKey,
 } from "@workspace/api-client-react";
@@ -62,9 +58,10 @@ import {
   Search, Loader2, FileText, Download, Sparkles,
 } from "lucide-react";
 import TabFinanceiro from "./TabFinanceiro";
+import RealProcurementWorkspace from "@/modules/arqdor/workspace/procurement-studio/RealProcurementWorkspace";
 import { format, differenceInCalendarDays, addDays, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import type { ObraEtapa, ObraDiario, CompraObra } from "@workspace/api-client-react";
+import type { ObraEtapa, ObraDiario } from "@workspace/api-client-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Cell, ResponsiveContainer, ReferenceLine,
 } from "recharts";
@@ -116,13 +113,6 @@ const ETAPAS_MODELO_EMPRESA: EtapaTemplate[] = [
   { nome: "Área externa", descricao: "Calçadas, muros, paisagismo e demais serviços externos.", duracaoDias: 12, responsavelSugerido: "Obra" },
   { nome: "Entrega", descricao: "Vistoria, correções, limpeza, documentação e entrega ao cliente.", duracaoDias: 7, responsavelSugerido: "Engenharia / Obra" },
 ];
-
-const COMPRA_STATUS: Record<string, { label: string; color: string }> = {
-  pendente:  { label: "Pendente",  color: "bg-amber-100 text-amber-700" },
-  aprovada:  { label: "Aprovada",  color: "bg-blue-100 text-blue-700" },
-  efetuada:  { label: "Efetuada",  color: "bg-emerald-100 text-emerald-700" },
-  cancelada: { label: "Cancelada", color: "bg-red-100 text-red-700" },
-};
 
 const DIARIO_STATUS: Record<string, { label: string; color: string }> = {
   rascunho:           { label: "Rascunho",         color: "bg-slate-100 text-slate-600" },
@@ -1681,163 +1671,8 @@ function EstoqueObra({ tenantId, obraId }: { tenantId: string; obraId: string })
     );
 }
 
-function Compras({ tenantId, obraId }: { tenantId: string; obraId: string }) {
-  const qc = useQueryClient();
-  const [addOpen, setAddOpen] = useState(false);
-  const [form, setForm] = useState({ descricao: "", fornecedor: "", quantidade: "", valorUnitario: "", valorTotal: "", dataPrevista: "", observacoes: "" });
-
-  const { data: compras = [], isLoading } = useListObraCompras(tenantId, obraId, {
-    query: { enabled: !!obraId, queryKey: getListObraComprasQueryKey(tenantId, obraId) },
-  });
-  const { mutateAsync: createCompra, isPending } = useCreateObraCompra();
-  const { mutateAsync: updateCompra } = useUpdateCompraObra();
-
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
-    const payload: Record<string, unknown> = { ...form };
-    Object.keys(payload).forEach((k) => { if (payload[k] === "") delete payload[k]; });
-    await createCompra({ tenantId, obraId, data: payload as any });
-    await qc.invalidateQueries({ queryKey: getListObraComprasQueryKey(tenantId, obraId) });
-    setAddOpen(false);
-    setForm({ descricao: "", fornecedor: "", quantidade: "", valorUnitario: "", valorTotal: "", dataPrevista: "", observacoes: "" });
-  }
-
-  async function changeStatus(compraId: string, status: string) {
-    await updateCompra({ tenantId, compraId, data: { status, ...(status === "efetuada" ? { dataEfetuada: format(new Date(), "yyyy-MM-dd") } : {}) } as any });
-    await qc.invalidateQueries({ queryKey: getListObraComprasQueryKey(tenantId, obraId) });
-  }
-
-  const pendentes = compras.filter((c) => c.status === "pendente").length;
-  const totalPrevisto = compras.filter((c) => c.status !== "cancelada").reduce((s, c) => s + parseFloat(c.valorTotal ?? "0"), 0);
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex gap-3 text-sm">
-          <span className="text-muted-foreground">{pendentes} pendentes</span>
-          <span className="font-medium">Total previsto: {fmtBRL(String(totalPrevisto))}</span>
-        </div>
-        <Dialog open={addOpen} onOpenChange={setAddOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm" className="gap-2"><Plus className="h-4 w-4" />Nova compra</Button>
-          </DialogTrigger>
-          <DialogContent className="w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <DialogHeader><DialogTitle>Registrar compra</DialogTitle></DialogHeader>
-            <form onSubmit={handleCreate} className="space-y-4">
-              <div className="space-y-2">
-                <Label>Descrição *</Label>
-                <Input required value={form.descricao} onChange={(e) => setForm((f) => ({ ...f, descricao: e.target.value }))} />
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label>Fornecedor</Label>
-                  <Input value={form.fornecedor} onChange={(e) => setForm((f) => ({ ...f, fornecedor: e.target.value }))} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Data prevista</Label>
-                  <Input type="date" value={form.dataPrevista} onChange={(e) => setForm((f) => ({ ...f, dataPrevista: e.target.value }))} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Quantidade</Label>
-                  <Input type="number" step="0.001" value={form.quantidade} onChange={(e) => setForm((f) => ({ ...f, quantidade: e.target.value }))} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Valor unitário (R$)</Label>
-                  <Input type="number" step="0.01" value={form.valorUnitario} onChange={(e) => setForm((f) => ({ ...f, valorUnitario: e.target.value }))} />
-                </div>
-                <div className="col-span-1 sm:col-span-2 space-y-2">
-                  <Label>Valor total (R$)</Label>
-                  <Input type="number" step="0.01" value={form.valorTotal} onChange={(e) => setForm((f) => ({ ...f, valorTotal: e.target.value }))} />
-                </div>
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => setAddOpen(false)}>Cancelar</Button>
-                <Button type="submit" disabled={isPending}>{isPending ? "Salvando..." : "Registrar"}</Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      {isLoading ? <div className="h-40 bg-muted animate-pulse rounded-xl" /> :
-       compras.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <ShoppingCart className="h-10 w-10 mx-auto mb-2 opacity-20" />
-          <p>Nenhuma compra registrada</p>
-        </div>
-      ) : (
-        <>
-          {/* Mobile cards */}
-          <div className="sm:hidden space-y-2">
-            {compras.map((c) => {
-              const sInfo = COMPRA_STATUS[c.status] ?? { label: c.status, color: "bg-muted" };
-              return (
-                <Card key={c.id}>
-                  <CardContent className="p-4 space-y-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="font-medium leading-snug">{c.descricao}</div>
-                      <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full ${sInfo.color}`}>{sInfo.label}</span>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <div className="text-muted-foreground text-xs">{c.fornecedor ?? "—"}</div>
-                      <div className="font-mono font-semibold">{fmtBRL(c.valorTotal)}</div>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <div className="text-xs text-muted-foreground">{c.dataPrevista ? fmt(c.dataPrevista) : "Sem data"}</div>
-                      <select className="text-xs border rounded px-1.5 py-1 bg-transparent" value={c.status} onChange={(e) => changeStatus(c.id, e.target.value)}>
-                        {Object.entries(COMPRA_STATUS).map(([v, { label }]) => <option key={v} value={v}>{label}</option>)}
-                      </select>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-
-          {/* Desktop table */}
-          <Card className="hidden sm:block">
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b bg-muted/30">
-                      <th className="text-left px-4 py-3 font-medium text-muted-foreground">Descrição</th>
-                      <th className="text-left px-4 py-3 font-medium text-muted-foreground">Fornecedor</th>
-                      <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
-                      <th className="text-right px-4 py-3 font-medium text-muted-foreground">Valor total</th>
-                      <th className="text-left px-4 py-3 font-medium text-muted-foreground">Data</th>
-                      <th className="px-4 py-3" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {compras.map((c) => {
-                      const sInfo = COMPRA_STATUS[c.status] ?? { label: c.status, color: "bg-muted" };
-                      return (
-                        <tr key={c.id} className="border-b hover:bg-muted/20">
-                          <td className="px-4 py-3 font-medium">{c.descricao}</td>
-                          <td className="px-4 py-3 text-muted-foreground">{c.fornecedor ?? "—"}</td>
-                          <td className="px-4 py-3">
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${sInfo.color}`}>{sInfo.label}</span>
-                          </td>
-                          <td className="px-4 py-3 text-right font-mono">{fmtBRL(c.valorTotal)}</td>
-                          <td className="px-4 py-3 text-muted-foreground text-xs">{c.dataPrevista ? fmt(c.dataPrevista) : "—"}</td>
-                          <td className="px-4 py-3">
-                            <select className="text-xs border rounded px-1.5 py-1 bg-transparent" value={c.status} onChange={(e) => changeStatus(c.id, e.target.value)}>
-                              {Object.entries(COMPRA_STATUS).map(([v, { label }]) => <option key={v} value={v}>{label}</option>)}
-                            </select>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
-        </>
-      )}
-    </div>
-  );
+function Compras({ obraId }: { tenantId: string; obraId: string }) {
+  return <RealProcurementWorkspace obraId={obraId} compact />;
 }
 
 // ─── TabOrcamento ─────────────────────────────────────────────────────────────
