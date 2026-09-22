@@ -665,15 +665,15 @@ export default function ConceptFacadeEditor({
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
               Comece pela linguagem visual; depois refine volumes, materiais, esquadrias e área externa.
             </p>
-            <div className="mt-4 grid grid-cols-2 gap-2">
+            <div className="mt-4 flex snap-x gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:grid md:grid-cols-2 md:overflow-visible md:pb-0">
               {STYLE_LABELS.map(([value, label]) => (
                 <button
                   key={value}
                   type="button"
                   onClick={() => onFacadeChange({ ...facade, style: value })}
                   className={facade.style === value
-                    ? "overflow-hidden rounded-2xl border-2 border-orange-500 bg-orange-50 text-left shadow-sm"
-                    : "overflow-hidden rounded-2xl border bg-white text-left hover:border-slate-300 hover:shadow-sm"}
+                    ? "w-[76%] shrink-0 snap-center overflow-hidden rounded-2xl border-2 border-orange-500 bg-orange-50 text-left shadow-sm md:w-auto"
+                    : "w-[76%] shrink-0 snap-center overflow-hidden rounded-2xl border bg-white text-left hover:border-slate-300 hover:shadow-sm md:w-auto"}
                 >
                   <FacadeStylePreview style={value} />
                   <div className="p-2.5">
@@ -723,7 +723,7 @@ export default function ConceptFacadeEditor({
 
       <div className="absolute inset-0 grid grid-cols-1 bg-slate-200 md:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]">
         <div className="relative min-w-0 overflow-hidden border-r border-slate-200 bg-[#eef1f3]">
-          <div className="absolute inset-x-0 top-14 h-[46dvh] md:inset-0 md:h-auto">
+          <div className="absolute inset-x-0 bottom-20 top-14 md:inset-0">
           <ConceptDerivedFacade
             lotWidth={lotWidth}
             levels={levels}
