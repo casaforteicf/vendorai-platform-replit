@@ -113,6 +113,12 @@ type PlannerAdsOverviewItem = {
   revenue: number;
   costPerLead: number | null;
   roas: number | null;
+  recommendation?: {
+    title: string;
+    reason: string;
+    action: string;
+    requiresApproval: boolean;
+  } | null;
 };
 
 type PlannerDestinationPreview = {
@@ -952,6 +958,29 @@ export default function PlanoMidia() {
                                       <p className="mt-0.5 text-xs font-semibold">{value}</p>
                                     </div>
                                   ))}
+                                </div>
+                                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                                  <div className="rounded-lg border bg-background p-3">
+                                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Eficiência</p>
+                                    <div className="mt-2 grid grid-cols-2 gap-2">
+                                      <div><p className="text-[10px] text-muted-foreground">Custo por lead</p><p className="text-sm font-semibold">{metric?.costPerLead == null ? "—" : `R$ ${metric.costPerLead.toFixed(2)}`}</p></div>
+                                      <div><p className="text-[10px] text-muted-foreground">ROAS</p><p className="text-sm font-semibold">{metric?.roas == null ? "—" : `${metric.roas.toFixed(2)}x`}</p></div>
+                                    </div>
+                                  </div>
+                                  <div className="rounded-lg border border-primary/20 bg-primary/[0.03] p-3">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <p className="text-xs font-semibold flex items-center gap-1.5"><Sparkles className="h-3.5 w-3.5 text-primary" />Recomendação da IA</p>
+                                      {metric?.recommendation?.requiresApproval ? <Badge variant="outline">Requer aprovação</Badge> : null}
+                                    </div>
+                                    {metric?.recommendation ? (
+                                      <>
+                                        <p className="mt-2 text-sm font-medium">{metric.recommendation.title}</p>
+                                        <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{metric.recommendation.reason}</p>
+                                      </>
+                                    ) : (
+                                      <p className="mt-2 text-[11px] text-muted-foreground">Sem ação recomendada neste momento.</p>
+                                    )}
+                                  </div>
                                 </div>
 
                                 <div className="mt-3 rounded-lg border bg-background p-3">
