@@ -258,6 +258,7 @@ const EMPTY_FORM = {
   objective: "whatsapp" as "whatsapp" | "lead" | "sale" | "visit" | "awareness",
   startDate: new Date().toISOString().slice(0, 10),
   endDate: new Date(Date.now() + 6 * 86_400_000).toISOString().slice(0, 10),
+  formTemplateId: "contato_rapido",
   specialAdCategory: "NONE" as "NONE" | "HOUSING" | "EMPLOYMENT" | "CREDIT" | "ISSUES_ELECTIONS_POLITICS",
   conversionMode: "vendorai" as "vendorai" | "platform" | "clicks",
   conversionConfirmed: true,
@@ -274,6 +275,25 @@ const OPCOES_STATUS_PARENTAL = ["Com filhos", "Sem filhos", "Desconhecido"];
 const OPCOES_RENDA = ["10% superior", "11-20%", "21-30%", "31-40%", "41-50%", "50% inferior", "Desconhecida"];
 
 const lista = (value: string) => value.split(/[,\n]/).map((item) => item.trim()).filter(Boolean);
+const FORM_TEMPLATES = [
+  ["contato_rapido", "Contato rápido"],
+  ["solicitar_orcamento", "Solicitar orçamento"],
+  ["agendar_atendimento", "Agendar atendimento"],
+  ["produto_interesse", "Interesse em produto"],
+  ["pre_projeto", "Pré-projeto / briefing"],
+  ["simulacao", "Simulação"],
+  ["captura_material", "Baixar material"],
+  ["reserva_compra", "Comprar / reservar"],
+] as const;
+
+const recommendedFormTemplate = (objective: string, itemTipo: ItemTipo) => {
+  if (["produto","veiculo","imovel"].includes(itemTipo)) return objective === "sale" ? "reserva_compra" : "produto_interesse";
+  if (objective === "visit") return "agendar_atendimento";
+  if (objective === "sale") return "solicitar_orcamento";
+  if (objective === "awareness") return "captura_material";
+  return "contato_rapido";
+};
+
 const campaignDays = (start: string, end: string) => {
   const from = new Date(`${start}T00:00:00`).getTime();
   const to = new Date(`${end}T00:00:00`).getTime();
@@ -576,6 +596,7 @@ export default function Ads() {
             startDate: form.startDate,
             endDate: form.endDate,
             totalBudget: Number(form.orcamentoDiario) * campaignDays(form.startDate, form.endDate),
+            leadFormTemplateId: form.formTemplateId,
             specialAdCategory: form.specialAdCategory,
             conversionTracking: { mode: form.conversionMode, confirmed: form.conversionMode !== "platform" || form.conversionConfirmed },
             automation: {
@@ -1118,7 +1139,15 @@ export default function Ads() {
                 const itemTipo = v as ItemTipo;
                 const destinoClique: DestinoClique = itemTipo === "landing_page" ? "landing_page" : itemTipo === "livre" ? "whatsapp" : "produto";
                 setSourceDraft(null);
-                setForm((f) => ({ ...f, itemTipo, itemId: "", itemLabel: "", destinoClique, contentGenerationId: "" }));
+                setForm((f) => ({
+                  ...f,
+                  itemTipo,
+                  itemId: "",
+                  itemLabel: "",
+                  destinoClique,
+                  contentGenerationId: "",
+                  formTemplateId: recommendedFormTemplate(f.objective, itemTipo),
+                }));
               }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -1246,10 +1275,22 @@ export default function Ads() {
                   <SelectItem value="produto">Página do produto/estoque</SelectItem>
                   <SelectItem value="landing_page">Landing Page gerada</SelectItem>
                   <SelectItem value="whatsapp">WhatsApp (clique-pra-conversar)</SelectItem>
-                  <SelectItem value="formulario_lead">Formulário de lead nativo</SelectItem>
+                  <SelectItem value="formulario_lead">Formulário VendorAI integrado ao CRM</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+            {form.destinoClique === "formulario_lead" && (
+              <div className="rounded-lg border bg-muted/20 p-3 space-y-2">
+                <LabelTip tip="O VendorAI sugere automaticamente o modelo conforme objetivo e item. Você pode trocar antes de publicar.">Modelo do formulário</LabelTip>
+                <Select value={form.formTemplateId} onValueChange={(v) => setForm((f) => ({ ...f, formTemplateId: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {FORM_TEMPLATES.map(([id, label]) => <SelectItem key={id} value={id}>{label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">As respostas entram no tenant correto, mantêm UTM/campanha e criam ou atualizam Lead + negócio no CRM.</p>
+              </div>
+            )}
 
             <div>
               <LabelTip tip="Teto de gasto por dia. Pode pausar ou mudar a qualquer momento.">Orçamento diário (R$)</LabelTip>
@@ -1280,7 +1321,12 @@ export default function Ads() {
               </div>
               <div>
                 <LabelTip tip="Escolha o resultado que você espera, não apenas o tipo de anúncio.">O que deve acontecer?</LabelTip>
-                <Select value={form.objective} onValueChange={(v) => setForm((f) => ({ ...f, objective: v as typeof f.objective, conversionMode: v === "awareness" ? "clicks" : "vendorai" }))}>
+                <Select value={form.objective} onValueChange={(v) => setForm((f) => ({
+                  ...f,
+                  objective: v as typeof f.objective,
+                  conversionMode: v === "awareness" ? "clicks" : "vendorai",
+                  formTemplateId: recommendedFormTemplate(v, f.itemTipo),
+                }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="whatsapp">Receber conversas no WhatsApp</SelectItem>
