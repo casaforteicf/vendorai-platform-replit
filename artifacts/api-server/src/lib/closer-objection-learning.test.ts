@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   calculateBreakRate,
   mergeResponseStats,
+  markResponseConversion,
   normalizeObjectionLabel,
   outcomeBreaksObjection,
   resolveEventOutcome,
@@ -27,9 +28,17 @@ describe("closer objection learning", () => {
     ]);
   });
 
+  it("marca conversão atrasada sem somar um novo uso", () => {
+    const current = [{ texto: "Posso calcular com seus dados?", usos: 2, conversoes: 0 }];
+    expect(markResponseConversion(current, "posso calcular com seus dados?")).toEqual([
+      { texto: "Posso calcular com seus dados?", usos: 2, conversoes: 1 },
+    ]);
+  });
+
   it("prioriza o resultado real do lead sobre inferência", () => {
     expect(resolveEventOutcome({ leadStatus: "cliente", inferredOutcome: "no_change" })).toBe("won");
     expect(resolveEventOutcome({ leadStatus: "perdido", inferredOutcome: "advanced" })).toBe("lost");
+    expect(resolveEventOutcome({ leadStatus: "qualificado", inferredOutcome: "no_change" })).toBe("advanced");
     expect(resolveEventOutcome({ leadStatus: "negociacao", inferredOutcome: "advanced" })).toBe("advanced");
   });
 
