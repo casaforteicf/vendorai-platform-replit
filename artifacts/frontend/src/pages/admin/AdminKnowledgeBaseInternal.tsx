@@ -29,7 +29,7 @@ type ScopeModule = {
   angle: string;
 };
 
-const scopeModules: ScopeModule[] = [
+const construtoraModules: ScopeModule[] = [
   {
     id: "pre-projeto-arqdor",
     group: "Aquisição",
@@ -344,6 +344,388 @@ const scopeModules: ScopeModule[] = [
   },
 ];
 
+const arquiteturaDesignModules: ScopeModule[] = [
+  {
+    id: "pre-projeto-experiencia",
+    group: "Aquisição",
+    title: "Pré-Projeto como Experiência de Captação",
+    summary: "Permite ao potencial cliente experimentar uma ideia de espaço antes da primeira reunião e chegar ao escritório com intenção mais clara.",
+    bullets: [
+      "Lead cria uma primeira ideia de ambiente, fachada ou espaço.",
+      "Coleta estilo, referências, necessidades, medidas iniciais e faixa de investimento.",
+      "Pode entrar por LP, site, anúncio, QR Code, WhatsApp ou app.",
+      "Entrega ao escritório um lead enriquecido, com contexto visual e briefing inicial.",
+    ],
+    angle: "Mostre o escritório oferecendo valor antes da reunião: o cliente não preenche apenas um formulário, ele começa a construir a visão do projeto.",
+  },
+  {
+    id: "briefing-inteligente",
+    group: "Aquisição",
+    title: "Briefing Inteligente",
+    summary: "Estrutura o levantamento inicial do cliente e reduz retrabalho na descoberta de necessidades.",
+    bullets: [
+      "Rotina, prioridades, dores, estilo e referências.",
+      "Ambientes, usuários, restrições, orçamento e prazo.",
+      "Anexos de fotos, plantas, croquis e inspirações.",
+      "Resumo automático para reunião e proposta.",
+    ],
+    angle: "Material focado em reduzir reuniões improdutivas e transformar preferência subjetiva em informação organizada.",
+  },
+  {
+    id: "landing-pages-arq",
+    group: "Aquisição",
+    title: "Landing Pages para Serviços de Arquitetura e Design",
+    summary: "Cria páginas por serviço, nicho, estilo, região ou campanha para captar leads com mensagem específica.",
+    bullets: [
+      "LP para interiores, arquitetura residencial, comercial, reforma ou consultoria.",
+      "LP por estilo, ambiente, cidade ou perfil de cliente.",
+      "Oferta com Pré-Projeto, diagnóstico ou briefing inicial.",
+      "Origem e interesse registrados no CRM.",
+    ],
+    angle: "Destaque a capacidade de criar ofertas específicas para cada serviço sem depender de uma única página institucional.",
+  },
+  {
+    id: "portfolio-conversao",
+    group: "Aquisição",
+    title: "Portfólio que Gera Conversão",
+    summary: "Transforma projetos e renders em ativos de captação conectados a CTA, origem e CRM.",
+    bullets: [
+      "Projetos organizados por estilo, ambiente, tipologia e serviço.",
+      "CTA para briefing, reunião ou Pré-Projeto.",
+      "Uso de antes/depois, conceito e resultado.",
+      "Rastreamento do interesse gerado pelo portfólio.",
+    ],
+    angle: "Mostre que portfólio deixa de ser apenas vitrine e passa a ser parte do funil comercial.",
+  },
+  {
+    id: "marketing-arq",
+    group: "Marketing",
+    title: "Marketing Ativo para Arquitetura e Design",
+    summary: "Organiza geração contínua de demanda usando projetos, bastidores, conceitos e autoridade profissional.",
+    bullets: [
+      "Planejamento por serviço, público e objetivo.",
+      "Campanhas para residencial, interiores, comercial, reforma e consultoria.",
+      "Nutrição de leads que ainda não estão prontos para contratar.",
+      "Remarketing de visitantes, propostas e contatos antigos.",
+    ],
+    angle: "Venda o marketing como uma rotina conectada ao pipeline, não como publicação isolada em rede social.",
+  },
+  {
+    id: "conteudo-arq",
+    group: "Marketing",
+    title: "Conteúdo, Reels e Vídeos de Projeto",
+    summary: "Transforma o processo criativo e os projetos em conteúdo comercial, educativo e de autoridade.",
+    bullets: [
+      "Roteiros de Reels, vídeos e apresentações.",
+      "Antes/depois, conceito, materiais e soluções.",
+      "Conteúdo sobre erros comuns, tendências e decisões de projeto.",
+      "Reaproveitamento de renders, fotos e etapas do trabalho.",
+    ],
+    angle: "Ideal para destacar o valor intelectual do projeto e mostrar o raciocínio por trás das escolhas.",
+  },
+  {
+    id: "campanhas-arq",
+    group: "Marketing",
+    title: "Campanhas por Serviço e Perfil",
+    summary: "Cria campanhas completas para serviços específicos e públicos distintos.",
+    bullets: [
+      "Público, promessa, criativos, LP, CTA e nutrição.",
+      "Campanhas por ambiente, tipo de projeto, cidade ou ticket.",
+      "Integração com conteúdo e anúncios.",
+      "Rastreamento até reunião, proposta e fechamento.",
+    ],
+    angle: "Mostre como cada serviço do escritório pode ter seu próprio funil de aquisição.",
+  },
+  {
+    id: "prospector-arq",
+    group: "Comercial",
+    title: "Prospector de Oportunidades",
+    summary: "Ajuda o escritório a encontrar oportunidades fora da demanda espontânea.",
+    bullets: [
+      "Perfis de clientes, empresas, empreendimentos e regiões.",
+      "Sinais de expansão, reforma, abertura, mudança ou investimento.",
+      "Fila priorizada de oportunidades.",
+      "Encaminhamento para SDR com contexto.",
+    ],
+    angle: "Material focado em reduzir dependência de indicação e Instagram para gerar novos projetos.",
+  },
+  {
+    id: "crm-arq",
+    group: "Comercial",
+    title: "CRM e Cliente 360",
+    summary: "Centraliza informações comerciais, criativas e relacionais de cada cliente e projeto.",
+    bullets: [
+      "Origem, briefing, estilo e referências.",
+      "Histórico de conversas, documentos e reuniões.",
+      "Propostas, oportunidades e próximos passos.",
+      "Projetos anteriores, relacionamento e indicações.",
+    ],
+    angle: "Destaque a memória do escritório organizada em um só lugar, sem depender da pessoa que atendeu.",
+  },
+  {
+    id: "pipeline-arq",
+    group: "Comercial",
+    title: "Pipeline de Projetos",
+    summary: "Organiza oportunidades desde o primeiro contato até contrato, projeto e acompanhamento.",
+    bullets: [
+      "Etapas comerciais configuráveis.",
+      "Valor, probabilidade, responsável e próxima ação.",
+      "Motivos de perda e reativação.",
+      "Visão por serviço, região e profissional.",
+    ],
+    angle: "Ideal para mostrar previsibilidade de carteira e acompanhamento de propostas de projeto.",
+  },
+  {
+    id: "agentes-arq",
+    group: "IA",
+    title: "Agentes de IA para Atendimento e Vendas",
+    summary: "Distribui o trabalho de qualificação, negociação, follow-up e suporte ao longo da jornada.",
+    bullets: [
+      "SDR entende necessidade e qualifica o lead.",
+      "Closer acompanha proposta, valor e objeções.",
+      "Follow-up mantém oportunidades aquecidas.",
+      "Suporte acompanha dúvidas, entregas e pós-projeto.",
+    ],
+    angle: "Mostre um time digital atuando sem substituir a relação autoral do arquiteto ou designer.",
+  },
+  {
+    id: "agenda-arq",
+    group: "Comercial",
+    title: "Agenda, Reuniões e Visitas",
+    summary: "Organiza reuniões, levantamentos, medições, apresentações e visitas ligadas ao cliente e ao projeto.",
+    bullets: [
+      "Reunião de briefing.",
+      "Levantamento e medição.",
+      "Apresentação de conceito e revisões.",
+      "Visitas técnicas e acompanhamento.",
+    ],
+    angle: "Destaque contexto e preparação: cada compromisso já nasce ligado ao cliente, projeto e etapa.",
+  },
+  {
+    id: "arqdor-modelagem",
+    group: "Arqdor.ai",
+    title: "Modelagem e Estudo de Layout",
+    summary: "Ajuda a desenvolver alternativas de distribuição espacial e organização do projeto.",
+    bullets: [
+      "Estudo de planta e layout.",
+      "Ambientes e fluxos.",
+      "Famílias e componentes.",
+      "Comparação de alternativas.",
+    ],
+    angle: "Material focado em velocidade de estudo sem abrir mão da decisão profissional.",
+  },
+  {
+    id: "conceito-moodboard",
+    group: "Arqdor.ai",
+    title: "Conceito, Moodboard e Direção Visual",
+    summary: "Organiza referências e traduz preferências do cliente em uma direção visual coerente.",
+    bullets: [
+      "Estilo, paleta, materiais e referências.",
+      "Moodboard por ambiente ou projeto.",
+      "Conceito central e justificativas.",
+      "Registro das escolhas aprovadas.",
+    ],
+    angle: "Destaque a redução da subjetividade e o alinhamento visual antes de aprofundar o projeto.",
+  },
+  {
+    id: "biblioteca-materiais",
+    group: "Arqdor.ai",
+    title: "Biblioteca de Materiais e Acabamentos",
+    summary: "Centraliza materiais reais, texturas, especificações e aplicações para projeto e apresentação.",
+    bullets: [
+      "Pisos, revestimentos, pedras, tintas, metais, iluminação e demais acabamentos.",
+      "Amostra e aplicação em ambiente.",
+      "Fabricante, linha, código e observações.",
+      "Substituição progressiva por parceiros locais.",
+    ],
+    angle: "Material ideal para mostrar precisão, padronização e uso de materiais reais nas decisões de projeto.",
+  },
+  {
+    id: "componentes-mobiliario",
+    group: "Arqdor.ai",
+    title: "Biblioteca de Componentes, Mobiliário e Equipamentos",
+    summary: "Permite utilizar peças reais ou equivalentes no desenvolvimento e na apresentação do projeto.",
+    bullets: [
+      "Mobiliário, marcenaria, eletros, iluminação e objetos.",
+      "Famílias por fabricante e categoria.",
+      "Dimensões e aplicações.",
+      "Troca por parceiros e fornecedores locais.",
+    ],
+    angle: "Destaque a aproximação entre imagem apresentada, especificação e aquilo que poderá ser comprado.",
+  },
+  {
+    id: "render-arq",
+    group: "Arqdor.ai",
+    title: "Render e Visualização de Alta Fidelidade",
+    summary: "Transforma o projeto em imagens de apresentação com foco em entendimento, aprovação e venda.",
+    bullets: [
+      "Render de interiores e arquitetura.",
+      "Preservação do projeto e materiais definidos.",
+      "Variações controladas de acabamento e atmosfera.",
+      "Imagens de alta resolução para cliente e marketing.",
+    ],
+    angle: "Ideal para mostrar ao cliente o projeto antes da execução e reduzir decisões baseadas apenas em planta técnica.",
+  },
+  {
+    id: "ai-review-correcoes",
+    group: "Arqdor.ai",
+    title: "AI Review, Correções e Revisões",
+    summary: "Ajuda a registrar, organizar e revisar alterações solicitadas durante o desenvolvimento.",
+    bullets: [
+      "Comentários por ambiente ou elemento.",
+      "Histórico de revisões.",
+      "Comparação entre versões.",
+      "Checklist de pendências e aprovações.",
+    ],
+    angle: "Destaque controle de revisão e redução de mensagens soltas que geram retrabalho.",
+  },
+  {
+    id: "portal-aprovacoes",
+    group: "Cliente",
+    title: "Portal do Cliente e Aprovações",
+    summary: "Cria um ambiente organizado para o cliente acompanhar o projeto e aprovar decisões.",
+    bullets: [
+      "Projetos, renders, documentos e versões.",
+      "Aprovação ou solicitação de ajuste.",
+      "Histórico de decisões.",
+      "Somente informações liberadas pelo escritório.",
+    ],
+    angle: "Material focado em experiência premium, transparência e menos aprovação perdida em conversas.",
+  },
+  {
+    id: "planejamento-projeto",
+    group: "Gestão de Projeto",
+    title: "Planejamento e Cronograma do Projeto",
+    summary: "Organiza o trabalho do escritório por fases, entregas, dependências, responsáveis e prazos.",
+    bullets: [
+      "Briefing, levantamento, estudo, anteprojeto, executivo e detalhamentos.",
+      "Dependências e marcos.",
+      "Responsáveis e prazos.",
+      "Replanejamento e acompanhamento.",
+    ],
+    angle: "Destaque gestão semelhante a um projeto profissional, com visão clara do que vem antes, depois e por quem.",
+  },
+  {
+    id: "tarefas-equipe",
+    group: "Gestão de Projeto",
+    title: "Tarefas, Equipe e Responsabilidades",
+    summary: "Distribui atividades entre arquitetos, designers, detalhistas, renderistas e demais envolvidos.",
+    bullets: [
+      "Tarefas por etapa e projeto.",
+      "Responsável, prazo e prioridade.",
+      "Pendências e bloqueios.",
+      "Visão de carga e andamento.",
+    ],
+    angle: "Material para escritórios que cresceram e precisam sair da gestão por mensagem e memória.",
+  },
+  {
+    id: "honorarios-propostas",
+    group: "Financeiro",
+    title: "Honorários, Propostas e Contratos",
+    summary: "Estrutura a venda do serviço profissional desde escopo e honorários até aceite e contrato.",
+    bullets: [
+      "Escopo de serviço e entregáveis.",
+      "Honorários por etapa, pacote ou modalidade.",
+      "Versões e negociações.",
+      "Aceite, contrato e condições comerciais.",
+    ],
+    angle: "Destaque clareza de escopo e redução de conflitos sobre o que está ou não incluído no serviço.",
+  },
+  {
+    id: "especificacoes-caderno",
+    group: "Documentação",
+    title: "Especificações e Caderno de Materiais",
+    summary: "Consolida as decisões de projeto em documentação organizada para cliente, fornecedor e execução.",
+    bullets: [
+      "Material, fabricante, linha, código e aplicação.",
+      "Ambiente e quantitativo quando aplicável.",
+      "Imagens e observações.",
+      "Atualização conforme revisão do projeto.",
+    ],
+    angle: "Mostre a passagem do conceito para uma documentação clara e utilizável.",
+  },
+  {
+    id: "fornecedores-cotacoes-arq",
+    group: "Fornecedores",
+    title: "Fornecedores, Orçamentos e Cotações",
+    summary: "Organiza parceiros e tomada de preços vinculados ao projeto.",
+    bullets: [
+      "Fornecedores por categoria e região.",
+      "Solicitação de orçamento.",
+      "Comparação de preço, prazo e condição.",
+      "Histórico por cliente e projeto.",
+    ],
+    angle: "Destaque menos planilhas e mensagens dispersas na fase de especificação e compra.",
+  },
+  {
+    id: "acompanhamento-implantacao",
+    group: "Execução",
+    title: "Acompanhamento de Implantação e Obra",
+    summary: "Permite registrar visitas, ocorrências e compatibilizações durante a execução do projeto.",
+    bullets: [
+      "Visitas técnicas e registros fotográficos.",
+      "Pendências e decisões.",
+      "Compatibilizações e correções.",
+      "Comunicação organizada com cliente e executores.",
+    ],
+    angle: "Material focado em proteger a intenção do projeto durante a execução e manter histórico técnico.",
+  },
+  {
+    id: "financeiro-projetos",
+    group: "Financeiro",
+    title: "Financeiro por Projeto",
+    summary: "Ajuda a acompanhar receita, recebimentos, custos internos e rentabilidade do serviço.",
+    bullets: [
+      "Honorários contratados.",
+      "Parcelas e recebimentos.",
+      "Horas, custos e despesas vinculadas.",
+      "Resultado por projeto e serviço.",
+    ],
+    angle: "Destaque gestão de rentabilidade do escritório, não apenas faturamento.",
+  },
+  {
+    id: "revenue-scout-arq",
+    group: "Inteligência",
+    title: "Revenue Scout para Escritórios",
+    summary: "Identifica novas oportunidades na base de clientes, leads e projetos anteriores.",
+    bullets: [
+      "Reforma de novos ambientes.",
+      "Novos imóveis e expansões.",
+      "Indicações.",
+      "Reativação de propostas e contatos antigos.",
+    ],
+    angle: "Material focado em gerar nova receita a partir da carteira que o escritório já construiu.",
+  },
+  {
+    id: "pos-projeto",
+    group: "Cliente",
+    title: "Pós-Projeto e Relacionamento",
+    summary: "Mantém o relacionamento depois da entrega e abre espaço para avaliação, indicação e novos serviços.",
+    bullets: [
+      "Acompanhamento pós-entrega.",
+      "Dúvidas e ajustes.",
+      "Avaliação do cliente.",
+      "Indicações e novas oportunidades.",
+    ],
+    angle: "Destaque que o relacionamento não termina na entrega do arquivo final.",
+  },
+];
+
+type SegmentKey = "construtoras" | "arquitetura-design";
+
+const segmentCatalog: Record<SegmentKey, { label: string; description: string; modules: ScopeModule[] }> = {
+  construtoras: {
+    label: "Construtoras",
+    description: "Captação, vendas, orçamento, planejamento, execução, custos, app e pós-venda.",
+    modules: construtoraModules,
+  },
+  "arquitetura-design": {
+    label: "Arquitetura & Design",
+    description: "Captação, briefing, criação, apresentação, aprovação, gestão de projeto, fornecedores e relacionamento.",
+    modules: arquiteturaDesignModules,
+  },
+};
+
 const actionBriefs = {
   marketing: {
     title: "Usar no Marketing",
@@ -376,11 +758,11 @@ const actionBriefs = {
 
 type ActionKey = keyof typeof actionBriefs;
 
-function moduleContext(module: ScopeModule | null) {
+function moduleContext(segmentLabel: string, modules: ScopeModule[], module: ScopeModule | null) {
   if (!module) {
     return [
-      "ESCOPO: Construtoras — visão completa",
-      ...scopeModules.map((item) => `- ${item.title}: ${item.summary}`),
+      `ESCOPO: ${segmentLabel} — visão completa`,
+      ...modules.map((item) => `- ${item.title}: ${item.summary}`),
     ].join("\n");
   }
 
@@ -399,15 +781,19 @@ function moduleContext(module: ScopeModule | null) {
 export default function AdminKnowledgeBaseInternal() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const [segment, setSegment] = useState<SegmentKey>("construtoras");
   const [selectedScopeId, setSelectedScopeId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [group, setGroup] = useState("Todos");
   const [preparedBrief, setPreparedBrief] = useState("");
   const [preparedTitle, setPreparedTitle] = useState("");
 
+  const activeCatalog = segmentCatalog[segment];
+  const scopeModules = activeCatalog.modules;
+
   const groups = useMemo(
     () => ["Todos", ...Array.from(new Set(scopeModules.map((item) => item.group)))],
-    [],
+    [scopeModules],
   );
 
   const selectedScope = useMemo(
@@ -434,26 +820,26 @@ export default function AdminKnowledgeBaseInternal() {
       title: module ? `Escopo selecionado: ${module.title}` : "Escopo completo selecionado",
       description: module
         ? "As próximas ações usarão somente esta característica."
-        : "As próximas ações poderão usar a visão completa de Construtoras.",
+        : `As próximas ações poderão usar a visão completa de ${activeCatalog.label}.`,
     });
   }
 
   function prepareAction(key: ActionKey) {
     const action = actionBriefs[key];
-    const context = moduleContext(selectedScope);
+    const context = moduleContext(activeCatalog.label, scopeModules, selectedScope);
     const brief = `${context}\n\nOBJETIVO\n${action.instruction}`;
-    const scopeSlug = selectedScope?.id ?? "construtoras-completo";
+    const scopeSlug = selectedScope?.id ?? `${segment}-completo`;
 
     sessionStorage.setItem("vendorai_superadmin_internal_scope_v1", JSON.stringify({
       scope: scopeSlug,
-      title: selectedScope?.title ?? "Escopo Comercial — Construtoras",
+      title: selectedScope?.title ?? `Escopo Comercial — ${activeCatalog.label}`,
       group: selectedScope?.group ?? "Completo",
       action: key,
       brief,
       createdAt: new Date().toISOString(),
     }));
 
-    setPreparedTitle(`${action.title} — ${selectedScope?.title ?? "Construtoras"}`);
+    setPreparedTitle(`${action.title} — ${selectedScope?.title ?? activeCatalog.label}`);
     setPreparedBrief(brief);
 
     if ("href" in action && action.href) {
@@ -490,9 +876,43 @@ export default function AdminKnowledgeBaseInternal() {
               Biblioteca estratégica modular. Selecione uma característica específica do sistema e gere material exclusivo sobre ela, sem precisar usar o escopo completo.
             </p>
           </div>
-          <Badge variant="outline">Construtoras · Biblioteca modular</Badge>
+          <Badge variant="outline">{activeCatalog.label} · Biblioteca modular</Badge>
         </div>
       </div>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Segmento</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {(Object.keys(segmentCatalog) as SegmentKey[]).map((key) => {
+              const item = segmentCatalog[key];
+              const active = segment === key;
+              return (
+                <Button
+                  key={key}
+                  variant={active ? "default" : "outline"}
+                  className="h-auto justify-start p-4 text-left"
+                  onClick={() => {
+                    setSegment(key);
+                    setSelectedScopeId(null);
+                    setGroup("Todos");
+                    setSearch("");
+                    setPreparedBrief("");
+                    setPreparedTitle("");
+                  }}
+                >
+                  <span>
+                    <strong className="block">{item.label}</strong>
+                    <span className={active ? "text-xs text-primary-foreground/80" : "text-xs text-muted-foreground"}>{item.description}</span>
+                  </span>
+                </Button>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
 
       <Card className="border-primary/20">
         <CardHeader>
@@ -505,7 +925,7 @@ export default function AdminKnowledgeBaseInternal() {
           <div className="mb-4 rounded-xl border bg-muted/30 p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Contexto ativo</p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <Badge>{selectedScope?.title ?? "Escopo Completo — Construtoras"}</Badge>
+              <Badge>{selectedScope?.title ?? `Escopo Completo — ${activeCatalog.label}`}</Badge>
               {selectedScope && <Badge variant="outline">{selectedScope.group}</Badge>}
               {selectedScope && (
                 <Button variant="ghost" size="sm" onClick={() => selectScope(null)}>
@@ -514,7 +934,7 @@ export default function AdminKnowledgeBaseInternal() {
               )}
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
-              {selectedScope?.summary ?? "As ações abaixo considerarão toda a proposta comercial e operacional do segmento."}
+              {selectedScope?.summary ?? activeCatalog.description}
             </p>
           </div>
 
@@ -567,7 +987,7 @@ export default function AdminKnowledgeBaseInternal() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
             <Building2 className="h-5 w-5" />
-            Biblioteca de Escopos — Construtoras
+            Biblioteca de Escopos — {activeCatalog.label}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -577,7 +997,7 @@ export default function AdminKnowledgeBaseInternal() {
               <Input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Buscar: pré-projeto, orçamento, compras, Revenue Scout..."
+                placeholder="Buscar uma função, dor, recurso ou característica..."
                 className="pl-9"
               />
             </div>
