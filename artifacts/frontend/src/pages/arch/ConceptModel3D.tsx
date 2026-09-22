@@ -77,6 +77,13 @@ type Props = {
     position: { x: number; y: number; z: number };
     target: { x: number; y: number; z: number };
   }>) => void;
+  onTourPointActivate?: (point: {
+    id: string;
+    name: string;
+    floor: number;
+    position: { x: number; y: number; z: number };
+    target: { x: number; y: number; z: number };
+  }) => void;
   onRenderView?: (lightingMode: "day" | "sunset" | "night", renderView: "interior" | "exterior") => void;
 };
 
@@ -575,6 +582,7 @@ export default function ConceptModel3D({
   onCancelPaint,
   tourPoints = [],
   onTourPointsChange,
+  onTourPointActivate,
   onRenderView,
 }: Props) {
   const [rotation, setRotation] = useState(35);
@@ -1166,6 +1174,7 @@ export default function ConceptModel3D({
                       type="button"
                       onClick={() => {
                         setNavigationMode("orbit");
+                        onTourPointActivate?.(point);
                         setActiveTourPointId(point.id);
                       }}
                       className={activeTourPointId === point.id
