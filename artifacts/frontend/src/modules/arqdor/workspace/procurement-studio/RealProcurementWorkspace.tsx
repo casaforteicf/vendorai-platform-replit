@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useWorkspaceProject } from "../WorkspaceContext";
+import React, { useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { EMPTY_PROJECT_CONTEXT, WorkspaceContext } from "../WorkspaceContext";
 
 type View = "requests" | "quotes" | "orders" | "receiving" | "finance";
 
@@ -204,7 +204,9 @@ function Metric({ label, value, hint }: { label: string; value: string; hint: st
 }
 
 export default function RealProcurementWorkspace({ arqState = {}, onNavigate, obraId: directObraId = "", compact = false }: Props) {
-  const { projectCtx, setProjectCtx } = useWorkspaceProject();
+  const workspace = useContext(WorkspaceContext);
+  const projectCtx = workspace?.projectCtx ?? EMPTY_PROJECT_CONTEXT;
+  const setProjectCtx = workspace?.setProjectCtx;
   const meta = useMemo(() => projectMeta(arqState, projectCtx), [arqState, projectCtx]);
   const [view, setView] = useState<View>("requests");
   const [bundle, setBundle] = useState<Bundle | null>(null);
@@ -227,7 +229,7 @@ export default function RealProcurementWorkspace({ arqState = {}, onNavigate, ob
         const ensured = await api<{ obra: any }>("/api/arch/construction/ensure", { method: "POST", body: JSON.stringify({ projectId: meta.id, name: meta.name, clientName: meta.clientName, budget: meta.budget, status: meta.status }) });
         obraId = String(ensured.obra?.id ?? "");
         if (!obraId) throw new Error("Não foi possível vincular o projeto à obra.");
-        if ((projectCtx as any)?.obraId !== obraId) setProjectCtx({ ...(projectCtx as any), id: meta.id, name: meta.name, obraId } as any);
+        if (setProjectCtx && (projectCtx as any)?.obraId !== obraId) setProjectCtx({ ...(projectCtx as any), id: meta.id, name: meta.name, obraId } as any);
       }
       const raw = await api<any>(`/api/arch/procurement/${obraId}`);
       const requests = (raw.requests ?? []).map(normalizeRequest);
