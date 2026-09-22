@@ -1660,26 +1660,29 @@ export default function Configuracoes() {
   useEffect(() => {
     const url = new URL(window.location.href);
     const connected = url.searchParams.get("whatsappConnected");
-    const error = url.searchParams.get("whatsappError");
+    const legacyError = url.searchParams.get("whatsappError");
+    if (!connected && !legacyError) return;
+
+    // O WhatsApp padrão do VendorAI usa QR Code / Evolution API.
+    // Parâmetros abaixo pertencem ao fluxo Meta Cloud API legado. Quando
+    // alguém retorna por um callback antigo/expirado, não devemos exibir
+    // "Sessão inválida" nem induzir uma nova tentativa pelo fluxo antigo.
     if (connected === "1") {
-      toast({ title: "WhatsApp conectado com sucesso!" });
       waConnection.refetch();
-      window.history.replaceState({}, "", window.location.pathname);
     }
-    if (error) {
-      const messages: Record<string, string> = {
-        access_denied: "Permissão negada. Tente novamente.",
-        invalid_state: "Sessão inválida. Tente novamente.",
-        no_waba: "Nenhuma conta WhatsApp Business encontrada.",
-        no_phone: "Nenhum número de telefone encontrado.",
-        token_exchange: "A Meta não autorizou a troca do código de acesso.",
-        token_extension: "Não foi possível validar o token do WhatsApp.",
-        waba_lookup: "Não foi possível consultar sua conta WhatsApp Business.",
-        phone_lookup: "Não foi possível consultar os números da conta WhatsApp.",
-        exchange_failed: "Erro ao conectar. Tente novamente.",
-      };
-      toast({ title: messages[error] ?? "Erro ao conectar WhatsApp.", variant: "destructive" });
-      window.history.replaceState({}, "", window.location.pathname);
+
+    setActiveTab("integracoes");
+    url.searchParams.delete("whatsappConnected");
+    url.searchParams.delete("whatsappError");
+    url.searchParams.set("tab", "integracoes");
+    url.searchParams.set("integration", "whatsapp");
+    window.history.replaceState({}, "", `${url.pathname}?${url.searchParams.toString()}${url.hash}`);
+
+    if (legacyError) {
+      toast({
+        title: "Conecte o WhatsApp pelo QR Code",
+        description: "O fluxo antigo da Meta não é mais usado para novas conexões.",
+      });
     }
   }, [location]);
 
