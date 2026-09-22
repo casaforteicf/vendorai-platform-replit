@@ -926,7 +926,7 @@ router.post("/prospector/construction-signals/prospect", async (req, res) => {
   if (actorName && actorType === "empresa") {
     try {
       await checkApiQuota(tenantId, "google_places", req.log);
-      const place = await searchPlace(\`\${actorName} \${work.local}\`, req.log);
+      const place = await searchPlace(`${actorName} ${work.local}`, req.log);
       if (place?.nomeEmpresa) {
         const expected = normalizeName(actorName);
         const found = normalizeName(place.nomeEmpresa);
@@ -942,8 +942,8 @@ router.post("/prospector/construction-signals/prospect", async (req, res) => {
   }
 
   const workKey = constructionWorkKey(work);
-  const actorLabel = actorName || \`Oportunidade — \${work.obra}\`;
-  const prospectKey = compactConstructionKey(\`\${workKey}|\${actorRole}|\${actorLabel}\`);
+  const actorLabel = actorName || `Oportunidade — ${work.obra}`;
+  const prospectKey = compactConstructionKey(`${workKey}|${actorRole}|${actorLabel}`);
 
   const [existing] = await db
     .select({
@@ -956,7 +956,7 @@ router.post("/prospector/construction-signals/prospect", async (req, res) => {
     .from(leadsTable)
     .where(and(
       eq(leadsTable.tenantId, tenantId),
-      sql\`\${leadsTable.metadata}->>'construction_prospect_key' = \${prospectKey}\`,
+      sql`${leadsTable.metadata}->>'construction_prospect_key' = ${prospectKey}`,
     ))
     .limit(1);
 
@@ -964,7 +964,7 @@ router.post("/prospector/construction-signals/prospect", async (req, res) => {
   const evidenceItem = {
     key: "construction_work_signal",
     label: "Obra/projeto identificado em fonte pública",
-    value: \`\${work.obra}\${work.fase ? \` · fase \${work.fase}\` : ""}\`,
+    value: `${work.obra}${work.fase ? ` · fase ${work.fase}` : ""}`,
     source: work.sourceUrl ?? work.sourceTitle ?? "Radar de Obras",
     confidence: work.sourceAuthority === "oficial" ? "high" : work.sourceAuthority === "primaria" ? "medium" : "low",
     observedAt: now,
@@ -1030,7 +1030,7 @@ router.post("/prospector/construction-signals/prospect", async (req, res) => {
         endereco: work.endereco ?? undefined,
         constructionStage: work.fase ?? undefined,
         propensityScore: Math.max(scored.score, 0),
-        priorityReason: \`Radar de Obras: \${scored.reason}\`,
+        priorityReason: `Radar de Obras: ${scored.reason}`,
         proximaAcao: actorName
           ? "Prospecctor: pesquisar contexto e iniciar diagnóstico consultivo"
           : "Identificar proprietário, arquiteto/engenheiro ou empresa responsável antes da abordagem",
@@ -1047,7 +1047,7 @@ router.post("/prospector/construction-signals/prospect", async (req, res) => {
       leadId: existing.id,
       tipo: "tarefa",
       titulo: "Radar de Obras — sinal atualizado",
-      descricao: \`\${work.obra} · \${work.local} · prioridade \${scored.priority} (\${scored.score}/100). \${work.evidencia}\`,
+      descricao: `${work.obra} · ${work.local} · prioridade ${scored.priority} (${scored.score}/100). ${work.evidencia}`,
       status: "concluida",
     });
 
@@ -1059,7 +1059,7 @@ router.post("/prospector/construction-signals/prospect", async (req, res) => {
       priority: scored.priority,
       priorityReason: scored.reason,
       readyForOutreach: Boolean(existing.telefone ?? telefone),
-      message: \`Sinal atualizado no Prospecctor para \${existing.nome}.\`,
+      message: `Sinal atualizado no Prospecctor para ${existing.nome}.`,
     });
   }
 
@@ -1071,10 +1071,10 @@ router.post("/prospector/construction-signals/prospect", async (req, res) => {
     websiteUrl: websiteUrl ?? undefined,
     endereco: work.endereco ?? undefined,
     source: "construction_radar",
-    mercadoSegmento: \`Construção civil \${work.categoria ?? "residencial"}\`,
+    mercadoSegmento: `Construção civil ${work.categoria ?? "residencial"}`,
     enrichmentStatus: "pending",
     propensityScore: scored.score,
-    priorityReason: \`Radar de Obras: \${scored.reason}\`,
+    priorityReason: `Radar de Obras: ${scored.reason}`,
     constructionStage: work.fase ?? undefined,
     proximaAcao: actorName
       ? "Prospecctor: pesquisar contexto e iniciar diagnóstico consultivo"
@@ -1098,7 +1098,7 @@ router.post("/prospector/construction-signals/prospect", async (req, res) => {
       tenantId,
       leadId: lead.id,
       funilId: firstFunil.id,
-      titulo: \`\${actorName || work.obra} — Radar de Obras\`,
+      titulo: `${actorName || work.obra} — Radar de Obras`,
       etapa: "novo",
     }).returning({ id: dealsTable.id });
     dealId = deal?.id ?? null;
@@ -1111,12 +1111,12 @@ router.post("/prospector/construction-signals/prospect", async (req, res) => {
     tipo: "tarefa",
     titulo: "Radar de Obras — nova oportunidade",
     descricao: [
-      \`\${work.obra} · \${work.local}\`,
-      work.endereco ? \`Endereço: \${work.endereco}\` : null,
-      actorName ? \`Contato recomendado: \${actorName} (\${actorRole})\` : "Contato: ainda a identificar",
-      \`Prioridade: \${scored.priority} (\${scored.score}/100)\`,
-      \`Evidência: \${work.evidencia}\`,
-      work.sourceUrl ? \`Fonte: \${work.sourceUrl}\` : null,
+      `${work.obra} · ${work.local}`,
+      work.endereco ? `Endereço: ${work.endereco}` : null,
+      actorName ? `Contato recomendado: ${actorName} (${actorRole})` : "Contato: ainda a identificar",
+      `Prioridade: ${scored.priority} (${scored.score}/100)`,
+      `Evidência: ${work.evidencia}`,
+      work.sourceUrl ? `Fonte: ${work.sourceUrl}` : null,
     ].filter(Boolean).join("\n"),
     status: "concluida",
   });
@@ -1139,7 +1139,7 @@ router.post("/prospector/construction-signals/prospect", async (req, res) => {
     priorityReason: scored.reason,
     readyForOutreach: Boolean(telefone),
     message: actorName
-      ? \`Obra enviada ao Prospecctor com \${actorName} como contato recomendado.\`
+      ? `Obra enviada ao Prospecctor com ${actorName} como contato recomendado.`
       : "Obra enviada ao Prospecctor; falta identificar um contato público antes da abordagem.",
   });
 });
