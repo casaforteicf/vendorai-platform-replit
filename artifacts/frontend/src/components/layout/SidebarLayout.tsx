@@ -151,8 +151,12 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     isArqdorEligibleVertical(effectiveVertical) ||
     isArqdorEligibleVertical(effectiveSegment);
   const arqdorModule = tenantNavModules.find((module) => module.moduleKey === "arch");
+  const arqdorEnabledByTenant = arqdorModule?.isEnabled === true;
   const arqdorDisabledByOverride = arqdorModule?.hasOverride === true && arqdorModule.isEnabled === false;
-  const arqdorVisible = !!effectiveTenantId && arqdorEligible && !arqdorDisabledByOverride;
+  const arqdorVisible =
+    !!effectiveTenantId &&
+    !arqdorDisabledByOverride &&
+    (arqdorEligible || arqdorEnabledByTenant || user?.platformRole === "super_admin");
 
   const erpEntitled = tenantNavModules.some(
     (module) => module.moduleKey === "financeiro" && module.isEnabled === true,
