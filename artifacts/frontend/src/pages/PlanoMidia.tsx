@@ -86,6 +86,15 @@ type PlannerAdCreative = {
   descriptions: string[];
   imagens: string[];
   status: "rascunho" | "aprovado";
+  externalAdId?: string | null;
+  externalCreativeId?: string | null;
+  externalStatus?: "paused" | "active" | null;
+  performance?: {
+    impressions: number;
+    clicks: number;
+    spend: number;
+    conversions: number;
+  };
 };
 
 type PlannerAdCampaign = {
@@ -117,6 +126,9 @@ type PlannerAdsOverviewItem = {
   revenue: number;
   costPerLead: number | null;
   roas: number | null;
+  costPerSale?: number | null;
+  leadToSaleRate?: number | null;
+  alerts?: Array<{ id: string; severity: string; message: string }>;
   recommendation?: {
     title: string;
     reason: string;
@@ -260,10 +272,7 @@ export default function PlanoMidia() {
   const [selectedCreativeByAd, setSelectedCreativeByAd] = useState<Record<string, string>>({});
   const [placementByAd, setPlacementByAd] = useState<Record<string, "feed" | "story" | "reels" | "google">>({});
   const [destinationByAd, setDestinationByAd] = useState<Record<string, PlannerDestinationPreview>>({});
-  const [recommendationBusy, setRecommendationBusy] = useState<string | null>(null);
   const [optimizationBusy, setOptimizationBusy] = useState<string | null>(null);
-  const [optimizationBusy, setOptimizationBusy] = useState<string | null>(null);
-  const [recommendationBusy, setRecommendationBusy] = useState<string | null>(null);
   const [abPreparing, setAbPreparing] = useState<string | null>(null);
 
   const campaigns = plan?.conteudo.campanhas ?? [];
@@ -362,58 +371,20 @@ export default function PlanoMidia() {
     }
   }
 
-  async function prepareOptimization(ad: PlannerAdCampaign, action: string) {
-    if (recommendationBusy) return;
-    setRecommendationBusy(ad.id);
-    try {
-      const response = await fetch(`/api/tenants/${tenantId}/ads/campaigns/${ad.id}/prepare-recommendation`, {
-        method: "POST",
-        headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
-      });
-      const data = await response.json().catch(() => ({})) as { campaign?: { id: string }; guidance?: string[]; error?: string };
-      if (!response.ok) throw new Error(data.error ?? "Não foi possível preparar a melhoria.");
-      await refreshAdsWorkspace();
-      toast({
-        title: "Melhoria preparada em novo rascunho",
-        description: data.guidance?.join(" ") ?? "A campanha atual não foi alterada.",
-      });
-    } catch (error) {
-      toast({ title: "Não foi possível preparar", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
-    } finally {
-      setRecommendationBusy(null);
-    }
-  }
-
-  async function prepareOptimization(ad: PlannerAdCampaign, recommendation: NonNullable<PlannerAdsOverviewItem["recommendation"]>) {
+  async function prepareOptimization(
+    ad: PlannerAdCampaign,
+    input: string | NonNullable<PlannerAdsOverviewItem["recommendation"]>,
+  ) {
     if (optimizationBusy) return;
-    setOptimizationBusy(ad.id);
-    try {
-      const response = await fetch(`/api/tenants/${tenantId}/ads/campaigns/${ad.id}/prepare-recommendation`, {
-        method: "POST",
-        headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ action: recommendation.action }),
-      });
-      const data = await response.json().catch(() => ({})) as { campaign?: { id?: string }; guidance?: string[]; error?: string };
-      if (!response.ok) throw new Error(data.error ?? "Não foi possível preparar a melhoria.");
-      await refreshAdsWorkspace();
-      toast({
-        title: "Melhoria preparada em rascunho",
-        description: data.guidance?.join(" ") || "A campanha atual não foi alterada. Revise o novo rascunho antes de publicar.",
-      });
-    } catch (error) {
-      toast({ title: "Não foi possível preparar a melhoria", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
-    } finally {
-      setOptimizationBusy(null);
-    }
-  }
-
-  async function prepareOptimization(ad: PlannerAdCampaign, action: string) {
-    if (optimizationBusy) return;
-    if (!["review_targeting", "improve_destination", "extend_campaign"].includes(action)) {
+    const action = typeof input === "string" ? input : input.action;
+    const supported = ["review_targeting", "improve_destination", "extend_campaign"];
+    if (!supported.includes(action)) {
       navigate("/ads");
       return;
     }
+    const requiresApproval = typeof input === "string" ? false : input.requiresApproval;
+    if (requiresApproval && !window.confirm("Esta recomendação pode alterar período ou condições da campanha. Preparar a alteração para revisão?")) return;
+
     setOptimizationBusy(ad.id);
     try {
       const response = await fetch(`/api/tenants/${tenantId}/ads/campaigns/${ad.id}/prepare-recommendation`, {
@@ -432,61 +403,6 @@ export default function PlanoMidia() {
       toast({ title: "Não foi possível preparar", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
     } finally {
       setOptimizationBusy(null);
-    }
-  }
-
-  async function prepareABTest(ad: PlannerAdCampaign) {
-    if (adActionBusy) return;
-    const existing = ad.creatives?.length ?? (ad.latestCreative ? 1 : 0);
-    const needed = Math.max(0, 2 - existing);
-    if (needed === 0) {
-      toast({ title: "Teste A/B pronto", description: "A campanha já possui pelo menos duas variações reais para comparar." });
-      return;
-    }
-    setAdActionBusy(`${ad.id}:ab`);
-    try {
-      for (let i = 0; i < needed; i += 1) {
-        const response = await fetch(`/api/tenants/${tenantId}/ads/campaigns/${ad.id}/gerar-criativo`, {
-          method: "POST",
-          headers: authHeaders(),
-        });
-        const data = await response.json().catch(() => ({})) as { error?: string };
-        if (!response.ok) throw new Error(data.error ?? "Não foi possível gerar a variação para o teste.");
-      }
-      await refreshAdsWorkspace();
-      toast({ title: "Teste A/B preparado", description: "As variações foram criadas. A vencedora só deve ser definida após dados suficientes de performance." });
-    } catch (error) {
-      toast({ title: "Não foi possível preparar o teste", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
-    } finally {
-      setAdActionBusy(null);
-    }
-  }
-
-  async function prepareRecommendation(ad: PlannerAdCampaign, recommendation: NonNullable<PlannerAdsOverviewItem["recommendation"]>) {
-    if (recommendationBusy) return;
-    const supported = ["review_targeting", "improve_destination", "extend_campaign"];
-    if (!supported.includes(recommendation.action)) {
-      navigate("/ads");
-      return;
-    }
-    if (recommendation.requiresApproval && !window.confirm("Esta recomendação pode alterar período ou condições da campanha. Preparar a alteração para revisão?")) return;
-
-    setRecommendationBusy(ad.id);
-    try {
-      const response = await fetch(`/api/tenants/${tenantId}/ads/campaigns/${ad.id}/prepare-recommendation`, {
-        method: "POST",
-        headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ action: recommendation.action }),
-      });
-      const data = await response.json().catch(() => ({})) as { error?: string; guidance?: string[] };
-      if (!response.ok) throw new Error(data.error ?? "Não foi possível preparar a recomendação.");
-      const guidance = Array.isArray(data.guidance) ? data.guidance.join(" · ") : "Recomendação preparada para revisão.";
-      toast({ title: "Melhoria preparada", description: guidance });
-      await refreshAdsWorkspace();
-    } catch (error) {
-      toast({ title: "Não foi possível preparar", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
-    } finally {
-      setRecommendationBusy(null);
     }
   }
 
@@ -957,7 +873,6 @@ export default function PlanoMidia() {
                             const metric = overviewByAd.get(ad.id);
                             const ctr = metric?.impressions ? (metric.clicks / metric.impressions) * 100 : null;
                             const clickToLead = metric?.clicks ? (metric.leads / metric.clicks) * 100 : null;
-                            const ctr = metric && metric.impressions > 0 ? (metric.clicks / metric.impressions) * 100 : null;
                             const comments = (adEvents[ad.id] ?? []).filter((event) => event.eventType === "internal_comment");
                             const imageUrl = creative?.imagens?.[0];
                             const title = creative?.headlines?.[0] || ad.itemLabel || campaign.nome;
@@ -1090,10 +1005,10 @@ export default function PlanoMidia() {
                                         <Button
                                           size="sm"
                                           variant={metric.recommendation.requiresApproval ? "default" : "outline"}
-                                          disabled={recommendationBusy === ad.id}
+                                          disabled={optimizationBusy === ad.id}
                                           onClick={() => void prepareOptimization(ad, metric.recommendation!.action)}
                                         >
-                                          {recommendationBusy === ad.id ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
+                                          {optimizationBusy === ad.id ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
                                           Preparar melhoria
                                         </Button>
                                       )}
@@ -1393,8 +1308,8 @@ export default function PlanoMidia() {
                                         </div>
                                       </div>
                                       <div className="mt-2 flex flex-wrap gap-2">
-                                        <Button size="sm" variant="outline" className="h-7 text-[11px]" disabled={recommendationBusy === ad.id} onClick={() => void prepareRecommendation(ad, metric.recommendation!)}>
-                                          {recommendationBusy === ad.id ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Lightbulb className="mr-1.5 h-3.5 w-3.5" />}
+                                        <Button size="sm" variant="outline" className="h-7 text-[11px]" disabled={optimizationBusy === ad.id} onClick={() => void prepareOptimization(ad, metric.recommendation!)}>
+                                          {optimizationBusy === ad.id ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Lightbulb className="mr-1.5 h-3.5 w-3.5" />}
                                           {["review_targeting","improve_destination","extend_campaign"].includes(metric.recommendation.action) ? "Preparar melhoria" : "Revisar no Ads"}
                                         </Button>
                                       </div>
@@ -1408,8 +1323,8 @@ export default function PlanoMidia() {
                                       <p className="text-xs font-medium">Teste A/B de criativo</p>
                                       <p className="text-[10px] text-muted-foreground">{variants.length >= 2 ? `${variants.length} variações disponíveis para comparação.` : "Crie pelo menos duas variações antes de comparar."}</p>
                                     </div>
-                                    <Button size="sm" variant="outline" className="h-7 text-[11px]" disabled={!!adActionBusy} onClick={() => void prepareABTest(ad)}>
-                                      {adActionBusy === `${ad.id}:ab` ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <FlaskConical className="mr-1.5 h-3.5 w-3.5" />}
+                                    <Button size="sm" variant="outline" className="h-7 text-[11px]" disabled={!!adActionBusy} onClick={() => void prepareAbTest(ad)}>
+                                      {abPreparing === ad.id ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <FlaskConical className="mr-1.5 h-3.5 w-3.5" />}
                                       Preparar teste A/B
                                     </Button>
                                   </div>
