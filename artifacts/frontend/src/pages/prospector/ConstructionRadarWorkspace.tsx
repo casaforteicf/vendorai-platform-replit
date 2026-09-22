@@ -51,12 +51,28 @@ type ConstructionWorkSignal = {
   dataReferencia: string | null;
   sourceUrl: string | null;
   sourceTitle: string | null;
+  sourceFamily:
+    | "prefeitura_alvara"
+    | "diario_oficial"
+    | "crea_cau"
+    | "licenciamento_ambiental"
+    | "incorporadora_construtora"
+    | "arquiteto_engenheiro"
+    | "noticia_portal"
+    | "portal_imobiliario"
+    | "outro";
+  sourceAuthority: "oficial" | "primaria" | "secundaria";
   confidence: number;
 };
 
 type ConstructionWorkSearchResponse = {
   works?: ConstructionWorkSignal[];
-  sources?: Array<{ url: string; title: string }>;
+  sources?: Array<{
+    url: string;
+    title: string;
+    family: ConstructionWorkSignal["sourceFamily"];
+    authority: ConstructionWorkSignal["sourceAuthority"];
+  }>;
   retrievedAt?: string;
   error?: string;
 };
@@ -89,6 +105,18 @@ const CATEGORY_LABEL: Record<WorkCategory, string> = {
   empreendimentos: "Empreendimento",
   industrial: "Industrial",
   publica: "Pública",
+};
+
+const CONSTRUCTION_SOURCE_LABEL: Record<ConstructionWorkSignal["sourceFamily"], string> = {
+  prefeitura_alvara: "Prefeitura / Alvará",
+  diario_oficial: "Diário Oficial",
+  crea_cau: "CREA / CAU",
+  licenciamento_ambiental: "Licenciamento ambiental",
+  incorporadora_construtora: "Construtora / Incorporadora",
+  arquiteto_engenheiro: "Arquiteto / Engenheiro",
+  noticia_portal: "Notícia / Portal",
+  portal_imobiliario: "Portal imobiliário",
+  outro: "Fonte pública",
 };
 
 function authHeaders() {
@@ -154,6 +182,7 @@ export default function ConstructionRadarWorkspace() {
   const [companies, setCompanies] = useState<ProspectorSearchResult[]>([]);
   const [ads, setAds] = useState<AdResult[]>([]);
   const [works, setWorks] = useState<ConstructionWorkSignal[]>([]);
+  const [workSources, setWorkSources] = useState<NonNullable<ConstructionWorkSearchResponse["sources"]>>([]);
   const [sourceWarnings, setSourceWarnings] = useState<string[]>([]);
   const [prospectedCompanies, setProspectedCompanies] = useState<Set<string>>(new Set());
   const [prospectedAds, setProspectedAds] = useState<Set<string>>(new Set());
@@ -185,6 +214,7 @@ export default function ConstructionRadarWorkspace() {
     setCompanies([]);
     setAds([]);
     setWorks([]);
+    setWorkSources([]);
     setSourceWarnings([]);
     if (next !== "publica") setModel(MODELS[next][0]);
   }
@@ -260,7 +290,7 @@ export default function ConstructionRadarWorkspace() {
       }).then(async (response) => {
         const data = await response.json() as ConstructionWorkSearchResponse;
         if (!response.ok) throw new Error(data.error ?? "Falha ao localizar obras privadas");
-        return data.works ?? [];
+        return data;
       }),
     ]);
 
@@ -280,9 +310,11 @@ export default function ConstructionRadarWorkspace() {
     }
 
     if (worksResponse.status === "fulfilled") {
-      setWorks(worksResponse.value);
+      setWorks(worksResponse.value.works ?? []);
+      setWorkSources(worksResponse.value.sources ?? []);
     } else {
       setWorks([]);
+      setWorkSources([]);
       warnings.push("A pesquisa web de obras privadas não respondeu nesta consulta.");
     }
 
@@ -353,14 +385,16 @@ export default function ConstructionRadarWorkspace() {
   const stats = useMemo(() => {
     const strong = companies.filter((item) => privateScore(item) >= 80).length;
     const withOwner = works.filter((item) => item.proprietario).length;
+    const officialSources = workSources.filter((item) => item.authority === "oficial").length;
     return {
       works: works.length,
       withOwner,
+      officialSources,
       actors: companies.length,
       digitalSignals: ads.length,
       strong,
     };
-  }, [ads.length, companies, works]);
+  }, [ads.length, companies, workSources, works]);
 
   const currentCategory = CATEGORY_OPTIONS.find((item) => item.value === category)!;
 
@@ -516,6 +550,14 @@ export default function ConstructionRadarWorkspace() {
                   <CardDescription>
                     Resultado por obra: local, endereço, proprietário/contratante quando publicado, responsáveis e fonte para validação.
                   </CardDescription>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {["Prefeitura / Alvarás", "Diários Oficiais", "CREA / CAU", "Licenciamento ambiental", "Construtoras / Incorporadoras"].map((source) => (
+                      <Badge key={source} variant="outline" className="text-[10px]">{source}</Badge>
+                    ))}
+                    {stats.officialSources > 0 && (
+                      <Badge variant="secondary" className="text-[10px]">{stats.officialSources} fontes oficiais citadas</Badge>
+                    )}
+                  </div>
                 </CardHeader>
                 <CardContent>
                   {works.length === 0 ? (
@@ -531,6 +573,8 @@ export default function ConstructionRadarWorkspace() {
                               <div className="flex flex-wrap items-center gap-1.5">
                                 <Badge variant="secondary">Obra detectada</Badge>
                                 {work.fase && <Badge variant="outline">{work.fase}</Badge>}
+                                <Badge variant="outline">{CONSTRUCTION_SOURCE_LABEL[work.sourceFamily]}</Badge>
+                                {work.sourceAuthority === "oficial" && <Badge variant="outline">Fonte oficial</Badge>}
                                 <Badge variant="outline">{work.confidence}% confiança</Badge>
                               </div>
                               <p className="mt-2 font-semibold">{work.obra}</p>
