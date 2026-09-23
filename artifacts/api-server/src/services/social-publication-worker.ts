@@ -9,6 +9,7 @@ import {
   refreshPendingMetrics,
   refreshPerformanceInsights,
 } from "./content-performance.js";
+import { refreshRecentYouTubeAutomation } from "./youtube-channel-automation.js";
 
 const POLL_MS = 60_000;
 const STALE_AFTER_MS = 15 * 60_000;
@@ -17,6 +18,7 @@ const SCHEDULE_BATCH_SIZE = 50;
 const PERFORMANCE_INTERVAL_MS = 6 * 60 * 60_000;
 const PERFORMANCE_POST_AGE_MS = 24 * 60 * 60_000;
 const PERFORMANCE_TENANT_BATCH = 20;
+const YOUTUBE_AUTOMATION_INTERVAL_MS = 60 * 60_000;
 
 const AUTO_MEDIA_PLAN_PRODUCTION_ENABLED =
   process.env["MARKETING_AUTO_PRODUCTION_ENABLED"] === "true";
@@ -24,6 +26,7 @@ const AUTO_MEDIA_PLAN_PRODUCTION_ENABLED =
 let timer: ReturnType<typeof setInterval> | null = null;
 let running = false;
 let lastPerformanceRunAt = 0;
+let lastYouTubeAutomationRunAt = 0;
 let databaseAuthBlocked = false;
 
 function databaseErrorCode(error: unknown): string | undefined {
@@ -92,6 +95,16 @@ async function releaseDueScheduledPublications(now = new Date()) {
         "Worker social não conseguiu publicar item agendado pelo Video Studio",
       );
     }
+  }
+}
+
+async function processYouTubeAutomation() {
+  const now = Date.now();
+  if (now - lastYouTubeAutomationRunAt < YOUTUBE_AUTOMATION_INTERVAL_MS) return;
+  lastYouTubeAutomationRunAt = now;
+  const result = await refreshRecentYouTubeAutomation(25);
+  if (result.refreshed || result.commentsSynced) {
+    logger.info(result, "Worker social sincronizou métricas e comentários recentes do YouTube");
   }
 }
 
@@ -167,6 +180,9 @@ export async function processPendingSocialPublications() {
     await processDueContentPerformanceLearning().catch((error) => {
       logger.warn({ error }, "Worker social não conseguiu processar aprendizado automático de performance");
     });
+    await processYouTubeAutomation().catch((error) => {
+      logger.warn({ error }, "Worker social não conseguiu sincronizar automação do YouTube");
+    });
 
     const staleBefore = new Date(Date.now() - STALE_AFTER_MS);
     const pending = await db.select({
@@ -214,6 +230,7 @@ export function startSocialPublicationWorker() {
       scheduleBatchSize: SCHEDULE_BATCH_SIZE,
       performanceIntervalMs: PERFORMANCE_INTERVAL_MS,
       performancePostAgeMs: PERFORMANCE_POST_AGE_MS,
+      youtubeAutomationIntervalMs: YOUTUBE_AUTOMATION_INTERVAL_MS,
       autoMediaPlanProductionEnabled: AUTO_MEDIA_PLAN_PRODUCTION_ENABLED,
     },
     "Worker de publicações sociais iniciado",
