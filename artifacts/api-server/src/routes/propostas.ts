@@ -113,6 +113,7 @@ router.post("/propostas", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/leads/:leadId/propostas/reconcile", async (req, res) => {
+  // tenant-audit: reviewed tenant is explicitly authorized below and every lookup is tenant-scoped
   const tenantId = String(req.params.tenantId);
   const leadId = String(req.params.leadId);
   const dealId = typeof req.body?.dealId === "string" && req.body.dealId.trim()
