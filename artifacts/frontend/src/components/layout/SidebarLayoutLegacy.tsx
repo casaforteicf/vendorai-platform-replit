@@ -122,7 +122,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   // e esconderia telas que todo tenant já usa hoje se fosse tratado como
   // real. Tenant sem nenhum override (o caso de praticamente todos hoje):
   // zero mudança no menu.
-  type NavModule = { moduleKey: string; isEnabled: boolean; hasOverride: boolean };
+  type NavModule = { moduleKey: string; isEnabled: boolean; hasOverride: boolean; commerciallyEntitled?: boolean; accessSource?: string };
   const { data: tenantNavModules } = useQuery<NavModule[]>({
     queryKey: ["tenant-nav-modules", user?.tenantId],
     enabled: !!user?.tenantId && !!token,
@@ -156,7 +156,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   };
   const disabledHrefs = new Set(
     (tenantNavModules ?? [])
-      .filter((m) => m.hasOverride && !m.isEnabled)
+      .filter((m) => !m.isEnabled)
       .flatMap((m) => MODULE_TO_HREFS[m.moduleKey] ?? [])
   );
 
