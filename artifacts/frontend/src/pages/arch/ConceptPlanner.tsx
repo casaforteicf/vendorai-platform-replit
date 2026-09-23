@@ -1,3 +1,4 @@
+import { conceptReferenceSize } from "./conceptReferenceImage";
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./planner5d-reference.css";
 import {
@@ -33,7 +34,7 @@ import {
   Box,
   X,
 } from "lucide-react";
-import { buildConceptGeometry, nudgeOpening, validateConceptLayout } from "./conceptGeometry";
+import { buildConceptGeometry, nudgeOpening } from "./conceptGeometry";
 import { type ConceptFacadePreferences } from "./ConceptVolumetry";
 import ConceptPlan2D, { type ConceptPlanObject } from "./ConceptPlan2D";
 import ConceptTypologyPreview from "./ConceptTypologyPreview";
@@ -52,6 +53,7 @@ import {
 import { buildTypologyRooms, CONCEPT_TYPOLOGIES, DEFAULT_LAYOUT_PREFERENCES, type ConceptTypology, type LayoutPreferences, type LayoutPreferenceKey } from "./conceptTemplates";
 import { generateTypologyLayout } from "./conceptTypologyLayout";
 import { ConceptRenderGalleryActions } from "./ConceptRenderGalleryActions";
+import { inspectConceptVisualQuality } from "./conceptVisualQuality";
 import { buildConceptRenderBrief, svgElementToPngDataUrl } from "./conceptRender";
 import { buildOrthogonalWallTopology, detectClosedSpaces, type ClosedSpace, type WallTopologyEndpointRef } from "./conceptWallNetwork";
 import { conceptStepCta, nextConceptStep, normalizeConceptStep, previousConceptStep } from "./conceptNavigation";
@@ -2427,10 +2429,11 @@ export default function ConceptPlanner() {
     setPreviewFurnishLayoutId(null);
   }, [selectedClosedSpaceId, furnishLayoutSpaceId]);
 
-  const layoutIssues = useMemo(
-    () => wallFirstActive ? [] : validateConceptLayout(rooms, lotWidth, lotDepth, activeFloor),
-    [rooms, lotWidth, lotDepth, activeFloor, wallFirstActive],
-  );
+  const layoutIssues = useMemo(() => inspectConceptVisualQuality({
+    rooms: safeRooms, levels: modelLevels, lotWidth, lotDepth,
+    wallFirstFloors: safeWallFirstFloors, objects: safeObjects,
+    design: facadeDesign, placement: normalizeSitePlacement(sitePlacement),
+  }), [safeRooms, modelLevels, lotWidth, lotDepth, safeWallFirstFloors, safeObjects, facadeDesign, sitePlacement]);
   const blockingLayoutIssues = blockingConceptIssues(layoutIssues);
   const selectedOpening = geometry.openings.find((opening) => opening.id === selectedOpeningId) ?? null;
   const selectedCustomOpening = selectedOpening
@@ -3299,6 +3302,11 @@ export default function ConceptPlanner() {
 
   const generateConceptRender = async (options?: { source?: "facade" | "model3d"; renderView?: "exterior" | "interior"; lightingMode?: "day" | "sunset" | "night" }) => {
     if (renderSubmittingRef.current || conceptRender?.status === "processing") return;
+    if (blockingLayoutIssues.length > 0) {
+      setRenderError("Corrija os erros da composição antes de gerar o render.");
+      setMobileValidationOpen(true);
+      return;
+    }
     renderSubmittingRef.current = true;
     const renderProjectId = await saveConcept(5);
     if (!renderProjectId) { renderSubmittingRef.current = false; return; }
@@ -3319,32 +3327,14 @@ export default function ConceptPlanner() {
           throw new Error("Não foi possível localizar a câmera 3D atual para gerar o render.");
         }
 
-        const targetWidth = 2560;
-        const targetHeight = 1440;
+        if (!canvas.width || !canvas.height) throw new Error("Aguarde a prévia 3D carregar antes de renderizar.");
+        const exportSize = conceptReferenceSize(canvas.width, canvas.height, 2560);
         const exportCanvas = document.createElement("canvas");
-        exportCanvas.width = targetWidth;
-        exportCanvas.height = targetHeight;
+        exportCanvas.width = exportSize.width;
+        exportCanvas.height = exportSize.height;
         const ctx = exportCanvas.getContext("2d");
         if (!ctx) throw new Error("Não foi possível preparar a imagem da câmera 3D.");
-
-        const srcW = Math.max(1, canvas.width);
-        const srcH = Math.max(1, canvas.height);
-        const srcAspect = srcW / srcH;
-        const targetAspect = targetWidth / targetHeight;
-        let sx = 0;
-        let sy = 0;
-        let sw = srcW;
-        let sh = srcH;
-
-        if (srcAspect > targetAspect) {
-          sw = srcH * targetAspect;
-          sx = (srcW - sw) / 2;
-        } else if (srcAspect < targetAspect) {
-          sh = srcW / targetAspect;
-          sy = (srcH - sh) / 2;
-        }
-
-        ctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, targetWidth, targetHeight);
+        ctx.drawImage(canvas, 0, 0, exportCanvas.width, exportCanvas.height);
         originalImage = exportCanvas.toDataURL("image/png", 1);
       } else {
         const svg = document.querySelector<SVGSVGElement>("[data-concept-render-source='true'] svg");
@@ -4587,7 +4577,7 @@ export default function ConceptPlanner() {
                     <div className="absolute inset-x-0 bottom-0 max-h-[68vh] overflow-hidden rounded-t-3xl border-t bg-white shadow-2xl md:bottom-auto md:left-1/2 md:top-24 md:max-h-[70vh] md:w-[520px] md:-translate-x-1/2 md:rounded-3xl md:border">
                       <div className="flex items-center justify-between border-b px-4 py-4">
                         <div>
-                          <div className="text-sm font-bold text-slate-950">Validação da planta</div>
+                          <div className="text-sm font-bold text-slate-950">Validação do projeto</div>
                           <div className={blockingLayoutIssues.length > 0 ? "mt-0.5 text-xs font-bold text-red-600" : "mt-0.5 text-xs font-bold text-amber-600"}>
                             {blockingLayoutIssues.length > 0 ? `${blockingLayoutIssues.length} erro(s)` : `${layoutIssues.length} aviso(s)`}
                           </div>
@@ -4609,6 +4599,14 @@ export default function ConceptPlanner() {
                               : "rounded-xl bg-amber-50 px-3 py-3 text-sm text-amber-900"}
                           >
                             {issue.message}
+                            <button type="button" className="mt-2 block text-xs font-semibold underline" onClick={() => {
+                              const floor = /^floor-(\d+)-|^opening-(\d+)-/.exec(issue.id);
+                              if (floor) setActiveFloor(Number(floor[1] ?? floor[2]));
+                              setEditorView(issue.id.startsWith("volume-") ? "facade" : "plan");
+                              setMobileValidationOpen(false);
+                            }}>
+                              {issue.id.startsWith("volume-") ? "Ajustar na fachada" : "Ajustar na planta"}
+                            </button>
                           </div>
                         ))}
                       </div>
@@ -4627,6 +4625,7 @@ export default function ConceptPlanner() {
                 lotWidth={lotWidth}
                 levels={modelLevels}
                 rooms={safeRooms}
+                sitePlacement={normalizeSitePlacement(sitePlacement)}
                 facade={facadePreferences}
                 design={facadeDesign}
               />
@@ -6196,6 +6195,7 @@ export default function ConceptPlanner() {
                       levels={modelLevels}
                       roof={facadePreferences.roof}
                       facadeDesign={facadeDesign}
+                      frontSide={normalizeSitePlacement(sitePlacement).frontSide}
                       objects={safeObjects}
                       selectedObjectId={selectedObjectId}
                       selectedWallId={selectedWallId}
@@ -7035,7 +7035,7 @@ export default function ConceptPlanner() {
               </div>
 
               <div data-concept-render-source="true" className="mt-4 overflow-hidden rounded-2xl border bg-slate-50">
-                <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} rooms={safeRooms} facade={facadePreferences} />
+                <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} rooms={safeRooms} sitePlacement={normalizeSitePlacement(sitePlacement)} facade={facadePreferences} design={facadeDesign} />
               </div>
 
               <div className="mt-4 rounded-2xl border bg-muted/30 p-4">
@@ -7168,7 +7168,7 @@ export default function ConceptPlanner() {
                     <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">Conceitual</span>
                   </div>
                   <div className="mt-4 overflow-hidden rounded-2xl border bg-slate-50">
-                    <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} rooms={safeRooms} sitePlacement={normalizeSitePlacement(sitePlacement)} facade={facadePreferences} />
+                    <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} rooms={safeRooms} sitePlacement={normalizeSitePlacement(sitePlacement)} facade={facadePreferences} design={facadeDesign} />
                   </div>
                 </div>
               </div>

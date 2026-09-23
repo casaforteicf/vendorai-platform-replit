@@ -1,3 +1,4 @@
+import type { SiteFrontSide } from "./conceptSitePlacement";
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 import { Layers3, Maximize2, RotateCcw, RotateCw, Sparkles, ZoomIn, ZoomOut } from "lucide-react";
 import type { OpeningMarker, WallSegment } from "./conceptGeometry";
@@ -41,6 +42,7 @@ type Props = {
   levels: ConceptModelLevel[];
   roof: "platibanda" | "aparente" | "misto";
   facadeDesign?: FacadeDesignState;
+  frontSide?: SiteFrontSide;
   objects?: ConceptPlanObject[];
   selectedObjectId?: string | null;
   onSelectObject?: (objectId: string | null) => void;
@@ -563,6 +565,7 @@ export default function ConceptModel3D({
   levels,
   roof,
   facadeDesign,
+  frontSide = "bottom",
   objects = [],
   selectedObjectId = null,
   onSelectObject,
@@ -1557,6 +1560,8 @@ export default function ConceptModel3D({
       </div>
 
       <ConceptWebGLScene
+        facadeDesign={facadeDesign}
+        frontSide={frontSide}
         lotWidth={lotWidth}
         lotDepth={lotDepth}
         activeFloor={activeFloor}
