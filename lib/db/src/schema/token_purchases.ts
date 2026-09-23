@@ -1,4 +1,4 @@
-import { pgTable, text, integer, numeric, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, bigint, numeric, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -11,7 +11,7 @@ export const tokenPurchasesTable = pgTable("token_purchases", {
     .notNull()
     .references(() => tenantsTable.id, { onDelete: "cascade" }),
   valor: numeric("valor", { precision: 10, scale: 2 }).notNull(),
-  credits: integer("credits").notNull(),
+  credits: bigint("credits", { mode: "number" }).notNull(),
   asaasChargeId: text("asaas_charge_id"),
   asaasCustomerId: text("asaas_customer_id"),
   status: text("status").notNull().default("pending"),
