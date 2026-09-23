@@ -915,6 +915,129 @@ export default function ConceptWebGLScene({
       return mesh;
     };
 
+    const shellBounds = (() => {
+      let minX = Number.POSITIVE_INFINITY;
+      let minZ = Number.POSITIVE_INFINITY;
+      let maxX = Number.NEGATIVE_INFINITY;
+      let maxZ = Number.NEGATIVE_INFINITY;
+
+      const includePoint = (x: number, z: number) => {
+        if (!Number.isFinite(x) || !Number.isFinite(z)) return;
+        minX = Math.min(minX, x - lotWidth / 2);
+        maxX = Math.max(maxX, x - lotWidth / 2);
+        minZ = Math.min(minZ, z - lotDepth / 2);
+        maxZ = Math.max(maxZ, z - lotDepth / 2);
+      };
+
+      for (const level of levels) {
+        if (!visibleFloors.has(level.floor)) continue;
+        for (const wall of [...(level.walls ?? []), ...(level.customWalls ?? [])]) {
+          includePoint(wall.x1, wall.y1);
+          includePoint(wall.x2, wall.y2);
+        }
+        for (const space of level.closedSpaces ?? []) {
+          for (const cell of space.cells ?? []) {
+            includePoint(cell.x, cell.y);
+            includePoint(cell.x + cell.width, cell.y + cell.height);
+          }
+        }
+      }
+
+      if (![minX, minZ, maxX, maxZ].every(Number.isFinite)) {
+        return {
+          minX: -lotWidth * 0.43,
+          maxX: lotWidth * 0.43,
+          minZ: -lotDepth * 0.34,
+          maxZ: lotDepth * 0.34,
+          centerX: 0,
+          centerZ: 0,
+          width: Math.max(2, lotWidth * 0.86),
+          depth: Math.max(2, lotDepth * 0.68),
+        };
+      }
+
+      const width = Math.max(2, maxX - minX);
+      const depth = Math.max(2, maxZ - minZ);
+      return {
+        minX,
+        maxX,
+        minZ,
+        maxZ,
+        centerX: (minX + maxX) / 2,
+        centerZ: (minZ + maxZ) / 2,
+        width,
+        depth,
+      };
+    })();
+
+    const pointToSegmentDistance = (
+      px: number,
+      py: number,
+      x1: number,
+      y1: number,
+      x2: number,
+      y2: number,
+    ) => {
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const length2 = dx * dx + dy * dy;
+      if (length2 <= 0.000001) return Math.hypot(px - x1, py - y1);
+      const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / length2));
+      return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+    };
+
+    const inferExteriorBoundaryWalls = (level: ConceptModelLevel) => {
+      type Edge = { x1: number; y1: number; x2: number; y2: number; count: number };
+      const edges = new Map<string, Edge>();
+      const keyFor = (x1: number, y1: number, x2: number, y2: number) => {
+        const a = `${x1.toFixed(3)},${y1.toFixed(3)}`;
+        const b = `${x2.toFixed(3)},${y2.toFixed(3)}`;
+        return a < b ? `${a}|${b}` : `${b}|${a}`;
+      };
+      const addEdge = (x1: number, y1: number, x2: number, y2: number) => {
+        const key = keyFor(x1, y1, x2, y2);
+        const current = edges.get(key);
+        if (current) current.count += 1;
+        else edges.set(key, { x1, y1, x2, y2, count: 1 });
+      };
+
+      for (const space of level.closedSpaces ?? []) {
+        for (const cell of space.cells ?? []) {
+          const x1 = cell.x;
+          const y1 = cell.y;
+          const x2 = cell.x + cell.width;
+          const y2 = cell.y + cell.height;
+          addEdge(x1, y1, x2, y1);
+          addEdge(x2, y1, x2, y2);
+          addEdge(x2, y2, x1, y2);
+          addEdge(x1, y2, x1, y1);
+        }
+      }
+
+      const existing = [...(level.walls ?? []), ...(level.customWalls ?? [])];
+      return [...edges.values()]
+        .filter((edge) => edge.count === 1)
+        .filter((edge) => {
+          const covered = existing.some((wall) => {
+            const tolerance = Math.max(0.12, Number(wall.thickness ?? 0.14) * 1.6);
+            return pointToSegmentDistance(edge.x1, edge.y1, wall.x1, wall.y1, wall.x2, wall.y2) <= tolerance
+              && pointToSegmentDistance(edge.x2, edge.y2, wall.x1, wall.y1, wall.x2, wall.y2) <= tolerance;
+          });
+          return !covered;
+        })
+        .map((edge, index) => ({
+          id: `auto-shell-${level.floor}-${index}`,
+          floor: level.floor,
+          x1: edge.x1,
+          y1: edge.y1,
+          x2: edge.x2,
+          y2: edge.y2,
+          thickness: 0.18,
+          exterior: true,
+          aiAssisted: true,
+        }));
+    };
+
     const loadCatalogModel = (object: ConceptPlanObject, root: any) => {
       const definition = getConceptModelDefinition(object);
       if (!definition?.url || !THREE.GLTFLoader) return;
@@ -1197,6 +1320,23 @@ export default function ConceptWebGLScene({
           );
           floorMesh.userData.spaceId = space.id;
           runtime.pickables.push(floorMesh);
+
+          // Close the architectural shell in exterior/all-floor mode.
+          // The top slab follows the real room footprint instead of the lot dimensions.
+          if (!interiorMode && showAllFloors) {
+            const ceilingMesh = makeBox(
+              modelRoot,
+              cell.width,
+              0.12,
+              cell.height,
+              cell.x + cell.width / 2 - lotWidth / 2,
+              floorBase + 2.90,
+              cell.y + cell.height / 2 - lotDepth / 2,
+              0xe5e7eb,
+              { materialId: "pintura-branca", repeatScale: 1 },
+            );
+            ceilingMesh.userData.spaceId = space.id;
+          }
         }
       }
 
@@ -1205,6 +1345,12 @@ export default function ConceptWebGLScene({
       }
       for (const wall of level.customWalls ?? []) {
         addWall(modelRoot, wall, level.floor, level.openings ?? [], level.wallMaterials?.[wall.id], true);
+      }
+
+      // Geometry guard: recover missing external envelope from the detected room grid.
+      // This runs only for uncovered perimeter edges and never overwrites authored walls.
+      for (const inferredWall of inferExteriorBoundaryWalls(level)) {
+        addWall(modelRoot, inferredWall, level.floor, level.openings ?? [], "pintura-branca", true);
       }
 
       for (const opening of level.openings ?? []) {
@@ -1395,17 +1541,20 @@ export default function ConceptWebGLScene({
     if (showRoof && !interiorMode && showAllFloors) {
       const highestFloor = Math.max(0, ...levels.map((level) => level.floor));
       const roofY = highestFloor * 2.96 + 3.02;
-      const roofWidth = Math.max(2, lotWidth * 0.86);
-      const roofDepth = Math.max(2, lotDepth * 0.68);
+      const roofOverhang = roof === "platibanda" ? 0.10 : 0.32;
+      const roofWidth = Math.max(2, shellBounds.width + roofOverhang * 2);
+      const roofDepth = Math.max(2, shellBounds.depth + roofOverhang * 2);
+      const roofCenterX = shellBounds.centerX;
+      const roofCenterZ = shellBounds.centerZ;
 
       if (roof === "platibanda") {
-        const slab = makeBox(modelRoot, roofWidth, 0.16, roofDepth, 0, roofY, 0, 0x4b5563);
+        const slab = makeBox(modelRoot, roofWidth, 0.16, roofDepth, roofCenterX, roofY, roofCenterZ, 0x4b5563);
         slab.castShadow = true;
         for (const [x, z, w, d] of [
-          [0, -roofDepth / 2 + 0.08, roofWidth, 0.16],
-          [0, roofDepth / 2 - 0.08, roofWidth, 0.16],
-          [-roofWidth / 2 + 0.08, 0, 0.16, roofDepth],
-          [roofWidth / 2 - 0.08, 0, 0.16, roofDepth],
+          [roofCenterX, roofCenterZ - roofDepth / 2 + 0.08, roofWidth, 0.16],
+          [roofCenterX, roofCenterZ + roofDepth / 2 - 0.08, roofWidth, 0.16],
+          [roofCenterX - roofWidth / 2 + 0.08, roofCenterZ, 0.16, roofDepth],
+          [roofCenterX + roofWidth / 2 - 0.08, roofCenterZ, 0.16, roofDepth],
         ] as const) {
           makeBox(modelRoot, w, 0.48, d, x, roofY + 0.24, z, 0xf4f4f5);
         }
@@ -1419,9 +1568,9 @@ export default function ConceptWebGLScene({
           roofWidth,
           0.14,
           slopeLength,
-          0,
+          roofCenterX,
           roofY + halfDepth * pitch / 2,
-          -halfDepth / 2,
+          roofCenterZ - halfDepth / 2,
           roofMaterial,
         );
         left.rotation.x = -Math.atan(pitch);
@@ -1430,9 +1579,9 @@ export default function ConceptWebGLScene({
           roofWidth,
           0.14,
           slopeLength,
-          0,
+          roofCenterX,
           roofY + halfDepth * pitch / 2,
-          halfDepth / 2,
+          roofCenterZ + halfDepth / 2,
           roofMaterial,
         );
         right.rotation.x = Math.atan(pitch);
@@ -1443,9 +1592,9 @@ export default function ConceptWebGLScene({
             roofWidth * 0.36,
             0.18,
             roofDepth * 0.34,
-            -roofWidth * 0.24,
+            roofCenterX - roofWidth * 0.24,
             roofY + 0.10,
-            -roofDepth * 0.24,
+            roofCenterZ - roofDepth * 0.24,
             0x4b5563,
           );
           frontSlab.castShadow = true;
