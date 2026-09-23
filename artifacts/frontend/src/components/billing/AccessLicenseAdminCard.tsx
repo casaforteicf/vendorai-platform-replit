@@ -298,6 +298,27 @@ export function AccessLicenseAdminCard({ tenantId }: { tenantId: string }) {
     retry: false,
   });
 
+  const updateExpansionStatus = useMutation({
+    mutationFn: async ({ recommendationId, status }: { recommendationId: string; status: "presented" | "accepted" | "rejected" }) => {
+      const response = await fetch(`/api/admin/tenants/${tenantId}/scout/expansion/${recommendationId}`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error ?? "Falha ao atualizar recomendação");
+      return result;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: expansionQueryKey });
+      toast({ title: "Status da recomendação atualizado" });
+    },
+    onError: (error) => toast({
+      title: error instanceof Error ? error.message : "Falha ao atualizar recomendação",
+      variant: "destructive",
+    }),
+  });
+
   const enroll = useMutation({
     mutationFn: async () => {
       const response = await fetch("/api/admin/access-license/enroll", {
@@ -649,8 +670,26 @@ export function AccessLicenseAdminCard({ tenantId }: { tenantId: string }) {
                   <p className="mt-1 text-xs text-muted-foreground">{opportunity.reason}</p>
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
                     <Badge variant="secondary">{opportunity.kind === "full_package" ? "Pacote completo" : "Cross-sell"}</Badge>
+                    <Badge variant="outline">{opportunity.status === "presented" ? "Apresentada" : opportunity.status === "accepted" ? "Aceita" : "Identificada"}</Badge>
                     {opportunity.monthlyPrice != null && <span className="text-muted-foreground">{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(opportunity.monthlyPrice)}/mês</span>}
                   </div>
+                  {opportunity.recommendationId && (
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {opportunity.status === "identified" && (
+                        <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={() => updateExpansionStatus.mutate({ recommendationId: opportunity.recommendationId!, status: "presented" })}>
+                          Marcar apresentada
+                        </Button>
+                      )}
+                      {opportunity.status !== "accepted" && (
+                        <Button type="button" size="sm" className="h-7 text-xs" onClick={() => updateExpansionStatus.mutate({ recommendationId: opportunity.recommendationId!, status: "accepted" })}>
+                          Aceita
+                        </Button>
+                      )}
+                      <Button type="button" size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={() => updateExpansionStatus.mutate({ recommendationId: opportunity.recommendationId!, status: "rejected" })}>
+                        Recusada
+                      </Button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
