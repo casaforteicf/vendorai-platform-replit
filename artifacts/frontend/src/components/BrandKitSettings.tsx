@@ -16,7 +16,29 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Label } from "@/components/ui/label";
-import { Save, Palette, ImageIcon, Building2, Megaphone, Brain, Library, ExternalLink } from "lucide-react";
+import { Save, Palette, ImageIcon, Building2, Megaphone, Brain, Library, ExternalLink, Sparkles, Loader2 } from "lucide-react";
+
+type BrandStudioMode = "maintain" | "evolve" | "rebuild";
+
+type BrandStudioProposal = {
+  mode?: BrandStudioMode;
+  diagnosis?: string;
+  rationale?: string;
+  positioning?: string;
+  valueProposition?: string;
+  toneOfVoice?: string[];
+  keyMessages?: string[];
+  wordsToUse?: string[];
+  wordsToAvoid?: string[];
+  palette?: Array<{ name?: string; hex?: string; use?: string }>;
+  typography?: { headline?: string; body?: string; notes?: string };
+  visualStyle?: string;
+  photographyStyle?: string;
+  videoStyle?: string;
+  applications?: string[];
+  doList?: string[];
+  dontList?: string[];
+};
 
 type BrandDraft = {
   posicionamento: string;
@@ -77,6 +99,9 @@ export function BrandKitSettings() {
   const discovery = (profile.data?.discoveryData as Record<string, unknown> | null) ?? {};
   const [draft, setDraft] = useState<BrandDraft>(emptyDraft);
   const [primaryColor, setPrimaryColor] = useState("#A78BFA");
+  const [aiMode, setAiMode] = useState<BrandStudioMode>("evolve");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiProposal, setAiProposal] = useState<BrandStudioProposal | null>(null);
 
   useEffect(() => {
     setDraft({
@@ -115,6 +140,83 @@ export function BrandKitSettings() {
     ];
     return Math.round((checks.filter(Boolean).length / checks.length) * 100);
   }, [profile.data, tenant.data, discovery, draft]);
+
+
+  const buildWithAI = async () => {
+    if (!tenantId || aiLoading) return;
+    setAiLoading(true);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/media-engine/brand-kit/ai/suggest`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ mode: aiMode }),
+      });
+      const payload = await response.json().catch(() => ({})) as { proposal?: BrandStudioProposal; error?: string };
+      if (!response.ok || !payload.proposal) throw new Error(payload.error || "Não foi possível montar o Kit da Marca com IA.");
+
+      const proposal = payload.proposal;
+      setAiProposal(proposal);
+
+      const palette = (proposal.palette ?? [])
+        .map((item) => [item.name, item.hex, item.use].filter(Boolean).join(" — "))
+        .filter(Boolean)
+        .join("\n");
+      const typography = [
+        proposal.typography?.headline ? `Títulos: ${proposal.typography.headline}` : "",
+        proposal.typography?.body ? `Textos: ${proposal.typography.body}` : "",
+        proposal.typography?.notes || "",
+      ].filter(Boolean).join("\n");
+      const style = [
+        proposal.visualStyle ? `Visual: ${proposal.visualStyle}` : "",
+        proposal.photographyStyle ? `Fotografia: ${proposal.photographyStyle}` : "",
+        proposal.videoStyle ? `Vídeo: ${proposal.videoStyle}` : "",
+      ].filter(Boolean).join("\n");
+      const avoid = [
+        ...(proposal.wordsToAvoid ?? []),
+        ...(proposal.dontList ?? []),
+      ].filter(Boolean).join(", ");
+      const messages = [
+        proposal.valueProposition,
+        ...(proposal.keyMessages ?? []),
+      ].filter(Boolean).join("\n• ");
+      const references = [
+        ...(proposal.applications ?? []),
+        ...(proposal.doList ?? []),
+      ].filter(Boolean).join("\n");
+
+      setDraft((current) => ({
+        ...current,
+        posicionamento: proposal.positioning || current.posicionamento,
+        tomVoz: (proposal.toneOfVoice ?? []).join(", ") || current.tomVoz,
+        mensagensChave: messages ? `• ${messages}` : current.mensagensChave,
+        estiloVisual: style || current.estiloVisual,
+        tipografia: typography || current.tipografia,
+        coresSecundarias: palette || current.coresSecundarias,
+        palavrasEvitar: avoid || current.palavrasEvitar,
+        referenciasVisuais: references || current.referenciasVisuais,
+      }));
+
+      const firstPaletteHex = (proposal.palette ?? [])
+        .map((item) => item.hex?.trim())
+        .find((hex) => /^#[0-9A-Fa-f]{6}$/.test(hex || ""));
+      if (firstPaletteHex && (!tenant.data?.corPrimaria || tenant.data.corPrimaria === "#A78BFA")) {
+        setPrimaryColor(firstPaletteHex);
+      }
+
+      toast({ title: "A IA montou uma proposta de marca. Revise os campos antes de salvar." });
+    } catch (error) {
+      toast({
+        title: error instanceof Error ? error.message : "Falha ao montar o Kit da Marca com IA.",
+        variant: "destructive",
+      });
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   const saveBrandContext = async () => {
     if (!profile.data?.id) {
@@ -181,6 +283,49 @@ export function BrandKitSettings() {
           <Badge variant="secondary">{completeness}% completo</Badge>
         </div>
         <Progress value={completeness} />
+
+        <div className="rounded-xl border border-primary/20 bg-primary/[0.03] p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-primary" />
+                <strong className="text-sm">Assistente de Marca com IA</strong>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                A IA lê dados da empresa, conhecimento, mídias e identidade atual para montar uma proposta completa. Nada é salvo sem sua revisão.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <select
+                value={aiMode}
+                onChange={(event) => setAiMode(event.target.value as BrandStudioMode)}
+                className="h-9 rounded-md border bg-background px-3 text-sm"
+                aria-label="Modo da IA para o Kit da Marca"
+              >
+                <option value="maintain">Manter identidade</option>
+                <option value="evolve">Evoluir identidade</option>
+                <option value="rebuild">Reconstruir identidade</option>
+              </select>
+              <Button type="button" onClick={buildWithAI} disabled={aiLoading || !tenantId} className="gap-2">
+                {aiLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                {aiLoading ? "Analisando marca..." : "Montar com IA"}
+              </Button>
+            </div>
+          </div>
+          {aiProposal && (
+            <div className="mt-3 grid gap-2 rounded-lg border bg-background/70 p-3 md:grid-cols-2">
+              <div>
+                <p className="text-xs font-semibold">Diagnóstico da IA</p>
+                <p className="mt-1 text-xs text-muted-foreground">{aiProposal.diagnosis || "Proposta criada com base no contexto disponível."}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold">Direção recomendada</p>
+                <p className="mt-1 text-xs text-muted-foreground">{aiProposal.rationale || "Revise os campos preenchidos abaixo antes de salvar."}</p>
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="grid gap-2 md:grid-cols-4">
           <div className="rounded-lg border p-3"><strong className="text-sm">Empresa</strong><p className="text-xs text-muted-foreground">business_profiles</p></div>
           <div className="rounded-lg border p-3"><strong className="text-sm">Identidade</strong><p className="text-xs text-muted-foreground">logo + cores do tenant</p></div>
