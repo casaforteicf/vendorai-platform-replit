@@ -359,15 +359,20 @@ async function handleMetaCallWebhook(input: {
     }
 
     if (event === "terminate") {
+      const opaque = parseVoiceOpaqueData(call["biz_opaque_callback_data"]);
+      const workerCallKey = opaque["callKey"] || callId;
+      const to = String(call["to"] ?? "");
+      const leadPhone = direction === "BUSINESS_INITIATED" ? to : from;
+
       await callWorkerJson<{ ok: boolean }>(
-        `/v1/calls/${encodeURIComponent(callId)}/terminate`,
+        `/v1/calls/${encodeURIComponent(workerCallKey)}/terminate`,
         {},
       ).catch((error) => {
-        input.log.warn({ error, callId }, "meta-calling: worker terminate failed");
+        input.log.warn({ error, callId, workerCallKey }, "meta-calling: worker terminate failed");
       });
 
-      if (from) {
-        const match = await findLeadByDedup(tenantId, from, null, null);
+      if (leadPhone) {
+        const match = await findLeadByDedup(tenantId, leadPhone, null, null);
         if (match.found) {
           const [conversation] = await db
             .select({ metadata: conversationsTable.metadata })
@@ -394,7 +399,7 @@ async function handleMetaCallWebhook(input: {
         }
       }
 
-      input.log.info({ tenantId, callId }, "meta-calling: call terminated");
+      input.log.info({ tenantId, callId, workerCallKey, direction }, "meta-calling: call terminated");
     }
   }
 }
