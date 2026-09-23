@@ -222,12 +222,12 @@ router.get("/tenants/:tenantId/nav-modules", async (req, res) => {
     const isVerticalGated = verticalEligible !== undefined;
 
     const legacyDefaultEnabled = isVerticalGated ? verticalEligible! : entry.isDefault;
-    const commerciallyEntitled = commercialAccess.fullPackageActive
-      ? legacyDefaultEnabled
-      : commercialAccess.moduleKeys.has(entry.moduleKey);
+    const commerciallyEntitled =
+      commercialAccess.moduleKeys.has(entry.moduleKey) ||
+      (commercialAccess.fullPackageActive && legacyDefaultEnabled);
 
     const isEnabled = commerciallyEntitled
-      ? (hasPersistedOverride ? persistedValue! : (commercialAccess.fullPackageActive ? legacyDefaultEnabled : true))
+      ? (hasPersistedOverride ? persistedValue! : true)
       : false;
 
     return {
