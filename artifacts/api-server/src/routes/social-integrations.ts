@@ -16,6 +16,7 @@ import { createInstagramOrganicPublication } from "../services/instagram-organic
 import { createFacebookOrganicPublication, resolveFacebookOrganicCapability } from "../services/facebook-organic-publication.js";
 import { publishAnySocialPublication } from "../services/social-publication-dispatcher.js";
 import { startSocialPublicationWorker } from "../services/social-publication-worker.js";
+import { refreshYouTubePublicationMetrics, syncYouTubePublicationComments } from "../services/youtube-channel-automation.js";
 
 const router: IRouter = Router();
 const callbackRouter: IRouter = Router();
@@ -195,6 +196,15 @@ const publicationSchema = z.object({
   sourceProjectId: z.string().min(1).optional(),
   sourceSeriesId: z.string().min(1).optional(),
   sourceVersion: z.number().int().positive().optional(),
+  youtubeTitle: z.string().trim().min(1).max(100).optional(),
+  youtubeDescription: z.string().trim().max(5000).optional(),
+  youtubeTags: z.array(z.string().trim().min(1).max(100)).max(50).optional(),
+  youtubePrivacyStatus: z.enum(["public", "unlisted", "private"]).optional(),
+  youtubeCategoryId: z.string().trim().min(1).max(10).optional(),
+  youtubePlaylistId: z.string().trim().min(1).max(200).optional(),
+  youtubeThumbnailUrl: z.string().url().optional(),
+  youtubeMadeForKids: z.boolean().optional(),
+  youtubeDefaultLanguage: z.string().trim().min(2).max(20).optional(),
 }).refine((data) => Boolean(data.text || data.mediaUrl || data.mediaUrls?.length), "text_or_media_required");
 
 router.post("/tenants/:tenantId/social-publications/:provider", authenticate, async (req, res) => {
@@ -238,11 +248,30 @@ router.post("/tenants/:tenantId/social-publications/:provider", authenticate, as
   };
 
   try {
+    const youtubeMetadata = selected === "youtube" ? {
+      youtube: {
+        title: parsed.data.youtubeTitle,
+        description: parsed.data.youtubeDescription ?? parsed.data.text,
+        tags: parsed.data.youtubeTags ?? [],
+        privacyStatus: parsed.data.youtubePrivacyStatus ?? "public",
+        categoryId: parsed.data.youtubeCategoryId ?? "22",
+        playlistId: parsed.data.youtubePlaylistId,
+        thumbnailUrl: parsed.data.youtubeThumbnailUrl,
+        madeForKids: parsed.data.youtubeMadeForKids ?? false,
+        defaultLanguage: parsed.data.youtubeDefaultLanguage ?? "pt-BR",
+      },
+    } : undefined;
+
     const publication = selected === "instagram"
       ? await createInstagramOrganicPublication(tenantId, parsed.data)
       : selected === "facebook"
         ? await createFacebookOrganicPublication(tenantId, facebookInput)
-        : await createSocialPublication(tenantId, selected, parsed.data);
+        : await createSocialPublication(tenantId, selected, {
+            text: parsed.data.text,
+            mediaUrl: parsed.data.mediaUrl,
+            contentType: parsed.data.contentType,
+            metadata: youtubeMetadata,
+          });
 
     const sourceMetadata: Record<string, unknown> = parsed.data.calendarItemId ? {
       calendarItemId: parsed.data.calendarItemId,
@@ -323,6 +352,21 @@ router.get("/tenants/:tenantId/social-comments/:provider/:postId", authenticate,
   } catch (error) {
     if (error instanceof Error && error.message === "capability_not_available") return res.status(422).json({ error: error.message });
     throw error;
+  }
+});
+
+router.post("/tenants/:tenantId/social-publications/:publicationId/youtube/refresh", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  try {
+    const publication = await refreshYouTubePublicationMetrics(tenantId, String(req.params.publicationId));
+    const comments = await syncYouTubePublicationComments(tenantId, String(req.params.publicationId));
+    return res.json({ publication, comments: comments.comments });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "youtube_refresh_failed";
+    if (message === "publication_not_found") return res.status(404).json({ error: message });
+    if (message === "connection_not_found") return res.status(409).json({ error: message });
+    return res.status(422).json({ error: "youtube_refresh_failed", detail: message });
   }
 });
 

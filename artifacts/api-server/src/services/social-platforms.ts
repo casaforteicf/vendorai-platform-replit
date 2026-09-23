@@ -207,14 +207,14 @@ export async function getActiveSocialConnection(tenantId: string, provider: Soci
   return row;
 }
 
-export async function createSocialPublication(tenantId: string, provider: SocialProvider, input: { text?: string; mediaUrl?: string; contentType?: string }) {
+export async function createSocialPublication(tenantId: string, provider: SocialProvider, input: { text?: string; mediaUrl?: string; contentType?: string; metadata?: Record<string, unknown> }) {
   const connection = await getActiveSocialConnection(tenantId, provider);
   if (!connection) throw new Error("connection_not_found");
   // Publication is queued deliberately: provider workers can retry without tying
   // long media uploads to a serverless HTTP request.
   const [created] = await db.insert(socialPublicationsTable).values({
     tenantId, provider, connectionId: connection.id, text: input.text, mediaUrl: input.mediaUrl,
-    contentType: input.contentType || "post", status: "queued",
+    contentType: input.contentType || "post", status: "queued", metadata: input.metadata || {},
   }).returning();
   return created;
 }
