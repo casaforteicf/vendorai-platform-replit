@@ -167,6 +167,40 @@ async function resolvePendingSmartDelivery(params: {
   return null;
 }
 
+async function hasRecentProspectorCampaignAuthorization(params: {
+  tenantId: string;
+  leadId: string;
+}): Promise<boolean> {
+  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const recentLogs = await db
+    .select({
+      campaignId: campaignSentLogsTable.campaignId,
+      sentAt: campaignSentLogsTable.sentAt,
+    })
+    .from(campaignSentLogsTable)
+    .where(and(
+      eq(campaignSentLogsTable.leadId, params.leadId),
+      gte(campaignSentLogsTable.sentAt, cutoff),
+    ))
+    .orderBy(desc(campaignSentLogsTable.sentAt))
+    .limit(20);
+
+  for (const row of recentLogs) {
+    const [campaign] = await db
+      .select({ contexto: campaignsTable.contexto })
+      .from(campaignsTable)
+      .where(and(
+        eq(campaignsTable.id, row.campaignId),
+        eq(campaignsTable.tenantId, params.tenantId),
+      ))
+      .limit(1);
+
+    const context = (campaign?.contexto ?? {}) as Record<string, any>;
+    if (context?.prospectorAutomation?.enabled === true) return true;
+  }
+  return false;
+}
+
 async function markSmartDeliverySent(params: {
   tenantId: string;
   leadId: string;
@@ -1558,14 +1592,6 @@ export async function processAgentInternal(params: {
     if (prospectorMode && smartDeliveryAfterInterest) {
       const label = smartDeliveryAfterInterest.toolName?.trim() || "acesso personalizado";
       finalResposta = `${finalResposta}\n\n${label}: ${smartDeliveryAfterInterest.url}`;
-      await markSmartDeliverySent({
-        tenantId,
-        leadId,
-        campaignId: smartDeliveryAfterInterest.campaignId,
-        timing: "after_interest",
-        toolName: smartDeliveryAfterInterest.toolName,
-        url: smartDeliveryAfterInterest.url,
-      });
     }
 
     // A Recepção sinaliza internamente o encaminhamento. O marcador nunca é
@@ -1870,7 +1896,9 @@ export async function processAgentInternal(params: {
     const now = new Date();
     await updateCounters(config, limits, tokensUsed, now);
 
-    const isAutonomous = !!config.autonomyEnabledAt;
+    const campaignProspectorAuthorized =
+      prospectorMode && await hasRecentProspectorCampaignAuthorization({ tenantId, leadId });
+    const isAutonomous = !!config.autonomyEnabledAt || campaignProspectorAuthorized;
     const task = await insertAndRun({
       tenantId,
       leadId,
@@ -1886,6 +1914,17 @@ export async function processAgentInternal(params: {
       { taskId: task.id, status: task.status, leadId, tenantId, agentName: resolvedAgentName, tokensUsed, isAutonomous },
       "dispatch: agent task created"
     );
+
+    if (smartDeliveryAfterInterest && task.status === "concluido") {
+      await markSmartDeliverySent({
+        tenantId,
+        leadId,
+        campaignId: smartDeliveryAfterInterest.campaignId,
+        timing: "after_interest",
+        toolName: smartDeliveryAfterInterest.toolName,
+        url: smartDeliveryAfterInterest.url,
+      });
+    }
 
     // 10. Post-response: extract family data from conversation (async, non-blocking)
     if (resolvedAgentName !== "relacionamento") {
