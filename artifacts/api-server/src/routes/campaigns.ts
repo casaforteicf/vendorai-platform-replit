@@ -18,8 +18,50 @@ import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { callReplicateFlux11Pro, callReplicateFluxKontext } from "../lib/arch-render-pipeline.js";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.js";
 import { buildCampaignMarketingIntelligence } from "../services/campaign-marketing-intelligence.js";
+import { recommendExistingLeadCaptureToolWithJarvis } from "../services/jarvis-tool-builder.js";
 
 const router: IRouter = Router();
+
+const deliveryToolRecommendationSchema = z.object({
+  campaignName: z.string().max(200).optional(),
+  campaignGoal: z.string().max(500).optional(),
+  nicheName: z.string().max(200).optional(),
+  audienceSegment: z.string().max(300).optional(),
+  audienceNiche: z.string().max(300).optional(),
+  productNames: z.array(z.string().max(200)).max(20).optional(),
+  specificDetails: z.string().max(1000).optional(),
+});
+
+router.post("/tenants/:tenantId/campaigns/recommend-delivery-tool", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    return res.status(403).json({ error: "Access denied to this tenant" });
+  }
+
+  const parsed = deliveryToolRecommendationSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const d = parsed.data;
+  const brief = [
+    d.campaignName ? `Campanha: ${d.campaignName}` : null,
+    d.campaignGoal ? `Objetivo: ${d.campaignGoal}` : null,
+    d.nicheName ? `Nicho: ${d.nicheName}` : null,
+    d.audienceSegment ? `Segmento de público: ${d.audienceSegment}` : null,
+    d.audienceNiche ? `Público/nicho: ${d.audienceNiche}` : null,
+    d.productNames?.length ? `Produtos: ${d.productNames.join(", ")}` : null,
+    d.specificDetails ? `Detalhes: ${d.specificDetails}` : null,
+  ].filter(Boolean).join("\n") || "Campanha comercial sem contexto adicional.";
+
+  try {
+    const result = await recommendExistingLeadCaptureToolWithJarvis({ tenantId, brief });
+    return res.json(result);
+  } catch (err) {
+    req.log.error({ err, tenantId }, "campaigns: delivery tool recommendation failed");
+    return res.status(500).json({ error: "Não foi possível recomendar uma entrega agora." });
+  }
+});
+
+
 
 function buildAudienceConditions(
   tenantId: string,

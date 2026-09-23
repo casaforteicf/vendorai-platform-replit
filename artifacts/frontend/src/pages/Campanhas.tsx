@@ -228,12 +228,25 @@ function CampaignModal({
   const [deliveryType, setDeliveryType] = useState<string>(
     campaignContext?.smartDelivery?.type ?? "analysis_tool",
   );
+  const [deliveryToolKey, setDeliveryToolKey] = useState<string>(
+    campaignContext?.smartDelivery?.toolKey ?? "",
+  );
   const [deliveryToolRef, setDeliveryToolRef] = useState<string>(
     campaignContext?.smartDelivery?.toolRef ?? "",
   );
   const [deliveryToolName, setDeliveryToolName] = useState<string>(
     campaignContext?.smartDelivery?.toolName ?? "",
   );
+  const [deliveryTools, setDeliveryTools] = useState<Array<{
+    id: string;
+    toolKey: string;
+    toolLabel: string;
+    deliveryType: string;
+    toolRef: string;
+  }>>([]);
+  const [deliveryRecommendationReason, setDeliveryRecommendationReason] = useState<string>("");
+  const [deliveryRecommendationLoading, setDeliveryRecommendationLoading] = useState(false);
+  const [deliveryRecommendationError, setDeliveryRecommendationError] = useState<string | null>(null);
   const [deliveryTiming, setDeliveryTiming] = useState<string>(
     campaignContext?.smartDelivery?.deliveryTiming ?? "after_interest",
   );
@@ -276,8 +289,12 @@ function CampaignModal({
       setProspectorEnabled(true);
       setDeliveryEnabled(false);
       setDeliveryType("analysis_tool");
+      setDeliveryToolKey("");
       setDeliveryToolRef("");
       setDeliveryToolName("");
+      setDeliveryTools([]);
+      setDeliveryRecommendationReason("");
+      setDeliveryRecommendationError(null);
       setDeliveryTiming("after_interest");
       return;
     }
@@ -326,8 +343,12 @@ function CampaignModal({
     setProspectorEnabled(ctx?.prospectorAutomation?.enabled ?? true);
     setDeliveryEnabled(ctx?.smartDelivery?.enabled ?? false);
     setDeliveryType(ctx?.smartDelivery?.type ?? "analysis_tool");
+    setDeliveryToolKey(ctx?.smartDelivery?.toolKey ?? "");
     setDeliveryToolRef(ctx?.smartDelivery?.toolRef ?? "");
     setDeliveryToolName(ctx?.smartDelivery?.toolName ?? "");
+    setDeliveryTools([]);
+    setDeliveryRecommendationReason("");
+    setDeliveryRecommendationError(null);
     setDeliveryTiming(ctx?.smartDelivery?.deliveryTiming ?? "after_interest");
   }, [open, editingCampaign?.id]);
 
@@ -454,6 +475,54 @@ function CampaignModal({
   const [aiCopyLoading, setAiCopyLoading] = useState(false);
   const [aiCopyError, setAiCopyError] = useState<string | null>(null);
 
+  async function recommendDeliveryTool() {
+    setDeliveryRecommendationLoading(true);
+    setDeliveryRecommendationError(null);
+    try {
+      const values = form.getValues();
+      const res = await fetch(`/api/tenants/${tenantId}/campaigns/recommend-delivery-tool`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaignName: values.nome || undefined,
+          campaignGoal: marketingContext.campaignGoal || undefined,
+          nicheName: marketingContext.nicheName || undefined,
+          audienceSegment: marketingContext.audienceSegment || undefined,
+          audienceNiche: marketingContext.audienceNiche || undefined,
+          productNames: marketingContext.productNames,
+          specificDetails: marketingContext.specificDetails || undefined,
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((body as any).error ?? `Erro ${res.status}`);
+
+      const tools = Array.isArray((body as any).tools) ? (body as any).tools : [];
+      setDeliveryTools(tools);
+
+      const recommendation = (body as any).recommendation;
+      if (recommendation?.toolRef && recommendation?.toolKey) {
+        setDeliveryToolKey(recommendation.toolKey);
+        setDeliveryToolRef(recommendation.toolRef);
+        setDeliveryToolName(recommendation.toolLabel ?? recommendation.toolKey);
+        setDeliveryRecommendationReason(recommendation.reason ?? "Selecionada automaticamente pelo JARVIS.");
+      } else {
+        setDeliveryToolKey("");
+        setDeliveryToolRef("");
+        setDeliveryToolName("");
+        setDeliveryRecommendationReason("");
+        setDeliveryRecommendationError(
+          tools.length === 0
+            ? "Nenhuma ferramenta habilitada e pronta para entrega foi encontrada neste tenant."
+            : "Nenhuma ferramenta atual foi considerada adequada para esta campanha."
+        );
+      }
+    } catch (err) {
+      setDeliveryRecommendationError(err instanceof Error ? err.message : "Erro ao escolher ferramenta");
+    } finally {
+      setDeliveryRecommendationLoading(false);
+    }
+  }
+
   async function generateAiCopy() {
     if (!aiCopyObjetivo.trim()) return;
     const { nome, tipo } = form.getValues();
@@ -545,8 +614,12 @@ function CampaignModal({
     setProspectorEnabled(true);
     setDeliveryEnabled(false);
     setDeliveryType("analysis_tool");
+    setDeliveryToolKey("");
     setDeliveryToolRef("");
     setDeliveryToolName("");
+    setDeliveryTools([]);
+    setDeliveryRecommendationReason("");
+    setDeliveryRecommendationError(null);
     setDeliveryTiming("after_interest");
     onClose();
   }
@@ -555,6 +628,7 @@ function CampaignModal({
   function onSubmitEdit(values: FormValues) {
     if (!editingCampaign) return;
     if (!marketingContext.nicheId || marketingContext.productIds.length === 0) { toast({ title: "Escolha o nicho e ao menos um produto", variant: "destructive" }); return; }
+    if (deliveryEnabled && !deliveryToolRef.trim()) { toast({ title: "Escolha uma ferramenta válida para a Entrega Inteligente", variant: "destructive" }); return; }
     updateMutation.mutate(
       {
         id: editingCampaign.id,
@@ -587,6 +661,7 @@ function CampaignModal({
             smartDelivery: {
               enabled: deliveryEnabled,
               type: deliveryType,
+              toolKey: deliveryToolKey.trim() || undefined,
               toolRef: deliveryToolRef.trim() || undefined,
               toolName: deliveryToolName.trim() || undefined,
               deliveryTiming,
@@ -607,6 +682,7 @@ function CampaignModal({
   // ── Nova: create as rascunho, fetch preview ───────────────────────────────
   function onVerificarAudiencia(values: FormValues) {
     if (!marketingContext.nicheId || marketingContext.productIds.length === 0) { toast({ title: "Escolha o nicho e ao menos um produto", variant: "destructive" }); return; }
+    if (deliveryEnabled && !deliveryToolRef.trim()) { toast({ title: "Escolha uma ferramenta válida para a Entrega Inteligente", variant: "destructive" }); return; }
     createMutation.mutate(
       {
         data: {
@@ -633,6 +709,7 @@ function CampaignModal({
             smartDelivery: {
               enabled: deliveryEnabled,
               type: deliveryType,
+              toolKey: deliveryToolKey.trim() || undefined,
               toolRef: deliveryToolRef.trim() || undefined,
               toolName: deliveryToolName.trim() || undefined,
               deliveryTiming,
@@ -972,7 +1049,11 @@ function CampaignModal({
                     <input
                       type="checkbox"
                       checked={deliveryEnabled}
-                      onChange={(e) => setDeliveryEnabled(e.target.checked)}
+                      onChange={(e) => {
+                        const next = e.target.checked;
+                        setDeliveryEnabled(next);
+                        if (next) void recommendDeliveryTool();
+                      }}
                       className="mt-1 h-4 w-4"
                       aria-label="Ativar Entrega Inteligente"
                     />
@@ -1004,22 +1085,74 @@ function CampaignModal({
                           </SelectContent>
                         </Select>
                       </div>
-                      <div className="space-y-1.5 sm:col-span-2">
-                        <label className="text-xs font-medium text-muted-foreground">Ferramenta/agente existente</label>
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          <Input
-                            value={deliveryToolName}
-                            onChange={(e) => setDeliveryToolName(e.target.value)}
-                            placeholder="Ex: Pré-Projeto ARQDOR"
-                          />
-                          <Input
-                            value={deliveryToolRef}
-                            onChange={(e) => setDeliveryToolRef(e.target.value)}
-                            placeholder="Rota, slug ou identificador existente"
-                          />
+                      <div className="space-y-2 sm:col-span-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <label className="text-xs font-medium text-muted-foreground">Ferramenta entregue</label>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                            onClick={() => void recommendDeliveryTool()}
+                            disabled={deliveryRecommendationLoading}
+                          >
+                            {deliveryRecommendationLoading ? (
+                              <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                            ) : (
+                              <Sparkles className="h-3 w-3 mr-1" />
+                            )}
+                            Escolher automaticamente
+                          </Button>
                         </div>
+
+                        {deliveryTools.length > 0 ? (
+                          <Select
+                            value={deliveryToolKey}
+                            onValueChange={(value) => {
+                              const selected = deliveryTools.find((tool) => tool.toolKey === value);
+                              setDeliveryToolKey(value);
+                              if (selected) {
+                                setDeliveryToolRef(selected.toolRef);
+                                setDeliveryToolName(selected.toolLabel);
+                                setDeliveryRecommendationReason("Selecionada manualmente entre as ferramentas já disponíveis.");
+                              }
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecione uma ferramenta existente" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {deliveryTools.map((tool) => (
+                                <SelectItem key={tool.toolKey} value={tool.toolKey}>
+                                  {tool.toolLabel}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : deliveryToolName ? (
+                          <div className="rounded-md border bg-background px-3 py-2 text-sm">
+                            {deliveryToolName}
+                          </div>
+                        ) : (
+                          <div className="rounded-md border border-dashed px-3 py-3 text-xs text-muted-foreground">
+                            {deliveryRecommendationLoading
+                              ? "Analisando ferramentas disponíveis..."
+                              : "Ative a entrega ou clique em “Escolher automaticamente” para buscar as ferramentas deste tenant."}
+                          </div>
+                        )}
+
+                        {deliveryRecommendationReason && (
+                          <p className="text-[11px] text-emerald-700">
+                            JARVIS: {deliveryRecommendationReason}
+                          </p>
+                        )}
+                        {deliveryRecommendationError && (
+                          <p className="text-[11px] text-destructive">
+                            {deliveryRecommendationError}
+                          </p>
+                        )}
                         <p className="text-[11px] text-muted-foreground">
-                          Referencie a ferramenta existente; não crie outra versão para a campanha.
+                          A lista vem da Biblioteca de Entregas do tenant. Nenhuma ferramenta nova é criada aqui.
                         </p>
                       </div>
                     </div>

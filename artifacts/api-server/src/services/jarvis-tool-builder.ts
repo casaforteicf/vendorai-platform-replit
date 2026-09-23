@@ -251,6 +251,150 @@ Formato:
   };
 }
 
+
+export type ExistingLeadCaptureToolRecommendation = {
+  toolKey: string;
+  toolLabel: string;
+  deliveryType: string;
+  toolRef: string;
+  reason: string;
+  source: "jarvis" | "lexical";
+};
+
+function resolveExistingToolRef(tool: { toolKey: string; metadata: unknown }): string | null {
+  const metadata = asObject(tool.metadata);
+  const candidates = [
+    metadata["publicUrl"],
+    metadata["runtimeUrl"],
+    metadata["route"],
+    metadata["publicPath"],
+    metadata["toolRef"],
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate !== "string") continue;
+    const value = candidate.trim();
+    if (value.startsWith("/") && !value.startsWith("//")) return value;
+  }
+  return null;
+}
+
+export async function recommendExistingLeadCaptureToolWithJarvis(params: {
+  tenantId: string;
+  brief: string;
+}): Promise<{
+  recommendation: ExistingLeadCaptureToolRecommendation | null;
+  tools: Array<{
+    id: string;
+    toolKey: string;
+    toolLabel: string;
+    deliveryType: string;
+    toolRef: string;
+    freePolicy: unknown;
+    metadata: unknown;
+  }>;
+}> {
+  const rows = await db
+    .select()
+    .from(tenantLeadCaptureToolsTable)
+    .where(and(
+      eq(tenantLeadCaptureToolsTable.tenantId, params.tenantId),
+      eq(tenantLeadCaptureToolsTable.enabled, true),
+    ));
+
+  const tools = rows.flatMap((tool) => {
+    const toolRef = resolveExistingToolRef(tool);
+    if (!toolRef) return [];
+    return [{
+      id: tool.id,
+      toolKey: tool.toolKey,
+      toolLabel: tool.toolLabel,
+      deliveryType: tool.deliveryType,
+      toolRef,
+      freePolicy: tool.freePolicy,
+      metadata: tool.metadata,
+    }];
+  });
+
+  if (tools.length === 0) return { recommendation: null, tools: [] };
+
+  const lexical = tools
+    .map((tool) => ({
+      tool,
+      score: similarity(params.brief, `${tool.toolLabel} ${tool.toolKey} ${tool.deliveryType} ${JSON.stringify(tool.metadata)}`),
+    }))
+    .sort((a, b) => b.score - a.score)[0]!;
+
+  if (tools.length === 1 || lexical.score >= 0.62) {
+    return {
+      recommendation: {
+        toolKey: lexical.tool.toolKey,
+        toolLabel: lexical.tool.toolLabel,
+        deliveryType: lexical.tool.deliveryType,
+        toolRef: lexical.tool.toolRef,
+        reason: tools.length === 1
+          ? "Única ferramenta de entrega habilitada e executável deste tenant."
+          : "Melhor correspondência com o objetivo e contexto da campanha.",
+        source: "lexical",
+      },
+      tools,
+    };
+  }
+
+  try {
+    const result = await callOpenAI(params.tenantId, "intelligence_analysis", [
+      {
+        role: "system",
+        content:
+          "Você é o JARVIS do VendorAI. Escolha UMA ferramenta existente para entregar ao lead. " +
+          "Nunca crie ferramenta, rota ou chave. Responda JSON puro com toolKey e reason. " +
+          "Se nenhuma for adequada, toolKey deve ser null.",
+      },
+      {
+        role: "user",
+        content: JSON.stringify({
+          campaignBrief: params.brief,
+          tools: tools.map((tool) => ({
+            toolKey: tool.toolKey,
+            toolLabel: tool.toolLabel,
+            deliveryType: tool.deliveryType,
+            metadata: tool.metadata,
+          })),
+        }),
+      },
+    ], { maxTokens: 350, temperature: 0.1, responseFormat: { type: "json_object" } });
+
+    const parsed = JSON.parse(result.content) as { toolKey?: string | null; reason?: string };
+    const chosen = parsed.toolKey ? tools.find((tool) => tool.toolKey === parsed.toolKey) : null;
+    if (chosen) {
+      return {
+        recommendation: {
+          toolKey: chosen.toolKey,
+          toolLabel: chosen.toolLabel,
+          deliveryType: chosen.deliveryType,
+          toolRef: chosen.toolRef,
+          reason: parsed.reason?.trim() || "Selecionada pelo JARVIS conforme o contexto da campanha.",
+          source: "jarvis",
+        },
+        tools,
+      };
+    }
+  } catch {
+    // Recomendação por IA é opcional; em falha, cai no ranking lexical sem inventar nada.
+  }
+
+  return {
+    recommendation: {
+      toolKey: lexical.tool.toolKey,
+      toolLabel: lexical.tool.toolLabel,
+      deliveryType: lexical.tool.deliveryType,
+      toolRef: lexical.tool.toolRef,
+      reason: "Melhor correspondência disponível entre as ferramentas existentes.",
+      source: "lexical",
+    },
+    tools,
+  };
+}
+
 export async function buildLeadCaptureToolWithJarvis(tenantId: string, request: JarvisToolBuildRequest): Promise<JarvisToolBuildResult> {
   const [[profile], existingTools, apps, registry] = await Promise.all([
     db.select({ vertical: businessProfilesTable.vertical }).from(businessProfilesTable)
