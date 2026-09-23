@@ -15,6 +15,7 @@ import { resolveTenantCreativePlan } from "../services/creativeDesignBridge";
 import { buildGenerationDesignQa } from "../services/contentCreativeRuntime";
 import { enrichSiteGeneratorServicesContext, inspectGeneratedSite, resolveSiteCreativeRuntime } from "../services/siteCreativeRuntime";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
+import { ensureTenantProposalBuilderTemplate } from "../lib/proposal-builder.js";
 
 const router: IRouter = Router();
 
@@ -46,7 +47,23 @@ router.post("/business-profiles", async (req, res) => {
         .set({ vertical: parsed.data.vertical, segmento: parsed.data.vertical, updatedAt: new Date() })
         .where(eq(tenantsTable.id, parsed.data.tenantId));
     }
-    res.status(201).json(profile);
+    try {
+      await ensureTenantProposalBuilderTemplate({
+        tenantId: parsed.data.tenantId,
+        log: req.log,
+      });
+    } catch (err) {
+      req.log.warn(
+        { err, tenantId: parsed.data.tenantId },
+        "Business profile: failed to prepare proposal builder template",
+      );
+    }
+    const [profileWithProposalModel] = await db
+      .select()
+      .from(businessProfilesTable)
+      .where(eq(businessProfilesTable.id, profile.id))
+      .limit(1);
+    res.status(201).json(profileWithProposalModel ?? profile);
   } catch (err: unknown) {
     if (isUniqueViolation(err)) {
       res.status(409).json({ error: "Tenant already has a business profile" });
@@ -602,7 +619,26 @@ router.patch("/business-profiles/:id", async (req, res) => {
       .set({ vertical: parsed.data.vertical || null, segmento: parsed.data.vertical || null, updatedAt: new Date() })
       .where(eq(tenantsTable.id, existing.tenantId));
   }
-  res.json(profile);
+
+  try {
+    await ensureTenantProposalBuilderTemplate({
+      tenantId: existing.tenantId,
+      log: req.log,
+    });
+  } catch (err) {
+    // O Kit da Marca/perfil continua sendo salvo mesmo se a IA do modelo falhar.
+    req.log.warn(
+      { err, tenantId: existing.tenantId },
+      "Business profile: failed to prepare proposal builder template",
+    );
+  }
+
+  const [profileWithProposalModel] = await db
+    .select()
+    .from(businessProfilesTable)
+    .where(eq(businessProfilesTable.id, existing.id))
+    .limit(1);
+  res.json(profileWithProposalModel ?? profile);
 });
 
 router.delete("/business-profiles/:id", async (req, res) => {
