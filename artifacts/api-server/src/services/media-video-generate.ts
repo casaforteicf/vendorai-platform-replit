@@ -655,9 +655,19 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
   const userId = video.input.userId ?? null;
   const requestedEngine = String(video.input.engine ?? "").trim().toLowerCase();
   const qualityMode = String(video.input.qualityMode ?? "").trim().toLowerCase();
-  const usePremiumNativeVideo = requestedEngine === "veo-3.1"
+  const useCinemaNativeVideo = requestedEngine === "veo-3.1"
     || requestedEngine === "google/veo-3.1"
     || qualityMode === "cinema";
+  const useLiteNativeVideo = requestedEngine === "veo-3.1-lite"
+    || requestedEngine === "google/veo-3.1-lite"
+    || qualityMode === "standard"
+    || qualityMode === "lite";
+  const useNativeVideo = useCinemaNativeVideo || useLiteNativeVideo;
+  const nativeVideoModel: "google/veo-3.1" | "google/veo-3.1-lite" = useCinemaNativeVideo
+    ? "google/veo-3.1"
+    : "google/veo-3.1-lite";
+  const nativeVideoResolution: "720p" | "1080p" = useCinemaNativeVideo ? "1080p" : "720p";
+  const effectiveQualityMode = useCinemaNativeVideo ? "cinema" : "standard";
   const audioConfig = asRecord(video.input.audio);
   const nativeAudioEnabled = audioConfig["enabled"] !== false;
   const voiceoverScript = stringValue(video.input.voiceoverScript);
@@ -673,7 +683,7 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
     return;
   }
 
-  if (usePremiumNativeVideo) {
+  if (useNativeVideo) {
     try {
       await persistRunning({
         video,
