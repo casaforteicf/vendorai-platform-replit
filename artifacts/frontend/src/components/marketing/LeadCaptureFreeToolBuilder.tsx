@@ -70,7 +70,7 @@ export default function LeadCaptureFreeToolBuilder({ tenantId }: { tenantId: str
   const availableTools = useMemo(() => tools.length ? tools : suggestedTools, [tools, suggestedTools]);
 
   function addMagnet() {
-    setMagnets((current) => [...current, { id: crypto.randomUUID(), title: `Nova isca ${current.length + 1}` }]);
+    setMagnets((current) => [...current, { id: crypto.randomUUID(), title: `Nova entrada ${current.length + 1}` }]);
   }
 
   async function activateSuggestedTool(tool: Tool) {
@@ -142,7 +142,7 @@ export default function LeadCaptureFreeToolBuilder({ tenantId }: { tenantId: str
       return;
     }
     if (!magnets.length) {
-      toast({ title: "Adicione ao menos uma isca", variant: "destructive" });
+      toast({ title: "Adicione ao menos uma entrada", variant: "destructive" });
       return;
     }
     setSaving(true);
@@ -171,7 +171,7 @@ export default function LeadCaptureFreeToolBuilder({ tenantId }: { tenantId: str
         const body = await response.json().catch(() => ({}));
         throw new Error(body.error || "Não foi possível salvar a campanha");
       }
-      toast({ title: "Campanha de captação criada", description: `${magnets.length} isca(s) ligada(s) a ${selectedKeys.length} entrega(s) free.` });
+      toast({ title: "Campanha de captação criada", description: `${magnets.length} entrada(s) ligada(s) a ${selectedKeys.length} entrega(s) free.` });
       await load();
     } catch (error) {
       toast({ title: "Erro ao salvar", description: error instanceof Error ? error.message : "Tente novamente", variant: "destructive" });
@@ -190,7 +190,7 @@ export default function LeadCaptureFreeToolBuilder({ tenantId }: { tenantId: str
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
             <CardTitle className="flex items-center gap-2 text-base"><Gift className="h-4 w-4" />Captação com ferramenta gratuita</CardTitle>
-            <p className="mt-1 text-xs text-muted-foreground">Crie quantas iscas quiser e entregue uma ou mais ferramentas que o tenant já possui.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Crie quantas entradas quiser e entregue uma ou mais ferramentas que o tenant já possui.</p>
           </div>
           {vertical && <Badge variant="outline">{vertical}</Badge>}
         </div>
@@ -204,10 +204,10 @@ export default function LeadCaptureFreeToolBuilder({ tenantId }: { tenantId: str
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
             <div>
-              <p className="text-sm font-medium">Iscas de entrada</p>
+              <p className="text-sm font-medium">Entradas da campanha</p>
               <p className="text-xs text-muted-foreground">A quantidade é livre. Todas podem levar para a mesma entrega.</p>
             </div>
-            <Button type="button" size="sm" variant="outline" onClick={addMagnet}><Plus className="mr-1 h-3.5 w-3.5" />Adicionar isca</Button>
+            <Button type="button" size="sm" variant="outline" onClick={addMagnet}><Plus className="mr-1 h-3.5 w-3.5" />Adicionar entrada</Button>
           </div>
           <div className="space-y-2">
             {magnets.map((magnet, index) => (
@@ -285,7 +285,7 @@ export default function LeadCaptureFreeToolBuilder({ tenantId }: { tenantId: str
         </div>
 
         <div className="flex items-center justify-between gap-3 border-t pt-4 flex-wrap">
-          <p className="text-xs text-muted-foreground">{magnets.length} isca(s) → {selectedKeys.length} entrega(s) selecionada(s)</p>
+          <p className="text-xs text-muted-foreground">{magnets.length} entrada(s) → {selectedKeys.length} entrega(s) selecionada(s)</p>
           <Button type="button" onClick={() => void saveCampaign()} disabled={saving || !selectedKeys.length || !magnets.length}>
             {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
             Salvar captação
