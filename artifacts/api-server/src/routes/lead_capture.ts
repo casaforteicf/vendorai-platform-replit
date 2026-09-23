@@ -42,6 +42,7 @@ function suggestedTools(verticalRaw?: string | null) {
 }
 
 router.get("/tenants/:tenantId/lead-capture", async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately validated by canAccess before any tenant-scoped read/write
   const tenantId = String(req.params["tenantId"]);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Access denied" });
 
@@ -60,6 +61,7 @@ router.get("/tenants/:tenantId/lead-capture", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/lead-capture/tools", async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately validated by canAccess before any tenant-scoped read/write
   const tenantId = String(req.params["tenantId"]);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Access denied" });
 
@@ -99,6 +101,7 @@ router.post("/tenants/:tenantId/lead-capture/tools", async (req, res) => {
 });
 
 router.patch("/tenants/:tenantId/lead-capture/tools/:toolId", async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately validated by canAccess before any tenant-scoped read/write
   const tenantId = String(req.params["tenantId"]);
   const toolId = String(req.params["toolId"]);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Access denied" });
@@ -118,6 +121,7 @@ router.patch("/tenants/:tenantId/lead-capture/tools/:toolId", async (req, res) =
 });
 
 router.post("/tenants/:tenantId/lead-capture/campaigns", async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately validated by canAccess before any tenant-scoped read/write
   const tenantId = String(req.params["tenantId"]);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Access denied" });
 
@@ -144,6 +148,7 @@ router.post("/tenants/:tenantId/lead-capture/campaigns", async (req, res) => {
 });
 
 router.patch("/tenants/:tenantId/lead-capture/campaigns/:campaignId", async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately validated by canAccess before any tenant-scoped read/write
   const tenantId = String(req.params["tenantId"]);
   const campaignId = String(req.params["campaignId"]);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Access denied" });
@@ -164,6 +169,7 @@ router.patch("/tenants/:tenantId/lead-capture/campaigns/:campaignId", async (req
 });
 
 router.post("/tenants/:tenantId/lead-capture/events", async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately validated by canAccess before any tenant-scoped read/write
   const tenantId = String(req.params["tenantId"]);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Access denied" });
   const eventType = String(req.body?.eventType ?? "").trim();
