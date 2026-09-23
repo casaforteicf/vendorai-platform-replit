@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 import {
   commercialProductProfilesTable,
   db,
@@ -88,8 +88,28 @@ async function syncExpansionHistory(
 
   const results: TenantExpansionOpportunity[] = [];
   for (const opportunity of opportunities) {
+    const acceptedSameKind = recentHistory.filter((row) =>
+      row.kind === opportunity.kind && ["accepted", "contracted"].includes(row.status)
+    ).length;
+    const rejectedSameKind = recentHistory.filter((row) =>
+      row.kind === opportunity.kind && row.status === "rejected"
+    ).length;
+    const feedbackDelta = Math.min(10, acceptedSameKind * 3) - Math.min(12, rejectedSameKind * 4);
+    const learnedOpportunity = {
+      ...opportunity,
+      score: Math.max(0, Math.min(100, opportunity.score + feedbackDelta)),
+      evidence: {
+        ...opportunity.evidence,
+        revenueScoutLearning: {
+          acceptedSameKind,
+          rejectedSameKind,
+          feedbackDelta,
+        },
+      },
+    };
+
     const recentRejected = recentHistory.find((row) =>
-      row.commercialKey === opportunity.commercialKey &&
+      row.commercialKey === learnedOpportunity.commercialKey &&
       row.status === "rejected" &&
       row.rejectedAt &&
       row.rejectedAt.getTime() >= now.getTime() - 30 * 24 * 60 * 60 * 1000
@@ -98,7 +118,7 @@ async function syncExpansionHistory(
     if (recentRejected) continue;
 
     const existing = recentHistory.find((row) =>
-      row.commercialKey === opportunity.commercialKey &&
+      row.commercialKey === learnedOpportunity.commercialKey &&
       row.active &&
       OPEN_STATUSES.includes(row.status)
     );
@@ -106,34 +126,34 @@ async function syncExpansionHistory(
     if (existing) {
       await db.update(tenantExpansionRecommendationsTable)
         .set({
-          score: opportunity.score,
-          reason: opportunity.reason,
-          evidence: opportunity.evidence,
-          monthlyPriceCents: opportunity.monthlyPrice == null ? null : Math.round(opportunity.monthlyPrice * 100),
+          score: learnedOpportunity.score,
+          reason: learnedOpportunity.reason,
+          evidence: learnedOpportunity.evidence,
+          monthlyPriceCents: learnedOpportunity.monthlyPrice == null ? null : Math.round(learnedOpportunity.monthlyPrice * 100),
           lastSeenAt: now,
           updatedAt: now,
         })
         .where(eq(tenantExpansionRecommendationsTable.id, existing.id));
-      results.push({ ...opportunity, recommendationId: existing.id, status: existing.status });
+      results.push({ ...learnedOpportunity, recommendationId: existing.id, status: existing.status });
       continue;
     }
 
     const [created] = await db.insert(tenantExpansionRecommendationsTable)
       .values({
         tenantId,
-        commercialKey: opportunity.commercialKey,
-        kind: opportunity.kind,
+        commercialKey: learnedOpportunity.commercialKey,
+        kind: learnedOpportunity.kind,
         status: "identified",
-        score: opportunity.score,
-        reason: opportunity.reason,
-        evidence: opportunity.evidence,
-        monthlyPriceCents: opportunity.monthlyPrice == null ? null : Math.round(opportunity.monthlyPrice * 100),
+        score: learnedOpportunity.score,
+        reason: learnedOpportunity.reason,
+        evidence: learnedOpportunity.evidence,
+        monthlyPriceCents: learnedOpportunity.monthlyPrice == null ? null : Math.round(learnedOpportunity.monthlyPrice * 100),
         lastSeenAt: now,
       })
       .returning();
 
     results.push({
-      ...opportunity,
+      ...learnedOpportunity,
       recommendationId: created?.id,
       status: created?.status ?? "identified",
     });
