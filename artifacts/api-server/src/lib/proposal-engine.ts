@@ -637,6 +637,8 @@ export function renderProposalHtml(json: unknown, theme: {
   formaPagamento?: string | null;
   condPagamento?: string | null;
   prazoEntrega?: string | null;
+  validadeAte?: Date | string | null;
+  paymentCompositions?: Array<{ forma: string; valor: string | number; comprovanteUrl?: string | null }>;
   apresentacao?: ProposalPresentationConfig | null;
 } | null, contact?: {
   phone?: string | null;
@@ -1233,6 +1235,7 @@ export function renderOrcamentoPdf(args: {
     prazoEntrega?: string | null;
     apresentacao?: ProposalPresentationConfig | null;
     validadeAte?: Date | string | null;
+    paymentCompositions?: Array<{ forma: string; valor: string | number; comprovanteUrl?: string | null }>;
     createdAt?: Date | string;
   };
   profile: {
