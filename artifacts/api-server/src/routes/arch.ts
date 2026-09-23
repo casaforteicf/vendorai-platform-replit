@@ -104,6 +104,51 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 
 
 const router: IRouter = Router();
 
+const developConceptWithAiSchema = z.object({
+  mode: z.enum(["assistido", "automatico", "preservacao_maxima"]).default("assistido"),
+  preserveLayout: z.boolean().default(true),
+  style: z.enum([
+    "contemporaneo", "minimalista", "classico_contemporaneo", "tropical", "industrial", "rustico_contemporaneo",
+  ]).optional(),
+});
+
+function conceptGeometryHealth(concept: { rooms: unknown; configuration: unknown }) {
+  const rooms = Array.isArray(concept.rooms) ? concept.rooms as Array<Record<string, unknown>> : [];
+  const configuration = (concept.configuration ?? {}) as Record<string, unknown>;
+  const customWalls = Array.isArray(configuration.customWalls)
+    ? configuration.customWalls as Array<Record<string, unknown>>
+    : [];
+  const messages: string[] = [];
+  let score = 100;
+
+  if (!rooms.length) {
+    score -= 45;
+    messages.push("Nenhum ambiente foi encontrado no pré-projeto.");
+  }
+  const floors = Number(configuration.floors ?? 1);
+  const roomFloors = new Set(rooms.map((room) => Number(room.floor ?? 0)));
+  if (floors > 1 && roomFloors.size < 2) {
+    score -= 20;
+    messages.push("O projeto indica múltiplos pavimentos, mas a distribuição ainda não cobre todos os níveis.");
+  }
+  if (!customWalls.length) {
+    score -= 8;
+    messages.push("Sem paredes personalizadas persistidas; o envelope pode ser inferido a partir dos ambientes.");
+  }
+  const hasGarage = rooms.some((room) => String(room.kind ?? "").toLowerCase() === "garagem");
+  if (!hasGarage) {
+    score -= 4;
+    messages.push("Garagem não identificada; a IA não deve inventar portão ou volume de garagem.");
+  }
+
+  score = Math.max(0, Math.min(100, score));
+  return {
+    score,
+    status: score >= 85 ? "ok" as const : score >= 60 ? "warning" as const : "error" as const,
+    messages,
+  };
+}
+
 // Rotas públicas (sem autenticação) — registradas antes do middleware authenticate no index.ts
 const archPublicRouter: IRouter = Router();
 
@@ -217,6 +262,93 @@ router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
 
   if (!updated) return res.status(404).json({ error: "Pré-projeto não encontrado." });
   return res.json(updated);
+});
+
+router.post("/arch/concept-projects/:id/develop-with-ai", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const userId = req.user?.sub;
+  const id = String(req.params.id);
+  if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
+
+  const parsed = developConceptWithAiSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: "Parâmetros de desenvolvimento inválidos.",
+      details: parsed.error.flatten(),
+    });
+  }
+
+  const [concept] = await db
+    .select()
+    .from(archConceptProjectsTable)
+    .where(and(
+      eq(archConceptProjectsTable.id, id),
+      eq(archConceptProjectsTable.tenantId, tid),
+      eq(archConceptProjectsTable.ownerUserId, userId),
+    ))
+    .limit(1);
+
+  if (!concept) return res.status(404).json({ error: "Pré-projeto não encontrado." });
+
+  const geometryHealth = conceptGeometryHealth(concept);
+  const rooms = Array.isArray(concept.rooms) ? concept.rooms : [];
+  const config = (concept.configuration ?? {}) as Record<string, unknown>;
+  const facade = (concept.facadePreferences ?? {}) as Record<string, unknown>;
+  const requestedStyle = parsed.data.style ?? String(facade.style ?? "contemporaneo");
+
+  const prompt = `Você é o Copiloto de Desenvolvimento Arquitetônico do Arqdor.
+Analise este pré-projeto residencial brasileiro e proponha SOMENTE ajustes compatíveis com a geometria existente.
+NUNCA invente outro projeto, nunca troque o número de pavimentos, nunca mova a garagem sem necessidade e nunca crie aberturas sem justificativa.
+
+Modo: ${parsed.data.mode}
+Preservar layout: ${parsed.data.preserveLayout ? "sim" : "não"}
+Estilo desejado: ${requestedStyle}
+Lote: ${JSON.stringify(concept.lot)}
+Configuração: ${JSON.stringify(config)}
+Ambientes: ${JSON.stringify(rooms)}
+Preferências atuais de fachada: ${JSON.stringify(facade)}
+Saúde geométrica preliminar: ${JSON.stringify(geometryHealth)}
+
+Retorne APENAS JSON válido:
+{
+  "facadeSuggestion": {
+    "style": "contemporaneo|minimalista|classico_contemporaneo|tropical|industrial|rustico_contemporaneo",
+    "roof": "platibanda|aparente|misto",
+    "primaryMaterial": "pintura|madeira|pedra|concreto",
+    "accentMaterial": "nenhum|madeira|pedra|concreto",
+    "facadeTone": "claro|medio|escuro",
+    "frameTone": "preto|branco|bronze",
+    "landscaping": "leve|medio|intenso"
+  },
+  "notes": ["..."],
+  "geometryWarnings": ["..."]
+}`;
+
+  try {
+    const message = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 1500,
+      system: "Responda somente com JSON válido, sem markdown e sem texto fora do JSON.",
+      messages: [{ role: "user", content: prompt }],
+    });
+    const raw = message.content
+      .filter((item: any) => item.type === "text")
+      .map((item: any) => item.text)
+      .join("");
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return res.status(422).json({ error: "IA não retornou JSON válido." });
+    const ai = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
+
+    return res.json({
+      geometryHealth,
+      facadeSuggestion: ai.facadeSuggestion ?? null,
+      notes: Array.isArray(ai.notes) ? ai.notes : [],
+      geometryWarnings: Array.isArray(ai.geometryWarnings) ? ai.geometryWarnings : [],
+    });
+  } catch (error) {
+    const safe = sanitizeAIError(error);
+    return res.status(safe.status).json({ error: safe.message });
+  }
 });
 
 router.post("/arch/concept-projects/:id/share-tour", authenticate, async (req, res) => {
