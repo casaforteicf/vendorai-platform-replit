@@ -398,6 +398,18 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     isLoading: loadingProducts,
   } = useListLeadProducts(leadId, { request: { headers: { Authorization: `Bearer ${token}` } } });
 
+  const productProposalImages = Array.from(new Set(
+    (products as any[])
+      .map((product) => typeof product?.imagemUrl === "string" ? product.imagemUrl.trim() : "")
+      .filter((url): url is string => Boolean(url)),
+  ));
+  const effectiveProposalImages = Array.from(new Set([
+    ...proposalImages,
+    ...productProposalImages,
+  ]));
+  const proposalHasMinimumImages = effectiveProposalImages.length >= 2;
+  const proposalPrimaryPageCount = selectedOrcamentoId !== "__none__" ? 5 : 4;
+
   const generateMutation = useGenerateLeadProposal({
     request: { headers: { Authorization: `Bearer ${token}` } },
   });
@@ -689,6 +701,17 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
 
   async function generateProposal(notes?: string) {
     if (!leadId || !token) return;
+
+    const imagesForProposal = effectiveProposalImages.slice(0, 12);
+    if (imagesForProposal.length < 2) {
+      toast({
+        title: "Adicione pelo menos 2 imagens",
+        description: "Para uma apresentação completa, importe imagens, selecione renders ou vincule produtos com imagem. O ideal é cobrir todas as páginas principais.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setRefineOpen(false);
     setGenerating(true);
     try {
@@ -700,7 +723,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
           websiteUrl: websiteUrl || undefined,
           corDestaque: corDestaque || undefined,
           corSecundaria: corSecundaria || undefined,
-          imagens: proposalImages.length > 0 ? proposalImages : undefined,
+          imagens: imagesForProposal,
           objetivo: lead?.objetivo || undefined,
           propostaId: selectedOrcamentoId !== "__none__" ? selectedOrcamentoId : undefined,
           apresentacao: selectedOrcamentoId !== "__none__" ? currentProposalPresentation() : undefined,
@@ -1014,10 +1037,28 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
           <div className="border-t" />
 
           <section className="space-y-3">
-            <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
-              <ImagePlus className="h-3.5 w-3.5 text-muted-foreground" />
-              Materiais visuais
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold text-foreground">
+              <span className="flex items-center gap-2">
+                <ImagePlus className="h-3.5 w-3.5 text-muted-foreground" />
+                Materiais visuais
+              </span>
+              <Badge
+                variant="outline"
+                className={proposalHasMinimumImages ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}
+              >
+                {effectiveProposalImages.length}/2 mínimo
+              </Badge>
             </div>
+
+            <p className="text-xs text-muted-foreground">
+              Ideal: {proposalPrimaryPageCount} imagens diferentes, uma para cada página principal. O sistema exige no mínimo 2 e usa imagens de produtos vinculados como complemento quando necessário.
+            </p>
+
+            {productProposalImages.filter((url) => !proposalImages.includes(url)).length > 0 && (
+              <p className="rounded-md border border-dashed bg-muted/30 px-2.5 py-2 text-[11px] text-muted-foreground">
+                {productProposalImages.filter((url) => !proposalImages.includes(url)).length} imagem(ns) de produto será(ão) usada(s) automaticamente depois das imagens selecionadas.
+              </p>
+            )}
 
             {proposalImages.length > 0 && (
               <div className="space-y-1.5">
@@ -1025,8 +1066,8 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                   <p className="text-xs text-muted-foreground font-medium">
                     Ordem da apresentação — cada imagem ocupa uma página:
                   </p>
-                  <span className={`text-[10px] font-medium ${proposalImages.length >= (selectedOrcamentoId !== "__none__" ? 5 : 4) ? "text-emerald-600" : "text-amber-600"}`}>
-                    {proposalImages.length}/{selectedOrcamentoId !== "__none__" ? 5 : 4} páginas principais cobertas
+                  <span className={`text-[10px] font-medium ${effectiveProposalImages.length >= proposalPrimaryPageCount ? "text-emerald-600" : "text-amber-600"}`}>
+                    {Math.min(effectiveProposalImages.length, proposalPrimaryPageCount)}/{proposalPrimaryPageCount} páginas principais cobertas
                   </span>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
@@ -1113,7 +1154,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
             {imageSourceTab === "upload" && (
               <div className="space-y-2">
                 <p className="text-xs text-muted-foreground">
-                  Para uma apresentação completa, use 4 imagens principais — ou 5 quando houver orçamento: capa, contexto, valor, solução e orçamento.
+                  Para máxima qualidade, use uma imagem diferente por página: capa, contexto, valor, solução e, quando houver, orçamento.
                 </p>
                 <input
                   ref={imageInputRef}
