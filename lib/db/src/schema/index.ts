@@ -239,3 +239,5 @@ export * from "./item_ad_reservations";
 export * from "./commercial_usage";
 
 export * from "./lead_capture";
+
+export * from "./tenant_expansion_recommendations";
