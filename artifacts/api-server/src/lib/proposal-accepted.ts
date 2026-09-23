@@ -641,11 +641,24 @@ export async function proposalAccepted(
     .where(eq(propostasTable.id, propostaId))
     .returning();
 
-  await syncAcceptedProposalToArqdor(updatedProposta ?? proposta);
+  const acceptedProposal = updatedProposta ?? proposta;
+  let workProvisioning: WorkBaselineProvisioning | null | undefined;
+  const ensureConstructionProvisioning = async () => {
+    if (workProvisioning !== undefined) return workProvisioning;
+    await syncAcceptedProposalToArqdor(acceptedProposal);
+    try {
+      workProvisioning = await syncAcceptedProposalToWorkBaseline(acceptedProposal);
+    } catch (err) {
+      log.warn({ err, propostaId }, "proposalAccepted: work baseline provisioning failed (non-fatal)");
+      workProvisioning = null;
+    }
+    return workProvisioning;
+  };
 
   // 3. Resolve deal & idempotency check
   if (!proposta.dealId) {
     log.warn("proposalAccepted: no deal linked to proposta");
+    const provisioning = await ensureConstructionProvisioning();
     return {
       ok: true,
       alreadyProcessed: false,
@@ -657,6 +670,11 @@ export async function proposalAccepted(
       inventoryDeducted: false,
       activityCreated: false,
       webhookDispatched: false,
+      ...(provisioning ? {
+        obraId: provisioning.obraId,
+        portalClienteUrl: provisioning.portalClienteUrl ?? undefined,
+        baselineCreated: provisioning.baselineCreated,
+      } : {}),
     };
   }
 
@@ -667,6 +685,7 @@ export async function proposalAccepted(
 
   if (!deal) {
     log.warn("proposalAccepted: linked deal not found");
+    const provisioning = await ensureConstructionProvisioning();
     return {
       ok: true,
       alreadyProcessed: false,
@@ -678,6 +697,11 @@ export async function proposalAccepted(
       inventoryDeducted: false,
       activityCreated: false,
       webhookDispatched: false,
+      ...(provisioning ? {
+        obraId: provisioning.obraId,
+        portalClienteUrl: provisioning.portalClienteUrl ?? undefined,
+        baselineCreated: provisioning.baselineCreated,
+      } : {}),
     };
   }
 
@@ -687,6 +711,7 @@ export async function proposalAccepted(
       { dealId: deal.id, closureTriggeredAt: deal.closureTriggeredAt },
       "proposalAccepted: deal already closed, skipping automation"
     );
+    const provisioning = await ensureConstructionProvisioning();
     return {
       ok: true,
       alreadyProcessed: true,
@@ -698,6 +723,11 @@ export async function proposalAccepted(
       inventoryDeducted: false,
       activityCreated: false,
       webhookDispatched: false,
+      ...(provisioning ? {
+        obraId: provisioning.obraId,
+        portalClienteUrl: provisioning.portalClienteUrl ?? undefined,
+        baselineCreated: provisioning.baselineCreated,
+      } : {}),
     };
   }
 
@@ -935,6 +965,10 @@ export async function proposalAccepted(
 
   log.info({ dealId: deal.id }, "proposalAccepted: deal moved to ganho");
 
+  // A proposta aprovada torna-se a linha de base da execução: cria/reusa a
+  // obra, etapas, orçamento contratado versionado e o portal do cliente.
+  const provisioning = await ensureConstructionProvisioning();
+
   // 4a. Handoff proativo: fechamento → onboarding. Em vez de esperar o cliente
   // escrever de novo, dispara a mensagem de boas-vindas imediatamente — non-blocking.
   if (proposta.leadId) {
@@ -1127,5 +1161,10 @@ export async function proposalAccepted(
     inventoryDeducted,
     activityCreated,
     webhookDispatched,
+    ...(provisioning ? {
+      obraId: provisioning.obraId,
+      portalClienteUrl: provisioning.portalClienteUrl ?? undefined,
+      baselineCreated: provisioning.baselineCreated,
+    } : {}),
   };
 }
