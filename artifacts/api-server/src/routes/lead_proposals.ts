@@ -364,7 +364,32 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
   const primaryColor = ctx.lead.corDestaque || "#A78BFA";
   const theme = generateTheme(primaryColor);
 
-  const bodyImagens: string[] | null = Array.isArray(req.body?.imagens) ? req.body.imagens : null;
+  const requestedImages: string[] = Array.isArray(req.body?.imagens)
+    ? req.body.imagens
+        .filter((value: unknown): value is string => typeof value === "string" && value.trim().length > 0)
+        .map((value: string) => value.trim())
+    : [];
+
+  // Regra de apresentação: nunca gerar proposta comercial com menos de 2 imagens.
+  // Respeita a seleção enviada pelo usuário e usa imagens dos produtos do lead
+  // apenas para completar o mínimo quando necessário.
+  const bodyImagens = Array.from(new Set(requestedImages));
+  const productImages = (ctx.products as any[])
+    .map((product) => typeof product?.imagemUrl === "string" ? product.imagemUrl.trim() : "")
+    .filter((url): url is string => Boolean(url));
+
+  for (const imageUrl of productImages) {
+    if (bodyImagens.length >= 2) break;
+    if (!bodyImagens.includes(imageUrl)) bodyImagens.push(imageUrl);
+  }
+
+  if (bodyImagens.length < 2) {
+    res.status(400).json({
+      error: "A apresentação da proposta precisa de pelo menos 2 imagens. Adicione imagens ou vincule produtos com imagem ao lead.",
+    });
+    return;
+  }
+
   const bodyPropostaId: string | null = req.body?.propostaId ? String(req.body.propostaId) : null;
   const rawPresentation = req.body?.apresentacao;
   const presentationModes = new Set(["completo", "resumo_etapa", "preco_medio"]);
