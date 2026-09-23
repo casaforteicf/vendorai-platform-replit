@@ -46,7 +46,9 @@ interface ReelsVariation {
   cta: string;
   videoUrl?: string;
   coverUrl?: string;
-  coverSource?: "upload" | "frame";
+  coverOriginalUrl?: string;
+  coverSource?: "upload" | "frame" | "ai";
+  coverCrop?: { zoom: number; x: number; y: number };
   thumbOffsetMs?: number;
 }
 interface LinkedInVariation { hook: string; caption: string; hashtags: string[] }
@@ -858,7 +860,11 @@ function MediaUploadButton({
   variationIndex: number;
   tenantId: string;
   mediaType: "image" | "video";
-  onUploaded: (mediaUrl: string, imageUrls?: string[]) => void;
+  onUploaded: (
+    mediaUrl: string,
+    imageUrls?: string[],
+    metadata?: { originalMediaUrl?: string },
+  ) => void;
   triggerRef?: React.MutableRefObject<(() => void) | null>;
   allowMultipleImages?: boolean;
   currentImageCount?: number;
@@ -898,7 +904,10 @@ function MediaUploadButton({
     return null;
   }
 
-  async function uploadFile(file: File, append: boolean): Promise<{ mediaUrl: string; imageUrls?: string[] }> {
+  async function uploadFile(
+    file: File,
+    append: boolean,
+  ): Promise<{ mediaUrl: string; imageUrls?: string[]; originalMediaUrl?: string }> {
     const metaRes = await fetch("/api/storage/uploads/request-url", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -925,11 +934,20 @@ function MediaUploadButton({
         body: JSON.stringify({ objectPath, field, append }),
       }
     );
-    const patchData = (await patchRes.json().catch(() => ({}))) as { mediaUrl?: string; imageUrls?: string[]; error?: string };
+    const patchData = (await patchRes.json().catch(() => ({}))) as {
+      mediaUrl?: string;
+      originalMediaUrl?: string;
+      imageUrls?: string[];
+      error?: string;
+    };
     if (!patchRes.ok || !patchData.mediaUrl) {
       throw new Error(patchData.error ?? `Falha ao salvar ${isVideo ? "vídeo" : "imagem"}`);
     }
-    return { mediaUrl: patchData.mediaUrl, imageUrls: patchData.imageUrls };
+    return {
+      mediaUrl: patchData.mediaUrl,
+      imageUrls: patchData.imageUrls,
+      originalMediaUrl: patchData.originalMediaUrl,
+    };
   }
 
   async function handleFiles(files: File[]) {
@@ -962,15 +980,19 @@ function MediaUploadButton({
     try {
       let lastMediaUrl = "";
       let latestImageUrls: string[] | undefined;
+      let lastOriginalMediaUrl: string | undefined;
 
       for (let i = 0; i < selectedFiles.length; i++) {
         setUploadProgress({ current: i + 1, total: selectedFiles.length });
         const result = await uploadFile(selectedFiles[i]!, !isVideo && allowMultipleImages);
         lastMediaUrl = result.mediaUrl;
         if (result.imageUrls) latestImageUrls = result.imageUrls;
+        if (result.originalMediaUrl) lastOriginalMediaUrl = result.originalMediaUrl;
       }
 
-      if (lastMediaUrl) onUploaded(lastMediaUrl, latestImageUrls);
+      if (lastMediaUrl) {
+        onUploaded(lastMediaUrl, latestImageUrls, { originalMediaUrl: lastOriginalMediaUrl });
+      }
       qc.invalidateQueries({ queryKey: ["content", tenantId] });
       toast({
         title: !isVideo && selectedFiles.length > 1
