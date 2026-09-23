@@ -389,8 +389,8 @@ export function BrandKitSettings() {
         </p>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" type="button" onClick={() => window.location.assign("/content")}>Abrir Conteúdo</Button>
-          <Button variant="outline" type="button" onClick={() => window.location.assign("/knowledge")}>Abrir Conhecimento</Button>
-          <Button variant="outline" type="button" onClick={() => window.location.assign("/video")}><ImageIcon className="mr-2 h-4 w-4" />Abrir Vídeo</Button>
+          <Button variant="outline" type="button" onClick={() => window.location.assign("/base-conhecimento")}>Abrir Conhecimento</Button>
+          <Button variant="outline" type="button" onClick={() => window.location.assign("/content-studio/video")}><ImageIcon className="mr-2 h-4 w-4" />Abrir Vídeo</Button>
         </div>
       </div>
 
