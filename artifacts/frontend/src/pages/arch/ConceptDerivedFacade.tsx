@@ -27,6 +27,51 @@ type Props = {
   viewMode?: "line" | "material";
 };
 
+const STORY_HEIGHT = 18;
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function facadePalette(facade: ConceptFacadePreferences, design?: FacadeDesignState) {
+  const wall =
+    facade.primaryMaterial === "madeira" ? "#c9a47f" :
+    facade.primaryMaterial === "pedra" ? "#d9d4cc" :
+    facade.primaryMaterial === "concreto" ? "#c9ced2" :
+    facade.facadeTone === "escuro" ? "#6f7479" :
+    facade.facadeTone === "medio" ? "#d9d6d0" : "#f2f0eb";
+
+  const wallShade =
+    facade.facadeTone === "escuro" ? "#5f6469" :
+    facade.facadeTone === "medio" ? "#c8c4bd" : "#dfdcd5";
+
+  const accent =
+    facade.accentMaterial === "madeira" ? "#986848" :
+    facade.accentMaterial === "pedra" ? "#8f8980" :
+    facade.accentMaterial === "concreto" ? "#747b81" : "#b9b4ac";
+
+  const frame =
+    facade.frameTone === "branco" ? "#f5f7f8" :
+    facade.frameTone === "bronze" ? "#735a45" : "#202428";
+
+  const roof =
+    facade.style === "rustico_contemporaneo" ? "#675044" :
+    facade.style === "classico_contemporaneo" ? "#6e5143" :
+    facade.facadeTone === "escuro" ? "#454a4e" : "#565b60";
+
+  const mainMaterial = design ? getFacadeMaterial(design.surfaceMaterials.main) : null;
+  const accentMaterial = design ? getFacadeMaterial(design.surfaceMaterials.accent) : null;
+  const frameMaterial = design ? getFacadeMaterial(design.surfaceMaterials.frames) : null;
+
+  return {
+    wall: mainMaterial?.baseColor ?? wall,
+    wallShade: mainMaterial?.shadeColor ?? wallShade,
+    accent: accentMaterial?.baseColor ?? accent,
+    frame: frameMaterial?.baseColor ?? frame,
+    roof,
+  };
+}
+
 function Window({
   x,
   y,
