@@ -97,6 +97,20 @@ export function BrandKitSettings() {
   });
 
   const discovery = (profile.data?.discoveryData as Record<string, unknown> | null) ?? {};
+  const proposalBuilderTemplates = Array.isArray(discovery.proposalBuilderTemplates)
+    ? (discovery.proposalBuilderTemplates as Array<Record<string, unknown>>).filter(
+        (item) => item && typeof item.id === "string",
+      )
+    : [];
+  const activeProposalBuilderTemplateId =
+    typeof discovery.activeProposalBuilderTemplateId === "string"
+      ? discovery.activeProposalBuilderTemplateId
+      : null;
+  const activeProposalBuilderTemplate =
+    proposalBuilderTemplates.find((item) => item.id === activeProposalBuilderTemplateId)
+    ?? proposalBuilderTemplates.find((item) => item.isDefault === true)
+    ?? proposalBuilderTemplates[0]
+    ?? null;
   const [draft, setDraft] = useState<BrandDraft>(emptyDraft);
   const [primaryColor, setPrimaryColor] = useState("#A78BFA");
   const [aiMode, setAiMode] = useState<BrandStudioMode>("evolve");
@@ -330,7 +344,14 @@ export function BrandKitSettings() {
           <div className="rounded-lg border p-3"><strong className="text-sm">Empresa</strong><p className="text-xs text-muted-foreground">business_profiles</p></div>
           <div className="rounded-lg border p-3"><strong className="text-sm">Identidade</strong><p className="text-xs text-muted-foreground">logo + cores do tenant</p></div>
           <div className="rounded-lg border p-3"><strong className="text-sm">Vídeo</strong><p className="text-xs text-muted-foreground">{videoKit ? "Brand Video Kit conectado" : "Sem kit de vídeo ativo"}</p></div>
-          <div className="rounded-lg border p-3"><strong className="text-sm">Uso</strong><p className="text-xs text-muted-foreground">Contexto global das ferramentas</p></div>
+          <div className="rounded-lg border p-3">
+            <strong className="text-sm">Propostas</strong>
+            <p className="text-xs text-muted-foreground">
+              {activeProposalBuilderTemplate
+                ? `Modelo inteligente ativo: ${String(activeProposalBuilderTemplate.name || "Modelo padrão")}`
+                : "O modelo inteligente será criado automaticamente ao salvar o Kit da Marca."}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -380,6 +401,33 @@ export function BrandKitSettings() {
           {field("CTA padrão", "ctaPadrao", "Ex.: Solicite uma análise / Fale com nossa equipe.", 2)}
           <div className="md:col-span-2">{field("Palavras e abordagens a evitar", "palavrasEvitar", "Termos proibidos, promessas que não podem ser feitas e estilos de comunicação inadequados.")}</div>
         </div>
+      </div>
+
+      <div className="rounded-xl border bg-card p-5 space-y-3">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-primary" />
+          <h3 className="font-semibold">Modelo inteligente de proposta</h3>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          O VendorAI cria automaticamente um modelo modular a partir do segmento, diferenciais, público-alvo e Kit da Marca. A proposta usa esse padrão sem exigir uma configuração inicial separada.
+        </p>
+        {activeProposalBuilderTemplate ? (
+          <div className="rounded-lg border bg-muted/20 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-medium">{String(activeProposalBuilderTemplate.name || "Modelo padrão")}</p>
+                <p className="text-xs text-muted-foreground">
+                  {proposalBuilderTemplates.length} versão(ões) · modelo ativo do tenant
+                </p>
+              </div>
+              <Badge variant="secondary">Pronto</Badge>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+            Ao salvar o Kit da Marca, o sistema prepara automaticamente o primeiro modelo de proposta. Se a IA estiver indisponível, um padrão seguro do segmento é aplicado para não bloquear o uso.
+          </div>
+        )}
       </div>
 
       <div className="rounded-xl border bg-card p-5 space-y-3">
