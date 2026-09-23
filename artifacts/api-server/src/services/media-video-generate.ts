@@ -13,6 +13,7 @@ import {
   pool,
 } from "@workspace/db";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
+import { callReplicateVeo31 } from "../lib/arch-render-pipeline.js";
 import { objectStorageClient } from "../lib/objectStorage.js";
 import { applyBrandIntroOutro } from "./media-brand-video.js";
 import {
@@ -67,6 +68,10 @@ type GenerateVideoInput = {
   effects?: unknown;
   generationMode?: VideoGenerationMode | string;
   mediaInputs?: VideoGenerationMediaInputSpec[] | unknown;
+  engine?: string;
+  qualityMode?: string;
+  audio?: unknown;
+  voiceoverScript?: string;
 };
 
 type ClaimedVideo = {
@@ -581,12 +586,139 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
   const requestedSceneCount = Number.isFinite(Number(video.input.sceneCount)) ? Number(video.input.sceneCount) : null;
   const mode = videoGenerationMode(video.input.generationMode);
   const userId = video.input.userId ?? null;
+  const requestedEngine = String(video.input.engine ?? "").trim().toLowerCase();
+  const qualityMode = String(video.input.qualityMode ?? "").trim().toLowerCase();
+  const usePremiumNativeVideo = requestedEngine === "veo-3.1"
+    || requestedEngine === "google/veo-3.1"
+    || qualityMode === "cinema";
+  const audioConfig = asRecord(video.input.audio);
+  const nativeAudioEnabled = audioConfig["enabled"] !== false;
+  const voiceoverScript = stringValue(video.input.voiceoverScript);
 
   if (!video.projectId || (rawPrompt?.length ?? 0) > MAX_PROMPT_LENGTH) {
     const error = `Vídeo inválido: o prompt deve ter no máximo ${MAX_PROMPT_LENGTH} caracteres`;
     await persistFinished({ video, runnerToken, status: "error", error });
     if (video.projectId) await setMediaProjectStatus(video.tenantId, video.projectId, "draft");
     return;
+  }
+
+  if (usePremiumNativeVideo) {
+    try {
+      await persistRunning({
+        video,
+        runnerToken,
+        progress: 5,
+        output: {
+          prompt: rawPrompt ?? "",
+          style,
+          aspectRatio,
+          requestedDuration: duration,
+          engine: "google/veo-3.1",
+          qualityMode: "cinema",
+          resolution: "1080p",
+          nativeAudioEnabled,
+          stage: "premium_native_video",
+        },
+      });
+
+      const premiumPrompt = [
+        rawPrompt ?? "",
+        `Visual direction: ${style}.`,
+        voiceoverScript
+          ? `Spoken Brazilian Portuguese voiceover, natural, confident and professional: "${voiceoverScript}"`
+          : "",
+        nativeAudioEnabled
+          ? "Generate synchronized native audio with polished cinematic ambience, subtle technology sound design, and clear speech when requested."
+          : "Do not generate audio.",
+        "Premium commercial film quality. Natural coherent motion, realistic lighting, stable geometry, clean SaaS technology aesthetic. Avoid distorted interfaces, warped typography, flicker and random logos.",
+      ].filter(Boolean).join("\n");
+
+      const premium = await callReplicateVeo31({
+        prompt: premiumPrompt,
+        aspectRatio: aspectRatio === "portrait" ? "9:16" : "16:9",
+        duration: 8,
+        resolution: "1080p",
+        generateAudio: nativeAudioEnabled,
+        logger,
+      });
+
+      await persistRunning({
+        video,
+        runnerToken,
+        progress: 90,
+        output: {
+          prompt: rawPrompt ?? "",
+          style,
+          aspectRatio,
+          requestedDuration: duration,
+          actualDuration: 8,
+          engine: premium.model,
+          qualityMode: "cinema",
+          resolution: "1080p",
+          nativeAudioEnabled,
+          predictionId: premium.predictionId,
+          stage: "saving_output",
+        },
+      });
+
+      const storageUrl = await saveObject(premium.buffer, "video/mp4", "video-generate/outputs", "mp4");
+      const output = await registerGeneratedMediaOutput({
+        tenantId: video.tenantId,
+        projectId: video.projectId,
+        userId,
+        storageUrl,
+        mimeType: "video/mp4",
+        originalFilename: `${title.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || video.id}-cinema.mp4`,
+        operation: "video_generate",
+        label: "Vídeo Cinema gerado com IA",
+        metadata: {
+          jobId: video.id,
+          prompt: rawPrompt ?? "",
+          style,
+          aspectRatio,
+          requestedDuration: duration,
+          actualDuration: 8,
+          engine: premium.model,
+          provider: "replicate",
+          qualityMode: "cinema",
+          resolution: "1080p",
+          audioApplied: nativeAudioEnabled,
+          nativeAudio: nativeAudioEnabled,
+          predictionId: premium.predictionId,
+          generationEngine: "native-video-premium-v1",
+        },
+      });
+
+      await persistFinished({
+        video,
+        runnerToken,
+        status: "done",
+        output: {
+          videoUrl: `/api/storage${storageUrl}`,
+          videoAssetId: output.assetId,
+          prompt: rawPrompt ?? "",
+          style,
+          aspectRatio,
+          requestedDuration: duration,
+          actualDuration: 8,
+          engine: premium.model,
+          provider: "replicate",
+          qualityMode: "cinema",
+          resolution: "1080p",
+          audioApplied: nativeAudioEnabled,
+          nativeAudio: nativeAudioEnabled,
+          predictionId: premium.predictionId,
+          generationEngine: "native-video-premium-v1",
+        },
+      });
+      return;
+    } catch (error) {
+      const message = (error instanceof Error ? error.message : "Falha no motor premium").slice(0, 1000);
+      logger.error({ err: error, jobId: video.id, tenantId: video.tenantId }, "media-video-generate: motor premium falhou");
+      await persistFinished({ video, runnerToken, status: "error", error: message }).catch(() => undefined);
+      if (video.projectId) await setMediaProjectStatus(video.tenantId, video.projectId, "draft").catch(() => undefined);
+      return;
+    }
   }
 
   const { width, height } = outputDimensions(aspectRatio);

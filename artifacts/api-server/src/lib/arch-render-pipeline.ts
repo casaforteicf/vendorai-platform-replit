@@ -683,3 +683,82 @@ export function bufferToDataUrl(buf: Buffer, mime = "image/png"): string {
   return `data:${mime};base64,${buf.toString("base64")}`;
 }
 
+
+
+export async function callReplicateVeo31(params: {
+  prompt: string;
+  aspectRatio?: "16:9" | "9:16";
+  duration?: 4 | 6 | 8;
+  resolution?: "720p" | "1080p";
+  generateAudio?: boolean;
+  logger?: Logger;
+}): Promise<{ buffer: Buffer; predictionId: string; model: string }> {
+  const token = process.env["REPLICATE_API_TOKEN"];
+  if (!token) throw new Error("REPLICATE_API_TOKEN not set");
+
+  const MODEL = "google/veo-3.1";
+  const { prompt, logger } = params;
+  logger?.info({ model: MODEL }, "Veo31: creating prediction");
+
+  type Prediction = { id: string; status: string; output?: string | string[]; error?: string };
+  const createRes = await fetch(
+    `https://api.replicate.com/v1/models/${MODEL}/predictions`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Token ${token}`,
+        "Content-Type": "application/json",
+        Prefer: "wait=60",
+      },
+      body: JSON.stringify({
+        input: {
+          prompt,
+          aspect_ratio: params.aspectRatio ?? "16:9",
+          duration: params.duration ?? 8,
+          resolution: params.resolution ?? "1080p",
+          generate_audio: params.generateAudio !== false,
+        },
+      }),
+      signal: AbortSignal.timeout(120_000),
+    },
+  );
+
+  if (!createRes.ok) {
+    const body = await createRes.json().catch(() => ({})) as Record<string, unknown>;
+    throw new Error(`Veo31 HTTP ${createRes.status}: ${body["detail"] ?? JSON.stringify(body)}`);
+  }
+
+  let prediction = await createRes.json() as Prediction;
+  if (!prediction.id) throw new Error("Veo31: resposta sem identificador de geração");
+
+  let polls = 0;
+  while (prediction.status === "starting" || prediction.status === "processing") {
+    if (polls >= 180) throw new Error("Veo31: polling timeout");
+    await new Promise<void>((resolve) => setTimeout(resolve, 4000));
+    const pollRes = await fetch(
+      `https://api.replicate.com/v1/predictions/${prediction.id}`,
+      {
+        headers: { Authorization: `Token ${token}` },
+        signal: AbortSignal.timeout(30_000),
+      },
+    );
+    if (!pollRes.ok) throw new Error(`Veo31: status indisponível (${pollRes.status})`);
+    prediction = await pollRes.json() as Prediction;
+    polls += 1;
+  }
+
+  if (prediction.status !== "succeeded" || !prediction.output) {
+    throw new Error(`Veo31 ${prediction.status}: ${prediction.error ?? "no output"}`);
+  }
+
+  const outputUrl = Array.isArray(prediction.output) ? prediction.output[0] : prediction.output;
+  if (!outputUrl) throw new Error("Veo31: empty output URL");
+
+  const videoRes = await fetch(outputUrl, { signal: AbortSignal.timeout(120_000) });
+  if (!videoRes.ok) throw new Error(`Veo31: download failed (${videoRes.status})`);
+  const buffer = Buffer.from(await videoRes.arrayBuffer());
+  if (!buffer.length) throw new Error("Veo31: empty video output");
+
+  logger?.info({ model: MODEL, polls, predictionId: prediction.id }, "Veo31: prediction succeeded");
+  return { buffer, predictionId: prediction.id, model: MODEL };
+}
