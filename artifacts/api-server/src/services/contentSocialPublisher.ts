@@ -298,8 +298,19 @@ export async function publishContentGenerationToInstagram(params: {
       throw error;
     }
     const publicVideoUrl = await resolveInstagramMediaUrl(reel.videoUrl);
+    const publicCoverUrl = reel.coverUrl ? await resolveInstagramMediaUrl(reel.coverUrl) : undefined;
     const caption = params.captionOverride ?? `${reel.title ?? gen.theme}${reel.cta ? `\n\n${reel.cta}` : ""}`;
-    postId = await publishReelPost(accountId, accessToken, caption, publicVideoUrl, params.log);
+    postId = await publishReelPost(
+      accountId,
+      accessToken,
+      caption,
+      publicVideoUrl,
+      params.log,
+      {
+        coverUrl: publicCoverUrl,
+        thumbOffsetMs: publicCoverUrl ? undefined : reel.thumbOffsetMs,
+      },
+    );
     captionOuTexto = caption;
   }
 
