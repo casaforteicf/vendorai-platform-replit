@@ -1503,7 +1503,9 @@ function VariationCard({
   const [localImageUrl, setLocalImageUrl] = useState<string | undefined>(undefined);
   const [localImageUrls, setLocalImageUrls] = useState<string[] | null>(null);
   const [localVideoUrl, setLocalVideoUrl] = useState<string | undefined>(undefined);
-  const [localReelCover, setLocalReelCover] = useState<Pick<ReelsVariation, "coverUrl" | "coverSource" | "thumbOffsetMs"> | null>(null);
+  const [localReelCover, setLocalReelCover] = useState<
+    Pick<ReelsVariation, "coverUrl" | "coverOriginalUrl" | "coverSource" | "coverCrop" | "thumbOffsetMs"> | null
+  >(null);
   const uploadTriggerRef = useRef<(() => void) | null>(null);
   const qc = useQueryClient();
   const [, setLocation] = useLocation();
