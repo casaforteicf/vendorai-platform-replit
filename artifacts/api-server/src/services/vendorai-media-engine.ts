@@ -213,10 +213,89 @@ async function prepareProfessionalMediaPlanVideo(input: {
   };
 }
 
+async function assertVideoGenerationWithinTenantLimits(input: {
+  tenantId: string;
+  context: Record<string, unknown>;
+}): Promise<void> {
+  const limitResult = await pool.query(
+    `SELECT monthly_video_jobs_limit,
+            monthly_premium_video_jobs_limit,
+            max_concurrent_video_jobs,
+            max_duration_seconds,
+            enabled
+       FROM tenant_video_generation_limits
+      WHERE tenant_id = $1
+      LIMIT 1`,
+    [input.tenantId],
+  ).catch(() => ({ rows: [] as any[] }));
+
+  const row = limitResult.rows[0] as Record<string, unknown> | undefined;
+  const enabled = row ? row["enabled"] !== false : true;
+  if (!enabled) return;
+
+  const monthlyLimit = Math.max(0, Number(row?.["monthly_video_jobs_limit"] ?? 10));
+  const premiumMonthlyLimit = Math.max(0, Number(row?.["monthly_premium_video_jobs_limit"] ?? 1));
+  const concurrentLimit = Math.max(1, Number(row?.["max_concurrent_video_jobs"] ?? 1));
+  const maxDuration = Math.max(4, Number(row?.["max_duration_seconds"] ?? 30));
+
+  const requestedDuration = Math.max(4, Math.round(Number(input.context["duration"] ?? 15)));
+  if (requestedDuration > maxDuration) {
+    throw new Error(`VIDEO_TENANT_DURATION_LIMIT: duração máxima permitida para este tenant é ${maxDuration}s`);
+  }
+
+  const engine = normalize(input.context["engine"]);
+  const qualityMode = normalize(input.context["qualityMode"]);
+  const premiumRequested = qualityMode === "cinema"
+    || engine.includes("veo")
+    || engine.includes("gen4.5");
+
+  const usage = await pool.query(
+    `SELECT
+        COUNT(*) FILTER (
+          WHERE status IN ('running','done')
+            AND created_at >= date_trunc('month', NOW())
+        )::int AS month_jobs,
+        COUNT(*) FILTER (
+          WHERE status = 'running'
+        )::int AS running_jobs,
+        COUNT(*) FILTER (
+          WHERE status IN ('running','done')
+            AND created_at >= date_trunc('month', NOW())
+            AND (
+              lower(COALESCE(input->>'qualityMode','')) = 'cinema'
+              OR lower(COALESCE(input->>'engine','')) LIKE '%veo%'
+              OR lower(COALESCE(input->>'engine','')) LIKE '%gen4.5%'
+            )
+        )::int AS month_premium_jobs
+       FROM media_jobs
+      WHERE tenant_id = $1
+        AND operation = 'video_generate'`,
+    [input.tenantId],
+  );
+
+  const counters = usage.rows[0] as Record<string, unknown> | undefined;
+  const monthJobs = Number(counters?.["month_jobs"] ?? 0);
+  const runningJobs = Number(counters?.["running_jobs"] ?? 0);
+  const monthPremiumJobs = Number(counters?.["month_premium_jobs"] ?? 0);
+
+  if (runningJobs >= concurrentLimit) {
+    throw new Error(`VIDEO_TENANT_CONCURRENT_LIMIT: este tenant já possui ${runningJobs} geração(ões) de vídeo em andamento`);
+  }
+  if (monthJobs >= monthlyLimit) {
+    throw new Error(`VIDEO_TENANT_MONTHLY_LIMIT: cota mensal de ${monthlyLimit} vídeo(s) atingida para este tenant`);
+  }
+  if (premiumRequested && monthPremiumJobs >= premiumMonthlyLimit) {
+    throw new Error(`VIDEO_TENANT_PREMIUM_LIMIT: cota mensal de ${premiumMonthlyLimit} vídeo(s) Cinema atingida para este tenant`);
+  }
+}
+
 export async function createVendorAiMediaGenerationJob(input: {
   tenantId: string; userId?: string | null; title: string; operation: VendorAiMediaCapability; context?: Record<string, unknown>;
 }) {
   const initialContext = input.context ?? {};
+  if (input.operation === "video_generate") {
+    await assertVideoGenerationWithinTenantLimits({ tenantId: input.tenantId, context: initialContext });
+  }
   const professionalContext = await prepareProfessionalMediaPlanVideo({ tenantId: input.tenantId, operation: input.operation, context: initialContext });
   const context = input.operation === "video_generate"
     ? await prepareGuidedVideoAudio({ tenantId: input.tenantId, userId: input.userId ?? null, title: input.title, context: professionalContext })
