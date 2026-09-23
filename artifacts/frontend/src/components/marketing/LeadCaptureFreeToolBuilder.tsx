@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Gift, Loader2, Plus, Sparkles, Trash2 } from "lucide-react";
+import { Bot, Gift, Loader2, Plus, Sparkles, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -40,6 +40,8 @@ export default function LeadCaptureFreeToolBuilder({ tenantId }: { tenantId: str
   const [suggestedTools, setSuggestedTools] = useState<Tool[]>([]);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const [campaignName, setCampaignName] = useState("Captação com ferramenta gratuita");
+  const [jarvisBrief, setJarvisBrief] = useState("");
+  const [jarvisBuilding, setJarvisBuilding] = useState(false);
   const [magnets, setMagnets] = useState<Magnet[]>(() =>
     DEFAULT_MAGNETS.map((title, index) => ({ id: `magnet-${index + 1}`, title })),
   );
@@ -86,6 +88,51 @@ export default function LeadCaptureFreeToolBuilder({ tenantId }: { tenantId: str
       toast({ title: "Erro ao habilitar ferramenta", description: error instanceof Error ? error.message : "Tente novamente", variant: "destructive" });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function buildWithJarvis() {
+    const brief = jarvisBrief.trim();
+    if (brief.length < 8) {
+      toast({ title: "Descreva a entrega que você quer criar", description: "Explique em uma frase o que o lead deve conseguir fazer.", variant: "destructive" });
+      return;
+    }
+    setJarvisBuilding(true);
+    try {
+      const response = await fetch("/api/jarvis/tool-builder", {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify({
+          brief,
+          mode: "auto",
+          publish: true,
+          freePolicy: { mode: "uses", limit: 1 },
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok && response.status !== 202) throw new Error(body.error || "O JARVIS não conseguiu preparar a entrega");
+
+      if (body.strategy === "requires_development") {
+        toast({
+          title: "Capacidade nova necessária",
+          description: body.summary || "O JARVIS identificou que falta uma capacidade real da plataforma antes de publicar esta ferramenta.",
+        });
+        return;
+      }
+
+      await load();
+      if (body.tool?.toolKey) {
+        setSelectedKeys((current) => current.includes(body.tool.toolKey) ? current : [...current, body.tool.toolKey]);
+      }
+      setJarvisBrief("");
+      toast({
+        title: body.strategy === "reuse" ? "JARVIS encontrou uma ferramenta existente" : "Ferramenta criada pelo JARVIS",
+        description: body.summary,
+      });
+    } catch (error) {
+      toast({ title: "Erro no JARVIS", description: error instanceof Error ? error.message : "Tente novamente", variant: "destructive" });
+    } finally {
+      setJarvisBuilding(false);
     }
   }
 
@@ -179,10 +226,30 @@ export default function LeadCaptureFreeToolBuilder({ tenantId }: { tenantId: str
           </div>
         </div>
 
-        <div className="space-y-2">
+        <div className="space-y-3">
           <div>
             <p className="text-sm font-medium">Entrega(s) gratuita(s)</p>
-            <p className="text-xs text-muted-foreground">Use ferramentas já existentes. Não criamos um mini-app paralelo.</p>
+            <p className="text-xs text-muted-foreground">Use ferramentas existentes ou peça ao JARVIS para reutilizar, compor ou criar uma nova experiência com as capacidades já disponíveis.</p>
+          </div>
+
+          <div className="rounded-lg border bg-muted/20 p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <Bot className="h-4 w-4 text-primary" />
+              <p className="text-sm font-medium">Quero outra entrega</p>
+            </div>
+            <textarea
+              className="min-h-20 w-full rounded-md border bg-background px-3 py-2 text-sm"
+              placeholder="Ex.: Quero uma ferramenta para o lead informar o tamanho do ambiente e receber uma sugestão inicial usando os produtos do meu catálogo."
+              value={jarvisBrief}
+              onChange={(e) => setJarvisBrief(e.target.value)}
+            />
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <p className="text-[11px] text-muted-foreground">O JARVIS procura primeiro algo existente. Só cria uma nova experiência se conseguir usar capacidades reais e seguras do App Builder.</p>
+              <Button type="button" size="sm" variant="outline" disabled={jarvisBuilding} onClick={() => void buildWithJarvis()}>
+                {jarvisBuilding ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Bot className="mr-1.5 h-3.5 w-3.5" />}
+                Desenvolver com JARVIS
+              </Button>
+            </div>
           </div>
           {availableTools.length === 0 ? (
             <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
