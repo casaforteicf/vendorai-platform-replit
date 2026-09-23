@@ -826,7 +826,7 @@ export function renderProposalHtml(json: unknown, theme: {
         : ""}
     <h1>${hero.headline || ""}</h1>
     <p class="cover-sub">${hero.subheadline || ""}</p>
-    ${imagens && imagens.length > 0 ? `<div class="img-hero-wrap"><img src="${imagens[0]}" alt="Visualização do projeto" loading="eager" onerror="this.style.display='none'" /></div>` : ""}
+    ${pageImage(0) ? `<div class="img-hero-wrap"><img src="${pageImage(0)}" alt="Imagem principal da proposta" loading="eager" onerror="this.style.display='none'" /></div>` : ""}
     <div class="cover-fortag">${hero.forTag || ""}</div>
   </div>
 
