@@ -25,6 +25,7 @@ const ContactSales       = lazy(() => import("@/pages/demo/contact-sales"));
 const PortalObra         = lazy(() => import("@/pages/PortalObra"));
 const ObraCampo           = lazy(() => import("@/pages/ObraCampo"));
 const PublicProposta     = lazy(() => import("@/pages/PublicProposta"));
+const PublicDeliveryRuntime = lazy(() => import("@/pages/PublicDeliveryRuntime"));
 const ForcePasswordChange= lazy(() => import("@/pages/ForcePasswordChange"));
 const AcceptInvite       = lazy(() => import("@/pages/AcceptInvite"));
 const NotFound           = lazy(() => import("@/pages/not-found"));
@@ -630,6 +631,9 @@ function AppRoutes() {
         <Route path="/p/:token">{() => <PublicProposta />}</Route>
         <Route path="/rastreio/:id">{() => <RastreioFrete />}</Route>
         <Route path="/acompanhar-entrega/:token">{() => <AcompanharEntrega />}</Route>
+        <Route path="/entrega/agente/:agentKey">{() => <PublicDeliveryRuntime />}</Route>
+        <Route path="/entrega/simulador/sdr">{() => <PublicDeliveryRuntime />}</Route>
+        <Route path="/entrega/arqdor/pre-projeto">{() => <PublicDeliveryRuntime />}</Route>
         <Route path="/onboarding"><OnboardingRoute /></Route>
         <Route path="/onboarding/integracoes">{() => <Suspense fallback={<Spinner />}><OnboardingIntegracoes /></Suspense>}</Route>
         <Route path="/"><PublicRoute component={Login} /></Route>
