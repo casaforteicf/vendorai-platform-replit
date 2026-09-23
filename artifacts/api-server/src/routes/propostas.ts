@@ -1205,6 +1205,12 @@ const fromTemplateBody = z.object({
   templateSlug: z.string(),
   leadId: z.string().uuid(),
   dealId: z.string().uuid().optional(),
+  validadeAte: z.coerce.date().optional(),
+  observacoes: z.string().optional(),
+  formaPagamento: z.string().optional(),
+  condPagamento: z.string().optional(),
+  prazoEntrega: z.string().optional(),
+  paymentCompositions: z.array(paymentCompositionLineSchema).optional(),
   extraItens: z.array(
     z.object({
       nome: z.string(),
@@ -1230,7 +1236,18 @@ router.post("/tenants/:tenantId/propostas/from-template", async (req, res) => {
     return;
   }
 
-  const { templateSlug, leadId, dealId, extraItens } = parsed.data;
+  const {
+    templateSlug,
+    leadId,
+    dealId,
+    validadeAte: requestedValidadeAte,
+    observacoes,
+    formaPagamento,
+    condPagamento,
+    prazoEntrega,
+    paymentCompositions,
+    extraItens,
+  } = parsed.data;
 
   const [template] = await db
     .select()
@@ -1265,8 +1282,11 @@ router.post("/tenants/:tenantId/propostas/from-template", async (req, res) => {
     0,
   );
   const numero = await generateNumero(tenantId);
-  const validadeAte = new Date();
-  validadeAte.setDate(validadeAte.getDate() + 15);
+  const validadeAte = requestedValidadeAte ?? (() => {
+    const date = new Date();
+    date.setDate(date.getDate() + 15);
+    return date;
+  })();
 
   const [proposta] = await db
     .insert(propostasTable)
@@ -1280,6 +1300,17 @@ router.post("/tenants/:tenantId/propostas/from-template", async (req, res) => {
       valorTotal: roundOrcamentoNumber(valorTotal).toFixed(2),
       status: "rascunho",
       validadeAte,
+      ...(observacoes ? { observacoes } : {}),
+      ...(formaPagamento ? { formaPagamento: formaPagamento as typeof propostasTable.$inferInsert.formaPagamento } : {}),
+      ...(condPagamento ? { condPagamento } : {}),
+      ...(prazoEntrega ? { prazoEntrega } : {}),
+      ...(paymentCompositions ? {
+        paymentCompositions: paymentCompositions.map((pc) => ({
+          forma: pc.forma,
+          valor: roundOrcamentoNumber(pc.valor).toFixed(2),
+          comprovanteUrl: pc.comprovanteUrl ?? null,
+        })),
+      } : {}),
       recorrente: template.cycle !== "annual" && template.planSlug !== "",
     })
     .returning();
