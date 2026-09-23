@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
+import { isAgentAllowedForVertical } from "@/lib/verticalAgentPolicy";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,11 +29,6 @@ const FLOW_ORDER = [
   "suporte",
   "farmacia",
 ];
-
-function isPharmacyVertical(vertical?: string | null) {
-  const normalized = vertical?.trim().toLocaleLowerCase("pt-BR");
-  return normalized === "farmácia" || normalized === "farmacia";
-}
 
 function authHeaders() {
   const token = localStorage.getItem("vendorai_token");
@@ -65,7 +61,7 @@ export default function AgentConfig() {
 
   const effectiveVertical = tenantOverride?.vertical ?? user?.tenantVertical;
   const visibleAgents = useMemo(
-    () => agents.filter((agent) => agent.agentKey !== "farmacia" || isPharmacyVertical(effectiveVertical)),
+    () => agents.filter((agent) => isAgentAllowedForVertical(agent.agentKey, effectiveVertical)),
     [agents, effectiveVertical],
   );
 
