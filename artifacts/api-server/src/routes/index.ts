@@ -45,6 +45,7 @@ import knowledgeBaseRouter from "./knowledge_base";
 import rulesRouter from "./rules";
 import webhooksRouter from "./webhooks";
 import agentsRouter from "./agents";
+import voiceAgentRouter from "./voice_agent";
 import inventoryRouter, { inventorySyncRouter } from "./inventory";
 import siteConfigRouter, { publicSiteRouter } from "./site_config";
 import segmentTemplatesRouter, { publicSegmentTemplatesRouter } from "./segment_templates";
@@ -378,6 +379,7 @@ router.use(jarvisEmailActionsRouter);
 router.use(jarvisExternalActionsRouter);
 router.use(agentTasksRouter);
 router.use(agentsRouter);
+router.use(voiceAgentRouter);
 
 // Marketing Hub
 router.use(campaignsRouter);
