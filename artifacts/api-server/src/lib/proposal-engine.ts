@@ -521,7 +521,7 @@ function buildProposalScheduleRows<T extends PresentableProposalItem>(
   total: number,
 ) {
   let cursor = proposalDate(presentation.previsaoInicio);
-  return groups.map((group) => {
+  const rows = groups.map((group) => {
     const config = presentation.cronogramaEtapas[group.id] ?? {};
     const value = group.itens.reduce(
       (sum, item) => sum + Number(item.quantidade || 0) * Number(item.valorUnitario || 0),
@@ -543,18 +543,46 @@ function buildProposalScheduleRows<T extends PresentableProposalItem>(
     if (end) cursor = proposalAddDays(end, 1);
     else if (start && duration) cursor = proposalAddDays(start, duration);
 
+    const configuredPhysical = Number(config.percentualFisico);
     return {
       ...group,
       value,
       financialPercent,
-      physicalPercent: Number.isFinite(Number(config.percentualFisico))
-        ? Number(config.percentualFisico)
-        : financialPercent,
+      configuredPhysicalPercent: Number.isFinite(configuredPhysical) ? configuredPhysical : null,
       start,
       end,
       duration,
       observacao: config.observacao?.trim() || "",
       marcoPagamento: config.marcoPagamento?.trim() || "",
+    };
+  });
+
+  const totalDuration = rows.reduce((sum, row) => sum + Number(row.duration ?? 0), 0);
+  const missingPhysical = rows.filter((row) => row.configuredPhysicalPercent === null);
+  const configuredPhysicalTotal = rows.reduce(
+    (sum, row) => sum + Number(row.configuredPhysicalPercent ?? 0),
+    0,
+  );
+  const remainingPhysical = Math.max(0, 100 - configuredPhysicalTotal);
+  const missingDurationTotal = missingPhysical.reduce(
+    (sum, row) => sum + Number(row.duration ?? 0),
+    0,
+  );
+
+  return rows.map((row) => {
+    const automaticPhysical = row.configuredPhysicalPercent !== null
+      ? row.configuredPhysicalPercent
+      : missingPhysical.length === 0
+        ? 0
+        : missingDurationTotal > 0 && row.duration
+          ? (Number(row.duration) / missingDurationTotal) * remainingPhysical
+          : totalDuration > 0 && row.duration
+            ? (Number(row.duration) / totalDuration) * 100
+            : remainingPhysical / missingPhysical.length;
+
+    return {
+      ...row,
+      physicalPercent: Math.max(0, Math.min(100, automaticPhysical)),
     };
   });
 }
