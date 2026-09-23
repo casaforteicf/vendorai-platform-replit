@@ -2190,9 +2190,10 @@ function newFreeItem(): FreeItem {
     const legacyBudgetDraftKey = `vendorai:orcamento-draft:v1:${tenantId}:${lockedLeadId ?? "novo"}`;
     const [draftHydrated, setDraftHydrated] = useState(false);
     const [quickAddEtapaId, setQuickAddEtapaId] = useState(DEFAULT_ETAPA_ID);
+    const budgetClosingRef = useRef(false);
 
     function persistBudgetDraft() {
-      if (editingProposta) return;
+      if (editingProposta || budgetClosingRef.current) return;
       localStorage.setItem(budgetDraftKey, JSON.stringify({
         form: form.getValues(),
         mode,
@@ -2212,9 +2213,11 @@ function newFreeItem(): FreeItem {
 
     useEffect(() => {
       if (!open) {
+        budgetClosingRef.current = true;
         setDraftHydrated(false);
         return;
       }
+      budgetClosingRef.current = false;
       if (editingProposta) {
         setDraftHydrated(true);
         return;
@@ -2507,18 +2510,22 @@ function newFreeItem(): FreeItem {
     }
 
     function saveDraftAndContinue() {
-    if (editingProposta) {
-      void form.handleSubmit((vals) => onSubmit(vals, true))();
-      return;
+      if (editingProposta) {
+        void form.handleSubmit((vals) => onSubmit(vals, true))();
+        return;
+      }
+      persistBudgetDraft();
+      toast({
+        title: "Orçamento salvo",
+        description: "Você pode continuar exatamente deste ponto, mesmo após fechar e reabrir esta tela.",
+      });
     }
-    persistBudgetDraft();
-    toast({
-      title: "Orçamento salvo",
-      description: "Você pode continuar exatamente deste ponto, mesmo após fechar e reabrir esta tela.",
-    });
-  }
 
-  function handleClose() {
+    function handleClose() {
+      // O reset do formulário dispara watchers do react-hook-form.
+      // Bloqueamos o autosave durante o fechamento para não substituir
+      // o rascunho válido por um orçamento vazio.
+      budgetClosingRef.current = true;
       form.reset({
         leadId: lockedLeadId || "",
         titulo: lockedLeadId ? defaultTitle : "",
@@ -2529,25 +2536,25 @@ function newFreeItem(): FreeItem {
         prazoEntrega: "",
         formaPagamentoMensalidade: "",
         condPagamentoMensalidade: "",
-      recorrente: false,
-      valorMensal: undefined,
-      prazoContratoMeses: undefined,
-    });
-    setMode("catalogo");
-    setSelectedTemplateSlug("");
-    setConstructionSystem("icf");
-    setOrcamentoEtapas([{ id: DEFAULT_ETAPA_ID, nome: getStageNamesForSystem("icf")[0] }]);
-    setCartLines([{ etapaId: DEFAULT_ETAPA_ID, tipo: "produto", quantidade: 1 }]);
-    setCartError("");
-    setShowAllByStage({});
-    standardBudgetAppliedRef.current = false;
-    setDraftHydrated(false);
-    setFreeItems([newFreeItem()]);
-    setFreeError("");
-    setContextoIA("");
-    setShowIAPanel(false);
-    onClose();
-  }
+        recorrente: false,
+        valorMensal: undefined,
+        prazoContratoMeses: undefined,
+      });
+      setMode("catalogo");
+      setSelectedTemplateSlug("");
+      setConstructionSystem("icf");
+      setOrcamentoEtapas([{ id: DEFAULT_ETAPA_ID, nome: getStageNamesForSystem("icf")[0] }]);
+      setCartLines([{ etapaId: DEFAULT_ETAPA_ID, tipo: "produto", quantidade: 1 }]);
+      setCartError("");
+      setShowAllByStage({});
+      standardBudgetAppliedRef.current = false;
+      setDraftHydrated(false);
+      setFreeItems([newFreeItem()]);
+      setFreeError("");
+      setContextoIA("");
+      setShowIAPanel(false);
+      onClose();
+    }
 
   // ── catálogo por grupos de etapa ───────────────────────────────────────────
   function changeConstructionSystem(system: ConstructionSystem) {
