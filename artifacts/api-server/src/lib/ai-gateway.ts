@@ -6,6 +6,7 @@
 import { eq, sql, gte, and } from "drizzle-orm";
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
+import { GoogleAuth } from "google-auth-library";
 import type { Logger } from "pino";
 import {
   db,
@@ -949,6 +950,132 @@ export async function transcribeAudioWithWordTimestamps(
   return { text, words, costUsd, usedByok: key.usedByok };
 }
 
+
+
+/**
+ * Render/generate an architectural image with Google Vertex AI Gemini Image.
+ *
+ * Authentication follows GoogleAuth default resolution:
+ * - GOOGLE_SERVICE_ACCOUNT_JSON (explicit secret), or
+ * - Application Default Credentials / Workload Identity Federation.
+ *
+ * Returns the generated image as base64.
+ */
+function googleVertexServiceAccountCredentials(): Record<string, unknown> | undefined {
+  const raw = process.env["GOOGLE_SERVICE_ACCOUNT_JSON"]?.trim();
+  if (!raw) return undefined;
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON");
+  }
+}
+
+async function googleVertexAccessToken(): Promise<string> {
+  const credentials = googleVertexServiceAccountCredentials();
+  const auth = new GoogleAuth({
+    scopes: ["https://www.googleapis.com/auth/cloud-platform"],
+    ...(credentials ? { credentials } : {}),
+  });
+  const client = await auth.getClient();
+  const token = await client.getAccessToken();
+  if (!token.token) throw new Error("Google Vertex access token unavailable");
+  return token.token;
+}
+
+export async function callGoogleVertexImage(params: {
+  prompt: string;
+  referenceImageDataUrl?: string;
+  model?: string;
+  projectId?: string;
+  location?: string;
+  logger?: Logger;
+  timeoutMs?: number;
+}): Promise<string> {
+  const projectId = params.projectId?.trim() || process.env["GOOGLE_CLOUD_PROJECT"]?.trim();
+  if (!projectId) throw new Error("GOOGLE_CLOUD_PROJECT not set");
+
+  const location =
+    params.location?.trim() ||
+    process.env["GOOGLE_VERTEX_IMAGE_LOCATION"]?.trim() ||
+    "global";
+  const model =
+    params.model?.trim() ||
+    process.env["GOOGLE_VERTEX_IMAGE_MODEL"]?.trim() ||
+    "gemini-3.1-flash-image";
+
+  const parts: Array<Record<string, unknown>> = [];
+  if (params.referenceImageDataUrl) {
+    const match = params.referenceImageDataUrl.match(/^data:([^;]+);base64,([\s\S]+)$/);
+    if (!match) throw new Error("Vertex reference image must be a data URL base64");
+    parts.push({
+      inlineData: {
+        mimeType: match[1],
+        data: match[2],
+      },
+    });
+  }
+  parts.push({ text: params.prompt });
+
+  const host = location === "global"
+    ? "aiplatform.googleapis.com"
+    : `${location}-aiplatform.googleapis.com`;
+  const url =
+    `https://${host}/v1/projects/${encodeURIComponent(projectId)}/locations/${encodeURIComponent(location)}/publishers/google/models/${encodeURIComponent(model)}:generateContent`;
+
+  const token = await googleVertexAccessToken();
+  params.logger?.info(
+    { provider: "google-vertex", model, location, hasReference: Boolean(params.referenceImageDataUrl) },
+    "Vertex image: generating",
+  );
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json; charset=utf-8",
+    },
+    body: JSON.stringify({
+      contents: [{ role: "user", parts }],
+      generationConfig: {
+        candidateCount: 1,
+        responseModalities: ["TEXT", "IMAGE"],
+      },
+    }),
+    signal: AbortSignal.timeout(params.timeoutMs ?? 180_000),
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`Google Vertex Image HTTP ${response.status}: ${body}`);
+  }
+
+  const data = await response.json() as {
+    candidates?: Array<{
+      content?: {
+        parts?: Array<{
+          inlineData?: { data?: string; mimeType?: string };
+        }>;
+      };
+      finishReason?: string;
+    }>;
+  };
+
+  const imagePart = data.candidates?.[0]?.content?.parts?.find(
+    (part) => typeof part.inlineData?.data === "string" && part.inlineData.data.length > 0,
+  );
+  const base64 = imagePart?.inlineData?.data;
+  if (!base64) {
+    const finishReason = data.candidates?.[0]?.finishReason ?? "unknown";
+    throw new Error(`Google Vertex Image returned no image (finishReason=${finishReason})`);
+  }
+
+  params.logger?.info(
+    { provider: "google-vertex", model, location, mimeType: imagePart?.inlineData?.mimeType },
+    "Vertex image: generated",
+  );
+  return base64;
+}
 
 
 /**
