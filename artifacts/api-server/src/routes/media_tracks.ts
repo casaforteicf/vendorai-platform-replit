@@ -227,6 +227,7 @@ router.get("/tenants/:tenantId/media/tracks/:assetId/usage", async (req, res) =>
 
 
 router.post("/tenants/:tenantId/media-engine/brand-kit/ai/suggest", async (req, res) => {
+  // tenant-audit: reviewed router is protected by requireSameTenanOrSuperAdmin before this handler
   const tenantId = String(req.params["tenantId"]);
   const body = record(req.body);
   const rawMode = optionalText(body["mode"], 20) ?? "evolve";
@@ -250,6 +251,7 @@ router.post("/tenants/:tenantId/media-engine/brand-kit/ai/suggest", async (req, 
 });
 
 router.post("/tenants/:tenantId/media-engine/brand-kit/ai/approve", async (req, res) => {
+  // tenant-audit: reviewed router is protected by requireSameTenanOrSuperAdmin before this handler
   const tenantId = String(req.params["tenantId"]);
   const body = record(req.body);
   const proposal = body["proposal"];
