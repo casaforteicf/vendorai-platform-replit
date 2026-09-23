@@ -7,6 +7,7 @@ import { DemoBanner } from "@/components/DemoBanner";
 import { SidebarLayout } from "@/components/layout/SidebarLayout";
 import { lazy, Suspense, useEffect, useState } from "react";
 import VideoHome from "@/pages/video/VideoHome";
+import VideoProjectDirectPage from "@/pages/video/VideoProjectDirectPage";
 import {
   useGetTenant,
   getGetTenantQueryKey,
@@ -704,6 +705,7 @@ function AppRoutes() {
         <Route path="/marketing/instagram">{() => <ProtectedRoute component={MarketingInstagram} />}</Route>
         <Route path="/content-studio"><RedirectPage to="/content" /></Route>
         <Route path="/content-studio/video">{() => <ProtectedRoute component={VideoHome} />}</Route>
+        <Route path="/content-studio/video/projeto">{() => <ProtectedRoute component={VideoProjectDirectPage} />}</Route>
         <Route path="/content-studio/video/avatar">{() => <ProtectedRoute component={VideoAvatarPage} />}</Route>
         <Route path="/content-studio/video/produto">{() => <ProtectedRoute component={VideoProdutoPage} />}</Route>
         <Route path="/content-studio/video/edicao">{() => <ProtectedRoute component={VideoEdicaoPage} />}</Route>
