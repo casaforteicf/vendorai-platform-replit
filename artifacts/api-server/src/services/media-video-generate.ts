@@ -577,6 +577,72 @@ async function persistFinished(input: {
   );
 }
 
+async function concatPremiumClips(input: {
+  clipPaths: string[];
+  outputPath: string;
+  withAudio: boolean;
+}): Promise<void> {
+  if (input.clipPaths.length === 1) {
+    await execFileAsync("ffmpeg", [
+      "-y",
+      "-i", input.clipPaths[0]!,
+      "-c", "copy",
+      "-movflags", "+faststart",
+      input.outputPath,
+    ], { maxBuffer: 8 * 1024 * 1024 });
+    return;
+  }
+
+  const args = ["-y"];
+  for (const clipPath of input.clipPaths) args.push("-i", clipPath);
+
+  if (input.withAudio) {
+    const streams = input.clipPaths.map((_, index) => `[${index}:v:0][${index}:a:0]`).join("");
+    args.push(
+      "-filter_complex", `${streams}concat=n=${input.clipPaths.length}:v=1:a=1[v][a]`,
+      "-map", "[v]",
+      "-map", "[a]",
+      "-c:v", "libx264",
+      "-preset", "medium",
+      "-crf", "19",
+      "-pix_fmt", "yuv420p",
+      "-c:a", "aac",
+      "-b:a", "192k",
+      "-ar", "48000",
+      "-ac", "2",
+      "-movflags", "+faststart",
+      input.outputPath,
+    );
+  } else {
+    const streams = input.clipPaths.map((_, index) => `[${index}:v:0]`).join("");
+    args.push(
+      "-filter_complex", `${streams}concat=n=${input.clipPaths.length}:v=1:a=0[v]`,
+      "-map", "[v]",
+      "-c:v", "libx264",
+      "-preset", "medium",
+      "-crf", "19",
+      "-pix_fmt", "yuv420p",
+      "-movflags", "+faststart",
+      input.outputPath,
+    );
+  }
+
+  await execFileAsync("ffmpeg", args, { maxBuffer: 8 * 1024 * 1024 });
+}
+
+function splitPremiumVoiceover(script: string | null, sceneCount: number): string[] {
+  if (!script) return Array.from({ length: sceneCount }, () => "");
+  const sentences = script
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+  if (!sentences.length) return Array.from({ length: sceneCount }, () => "");
+
+  const chunks = Array.from({ length: sceneCount }, () => [] as string[]);
+  sentences.forEach((sentence, index) => chunks[Math.min(sceneCount - 1, Math.floor(index * sceneCount / sentences.length))]!.push(sentence));
+  return chunks.map((chunk) => chunk.join(" "));
+}
+
 async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, logger: Logger): Promise<void> {
   const rawPrompt = stringValue(video.input.prompt);
   const title = stringValue(video.input.title) ?? "Vídeo gerado com IA";
@@ -626,27 +692,127 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
         },
       });
 
-      const premiumPrompt = [
-        contextPack?.promptContext ?? "",
-        rawPrompt ?? "",
-        `Visual direction: ${style}.`,
-        voiceoverScript
-          ? `Spoken Brazilian Portuguese voiceover, natural, confident and professional: "${voiceoverScript}"`
-          : "",
-        nativeAudioEnabled
-          ? "Generate synchronized native audio with polished cinematic ambience, subtle technology sound design, and clear speech when requested."
-          : "Do not generate audio.",
-        "Premium commercial film quality. Natural coherent motion, realistic lighting, stable geometry, clean SaaS technology aesthetic. Avoid distorted interfaces, warped typography, flicker and random logos.",
-        contextPack?.brand.name ? `The company name is exactly "${contextPack.brand.name}". Do not render or improvise this name inside generated frames; official branding is composited after generation.` : "",
-      ].filter(Boolean).join("\n");
+      const premiumSceneCount = Math.max(3, Math.min(4, Math.ceil(duration / 8)));
+      const actualDuration = premiumSceneCount * 8;
+      const referenceImages = (contextPack?.references ?? [])
+        .filter((item) => item.type === "image" && /^https:\/\//i.test(item.storageUrl))
+        .slice(0, 3)
+        .map((item) => item.storageUrl);
+      const voiceoverChunks = splitPremiumVoiceover(voiceoverScript, premiumSceneCount);
+      const negativePrompt = [
+        "deformed hands",
+        "extra fingers",
+        "missing fingers",
+        "duplicated people",
+        "multiple faces on one person",
+        "warped faces",
+        "melting objects",
+        "fused objects",
+        "floating objects",
+        "broken anatomy",
+        "unrealistic body motion",
+        "crowds",
+        "close-up hands",
+        "distorted screens",
+        "invented UI text",
+        "warped typography",
+        "random logos",
+        "watermarks",
+        "flicker",
+        "geometry drift",
+      ].join(", ");
 
-      const premium = await callReplicateVeo31({
-        prompt: premiumPrompt,
-        aspectRatio: aspectRatio === "portrait" ? "9:16" : "16:9",
-        duration: 8,
-        resolution: "1080p",
-        generateAudio: nativeAudioEnabled,
-        logger,
+      const sceneDirections = [
+        [
+          "SCENE 1 — REAL PRODUCT.",
+          "No people. Present the actual SaaS product experience as the hero.",
+          "Use official product screenshots from reference images as visual truth whenever available.",
+          "Elegant controlled camera move, minimal motion, stable UI geometry, premium enterprise lighting.",
+        ].join(" "),
+        [
+          "SCENE 2 — HUMAN + PRODUCT.",
+          "Show at most ONE professional using the product in a realistic office environment.",
+          "Keep the person medium-shot or wider; do not show hands in close-up.",
+          "Simple natural movement only: looking at screen, slight posture shift, subtle camera dolly.",
+          "The product remains the focal point and should resemble the official references.",
+        ].join(" "),
+        [
+          "SCENE 3 — BUSINESS RESULT.",
+          "Return to product-led visuals with no people, showing coordinated agents, CRM, omnichannel, agenda and automation conceptually.",
+          "Use restrained motion graphics around a plausible SaaS environment without inventing readable UI text.",
+          "Finish with a clean hero composition prepared for deterministic Vendor.ai branding in post-production.",
+        ].join(" "),
+        [
+          "SCENE 4 — PREMIUM CLOSE.",
+          "No people. Create a controlled cinematic product montage using official product references and stable interface geometry.",
+          "Emphasize trust, scale, automation and enterprise polish. Leave clean negative space for brand compositor.",
+        ].join(" "),
+      ];
+
+      const premiumClipPaths: string[] = [];
+      const predictionIds: string[] = [];
+      const premiumTempPaths: string[] = [];
+
+      for (let sceneIndex = 0; sceneIndex < premiumSceneCount; sceneIndex += 1) {
+        await persistRunning({
+          video,
+          runnerToken,
+          progress: 8 + Math.round((sceneIndex / premiumSceneCount) * 72),
+          output: {
+            prompt: rawPrompt ?? "",
+            style,
+            aspectRatio,
+            requestedDuration: duration,
+            actualDuration,
+            sceneCount: premiumSceneCount,
+            sceneIndex,
+            engine: "google/veo-3.1",
+            qualityMode: "cinema",
+            resolution: "1080p",
+            nativeAudioEnabled,
+            stage: "premium_native_multishot",
+          },
+        });
+
+        const scenePrompt = [
+          contextPack?.promptContext ?? "",
+          rawPrompt ?? "",
+          sceneDirections[sceneIndex] ?? sceneDirections.at(-1)!,
+          `Visual direction: ${style}.`,
+          voiceoverChunks[sceneIndex]
+            ? `Brazilian Portuguese narration for this scene only, natural and professional: "${voiceoverChunks[sceneIndex]}"`
+            : "",
+          nativeAudioEnabled
+            ? "Generate subtle synchronized ambience and restrained premium technology sound design."
+            : "Do not generate audio.",
+          "Premium commercial film quality. Stable geometry, physically plausible movement, realistic lighting, restrained motion, clean enterprise SaaS aesthetic.",
+          "Do not render captions, brand names or logos inside the generated frames. Official Vendor.ai identity is applied later by a deterministic compositor.",
+        ].filter(Boolean).join("\n");
+
+        const premiumScene = await callReplicateVeo31({
+          prompt: scenePrompt,
+          aspectRatio: aspectRatio === "portrait" ? "9:16" : "16:9",
+          duration: 8,
+          resolution: "1080p",
+          generateAudio: nativeAudioEnabled,
+          negativePrompt,
+          referenceImages,
+          logger,
+        });
+
+        const clipPath = join(tmpdir(), `video-premium-${video.id}-scene-${sceneIndex + 1}.mp4`);
+        await writeFile(clipPath, premiumScene.buffer);
+        premiumClipPaths.push(clipPath);
+        premiumTempPaths.push(clipPath);
+        predictionIds.push(premiumScene.predictionId);
+      }
+
+      const premiumRawPath = join(tmpdir(), `video-premium-${video.id}-raw.mp4`);
+      premiumTempPaths.push(premiumRawPath);
+      await concatPremiumClips({
+        clipPaths: premiumClipPaths,
+        outputPath: premiumRawPath,
+        withAudio: nativeAudioEnabled,
       });
 
       await persistRunning({
@@ -658,20 +824,20 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
           style,
           aspectRatio,
           requestedDuration: duration,
-          actualDuration: 8,
-          engine: premium.model,
+          actualDuration,
+          sceneCount: premiumSceneCount,
+          engine: "google/veo-3.1",
           qualityMode: "cinema",
           resolution: "1080p",
           nativeAudioEnabled,
-          predictionId: premium.predictionId,
+          predictionIds,
+          referenceImages,
           stage: "saving_output",
         },
       });
 
-      const premiumRawPath = join(tmpdir(), `video-premium-${video.id}-raw.mp4`);
-      await writeFile(premiumRawPath, premium.buffer);
       let premiumBrandCleanup: (() => Promise<void>) | null = null;
-      let premiumFinalBuffer = premium.buffer;
+      let premiumFinalBuffer = await readFile(premiumRawPath);
       let premiumBrand = {
         logoAssetId: null as string | null,
         introAssetId: null as string | null,
@@ -699,7 +865,9 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
           logoWarning: branded.logoWarning,
         };
       } finally {
-        await unlink(premiumRawPath).catch(() => undefined);
+        for (const tempPath of premiumTempPaths) {
+          await unlink(tempPath).catch(() => undefined);
+        }
       }
 
       const storageUrl = await saveObject(premiumFinalBuffer, "video/mp4", "video-generate/outputs", "mp4");
@@ -709,24 +877,26 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
         userId,
         storageUrl,
         mimeType: "video/mp4",
-        originalFilename: `${title.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || video.id}-cinema.mp4`,
+        originalFilename: `${title.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || video.id}-cinema-v5.mp4`,
         operation: "video_generate",
-        label: "Vídeo Cinema gerado com IA",
+        label: "Vídeo Cinema Pro v5 gerado com IA",
         metadata: {
           jobId: video.id,
           prompt: rawPrompt ?? "",
           style,
           aspectRatio,
           requestedDuration: duration,
-          actualDuration: 8,
-          engine: premium.model,
+          actualDuration,
+          sceneCount: premiumSceneCount,
+          engine: "google/veo-3.1",
           provider: "replicate",
           qualityMode: "cinema",
           resolution: "1080p",
           audioApplied: nativeAudioEnabled,
           nativeAudio: nativeAudioEnabled,
-          predictionId: premium.predictionId,
-          generationEngine: "native-video-premium-v2-context",
+          predictionIds,
+          referenceImages,
+          generationEngine: "native-video-premium-v5-multishot-references",
           contextPack: contextPack ? {
             brand: contextPack.brand,
             knowledgeTitles: contextPack.knowledge.map((item) => item.title),
@@ -747,15 +917,17 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
           style,
           aspectRatio,
           requestedDuration: duration,
-          actualDuration: 8,
-          engine: premium.model,
+          actualDuration,
+          sceneCount: premiumSceneCount,
+          engine: "google/veo-3.1",
           provider: "replicate",
           qualityMode: "cinema",
           resolution: "1080p",
           audioApplied: nativeAudioEnabled,
           nativeAudio: nativeAudioEnabled,
-          predictionId: premium.predictionId,
-          generationEngine: "native-video-premium-v2-context",
+          predictionIds,
+          referenceImages,
+          generationEngine: "native-video-premium-v5-multishot-references",
           contextPack: contextPack ? {
             brand: contextPack.brand,
             knowledgeTitles: contextPack.knowledge.map((item) => item.title),
