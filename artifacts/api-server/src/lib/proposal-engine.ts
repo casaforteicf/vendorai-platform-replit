@@ -1937,6 +1937,19 @@ export function renderOrcamentoPdf(args: {
   .schedule-intro { margin: 2mm 0 4mm; padding: 3mm 3.5mm; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 7px; font-size: 8pt; color: #64748b; }
   .schedule-intro strong { color: #334155; }
   .schedule-note { color: #94a3b8; font-size: 6.8pt; display: block; margin-top: .8mm; }
+  .period-matrix-group { margin-top: 4mm; break-inside: avoid; }
+  .period-matrix-caption { font-family: "JetBrains Mono", monospace; font-size: 5.8pt; text-transform: uppercase; letter-spacing: .07em; color: #64748b; margin-bottom: 1.5mm; }
+  table.period-matrix { width: 100%; border-collapse: collapse; font-size: 6.8pt; table-layout: fixed; }
+  table.period-matrix th { padding: 1.8mm 2mm; border: 1px solid #e2e8f0; background: #f8fafc; color: #64748b; font-family: "JetBrains Mono", monospace; font-size: 5.6pt; text-transform: uppercase; letter-spacing: .04em; text-align: left; }
+  table.period-matrix th:first-child { width: 33%; }
+  table.period-matrix td { padding: 1.8mm 2mm; border: 1px solid #e2e8f0; vertical-align: top; }
+  table.period-matrix .r { text-align: right; }
+  .period-stage strong { display: block; color: #1e2a3b; }
+  .period-stage span { display: block; color: #64748b; margin-top: .5mm; }
+  .period-cell strong { display: block; color: #1e2a3b; font-size: 7pt; }
+  .period-cell span { display: block; color: #94a3b8; font-size: 5.8pt; margin-top: .5mm; }
+  .period-empty { text-align: center; color: #cbd5e1; }
+  table.period-matrix tfoot td { background: #f8fafc; font-weight: 700; color: #1e2a3b; }
 
   @media print {
     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
