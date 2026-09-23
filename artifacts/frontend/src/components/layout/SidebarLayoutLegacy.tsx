@@ -336,6 +336,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     // caia no bucket "core" e perca Obras/Insumos/Composições no menu.
     const constructionAliases = new Set([
       "construtora",
+      "construcao",
       "construtora residencial",
       "construcao civil",
       "construcao & reforma",
