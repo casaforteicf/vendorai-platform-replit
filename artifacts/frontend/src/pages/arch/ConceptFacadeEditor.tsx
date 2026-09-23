@@ -872,9 +872,9 @@ export default function ConceptFacadeEditor({
       </div>
       )}
 
-      <div className="absolute inset-0 grid grid-cols-1 bg-slate-200 md:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]">
+      <div className={`absolute inset-x-0 bottom-0 top-14 grid grid-cols-1 bg-slate-200 md:top-16 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)] ${panelOpen ? "md:left-[316px]" : ""}`}>
         <div className="relative min-w-0 overflow-hidden border-r border-slate-200 bg-white">
-          <div className="absolute inset-x-0 bottom-20 top-14 md:inset-0">
+          <div className="absolute inset-x-0 bottom-20 top-0 xl:inset-0">
           <ConceptDerivedFacade
             viewMode="line"
             lotWidth={lotWidth}
@@ -913,7 +913,16 @@ export default function ConceptFacadeEditor({
           </div>
         </div>
 
-        <aside className="hidden min-w-0 flex-col bg-slate-950 md:flex">
+        <div className="absolute bottom-4 right-4 z-20 flex gap-2 xl:hidden">
+          <button type="button" onClick={onOpenRender} disabled={realisticPreviewLoading || !onOpenRender}
+            className="rounded-xl bg-orange-500 px-4 py-3 text-xs font-bold text-white disabled:opacity-50">
+            {realisticPreviewLoading ? "Gerando..." : "Gerar render"}
+          </button>
+          <button type="button" onClick={onOpenGallery} className="rounded-xl border bg-white px-4 py-3 text-xs font-semibold">
+            Galeria
+          </button>
+        </div>
+        <aside className="hidden min-w-0 flex-col bg-slate-950 xl:flex">
           <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
             <div>
               <div className="text-sm font-bold text-white">Visual realista</div>
