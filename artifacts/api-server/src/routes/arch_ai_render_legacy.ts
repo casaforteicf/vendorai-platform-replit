@@ -13,11 +13,13 @@
  * GET  /api/arch/project-config          → listar configs por lead_id
  */
 import { Router, type Request, type Response } from "express";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
   archAiRendersTable,
+  archConceptProjectsTable,
+  archProjetosTable,
   archProjectConfigsTable,
   automationLogsTable,
 } from "@workspace/db";
@@ -58,7 +60,9 @@ function tenantId(req: Request): string | null {
 
 const renderBodySchema = z.object({
   project_id:        z.string().optional(),
-  concept_project_id: z.string().optional(),
+  concept_project_id: z.string().trim().min(1).optional(),
+  source: z.enum(["facade", "model3d"]).optional(),
+  render_view: z.enum(["exterior", "interior"]).optional(),
   lead_id:           z.string().optional(),
   original_image_url: z.string().min(10, "original_image_url obrigatório"),
   mode:              z.enum(["preservar", "criar"]),
@@ -115,14 +119,35 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
   const {
     project_id, concept_project_id, lead_id, original_image_url, mode,
     ambiente, estilo, iluminacao, angulo,
-    mask_zones, user_notes, materials,
+    mask_zones, user_notes, materials, source, render_view,
   } = parsed.data;
+
+  if (project_id && concept_project_id) {
+    return res.status(400).json({ success: false, error: "Informe project_id ou concept_project_id, não ambos." });
+  }
+  if (concept_project_id) {
+    const [concept] = await db.select({ id: archConceptProjectsTable.id })
+      .from(archConceptProjectsTable)
+      .where(and(eq(archConceptProjectsTable.id, concept_project_id), eq(archConceptProjectsTable.tenantId, tid)))
+      .limit(1);
+    if (!concept) return res.status(404).json({ success: false, error: "Pré-projeto não encontrado." });
+  }
+  if (project_id) {
+    const [project] = await db.select({ id: archProjetosTable.id })
+      .from(archProjetosTable)
+      .where(and(eq(archProjetosTable.id, project_id), eq(archProjetosTable.tenantId, tid)))
+      .limit(1);
+    if (!project) return res.status(404).json({ success: false, error: "Projeto não encontrado." });
+  }
 
   // Sanitiza: no modo Preservar, remove mobiliário solto das zonas
   const safeMaskZones = mode === "preservar"
     ? filterFurnitureZones(mask_zones)
     : mask_zones;
 
+  // Persist before acknowledging. Only concept preservation uses the durable
+  // worker; existing professional render modes keep their established pipeline.
+  const durable = Boolean(concept_project_id) && mode === "preservar";
   // Cria registro inicial
   const [render] = await db.insert(archAiRendersTable).values({
     tenantId:         tid,
@@ -136,7 +161,12 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
     angulo:           mode === "preservar" ? undefined : angulo,
     maskZones:        safeMaskZones,
     originalImageUrl: original_image_url,
-    status:           "processando",
+    source,
+    renderView: render_view,
+    jobInput: durable ? { userNotes: user_notes, materials } : null,
+    prompt: durable ? buildPrompt({ mode, ambiente, estilo, iluminacao, angulo, maskZones: safeMaskZones, materials, userNotes: user_notes }) : undefined,
+    motor: durable ? "replicate-flux-kontext-pro" : undefined,
+    status:           durable ? "queued" : "processando",
     versionTag:       mode === "preservar" ? "fiel_ao_original" : "conceito",
   }).returning();
 
@@ -148,8 +178,10 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
   res.status(202).json({
     success:   true,
     render_id: render.id,
-    status:    "processando",
+    status:    durable ? "queued" : "processando",
   });
+
+  if (durable) return;
 
   // ── Job assíncrono em background ────────────────────────────────────────────
   processRenderJob({
@@ -449,7 +481,12 @@ archAiRenderRouter.get("/arch/project-config", authenticate, async (req: Request
 
 // ── Job de processamento assíncrono ───────────────────────────────────────────
 
-interface RenderJobParams {
+export interface RenderJobParams {
+  leaseToken?: string;
+  signal?: AbortSignal;
+  resumePredictionId?: string;
+  beforeProviderSubmit?: () => Promise<void>;
+  onPredictionCreated?: (id: string) => Promise<void>;
   renderId:     string;
   tenantId:     string;
   mode:         "preservar" | "criar";
@@ -473,7 +510,7 @@ interface RenderJobParams {
 
 const MAX_RETENTATIVAS = 2;
 
-async function processRenderJob(params: RenderJobParams): Promise<void> {
+export async function processRenderJob(params: RenderJobParams): Promise<void> {
   const {
     renderId, tenantId: tid, mode, originalUrl, maskZones, maskFileBase64, maskCoordinates,
     ambiente, estilo, iluminacao, angulo, materials, userNotes,
@@ -481,6 +518,13 @@ async function processRenderJob(params: RenderJobParams): Promise<void> {
   } = params;
 
   const storage = new ObjectStorageService();
+  const ownedRender = and(
+    eq(archAiRendersTable.id, renderId), eq(archAiRendersTable.tenantId, tid),
+    ...(params.leaseToken ? [
+      eq(archAiRendersTable.jobLeaseToken, params.leaseToken),
+      sql`${archAiRendersTable.jobLeaseUntil} > NOW()`,
+    ] : []),
+  );
 
   try {
     // ── 1. Baixar imagem original ──────────────────────────────────────────
@@ -512,6 +556,10 @@ async function processRenderJob(params: RenderJobParams): Promise<void> {
         imageDataUrl: originalDataUrl,
         prompt,
         logger,
+        signal: params.signal,
+        resumePredictionId: params.resumePredictionId,
+        beforeSubmit: params.beforeProviderSubmit,
+        onPredictionCreated: params.onPredictionCreated,
       });
       motor = "replicate-flux-kontext-pro";
       compositedFlag = false;
@@ -526,7 +574,7 @@ async function processRenderJob(params: RenderJobParams): Promise<void> {
 
       await db.update(archAiRendersTable)
         .set({ segmentationConfidence: segConf })
-        .where(eq(archAiRendersTable.id, renderId));
+        .where(ownedRender);
 
     } else if (mode === "criar" && params.userNotes) {
       // ── 3b. Ajuste pós-geração de elemento pontual (Fill Pro + máscara) ─
@@ -573,7 +621,7 @@ async function processRenderJob(params: RenderJobParams): Promise<void> {
         logger?.warn({ renderId, retentativas }, "arch/ai-render: rejeitado_auto, tentando novamente");
         await db.update(archAiRendersTable)
           .set({ retentativas: String(retentativas + 1) })
-          .where(eq(archAiRendersTable.id, renderId));
+          .where(ownedRender);
         return processRenderJob({ ...params, retentativas: retentativas + 1 });
       }
       if (!validation.valid) {
@@ -582,7 +630,7 @@ async function processRenderJob(params: RenderJobParams): Promise<void> {
 
       await db.update(archAiRendersTable)
         .set({ maskFileUrl })
-        .where(eq(archAiRendersTable.id, renderId));
+        .where(ownedRender);
 
     } else {
       // ── 3c. Modo Criar: geração livre via Flux 1.1 Pro Ultra (raw:true) ─
@@ -612,7 +660,7 @@ async function processRenderJob(params: RenderJobParams): Promise<void> {
         erroMsg:         null,
         concluidoEm:     new Date(),
       })
-      .where(eq(archAiRendersTable.id, renderId));
+      .where(ownedRender);
 
     logger?.info({ renderId, motor }, "arch/ai-render: concluído com sucesso");
 
@@ -621,7 +669,7 @@ async function processRenderJob(params: RenderJobParams): Promise<void> {
 
     await db.update(archAiRendersTable)
       .set({ status: "erro", erroMsg: String(err?.message ?? err) })
-      .where(eq(archAiRendersTable.id, renderId));
+      .where(ownedRender);
 
     db.insert(automationLogsTable).values({
       flow: "arch_ai_render", step: "processRenderJob",
@@ -661,6 +709,9 @@ async function fetchImageAsBuffer(
 // ── Mapas auxiliares ──────────────────────────────────────────────────────────
 
 const LIGHTING_MAP: Record<string, string> = {
+  day: "balanced natural daylight and neutral material colors",
+  sunset: "warm sunset light with long soft shadows",
+  night: "nighttime light with warm practical lamps, dark sky and realistic material response",
   manha:   "soft warm morning light",
   tarde:   "bright afternoon sunlight",
   golden:  "warm golden hour light",
@@ -732,6 +783,25 @@ function buildKontextPrompt(p: {
   materials:  { zone: string; promptFragment: string }[];
   userNotes:  string | undefined;
 }): string {
+  if (p.ambiente === "fachada") {
+    const light = p.iluminacao === "night"
+      ? "Night photograph with warm interior and facade lighting, realistic dark sky and readable materials. Do not turn night into daytime."
+      : p.iluminacao === "sunset"
+        ? "Warm sunset light with long soft shadows, balanced sky exposure and warm reflections."
+        : "Neutral natural daylight with physically plausible shadows and controlled reflections.";
+    return [
+      "Convert the reference geometry into a photorealistic architectural EXTERIOR photograph of the same built house.",
+      "The source can be a technical line elevation or a basic 3D preview. Preserve its geometry and composition, not its graphic style or monochrome hatch colors.",
+      "Preserve floor count, door/window locations and dimensions, garage, entrance, roof, walls, gates and every modeled volume. Do not invent or relocate architectural elements.",
+      "Use the user's material schedule: physical plaster, wood grain, stone relief, realistic metal roughness, glazing reflections and wall/window reveal thickness.",
+      light,
+      "Human eye-level camera, 28–35 mm full-frame equivalent, corrected verticals and realistic perspective. Preserve a selected 3D camera if specified.",
+      p.userNotes ?? "",
+      ...p.materials.map((m) => `${m.zone}: ${m.promptFragment}`),
+      "Contact shadows and realistic architectural depth, natural planting without obscuring the facade.",
+      "Never output vector art, SVG appearance, CAD shading, technical drawing, cartoon, illustration, clay render, flat blocks or bubble vegetation.",
+    ].join("\n");
+  }
   const ambienteLabel = p.ambiente ?? "interior room";
 
   // Zonas selecionadas para editar (aparência/material a trocar)

@@ -6,9 +6,12 @@ import {
   timestamp,
   jsonb,
   numeric,
+  integer,
+  index,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { archConceptProjectsTable } from "./arch_concept_projects";
 
 export type ArchRenderSelection = {
   x: number;
@@ -26,7 +29,16 @@ export const archAiRendersTable = pgTable("arch_ai_renders", {
   leadId:           text("lead_id"),
   projectId:        text("project_id"),
   // Pré-projeto Arqdor (Concept) pode renderizar antes de ser promovido a arch_projetos.
-  conceptProjectId: text("concept_project_id"),
+  conceptProjectId: text("concept_project_id").references(() => archConceptProjectsTable.id, { onDelete: "set null" }),
+  // Internal durable input and lease. Never serialize these fields to clients.
+  jobInput:         jsonb("job_input").$type<Record<string, unknown>>(),
+  jobLeaseToken:    text("job_lease_token"),
+  jobLeaseUntil:    timestamp("job_lease_until", { withTimezone: true }),
+  jobAttempts:      integer("job_attempts").notNull().default(0),
+  providerPredictionId: text("provider_prediction_id"),
+  providerSubmissionStartedAt: timestamp("provider_submission_started_at", { withTimezone: true }),
+  source:           varchar("source", { length: 20 }),
+  renderView:       varchar("render_view", { length: 20 }),
   parentRenderId:   text("parent_render_id"),
   // 'preservar' = inpainting estrutural | 'criar' = geração livre
   mode:             varchar("mode", { length: 20 }).notNull().default("criar"),
@@ -65,7 +77,9 @@ export const archAiRendersTable = pgTable("arch_ai_renders", {
   approvalNote:     text("approval_note"),
   createdAt:        timestamp("created_at").notNull().defaultNow(),
   concluidoEm:      timestamp("concluido_em"),
-});
+}, (table) => ({
+  conceptHistoryIdx: index("arch_ai_renders_tenant_concept_created_idx").on(table.tenantId, table.conceptProjectId, table.createdAt),
+}));
 
 export const insertArchAiRenderSchema = createInsertSchema(archAiRendersTable, {
   maskZones: z.array(z.string()).optional(),
@@ -77,7 +91,7 @@ export const insertArchAiRenderSchema = createInsertSchema(archAiRendersTable, {
     label: z.string().optional(),
   })).optional(),
   segmentationConfidence: z.record(z.string(), z.number()).optional(),
-}).omit({ id: true, createdAt: true });
+}).omit({ id: true, createdAt: true, jobInput: true, jobLeaseToken: true, jobLeaseUntil: true, jobAttempts: true, providerPredictionId: true, providerSubmissionStartedAt: true });
 
 export const updateArchAiRenderSchema = createSelectSchema(archAiRendersTable, {
   maskZones: z.array(z.string()).optional(),
@@ -90,9 +104,10 @@ export const updateArchAiRenderSchema = createSelectSchema(archAiRendersTable, {
   })).optional(),
   segmentationConfidence: z.record(z.string(), z.number()).optional(),
 })
-  .omit({ id: true, tenantId: true, createdAt: true })
+  .omit({ id: true, tenantId: true, createdAt: true, jobInput: true, jobLeaseToken: true, jobLeaseUntil: true, jobAttempts: true, providerPredictionId: true, providerSubmissionStartedAt: true })
   .partial();
 
 export type InsertArchAiRender = z.infer<typeof insertArchAiRenderSchema>;
 export type UpdateArchAiRender = z.infer<typeof updateArchAiRenderSchema>;
 export type ArchAiRender       = typeof archAiRendersTable.$inferSelect;
+

@@ -214,6 +214,7 @@ export default function ConceptFacadeEditor({
 }: Props) {
   const [panel, setPanel] = useState<"style" | "volumes" | "materials" | "frames" | "outdoor" | "lighting">("style");
   const [panelOpen, setPanelOpen] = useState(() => typeof window === "undefined" ? true : window.innerWidth >= 768);
+  const [panelExpanded, setPanelExpanded] = useState(false);
   const [selectedSurface, setSelectedSurface] = useState<FacadeSurfaceKey>("main");
   const [selectedVolumeId, setSelectedVolumeId] = useState<string | null>(null);
 
@@ -325,8 +326,10 @@ export default function ConceptFacadeEditor({
           <button
             key={value}
             type="button"
+            aria-expanded={panelOpen && panel === value}
             onClick={() => {
               const same = panel === value;
+              if (!same) setPanelExpanded(false);
               setPanel(value);
               setPanelOpen((open) => same ? !open : true);
             }}
@@ -344,10 +347,12 @@ export default function ConceptFacadeEditor({
       </div>
 
       {panelOpen && (
-      <div className="fixed inset-x-0 bottom-[72px] z-40 max-h-[48dvh] overflow-auto rounded-t-[28px] border border-b-0 bg-white shadow-[0_-18px_50px_rgba(15,23,42,0.22)] md:absolute md:inset-x-auto md:bottom-auto md:left-4 md:top-16 md:z-30 md:w-[286px] md:max-h-[calc(100vh-100px)] md:rounded-2xl md:border md:shadow-xl">
-        <div className="sticky top-0 z-20 flex justify-center bg-white pt-2 md:hidden">
-          <div className="h-1 w-10 rounded-full bg-slate-300" />
-        </div>
+      <div role="region" aria-label="Propriedades da fachada" className={`fixed inset-x-0 bottom-[calc(72px+env(safe-area-inset-bottom))] z-40 ${panelExpanded ? "max-h-[75dvh]" : "max-h-[40dvh]"} overflow-auto overscroll-contain rounded-t-[28px] border border-b-0 bg-white shadow-[0_-18px_50px_rgba(15,23,42,0.22)] md:absolute md:inset-x-auto md:bottom-auto md:left-4 md:top-16 md:z-30 md:w-[286px] md:max-h-[calc(100vh-100px)] md:rounded-2xl md:border md:shadow-xl`}>
+        <button type="button" onClick={() => setPanelExpanded((expanded) => !expanded)}
+          aria-expanded={panelExpanded} aria-label={panelExpanded ? "Reduzir painel" : "Expandir painel"}
+          className="sticky top-0 z-20 flex h-8 w-full items-center justify-center bg-white md:hidden">
+          <span className="h-1 w-10 rounded-full bg-slate-300" />
+        </button>
         <button
           type="button"
           onClick={() => setPanelOpen(false)}
@@ -650,6 +655,7 @@ export default function ConceptFacadeEditor({
               <button
                 type="button"
                 onClick={onOpenRender}
+              disabled={realisticPreviewLoading || !onOpenRender}
                 className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white"
               >
                 <Sparkles className="h-4 w-4" />
@@ -732,7 +738,10 @@ export default function ConceptFacadeEditor({
             facade={facade}
             design={design}
             selectedVolumeId={selectedVolumeId}
-            onSelectVolume={setSelectedVolumeId}
+            onSelectVolume={(id) => {
+              setSelectedVolumeId(id);
+              if (id) { setPanel("volumes"); setPanelOpen(false); }
+            }}
             onVolumeChange={updateVolume}
             selectedSurface={selectedSurface}
             onSelectSurface={(surface) => {
@@ -808,7 +817,7 @@ export default function ConceptFacadeEditor({
                 <button
                   type="button"
                   onClick={onOpenRender}
-                  disabled={realisticPreviewLoading}
+              disabled={realisticPreviewLoading || !onOpenRender}
                   className="mt-5 w-full rounded-xl bg-orange-500 px-4 py-3 text-xs font-bold text-white disabled:opacity-50"
                 >
                   {realisticPreviewLoading ? "Gerando..." : "Gerar fachada realista"}
@@ -821,7 +830,7 @@ export default function ConceptFacadeEditor({
             <button
               type="button"
               onClick={onOpenRender}
-              disabled={realisticPreviewLoading}
+              disabled={realisticPreviewLoading || !onOpenRender}
               className="rounded-xl bg-orange-500 px-3 py-2.5 text-xs font-bold text-white disabled:opacity-50"
             >
               {realisticPreviewUrl ? "Atualizar render" : "Gerar render"}
@@ -838,7 +847,7 @@ export default function ConceptFacadeEditor({
       </div>
 
       {selectedVolume && (
-        <div className="absolute bottom-4 left-1/2 z-40 w-[min(980px,calc(100vw-120px))] -translate-x-1/2 rounded-2xl border bg-white/96 p-3 shadow-2xl backdrop-blur">
+        <div className="absolute bottom-20 left-3 right-3 z-40 max-h-[42dvh] overflow-y-auto overscroll-contain rounded-2xl border bg-white/96 p-3 shadow-2xl backdrop-blur md:bottom-4 md:left-1/2 md:right-auto md:w-[min(980px,calc(100vw-120px))] md:-translate-x-1/2">
           <div className="flex flex-wrap items-center gap-3">
             <div className="min-w-[150px]">
               <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Selecionado</div>
@@ -937,3 +946,4 @@ export default function ConceptFacadeEditor({
     </div>
   );
 }
+
