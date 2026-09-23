@@ -33,6 +33,7 @@ import {
   callReplicateFluxFill,
   compositeWithOriginal,
   validateEdgeIntegrity,
+  validateArchitecturalStructure,
   bufferToDataUrl,
 } from "../lib/arch-render-pipeline.js";
 import sharp from "sharp";
@@ -196,6 +197,8 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
     angulo,
     materials,
     userNotes:    user_notes,
+    source,
+    renderView: render_view,
     logger:       req.log,
     retentativas: 0,
   }).catch(err => {
@@ -504,6 +507,8 @@ export interface RenderJobParams {
   angulo:       string | null | undefined;
   materials:    { zone: string; promptFragment: string }[];
   userNotes:    string | undefined;
+  source?: string | null;
+  renderView?: string | null;
   logger:       any;
   retentativas: number;
 }
@@ -513,7 +518,7 @@ const MAX_RETENTATIVAS = 2;
 export async function processRenderJob(params: RenderJobParams): Promise<void> {
   const {
     renderId, tenantId: tid, mode, originalUrl, maskZones, maskFileBase64, maskCoordinates,
-    ambiente, estilo, iluminacao, angulo, materials, userNotes,
+    ambiente, estilo, iluminacao, angulo, materials, userNotes, source, renderView,
     logger, retentativas,
   } = params;
 
@@ -641,15 +646,85 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
       motor = "replicate-flux-1.1-pro-ultra";
     }
 
-    // ── 4. Salvar resultado no storage ─────────────────────────────────────
-    const resultBuf  = Buffer.from(resultB64, "base64");
+    // ── 4. QA estrutural pós-render ─────────────────────────────────────────
+    const resultBuf = Buffer.from(resultB64, "base64");
+    const shouldValidateArchitecture =
+      mode === "preservar" &&
+      ambiente === "fachada" &&
+      (source === "facade" || renderView === "exterior");
+
+    if (shouldValidateArchitecture) {
+      const validation = await validateArchitecturalStructure(originalBuf, resultBuf);
+      logger?.info({ renderId, retentativas, ...validation }, "arch/ai-render: QA estrutural da fachada");
+
+      const qaMetrics = {
+        ...(segConf ?? {}),
+        structure_score: Number(validation.score.toFixed(4)),
+        structure_coverage: Number(validation.edgeCoverage.toFixed(4)),
+        structure_mirror: Number(validation.mirroredCoverage.toFixed(4)),
+        structure_centroid_shift: Number(validation.centroidShift.toFixed(4)),
+      };
+      segConf = qaMetrics;
+
+      await db.update(archAiRendersTable)
+        .set({ segmentationConfidence: qaMetrics })
+        .where(ownedRender);
+
+      if (!validation.valid && retentativas < MAX_RETENTATIVAS) {
+        const nextAttempt = retentativas + 1;
+        logger?.warn(
+          { renderId, nextAttempt, details: validation.details },
+          "arch/ai-render: estrutura rejeitada, regenerando com lock reforçado",
+        );
+
+        await db.update(archAiRendersTable)
+          .set({
+            status: "processando",
+            retentativas: String(nextAttempt),
+            erroMsg: `QA estrutural: ${validation.details} Regenerando automaticamente.`,
+            providerPredictionId: null,
+            providerSubmissionStartedAt: null,
+          })
+          .where(ownedRender);
+
+        const reinforcedNotes = [
+          userNotes ?? "",
+          "AUTOMATIC QA RETRY: the previous result distorted the source architecture.",
+          "Reproduce the reference geometry more literally. Keep the exact silhouette, facade width, roof/parapet line, garage, entrance and all openings in the same positions and proportions.",
+          "Do not mirror, rotate, crop, zoom, simplify, stylize or reinterpret the building massing. Change only materials, lighting, shadows and photographic realism.",
+        ].filter(Boolean).join("\n");
+
+        return processRenderJob({
+          ...params,
+          userNotes: reinforcedNotes,
+          retentativas: nextAttempt,
+          resumePredictionId: undefined,
+        });
+      }
+
+      if (!validation.valid) {
+        await db.update(archAiRendersTable)
+          .set({
+            status: "rejeitado_auto",
+            erroMsg: `Render rejeitado automaticamente após ${MAX_RETENTATIVAS + 1} tentativas: ${validation.details}`,
+            segmentationConfidence: qaMetrics,
+            concluidoEm: new Date(),
+          })
+          .where(ownedRender);
+        logger?.warn({ renderId, ...validation }, "arch/ai-render: QA estrutural rejeitou o resultado final");
+        return;
+      }
+    }
+
+    // ── 5. Salvar resultado no storage ─────────────────────────────────────
+
     const objPath    = await storage.savePrivateBuffer(
       resultBuf, "image/png",
       `arch-ai-render-${tid}-${renderId}.png`,
     );
     const resultUrl  = `/api/storage/objects/${objPath.replace(/^\/objects\//, "")}`;
 
-    // ── 5. Atualizar registro ──────────────────────────────────────────────
+    // ── 6. Atualizar registro ──────────────────────────────────────────────
     await db.update(archAiRendersTable)
       .set({
         status:          "concluido",
