@@ -124,6 +124,26 @@ router.post("/public/smart-delivery/:token/event", async (req, res) => {
       .limit(1);
     if (!lead) return res.status(404).json({ error: "Lead não encontrado" });
 
+    const eventKey = `smart_delivery:${payload.campaignId}:${event}`;
+    const [alreadyRecorded] = await db
+      .select({ id: activitiesTable.id })
+      .from(activitiesTable)
+      .where(and(
+        eq(activitiesTable.tenantId, payload.tenantId),
+        eq(activitiesTable.leadId, payload.leadId),
+        eq(activitiesTable.resultadoExecucao, eventKey),
+      ))
+      .limit(1);
+
+    if (alreadyRecorded) {
+      return res.json({
+        ok: true,
+        duplicate: true,
+        intentScore: Number(lead.intentScore ?? 0),
+        closerQueued: Number(lead.intentScore ?? 0) >= CLOSER_INTENT_THRESHOLD || event === "cta_clicked",
+      });
+    }
+
     await db.insert(activitiesTable).values({
       tenantId: payload.tenantId,
       leadId: payload.leadId,
@@ -132,7 +152,7 @@ router.post("/public/smart-delivery/:token/event", async (req, res) => {
       descricao: `Campanha ${payload.campaignId} | ${event} | Ferramenta: ${payload.toolName ?? payload.toolRef}`,
       status: "concluida",
       concluidaEm: new Date(),
-      resultadoExecucao: `smart_delivery_${event}`,
+      resultadoExecucao: eventKey,
     });
 
     const boost = DELIVERY_INTENT_BOOST[event as keyof typeof DELIVERY_INTENT_BOOST];
