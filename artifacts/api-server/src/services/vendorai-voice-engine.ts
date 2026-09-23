@@ -422,3 +422,101 @@ export async function synthesizeVendorAiVoice(input: {
     throw error;
   }
 }
+
+
+export async function resolveDefaultVendorAiVoice(input: {
+  tenantId: string;
+  language?: string;
+}): Promise<{ identityId: string; voiceProfileId: string; displayName: string } | null> {
+  const requestedLocale = normalizeLocale(input.language);
+  const requestedLanguage = localeLanguage(requestedLocale);
+
+  const result = await pool.query(
+    `SELECT
+       i.id AS identity_id,
+       i.display_name,
+       v.id AS voice_profile_id,
+       v.metadata,
+       v.updated_at
+     FROM media_identities i
+     JOIN media_voice_profiles v
+       ON v.identity_id = i.id
+      AND v.tenant_id = i.tenant_id
+     WHERE i.tenant_id = $1
+       AND i.status = 'active'
+       AND v.status = 'ready'
+       AND v.provider = 'vendorai'
+       AND v.reference_asset_id IS NOT NULL
+       AND media_identity_has_active_consent(i.tenant_id, i.id, 'voice_use') = true
+       AND media_identity_has_active_consent(i.tenant_id, i.id, 'ai_generation') = true
+     ORDER BY
+       CASE
+         WHEN LOWER(REPLACE(COALESCE(v.metadata->>'locale',''), '_', '-')) = $2 THEN 0
+         WHEN SPLIT_PART(LOWER(REPLACE(COALESCE(v.metadata->>'locale',''), '_', '-')), '-', 1) = $3 THEN 1
+         WHEN COALESCE((v.metadata->>'primary')::boolean, false) = true THEN 2
+         ELSE 3
+       END,
+       v.updated_at DESC
+     LIMIT 1`,
+    [input.tenantId, requestedLocale, requestedLanguage ?? requestedLocale],
+  );
+
+  const row = result.rows[0] as Record<string, unknown> | undefined;
+  if (!row) return null;
+  return {
+    identityId: String(row["identity_id"]),
+    voiceProfileId: String(row["voice_profile_id"]),
+    displayName: String(row["display_name"] ?? "Dublê"),
+  };
+}
+
+export async function createVendorAiVoiceStream(input: {
+  tenantId: string;
+  identityId: string;
+  voiceProfileId: string;
+  text: string;
+  language?: string;
+}): Promise<{
+  response: globalThis.Response;
+  jobId: string;
+  voiceSelection: VoiceSelectionResult;
+}> {
+  const workerUrl = process.env["VENDORAI_MEDIA_WORKER_URL"]?.replace(/\/$/, "");
+  if (!workerUrl) throw new VoiceEngineNotReadyError("Voice worker do VendorAI ainda não está configurado");
+
+  await assertVoiceConsent(input.tenantId, input.identityId);
+  const selection = await resolveVendorAiVoiceProfile({
+    tenantId: input.tenantId,
+    identityId: input.identityId,
+    preferredVoiceProfileId: input.voiceProfileId,
+    language: input.language,
+  });
+  const reference = await loadVoiceReference(input.tenantId, input.identityId, selection.voiceProfileId);
+  const referenceFile = await objectStorage.getObjectEntityFile(reference.storageUrl);
+  const [referenceBuffer] = await referenceFile.download();
+
+  const jobId = randomUUID();
+  const form = new FormData();
+  form.append("job_id", jobId);
+  form.append("text", input.text);
+  form.append("language", input.language ?? "pt-br");
+  form.append("model_config", JSON.stringify(reference.modelConfig));
+  form.append("reference_audio", new Blob([referenceBuffer], { type: reference.mimeType }), reference.originalFilename);
+
+  const headers: Record<string, string> = {};
+  const workerSecret = process.env["VENDORAI_MEDIA_WORKER_SECRET"];
+  if (workerSecret) headers["x-vendorai-worker-secret"] = workerSecret;
+
+  const response = await fetch(`${workerUrl}/v1/voice/stream`, {
+    method: "POST",
+    headers,
+    body: form,
+    signal: AbortSignal.timeout(180_000),
+  });
+  if (!response.ok || !response.body) {
+    const detail = (await response.text().catch(() => "")).slice(0, 500);
+    throw new Error(`Voice stream worker respondeu ${response.status}: ${detail}`);
+  }
+
+  return { response, jobId, voiceSelection: selection };
+}
