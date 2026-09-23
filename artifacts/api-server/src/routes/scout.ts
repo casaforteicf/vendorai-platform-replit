@@ -18,6 +18,7 @@ import { resolveVerticalRevenueProfile } from "../services/verticalRevenueEngine
 import { renderTemplate } from "../lib/proactiveMessageGuard.js";
 import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 import { ensureMinimumScoutRulesForTenant } from "../services/scoutVerticalRuleLibrary.js";
+import { analyzeTenantExpansion, getTenantExpansionHistory, updateTenantExpansionRecommendation } from "../services/tenantExpansionScout.js";
 
 const router: IRouter = Router();
 
@@ -65,6 +66,37 @@ function fallbackOpportunityExplanation(op: {
     },
   };
 }
+
+// ─── Expansão VendorAI (plataforma → tenant) ─────────────────────────────────
+// Somente Super Admin: não mistura a carteira do tenant com a relação comercial
+// entre VendorAI e o próprio tenant. O motor apenas recomenda; não libera acesso.
+router.get("/admin/tenants/:tenantId/scout/expansion", async (req, res) => {
+  const { tenantId } = req.params;
+  if (!isSuperAdmin(req)) return res.status(403).json({ error: "Super admin only." });
+  const analysis = await analyzeTenantExpansion(tenantId);
+  return res.json(analysis);
+});
+
+router.get("/admin/tenants/:tenantId/scout/expansion/history", async (req, res) => {
+  const { tenantId } = req.params;
+  if (!isSuperAdmin(req)) return res.status(403).json({ error: "Super admin only." });
+  const history = await getTenantExpansionHistory(tenantId);
+  return res.json(history);
+});
+
+router.patch("/admin/tenants/:tenantId/scout/expansion/:recommendationId", async (req, res) => {
+  const { tenantId, recommendationId } = req.params;
+  if (!isSuperAdmin(req)) return res.status(403).json({ error: "Super admin only." });
+
+  const { status } = req.body as { status?: "presented" | "accepted" | "rejected" };
+  if (!status || !["presented", "accepted", "rejected"].includes(status)) {
+    return res.status(422).json({ error: "status deve ser presented, accepted ou rejected" });
+  }
+
+  const updated = await updateTenantExpansionRecommendation(tenantId, recommendationId, status);
+  if (!updated) return res.status(404).json({ error: "Recommendation not found" });
+  return res.json(updated);
+});
 
 // ─── Regras ───────────────────────────────────────────────────────────────────
 
