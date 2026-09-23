@@ -234,7 +234,7 @@ async function assertVideoGenerationWithinTenantLimits(input: {
   if (!enabled) return;
 
   const monthlyLimit = Math.max(0, Number(row?.["monthly_video_jobs_limit"] ?? 10));
-  const premiumMonthlyLimit = Math.max(0, Number(row?.["monthly_premium_video_jobs_limit"] ?? 1));
+  const premiumMonthlyLimit = Math.max(0, Number(row?.["monthly_premium_video_jobs_limit"] ?? 0));
   const concurrentLimit = Math.max(1, Number(row?.["max_concurrent_video_jobs"] ?? 1));
   const maxDuration = Math.max(4, Number(row?.["max_duration_seconds"] ?? 30));
 
@@ -246,7 +246,8 @@ async function assertVideoGenerationWithinTenantLimits(input: {
   const engine = normalize(input.context["engine"]);
   const qualityMode = normalize(input.context["qualityMode"]);
   const premiumRequested = qualityMode === "cinema"
-    || engine.includes("veo")
+    || engine === "veo-3.1"
+    || engine === "google/veo-3.1"
     || engine.includes("gen4.5");
 
   const usage = await pool.query(
@@ -263,7 +264,7 @@ async function assertVideoGenerationWithinTenantLimits(input: {
             AND created_at >= date_trunc('month', NOW())
             AND (
               lower(COALESCE(input->>'qualityMode','')) = 'cinema'
-              OR lower(COALESCE(input->>'engine','')) LIKE '%veo%'
+              OR lower(COALESCE(input->>'engine','')) IN ('veo-3.1', 'google/veo-3.1')
               OR lower(COALESCE(input->>'engine','')) LIKE '%gen4.5%'
             )
         )::int AS month_premium_jobs
@@ -292,7 +293,15 @@ async function assertVideoGenerationWithinTenantLimits(input: {
 export async function createVendorAiMediaGenerationJob(input: {
   tenantId: string; userId?: string | null; title: string; operation: VendorAiMediaCapability; context?: Record<string, unknown>;
 }) {
-  const initialContext = input.context ?? {};
+  const suppliedContext = input.context ?? {};
+  const initialContext = input.operation === "video_generate"
+    ? {
+        ...suppliedContext,
+        engine: suppliedContext["engine"] ?? "google/veo-3.1-lite",
+        qualityMode: suppliedContext["qualityMode"] ?? "standard",
+        resolution: suppliedContext["resolution"] ?? "720p",
+      }
+    : suppliedContext;
   if (input.operation === "video_generate") {
     await assertVideoGenerationWithinTenantLimits({ tenantId: input.tenantId, context: initialContext });
   }

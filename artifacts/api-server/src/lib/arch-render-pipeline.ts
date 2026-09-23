@@ -687,6 +687,7 @@ export function bufferToDataUrl(buf: Buffer, mime = "image/png"): string {
 
 export async function callReplicateVeo31(params: {
   prompt: string;
+  model?: "google/veo-3.1" | "google/veo-3.1-lite";
   aspectRatio?: "16:9" | "9:16";
   duration?: 4 | 6 | 8;
   resolution?: "720p" | "1080p";
@@ -700,7 +701,7 @@ export async function callReplicateVeo31(params: {
   const token = process.env["REPLICATE_API_TOKEN"];
   if (!token) throw new Error("REPLICATE_API_TOKEN not set");
 
-  const MODEL = "google/veo-3.1";
+  const MODEL = params.model ?? "google/veo-3.1";
   const { prompt, logger } = params;
   type Prediction = { id: string; status: string; output?: string | string[]; error?: string };
 
@@ -741,11 +742,11 @@ export async function callReplicateVeo31(params: {
               aspect_ratio: params.aspectRatio ?? "16:9",
               duration: params.duration ?? 8,
               resolution: params.resolution ?? "1080p",
-              generate_audio: params.generateAudio !== false,
-              ...(params.negativePrompt ? { negative_prompt: params.negativePrompt } : {}),
+              ...(MODEL === "google/veo-3.1" ? { generate_audio: params.generateAudio !== false } : {}),
+              ...(MODEL === "google/veo-3.1" && params.negativePrompt ? { negative_prompt: params.negativePrompt } : {}),
               ...(params.image ? { image: params.image } : {}),
               ...(params.lastFrame ? { last_frame: params.lastFrame } : {}),
-              ...(params.referenceImages?.length
+              ...(MODEL === "google/veo-3.1" && params.referenceImages?.length
                 ? { reference_images: params.referenceImages.slice(0, 3) }
                 : {}),
             },

@@ -655,9 +655,19 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
   const userId = video.input.userId ?? null;
   const requestedEngine = String(video.input.engine ?? "").trim().toLowerCase();
   const qualityMode = String(video.input.qualityMode ?? "").trim().toLowerCase();
-  const usePremiumNativeVideo = requestedEngine === "veo-3.1"
+  const useCinemaNativeVideo = requestedEngine === "veo-3.1"
     || requestedEngine === "google/veo-3.1"
     || qualityMode === "cinema";
+  const useLiteNativeVideo = requestedEngine === "veo-3.1-lite"
+    || requestedEngine === "google/veo-3.1-lite"
+    || qualityMode === "standard"
+    || qualityMode === "lite";
+  const useNativeVideo = useCinemaNativeVideo || useLiteNativeVideo;
+  const nativeVideoModel: "google/veo-3.1" | "google/veo-3.1-lite" = useCinemaNativeVideo
+    ? "google/veo-3.1"
+    : "google/veo-3.1-lite";
+  const nativeVideoResolution: "720p" | "1080p" = useCinemaNativeVideo ? "1080p" : "720p";
+  const effectiveQualityMode = useCinemaNativeVideo ? "cinema" : "standard";
   const audioConfig = asRecord(video.input.audio);
   const nativeAudioEnabled = audioConfig["enabled"] !== false;
   const voiceoverScript = stringValue(video.input.voiceoverScript);
@@ -673,7 +683,7 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
     return;
   }
 
-  if (usePremiumNativeVideo) {
+  if (useNativeVideo) {
     try {
       await persistRunning({
         video,
@@ -684,11 +694,11 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
           style,
           aspectRatio,
           requestedDuration: duration,
-          engine: "google/veo-3.1",
-          qualityMode: "cinema",
-          resolution: "1080p",
+          engine: nativeVideoModel,
+          qualityMode: effectiveQualityMode,
+          resolution: nativeVideoResolution,
           nativeAudioEnabled,
-          stage: "premium_native_video",
+          stage: useCinemaNativeVideo ? "premium_native_video" : "standard_native_video",
         },
       });
 
@@ -766,11 +776,11 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
             actualDuration,
             sceneCount: premiumSceneCount,
             sceneIndex,
-            engine: "google/veo-3.1",
-            qualityMode: "cinema",
-            resolution: "1080p",
+            engine: nativeVideoModel,
+            qualityMode: effectiveQualityMode,
+            resolution: nativeVideoResolution,
             nativeAudioEnabled,
-            stage: "premium_native_multishot",
+            stage: useCinemaNativeVideo ? "premium_native_multishot" : "standard_native_multishot",
           },
         });
 
@@ -791,12 +801,16 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
 
         const premiumScene = await callReplicateVeo31({
           prompt: scenePrompt,
+          model: nativeVideoModel,
           aspectRatio: aspectRatio === "portrait" ? "9:16" : "16:9",
           duration: 8,
-          resolution: "1080p",
+          resolution: nativeVideoResolution,
           generateAudio: nativeAudioEnabled,
-          negativePrompt,
-          referenceImages,
+          negativePrompt: useCinemaNativeVideo ? negativePrompt : undefined,
+          image: !useCinemaNativeVideo && referenceImages.length
+            ? referenceImages[sceneIndex % referenceImages.length]
+            : undefined,
+          referenceImages: useCinemaNativeVideo ? referenceImages : undefined,
           logger,
         });
 
@@ -826,9 +840,9 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
           requestedDuration: duration,
           actualDuration,
           sceneCount: premiumSceneCount,
-          engine: "google/veo-3.1",
-          qualityMode: "cinema",
-          resolution: "1080p",
+          engine: nativeVideoModel,
+          qualityMode: effectiveQualityMode,
+          resolution: nativeVideoResolution,
           nativeAudioEnabled,
           predictionIds,
           referenceImages,
@@ -879,7 +893,7 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
         mimeType: "video/mp4",
         originalFilename: `${title.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || video.id}-cinema-v5.mp4`,
         operation: "video_generate",
-        label: "Vídeo Cinema Pro v5 gerado com IA",
+        label: useCinemaNativeVideo ? "Vídeo Cinema gerado com IA" : "Vídeo Padrão gerado com IA",
         metadata: {
           jobId: video.id,
           prompt: rawPrompt ?? "",
@@ -888,15 +902,15 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
           requestedDuration: duration,
           actualDuration,
           sceneCount: premiumSceneCount,
-          engine: "google/veo-3.1",
+          engine: nativeVideoModel,
           provider: "replicate",
-          qualityMode: "cinema",
-          resolution: "1080p",
+          qualityMode: effectiveQualityMode,
+          resolution: nativeVideoResolution,
           audioApplied: nativeAudioEnabled,
           nativeAudio: nativeAudioEnabled,
           predictionIds,
           referenceImages,
-          generationEngine: "native-video-premium-v5-multishot-references",
+          generationEngine: useCinemaNativeVideo ? "native-video-premium-v5-multishot-references" : "native-video-lite-v1-multishot",
           contextPack: contextPack ? {
             brand: contextPack.brand,
             knowledgeTitles: contextPack.knowledge.map((item) => item.title),
@@ -919,15 +933,15 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
           requestedDuration: duration,
           actualDuration,
           sceneCount: premiumSceneCount,
-          engine: "google/veo-3.1",
+          engine: nativeVideoModel,
           provider: "replicate",
-          qualityMode: "cinema",
-          resolution: "1080p",
+          qualityMode: effectiveQualityMode,
+          resolution: nativeVideoResolution,
           audioApplied: nativeAudioEnabled,
           nativeAudio: nativeAudioEnabled,
           predictionIds,
           referenceImages,
-          generationEngine: "native-video-premium-v5-multishot-references",
+          generationEngine: useCinemaNativeVideo ? "native-video-premium-v5-multishot-references" : "native-video-lite-v1-multishot",
           contextPack: contextPack ? {
             brand: contextPack.brand,
             knowledgeTitles: contextPack.knowledge.map((item) => item.title),
@@ -939,8 +953,8 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
       if (premiumBrandCleanup) await premiumBrandCleanup().catch(() => undefined);
       return;
     } catch (error) {
-      const message = (error instanceof Error ? error.message : "Falha no motor premium").slice(0, 1000);
-      logger.error({ err: error, jobId: video.id, tenantId: video.tenantId }, "media-video-generate: motor premium falhou");
+      const message = (error instanceof Error ? error.message : "Falha no motor de vídeo").slice(0, 1000);
+      logger.error({ err: error, jobId: video.id, tenantId: video.tenantId }, "media-video-generate: motor nativo falhou");
       await persistFinished({ video, runnerToken, status: "error", error: message }).catch(() => undefined);
       if (video.projectId) await setMediaProjectStatus(video.tenantId, video.projectId, "draft").catch(() => undefined);
       return;
