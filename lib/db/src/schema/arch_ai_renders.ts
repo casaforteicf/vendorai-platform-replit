@@ -8,7 +8,9 @@ import {
   numeric,
   integer,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { archConceptProjectsTable } from "./arch_concept_projects";
@@ -39,6 +41,7 @@ export const archAiRendersTable = pgTable("arch_ai_renders", {
   providerSubmissionStartedAt: timestamp("provider_submission_started_at", { withTimezone: true }),
   source:           varchar("source", { length: 20 }),
   renderView:       varchar("render_view", { length: 20 }),
+  isPrimary:        boolean("is_primary").notNull().default(false),
   parentRenderId:   text("parent_render_id"),
   // 'preservar' = inpainting estrutural | 'criar' = geração livre
   mode:             varchar("mode", { length: 20 }).notNull().default("criar"),
@@ -78,6 +81,10 @@ export const archAiRendersTable = pgTable("arch_ai_renders", {
   createdAt:        timestamp("created_at").notNull().defaultNow(),
   concluidoEm:      timestamp("concluido_em"),
 }, (table) => ({
+  conceptPrimaryIdx: uniqueIndex("arch_ai_renders_concept_primary_idx").on(table.tenantId, table.conceptProjectId)
+    .where(sql`${table.isPrimary} = true AND ${table.conceptProjectId} IS NOT NULL`),
+  regenerationKeyIdx: uniqueIndex("arch_ai_renders_regeneration_key_idx").on(table.tenantId, sql`(${table.jobInput}->>'regenerationKey')`)
+    .where(sql`${table.jobInput}->>'regenerationKey' IS NOT NULL`),
   conceptHistoryIdx: index("arch_ai_renders_tenant_concept_created_idx").on(table.tenantId, table.conceptProjectId, table.createdAt),
 }));
 
@@ -91,7 +98,7 @@ export const insertArchAiRenderSchema = createInsertSchema(archAiRendersTable, {
     label: z.string().optional(),
   })).optional(),
   segmentationConfidence: z.record(z.string(), z.number()).optional(),
-}).omit({ id: true, createdAt: true, jobInput: true, jobLeaseToken: true, jobLeaseUntil: true, jobAttempts: true, providerPredictionId: true, providerSubmissionStartedAt: true });
+}).omit({ id: true, createdAt: true, isPrimary: true, jobInput: true, jobLeaseToken: true, jobLeaseUntil: true, jobAttempts: true, providerPredictionId: true, providerSubmissionStartedAt: true });
 
 export const updateArchAiRenderSchema = createSelectSchema(archAiRendersTable, {
   maskZones: z.array(z.string()).optional(),
@@ -104,10 +111,11 @@ export const updateArchAiRenderSchema = createSelectSchema(archAiRendersTable, {
   })).optional(),
   segmentationConfidence: z.record(z.string(), z.number()).optional(),
 })
-  .omit({ id: true, tenantId: true, createdAt: true, jobInput: true, jobLeaseToken: true, jobLeaseUntil: true, jobAttempts: true, providerPredictionId: true, providerSubmissionStartedAt: true })
+  .omit({ id: true, tenantId: true, createdAt: true, isPrimary: true, jobInput: true, jobLeaseToken: true, jobLeaseUntil: true, jobAttempts: true, providerPredictionId: true, providerSubmissionStartedAt: true })
   .partial();
 
 export type InsertArchAiRender = z.infer<typeof insertArchAiRenderSchema>;
 export type UpdateArchAiRender = z.infer<typeof updateArchAiRenderSchema>;
 export type ArchAiRender       = typeof archAiRendersTable.$inferSelect;
+
 

@@ -1,10 +1,12 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { and, asc, eq } from "drizzle-orm";
-import { db, archAiRendersTable } from "@workspace/db";
+import { db, pool, archAiRendersTable } from "@workspace/db";
 import { authenticate } from "../middlewares/auth.js";
 import { inferOperationType, renderOperationTypeSchema } from "../lib/arqdor-render-version-metadata.js";
 import { syncApprovedRenderSpecifications } from "../lib/arqdor-approved-render-spec.js";
 import { archAiRenderRouter as legacyArchAiRenderRouter } from "./arch_ai_render_legacy.js";
+
+import { RenderGalleryError, updateConceptRenderGallery } from "../services/arch-concept-render-gallery.js";
 
 export const archAiRenderRouter = Router();
 
@@ -111,6 +113,30 @@ archAiRenderRouter.post("/arch/ai-render/:id/approve", authenticate, (req, res, 
   }, next);
 });
 
+// These actions operate only on tenant-owned concept renders.
+for (const action of ["primary", "regenerate"] as const) {
+  archAiRenderRouter.post(`/arch/ai-render/:id/${action}`, authenticate, async (req, res) => {
+    const tid = tenantId(req);
+    if (!tid) return res.status(403).json({ success: false, error: "Tenant não identificado" });
+    try {
+      const result = await updateConceptRenderGallery(pool, {
+        tenantId: tid,
+        renderId: req.params["id"] as string,
+        action,
+        lighting: req.body?.lighting,
+        requestId: typeof req.body?.request_id === "string" ? req.body.request_id : undefined,
+      });
+      return res.status(action === "regenerate" ? 202 : 200).json({
+        success: true, render_id: result.id, status: result.status,
+      });
+    } catch (error) {
+      if (error instanceof RenderGalleryError) return res.status(error.status).json({ success: false, error: error.message });
+      req.log?.error?.({ err: error, action }, "arch/concept-render: falha na ação da galeria");
+      return res.status(500).json({ success: false, error: "Não foi possível salvar esta ação. Tente novamente." });
+    }
+  });
+}
+
 // Fonte oficial do histórico persistente. Registrada antes do router legado para
 // expor todos os metadados adicionados à tabela sem alterar o pipeline grande.
 archAiRenderRouter.get("/arch/ai-renders", authenticate, async (req: Request, res: Response) => {
@@ -148,6 +174,8 @@ archAiRenderRouter.get("/arch/ai-renders", authenticate, async (req: Request, re
       ambiente: render.ambiente,
       mode: render.mode,
       status: render.status,
+      is_primary: render.isPrimary,
+      can_regenerate: render.mode === "preservar" && Boolean(render.jobInput && render.originalImageUrl),
       source: render.source,
       render_view: render.renderView,
       erro_msg: render.erroMsg,
@@ -224,4 +252,5 @@ archAiRenderRouter.get("/arch/ai-render/:id", authenticate, async (req: Request,
 });
 
 archAiRenderRouter.use(legacyArchAiRenderRouter);
+
 

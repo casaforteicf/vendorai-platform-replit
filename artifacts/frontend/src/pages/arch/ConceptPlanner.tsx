@@ -51,6 +51,7 @@ import {
 } from "./conceptFacadeDesign";
 import { buildTypologyRooms, CONCEPT_TYPOLOGIES, DEFAULT_LAYOUT_PREFERENCES, type ConceptTypology, type LayoutPreferences, type LayoutPreferenceKey } from "./conceptTemplates";
 import { generateTypologyLayout } from "./conceptTypologyLayout";
+import { ConceptRenderGalleryActions } from "./ConceptRenderGalleryActions";
 import { buildConceptRenderBrief, svgElementToPngDataUrl } from "./conceptRender";
 import { buildOrthogonalWallTopology, detectClosedSpaces, type ClosedSpace, type WallTopologyEndpointRef } from "./conceptWallNetwork";
 import { conceptStepCta, nextConceptStep, normalizeConceptStep, previousConceptStep } from "./conceptNavigation";
@@ -339,6 +340,9 @@ type ConceptDraftResponse = {
     renderView?: "exterior" | "interior";
     history?: Array<{
       renderId: string;
+      canRegenerate?: boolean;
+      lighting?: string | null;
+      versionNumber?: number;
       resultImageUrl: string;
       generatedAt: string;
       source: "facade" | "model3d";
@@ -771,6 +775,8 @@ export default function ConceptPlanner() {
   const [facadePreferences, setFacadePreferences] = useState<ConceptFacadePreferences>(DEFAULT_FACADE);
   const [facadeDesign, setFacadeDesign] = useState<FacadeDesignState>(DEFAULT_FACADE_DESIGN);
   const [conceptRender, setConceptRender] = useState<ConceptDraftResponse["conceptRender"]>({ status: "idle" });
+  const [renderHistoryRevision, setRenderHistoryRevision] = useState(0);
+  const [primaryRenderId, setPrimaryRenderId] = useState<string | null>(null);
   const [selectedRenderVersionId, setSelectedRenderVersionId] = useState<string | null>(null);
   const [renderQueued, setRenderQueued] = useState(false);
   const renderSubmittingRef = useRef(false);
@@ -3477,6 +3483,10 @@ export default function ConceptPlanner() {
         const payload = await response.json() as {
           versions?: Array<{
             id: string;
+            is_primary?: boolean;
+            iluminacao?: string | null;
+            version_number?: number;
+            can_regenerate?: boolean;
             status?: string;
             result_image_url?: string | null;
             erro_msg?: string | null;
@@ -3491,11 +3501,15 @@ export default function ConceptPlanner() {
         const versions = Array.isArray(payload.versions) ? payload.versions : [];
         const completed = versions.filter((item) => item.status === "concluido" && item.result_image_url).map((item) => ({
           renderId: item.id,
+          canRegenerate: item.can_regenerate === true,
+          lighting: item.iluminacao,
+          versionNumber: item.version_number,
           resultImageUrl: item.result_image_url!,
           generatedAt: item.concluido_em ?? item.created_at ?? "",
           source: item.source ?? (item.ambiente === "interior" ? "model3d" as const : "facade" as const),
           renderView: item.render_view ?? (item.ambiente === "interior" ? "interior" as const : "exterior" as const),
         }));
+        setPrimaryRenderId(versions.find((item) => item.is_primary)?.id ?? null);
         const newest = versions[versions.length - 1];
         const active = [...versions].reverse().find((item) => ["processando", "queued", "processing"].includes(item.status ?? ""));
         const failed = newest && ["erro", "error", "rejeitado_auto"].includes(newest.status ?? "");
@@ -3509,7 +3523,7 @@ export default function ConceptPlanner() {
             renderId: active?.id ?? newest.id,
             status: active ? "processing" : failed ? "error" : last ? "completed" : "error",
             error: failure,
-            history: completed.slice(-12),
+            history: completed,
           };
         });
         setRenderQueued(active?.status === "queued");
@@ -3530,9 +3544,14 @@ export default function ConceptPlanner() {
       controller.abort();
       if (timer) clearTimeout(timer);
     };
-  }, [conceptId, conceptRender?.renderId, editorView]);
+  }, [conceptId, conceptRender?.renderId, editorView, renderHistoryRevision]);
 
-  const displayedRender = conceptRender?.history?.find((item) => item.renderId === selectedRenderVersionId) ?? conceptRender;
+  const galleryVersions = conceptRender?.history ?? [];
+  const primaryRender = galleryVersions.find((item) => item.renderId === primaryRenderId);
+  const selectedGalleryRender = galleryVersions.find((item) => item.renderId === selectedRenderVersionId)
+    ?? primaryRender ?? galleryVersions[galleryVersions.length - 1];
+  const displayedRender = selectedGalleryRender ?? conceptRender;
+  const presentationRender = primaryRender ?? conceptRender;
 
   const latestFacadeRenderUrl = useMemo(() => {
     if (conceptRender?.renderView === "exterior" && conceptRender.resultImageUrl) return conceptRender.resultImageUrl;
@@ -6398,12 +6417,30 @@ export default function ConceptPlanner() {
                           </div>
                         )}
 
+                        {selectedGalleryRender && (
+                          <ConceptRenderGalleryActions
+                            versions={galleryVersions}
+                            selected={selectedGalleryRender}
+                            primaryId={primaryRenderId}
+                            processing={conceptRender?.status === "processing"}
+                            onPrimary={(renderId) => {
+                              setPrimaryRenderId(renderId);
+                              setRenderHistoryRevision((value) => value + 1);
+                            }}
+                            onRegenerated={(renderId) => {
+                              setRenderError(null);
+                              setRenderQueued(true);
+                              setConceptRender((previous) => ({ ...previous, renderId, status: "processing", error: undefined }));
+                            }}
+                          />
+                        )}
+
                         {Array.isArray(conceptRender?.history) && conceptRender.history.length > 0 && (
                           <div className="rounded-2xl border bg-white p-4 shadow-sm">
                             <div className="mb-3 flex items-center justify-between">
                               <div>
                                 <div className="text-sm font-semibold">Histórico de renders</div>
-                                <div className="text-[11px] text-muted-foreground">Até 12 versões recentes.</div>
+                                <div className="text-[11px] text-muted-foreground">Versões salvas deste pré-projeto.</div>
                               </div>
                               <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
                                 {conceptRender.history.length}
@@ -6415,17 +6452,19 @@ export default function ConceptPlanner() {
                                   key={item.renderId}
                                   type="button"
                                   onClick={() => setSelectedRenderVersionId(item.renderId)}
-                                  className={(selectedRenderVersionId ?? conceptRender.renderId) === item.renderId
+                                  className={selectedGalleryRender?.renderId === item.renderId
                                     ? "overflow-hidden rounded-xl border-2 border-orange-500 bg-orange-50 text-left"
                                     : "overflow-hidden rounded-xl border bg-white text-left hover:border-orange-300"}
                                 >
-                                  <img src={item.resultImageUrl} alt="" className="aspect-video w-full object-cover" />
+                                  <img src={item.resultImageUrl} alt="" loading="lazy" decoding="async" className="aspect-video w-full object-cover" />
                                   <div className="p-2.5">
                                     <div className="text-xs font-semibold">
-                                      {item.renderView === "interior" ? "Vista 3D" : "Fachada"}
+                                      V{item.versionNumber ?? galleryVersions.indexOf(item) + 1} · {item.source === "model3d" ? "3D" : "Fachada"}
+                                      {item.renderId === primaryRenderId && <span className="ml-1 text-orange-700">· Principal</span>}
                                     </div>
                                     <div className="mt-0.5 text-[10px] text-muted-foreground">
                                       {new Date(item.generatedAt).toLocaleString("pt-BR")}
+                                      <span className="block">{item.lighting === "night" ? "Noite" : item.lighting === "sunset" ? "Entardecer" : item.lighting === "day" ? "Dia" : item.lighting ?? "Iluminação original"} · Concluído</span>
                                     </div>
                                   </div>
                                 </button>
@@ -7029,16 +7068,16 @@ export default function ConceptPlanner() {
                   </div>
                 )}
 
-                {conceptRender?.resultImageUrl && (
+                {presentationRender?.resultImageUrl && (
                   <div className="mt-4 overflow-hidden rounded-2xl border bg-muted">
                     <img
-                      src={conceptRender.resultImageUrl}
+                      src={presentationRender.resultImageUrl}
                       alt="Render conceitual do pré-projeto"
                       className="max-h-[640px] w-full object-contain"
                     />
                     <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-background p-3 text-xs text-muted-foreground">
                       <span>Render vinculado a este pré-projeto</span>
-                      {conceptRender.generatedAt && <span>{new Date(conceptRender.generatedAt).toLocaleString("pt-BR")}</span>}
+                      {presentationRender.generatedAt && <span>{new Date(presentationRender.generatedAt).toLocaleString("pt-BR")}</span>}
                     </div>
                   </div>
                 )}
@@ -7085,10 +7124,10 @@ export default function ConceptPlanner() {
 
             <div className="grid gap-5 lg:grid-cols-[1.1fr_.9fr]">
               <div className="space-y-5">
-                {conceptRender?.resultImageUrl ? (
+                {presentationRender?.resultImageUrl ? (
                   <div className="overflow-hidden rounded-3xl border bg-card shadow-sm">
                     <img
-                      src={conceptRender.resultImageUrl}
+                      src={presentationRender.resultImageUrl}
                       alt="Render conceitual final"
                       className="max-h-[680px] w-full object-contain bg-muted/30"
                     />
@@ -7373,4 +7412,5 @@ export default function ConceptPlanner() {
     </div>
   );
 }
+
 
