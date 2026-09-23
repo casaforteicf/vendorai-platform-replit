@@ -33,6 +33,7 @@ import { encrypt } from "../lib/crypto.js";
 import { getGoogleAdsConnectionByTenantId } from "../services/google-ads-oauth.js";
 import { callOpenAI } from "../lib/ai-gateway.js";
 import { getActiveCatalogCount } from "../lib/catalog-readiness.js";
+import { ensureTenantProposalBuilderTemplate } from "../lib/proposal-builder.js";
 
 const router: IRouter = Router();
 
@@ -403,6 +404,24 @@ router.post(
       .returning({ setupCompletedAt: tenantsTable.setupCompletedAt, subdomainSlug: tenantsTable.subdomainSlug });
 
     req.log.info({ tenantId, subdomainSlug }, "Onboarding: profile saved, setup marked complete, subdomain assigned");
+    try {
+      const proposalBuilder = await ensureTenantProposalBuilderTemplate({
+        tenantId,
+        log: req.log,
+      });
+      req.log.info(
+        {
+          tenantId,
+          templateId: proposalBuilder.activeTemplateId,
+          created: proposalBuilder.created,
+        },
+        "Onboarding: proposal builder template ready",
+      );
+    } catch (err) {
+      // O modelo de proposta melhora a implantação, mas não deve bloquear o onboarding.
+      req.log.warn({ err, tenantId }, "Onboarding: failed to prepare proposal builder template");
+    }
+
     // ── 2. Auto-config IA via segment template ─────────────────────────────
     const promptsApplied: string[] = [];
     let funilCriado = false;
