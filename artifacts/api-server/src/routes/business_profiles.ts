@@ -601,7 +601,11 @@ router.patch("/business-profiles/:id", async (req, res) => {
     return;
   }
 
-  const [existing] = await db.select({ id: businessProfilesTable.id, tenantId: businessProfilesTable.tenantId })
+  const [existing] = await db.select({
+    id: businessProfilesTable.id,
+    tenantId: businessProfilesTable.tenantId,
+    discoveryData: businessProfilesTable.discoveryData,
+  })
     .from(businessProfilesTable).where(eq(businessProfilesTable.id, String(req.params.id)));
   if (!existing) {
     res.status(404).json({ error: "Business profile not found" });
@@ -612,8 +616,30 @@ router.patch("/business-profiles/:id", async (req, res) => {
     return;
   }
 
+  const existingDiscovery = (existing.discoveryData ?? {}) as Record<string, unknown>;
+  const incomingDiscovery = parsed.data.discoveryData && typeof parsed.data.discoveryData === "object"
+    ? parsed.data.discoveryData as Record<string, unknown>
+    : undefined;
+  const protectedDiscovery = incomingDiscovery
+    ? {
+        ...incomingDiscovery,
+        ...(incomingDiscovery.proposalBuilderTemplates === undefined && existingDiscovery.proposalBuilderTemplates !== undefined
+          ? { proposalBuilderTemplates: existingDiscovery.proposalBuilderTemplates }
+          : {}),
+        ...(incomingDiscovery.activeProposalBuilderTemplateId === undefined && existingDiscovery.activeProposalBuilderTemplateId !== undefined
+          ? { activeProposalBuilderTemplateId: existingDiscovery.activeProposalBuilderTemplateId }
+          : {}),
+      }
+    : undefined;
+
   const [profile] = await db.update(businessProfilesTable)
-    .set({ ...parsed.data, updatedAt: new Date() }).where(eq(businessProfilesTable.id, existing.id)).returning();
+    .set({
+      ...parsed.data,
+      ...(protectedDiscovery ? { discoveryData: protectedDiscovery } : {}),
+      updatedAt: new Date(),
+    })
+    .where(eq(businessProfilesTable.id, existing.id))
+    .returning();
   if (parsed.data.vertical !== undefined) {
     await db.update(tenantsTable)
       .set({ vertical: parsed.data.vertical || null, segmento: parsed.data.vertical || null, updatedAt: new Date() })
