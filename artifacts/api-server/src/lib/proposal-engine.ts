@@ -520,7 +520,7 @@ function buildProposalScheduleRows<T extends PresentableProposalItem>(
   presentation: Required<ProposalPresentationConfig>,
   total: number,
 ) {
-  let cursor = proposalDate(presentation.previsaoInicio);
+  const globalStart = proposalDate(presentation.previsaoInicio);
   const rows = groups.map((group) => {
     const config = presentation.cronogramaEtapas[group.id] ?? {};
     const value = group.itens.reduce(
@@ -529,8 +529,9 @@ function buildProposalScheduleRows<T extends PresentableProposalItem>(
     );
     const financialPercent = total > 0 ? (value / total) * 100 : 0;
 
-    const explicitStart = proposalDate(config.inicioPrevisto);
-    const start = explicitStart ?? cursor;
+    // Cada etapa possui sua própria janela. Isso permite que várias etapas
+    // aconteçam ao mesmo tempo e gerem cobrança no mesmo período.
+    const start = proposalDate(config.inicioPrevisto) ?? globalStart;
     const explicitEnd = proposalDate(config.fimPrevisto);
     const configuredDuration = Number(config.duracaoDias ?? 0);
     const duration = configuredDuration > 0
@@ -539,9 +540,6 @@ function buildProposalScheduleRows<T extends PresentableProposalItem>(
         ? proposalDiffDays(start, explicitEnd)
         : undefined;
     const end = explicitEnd ?? (start && duration ? proposalAddDays(start, duration - 1) : null);
-
-    if (end) cursor = proposalAddDays(end, 1);
-    else if (start && duration) cursor = proposalAddDays(start, duration);
 
     const configuredPhysical = Number(config.percentualFisico);
     return {
@@ -585,6 +583,138 @@ function buildProposalScheduleRows<T extends PresentableProposalItem>(
       physicalPercent: Math.max(0, Math.min(100, automaticPhysical)),
     };
   });
+}
+
+type ProposalScheduleRow = {
+  id: string;
+  ordem: number;
+  nome: string;
+  value: number;
+  physicalPercent: number;
+  start: Date | null;
+  end: Date | null;
+  duration?: number;
+};
+
+function proposalMonthKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function proposalMonthLabel(key: string): string {
+  const [year, month] = key.split("-").map(Number);
+  const date = new Date(year, Math.max(0, month - 1), 1);
+  return date.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" }).replace(".", "");
+}
+
+function proposalMonthBounds(key: string): { start: Date; end: Date } {
+  const [year, month] = key.split("-").map(Number);
+  return {
+    start: new Date(year, month - 1, 1, 12, 0, 0),
+    end: new Date(year, month, 0, 12, 0, 0),
+  };
+}
+
+function proposalOverlapDays(start: Date, end: Date, rangeStart: Date, rangeEnd: Date): number {
+  const from = start.getTime() > rangeStart.getTime() ? start : rangeStart;
+  const to = end.getTime() < rangeEnd.getTime() ? end : rangeEnd;
+  if (to.getTime() < from.getTime()) return 0;
+  return proposalDiffDays(from, to);
+}
+
+function buildProposalMonthlyMatrix(rows: ProposalScheduleRow[]) {
+  const scheduled = rows.filter(
+    (row) => row.start && row.end && Number(row.duration ?? 0) > 0,
+  );
+  if (!scheduled.length) return [];
+
+  const firstStart = scheduled.reduce(
+    (min, row) => row.start!.getTime() < min.getTime() ? row.start! : min,
+    scheduled[0].start!,
+  );
+  const lastEnd = scheduled.reduce(
+    (max, row) => row.end!.getTime() > max.getTime() ? row.end! : max,
+    scheduled[0].end!,
+  );
+
+  const periods: string[] = [];
+  const cursor = new Date(firstStart.getFullYear(), firstStart.getMonth(), 1, 12, 0, 0);
+  const limit = new Date(lastEnd.getFullYear(), lastEnd.getMonth(), 1, 12, 0, 0);
+  while (cursor.getTime() <= limit.getTime() && periods.length < 36) {
+    periods.push(proposalMonthKey(cursor));
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+
+  return periods.map((period) => {
+    const bounds = proposalMonthBounds(period);
+    const stages = scheduled.map((row) => {
+      const overlapDays = proposalOverlapDays(row.start!, row.end!, bounds.start, bounds.end);
+      const share = row.duration && overlapDays > 0 ? overlapDays / row.duration : 0;
+      return {
+        id: row.id,
+        ordem: row.ordem,
+        nome: row.nome,
+        amount: row.value * share,
+        physical: row.physicalPercent * share,
+        share,
+      };
+    });
+
+    return {
+      key: period,
+      label: proposalMonthLabel(period),
+      stages,
+      amount: stages.reduce((sum, stage) => sum + stage.amount, 0),
+      physical: stages.reduce((sum, stage) => sum + stage.physical, 0),
+    };
+  });
+}
+
+function renderProposalMonthlyMatrix(
+  rows: ProposalScheduleRow[],
+  fmtMoney: (value: number) => string,
+): string {
+  const periods = buildProposalMonthlyMatrix(rows);
+  if (!periods.length) return "";
+
+  const chunks: typeof periods[] = [];
+  for (let index = 0; index < periods.length; index += 5) {
+    chunks.push(periods.slice(index, index + 5));
+  }
+
+  return chunks.map((chunk, chunkIndex) => {
+    const body = rows.map((row) => {
+      const cells = chunk.map((period) => {
+        const stage = period.stages.find((item) => item.id === row.id);
+        if (!stage || stage.share <= 0) return '<td class="period-empty">—</td>';
+        return `<td class="period-cell">
+          <strong>${fmtMoney(stage.amount)}</strong>
+          <span>${(stage.share * 100).toFixed(1)}% da etapa</span>
+          <span>Físico ${stage.physical.toFixed(1)}%</span>
+        </td>`;
+      }).join("");
+      return `<tr>
+        <td class="period-stage"><strong>Etapa ${row.ordem}</strong><span>${escapeProposalText(row.nome || "Execução")}</span></td>
+        ${cells}
+      </tr>`;
+    }).join("");
+
+    const financialFooter = chunk.map((period) => `<td class="r"><strong>${fmtMoney(period.amount)}</strong></td>`).join("");
+    const physicalFooter = chunk.map((period) => `<td class="r"><strong>${period.physical.toFixed(1)}%</strong></td>`).join("");
+
+    return `<div class="period-matrix-group">
+      <div class="period-matrix-caption">${chunks.length > 1 ? `Períodos ${chunkIndex * 5 + 1}–${chunkIndex * 5 + chunk.length}` : "Cobrança por período"}</div>
+      <table class="period-matrix">
+        <thead>
+          <tr><th>Etapa do orçamento</th>${chunk.map((period) => `<th class="r">${period.label}</th>`).join("")}</tr>
+        </thead>
+        <tbody>${body}</tbody>
+        <tfoot>
+          <tr><td>Cobrança do período</td>${financialFooter}</tr>
+          <tr><td>Avanço físico do período</td>${physicalFooter}</tr>
+        </tfoot>
+      </table>
+    </div>`;
+  }).join("");
 }
 
 function escapeProposalText(value: string): string {
@@ -1033,6 +1163,36 @@ export function renderProposalHtml(json: unknown, theme: {
   }
   .schedule-intro strong { color: ${theme.navyDeep}; }
   .schedule-note { color: #7b7591; font-size: 6.8pt; display: block; margin-top: .8mm; }
+  .period-matrix-group { margin-top: 4mm; break-inside: avoid; }
+  .period-matrix-caption {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 5.8pt;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    color: ${theme.navyMid};
+    margin-bottom: 1.5mm;
+  }
+  table.period-matrix { width: 100%; border-collapse: collapse; font-size: 6.8pt; table-layout: fixed; }
+  table.period-matrix th {
+    padding: 1.8mm 2mm;
+    border: 1px solid ${theme.concreteLine};
+    background: ${theme.cream2};
+    color: ${theme.navyMid};
+    font-family: "JetBrains Mono", monospace;
+    font-size: 5.6pt;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    text-align: left;
+  }
+  table.period-matrix th:first-child { width: 33%; }
+  table.period-matrix td { padding: 1.8mm 2mm; border: 1px solid ${theme.concreteLine}; vertical-align: top; }
+  table.period-matrix .r { text-align: right; }
+  .period-stage strong { display: block; color: ${theme.navyDeep}; }
+  .period-stage span { display: block; color: #6f6885; margin-top: .5mm; }
+  .period-cell strong { display: block; color: ${theme.navyDeep}; font-size: 7pt; }
+  .period-cell span { display: block; color: #7b7591; font-size: 5.8pt; margin-top: .5mm; }
+  .period-empty { text-align: center; color: #b8b4c5; }
+  table.period-matrix tfoot td { background: ${theme.cream2}; font-weight: 700; color: ${theme.navyDeep}; }
 
   /* ── proposal visuals ── */
   .img-hero-wrap {
@@ -1297,7 +1457,7 @@ ${orcamento ? (() => {
   <h2>Cronograma e físico-financeiro</h2>
   <div class="schedule-intro">
     ${presentation.previsaoInicio ? `<strong>Previsão de início:</strong> ${proposalFormatDate(presentation.previsaoInicio)}.` : "<strong>Previsão de início:</strong> a definir."}
-    Os períodos consideram a sequência e a duração cadastrada de cada etapa e podem ser ajustados antes do aceite.
+    Cada etapa possui sua própria data de início e duração. Etapas podem ocorrer em paralelo e as cobranças do mesmo mês são somadas automaticamente.
   </div>
   ${presentation.mostrarCronogramaExecucao ? `
     <div class="commercial-section">
@@ -1314,6 +1474,8 @@ ${orcamento ? (() => {
         <thead><tr><th>Etapa</th><th>Período</th><th class="r">Peso físico</th><th class="r">% financeiro</th><th class="r">Valor</th><th>Marco / pagamento</th></tr></thead>
         <tbody>${physicalFinancialRows}</tbody>
       </table>
+      <div class="commercial-title" style="margin-top:4mm;">Modelo por colunas · cobrança mensal</div>
+      ${renderProposalMonthlyMatrix(scheduleRows, fmtBRL)}
     </div>` : ""}
   ${docFooter()}
 </div>`
@@ -1775,6 +1937,19 @@ export function renderOrcamentoPdf(args: {
   .schedule-intro { margin: 2mm 0 4mm; padding: 3mm 3.5mm; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 7px; font-size: 8pt; color: #64748b; }
   .schedule-intro strong { color: #334155; }
   .schedule-note { color: #94a3b8; font-size: 6.8pt; display: block; margin-top: .8mm; }
+  .period-matrix-group { margin-top: 4mm; break-inside: avoid; }
+  .period-matrix-caption { font-family: "JetBrains Mono", monospace; font-size: 5.8pt; text-transform: uppercase; letter-spacing: .07em; color: #64748b; margin-bottom: 1.5mm; }
+  table.period-matrix { width: 100%; border-collapse: collapse; font-size: 6.8pt; table-layout: fixed; }
+  table.period-matrix th { padding: 1.8mm 2mm; border: 1px solid #e2e8f0; background: #f8fafc; color: #64748b; font-family: "JetBrains Mono", monospace; font-size: 5.6pt; text-transform: uppercase; letter-spacing: .04em; text-align: left; }
+  table.period-matrix th:first-child { width: 33%; }
+  table.period-matrix td { padding: 1.8mm 2mm; border: 1px solid #e2e8f0; vertical-align: top; }
+  table.period-matrix .r { text-align: right; }
+  .period-stage strong { display: block; color: #1e2a3b; }
+  .period-stage span { display: block; color: #64748b; margin-top: .5mm; }
+  .period-cell strong { display: block; color: #1e2a3b; font-size: 7pt; }
+  .period-cell span { display: block; color: #94a3b8; font-size: 5.8pt; margin-top: .5mm; }
+  .period-empty { text-align: center; color: #cbd5e1; }
+  table.period-matrix tfoot td { background: #f8fafc; font-weight: 700; color: #1e2a3b; }
 
   @media print {
     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -1895,7 +2070,7 @@ ${scheduleRows.length && (presentation.mostrarCronogramaExecucao || presentation
   <div class="orc-title">Cronograma de execução e físico-financeiro</div>
   <div class="schedule-intro">
     ${presentation.previsaoInicio ? `<strong>Previsão de início:</strong> ${proposalFormatDate(presentation.previsaoInicio)}.` : "<strong>Previsão de início:</strong> a definir."}
-    Os períodos são apresentados conforme a sequência e a duração prevista de cada etapa.
+    Cada etapa possui sua própria data de início e duração. Etapas simultâneas aparecem na mesma coluna mensal e suas cobranças são somadas no período.
   </div>
 
   ${presentation.mostrarCronogramaExecucao ? `
@@ -1914,6 +2089,8 @@ ${scheduleRows.length && (presentation.mostrarCronogramaExecucao || presentation
         <thead><tr><th>Etapa</th><th>Período</th><th class="r">Peso físico</th><th class="r">% financeiro</th><th class="r">Valor</th><th>Marco / pagamento</th></tr></thead>
         <tbody>${physicalFinancialRows}</tbody>
       </table>
+      <div class="commercial-title" style="margin-top:4mm;">Modelo por colunas · cobrança mensal</div>
+      ${renderProposalMonthlyMatrix(scheduleRows, fmtBRL)}
     </div>` : ""}
 </div>` : ""}
 

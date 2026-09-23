@@ -2917,6 +2917,23 @@ function newFreeItem(): FreeItem {
       : { statusExecucao: "pendente" };
   }
 
+  function proposalStageBudgetTotal(etapaId: string) {
+    return cartLines
+      .filter((line) => line.etapaId === etapaId)
+      .reduce((sum, line) => {
+        const produto = line.produtoId
+          ? activeCatalog.find((item) => item.id === line.produtoId)
+          : undefined;
+        const composicao = line.composicaoId
+          ? composicoes.find((item) => item.id === line.composicaoId)
+          : undefined;
+        const unitValue = line.precoUnitarioOverride !== undefined
+          ? Number(line.precoUnitarioOverride)
+          : Number(produto?.precoBase ?? composicao?.custoTotal ?? 0);
+        return sum + Number(line.quantidade ?? 0) * unitValue;
+      }, 0);
+  }
+
   function proposalPresentationConfig() {
     return {
       modoPadrao: presentationDefaultMode,
@@ -3888,13 +3905,13 @@ function newFreeItem(): FreeItem {
                     <div>
                       <p className="text-sm font-semibold">Cronograma e físico-financeiro</p>
                       <p className="text-xs text-muted-foreground">
-                        Defina a previsão de início e o prazo de cada etapa. A proposta calcula automaticamente período, peso financeiro e valor da etapa.
+                        Cada etapa pode ter sua própria data de início e duração. Etapas podem ocorrer em paralelo; a proposta monta colunas mensais e soma automaticamente as cobranças das etapas ativas no mesmo período.
                       </p>
                     </div>
 
                     <div className="grid gap-3 md:grid-cols-[220px_1fr_1fr] md:items-end">
                       <div className="space-y-1.5">
-                        <Label>Previsão de início</Label>
+                        <Label>Previsão geral de início</Label>
                         <Input
                           type="date"
                           value={proposalStartDate}
@@ -3920,14 +3937,30 @@ function newFreeItem(): FreeItem {
                     <div className="space-y-2">
                       {orcamentoEtapas.map((etapa, index) => {
                         const schedule = proposalStageSchedule[etapa.id] ?? {};
+                        const stageBudgetValue = proposalStageBudgetTotal(etapa.id);
                         return (
                           <div
                             key={`schedule-${etapa.id}`}
-                            className="grid gap-2 rounded-lg border bg-background p-3 md:grid-cols-[minmax(180px,1fr)_120px_120px_minmax(220px,1fr)] md:items-end"
+                            className="grid gap-2 rounded-lg border bg-background p-3 md:grid-cols-[minmax(180px,1fr)_145px_110px_110px_minmax(220px,1fr)] md:items-end"
                           >
                             <div>
                               <p className="text-sm font-medium">Etapa {index + 1} · {etapa.nome || `Etapa ${index + 1}`}</p>
-                              <p className="text-[11px] text-muted-foreground">Execução sequencial a partir da previsão de início.</p>
+                              <p className="text-[11px] font-medium text-foreground/80">Valor da etapa no orçamento: {fmtCurrency(stageBudgetValue)}</p>
+                              <p className="text-[11px] text-muted-foreground">Pode acontecer em paralelo com outras etapas. Se não informar a data, usa a previsão geral.</p>
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Início da etapa</Label>
+                              <Input
+                                type="date"
+                                value={schedule.inicioPrevisto ?? ""}
+                                onChange={(event) => setProposalStageSchedule((prev) => ({
+                                  ...prev,
+                                  [etapa.id]: {
+                                    ...(prev[etapa.id] ?? {}),
+                                    inicioPrevisto: event.target.value || undefined,
+                                  },
+                                }))}
+                              />
                             </div>
                             <div className="space-y-1">
                               <Label className="text-xs">Duração (dias)</Label>
@@ -3986,6 +4019,10 @@ function newFreeItem(): FreeItem {
                           </div>
                         );
                       })}
+                    </div>
+
+                    <div className="rounded-md border border-dashed bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
+                      <strong>Modelo por colunas:</strong> cada mês vira uma coluna. As linhas são as etapas do orçamento; em cada célula aparecem o valor previsto de cobrança e o avanço físico. Se Fundação, Estrutura, Instalações e Esquadrias estiverem ativas no mesmo mês, as quatro aparecem na mesma coluna e o rodapé soma a cobrança total daquele mês.
                     </div>
                   </div>
                 </CardContent>
