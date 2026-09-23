@@ -12,6 +12,11 @@ import {
   MusicEngineNotReadyError,
   MusicGenerationInputError,
 } from "../services/vendorai-music-engine.js";
+import {
+  approveBrandStudioProposal,
+  buildBrandStudioProposal,
+  type BrandStudioMode,
+} from "../services/brand-kit-ai.js";
 
 const router: IRouter = Router();
 const BRAND_CAPTION_PRESETS = new Set(["reels_bold", "clean", "highlight", "minimal"]);
@@ -218,6 +223,58 @@ router.get("/tenants/:tenantId/media/tracks/:assetId/usage", async (req, res) =>
   const metadata = record(result.rows[0]?.metadata);
   const rights = normalizeMediaAudioRights(metadata["rights"]);
   res.json({ assetId, rights, usage: assessMediaAudioUsage(rights) });
+});
+
+
+router.post("/tenants/:tenantId/media-engine/brand-kit/ai/suggest", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const body = record(req.body);
+  const rawMode = optionalText(body["mode"], 20) ?? "evolve";
+  const mode: BrandStudioMode =
+    rawMode === "maintain" || rawMode === "rebuild" ? rawMode : "evolve";
+  const notes = optionalText(body["notes"], 1500);
+
+  try {
+    const result = await buildBrandStudioProposal({ tenantId, mode, notes });
+    res.json({
+      proposal: result.proposal,
+      contextSummary: result.contextSummary,
+      state: "suggested",
+    });
+  } catch (error) {
+    req.log?.error({ err: error, tenantId, mode }, "brand studio ai suggest failed");
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "Falha ao desenvolver o Kit da Marca com IA",
+    });
+  }
+});
+
+router.post("/tenants/:tenantId/media-engine/brand-kit/ai/approve", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const body = record(req.body);
+  const proposal = body["proposal"];
+  if (!proposal || typeof proposal !== "object" || Array.isArray(proposal)) {
+    res.status(422).json({ error: "proposal é obrigatório" });
+    return;
+  }
+
+  try {
+    const approved = await approveBrandStudioProposal({
+      tenantId,
+      userId: req.user?.sub ?? null,
+      proposal: proposal as any,
+    });
+    res.json({
+      brandKit: approved,
+      identity: record(approved?.metadata)["brandIdentity"] ?? null,
+      state: "approved",
+    });
+  } catch (error) {
+    req.log?.error({ err: error, tenantId }, "brand studio ai approval failed");
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "Falha ao aprovar a identidade da marca",
+    });
+  }
 });
 
 router.get("/tenants/:tenantId/media-engine/brand-kit", async (req, res) => {

@@ -71,6 +71,40 @@ interface BrandKitRow {
   metadata?: Record<string, unknown> | null;
 }
 
+type BrandStudioMode = "maintain" | "evolve" | "rebuild";
+
+interface BrandStudioProposal {
+  mode: BrandStudioMode;
+  diagnosis: string;
+  rationale: string;
+  brandName: string;
+  slogan: string;
+  tagline: string;
+  positioning: string;
+  valueProposition: string;
+  audiences: string[];
+  toneOfVoice: string[];
+  keyMessages: string[];
+  wordsToUse: string[];
+  wordsToAvoid: string[];
+  palette: Array<{ name: string; hex: string; use: string }>;
+  typography: { headline: string; body: string; notes: string };
+  visualStyle: string;
+  photographyStyle: string;
+  videoStyle: string;
+  logoDirection: {
+    action: "keep" | "refine" | "redesign";
+    concept: string;
+    construction: string;
+    symbolIdea: string;
+    wordmarkNotes: string;
+    restrictions: string[];
+  };
+  applications: string[];
+  doList: string[];
+  dontList: string[];
+}
+
 interface BrandKitForm {
   logoAssetId: string | null;
   introAssetId: string | null;
@@ -191,6 +225,10 @@ export default function BrandVideoKitPanel() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewSignature, setPreviewSignature] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [brandStudioMode, setBrandStudioMode] = useState<BrandStudioMode>("evolve");
+  const [brandProposal, setBrandProposal] = useState<BrandStudioProposal | null>(null);
+  const [brandStudioLoading, setBrandStudioLoading] = useState(false);
+  const [brandStudioApproving, setBrandStudioApproving] = useState(false);
 
   const logoInputRef = useRef<HTMLInputElement>(null);
   const introInputRef = useRef<HTMLInputElement>(null);
@@ -409,6 +447,50 @@ export default function BrandVideoKitPanel() {
     }
   }
 
+  async function generateBrandProposal() {
+    if (!tenantId || brandStudioLoading) return;
+    setBrandStudioLoading(true);
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/media-engine/brand-kit/ai/suggest`, {
+        method: "POST",
+        credentials: "include",
+        headers: authHeaders(true),
+        body: JSON.stringify({ mode: brandStudioMode }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error || "Não foi possível desenvolver o Kit da Marca com IA");
+      setBrandProposal(payload?.proposal ?? null);
+      setMessage({ type: "success", text: "A IA montou uma proposta usando os dados, conhecimento e referências do tenant. Revise antes de aprovar." });
+    } catch (error) {
+      setMessage({ type: "error", text: error instanceof Error ? error.message : "Falha no Brand Studio com IA" });
+    } finally {
+      setBrandStudioLoading(false);
+    }
+  }
+
+  async function approveBrandProposal() {
+    if (!tenantId || !brandProposal || brandStudioApproving) return;
+    setBrandStudioApproving(true);
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/media-engine/brand-kit/ai/approve`, {
+        method: "POST",
+        credentials: "include",
+        headers: authHeaders(true),
+        body: JSON.stringify({ proposal: brandProposal }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error || "Não foi possível aprovar a identidade");
+      if (payload?.brandKit) setBrandKit(payload.brandKit);
+      setMessage({ type: "success", text: "Identidade aprovada. O Kit da Marca passa a ser a referência oficial para vídeos e demais ferramentas integradas." });
+    } catch (error) {
+      setMessage({ type: "error", text: error instanceof Error ? error.message : "Falha ao aprovar a identidade" });
+    } finally {
+      setBrandStudioApproving(false);
+    }
+  }
+
   function generatePreview() {
     setPreviewSignature(formSignature);
     setPreviewOpen(true);
@@ -516,6 +598,117 @@ export default function BrandVideoKitPanel() {
         </div>
       ) : (
         <div className="p-5 space-y-5">
+          <div className="rounded-2xl border border-violet-500/20 bg-violet-500/[0.06] p-4 space-y-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-violet-300" />
+                  <h3 className="text-sm font-semibold text-white">Brand Studio com IA</h3>
+                </div>
+                <p className="mt-1 text-[11px] text-gray-400 max-w-2xl">
+                  A IA lê o Conhecimento da Empresa, dados do tenant, Kit atual e Biblioteca para organizar, evoluir ou refazer a identidade. Nada vira oficial sem sua aprovação.
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                disabled={!tenantId || brandStudioLoading || brandStudioApproving}
+                onClick={() => void generateBrandProposal()}
+                className="bg-violet-600 hover:bg-violet-500 text-white"
+              >
+                {brandStudioLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
+                Desenvolver com IA
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {([
+                ["maintain", "Manter", "Organiza e completa sem mudar a essência."],
+                ["evolve", "Evoluir", "Moderniza preservando o reconhecimento."],
+                ["rebuild", "Refazer", "Permite nova direção, slogan e redesign de logo."],
+              ] as const).map(([mode, title, description]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setBrandStudioMode(mode)}
+                  className={`rounded-xl border px-3 py-2.5 text-left transition ${brandStudioMode === mode ? "border-violet-400/50 bg-violet-500/15" : "border-white/10 bg-black/10 hover:bg-white/5"}`}
+                >
+                  <span className="block text-xs font-semibold text-white">{title}</span>
+                  <span className="mt-1 block text-[10px] leading-relaxed text-gray-500">{description}</span>
+                </button>
+              ))}
+            </div>
+
+            {brandProposal && (
+              <div className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-violet-300">Proposta da IA</p>
+                    <h4 className="mt-1 text-base font-bold text-white">{brandProposal.brandName || "Identidade da marca"}</h4>
+                    <p className="mt-1 text-xs text-gray-400">{brandProposal.diagnosis}</p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={brandStudioApproving}
+                    onClick={() => void approveBrandProposal()}
+                    className="border-emerald-500/30 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20"
+                  >
+                    {brandStudioApproving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                    Aprovar identidade
+                  </Button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                    <p className="text-[10px] uppercase tracking-wide text-gray-500">Slogan</p>
+                    <p className="mt-1 text-sm font-semibold text-white">{brandProposal.slogan || "—"}</p>
+                    <p className="mt-2 text-[10px] uppercase tracking-wide text-gray-500">Tagline</p>
+                    <p className="mt-1 text-xs text-gray-300">{brandProposal.tagline || "—"}</p>
+                  </div>
+                  <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                    <p className="text-[10px] uppercase tracking-wide text-gray-500">Logo</p>
+                    <p className="mt-1 text-xs font-semibold text-white">
+                      {brandProposal.logoDirection.action === "redesign" ? "Refazer" : brandProposal.logoDirection.action === "refine" ? "Evoluir" : "Manter"}
+                    </p>
+                    <p className="mt-1 text-[11px] text-gray-400">{brandProposal.logoDirection.concept || brandProposal.logoDirection.wordmarkNotes || "Sem alteração sugerida."}</p>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-gray-500 mb-2">Paleta sugerida</p>
+                  <div className="flex flex-wrap gap-2">
+                    {brandProposal.palette.map((color) => (
+                      <div key={`${color.name}-${color.hex}`} className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-2">
+                        <span className="h-5 w-5 rounded-md border border-white/20" style={{ backgroundColor: color.hex }} />
+                        <div>
+                          <p className="text-[10px] font-medium text-gray-200">{color.name}</p>
+                          <p className="text-[9px] text-gray-500">{color.hex}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[11px]">
+                  <div>
+                    <p className="font-semibold text-gray-300">Posicionamento</p>
+                    <p className="mt-1 text-gray-500">{brandProposal.positioning || "—"}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-300">Estilo visual</p>
+                    <p className="mt-1 text-gray-500">{brandProposal.visualStyle || "—"}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-300">Vídeo</p>
+                    <p className="mt-1 text-gray-500">{brandProposal.videoStyle || "—"}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label className="text-xs text-gray-300 flex items-center gap-1.5">
