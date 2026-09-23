@@ -78,7 +78,7 @@ router.post("/webhooks/voice/call-turn", async (req, res) => {
   }
 
   try {
-    const transcript = (await transcribeAudioBuffer(audio, parsed.data.tenantId, req.log)).trim();
+    const transcript = (await transcribeAudioBuffer(audio, parsed.data.tenantId, req.log, parsed.data.mimeType)).trim();
     if (!transcript) {
       res.status(204).end();
       return;
