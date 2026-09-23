@@ -356,7 +356,7 @@ router.get("/tenants/:tenantId/social-comments/:provider/:postId", authenticate,
 });
 
 router.post("/tenants/:tenantId/social-publications/:publicationId/youtube/refresh", authenticate, async (req, res) => {
-  const tenantId = String(req.params.tenantId);
+  const tenantId = String(req.params.tenantId); // tenant-audit: reviewed guarded immediately by authenticated same-tenant/super-admin access
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   try {
     const publication = await refreshYouTubePublicationMetrics(tenantId, String(req.params.publicationId));
