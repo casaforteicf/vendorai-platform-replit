@@ -77,6 +77,7 @@ async function calculateGoalActual(tenantId: string, goal: GoalRow): Promise<num
       SELECT count(*)::int AS actual
       FROM deals d
       WHERE d.tenant_id = ${tenantId}
+        AND d.pipeline_active = true
         AND d.etapa NOT IN ('em_aquecimento', 'parceiro', 'em_execucao', 'ganho', 'entregue', 'perdido')
         AND ${validCommercialDealSql("d")}
         AND (${responsibleId}::text IS NULL OR d.assigned_to = ${responsibleId})
@@ -174,6 +175,7 @@ router.get("/tenants/:tenantId/dashboard/command-center", async (req, res) => {
             AND l.created_at >= ${periodStart} AND l.created_at <= ${periodEnd}) AS new_leads,
         (SELECT count(*)::int FROM deals d
           WHERE d.tenant_id = ${tenantId}
+            AND d.pipeline_active = true
             AND d.etapa NOT IN ('em_aquecimento','parceiro','em_execucao','ganho','entregue','perdido')
             AND ${validCommercialDealSql("d")}) AS active_opportunities,
         (SELECT count(*)::int FROM won w
