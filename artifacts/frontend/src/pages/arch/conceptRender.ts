@@ -30,6 +30,25 @@ export type ConceptRenderBriefInput = {
   floorMaterialIds?: string[];
   lightingMode?: "day" | "sunset" | "night";
   sitePlacement?: SitePlacement;
+  geometryLock?: {
+    frontSide?: SitePlacement["frontSide"];
+    exteriorWalls?: Array<{
+      floor: number;
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+    }>;
+    openings?: Array<{
+      floor: number;
+      type: "door" | "window";
+      x: number;
+      y: number;
+      width?: number;
+      height?: number;
+      sillHeight?: number;
+    }>;
+  };
 };
 
 const styleLabel: Record<ConceptFacadePreferences["style"], string> = {
@@ -103,6 +122,18 @@ export function buildConceptRenderBrief(input: ConceptRenderBriefInput) {
       ? "Lighting: warm late-afternoon/sunset architectural light with long soft shadows and realistic material response."
       : "Lighting: clear natural daytime illumination with balanced architectural shadows and neutral material color rendering.";
 
+  const geometryLock = input.geometryLock;
+  const exteriorWallSummary = geometryLock?.exteriorWalls?.length
+    ? geometryLock.exteriorWalls.slice(0, 80).map((wall) =>
+        `F${wall.floor + 1}: (${wall.x1.toFixed(2)},${wall.y1.toFixed(2)})→(${wall.x2.toFixed(2)},${wall.y2.toFixed(2)})`
+      ).join("; ")
+    : null;
+  const exactOpeningSummary = geometryLock?.openings?.length
+    ? geometryLock.openings.slice(0, 80).map((opening) =>
+        `F${opening.floor + 1} ${opening.type} center(${opening.x.toFixed(2)},${opening.y.toFixed(2)}) ${(opening.width ?? (opening.type === "door" ? 0.9 : 1.2)).toFixed(2)}x${(opening.height ?? (opening.type === "door" ? 2.1 : 1.2)).toFixed(2)} sill ${(opening.sillHeight ?? (opening.type === "door" ? 0 : 0.9)).toFixed(2)}`
+      ).join("; ")
+    : null;
+
   const volumeSummary = design?.volumes.length
     ? design.volumes.map((volume) =>
         `${volume.label} (${volume.kind}), position ${volume.x.toFixed(0)}%/${volume.y.toFixed(0)}%, size ${volume.width.toFixed(0)}% x ${volume.height.toFixed(0)}%, projection ${volume.depth.toFixed(1)} m, material ${getFacadeMaterial(volume.materialId).name}`
@@ -120,6 +151,9 @@ export function buildConceptRenderBrief(input: ConceptRenderBriefInput) {
     siteExterior
       ? `SITE ORIENTATION LOCK: ${siteExterior.frontLabel}; street-facing frontage approximately ${siteExterior.frontageLength.toFixed(1)} m. Garage appears ${siteExterior.garageSide ?? "without defined side"} on the street facade. Preserve the modeled relationship between street, garage/access, house and rear leisure.`
       : "",
+    geometryLock?.frontSide
+      ? `GEOMETRY FRONT LOCK: the official project front side is ${geometryLock.frontSide}. Never rotate or mirror the building relative to this front.`
+      : "",
     siteExterior ? `EXTERIOR SITE LOGIC: ${siteExterior.leisureSummary}. Do not move pool or gourmet to the street frontage if they are modeled at the rear/side.` : "",
     `Architectural direction: ${styleLabel[facade.style]}.`,
     `Roof: ${roofLabel[facade.roof]}.`,
@@ -135,12 +169,21 @@ export function buildConceptRenderBrief(input: ConceptRenderBriefInput) {
     volumeSummary
       ? `CRITICAL VOLUMETRY PRESERVATION: preserve these added facade volumes and their relative positions/projections: ${volumeSummary}.`
       : "Do not invent decorative facade volumes that are not present in the source elevation.",
+    exteriorWallSummary
+      ? `EXACT WALL TOPOLOGY LOCK: these are the authoritative exterior wall segments from the 2D/3D model. Preserve their topology, relative lengths and floor assignment: ${exteriorWallSummary}.`
+      : "",
+    exactOpeningSummary
+      ? `EXACT OPENING LOCK: these are the authoritative doors/windows from the model. Preserve count, floor, center position, dimensions and sill relationships; do not add, remove, merge or relocate openings: ${exactOpeningSummary}.`
+      : "",
     pool
       ? `Preserve the pool exactly at its modeled position and approximate size ${pool.width.toFixed(1)} x ${pool.depth.toFixed(1)} m.`
       : "Do not invent a swimming pool.",
     renderView === "interior"
       ? "Preserve all modeled openings and furniture. Improve only realism, material quality, lighting, decor coherence and photographic finish without changing positions or dimensions."
       : "Use the line elevation only as strict geometry/composition guidance. Preserve every major edge, opening location, floor count, garage/entrance relationship, wall/gate position and added volume, while replacing schematic linework and hatching with realistic construction materials and depth.",
+    "GEOMETRY HAS PRIORITY OVER STYLE: if a realism or style instruction conflicts with the source geometry, the source geometry always wins.",
+    "SILHOUETTE LOCK: preserve the exact outer silhouette, floor-to-floor alignment, parapet/roof outline, garage width, entrance position and every major vertical/horizontal break visible in the source.",
+    "CROP LOCK: keep the whole building composition visible; do not crop away facade edges, entrance, garage, roof or side returns that are visible in the reference.",
     "PHOTOREALISM REQUIREMENT: the final exterior must look like a real built house photographed with a professional architectural camera, never like SVG, vector art, CAD shading, cartoon, illustration, flat graphic, clay render or schematic elevation.",
     "Use physically believable material texture and roughness: painted plaster with subtle surface variation, realistic wood grain, stone depth, metal gate finish, concrete/paving texture, and glazing with controlled reflections and interior depth.",
     "Create real architectural depth using contact shadows, soffit shadows, window reveals, parapet thickness, wall returns, gate thickness and natural ambient occlusion. Avoid flat front-facing blocks.",
