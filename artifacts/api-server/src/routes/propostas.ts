@@ -177,11 +177,12 @@ function normalizeProposalBuilderTemplate(
       const module = item && typeof item === "object" ? item as Record<string, unknown> : {};
       const key = String(module.key ?? "") as ProposalBuilderModuleKey;
       if (!ALLOWED_PROPOSAL_MODULES.includes(key)) return null;
+      const required = module.required === true;
       return {
         key,
-        enabled: module.enabled !== false,
+        enabled: required ? true : module.enabled !== false,
         order: Number.isFinite(Number(module.order)) ? Math.max(1, Math.round(Number(module.order))) : index + 1,
-        required: module.required === true,
+        required,
       };
     })
     .filter((item): item is ProposalBuilderModule => Boolean(item))
