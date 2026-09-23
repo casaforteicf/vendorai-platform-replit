@@ -764,6 +764,29 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
           </GroupedNavSection>
         )}
 
+        {verticalOperationNav.length > 0 && (
+          <GroupedNavSection
+            label="Operação"
+            icon={ClipboardCheck}
+            active={groupActive(verticalOperationNav)}
+          >
+            {verticalOperationNav.map((item) => (
+              <NavItem key={item.href} item={item} onNavigate={onNavigate} />
+            ))}
+          </GroupedNavSection>
+        )}
+
+        {arqdorVisible && (
+          <NavItem
+            item={{ name: "Arqdor.ai", href: "/arch", icon: DraftingCompass, arqdorToolEntry: true }}
+            onNavigate={onNavigate}
+          />
+        )}
+
+        {financeNav.map((item) => (
+          <NavItem key={item.href} item={item} onNavigate={onNavigate} />
+        ))}
+
         {pracaAiEnabled && (
           <GroupedNavSection label="Praça.ai" icon={Store} active={isPracaAi}>
             {pracaAiNav.map((item) => (
@@ -1020,29 +1043,6 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
             </div>
           )}
         </div>
-
-        {verticalOperationNav.length > 0 && (
-          <GroupedNavSection
-            label="Operação"
-            icon={ClipboardCheck}
-            active={groupActive(verticalOperationNav)}
-          >
-            {verticalOperationNav.map((item) => (
-              <NavItem key={item.href} item={item} onNavigate={onNavigate} />
-            ))}
-          </GroupedNavSection>
-        )}
-
-        {arqdorVisible && (
-          <NavItem
-            item={{ name: "Arqdor.ai", href: "/arch", icon: DraftingCompass, arqdorToolEntry: true }}
-            onNavigate={onNavigate}
-          />
-        )}
-
-        {financeNav.map((item) => (
-          <NavItem key={item.href} item={item} onNavigate={onNavigate} />
-        ))}
 
         {aiKnowledgeNav.length > 0 && (
           <GroupedNavSection
