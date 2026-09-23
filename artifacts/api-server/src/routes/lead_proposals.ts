@@ -366,6 +366,30 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
 
   const bodyImagens: string[] | null = Array.isArray(req.body?.imagens) ? req.body.imagens : null;
   const bodyPropostaId: string | null = req.body?.propostaId ? String(req.body.propostaId) : null;
+  const rawPresentation = req.body?.apresentacao;
+  const presentationModes = new Set(["completo", "resumo_etapa", "preco_medio"]);
+  const bodyPresentation = rawPresentation && typeof rawPresentation === "object"
+    ? {
+        modoPadrao: presentationModes.has(String(rawPresentation.modoPadrao))
+          ? String(rawPresentation.modoPadrao) as "completo" | "resumo_etapa" | "preco_medio"
+          : undefined,
+        etapas:
+          rawPresentation.etapas && typeof rawPresentation.etapas === "object"
+            ? Object.fromEntries(
+                Object.entries(rawPresentation.etapas)
+                  .filter(([, mode]) => presentationModes.has(String(mode)))
+                  .map(([stageId, mode]) => [
+                    String(stageId),
+                    String(mode) as "completo" | "resumo_etapa" | "preco_medio",
+                  ]),
+              )
+            : undefined,
+        mostrarTotalGeral:
+          typeof rawPresentation.mostrarTotalGeral === "boolean"
+            ? rawPresentation.mostrarTotalGeral
+            : undefined,
+      }
+    : null;
 
   let orcamentoEmbed: {
     titulo: string; numero?: string | null;
@@ -412,7 +436,7 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
         formaPagamento: orc.formaPagamento,
         condPagamento: orc.condPagamento,
         prazoEntrega: orc.prazoEntrega,
-        apresentacao: orc.apresentacao,
+        apresentacao: bodyPresentation ?? orc.apresentacao,
       };
     }
   }
