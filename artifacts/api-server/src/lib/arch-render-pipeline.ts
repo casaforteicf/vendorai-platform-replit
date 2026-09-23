@@ -109,6 +109,10 @@ export async function callReplicateFluxKontext(params: {
   steps?:       number;
   guidance?:    number;
   logger?:      Logger;
+  signal?: AbortSignal;
+  resumePredictionId?: string;
+  beforeSubmit?: () => Promise<void>;
+  onPredictionCreated?: (id: string) => Promise<void>;
 }): Promise<string> {
   const token = process.env["REPLICATE_API_TOKEN"];
   if (!token) throw new Error("REPLICATE_API_TOKEN not set");
@@ -119,48 +123,62 @@ export async function callReplicateFluxKontext(params: {
 
   logger?.info({ model: MODEL }, "FluxKontext: creating prediction");
 
-  const createRes = await fetch(
-    `https://api.replicate.com/v1/models/${MODEL}/predictions`,
-    {
-      method: "POST",
-      headers: {
-        Authorization:  `Token ${token}`,
-        "Content-Type": "application/json",
-        Prefer:         "wait=60",
-      },
-      body: JSON.stringify({
-        input: {
-          input_image:         imageDataUrl,
-          prompt,
-          steps,
-          guidance,
-          output_format:       "png",
-          output_quality:      100,
-          safety_tolerance:    2,
+  const requestSignal = (timeoutMs: number) => params.signal
+    ? AbortSignal.any([params.signal, AbortSignal.timeout(timeoutMs)])
+    : AbortSignal.timeout(timeoutMs);
+  type Prediction = { id: string; status: string; output?: string | string[]; error?: string };
+  let prediction: Prediction;
+  if (params.resumePredictionId) {
+    const resumed = await fetch(`https://api.replicate.com/v1/predictions/${encodeURIComponent(params.resumePredictionId)}`, {
+      headers: { Authorization: `Token ${token}` }, signal: requestSignal(30_000),
+    });
+    if (!resumed.ok) throw new Error(`FluxKontext: falha ao recuperar geração (${resumed.status})`);
+    prediction = await resumed.json() as Prediction;
+  } else {
+    await params.beforeSubmit?.();
+    const createRes = await fetch(
+      `https://api.replicate.com/v1/models/${MODEL}/predictions`,
+      {
+        method: "POST",
+        headers: {
+          Authorization:  `Token ${token}`,
+          "Content-Type": "application/json",
+          ...(params.onPredictionCreated ? {} : { Prefer: "wait=60" }),
         },
-      }),
-      signal: AbortSignal.timeout(120_000),
-    },
-  );
+        body: JSON.stringify({
+          input: {
+            input_image:         imageDataUrl,
+            prompt,
+            steps,
+            guidance,
+            output_format:       "png",
+            output_quality:      100,
+            safety_tolerance:    2,
+          },
+        }),
+        signal: requestSignal(120_000),
+      },
+    );
 
-  if (!createRes.ok) {
-    const body = await createRes.json().catch(() => ({})) as Record<string, unknown>;
-    throw new Error(`FluxKontext HTTP ${createRes.status}: ${body["detail"] ?? JSON.stringify(body)}`);
+    if (!createRes.ok) {
+      const body = await createRes.json().catch(() => ({})) as Record<string, unknown>;
+      throw new Error(`FluxKontext HTTP ${createRes.status}: ${body["detail"] ?? JSON.stringify(body)}`);
+    }
+
+    prediction = await createRes.json() as Prediction;
+    if (!prediction.id) throw new Error("FluxKontext: resposta sem identificador de geração");
+    await params.onPredictionCreated?.(prediction.id);
   }
-
-  let prediction = await createRes.json() as {
-    id: string; status: string; output?: string | string[];
-    error?: string; urls?: { get: string };
-  };
 
   let polls = 0;
   while (prediction.status === "starting" || prediction.status === "processing") {
-    if (polls >= 60) throw new Error("FluxKontext: polling timeout (120s)");
+    if (polls >= 120) throw new Error("FluxKontext: polling timeout (240s)");
     await new Promise<void>((r) => setTimeout(r, 2000));
     const pollRes = await fetch(
       `https://api.replicate.com/v1/predictions/${prediction.id}`,
-      { headers: { Authorization: `Token ${token}` } },
+      { headers: { Authorization: `Token ${token}` }, signal: requestSignal(30_000) },
     );
+    if (!pollRes.ok) throw new Error(`FluxKontext: status indisponível (${pollRes.status})`);
     prediction = await pollRes.json() as typeof prediction;
     polls++;
   }
@@ -176,7 +194,7 @@ export async function callReplicateFluxKontext(params: {
 
   logger?.info({ model: MODEL, polls }, "FluxKontext: prediction succeeded");
 
-  const imgRes = await fetch(outputUrl as string);
+  const imgRes = await fetch(outputUrl as string, { signal: requestSignal(60_000) });
   if (!imgRes.ok) throw new Error(`FluxKontext: download failed (${imgRes.status})`);
   return Buffer.from(await imgRes.arrayBuffer()).toString("base64");
 }
@@ -503,3 +521,4 @@ export function dataUrlToBuffer(dataUrl: string): { buf: Buffer; mime: string } 
 export function bufferToDataUrl(buf: Buffer, mime = "image/png"): string {
   return `data:${mime};base64,${buf.toString("base64")}`;
 }
+

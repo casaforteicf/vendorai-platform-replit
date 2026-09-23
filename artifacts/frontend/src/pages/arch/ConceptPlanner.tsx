@@ -763,6 +763,8 @@ export default function ConceptPlanner() {
   const [facadePreferences, setFacadePreferences] = useState<ConceptFacadePreferences>(DEFAULT_FACADE);
   const [facadeDesign, setFacadeDesign] = useState<FacadeDesignState>(DEFAULT_FACADE_DESIGN);
   const [conceptRender, setConceptRender] = useState<ConceptDraftResponse["conceptRender"]>({ status: "idle" });
+  const [selectedRenderVersionId, setSelectedRenderVersionId] = useState<string | null>(null);
+  const [renderQueued, setRenderQueued] = useState(false);
   const renderSubmittingRef = useRef(false);
   const [renderHistoryLoading, setRenderHistoryLoading] = useState(false);
   const [renderError, setRenderError] = useState<string | null>(null);
@@ -3144,8 +3146,10 @@ export default function ConceptPlanner() {
 
     const source = options?.source ?? "facade";
     const renderView = options?.renderView ?? (source === "model3d" ? "interior" : "exterior");
+    const lightingMode = options?.lightingMode ?? facadeDesign.lighting;
 
     setRenderError(null);
+    setSelectedRenderVersionId(null);
     setConceptRender((prev) => ({ ...prev, status: "processing", error: undefined }));
 
     try {
@@ -3197,7 +3201,7 @@ export default function ConceptPlanner() {
         facade: facadePreferences,
         facadeDesign,
         renderView,
-        lightingMode: options?.lightingMode,
+        lightingMode,
         sitePlacement,
         objects: safeObjects,
         wallMaterialIds: Object.values(wallMaterials),
@@ -3218,11 +3222,11 @@ export default function ConceptPlanner() {
       const renderProfile = renderView === "interior"
         ? [
             "INTERIOR CAMERA PROFILE: eye-level architectural photography, approximately 1.55m camera height, 24-28mm full-frame equivalent, vertical lines corrected, natural perspective, no fisheye, no exaggerated wide angle.",
-            "INTERIOR LIGHTING: balanced daylight plus physically plausible warm practical lights, soft indirect bounce, realistic contact shadows, preserved window directions and room proportions.",
+            `INTERIOR LIGHTING: obey the selected ${lightingMode} scenario with physically plausible practical lights, soft indirect bounce, realistic contact shadows, preserved window directions and room proportions.`,
           ]
         : [
             "EXTERIOR CAMERA PROFILE: professional architectural exterior photography, 28-35mm full-frame equivalent, corrected verticals, realistic perspective, natural sky exposure, no drone distortion unless the reference clearly shows an elevated view.",
-            "EXTERIOR LIGHTING: physically plausible sun direction, soft global illumination, realistic facade reflections, glazing, vegetation and ground contact shadows.",
+            `EXTERIOR LIGHTING: obey the selected ${lightingMode} scenario, physically plausible light direction, soft global illumination, realistic facade reflections, glazing, vegetation and ground contact shadows.`,
           ];
 
       if (source === "model3d") setEditorView("render");
@@ -3234,7 +3238,9 @@ export default function ConceptPlanner() {
           concept_project_id: renderProjectId,
           original_image_url: originalImage,
           mode: "preservar",
-          iluminacao: options?.lightingMode ?? "day",
+          iluminacao: lightingMode,
+          source,
+          render_view: renderView,
           ambiente: renderView === "interior" ? "interior" : "fachada",
           user_notes: [
             brief,
@@ -3309,6 +3315,8 @@ export default function ConceptPlanner() {
             result_image_url?: string | null;
             erro_msg?: string | null;
             ambiente?: string | null;
+            source?: "facade" | "model3d" | null;
+            render_view?: "exterior" | "interior" | null;
             created_at?: string | null;
             concluido_em?: string | null;
           }>;
@@ -3319,8 +3327,8 @@ export default function ConceptPlanner() {
           renderId: item.id,
           resultImageUrl: item.result_image_url!,
           generatedAt: item.concluido_em ?? item.created_at ?? "",
-          source: item.ambiente === "interior" ? "model3d" as const : "facade" as const,
-          renderView: item.ambiente === "interior" ? "interior" as const : "exterior" as const,
+          source: item.source ?? (item.ambiente === "interior" ? "model3d" as const : "facade" as const),
+          renderView: item.render_view ?? (item.ambiente === "interior" ? "interior" as const : "exterior" as const),
         }));
         const newest = versions[versions.length - 1];
         const active = [...versions].reverse().find((item) => ["processando", "queued", "processing"].includes(item.status ?? ""));
@@ -3338,6 +3346,7 @@ export default function ConceptPlanner() {
             history: completed.slice(-12),
           };
         });
+        setRenderQueued(active?.status === "queued");
         setRenderError(failure ?? null);
         setRenderHistoryLoading(false);
         if (active) timer = setTimeout(recoverRenderHistory, 3000);
@@ -3356,6 +3365,8 @@ export default function ConceptPlanner() {
       if (timer) clearTimeout(timer);
     };
   }, [conceptId, conceptRender?.renderId, editorView]);
+
+  const displayedRender = conceptRender?.history?.find((item) => item.renderId === selectedRenderVersionId) ?? conceptRender;
 
   const latestFacadeRenderUrl = useMemo(() => {
     if (conceptRender?.renderView === "exterior" && conceptRender.resultImageUrl) return conceptRender.resultImageUrl;
@@ -6134,21 +6145,21 @@ export default function ConceptPlanner() {
                           </div>
                         )}
 
-                        {conceptRender?.resultImageUrl ? (
+                        {displayedRender?.resultImageUrl ? (
                           <div className="overflow-hidden rounded-2xl border bg-white shadow-xl">
                             <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
                               <div>
                                 <div className="flex flex-wrap items-center gap-2">
                                   <div className="text-sm font-semibold">
-                                    {conceptRender.renderView === "interior" ? "Render interior / vista 3D" : "Render de fachada"}
+                                    {displayedRender.renderView === "interior" ? "Render interior / vista 3D" : "Render de fachada"}
                                   </div>
                                   <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
                                     Imagem gerada
                                   </span>
                                 </div>
                                 <div className="mt-1 text-[11px] text-muted-foreground">
-                                  {conceptRender.generatedAt
-                                    ? new Date(conceptRender.generatedAt).toLocaleString("pt-BR")
+                                  {displayedRender.generatedAt
+                                    ? new Date(displayedRender.generatedAt).toLocaleString("pt-BR")
                                     : "Render atual"}
                                   <span className="mx-1.5">•</span>
                                   preservação estrutural do projeto
@@ -6156,11 +6167,11 @@ export default function ConceptPlanner() {
                               </div>
                               <div className="flex items-center gap-2">
                                 {conceptRender.status === "processing" && (
-                                  <span className="rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700">Gerando render...</span>
+                                  <span className="rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700">{renderQueued ? "Render na fila" : "Gerando render…"}</span>
                                 )}
-                                {conceptRender.resultImageUrl && conceptRender.status !== "processing" && (
+                                {displayedRender.resultImageUrl && conceptRender.status !== "processing" && (
                                   <a
-                                    href={conceptRender.resultImageUrl}
+                                    href={displayedRender.resultImageUrl}
                                     target="_blank"
                                     rel="noreferrer"
                                     className="rounded-xl border bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-orange-300 hover:text-orange-700"
@@ -6171,7 +6182,7 @@ export default function ConceptPlanner() {
                               </div>
                             </div>
                             <img
-                              src={conceptRender.resultImageUrl}
+                              src={displayedRender.resultImageUrl}
                               alt="Render conceitual"
                               className="max-h-[calc(100dvh-260px)] w-full object-contain"
                             />
@@ -6182,7 +6193,7 @@ export default function ConceptPlanner() {
                               <div className="mx-auto h-12 w-12 animate-pulse rounded-2xl bg-orange-500/15 p-3 text-orange-600">
                                 <Sparkles className="h-6 w-6" />
                               </div>
-                              <div className="mt-4 text-lg font-semibold">Gerando render arquitetônico</div>
+                              <div className="mt-4 text-lg font-semibold">{renderQueued ? "Render na fila" : "Gerando render arquitetônico"}</div>
                               <p className="mt-2 text-sm leading-6 text-muted-foreground">
                                 O Arqdor está usando a câmera atual do projeto, preservando paredes, aberturas, volumes e mobiliário para produzir a imagem final.
                               </p>
@@ -6222,16 +6233,8 @@ export default function ConceptPlanner() {
                                 <button
                                   key={item.renderId}
                                   type="button"
-                                  onClick={() => setConceptRender((prev) => ({
-                                    ...prev,
-                                    renderId: item.renderId,
-                                    resultImageUrl: item.resultImageUrl,
-                                    generatedAt: item.generatedAt,
-                                    source: item.source,
-                                    renderView: item.renderView,
-                                    status: "completed",
-                                  }))}
-                                  className={conceptRender.renderId === item.renderId
+                                  onClick={() => setSelectedRenderVersionId(item.renderId)}
+                                  className={(selectedRenderVersionId ?? conceptRender.renderId) === item.renderId
                                     ? "overflow-hidden rounded-xl border-2 border-orange-500 bg-orange-50 text-left"
                                     : "overflow-hidden rounded-xl border bg-white text-left hover:border-orange-300"}
                                 >
@@ -6797,7 +6800,7 @@ export default function ConceptPlanner() {
               </div>
 
               <div data-concept-render-source="true" className="mt-4 overflow-hidden rounded-2xl border bg-slate-50">
-                <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} facade={facadePreferences} />
+                <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} rooms={safeRooms} facade={facadePreferences} />
               </div>
 
               <div className="mt-4 rounded-2xl border bg-muted/30 p-4">
@@ -6930,7 +6933,7 @@ export default function ConceptPlanner() {
                     <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">Conceitual</span>
                   </div>
                   <div className="mt-4 overflow-hidden rounded-2xl border bg-slate-50">
-                    <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} facade={facadePreferences} />
+                    <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} rooms={safeRooms} facade={facadePreferences} />
                   </div>
                 </div>
               </div>

@@ -451,8 +451,8 @@ export default function ConceptDerivedFacade({
     );
   };
 
-  const facadeViewY = floors > 1 ? 18 : 30;
-  const facadeViewHeight = floors > 1 ? 48 : 38;
+  const facadeViewY = Math.min(30, roofY - 14);
+  const facadeViewHeight = groundY + 8 - facadeViewY;
 
   return (
     <svg
@@ -899,3 +899,4 @@ export default function ConceptDerivedFacade({
     </svg>
   );
 }
+

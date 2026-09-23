@@ -19,6 +19,7 @@ import { getAcquisitionInvestmentIntelligence } from "./services/acquisitionInve
 import acquisitionOrchestratorRouter from "./routes/acquisition_orchestrator.js";
 import { runCampaignAbWinnerCycle } from "./services/campaignAbWinnerRuntime.js";
 import { startMediaVideoBatchRunner } from "./services/media-video-batch.js";
+import { startArchConceptRenderRunner } from "./services/arch-concept-render-runner.js";
 import { startMediaVideoGenerateRunner } from "./services/media-video-generate.js";
 import { startDevAgentSupportHandoff } from "./services/dev-agent-support-handoff.js";
 import { startVieIntelligenceCycle } from "./services/vie-intelligence-cycle.js";
@@ -163,6 +164,7 @@ async function start() {
     startMetaCustomAudienceReconcileScheduler(logger);
     startMediaVideoBatchRunner(logger);
     startMediaVideoGenerateRunner(logger);
+    startArchConceptRenderRunner(logger);
     startDevAgentSupportHandoff(logger);
     startVieIntelligenceCycle(logger);
 
