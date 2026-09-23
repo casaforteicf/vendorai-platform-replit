@@ -9,6 +9,7 @@ import {
   tenantsTable,
   billingEventsTable,
   tokenPurchasesTable,
+  vendorTokenTransactionsTable,
   dealsTable,
   prospectorFlowExecutionsTable,
   campaignSentLogsTable,
@@ -1910,7 +1911,16 @@ router.post("/webhooks/asaas", async (req, res) => {
             .set({ tokenCredits: sql`token_credits + ${purchase.credits}`, updatedAt: new Date() })
             .where(eq(tenantsTable.id, tenantId));
 
-          req.log.info({ tenantId, purchaseId, credits: purchase.credits }, "asaas-webhook: token top-up credited");
+          await db.insert(vendorTokenTransactionsTable).values({
+            tenantId,
+            tokensDelta: purchase.credits,
+            kind: "purchase",
+            source: "asaas_token_purchase",
+            referenceId: purchase.id,
+            metadata: { paymentId: payment.id, canonical: true },
+          }).onConflictDoNothing();
+
+          req.log.info({ tenantId, purchaseId, tokens: purchase.credits }, "asaas-webhook: token top-up credited");
         }
       }
       res.status(200).json({ ok: true });

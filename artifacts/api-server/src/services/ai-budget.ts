@@ -1,10 +1,17 @@
 import { and, eq, gte, sql } from "drizzle-orm";
 import { aiUsageLogsTable, db, plansTable, tenantsTable } from "@workspace/db";
+import {
+  VENDOR_TOKENS_PER_BRL,
+  VENDOR_TOKEN_PACK_PRICE_BRL,
+  VENDOR_TOKEN_PACK_TOKENS,
+} from "./vendor-tokens.js";
 
-export const AI_CREDITS_PER_USD = 1_000;
-export const AI_CREDIT_PACK_PRICE_BRL = 499;
-export const AI_CREDIT_PACK_CREDITS = 25_000;
-export const AI_CREDIT_PACK_USD = AI_CREDIT_PACK_CREDITS / AI_CREDITS_PER_USD;
+// Legacy export kept for API compatibility. Customer-facing balances use Vendor Tokens.
+export const AI_CREDITS_PER_USD = VENDOR_TOKENS_PER_BRL * 5;
+export const AI_CREDIT_PACK_PRICE_BRL = VENDOR_TOKEN_PACK_PRICE_BRL;
+export const AI_CREDIT_PACK_CREDITS = VENDOR_TOKEN_PACK_TOKENS;
+// Internal estimate only; tenant UI must not expose provider currency.
+export const AI_CREDIT_PACK_USD = AI_CREDIT_PACK_PRICE_BRL / 5;
 export const AI_BUDGET_ALERT_THRESHOLDS = [50, 75, 90, 100] as const;
 
 export type AiBudgetSnapshot = {
@@ -93,7 +100,9 @@ export async function getTenantAiBudget(tenantId: string, now = new Date()): Pro
     ? Math.max(0, Math.min(100, (spentThisMonthUsd / totalCycleBudgetUsd) * 100))
     : 0;
 
-  const toCredits = (usd: number) => Math.max(0, Math.round(usd * AI_CREDITS_PER_USD));
+  const usdRate = Math.max(0.000001, Number(process.env["USD_BRL_RATE"] ?? 5));
+  const creditsPerUsd = Math.round(VENDOR_TOKENS_PER_BRL * usdRate);
+  const toCredits = (usd: number) => Math.max(0, Math.round(usd * creditsPerUsd));
 
   return {
     tenantId,
@@ -106,7 +115,7 @@ export async function getTenantAiBudget(tenantId: string, now = new Date()): Pro
     percentUsed,
     alertPercent: alertFor(percentUsed),
     blocked: remainingUsd <= 0,
-    creditsPerUsd: AI_CREDITS_PER_USD,
+    creditsPerUsd,
     baseCredits: toCredits(baseBudgetUsd),
     extraCreditsRemaining: toCredits(extraBalanceUsd),
     usedCredits: toCredits(spentThisMonthUsd),

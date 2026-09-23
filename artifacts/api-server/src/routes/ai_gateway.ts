@@ -7,6 +7,7 @@ import {
   plansTable,
   aiUsageLogsTable,
   tokenPurchasesTable,
+  vendorTokenTransactionsTable,
   commercialProductProfilesTable,
   productUsageQuotasTable,
   usageMetricsTable,
@@ -449,10 +450,29 @@ router.post("/webhooks/asaas/credits", async (req, res) => {
     const creditsUsd = Number(purchase.valor) / usdRate;
     const [tenant] = await tx.update(tenantsTable).set({
       aiCreditsUsd: sql`${tenantsTable.aiCreditsUsd} + ${creditsUsd}`,
+      tokenCredits: sql`${tenantsTable.tokenCredits} + ${purchase.credits}`,
       updatedAt: new Date(),
-    }).where(eq(tenantsTable.id, purchase.tenantId as string)).returning({ aiCreditsUsd: tenantsTable.aiCreditsUsd });
+    }).where(eq(tenantsTable.id, purchase.tenantId as string)).returning({
+      aiCreditsUsd: tenantsTable.aiCreditsUsd,
+      tokenCredits: tenantsTable.tokenCredits,
+    });
     if (!tenant) throw new Error("Tenant not found for paid purchase");
-    return { kind: "credited" as const, tenantId: purchase.tenantId, creditsAddedUsd: creditsUsd, totalCreditsUsd: Number(tenant.aiCreditsUsd) };
+
+    await tx.insert(vendorTokenTransactionsTable).values({
+      tenantId: purchase.tenantId as string,
+      tokensDelta: purchase.credits,
+      kind: "purchase",
+      source: "asaas_token_purchase",
+      referenceId: purchase.id,
+      metadata: { paymentId, canonical: true },
+    }).onConflictDoNothing();
+
+    return {
+      kind: "credited" as const,
+      tenantId: purchase.tenantId,
+      tokensAdded: purchase.credits,
+      tokenBalance: Number(tenant.tokenCredits),
+    };
   });
 
   if (result.kind === "not_found") return res.status(404).json({ error: "Purchase not found" });

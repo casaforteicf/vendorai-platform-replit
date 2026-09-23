@@ -12,21 +12,24 @@ import {
 import {
   AI_CREDIT_PACK_CREDITS,
   AI_CREDIT_PACK_PRICE_BRL,
-  AI_CREDIT_PACK_USD,
-  getTenantAiBudget,
+   getTenantAiBudget,
 } from "../services/ai-budget.js";
+import {
+  VENDOR_TOKENS_PER_BRL,
+  VENDOR_TOKEN_PACK_PRICE_BRL,
+  VENDOR_TOKEN_PACK_TOKENS,
+  brlToVendorTokens,
+} from "../services/vendor-tokens.js";
 
 const router: IRouter = Router();
 const requireBillingAdmin = requireRole("tenant_admin", "super_admin");
 
-// R$1 = CREDITS_PER_BRL créditos no mecanismo legado de recarga livre.
-export const CREDITS_PER_BRL = 50;
+// Compatibilidade: o saldo exibido ao tenant usa sempre o padrão canônico.
+export const CREDITS_PER_BRL = VENDOR_TOKENS_PER_BRL;
 
 export function calcCredits(valorReais: number): number {
-  return Math.floor(valorReais * CREDITS_PER_BRL);
+  return brlToVendorTokens(valorReais);
 }
-
-const MIN_VALOR = 20;
 
 function isGenerationPack(purchase: typeof tokenPurchasesTable.$inferSelect) {
   return Number(purchase.valor) === GENERATION_PACK_PRICE_BRL
@@ -62,7 +65,6 @@ async function createFixedAiCreditPack(tenantId: string) {
       status: "pending" as const,
       credits: AI_CREDIT_PACK_CREDITS,
       value: AI_CREDIT_PACK_PRICE_BRL,
-      budgetUsd: AI_CREDIT_PACK_USD,
       invoiceUrl: existingPending.invoiceUrl,
       chargeId: existingPending.asaasChargeId,
       reused: true,
@@ -90,7 +92,7 @@ async function createFixedAiCreditPack(tenantId: string) {
       billingType: "UNDEFINED",
       value: AI_CREDIT_PACK_PRICE_BRL,
       dueDate: dueDateStr,
-      description: `VendorAI — +${AI_CREDIT_PACK_CREDITS.toLocaleString("pt-BR")} créditos de IA`,
+      description: `Vendor.ai — +${AI_CREDIT_PACK_CREDITS.toLocaleString("pt-BR")} Tokens`,
       // Reutiliza o fluxo de webhook já idempotente: pagamento confirmado marca
       // a compra como paga e credita o tenant. O trigger do banco espelha esse
       // saldo em ai_credits_usd para o hard-cap financeiro do AI Gateway.
@@ -111,7 +113,6 @@ async function createFixedAiCreditPack(tenantId: string) {
       status: "pending" as const,
       credits: AI_CREDIT_PACK_CREDITS,
       value: AI_CREDIT_PACK_PRICE_BRL,
-      budgetUsd: AI_CREDIT_PACK_USD,
       invoiceUrl: charge.invoiceUrl,
       chargeId: charge.id,
     };
@@ -134,12 +135,30 @@ router.get(
       res.status(404).json({ error: "Tenant não encontrado" });
       return;
     }
-    res.json(budget);
+    res.json({
+      tenantId: budget.tenantId,
+      planName: budget.planName,
+      percentUsed: budget.percentUsed,
+      alertPercent: budget.alertPercent,
+      blocked: budget.blocked,
+      baseTokens: budget.baseCredits,
+      extraTokensRemaining: budget.extraCreditsRemaining,
+      usedTokens: budget.usedCredits,
+      remainingTokens: budget.remainingCredits,
+      totalCycleTokens: budget.totalCycleCredits,
+      pack: {
+        priceBrl: AI_CREDIT_PACK_PRICE_BRL,
+        tokens: AI_CREDIT_PACK_CREDITS,
+      },
+      tokenStandard: {
+        tokensPerBrl: VENDOR_TOKENS_PER_BRL,
+      },
+    });
   },
 );
 
 // ── POST /tenants/:tenantId/ai-credit-pack-purchases ─────────────────────────
-// Compra deliberada e administrativa: R$499 = +25.000 créditos VendorAI.
+// Compra deliberada e administrativa no padrão canônico: R$165 = +165.000 Tokens.
 router.post(
   "/tenants/:tenantId/ai-credit-pack-purchases",
   requireSameTenanOrSuperAdmin(),
@@ -162,79 +181,73 @@ router.post(
 );
 
 // ── POST /tenants/:tenantId/token-purchases ──────────────────────────────────
+// Produto único inicial: R$165 = 165.000 Tokens Vendor.ai.
 router.post(
   "/tenants/:tenantId/token-purchases",
   requireSameTenanOrSuperAdmin(),
   requireBillingAdmin,
   async (req, res) => {
     const tenantId = String(req.params["tenantId"]);
-
-    const bodySchema = z.object({
-      valor: z.number().min(MIN_VALOR, `Valor mínimo é R$ ${MIN_VALOR}`),
-    });
-    const parsed = bodySchema.safeParse(req.body);
+    const parsed = z.object({ valor: z.number().optional() }).safeParse(req.body ?? {});
     if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Valor inválido" });
+      res.status(400).json({ error: "Compra de Tokens inválida" });
       return;
     }
-
+    if (parsed.data.valor != null && parsed.data.valor !== VENDOR_TOKEN_PACK_PRICE_BRL) {
+      res.status(400).json({
+        error: `O pacote disponível custa R$ ${VENDOR_TOKEN_PACK_PRICE_BRL.toFixed(2)}`,
+        pack: { value: VENDOR_TOKEN_PACK_PRICE_BRL, tokens: VENDOR_TOKEN_PACK_TOKENS },
+      });
+      return;
+    }
     if (!(await isAsaasConfigured())) {
       res.status(503).json({ error: "Pagamentos não configurados" });
       return;
     }
 
-    const { valor } = parsed.data;
-    const credits = calcCredits(valor);
-
+    const valor = VENDOR_TOKEN_PACK_PRICE_BRL;
+    const credits = VENDOR_TOKEN_PACK_TOKENS;
     const [tenant] = await db
       .select({ id: tenantsTable.id, name: tenantsTable.name })
       .from(tenantsTable)
       .where(eq(tenantsTable.id, tenantId));
-
     if (!tenant) {
       res.status(404).json({ error: "Tenant não encontrado" });
       return;
     }
 
-    const purchase = await db
-      .insert(tokenPurchasesTable)
-      .values({
-        tenantId,
-        valor: String(valor),
-        credits,
-        status: "pending",
-      })
-      .returning()
-      .then((rows) => rows[0]!);
+    const purchase = await db.insert(tokenPurchasesTable).values({
+      tenantId,
+      valor: String(valor),
+      credits,
+      status: "pending",
+    }).returning().then((rows) => rows[0]!);
 
     const customer = await createOrGetCustomer({ name: tenant.name });
-
     const dueDate = new Date();
     dueDate.setDate(dueDate.getDate() + 1);
     const dueDateStr = dueDate.toISOString().split("T")[0]!;
-
     const charge = await createCharge({
       customer: customer.id,
       billingType: "PIX",
       value: valor,
       dueDate: dueDateStr,
-      description: `Recarga de créditos de IA — ${credits.toLocaleString("pt-BR")} créditos`,
+      description: `Vendor.ai — +${credits.toLocaleString("pt-BR")} Tokens`,
       externalReference: `token_topup:${tenantId}:${purchase.id}`,
     });
 
-    await db
-      .update(tokenPurchasesTable)
-      .set({
-        asaasChargeId: charge.id,
-        asaasCustomerId: customer.id,
-        invoiceUrl: charge.invoiceUrl,
-      })
-      .where(eq(tokenPurchasesTable.id, purchase.id));
+    await db.update(tokenPurchasesTable).set({
+      asaasChargeId: charge.id,
+      asaasCustomerId: customer.id,
+      invoiceUrl: charge.invoiceUrl,
+    }).where(eq(tokenPurchasesTable.id, purchase.id));
 
     res.status(201).json({
       id: purchase.id,
       valor,
       credits,
+      tokens: credits,
+      tokenStandard: { tokensPerBrl: VENDOR_TOKENS_PER_BRL },
       invoiceUrl: charge.invoiceUrl,
       chargeId: charge.id,
     });
@@ -266,14 +279,24 @@ router.get(
       .limit(50);
     const purchases = allPurchases.filter((purchase) => !isGenerationPack(purchase)).slice(0, 20);
 
-    res.json({ tokenCredits: tenant.tokenCredits, purchases, creditsPerBrl: CREDITS_PER_BRL });
+    res.json({
+      tokenCredits: tenant.tokenCredits,
+      tokenBalance: tenant.tokenCredits,
+      purchases,
+      creditsPerBrl: CREDITS_PER_BRL,
+      tokenStandard: {
+        tokensPerBrl: VENDOR_TOKENS_PER_BRL,
+        packPriceBrl: VENDOR_TOKEN_PACK_PRICE_BRL,
+        packTokens: VENDOR_TOKEN_PACK_TOKENS,
+      },
+    });
   }
 );
 
 // ── POST /tenants/:tenantId/generation-pack-purchases ────────────────────────
 // Compatibilidade com o fluxo antigo de conteúdo. O pacote agora é o mesmo
-// produto comercial de R$499 e entrega +25.000 créditos de IA; adicionalmente
-// libera +200 gerações de conteúdo para não manter duas cobranças diferentes.
+// Compatibilidade com o fluxo antigo: a compra agora usa o pacote canônico de Tokens.
+// Novas franquias devem ser controladas pelo ledger/cotas, não por moedas paralelas.
 router.post(
   "/tenants/:tenantId/generation-pack-purchases",
   requireSameTenanOrSuperAdmin(),
