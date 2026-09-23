@@ -78,3 +78,6 @@ uvicorn app.main:app --host 0.0.0.0 --port 8080
 ```
 
 Teste primeiro `GET /health`; o modelo é carregado de forma lazy na primeira síntese para o processo poder inicializar e responder health checks antes do download/carregamento pesado.
+
+
+Deployment trigger: isolated Railway media-worker source.
