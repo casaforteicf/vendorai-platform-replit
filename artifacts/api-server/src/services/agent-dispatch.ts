@@ -34,6 +34,8 @@ import {
   leadOportunidadesPrevistasTable,
   relatosTecnicosTable,
   tenantAgentConfigsTable,
+  campaignsTable,
+  campaignSentLogsTable,
 } from "@workspace/db";
 import { callOpenAI as gatewayFamilyCallOpenAI } from "../lib/ai-gateway.js";
 import { detectEscalationTrigger, generateHandoffSummary } from "./escalation.js";
@@ -43,7 +45,7 @@ import { handleDeliveryFeedbackReply } from "./post-venda.js";
 import { prepareSupportAiIntake } from "./support-ai-intake.js";
 import { handleSequenceOfferReply } from "./sequence-offer.js";
 import { generateAgentHandoffSummary } from "./handoff.js";
-import { sendDirectWhatsAppMessage, sendDirectWhatsAppDocument } from "./omnichannel.js";
+import { sendDirectWhatsAppMessage, sendDirectWhatsAppDocument, sendOutgoingMessage } from "./omnichannel.js";
 import { generateQuoteComercialPdf } from "../lib/pdf-quote-comercial.js";
 import {
   loadContext,
@@ -62,6 +64,7 @@ import {
   type SpinQuestion,
 } from "../lib/agent-engine.js";
 import { proposalAccepted } from "../lib/proposal-accepted.js";
+import { buildSmartDeliveryUrl } from "./smart-delivery.js";
 import { createQuoteFromCatalogPlan } from "./auto-quote.js";
 import { resolverECalcularOrcamento, ErroResolucaoOrcamento } from "../lib/calculoOrcamentoM2Resolver.js";
 import { ErroCalculoOrcamento } from "../lib/calculoOrcamentoM2.js";
@@ -77,6 +80,114 @@ import {
   resolveProspectorPlaybook,
   type ProspectorPlaybook,
 } from "../lib/prospector-consultive.js";
+
+
+type SmartDeliveryResolution = {
+  campaignId: string;
+  timing: "first_contact" | "after_interest" | "after_qualification";
+  toolRef: string;
+  toolName?: string;
+  url: string;
+  channel: "whatsapp" | "instagram" | "email";
+};
+
+async function resolvePendingSmartDelivery(params: {
+  tenantId: string;
+  leadId: string;
+  desiredTiming: "after_interest" | "after_qualification";
+  log: Logger;
+}): Promise<SmartDeliveryResolution | null> {
+  const { tenantId, leadId, desiredTiming, log } = params;
+
+  const recentLogs = await db
+    .select({
+      campaignId: campaignSentLogsTable.campaignId,
+      sentAt: campaignSentLogsTable.sentAt,
+    })
+    .from(campaignSentLogsTable)
+    .where(eq(campaignSentLogsTable.leadId, leadId))
+    .orderBy(desc(campaignSentLogsTable.sentAt))
+    .limit(20);
+
+  for (const row of recentLogs) {
+    const [campaign] = await db
+      .select({
+        id: campaignsTable.id,
+        tenantId: campaignsTable.tenantId,
+        tipo: campaignsTable.tipo,
+        contexto: campaignsTable.contexto,
+      })
+      .from(campaignsTable)
+      .where(and(eq(campaignsTable.id, row.campaignId), eq(campaignsTable.tenantId, tenantId)))
+      .limit(1);
+
+    if (!campaign) continue;
+
+    const context = (campaign.contexto ?? {}) as Record<string, any>;
+    const delivery = (context.smartDelivery ?? {}) as Record<string, any>;
+    if (delivery.enabled !== true) continue;
+    if ((delivery.deliveryTiming ?? "after_interest") !== desiredTiming) continue;
+    if (typeof delivery.toolRef !== "string" || !delivery.toolRef.trim()) continue;
+
+    const dedupeKey = `smart_delivery_sent:${campaign.id}:${desiredTiming}`;
+    const [alreadySent] = await db
+      .select({ id: activitiesTable.id })
+      .from(activitiesTable)
+      .where(and(
+        eq(activitiesTable.tenantId, tenantId),
+        eq(activitiesTable.leadId, leadId),
+        eq(activitiesTable.resultadoExecucao, dedupeKey),
+      ))
+      .limit(1);
+    if (alreadySent) continue;
+
+    try {
+      const url = buildSmartDeliveryUrl({
+        purpose: "smart_delivery",
+        tenantId,
+        campaignId: campaign.id,
+        leadId,
+        toolRef: delivery.toolRef,
+        toolName: typeof delivery.toolName === "string" ? delivery.toolName : undefined,
+      });
+
+      return {
+        campaignId: campaign.id,
+        timing: desiredTiming,
+        toolRef: delivery.toolRef,
+        toolName: typeof delivery.toolName === "string" ? delivery.toolName : undefined,
+        url,
+        channel: campaign.tipo,
+      };
+    } catch (err) {
+      log.warn({ err, tenantId, leadId, campaignId: campaign.id }, "dispatch: failed to resolve smart delivery");
+    }
+  }
+
+  return null;
+}
+
+async function markSmartDeliverySent(params: {
+  tenantId: string;
+  leadId: string;
+  campaignId: string;
+  timing: "after_interest" | "after_qualification";
+  toolName?: string;
+  url: string;
+}): Promise<void> {
+  const dedupeKey = `smart_delivery_sent:${params.campaignId}:${params.timing}`;
+  await db.insert(activitiesTable).values({
+    tenantId: params.tenantId,
+    leadId: params.leadId,
+    tipo: "tarefa",
+    titulo: "Entrega Inteligente enviada",
+    descricao: `Campanha ${params.campaignId} | Momento: ${params.timing} | ${params.toolName ?? params.url}`,
+    status: "concluida",
+    concluidaEm: new Date(),
+    resultadoExecucao: dedupeKey,
+  }).catch(() => {});
+}
+
 
 /**
  * Finds the tenant's agenda with a refresh token, creates a provisional
@@ -1190,6 +1301,7 @@ export async function processAgentInternal(params: {
     let prospectorMode = false;
     let prospectorPlaybookForExtraction: ProspectorPlaybook | null = null;
     let prospectorQuestionsForExtraction: SpinQuestion[] | null = null;
+    let smartDeliveryAfterInterest: SmartDeliveryResolution | null = null;
     const dispatchAgentKey = AGENT_NAME_TO_KEY[resolvedAgentName];
     if (dispatchAgentKey) {
       try {
@@ -1259,6 +1371,15 @@ export async function processAgentInternal(params: {
         const stateChanged =
           (state.contextConfirmed && existingDiscoveryData["prospector_context_confirmed"] !== true) ||
           (state.nextStepAccepted && existingDiscoveryData["prospector_next_step_accepted"] !== true);
+
+        if (state.contextConfirmed) {
+          smartDeliveryAfterInterest = await resolvePendingSmartDelivery({
+            tenantId,
+            leadId,
+            desiredTiming: "after_interest",
+            log,
+          });
+        }
 
         if (stateChanged) {
           const nextDiscoveryData = {
@@ -1433,6 +1554,19 @@ export async function processAgentInternal(params: {
 
     // 8. Detect special Closer actions in the response.
     let finalResposta = resposta;
+
+    if (prospectorMode && smartDeliveryAfterInterest) {
+      const label = smartDeliveryAfterInterest.toolName?.trim() || "acesso personalizado";
+      finalResposta = `${finalResposta}\n\n${label}: ${smartDeliveryAfterInterest.url}`;
+      await markSmartDeliverySent({
+        tenantId,
+        leadId,
+        campaignId: smartDeliveryAfterInterest.campaignId,
+        timing: "after_interest",
+        toolName: smartDeliveryAfterInterest.toolName,
+        url: smartDeliveryAfterInterest.url,
+      });
+    }
 
     // A Recepção sinaliza internamente o encaminhamento. O marcador nunca é
     // enviado ao lead; a próxima mensagem continua com o agente farmacêutico.
@@ -1843,6 +1977,45 @@ export async function processAgentInternal(params: {
               { tenantId, leadId, qualified: result.qualified, checks: result.checks },
               "dispatch: Prospecctor SQL gate evaluated",
             );
+
+            if (result.qualified) {
+              const qualifiedDelivery = await resolvePendingSmartDelivery({
+                tenantId,
+                leadId,
+                desiredTiming: "after_qualification",
+                log,
+              });
+              if (qualifiedDelivery) {
+                const label = qualifiedDelivery.toolName?.trim() || "acesso personalizado";
+                const deliveryText = `Perfeito. Agora que já tenho o contexto necessário, liberei seu ${label}: ${qualifiedDelivery.url}`;
+                try {
+                  await sendOutgoingMessage({
+                    tenantId,
+                    leadId,
+                    conteudo: deliveryText,
+                    canal: qualifiedDelivery.channel,
+                    agentName: "sdr",
+                  }, log);
+                  await markSmartDeliverySent({
+                    tenantId,
+                    leadId,
+                    campaignId: qualifiedDelivery.campaignId,
+                    timing: "after_qualification",
+                    toolName: qualifiedDelivery.toolName,
+                    url: qualifiedDelivery.url,
+                  });
+                  log.info(
+                    { tenantId, leadId, campaignId: qualifiedDelivery.campaignId },
+                    "dispatch: smart delivery sent after qualification",
+                  );
+                } catch (err) {
+                  log.warn(
+                    { err, tenantId, leadId, campaignId: qualifiedDelivery.campaignId },
+                    "dispatch: failed to send smart delivery after qualification",
+                  );
+                }
+              }
+            }
           }
         } catch (err) {
           log.warn({ err, tenantId, leadId }, "dispatch: Prospecctor SQL gate evaluation failed");
