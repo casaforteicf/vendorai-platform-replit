@@ -713,7 +713,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
       location === "/praca-variedades" ||
       pracaHrefs.has(location);
 
-    const groupActive = (items: typeof crmNav) =>
+    const groupActive = (items: Array<{ href: string }>) =>
       items.some((item) => location === item.href || (item.href !== "/" && location.startsWith(item.href)));
     return (
       <>
@@ -1021,102 +1021,123 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
         )}
 
         {construcaoNav.length > 0 && (
-          <div className="mt-3 pt-3 border-t">
-            <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 flex items-center gap-1.5">
-              <HardHat className="h-3 w-3" />
-              Construção Civil
-            </p>
-            {construcaoNav.map((item) => <NavItem key={item.name} item={item} onNavigate={onNavigate} />)}
-          </div>
+          <GroupedNavSection
+            label="Construção Civil"
+            icon={HardHat}
+            active={groupActive(construcaoNav)}
+          >
+            {construcaoNav.map((item) => (
+              <NavItem key={item.href} item={item} onNavigate={onNavigate} />
+            ))}
+          </GroupedNavSection>
         )}
 
         {varejoNav.length > 0 && (
-          <div className="mt-3 pt-3 border-t">
-            <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 flex items-center gap-1.5">
-              <Shirt className="h-3 w-3" />
-              Varejo de Moda
-            </p>
-            {varejoNav.map((item) => <NavItem key={item.name} item={item} onNavigate={onNavigate} />)}
-          </div>
+          <GroupedNavSection
+            label="Varejo"
+            icon={Shirt}
+            active={groupActive(varejoNav)}
+          >
+            {varejoNav.map((item) => (
+              <NavItem key={item.href} item={item} onNavigate={onNavigate} />
+            ))}
+          </GroupedNavSection>
         )}
 
         {supermercadoNav.length > 0 && (
-          <div className="mt-3 pt-3 border-t">
-            <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 flex items-center gap-1.5">
-              <ShoppingCart className="h-3 w-3" />
-              Supermercado
-            </p>
-            {supermercadoNav.map((item) => <NavItem key={item.name} item={item} onNavigate={onNavigate} />)}
-          </div>
+          <GroupedNavSection
+            label="Supermercado"
+            icon={ShoppingCart}
+            active={groupActive(supermercadoNav)}
+          >
+            {supermercadoNav.map((item) => (
+              <NavItem key={item.href} item={item} onNavigate={onNavigate} />
+            ))}
+          </GroupedNavSection>
         )}
 
         {archNav.length > 0 && (
-          <div className="mt-3 pt-3 border-t">
-            <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 flex items-center gap-1.5">
-              <DraftingCompass className="h-3 w-3" />
-              Arch — Design
-            </p>
-            {archNav.map((item) => <NavItem key={item.name} item={item} onNavigate={onNavigate} />)}
-          </div>
+          <GroupedNavSection
+            label="Arqdor.ai"
+            icon={DraftingCompass}
+            active={groupActive(archNav)}
+          >
+            {archNav.map((item) => (
+              <NavItem key={item.href} item={item} onNavigate={onNavigate} />
+            ))}
+          </GroupedNavSection>
         )}
 
         {salaoNav.length > 0 && (
-          <div className="mt-3 pt-3 border-t">
-            <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 flex items-center gap-1.5">
-              <Scissors className="h-3 w-3" />
-              Salão de Beleza
-            </p>
-            {salaoNav.map((item) => <NavItem key={item.href} item={item} onNavigate={onNavigate} />)}
-          </div>
+          <GroupedNavSection
+            label={isPetShop ? "Serviços Pet" : "Salão & Serviços"}
+            icon={Scissors}
+            active={groupActive(salaoNav)}
+          >
+            {salaoNav.map((item) => (
+              <NavItem key={item.href} item={item} onNavigate={onNavigate} />
+            ))}
+          </GroupedNavSection>
         )}
 
         {clinicaNav.length > 0 && (
-          <div className="mt-3 pt-3 border-t">
-            <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 flex items-center gap-1.5">
-              <Stethoscope className="h-3 w-3" />
-              Clínica
-            </p>
-            {clinicaNav.map((item) => <NavItem key={item.href} item={item} onNavigate={onNavigate} />)}
-          </div>
+          <GroupedNavSection
+            label="Clínica"
+            icon={Stethoscope}
+            active={groupActive(clinicaNav)}
+          >
+            {clinicaNav.map((item) => (
+              <NavItem key={item.href} item={item} onNavigate={onNavigate} />
+            ))}
+          </GroupedNavSection>
         )}
 
         {farmaciaNav.length > 0 && (
-          <div className="mt-3 pt-3 border-t">
-            <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 flex items-center gap-1.5">
-              <Pill className="h-3 w-3" />
-              Farmácia
-            </p>
-            {farmaciaNav.map((item) => <NavItem key={item.href} item={item} onNavigate={onNavigate} />)}
-          </div>
+          <GroupedNavSection
+            label="Farmácia"
+            icon={Pill}
+            active={groupActive(farmaciaNav)}
+          >
+            {farmaciaNav.map((item) => (
+              <NavItem key={item.href} item={item} onNavigate={onNavigate} />
+            ))}
+          </GroupedNavSection>
         )}
 
         {inteligenciaNav.length > 0 && (
-          <div className="mt-3 pt-3 border-t">
-            <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 flex items-center gap-1.5">
-              <TrendingUp className="h-3 w-3" />
-              {scoutVerticalLabel ? `Revenue Scout · ${scoutVerticalLabel}` : "Inteligência"}
-            </p>
-            {inteligenciaNav.map((item) => <NavItem key={item.href} item={item} onNavigate={onNavigate} />)}
-          </div>
+          <GroupedNavSection
+            label={scoutVerticalLabel ? `Inteligência · ${scoutVerticalLabel}` : "Inteligência"}
+            icon={TrendingUp}
+            active={groupActive(inteligenciaNav)}
+          >
+            {inteligenciaNav.map((item) => (
+              <NavItem key={item.href} item={item} onNavigate={onNavigate} />
+            ))}
+          </GroupedNavSection>
         )}
 
         {hubNav.length > 0 && (
-          <div className="mt-3 pt-3 border-t">
-            <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 flex items-center gap-1.5">
-              <Handshake className="h-3 w-3" />
-              Partner Network
-            </p>
-            {hubNav.map((item) => <NavItem key={item.href} item={item} onNavigate={onNavigate} />)}
-          </div>
+          <GroupedNavSection
+            label="Rede & Ecossistema"
+            icon={Handshake}
+            active={groupActive(hubNav)}
+          >
+            {hubNav.map((item) => (
+              <NavItem key={item.href} item={item} onNavigate={onNavigate} />
+            ))}
+          </GroupedNavSection>
         )}
 
         {adminNavigation.length > 0 && (
-          <div className="mt-3 pt-3 border-t">
-            <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
-              Super Admin
-            </p>
-            {adminNavigation.map((item) => <NavItem key={item.name} item={item} onNavigate={onNavigate} />)}
-          </div>
+          <GroupedNavSection
+            label="Super Admin"
+            icon={Shield}
+            active={groupActive(adminNavigation)}
+          >
+            {adminNavigation.map((item) => (
+              <NavItem key={item.href} item={item} onNavigate={onNavigate} />
+            ))}
+          </GroupedNavSection>
         )}
       </>
     );
