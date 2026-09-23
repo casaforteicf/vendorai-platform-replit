@@ -780,6 +780,7 @@ export default function Configuracoes() {
     produtos: [] as Array<{ nome: string; descricao?: string; preco?: number }>,
   });
   const [discSaving, setDiscSaving] = useState(false);
+  const [aiContextGenerating, setAiContextGenerating] = useState<"all" | "diferenciais" | "publicoAlvo" | "missao" | "visao" | "valores" | null>(null);
   // Temp inputs for tag fields
   const [concorrenteInput, setConcorrenteInput] = useState("");
   const [canalInput, setCanalInput] = useState("");
@@ -802,6 +803,62 @@ export default function Configuracoes() {
       produtos:     (profileQuery.data.produtos as Array<{ nome: string; descricao?: string; preco?: number }>) ?? [],
     });
   }, [profileQuery.data]);
+
+  async function generateBusinessContextWithAi(field: "all" | "diferenciais" | "publicoAlvo" | "missao" | "visao" | "valores") {
+    setAiContextGenerating(field);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/business-context/generate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getToken() ?? ""}`,
+        },
+        body: JSON.stringify({ field, current: disc }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error || "Não foi possível gerar as sugestões.");
+
+      const suggestions = payload?.suggestions ?? {};
+      setDisc((current) => ({
+        ...current,
+        diferenciais:
+          field === "all" || field === "diferenciais"
+            ? suggestions.diferenciais || current.diferenciais
+            : current.diferenciais,
+        publicoAlvo:
+          field === "all" || field === "publicoAlvo"
+            ? suggestions.publicoAlvo || current.publicoAlvo
+            : current.publicoAlvo,
+        missao:
+          field === "all" || field === "missao"
+            ? suggestions.missao || current.missao
+            : current.missao,
+        visao:
+          field === "all" || field === "visao"
+            ? suggestions.visao || current.visao
+            : current.visao,
+        valores:
+          field === "all" || field === "valores"
+            ? Array.isArray(suggestions.valores) && suggestions.valores.length > 0
+              ? suggestions.valores
+              : current.valores
+            : current.valores,
+      }));
+
+      toast({
+        title: field === "all" ? "Contexto revisado com IA." : "Sugestão gerada com IA.",
+        description: "Revise o conteúdo e clique em Salvar Contexto para confirmar.",
+      });
+    } catch (error) {
+      toast({
+        title: "Erro ao gerar com IA.",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setAiContextGenerating(null);
+    }
+  }
 
   function addTag(field: "concorrentes" | "canaisVenda" | "valores", value: string) {
     const trimmed = value.trim();
@@ -2832,14 +2889,31 @@ export default function Configuracoes() {
 
           {/* ── Contexto para a IA ───────────────────────────────────────── */}
           <div className="rounded-xl border bg-card p-6 space-y-6">
-            <div>
-              <h2 className="font-semibold text-base flex items-center gap-2">
-                <Brain className="h-4 w-4 text-primary" />
-                Contexto para a IA
-              </h2>
-              <p className="text-sm text-muted-foreground mt-0.5">
-                Informações que a IA usa para entender seu negócio — mantenha sempre atualizado ao mudar endereço, abrir filiais ou atualizar produtos.
-              </p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="font-semibold text-base flex items-center gap-2">
+                  <Brain className="h-4 w-4 text-primary" />
+                  Contexto para a IA
+                </h2>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  Informações que a IA usa para entender seu negócio — mantenha sempre atualizado ao mudar endereço, abrir filiais ou atualizar produtos.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-2 shrink-0"
+                disabled={!!aiContextGenerating}
+                onClick={() => generateBusinessContextWithAi("all")}
+              >
+                {aiContextGenerating === "all" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Wand2 className="h-4 w-4" />
+                )}
+                Revisar com IA
+              </Button>
             </div>
 
             {profileQuery.isLoading ? (
@@ -2852,7 +2926,13 @@ export default function Configuracoes() {
                 {/* Diferenciais + Público-alvo */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium">Diferenciais competitivos</label>
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="text-sm font-medium">Diferenciais competitivos</label>
+                      <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1" disabled={!!aiContextGenerating} onClick={() => generateBusinessContextWithAi("diferenciais")}>
+                        {aiContextGenerating === "diferenciais" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
+                        IA
+                      </Button>
+                    </div>
                     <Textarea
                       placeholder="O que nos torna únicos frente à concorrência..."
                       rows={3}
@@ -2861,7 +2941,13 @@ export default function Configuracoes() {
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium">Público-alvo</label>
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="text-sm font-medium">Público-alvo</label>
+                      <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1" disabled={!!aiContextGenerating} onClick={() => generateBusinessContextWithAi("publicoAlvo")}>
+                        {aiContextGenerating === "publicoAlvo" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
+                        IA
+                      </Button>
+                    </div>
                     <Textarea
                       placeholder="Perfil dos clientes ideais, segmentos atendidos..."
                       rows={3}
@@ -2964,7 +3050,13 @@ export default function Configuracoes() {
                 {/* Missão + Visão */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium">Missão</label>
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="text-sm font-medium">Missão</label>
+                      <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1" disabled={!!aiContextGenerating} onClick={() => generateBusinessContextWithAi("missao")}>
+                        {aiContextGenerating === "missao" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
+                        IA
+                      </Button>
+                    </div>
                     <Textarea
                       placeholder="Por que a empresa existe..."
                       rows={2}
@@ -2973,7 +3065,13 @@ export default function Configuracoes() {
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium">Visão</label>
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="text-sm font-medium">Visão</label>
+                      <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1" disabled={!!aiContextGenerating} onClick={() => generateBusinessContextWithAi("visao")}>
+                        {aiContextGenerating === "visao" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
+                        IA
+                      </Button>
+                    </div>
                     <Textarea
                       placeholder="Onde quer chegar no futuro..."
                       rows={2}
@@ -2985,7 +3083,13 @@ export default function Configuracoes() {
 
                 {/* Valores */}
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Valores da empresa</label>
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="text-sm font-medium">Valores da empresa</label>
+                    <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1" disabled={!!aiContextGenerating} onClick={() => generateBusinessContextWithAi("valores")}>
+                      {aiContextGenerating === "valores" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
+                      IA
+                    </Button>
+                  </div>
                   <div className="flex gap-2">
                     <Input
                       placeholder="Ex: Honestidade, Inovação, Agilidade..."
