@@ -1334,9 +1334,9 @@ export default function ConceptModel3D({
           )}
           <div className="flex overflow-hidden rounded-lg border border-slate-200 bg-white" title="Qualidade da visualização 3D">
             {([
-              ["fast", "Rápido"],
-              ["realistic", "Realista"],
-              ["ultra", "Ultra"],
+              ["fast", "Leve"],
+              ["realistic", "Detalhada"],
+              ["ultra", "Alta"],
             ] as const).map(([value, label]) => (
               <button
                 key={value}
@@ -2421,3 +2421,4 @@ export default function ConceptModel3D({
     </div>
   );
 }
+
