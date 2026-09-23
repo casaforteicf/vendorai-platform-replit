@@ -395,13 +395,7 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
 
   const effectiveBucket = findVerticalBucket(effectiveVertical);
   const effectiveSecondaryBucket = findVerticalBucket(effectiveVerticalSecundaria);
-  const isConstrucao = effectiveBucket === "construcao" || effectiveSecondaryBucket === "construcao";
-  const isVarejo = effectiveBucket === "varejo" || effectiveSecondaryBucket === "varejo";
-  const isSupermercado = effectiveBucket === "supermercado" || effectiveSecondaryBucket === "supermercado";
-  const isSalao = effectiveBucket === "salao" || effectiveSecondaryBucket === "salao" || effectiveVertical === "Pet Shop (Varejo)";
   const isPetShop = effectiveVertical === "Pet Shop (Varejo)";
-  const isClinica = effectiveBucket === "clinica" || effectiveSecondaryBucket === "clinica";
-  const isFarmacia = effectiveBucket === "farmacia" || effectiveSecondaryBucket === "farmacia";
 
   const allNavItems = [
     { name: "Dashboard",     href: "/",             icon: LayoutDashboard, sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "suporte", "entrega", "administrador", "outro"] as UserFunction[] },
