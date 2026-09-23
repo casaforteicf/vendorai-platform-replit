@@ -15,6 +15,7 @@ import { resolveTenantCreativePlan } from "../services/creativeDesignBridge";
 import { buildGenerationDesignQa } from "../services/contentCreativeRuntime";
 import { enrichSiteGeneratorServicesContext, inspectGeneratedSite, resolveSiteCreativeRuntime } from "../services/siteCreativeRuntime";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
+import { ensureTenantProposalBuilderTemplate } from "../lib/proposal-builder.js";
 
 const router: IRouter = Router();
 
@@ -46,7 +47,23 @@ router.post("/business-profiles", async (req, res) => {
         .set({ vertical: parsed.data.vertical, segmento: parsed.data.vertical, updatedAt: new Date() })
         .where(eq(tenantsTable.id, parsed.data.tenantId));
     }
-    res.status(201).json(profile);
+    try {
+      await ensureTenantProposalBuilderTemplate({
+        tenantId: parsed.data.tenantId,
+        log: req.log,
+      });
+    } catch (err) {
+      req.log.warn(
+        { err, tenantId: parsed.data.tenantId },
+        "Business profile: failed to prepare proposal builder template",
+      );
+    }
+    const [profileWithProposalModel] = await db
+      .select()
+      .from(businessProfilesTable)
+      .where(eq(businessProfilesTable.id, profile.id))
+      .limit(1);
+    res.status(201).json(profileWithProposalModel ?? profile);
   } catch (err: unknown) {
     if (isUniqueViolation(err)) {
       res.status(409).json({ error: "Tenant already has a business profile" });
@@ -584,7 +601,11 @@ router.patch("/business-profiles/:id", async (req, res) => {
     return;
   }
 
-  const [existing] = await db.select({ id: businessProfilesTable.id, tenantId: businessProfilesTable.tenantId })
+  const [existing] = await db.select({
+    id: businessProfilesTable.id,
+    tenantId: businessProfilesTable.tenantId,
+    discoveryData: businessProfilesTable.discoveryData,
+  })
     .from(businessProfilesTable).where(eq(businessProfilesTable.id, String(req.params.id)));
   if (!existing) {
     res.status(404).json({ error: "Business profile not found" });
@@ -595,14 +616,55 @@ router.patch("/business-profiles/:id", async (req, res) => {
     return;
   }
 
+  const existingDiscovery = (existing.discoveryData ?? {}) as Record<string, unknown>;
+  const incomingDiscovery = parsed.data.discoveryData && typeof parsed.data.discoveryData === "object"
+    ? parsed.data.discoveryData as Record<string, unknown>
+    : undefined;
+  const protectedDiscovery = incomingDiscovery
+    ? {
+        ...incomingDiscovery,
+        ...(incomingDiscovery.proposalBuilderTemplates === undefined && existingDiscovery.proposalBuilderTemplates !== undefined
+          ? { proposalBuilderTemplates: existingDiscovery.proposalBuilderTemplates }
+          : {}),
+        ...(incomingDiscovery.activeProposalBuilderTemplateId === undefined && existingDiscovery.activeProposalBuilderTemplateId !== undefined
+          ? { activeProposalBuilderTemplateId: existingDiscovery.activeProposalBuilderTemplateId }
+          : {}),
+      }
+    : undefined;
+
   const [profile] = await db.update(businessProfilesTable)
-    .set({ ...parsed.data, updatedAt: new Date() }).where(eq(businessProfilesTable.id, existing.id)).returning();
+    .set({
+      ...parsed.data,
+      ...(protectedDiscovery ? { discoveryData: protectedDiscovery } : {}),
+      updatedAt: new Date(),
+    })
+    .where(eq(businessProfilesTable.id, existing.id))
+    .returning();
   if (parsed.data.vertical !== undefined) {
     await db.update(tenantsTable)
       .set({ vertical: parsed.data.vertical || null, segmento: parsed.data.vertical || null, updatedAt: new Date() })
       .where(eq(tenantsTable.id, existing.tenantId));
   }
-  res.json(profile);
+
+  try {
+    await ensureTenantProposalBuilderTemplate({
+      tenantId: existing.tenantId,
+      log: req.log,
+    });
+  } catch (err) {
+    // O Kit da Marca/perfil continua sendo salvo mesmo se a IA do modelo falhar.
+    req.log.warn(
+      { err, tenantId: existing.tenantId },
+      "Business profile: failed to prepare proposal builder template",
+    );
+  }
+
+  const [profileWithProposalModel] = await db
+    .select()
+    .from(businessProfilesTable)
+    .where(eq(businessProfilesTable.id, existing.id))
+    .limit(1);
+  res.json(profileWithProposalModel ?? profile);
 });
 
 router.delete("/business-profiles/:id", async (req, res) => {
