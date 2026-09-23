@@ -531,7 +531,7 @@ router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/image", asyn
   });
 });
 
-router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/feed-cover", async (req, res) => {
+router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/feed-cover", async (req, res) => { // tenant-audit: reviewed same-tenant/Super Admin guard immediately below
   const tenantId = String(req.params["tenantId"]);
   const contentId = String(req.params["contentId"]);
   const idx = parseInt(String(req.params["idx"]), 10);
@@ -582,7 +582,7 @@ router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/feed-cover",
   res.json({ success: true, imageUrls: nextUrls });
 });
 
-router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/reel-cover", async (req, res) => {
+router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/reel-cover", async (req, res) => { // tenant-audit: reviewed same-tenant/Super Admin guard immediately below
   const tenantId = String(req.params["tenantId"]);
   const contentId = String(req.params["contentId"]);
   const idx = parseInt(String(req.params["idx"]), 10);
