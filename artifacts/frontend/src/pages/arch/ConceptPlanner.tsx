@@ -3347,6 +3347,34 @@ export default function ConceptPlanner() {
           ...Object.values(roomFloorMaterials),
           ...Object.values(spaceFloorMaterials),
         ],
+        geometryLock: {
+          frontSide: sitePlacement.frontSide,
+          exteriorWalls: modelLevels.flatMap((level) => [
+            ...(level.walls ?? []).filter((wall) => wall.exterior).map((wall) => ({
+              floor: level.floor,
+              x1: wall.x1,
+              y1: wall.y1,
+              x2: wall.x2,
+              y2: wall.y2,
+            })),
+            ...(level.customWalls ?? []).map((wall) => ({
+              floor: level.floor,
+              x1: wall.x1,
+              y1: wall.y1,
+              x2: wall.x2,
+              y2: wall.y2,
+            })),
+          ]),
+          openings: modelLevels.flatMap((level) => (level.openings ?? []).map((opening) => ({
+            floor: level.floor,
+            type: opening.type,
+            x: opening.x,
+            y: opening.y,
+            width: opening.width,
+            height: opening.height,
+            sillHeight: opening.sillHeight,
+          }))),
+        },
       });
 
       const openingSummary = safeCustomOpenings
