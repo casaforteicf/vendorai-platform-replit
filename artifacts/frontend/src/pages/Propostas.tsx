@@ -2917,6 +2917,23 @@ function newFreeItem(): FreeItem {
       : { statusExecucao: "pendente" };
   }
 
+  function proposalStageBudgetTotal(etapaId: string) {
+    return cartLines
+      .filter((line) => line.etapaId === etapaId)
+      .reduce((sum, line) => {
+        const produto = line.produtoId
+          ? activeCatalog.find((item) => item.id === line.produtoId)
+          : undefined;
+        const composicao = line.composicaoId
+          ? composicoes.find((item) => item.id === line.composicaoId)
+          : undefined;
+        const unitValue = line.precoUnitarioOverride !== undefined
+          ? Number(line.precoUnitarioOverride)
+          : Number(produto?.precoBase ?? composicao?.custoTotal ?? 0);
+        return sum + Number(line.quantidade ?? 0) * unitValue;
+      }, 0);
+  }
+
   function proposalPresentationConfig() {
     return {
       modoPadrao: presentationDefaultMode,
@@ -3920,6 +3937,7 @@ function newFreeItem(): FreeItem {
                     <div className="space-y-2">
                       {orcamentoEtapas.map((etapa, index) => {
                         const schedule = proposalStageSchedule[etapa.id] ?? {};
+                        const stageBudgetValue = proposalStageBudgetTotal(etapa.id);
                         return (
                           <div
                             key={`schedule-${etapa.id}`}
@@ -3927,6 +3945,7 @@ function newFreeItem(): FreeItem {
                           >
                             <div>
                               <p className="text-sm font-medium">Etapa {index + 1} · {etapa.nome || `Etapa ${index + 1}`}</p>
+                              <p className="text-[11px] font-medium text-foreground/80">Valor da etapa no orçamento: {fmtCurrency(stageBudgetValue)}</p>
                               <p className="text-[11px] text-muted-foreground">Pode acontecer em paralelo com outras etapas. Se não informar a data, usa a previsão geral.</p>
                             </div>
                             <div className="space-y-1">
