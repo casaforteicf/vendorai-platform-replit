@@ -181,6 +181,7 @@ import contentAutopilotRouter from "./content_autopilot";
 import { siteBlogPublicRouter, siteBlogAdminRouter } from "./site_blog";
 import { authenticate, enforceAccessScope, blockPartnerFromCRM, blockSuspendedTenants, enforceModulePermission, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 import { enforceAccessLicense } from "../middlewares/accessLicense";
+import { enforceCommercialProductAccess } from "../middlewares/commercialProductAccess";
 import { configurationBusinessProfileAudit } from "../middlewares/configurationBusinessProfileAudit";
 import { eq } from "drizzle-orm";
 import { db, tenantsTable } from "@workspace/db";
@@ -285,6 +286,9 @@ router.use(async (req, res, next) => {
 // License endpoints must remain reachable in read-only mode.
 router.use(accessLicenseRouter);
 router.use(enforceAccessLicense);
+
+// Commercial entitlement gate: purchased products define which paid capabilities are reachable.
+router.use(enforceCommercialProductAccess);
 
 // Explicit module allowlist configured in Equipe. This protects the API too,
 // so typing a hidden URL directly does not bypass the permission.
