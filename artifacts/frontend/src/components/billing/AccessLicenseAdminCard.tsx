@@ -113,6 +113,8 @@ type TenantExpansionOpportunity = {
   reason: string;
   evidence: Record<string, unknown>;
   monthlyPrice: number | null;
+  recommendationId?: string;
+  status?: "identified" | "presented" | "accepted" | "rejected" | "contracted" | "expired";
 };
 
 type TenantExpansionResponse = {
