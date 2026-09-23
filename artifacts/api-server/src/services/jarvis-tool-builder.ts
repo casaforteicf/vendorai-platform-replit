@@ -252,6 +252,117 @@ Formato:
 }
 
 
+
+function runtimeAccessPolicy(definition: unknown): { publicEnabled: boolean; authEnabled: boolean } {
+  const root = asObject(definition);
+  const settings = asObject(root.settings);
+  const runtimeAccess = asObject(settings.runtimeAccess);
+  const publicPolicy = asObject(runtimeAccess.public);
+  const authPolicy = asObject(runtimeAccess.auth);
+  return {
+    publicEnabled: publicPolicy.enabled === true,
+    authEnabled: authPolicy.enabled === true,
+  };
+}
+
+export async function syncTenantLeadCaptureToolsFromExistingCapabilities(tenantId: string): Promise<{
+  discovered: number;
+  createdOrUpdated: number;
+  skipped: number;
+}> {
+  const apps = await db
+    .select({
+      id: appInstancesTable.id,
+      name: appInstancesTable.name,
+      status: appInstancesTable.status,
+    })
+    .from(appInstancesTable)
+    .where(and(
+      eq(appInstancesTable.tenantId, tenantId),
+      eq(appInstancesTable.status, "published"),
+    ));
+
+  let createdOrUpdated = 0;
+  let skipped = 0;
+
+  for (const app of apps) {
+    const [version] = await db
+      .select({
+        id: appInstanceVersionsTable.id,
+        definition: appInstanceVersionsTable.definition,
+        publishedAt: appInstanceVersionsTable.publishedAt,
+      })
+      .from(appInstanceVersionsTable)
+      .where(and(
+        eq(appInstanceVersionsTable.tenantId, tenantId),
+        eq(appInstanceVersionsTable.appInstanceId, app.id),
+        eq(appInstanceVersionsTable.status, "published"),
+      ))
+      .orderBy(desc(appInstanceVersionsTable.publishedAt), desc(appInstanceVersionsTable.version))
+      .limit(1);
+
+    if (!version) {
+      skipped += 1;
+      continue;
+    }
+
+    const access = runtimeAccessPolicy(version.definition);
+    if (!access.publicEnabled && !access.authEnabled) {
+      skipped += 1;
+      continue;
+    }
+
+    const toolKey = `app.instance.${app.id}`;
+    const runtimeUrl = `/apps/${app.id}`;
+    const [existing] = await db
+      .select({ metadata: tenantLeadCaptureToolsTable.metadata })
+      .from(tenantLeadCaptureToolsTable)
+      .where(and(
+        eq(tenantLeadCaptureToolsTable.tenantId, tenantId),
+        eq(tenantLeadCaptureToolsTable.toolKey, toolKey),
+      ))
+      .limit(1);
+
+    const metadata = {
+      ...asObject(existing?.metadata),
+      source: "auto_discovered_app_builder",
+      appInstanceId: app.id,
+      appVersionId: version.id,
+      runtimeUrl,
+      publicRuntime: access.publicEnabled,
+      authenticatedRuntime: access.authEnabled,
+      autoDiscovered: true,
+      lastSyncedAt: new Date().toISOString(),
+    };
+
+    await db
+      .insert(tenantLeadCaptureToolsTable)
+      .values({
+        tenantId,
+        toolKey,
+        toolLabel: app.name,
+        deliveryType: "app",
+        enabled: true,
+        freePolicy: { mode: "session", limit: 1 },
+        metadata,
+        updatedAt: new Date(),
+      } as any)
+      .onConflictDoUpdate({
+        target: [tenantLeadCaptureToolsTable.tenantId, tenantLeadCaptureToolsTable.toolKey],
+        set: {
+          toolLabel: app.name,
+          deliveryType: "app",
+          metadata,
+          updatedAt: new Date(),
+        },
+      });
+
+    createdOrUpdated += 1;
+  }
+
+  return { discovered: apps.length, createdOrUpdated, skipped };
+}
+
 export type ExistingLeadCaptureToolRecommendation = {
   toolKey: string;
   toolLabel: string;
