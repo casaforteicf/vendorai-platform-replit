@@ -467,6 +467,9 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
     { name: "Minhas Entregas", href: "/fretes/motorista",       icon: Navigation,  sellerHidden: false, section: "fretes",   fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
     { name: "Estoque",       href: "/veiculos/estoque",         icon: Car,         sellerHidden: false, section: "veiculos", fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
     { name: "Test-Drives",   href: "/veiculos/test-drives",     icon: Calendar,    sellerHidden: false, section: "veiculos", fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
+    { name: "Estoque",       href: "/estoque",                  icon: Package,     sellerHidden: false, section: "distribuidora", fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
+    { name: "Pedidos",       href: "/food/pedidos",             icon: UtensilsCrossed, sellerHidden: false, section: "food_service", fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
+    { name: "Cardápio",      href: "/food/cardapio",            icon: BookOpen,    sellerHidden: false, section: "food_service", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Clínica",       href: "/clinic",                   icon: Stethoscope, sellerHidden: false, section: "clinica",      fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Agenda",        href: "/clinic/agenda",            icon: Calendar,    sellerHidden: false, section: "clinica",      fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
     { name: "Médicos",       href: "/clinic/medicos",           icon: User2,       sellerHidden: false, section: "clinica",      fn: ["administrador", "outro"] as UserFunction[] },
@@ -528,19 +531,57 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
   };
   const scoutVerticalLabel = effectiveBucket ? BUCKET_SCOUT_LABEL[effectiveBucket] : undefined;
 
+  // Política única de experiência por vertical:
+  // - "crm", inteligência e administração são capacidades compartilhadas;
+  // - cada seção operacional pertence explicitamente a um bucket;
+  // - uma vertical nunca herda a operação de outra vertical por acidente;
+  // - Arqdor é tratado fora desta lista e só aparece quando arqdorVisible=true.
+  const VERTICAL_OPERATION_SECTIONS: Record<Exclude<VerticalBucket, "core" | "arquitetura" | "seguros">, string[]> = {
+    construcao: ["construcao"],
+    varejo: ["varejo"],
+    supermercado: ["supermercado"],
+    salao: ["salao"],
+    clinica: ["clinica"],
+    farmacia: ["farmacia"],
+    imoveis: ["imoveis"],
+    fretes: ["fretes"],
+    veiculos: ["veiculos"],
+    servicos: ["servicos"],
+    distribuidora: ["distribuidora"],
+    food_service: ["food_service"],
+  };
+  const activeBuckets = new Set<VerticalBucket>(
+    [
+      effectiveBucket,
+      effectiveSecondaryBucket,
+      ...(effectiveVertical === "Pet Shop (Varejo)" ? (["salao"] as VerticalBucket[]) : []),
+    ].filter((bucket): bucket is VerticalBucket => Boolean(bucket))
+  );
+  const sectionBuckets = new Map<string, VerticalBucket[]>();
+  Object.entries(VERTICAL_OPERATION_SECTIONS).forEach(([bucket, sections]) => {
+    sections.forEach((section) => {
+      const list = sectionBuckets.get(section) ?? [];
+      list.push(bucket as VerticalBucket);
+      sectionBuckets.set(section, list);
+    });
+  });
+
   function isVisible(item: typeof allNavItems[0]) {
     if (isStartPlan && !START_PLAN_HREFS.has(item.href)) return false;
     if (activeVerticalAllowlist && !activeVerticalAllowlist.has(item.href)) return false;
     if (disabledHrefs.has(item.href)) return false;
     if (isSeller && item.sellerHidden) return false;
-    const knownSections = ["crm", "construcao", "varejo", "supermercado", "arch", "salao", "clinica", "farmacia", "inteligencia", "hub"];
+    const knownSections = [
+      "crm", "construcao", "varejo", "supermercado", "salao", "clinica", "farmacia",
+      "imoveis", "fretes", "veiculos", "servicos", "distribuidora", "food_service",
+      "inteligencia", "hub", "arch",
+    ];
     if (!knownSections.includes(item.section)) return false;
-    if (item.section === "construcao" && !isConstrucao) return false;
-    if (item.section === "varejo" && !isVarejo) return false;
-    if (item.section === "supermercado" && !isSupermercado) return false;
-    if (item.section === "salao" && !isSalao) return false;
-    if (item.section === "clinica" && !isClinica) return false;
-    if (item.section === "farmacia" && !isFarmacia) return false;
+    // /arch/* nunca é montado como seção genérica: o Arqdor entra uma única
+    // vez, pelo shell principal, somente nas verticais elegíveis.
+    if (item.section === "arch") return false;
+    const allowedBuckets = sectionBuckets.get(item.section);
+    if (allowedBuckets && !allowedBuckets.some((bucket) => activeBuckets.has(bucket))) return false;
     const isAdmin = isSuperAdmin || isTenantAdmin;
     if (isAdmin) return true;
     return userFunction ? item.fn.includes(userFunction) : true;
@@ -572,12 +613,8 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
     : [];
 
   const crmNav = navigation.filter((i) => i.section === "crm");
-  const construcaoNav = navigation.filter((i) => i.section === "construcao");
-  const varejoNav = navigation.filter((i) => i.section === "varejo");
-  const supermercadoNav = navigation.filter((i) => i.section === "supermercado");
-  const salaoNav       = navigation.filter((i) => i.section === "salao");
-  const clinicaNav     = navigation.filter((i) => i.section === "clinica");
-  const farmaciaNav    = navigation.filter((i) => i.section === "farmacia");
+  const verticalOperationSectionNames = new Set(Object.values(VERTICAL_OPERATION_SECTIONS).flat());
+  const verticalNav = navigation.filter((i) => verticalOperationSectionNames.has(i.section));
   const inteligenciaNav= navigation.filter((i) => i.section === "inteligencia");
   const hubNav         = navigation.filter((i) => i.section === "hub");
 
@@ -714,12 +751,7 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
     const pracaAiNav = crmNav.filter((item) => pracaHrefs.has(item.href));
     const verticalOperationNav = [
       ...operationNav,
-      ...construcaoNav,
-      ...varejoNav,
-      ...supermercadoNav,
-      ...salaoNav.filter((item) => item.href !== "/beauty/agenda"),
-      ...clinicaNav.filter((item) => item.href !== "/clinic/agenda"),
-      ...farmaciaNav,
+      ...verticalNav.filter((item) => item.href !== "/beauty/agenda" && item.href !== "/clinic/agenda"),
     ].filter((item, index, items) => items.findIndex((candidate) => candidate.href === item.href) === index);
 
     // Praça.ai fica oculto para todos os tenants nesta fase. A infraestrutura
