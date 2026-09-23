@@ -817,6 +817,9 @@ export function renderProposalHtml(json: unknown, theme: {
   phone?: string | null;
   email?: string | null;
   instagram?: string | null;
+} | null, builder?: {
+  enabledModules?: string[] | null;
+  moduleOrder?: string[] | null;
 } | null): string {
   const d = json as Record<string, any>;
   const hero = d.hero || {};
@@ -828,6 +831,12 @@ export function renderProposalHtml(json: unknown, theme: {
   const modules = d.modules || {};
   const cta = d.cta || {};
   const meta = d.meta || {};
+
+  const builderModuleSet = Array.isArray(builder?.enabledModules)
+    ? new Set(builder!.enabledModules!.filter((value): value is string => typeof value === "string"))
+    : null;
+  const builderModuleEnabled = (key: string, fallback = true) =>
+    builderModuleSet ? builderModuleSet.has(key) : fallback;
 
   const navName = tenantName || "Proposta Comercial";
   const navLogoUrl = tenantLogoUrl || null;
@@ -1283,7 +1292,7 @@ export function renderProposalHtml(json: unknown, theme: {
   </div>
 </div>
 
-<!-- ══ PAGE 2: SITUAÇÃO + PROBLEMA ══ -->
+${builderModuleEnabled("apresentacao_empresa") || builderModuleEnabled("resumo_executivo") ? `<!-- ══ PAGE 2: SITUAÇÃO + PROBLEMA ══ -->
 <div class="page">
   ${docHdr(`Proposta para ${clientName || meta.clientName || "Cliente"}`)}
 
@@ -1301,9 +1310,11 @@ export function renderProposalHtml(json: unknown, theme: {
   <p class="lead-text">${problem.subtitle || ""}</p>
   <div class="cards">${problemCards}</div>
   ${docFooter()}
-</div>
+</div>` : ""}
 
-<!-- ══ PAGE 3: IMPLICAÇÃO + VALOR ══ -->
+
+
+${builderModuleEnabled("resumo_executivo") ? `<!-- ══ PAGE 3: IMPLICAÇÃO + VALOR ══ -->
 <div class="page">
   ${docHdr(`Proposta para ${clientName || meta.clientName || "Cliente"}`)}
 
@@ -1321,9 +1332,11 @@ export function renderProposalHtml(json: unknown, theme: {
   ${value.close ? `<p class="need-close">${value.close}</p>` : ""}
   ${renderPageVisual(2, `Imagem de valor para ${clientName || meta.clientName || "cliente"}`)}
   ${docFooter()}
-</div>
+</div>` : ""}
 
-<!-- ══ PAGE 4: SOLUÇÃO + MÓDULOS + CTA ══ -->
+
+
+${builderModuleEnabled("diferenciais") || builderModuleEnabled("aceite") ? `<!-- ══ PAGE 4: SOLUÇÃO + MÓDULOS + CTA ══ -->
 <div class="page">
   ${docHdr(`Proposta para ${clientName || meta.clientName || "Cliente"}`)}
 
@@ -1340,6 +1353,7 @@ export function renderProposalHtml(json: unknown, theme: {
   <p class="lead-text">${modules.subtitle || ""}</p>
   <div class="mods">${mods}</div>
 
+  ${builderModuleEnabled("aceite") ? `
   <hr class="sec-divider" />
 
   <div class="cta-box">
@@ -1363,11 +1377,13 @@ export function renderProposalHtml(json: unknown, theme: {
       }
       return items.length > 0 ? `<div class="contact-strip">${items.join("")}</div>` : "";
     })()}
-  </div>
+  </div>` : ""}
   ${docFooter()}
 </div>
 
-${orcamento ? (() => {
+` : ""}
+
+${orcamento && (builderModuleEnabled("etapas_orcamento") || builderModuleEnabled("tabela_itens") || builderModuleEnabled("escopo") || builderModuleEnabled("condicoes_comerciais") || builderModuleEnabled("cronograma") || builderModuleEnabled("fisico_financeiro")) ? (() => {
   const fmtBRL = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
   const FORMA_LABELS: Record<string, string> = {
     pix: "PIX", boleto: "Boleto", cartao_credito: "Cartão de Crédito",
@@ -1380,13 +1396,18 @@ ${orcamento ? (() => {
   const presentation = normalizeProposalPresentation(orcamento.apresentacao);
   const groupedItems = groupProposalPresentationItems(itensValidos);
   const presentationBlocks = groupedItems.map((group) => {
-    const mode = resolveProposalPresentationMode(presentation, group.id);
+    const configuredMode = resolveProposalPresentationMode(presentation, group.id);
+    const mode = builderModuleEnabled("tabela_itens")
+      ? configuredMode
+      : "resumo_etapa";
     const etapaTotal = group.itens.reduce((sum, item) => sum + item.quantidade * item.valorUnitario, 0);
     const stageTitle = group.hasStageHeader
       ? `<div class="orc-stage-title"><span><strong>Etapa ${group.ordem}</strong> · ${group.nome}</span><strong>${fmtBRL(etapaTotal)}</strong></div>`
       : "";
-    const scopeTable = renderProposalScopeTable(group.itens);
-    const stageVisual = group.hasStageHeader
+    const scopeTable = builderModuleEnabled("escopo")
+      ? renderProposalScopeTable(group.itens)
+      : "";
+    const stageVisual = group.hasStageHeader && builderModuleEnabled("imagem_por_etapa")
       ? renderProposalStageImage(presentation, group.id, group.nome)
       : "";
 
@@ -1434,8 +1455,8 @@ ${orcamento ? (() => {
     orcamento.formaPagamento ? `<div class="orc-meta-item"><span>Forma de Pagamento</span><span>${FORMA_LABELS[orcamento.formaPagamento] || orcamento.formaPagamento}</span></div>` : "",
     orcamento.condPagamento ? `<div class="orc-meta-item"><span>Condição de Pagamento</span><span>${escapeProposalText(orcamento.condPagamento)}</span></div>` : "",
     orcamento.prazoEntrega ? `<div class="orc-meta-item"><span>Prazo / Entrega</span><span>${escapeProposalText(orcamento.prazoEntrega)}</span></div>` : "",
-    orcamento.validadeAte ? `<div class="orc-meta-item"><span>Validade da Proposta</span><span>${proposalFormatDate(orcamento.validadeAte)}</span></div>` : "",
-    presentation.previsaoInicio ? `<div class="orc-meta-item"><span>Previsão de Início</span><span>${proposalFormatDate(presentation.previsaoInicio)}</span></div>` : "",
+    builderModuleEnabled("validade_inicio") && orcamento.validadeAte ? `<div class="orc-meta-item"><span>Validade da Proposta</span><span>${proposalFormatDate(orcamento.validadeAte)}</span></div>` : "",
+    builderModuleEnabled("validade_inicio") && presentation.previsaoInicio ? `<div class="orc-meta-item"><span>Previsão de Início</span><span>${proposalFormatDate(presentation.previsaoInicio)}</span></div>` : "",
   ].filter(Boolean).join("");
 
   const paymentRows = (orcamento.paymentCompositions ?? [])
@@ -1471,7 +1492,9 @@ ${orcamento ? (() => {
     <td>${row.marcoPagamento ? escapeProposalText(row.marcoPagamento) : "Conforme condição comercial"}${row.observacao ? `<span class="schedule-note">${escapeProposalText(row.observacao)}</span>` : ""}</td>
   </tr>`).join("");
 
-  const schedulePage = scheduleRows.length && (presentation.mostrarCronogramaExecucao || presentation.mostrarFisicoFinanceiro)
+  const showExecutionSchedule = builderModuleEnabled("cronograma") && presentation.mostrarCronogramaExecucao;
+  const showPhysicalFinancial = builderModuleEnabled("fisico_financeiro") && presentation.mostrarFisicoFinanceiro;
+  const schedulePage = scheduleRows.length && (showExecutionSchedule || showPhysicalFinancial)
     ? `
 <div class="page">
   ${docHdr(`Cronograma · ${clientName || meta.clientName || "Cliente"}`)}
@@ -1481,7 +1504,7 @@ ${orcamento ? (() => {
     ${presentation.previsaoInicio ? `<strong>Previsão de início:</strong> ${proposalFormatDate(presentation.previsaoInicio)}.` : "<strong>Previsão de início:</strong> a definir."}
     Cada etapa possui sua própria data de início e duração. Etapas podem ocorrer em paralelo e as cobranças do mesmo mês são somadas automaticamente.
   </div>
-  ${presentation.mostrarCronogramaExecucao ? `
+  ${showExecutionSchedule ? `
     <div class="commercial-section">
       <div class="commercial-title">Cronograma de execução</div>
       <table class="schedule-table">
@@ -1489,7 +1512,7 @@ ${orcamento ? (() => {
         <tbody>${executionScheduleRows}</tbody>
       </table>
     </div>` : ""}
-  ${presentation.mostrarFisicoFinanceiro ? `
+  ${showPhysicalFinancial ? `
     <div class="commercial-section">
       <div class="commercial-title">Cronograma físico-financeiro</div>
       <table class="schedule-table">
@@ -1517,15 +1540,15 @@ ${orcamento ? (() => {
       <span class="orc-total-value">${fmtBRL(totalExibido)}</span>
     </div>
   </div>` : ""}` : ""}
-  ${metaItems ? `<div class="commercial-section"><div class="commercial-title">Condições comerciais</div><div class="orc-meta">${metaItems}</div></div>` : ""}
-  ${paymentCompositionHtml}
-  ${orcamento.observacoes ? `<div class="orc-obs">${escapeProposalText(orcamento.observacoes)}</div>` : ""}
+  ${builderModuleEnabled("condicoes_comerciais") && metaItems ? `<div class="commercial-section"><div class="commercial-title">Condições comerciais</div><div class="orc-meta">${metaItems}</div></div>` : ""}
+  ${builderModuleEnabled("condicoes_comerciais") ? paymentCompositionHtml : ""}
+  ${builderModuleEnabled("condicoes_comerciais") && orcamento.observacoes ? `<div class="orc-obs">${escapeProposalText(orcamento.observacoes)}</div>` : ""}
   ${docFooter()}
 </div>
 ${schedulePage}`;
 })() : ""}
 
-${visualImages.length > (orcamento ? 5 : 4) ? visualImages.slice(orcamento ? 5 : 4).map((url, idx) => `
+${builderModuleEnabled("anexos") && visualImages.length > (orcamento ? 5 : 4) ? visualImages.slice(orcamento ? 5 : 4).map((url, idx) => `
 <div class="page">
   ${docHdr(`Visualizações · ${clientName || meta.clientName || "Cliente"}`)}
   <div class="sec-label">Visualização adicional${visualImages.length > (orcamento ? 6 : 5) ? ` · ${idx + 1}` : ""}</div>
@@ -2102,7 +2125,7 @@ ${scheduleRows.length && (presentation.mostrarCronogramaExecucao || presentation
     Cada etapa possui sua própria data de início e duração. Etapas simultâneas aparecem na mesma coluna mensal e suas cobranças são somadas no período.
   </div>
 
-  ${presentation.mostrarCronogramaExecucao ? `
+  ${showExecutionSchedule ? `
     <div class="commercial-section">
       <div class="commercial-title">Cronograma de execução</div>
       <table class="schedule-table">
@@ -2111,7 +2134,7 @@ ${scheduleRows.length && (presentation.mostrarCronogramaExecucao || presentation
       </table>
     </div>` : ""}
 
-  ${presentation.mostrarFisicoFinanceiro ? `
+  ${showPhysicalFinancial ? `
     <div class="commercial-section">
       <div class="commercial-title">Cronograma físico-financeiro</div>
       <table class="schedule-table">
