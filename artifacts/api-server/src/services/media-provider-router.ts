@@ -27,7 +27,8 @@ export function mediaProviderAvailable(provider: MediaProvider, workload?: Media
   if (provider === "google-vertex") {
     const project = has("GOOGLE_CLOUD_PROJECT");
     const output = has("VENDORAI_VERTEX_VIDEO_GCS_URI");
-    return project && output;
+    const auth = has("GOOGLE_SERVICE_ACCOUNT_JSON") || has("GOOGLE_APPLICATION_CREDENTIALS");
+    return project && output && auth;
   }
   if (provider === "vendorai-worker") {
     if (workload === "audio") return has("VENDORAI_MEDIA_WORKER_URL");

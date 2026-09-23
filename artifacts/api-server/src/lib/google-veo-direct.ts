@@ -4,8 +4,32 @@ import type { Logger } from "pino";
 
 type VeoModel = "veo-3.1-fast-generate-001" | "veo-3.1-generate-001";
 
-const auth = new GoogleAuth({ scopes: ["https://www.googleapis.com/auth/cloud-platform"] });
-const storage = new Storage();
+function serviceAccountCredentials(): Record<string, unknown> | undefined {
+  const raw = process.env["GOOGLE_SERVICE_ACCOUNT_JSON"]?.trim();
+  if (!raw) return undefined;
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON");
+  }
+}
+
+function googleAuth() {
+  const credentials = serviceAccountCredentials();
+  return new GoogleAuth({
+    scopes: ["https://www.googleapis.com/auth/cloud-platform"],
+    ...(credentials ? { credentials } : {}),
+  });
+}
+
+function googleStorage() {
+  const credentials = serviceAccountCredentials();
+  const projectId = process.env["GOOGLE_CLOUD_PROJECT"]?.trim();
+  return new Storage({
+    ...(projectId ? { projectId } : {}),
+    ...(credentials ? { credentials: credentials as any } : {}),
+  });
+}
 
 function config() {
   const project = process.env["GOOGLE_CLOUD_PROJECT"]?.trim();
@@ -17,7 +41,7 @@ function config() {
 }
 
 async function accessToken(): Promise<string> {
-  const client = await auth.getClient();
+  const client = await googleAuth().getClient();
   const token = await client.getAccessToken();
   if (!token.token) throw new Error("Google Vertex access token unavailable");
   return token.token;
@@ -127,7 +151,7 @@ export async function callGoogleVertexVeo(params: {
   const uri = firstVideoUri(final);
   if (!uri) throw new Error("Google Vertex Veo completed without a GCS video URI");
   const { bucket, path } = parseGsUri(uri);
-  const [buffer] = await storage.bucket(bucket).file(path).download();
+  const [buffer] = await googleStorage().bucket(bucket).file(path).download();
   if (!buffer.length) throw new Error("Google Vertex Veo generated an empty video");
 
   return {
