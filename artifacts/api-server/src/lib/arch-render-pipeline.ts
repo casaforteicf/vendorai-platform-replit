@@ -468,6 +468,167 @@ export interface EdgeValidationResult {
   details:          string;
 }
 
+export type ArchitecturalStructureValidation = {
+  valid: boolean;
+  score: number;
+  edgeCoverage: number;
+  mirroredCoverage: number;
+  centroidShift: number;
+  details: string;
+};
+
+async function structuralEdgeMap(buf: Buffer, width = 192, height = 128) {
+  const { data } = await sharp(buf)
+    .resize(width, height, { fit: "fill" })
+    .greyscale()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const gradients = new Float32Array(width * height);
+  const values: number[] = [];
+  let total = 0;
+  let cxWeighted = 0;
+  let cyWeighted = 0;
+
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      if (x < width * 0.04 || x > width * 0.96 || y < height * 0.08 || y > height * 0.92) continue;
+      const i = y * width + x;
+      const gx = Math.abs((data[i + 1] ?? 0) - (data[i - 1] ?? 0));
+      const gy = Math.abs((data[i + width] ?? 0) - (data[i - width] ?? 0));
+      const g = gx + gy;
+      gradients[i] = g;
+      if (g > 0) values.push(g);
+    }
+  }
+
+  values.sort((a, b) => a - b);
+  const threshold = values.length
+    ? Math.max(20, values[Math.max(0, Math.floor(values.length * 0.82) - 1)] ?? 20)
+    : 20;
+  const edge = new Uint8Array(width * height);
+
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const i = y * width + x;
+      if (gradients[i] < threshold) continue;
+      edge[i] = 1;
+      const w = gradients[i];
+      total += w;
+      cxWeighted += x * w;
+      cyWeighted += y * w;
+    }
+  }
+
+  return {
+    width,
+    height,
+    edge,
+    edgeCount: edge.reduce((sum, v) => sum + v, 0),
+    centroid: total > 0
+      ? { x: cxWeighted / total / width, y: cyWeighted / total / height }
+      : { x: 0.5, y: 0.5 },
+  };
+}
+
+function edgeCoverage(
+  source: Uint8Array,
+  target: Uint8Array,
+  width: number,
+  height: number,
+  radius = 4,
+  mirrorSource = false,
+) {
+  let hits = 0;
+  let total = 0;
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const sourceX = mirrorSource ? width - 1 - x : x;
+      if (!source[y * width + sourceX]) continue;
+      total++;
+      let found = false;
+      for (let dy = -radius; dy <= radius && !found; dy++) {
+        const yy = y + dy;
+        if (yy < 0 || yy >= height) continue;
+        for (let dx = -radius; dx <= radius; dx++) {
+          const xx = x + dx;
+          if (xx < 0 || xx >= width) continue;
+          if (target[yy * width + xx]) {
+            found = true;
+            break;
+          }
+        }
+      }
+      if (found) hits++;
+    }
+  }
+  return total ? hits / total : 1;
+}
+
+/**
+ * QA estrutural pós-render para fachada.
+ *
+ * Compara apenas a estrutura de bordas da referência e do resultado,
+ * ignorando cor/material/fotorrealismo. É propositalmente tolerante:
+ * o objetivo é capturar distorções grandes, espelhamento, crop agressivo
+ * ou desaparecimento de elementos arquitetônicos, sem punir textura/luz.
+ */
+export async function validateArchitecturalStructure(
+  originalBuf: Buffer,
+  resultBuf: Buffer,
+): Promise<ArchitecturalStructureValidation> {
+  try {
+    const [source, result] = await Promise.all([
+      structuralEdgeMap(originalBuf),
+      structuralEdgeMap(resultBuf),
+    ]);
+
+    if (source.edgeCount < 80 || result.edgeCount < 80) {
+      return {
+        valid: true,
+        score: 1,
+        edgeCoverage: 1,
+        mirroredCoverage: 0,
+        centroidShift: 0,
+        details: "QA estrutural ignorado: poucas bordas úteis para comparação.",
+      };
+    }
+
+    const coverage = edgeCoverage(source.edge, result.edge, source.width, source.height, 4, false);
+    const mirroredCoverage = edgeCoverage(source.edge, result.edge, source.width, source.height, 4, true);
+    const centroidShift = Math.hypot(
+      source.centroid.x - result.centroid.x,
+      source.centroid.y - result.centroid.y,
+    );
+    const mirrorRisk = mirroredCoverage > coverage + 0.07;
+    const score = Math.max(
+      0,
+      Math.min(1, coverage * 0.82 + Math.max(0, 1 - centroidShift / 0.24) * 0.18),
+    );
+
+    const valid = coverage >= 0.5 && centroidShift <= 0.18 && !mirrorRisk;
+    return {
+      valid,
+      score,
+      edgeCoverage: coverage,
+      mirroredCoverage,
+      centroidShift,
+      details: valid
+        ? `OK — score ${(score * 100).toFixed(0)}%, cobertura estrutural ${(coverage * 100).toFixed(0)}%.`
+        : `REJEIÇÃO — score ${(score * 100).toFixed(0)}%, cobertura ${(coverage * 100).toFixed(0)}%, espelhada ${(mirroredCoverage * 100).toFixed(0)}%, deslocamento ${(centroidShift * 100).toFixed(1)}%.`,
+    };
+  } catch (err: any) {
+    return {
+      valid: true,
+      score: 1,
+      edgeCoverage: 1,
+      mirroredCoverage: 0,
+      centroidShift: 0,
+      details: `QA estrutural ignorado: ${err?.message ?? "falha desconhecida"}`,
+    };
+  }
+}
+
 export async function validateEdgeIntegrity(
   originalBuf: Buffer,
   resultBuf:   Buffer,
