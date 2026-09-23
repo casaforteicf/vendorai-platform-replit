@@ -178,7 +178,8 @@ function fmtCurrency(val: string | number | null | undefined) {
 function roundBudgetNumber(value: number | string | null | undefined): number {
   const n = Number(value ?? 0);
   if (!Number.isFinite(n)) return 0;
-  return Math.round((n + Number.EPSILON) * 100) / 100;
+  const roundedUp = Math.ceil((n - 1e-9) * 100) / 100;
+  return Number(roundedUp.toFixed(2));
 }
 
 // ── Catalog Modal (CRUD) ──────────────────────────────────────────────────────
@@ -2110,8 +2111,29 @@ function newFreeItem(): FreeItem {
       },
     });
 
-    const budgetDraftKey = `vendorai:orcamento-draft:v1:${tenantId}:${lockedLeadId ?? "novo"}`;
+    const budgetDraftKey = `vendorai:orcamento-draft:v2:${tenantId}:${lockedLeadId ?? "novo"}`;
+    const legacyBudgetDraftKey = `vendorai:orcamento-draft:v1:${tenantId}:${lockedLeadId ?? "novo"}`;
     const [draftHydrated, setDraftHydrated] = useState(false);
+    const [quickAddEtapaId, setQuickAddEtapaId] = useState(DEFAULT_ETAPA_ID);
+
+    function persistBudgetDraft() {
+      if (editingProposta) return;
+      localStorage.setItem(budgetDraftKey, JSON.stringify({
+        form: form.getValues(),
+        mode,
+        selectedTemplateSlug,
+        constructionSystem,
+        orcamentoEtapas,
+        cartLines,
+        freeItems,
+      }));
+    }
+
+    function clearBudgetDraft() {
+      localStorage.removeItem(budgetDraftKey);
+      localStorage.removeItem(legacyBudgetDraftKey);
+      sessionStorage.removeItem(legacyBudgetDraftKey);
+    }
 
     useEffect(() => {
       if (!open) {
@@ -2124,8 +2146,15 @@ function newFreeItem(): FreeItem {
       }
 
       try {
-        const raw = sessionStorage.getItem(budgetDraftKey);
+        const raw = localStorage.getItem(budgetDraftKey)
+          ?? localStorage.getItem(legacyBudgetDraftKey)
+          ?? sessionStorage.getItem(legacyBudgetDraftKey);
         if (raw) {
+          if (!localStorage.getItem(budgetDraftKey)) {
+            localStorage.setItem(budgetDraftKey, raw);
+            localStorage.removeItem(legacyBudgetDraftKey);
+            sessionStorage.removeItem(legacyBudgetDraftKey);
+          }
           const draft = JSON.parse(raw) as {
             form?: Partial<PropostaFormValues>;
             mode?: "catalogo" | "livre" | "template" | "importar";
@@ -2145,7 +2174,7 @@ function newFreeItem(): FreeItem {
           standardBudgetAppliedRef.current = true;
         }
       } catch {
-        sessionStorage.removeItem(budgetDraftKey);
+        clearBudgetDraft();
       } finally {
         setDraftHydrated(true);
       }
@@ -2154,20 +2183,8 @@ function newFreeItem(): FreeItem {
     useEffect(() => {
       if (!open || editingProposta || !draftHydrated) return;
 
-      const persistDraft = () => {
-        sessionStorage.setItem(budgetDraftKey, JSON.stringify({
-          form: form.getValues(),
-          mode,
-          selectedTemplateSlug,
-          constructionSystem,
-          orcamentoEtapas,
-          cartLines,
-          freeItems,
-        }));
-      };
-
-      persistDraft();
-      const subscription = form.watch(() => persistDraft());
+      persistBudgetDraft();
+      const subscription = form.watch(() => persistBudgetDraft());
       return () => subscription.unsubscribe();
     }, [
       open,
@@ -2347,6 +2364,12 @@ function newFreeItem(): FreeItem {
     }, [open, initialProductIds.join(",")]);
 
     useEffect(() => {
+      if (!orcamentoEtapas.some((etapa) => etapa.id === quickAddEtapaId)) {
+        setQuickAddEtapaId(orcamentoEtapas[0]?.id ?? DEFAULT_ETAPA_ID);
+      }
+    }, [orcamentoEtapas, quickAddEtapaId]);
+
+    useEffect(() => {
       if (!open || editingProposta || initialProductIds.length > 0 || standardBudgetAppliedRef.current || composicoes.length === 0) return;
       standardBudgetAppliedRef.current = true;
       setMode("catalogo");
@@ -2408,7 +2431,19 @@ function newFreeItem(): FreeItem {
       }
     }
 
-    function handleClose() {
+    function saveDraftAndContinue() {
+    if (editingProposta) {
+      void form.handleSubmit((vals) => onSubmit(vals, true))();
+      return;
+    }
+    persistBudgetDraft();
+    toast({
+      title: "Orçamento salvo",
+      description: "Você pode continuar exatamente deste ponto, mesmo após fechar e reabrir esta tela.",
+    });
+  }
+
+  function handleClose() {
       form.reset({
         leadId: lockedLeadId || "",
         titulo: lockedLeadId ? defaultTitle : "",
@@ -2431,7 +2466,6 @@ function newFreeItem(): FreeItem {
     setCartError("");
     setShowAllByStage({});
     standardBudgetAppliedRef.current = false;
-    if (!editingProposta) sessionStorage.removeItem(budgetDraftKey);
     setDraftHydrated(false);
     setFreeItems([newFreeItem()]);
     setFreeError("");
@@ -2464,12 +2498,13 @@ function newFreeItem(): FreeItem {
   }
 
   function addEtapaDraft() {
+    const id = `etapa-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     setOrcamentoEtapas((prev) => {
       const ordem = prev.length;
-      const id = `etapa-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
       const nome = ETAPAS_OBRA_SUGERIDAS[ordem] ?? `Etapa ${ordem + 1}`;
       return [...prev, { id, nome }];
     });
+    setQuickAddEtapaId(id);
   }
 
   function addMissingStandardIcfItems() {
@@ -2671,21 +2706,23 @@ function newFreeItem(): FreeItem {
     }
   }
 
-  function saveExistingBudget(data: Record<string, unknown>) {
+  function saveExistingBudget(data: Record<string, unknown>, stayOpen = false) {
     if (!editingProposta) return false;
 
     updateExistingMut.mutate(
       { id: editingProposta.id, data: data as any },
       {
         onSuccess: async () => {
-          toast({ title: "Orçamento atualizado com sucesso" });
+          toast({
+            title: stayOpen ? "Orçamento salvo — continue editando" : "Orçamento atualizado com sucesso",
+          });
           await qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId) });
           await qc.invalidateQueries({ queryKey: getGetPropostaQueryKey(editingProposta.id) });
           if (lockedLeadId) {
             await qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId, { leadId: lockedLeadId }) });
           }
           onSuccess?.();
-          handleClose();
+          if (!stayOpen) handleClose();
         },
         onError: (error: any) => toast({
           title: "Erro ao atualizar orçamento",
@@ -2720,7 +2757,7 @@ function newFreeItem(): FreeItem {
   }
 
   // ── submit ────────────────────────────────────────────────────────────────
-  function onSubmit(vals: PropostaFormValues) {
+  function onSubmit(vals: PropostaFormValues, stayOpen = false) {
     const recFields = vals.recorrente
       ? {
           recorrente: true,
@@ -2757,6 +2794,7 @@ function newFreeItem(): FreeItem {
               { onSuccess: () => qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }) }
             );
             onSuccess?.();
+            clearBudgetDraft();
             handleClose();
           },
           onError: () => toast({ title: "Erro ao importar orçamento", variant: "destructive" }),
@@ -2832,7 +2870,7 @@ function newFreeItem(): FreeItem {
               }))
             : undefined,
           skipAsaasBilling: skipAsaas,
-        });
+        }, stayOpen);
         return;
       }
 
@@ -2881,6 +2919,7 @@ function newFreeItem(): FreeItem {
               { onSuccess: () => qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }) }
             );
             onSuccess?.();
+            clearBudgetDraft();
             handleClose();
           },
           onError: () => toast({ title: "Erro ao criar orçamento", variant: "destructive" }),
@@ -2938,7 +2977,7 @@ function newFreeItem(): FreeItem {
               }))
             : undefined,
           skipAsaasBilling: skipAsaas2,
-        });
+        }, stayOpen);
         return;
       }
 
@@ -2957,6 +2996,7 @@ function newFreeItem(): FreeItem {
               { onSuccess: () => qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }) }
             );
             onSuccess?.();
+            clearBudgetDraft();
             handleClose();
           },
           onError: () => toast({ title: "Erro ao criar proposta", variant: "destructive" }),
@@ -2989,6 +3029,7 @@ function newFreeItem(): FreeItem {
             { onSuccess: () => qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }) }
           );
           onSuccess?.();
+          clearBudgetDraft();
           handleClose();
         },
         onError: () => toast({ title: "Erro ao criar orçamento do template", variant: "destructive" }),
@@ -3003,6 +3044,14 @@ function newFreeItem(): FreeItem {
       <DialogContent
         data-vendorai-refresh-protected="true"
         className="max-w-[96vw] xl:max-w-[1600px] max-h-[95vh] overflow-y-auto"
+        onPointerDownOutside={(event) => event.preventDefault()}
+        onInteractOutside={(event) => event.preventDefault()}
+        onEscapeKeyDown={(event) => {
+          event.preventDefault();
+          if (document.activeElement instanceof HTMLElement) {
+            document.activeElement.blur();
+          }
+        }}
       >
         <DialogHeader>
           <DialogTitle>{editingProposta ? "Editar Orçamento" : "Novo Orçamento"}</DialogTitle>
@@ -3010,7 +3059,7 @@ function newFreeItem(): FreeItem {
 
         <Form {...form}>
           <form
-            onSubmit={form.handleSubmit(mode === "template" ? onSubmitTemplate : onSubmit)}
+            onSubmit={form.handleSubmit(mode === "template" ? onSubmitTemplate : (vals) => onSubmit(vals, false))}
             onKeyDown={(event) => {
               if (event.key === "Enter" && event.target instanceof HTMLInputElement) {
                 event.preventDefault();
@@ -3182,6 +3231,32 @@ function newFreeItem(): FreeItem {
             {/* ── CATÁLOGO + COMPOSIÇÕES POR ETAPA ────────────────────────── */}
             {mode === "catalogo" && (
               <div className="space-y-4">
+                <div className="sticky top-0 z-20 -mx-1 flex flex-wrap items-center gap-2 rounded-lg border bg-background/95 p-2 shadow-sm backdrop-blur">
+                  <span className="text-xs font-medium text-muted-foreground">Adicionar em</span>
+                  <Select value={quickAddEtapaId} onValueChange={setQuickAddEtapaId}>
+                    <SelectTrigger className="h-8 w-[220px]">
+                      <SelectValue placeholder="Selecione a etapa" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {orcamentoEtapas.map((etapa, index) => (
+                        <SelectItem key={etapa.id} value={etapa.id}>
+                          Etapa {index + 1} · {etapa.nome || `Etapa ${index + 1}`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button type="button" variant="outline" size="sm" onClick={() => addCatLine("produto", quickAddEtapaId)}>
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Novo produto
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => addCatLine("composicao", quickAddEtapaId)}>
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Nova composição
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={addEtapaDraft}>
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Nova etapa
+                  </Button>
+                  <span className="ml-auto text-[11px] text-muted-foreground">Rascunho salvo automaticamente</span>
+                </div>
+
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold">Etapas do Orçamento</p>
@@ -3197,9 +3272,6 @@ function newFreeItem(): FreeItem {
                         <Package className="h-3.5 w-3.5 mr-1" /> Completar pacote padrão ICF
                       </Button>
                     )}
-                    <Button type="button" variant="outline" size="sm" onClick={addEtapaDraft}>
-                      <Plus className="h-3.5 w-3.5 mr-1" /> Nova etapa
-                    </Button>
                   </div>
                 </div>
 
@@ -3292,11 +3364,11 @@ function newFreeItem(): FreeItem {
 
                         <div className="flex flex-wrap items-center justify-between gap-2 mt-2">
                           <div className="flex flex-wrap gap-2">
-                            <Button type="button" variant="outline" size="sm" onClick={() => addCatLine("produto", etapa.id)}>
-                              <Plus className="h-3.5 w-3.5 mr-1" /> Produto
+                            <Button type="button" variant="outline" size="sm" onClick={() => { setQuickAddEtapaId(etapa.id); addCatLine("produto", etapa.id); }}>
+                              <Plus className="h-3.5 w-3.5 mr-1" /> Novo produto
                             </Button>
-                            <Button type="button" variant="outline" size="sm" onClick={() => addCatLine("composicao", etapa.id)}>
-                              <Plus className="h-3.5 w-3.5 mr-1" /> Composição
+                            <Button type="button" variant="outline" size="sm" onClick={() => { setQuickAddEtapaId(etapa.id); addCatLine("composicao", etapa.id); }}>
+                              <Plus className="h-3.5 w-3.5 mr-1" /> Nova composição
                             </Button>
                           </div>
                           <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
@@ -3915,9 +3987,12 @@ function newFreeItem(): FreeItem {
               </FormItem>
             )} />
 
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" className="flex-1" onClick={handleClose}>Cancelar</Button>
-              <Button type="submit" className="flex-1" disabled={isPending}>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button type="button" variant="outline" className="sm:flex-1" onClick={handleClose}>Fechar</Button>
+              <Button type="button" variant="secondary" className="sm:flex-1" onClick={saveDraftAndContinue} disabled={isPending}>
+                Salvar e continuar
+              </Button>
+              <Button type="submit" className="sm:flex-1" disabled={isPending}>
                 {isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 {editingProposta ? "Salvar Orçamento" : "Criar Orçamento"}
               </Button>
