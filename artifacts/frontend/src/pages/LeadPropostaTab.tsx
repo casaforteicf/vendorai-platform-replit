@@ -623,7 +623,11 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
       const target = index + direction;
       if (target < 0 || target >= prev.length) return prev;
       const next = [...prev];
-      [next[index], next[target]] = [next[target], next[index]];
+      const current = next[index];
+      const swap = next[target];
+      if (!current || !swap) return prev;
+      next[index] = swap;
+      next[target] = current;
       return next;
     });
   }
