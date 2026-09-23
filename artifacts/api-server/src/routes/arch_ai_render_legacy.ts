@@ -37,6 +37,11 @@ import {
   bufferToDataUrl,
 } from "../lib/arch-render-pipeline.js";
 import sharp from "sharp";
+import {
+  buildArqdorFidelityBlock,
+  inferArqdorRenderPresets,
+  type ArqdorRenderPreset,
+} from "../lib/arqdor-render-prompts.js";
 
 export const archAiRenderRouter = Router();
 
@@ -73,6 +78,18 @@ const renderBodySchema = z.object({
   angulo:            z.string().optional(),
   mask_zones:        z.array(z.string()).optional().default([]),
   user_notes:        z.string().optional(),
+  render_presets: z.array(z.enum([
+    "facade_exterior_preserve",
+    "interior_layout_preserve",
+    "material_detail_enhancer",
+    "distortion_correction",
+    "camera_perspective_lock",
+    "joinery_precision",
+    "roof_openings_lock",
+    "lighting_realism",
+    "landscape_controlled",
+    "pool_water_fidelity",
+  ])).optional().default([]),
   // materiais para modo criar (compatibilidade com o fluxo existente)
   materials: z.array(z.object({
     zone: z.string(), materialName: z.string().optional(), promptFragment: z.string(),
@@ -120,7 +137,7 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
   const {
     project_id, concept_project_id, lead_id, original_image_url, mode,
     ambiente, estilo, iluminacao, angulo,
-    mask_zones, user_notes, materials, source, render_view,
+    mask_zones, user_notes, render_presets, materials, source, render_view,
   } = parsed.data;
 
   if (project_id && concept_project_id) {
@@ -164,8 +181,11 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
     originalImageUrl: original_image_url,
     source,
     renderView: render_view,
-    jobInput: durable ? { userNotes: user_notes, materials } : null,
-    prompt: durable ? buildPrompt({ mode, ambiente, estilo, iluminacao, angulo, maskZones: safeMaskZones, materials, userNotes: user_notes }) : undefined,
+    jobInput: durable ? { userNotes: user_notes, materials, renderPresets: render_presets, source, renderView: render_view } : null,
+    prompt: durable ? buildPrompt({
+      mode, ambiente, estilo, iluminacao, angulo, maskZones: safeMaskZones, materials,
+      userNotes: user_notes, renderPresets: render_presets, source, renderView: render_view,
+    }) : undefined,
     motor: durable ? "replicate-flux-kontext-pro" : undefined,
     status:           durable ? "queued" : "processando",
     versionTag:       mode === "preservar" ? "fiel_ao_original" : "conceito",
@@ -197,6 +217,7 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
     angulo,
     materials,
     userNotes:    user_notes,
+    renderPresets: render_presets,
     source,
     renderView: render_view,
     logger:       req.log,
@@ -518,7 +539,7 @@ const MAX_RETENTATIVAS = 2;
 export async function processRenderJob(params: RenderJobParams): Promise<void> {
   const {
     renderId, tenantId: tid, mode, originalUrl, maskZones, maskFileBase64, maskCoordinates,
-    ambiente, estilo, iluminacao, angulo, materials, userNotes, source, renderView,
+    ambiente, estilo, iluminacao, angulo, materials, userNotes, renderPresets, source, renderView,
     logger, retentativas,
   } = params;
 
@@ -542,7 +563,10 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
     logger?.info({ renderId, mode, width, height }, "arch/ai-render: iniciando job");
 
     // ── 2. Montar prompt ───────────────────────────────────────────────────
-    const prompt = buildPrompt({ mode, ambiente, estilo, iluminacao, angulo, maskZones, materials, userNotes });
+    const prompt = buildPrompt({
+      mode, ambiente, estilo, iluminacao, angulo, maskZones, materials, userNotes,
+      renderPresets, source, renderView,
+    });
 
     // ── 3. Execução por mode ───────────────────────────────────────────────
     let resultB64: string;
@@ -836,6 +860,9 @@ function buildPrompt(p: {
   maskZones:  string[];
   materials:  { zone: string; promptFragment: string }[];
   userNotes:  string | undefined;
+  renderPresets?: ArqdorRenderPreset[];
+  source?: string | null;
+  renderView?: string | null;
 }): string {
   if (p.mode === "preservar") {
     return buildKontextPrompt(p);
@@ -857,8 +884,26 @@ function buildKontextPrompt(p: {
   maskZones:  string[];
   materials:  { zone: string; promptFragment: string }[];
   userNotes:  string | undefined;
+  renderPresets?: ArqdorRenderPreset[];
+  source?: string | null;
+  renderView?: string | null;
 }): string {
-  if (p.ambiente === "fachada") {
+  const inferredPresets = inferArqdorRenderPresets({
+    ambiente: p.ambiente,
+    renderView: p.renderView,
+    source: p.source,
+    userNotes: p.userNotes,
+    explicit: p.renderPresets,
+  });
+  const fidelityBlock = buildArqdorFidelityBlock({
+    presets: inferredPresets,
+    negativeKind: inferredPresets.includes("material_detail_enhancer")
+      ? "material"
+      : inferredPresets.includes("facade_exterior_preserve")
+        ? "architecture"
+        : "interior",
+  });
+  if (p.ambiente === "fachada" || p.renderView === "exterior" || p.source === "facade") {
     const light = p.iluminacao === "night"
       ? "Night photograph with warm interior and facade lighting, realistic dark sky and readable materials. Do not turn night into daytime."
       : p.iluminacao === "sunset"
@@ -880,6 +925,7 @@ function buildKontextPrompt(p: {
       "Landscaping may improve realism but must never cover, replace or visually redefine architectural openings or facade edges.",
       "Never output vector art, SVG appearance, CAD shading, technical drawing, cartoon, illustration, clay render, flat blocks or bubble vegetation.",
       "FINAL SELF-CHECK: before finishing, verify that floor count, silhouette, roof line, garage, entrance and every visible opening still match the source reference.",
+      fidelityBlock,
     ].join("\n");
   }
   const ambienteLabel = p.ambiente ?? "interior room";
@@ -931,6 +977,7 @@ function buildKontextPrompt(p: {
     `Shot on a professional full-frame camera, 35mm lens, f/5.6, sharp focus throughout, high dynamic range, balanced bright exposure, ultra-high resolution detail, professional real estate and architectural photography quality, no noise, no blur, no visible artifacts, no underexposed or dark areas.`,
     ``,
     `Only change how the scene is rendered — realistic materials, realistic lighting and shadows, photographic depth of field — not what's in it, its layout, its colors, or any architectural element.`,
+    fidelityBlock,
   );
 
   return lines.join("\n");
@@ -976,6 +1023,18 @@ function buildCriarPrompt(p: {
   if (p.userNotes) {
     parts.push(`Additional notes: ${p.userNotes}`);
   }
+
+  const inferredPresets = inferArqdorRenderPresets({
+    ambiente: p.ambiente,
+    renderView: p.renderView,
+    source: p.source,
+    userNotes: p.userNotes,
+    explicit: p.renderPresets,
+  });
+  parts.push(buildArqdorFidelityBlock({
+    presets: inferredPresets,
+    negativeKind: inferredPresets.includes("material_detail_enhancer") ? "material" : inferredPresets.includes("facade_exterior_preserve") ? "architecture" : "interior",
+  }));
 
   parts.push(
     "Keep everything else in the image exactly as it is — do not change any other element, color, material, or lighting elsewhere in the scene.",
