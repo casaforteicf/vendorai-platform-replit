@@ -2622,6 +2622,10 @@ function newFreeItem(): FreeItem {
       setPresentationDefaultMode("completo");
       setPresentationStageModes({});
       setShowProposalGrandTotal(true);
+      setProposalStartDate("");
+      setProposalStageSchedule({});
+      setShowExecutionSchedule(true);
+      setShowPhysicalFinancial(true);
       standardBudgetAppliedRef.current = false;
       setDraftHydrated(false);
       setFreeItems([newFreeItem()]);
@@ -2949,14 +2953,26 @@ function newFreeItem(): FreeItem {
     if (mode === "importar") {
       if (!importValorTotal || importValorTotal <= 0) { setImportError("Informe o valor total do orçamento."); return; }
       setImportError("");
+      const paymentCompImport = vals.paymentCompositions?.filter((pc) => pc.forma && pc.valor > 0);
       createLivreMut.mutate(
         {
           data: {
             tenantId, leadId: vals.leadId, dealId: activeDealId, titulo: vals.titulo,
-            validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined,
+            validadeAte: vals.validadeAte || undefined,
+            observacoes: vals.observacoes || undefined,
+            formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined,
+            condPagamento: vals.condPagamento || undefined,
+            prazoEntrega: vals.prazoEntrega || undefined,
             itens: [{ nome: "Orçamento importado de outro sistema", quantidade: 1, valorUnitario: importValorTotal }],
             valorTotal: importValorTotal,
             apresentacao: proposalPresentationConfig(),
+            paymentCompositions: paymentCompImport?.length
+              ? paymentCompImport.map((pc) => ({
+                  forma: pc.forma as PaymentCompositionLineForma,
+                  valor: roundBudgetNumber(pc.valor),
+                  comprovanteUrl: pc.comprovanteUrl,
+                }))
+              : undefined,
             arquivoImportadoUrl: importArquivo?.url || undefined,
             arquivoImportadoNome: importArquivo?.nome || undefined,
           } as any,
@@ -3197,8 +3213,28 @@ function newFreeItem(): FreeItem {
       toast({ title: "Selecione um lead", variant: "destructive" });
       return;
     }
+    const paymentComp = vals.paymentCompositions?.filter((pc) => pc.forma && pc.valor > 0);
     createFromTemplateMut.mutate(
-      { tenantId, data: { templateSlug: selectedTemplateSlug, leadId, dealId: activeDealId } },
+      {
+        tenantId,
+        data: {
+          templateSlug: selectedTemplateSlug,
+          leadId,
+          dealId: activeDealId,
+          validadeAte: vals.validadeAte || undefined,
+          observacoes: vals.observacoes || undefined,
+          formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined,
+          condPagamento: vals.condPagamento || undefined,
+          prazoEntrega: vals.prazoEntrega || undefined,
+          paymentCompositions: paymentComp?.length
+            ? paymentComp.map((pc) => ({
+                forma: pc.forma as PaymentCompositionLineForma,
+                valor: roundBudgetNumber(pc.valor),
+                comprovanteUrl: pc.comprovanteUrl,
+              }))
+            : undefined,
+        } as any,
+      },
       {
         onSuccess: (proposta) => {
           toast({ title: "Orçamento criado a partir do template" });
