@@ -130,7 +130,7 @@ updated AS (
     unidade = CASE WHEN p.product_type = 'service' THEN 'servico' ELSE 'mes' END,
     recorrencia = p.recorrencia,
     ativo = true,
-    tags = ARRAY['catalogo-ferramentas', p.categoria]::jsonb,
+    tags = jsonb_build_array('catalogo-ferramentas', p.categoria),
     updated_at = now()
   FROM tool_products p
   WHERE c.sku = p.sku
@@ -156,7 +156,7 @@ SELECT
   p.recorrencia,
   true,
   false,
-  ARRAY['catalogo-ferramentas', p.categoria]::jsonb,
+  jsonb_build_array('catalogo-ferramentas', p.categoria),
   false,
   now(),
   now()
