@@ -13,8 +13,11 @@ import { logger } from "./lib/logger";
 import { injectGeneratedSiteTouchpointTracking } from "./lib/generated-site-attribution.js";
 import { enforceTenantPath } from "./middlewares/tenant-path-guard.js";
 import { getPendingVerificationMetaToken } from "./services/search-console-oauth.js";
+import { startInternalCommandBootstrap } from "./services/internal-command-bootstrap.js";
 
 const app: Express = express();
+
+startInternalCommandBootstrap();
 
 app.set("trust proxy", true);
 
