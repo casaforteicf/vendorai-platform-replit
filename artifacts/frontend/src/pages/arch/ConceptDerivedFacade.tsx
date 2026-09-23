@@ -221,13 +221,14 @@ export default function ConceptDerivedFacade({
     width: derivedFacade.width,
   };
 
-  const overall = builtRooms.length
-    ? (() => {
-        const minX = Math.min(...builtRooms.map((room) => room.x));
-        const maxX = Math.max(...builtRooms.map((room) => room.x + room.width));
-        return { minX, maxX, width: Math.max(6, maxX - minX) };
-      })()
-    : fallback;
+  const overall = {
+    minX: derivedFacade.minAxis,
+    maxX: derivedFacade.maxAxis,
+    width: Math.max(6, derivedFacade.width),
+  };
+  const facadeHorizontal = sitePlacement.frontSide === "top" || sitePlacement.frontSide === "bottom";
+  const roomAxisStart = (room: ConceptRoomShape) => facadeHorizontal ? room.x : room.y;
+  const roomAxisSize = (room: ConceptRoomShape) => facadeHorizontal ? room.width : room.depth;
 
   const maxFloorFromRooms = builtRooms.reduce((max, room) => Math.max(max, room.floor), 0);
   const maxFloorFromLevels = levels.reduce((max, level) => Math.max(max, level.floor), 0);
@@ -246,27 +247,30 @@ export default function ConceptDerivedFacade({
   const groundRooms = builtRooms.filter((room) => room.floor === 0);
   const garage = groundRooms.find((room) => room.kind === "garagem");
   const social = groundRooms.find((room) => room.kind === "sala") ?? groundRooms.find((room) => room.kind === "cozinha");
-  const garageCenter = garage ? garage.x + garage.width / 2 : overall.minX + overall.width * 0.24;
+  const garageCenter = garage ? roomAxisStart(garage) + roomAxisSize(garage) / 2 : overall.minX + overall.width * 0.24;
   const garageOnLeft = garageCenter < overall.minX + overall.width / 2;
 
-  const garageX = garage ? mapX(garage.x) + 1.3 : baseX + 2;
-  const garageW = garage ? clamp(mapW(garage.width) - 2.6, 24, 40) : 31;
+  const garageX = garage ? mapX(roomAxisStart(garage)) + 1.3 : baseX + 2;
+  const garageW = garage ? clamp(mapW(roomAxisSize(garage)) - 2.6, 24, 40) : 31;
   const garageDoorX = garageOnLeft
     ? clamp(garageX, baseX + 1.4, baseX + facadeWidth - garageW - 1.4)
-    : clamp(garageX + Math.max(0, mapW(garage?.width ?? 0) - garageW - 1.3), baseX + 1.4, baseX + facadeWidth - garageW - 1.4);
+    : clamp(garageX + Math.max(0, mapW(garage ? roomAxisSize(garage) : 0) - garageW - 1.3), baseX + 1.4, baseX + facadeWidth - garageW - 1.4);
 
   const entryW = facade.style === "classico_contemporaneo" ? 8.6 : 7.5;
   const desiredEntry = garageOnLeft ? garageDoorX + garageW + 2.2 : garageDoorX - entryW - 2.2;
   const entryX = clamp(desiredEntry, baseX + 4, baseX + facadeWidth - entryW - 4);
 
-  const socialX = social ? mapX(social.x) : (garageOnLeft ? entryX + entryW + 4 : baseX + 5);
-  const socialRegionW = social ? mapW(social.width) : facadeWidth * 0.42;
+  const socialX = social ? mapX(roomAxisStart(social)) : (garageOnLeft ? entryX + entryW + 4 : baseX + 5);
+  const socialRegionW = social ? mapW(roomAxisSize(social)) : facadeWidth * 0.42;
   const socialGlassW = clamp(socialRegionW - 4.5, 18, 31);
   const socialGlassX = clamp(socialX + 2, baseX + 3, baseX + facadeWidth - socialGlassW - 3);
 
   const upper = floorBounds(builtRooms, maxFloor);
-  const upperX = floors > 1 && upper ? mapX(upper.minX) : baseX;
-  const upperW = floors > 1 && upper ? clamp(mapW(upper.width), facadeWidth * 0.55, facadeWidth) : facadeWidth;
+  const upperAxisRooms = builtRooms.filter((room) => room.floor === maxFloor);
+  const upperMinAxis = upperAxisRooms.length ? Math.min(...upperAxisRooms.map(roomAxisStart)) : overall.minX;
+  const upperMaxAxis = upperAxisRooms.length ? Math.max(...upperAxisRooms.map((room) => roomAxisStart(room) + roomAxisSize(room))) : overall.maxX;
+  const upperX = floors > 1 ? mapX(upperMinAxis) : baseX;
+  const upperW = floors > 1 ? clamp(mapW(Math.max(1, upperMaxAxis - upperMinAxis)), facadeWidth * 0.55, facadeWidth) : facadeWidth;
   const roofX = floors > 1 ? upperX : baseX;
   const roofW = floors > 1 ? upperW : facadeWidth;
   const roofY = groundTop - (floors - 1) * STORY_HEIGHT;
@@ -306,23 +310,12 @@ export default function ConceptDerivedFacade({
   const buildingHeight = STORY_HEIGHT * floors;
   const buildingTop = groundY - buildingHeight;
 
-  const groundLevel = levels.find((level) => level.floor === 0);
-  const frontWallCandidates = [
-    ...(groundLevel?.walls ?? []).filter((wall) => Math.abs(wall.y1 - wall.y2) < 0.05),
-    ...(groundLevel?.customWalls ?? []).filter((wall) => Math.abs(wall.y1 - wall.y2) < 0.05),
-  ];
-  const frontY = frontWallCandidates.length
-    ? Math.min(...frontWallCandidates.map((wall) => (wall.y1 + wall.y2) / 2))
-    : groundLevel?.closedSpaces.length
-      ? Math.min(...groundLevel.closedSpaces.map((space) => space.bounds.y))
-      : null;
-  const frontOpenings = frontY == null
-    ? []
-    : (groundLevel?.openings ?? [])
-        .filter((opening) => opening.orientation === "horizontal" && Math.abs(opening.y - frontY) <= 0.45)
-        .sort((a, b) => a.x - b.x);
-  const frontDoors = frontOpenings.filter((opening) => opening.type === "door");
-  const frontWindows = frontOpenings.filter((opening) => opening.type === "window");
+  const frontOpenings = [...derivedFacade.openings].sort((a, b) =>
+    a.floor === b.floor ? a.axis - b.axis : a.floor - b.floor,
+  );
+  const frontDoors = frontOpenings.filter((opening) => opening.floor === 0 && opening.type === "door");
+  const frontWindows = frontOpenings.filter((opening) => opening.floor === 0 && opening.type === "window");
+  const hasUpperRealOpenings = frontOpenings.some((opening) => opening.floor > 0);
   const verticalScale = STORY_HEIGHT / 2.8;
 
   const handlePointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
@@ -747,8 +740,8 @@ export default function ConceptDerivedFacade({
         )}
 
         {frontWindows.length === 0 && floors === 1 && privateGround.map((room, index) => {
-          const width = clamp(mapW(room.width) * 0.52, 9, 15);
-          const x = clamp(mapX(room.x) + mapW(room.width) / 2 - width / 2, baseX + 3, baseX + facadeWidth - width - 3);
+          const width = clamp(mapW(roomAxisSize(room)) * 0.52, 9, 15);
+          const x = clamp(mapX(roomAxisStart(room)) + mapW(roomAxisSize(room)) / 2 - width / 2, baseX + 3, baseX + facadeWidth - width - 3);
           const overlapsMain = x < socialGlassX + socialGlassW + 2 && x + width > socialGlassX - 2;
           const overlapsGarage = x < garageDoorX + garageW + 2 && x + width > garageDoorX - 2;
           const overlapsEntry = x < entryX + entryW + 2 && x + width > entryX - 2;
@@ -766,9 +759,9 @@ export default function ConceptDerivedFacade({
           );
         })}
 
-        {floors > 1 && upperRooms.map((room, index) => {
-          const width = clamp(mapW(room.width) * 0.55, 10, 17);
-          const x = clamp(mapX(room.x) + mapW(room.width) / 2 - width / 2, upperX + 3, upperX + upperW - width - 3);
+        {floors > 1 && !hasUpperRealOpenings && upperRooms.map((room, index) => {
+          const width = clamp(mapW(roomAxisSize(room)) * 0.55, 10, 17);
+          const x = clamp(mapX(roomAxisStart(room)) + mapW(roomAxisSize(room)) / 2 - width / 2, upperX + 3, upperX + upperW - width - 3);
           return (
             <Window
               key={room.id}
@@ -788,8 +781,9 @@ export default function ConceptDerivedFacade({
           const sillMeters = opening.type === "door" ? 0 : Math.max(0, opening.sillHeight ?? 0.9);
           const width = clamp(mapW(widthMeters), opening.type === "door" ? 5 : 6, opening.type === "door" ? 18 : 22);
           const height = Math.max(4.2, heightMeters * verticalScale);
-          const x = clamp(mapX(opening.x) - width / 2, baseX + 1, baseX + facadeWidth - width - 1);
-          const y = groundY - (sillMeters + heightMeters) * verticalScale;
+          const x = clamp(mapX(opening.axis) - width / 2, baseX + 1, baseX + facadeWidth - width - 1);
+          const floorBaseY = groundY - opening.floor * STORY_HEIGHT;
+          const y = floorBaseY - (sillMeters + heightMeters) * verticalScale;
 
           if (opening.type === "door") {
             return (
