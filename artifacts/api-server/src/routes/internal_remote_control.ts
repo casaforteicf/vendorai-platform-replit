@@ -323,8 +323,8 @@ router.post("/internal/remote-control/media/video/generate", requireRemoteContro
   return res.status(result.duplicate ? 200 : 202).json(result);
 });
 
-router.get("/internal/remote-control/media/jobs/:tenantId/:jobId", requireRemoteControlKey, async (req, res) => {
-  const tenantId = String(req.params.tenantId);
+router.get("/internal/remote-control/media/jobs/:tenantId/:jobId", requireRemoteControlKey, async (req, res) => { // tenant-audit: reviewed internal-key guarded and DB query remains tenant-scoped
+  const tenantId = String(req.params.tenantId); // tenant-audit: reviewed internal-key guarded and DB query remains tenant-scoped
   const jobId = String(req.params.jobId);
   const job = await jobStatus(tenantId, jobId);
   if (!job) return res.status(404).json({ error: "job_not_found" });
