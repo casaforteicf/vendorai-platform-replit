@@ -617,6 +617,35 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
         .map((value: string) => value.trim())
     : [];
 
+  const proposalBuilderDiscoveryForImages = (ctx.discoveryData ?? {}) as Record<string, unknown>;
+  const proposalBuilderTemplatesForImages = Array.isArray(proposalBuilderDiscoveryForImages.proposalBuilderTemplates)
+    ? proposalBuilderDiscoveryForImages.proposalBuilderTemplates as Array<Record<string, unknown>>
+    : [];
+  const requestedBuilderTemplateIdForImages =
+    typeof req.body?.proposalBuilderTemplateId === "string"
+      ? req.body.proposalBuilderTemplateId
+      : null;
+  const activeBuilderTemplateIdForImages =
+    typeof proposalBuilderDiscoveryForImages.activeProposalBuilderTemplateId === "string"
+      ? proposalBuilderDiscoveryForImages.activeProposalBuilderTemplateId as string
+      : null;
+  const selectedBuilderTemplateForImages =
+    (requestedBuilderTemplateIdForImages
+      ? proposalBuilderTemplatesForImages.find((item) => item.id === requestedBuilderTemplateIdForImages)
+      : null)
+    ?? (activeBuilderTemplateIdForImages
+      ? proposalBuilderTemplatesForImages.find((item) => item.id === activeBuilderTemplateIdForImages)
+      : null)
+    ?? proposalBuilderTemplatesForImages.find((item) => item.isDefault === true)
+    ?? null;
+  const builderWantsStageImages = Boolean(
+    selectedBuilderTemplateForImages
+      && Array.isArray(selectedBuilderTemplateForImages.modules)
+      && (selectedBuilderTemplateForImages.modules as Array<Record<string, unknown>>).some(
+        (item) => item && item.enabled !== false && String(item.key) === "imagem_por_etapa",
+      ),
+  );
+
   // Toda proposta precisa ter base visual. A seleção manual tem prioridade e,
   // quando necessário, imagens dos produtos vinculados completam o mínimo.
   const bodyImagens = Array.from(new Set(requestedImages));
@@ -629,12 +658,6 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
     if (!bodyImagens.includes(imageUrl)) bodyImagens.push(imageUrl);
   }
 
-  if (bodyImagens.length < 2) {
-    res.status(400).json({
-      error: "A apresentação precisa de pelo menos 2 imagens. Importe imagens, selecione renders ou vincule produtos com imagem.",
-    });
-    return;
-  }
   const rawPresentation = req.body?.apresentacao;
   const presentationModes = new Set(["completo", "resumo_etapa", "preco_medio"]);
   const bodyPresentation = rawPresentation && typeof rawPresentation === "object"
@@ -761,7 +784,7 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
         mostrarFisicoFinanceiro?: boolean;
       };
 
-      const mergedPresentation = {
+      let mergedPresentation = {
         ...storedPresentation,
         ...(bodyPresentation?.modoPadrao ? { modoPadrao: bodyPresentation.modoPadrao } : {}),
         ...(bodyPresentation?.etapas ? {
@@ -784,6 +807,135 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
           ? { mostrarFisicoFinanceiro: bodyPresentation.mostrarFisicoFinanceiro }
           : {}),
       };
+
+      if (builderWantsStageImages) {
+        const itensOrcamento = orc.itens ?? [];
+        const hasStructuredStages = itensOrcamento.some(
+          (item) => item.etapaId || item.etapaNome || item.etapaOrdem,
+        );
+
+        if (hasStructuredStages) {
+          const stageImages: Record<string, string> = {
+            ...((storedPresentation.imagensEtapas && typeof storedPresentation.imagensEtapas === "object")
+              ? storedPresentation.imagensEtapas
+              : {}),
+          };
+
+          const groups = Array.from(
+            itensOrcamento.reduce((map, item, index) => {
+              const ordem = Number(item.etapaOrdem ?? index + 1);
+              const nome = String(item.etapaNome ?? `Etapa ${ordem}`);
+              const id = String(item.etapaId ?? `__stage_${ordem}_${nome}`);
+              const current = map.get(id) ?? {
+                id,
+                ordem,
+                nome,
+                itens: [] as typeof itensOrcamento,
+              };
+              current.itens.push(item);
+              map.set(id, current);
+              return map;
+            }, new Map<string, { id: string; ordem: number; nome: string; itens: typeof itensOrcamento }>()),
+          )
+            .map(([, group]) => group)
+            .sort((a, b) => a.ordem - b.ordem);
+
+          const missingGroups = groups.filter((group) => !stageImages[group.id]).slice(0, 12);
+          let generatedAny = false;
+
+          for (const group of missingGroups) {
+            const scope = group.itens
+              .slice(0, 10)
+              .map((item) => {
+                const desc = item.descricao
+                  ? String(item.descricao).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()
+                  : "";
+                return `- ${item.nome}${desc ? `: ${desc.slice(0, 180)}` : ""}`;
+              })
+              .join("\n");
+
+            const normalizedStageContext = `${group.nome} ${scope}`
+              .normalize("NFD")
+              .replace(/[\u0300-\u036f]/g, "")
+              .toLowerCase();
+
+            const technicalImageRule = /radier/.test(normalizedStageContext)
+              ? "REGRA TÉCNICA OBRIGATÓRIA: representar fundação em RADIER/laje de fundação, com base preparada, malhas/armaduras e passagens. NÃO mostrar baldrame, vigas elevadas de fundação ou solução diferente do radier."
+              : /(instalac|hidraul|eletric|pex|conduite|corrugad)/.test(normalizedStageContext)
+                ? "REGRA TÉCNICA OBRIGATÓRIA: destacar as instalações em execução, com tubos PEX quando previstos, mangueiras/conduítes corrugados, tubulações hidráulicas, caixas, shafts e passagens elétricas/hidrossanitárias visíveis. A instalação deve ser o assunto principal da foto, não uma fachada praticamente pronta."
+                : /icf|estrutura/.test(normalizedStageContext)
+                  ? "REGRA TÉCNICA OBRIGATÓRIA: mostrar claramente a estrutura correspondente ao escopo, incluindo painéis/blocos ICF, armações e concretagem quando estes itens estiverem previstos."
+                  : "";
+
+            const stagePrompt = [
+              "Fotografia documental hiper-realista de construção civil no Brasil, composição horizontal 3:2, aparência de fotografia profissional de obra real.",
+              `Representar visualmente a etapa "${group.nome}" de uma obra residencial de padrão alto, sem transformar a imagem em render conceitual e sem inventar elementos incompatíveis com a etapa.`,
+              "Mostrar somente o estado construtivo coerente com esta fase: materiais, sistemas, equipamentos e profissionais que normalmente estariam presentes neste momento da execução.",
+              "Trabalhadores com EPI adequado, canteiro organizado, luz natural realista, materiais com escala correta, geometria consistente, sem objetos deformados.",
+              scope ? `Escopo contratado desta etapa:\n${scope}` : "",
+              technicalImageRule,
+              "A imagem precisa representar o conteúdo REAL desta etapa do orçamento. Não introduza método construtivo, material ou serviço incompatível com o escopo informado.",
+              "A imagem é apenas representativa da etapa, não deve fingir ser foto do projeto real do cliente.",
+              "Sem textos, sem letras, sem placas legíveis, sem logotipos, sem marcas d'água, sem molduras e sem antes/depois.",
+            ].filter(Boolean).join("\n");
+
+            try {
+              const { urls } = await generateImage(tenantId, "image_generator", stagePrompt, {
+                model: "gpt-image-1",
+                size: "1536x1024",
+                n: 1,
+                log: req.log,
+              });
+              const providerUrl = urls[0];
+              if (!providerUrl) throw new Error("IA não retornou imagem");
+
+              const imageResponse = await fetch(providerUrl);
+              if (!imageResponse.ok) {
+                throw new Error(`Falha ao baixar imagem gerada (${imageResponse.status})`);
+              }
+
+              const buffer = Buffer.from(await imageResponse.arrayBuffer());
+              const contentType = imageResponse.headers.get("content-type") ?? "image/png";
+              const objectPath = await objectStorage.savePrivateBuffer(
+                buffer,
+                contentType,
+                `proposta-etapa-${orc.id}-${group.ordem}.png`,
+              );
+              stageImages[group.id] = `/api/storage${objectPath}`;
+              generatedAny = true;
+            } catch (err) {
+              req.log.warn(
+                { err, propostaId: orc.id, stageId: group.id },
+                "automatic proposal stage image generation failed (non-fatal)",
+              );
+            }
+          }
+
+          mergedPresentation = {
+            ...mergedPresentation,
+            imagensEtapas: stageImages,
+          };
+
+          if (generatedAny) {
+            await db
+              .update(propostasTable)
+              .set({
+                apresentacao: {
+                  ...(orc.apresentacao ?? {}),
+                  ...mergedPresentation,
+                  imagensEtapas: stageImages,
+                },
+                updatedAt: new Date(),
+              })
+              .where(eq(propostasTable.id, orc.id));
+          }
+
+          for (const imageUrl of Object.values(stageImages)) {
+            if (bodyImagens.length >= 2) break;
+            if (imageUrl && !bodyImagens.includes(imageUrl)) bodyImagens.push(imageUrl);
+          }
+        }
+      }
 
       orcamentoEmbed = {
         titulo: orc.titulo,
@@ -812,6 +964,15 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
         apresentacao: mergedPresentation,
       };
     }
+  }
+
+  if (bodyImagens.length < 2) {
+    res.status(400).json({
+      error: builderWantsStageImages && bodyPropostaId
+        ? "A IA tentou criar automaticamente as imagens das etapas, mas ainda não há imagens suficientes. Adicione uma imagem de capa ou tente gerar novamente."
+        : "A apresentação precisa de pelo menos 2 imagens. Importe imagens, selecione renders ou vincule produtos com imagem.",
+    });
+    return;
   }
 
   const builderDiscovery = (ctx.discoveryData ?? {}) as Record<string, unknown>;
