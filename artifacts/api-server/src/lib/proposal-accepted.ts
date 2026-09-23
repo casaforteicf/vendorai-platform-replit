@@ -424,7 +424,6 @@ async function syncAcceptedProposalToWorkBaseline(
     if (updated) obra = updated;
   }
 
-  const operationalStageBySource = new Map<string, string>();
   for (const stage of stages) {
     let [existingStage] = await db
       .select()
@@ -467,7 +466,6 @@ async function syncAcceptedProposalToWorkBaseline(
         .returning();
     }
 
-    if (existingStage) operationalStageBySource.set(stage.sourceId, existingStage.id);
   }
 
   const [existingBaseline] = await db
