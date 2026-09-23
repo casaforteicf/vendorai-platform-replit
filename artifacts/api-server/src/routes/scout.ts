@@ -71,6 +71,7 @@ function fallbackOpportunityExplanation(op: {
 // Somente Super Admin: não mistura a carteira do tenant com a relação comercial
 // entre VendorAI e o próprio tenant. O motor apenas recomenda; não libera acesso.
 router.get("/admin/tenants/:tenantId/scout/expansion", async (req, res) => {
+  // tenant-audit: reviewed cross-tenant expansion analysis is restricted to Super Admin by isSuperAdmin below
   const { tenantId } = req.params;
   if (!isSuperAdmin(req)) return res.status(403).json({ error: "Super admin only." });
   const analysis = await analyzeTenantExpansion(tenantId);
@@ -78,6 +79,7 @@ router.get("/admin/tenants/:tenantId/scout/expansion", async (req, res) => {
 });
 
 router.get("/admin/tenants/:tenantId/scout/expansion/history", async (req, res) => {
+  // tenant-audit: reviewed cross-tenant expansion history is restricted to Super Admin by isSuperAdmin below
   const { tenantId } = req.params;
   if (!isSuperAdmin(req)) return res.status(403).json({ error: "Super admin only." });
   const history = await getTenantExpansionHistory(tenantId);
@@ -85,6 +87,7 @@ router.get("/admin/tenants/:tenantId/scout/expansion/history", async (req, res) 
 });
 
 router.patch("/admin/tenants/:tenantId/scout/expansion/:recommendationId", async (req, res) => {
+  // tenant-audit: reviewed cross-tenant expansion update is restricted to Super Admin by isSuperAdmin below
   const { tenantId, recommendationId } = req.params;
   if (!isSuperAdmin(req)) return res.status(403).json({ error: "Super admin only." });
 
