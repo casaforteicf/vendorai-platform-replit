@@ -102,7 +102,7 @@ jobs:
           const fs = require("node:fs");
           const [file, origin] = process.argv.slice(2);
           let source = fs.readFileSync(file, "utf8");
-          const before = 'const RAILWAY_ORIGIN = "https://vendorai-platform-replit-production.up.railway.app";';
+          const before = 'const RAILWAY_ORIGIN = "https://workspaceapi-server-production-350d.up.railway.app";';
           const after = `const RAILWAY_ORIGIN = ${JSON.stringify(origin)};`;
           if (!source.includes(before)) throw new Error("Expected API proxy origin was not found");
           source = source.replace(before, after);
