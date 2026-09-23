@@ -66,6 +66,9 @@ export const obrasTable = pgTable("obras", {
   // Proposta contratada que originou a obra. Mantém o vínculo canônico sem
   // depender de nome/cliente e torna o provisionamento idempotente.
   propostaOrigemId: text("proposta_origem_id").unique(),
+  // Deal/lead permitem que revisões e aditivos aceitos encontrem a mesma obra.
+  dealOrigemId: text("deal_origem_id").unique(),
+  leadOrigemId: text("lead_origem_id"),
   clienteNome: text("cliente_nome"),
   clienteContato: text("cliente_contato"),
   endereco: text("endereco"),
