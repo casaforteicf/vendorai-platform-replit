@@ -161,105 +161,14 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const erpEntitled = tenantNavModules.some(
     (module) => module.moduleKey === "financeiro" && module.isEnabled === true,
   );
-  const pracaAiEntitled = tenantNavModules.some(
-    (module) => module.moduleKey === "praca_ai" && module.isEnabled === true,
-  );
+  // Praça.ai fica oculto para todos os tenants nesta fase. O Super Admin
+  // continua podendo acessar as rotas administrativas diretamente.
+  const isPureSuperAdmin = user?.platformRole === "super_admin" && !tenantOverride;
+  const pracaAiVisible = isPureSuperAdmin;
 
-  useEffect(() => {
-    const enforceArqdorTenantTool = () => {
-      // Mesmo cuidado do enforceArqdorContext: as mutações abaixo (remove,
-      // display=none, insertAdjacentElement) são observadas pelo próprio
-      // MutationObserver criado mais abaixo — sem desconectar antes de
-      // mexer no DOM, cada rodada podia disparar a si mesma de novo.
-      observer.disconnect();
-      const injected = Array.from(
-        document.querySelectorAll<HTMLAnchorElement>('a[data-arqdor-tool-entry="true"]'),
-      );
-
-      document.querySelectorAll<HTMLAnchorElement>('a[href="/arch"]').forEach((archLink) => {
-        if (archLink.dataset.arqdorToolEntry === "true") return;
-        const group = archLink.parentElement;
-        if (!group?.querySelector('a[href="/arch/projetos"]')) return;
-        group.style.display = "none";
-        group.dataset.arqdorLegacyGroupHidden = "true";
-      });
-
-      if (!arqdorVisible) {
-        injected.forEach((entry) => entry.remove());
-        observer.observe(document.body, { childList: true, subtree: true });
-        return;
-      }
-
-      const anchors = Array.from(
-        document.querySelectorAll<HTMLAnchorElement>('a[href="/trabalho"], a[href="/configuracoes"]'),
-      );
-      const processedContainers = new Set<HTMLElement>();
-
-      anchors.forEach((anchor) => {
-        const navContainer = anchor.parentElement;
-        if (!navContainer || processedContainers.has(navContainer)) return;
-
-        const workLink = navContainer.querySelector<HTMLAnchorElement>('a[href="/trabalho"]');
-        const settingsLink = navContainer.querySelector<HTMLAnchorElement>('a[href="/configuracoes"]');
-        const insertionAnchor = workLink ?? settingsLink;
-        if (!insertionAnchor) return;
-
-        processedContainers.add(navContainer);
-        let link = navContainer.querySelector<HTMLAnchorElement>('a[data-arqdor-tool-entry="true"]');
-        if (!link) {
-          link = document.createElement("a");
-          link.href = "/arch";
-          link.dataset.arqdorToolEntry = "true";
-          link.title = "Arqdor.ai — Projetos, arquitetura, interiores e obra";
-          link.setAttribute("aria-label", "Arqdor.ai");
-
-          const icon = document.createElement("span");
-          icon.setAttribute("aria-hidden", "true");
-          icon.className = "h-4 w-4 shrink-0 grid place-items-center text-[13px] font-bold";
-          icon.textContent = "A";
-
-          const label = document.createElement("span");
-          label.className = "flex-1";
-          label.textContent = "Arqdor.ai";
-
-          link.append(icon, label);
-          link.addEventListener("click", (event) => {
-            event.preventDefault();
-            setLocation("/arch");
-          });
-
-          if (workLink) workLink.insertAdjacentElement("afterend", link);
-          else settingsLink?.insertAdjacentElement("beforebegin", link);
-        }
-
-        const active = location === "/arch" || location.startsWith("/arch/");
-        link.className = [
-          "group relative flex min-h-[44px] items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200",
-          active
-            ? "bg-primary/10 text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.08)]"
-            : "text-muted-foreground hover:bg-sidebar-accent/80 hover:text-foreground",
-        ].join(" ");
-      });
-
-      observer.observe(document.body, { childList: true, subtree: true });
-    };
-
-    const observer = new MutationObserver(enforceArqdorTenantTool);
-    enforceArqdorTenantTool();
-
-    return () => {
-      observer.disconnect();
-      document
-        .querySelectorAll<HTMLAnchorElement>('a[data-arqdor-tool-entry="true"]')
-        .forEach((entry) => entry.remove());
-      document
-        .querySelectorAll<HTMLElement>('[data-arqdor-legacy-group-hidden="true"]')
-        .forEach((group) => {
-          group.style.display = "";
-          delete group.dataset.arqdorLegacyGroupHidden;
-        });
-    };
-  }, [arqdorVisible, location, setLocation]);
+  // Arqdor é renderizado declarativamente pelo SidebarLayoutLegacy. Isso evita
+  // injeção via MutationObserver e impede que o atalho apareça dentro de CRM
+  // ou Administração dependendo do link-âncora disponível.
 
   // Dentro do Arqdor, a navegação vira um workspace curto. CRM, agenda,
   // conversas, catálogo global, ERP e marketing continuam sendo os mesmos
@@ -472,11 +381,11 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!PRACA_AI_LINK_SELECTOR) return;
 
-    const enforcePracaAiEntitlement = () => {
+    const enforcePracaAiVisibility = () => {
       document.querySelectorAll<HTMLAnchorElement>(PRACA_AI_LINK_SELECTOR).forEach((link) => {
-        const nextDisplay = pracaAiEntitled ? "" : "none";
+        const nextDisplay = pracaAiVisible ? "" : "none";
         if (link.style.display !== nextDisplay) link.style.display = nextDisplay;
-        if (pracaAiEntitled) {
+        if (pracaAiVisible) {
           link.removeAttribute("aria-hidden");
           if (link.dataset.pracaAiLocked === "true") {
             link.removeAttribute("tabindex");
@@ -490,17 +399,17 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
       });
     };
 
-    enforcePracaAiEntitlement();
-    const observer = new MutationObserver(enforcePracaAiEntitlement);
+    enforcePracaAiVisibility();
+    const observer = new MutationObserver(enforcePracaAiVisibility);
     observer.observe(document.body, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, [pracaAiEntitled]);
+  }, [pracaAiVisible]);
 
   useEffect(() => {
-    if (!effectiveTenantId || tenantNavModulesLoading || pracaAiEntitled) return;
+    if (isPureSuperAdmin || !effectiveTenantId || tenantNavModulesLoading) return;
     const pathname = location.split("?")[0];
     if (PRACA_AI_PATHS.has(pathname)) setLocation("/");
-  }, [effectiveTenantId, location, pracaAiEntitled, setLocation, tenantNavModulesLoading]);
+  }, [effectiveTenantId, isPureSuperAdmin, location, setLocation, tenantNavModulesLoading]);
 
   useEffect(() => {
     if (!user) return;
@@ -680,9 +589,9 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     </>
   );
 
-  if (user?.platformRole === "super_admin" && !tenantOverride) {
+  if (isPureSuperAdmin) {
     return <SuperAdminSidebarLayout>{shellContent}</SuperAdminSidebarLayout>;
   }
 
-  return <SidebarLayoutLegacy>{shellContent}</SidebarLayoutLegacy>;
+  return <SidebarLayoutLegacy arqdorVisible={arqdorVisible}>{shellContent}</SidebarLayoutLegacy>;
 }
