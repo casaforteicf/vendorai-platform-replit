@@ -660,6 +660,7 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
         observacao?: string;
         marcoPagamento?: string;
       }>;
+      imagensEtapas?: Record<string, string>;
       mostrarCronogramaExecucao?: boolean;
       mostrarFisicoFinanceiro?: boolean;
     } | null;
