@@ -1457,7 +1457,7 @@ ${orcamento ? (() => {
   <h2>Cronograma e físico-financeiro</h2>
   <div class="schedule-intro">
     ${presentation.previsaoInicio ? `<strong>Previsão de início:</strong> ${proposalFormatDate(presentation.previsaoInicio)}.` : "<strong>Previsão de início:</strong> a definir."}
-    Os períodos consideram a sequência e a duração cadastrada de cada etapa e podem ser ajustados antes do aceite.
+    Cada etapa possui sua própria data de início e duração. Etapas podem ocorrer em paralelo e as cobranças do mesmo mês são somadas automaticamente.
   </div>
   ${presentation.mostrarCronogramaExecucao ? `
     <div class="commercial-section">
@@ -1474,6 +1474,8 @@ ${orcamento ? (() => {
         <thead><tr><th>Etapa</th><th>Período</th><th class="r">Peso físico</th><th class="r">% financeiro</th><th class="r">Valor</th><th>Marco / pagamento</th></tr></thead>
         <tbody>${physicalFinancialRows}</tbody>
       </table>
+      <div class="commercial-title" style="margin-top:4mm;">Modelo por colunas · cobrança mensal</div>
+      ${renderProposalMonthlyMatrix(scheduleRows, fmtBRL)}
     </div>` : ""}
   ${docFooter()}
 </div>`
@@ -2055,7 +2057,7 @@ ${scheduleRows.length && (presentation.mostrarCronogramaExecucao || presentation
   <div class="orc-title">Cronograma de execução e físico-financeiro</div>
   <div class="schedule-intro">
     ${presentation.previsaoInicio ? `<strong>Previsão de início:</strong> ${proposalFormatDate(presentation.previsaoInicio)}.` : "<strong>Previsão de início:</strong> a definir."}
-    Os períodos são apresentados conforme a sequência e a duração prevista de cada etapa.
+    Cada etapa possui sua própria data de início e duração. Etapas simultâneas aparecem na mesma coluna mensal e suas cobranças são somadas no período.
   </div>
 
   ${presentation.mostrarCronogramaExecucao ? `
@@ -2074,6 +2076,8 @@ ${scheduleRows.length && (presentation.mostrarCronogramaExecucao || presentation
         <thead><tr><th>Etapa</th><th>Período</th><th class="r">Peso físico</th><th class="r">% financeiro</th><th class="r">Valor</th><th>Marco / pagamento</th></tr></thead>
         <tbody>${physicalFinancialRows}</tbody>
       </table>
+      <div class="commercial-title" style="margin-top:4mm;">Modelo por colunas · cobrança mensal</div>
+      ${renderProposalMonthlyMatrix(scheduleRows, fmtBRL)}
     </div>` : ""}
 </div>` : ""}
 
