@@ -1,0 +1,259 @@
+import { useEffect, useMemo, useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
+import {
+  getGetBusinessProfileByTenantQueryKey,
+  getGetTenantQueryKey,
+  useGetBusinessProfileByTenant,
+  useGetTenant,
+  useUpdateBusinessProfile,
+  useUpdateTenant,
+} from "@workspace/api-client-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { Label } from "@/components/ui/label";
+import { Save, Palette, ImageIcon, Building2, Megaphone, Brain, Library, ExternalLink } from "lucide-react";
+
+type BrandDraft = {
+  posicionamento: string;
+  tomVoz: string;
+  mensagensChave: string;
+  estiloVisual: string;
+  tipografia: string;
+  coresSecundarias: string;
+  ctaPadrao: string;
+  palavrasEvitar: string;
+  referenciasVisuais: string;
+};
+
+const emptyDraft: BrandDraft = {
+  posicionamento: "",
+  tomVoz: "",
+  mensagensChave: "",
+  estiloVisual: "",
+  tipografia: "",
+  coresSecundarias: "",
+  ctaPadrao: "",
+  palavrasEvitar: "",
+  referenciasVisuais: "",
+};
+
+function stringValue(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
+export function BrandKitSettings() {
+  const { user, token } = useAuth();
+  const tenantId = user?.tenantId ?? "";
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const profile = useGetBusinessProfileByTenant(tenantId, {
+    query: { queryKey: getGetBusinessProfileByTenantQueryKey(tenantId), enabled: !!tenantId, retry: false },
+  });
+  const tenant = useGetTenant(tenantId, {
+    query: { queryKey: getGetTenantQueryKey(tenantId), enabled: !!tenantId, retry: false },
+  });
+  const updateProfile = useUpdateBusinessProfile();
+  const updateTenant = useUpdateTenant();
+
+  const { data: videoKit } = useQuery({
+    queryKey: ["brand-video-kit", tenantId],
+    enabled: !!tenantId,
+    queryFn: async () => {
+      const response = await fetch(`/api/tenants/${tenantId}/media-engine/brand-kit`, {
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!response.ok) return null;
+      const data = await response.json() as { brandKit?: Record<string, unknown> | null };
+      return data.brandKit ?? null;
+    },
+  });
+
+  const discovery = (profile.data?.discoveryData as Record<string, unknown> | null) ?? {};
+  const [draft, setDraft] = useState<BrandDraft>(emptyDraft);
+  const [primaryColor, setPrimaryColor] = useState("#A78BFA");
+
+  useEffect(() => {
+    setDraft({
+      posicionamento: stringValue(discovery.posicionamento),
+      tomVoz: stringValue(discovery.tomVoz),
+      mensagensChave: stringValue(discovery.mensagensChave),
+      estiloVisual: stringValue(discovery.estiloVisual),
+      tipografia: stringValue(discovery.tipografia),
+      coresSecundarias: stringValue(discovery.coresSecundarias),
+      ctaPadrao: stringValue(discovery.ctaPadrao),
+      palavrasEvitar: stringValue(discovery.palavrasEvitar),
+      referenciasVisuais: stringValue(discovery.referenciasVisuais),
+    });
+  }, [profile.data?.id, profile.data?.discoveryData]);
+
+  useEffect(() => {
+    setPrimaryColor(tenant.data?.corPrimaria || "#A78BFA");
+  }, [tenant.data?.corPrimaria]);
+
+  const completeness = useMemo(() => {
+    const checks = [
+      profile.data?.razaoSocial,
+      profile.data?.nomeFantasia,
+      profile.data?.logoUrl || tenant.data?.logoUrl,
+      tenant.data?.corPrimaria,
+      profile.data?.diferenciais,
+      profile.data?.publicoAlvo,
+      discovery.missao,
+      discovery.visao,
+      discovery.historia,
+      draft.posicionamento,
+      draft.tomVoz,
+      draft.mensagensChave,
+      draft.estiloVisual,
+      draft.tipografia,
+    ];
+    return Math.round((checks.filter(Boolean).length / checks.length) * 100);
+  }, [profile.data, tenant.data, discovery, draft]);
+
+  const saveBrandContext = async () => {
+    if (!profile.data?.id) {
+      toast({ title: "Cadastre primeiro os dados básicos da empresa.", variant: "destructive" });
+      return;
+    }
+    try {
+      await updateProfile.mutateAsync({
+        id: profile.data.id,
+        data: {
+          discoveryData: {
+            ...discovery,
+            posicionamento: draft.posicionamento || undefined,
+            tomVoz: draft.tomVoz || undefined,
+            mensagensChave: draft.mensagensChave || undefined,
+            estiloVisual: draft.estiloVisual || undefined,
+            tipografia: draft.tipografia || undefined,
+            coresSecundarias: draft.coresSecundarias || undefined,
+            ctaPadrao: draft.ctaPadrao || undefined,
+            palavrasEvitar: draft.palavrasEvitar || undefined,
+            referenciasVisuais: draft.referenciasVisuais || undefined,
+          },
+        },
+      });
+      if (primaryColor !== (tenant.data?.corPrimaria || "#A78BFA")) {
+        await updateTenant.mutateAsync({ id: tenantId, data: { corPrimaria: primaryColor } });
+      }
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: getGetBusinessProfileByTenantQueryKey(tenantId) }),
+        qc.invalidateQueries({ queryKey: getGetTenantQueryKey(tenantId) }),
+        qc.invalidateQueries({ queryKey: ["tenant-plan", tenantId] }),
+      ]);
+      toast({ title: "Kit da Marca atualizado." });
+    } catch {
+      toast({ title: "Não foi possível salvar o Kit da Marca.", variant: "destructive" });
+    }
+  };
+
+  const field = (label: string, key: keyof BrandDraft, placeholder: string, rows = 3) => (
+    <div className="space-y-1.5">
+      <Label>{label}</Label>
+      <Textarea
+        rows={rows}
+        value={draft[key]}
+        onChange={(e) => setDraft((current) => ({ ...current, [key]: e.target.value }))}
+        placeholder={placeholder}
+      />
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border bg-card p-5 space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <Megaphone className="h-5 w-5 text-primary" />
+              <h2 className="text-lg font-semibold">Kit da Marca</h2>
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Fonte única da identidade do tenant. Marketing, vídeos, anúncios, sites, documentos e agentes devem consumir este contexto.
+            </p>
+          </div>
+          <Badge variant="secondary">{completeness}% completo</Badge>
+        </div>
+        <Progress value={completeness} />
+        <div className="grid gap-2 md:grid-cols-4">
+          <div className="rounded-lg border p-3"><strong className="text-sm">Empresa</strong><p className="text-xs text-muted-foreground">business_profiles</p></div>
+          <div className="rounded-lg border p-3"><strong className="text-sm">Identidade</strong><p className="text-xs text-muted-foreground">logo + cores do tenant</p></div>
+          <div className="rounded-lg border p-3"><strong className="text-sm">Vídeo</strong><p className="text-xs text-muted-foreground">{videoKit ? "Brand Video Kit conectado" : "Sem kit de vídeo ativo"}</p></div>
+          <div className="rounded-lg border p-3"><strong className="text-sm">Uso</strong><p className="text-xs text-muted-foreground">Contexto global das ferramentas</p></div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border bg-card p-5 space-y-4">
+        <div className="flex items-center gap-2"><Building2 className="h-4 w-4 text-primary" /><h3 className="font-semibold">Dados oficiais da empresa</h3></div>
+        <p className="text-xs text-muted-foreground">Estes dados vêm do mesmo Perfil da Empresa; não existe uma segunda cópia no Marketing.</p>
+        <div className="grid gap-3 md:grid-cols-2">
+          <div><Label>Empresa</Label><Input value={profile.data?.nomeFantasia || profile.data?.razaoSocial || ""} readOnly /></div>
+          <div><Label>Segmento</Label><Input value={profile.data?.vertical || ""} readOnly /></div>
+          <div className="md:col-span-2"><Label>Diferenciais</Label><Textarea value={profile.data?.diferenciais || ""} readOnly rows={2} /></div>
+          <div className="md:col-span-2"><Label>Público-alvo</Label><Textarea value={profile.data?.publicoAlvo || ""} readOnly rows={2} /></div>
+        </div>
+        <Button variant="outline" type="button" onClick={() => window.location.assign("/configuracoes?tab=perfil")}>
+          Editar dados institucionais <ExternalLink className="ml-2 h-4 w-4" />
+        </Button>
+      </div>
+
+      <div className="rounded-xl border bg-card p-5 space-y-4">
+        <div className="flex items-center gap-2"><Palette className="h-4 w-4 text-primary" /><h3 className="font-semibold">Identidade visual</h3></div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label>Cor principal</Label>
+            <div className="flex items-center gap-3">
+              <input type="color" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="h-10 w-14 rounded-md border bg-transparent p-1" />
+              <Input value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="font-mono" />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Logo oficial</Label>
+            <div className="min-h-10 rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+              {(profile.data?.logoUrl || tenant.data?.logoUrl) ? "Logo cadastrada e compartilhada com as ferramentas." : "Nenhuma logo cadastrada."}
+            </div>
+          </div>
+          {field("Cores secundárias", "coresSecundarias", "Ex.: #111827, #F97316, branco e cinza claro", 2)}
+          {field("Tipografia", "tipografia", "Ex.: Inter para interface; Montserrat para títulos", 2)}
+          <div className="md:col-span-2">{field("Estilo visual", "estiloVisual", "Descreva fotografia, iluminação, composição, cenários, acabamentos e o que deve ser evitado.")}</div>
+          <div className="md:col-span-2">{field("Referências visuais", "referenciasVisuais", "Links, projetos de referência, padrões aprovados e orientações para imagens e vídeos.")}</div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border bg-card p-5 space-y-4">
+        <div className="flex items-center gap-2"><Brain className="h-4 w-4 text-primary" /><h3 className="font-semibold">Comunicação da marca</h3></div>
+        <div className="grid gap-4 md:grid-cols-2">
+          {field("Posicionamento", "posicionamento", "Como a marca deve ser percebida e qual proposta de valor deve sustentar.")}
+          {field("Tom de voz", "tomVoz", "Ex.: consultivo, claro, técnico sem ser complicado, direto e humano.")}
+          {field("Mensagens-chave", "mensagensChave", "Mensagens que devem aparecer com frequência nos materiais.")}
+          {field("CTA padrão", "ctaPadrao", "Ex.: Solicite uma análise / Fale com nossa equipe.", 2)}
+          <div className="md:col-span-2">{field("Palavras e abordagens a evitar", "palavrasEvitar", "Termos proibidos, promessas que não podem ser feitas e estilos de comunicação inadequados.")}</div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border bg-card p-5 space-y-3">
+        <div className="flex items-center gap-2"><Library className="h-4 w-4 text-primary" /><h3 className="font-semibold">Mídia e conhecimento</h3></div>
+        <p className="text-sm text-muted-foreground">
+          Fotos, vídeos, catálogos e documentos permanecem nas bibliotecas oficiais do tenant. O Kit da Marca referencia essas fontes em vez de duplicar arquivos.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" type="button" onClick={() => window.location.assign("/content")}>Abrir Conteúdo</Button>
+          <Button variant="outline" type="button" onClick={() => window.location.assign("/knowledge")}>Abrir Conhecimento</Button>
+          <Button variant="outline" type="button" onClick={() => window.location.assign("/video")}><ImageIcon className="mr-2 h-4 w-4" />Abrir Vídeo</Button>
+        </div>
+      </div>
+
+      <div className="sticky bottom-3 z-20 flex justify-end rounded-xl border bg-background/95 p-3 shadow-lg backdrop-blur">
+        <Button type="button" onClick={saveBrandContext} disabled={updateProfile.isPending || updateTenant.isPending || !profile.data?.id}>
+          <Save className="mr-2 h-4 w-4" />{updateProfile.isPending || updateTenant.isPending ? "Salvando..." : "Salvar Kit da Marca"}
+        </Button>
+      </div>
+    </div>
+  );
+}
