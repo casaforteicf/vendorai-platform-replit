@@ -120,6 +120,7 @@ export type CampaignContext = {
   smartDelivery?: {
     enabled: boolean;
     type?: "analysis" | "tool" | "analysis_tool" | "content" | "offer";
+    toolKey?: string;
     toolRef?: string;
     toolName?: string;
     deliveryTiming?: "first_contact" | "after_interest" | "after_qualification";
