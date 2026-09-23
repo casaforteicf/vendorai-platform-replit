@@ -109,6 +109,23 @@ export type CampaignContext = {
   lpSubheadline?: string;
   marketingContext?: CampaignMarketingContext;
   createdFromRevenueScoutAt?: string;
+  prospectorAutomation?: {
+    enabled: boolean;
+    mode?: "automatic" | "qualification_only";
+    trigger?: "campaign_start" | "lead_interest" | "manual";
+    allowedChannels?: Array<"whatsapp" | "email" | "instagram">;
+    followupCount?: number;
+    handoffTarget?: "closer" | "human" | "none";
+  };
+  smartDelivery?: {
+    enabled: boolean;
+    type?: "analysis" | "tool" | "analysis_tool" | "content" | "offer";
+    toolRef?: string;
+    toolName?: string;
+    deliveryTiming?: "first_contact" | "after_interest" | "after_qualification";
+    resultLabel?: string;
+    ctaLabel?: string;
+  };
 };
 
 export const campaignsTable = pgTable("campaigns", {
