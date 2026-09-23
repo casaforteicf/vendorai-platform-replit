@@ -12,8 +12,7 @@ import {
 import {
   AI_CREDIT_PACK_CREDITS,
   AI_CREDIT_PACK_PRICE_BRL,
-  AI_CREDIT_PACK_USD,
-  getTenantAiBudget,
+   getTenantAiBudget,
 } from "../services/ai-budget.js";
 import {
   VENDOR_TOKENS_PER_BRL,
@@ -66,7 +65,6 @@ async function createFixedAiCreditPack(tenantId: string) {
       status: "pending" as const,
       credits: AI_CREDIT_PACK_CREDITS,
       value: AI_CREDIT_PACK_PRICE_BRL,
-      budgetUsd: AI_CREDIT_PACK_USD,
       invoiceUrl: existingPending.invoiceUrl,
       chargeId: existingPending.asaasChargeId,
       reused: true,
@@ -115,7 +113,6 @@ async function createFixedAiCreditPack(tenantId: string) {
       status: "pending" as const,
       credits: AI_CREDIT_PACK_CREDITS,
       value: AI_CREDIT_PACK_PRICE_BRL,
-      budgetUsd: AI_CREDIT_PACK_USD,
       invoiceUrl: charge.invoiceUrl,
       chargeId: charge.id,
     };
@@ -138,7 +135,25 @@ router.get(
       res.status(404).json({ error: "Tenant não encontrado" });
       return;
     }
-    res.json(budget);
+    res.json({
+      tenantId: budget.tenantId,
+      planName: budget.planName,
+      percentUsed: budget.percentUsed,
+      alertPercent: budget.alertPercent,
+      blocked: budget.blocked,
+      baseTokens: budget.baseCredits,
+      extraTokensRemaining: budget.extraCreditsRemaining,
+      usedTokens: budget.usedCredits,
+      remainingTokens: budget.remainingCredits,
+      totalCycleTokens: budget.totalCycleCredits,
+      pack: {
+        priceBrl: AI_CREDIT_PACK_PRICE_BRL,
+        tokens: AI_CREDIT_PACK_CREDITS,
+      },
+      tokenStandard: {
+        tokensPerBrl: VENDOR_TOKENS_PER_BRL,
+      },
+    });
   },
 );
 
