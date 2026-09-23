@@ -28,6 +28,7 @@ import { runAdsReviewSync } from "./adsReviewSync.js";
 import { runAdsWasteGuard } from "./adsWasteGuard.js";
 import { pollPendingRenders } from "../services/blenderService.js";
 import { sendOutgoingMessage } from "../services/omnichannel.js";
+import { buildSmartDeliveryUrl } from "../services/smart-delivery.js";
 import type { Logger } from "pino";
 import {
   db,

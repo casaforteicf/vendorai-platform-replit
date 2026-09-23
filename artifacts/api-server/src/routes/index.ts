@@ -22,6 +22,7 @@ import messagesRouter from "./messages";
 import customerIntelligenceRouter from "./customer_intelligence";
 import agentTasksRouter from "./agent_tasks";
 import campaignsRouter from "./campaigns";
+import smartDeliveryPublicRouter from "./smart_delivery_public";
 import facebookMarketplaceRouter from "./facebook_marketplace";
 import produtosCatalogoRouter from "./produtos_catalogo";
 import solicitacoesCompraRouter from "./solicitacoes_compra";
@@ -225,6 +226,7 @@ router.use(pracaPaymentsPublicRouter);
 router.use(pracaDeliveryPublicRouter);
 router.use(accessLicensePublicRouter);
 router.use(publicAgentSimulatorRouter);
+router.use(smartDeliveryPublicRouter);
 
 // Protected — all routes below require a valid JWT
 router.use(authenticate);
