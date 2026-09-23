@@ -149,6 +149,111 @@ function conceptGeometryHealth(concept: { rooms: unknown; configuration: unknown
   };
 }
 
+function normalizeAiLayoutSuggestion(
+  ai: Record<string, unknown>,
+  concept: { id: string; lot: unknown; rooms: unknown; configuration: unknown },
+) {
+  const lot = (concept.lot ?? {}) as Record<string, unknown>;
+  const lotWidth = Math.max(5, Number(lot.width ?? 12));
+  const lotDepth = Math.max(10, Number(lot.depth ?? 30));
+  const configuration = (concept.configuration ?? {}) as Record<string, unknown>;
+  const floors = Math.max(1, Math.min(3, Math.round(Number(configuration.floors ?? 1))));
+  const currentRooms = Array.isArray(concept.rooms) ? concept.rooms as Array<Record<string, unknown>> : [];
+  const roomById = new Map(currentRooms.map((room) => [String(room.id ?? ""), room]));
+  const clamp = (value: unknown, min: number, max: number, fallback: number) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.max(min, Math.min(max, parsed));
+  };
+
+  const rawLayout = ai.layoutSuggestion && typeof ai.layoutSuggestion === "object"
+    ? ai.layoutSuggestion as Record<string, unknown>
+    : {};
+
+  const roomPatches = (Array.isArray(rawLayout.roomPatches) ? rawLayout.roomPatches : [])
+    .slice(0, 40)
+    .flatMap((raw, index) => {
+      if (!raw || typeof raw !== "object") return [];
+      const patch = raw as Record<string, unknown>;
+      const id = String(patch.id ?? "");
+      const source = roomById.get(id);
+      if (!source || source.locked === true) return [];
+      const currentWidth = Math.max(0.8, Number(source.width ?? 2.5));
+      const currentDepth = Math.max(0.8, Number(source.depth ?? 2.5));
+      const width = clamp(patch.width, 0.8, lotWidth, currentWidth);
+      const depth = clamp(patch.depth, 0.8, lotDepth, currentDepth);
+      const x = clamp(patch.x, 0, Math.max(0, lotWidth - width), Number(source.x ?? 0));
+      const y = clamp(patch.y, 0, Math.max(0, lotDepth - depth), Number(source.y ?? 0));
+      return [{
+        id,
+        x: Math.round(x * 100) / 100,
+        y: Math.round(y * 100) / 100,
+        width: Math.round(width * 100) / 100,
+        depth: Math.round(depth * 100) / 100,
+        reason: typeof patch.reason === "string" ? patch.reason.slice(0, 240) : `Ajuste IA ${index + 1}`,
+      }];
+    });
+
+  const existingWalls = Array.isArray(configuration.customWalls)
+    ? configuration.customWalls as Array<Record<string, unknown>>
+    : [];
+  const existingWallIds = new Set(existingWalls.map((wall) => String(wall.id ?? "")).filter(Boolean));
+  const wallSuggestions = (Array.isArray(rawLayout.wallSuggestions) ? rawLayout.wallSuggestions : [])
+    .slice(0, 24)
+    .flatMap((raw, index) => {
+      if (!raw || typeof raw !== "object") return [];
+      const wall = raw as Record<string, unknown>;
+      let x1 = clamp(wall.x1, 0, lotWidth, 0);
+      let y1 = clamp(wall.y1, 0, lotDepth, 0);
+      let x2 = clamp(wall.x2, 0, lotWidth, x1);
+      let y2 = clamp(wall.y2, 0, lotDepth, y1);
+      if (Math.abs(x2 - x1) >= Math.abs(y2 - y1)) y2 = y1;
+      else x2 = x1;
+      const length = Math.hypot(x2 - x1, y2 - y1);
+      if (length < 0.4) return [];
+      const id = `ai-wall-${concept.id.slice(0, 8)}-${index + 1}`;
+      existingWallIds.add(id);
+      return [{
+        id,
+        floor: Math.round(clamp(wall.floor, 0, floors - 1, 0)),
+        x1: Math.round(x1 * 100) / 100,
+        y1: Math.round(y1 * 100) / 100,
+        x2: Math.round(x2 * 100) / 100,
+        y2: Math.round(y2 * 100) / 100,
+        thickness: clamp(wall.thickness, 0.08, 0.35, 0.14),
+        reason: typeof wall.reason === "string" ? wall.reason.slice(0, 240) : "Parede sugerida pela IA",
+      }];
+    });
+
+  const openingSuggestions = (Array.isArray(rawLayout.openingSuggestions) ? rawLayout.openingSuggestions : [])
+    .slice(0, 30)
+    .flatMap((raw, index) => {
+      if (!raw || typeof raw !== "object") return [];
+      const opening = raw as Record<string, unknown>;
+      const wallId = String(opening.wallId ?? "");
+      if (!existingWallIds.has(wallId)) return [];
+      const type = opening.type === "door" ? "door" : opening.type === "window" ? "window" : null;
+      if (!type) return [];
+      return [{
+        id: `ai-opening-${concept.id.slice(0, 8)}-${index + 1}`,
+        wallId,
+        floor: Math.round(clamp(opening.floor, 0, floors - 1, 0)),
+        type,
+        offset: clamp(opening.offset, 0.08, 0.92, 0.5),
+        width: clamp(opening.width, 0.5, type === "door" ? 2.4 : 4.5, type === "door" ? 0.9 : 1.4),
+        height: clamp(opening.height, 0.6, 3.2, type === "door" ? 2.1 : 1.2),
+        sillHeight: type === "door" ? 0 : clamp(opening.sillHeight, 0.2, 2.0, 0.9),
+        openingStyle: opening.openingStyle === "fixed" || opening.openingStyle === "tilt_turn" || opening.openingStyle === "hinged"
+          ? opening.openingStyle
+          : "sliding",
+        swing: opening.swing === "right" ? "right" : "left",
+        reason: typeof opening.reason === "string" ? opening.reason.slice(0, 240) : "Abertura sugerida pela IA",
+      }];
+    });
+
+  return { roomPatches, wallSuggestions, openingSuggestions };
+}
+
 // Rotas públicas (sem autenticação) — registradas antes do middleware authenticate no index.ts
 const archPublicRouter: IRouter = Router();
 
@@ -311,6 +416,17 @@ Saúde geométrica preliminar: ${JSON.stringify(geometryHealth)}
 
 Retorne APENAS JSON válido:
 {
+  "layoutSuggestion": {
+    "roomPatches": [
+      { "id": "ID_DE_UM_AMBIENTE_EXISTENTE", "x": 1.0, "y": 2.0, "width": 4.0, "depth": 3.5, "reason": "motivo" }
+    ],
+    "wallSuggestions": [
+      { "floor": 0, "x1": 1.0, "y1": 1.0, "x2": 5.0, "y2": 1.0, "thickness": 0.14, "reason": "motivo" }
+    ],
+    "openingSuggestions": [
+      { "wallId": "ID_DE_PAREDE_EXISTENTE_OU_SUGERIDA", "floor": 0, "type": "window", "offset": 0.5, "width": 1.6, "height": 1.2, "sillHeight": 0.9, "openingStyle": "sliding", "reason": "motivo" }
+    ]
+  },
   "facadeSuggestion": {
     "style": "contemporaneo|minimalista|classico_contemporaneo|tropical|industrial|rustico_contemporaneo",
     "roof": "platibanda|aparente|misto",
@@ -322,7 +438,16 @@ Retorne APENAS JSON válido:
   },
   "notes": ["..."],
   "geometryWarnings": ["..."]
-}`;
+}
+
+REGRAS DE GEOMETRIA:
+- roomPatches só pode usar IDs de ambientes existentes.
+- Não alterar ambientes locked.
+- Não mudar o pavimento de um ambiente.
+- Manter tudo dentro do lote.
+- wallSuggestions devem ser ortogonais e só devem existir quando realmente melhorarem o fechamento/circulação.
+- openingSuggestions só devem apontar para uma parede existente ou sugerida.
+- Preserve garagem, escada e circulação salvo erro claro de projeto.`;
 
   try {
     const message = await anthropic.messages.create({
@@ -339,8 +464,16 @@ Retorne APENAS JSON válido:
     if (!jsonMatch) return res.status(422).json({ error: "IA não retornou JSON válido." });
     const ai = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
 
+    const layoutSuggestion = normalizeAiLayoutSuggestion(ai, {
+      id: concept.id,
+      lot: concept.lot,
+      rooms: concept.rooms,
+      configuration: concept.configuration,
+    });
+
     return res.json({
       geometryHealth,
+      layoutSuggestion,
       facadeSuggestion: ai.facadeSuggestion ?? null,
       notes: Array.isArray(ai.notes) ? ai.notes : [],
       geometryWarnings: Array.isArray(ai.geometryWarnings) ? ai.geometryWarnings : [],
