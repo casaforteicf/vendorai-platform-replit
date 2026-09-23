@@ -48,6 +48,15 @@ const superAdminFullVisibilityPlugin = {
 
     if (!normalizedId.endsWith("/src/components/layout/SidebarLayout.tsx")) return null;
 
+    // A navegação atual já aplica as regras de Super Admin diretamente no
+    // SidebarLayout. O transform abaixo existe apenas para a implementação
+    // legada; tentar reescrever o layout declarativo novo quebra o build quando
+    // a estrutura do menu evolui.
+    const usesDeclarativeTenantNavigation =
+      code.includes("const pracaAiVisible = isPureSuperAdmin;") &&
+      code.includes("Arqdor é renderizado declarativamente pelo SidebarLayoutLegacy");
+    if (usesDeclarativeTenantNavigation) return null;
+
     let contents = code;
     contents = replaceExact(
       contents,
