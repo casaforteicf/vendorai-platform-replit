@@ -22,6 +22,8 @@ const { mockDbSelect, mockDbUpdate, mockDbDelete, mockDbInsert } = vi.hoisted(
 vi.mock("../lib/ai-gateway.js", () => ({
   callOpenAI: vi.fn().mockResolvedValue({ content: "", inputTokens: 0, outputTokens: 0 }),
   callAnthropic: vi.fn().mockResolvedValue({ content: "", inputTokens: 0, outputTokens: 0 }),
+  callReplicateFlux: vi.fn(),
+  callGoogleVertexImage: vi.fn(),
 }));
 
 vi.mock("../lib/proposal-accepted.js", () => ({
