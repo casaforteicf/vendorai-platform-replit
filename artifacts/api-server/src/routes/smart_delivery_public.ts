@@ -38,6 +38,7 @@ router.get("/public/smart-delivery/:token", async (req, res) => {
       campaignId: payload.campaignId,
       leadId: payload.leadId,
       delivery: "1",
+      deliveryToken: String(req.params.token),
     });
     return res.redirect(302, target);
   } catch {
