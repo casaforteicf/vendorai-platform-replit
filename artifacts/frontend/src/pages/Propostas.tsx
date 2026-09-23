@@ -1820,6 +1820,18 @@ interface CartLine {
 }
 interface FreeItem  { id: string; nome: string; quantidade: number; valorUnitario: number; }
 
+type ProposalPresentationMode = "completo" | "resumo_etapa" | "preco_medio";
+
+const PROPOSAL_PRESENTATION_OPTIONS: Array<{
+  value: ProposalPresentationMode;
+  label: string;
+  description: string;
+}> = [
+  { value: "resumo_etapa", label: "Resumo da etapa", description: "Mostra somente a etapa e o valor macro." },
+  { value: "preco_medio", label: "Preço por item", description: "Mostra os itens e o valor unitário, sem quantidade nem subtotal." },
+  { value: "completo", label: "Completo", description: "Mostra item, quantidade, valor unitário e subtotal." },
+];
+
 const DEFAULT_ETAPA_ID = "etapa-inicial";
 type ConstructionSystem = "icf" | "alvenaria" | "steel_frame" | "wood_frame" | "madeira" | "concreto" | "outro";
 
@@ -2152,6 +2164,9 @@ function newFreeItem(): FreeItem {
     const [cartError, setCartError] = useState("");
     const [calcM2Idx, setCalcM2Idx] = useState<number | null>(null);
     const [showAllByStage, setShowAllByStage] = useState<Record<string, boolean>>({});
+    const [presentationDefaultMode, setPresentationDefaultMode] = useState<ProposalPresentationMode>("completo");
+    const [presentationStageModes, setPresentationStageModes] = useState<Record<string, ProposalPresentationMode>>({});
+    const [showProposalGrandTotal, setShowProposalGrandTotal] = useState(true);
     const standardBudgetAppliedRef = useRef(false);
     // livre mode
     const [freeItems, setFreeItems] = useState<FreeItem[]>([newFreeItem()]);
@@ -2202,6 +2217,9 @@ function newFreeItem(): FreeItem {
         orcamentoEtapas,
         cartLines,
         freeItems,
+        presentationDefaultMode,
+        presentationStageModes,
+        showProposalGrandTotal,
       }));
     }
 
@@ -2241,6 +2259,9 @@ function newFreeItem(): FreeItem {
             orcamentoEtapas?: OrcamentoEtapaDraft[];
             cartLines?: CartLine[];
             freeItems?: FreeItem[];
+            presentationDefaultMode?: ProposalPresentationMode;
+            presentationStageModes?: Record<string, ProposalPresentationMode>;
+            showProposalGrandTotal?: boolean;
           };
           if (draft.form) form.reset({ ...form.getValues(), ...draft.form });
           if (draft.mode) setMode(draft.mode);
@@ -2249,6 +2270,9 @@ function newFreeItem(): FreeItem {
           if (draft.orcamentoEtapas?.length) setOrcamentoEtapas(draft.orcamentoEtapas);
           if (draft.cartLines?.length) setCartLines(draft.cartLines);
           if (draft.freeItems?.length) setFreeItems(draft.freeItems);
+          if (draft.presentationDefaultMode) setPresentationDefaultMode(draft.presentationDefaultMode);
+          if (draft.presentationStageModes) setPresentationStageModes(draft.presentationStageModes);
+          if (draft.showProposalGrandTotal !== undefined) setShowProposalGrandTotal(draft.showProposalGrandTotal);
           standardBudgetAppliedRef.current = true;
         }
       } catch {
@@ -2275,6 +2299,9 @@ function newFreeItem(): FreeItem {
       orcamentoEtapas,
       cartLines,
       freeItems,
+      presentationDefaultMode,
+      presentationStageModes,
+      showProposalGrandTotal,
       form,
     ]);
 
@@ -2346,6 +2373,14 @@ function newFreeItem(): FreeItem {
 
       standardBudgetAppliedRef.current = true;
       const currentItems = ((editingProposta.itens ?? []) as Array<any>);
+      const currentPresentation = (editingProposta as any).apresentacao as {
+        modoPadrao?: ProposalPresentationMode;
+        etapas?: Record<string, ProposalPresentationMode>;
+        mostrarTotalGeral?: boolean;
+      } | null | undefined;
+      setPresentationDefaultMode(currentPresentation?.modoPadrao ?? "completo");
+      setPresentationStageModes(currentPresentation?.etapas ?? {});
+      setShowProposalGrandTotal(currentPresentation?.mostrarTotalGeral ?? true);
 
       form.reset({
         leadId: editingProposta.leadId,
@@ -2547,6 +2582,9 @@ function newFreeItem(): FreeItem {
       setCartLines([{ etapaId: DEFAULT_ETAPA_ID, tipo: "produto", quantidade: 1 }]);
       setCartError("");
       setShowAllByStage({});
+      setPresentationDefaultMode("completo");
+      setPresentationStageModes({});
+      setShowProposalGrandTotal(true);
       standardBudgetAppliedRef.current = false;
       setDraftHydrated(false);
       setFreeItems([newFreeItem()]);
@@ -2838,6 +2876,19 @@ function newFreeItem(): FreeItem {
       : { statusExecucao: "pendente" };
   }
 
+  function proposalPresentationConfig() {
+    return {
+      modoPadrao: presentationDefaultMode,
+      etapas: Object.fromEntries(
+        orcamentoEtapas.map((etapa) => [
+          etapa.id,
+          presentationStageModes[etapa.id] ?? presentationDefaultMode,
+        ])
+      ),
+      mostrarTotalGeral: showProposalGrandTotal,
+    };
+  }
+
   // ── submit ────────────────────────────────────────────────────────────────
   function onSubmit(vals: PropostaFormValues, stayOpen = false) {
     const recFields = vals.recorrente
@@ -2860,6 +2911,7 @@ function newFreeItem(): FreeItem {
             validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined,
             itens: [{ nome: "Orçamento importado de outro sistema", quantidade: 1, valorUnitario: importValorTotal }],
             valorTotal: importValorTotal,
+            apresentacao: proposalPresentationConfig(),
             arquivoImportadoUrl: importArquivo?.url || undefined,
             arquivoImportadoNome: importArquivo?.nome || undefined,
           },
@@ -2944,6 +2996,7 @@ function newFreeItem(): FreeItem {
           ...recFields,
           itens: materializedItems,
           valorTotal: roundBudgetNumber(updatedTotal),
+          apresentacao: proposalPresentationConfig(),
           paymentCompositions: paymentComp?.length
             ? paymentComp.map((pc) => ({
                 forma: pc.forma as PaymentCompositionLineForma,
@@ -2969,6 +3022,7 @@ function newFreeItem(): FreeItem {
             condPagamento: vals.condPagamento || undefined,
             prazoEntrega: vals.prazoEntrega || undefined,
             ...recFields,
+            apresentacao: proposalPresentationConfig(),
             itens: valid.map((line, itemIndex) => ({
               ...(line.tipo === "produto" && line.produtoId ? { produtoId: line.produtoId } : {}),
               ...(line.tipo === "composicao" && line.composicaoId ? { composicaoId: line.composicaoId } : {}),
@@ -3051,6 +3105,7 @@ function newFreeItem(): FreeItem {
           ...recFields,
           itens: updatedItems,
           valorTotal: roundBudgetNumber(updatedTotal),
+          apresentacao: proposalPresentationConfig(),
           paymentCompositions: paymentComp2?.length
             ? paymentComp2.map((pc) => ({
                 forma: pc.forma as PaymentCompositionLineForma,
@@ -3064,7 +3119,7 @@ function newFreeItem(): FreeItem {
       }
 
       createLivreMut.mutate(
-        { data: { tenantId, leadId: vals.leadId, dealId: activeDealId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, ...recFields, itens: valid.map((i) => ({ nome: i.nome, quantidade: roundBudgetNumber(i.quantidade), valorUnitario: roundBudgetNumber(i.valorUnitario) })), valorTotal: freeTotal, paymentCompositions: paymentComp2?.length ? paymentComp2.map((pc) => ({ forma: pc.forma as PaymentCompositionLineForma, valor: roundBudgetNumber(pc.valor), comprovanteUrl: pc.comprovanteUrl })) : undefined, skipAsaasBilling: skipAsaas2 } },
+        { data: { tenantId, leadId: vals.leadId, dealId: activeDealId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, ...recFields, apresentacao: proposalPresentationConfig(), itens: valid.map((i) => ({ nome: i.nome, quantidade: roundBudgetNumber(i.quantidade), valorUnitario: roundBudgetNumber(i.valorUnitario) })), valorTotal: freeTotal, paymentCompositions: paymentComp2?.length ? paymentComp2.map((pc) => ({ forma: pc.forma as PaymentCompositionLineForma, valor: roundBudgetNumber(pc.valor), comprovanteUrl: pc.comprovanteUrl })) : undefined, skipAsaasBilling: skipAsaas2 } },
         {
           onSuccess: () => {
             toast({ title: "Orçamento criado com sucesso" });
@@ -3675,6 +3730,78 @@ function newFreeItem(): FreeItem {
                 </div>
                 {cartError && <p className="text-sm text-destructive">{cartError}</p>}
               </div>
+            )}
+
+            {mode === "catalogo" && (
+              <Card className="border-primary/20 bg-primary/[0.02]">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Apresentação da proposta</CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    Escolha o que o cliente verá em cada etapa. Quantidades, custos e cálculos continuam completos internamente.
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid gap-3 md:grid-cols-[minmax(240px,1fr)_auto] md:items-end">
+                    <div className="space-y-1.5">
+                      <Label>Modo padrão</Label>
+                      <Select
+                        value={presentationDefaultMode}
+                        onValueChange={(value) => setPresentationDefaultMode(value as ProposalPresentationMode)}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {PROPOSAL_PRESENTATION_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-center gap-3 rounded-md border bg-background px-3 py-2.5">
+                      <Switch
+                        checked={showProposalGrandTotal}
+                        onCheckedChange={setShowProposalGrandTotal}
+                      />
+                      <div>
+                        <p className="text-sm font-medium">Mostrar total geral</p>
+                        <p className="text-[11px] text-muted-foreground">Pode ocultar o total final sem alterar o cálculo.</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    {orcamentoEtapas.map((etapa, index) => {
+                      const selectedMode = presentationStageModes[etapa.id] ?? presentationDefaultMode;
+                      const selectedInfo = PROPOSAL_PRESENTATION_OPTIONS.find((option) => option.value === selectedMode);
+                      return (
+                        <div key={etapa.id} className="grid gap-2 rounded-lg border bg-background p-3 md:grid-cols-[1fr_260px] md:items-center">
+                          <div>
+                            <p className="text-sm font-medium">Etapa {index + 1} · {etapa.nome || `Etapa ${index + 1}`}</p>
+                            <p className="text-xs text-muted-foreground">{selectedInfo?.description}</p>
+                          </div>
+                          <Select
+                            value={selectedMode}
+                            onValueChange={(value) => setPresentationStageModes((prev) => ({
+                              ...prev,
+                              [etapa.id]: value as ProposalPresentationMode,
+                            }))}
+                          >
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {PROPOSAL_PRESENTATION_OPTIONS.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                    Exemplo: Fundação em <strong>Resumo da etapa</strong> mostra apenas o valor macro; Esquadrias em <strong>Preço por item</strong> mostra cada item e seu valor unitário na mesma proposta.
+                  </div>
+                </CardContent>
+              </Card>
             )}
 
             {/* ── LIVRE MODE ────────────────────────────────────────────────── */}
