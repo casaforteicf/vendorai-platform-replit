@@ -186,6 +186,11 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   // tempo), em vez de mostrar só o núcleo genérico.
   const VERTICAL_BUCKET: Record<string, VerticalBucket> = {
     "Construção & Reforma": "construcao",
+    "Construtora": "construcao",
+    "Construtora Residencial": "construcao",
+    "Construção Civil": "construcao",
+    "Gestão de Obras": "construcao",
+    "Obras": "construcao",
     "Varejo de Roupas & Acessórios": "varejo",
     "Varejo de Eletroeletrônicos": "varejo",
     "Varejo de Decoração, Variedades & Utilidades": "varejo",
@@ -323,9 +328,24 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     const found = Object.entries(VERTICAL_BUCKET).find(
       ([name]) => name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() === normalized
     );
+    if (found) return found[1];
+
+    // Construção usa nomes diferentes entre cadastro antigo, onboarding e
+    // templates comerciais (ex.: "Construtora", "Construtora Residencial",
+    // "Construção Civil"). Tratar semanticamente evita que um tenant de obra
+    // caia no bucket "core" e perca Obras/Insumos/Composições no menu.
+    if (
+      normalized.includes("construtora") ||
+      normalized.includes("construcao") ||
+      normalized.includes("gestao de obras") ||
+      normalized === "obras"
+    ) {
+      return "construcao";
+    }
+
     // Fallback seguro: vertical com nome que não bate com nada -- provavelmente
     // erro de cadastro/digitação -- vira "core" em vez de "sem filtro nenhum".
-    return found ? found[1] : "core";
+    return "core";
   }
 
   const effectiveBucket = findVerticalBucket(effectiveVertical);
