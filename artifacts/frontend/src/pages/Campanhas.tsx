@@ -628,6 +628,7 @@ function CampaignModal({
   function onSubmitEdit(values: FormValues) {
     if (!editingCampaign) return;
     if (!marketingContext.nicheId || marketingContext.productIds.length === 0) { toast({ title: "Escolha o nicho e ao menos um produto", variant: "destructive" }); return; }
+    if (deliveryEnabled && !deliveryToolRef.trim()) { toast({ title: "Escolha uma ferramenta válida para a Entrega Inteligente", variant: "destructive" }); return; }
     updateMutation.mutate(
       {
         id: editingCampaign.id,
@@ -681,6 +682,7 @@ function CampaignModal({
   // ── Nova: create as rascunho, fetch preview ───────────────────────────────
   function onVerificarAudiencia(values: FormValues) {
     if (!marketingContext.nicheId || marketingContext.productIds.length === 0) { toast({ title: "Escolha o nicho e ao menos um produto", variant: "destructive" }); return; }
+    if (deliveryEnabled && !deliveryToolRef.trim()) { toast({ title: "Escolha uma ferramenta válida para a Entrega Inteligente", variant: "destructive" }); return; }
     createMutation.mutate(
       {
         data: {
