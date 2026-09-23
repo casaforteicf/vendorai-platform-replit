@@ -86,6 +86,9 @@ export const propostaApresentacaoSchema = z.object({
   mostrarTotalGeral: z.boolean().default(true),
   previsaoInicio: z.string().optional(),
   cronogramaEtapas: z.record(z.string(), propostaCronogramaEtapaSchema).default({}),
+  // Imagem representativa/ilustrativa vinculada à etapa do orçamento.
+  // A imagem pode ser gerada por IA e é reutilizada na proposta/PDF.
+  imagensEtapas: z.record(z.string(), z.string()).default({}),
   mostrarCronogramaExecucao: z.boolean().default(true),
   mostrarFisicoFinanceiro: z.boolean().default(true),
 });
@@ -97,6 +100,7 @@ const DEFAULT_PROPOSTA_APRESENTACAO: PropostaApresentacao = {
   etapas: {},
   mostrarTotalGeral: true,
   cronogramaEtapas: {},
+  imagensEtapas: {},
   mostrarCronogramaExecucao: true,
   mostrarFisicoFinanceiro: true,
 };

@@ -15,10 +15,13 @@ import {
   tenantsTable,
 } from "@workspace/db";
 import { buildProposalPrompt, callProposalAI, renderProposalHtml, generateTheme, AI_PROVIDER, generateProposalPDF, learnFromProposalEdit, type ProposalStyleMemory } from "../lib/proposal-engine.js";
+import { generateImage } from "../lib/ai-gateway.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 import pdfParse from "pdf-parse";
 import mammoth from "mammoth";
 
 const router: IRouter = Router();
+const objectStorage = new ObjectStorageService();
 
 // ── Helper: load proposal context ──────────────────────────────────────────────
 async function loadProposalContext(leadId: string, tenantId: string) {
@@ -255,6 +258,178 @@ router.get("/leads/:leadId/proposals/:version/pdf", async (req, res) => {
   res.send(pdfBuffer);
 });
 
+// ── POST /leads/:leadId/proposals/stage-images ───────────────────────────────
+// Gera uma fotografia representativa para cada etapa do orçamento selecionado.
+// As imagens ficam salvas na própria apresentação do orçamento, então são
+// reutilizadas na proposta, no PDF e em futuras reaberturas sem depender da URL
+// temporária retornada pelo provedor de IA.
+router.post("/leads/:leadId/proposals/stage-images", async (req, res) => {
+  const leadId = String(req.params.leadId);
+  const tenantId = req.user?.tenantId ?? "";
+  const [lead] = await db
+    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId })
+    .from(leadsTable)
+    .where(eq(leadsTable.id, leadId));
+
+  if (!lead || (req.user?.platformRole !== "super_admin" && lead.tenantId !== tenantId)) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+
+  const propostaId = typeof req.body?.propostaId === "string" ? req.body.propostaId.trim() : "";
+  if (!propostaId) {
+    res.status(400).json({ error: "propostaId é obrigatório" });
+    return;
+  }
+
+  const [proposta] = await db
+    .select()
+    .from(propostasTable)
+    .where(and(
+      eq(propostasTable.id, propostaId),
+      eq(propostasTable.tenantId, lead.tenantId),
+      eq(propostasTable.leadId, leadId),
+    ));
+
+  if (!proposta) {
+    res.status(404).json({ error: "Orçamento não encontrado para este lead" });
+    return;
+  }
+
+  const itens = proposta.itens ?? [];
+  const hasStages = itens.some((item) => item.etapaId || item.etapaNome || item.etapaOrdem);
+  if (!hasStages) {
+    res.status(422).json({ error: "Este orçamento não possui etapas estruturadas." });
+    return;
+  }
+
+  const groups = Array.from(
+    itens.reduce((map, item, index) => {
+      const ordem = Number(item.etapaOrdem ?? index + 1);
+      const nome = String(item.etapaNome ?? `Etapa ${ordem}`);
+      const id = String(item.etapaId ?? `__stage_${ordem}_${nome}`);
+      const current = map.get(id) ?? {
+        id,
+        ordem,
+        nome,
+        itens: [] as typeof itens,
+      };
+      current.itens.push(item);
+      map.set(id, current);
+      return map;
+    }, new Map<string, { id: string; ordem: number; nome: string; itens: typeof itens }>()),
+  )
+    .map(([, group]) => group)
+    .sort((a, b) => a.ordem - b.ordem);
+
+  const requestedStageIds = Array.isArray(req.body?.stageIds)
+    ? new Set(req.body.stageIds.filter((value: unknown): value is string => typeof value === "string"))
+    : null;
+  const regenerate = req.body?.regenerate === true;
+  const targetGroups = groups
+    .filter((group) => !requestedStageIds || requestedStageIds.has(group.id))
+    .slice(0, 20);
+
+  if (!targetGroups.length) {
+    res.status(422).json({ error: "Nenhuma etapa válida foi selecionada." });
+    return;
+  }
+
+  const presentation = (proposta.apresentacao ?? {}) as Record<string, any>;
+  const stageImages: Record<string, string> = {
+    ...((presentation.imagensEtapas && typeof presentation.imagensEtapas === "object")
+      ? presentation.imagensEtapas
+      : {}),
+  };
+  const generated: Array<{ stageId: string; stageName: string; imageUrl: string }> = [];
+  const skipped: Array<{ stageId: string; stageName: string; imageUrl: string }> = [];
+  const errors: Array<{ stageId: string; stageName: string; error: string }> = [];
+
+  for (const group of targetGroups) {
+    const existing = stageImages[group.id];
+    if (existing && !regenerate) {
+      skipped.push({ stageId: group.id, stageName: group.nome, imageUrl: existing });
+      continue;
+    }
+
+    const scope = group.itens
+      .slice(0, 10)
+      .map((item) => {
+        const desc = item.descricao ? String(item.descricao).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim() : "";
+        return `- ${item.nome}${desc ? `: ${desc.slice(0, 180)}` : ""}`;
+      })
+      .join("\n");
+
+    const prompt = [
+      "Fotografia documental hiper-realista de construção civil no Brasil, composição horizontal 3:2, aparência de fotografia profissional de obra real.",
+      `Representar visualmente a etapa "${group.nome}" de uma obra residencial de padrão alto, sem transformar a imagem em render conceitual e sem inventar elementos incompatíveis com a etapa.`,
+      "Mostrar somente o estado construtivo coerente com esta fase: materiais, sistemas, equipamentos e profissionais que normalmente estariam presentes neste momento da execução.",
+      "Trabalhadores com EPI adequado, canteiro organizado, luz natural realista, materiais com escala correta, geometria consistente, sem objetos deformados.",
+      scope ? `Escopo contratado desta etapa:\n${scope}` : "",
+      "A imagem é apenas representativa da etapa, não deve fingir ser foto do projeto real do cliente.",
+      "Sem textos, sem letras, sem placas legíveis, sem logotipos, sem marcas d'água, sem molduras e sem antes/depois.",
+    ].filter(Boolean).join("\n");
+
+    try {
+      const { urls } = await generateImage(lead.tenantId, "image_generator", prompt, {
+        model: "gpt-image-1",
+        size: "1536x1024",
+        n: 1,
+        log: req.log,
+      });
+      const providerUrl = urls[0];
+      if (!providerUrl) throw new Error("IA não retornou imagem");
+
+      const imageResponse = await fetch(providerUrl);
+      if (!imageResponse.ok) {
+        throw new Error(`Falha ao baixar imagem gerada (${imageResponse.status})`);
+      }
+      const buffer = Buffer.from(await imageResponse.arrayBuffer());
+      const contentType = imageResponse.headers.get("content-type") ?? "image/png";
+      const objectPath = await objectStorage.savePrivateBuffer(
+        buffer,
+        contentType,
+        `proposta-etapa-${proposta.id}-${group.ordem}.png`,
+      );
+      const imageUrl = `/api/storage${objectPath}`;
+      stageImages[group.id] = imageUrl;
+      generated.push({ stageId: group.id, stageName: group.nome, imageUrl });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Falha ao gerar imagem";
+      errors.push({ stageId: group.id, stageName: group.nome, error: message });
+      req.log.warn({ err, propostaId, stageId: group.id }, "proposal stage image generation failed");
+    }
+  }
+
+  await db
+    .update(propostasTable)
+    .set({
+      apresentacao: {
+        ...(proposta.apresentacao ?? {}),
+        imagensEtapas: stageImages,
+      },
+      updatedAt: new Date(),
+    })
+    .where(eq(propostasTable.id, proposta.id));
+
+  if (!generated.length && !skipped.length && errors.length) {
+    res.status(502).json({
+      error: "Não foi possível gerar imagens para as etapas.",
+      errors,
+    });
+    return;
+  }
+
+  res.json({
+    images: [...generated, ...skipped],
+    generated: generated.length,
+    reused: skipped.length,
+    errors,
+    totalStages: groups.length,
+    limitedTo: targetGroups.length,
+  });
+});
+
 // ── POST /leads/:leadId/proposals ─────────────────────────────────────────────────
 router.post("/leads/:leadId/proposals", async (req, res) => {
   const leadId = String(req.params.leadId);
@@ -485,6 +660,7 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
         observacao?: string;
         marcoPagamento?: string;
       }>;
+      imagensEtapas?: Record<string, string>;
       mostrarCronogramaExecucao?: boolean;
       mostrarFisicoFinanceiro?: boolean;
     } | null;
@@ -509,6 +685,7 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
           observacao?: string;
           marcoPagamento?: string;
         }>;
+        imagensEtapas?: Record<string, string>;
         mostrarCronogramaExecucao?: boolean;
         mostrarFisicoFinanceiro?: boolean;
       };

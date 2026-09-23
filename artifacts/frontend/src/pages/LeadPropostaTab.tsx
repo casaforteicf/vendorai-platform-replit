@@ -67,6 +67,7 @@ import {
   useUpdatePropostaStatus,
   useGetBusinessProfileByTenant,
   getGetBusinessProfileByTenantQueryKey,
+  getListPropostasQueryKey,
 } from "@workspace/api-client-react";
 import type { Proposta } from "@workspace/api-client-react";
 
@@ -258,6 +259,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   // Imagens da proposta
   const [proposalImages, setProposalImages] = useState<string[]>([]);
   const [imageUploading, setImageUploading] = useState(false);
+  const [generatingStageImages, setGeneratingStageImages] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   // Seletor de imagens — aba ativa
@@ -421,6 +423,10 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   });
 
   const selectedOrcamento = (orcamentos as any[]).find((orc) => orc.id === selectedOrcamentoId) ?? null;
+  const selectedStageImages: Record<string, string> =
+    selectedOrcamento?.apresentacao?.imagensEtapas && typeof selectedOrcamento.apresentacao.imagensEtapas === "object"
+      ? selectedOrcamento.apresentacao.imagensEtapas
+      : {};
   const selectedOrcamentoStages = (() => {
     const items = Array.isArray(selectedOrcamento?.itens) ? selectedOrcamento.itens : [];
     const hasStages = items.some((item: any) => item?.etapaId || item?.etapaNome || item?.etapaOrdem);
@@ -439,6 +445,51 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
 
     return Array.from(groups.values()).sort((a, b) => a.ordem - b.ordem);
   })();
+
+  async function generateRepresentativeStageImages(regenerate = false) {
+    if (!selectedOrcamento?.id || selectedOrcamentoStages.length === 0) {
+      toast({ title: "Selecione um orçamento com etapas.", variant: "destructive" });
+      return;
+    }
+
+    setGeneratingStageImages(true);
+    try {
+      const response = await fetch(api(`/api/leads/${leadId}/proposals/stage-images`), {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          propostaId: selectedOrcamento.id,
+          regenerate,
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body.error ?? "Não foi possível gerar as imagens das etapas.");
+      }
+
+      await queryClient.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId, { leadId }) });
+      const generatedCount = Number(body.generated ?? 0);
+      const reusedCount = Number(body.reused ?? 0);
+      const errorCount = Array.isArray(body.errors) ? body.errors.length : 0;
+      toast({
+        title: generatedCount > 0
+          ? `${generatedCount} imagem(ns) de etapa gerada(s)`
+          : "Imagens das etapas já disponíveis",
+        description: [
+          reusedCount > 0 ? `${reusedCount} reutilizada(s)` : "",
+          errorCount > 0 ? `${errorCount} etapa(s) com falha` : "",
+        ].filter(Boolean).join(" · ") || "As imagens ficam vinculadas ao orçamento e entram automaticamente na proposta.",
+      });
+    } catch (error) {
+      toast({
+        title: "Erro ao gerar imagens das etapas",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingStageImages(false);
+    }
+  }
 
   function handleProposalBudgetChange(value: string) {
     setSelectedOrcamentoId(value);
@@ -1490,11 +1541,38 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
 
                   {selectedOrcamentoStages.length > 0 && (
                     <div className="space-y-2">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-xs font-semibold">Configuração por etapa</p>
-                        <span className="text-[11px] text-muted-foreground">
-                          Você pode misturar formatos na mesma proposta.
-                        </span>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="text-xs font-semibold">Configuração por etapa</p>
+                          <span className="text-[11px] text-muted-foreground">
+                            Você pode misturar formatos e usar uma foto representativa em cada etapa.
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 gap-1.5 text-xs"
+                            disabled={generatingStageImages}
+                            onClick={() => void generateRepresentativeStageImages(false)}
+                          >
+                            {generatingStageImages ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                            {generatingStageImages ? "Gerando..." : "Gerar fotos das etapas"}
+                          </Button>
+                          {Object.keys(selectedStageImages).length > 0 && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 text-[11px]"
+                              disabled={generatingStageImages}
+                              onClick={() => void generateRepresentativeStageImages(true)}
+                            >
+                              Regenerar
+                            </Button>
+                          )}
+                        </div>
                       </div>
                       <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
                         {selectedOrcamentoStages.map((stage) => (
@@ -1502,13 +1580,30 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                             key={stage.id}
                             className="grid gap-2 rounded-lg border bg-background p-2.5 sm:grid-cols-[minmax(0,1fr)_220px] sm:items-center"
                           >
-                            <div className="min-w-0">
-                              <p className="truncate text-xs font-medium">
-                                Etapa {stage.ordem} · {stage.nome}
-                              </p>
-                              <p className="text-[11px] text-muted-foreground">
-                                {stage.total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                              </p>
+                            <div className="flex min-w-0 items-center gap-2.5">
+                              {selectedStageImages[stage.id] ? (
+                                <img
+                                  src={selectedStageImages[stage.id]}
+                                  alt={`Imagem representativa da etapa ${stage.nome}`}
+                                  className="h-12 w-20 shrink-0 rounded-md border object-cover"
+                                  onError={(event) => { (event.currentTarget as HTMLImageElement).style.display = "none"; }}
+                                />
+                              ) : (
+                                <div className="flex h-12 w-20 shrink-0 items-center justify-center rounded-md border border-dashed bg-muted/30 text-[9px] text-muted-foreground">
+                                  Sem imagem
+                                </div>
+                              )}
+                              <div className="min-w-0">
+                                <p className="truncate text-xs font-medium">
+                                  Etapa {stage.ordem} · {stage.nome}
+                                </p>
+                                <p className="text-[11px] text-muted-foreground">
+                                  {stage.total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                                </p>
+                                {selectedStageImages[stage.id] ? (
+                                  <p className="text-[10px] text-emerald-600">Imagem representativa vinculada</p>
+                                ) : null}
+                              </div>
                             </div>
                             <Select
                               value={proposalPresentationStageModes[stage.id] ?? "__default__"}
