@@ -416,10 +416,23 @@ export async function generateProposalPDF(htmlContent: string): Promise<Buffer> 
 
 type ProposalPresentationMode = "completo" | "resumo_etapa" | "preco_medio";
 
+type ProposalStageSchedule = {
+  duracaoDias?: number;
+  percentualFisico?: number;
+  inicioPrevisto?: string;
+  fimPrevisto?: string;
+  observacao?: string;
+  marcoPagamento?: string;
+};
+
 type ProposalPresentationConfig = {
   modoPadrao?: ProposalPresentationMode;
   etapas?: Record<string, ProposalPresentationMode>;
   mostrarTotalGeral?: boolean;
+  previsaoInicio?: string;
+  cronogramaEtapas?: Record<string, ProposalStageSchedule>;
+  mostrarCronogramaExecucao?: boolean;
+  mostrarFisicoFinanceiro?: boolean;
 };
 
 type PresentableProposalItem = {
@@ -440,6 +453,10 @@ function normalizeProposalPresentation(
     modoPadrao: value?.modoPadrao ?? "completo",
     etapas: value?.etapas ?? {},
     mostrarTotalGeral: value?.mostrarTotalGeral ?? true,
+    previsaoInicio: value?.previsaoInicio ?? "",
+    cronogramaEtapas: value?.cronogramaEtapas ?? {},
+    mostrarCronogramaExecucao: value?.mostrarCronogramaExecucao ?? true,
+    mostrarFisicoFinanceiro: value?.mostrarFisicoFinanceiro ?? true,
   };
 }
 
@@ -469,6 +486,77 @@ function resolveProposalPresentationMode(
   stageId: string,
 ): ProposalPresentationMode {
   return presentation.etapas[stageId] ?? presentation.modoPadrao;
+}
+
+function proposalDate(value?: string | Date | null): Date | null {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : new Date(value.getTime());
+  const text = String(value).trim();
+  if (!text) return null;
+  const plainDate = /^\d{4}-\d{2}-\d{2}$/.test(text)
+    ? new Date(`${text}T12:00:00`)
+    : new Date(text);
+  return Number.isNaN(plainDate.getTime()) ? null : plainDate;
+}
+
+function proposalAddDays(date: Date, days: number): Date {
+  const next = new Date(date.getTime());
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function proposalDiffDays(start: Date, end: Date): number {
+  const ms = end.getTime() - start.getTime();
+  return Math.max(1, Math.round(ms / 86_400_000) + 1);
+}
+
+function proposalFormatDate(value?: string | Date | null): string {
+  const date = proposalDate(value);
+  return date ? date.toLocaleDateString("pt-BR") : "A definir";
+}
+
+function buildProposalScheduleRows<T extends PresentableProposalItem>(
+  groups: Array<{ id: string; ordem: number; nome: string; hasStageHeader: boolean; itens: T[] }>,
+  presentation: Required<ProposalPresentationConfig>,
+  total: number,
+) {
+  let cursor = proposalDate(presentation.previsaoInicio);
+  return groups.map((group) => {
+    const config = presentation.cronogramaEtapas[group.id] ?? {};
+    const value = group.itens.reduce(
+      (sum, item) => sum + Number(item.quantidade || 0) * Number(item.valorUnitario || 0),
+      0,
+    );
+    const financialPercent = total > 0 ? (value / total) * 100 : 0;
+
+    const explicitStart = proposalDate(config.inicioPrevisto);
+    const start = explicitStart ?? cursor;
+    const explicitEnd = proposalDate(config.fimPrevisto);
+    const configuredDuration = Number(config.duracaoDias ?? 0);
+    const duration = configuredDuration > 0
+      ? Math.round(configuredDuration)
+      : start && explicitEnd
+        ? proposalDiffDays(start, explicitEnd)
+        : undefined;
+    const end = explicitEnd ?? (start && duration ? proposalAddDays(start, duration - 1) : null);
+
+    if (end) cursor = proposalAddDays(end, 1);
+    else if (start && duration) cursor = proposalAddDays(start, duration);
+
+    return {
+      ...group,
+      value,
+      financialPercent,
+      physicalPercent: Number.isFinite(Number(config.percentualFisico))
+        ? Number(config.percentualFisico)
+        : financialPercent,
+      start,
+      end,
+      duration,
+      observacao: config.observacao?.trim() || "",
+      marcoPagamento: config.marcoPagamento?.trim() || "",
+    };
+  });
 }
 
 function escapeProposalText(value: string): string {
