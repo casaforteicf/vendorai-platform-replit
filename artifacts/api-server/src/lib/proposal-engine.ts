@@ -1163,6 +1163,36 @@ export function renderProposalHtml(json: unknown, theme: {
   }
   .schedule-intro strong { color: ${theme.navyDeep}; }
   .schedule-note { color: #7b7591; font-size: 6.8pt; display: block; margin-top: .8mm; }
+  .period-matrix-group { margin-top: 4mm; break-inside: avoid; }
+  .period-matrix-caption {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 5.8pt;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    color: ${theme.navyMid};
+    margin-bottom: 1.5mm;
+  }
+  table.period-matrix { width: 100%; border-collapse: collapse; font-size: 6.8pt; table-layout: fixed; }
+  table.period-matrix th {
+    padding: 1.8mm 2mm;
+    border: 1px solid ${theme.concreteLine};
+    background: ${theme.cream2};
+    color: ${theme.navyMid};
+    font-family: "JetBrains Mono", monospace;
+    font-size: 5.6pt;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    text-align: left;
+  }
+  table.period-matrix th:first-child { width: 33%; }
+  table.period-matrix td { padding: 1.8mm 2mm; border: 1px solid ${theme.concreteLine}; vertical-align: top; }
+  table.period-matrix .r { text-align: right; }
+  .period-stage strong { display: block; color: ${theme.navyDeep}; }
+  .period-stage span { display: block; color: #6f6885; margin-top: .5mm; }
+  .period-cell strong { display: block; color: ${theme.navyDeep}; font-size: 7pt; }
+  .period-cell span { display: block; color: #7b7591; font-size: 5.8pt; margin-top: .5mm; }
+  .period-empty { text-align: center; color: #b8b4c5; }
+  table.period-matrix tfoot td { background: ${theme.cream2}; font-weight: 700; color: ${theme.navyDeep}; }
 
   /* ── proposal visuals ── */
   .img-hero-wrap {
