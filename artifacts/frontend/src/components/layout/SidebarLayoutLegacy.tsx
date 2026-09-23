@@ -86,20 +86,11 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   }
 
   // Bloco inferior da sidebar: IA Assistente, usuário, ajuda, novidades e sair.
-  // Fica recolhível de forma independente do menu principal e persiste a
-  // preferência do usuário entre navegações/recarregamentos.
-  const SIDEBAR_UTILITIES_STORAGE_KEY = "vendorai_sidebar_utilities_expanded";
-  const [sidebarUtilitiesExpanded, setSidebarUtilitiesExpanded] = useState<boolean>(() => {
-    if (typeof window === "undefined") return true;
-    const saved = window.localStorage.getItem(SIDEBAR_UTILITIES_STORAGE_KEY);
-    return saved === null ? true : saved === "true";
-  });
+  // Abre sempre recolhido. O usuário pode expandir durante a sessão, mas a
+  // próxima montagem da sidebar volta ao estado fechado.
+  const [sidebarUtilitiesExpanded, setSidebarUtilitiesExpanded] = useState(false);
   function toggleSidebarUtilities() {
-    setSidebarUtilitiesExpanded((prev) => {
-      const next = !prev;
-      window.localStorage.setItem(SIDEBAR_UTILITIES_STORAGE_KEY, String(next));
-      return next;
-    });
+    setSidebarUtilitiesExpanded((prev) => !prev);
   }
 
   const [mobileOpen, setMobileOpen] = useState(false);
