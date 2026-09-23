@@ -28,8 +28,6 @@ import { ObjectStorageService } from "../lib/objectStorage.js";
 import {
   createZoneMask,
   createRectMask,
-  callReplicateFluxKontext,
-  callReplicateFluxUltraPro,
   callReplicateFluxFill,
   compositeWithOriginal,
   validateEdgeIntegrity,
@@ -37,6 +35,7 @@ import {
   bufferToDataUrl,
 } from "../lib/arch-render-pipeline.js";
 import sharp from "sharp";
+import { generateRenderCreate, generateRenderPreserve } from "../services/media-provider-execution.js";
 import {
   buildArqdorFidelityBlock,
   inferArqdorRenderPresets,
@@ -581,7 +580,7 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
       // identidade dos objetos ficam preservados por padrão; não usa máscara.
       const originalDataUrl = bufferToDataUrl(originalBuf, originalMime);
 
-      resultB64 = await callReplicateFluxKontext({
+      const generated = await generateRenderPreserve({
         imageDataUrl: originalDataUrl,
         prompt,
         logger,
@@ -590,7 +589,8 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
         beforeSubmit: params.beforeProviderSubmit,
         onPredictionCreated: params.onPredictionCreated,
       });
-      motor = "replicate-flux-kontext-pro";
+      resultB64 = generated.base64;
+      motor = `${generated.provider}-${generated.model}`;
       compositedFlag = false;
 
       // Confiança heurística registrada por zona (para auditoria)
@@ -666,8 +666,9 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
       if (!process.env["REPLICATE_API_TOKEN"]) {
         throw new Error("REPLICATE_API_TOKEN não configurado");
       }
-      resultB64 = await callReplicateFluxUltraPro({ prompt, logger });
-      motor = "replicate-flux-1.1-pro-ultra";
+      const generated = await generateRenderCreate({ prompt, logger });
+      resultB64 = generated.base64;
+      motor = `${generated.provider}-${generated.model}`;
     }
 
     // ── 4. QA estrutural pós-render ─────────────────────────────────────────
