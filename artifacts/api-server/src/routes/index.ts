@@ -152,6 +152,7 @@ import spinRouter from "./spin";
 import jarvisEmailActionsRouter from "./jarvis_email_actions";
 import jarvisExternalActionsRouter from "./jarvis_external_actions";
 import jarvisNaturalActionsRouter from "./jarvis_natural_actions";
+import jarvisToolBuilderRouter from "./jarvis_tool_builder";
 import jarvisActionPlansRouter from "./jarvis_action_plans";
 import jarvisMissionsRouter from "./jarvis_missions";
 import supportRouter from "./support";
@@ -568,6 +569,7 @@ router.use(spinRouter);
 
 // JARVIS: comandos naturais controlados precisam interceptar o chat antes do LLM.
 router.use(jarvisNaturalActionsRouter);
+router.use(jarvisToolBuilderRouter);
 router.use(jarvisActionPlansRouter);
 router.use(jarvisMissionsRouter);
 
