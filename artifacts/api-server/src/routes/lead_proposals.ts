@@ -411,6 +411,48 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
           typeof rawPresentation.mostrarTotalGeral === "boolean"
             ? rawPresentation.mostrarTotalGeral
             : undefined,
+        previsaoInicio:
+          typeof rawPresentation.previsaoInicio === "string" && rawPresentation.previsaoInicio.trim()
+            ? rawPresentation.previsaoInicio.trim()
+            : undefined,
+        cronogramaEtapas:
+          rawPresentation.cronogramaEtapas && typeof rawPresentation.cronogramaEtapas === "object"
+            ? Object.fromEntries(
+                Object.entries(rawPresentation.cronogramaEtapas)
+                  .filter(([, value]) => value && typeof value === "object")
+                  .map(([stageId, value]) => {
+                    const row = value as Record<string, unknown>;
+                    return [String(stageId), {
+                      ...(Number.isFinite(Number(row.duracaoDias)) && Number(row.duracaoDias) > 0
+                        ? { duracaoDias: Math.round(Number(row.duracaoDias)) }
+                        : {}),
+                      ...(Number.isFinite(Number(row.percentualFisico))
+                        ? { percentualFisico: Math.min(100, Math.max(0, Number(row.percentualFisico))) }
+                        : {}),
+                      ...(typeof row.inicioPrevisto === "string" && row.inicioPrevisto.trim()
+                        ? { inicioPrevisto: row.inicioPrevisto.trim() }
+                        : {}),
+                      ...(typeof row.fimPrevisto === "string" && row.fimPrevisto.trim()
+                        ? { fimPrevisto: row.fimPrevisto.trim() }
+                        : {}),
+                      ...(typeof row.observacao === "string" && row.observacao.trim()
+                        ? { observacao: row.observacao.trim() }
+                        : {}),
+                      ...(typeof row.marcoPagamento === "string" && row.marcoPagamento.trim()
+                        ? { marcoPagamento: row.marcoPagamento.trim() }
+                        : {}),
+                    }];
+                  }),
+              )
+            : undefined,
+        mostrarCronogramaExecucao:
+          typeof rawPresentation.mostrarCronogramaExecucao === "boolean"
+            ? rawPresentation.mostrarCronogramaExecucao
+            : undefined,
+        mostrarFisicoFinanceiro:
+          typeof rawPresentation.mostrarFisicoFinanceiro === "boolean"
+            ? rawPresentation.mostrarFisicoFinanceiro
+            : undefined,
       }
     : null;
 
@@ -428,10 +470,23 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
     }>;
     valorTotal?: string | null; observacoes?: string | null;
     formaPagamento?: string | null; condPagamento?: string | null; prazoEntrega?: string | null;
+    validadeAte?: Date | string | null;
+    paymentCompositions?: Array<{ forma: string; valor: string | number; comprovanteUrl?: string | null }>;
     apresentacao?: {
       modoPadrao?: "completo" | "resumo_etapa" | "preco_medio";
       etapas?: Record<string, "completo" | "resumo_etapa" | "preco_medio">;
       mostrarTotalGeral?: boolean;
+      previsaoInicio?: string;
+      cronogramaEtapas?: Record<string, {
+        duracaoDias?: number;
+        percentualFisico?: number;
+        inicioPrevisto?: string;
+        fimPrevisto?: string;
+        observacao?: string;
+        marcoPagamento?: string;
+      }>;
+      mostrarCronogramaExecucao?: boolean;
+      mostrarFisicoFinanceiro?: boolean;
     } | null;
   } | null = null;
 
@@ -441,6 +496,47 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
       .from(propostasTable)
       .where(and(eq(propostasTable.id, bodyPropostaId), eq(propostasTable.tenantId, tenantId)));
     if (orc) {
+      const storedPresentation = (orc.apresentacao ?? {}) as {
+        modoPadrao?: "completo" | "resumo_etapa" | "preco_medio";
+        etapas?: Record<string, "completo" | "resumo_etapa" | "preco_medio">;
+        mostrarTotalGeral?: boolean;
+        previsaoInicio?: string;
+        cronogramaEtapas?: Record<string, {
+          duracaoDias?: number;
+          percentualFisico?: number;
+          inicioPrevisto?: string;
+          fimPrevisto?: string;
+          observacao?: string;
+          marcoPagamento?: string;
+        }>;
+        mostrarCronogramaExecucao?: boolean;
+        mostrarFisicoFinanceiro?: boolean;
+      };
+
+      const mergedPresentation = {
+        ...storedPresentation,
+        ...(bodyPresentation?.modoPadrao ? { modoPadrao: bodyPresentation.modoPadrao } : {}),
+        ...(bodyPresentation?.etapas ? {
+          etapas: { ...(storedPresentation.etapas ?? {}), ...bodyPresentation.etapas },
+        } : {}),
+        ...(typeof bodyPresentation?.mostrarTotalGeral === "boolean"
+          ? { mostrarTotalGeral: bodyPresentation.mostrarTotalGeral }
+          : {}),
+        ...(bodyPresentation?.previsaoInicio ? { previsaoInicio: bodyPresentation.previsaoInicio } : {}),
+        ...(bodyPresentation?.cronogramaEtapas ? {
+          cronogramaEtapas: {
+            ...(storedPresentation.cronogramaEtapas ?? {}),
+            ...bodyPresentation.cronogramaEtapas,
+          },
+        } : {}),
+        ...(typeof bodyPresentation?.mostrarCronogramaExecucao === "boolean"
+          ? { mostrarCronogramaExecucao: bodyPresentation.mostrarCronogramaExecucao }
+          : {}),
+        ...(typeof bodyPresentation?.mostrarFisicoFinanceiro === "boolean"
+          ? { mostrarFisicoFinanceiro: bodyPresentation.mostrarFisicoFinanceiro }
+          : {}),
+      };
+
       orcamentoEmbed = {
         titulo: orc.titulo,
         numero: orc.numero,
@@ -459,7 +555,13 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
         formaPagamento: orc.formaPagamento,
         condPagamento: orc.condPagamento,
         prazoEntrega: orc.prazoEntrega,
-        apresentacao: bodyPresentation ?? orc.apresentacao,
+        validadeAte: orc.validadeAte,
+        paymentCompositions: (orc.paymentCompositions ?? []) as Array<{
+          forma: string;
+          valor: string | number;
+          comprovanteUrl?: string | null;
+        }>,
+        apresentacao: mergedPresentation,
       };
     }
   }

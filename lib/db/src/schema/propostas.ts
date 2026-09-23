@@ -69,10 +69,25 @@ export const propostaApresentacaoModoSchema = z.enum([
 
 export type PropostaApresentacaoModo = z.infer<typeof propostaApresentacaoModoSchema>;
 
+export const propostaCronogramaEtapaSchema = z.object({
+  duracaoDias: z.number().int().positive().optional(),
+  percentualFisico: z.number().min(0).max(100).optional(),
+  inicioPrevisto: z.string().optional(),
+  fimPrevisto: z.string().optional(),
+  observacao: z.string().optional(),
+  marcoPagamento: z.string().optional(),
+});
+
+export type PropostaCronogramaEtapa = z.infer<typeof propostaCronogramaEtapaSchema>;
+
 export const propostaApresentacaoSchema = z.object({
   modoPadrao: propostaApresentacaoModoSchema.default("completo"),
   etapas: z.record(z.string(), propostaApresentacaoModoSchema).default({}),
   mostrarTotalGeral: z.boolean().default(true),
+  previsaoInicio: z.string().optional(),
+  cronogramaEtapas: z.record(z.string(), propostaCronogramaEtapaSchema).default({}),
+  mostrarCronogramaExecucao: z.boolean().default(true),
+  mostrarFisicoFinanceiro: z.boolean().default(true),
 });
 
 export type PropostaApresentacao = z.infer<typeof propostaApresentacaoSchema>;
@@ -81,6 +96,9 @@ const DEFAULT_PROPOSTA_APRESENTACAO: PropostaApresentacao = {
   modoPadrao: "completo",
   etapas: {},
   mostrarTotalGeral: true,
+  cronogramaEtapas: {},
+  mostrarCronogramaExecucao: true,
+  mostrarFisicoFinanceiro: true,
 };
 
 const valorField = z
