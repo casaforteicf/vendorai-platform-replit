@@ -67,6 +67,7 @@ import {
   useUpdatePropostaStatus,
   useGetBusinessProfileByTenant,
   getGetBusinessProfileByTenantQueryKey,
+  getListPropostasQueryKey,
 } from "@workspace/api-client-react";
 import type { Proposta } from "@workspace/api-client-react";
 
@@ -466,7 +467,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
         throw new Error(body.error ?? "Não foi possível gerar as imagens das etapas.");
       }
 
-      await queryClient.invalidateQueries({ queryKey: ["listPropostas", tenantId] });
+      await queryClient.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId, { leadId }) });
       const generatedCount = Number(body.generated ?? 0);
       const reusedCount = Number(body.reused ?? 0);
       const errorCount = Array.isArray(body.errors) ? body.errors.length : 0;
