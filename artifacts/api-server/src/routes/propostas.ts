@@ -426,14 +426,25 @@ router.get("/propostas/:id/pdf", async (req, res) => {
   const resolveUrl = (url: string | null | undefined): string | null => {
     if (!url) return null;
     if (url.startsWith("/objects/")) return `http://localhost:${port}${basePath}/api/storage${url}`;
+    if (url.startsWith("/api/storage/")) return `http://localhost:${port}${basePath}${url}`;
     return url;
   };
 
   const profileResolved = profile ? { ...profile, logoUrl: resolveUrl(profile.logoUrl) } : null;
+  const presentationResolved = proposta.apresentacao
+    ? {
+        ...proposta.apresentacao,
+        imagensEtapas: Object.fromEntries(
+          Object.entries(proposta.apresentacao.imagensEtapas ?? {})
+            .map(([stageId, imageUrl]) => [stageId, resolveUrl(imageUrl) ?? imageUrl]),
+        ),
+      }
+    : proposta.apresentacao;
 
   const html = renderOrcamentoPdf({
     proposta: {
       ...proposta,
+      apresentacao: presentationResolved,
       itens: (proposta.itens ?? []) as Array<{ nome: string; quantidade: number; valorUnitario: number; sku?: string | null; descricao?: string | null }>,
     },
     profile: profileResolved,
