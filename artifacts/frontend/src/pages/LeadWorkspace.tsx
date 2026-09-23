@@ -114,12 +114,19 @@ export default function LeadWorkspace() {
 
     const newestFirst = [...deals].reverse();
     const terminal = new Set(["ganho", "perdido", "entregue", "concluido", "cancelado"]);
-    return newestFirst.find((d) => !terminal.has(d.etapa) && !["em_aquecimento", "parceiro"].includes(d.etapa))
+    const selectedForPipeline = newestFirst.find((d) =>
+      (d as typeof d & { pipelineActive?: boolean }).pipelineActive === true
+      && !terminal.has(d.etapa)
+      && !["em_aquecimento", "parceiro", "em_execucao"].includes(d.etapa)
+    );
+    return selectedForPipeline
+      ?? newestFirst.find((d) => !terminal.has(d.etapa) && !["em_aquecimento", "parceiro"].includes(d.etapa))
       ?? newestFirst.find((d) => d.etapa === "em_aquecimento" && d.relationshipStage !== "aquecimento_retomado")
       ?? newestFirst.find((d) => !terminal.has(d.etapa))
       ?? newestFirst[0]
       ?? null;
   }, [deals, requestedDealId]);
+  const dealOptions = useMemo(() => [...deals].reverse(), [deals]);
   const stages = useMemo(() => [...(configuredStages.length ? configuredStages : fallbackStages)].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0)), [configuredStages]);
   const currentIndex = stages.findIndex((s) => s.key === deal?.etapa);
   const currentStage = stages[currentIndex];
@@ -149,6 +156,13 @@ export default function LeadWorkspace() {
   const [ownerEditorOpen, setOwnerEditorOpen] = useState(false);
   const [currentOwner, setCurrentOwner] = useState("");
   const [savingOwner, setSavingOwner] = useState(false);
+  const [savingPipelineActive, setSavingPipelineActive] = useState(false);
+  const pipelineActive = Boolean(deal && (deal as typeof deal & { pipelineActive?: boolean }).pipelineActive !== false);
+  const pipelineCountable = Boolean(
+    deal
+    && !hiddenFromCommercialFlow.has(deal.etapa)
+    && !["ganho", "perdido"].includes(deal.etapa)
+  );
 
   const targetStage = stages.find((s) => s.key === nextStage);
   const eligibleIds = (targetStage as { elegiveisUserIds?: string[] | null } | undefined)?.elegiveisUserIds ?? null;
@@ -158,6 +172,36 @@ export default function LeadWorkspace() {
   useEffect(() => {
     if (!ownerEditorOpen) setCurrentOwner(deal?.assignedTo ?? lead?.assignedTo ?? "");
   }, [deal?.assignedTo, lead?.assignedTo, ownerEditorOpen]);
+
+  async function selectCurrentDealForPipeline() {
+    if (!deal || !pipelineCountable) return;
+    setSavingPipelineActive(true);
+    try {
+      const response = await fetch("/api/deals/" + deal.id + "/select-pipeline-active", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message ?? result.error ?? "Não foi possível selecionar o negócio ativo.");
+
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId, { leadId: id }) }),
+        qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }),
+      ]);
+      toast({
+        title: "Negócio ativo atualizado",
+        description: "Somente esta revisão do cliente será contabilizada no valor atual da pipeline.",
+      });
+    } catch (e) {
+      toast({
+        title: "Erro ao selecionar negócio ativo",
+        description: e instanceof Error ? e.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingPipelineActive(false);
+    }
+  }
 
   function startAttendance() {
     if (!lead) return;
@@ -376,6 +420,54 @@ export default function LeadWorkspace() {
         </div>
       </CardContent>
     </Card>
+
+    {deal && (dealOptions.length > 1 || !pipelineActive) && (
+      <Card className="border-border/70 shadow-sm">
+        <CardContent className="p-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold">Negócio contabilizado na pipeline</p>
+              <p className="text-xs text-muted-foreground">
+                Revisões continuam no histórico, mas somente o negócio marcado como ativo entra no valor e na quantidade de oportunidades atuais.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              {dealOptions.length > 1 && (
+                <Select
+                  value={deal.id}
+                  onValueChange={(dealId) => navigate(`/trabalho/${id}?dealId=${dealId}&from=pipeline`)}
+                >
+                  <SelectTrigger className="min-w-[280px] bg-background">
+                    <SelectValue placeholder="Selecionar negócio/revisão" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {dealOptions.map((option) => {
+                      const active = (option as typeof option & { pipelineActive?: boolean }).pipelineActive === true;
+                      const amount = option.valor
+                        ? Number(option.valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+                        : "sem valor";
+                      return (
+                        <SelectItem key={option.id} value={option.id}>
+                          {option.titulo} · {amount}{active ? " · ATIVO" : ""}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              )}
+              {pipelineCountable && (
+                pipelineActive
+                  ? <Badge className="h-9 justify-center bg-emerald-600 px-3 text-white hover:bg-emerald-600">Ativo no valor da pipeline</Badge>
+                  : <Button type="button" variant="outline" disabled={savingPipelineActive} onClick={selectCurrentDealForPipeline}>
+                      {savingPipelineActive && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Definir como ativo
+                    </Button>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    )}
 
     {deal && visualStages.length > 0 && (
       <Card className="border-border/70 shadow-sm">
