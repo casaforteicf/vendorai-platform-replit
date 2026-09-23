@@ -64,6 +64,7 @@ router.get("/tenants/:tenantId/lead-capture", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/lead-capture/sync-tools", async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately validated by canAccess before tenant-scoped reads/writes
   const tenantId = String(req.params["tenantId"]);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Access denied" });
 
