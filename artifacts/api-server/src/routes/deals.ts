@@ -64,6 +64,10 @@ const DEAL_STAGE_LABELS: Record<string, string> = {
   contrato: "Contrato", ganho: "Pedido", em_execucao: "Em execução", entregue: "Entregue", perdido: "Perdido", parceiro: "Parceiro",
 };
 
+const PIPELINE_METRIC_EXCLUDED_STAGES = new Set([
+  "em_aquecimento", "parceiro", "em_execucao", "ganho", "entregue", "perdido",
+]);
+
 const COMMERCIAL_STAGE_TASKS: Record<string, string> = {
   novo: "Fazer primeiro contato e qualificar",
   qualificado: "Preparar orçamento e próximos passos",
@@ -463,6 +467,65 @@ router.post("/deals/:id/resume-commercial", async (req, res) => {
   });
 
   res.status(201).json({ deal: createdDeal, resumedDealId: existing.id, alreadyResumed: false });
+});
+
+router.post("/deals/:id/select-pipeline-active", async (req, res) => {
+  const [existing] = await db
+    .select({
+      id: dealsTable.id,
+      tenantId: dealsTable.tenantId,
+      leadId: dealsTable.leadId,
+      titulo: dealsTable.titulo,
+      etapa: dealsTable.etapa,
+      assignedTo: dealsTable.assignedTo,
+      pipelineActive: dealsTable.pipelineActive,
+    })
+    .from(dealsTable)
+    .where(eq(dealsTable.id, String(req.params.id)))
+    .limit(1);
+
+  if (!existing) {
+    res.status(404).json({ error: "Deal not found" });
+    return;
+  }
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+  const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const userFn = req.user?.userFunction as UserFunction | undefined;
+  if (!isAdmin && (userFn === "vendedor" || userFn === "entrega") && existing.assignedTo && existing.assignedTo !== req.user?.sub) {
+    res.status(403).json({ error: "Access denied to this deal" });
+    return;
+  }
+  if (!existing.leadId) {
+    res.status(422).json({ error: "O negócio precisa estar vinculado a um cliente para ser o ativo da pipeline." });
+    return;
+  }
+  if (PIPELINE_METRIC_EXCLUDED_STAGES.has(existing.etapa)) {
+    res.status(409).json({
+      error: "PIPELINE_ACTIVE_STAGE_INVALID",
+      message: "Somente um negócio comercial aberto pode ser selecionado para compor o valor atual da pipeline.",
+    });
+    return;
+  }
+
+  const [updated] = await db
+    .update(dealsTable)
+    .set({ pipelineActive: true, updatedAt: new Date() })
+    .where(eq(dealsTable.id, existing.id))
+    .returning();
+
+  await recordDealJourney({
+    tenantId: existing.tenantId,
+    leadId: existing.leadId,
+    dealId: existing.id,
+    title: "Negócio selecionado como ativo na pipeline",
+    description: "Este negócio passa a ser o único processo comercial aberto deste cliente contabilizado nos indicadores atuais. As demais revisões permanecem no histórico.",
+    responsavelId: req.user?.sub,
+  });
+
+  res.json(updated);
 });
 
 router.patch("/deals/:id", async (req, res) => {
