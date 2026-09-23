@@ -7,6 +7,7 @@ import {
   leadCaptureEventsTable,
   tenantLeadCaptureToolsTable,
 } from "@workspace/db";
+import { syncTenantLeadCaptureToolsFromExistingCapabilities } from "../services/jarvis-tool-builder.js";
 
 const router: IRouter = Router();
 
@@ -46,6 +47,8 @@ router.get("/tenants/:tenantId/lead-capture", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Access denied" });
 
+  await syncTenantLeadCaptureToolsFromExistingCapabilities(tenantId);
+
   const [[profile], tools, campaigns] = await Promise.all([
     db.select({ vertical: businessProfilesTable.vertical }).from(businessProfilesTable).where(eq(businessProfilesTable.tenantId, tenantId)).limit(1),
     db.select().from(tenantLeadCaptureToolsTable).where(eq(tenantLeadCaptureToolsTable.tenantId, tenantId)).orderBy(desc(tenantLeadCaptureToolsTable.updatedAt)),
@@ -58,6 +61,24 @@ router.get("/tenants/:tenantId/lead-capture", async (req, res) => {
     suggestedTools: tools.length ? [] : suggestedTools(profile?.vertical),
     campaigns,
   });
+});
+
+router.post("/tenants/:tenantId/lead-capture/sync-tools", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Access denied" });
+
+  try {
+    const result = await syncTenantLeadCaptureToolsFromExistingCapabilities(tenantId);
+    const tools = await db
+      .select()
+      .from(tenantLeadCaptureToolsTable)
+      .where(eq(tenantLeadCaptureToolsTable.tenantId, tenantId))
+      .orderBy(desc(tenantLeadCaptureToolsTable.updatedAt));
+    return res.json({ ...result, tools });
+  } catch (err) {
+    req.log?.error({ err, tenantId }, "lead-capture: sync tools failed");
+    return res.status(500).json({ error: "Não foi possível sincronizar as ferramentas agora." });
+  }
 });
 
 router.post("/tenants/:tenantId/lead-capture/tools", async (req, res) => {
