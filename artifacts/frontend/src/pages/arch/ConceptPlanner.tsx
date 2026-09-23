@@ -3250,8 +3250,22 @@ export default function ConceptPlanner() {
       }
 
       const { render_id } = (await response.json()) as { render_id: string };
-      const processing = { renderId: render_id, status: "processing" as const };
+      const processing = {
+        ...conceptRender,
+        renderId: render_id,
+        status: "processing" as const,
+        source,
+        renderView,
+        error: undefined,
+      };
       setConceptRender(processing);
+
+      // Persist the active job immediately so reload/navigation can recover it.
+      await fetch(`/api/arch/concept-projects/${renderProjectId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentStep: 5, conceptRender: processing }),
+      }).catch(() => undefined);
 
       let attempts = 0;
       while (attempts < 90) {
@@ -3274,15 +3288,17 @@ export default function ConceptPlanner() {
             source,
             renderView,
           };
-          const existingHistory = Array.isArray(conceptRender?.history) ? conceptRender.history : [];
+          const existingHistory = Array.isArray(processing.history) ? processing.history : [];
           const completed = {
+            ...processing,
             renderId: render_id,
             status: "completed" as const,
             resultImageUrl: data.result_image_url,
             generatedAt,
             source,
             renderView,
-            history: [...existingHistory, historyItem].slice(-12),
+            error: undefined,
+            history: [...existingHistory.filter((item) => item.renderId !== render_id), historyItem].slice(-12),
           };
           setConceptRender(completed);
 
@@ -3304,9 +3320,74 @@ export default function ConceptPlanner() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Erro ao gerar render conceitual.";
       setRenderError(message);
+      // Keep the previous successful image/history visible instead of collapsing back to an empty gallery.
       setConceptRender((prev) => ({ ...prev, status: "error", error: message }));
     }
   };
+
+  useEffect(() => {
+    if (editorView !== "render" || !conceptId) return;
+    let cancelled = false;
+
+    const recoverRenderHistory = async () => {
+      try {
+        const response = await fetch(`/api/arch/ai-renders?project_id=${encodeURIComponent(conceptId)}`);
+        if (!response.ok) return;
+        const payload = await response.json() as {
+          versions?: Array<{
+            id: string;
+            status?: string;
+            result_image_url?: string | null;
+            ambiente?: string | null;
+            created_at?: string | null;
+            concluido_em?: string | null;
+          }>;
+        };
+        if (cancelled) return;
+
+        const completedVersions = (Array.isArray(payload.versions) ? payload.versions : [])
+          .filter((item) => item.status === "concluido" && item.result_image_url)
+          .map((item) => ({
+            renderId: item.id,
+            resultImageUrl: item.result_image_url as string,
+            generatedAt: item.concluido_em ?? item.created_at ?? new Date().toISOString(),
+            source: "facade" as const,
+            renderView: item.ambiente === "interior" ? "interior" as const : "exterior" as const,
+          }));
+
+        if (!completedVersions.length) return;
+        const latest = completedVersions[completedVersions.length - 1]!;
+
+        setConceptRender((prev) => {
+          if (prev?.status === "processing") return prev;
+          const currentHistory = Array.isArray(prev?.history) ? prev.history : [];
+          const mergedHistory = [...currentHistory];
+          for (const item of completedVersions) {
+            if (!mergedHistory.some((existing) => existing.renderId === item.renderId)) mergedHistory.push(item);
+          }
+          return {
+            ...prev,
+            renderId: latest.renderId,
+            resultImageUrl: latest.resultImageUrl,
+            generatedAt: latest.generatedAt,
+            source: latest.source,
+            renderView: latest.renderView,
+            status: "completed",
+            error: undefined,
+            history: mergedHistory.slice(-12),
+          };
+        });
+        setRenderError(null);
+      } catch {
+        // Recovery is best-effort; the normal concept state remains usable.
+      }
+    };
+
+    void recoverRenderHistory();
+    return () => {
+      cancelled = true;
+    };
+  }, [editorView, conceptId]);
 
   const latestFacadeRenderUrl = useMemo(() => {
     if (conceptRender?.renderView === "exterior" && conceptRender.resultImageUrl) return conceptRender.resultImageUrl;
@@ -4472,9 +4553,11 @@ export default function ConceptPlanner() {
             )}
 
             <div className="arq-workspace-shell relative min-h-[calc(100dvh-56px)] overflow-hidden bg-[#f6f7f8]">
-              <aside className={(selected || selectedCustomWall || selectedOpening || selectedClosedSpace || selectedWall)
+              <aside className={editorView !== "plan"
                   ? "arq-workspace-sidebar absolute inset-y-0 left-0 z-30 hidden max-w-full border-r bg-white shadow-[8px_0_28px_rgba(15,23,42,0.08)] md:block"
-                  : "arq-workspace-sidebar absolute inset-y-0 left-0 z-30 max-w-full border-r bg-white shadow-[8px_0_28px_rgba(15,23,42,0.08)]"}>
+                  : (selected || selectedCustomWall || selectedOpening || selectedClosedSpace || selectedWall)
+                    ? "arq-workspace-sidebar absolute inset-y-0 left-0 z-30 hidden max-w-full border-r bg-white shadow-[8px_0_28px_rgba(15,23,42,0.08)] md:block"
+                    : "arq-workspace-sidebar absolute inset-y-0 left-0 z-30 max-w-full border-r bg-white shadow-[8px_0_28px_rgba(15,23,42,0.08)]"}>
                 <div className="flex min-h-full">
                   <div className="arq-tool-rail w-14 shrink-0 border-r bg-white py-3 sm:w-16">
                     <div className="flex flex-col items-center gap-2">
@@ -6033,7 +6116,7 @@ export default function ConceptPlanner() {
                   )}
 
                   {editorView === "render" && (
-                    <div className="min-h-[calc(100dvh-64px)] bg-slate-100 p-4 md:p-5">
+                    <div className="min-h-[calc(100dvh-64px)] bg-slate-100 px-3 pb-24 pt-4 md:p-5">
                       <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
                         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-white px-4 py-3 shadow-sm">
                           <div>
@@ -6065,6 +6148,25 @@ export default function ConceptPlanner() {
                             </button>
                           </div>
                         </div>
+
+                        {(renderError || conceptRender?.error) && conceptRender?.status === "error" && (
+                          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 shadow-sm">
+                            <div className="text-sm font-semibold text-red-800">O render não foi concluído</div>
+                            <div className="mt-1 text-xs leading-5 text-red-700">
+                              {renderError ?? conceptRender?.error}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => void generateConceptRender({
+                                source: conceptRender?.source ?? "facade",
+                                renderView: conceptRender?.renderView ?? "exterior",
+                              })}
+                              className="mt-3 rounded-xl bg-red-700 px-3 py-2 text-xs font-semibold text-white"
+                            >
+                              Tentar novamente
+                            </button>
+                          </div>
+                        )}
 
                         {conceptRender?.resultImageUrl ? (
                           <div className="overflow-hidden rounded-2xl border bg-white shadow-xl">
