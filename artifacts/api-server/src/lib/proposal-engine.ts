@@ -1055,7 +1055,7 @@ ${orcamento ? (() => {
 
     if (mode === "preco_medio") {
       const rows = group.itens.map((i) => `<tr>
-        <td>${i.nome}${i.descricao ? `<span class="orc-desc">${i.descricao}</span>` : ""}${i.sku ? `<span class="orc-desc">SKU: ${i.sku}</span>` : ""}</td>
+        <td>${i.nome}${i.sku ? `<span class="orc-desc">SKU: ${i.sku}</span>` : ""}</td>
         <td class="r">${fmtBRL(i.valorUnitario)}</td>
       </tr>`).join("");
       return `<div class="orc-stage-block">${stageTitle}
@@ -1070,7 +1070,7 @@ ${orcamento ? (() => {
     const rows = group.itens.map((i) => {
       const subtotal = i.quantidade * i.valorUnitario;
       return `<tr>
-        <td>${i.nome}${i.descricao ? `<span class="orc-desc">${i.descricao}</span>` : ""}${i.sku ? `<span class="orc-desc">SKU: ${i.sku}</span>` : ""}</td>
+        <td>${i.nome}${i.sku ? `<span class="orc-desc">SKU: ${i.sku}</span>` : ""}</td>
         <td class="r">${i.quantidade}</td>
         <td class="r">${fmtBRL(i.valorUnitario)}</td>
         <td class="r">${fmtBRL(subtotal)}</td>
@@ -1232,7 +1232,7 @@ export function renderOrcamentoPdf(args: {
 
     if (mode === "preco_medio") {
       const rows = group.itens.map((i) => `<tr>
-        <td>${i.nome}${i.descricao ? `<br><span class="row-desc">${i.descricao}</span>` : ""}${i.sku ? `<br><span class="row-desc">SKU: ${i.sku}</span>` : ""}</td>
+        <td>${i.nome}${i.sku ? `<br><span class="row-desc">SKU: ${i.sku}</span>` : ""}</td>
         <td class="r fw">${fmtBRL(i.valorUnitario)}</td>
       </tr>`).join("");
       return `<div class="stage-block">${stageTitle}
@@ -1247,7 +1247,7 @@ export function renderOrcamentoPdf(args: {
     const rows = group.itens.map((i) => {
       const sub = i.quantidade * i.valorUnitario;
       return `<tr>
-        <td>${i.nome}${i.descricao ? `<br><span class="row-desc">${i.descricao}</span>` : ""}${i.sku ? `<br><span class="row-desc">SKU: ${i.sku}</span>` : ""}</td>
+        <td>${i.nome}${i.sku ? `<br><span class="row-desc">SKU: ${i.sku}</span>` : ""}</td>
         <td class="r">${i.quantidade}</td>
         <td class="r">${fmtBRL(i.valorUnitario)}</td>
         <td class="r fw">${fmtBRL(sub)}</td>
