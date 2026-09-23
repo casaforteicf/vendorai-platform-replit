@@ -814,6 +814,41 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
     }
   }
 
+  const builderDiscovery = (ctx.discoveryData ?? {}) as Record<string, unknown>;
+  const builderTemplates = Array.isArray(builderDiscovery.proposalBuilderTemplates)
+    ? builderDiscovery.proposalBuilderTemplates as Array<Record<string, unknown>>
+    : [];
+  const requestedBuilderTemplateId =
+    typeof req.body?.proposalBuilderTemplateId === "string"
+      ? req.body.proposalBuilderTemplateId
+      : null;
+  const activeBuilderTemplateId =
+    typeof builderDiscovery.activeProposalBuilderTemplateId === "string"
+      ? builderDiscovery.activeProposalBuilderTemplateId as string
+      : null;
+  const selectedBuilderTemplate =
+    (requestedBuilderTemplateId
+      ? builderTemplates.find((item) => item.id === requestedBuilderTemplateId)
+      : null)
+    ?? (activeBuilderTemplateId
+      ? builderTemplates.find((item) => item.id === activeBuilderTemplateId)
+      : null)
+    ?? builderTemplates.find((item) => item.isDefault === true)
+    ?? null;
+
+  const selectedBuilderModules = selectedBuilderTemplate && Array.isArray(selectedBuilderTemplate.modules)
+    ? (selectedBuilderTemplate.modules as Array<Record<string, unknown>>)
+        .filter((item) => item && item.enabled !== false && typeof item.key === "string")
+        .sort((a, b) => Number(a.order ?? 999) - Number(b.order ?? 999))
+    : [];
+
+  const proposalBuilderRenderConfig = selectedBuilderTemplate
+    ? {
+        enabledModules: selectedBuilderModules.map((item) => String(item.key)),
+        moduleOrder: selectedBuilderModules.map((item) => String(item.key)),
+      }
+    : null;
+
   const html = renderProposalHtml(
     json,
     theme,
@@ -824,7 +859,8 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
     resolveStorageUrl(ctx.tenantLogoUrl),
     bodyImagens,
     orcamentoEmbed,
-    { phone: ctx.tenantPhone ?? null, email: ctx.tenantEmail ?? null, instagram: ctx.tenantInstagram ?? null }
+    { phone: ctx.tenantPhone ?? null, email: ctx.tenantEmail ?? null, instagram: ctx.tenantInstagram ?? null },
+    proposalBuilderRenderConfig,
   );
 
   const [proposal] = await db
