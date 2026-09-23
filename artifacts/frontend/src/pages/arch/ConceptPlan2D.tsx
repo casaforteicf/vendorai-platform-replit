@@ -1386,11 +1386,32 @@ export default function ConceptPlan2D({
                 />
               ))}
               {(() => {
-                const badgeWidth = Math.max(1.15, Math.min(2.6, space.bounds.width - 0.35));
-                const compact = space.bounds.width < 2.2 || space.bounds.height < 2.0;
-                const showLabel = Boolean(label) && !compact;
-                const badgeHeight = showLabel ? 0.92 : 0.56;
+                const compact = space.bounds.width < 1.55 || space.bounds.height < 1.35;
+                const labelLines = label ? splitRoomLabel(label).slice(0, 2) : [];
+                const showLabel = labelLines.length > 0;
+                const longestLine = Math.max(5, ...labelLines.map((line) => line.length));
+                const availableWidth = Math.max(0.9, space.bounds.width - 0.22);
+                const labelFontSize = compact
+                  ? Math.max(0.24, Math.min(0.31, (availableWidth * 1.25) / longestLine))
+                  : Math.max(0.31, Math.min(0.42, (availableWidth * 1.7) / longestLine));
+                const areaFontSize = compact ? 0.24 : 0.29;
+                const desiredBadgeWidth = Math.max(
+                  compact ? 1.25 : 1.8,
+                  longestLine * labelFontSize * 0.62 + 0.42,
+                );
+                const badgeWidth = Math.max(
+                  1.05,
+                  Math.min(Math.max(1.05, space.bounds.width - 0.16), desiredBadgeWidth),
+                );
+                const labelBlockHeight = showLabel
+                  ? labelLines.length * labelFontSize * 1.12
+                  : 0;
+                const badgeHeight = Math.max(
+                  compact ? 0.64 : 0.82,
+                  labelBlockHeight + areaFontSize + (showLabel ? 0.42 : 0.28),
+                );
                 const top = space.centroid.y - badgeHeight / 2;
+                const labelStartY = space.centroid.y - (showLabel ? (labelBlockHeight + areaFontSize) * 0.26 : 0);
                 return (
                   <g pointerEvents="none">
                     <rect
@@ -1398,31 +1419,42 @@ export default function ConceptPlan2D({
                       y={top}
                       width={badgeWidth}
                       height={badgeHeight}
-                      rx="0.14"
+                      rx="0.16"
                       fill="#ffffff"
-                      fillOpacity="0.88"
-                      stroke={selectedSpace ? "#f97316" : "#cbd5e1"}
-                      strokeWidth="0.03"
+                      fillOpacity="0.96"
+                      stroke={selectedSpace ? "#f97316" : "#94a3b8"}
+                      strokeWidth={selectedSpace ? "0.055" : "0.04"}
                     />
                     {showLabel && (
                       <text
                         x={space.centroid.x}
-                        y={space.centroid.y - 0.10}
+                        y={labelStartY}
                         textAnchor="middle"
-                        fontSize="0.22"
-                        fontWeight="800"
+                        fontSize={labelFontSize}
+                        fontWeight="900"
                         fill="#0f172a"
+                        stroke="#ffffff"
+                        strokeWidth="0.018"
+                        paintOrder="stroke"
                       >
-                        {label}
+                        {labelLines.map((line, lineIndex) => (
+                          <tspan
+                            key={`${space.id}-space-label-${lineIndex}`}
+                            x={space.centroid.x}
+                            dy={lineIndex === 0 ? 0 : labelFontSize * 1.12}
+                          >
+                            {line}
+                          </tspan>
+                        ))}
                       </text>
                     )}
                     <text
                       x={space.centroid.x}
-                      y={space.centroid.y + (showLabel ? 0.24 : 0.07)}
+                      y={space.centroid.y + badgeHeight / 2 - 0.18}
                       textAnchor="middle"
-                      fontSize={compact ? "0.19" : "0.22"}
+                      fontSize={areaFontSize}
                       fontWeight="800"
-                      fill={selectedSpace ? "#c2410c" : "#334155"}
+                      fill={selectedSpace ? "#c2410c" : "#475569"}
                     >
                       {space.area.toFixed(1)} m²
                     </text>
