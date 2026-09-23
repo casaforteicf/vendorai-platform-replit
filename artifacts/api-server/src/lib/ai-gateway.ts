@@ -992,17 +992,82 @@ export async function callGoogleVertexImage(params: {
   logger?: Logger;
   timeoutMs?: number;
 }): Promise<string> {
+  const model =
+    params.model?.trim() ||
+    process.env["GOOGLE_VERTEX_IMAGE_MODEL"]?.trim() ||
+    "gemini-3.1-flash-image";
+
+  const apiKey = process.env["GEMINI_API_KEY"]?.trim();
+  if (apiKey) {
+    const input: Array<Record<string, unknown>> = [];
+    if (params.referenceImageDataUrl) {
+      const match = params.referenceImageDataUrl.match(/^data:([^;]+);base64,([\s\S]+)$/);
+      if (!match) throw new Error("Gemini reference image must be a data URL base64");
+      input.push({
+        type: "image",
+        mime_type: match[1],
+        data: match[2],
+      });
+    }
+    input.push({ type: "text", text: params.prompt });
+
+    params.logger?.info(
+      { provider: "google-gemini-api", model, hasReference: Boolean(params.referenceImageDataUrl) },
+      "Gemini image: generating with API key",
+    );
+
+    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", {
+      method: "POST",
+      headers: {
+        "x-goog-api-key": apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        input,
+        response_format: {
+          type: "image",
+          aspect_ratio: "16:9",
+          image_size: "2K",
+        },
+      }),
+      signal: AbortSignal.timeout(params.timeoutMs ?? 180_000),
+    });
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      throw new Error(`Google Gemini Image HTTP ${response.status}: ${body}`);
+    }
+
+    const data = await response.json() as {
+      output_image?: { data?: string; mime_type?: string };
+      steps?: Array<{
+        type?: string;
+        content?: Array<{ type?: string; data?: string; mime_type?: string }>;
+      }>;
+    };
+
+    const direct = data.output_image?.data;
+    const nested = data.steps
+      ?.flatMap((step) => step.content ?? [])
+      .find((item) => item.type === "image" && typeof item.data === "string")?.data;
+    const base64 = direct || nested;
+    if (!base64) throw new Error("Google Gemini Image returned no image");
+
+    params.logger?.info(
+      { provider: "google-gemini-api", model },
+      "Gemini image: generated",
+    );
+    return base64;
+  }
+
   const projectId = params.projectId?.trim() || process.env["GOOGLE_CLOUD_PROJECT"]?.trim();
-  if (!projectId) throw new Error("GOOGLE_CLOUD_PROJECT not set");
+  if (!projectId) throw new Error("GEMINI_API_KEY or GOOGLE_CLOUD_PROJECT is required");
 
   const location =
     params.location?.trim() ||
     process.env["GOOGLE_VERTEX_IMAGE_LOCATION"]?.trim() ||
     "global";
-  const model =
-    params.model?.trim() ||
-    process.env["GOOGLE_VERTEX_IMAGE_MODEL"]?.trim() ||
-    "gemini-3.1-flash-image";
 
   const parts: Array<Record<string, unknown>> = [];
   if (params.referenceImageDataUrl) {
@@ -1076,7 +1141,6 @@ export async function callGoogleVertexImage(params: {
   );
   return base64;
 }
-
 
 /**
  * Render an architectural image using Flux+ControlNet via Replicate.
