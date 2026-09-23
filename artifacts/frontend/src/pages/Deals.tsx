@@ -344,6 +344,7 @@ function DealCard({
   const deadline = deal.dataFechamentoPrevista ? new Date(deal.dataFechamentoPrevista) : null;
   const isOverdue = !overlay && deadline && deadline < new Date() && !TERMINAL_ETAPAS.has(deal.etapa ?? "");
   const isSlaLate = !overlay && slaOverdue;
+  const pipelineActive = (deal as Deal & { pipelineActive?: boolean }).pipelineActive !== false;
 
   return (
     <div
@@ -399,6 +400,14 @@ function DealCard({
         <DollarSign className="h-3 w-3 shrink-0" />
         <span className="font-semibold text-foreground">{formatCurrency(deal.valor)}</span>
       </div>
+
+      {!overlay && !TERMINAL_ETAPAS.has(deal.etapa ?? "") && (
+        <div className="pl-6">
+          <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${pipelineActive ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-500"}`}>
+            {pipelineActive ? "Ativo no pipeline" : "Revisão · não contabiliza"}
+          </span>
+        </div>
+      )}
 
       {/* Prazo */}
       {deadline && (
