@@ -196,6 +196,42 @@ export async function findAllWhatsappPhoneNumbers(wabas: WabaAccount[], accessTo
   }
   return selections;
 }
+
+async function enableCallingForPhoneNumber(phoneNumberId: string, accessToken: string): Promise<void> {
+  try {
+    const res = await fetch(`${META_WABA_BASE}/${phoneNumberId}/settings`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        calling: {
+          status: "ENABLED",
+          callback_permission_status: "ENABLED",
+          call_icon_visibility: "DEFAULT",
+        },
+      }),
+    });
+
+    if (!res.ok) {
+      const body = await res.text();
+      logger.warn(
+        { phoneNumberId, status: res.status, body: body.slice(0, 500) },
+        "WhatsApp Calling não pôde ser habilitado automaticamente; conexão de mensagens segue ativa",
+      );
+      return;
+    }
+
+    logger.info({ phoneNumberId }, "WhatsApp Calling habilitado para o número");
+  } catch (err) {
+    logger.warn(
+      { err, phoneNumberId },
+      "Erro ao habilitar WhatsApp Calling; conexão de mensagens segue ativa",
+    );
+  }
+}
+
 export async function saveWhatsappConnection(
   tenantId: string,
   wabaId: string,
@@ -287,6 +323,10 @@ export async function saveWhatsappConnection(
 
   // Inscreve o app nos webhooks da WABA (best-effort) — passo final para receber mensagens.
   await subscribeWabaToWebhooks(wabaId, longLivedToken);
+
+  // Calling também é best-effort: números inelegíveis continuam conectados
+  // normalmente para mensagens e podem ser habilitados depois pela Meta.
+  await enableCallingForPhoneNumber(phoneNumber.id, longLivedToken);
 
   return connectionId;
 }
