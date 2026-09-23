@@ -1,2 +1,0 @@
-Cloudflare production deploy trigger for Super Admin navigation update.
-Date: 2026-09-16

@@ -1,1 +1,0 @@
-Generated premium vehicle LP imagery assets are stored in this directory.
