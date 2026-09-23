@@ -126,6 +126,11 @@ type TenantZapiStatus = {
 const PROTECTED_MODULES = new Set(["dashboard", "settings"]);
 const VERTICAL_RECOMMENDED: Record<string, string[]> = {
   "Construção & Reforma": ["dashboard", "leads", "deals", "conversations", "scheduler", "proposals", "inventory", "campaigns", "agents", "team", "settings", "setup", "obras", "insumos", "composicoes", "revenue", "analytics"],
+  "construcao": ["dashboard", "leads", "deals", "conversations", "scheduler", "proposals", "inventory", "campaigns", "agents", "team", "settings", "setup", "obras", "insumos", "composicoes", "revenue", "analytics"],
+  "Construtora": ["dashboard", "leads", "deals", "conversations", "scheduler", "proposals", "inventory", "campaigns", "agents", "team", "settings", "setup", "obras", "insumos", "composicoes", "revenue", "analytics"],
+  "Construção Civil": ["dashboard", "leads", "deals", "conversations", "scheduler", "proposals", "inventory", "campaigns", "agents", "team", "settings", "setup", "obras", "insumos", "composicoes", "revenue", "analytics"],
+  "Gestão de Obras": ["dashboard", "leads", "deals", "conversations", "scheduler", "proposals", "inventory", "campaigns", "agents", "team", "settings", "setup", "obras", "insumos", "composicoes", "revenue", "analytics"],
+  "Obras": ["dashboard", "leads", "deals", "conversations", "scheduler", "proposals", "inventory", "campaigns", "agents", "team", "settings", "setup", "obras", "insumos", "composicoes", "revenue", "analytics"],
   "Arquitetura & Design": ["dashboard", "leads", "settings", "arch", "financeiro", "analytics"],
   "Varejo de Roupas & Acessórios": ["dashboard", "leads", "deals", "conversations", "scheduler", "proposals", "inventory", "campaigns", "agents", "team", "settings", "setup", "varejo", "content", "analytics"],
   Supermercado: ["dashboard", "leads", "deals", "conversations", "inventory", "campaigns", "agents", "team", "settings", "setup", "supermercado", "content", "analytics"],
