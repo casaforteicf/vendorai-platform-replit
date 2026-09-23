@@ -768,7 +768,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
               Contexto da proposta
               {proposalImages.length > 0 && (
                 <Badge variant="secondary" className="text-xs ml-1">
-                  {proposalImages.length} imagem{proposalImages.length > 1 ? "ns" : ""} selecionada{proposalImages.length > 1 ? "s" : ""}
+                  {proposalImages.length} {proposalImages.length === 1 ? "imagem selecionada" : "imagens selecionadas"}
                 </Badge>
               )}
             </span>
