@@ -369,9 +369,23 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
 
   let orcamentoEmbed: {
     titulo: string; numero?: string | null;
-    itens: Array<{ nome: string; quantidade: number; valorUnitario: number; sku?: string | null; descricao?: string | null }>;
+    itens: Array<{
+      nome: string;
+      quantidade: number;
+      valorUnitario: number;
+      sku?: string | null;
+      descricao?: string | null;
+      etapaId?: string | null;
+      etapaNome?: string | null;
+      etapaOrdem?: number | null;
+    }>;
     valorTotal?: string | null; observacoes?: string | null;
     formaPagamento?: string | null; condPagamento?: string | null; prazoEntrega?: string | null;
+    apresentacao?: {
+      modoPadrao?: "completo" | "resumo_etapa" | "preco_medio";
+      etapas?: Record<string, "completo" | "resumo_etapa" | "preco_medio">;
+      mostrarTotalGeral?: boolean;
+    } | null;
   } | null = null;
 
   if (bodyPropostaId) {
@@ -383,12 +397,22 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
       orcamentoEmbed = {
         titulo: orc.titulo,
         numero: orc.numero,
-        itens: (orc.itens || []) as Array<{ nome: string; quantidade: number; valorUnitario: number; sku?: string | null; descricao?: string | null }>,
+        itens: (orc.itens || []) as Array<{
+          nome: string;
+          quantidade: number;
+          valorUnitario: number;
+          sku?: string | null;
+          descricao?: string | null;
+          etapaId?: string | null;
+          etapaNome?: string | null;
+          etapaOrdem?: number | null;
+        }>,
         valorTotal: orc.valorTotal,
         observacoes: orc.observacoes,
         formaPagamento: orc.formaPagamento,
         condPagamento: orc.condPagamento,
         prazoEntrega: orc.prazoEntrega,
+        apresentacao: orc.apresentacao,
       };
     }
   }

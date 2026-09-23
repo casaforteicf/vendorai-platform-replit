@@ -61,6 +61,28 @@ export const propostaItemSchema = z.object({
 
 export type PropostaItem = z.infer<typeof propostaItemSchema>;
 
+export const propostaApresentacaoModoSchema = z.enum([
+  "completo",
+  "resumo_etapa",
+  "preco_medio",
+]);
+
+export type PropostaApresentacaoModo = z.infer<typeof propostaApresentacaoModoSchema>;
+
+export const propostaApresentacaoSchema = z.object({
+  modoPadrao: propostaApresentacaoModoSchema.default("completo"),
+  etapas: z.record(z.string(), propostaApresentacaoModoSchema).default({}),
+  mostrarTotalGeral: z.boolean().default(true),
+});
+
+export type PropostaApresentacao = z.infer<typeof propostaApresentacaoSchema>;
+
+const DEFAULT_PROPOSTA_APRESENTACAO: PropostaApresentacao = {
+  modoPadrao: "completo",
+  etapas: {},
+  mostrarTotalGeral: true,
+};
+
 const valorField = z
   .union([z.number(), z.string()])
   .transform((v) => String(v))
@@ -79,6 +101,10 @@ export const propostasTable = pgTable("propostas", {
   dealId: text("deal_id").references(() => dealsTable.id, { onDelete: "set null" }),
   titulo: text("titulo").notNull(),
   itens: jsonb("itens").$type<PropostaItem[]>().notNull().default([]),
+  apresentacao: jsonb("apresentacao")
+    .$type<PropostaApresentacao>()
+    .notNull()
+    .default(DEFAULT_PROPOSTA_APRESENTACAO),
   valorTotal: numeric("valor_total", { precision: 12, scale: 2 }),
   status: propostaStatusEnum("status").notNull().default("rascunho"),
   validadeAte: timestamp("validade_ate"),
@@ -118,6 +144,7 @@ export const propostasTable = pgTable("propostas", {
 
 export const insertPropostaSchema = createInsertSchema(propostasTable, {
   itens: z.array(propostaItemSchema).optional(),
+  apresentacao: propostaApresentacaoSchema.optional(),
   valorTotal: valorField,
   valorMensal: valorField,
   validadeAte: z.coerce.date().optional(),
@@ -126,6 +153,7 @@ export const insertPropostaSchema = createInsertSchema(propostasTable, {
 
 export const updatePropostaSchema = createSelectSchema(propostasTable, {
   itens: z.array(propostaItemSchema).optional(),
+  apresentacao: propostaApresentacaoSchema.optional(),
   valorTotal: valorField,
   valorMensal: valorField,
   validadeAte: z.coerce.date().optional(),

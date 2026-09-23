@@ -411,6 +411,63 @@ export async function generateProposalPDF(htmlContent: string): Promise<Buffer> 
   }
 }
 
+type ProposalPresentationMode = "completo" | "resumo_etapa" | "preco_medio";
+
+type ProposalPresentationConfig = {
+  modoPadrao?: ProposalPresentationMode;
+  etapas?: Record<string, ProposalPresentationMode>;
+  mostrarTotalGeral?: boolean;
+};
+
+type PresentableProposalItem = {
+  nome: string;
+  quantidade: number;
+  valorUnitario: number;
+  sku?: string | null;
+  descricao?: string | null;
+  etapaId?: string | null;
+  etapaNome?: string | null;
+  etapaOrdem?: number | null;
+};
+
+function normalizeProposalPresentation(
+  value?: ProposalPresentationConfig | null,
+): Required<ProposalPresentationConfig> {
+  return {
+    modoPadrao: value?.modoPadrao ?? "completo",
+    etapas: value?.etapas ?? {},
+    mostrarTotalGeral: value?.mostrarTotalGeral ?? true,
+  };
+}
+
+function groupProposalPresentationItems<T extends PresentableProposalItem>(items: T[]) {
+  const hasStages = items.some((item) => item.etapaId || item.etapaNome || item.etapaOrdem);
+  if (!hasStages) {
+    return [{ id: "__all__", ordem: 1, nome: "", hasStageHeader: false, itens: items }];
+  }
+
+  return Array.from(
+    items.reduce((groups, item, index) => {
+      const ordem = item.etapaOrdem ?? index + 1;
+      const nome = item.etapaNome ?? `Etapa ${ordem}`;
+      const id = item.etapaId ?? `__stage_${ordem}_${nome}`;
+      const group = groups.get(id) ?? { id, ordem, nome, hasStageHeader: true, itens: [] as T[] };
+      group.itens.push(item);
+      groups.set(id, group);
+      return groups;
+    }, new Map<string, { id: string; ordem: number; nome: string; hasStageHeader: boolean; itens: T[] }>())
+  )
+    .map(([, group]) => group)
+    .sort((a, b) => a.ordem - b.ordem);
+}
+
+function resolveProposalPresentationMode(
+  presentation: Required<ProposalPresentationConfig>,
+  stageId: string,
+): ProposalPresentationMode {
+  return presentation.etapas[stageId] ?? presentation.modoPadrao;
+}
+
 export function renderProposalHtml(json: unknown, theme: {
   cream: string; cream2: string; ink: string;
   navyDeep: string; navyMid: string;
@@ -436,6 +493,7 @@ export function renderProposalHtml(json: unknown, theme: {
   formaPagamento?: string | null;
   condPagamento?: string | null;
   prazoEntrega?: string | null;
+  apresentacao?: ProposalPresentationConfig | null;
 } | null, contact?: {
   phone?: string | null;
   email?: string | null;
@@ -648,6 +706,10 @@ export function renderProposalHtml(json: unknown, theme: {
     padding-bottom: 2.5mm !important;
   }
   .orc-desc { font-size: 7pt; color: #8b84a8; display: block; margin-top: 1px; }
+  .orc-stage-block { margin: 3.5mm 0 5mm; }
+  .orc-stage-title, .orc-stage-summary { display: flex; align-items: center; justify-content: space-between; gap: 5mm; padding: 2.8mm 3mm; background: ${theme.cream2}; border: 1px solid ${theme.concreteLine}; border-radius: 6px; color: ${theme.navyDeep}; font-size: 8.5pt; }
+  .orc-stage-block .orc-table { margin-top: 1.5mm; margin-bottom: 0; }
+  .orc-stage-summary { margin: 3.5mm 0; font-size: 9pt; }
   .orc-total-row { display: flex; justify-content: flex-end; margin-top: 3mm; }
   .orc-total-box { border: 1px solid ${theme.accentSoft}; border-radius: 7px; padding: 3mm 5mm; text-align: right; background: ${theme.cream2}; }
   .orc-total-label { font-family: "JetBrains Mono", monospace; font-size: 6.5pt; text-transform: uppercase; letter-spacing: .07em; color: #8b84a8; display: block; margin-bottom: 1mm; }
@@ -793,46 +855,49 @@ ${orcamento ? (() => {
   const itensValidos = (orcamento.itens || []).filter((i) => i.nome);
   const calculatedTotal = itensValidos.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
   const totalExibido = orcamento.valorTotal ? parseFloat(orcamento.valorTotal) : calculatedTotal;
-  const hasEtapas = itensValidos.some((item) => item.etapaOrdem || item.etapaNome);
-  const rows = hasEtapas
-    ? Array.from(
-        itensValidos.reduce((groups, item, index) => {
-          const ordem = item.etapaOrdem ?? index + 1;
-          const nome = item.etapaNome ?? `Etapa ${ordem}`;
-          const key = `${ordem}::${nome}`;
-          const group = groups.get(key) ?? { ordem, nome, itens: [] as typeof itensValidos };
-          group.itens.push(item);
-          groups.set(key, group);
-          return groups;
-        }, new Map<string, { ordem: number; nome: string; itens: typeof itensValidos }>())
-      )
-        .map(([, group]) => group)
-        .sort((a, b) => a.ordem - b.ordem)
-        .map((group) => {
-          const etapaTotal = group.itens.reduce((sum, item) => sum + item.quantidade * item.valorUnitario, 0);
-          const itemRows = group.itens.map((i) => {
-            const subtotal = i.quantidade * i.valorUnitario;
-            return `<tr>
-              <td>${i.nome}${i.descricao ? `<span class="orc-desc">${i.descricao}</span>` : ""}${i.sku ? `<span class="orc-desc">SKU: ${i.sku}</span>` : ""}</td>
-              <td class="r">${i.quantidade}</td>
-              <td class="r">${fmtBRL(i.valorUnitario)}</td>
-              <td class="r">${fmtBRL(subtotal)}</td>
-            </tr>`;
-          }).join("");
-          return `<tr class="orc-stage-row">
-            <td colspan="3"><strong>Etapa ${group.ordem}</strong> · ${group.nome}</td>
-            <td class="r"><strong>${fmtBRL(etapaTotal)}</strong></td>
-          </tr>${itemRows}`;
-        }).join("")
-    : itensValidos.map((i) => {
-        const subtotal = i.quantidade * i.valorUnitario;
-        return `<tr>
-          <td>${i.nome}${i.descricao ? `<span class="orc-desc">${i.descricao}</span>` : ""}${i.sku ? `<span class="orc-desc">SKU: ${i.sku}</span>` : ""}</td>
-          <td class="r">${i.quantidade}</td>
-          <td class="r">${fmtBRL(i.valorUnitario)}</td>
-          <td class="r">${fmtBRL(subtotal)}</td>
-        </tr>`;
-      }).join("");
+  const presentation = normalizeProposalPresentation(orcamento.apresentacao);
+  const presentationBlocks = groupProposalPresentationItems(itensValidos).map((group) => {
+    const mode = resolveProposalPresentationMode(presentation, group.id);
+    const etapaTotal = group.itens.reduce((sum, item) => sum + item.quantidade * item.valorUnitario, 0);
+    const stageTitle = group.hasStageHeader
+      ? `<div class="orc-stage-title"><span><strong>Etapa ${group.ordem}</strong> · ${group.nome}</span><strong>${fmtBRL(etapaTotal)}</strong></div>`
+      : "";
+
+    if (mode === "resumo_etapa") {
+      return group.hasStageHeader
+        ? `<div class="orc-stage-summary"><span><strong>Etapa ${group.ordem}</strong> · ${group.nome}</span><strong>${fmtBRL(etapaTotal)}</strong></div>`
+        : `<div class="orc-stage-summary"><span>Valor do orçamento</span><strong>${fmtBRL(etapaTotal)}</strong></div>`;
+    }
+
+    if (mode === "preco_medio") {
+      const rows = group.itens.map((i) => `<tr>
+        <td>${i.nome}${i.descricao ? `<span class="orc-desc">${i.descricao}</span>` : ""}${i.sku ? `<span class="orc-desc">SKU: ${i.sku}</span>` : ""}</td>
+        <td class="r">${fmtBRL(i.valorUnitario)}</td>
+      </tr>`).join("");
+      return `<div class="orc-stage-block">${stageTitle}
+        <table class="orc-table orc-table-compact">
+          <thead><tr><th>Item</th><th class="r">Valor por item</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+    }
+
+    const rows = group.itens.map((i) => {
+      const subtotal = i.quantidade * i.valorUnitario;
+      return `<tr>
+        <td>${i.nome}${i.descricao ? `<span class="orc-desc">${i.descricao}</span>` : ""}${i.sku ? `<span class="orc-desc">SKU: ${i.sku}</span>` : ""}</td>
+        <td class="r">${i.quantidade}</td>
+        <td class="r">${fmtBRL(i.valorUnitario)}</td>
+        <td class="r">${fmtBRL(subtotal)}</td>
+      </tr>`;
+    }).join("");
+    return `<div class="orc-stage-block">${stageTitle}
+      <table class="orc-table">
+        <thead><tr><th>Item</th><th class="r">Qtd.</th><th class="r">Valor Unit.</th><th class="r">Subtotal</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  }).join("");
   const metaItems = [
     orcamento.formaPagamento ? `<div class="orc-meta-item"><span>Forma de Pagamento</span><span>${FORMA_LABELS[orcamento.formaPagamento] || orcamento.formaPagamento}</span></div>` : "",
     orcamento.condPagamento ? `<div class="orc-meta-item"><span>Condição</span><span>${orcamento.condPagamento}</span></div>` : "",
@@ -844,16 +909,13 @@ ${orcamento ? (() => {
   <div class="sec-label">Orçamento${orcamento.numero ? " · " + orcamento.numero : ""}</div>
   <h2>${orcamento.titulo}</h2>
   ${itensValidos.length > 0 ? `
-  <table class="orc-table">
-    <thead><tr><th>Item</th><th class="r">Qtd.</th><th class="r">Valor Unit.</th><th class="r">Subtotal</th></tr></thead>
-    <tbody>${rows}</tbody>
-  </table>
-  <div class="orc-total-row">
+  ${presentationBlocks}
+  ${presentation.mostrarTotalGeral ? `<div class="orc-total-row">
     <div class="orc-total-box">
       <span class="orc-total-label">Total</span>
       <span class="orc-total-value">${fmtBRL(totalExibido)}</span>
     </div>
-  </div>` : ""}
+  </div>` : ""}` : ""}
   ${metaItems ? `<div class="orc-meta">${metaItems}</div>` : ""}
   ${orcamento.observacoes ? `<div class="orc-obs">${orcamento.observacoes}</div>` : ""}
 </div>`;
@@ -892,6 +954,7 @@ export function renderOrcamentoPdf(args: {
     formaPagamento?: string | null;
     condPagamento?: string | null;
     prazoEntrega?: string | null;
+    apresentacao?: ProposalPresentationConfig | null;
     validadeAte?: Date | string | null;
     createdAt?: Date | string;
   };
@@ -962,49 +1025,49 @@ export function renderOrcamentoPdf(args: {
       </div>`).join("")
     : "";
 
-  const hasStageGroups = itens.some((item) => item.etapaOrdem || item.etapaNome);
-  const rowsHtml = hasStageGroups
-    ? Array.from(
-        itens.reduce((groups, item, index) => {
-          const ordem = item.etapaOrdem ?? index + 1;
-          const nome = item.etapaNome ?? `Etapa ${ordem}`;
-          const key = `${ordem}::${nome}`;
-          const group = groups.get(key) ?? { ordem, nome, itens: [] as typeof itens };
-          group.itens.push(item);
-          groups.set(key, group);
-          return groups;
-        }, new Map<string, { ordem: number; nome: string; itens: typeof itens }>())
-      )
-        .map(([, group]) => group)
-        .sort((a, b) => a.ordem - b.ordem)
-        .map((group) => {
-          const etapaTotal = group.itens.reduce((sum, item) => sum + item.quantidade * item.valorUnitario, 0);
-          const itemRows = group.itens.map((i) => {
-            const sub = i.quantidade * i.valorUnitario;
-            return `<tr>
-              <td>${i.nome}${i.descricao ? `<br><span class="row-desc">${i.descricao}</span>` : ""}${i.sku ? `<br><span class="row-desc">SKU: ${i.sku}</span>` : ""}</td>
-              <td class="r">${i.quantidade}</td>
-              <td class="r">${fmtBRL(i.valorUnitario)}</td>
-              <td class="r fw">${fmtBRL(sub)}</td>
-            </tr>`;
-          }).join("");
+  const presentation = normalizeProposalPresentation(proposta.apresentacao);
+  const presentationBlocksHtml = groupProposalPresentationItems(itens).map((group) => {
+    const mode = resolveProposalPresentationMode(presentation, group.id);
+    const etapaTotal = group.itens.reduce((sum, item) => sum + item.quantidade * item.valorUnitario, 0);
+    const stageTitle = group.hasStageHeader
+      ? `<div class="stage-title"><span><strong>Etapa ${group.ordem}</strong> · ${group.nome}</span><strong>${fmtBRL(etapaTotal)}</strong></div>`
+      : "";
 
-          return `<tr class="stage-row">
-            <td colspan="3"><strong>Etapa ${group.ordem}</strong> · ${group.nome}</td>
-            <td class="r fw">${fmtBRL(etapaTotal)}</td>
-          </tr>${itemRows}`;
-        })
-        .join("")
-    : itens.map((i) => {
-        const sub = i.quantidade * i.valorUnitario;
-        return `<tr>
-          <td>${i.nome}${i.descricao ? `<br><span class="row-desc">${i.descricao}</span>` : ""}${i.sku ? `<br><span class="row-desc">SKU: ${i.sku}</span>` : ""}</td>
-          <td class="r">${i.quantidade}</td>
-          <td class="r">${fmtBRL(i.valorUnitario)}</td>
-          <td class="r fw">${fmtBRL(sub)}</td>
-        </tr>`;
-      }).join("");
+    if (mode === "resumo_etapa") {
+      return group.hasStageHeader
+        ? `<div class="stage-summary"><span><strong>Etapa ${group.ordem}</strong> · ${group.nome}</span><strong>${fmtBRL(etapaTotal)}</strong></div>`
+        : `<div class="stage-summary"><span>Valor do orçamento</span><strong>${fmtBRL(etapaTotal)}</strong></div>`;
+    }
 
+    if (mode === "preco_medio") {
+      const rows = group.itens.map((i) => `<tr>
+        <td>${i.nome}${i.descricao ? `<br><span class="row-desc">${i.descricao}</span>` : ""}${i.sku ? `<br><span class="row-desc">SKU: ${i.sku}</span>` : ""}</td>
+        <td class="r fw">${fmtBRL(i.valorUnitario)}</td>
+      </tr>`).join("");
+      return `<div class="stage-block">${stageTitle}
+        <table class="items compact">
+          <thead><tr><th>Descrição</th><th class="r">Valor por item</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+    }
+
+    const rows = group.itens.map((i) => {
+      const sub = i.quantidade * i.valorUnitario;
+      return `<tr>
+        <td>${i.nome}${i.descricao ? `<br><span class="row-desc">${i.descricao}</span>` : ""}${i.sku ? `<br><span class="row-desc">SKU: ${i.sku}</span>` : ""}</td>
+        <td class="r">${i.quantidade}</td>
+        <td class="r">${fmtBRL(i.valorUnitario)}</td>
+        <td class="r fw">${fmtBRL(sub)}</td>
+      </tr>`;
+    }).join("");
+    return `<div class="stage-block">${stageTitle}
+      <table class="items">
+        <thead><tr><th>Descrição</th><th class="r">Qtd.</th><th class="r">Valor Unit.</th><th class="r">Subtotal</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  }).join("");
   const metaRows = [
     proposta.formaPagamento ? `<div class="meta-item"><span>Forma de Pagamento</span><strong>${FORMA_LABELS[proposta.formaPagamento] ?? proposta.formaPagamento}</strong></div>` : "",
     proposta.condPagamento  ? `<div class="meta-item"><span>Condição</span><strong>${proposta.condPagamento}</strong></div>` : "",
@@ -1171,6 +1234,10 @@ export function renderOrcamentoPdf(args: {
   }
   .row-desc { font-size: 7pt; color: #9ca3af; }
   .fw { font-weight: 600; }
+  .stage-block { margin: 3mm 0 5mm; }
+  .stage-title, .stage-summary { display: flex; align-items: center; justify-content: space-between; gap: 5mm; padding: 3mm 3.5mm; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; color: #334155; font-size: 8.5pt; }
+  .stage-block table.items { margin-top: 1.5mm; }
+  .stage-summary { margin: 3mm 0; font-size: 9pt; }
 
   .total-row { display: flex; justify-content: flex-end; margin-top: 3mm; }
   .total-box { border: 1px solid #bfdbfe; border-radius: 7px; padding: 3mm 5mm; text-align: right; background: #eff6ff; }
@@ -1269,22 +1336,13 @@ export function renderOrcamentoPdf(args: {
   </div>` : ""}
 
   ${itens.length > 0 ? `
-  <table class="items">
-    <thead><tr>
-      <th>Descrição</th>
-      <th class="r">Qtd.</th>
-      <th class="r">Valor Unit.</th>
-      <th class="r">Subtotal</th>
-    </tr></thead>
-    <tbody>${rowsHtml}</tbody>
-  </table>
-
-  <div class="total-row">
+  ${presentationBlocksHtml}
+  ${presentation.mostrarTotalGeral ? `<div class="total-row">
     <div class="total-box">
       <span class="total-lbl">Total</span>
       <span class="total-val">${fmtBRL(totalExibido)}</span>
     </div>
-  </div>` : ""}
+  </div>` : ""}` : ""}
 
   ${metaRows ? `<div class="meta-grid">${metaRows}</div>` : ""}
   ${proposta.observacoes ? `<div class="obs-box">${proposta.observacoes}</div>` : ""}
