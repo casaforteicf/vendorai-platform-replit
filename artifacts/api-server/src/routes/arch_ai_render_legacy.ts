@@ -790,16 +790,21 @@ function buildKontextPrompt(p: {
         ? "Warm sunset light with long soft shadows, balanced sky exposure and warm reflections."
         : "Neutral natural daylight with physically plausible shadows and controlled reflections.";
     return [
-      "Convert the reference geometry into a photorealistic architectural EXTERIOR photograph of the same built house.",
-      "The source can be a technical line elevation or a basic 3D preview. Preserve its geometry and composition, not its graphic style or monochrome hatch colors.",
-      "Preserve floor count, door/window locations and dimensions, garage, entrance, roof, walls, gates and every modeled volume. Do not invent or relocate architectural elements.",
-      "Use the user's material schedule: physical plaster, wood grain, stone relief, realistic metal roughness, glazing reflections and wall/window reveal thickness.",
+      "Convert the reference geometry into a photorealistic architectural EXTERIOR photograph of the SAME built house.",
+      "SOURCE-OF-TRUTH LOCK: the reference image and the structured geometry notes are authoritative. Geometry always has priority over style, realism, landscaping or composition improvements.",
+      "The source can be a technical line elevation or a basic 3D preview. Preserve its exact outer silhouette, floor-to-floor alignment, facade width, roof/parapet outline, wall breaks and composition; only replace the schematic visual language with real materials, lighting and depth.",
+      "OPENING LOCK: preserve the exact count, floor, horizontal order, center position, width/height relationship and sill relationship of every modeled door and window. Never add, remove, merge, split, resize or relocate openings.",
+      "MASSING LOCK: preserve garage width and side, entrance position, wall returns, gates, setbacks and every modeled facade volume. Never mirror, rotate, crop or redesign the building.",
+      "CAMERA LOCK: keep the same framing and visible building extents. Do not zoom in enough to crop roof, garage, entrance, facade edges or visible side returns.",
+      p.userNotes ?? "",
+      "Use the user's material schedule only after satisfying every geometry lock: physical plaster, wood grain, stone relief, realistic metal roughness, glazing reflections and wall/window reveal thickness.",
       light,
       "Human eye-level camera, 28–35 mm full-frame equivalent, corrected verticals and realistic perspective. Preserve a selected 3D camera if specified.",
-      p.userNotes ?? "",
       ...p.materials.map((m) => `${m.zone}: ${m.promptFragment}`),
-      "Contact shadows and realistic architectural depth, natural planting without obscuring the facade.",
+      "Create depth through reveals, soffit shadows, wall thickness, glazing and contact shadows without moving any edge from the reference.",
+      "Landscaping may improve realism but must never cover, replace or visually redefine architectural openings or facade edges.",
       "Never output vector art, SVG appearance, CAD shading, technical drawing, cartoon, illustration, clay render, flat blocks or bubble vegetation.",
+      "FINAL SELF-CHECK: before finishing, verify that floor count, silhouette, roof line, garage, entrance and every visible opening still match the source reference.",
     ].join("\n");
   }
   const ambienteLabel = p.ambiente ?? "interior room";
