@@ -60,6 +60,35 @@ describe("Arqdor photoreal render brief", () => {
     expect(brief).toContain("nighttime architectural visualization");
   });
 
+  it("locks exact exterior wall topology and openings", () => {
+    const brief = buildConceptRenderBrief({
+      lotWidth: 12,
+      lotDepth: 30,
+      floors: 2,
+      desiredArea: 210,
+      facade,
+      renderView: "exterior",
+      rooms: [],
+      geometryLock: {
+        frontSide: "bottom",
+        exteriorWalls: [
+          { floor: 0, x1: 1, y1: 2, x2: 9, y2: 2 },
+          { floor: 1, x1: 2, y1: 3, x2: 8, y2: 3 },
+        ],
+        openings: [
+          { floor: 0, type: "door", x: 3, y: 2, width: 1.1, height: 2.2, sillHeight: 0 },
+          { floor: 1, type: "window", x: 6, y: 3, width: 1.8, height: 1.2, sillHeight: 0.9 },
+        ],
+      },
+    });
+
+    expect(brief).toContain("GEOMETRY FRONT LOCK");
+    expect(brief).toContain("EXACT WALL TOPOLOGY LOCK");
+    expect(brief).toContain("EXACT OPENING LOCK");
+    expect(brief).toContain("SILHOUETTE LOCK");
+    expect(brief).toContain("CROP LOCK");
+  });
+
   it("does not invent a pool when the project has none", () => {
     const brief = buildConceptRenderBrief({
       lotWidth: 10,
