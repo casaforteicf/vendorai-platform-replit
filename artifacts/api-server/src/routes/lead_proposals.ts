@@ -360,12 +360,27 @@ router.post("/leads/:leadId/proposals/stage-images", async (req, res) => {
       })
       .join("\n");
 
+    const normalizedStageContext = `${group.nome} ${scope}`
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+
+    const technicalImageRule = /radier/.test(normalizedStageContext)
+      ? "REGRA TÉCNICA OBRIGATÓRIA: representar fundação em RADIER/laje de fundação, com base preparada, malhas/armaduras e passagens. NÃO mostrar baldrame, vigas elevadas de fundação ou solução diferente do radier."
+      : /(instalac|hidraul|eletric|pex|conduite|corrugad)/.test(normalizedStageContext)
+        ? "REGRA TÉCNICA OBRIGATÓRIA: destacar as instalações em execução, com tubos PEX quando previstos, mangueiras/conduítes corrugados, tubulações hidráulicas, caixas, shafts e passagens elétricas/hidrossanitárias visíveis. A instalação deve ser o assunto principal da foto, não uma fachada praticamente pronta."
+        : /icf|estrutura/.test(normalizedStageContext)
+          ? "REGRA TÉCNICA OBRIGATÓRIA: mostrar claramente a estrutura correspondente ao escopo, incluindo painéis/blocos ICF, armações e concretagem quando estes itens estiverem previstos."
+          : "";
+
     const prompt = [
       "Fotografia documental hiper-realista de construção civil no Brasil, composição horizontal 3:2, aparência de fotografia profissional de obra real.",
       `Representar visualmente a etapa "${group.nome}" de uma obra residencial de padrão alto, sem transformar a imagem em render conceitual e sem inventar elementos incompatíveis com a etapa.`,
       "Mostrar somente o estado construtivo coerente com esta fase: materiais, sistemas, equipamentos e profissionais que normalmente estariam presentes neste momento da execução.",
       "Trabalhadores com EPI adequado, canteiro organizado, luz natural realista, materiais com escala correta, geometria consistente, sem objetos deformados.",
       scope ? `Escopo contratado desta etapa:\n${scope}` : "",
+      technicalImageRule,
+      "A imagem precisa representar o conteúdo REAL desta etapa do orçamento. Não introduza método construtivo, material ou serviço incompatível com o escopo informado.",
       "A imagem é apenas representativa da etapa, não deve fingir ser foto do projeto real do cliente.",
       "Sem textos, sem letras, sem placas legíveis, sem logotipos, sem marcas d'água, sem molduras e sem antes/depois.",
     ].filter(Boolean).join("\n");
@@ -501,15 +516,71 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
     tenantPhone: ctx.tenantPhone,
     refinementNotes: req.body?.refinementNotes ? String(req.body.refinementNotes) : null,
     styleMemory,
-    templateGuidance: await fetchTemplateGuidance((() => {
+    templateGuidance: await (async () => {
       const dd = (ctx.discoveryData ?? {}) as Record<string, unknown>;
-      const raw = Array.isArray(dd["proposalTemplates"]) ? dd["proposalTemplates"] as Array<Record<string, unknown>> : [];
-      const requestedId = typeof req.body?.proposalTemplateId === "string" ? req.body.proposalTemplateId : null;
+
+      const raw = Array.isArray(dd["proposalTemplates"])
+        ? dd["proposalTemplates"] as Array<Record<string, unknown>>
+        : [];
+      const requestedId = typeof req.body?.proposalTemplateId === "string"
+        ? req.body.proposalTemplateId
+        : null;
       const requested = requestedId ? raw.find((item) => item["id"] === requestedId) : null;
       const defaultModel = raw.find((item) => item["isDefault"] === true);
-      const selected = requested ?? defaultModel;
-      return typeof selected?.["url"] === "string" ? selected["url"] as string : ctx.proposalTemplateUrl;
-    })()),
+      const selectedLegacy = requested ?? defaultModel;
+      const legacyUrl = typeof selectedLegacy?.["url"] === "string"
+        ? selectedLegacy["url"] as string
+        : ctx.proposalTemplateUrl;
+      const legacyGuidance = await fetchTemplateGuidance(legacyUrl);
+
+      const builderTemplates = Array.isArray(dd["proposalBuilderTemplates"])
+        ? dd["proposalBuilderTemplates"] as Array<Record<string, unknown>>
+        : [];
+      const requestedBuilderId = typeof req.body?.proposalBuilderTemplateId === "string"
+        ? req.body.proposalBuilderTemplateId
+        : null;
+      const activeBuilderId = typeof dd["activeProposalBuilderTemplateId"] === "string"
+        ? dd["activeProposalBuilderTemplateId"] as string
+        : null;
+      const selectedBuilder =
+        (requestedBuilderId
+          ? builderTemplates.find((item) => item["id"] === requestedBuilderId)
+          : null)
+        ?? (activeBuilderId
+          ? builderTemplates.find((item) => item["id"] === activeBuilderId)
+          : null)
+        ?? builderTemplates.find((item) => item["isDefault"] === true);
+
+      const builderGuidance = selectedBuilder
+        ? (() => {
+            const modules = Array.isArray(selectedBuilder["modules"])
+              ? (selectedBuilder["modules"] as Array<Record<string, unknown>>)
+                  .filter((item) => item["enabled"] !== false)
+                  .sort((a, b) => Number(a["order"] ?? 999) - Number(b["order"] ?? 999))
+                  .map((item) => String(item["key"] ?? ""))
+                  .filter(Boolean)
+              : [];
+            const aiRules = selectedBuilder["aiRules"] && typeof selectedBuilder["aiRules"] === "object"
+              ? selectedBuilder["aiRules"] as Record<string, unknown>
+              : {};
+            const list = (value: unknown) =>
+              Array.isArray(value)
+                ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+                : [];
+            return [
+              `MODELO MODULAR DO TENANT: ${String(selectedBuilder["name"] ?? "Modelo padrão")}`,
+              modules.length ? `ORDEM DOS MÓDULOS: ${modules.join(" > ")}` : "",
+              typeof aiRules["tone"] === "string" ? `TOM: ${aiRules["tone"]}` : "",
+              typeof aiRules["technicalLevel"] === "string" ? `NÍVEL TÉCNICO: ${aiRules["technicalLevel"]}` : "",
+              ...list(aiRules["contentRules"]).map((rule) => `REGRA DE CONTEÚDO: ${rule}`),
+              ...list(aiRules["imageRules"]).map((rule) => `REGRA VISUAL: ${rule}`),
+              ...list(aiRules["avoid"]).map((rule) => `EVITAR: ${rule}`),
+            ].filter(Boolean).join("\n");
+          })()
+        : "";
+
+      return [legacyGuidance, builderGuidance].filter(Boolean).join("\n\n");
+    })(),
   });
 
   let result;

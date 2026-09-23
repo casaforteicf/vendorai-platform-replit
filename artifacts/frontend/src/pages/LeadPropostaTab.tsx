@@ -243,6 +243,31 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const hasProposalTemplate = legacyProposalTemplate || proposalLineTemplates.length > 0;
   const proposalTemplateName = (profileQuery.data as any)?.proposalTemplateName as string | null;
   const [selectedProposalTemplateId, setSelectedProposalTemplateId] = useState<string>("__auto__");
+  type ProposalBuilderTemplate = {
+    id: string;
+    name: string;
+    vertical?: string;
+    isDefault?: boolean;
+    modules?: Array<{ key: string; enabled?: boolean; order?: number; required?: boolean }>;
+    aiRules?: {
+      tone?: string;
+      technicalLevel?: string;
+      imageRules?: string[];
+      contentRules?: string[];
+      avoid?: string[];
+    };
+  };
+  const proposalBuilderTemplates: ProposalBuilderTemplate[] = Array.isArray(profileDiscovery.proposalBuilderTemplates)
+    ? (profileDiscovery.proposalBuilderTemplates as ProposalBuilderTemplate[]).filter(
+        (item) => item && typeof item.id === "string" && typeof item.name === "string",
+      )
+    : [];
+  const activeProposalBuilderTemplateId =
+    typeof profileDiscovery.activeProposalBuilderTemplateId === "string"
+      ? profileDiscovery.activeProposalBuilderTemplateId
+      : null;
+  const [selectedProposalBuilderTemplateId, setSelectedProposalBuilderTemplateId] = useState<string>("__auto__");
+  const [generatingProposalBuilderTemplate, setGeneratingProposalBuilderTemplate] = useState(false);
 
   // Renderizações 3D pertencem ao fluxo Arch e só devem aparecer em segmentos
   // em que esse material faz sentido. Uma flag explícita em discoveryData pode
@@ -719,6 +744,37 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     }
   }
 
+  async function createProposalBuilderTemplateWithAI() {
+    if (!tenantId || !token) return;
+    setGeneratingProposalBuilderTemplate(true);
+    try {
+      const res = await fetch(api(`/api/tenants/${tenantId}/proposal-builder/templates/ai-bootstrap`), {
+        method: "POST",
+        headers,
+        body: JSON.stringify({}),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Não foi possível criar o modelo com IA");
+      const templateId = body?.template?.id;
+      if (typeof templateId === "string") {
+        setSelectedProposalBuilderTemplateId(templateId);
+      }
+      await queryClient.invalidateQueries({ queryKey: getGetBusinessProfileByTenantQueryKey(tenantId) });
+      toast({
+        title: "Modelo inteligente criado",
+        description: "A IA organizou os módulos e regras da proposta para este tenant. Você pode usar o modelo imediatamente.",
+      });
+    } catch (e: any) {
+      toast({
+        title: "Erro ao criar modelo de proposta",
+        description: e?.message || "Não foi possível criar o modelo com IA.",
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingProposalBuilderTemplate(false);
+    }
+  }
+
   async function saveLeadFields() {
     if (!leadId || !token) return;
     setSavingLead(true);
@@ -779,6 +835,10 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
           propostaId: selectedOrcamentoId !== "__none__" ? selectedOrcamentoId : undefined,
           apresentacao: selectedOrcamentoId !== "__none__" ? currentProposalPresentation() : undefined,
           proposalTemplateId: selectedProposalTemplateId !== "__auto__" ? selectedProposalTemplateId : undefined,
+          proposalBuilderTemplateId:
+            selectedProposalBuilderTemplateId !== "__auto__"
+              ? selectedProposalBuilderTemplateId
+              : undefined,
           refinementNotes: notes?.trim() || undefined,
         } as any,
       });
@@ -1440,15 +1500,74 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
               {generating ? "Gerando..." : "Gerar Proposta"}
             </Button>
           </CardTitle>
-          {/* Modelo de proposta por linha */}
+          {/* Modelo inteligente modular do tenant */}
+          <div className="mt-2 space-y-2 rounded-lg border bg-muted/20 p-2.5">
+            <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold">Modelo inteligente da proposta</p>
+                <p className="text-[11px] text-muted-foreground">
+                  A IA organiza módulos, ordem, tom e regras visuais por tenant e segmento.
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 gap-1.5 text-xs"
+                onClick={createProposalBuilderTemplateWithAI}
+                disabled={generatingProposalBuilderTemplate}
+              >
+                {generatingProposalBuilderTemplate
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <Sparkles className="h-3.5 w-3.5 text-violet-500" />}
+                {proposalBuilderTemplates.length ? "Criar nova versão com IA" : "Criar modelo com IA"}
+              </Button>
+            </div>
+
+            {proposalBuilderTemplates.length > 0 && (
+              <Select
+                value={selectedProposalBuilderTemplateId}
+                onValueChange={setSelectedProposalBuilderTemplateId}
+              >
+                <SelectTrigger className="h-9 min-w-0 w-full max-w-full text-xs [&>span]:truncate">
+                  <SelectValue placeholder="Modelo modular do tenant" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__auto__">
+                    Automático — {activeProposalBuilderTemplateId ? "usar modelo ativo" : "usar padrão seguro"}
+                  </SelectItem>
+                  {proposalBuilderTemplates.map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.name}{item.isDefault ? " · padrão" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+
+            {(proposalBuilderTemplates.length > 0 || hasProposalTemplate) && (
+              <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                {proposalBuilderTemplates.length > 0 && (
+                  <span>
+                    {proposalBuilderTemplates.length} modelo(s) modular(es) · regras aplicadas na geração
+                  </span>
+                )}
+                <Link href="/configuracoes?tab=perfil" className="flex items-center gap-1 text-muted-foreground hover:text-primary no-underline">
+                  <Upload className="h-3 w-3" /> Kit da Marca e documentos
+                </Link>
+              </div>
+            )}
+          </div>
+
+          {/* Modelo documental por linha, quando o tenant já possui um arquivo de referência */}
           <div className="mt-2 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
             {proposalLineTemplates.length > 0 ? (
               <Select value={selectedProposalTemplateId} onValueChange={setSelectedProposalTemplateId}>
                 <SelectTrigger className="h-9 min-w-0 w-full max-w-full text-xs sm:h-8 sm:w-[280px] [&>span]:truncate">
-                  <SelectValue placeholder="Modelo da proposta" />
+                  <SelectValue placeholder="Referência documental" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__auto__">Automático — usar modelo padrão</SelectItem>
+                  <SelectItem value="__auto__">Automático — referência padrão</SelectItem>
                   {proposalLineTemplates.map((item) => (
                     <SelectItem key={item.id} value={item.id}>{item.name} — {item.productLine}</SelectItem>
                   ))}
@@ -1456,12 +1575,9 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
               </Select>
             ) : hasProposalTemplate ? (
               <span className="flex items-center gap-1.5 text-xs text-emerald-600">
-                <FileText className="h-3 w-3" /> Modelo ativo: {proposalTemplateName || "modelo-proposta"}
+                <FileText className="h-3 w-3" /> Referência ativa: {proposalTemplateName || "modelo-proposta"}
               </span>
             ) : null}
-            <Link href="/configuracoes?tab=perfil" className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary no-underline">
-              <Upload className="h-3 w-3" /> {hasProposalTemplate ? "Gerenciar modelos" : "Adicionar modelos"}
-            </Link>
           </div>
         </CardHeader>
         <CardContent>
