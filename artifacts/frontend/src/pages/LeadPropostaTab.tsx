@@ -49,6 +49,8 @@ import {
   PencilLine,
   Save,
   XCircle,
+  GripVertical,
+  Settings2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -268,6 +270,13 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
       : null;
   const [selectedProposalBuilderTemplateId, setSelectedProposalBuilderTemplateId] = useState<string>("__auto__");
   const [generatingProposalBuilderTemplate, setGeneratingProposalBuilderTemplate] = useState(false);
+  const [proposalBuilderEditorOpen, setProposalBuilderEditorOpen] = useState(false);
+  const [proposalBuilderEditorSaving, setProposalBuilderEditorSaving] = useState(false);
+  const [proposalBuilderEditorName, setProposalBuilderEditorName] = useState("");
+  const [proposalBuilderEditorModules, setProposalBuilderEditorModules] = useState<
+    Array<{ key: string; enabled?: boolean; order?: number; required?: boolean }>
+  >([]);
+  const [proposalBuilderDraggedIndex, setProposalBuilderDraggedIndex] = useState<number | null>(null);
 
   // Renderizações 3D pertencem ao fluxo Arch e só devem aparecer em segmentos
   // em que esse material faz sentido. Uma flag explícita em discoveryData pode
@@ -741,6 +750,115 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
       toast({ title: "Erro no upload de imagem", variant: "destructive" });
     } finally {
       setImageUploading(false);
+    }
+  }
+
+  const PROPOSAL_MODULE_LABELS: Record<string, string> = {
+    capa: "Capa",
+    apresentacao_empresa: "Apresentação da empresa",
+    diferenciais: "Diferenciais",
+    resumo_executivo: "Resumo executivo",
+    escopo: "Escopo",
+    etapas_orcamento: "Etapas do orçamento",
+    imagem_por_etapa: "Imagem por etapa",
+    tabela_itens: "Tabela de itens",
+    cronograma: "Cronograma",
+    fisico_financeiro: "Físico-financeiro",
+    condicoes_comerciais: "Condições comerciais",
+    validade_inicio: "Validade e previsão de início",
+    aceite: "Aceite",
+    anexos: "Anexos",
+    portal_cliente: "Portal do cliente",
+  };
+
+  function resolveProposalBuilderTemplateForEditor() {
+    if (!proposalBuilderTemplates.length) return null;
+    if (selectedProposalBuilderTemplateId !== "__auto__") {
+      return proposalBuilderTemplates.find((item) => item.id === selectedProposalBuilderTemplateId) ?? null;
+    }
+    if (activeProposalBuilderTemplateId) {
+      const active = proposalBuilderTemplates.find((item) => item.id === activeProposalBuilderTemplateId);
+      if (active) return active;
+    }
+    return proposalBuilderTemplates.find((item) => item.isDefault) ?? proposalBuilderTemplates[0] ?? null;
+  }
+
+  function openProposalBuilderEditor() {
+    const template = resolveProposalBuilderTemplateForEditor();
+    if (!template) {
+      toast({
+        title: "Crie primeiro um modelo com IA",
+        description: "Depois você poderá ligar, desligar e reorganizar os módulos visualmente.",
+      });
+      return;
+    }
+    const modules = [...(template.modules ?? [])]
+      .sort((a, b) => Number(a.order ?? 999) - Number(b.order ?? 999))
+      .map((item, index) => ({ ...item, order: index + 1 }));
+    setProposalBuilderEditorName(template.name);
+    setProposalBuilderEditorModules(modules);
+    setProposalBuilderDraggedIndex(null);
+    setProposalBuilderEditorOpen(true);
+  }
+
+  function toggleProposalBuilderModule(index: number, enabled: boolean) {
+    setProposalBuilderEditorModules((prev) =>
+      prev.map((item, itemIndex) =>
+        itemIndex === index
+          ? { ...item, enabled: item.required ? true : enabled }
+          : item
+      ),
+    );
+  }
+
+  function reorderProposalBuilderModule(from: number, to: number) {
+    setProposalBuilderEditorModules((prev) => {
+      if (from === to || from < 0 || to < 0 || from >= prev.length || to >= prev.length) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      if (!moved) return prev;
+      next.splice(to, 0, moved);
+      return next.map((item, index) => ({ ...item, order: index + 1 }));
+    });
+  }
+
+  async function saveProposalBuilderEditor() {
+    const template = resolveProposalBuilderTemplateForEditor();
+    if (!template || !tenantId || !token) return;
+    setProposalBuilderEditorSaving(true);
+    try {
+      const res = await fetch(
+        api(`/api/tenants/${tenantId}/proposal-builder/templates/${template.id}`),
+        {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({
+            name: proposalBuilderEditorName.trim() || template.name,
+            isDefault: template.isDefault !== false,
+            modules: proposalBuilderEditorModules.map((item, index) => ({
+              ...item,
+              order: index + 1,
+              enabled: item.required ? true : item.enabled !== false,
+            })),
+          }),
+        },
+      );
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Não foi possível salvar o modelo");
+      await queryClient.invalidateQueries({ queryKey: getGetBusinessProfileByTenantQueryKey(tenantId) });
+      setProposalBuilderEditorOpen(false);
+      toast({
+        title: "Modelo de proposta atualizado",
+        description: "A nova ordem e os módulos ativos serão usados nas próximas propostas.",
+      });
+    } catch (e: any) {
+      toast({
+        title: "Erro ao salvar modelo",
+        description: e?.message || "Não foi possível salvar as alterações.",
+        variant: "destructive",
+      });
+    } finally {
+      setProposalBuilderEditorSaving(false);
     }
   }
 
@@ -1509,19 +1627,33 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                   A IA organiza módulos, ordem, tom e regras visuais por tenant e segmento.
                 </p>
               </div>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="h-8 gap-1.5 text-xs"
-                onClick={createProposalBuilderTemplateWithAI}
-                disabled={generatingProposalBuilderTemplate}
-              >
-                {generatingProposalBuilderTemplate
-                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  : <Sparkles className="h-3.5 w-3.5 text-violet-500" />}
-                {proposalBuilderTemplates.length ? "Criar nova versão com IA" : "Criar modelo com IA"}
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                {proposalBuilderTemplates.length > 0 && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-8 gap-1.5 text-xs"
+                    onClick={openProposalBuilderEditor}
+                  >
+                    <Settings2 className="h-3.5 w-3.5" />
+                    Editar módulos
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 gap-1.5 text-xs"
+                  onClick={createProposalBuilderTemplateWithAI}
+                  disabled={generatingProposalBuilderTemplate}
+                >
+                  {generatingProposalBuilderTemplate
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : <Sparkles className="h-3.5 w-3.5 text-violet-500" />}
+                  {proposalBuilderTemplates.length ? "Criar nova versão com IA" : "Criar modelo com IA"}
+                </Button>
+              </div>
             </div>
 
             {proposalBuilderTemplates.length > 0 && (
@@ -1890,6 +2022,100 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
           )}
         </CardContent>
       </Card>
+
+      {/* Editor visual do modelo modular */}
+      <Dialog open={proposalBuilderEditorOpen} onOpenChange={setProposalBuilderEditorOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings2 className="h-4 w-4" />
+              Editor do modelo de proposta
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Nome do modelo</label>
+              <Input
+                value={proposalBuilderEditorName}
+                onChange={(e) => setProposalBuilderEditorName(e.target.value)}
+                placeholder="Ex: Construção residencial ICF"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div>
+                <p className="text-sm font-semibold">Módulos da proposta</p>
+                <p className="text-xs text-muted-foreground">
+                  Arraste para reorganizar. Desative o que não deve aparecer neste modelo.
+                </p>
+              </div>
+
+              <div className="max-h-[52vh] space-y-2 overflow-y-auto pr-1">
+                {proposalBuilderEditorModules.map((module, index) => (
+                  <div
+                    key={module.key}
+                    draggable
+                    onDragStart={() => setProposalBuilderDraggedIndex(index)}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={() => {
+                      if (proposalBuilderDraggedIndex != null) {
+                        reorderProposalBuilderModule(proposalBuilderDraggedIndex, index);
+                      }
+                      setProposalBuilderDraggedIndex(null);
+                    }}
+                    onDragEnd={() => setProposalBuilderDraggedIndex(null)}
+                    className={`flex items-center gap-3 rounded-lg border bg-background px-3 py-2.5 transition-opacity ${
+                      proposalBuilderDraggedIndex === index ? "opacity-50" : ""
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      className="cursor-grab text-muted-foreground active:cursor-grabbing"
+                      title="Arrastar módulo"
+                    >
+                      <GripVertical className="h-4 w-4" />
+                    </button>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">
+                        {PROPOSAL_MODULE_LABELS[module.key] ?? module.key}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        Ordem {index + 1}{module.required ? " · obrigatório" : ""}
+                      </p>
+                    </div>
+                    <Switch
+                      checked={module.required ? true : module.enabled !== false}
+                      disabled={module.required}
+                      onCheckedChange={(checked) => toggleProposalBuilderModule(index, checked)}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setProposalBuilderEditorOpen(false)}
+              disabled={proposalBuilderEditorSaving}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={saveProposalBuilderEditor}
+              disabled={proposalBuilderEditorSaving || proposalBuilderEditorModules.length === 0}
+              className="gap-1.5"
+            >
+              {proposalBuilderEditorSaving
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <Save className="h-3.5 w-3.5" />}
+              Salvar modelo
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Refinement Dialog */}
       <Dialog open={refineOpen} onOpenChange={setRefineOpen}>
