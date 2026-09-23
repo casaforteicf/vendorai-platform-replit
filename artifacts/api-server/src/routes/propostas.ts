@@ -11,6 +11,7 @@ import {
   businessProfilesTable,
   insertPropostaSchema,
   updatePropostaSchema,
+  propostaApresentacaoSchema,
   tenantsTable,
   dealsTable,
   leadsTable,
@@ -618,6 +619,7 @@ const fromCatalogoBodySchema = z.object({
   prazoContratoMeses: z.number().int().optional(),
   numParcelas: z.number().int().min(1).optional(),
   paymentCompositions: z.array(paymentCompositionLineSchema).optional(),
+  apresentacao: propostaApresentacaoSchema.optional(),
   itens: z
     .array(
       z.object({
@@ -658,7 +660,7 @@ router.post(
       leadId, titulo, dealId, validadeAte, observacoes, itens,
       formaPagamento, condPagamento, prazoEntrega,
       recorrente, valorMensal, prazoContratoMeses, numParcelas,
-      paymentCompositions,
+      paymentCompositions, apresentacao,
     } = parsed.data;
 
     const produtoIds = itens.flatMap((item) => item.produtoId ? [item.produtoId] : []);
@@ -793,6 +795,7 @@ router.post(
             comprovanteUrl: pc.comprovanteUrl ?? null,
           })),
         } : {}),
+        ...(apresentacao ? { apresentacao } : {}),
         itens: normalizarItensExecucao(propostaItens as PropostaItem[]),
         valorTotal: roundOrcamentoNumber(valorTotal).toFixed(2),
       })
