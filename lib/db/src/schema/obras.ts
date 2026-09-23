@@ -63,6 +63,12 @@ export const obrasTable = pgTable("obras", {
     .references(() => tenantsTable.id, { onDelete: "cascade" }),
   nome: text("nome").notNull(),
   descricao: text("descricao"),
+  // Proposta contratada que originou a obra. Mantém o vínculo canônico sem
+  // depender de nome/cliente e torna o provisionamento idempotente.
+  propostaOrigemId: text("proposta_origem_id").unique(),
+  // Deal/lead permitem que revisões e aditivos aceitos encontrem a mesma obra.
+  dealOrigemId: text("deal_origem_id").unique(),
+  leadOrigemId: text("lead_origem_id"),
   clienteNome: text("cliente_nome"),
   clienteContato: text("cliente_contato"),
   endereco: text("endereco"),
@@ -105,6 +111,9 @@ export type Obra = typeof obrasTable.$inferSelect;
 export const obraEtapasTable = pgTable("obra_etapas", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   obraId: text("obra_id").notNull().references(() => obrasTable.id, { onDelete: "cascade" }),
+  // ID da etapa no orçamento/proposta contratada. Permite que diário,
+  // compras, medições e financeiro apontem para a mesma etapa de origem.
+  origemEtapaId: text("origem_etapa_id"),
   nome: text("nome").notNull(),
   descricao: text("descricao"),
   ordem: integer("ordem").notNull().default(0),
@@ -189,6 +198,10 @@ export const obraOrcamentosTable = pgTable("obra_orcamentos", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   tenantId: text("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
   obraId: text("obra_id").notNull().references(() => obrasTable.id, { onDelete: "cascade" }),
+  propostaOrigemId: text("proposta_origem_id").unique(),
+  // Snapshot imutável da contratação. Revisões futuras geram nova versão em
+  // vez de reescrever silenciosamente a linha de base aprovada.
+  linhaBaseSnapshot: jsonb("linha_base_snapshot").$type<Record<string, unknown> | null>(),
   versao: integer("versao").notNull().default(1),
   titulo: text("titulo"),
   descricao: text("descricao"),
@@ -216,6 +229,7 @@ export type ObraOrcamento = typeof obraOrcamentosTable.$inferSelect;
 export const obraOrcamentoEtapasTable = pgTable("obra_orcamento_etapas", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   orcamentoId: text("orcamento_id").notNull().references(() => obraOrcamentosTable.id, { onDelete: "cascade" }),
+  origemEtapaId: text("origem_etapa_id"),
   nome: text("nome").notNull(),
   ordem: integer("ordem").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

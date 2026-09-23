@@ -15,6 +15,10 @@ import {
   erpTitulosTable,
   archProjetosTable,
   obrasTable,
+  obraEtapasTable,
+  obraOrcamentosTable,
+  obraOrcamentoEtapasTable,
+  obraOrcamentoItensTable,
 } from "@workspace/db";
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
 import { analyzeLeadIntelligence } from "./analyze-intelligence.js";
@@ -45,6 +49,12 @@ export interface ProposalAcceptanceResult {
   pendingStockConfirmation?: boolean;
   agentTaskId?: string;
   divergence?: { valorProposta: number; valorCatalogo: number; diferenca: number };
+  /** Obra provisionada a partir da linha de base contratada, quando aplicável. */
+  obraId?: string;
+  /** Link do portal do cliente para acompanhamento da obra. */
+  portalClienteUrl?: string;
+  /** Indica que esta aceitação criou uma nova versão da linha de base. */
+  baselineCreated?: boolean;
 }
 
 export interface ProposalAcceptanceError {
@@ -156,6 +166,423 @@ async function syncAcceptedProposalToArqdor(proposta: typeof propostasTable.$inf
   }
 }
 
+
+type WorkBaselineProvisioning = {
+  obraId: string;
+  portalClienteUrl: string | null;
+  baselineCreated: boolean;
+  baselineVersion: number;
+};
+
+function parseContractDate(value?: string | null): Date | null {
+  if (!value) return null;
+  const text = String(value).trim();
+  if (!text) return null;
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(text)
+    ? new Date(`${text}T12:00:00Z`)
+    : new Date(text);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function contractDateOnly(value?: string | Date | null): string | null {
+  const date = value instanceof Date ? value : parseContractDate(value ?? null);
+  return date && !Number.isNaN(date.getTime()) ? date.toISOString().slice(0, 10) : null;
+}
+
+function addContractDays(date: Date, days: number): Date {
+  const next = new Date(date.getTime());
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+async function syncAcceptedProposalToWorkBaseline(
+  proposta: typeof propostasTable.$inferSelect,
+): Promise<WorkBaselineProvisioning | null> {
+  const items = proposta.itens ?? [];
+  const presentation = proposta.apresentacao ?? {
+    modoPadrao: "completo",
+    etapas: {},
+    mostrarTotalGeral: true,
+    cronogramaEtapas: {},
+    mostrarCronogramaExecucao: true,
+    mostrarFisicoFinanceiro: true,
+  };
+
+  const hasStageSignal = items.some(
+    (item) => Boolean(item.etapaId || item.etapaNome || item.etapaOrdem),
+  ) || Object.keys(presentation.cronogramaEtapas ?? {}).length > 0;
+
+  const [archProject] = await db
+    .select({
+      id: archProjetosTable.id,
+      obraId: archProjetosTable.obraId,
+      titulo: archProjetosTable.titulo,
+    })
+    .from(archProjetosTable)
+    .where(and(
+      eq(archProjetosTable.tenantId, proposta.tenantId),
+      eq(archProjetosTable.propostaId, proposta.id),
+    ))
+    .limit(1);
+
+  // Não cria "obra" para propostas comerciais genéricas/SaaS. A existência
+  // de etapas de execução ou de um projeto Arqdor é o sinal canônico.
+  if (!hasStageSignal && !archProject) return null;
+
+  const [lead] = await db
+    .select({
+      nome: leadsTable.nome,
+      empresa: leadsTable.empresa,
+      telefone: leadsTable.telefone,
+      email: leadsTable.email,
+      endereco: leadsTable.endereco,
+    })
+    .from(leadsTable)
+    .where(eq(leadsTable.id, proposta.leadId))
+    .limit(1);
+
+  let [obra] = await db
+    .select()
+    .from(obrasTable)
+    .where(eq(obrasTable.propostaOrigemId, proposta.id))
+    .limit(1);
+
+  if (!obra && proposta.dealId) {
+    [obra] = await db
+      .select()
+      .from(obrasTable)
+      .where(eq(obrasTable.dealOrigemId, proposta.dealId))
+      .limit(1);
+  }
+
+  if (!obra && archProject?.obraId) {
+    [obra] = await db
+      .select()
+      .from(obrasTable)
+      .where(and(
+        eq(obrasTable.id, archProject.obraId),
+        eq(obrasTable.tenantId, proposta.tenantId),
+      ))
+      .limit(1);
+  }
+
+  type GroupedItem = {
+    item: (typeof items)[number];
+    index: number;
+  };
+  const grouped = new Map<string, {
+    sourceId: string;
+    nome: string;
+    ordem: number;
+    itens: GroupedItem[];
+  }>();
+
+  items.forEach((item, index) => {
+    const ordem = Number(item.etapaOrdem ?? item.ordemExecucao ?? index + 1);
+    const nome = item.etapaNome?.trim() || (hasStageSignal ? `Etapa ${ordem}` : "Execução contratada");
+    const sourceId = item.etapaId?.trim() || `proposta:${proposta.id}:etapa:${ordem}:${nome}`;
+    const group = grouped.get(sourceId) ?? { sourceId, nome, ordem, itens: [] };
+    group.itens.push({ item, index });
+    grouped.set(sourceId, group);
+  });
+
+  if (grouped.size === 0) {
+    grouped.set(`proposta:${proposta.id}:etapa:1`, {
+      sourceId: `proposta:${proposta.id}:etapa:1`,
+      nome: archProject?.titulo || "Execução contratada",
+      ordem: 1,
+      itens: [],
+    });
+  }
+
+  const groups = Array.from(grouped.values()).sort((a, b) => a.ordem - b.ordem);
+  const proposalTotal = Number(proposta.valorTotal ?? 0)
+    || groups.reduce(
+      (sum, group) => sum + group.itens.reduce(
+        (stageSum, entry) => stageSum + Number(entry.item.quantidade || 0) * Number(entry.item.valorUnitario || 0),
+        0,
+      ),
+      0,
+    );
+
+  const globalStart = parseContractDate(presentation.previsaoInicio ?? null);
+  const plannedStages = groups.map((group) => {
+    const config = presentation.cronogramaEtapas?.[group.sourceId]
+      ?? (group.itens[0]?.item.etapaId
+        ? presentation.cronogramaEtapas?.[group.itens[0].item.etapaId!]
+        : undefined)
+      ?? {};
+    const stageValue = group.itens.reduce(
+      (sum, entry) => sum + Number(entry.item.quantidade || 0) * Number(entry.item.valorUnitario || 0),
+      0,
+    );
+    const start = parseContractDate(config.inicioPrevisto ?? null) ?? globalStart;
+    const explicitEnd = parseContractDate(config.fimPrevisto ?? null);
+    const duration = Number(config.duracaoDias ?? 0) > 0
+      ? Math.round(Number(config.duracaoDias))
+      : start && explicitEnd
+        ? Math.max(1, Math.round((explicitEnd.getTime() - start.getTime()) / 86_400_000) + 1)
+        : null;
+    const end = explicitEnd ?? (start && duration ? addContractDays(start, duration - 1) : null);
+    const configuredPhysical = Number(config.percentualFisico);
+
+    return {
+      ...group,
+      config,
+      stageValue,
+      financialPercent: proposalTotal > 0 ? (stageValue / proposalTotal) * 100 : 0,
+      configuredPhysicalPercent: Number.isFinite(configuredPhysical) ? configuredPhysical : null,
+      start,
+      end,
+      duration,
+    };
+  });
+
+  const missingPhysical = plannedStages.filter((stage) => stage.configuredPhysicalPercent === null);
+  const configuredPhysicalTotal = plannedStages.reduce(
+    (sum, stage) => sum + Number(stage.configuredPhysicalPercent ?? 0),
+    0,
+  );
+  const remainingPhysical = Math.max(0, 100 - configuredPhysicalTotal);
+  const missingDurationTotal = missingPhysical.reduce(
+    (sum, stage) => sum + Number(stage.duration ?? 0),
+    0,
+  );
+
+  const stages = plannedStages.map((stage) => ({
+    ...stage,
+    physicalPercent: stage.configuredPhysicalPercent !== null
+      ? Math.max(0, Math.min(100, stage.configuredPhysicalPercent))
+      : missingPhysical.length === 0
+        ? 0
+        : missingDurationTotal > 0 && stage.duration
+          ? (Number(stage.duration) / missingDurationTotal) * remainingPhysical
+          : remainingPhysical / missingPhysical.length,
+  }));
+
+  const startDates = stages.flatMap((stage) => stage.start ? [stage.start] : []);
+  const endDates = stages.flatMap((stage) => stage.end ? [stage.end] : []);
+  const obraStart = startDates.length
+    ? new Date(Math.min(...startDates.map((date) => date.getTime())))
+    : globalStart;
+  const obraEnd = endDates.length
+    ? new Date(Math.max(...endDates.map((date) => date.getTime())))
+    : null;
+
+  if (!obra) {
+    [obra] = await db
+      .insert(obrasTable)
+      .values({
+        tenantId: proposta.tenantId,
+        nome: archProject?.titulo || proposta.titulo,
+        descricao: `[PROPOSTA:${proposta.id}] Obra originada da proposta contratada ${proposta.numero ?? proposta.id}.`,
+        propostaOrigemId: proposta.id,
+        dealOrigemId: proposta.dealId ?? null,
+        leadOrigemId: proposta.leadId,
+        clienteNome: lead?.empresa || lead?.nome || null,
+        clienteContato: lead?.telefone ?? lead?.email ?? null,
+        endereco: lead?.endereco ?? null,
+        status: "planejamento",
+        dataInicio: contractDateOnly(obraStart),
+        dataFimPrevista: contractDateOnly(obraEnd),
+        orcamentoTotal: proposalTotal > 0 ? proposalTotal.toFixed(2) : null,
+        custoRealizado: "0",
+      })
+      .returning();
+  } else {
+    const [updated] = await db
+      .update(obrasTable)
+      .set({
+        propostaOrigemId: obra.propostaOrigemId ?? proposta.id,
+        dealOrigemId: obra.dealOrigemId ?? proposta.dealId ?? null,
+        leadOrigemId: obra.leadOrigemId ?? proposta.leadId,
+        clienteNome: obra.clienteNome ?? lead?.empresa ?? lead?.nome ?? null,
+        clienteContato: obra.clienteContato ?? lead?.telefone ?? lead?.email ?? null,
+        endereco: obra.endereco ?? lead?.endereco ?? null,
+        dataInicio: contractDateOnly(obraStart) ?? obra.dataInicio,
+        dataFimPrevista: contractDateOnly(obraEnd) ?? obra.dataFimPrevista,
+        orcamentoTotal: proposalTotal > 0 ? proposalTotal.toFixed(2) : obra.orcamentoTotal,
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(obrasTable.id, obra.id),
+        eq(obrasTable.tenantId, proposta.tenantId),
+      ))
+      .returning();
+    if (updated) obra = updated;
+  }
+
+  if (!obra) return null;
+
+  const portalClienteUrl = obra.portalToken ? `/portal/obra/${obra.portalToken}` : null;
+  if (portalClienteUrl && obra.linkCliente !== portalClienteUrl) {
+    const [updated] = await db
+      .update(obrasTable)
+      .set({ linkCliente: portalClienteUrl, updatedAt: new Date() })
+      .where(eq(obrasTable.id, obra.id))
+      .returning();
+    if (updated) obra = updated;
+  }
+
+  for (const stage of stages) {
+    let [existingStage] = await db
+      .select()
+      .from(obraEtapasTable)
+      .where(and(
+        eq(obraEtapasTable.obraId, obra.id),
+        eq(obraEtapasTable.origemEtapaId, stage.sourceId),
+      ))
+      .limit(1);
+
+    const values = {
+      nome: stage.nome,
+      ordem: stage.ordem,
+      descricao: stage.config.observacao?.trim()
+        || `Etapa originada da proposta contratada ${proposta.numero ?? proposta.id}.`,
+      dataInicioPrevista: contractDateOnly(stage.start),
+      dataFimPrevista: contractDateOnly(stage.end),
+      custoPrevisto: stage.stageValue.toFixed(2),
+      pesoFisico: stage.physicalPercent.toFixed(4),
+      marco: Boolean(stage.config.marcoPagamento),
+    };
+
+    if (existingStage) {
+      const [updatedStage] = await db
+        .update(obraEtapasTable)
+        .set({ ...values, updatedAt: new Date() })
+        .where(eq(obraEtapasTable.id, existingStage.id))
+        .returning();
+      existingStage = updatedStage ?? existingStage;
+    } else {
+      [existingStage] = await db
+        .insert(obraEtapasTable)
+        .values({
+          obraId: obra.id,
+          origemEtapaId: stage.sourceId,
+          ...values,
+          status: "pendente",
+          percentualExecutado: "0",
+        })
+        .returning();
+    }
+
+  }
+
+  const [existingBaseline] = await db
+    .select()
+    .from(obraOrcamentosTable)
+    .where(eq(obraOrcamentosTable.propostaOrigemId, proposta.id))
+    .limit(1);
+
+  if (existingBaseline) {
+    return {
+      obraId: obra.id,
+      portalClienteUrl,
+      baselineCreated: false,
+      baselineVersion: existingBaseline.versao,
+    };
+  }
+
+  const previousBaselines = await db
+    .select()
+    .from(obraOrcamentosTable)
+    .where(eq(obraOrcamentosTable.obraId, obra.id));
+
+  const nextVersion = previousBaselines.reduce(
+    (max, item) => Math.max(max, Number(item.versao ?? 0)),
+    0,
+  ) + 1;
+
+  for (const baseline of previousBaselines.filter((item) => item.status === "aprovado")) {
+    await db
+      .update(obraOrcamentosTable)
+      .set({ status: "substituido", updatedAt: new Date() })
+      .where(eq(obraOrcamentosTable.id, baseline.id));
+  }
+
+  const [baseline] = await db
+    .insert(obraOrcamentosTable)
+    .values({
+      tenantId: proposta.tenantId,
+      obraId: obra.id,
+      propostaOrigemId: proposta.id,
+      versao: nextVersion,
+      titulo: `Linha de base contratada · ${proposta.numero ?? proposta.titulo}`,
+      descricao: "Snapshot da proposta aceita. Alterações posteriores devem gerar nova versão/aditivo.",
+      status: "aprovado",
+      bdiGlobal: "0",
+      linhaBaseSnapshot: {
+        propostaId: proposta.id,
+        numero: proposta.numero,
+        titulo: proposta.titulo,
+        acceptedAt: proposta.acceptedAt ? proposta.acceptedAt.toISOString() : null,
+        valorTotal: proposta.valorTotal,
+        formaPagamento: proposta.formaPagamento,
+        condPagamento: proposta.condPagamento,
+        prazoEntrega: proposta.prazoEntrega,
+        validadeAte: proposta.validadeAte ? proposta.validadeAte.toISOString() : null,
+        paymentCompositions: proposta.paymentCompositions ?? [],
+        apresentacao: proposta.apresentacao,
+        itens: proposta.itens ?? [],
+      },
+    })
+    .returning();
+
+  if (!baseline) {
+    return {
+      obraId: obra.id,
+      portalClienteUrl,
+      baselineCreated: false,
+      baselineVersion: nextVersion,
+    };
+  }
+
+  for (const stage of stages) {
+    const [budgetStage] = await db
+      .insert(obraOrcamentoEtapasTable)
+      .values({
+        orcamentoId: baseline.id,
+        origemEtapaId: stage.sourceId,
+        nome: stage.nome,
+        ordem: stage.ordem,
+      })
+      .returning();
+
+    if (!budgetStage || stage.itens.length === 0) continue;
+
+    await db.insert(obraOrcamentoItensTable).values(
+      stage.itens.map(({ item, index }) => ({
+        etapaId: budgetStage.id,
+        nome: item.nome,
+        unidade: item.unidade || "un",
+        quantidade: Number(item.quantidade || 0).toFixed(4),
+        custoUnitario: Number(item.valorUnitario || 0).toFixed(4),
+        composicaoId: item.composicaoId ?? null,
+        origemPreco: "proposta_contratada",
+        ordem: index + 1,
+      })),
+    );
+  }
+
+  logger.info(
+    {
+      propostaId: proposta.id,
+      obraId: obra.id,
+      baselineVersion: nextVersion,
+      etapas: stages.length,
+      portalClienteUrl,
+    },
+    "proposalAccepted: work baseline provisioned from accepted proposal",
+  );
+
+  return {
+    obraId: obra.id,
+    portalClienteUrl,
+    baselineCreated: true,
+    baselineVersion: nextVersion,
+  };
+}
+
 /**
  * Idempotent proposal acceptance.
  * If the deal already has `closure_triggered_at`, the call is a no-op
@@ -212,11 +639,24 @@ export async function proposalAccepted(
     .where(eq(propostasTable.id, propostaId))
     .returning();
 
-  await syncAcceptedProposalToArqdor(updatedProposta ?? proposta);
+  const acceptedProposal = updatedProposta ?? proposta;
+  let workProvisioning: WorkBaselineProvisioning | null | undefined;
+  const ensureConstructionProvisioning = async () => {
+    if (workProvisioning !== undefined) return workProvisioning;
+    await syncAcceptedProposalToArqdor(acceptedProposal);
+    try {
+      workProvisioning = await syncAcceptedProposalToWorkBaseline(acceptedProposal);
+    } catch (err) {
+      log.warn({ err, propostaId }, "proposalAccepted: work baseline provisioning failed (non-fatal)");
+      workProvisioning = null;
+    }
+    return workProvisioning;
+  };
 
   // 3. Resolve deal & idempotency check
   if (!proposta.dealId) {
     log.warn("proposalAccepted: no deal linked to proposta");
+    const provisioning = await ensureConstructionProvisioning();
     return {
       ok: true,
       alreadyProcessed: false,
@@ -228,6 +668,11 @@ export async function proposalAccepted(
       inventoryDeducted: false,
       activityCreated: false,
       webhookDispatched: false,
+      ...(provisioning ? {
+        obraId: provisioning.obraId,
+        portalClienteUrl: provisioning.portalClienteUrl ?? undefined,
+        baselineCreated: provisioning.baselineCreated,
+      } : {}),
     };
   }
 
@@ -238,6 +683,7 @@ export async function proposalAccepted(
 
   if (!deal) {
     log.warn("proposalAccepted: linked deal not found");
+    const provisioning = await ensureConstructionProvisioning();
     return {
       ok: true,
       alreadyProcessed: false,
@@ -249,6 +695,11 @@ export async function proposalAccepted(
       inventoryDeducted: false,
       activityCreated: false,
       webhookDispatched: false,
+      ...(provisioning ? {
+        obraId: provisioning.obraId,
+        portalClienteUrl: provisioning.portalClienteUrl ?? undefined,
+        baselineCreated: provisioning.baselineCreated,
+      } : {}),
     };
   }
 
@@ -258,6 +709,7 @@ export async function proposalAccepted(
       { dealId: deal.id, closureTriggeredAt: deal.closureTriggeredAt },
       "proposalAccepted: deal already closed, skipping automation"
     );
+    const provisioning = await ensureConstructionProvisioning();
     return {
       ok: true,
       alreadyProcessed: true,
@@ -269,6 +721,11 @@ export async function proposalAccepted(
       inventoryDeducted: false,
       activityCreated: false,
       webhookDispatched: false,
+      ...(provisioning ? {
+        obraId: provisioning.obraId,
+        portalClienteUrl: provisioning.portalClienteUrl ?? undefined,
+        baselineCreated: provisioning.baselineCreated,
+      } : {}),
     };
   }
 
@@ -506,6 +963,10 @@ export async function proposalAccepted(
 
   log.info({ dealId: deal.id }, "proposalAccepted: deal moved to ganho");
 
+  // A proposta aprovada torna-se a linha de base da execução: cria/reusa a
+  // obra, etapas, orçamento contratado versionado e o portal do cliente.
+  const provisioning = await ensureConstructionProvisioning();
+
   // 4a. Handoff proativo: fechamento → onboarding. Em vez de esperar o cliente
   // escrever de novo, dispara a mensagem de boas-vindas imediatamente — non-blocking.
   if (proposta.leadId) {
@@ -698,5 +1159,10 @@ export async function proposalAccepted(
     inventoryDeducted,
     activityCreated,
     webhookDispatched,
+    ...(provisioning ? {
+      obraId: provisioning.obraId,
+      portalClienteUrl: provisioning.portalClienteUrl ?? undefined,
+      baselineCreated: provisioning.baselineCreated,
+    } : {}),
   };
 }
