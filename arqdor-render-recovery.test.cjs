@@ -1,0 +1,15 @@
+const ts=require('typescript'), fs=require('fs'), vm=require('vm'), assert=require('node:assert/strict');
+const files=['artifacts/frontend/src/pages/arch/ConceptPlanner.tsx','artifacts/frontend/src/pages/arch/ConceptModel3D.tsx','artifacts/api-server/src/routes/arch_ai_render.ts','artifacts/api-server/src/routes/arch_ai_render_legacy.ts'];
+for(const file of files){const s=fs.readFileSync(file,'utf8');const out=ts.transpileModule(s,{fileName:file,reportDiagnostics:true,compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}});assert.equal(out.diagnostics.length,0,JSON.stringify(out.diagnostics));}
+const source=fs.readFileSync(files[0],'utf8');const a=source.indexOf('  useEffect(() => {\n    if (!conceptId) return;');const b=source.indexOf('\n  const latestFacadeRenderUrl',a);
+const code=ts.transpileModule(source.slice(a,b),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
+async function scenario(versions,initial={status:'idle'},fail=false){let state=initial,timers=[],cleanup,err;const ctx={conceptId:'concept-a',conceptRender:initial,editorView:'render',renderSubmittingRef:{current:false},AbortController,setTimeout:f=>{timers.push(f);return 1},clearTimeout:()=>{},setRenderHistoryLoading:()=>{},setRenderError:e=>err=e,setConceptRender:f=>state=f(state),useEffect:f=>cleanup=f(),fetch:async()=>({ok:!fail,json:async()=>({versions})})};vm.runInNewContext(code,ctx);await new Promise(setImmediate);return {get state(){return state},get error(){return err},timers,cleanup,ctx};}
+(async()=>{
+let r=await scenario([{id:'job',status:'processando'}],{status:'processing',renderId:'job'});assert.equal(r.state.status,'processing');assert.equal(r.timers.length,1);
+r.ctx.fetch=async()=>({ok:true,json:async()=>({versions:[{id:'job',status:'concluido',result_image_url:'/saved.png'}]})});await r.timers.shift()();assert.equal(r.state.status,'completed');assert.equal(r.state.resultImageUrl,'/saved.png');
+r=await scenario([{id:'old',status:'concluido',result_image_url:'/old.png'},{id:'new',status:'processando'}]);assert.equal(r.state.resultImageUrl,'/old.png');assert.equal(r.state.renderId,'new');assert.equal(r.state.status,'processing');
+r=await scenario([{id:'old',status:'concluido',result_image_url:'/old.png'},{id:'new',status:'erro',erro_msg:'Provider failed'}]);assert.equal(r.state.resultImageUrl,'/old.png');assert.equal(r.state.status,'error');assert.equal(r.error,'Provider failed');
+r=await scenario([],{status:'processing',resultImageUrl:'/old.png'},true);assert.equal(r.state.status,'processing');assert.equal(r.state.resultImageUrl,'/old.png');assert.equal(r.timers.length,1);
+r=await scenario([{id:'job',status:'concluido',result_image_url:'/saved.png',ambiente:'interior'}]);assert.equal(r.state.source,'model3d');r.cleanup();
+console.log('PASS: 4 TS/TSX syntax checks; recovery after refresh, completion, previous image during processing/error, network retry, interior source.');
+})().catch(e=>{console.error(e);process.exit(1)});
