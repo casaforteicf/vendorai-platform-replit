@@ -10,6 +10,8 @@ export type DerivedFacadeOpening = {
   width: number;
   height: number;
   sillHeight: number;
+  openingStyle?: "hinged" | "sliding" | "fixed" | "tilt_turn";
+  swing?: "left" | "right";
 };
 
 export type DerivedFacadeModel = {
@@ -83,6 +85,8 @@ export function buildDerivedFacadeModel(
         width: Math.max(0.45, opening.width ?? (opening.type === "door" ? 0.9 : 1.2)),
         height: Math.max(0.5, opening.height ?? (opening.type === "door" ? 2.1 : 1.2)),
         sillHeight: opening.type === "door" ? 0 : Math.max(0, opening.sillHeight ?? 0.9),
+        openingStyle: opening.openingStyle,
+        swing: opening.swing,
       });
     }
   }
