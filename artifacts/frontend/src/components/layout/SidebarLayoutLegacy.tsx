@@ -622,22 +622,180 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
+
+  function GroupedNavSection({
+    label,
+    icon: Icon,
+    active,
+    children,
+  }: {
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    active: boolean;
+    children: React.ReactNode;
+  }) {
+    const [open, setOpen] = useState(active);
+
+    React.useEffect(() => {
+      if (active) setOpen(true);
+    }, [active]);
+
+    return (
+      <div>
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          className={cn(
+            "w-full flex min-h-[44px] items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition-all",
+            active
+              ? "bg-primary/10 text-primary"
+              : "text-muted-foreground hover:bg-sidebar-accent/80 hover:text-foreground"
+          )}
+          aria-expanded={open}
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <Icon className="h-4 w-4 shrink-0" />
+            <span className="truncate">{label}</span>
+          </div>
+          {open ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
+        </button>
+        {open && <div className="ml-4 mt-1 space-y-1">{children}</div>}
+      </div>
+    );
+  }
+
   function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
-    const [relatoriosOpen, setRelatoriosOpen] = useState(false);
-    const isRelatorio = location.startsWith("/relatorios/");
+    const [relatoriosOpen, setRelatoriosOpen] = useState(
+      location === "/relatorios" || location.startsWith("/relatorios/") || location === "/analytics"
+    );
+    const isRelatorio =
+      location === "/relatorios" ||
+      location.startsWith("/relatorios/") ||
+      location === "/analytics";
     const isConteudo =
       location.startsWith("/content") ||
       location === "/ads" ||
       location === "/marketing/plano-de-midia" ||
       location === "/marketing/instagram" ||
-      location === "/variedades-dia" ||
-      location === "/stories";
+      location === "/marketing/facebook-marketplace";
     const [conteudoOpen, setConteudoOpen] = useState(isConteudo);
     const isGeradorConteudo = location === "/content";
     const isCampanhas = location.startsWith("/content?tab=campanhas");
+
+    const commercialHrefs = new Set(["/propostas", "/catalogo", "/pacotes"]);
+    const operationHrefs = new Set(["/entregas", "/erp", "/organizacao", "/usuarios", "/configuracoes"]);
+    const aiKnowledgeHrefs = new Set(["/agents/config", "/base-conhecimento"]);
+    const reportHrefs = new Set(["/analytics"]);
+    const pracaHrefs = new Set(["/entregas-praca", "/praca-executivo", "/praca-conciliacao", "/logistica-praca"]);
+    const marketingHrefs = new Set(["/marketing/facebook-marketplace"]);
+    const groupedCoreHrefs = new Set([
+      ...commercialHrefs,
+      ...operationHrefs,
+      ...aiKnowledgeHrefs,
+      ...reportHrefs,
+      ...pracaHrefs,
+      ...marketingHrefs,
+    ]);
+
+    const crmAtendimentoNav = crmNav.filter((item) => !groupedCoreHrefs.has(item.href));
+    const commercialNav = crmNav.filter((item) => commercialHrefs.has(item.href));
+    const operationNav = crmNav.filter((item) => operationHrefs.has(item.href));
+    const aiKnowledgeNav = crmNav.filter((item) => aiKnowledgeHrefs.has(item.href));
+    const analyticsNav = crmNav.filter((item) => reportHrefs.has(item.href));
+    const pracaAiNav = crmNav.filter((item) => pracaHrefs.has(item.href));
+    const pracaAiEnabled = (tenantNavModules ?? []).some(
+      (module) => module.moduleKey === "praca_ai" && module.isEnabled
+    );
+    const isPracaAi =
+      location === "/stories" ||
+      location === "/variedades-dia" ||
+      location === "/praca-perguntas" ||
+      location === "/praca-variedades" ||
+      pracaHrefs.has(location);
+
+    const groupActive = (items: typeof crmNav) =>
+      items.some((item) => location === item.href || (item.href !== "/" && location.startsWith(item.href)));
     return (
       <>
-        {crmNav.map((item) => <NavItem key={item.name} item={item} onNavigate={onNavigate} />)}
+        <GroupedNavSection
+          label="CRM & Atendimento"
+          icon={Briefcase}
+          active={groupActive(crmAtendimentoNav)}
+        >
+          {crmAtendimentoNav.map((item) => (
+            <NavItem key={item.href} item={item} onNavigate={onNavigate} />
+          ))}
+        </GroupedNavSection>
+
+        {commercialNav.length > 0 && (
+          <GroupedNavSection
+            label="Produtos & Comercial"
+            icon={FileText}
+            active={groupActive(commercialNav)}
+          >
+            {commercialNav.map((item) => (
+              <NavItem key={item.href} item={item} onNavigate={onNavigate} />
+            ))}
+          </GroupedNavSection>
+        )}
+
+        {pracaAiEnabled && (
+          <GroupedNavSection label="Praça.ai" icon={Store} active={isPracaAi}>
+            {pracaAiNav.map((item) => (
+              <NavItem key={item.href} item={item} onNavigate={onNavigate} />
+            ))}
+            <Link
+              href="/praca-perguntas"
+              onClick={onNavigate}
+              className={cn(
+                "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+                location === "/praca-perguntas"
+                  ? "bg-primary/10 text-primary font-medium"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              )}
+            >
+              <MessageSquare className="h-3.5 w-3.5" /> Perguntas Praça.ai
+            </Link>
+            <Link
+              href="/praca-variedades"
+              onClick={onNavigate}
+              className={cn(
+                "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+                location === "/praca-variedades"
+                  ? "bg-primary/10 text-primary font-medium"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              )}
+            >
+              <Sparkles className="h-3.5 w-3.5" /> Variedades Praça.ai
+            </Link>
+            <Link
+              href="/variedades-dia"
+              onClick={onNavigate}
+              className={cn(
+                "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+                location === "/variedades-dia"
+                  ? "bg-primary/10 text-primary font-medium"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              )}
+            >
+              <Sparkles className="h-3.5 w-3.5" /> Variedades do Dia
+            </Link>
+            {!isStartPlan && (
+              <Link
+                href="/stories"
+                onClick={onNavigate}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+                  location === "/stories"
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <Camera className="h-3.5 w-3.5" /> Stories Praça.ai
+              </Link>
+            )}
+          </GroupedNavSection>
+        )}
 
         {/* Marketing submenu — fonte declarativa oficial */}
         <div>
@@ -737,6 +895,18 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                 <Target className="h-3.5 w-3.5" /> Anúncios Patrocinados
               </Link>
               <Link
+                href="/marketing/facebook-marketplace"
+                onClick={onNavigate}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+                  location === "/marketing/facebook-marketplace"
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <Store className="h-3.5 w-3.5" /> Marketplace Facebook
+              </Link>
+              <Link
                 href="/marketing/plano-de-midia"
                 onClick={onNavigate}
                 className={cn(
@@ -748,34 +918,6 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
               >
                 <Sparkles className="h-3.5 w-3.5" /> Plano de Mídia (IA)
               </Link>
-              <Link
-                href="/variedades-dia"
-                onClick={onNavigate}
-                aria-label="Variedades do Dia — conteúdo temporário do Praça.ai"
-                title="Variedades do Dia — conteúdo temporário do Praça.ai"
-                className={cn(
-                  "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
-                  location === "/variedades-dia"
-                    ? "bg-primary/10 text-primary font-medium"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                )}
-              >
-                <Sparkles className="h-3.5 w-3.5" /> Variedades do Dia
-              </Link>
-              {!isStartPlan && (
-                <Link
-                  href="/stories"
-                  onClick={onNavigate}
-                  className={cn(
-                    "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
-                    location === "/stories"
-                      ? "bg-primary/10 text-primary font-medium"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                  )}
-                >
-                  <Camera className="h-3.5 w-3.5" /> Stories Praça.ai
-                </Link>
-              )}
             </div>
           )}
         </div>
@@ -799,6 +941,9 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
           </button>
           {relatoriosOpen && (
             <div className="ml-6 mt-1 space-y-1">
+              {analyticsNav.map((item) => (
+                <NavItem key={item.href} item={item} onNavigate={onNavigate} />
+              ))}
               <Link
                 href="/relatorios"
                 onClick={onNavigate}
@@ -850,6 +995,30 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
             </div>
           )}
         </div>
+
+        {operationNav.length > 0 && (
+          <GroupedNavSection
+            label="Operação & Gestão"
+            icon={WalletCards}
+            active={groupActive(operationNav)}
+          >
+            {operationNav.map((item) => (
+              <NavItem key={item.href} item={item} onNavigate={onNavigate} />
+            ))}
+          </GroupedNavSection>
+        )}
+
+        {aiKnowledgeNav.length > 0 && (
+          <GroupedNavSection
+            label="IA & Conhecimento"
+            icon={Bot}
+            active={groupActive(aiKnowledgeNav)}
+          >
+            {aiKnowledgeNav.map((item) => (
+              <NavItem key={item.href} item={item} onNavigate={onNavigate} />
+            ))}
+          </GroupedNavSection>
+        )}
 
         {construcaoNav.length > 0 && (
           <div className="mt-3 pt-3 border-t">
