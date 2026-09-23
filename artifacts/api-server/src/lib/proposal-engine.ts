@@ -782,7 +782,6 @@ function renderProposalStageImage(
   return `
     <figure class="proposal-stage-visual">
       <img src="${escapeProposalText(url)}" alt="Imagem representativa da etapa ${escapeProposalText(stageName)}" loading="lazy" onerror="this.parentElement.style.display='none'" />
-      <figcaption>Imagem ilustrativa gerada por IA · ${escapeProposalText(stageName)}</figcaption>
     </figure>`;
 }
 
@@ -1081,7 +1080,6 @@ export function renderProposalHtml(json: unknown, theme: {
   .orc-stage-summary { margin: 3.5mm 0; font-size: 9pt; }
   .proposal-stage-visual { margin: 2mm 0 3mm; break-inside: avoid; }
   .proposal-stage-visual img { width: 100%; height: 38mm; object-fit: cover; display: block; border-radius: 7px; border: 1px solid ${theme.concreteLine}; }
-  .proposal-stage-visual figcaption { margin-top: 1mm; font-family: "JetBrains Mono", monospace; font-size: 5.5pt; color: ${theme.navyMid}; opacity: .65; }
   .orc-total-row { display: flex; justify-content: flex-end; margin-top: 3mm; }
   .orc-total-box { border: 1px solid ${theme.accentSoft}; border-radius: 7px; padding: 3mm 5mm; text-align: right; background: ${theme.cream2}; }
   .orc-total-label { font-family: "JetBrains Mono", monospace; font-size: 6.5pt; text-transform: uppercase; letter-spacing: .07em; color: #8b84a8; display: block; margin-bottom: 1mm; }
@@ -1883,7 +1881,6 @@ export function renderOrcamentoPdf(args: {
   .stage-summary { margin: 3mm 0 1.5mm; font-size: 9pt; }
   .proposal-stage-visual { margin: 2mm 0 3mm; break-inside: avoid; }
   .proposal-stage-visual img { width: 100%; height: 42mm; object-fit: cover; display: block; border-radius: 7px; border: 1px solid #e2e8f0; }
-  .proposal-stage-visual figcaption { margin-top: 1mm; font-family: "JetBrains Mono", monospace; font-size: 5.5pt; color: #94a3b8; }
   .scope-block { margin: 1.5mm 0 4mm; break-inside: avoid; }
   .scope-heading {
     display: flex;
