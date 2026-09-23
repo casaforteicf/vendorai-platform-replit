@@ -9,13 +9,13 @@ export function quantityStep(_isComposition: boolean): number {
 export function normalizeBudgetQuantity(value: number, isComposition: boolean): number {
   const minimum = quantityStep(isComposition);
   if (!Number.isFinite(value)) return minimum;
-  const normalized = Math.round((value + Number.EPSILON) * 100) / 100;
-  return Math.max(minimum, normalized);
+  const normalized = Math.ceil((value - 1e-9) * 100) / 100;
+  return Math.max(minimum, Number(normalized.toFixed(2)));
 }
 
 export function formatBudgetQuantity(value: number, isComposition: boolean): string {
   const normalized = normalizeBudgetQuantity(value, isComposition);
-  return normalized.toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1");
+  return normalized.toFixed(2).replace(".", ",");
 }
 
 export function parseBudgetQuantity(raw: string, isComposition: boolean): number | null {
