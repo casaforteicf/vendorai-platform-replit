@@ -47,10 +47,44 @@ type Props = {
   onOpenGallery?: () => void;
   realisticPreviewUrl?: string | null;
   realisticPreviewLoading?: boolean;
+  onApplyDevelopment?: (result: AIDevelopmentResponse) => void | Promise<void>;
 };
 
-type AIDevelopmentResponse = {
+export type AIDevelopmentResponse = {
   geometryHealth?: { score: number; status: "ok" | "warning" | "error"; messages: string[] };
+  layoutSuggestion?: {
+    roomPatches?: Array<{
+      id: string;
+      x: number;
+      y: number;
+      width: number;
+      depth: number;
+      reason?: string;
+    }>;
+    wallSuggestions?: Array<{
+      id: string;
+      floor: number;
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+      thickness?: number;
+      reason?: string;
+    }>;
+    openingSuggestions?: Array<{
+      id: string;
+      wallId: string;
+      floor: number;
+      type: "door" | "window";
+      offset: number;
+      width?: number;
+      height?: number;
+      sillHeight?: number;
+      openingStyle?: "hinged" | "sliding" | "fixed" | "tilt_turn";
+      swing?: "left" | "right";
+      reason?: string;
+    }>;
+  };
   facadeSuggestion?: Partial<ConceptFacadePreferences>;
   notes?: string[];
   geometryWarnings?: string[];
@@ -222,6 +256,7 @@ export default function ConceptFacadeEditor({
   onOpenGallery,
   realisticPreviewUrl,
   realisticPreviewLoading = false,
+  onApplyDevelopment,
 }: Props) {
   const [panel, setPanel] = useState<"style" | "volumes" | "materials" | "frames" | "outdoor" | "lighting" | "ai">("style");
   const [panelOpen, setPanelOpen] = useState(() => typeof window === "undefined" ? true : window.innerWidth >= 768);
@@ -357,9 +392,15 @@ export default function ConceptFacadeEditor({
     }
   };
 
-  const applyAISuggestion = () => {
-    if (!aiResult?.facadeSuggestion) return;
-    onFacadeChange({ ...facade, ...aiResult.facadeSuggestion });
+  const applyAISuggestion = async () => {
+    if (!aiResult) return;
+    if (onApplyDevelopment) {
+      await onApplyDevelopment(aiResult);
+      return;
+    }
+    if (aiResult.facadeSuggestion) {
+      onFacadeChange({ ...facade, ...aiResult.facadeSuggestion });
+    }
   };
 
   return (
@@ -489,7 +530,26 @@ export default function ConceptFacadeEditor({
                   <span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold text-slate-700">{aiResult.geometryHealth?.score ?? 0}/100</span>
                 </div>
                 {!!aiResult.geometryHealth?.messages?.length && <ul className="space-y-1 text-[10px] leading-4 text-slate-600">{aiResult.geometryHealth.messages.slice(0,5).map((message) => <li key={message}>• {message}</li>)}</ul>}
-                {aiResult.facadeSuggestion && <button type="button" onClick={applyAISuggestion} className="w-full rounded-lg border border-orange-300 bg-white px-3 py-2 text-[11px] font-bold text-orange-600">Aplicar sugestão de fachada</button>}
+                {!!aiResult.layoutSuggestion?.roomPatches?.length && (
+                  <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[10px] text-sky-800">
+                    {aiResult.layoutSuggestion.roomPatches.length} ambiente(s) com ajuste de layout sugerido.
+                  </div>
+                )}
+                {!!aiResult.layoutSuggestion?.wallSuggestions?.length && (
+                  <div className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-[10px] text-violet-800">
+                    {aiResult.layoutSuggestion.wallSuggestions.length} parede(s) sugerida(s).
+                  </div>
+                )}
+                {!!aiResult.layoutSuggestion?.openingSuggestions?.length && (
+                  <div className="rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 text-[10px] text-cyan-800">
+                    {aiResult.layoutSuggestion.openingSuggestions.length} abertura(s) sugerida(s).
+                  </div>
+                )}
+                {(aiResult.facadeSuggestion || aiResult.layoutSuggestion) && (
+                  <button type="button" onClick={() => void applyAISuggestion()} className="w-full rounded-lg border border-orange-300 bg-white px-3 py-2 text-[11px] font-bold text-orange-600">
+                    Aplicar desenvolvimento ao projeto
+                  </button>
+                )}
               </div>
             )}
           </div>
