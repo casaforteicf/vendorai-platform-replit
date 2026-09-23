@@ -2950,6 +2950,14 @@ function newFreeItem(): FreeItem {
           .map((etapa) => [etapa.id, proposalStageSchedule[etapa.id] ?? {}] as const)
           .filter(([, value]) => Object.values(value).some((entry) => entry !== undefined && entry !== "")),
       ),
+      // As fotos representativas são geradas no fluxo da proposta e ficam
+      // vinculadas ao orçamento. Editar preço, cronograma ou apresentação não
+      // deve apagá-las.
+      imagensEtapas:
+        (editingProposta as any)?.apresentacao?.imagensEtapas
+        && typeof (editingProposta as any).apresentacao.imagensEtapas === "object"
+          ? (editingProposta as any).apresentacao.imagensEtapas
+          : {},
       mostrarCronogramaExecucao: showExecutionSchedule,
       mostrarFisicoFinanceiro: showPhysicalFinancial,
     };
