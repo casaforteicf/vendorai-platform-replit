@@ -40,10 +40,369 @@ import { ObjectStorageService } from "../lib/objectStorage.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 import { tryIngestTechnicianSupportMessage } from "../services/support-whatsapp-ingest.js";
 import { tryHandleSupportFeedbackMessage } from "../services/support-feedback.js";
+import { startVoiceSession, registerVoiceTurn, endVoiceSession } from "../services/voice-agent-orchestrator.js";
+import { createVendorAiVoiceStream, resolveDefaultVendorAiVoice } from "../services/vendorai-voice-engine.js";
 
 const objectStorage = new ObjectStorageService();
 
 const router: IRouter = Router();
+
+
+const voiceBridgeSchema = z.object({
+  tenantId: z.string().min(1),
+  leadId: z.string().min(1),
+  sessionId: z.string().min(1),
+  audioBase64: z.string().min(1),
+  mimeType: z.string().default("audio/wav"),
+  language: z.string().default("pt-br"),
+});
+
+router.post("/webhooks/voice/call-turn", async (req, res) => {
+  const expected = process.env["VENDORAI_VOICE_BRIDGE_SECRET"];
+  const provided = req.headers["x-vendorai-voice-bridge-secret"];
+  if (!expected || typeof provided !== "string" || provided !== expected) {
+    res.status(401).json({ error: "Invalid voice bridge secret" });
+    return;
+  }
+
+  const parsed = voiceBridgeSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const audio = Buffer.from(parsed.data.audioBase64, "base64");
+  if (!audio.length || audio.length > 8 * 1024 * 1024) {
+    res.status(422).json({ error: "VOICE_AUDIO_INVALID" });
+    return;
+  }
+
+  try {
+    const transcript = (await transcribeAudioBuffer(audio, parsed.data.tenantId, req.log, parsed.data.mimeType)).trim();
+    if (!transcript) {
+      res.status(204).end();
+      return;
+    }
+
+    const turn = await registerVoiceTurn({
+      tenantId: parsed.data.tenantId,
+      leadId: parsed.data.leadId,
+      sessionId: parsed.data.sessionId,
+      transcript,
+      log: req.log,
+    });
+
+    const text = turn.reply?.text?.trim();
+    if (!text) {
+      res.status(200).json({ transcript, turn, audio: false });
+      return;
+    }
+
+    const defaultVoice = await resolveDefaultVendorAiVoice({
+      tenantId: parsed.data.tenantId,
+      language: parsed.data.language,
+    });
+    if (!defaultVoice) {
+      res.status(200).json({
+        transcript,
+        turn,
+        audio: false,
+        warning: "DUBLE_VOICE_NOT_CONFIGURED",
+      });
+      return;
+    }
+
+    const stream = await createVendorAiVoiceStream({
+      tenantId: parsed.data.tenantId,
+      identityId: defaultVoice.identityId,
+      voiceProfileId: defaultVoice.voiceProfileId,
+      text,
+      language: parsed.data.language,
+    });
+
+    res.status(200);
+    res.setHeader("content-type", "application/x-ndjson; charset=utf-8");
+    res.setHeader("cache-control", "no-store");
+    res.setHeader("x-vendorai-transcript", encodeURIComponent(transcript.slice(0, 500)));
+    res.setHeader("x-vendorai-agent", turn.state.specialist);
+    res.setHeader("x-vendorai-voice-job-id", stream.jobId);
+
+    const reader = stream.response.body!.getReader();
+    req.on("close", () => {
+      void reader.cancel("call_bridge_disconnected");
+    });
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) res.write(Buffer.from(value));
+    }
+    res.end();
+  } catch (error) {
+    req.log.error({ error }, "voice bridge: call turn failed");
+    if (!res.headersSent) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "VOICE_BRIDGE_FAILED" });
+    } else {
+      res.end();
+    }
+  }
+});
+
+
+async function ensureVoiceLeadForPhone(input: {
+  tenantId: string;
+  phone: string;
+  name?: string;
+}) {
+  const match = await findLeadByDedup(input.tenantId, input.phone, null, null);
+  if (match.found) return match.lead;
+
+  const normalized = storePhone(input.phone);
+  const [lead] = await db
+    .insert(leadsTable)
+    .values({
+      tenantId: input.tenantId,
+      nome: input.name?.trim() || input.phone,
+      telefone: normalized,
+      status: "novo",
+      source: "whatsapp",
+    })
+    .returning();
+
+  await db.insert(dealsTable).values({
+    tenantId: input.tenantId,
+    leadId: lead.id,
+    titulo: lead.nome,
+    etapa: "em_aquecimento",
+  });
+
+  return lead;
+}
+
+async function callWorkerJson<T>(path: string, body: Record<string, unknown>): Promise<T> {
+  const baseUrl = process.env["VENDORAI_CALL_WORKER_URL"]?.replace(/\/$/, "");
+  if (!baseUrl) throw new Error("VENDORAI_CALL_WORKER_URL não configurada");
+
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  const secret = process.env["VENDORAI_CALL_WORKER_SECRET"];
+  if (secret) headers["x-vendorai-call-worker-secret"] = secret;
+
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(15_000),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(`Voice call worker ${response.status}: ${JSON.stringify(payload).slice(0, 500)}`);
+  }
+  return payload as T;
+}
+
+async function metaCallAction(input: {
+  phoneNumberId: string;
+  accessToken: string;
+  action: "pre_accept" | "accept" | "reject" | "terminate";
+  callId: string;
+  sdp?: string;
+  opaqueData?: string;
+}) {
+  const version = process.env["META_GRAPH_API_VERSION"]?.trim() || "v26.0";
+  const payload: Record<string, unknown> = {
+    messaging_product: "whatsapp",
+    call_id: input.callId,
+    action: input.action,
+  };
+  if (input.sdp && (input.action === "pre_accept" || input.action === "accept")) {
+    payload["session"] = { sdp_type: "answer", sdp: input.sdp };
+  }
+  if (input.opaqueData) payload["biz_opaque_callback_data"] = input.opaqueData.slice(0, 512);
+
+  const response = await fetch(
+    `https://graph.facebook.com/${version}/${input.phoneNumberId}/calls`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${input.accessToken}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(15_000),
+    },
+  );
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || (body && typeof body === "object" && "error" in body)) {
+    throw new Error(`Meta Calling API ${response.status}: ${JSON.stringify(body).slice(0, 500)}`);
+  }
+  return body;
+}
+
+
+function parseVoiceOpaqueData(value: unknown): Record<string, string> {
+  if (typeof value !== "string" || !value) return {};
+  return Object.fromEntries(
+    value
+      .split(";")
+      .map((part) => part.split("=", 2))
+      .filter((pair): pair is [string, string] => pair.length === 2 && Boolean(pair[0]) && Boolean(pair[1])),
+  );
+}
+
+async function handleMetaCallWebhook(input: {
+  value: Record<string, unknown>;
+  phoneNumberId: string;
+  whatsappConnection: {
+    tenantId: string;
+    metaAccessToken: string | null;
+  };
+  log: Request["log"];
+}) {
+  const calls = (input.value["calls"] ?? []) as Array<Record<string, unknown>>;
+  if (!calls.length) return;
+
+  const contacts = (input.value["contacts"] ?? []) as Array<Record<string, unknown>>;
+  const senderName = (contacts[0] as any)?.profile?.name as string | undefined;
+  const tenantId = input.whatsappConnection.tenantId;
+  const accessToken = input.whatsappConnection.metaAccessToken;
+  if (!accessToken) throw new Error("Meta access token ausente para WhatsApp Calling");
+
+  for (const call of calls) {
+    const callId = String(call["id"] ?? "");
+    const event = String(call["event"] ?? "");
+    const direction = String(call["direction"] ?? "");
+    const from = String(call["from"] ?? "");
+    if (!callId || !event) continue;
+
+    if (event === "connect" && direction === "BUSINESS_INITIATED") {
+      const session = (call["session"] ?? {}) as Record<string, unknown>;
+      const remoteSdp = String(session["sdp"] ?? "");
+      const opaque = parseVoiceOpaqueData(call["biz_opaque_callback_data"]);
+      const callKey = opaque["callKey"] ?? "";
+      if (!remoteSdp || !callKey) {
+        input.log.warn({ callId, direction, hasSdp: Boolean(remoteSdp), callKey }, "meta-calling: outbound connect missing SDP/correlation");
+        continue;
+      }
+
+      await callWorkerJson<{ ok: boolean }>(
+        `/v1/calls/${encodeURIComponent(callKey)}/remote-answer`,
+        { sdp: remoteSdp },
+      );
+
+      input.log.info(
+        {
+          tenantId,
+          callId,
+          callKey,
+          leadId: opaque["lead"] ?? null,
+          sessionId: opaque["session"] ?? null,
+        },
+        "meta-calling: outbound WhatsApp call WebRTC answer applied",
+      );
+      continue;
+    }
+
+    if (event === "connect" && direction === "USER_INITIATED") {
+      const session = (call["session"] ?? {}) as Record<string, unknown>;
+      const remoteSdp = String(session["sdp"] ?? "");
+      if (!remoteSdp || !from) {
+        input.log.warn({ callId, event, direction }, "meta-calling: inbound connect missing SDP/from");
+        continue;
+      }
+
+      const lead = await ensureVoiceLeadForPhone({
+        tenantId,
+        phone: from,
+        name: senderName,
+      });
+
+      const voiceSession = await startVoiceSession({
+        tenantId,
+        leadId: lead.id,
+        source: "whatsapp",
+        log: input.log,
+      });
+
+      const answer = await callWorkerJson<{ sdp: string; sdpType: string }>(
+        "/v1/calls/inbound-answer",
+        {
+          call_key: callId,
+          tenant_id: tenantId,
+          lead_id: lead.id,
+          session_id: voiceSession.sessionId,
+          remote_sdp: remoteSdp,
+        },
+      );
+
+      await metaCallAction({
+        phoneNumberId: input.phoneNumberId,
+        accessToken,
+        action: "pre_accept",
+        callId,
+        sdp: answer.sdp,
+        opaqueData: `tenant=${tenantId};lead=${lead.id};session=${voiceSession.sessionId}`,
+      });
+
+      await metaCallAction({
+        phoneNumberId: input.phoneNumberId,
+        accessToken,
+        action: "accept",
+        callId,
+        sdp: answer.sdp,
+        opaqueData: `tenant=${tenantId};lead=${lead.id};session=${voiceSession.sessionId}`,
+      });
+
+      input.log.info(
+        { tenantId, leadId: lead.id, callId, sessionId: voiceSession.sessionId },
+        "meta-calling: inbound WhatsApp call accepted by voice agent",
+      );
+      continue;
+    }
+
+    if (event === "terminate") {
+      const opaque = parseVoiceOpaqueData(call["biz_opaque_callback_data"]);
+      const workerCallKey = opaque["callKey"] || callId;
+      const to = String(call["to"] ?? "");
+      const leadPhone = direction === "BUSINESS_INITIATED" ? to : from;
+
+      await callWorkerJson<{ ok: boolean }>(
+        `/v1/calls/${encodeURIComponent(workerCallKey)}/terminate`,
+        {},
+      ).catch((error) => {
+        input.log.warn({ error, callId, workerCallKey }, "meta-calling: worker terminate failed");
+      });
+
+      if (leadPhone) {
+        const match = await findLeadByDedup(tenantId, leadPhone, null, null);
+        if (match.found) {
+          const [conversation] = await db
+            .select({ metadata: conversationsTable.metadata })
+            .from(conversationsTable)
+            .where(and(
+              eq(conversationsTable.tenantId, tenantId),
+              eq(conversationsTable.leadId, match.lead.id),
+            ))
+            .orderBy(sql`${conversationsTable.updatedAt} DESC`)
+            .limit(1);
+          const voiceMeta = conversation?.metadata && typeof conversation.metadata === "object"
+            ? (conversation.metadata as Record<string, unknown>)["voiceSession"]
+            : null;
+          const currentSessionId = voiceMeta && typeof voiceMeta === "object"
+            ? String((voiceMeta as Record<string, unknown>)["sessionId"] ?? "")
+            : "";
+          if (currentSessionId) {
+            await endVoiceSession({
+              tenantId,
+              leadId: match.lead.id,
+              sessionId: currentSessionId,
+            }).catch((error) => input.log.warn({ error, callId }, "meta-calling: session end failed"));
+          }
+        }
+      }
+
+      input.log.info({ tenantId, callId, workerCallKey, direction }, "meta-calling: call terminated");
+    }
+  }
+}
 
 async function attributeWhatsAppLeadFromCampaignCode(
   tenantId: string,
@@ -1666,9 +2025,9 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
     for (const entry of entries) {
       const changes = (entry.changes ?? []) as Array<Record<string, unknown>>;
       for (const change of changes) {
-        if (change.field !== "messages") continue;
-
         const value    = change.value as Record<string, unknown>;
+        const field = String(change.field ?? "");
+        if (field !== "messages" && field !== "calls") continue;
         const metadata = (value.metadata ?? {}) as Record<string, string>;
         const phoneNumberId = metadata["phone_number_id"];
         if (!phoneNumberId) continue;
@@ -1693,6 +2052,21 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
           continue;
         }
         const { tenantId } = whatsappConnection;
+
+        if (field === "calls") {
+          void handleMetaCallWebhook({
+            value,
+            phoneNumberId,
+            whatsappConnection: {
+              tenantId,
+              metaAccessToken: whatsappConnection.metaAccessToken,
+            },
+            log: req.log,
+          }).catch((error) => {
+            req.log.error({ error, phoneNumberId, tenantId }, "meta-calling: webhook handling failed");
+          });
+          continue;
+        }
 
         const incomingMsgs = (value.messages ?? []) as Array<Record<string, unknown>>;
         const contacts     = (value.contacts ?? []) as Array<Record<string, unknown>>;

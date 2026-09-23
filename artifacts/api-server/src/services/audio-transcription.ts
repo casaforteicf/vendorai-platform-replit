@@ -28,18 +28,18 @@ async function resolveTenantTranscriptionLanguage(tenantId: string, log?: Logger
   }
 }
 
-export async function transcribeAudioBuffer(buffer: Buffer, tenantId: string, log?: Logger): Promise<string> {
+export async function transcribeAudioBuffer(buffer: Buffer, tenantId: string, log?: Logger, mimeType = "audio/ogg"): Promise<string> {
   const tmpDir = await mkdtemp(join(tmpdir(), "audio-"));
   const tmpPath = join(tmpDir, `audio_${Date.now()}.ogg`);
   await writeFile(tmpPath, buffer);
   try {
     const language = await resolveTenantTranscriptionLanguage(tenantId, log);
     const { text } = await gatewayTranscribeAudio(tenantId, "audio_transcription", buffer, {
-      mimeType: "audio/ogg",
+      mimeType,
       language,
       log,
     });
-    log?.info({ text: text.slice(0, 100), language }, "audio: transcribed from buffer");
+    log?.info({ text: text.slice(0, 100), language, mimeType }, "audio: transcribed from buffer");
     return text;
   } finally {
     await unlink(tmpPath).catch(() => {});

@@ -5,13 +5,14 @@ import json
 import os
 import re
 import tempfile
+import base64
 from pathlib import Path
 from typing import Any
 
 import torch
 import torchaudio
 from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from chatterbox.mtl_tts import ChatterboxMultilingualTTS
 
 APP_NAME = "VendorAI Media Worker"
@@ -248,3 +249,118 @@ async def synthesize_voice(
                     Path(path).unlink(missing_ok=True)
                 except OSError:
                     pass
+
+
+@app.post("/v1/voice/stream")
+async def stream_voice(
+    job_id: str = Form(...),
+    text: str = Form(...),
+    language: str = Form(DEFAULT_LANGUAGE),
+    model_config: str = Form("{}"),
+    reference_audio: UploadFile = File(...),
+    x_vendorai_worker_secret: str | None = Header(default=None),
+) -> StreamingResponse:
+    """
+    Low-latency chunked synthesis for live conversations.
+
+    The response is NDJSON. Each line contains one independently playable WAV
+    chunk so the API/call bridge can start playback before the full answer is
+    synthesized. Consumers should stop reading immediately on barge-in.
+    """
+    if not _worker_secret_is_valid(x_vendorai_worker_secret):
+        raise HTTPException(status_code=401, detail="Worker secret inválido")
+
+    text = text.strip()
+    if not text or len(text) > MAX_TEXT_LENGTH:
+        raise HTTPException(status_code=422, detail=f"text deve conter entre 1 e {MAX_TEXT_LENGTH} caracteres")
+
+    config = _parse_model_config(model_config)
+    chunks = _split_text(text, limit=220)
+    if not chunks:
+        raise HTTPException(status_code=422, detail="Texto vazio após normalização")
+
+    reference_bytes = await reference_audio.read(MAX_REFERENCE_BYTES + 1)
+    if not reference_bytes or len(reference_bytes) > MAX_REFERENCE_BYTES:
+        raise HTTPException(status_code=422, detail="Áudio de referência vazio ou maior que 25 MB")
+
+    suffix = Path(reference_audio.filename or "reference.wav").suffix or ".wav"
+    reference_path: str | None = None
+    with tempfile.NamedTemporaryFile(prefix=f"vendorai-{job_id}-stream-ref-", suffix=suffix, delete=False) as ref_file:
+        ref_file.write(reference_bytes)
+        reference_path = ref_file.name
+
+    normalized_language = _normalize_language(language)
+
+    async def generate_stream():
+        try:
+            model = await _get_model()
+            sample_rate = int(model.sr)
+
+            async with _generation_lock:
+                for index, chunk in enumerate(chunks):
+                    def generate() -> Any:
+                        return model.generate(
+                            chunk,
+                            language_id=normalized_language,
+                            audio_prompt_path=reference_path,
+                            exaggeration=config["exaggeration"],
+                            cfg_weight=config["cfg_weight"],
+                            temperature=config["temperature"],
+                        )
+
+                    piece = _to_audio_tensor(await asyncio.to_thread(generate))
+                    output_path: str | None = None
+                    try:
+                        with tempfile.NamedTemporaryFile(
+                            prefix=f"vendorai-{job_id}-stream-{index}-",
+                            suffix=".wav",
+                            delete=False,
+                        ) as out_file:
+                            output_path = out_file.name
+                        torchaudio.save(output_path, piece, sample_rate)
+                        wav_bytes = Path(output_path).read_bytes()
+                        payload = {
+                            "type": "audio_chunk",
+                            "jobId": job_id,
+                            "sequence": index,
+                            "mimeType": "audio/wav",
+                            "sampleRate": sample_rate,
+                            "final": index == len(chunks) - 1,
+                            "audioBase64": base64.b64encode(wav_bytes).decode("ascii"),
+                        }
+                        yield (json.dumps(payload, ensure_ascii=False) + "\n").encode("utf-8")
+                    finally:
+                        if output_path:
+                            try:
+                                Path(output_path).unlink(missing_ok=True)
+                            except OSError:
+                                pass
+
+            yield (json.dumps({
+                "type": "complete",
+                "jobId": job_id,
+                "chunks": len(chunks),
+                "language": normalized_language,
+            }, ensure_ascii=False) + "\n").encode("utf-8")
+        except asyncio.CancelledError:
+            # Barge-in/transport abort: stop generation as soon as the consumer
+            # disconnects. The current model call cannot be interrupted safely,
+            # but no subsequent chunks are synthesized.
+            raise
+        finally:
+            if reference_path:
+                try:
+                    Path(reference_path).unlink(missing_ok=True)
+                except OSError:
+                    pass
+
+    return StreamingResponse(
+        generate_stream(),
+        media_type="application/x-ndjson",
+        headers={
+            "x-vendorai-engine": "voice-stream",
+            "x-vendorai-job-id": job_id,
+            "x-vendorai-language": normalized_language,
+            "cache-control": "no-store",
+        },
+    )
