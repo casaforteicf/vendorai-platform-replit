@@ -151,12 +151,16 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     isArqdorEligibleVertical(effectiveVertical) ||
     isArqdorEligibleVertical(effectiveSegment);
   const arqdorModule = tenantNavModules.find((module) => module.moduleKey === "arch");
-  const arqdorEnabledByTenant = arqdorModule?.isEnabled === true;
   const arqdorDisabledByOverride = arqdorModule?.hasOverride === true && arqdorModule.isEnabled === false;
   const arqdorVisible =
     !!effectiveTenantId &&
     !arqdorDisabledByOverride &&
-    (arqdorEligible || arqdorEnabledByTenant || user?.platformRole === "super_admin");
+    (arqdorEligible || user?.platformRole === "super_admin");
+
+  // Regra de coerência: habilitar o módulo "arch" isoladamente não pode
+  // transformar uma farmácia, supermercado ou loja de veículos em tenant
+  // de arquitetura. A vertical precisa ser semanticamente elegível; o
+  // entitlement só pode restringir, nunca furar a compatibilidade vertical.
 
   const erpEntitled = tenantNavModules.some(
     (module) => module.moduleKey === "financeiro" && module.isEnabled === true,
