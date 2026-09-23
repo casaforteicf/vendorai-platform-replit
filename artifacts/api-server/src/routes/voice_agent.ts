@@ -113,6 +113,7 @@ function permissionIsGranted(payload: Record<string, unknown>): boolean {
 
 
 const tenantGuard = (req: any, res: any): boolean => {
+  // tenant-audit: reviewed route tenant is immediately checked against authenticated tenant/Super Admin
   const tenantId = String(req.params["tenantId"] ?? "");
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
@@ -169,6 +170,7 @@ router.post("/tenants/:tenantId/voice-agent/call-permission", async (req, res) =
     return;
   }
 
+  // tenant-audit: reviewed tenantGuard already authorized this route tenant before any tenant-scoped access
   const tenantId = String(req.params["tenantId"]);
   try {
     const [connection, lead] = await Promise.all([
@@ -211,6 +213,7 @@ router.post("/tenants/:tenantId/voice-agent/call-permission", async (req, res) =
 
 router.get("/tenants/:tenantId/voice-agent/call-permission/:leadId", async (req, res) => {
   if (!tenantGuard(req, res)) return;
+  // tenant-audit: reviewed tenantGuard already authorized this route tenant before any tenant-scoped access
   const tenantId = String(req.params["tenantId"]);
   const leadId = String(req.params["leadId"]);
   try {
@@ -234,6 +237,7 @@ router.post("/tenants/:tenantId/voice-agent/outbound/start", async (req, res) =>
     return;
   }
 
+  // tenant-audit: reviewed tenantGuard already authorized this route tenant before any tenant-scoped access
   const tenantId = String(req.params["tenantId"]);
   try {
     const permission = await getCallPermissionState(tenantId, parsed.data.leadId);
@@ -304,6 +308,7 @@ router.post("/tenants/:tenantId/voice-agent/session/start", async (req, res) => 
 
   try {
     const result = await startVoiceSession({
+      // tenant-audit: reviewed tenantGuard already authorized this route tenant
       tenantId: String(req.params["tenantId"]),
       leadId: parsed.data.leadId,
       source: parsed.data.source,
@@ -326,6 +331,7 @@ router.post("/tenants/:tenantId/voice-agent/session/turn", async (req, res) => {
 
   try {
     const result = await registerVoiceTurn({
+      // tenant-audit: reviewed tenantGuard already authorized this route tenant
       tenantId: String(req.params["tenantId"]),
       leadId: parsed.data.leadId,
       sessionId: parsed.data.sessionId,
@@ -350,6 +356,7 @@ router.post("/tenants/:tenantId/voice-agent/session/interrupt", async (req, res)
 
   try {
     const result = await interruptVoiceSession({
+      // tenant-audit: reviewed tenantGuard already authorized this route tenant
       tenantId: String(req.params["tenantId"]),
       leadId: parsed.data.leadId,
       sessionId: parsed.data.sessionId,
@@ -369,6 +376,7 @@ router.post("/tenants/:tenantId/voice-agent/speech/stream", async (req, res) => 
     return;
   }
 
+  // tenant-audit: reviewed tenantGuard already authorized this route tenant before any tenant-scoped access
   const tenantId = String(req.params["tenantId"]);
   try {
     let identityId = parsed.data.identityId ?? null;
@@ -436,6 +444,7 @@ router.post("/tenants/:tenantId/voice-agent/session/end", async (req, res) => {
 
   try {
     const result = await endVoiceSession({
+      // tenant-audit: reviewed tenantGuard already authorized this route tenant
       tenantId: String(req.params["tenantId"]),
       leadId: parsed.data.leadId,
       sessionId: parsed.data.sessionId,
