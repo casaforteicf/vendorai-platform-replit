@@ -3,9 +3,9 @@ import { db, socialPublicationsTable } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { createInstagramOrganicPublication } from "./instagram-organic-publication.js";
 import { createFacebookOrganicPublication } from "./facebook-organic-publication.js";
-import { createSocialPublication } from "./social-platforms.js";
+import { createSocialPublication, type SocialProvider } from "./social-platforms.js";
 
-type FanoutProvider = "instagram" | "facebook" | "linkedin" | "tiktok";
+type FanoutProvider = "instagram" | "facebook" | "linkedin" | "tiktok" | "youtube";
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -20,48 +20,59 @@ function cloneMetadata(source: typeof socialPublicationsTable.$inferSelect, grou
   } = metadata;
   return {
     ...rest,
-    sourceYoutubePublicationId: source.id,
+    sourcePublicationId: source.id,
+    sourceProvider: source.provider,
     crossPostGroupId: groupId,
     crossChannelFanout: false,
-    source: metadata.source || "youtube-cross-channel",
+    source: metadata.source || "universal-video-cross-channel",
   };
 }
 
-async function alreadyQueued(tenantId: string, sourcePublicationId: string, provider: FanoutProvider) {
+async function alreadyQueued(
+  tenantId: string,
+  sourcePublicationId: string,
+  provider: FanoutProvider,
+) {
   const [existing] = await db.select({ id: socialPublicationsTable.id })
     .from(socialPublicationsTable)
     .where(and(
       eq(socialPublicationsTable.tenantId, tenantId),
       eq(socialPublicationsTable.provider, provider),
-      sql`${socialPublicationsTable.metadata}->>'sourceYoutubePublicationId' = ${sourcePublicationId}`,
+      sql`${socialPublicationsTable.metadata}->>'sourcePublicationId' = ${sourcePublicationId}`,
     ))
     .limit(1);
   return existing ?? null;
 }
 
-export async function fanOutYoutubeVideoToConnectedChannels(
+function isVideoPublication(publication: typeof socialPublicationsTable.$inferSelect) {
+  return ["video", "short", "reel"].includes(publication.contentType || "");
+}
+
+export async function fanOutVideoToConnectedChannels(
   tenantId: string,
   sourcePublication: typeof socialPublicationsTable.$inferSelect,
 ) {
-  if (sourcePublication.provider !== "youtube") return { queued: [], skipped: [] };
   if (!sourcePublication.mediaUrl) return { queued: [], skipped: [{ provider: "all", reason: "media_required" }] };
-  if (!["video", "short"].includes(sourcePublication.contentType || "")) return { queued: [], skipped: [] };
+  if (!isVideoPublication(sourcePublication)) return { queued: [], skipped: [] };
 
   const metadata = asRecord(sourcePublication.metadata);
   if (metadata.crossChannelFanout === false) return { queued: [], skipped: [] };
 
+  const sourceProvider = sourcePublication.provider as FanoutProvider;
   const groupId = typeof metadata.crossPostGroupId === "string" && metadata.crossPostGroupId
     ? metadata.crossPostGroupId
-    : `youtube:${sourcePublication.id}`;
+    : `${sourceProvider}:${sourcePublication.id}`;
   const sharedMetadata = cloneMetadata(sourcePublication, groupId);
   const text = sourcePublication.text || "";
   const mediaUrl = sourcePublication.mediaUrl;
-  const isShort = sourcePublication.contentType === "short";
-  const providers: FanoutProvider[] = ["instagram", "facebook", "linkedin", "tiktok"];
+  const isShort = sourcePublication.contentType === "short" || sourcePublication.contentType === "reel";
+  const providers: FanoutProvider[] = ["instagram", "facebook", "linkedin", "tiktok", "youtube"];
   const queued: Array<{ provider: FanoutProvider; publicationId: string }> = [];
   const skipped: Array<{ provider: string; reason: string }> = [];
 
   for (const provider of providers) {
+    if (provider === sourceProvider) continue;
+
     try {
       const existing = await alreadyQueued(tenantId, sourcePublication.id, provider);
       if (existing) {
@@ -84,12 +95,16 @@ export async function fanOutYoutubeVideoToConnectedChannels(
           mediaKind: "video",
         });
       } else {
-        publication = await createSocialPublication(tenantId, provider, {
-          text,
-          mediaUrl,
-          contentType: isShort ? "short" : "video",
-          metadata: sharedMetadata,
-        });
+        publication = await createSocialPublication(
+          tenantId,
+          provider as SocialProvider,
+          {
+            text,
+            mediaUrl,
+            contentType: isShort ? "short" : "video",
+            metadata: sharedMetadata,
+          },
+        );
       }
 
       await db.update(socialPublicationsTable).set({
@@ -108,7 +123,10 @@ export async function fanOutYoutubeVideoToConnectedChannels(
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       skipped.push({ provider, reason });
-      logger.info({ tenantId, sourcePublicationId: sourcePublication.id, provider, reason }, "Cross-post de vídeo ignorou canal indisponível");
+      logger.info(
+        { tenantId, sourcePublicationId: sourcePublication.id, sourceProvider, provider, reason },
+        "Cross-post de vídeo ignorou canal indisponível",
+      );
     }
   }
 
@@ -128,3 +146,5 @@ export async function fanOutYoutubeVideoToConnectedChannels(
 
   return { queued, skipped, groupId };
 }
+
+export const fanOutYoutubeVideoToConnectedChannels = fanOutVideoToConnectedChannels;
