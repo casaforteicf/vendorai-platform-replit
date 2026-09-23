@@ -8,6 +8,7 @@ import {
   type NavModuleKey,
 } from "@workspace/db";
 import { requireRole } from "./index.js";
+import { getTenantCommercialAccess } from "../middlewares/commercialProductAccess.js";
 
 const router: IRouter = Router();
 const ERP_MODULE_KEY: NavModuleKey = "financeiro";
@@ -203,10 +204,13 @@ router.get("/tenants/:tenantId/nav-modules", async (req, res) => {
     clinic: clinicaEligible,
   };
 
-  const overrides = await db
-    .select({ moduleKey: tenantNavModulesTable.moduleKey, isEnabled: tenantNavModulesTable.isEnabled })
-    .from(tenantNavModulesTable)
-    .where(eq(tenantNavModulesTable.tenantId, tenantId));
+  const [overrides, commercialAccess] = await Promise.all([
+    db
+      .select({ moduleKey: tenantNavModulesTable.moduleKey, isEnabled: tenantNavModulesTable.isEnabled })
+      .from(tenantNavModulesTable)
+      .where(eq(tenantNavModulesTable.tenantId, tenantId)),
+    getTenantCommercialAccess(tenantId),
+  ]);
 
   const overrideMap = new Map(overrides.map((o) => [o.moduleKey, o.isEnabled]));
 
@@ -217,24 +221,34 @@ router.get("/tenants/:tenantId/nav-modules", async (req, res) => {
     const verticalEligible = VERTICAL_GATED_ELIGIBILITY[entry.moduleKey];
     const isVerticalGated = verticalEligible !== undefined;
 
+    const legacyDefaultEnabled = isVerticalGated ? verticalEligible! : entry.isDefault;
+    const commerciallyEntitled =
+      commercialAccess.moduleKeys.has(entry.moduleKey) ||
+      (commercialAccess.fullPackageActive && legacyDefaultEnabled);
+
+    const isEnabled = commerciallyEntitled
+      ? (hasPersistedOverride ? persistedValue! : true)
+      : false;
+
     return {
       moduleKey:   entry.moduleKey,
       moduleName:  entry.moduleName,
       icon:        entry.icon,
       description: entry.description,
-      isDefault:   isVerticalGated ? verticalEligible! : entry.isDefault,
+      isDefault:   legacyDefaultEnabled,
+      commerciallyEntitled,
+      accessSource: commercialAccess.fullPackageActive
+        ? "full_package"
+        : (commerciallyEntitled ? "individual_product" : "not_purchased"),
       // Escolha explícita do tenant sempre vence sobre o padrão da vertical
       // — a vertical só decide o que vem ligado/desligado quando ninguém
       // mexeu no toggle ainda. Um admin que ligou/desligou manualmente
       // (ex: Shopping da Piscina usando Varejo mesmo fora da lista de
       // verticais elegíveis) não pode ser silenciosamente sobrescrito.
-      isEnabled:   hasPersistedOverride
-        ? persistedValue!
-        : (isVerticalGated ? verticalEligible! : entry.isDefault),
-      // O menu legado só esconde módulos quando hasOverride=true. Para
-      // entitlements que devem falhar fechados, o default false já é efetivo
-      // mesmo antes de existir uma linha tenant_nav_modules.
-      hasOverride: hasPersistedOverride || hasEffectiveDefaultOff,
+      isEnabled,
+      // Billing entitlement is authoritative. Persisted switches may further
+      // restrict a purchased module, but can never unlock an unpurchased one.
+      hasOverride: hasPersistedOverride || hasEffectiveDefaultOff || !commerciallyEntitled,
     };
   });
 
