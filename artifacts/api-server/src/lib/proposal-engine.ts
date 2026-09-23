@@ -1420,7 +1420,8 @@ export function renderOrcamentoPdf(args: {
     : "";
 
   const presentation = normalizeProposalPresentation(proposta.apresentacao);
-  const presentationBlocksHtml = groupProposalPresentationItems(itens).map((group) => {
+  const groupedItems = groupProposalPresentationItems(itens);
+  const presentationBlocksHtml = groupedItems.map((group) => {
     const mode = resolveProposalPresentationMode(presentation, group.id);
     const etapaTotal = group.itens.reduce((sum, item) => sum + item.quantidade * item.valorUnitario, 0);
     const stageTitle = group.hasStageHeader
@@ -1468,10 +1469,35 @@ export function renderOrcamentoPdf(args: {
   }).join("");
   const metaRows = [
     proposta.formaPagamento ? `<div class="meta-item"><span>Forma de Pagamento</span><strong>${FORMA_LABELS[proposta.formaPagamento] ?? proposta.formaPagamento}</strong></div>` : "",
-    proposta.condPagamento  ? `<div class="meta-item"><span>Condição</span><strong>${proposta.condPagamento}</strong></div>` : "",
-    proposta.prazoEntrega   ? `<div class="meta-item"><span>Prazo de Entrega</span><strong>${proposta.prazoEntrega}</strong></div>` : "",
-    proposta.validadeAte    ? `<div class="meta-item"><span>Válida até</span><strong>${fmtDate(proposta.validadeAte)}</strong></div>` : "",
+    proposta.condPagamento  ? `<div class="meta-item"><span>Condição de Pagamento</span><strong>${escapeProposalText(proposta.condPagamento)}</strong></div>` : "",
+    proposta.prazoEntrega   ? `<div class="meta-item"><span>Prazo / Entrega</span><strong>${escapeProposalText(proposta.prazoEntrega)}</strong></div>` : "",
+    proposta.validadeAte    ? `<div class="meta-item"><span>Validade da Proposta</span><strong>${proposalFormatDate(proposta.validadeAte)}</strong></div>` : "",
+    presentation.previsaoInicio ? `<div class="meta-item"><span>Previsão de Início</span><strong>${proposalFormatDate(presentation.previsaoInicio)}</strong></div>` : "",
   ].filter(Boolean).join("");
+
+  const paymentRowsHtml = (proposta.paymentCompositions ?? [])
+    .filter((item) => item?.forma && Number(item?.valor ?? 0) > 0)
+    .map((item) => `<tr>
+      <td>${FORMA_LABELS[item.forma] ?? escapeProposalText(item.forma)}</td>
+      <td class="r fw">${fmtBRL(Number(item.valor))}</td>
+    </tr>`)
+    .join("");
+
+  const scheduleRows = buildProposalScheduleRows(groupedItems, presentation, totalExibido);
+  const executionScheduleRows = scheduleRows.map((row) => `<tr>
+    <td><strong>Etapa ${row.ordem}</strong> · ${escapeProposalText(row.nome || "Execução")}</td>
+    <td>${row.start ? proposalFormatDate(row.start) : "A definir"}</td>
+    <td>${row.duration ? `${row.duration} dias` : "A definir"}</td>
+    <td>${row.end ? proposalFormatDate(row.end) : "A definir"}</td>
+  </tr>`).join("");
+  const physicalFinancialRows = scheduleRows.map((row) => `<tr>
+    <td><strong>Etapa ${row.ordem}</strong> · ${escapeProposalText(row.nome || "Execução")}</td>
+    <td>${row.start && row.end ? `${proposalFormatDate(row.start)} a ${proposalFormatDate(row.end)}` : row.duration ? `${row.duration} dias` : "A definir"}</td>
+    <td class="r">${row.physicalPercent.toFixed(2)}%</td>
+    <td class="r">${row.financialPercent.toFixed(2)}%</td>
+    <td class="r fw">${fmtBRL(row.value)}</td>
+    <td>${row.marcoPagamento ? escapeProposalText(row.marcoPagamento) : "Conforme condição comercial"}${row.observacao ? `<span class="schedule-note">${escapeProposalText(row.observacao)}</span>` : ""}</td>
+  </tr>`).join("");
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -1694,6 +1720,33 @@ export function renderOrcamentoPdf(args: {
   .meta-item strong { font-size: 9pt; color: #1e2a3b; }
 
   .obs-box { margin-top: 4mm; padding: 3mm 4mm; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0; font-size: 8pt; color: #4b5563; line-height: 1.6; }
+  .commercial-section { margin-top: 4mm; }
+  .commercial-title {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 6.5pt;
+    text-transform: uppercase;
+    letter-spacing: .09em;
+    color: #2563eb;
+    margin-bottom: 2mm;
+    font-weight: 700;
+  }
+  table.payment-table, table.schedule-table { width: 100%; border-collapse: collapse; font-size: 7.5pt; margin-top: 2mm; }
+  table.payment-table th, table.schedule-table th {
+    padding: 1.8mm 2.2mm;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    color: #64748b;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 5.8pt;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    text-align: left;
+  }
+  table.payment-table td, table.schedule-table td { padding: 2mm 2.2mm; border: 1px solid #e2e8f0; vertical-align: top; line-height: 1.35; }
+  table.payment-table .r, table.schedule-table .r { text-align: right; }
+  .schedule-intro { margin: 2mm 0 4mm; padding: 3mm 3.5mm; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 7px; font-size: 8pt; color: #64748b; }
+  .schedule-intro strong { color: #334155; }
+  .schedule-note { color: #94a3b8; font-size: 6.8pt; display: block; margin-top: .8mm; }
 
   @media print {
     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -1788,9 +1841,53 @@ export function renderOrcamentoPdf(args: {
     </div>
   </div>` : ""}` : ""}
 
-  ${metaRows ? `<div class="meta-grid">${metaRows}</div>` : ""}
-  ${proposta.observacoes ? `<div class="obs-box">${proposta.observacoes}</div>` : ""}
+  ${metaRows ? `<div class="commercial-section"><div class="commercial-title">Condições comerciais</div><div class="meta-grid">${metaRows}</div></div>` : ""}
+  ${paymentRowsHtml ? `
+    <div class="commercial-section">
+      <div class="commercial-title">Composição de pagamento</div>
+      <table class="payment-table">
+        <thead><tr><th>Forma / parcela</th><th class="r">Valor</th></tr></thead>
+        <tbody>${paymentRowsHtml}</tbody>
+      </table>
+    </div>` : ""}
+  ${proposta.observacoes ? `<div class="obs-box">${escapeProposalText(proposta.observacoes)}</div>` : ""}
 </div>
+
+${scheduleRows.length && (presentation.mostrarCronogramaExecucao || presentation.mostrarFisicoFinanceiro) ? `
+<!-- ══ PAGE 3: CRONOGRAMA ══ -->
+<div class="page orc-page">
+  <div class="doc-hdr">
+    <div class="doc-hdr-left">
+      ${profile?.logoUrl ? `<img src="${profile.logoUrl}" alt="${companyName}" class="doc-hdr-logo" onerror="this.style.display='none'">` : ""}
+      <span class="doc-hdr-name">${companyName}</span>
+    </div>
+    <span class="doc-hdr-right">Cronograma${proposta.numero ? ` · ${proposta.numero}` : ""}</span>
+  </div>
+
+  <div class="orc-title">Cronograma de execução e físico-financeiro</div>
+  <div class="schedule-intro">
+    ${presentation.previsaoInicio ? `<strong>Previsão de início:</strong> ${proposalFormatDate(presentation.previsaoInicio)}.` : "<strong>Previsão de início:</strong> a definir."}
+    Os períodos são apresentados conforme a sequência e a duração prevista de cada etapa.
+  </div>
+
+  ${presentation.mostrarCronogramaExecucao ? `
+    <div class="commercial-section">
+      <div class="commercial-title">Cronograma de execução</div>
+      <table class="schedule-table">
+        <thead><tr><th>Etapa</th><th>Início</th><th>Duração</th><th>Término</th></tr></thead>
+        <tbody>${executionScheduleRows}</tbody>
+      </table>
+    </div>` : ""}
+
+  ${presentation.mostrarFisicoFinanceiro ? `
+    <div class="commercial-section">
+      <div class="commercial-title">Cronograma físico-financeiro</div>
+      <table class="schedule-table">
+        <thead><tr><th>Etapa</th><th>Período</th><th class="r">Peso físico</th><th class="r">% financeiro</th><th class="r">Valor</th><th>Marco / pagamento</th></tr></thead>
+        <tbody>${physicalFinancialRows}</tbody>
+      </table>
+    </div>` : ""}
+</div>` : ""}
 
 </body>
 </html>`;
