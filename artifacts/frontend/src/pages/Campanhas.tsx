@@ -218,6 +218,25 @@ function CampaignModal({
   const [step, setStep] = useState<"form" | "preview">("form");
   const [previewCampaignId, setPreviewCampaignId] = useState<string | null>(null);
   const [marketingContext, setMarketingContext] = useState<MarketingContextValue>({ nicheId: "", nicheName: "", productIds: [], productNames: [] });
+  const campaignContext = ((editingCampaign as any)?.contexto ?? {}) as Record<string, any>;
+  const [prospectorEnabled, setProspectorEnabled] = useState<boolean>(
+    campaignContext?.prospectorAutomation?.enabled ?? true,
+  );
+  const [deliveryEnabled, setDeliveryEnabled] = useState<boolean>(
+    campaignContext?.smartDelivery?.enabled ?? false,
+  );
+  const [deliveryType, setDeliveryType] = useState<string>(
+    campaignContext?.smartDelivery?.type ?? "analysis_tool",
+  );
+  const [deliveryToolRef, setDeliveryToolRef] = useState<string>(
+    campaignContext?.smartDelivery?.toolRef ?? "",
+  );
+  const [deliveryToolName, setDeliveryToolName] = useState<string>(
+    campaignContext?.smartDelivery?.toolName ?? "",
+  );
+  const [deliveryTiming, setDeliveryTiming] = useState<string>(
+    campaignContext?.smartDelivery?.deliveryTiming ?? "after_interest",
+  );
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -254,6 +273,12 @@ function CampaignModal({
         agendadaPara: "",
       });
       setMarketingContext({ nicheId: "", nicheName: "", productIds: [], productNames: [] });
+      setProspectorEnabled(true);
+      setDeliveryEnabled(false);
+      setDeliveryType("analysis_tool");
+      setDeliveryToolRef("");
+      setDeliveryToolName("");
+      setDeliveryTiming("after_interest");
       return;
     }
     const filtro = (editingCampaign.segmentoFiltro ?? {}) as any;
@@ -297,6 +322,13 @@ function CampaignModal({
     } else {
       setMarketingContext({ nicheId: "", nicheName: "", productIds: [], productNames: [] });
     }
+    const ctx = ((editingCampaign as any)?.contexto ?? {}) as Record<string, any>;
+    setProspectorEnabled(ctx?.prospectorAutomation?.enabled ?? true);
+    setDeliveryEnabled(ctx?.smartDelivery?.enabled ?? false);
+    setDeliveryType(ctx?.smartDelivery?.type ?? "analysis_tool");
+    setDeliveryToolRef(ctx?.smartDelivery?.toolRef ?? "");
+    setDeliveryToolName(ctx?.smartDelivery?.toolName ?? "");
+    setDeliveryTiming(ctx?.smartDelivery?.deliveryTiming ?? "after_interest");
   }, [open, editingCampaign?.id]);
 
   const createMutation = useCreateCampaign();
@@ -510,6 +542,12 @@ function CampaignModal({
     setAiCopyError(null);
     form.reset();
     setMarketingContext({ nicheId: "", nicheName: "", productIds: [], productNames: [] });
+    setProspectorEnabled(true);
+    setDeliveryEnabled(false);
+    setDeliveryType("analysis_tool");
+    setDeliveryToolRef("");
+    setDeliveryToolName("");
+    setDeliveryTiming("after_interest");
     onClose();
   }
 
@@ -536,6 +574,24 @@ function CampaignModal({
             : undefined,
           agendadaPara: values.agendadaPara || undefined,
           ...(aiImageUrl ? { imageUrl: aiImageUrl } : { imageUrl: null }),
+          contexto: {
+            ...(((editingCampaign as any)?.contexto ?? {}) as Record<string, unknown>),
+            prospectorAutomation: {
+              enabled: prospectorEnabled,
+              mode: "automatic",
+              trigger: "campaign_start",
+              allowedChannels: [values.tipo],
+              followupCount: 3,
+              handoffTarget: "closer",
+            },
+            smartDelivery: {
+              enabled: deliveryEnabled,
+              type: deliveryType,
+              toolRef: deliveryToolRef.trim() || undefined,
+              toolName: deliveryToolName.trim() || undefined,
+              deliveryTiming,
+            },
+          },
         } as any,
       },
       {
@@ -565,6 +621,23 @@ function CampaignModal({
           agendadaPara: values.agendadaPara || undefined,
           status: "rascunho",
           ...(aiImageUrl ? { imageUrl: aiImageUrl } : {}),
+          contexto: {
+            prospectorAutomation: {
+              enabled: prospectorEnabled,
+              mode: "automatic",
+              trigger: "campaign_start",
+              allowedChannels: [values.tipo],
+              followupCount: 3,
+              handoffTarget: "closer",
+            },
+            smartDelivery: {
+              enabled: deliveryEnabled,
+              type: deliveryType,
+              toolRef: deliveryToolRef.trim() || undefined,
+              toolName: deliveryToolName.trim() || undefined,
+              deliveryTiming,
+            },
+          },
         } as any,
       },
       {
@@ -868,6 +941,91 @@ function CampaignModal({
                   </FormItem>
                 )}
               />
+
+
+              {/* Prospector + Entrega Inteligente: reutiliza agentes e ferramentas já existentes */}
+              <div className="rounded-lg border p-4 space-y-4 bg-muted/20">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium">Prospector automático</p>
+                    <p className="text-xs text-muted-foreground">
+                      Ao iniciar a campanha, o Prospector atua sem aprovação por lead e usa o canal selecionado acima.
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={prospectorEnabled}
+                    onChange={(e) => setProspectorEnabled(e.target.checked)}
+                    className="mt-1 h-4 w-4"
+                    aria-label="Ativar Prospector automático"
+                  />
+                </div>
+
+                <div className="border-t pt-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium">Entrega Inteligente</p>
+                      <p className="text-xs text-muted-foreground">
+                        Usa uma ferramenta/agente que já existe no tenant. Não cria um módulo duplicado.
+                      </p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={deliveryEnabled}
+                      onChange={(e) => setDeliveryEnabled(e.target.checked)}
+                      className="mt-1 h-4 w-4"
+                      aria-label="Ativar Entrega Inteligente"
+                    />
+                  </div>
+
+                  {deliveryEnabled && (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-muted-foreground">Tipo de entrega</label>
+                        <Select value={deliveryType} onValueChange={setDeliveryType}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="analysis">Análise</SelectItem>
+                            <SelectItem value="tool">Ferramenta</SelectItem>
+                            <SelectItem value="analysis_tool">Análise + ferramenta</SelectItem>
+                            <SelectItem value="content">Conteúdo</SelectItem>
+                            <SelectItem value="offer">Oferta</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-muted-foreground">Quando entregar</label>
+                        <Select value={deliveryTiming} onValueChange={setDeliveryTiming}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="first_contact">Na primeira abordagem</SelectItem>
+                            <SelectItem value="after_interest">Após demonstrar interesse</SelectItem>
+                            <SelectItem value="after_qualification">Após qualificação</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5 sm:col-span-2">
+                        <label className="text-xs font-medium text-muted-foreground">Ferramenta/agente existente</label>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <Input
+                            value={deliveryToolName}
+                            onChange={(e) => setDeliveryToolName(e.target.value)}
+                            placeholder="Ex: Pré-Projeto ARQDOR"
+                          />
+                          <Input
+                            value={deliveryToolRef}
+                            onChange={(e) => setDeliveryToolRef(e.target.value)}
+                            placeholder="Rota, slug ou identificador existente"
+                          />
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">
+                          Referencie a ferramenta existente; não crie outra versão para a campanha.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
 
               {/* ── AI copy section ───────────────────────────────────────── */}
               <div className="space-y-2">
