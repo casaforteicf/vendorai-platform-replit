@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Box,
   Copy,
+  Loader2,
   Lock,
   PaintBucket,
   Plus,
@@ -9,6 +10,7 @@ import {
   Sun,
   Trash2,
   Unlock,
+  WandSparkles,
   X,
 } from "lucide-react";
 import ConceptDerivedFacade from "./ConceptDerivedFacade";
@@ -31,6 +33,7 @@ import {
 } from "./conceptFacadeDesign";
 
 type Props = {
+  conceptProjectId?: string | null;
   lotWidth: number;
   lotDepth: number;
   sitePlacement: SitePlacement;
@@ -44,6 +47,13 @@ type Props = {
   onOpenGallery?: () => void;
   realisticPreviewUrl?: string | null;
   realisticPreviewLoading?: boolean;
+};
+
+type AIDevelopmentResponse = {
+  geometryHealth?: { score: number; status: "ok" | "warning" | "error"; messages: string[] };
+  facadeSuggestion?: Partial<ConceptFacadePreferences>;
+  notes?: string[];
+  geometryWarnings?: string[];
 };
 
 const SURFACE_LABELS: Array<[FacadeSurfaceKey, string]> = [
@@ -198,6 +208,7 @@ function FacadePresetThumbnail({ kind }: { kind: FacadeVolumeKind }) {
 }
 
 export default function ConceptFacadeEditor({
+  conceptProjectId,
   lotWidth,
   lotDepth,
   sitePlacement,
@@ -212,11 +223,21 @@ export default function ConceptFacadeEditor({
   realisticPreviewUrl,
   realisticPreviewLoading = false,
 }: Props) {
-  const [panel, setPanel] = useState<"style" | "volumes" | "materials" | "frames" | "outdoor" | "lighting">("style");
+  const [panel, setPanel] = useState<"style" | "volumes" | "materials" | "frames" | "outdoor" | "lighting" | "ai">("style");
   const [panelOpen, setPanelOpen] = useState(() => typeof window === "undefined" ? true : window.innerWidth >= 768);
   const [panelExpanded, setPanelExpanded] = useState(false);
   const [selectedSurface, setSelectedSurface] = useState<FacadeSurfaceKey>("main");
   const [selectedVolumeId, setSelectedVolumeId] = useState<string | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiResult, setAiResult] = useState<AIDevelopmentResponse | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  const resolvedConceptProjectId = useMemo(() => {
+    if (conceptProjectId) return conceptProjectId;
+    if (typeof window === "undefined") return null;
+    const params = new URLSearchParams(window.location.search);
+    return params.get("conceptProjectId") ?? params.get("concept_project_id") ?? params.get("id");
+  }, [conceptProjectId]);
 
   const selectedVolume = useMemo(
     () => design.volumes.find((volume) => volume.id === selectedVolumeId) ?? null,
@@ -312,6 +333,35 @@ export default function ConceptFacadeEditor({
     });
   };
 
+  const developWithAI = async () => {
+    if (!resolvedConceptProjectId || aiBusy) return;
+    setAiBusy(true);
+    setAiError(null);
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("vendorai_token") : null;
+      const response = await fetch(`/api/arch/concept-projects/${resolvedConceptProjectId}/develop-with-ai`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ mode: "assistido", preserveLayout: true, style: facade.style }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error ?? "Falha ao desenvolver com IA.");
+      setAiResult(payload as AIDevelopmentResponse);
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : "Falha ao desenvolver com IA.");
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
+  const applyAISuggestion = () => {
+    if (!aiResult?.facadeSuggestion) return;
+    onFacadeChange({ ...facade, ...aiResult.facadeSuggestion });
+  };
+
   return (
     <div className="relative h-[calc(100dvh-64px)] min-h-[520px] overflow-hidden bg-[#eef1f3] md:min-h-[680px]">
       <div className="absolute inset-x-3 top-2 z-30 flex snap-x overflow-x-auto rounded-2xl border bg-white/95 p-1 shadow-lg backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:inset-x-auto md:left-4 md:top-4 md:rounded-xl md:p-0">
@@ -322,6 +372,7 @@ export default function ConceptFacadeEditor({
           ["frames", Box, "Esquadrias"],
           ["outdoor", Sparkles, "Externo"],
           ["lighting", Sun, "Luz"],
+          ["ai", WandSparkles, "IA"],
         ] as const).map(([value, Icon, label]) => (
           <button
             key={value}
@@ -413,6 +464,32 @@ export default function ConceptFacadeEditor({
                     </button>
                   ))}
                 </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {panel === "ai" && (
+          <div className="p-4 pt-11">
+            <div className="text-sm font-semibold">Desenvolver com IA</div>
+            <p className="mt-1 text-[11px] leading-5 text-slate-500">
+              Analisa o pré-projeto salvo, preserva o layout e propõe uma fachada coerente com a geometria real.
+            </p>
+            <button type="button" onClick={() => void developWithAI()} disabled={!resolvedConceptProjectId || aiBusy}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-3 py-3 text-xs font-bold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50">
+              {aiBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <WandSparkles className="h-4 w-4" />}
+              Desenvolver com IA
+            </button>
+            {!resolvedConceptProjectId && <p className="mt-2 text-[10px] text-amber-700">Abra um pré-projeto salvo para usar o desenvolvimento com IA.</p>}
+            {aiError && <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-[11px] text-red-700">{aiError}</div>}
+            {aiResult && (
+              <div className="mt-4 space-y-3 rounded-xl border bg-slate-50 p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-700">Saúde geométrica</span>
+                  <span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold text-slate-700">{aiResult.geometryHealth?.score ?? 0}/100</span>
+                </div>
+                {!!aiResult.geometryHealth?.messages?.length && <ul className="space-y-1 text-[10px] leading-4 text-slate-600">{aiResult.geometryHealth.messages.slice(0,5).map((message) => <li key={message}>• {message}</li>)}</ul>}
+                {aiResult.facadeSuggestion && <button type="button" onClick={applyAISuggestion} className="w-full rounded-lg border border-orange-300 bg-white px-3 py-2 text-[11px] font-bold text-orange-600">Aplicar sugestão de fachada</button>}
               </div>
             )}
           </div>
@@ -735,6 +812,7 @@ export default function ConceptFacadeEditor({
             lotWidth={lotWidth}
             levels={levels}
             rooms={rooms}
+            sitePlacement={sitePlacement}
             facade={facade}
             design={design}
             selectedVolumeId={selectedVolumeId}
