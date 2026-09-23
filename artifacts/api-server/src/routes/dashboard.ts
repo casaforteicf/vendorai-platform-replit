@@ -148,7 +148,8 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
       .where(
         and(
           eq(dealsTable.tenantId, tenantId),
-          notInArray(dealsTable.etapa, ["ganho", "perdido"]),
+          eq(dealsTable.pipelineActive, true),
+          notInArray(dealsTable.etapa, ["em_aquecimento", "parceiro", "em_execucao", "ganho", "entregue", "perdido"]),
         ),
       ),
 
@@ -270,7 +271,8 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
       .where(
         and(
           eq(dealsTable.tenantId, tenantId),
-          notInArray(dealsTable.etapa, ["ganho", "perdido"]),
+          eq(dealsTable.pipelineActive, true),
+          notInArray(dealsTable.etapa, ["em_aquecimento", "parceiro", "em_execucao", "ganho", "entregue", "perdido"]),
           isNotNull(dealsTable.probabilidade),
         ),
       )
