@@ -53,6 +53,7 @@ import invitesRouter, { invitesProtectedRouter } from "./invites";
 import onboardingRouter from "./onboarding";
 import onboardingImplementationRouter from "./onboarding_implementation";
 import contentRouter from "./content";
+import leadCaptureRouter from "./lead_capture";
 import contentReferenceCreatorsRouter from "./content_reference_creators.js";
 import contentPerformanceRouter from "./content_performance.js";
 import evolutionWhatsappAuthRouter from "./evolution_whatsapp_auth.js";
@@ -151,6 +152,7 @@ import spinRouter from "./spin";
 import jarvisEmailActionsRouter from "./jarvis_email_actions";
 import jarvisExternalActionsRouter from "./jarvis_external_actions";
 import jarvisNaturalActionsRouter from "./jarvis_natural_actions";
+import jarvisToolBuilderRouter from "./jarvis_tool_builder";
 import jarvisActionPlansRouter from "./jarvis_action_plans";
 import jarvisMissionsRouter from "./jarvis_missions";
 import supportRouter from "./support";
@@ -357,6 +359,7 @@ router.use(consentsRouter);
 
 // Business Hub
 router.use(businessProfilesRouter);
+router.use(leadCaptureRouter);
 
 // Agent Config
 router.use(agentConfigsRouter);
@@ -566,6 +569,7 @@ router.use(spinRouter);
 
 // JARVIS: comandos naturais controlados precisam interceptar o chat antes do LLM.
 router.use(jarvisNaturalActionsRouter);
+router.use(jarvisToolBuilderRouter);
 router.use(jarvisActionPlansRouter);
 router.use(jarvisMissionsRouter);
 

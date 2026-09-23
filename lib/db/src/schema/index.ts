@@ -237,3 +237,5 @@ export * from "./access_licenses";
 export * from "./ad_campaign_events";
 export * from "./item_ad_reservations";
 export * from "./commercial_usage";
+
+export * from "./lead_capture";

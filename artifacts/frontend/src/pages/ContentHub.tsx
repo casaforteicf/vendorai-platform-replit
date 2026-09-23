@@ -9,6 +9,7 @@ import PlanoMidia from "@/pages/PlanoMidia";
 import SiteGenerator from "@/pages/SiteGenerator";
 import VisitorIntelligence from "@/pages/VisitorIntelligence";
 import ContentProductionQueue from "@/components/marketing/ContentProductionQueue";
+import LeadCaptureFreeToolBuilder from "@/components/marketing/LeadCaptureFreeToolBuilder";
 import SearchConsoleInsightsPanel from "@/components/marketing/SearchConsoleInsightsPanel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -608,6 +609,7 @@ export default function ContentHub() {
           </TabsContent>
 
           <TabsContent value="conteudos" className="-mx-4 md:-mx-6">
+            <div className="px-4 pt-4 md:px-6 md:pt-6"><LeadCaptureFreeToolBuilder tenantId={tenantId} /></div>
             {manualCreation ? (
               <>
                 <div className="px-4 pt-4 md:px-6 flex items-start justify-between gap-3 flex-wrap">

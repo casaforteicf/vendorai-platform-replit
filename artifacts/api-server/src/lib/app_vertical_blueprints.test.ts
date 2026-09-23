@@ -40,4 +40,11 @@ describe("app vertical blueprints", () => {
     expect(findVerticalBlueprint("médicos")?.safeguards?.join(" ")).toMatch(/médico responsável/i);
     expect(findVerticalBlueprint("advocacia")?.safeguards?.join(" ")).toMatch(/advogado/i);
   });
+
+  it("reconhece aliases usados pelos tenants de construção", () => {
+    expect(findVerticalBlueprint("Construção & Reforma")?.key).toBe("arquitetura-construcao");
+    expect(findVerticalBlueprint("Construtora")?.key).toBe("arquitetura-construcao");
+    expect(findVerticalBlueprint("Arquitetura")?.key).toBe("arquitetura-construcao");
+  });
+
 });
