@@ -21,6 +21,7 @@ export function formatBudgetQuantity(value: number, isComposition: boolean): str
 export function parseBudgetQuantity(raw: string, isComposition: boolean): number | null {
   const normalizedRaw = raw.trim().replace(",", ".");
   if (!normalizedRaw || normalizedRaw === ".") return null;
+  if (!/^\d+(?:\.\d{0,2})?$/.test(normalizedRaw)) return null;
   const parsed = Number(normalizedRaw);
   if (!Number.isFinite(parsed)) return null;
   return normalizeBudgetQuantity(parsed, isComposition);
