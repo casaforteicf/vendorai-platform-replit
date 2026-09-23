@@ -1,0 +1,405 @@
+import { and, desc, eq, isNotNull, max } from "drizzle-orm";
+import {
+  appActionRegistryTable,
+  appComponentRegistryTable,
+  appDataSourceRegistryTable,
+  appFeatureRegistryTable,
+  appInstanceVersionsTable,
+  appInstancesTable,
+  appTemplateVersionsTable,
+  appTemplatesTable,
+  appVerticalsTable,
+  appWorkflowRegistryTable,
+  businessProfilesTable,
+  db,
+  tenantLeadCaptureToolsTable,
+} from "@workspace/db";
+import { callOpenAI } from "../lib/ai-gateway.js";
+import {
+  buildVerticalStarterDefinition,
+  findVerticalBlueprint,
+  resolveVerticalBlueprint,
+  type RegistryCapability,
+} from "../lib/app_vertical_blueprints.js";
+
+type JsonObject = Record<string, unknown>;
+
+export type JarvisToolBuildRequest = {
+  brief: string;
+  name?: string;
+  mode?: "auto" | "reuse" | "create";
+  publish?: boolean;
+  freePolicy?: { mode?: "uses" | "days" | "session" | "custom"; limit?: number; durationDays?: number; note?: string };
+};
+
+export type JarvisToolBuildResult = {
+  strategy: "reuse" | "created" | "requires_development";
+  summary: string;
+  tool?: Record<string, unknown>;
+  app?: { id: string; name: string; slug: string; runtimeUrl: string; published: boolean };
+  gaps?: Array<{ type: string; description: string }>;
+};
+
+const normalize = (value: string) => value
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, " ")
+  .trim();
+
+function slugify(value: string) {
+  const slug = normalize(value).replace(/\s+/g, "-").replace(/^-|-$/g, "");
+  return (slug || "ferramenta-jarvis").slice(0, 72);
+}
+
+function words(value: string) {
+  return new Set(normalize(value).split(/\s+/).filter((item) => item.length >= 3));
+}
+
+function similarity(a: string, b: string) {
+  const aw = words(a);
+  const bw = words(b);
+  if (!aw.size || !bw.size) return 0;
+  let common = 0;
+  for (const item of aw) if (bw.has(item)) common += 1;
+  return common / Math.max(aw.size, bw.size);
+}
+
+function asObject(value: unknown): JsonObject {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : {};
+}
+
+function sanitizeRuntimeDefinition(definition: JsonObject, actionKeys: Set<string>, dataSourceKeys: Set<string>) {
+  const runtime = asObject(definition.runtime);
+  const rawPages = Array.isArray(runtime.pages) ? runtime.pages.filter((p): p is JsonObject => !!p && typeof p === "object" && !Array.isArray(p)) : [];
+  const allowedTypes = new Set(["hero", "text", "callout", "metrics", "list", "cards", "divider", "action_form"]);
+  const pages = rawPages.slice(0, 8).map((page, pageIndex) => {
+    const blocksRaw = Array.isArray(page.blocks) ? page.blocks.filter((b): b is JsonObject => !!b && typeof b === "object" && !Array.isArray(b)) : [];
+    const blocks = blocksRaw.slice(0, 20).flatMap((block, blockIndex) => {
+      const type = typeof block.type === "string" ? block.type : "";
+      if (!allowedTypes.has(type)) return [];
+      const props = asObject(block.props);
+      if (type === "action_form") {
+        const actionKey = typeof props.actionKey === "string" ? props.actionKey : "";
+        if (!actionKeys.has(actionKey)) return [];
+      }
+      const requested = Array.isArray(block.dataSources) ? block.dataSources.filter((v): v is string => typeof v === "string") : [];
+      return [{
+        ...block,
+        id: typeof block.id === "string" && block.id ? block.id : `block-${pageIndex + 1}-${blockIndex + 1}`,
+        dataSources: requested.filter((key) => dataSourceKeys.has(key)),
+      }];
+    });
+    return {
+      ...page,
+      id: typeof page.id === "string" && page.id ? page.id : `page-${pageIndex + 1}`,
+      title: typeof page.title === "string" && page.title ? page.title : `Página ${pageIndex + 1}`,
+      blocks,
+    };
+  });
+
+  if (!pages.length) return null;
+  const pageIds = new Set(pages.map((p) => String(p.id)));
+  const defaultPageId = typeof runtime.defaultPageId === "string" && pageIds.has(runtime.defaultPageId)
+    ? runtime.defaultPageId
+    : String(pages[0]!.id);
+
+  const usedActions = new Set<string>();
+  for (const page of pages) {
+    for (const block of (page.blocks as JsonObject[])) {
+      if (block.type !== "action_form") continue;
+      const key = asObject(block.props).actionKey;
+      if (typeof key === "string" && actionKeys.has(key)) usedActions.add(key);
+    }
+  }
+
+  return {
+    ...definition,
+    runtime: { ...runtime, version: 1, defaultPageId, pages },
+    settings: {
+      ...asObject(definition.settings),
+      runtimeAccess: {
+        ...asObject(asObject(definition.settings).runtimeAccess),
+        actions: { enabled: usedActions.size > 0, keys: [...usedActions] },
+      },
+      jarvisBuilt: true,
+    },
+  };
+}
+
+async function loadRegistry(): Promise<RegistryCapability[]> {
+  const [components, features, actions, workflows, dataSources] = await Promise.all([
+    db.select({ key: appComponentRegistryTable.key, name: appComponentRegistryTable.name, category: appComponentRegistryTable.category })
+      .from(appComponentRegistryTable).where(eq(appComponentRegistryTable.status, "active")),
+    db.select({ key: appFeatureRegistryTable.key, name: appFeatureRegistryTable.name, category: appFeatureRegistryTable.category })
+      .from(appFeatureRegistryTable).where(eq(appFeatureRegistryTable.status, "active")),
+    db.select({ key: appActionRegistryTable.key, name: appActionRegistryTable.name, category: appActionRegistryTable.category })
+      .from(appActionRegistryTable).where(and(eq(appActionRegistryTable.status, "active"), isNotNull(appActionRegistryTable.executorKey))),
+    db.select({ key: appWorkflowRegistryTable.key, name: appWorkflowRegistryTable.name })
+      .from(appWorkflowRegistryTable).where(eq(appWorkflowRegistryTable.status, "active")),
+    db.select({ key: appDataSourceRegistryTable.key, name: appDataSourceRegistryTable.name, category: appDataSourceRegistryTable.category })
+      .from(appDataSourceRegistryTable).where(eq(appDataSourceRegistryTable.status, "active")),
+  ]);
+  return [
+    ...components.map((x) => ({ ...x, kind: "component" as const })),
+    ...features.map((x) => ({ ...x, kind: "feature" as const })),
+    ...actions.map((x) => ({ ...x, kind: "action" as const })),
+    ...workflows.map((x) => ({ ...x, category: null, kind: "workflow" as const })),
+    ...dataSources.map((x) => ({ ...x, kind: "dataSource" as const })),
+  ];
+}
+
+async function ensureBaseTemplate(verticalRaw: string | null, registry: RegistryCapability[]) {
+  const blueprint = findVerticalBlueprint(verticalRaw);
+  if (!blueprint) return null;
+  const resolution = resolveVerticalBlueprint(blueprint, registry);
+
+  return db.transaction(async (tx) => {
+    let [vertical] = await tx.select().from(appVerticalsTable).where(eq(appVerticalsTable.key, blueprint.key)).limit(1);
+    if (!vertical) {
+      [vertical] = await tx.insert(appVerticalsTable).values({
+        key: blueprint.key,
+        name: blueprint.name,
+        familyKey: blueprint.familyKey,
+        status: "active",
+        metadata: { system: true, blueprint: true },
+      }).returning();
+    }
+
+    const templateSlug = `base-${blueprint.key}`;
+    let [template] = await tx.select().from(appTemplatesTable)
+      .where(and(eq(appTemplatesTable.verticalId, vertical.id), eq(appTemplatesTable.slug, templateSlug))).limit(1);
+    if (!template) {
+      [template] = await tx.insert(appTemplatesTable).values({
+        verticalId: vertical.id,
+        name: `Base · ${blueprint.name}`,
+        slug: templateSlug,
+        description: blueprint.description,
+        status: "active",
+        settings: { system: true, blueprintKey: blueprint.key, generated: true },
+      }).returning();
+    }
+
+    let [version] = await tx.select().from(appTemplateVersionsTable)
+      .where(and(eq(appTemplateVersionsTable.templateId, template.id), eq(appTemplateVersionsTable.status, "published")))
+      .orderBy(desc(appTemplateVersionsTable.version)).limit(1);
+    if (!version) {
+      const [latest] = await tx.select({ value: max(appTemplateVersionsTable.version) }).from(appTemplateVersionsTable)
+        .where(eq(appTemplateVersionsTable.templateId, template.id));
+      [version] = await tx.insert(appTemplateVersionsTable).values({
+        templateId: template.id,
+        version: (latest?.value ?? 0) + 1,
+        status: "published",
+        definition: buildVerticalStarterDefinition(blueprint, resolution, registry),
+        changeLog: "Base materializada automaticamente pelo JARVIS Tool Builder",
+        publishedAt: new Date(),
+      }).returning();
+    }
+    return { blueprint, resolution, template, version };
+  });
+}
+
+async function aiPlan(params: {
+  tenantId: string;
+  vertical: string | null;
+  brief: string;
+  requestedName?: string;
+  tools: Array<{ toolKey: string; toolLabel: string; deliveryType: string; metadata: unknown }>;
+  apps: Array<{ id: string; name: string; slug: string; status: string }>;
+  registry: RegistryCapability[];
+}) {
+  const registry = params.registry.slice(0, 160).map((r) => ({ kind: r.kind, key: r.key, name: r.name }));
+  const prompt = `Você é o JARVIS Tool Orchestrator do VendorAI.
+Objetivo: atender o pedido do tenant REUTILIZANDO capacidades existentes antes de criar algo novo.
+Nunca invente actions, dataSources, integrações ou capacidades.
+Se faltar capacidade executável essencial, strategy deve ser "requires_development".
+Se uma ferramenta existente atende bem, strategy="reuse" e existingToolKey deve ser exatamente uma chave fornecida.
+Se for possível compor uma experiência nova somente com registry real, strategy="create" e definition deve usar apenas blocos hero,text,callout,metrics,list,cards,divider,action_form. action_form só pode usar actionKey do registry.
+Retorne JSON puro.
+
+VERTICAL: ${params.vertical ?? "não informada"}
+PEDIDO: ${params.brief}
+NOME DESEJADO: ${params.requestedName ?? ""}
+FERRAMENTAS DO TENANT: ${JSON.stringify(params.tools)}
+APPS PUBLICADOS/RASCUNHOS: ${JSON.stringify(params.apps)}
+REGISTRY DISPONÍVEL: ${JSON.stringify(registry)}
+
+Formato:
+{
+ "strategy":"reuse|create|requires_development",
+ "summary":"...",
+ "name":"...",
+ "existingToolKey":null,
+ "deliveryType":"tool|agent|simulator|planner|analyzer|pre_project|app",
+ "gaps":[{"type":"action|data_source|integration|other","description":"..."}],
+ "definition":{"runtime":{"defaultPageId":"home","pages":[...]}, "settings":{}}
+}`;
+
+  const result = await callOpenAI(params.tenantId, "intelligence_analysis", [
+    { role: "system", content: "Responda somente JSON válido. Preserve segurança, isolamento por tenant e reutilização de capacidades existentes." },
+    { role: "user", content: prompt },
+  ], { maxTokens: 4500, temperature: 0.1, responseFormat: { type: "json_object" } });
+
+  return JSON.parse(result.content) as {
+    strategy?: string;
+    summary?: string;
+    name?: string;
+    existingToolKey?: string | null;
+    deliveryType?: string;
+    gaps?: Array<{ type?: string; description?: string }>;
+    definition?: JsonObject;
+  };
+}
+
+export async function buildLeadCaptureToolWithJarvis(tenantId: string, request: JarvisToolBuildRequest): Promise<JarvisToolBuildResult> {
+  const [[profile], existingTools, apps, registry] = await Promise.all([
+    db.select({ vertical: businessProfilesTable.vertical }).from(businessProfilesTable)
+      .where(eq(businessProfilesTable.tenantId, tenantId)).limit(1),
+    db.select().from(tenantLeadCaptureToolsTable).where(eq(tenantLeadCaptureToolsTable.tenantId, tenantId)),
+    db.select({ id: appInstancesTable.id, name: appInstancesTable.name, slug: appInstancesTable.slug, status: appInstancesTable.status })
+      .from(appInstancesTable).where(eq(appInstancesTable.tenantId, tenantId)),
+    loadRegistry(),
+  ]);
+
+  const brief = request.brief.trim();
+  const forcedReuse = request.mode === "reuse";
+  const lexical = existingTools
+    .map((tool) => ({ tool, score: similarity(brief, `${tool.toolLabel} ${tool.toolKey} ${tool.deliveryType}`) }))
+    .sort((a, b) => b.score - a.score)[0];
+
+  if ((forcedReuse || (request.mode !== "create" && lexical && lexical.score >= 0.6)) && lexical) {
+    return {
+      strategy: "reuse",
+      summary: `O JARVIS encontrou uma entrega já existente adequada: ${lexical.tool.toolLabel}.`,
+      tool: lexical.tool as unknown as Record<string, unknown>,
+    };
+  }
+
+  const plan = await aiPlan({
+    tenantId,
+    vertical: profile?.vertical ?? null,
+    brief,
+    requestedName: request.name,
+    tools: existingTools.map((t) => ({ toolKey: t.toolKey, toolLabel: t.toolLabel, deliveryType: t.deliveryType, metadata: t.metadata })),
+    apps,
+    registry,
+  });
+
+  if (plan.strategy === "reuse" && plan.existingToolKey) {
+    const tool = existingTools.find((item) => item.toolKey === plan.existingToolKey);
+    if (tool) return { strategy: "reuse", summary: plan.summary || `Reutilizando ${tool.toolLabel}.`, tool: tool as unknown as Record<string, unknown> };
+  }
+
+  const gaps = (plan.gaps ?? [])
+    .filter((g) => g && typeof g.description === "string")
+    .map((g) => ({ type: String(g.type ?? "other"), description: String(g.description) }));
+
+  if (plan.strategy === "requires_development" || gaps.some((g) => /essencial|necessaria|necessário|falt/i.test(g.description))) {
+    return {
+      strategy: "requires_development",
+      summary: plan.summary || "A solicitação exige uma capacidade que ainda não existe no registry seguro do VendorAI.",
+      gaps,
+    };
+  }
+
+  const base = await ensureBaseTemplate(profile?.vertical ?? null, registry);
+  if (!base) {
+    return {
+      strategy: "requires_development",
+      summary: "O tenant ainda não possui uma vertical mapeada no App Builder para criação segura desta entrega.",
+      gaps: [{ type: "other", description: "Mapear a vertical no App Builder antes da publicação automática." }],
+    };
+  }
+
+  const actionKeys = new Set(registry.filter((r) => r.kind === "action").map((r) => r.key));
+  const dataSourceKeys = new Set(registry.filter((r) => r.kind === "dataSource").map((r) => r.key));
+  const definition = sanitizeRuntimeDefinition(asObject(plan.definition), actionKeys, dataSourceKeys);
+  if (!definition) {
+    return {
+      strategy: "requires_development",
+      summary: "O JARVIS não conseguiu montar uma definição de runtime válida apenas com capacidades existentes.",
+      gaps: [{ type: "other", description: "Nenhuma página executável segura foi gerada." }],
+    };
+  }
+
+  const toolName = (request.name || plan.name || "Ferramenta criada pelo JARVIS").trim().slice(0, 120);
+  const baseSlug = slugify(toolName);
+  const slug = `${baseSlug}-${Date.now().toString(36).slice(-5)}`;
+  const publish = request.publish !== false;
+
+  const created = await db.transaction(async (tx) => {
+    const [app] = await tx.insert(appInstancesTable).values({
+      tenantId,
+      templateId: base.template.id,
+      templateVersionId: base.version.id,
+      name: toolName,
+      slug,
+      status: publish ? "published" : "draft",
+      theme: {},
+      navigation: [],
+      settings: {
+        jarvisBuilt: true,
+        leadCapture: true,
+        sourceBrief: brief.slice(0, 4000),
+        verticalKey: base.blueprint.key,
+      },
+      whiteLabel: {},
+    }).returning();
+
+    const [version] = await tx.insert(appInstanceVersionsTable).values({
+      tenantId,
+      appInstanceId: app.id,
+      templateVersionId: base.version.id,
+      version: 1,
+      status: publish ? "published" : "draft",
+      definition: {
+        ...definition,
+        name: toolName,
+        slug,
+        templateId: base.template.id,
+        templateVersionId: base.version.id,
+      },
+      publishedAt: publish ? new Date() : null,
+    }).returning();
+
+    const toolKey = `jarvis.app.${app.id}`;
+    const [tool] = await tx.insert(tenantLeadCaptureToolsTable).values({
+      tenantId,
+      toolKey,
+      toolLabel: toolName,
+      vertical: profile?.vertical ?? null,
+      deliveryType: plan.deliveryType || "app",
+      enabled: true,
+      freePolicy: {
+        mode: request.freePolicy?.mode ?? "uses",
+        limit: request.freePolicy?.limit ?? 1,
+        durationDays: request.freePolicy?.durationDays,
+        note: request.freePolicy?.note,
+      } as any,
+      metadata: {
+        source: "jarvis_app_builder",
+        appInstanceId: app.id,
+        appVersionId: version.id,
+        runtimeUrl: `/apps/${app.id}`,
+        blueprintKey: base.blueprint.key,
+        buildBrief: brief.slice(0, 4000),
+      },
+    }).returning();
+
+    return { app, version, tool };
+  });
+
+  return {
+    strategy: "created",
+    summary: plan.summary || `O JARVIS criou ${toolName} usando apenas capacidades registradas no App Builder.`,
+    tool: created.tool as unknown as Record<string, unknown>,
+    app: {
+      id: created.app.id,
+      name: created.app.name,
+      slug: created.app.slug,
+      runtimeUrl: `/apps/${created.app.id}`,
+      published: publish,
+    },
+    gaps,
+  };
+}
