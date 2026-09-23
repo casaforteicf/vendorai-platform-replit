@@ -145,9 +145,13 @@ function AdvancedPanel({ section }: { section: Exclude<AdvancedSection, null> })
 
 export default function VideoHome() {
   const [, navigate] = useLocation();
-  const { user, tenantOverride } = useAuth();
+  const { user, tenantOverride, setTenantOverride } = useAuth();
   const tenantId = tenantOverride?.id ?? user?.tenantId ?? "";
   const query = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  const targetTenantId = query.get("tenantId")?.trim() ?? "";
+  const targetTenantName = query.get("tenantName")?.trim() || "Tenant selecionado";
+  const targetProjectId = query.get("projectId")?.trim() ?? "";
+  const isSuperAdmin = user?.platformRole === "super_admin";
   const planExecution = query.get("from") === "media-calendar";
   const advancedMode = query.get("advanced") === "1";
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>("projects");
@@ -155,6 +159,15 @@ export default function VideoHome() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [advancedSection, setAdvancedSection] = useState<AdvancedSection>(null);
   const [showTools, setShowTools] = useState(false);
+
+  useEffect(() => {
+    if (!targetTenantId || !isSuperAdmin || targetTenantId === tenantId) return;
+    setTenantOverride({
+      id: targetTenantId,
+      name: targetTenantName,
+      vertical: "",
+    });
+  }, [targetTenantId, targetTenantName, isSuperAdmin, tenantId, setTenantOverride]);
 
   useEffect(() => {
     if (!tenantId || planExecution) return;
@@ -205,6 +218,16 @@ export default function VideoHome() {
 
   return (
     <div className="space-y-5 pb-28 sm:pb-10">
+      {targetTenantId && !isSuperAdmin && targetTenantId !== tenantId ? (
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
+          Este link aponta para um projeto de outro tenant. Entre com um usuário autorizado nesse tenant para visualizar o projeto.
+        </div>
+      ) : null}
+      {targetProjectId ? (
+        <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 px-4 py-3 text-sm text-muted-foreground">
+          Projeto solicitado: <span className="font-mono text-xs text-foreground">{targetProjectId}</span>
+        </div>
+      ) : null}
       <header className="overflow-hidden rounded-3xl border border-violet-500/20 bg-gradient-to-br from-violet-500/[0.08] via-card to-card p-5 shadow-sm sm:p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex items-start gap-4">
