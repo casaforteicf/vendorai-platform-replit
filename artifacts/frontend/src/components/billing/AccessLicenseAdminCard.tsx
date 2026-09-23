@@ -105,6 +105,26 @@ type CommercialModelResponse = {
   products: CommercialProductOption[];
 };
 
+type TenantExpansionOpportunity = {
+  kind: "cross_sell" | "upsell" | "full_package";
+  commercialKey: string;
+  name: string;
+  score: number;
+  reason: string;
+  evidence: Record<string, unknown>;
+  monthlyPrice: number | null;
+};
+
+type TenantExpansionResponse = {
+  tenantId: string;
+  fullPackageActive: boolean;
+  currentProducts: string[];
+  individualMonthlyValue?: number;
+  growthPrice?: number | null;
+  opportunities: TenantExpansionOpportunity[];
+  recommendation?: string;
+};
+
 type ProvisioningPreview = {
   growthActive: boolean;
   effectiveProducts: Array<{
@@ -206,6 +226,7 @@ export function AccessLicenseAdminCard({ tenantId }: { tenantId: string }) {
   const queryKey = ["admin-access-license", tenantId];
   const commercialQueryKey = ["admin-commercial-access", tenantId];
   const provisioningQueryKey = ["admin-commercial-provisioning-preview", tenantId];
+  const expansionQueryKey = ["admin-revenue-scout-expansion", tenantId];
 
   const licenseQuery = useQuery<AdminLicenseResponse>({
     queryKey,
@@ -262,6 +283,21 @@ export function AccessLicenseAdminCard({ tenantId }: { tenantId: string }) {
     retry: false,
   });
 
+
+  const expansionQuery = useQuery<TenantExpansionResponse>({
+    queryKey: expansionQueryKey,
+    queryFn: async () => {
+      const response = await fetch(`/api/admin/tenants/${tenantId}/scout/expansion`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const result = await response.json() as TenantExpansionResponse & { error?: string };
+      if (!response.ok) throw new Error(result.error ?? "Falha ao analisar expansão do tenant");
+      return result;
+    },
+    enabled: Boolean(tenantId && token),
+    retry: false,
+  });
+
   const enroll = useMutation({
     mutationFn: async () => {
       const response = await fetch("/api/admin/access-license/enroll", {
@@ -279,6 +315,7 @@ export function AccessLicenseAdminCard({ tenantId }: { tenantId: string }) {
         queryClient.invalidateQueries({ queryKey }),
         queryClient.invalidateQueries({ queryKey: commercialQueryKey }),
         queryClient.invalidateQueries({ queryKey: provisioningQueryKey }),
+        queryClient.invalidateQueries({ queryKey: expansionQueryKey }),
       ]);
       toast({ title: "Empresa matriculada no acesso pré-pago" });
     },
@@ -385,6 +422,7 @@ export function AccessLicenseAdminCard({ tenantId }: { tenantId: string }) {
   const grantableProducts = (commercialModelQuery.data?.products ?? [])
     .filter((product) => product.active && !["service", "consumption_pack", "prepaid_pass"].includes(product.offerKind));
   const provisioning = provisioningQuery.data;
+  const expansion = expansionQuery.data;
 
   return (
     <Card>
@@ -576,6 +614,45 @@ export function AccessLicenseAdminCard({ tenantId }: { tenantId: string }) {
                   </div>
                 );
               })}
+            </div>
+          )}
+        </div>
+
+        <Separator />
+
+        <div className="space-y-3">
+          <div>
+            <p className="flex items-center gap-2 text-sm font-semibold"><Sparkles className="h-4 w-4 text-orange-600" /> Revenue Scout — expansão da conta</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">Oportunidades calculadas por uso e composição atual. O Scout recomenda; nenhuma ferramenta é liberada automaticamente.</p>
+          </div>
+
+          {expansionQuery.isLoading ? (
+            <div className="flex justify-center py-4"><Loader2 className="h-5 w-5 animate-spin" /></div>
+          ) : expansionQuery.isError ? (
+            <div className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">Análise de expansão indisponível neste ambiente.</div>
+          ) : expansion?.fullPackageActive ? (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-3 text-sm text-emerald-800">
+              Tenant já está no pacote completo. O Revenue Scout não gera upsell de módulos individuais.
+            </div>
+          ) : !expansion?.opportunities?.length ? (
+            <div className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+              Ainda não há sinal forte de expansão. O Scout continuará usando uso real e composição de produtos como evidência.
+            </div>
+          ) : (
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {expansion.opportunities.slice(0, 6).map((opportunity) => (
+                <div key={opportunity.commercialKey} className="rounded-lg border bg-muted/15 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium">{opportunity.name}</p>
+                    <Badge variant="outline" className="text-[10px]">{opportunity.score}% fit</Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{opportunity.reason}</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                    <Badge variant="secondary">{opportunity.kind === "full_package" ? "Pacote completo" : "Cross-sell"}</Badge>
+                    {opportunity.monthlyPrice != null && <span className="text-muted-foreground">{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(opportunity.monthlyPrice)}/mês</span>}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
