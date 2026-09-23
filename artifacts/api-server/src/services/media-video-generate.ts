@@ -16,6 +16,7 @@ import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import { callReplicateVeo31 } from "../lib/arch-render-pipeline.js";
 import { objectStorageClient } from "../lib/objectStorage.js";
 import { applyBrandIntroOutro } from "./media-brand-video.js";
+import { resolveVideoContextPack } from "./video-context-pack.js";
 import {
   registerGeneratedMediaOutput,
   setMediaProjectStatus,
@@ -594,6 +595,10 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
   const audioConfig = asRecord(video.input.audio);
   const nativeAudioEnabled = audioConfig["enabled"] !== false;
   const voiceoverScript = stringValue(video.input.voiceoverScript);
+  const contextPack = await resolveVideoContextPack(video.tenantId).catch((error) => {
+    logger.warn({ err: error, tenantId: video.tenantId, jobId: video.id }, "media-video-generate: contexto do tenant indisponível");
+    return null;
+  });
 
   if (!video.projectId || (rawPrompt?.length ?? 0) > MAX_PROMPT_LENGTH) {
     const error = `Vídeo inválido: o prompt deve ter no máximo ${MAX_PROMPT_LENGTH} caracteres`;
@@ -622,6 +627,7 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
       });
 
       const premiumPrompt = [
+        contextPack?.promptContext ?? "",
         rawPrompt ?? "",
         `Visual direction: ${style}.`,
         voiceoverScript
@@ -631,6 +637,7 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
           ? "Generate synchronized native audio with polished cinematic ambience, subtle technology sound design, and clear speech when requested."
           : "Do not generate audio.",
         "Premium commercial film quality. Natural coherent motion, realistic lighting, stable geometry, clean SaaS technology aesthetic. Avoid distorted interfaces, warped typography, flicker and random logos.",
+        contextPack?.brand.name ? `The company name is exactly "${contextPack.brand.name}". Do not render or improvise this name inside generated frames; official branding is composited after generation.` : "",
       ].filter(Boolean).join("\n");
 
       const premium = await callReplicateVeo31({
@@ -661,7 +668,41 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
         },
       });
 
-      const storageUrl = await saveObject(premium.buffer, "video/mp4", "video-generate/outputs", "mp4");
+      const premiumRawPath = join(tmpdir(), `video-premium-${video.id}-raw.mp4`);
+      await writeFile(premiumRawPath, premium.buffer);
+      let premiumBrandCleanup: (() => Promise<void>) | null = null;
+      let premiumFinalBuffer = premium.buffer;
+      let premiumBrand = {
+        logoAssetId: null as string | null,
+        introAssetId: null as string | null,
+        outroAssetId: null as string | null,
+        logoApplied: false,
+        introApplied: false,
+        outroApplied: false,
+        logoWarning: null as string | null,
+      };
+      try {
+        const branded = await applyBrandIntroOutro({
+          tenantId: video.tenantId,
+          sourcePath: premiumRawPath,
+          jobId: video.id,
+        });
+        premiumBrandCleanup = branded.cleanup;
+        premiumFinalBuffer = await readFile(branded.outputPath);
+        premiumBrand = {
+          logoAssetId: branded.logoAssetId,
+          introAssetId: branded.introAssetId,
+          outroAssetId: branded.outroAssetId,
+          logoApplied: branded.logoApplied,
+          introApplied: branded.introApplied,
+          outroApplied: branded.outroApplied,
+          logoWarning: branded.logoWarning,
+        };
+      } finally {
+        await unlink(premiumRawPath).catch(() => undefined);
+      }
+
+      const storageUrl = await saveObject(premiumFinalBuffer, "video/mp4", "video-generate/outputs", "mp4");
       const output = await registerGeneratedMediaOutput({
         tenantId: video.tenantId,
         projectId: video.projectId,
@@ -685,7 +726,13 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
           audioApplied: nativeAudioEnabled,
           nativeAudio: nativeAudioEnabled,
           predictionId: premium.predictionId,
-          generationEngine: "native-video-premium-v1",
+          generationEngine: "native-video-premium-v2-context",
+          contextPack: contextPack ? {
+            brand: contextPack.brand,
+            knowledgeTitles: contextPack.knowledge.map((item) => item.title),
+            referenceAssetIds: contextPack.references.map((item) => item.assetId),
+          } : null,
+          ...premiumBrand,
         },
       });
 
@@ -708,9 +755,16 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
           audioApplied: nativeAudioEnabled,
           nativeAudio: nativeAudioEnabled,
           predictionId: premium.predictionId,
-          generationEngine: "native-video-premium-v1",
+          generationEngine: "native-video-premium-v2-context",
+          contextPack: contextPack ? {
+            brand: contextPack.brand,
+            knowledgeTitles: contextPack.knowledge.map((item) => item.title),
+            referenceAssetIds: contextPack.references.map((item) => item.assetId),
+          } : null,
+          ...premiumBrand,
         },
       });
+      if (premiumBrandCleanup) await premiumBrandCleanup().catch(() => undefined);
       return;
     } catch (error) {
       const message = (error instanceof Error ? error.message : "Falha no motor premium").slice(0, 1000);
