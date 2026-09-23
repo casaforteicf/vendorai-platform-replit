@@ -54,9 +54,13 @@ export default function VideoProjectDirectPage() {
     setLoading(true);
     setError("");
     try {
+      const token = localStorage.getItem("vendorai_token");
       const response = await fetch(
         `/api/tenants/${encodeURIComponent(tenantId)}/media/projects/${encodeURIComponent(projectId)}`,
-        { cache: "no-store" },
+        {
+          cache: "no-store",
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        },
       );
       const body = await response.json().catch(() => ({})) as MediaProjectResponse & { error?: string };
       if (!response.ok) throw new Error(body.error || `Falha ao carregar projeto (${response.status})`);
