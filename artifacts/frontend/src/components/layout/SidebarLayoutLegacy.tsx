@@ -334,12 +334,15 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     // templates comerciais (ex.: "Construtora", "Construtora Residencial",
     // "Construção Civil"). Tratar semanticamente evita que um tenant de obra
     // caia no bucket "core" e perca Obras/Insumos/Composições no menu.
-    if (
-      normalized.includes("construtora") ||
-      normalized.includes("construcao") ||
-      normalized.includes("gestao de obras") ||
-      normalized === "obras"
-    ) {
+    const constructionAliases = new Set([
+      "construtora",
+      "construtora residencial",
+      "construcao civil",
+      "construcao & reforma",
+      "gestao de obras",
+      "obras",
+    ]);
+    if (constructionAliases.has(normalized)) {
       return "construcao";
     }
 

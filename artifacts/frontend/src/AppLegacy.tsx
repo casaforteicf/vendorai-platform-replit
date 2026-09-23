@@ -552,13 +552,15 @@ function ConstrucaoRoute({ component: Component, ...rest }: any) {
     .replace(/[\u0300-\u036f]/g, "")
     .trim()
     .toLowerCase();
-  const isConstrucaoVertical =
-    normalizedVertical === "construcao & reforma" ||
-    normalizedVertical === "construcao civil" ||
-    normalizedVertical === "obras" ||
-    normalizedVertical === "gestao de obras" ||
-    normalizedVertical.includes("construtora") ||
-    normalizedVertical.includes("construcao");
+  const constructionAliases = new Set([
+    "construtora",
+    "construtora residencial",
+    "construcao civil",
+    "construcao & reforma",
+    "gestao de obras",
+    "obras",
+  ]);
+  const isConstrucaoVertical = constructionAliases.has(normalizedVertical);
 
   useEffect(() => {
     if (!isLoading && !token) {
