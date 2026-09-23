@@ -118,12 +118,17 @@ archAiRenderRouter.get("/arch/ai-renders", authenticate, async (req: Request, re
   if (!tid) return res.status(403).json({ success: false, error: "Tenant não identificado" });
 
   const projectId = String(req.query["project_id"] ?? "").trim();
+  const conceptProjectId = String(req.query["concept_project_id"] ?? "").trim();
   const ambiente = String(req.query["ambiente"] ?? "").trim();
-  if (!projectId) return res.status(400).json({ success: false, error: "project_id obrigatório" });
+  if (!projectId && !conceptProjectId) {
+    return res.status(400).json({ success: false, error: "project_id ou concept_project_id obrigatório" });
+  }
 
   const conditions = [
     eq(archAiRendersTable.tenantId, tid),
-    eq(archAiRendersTable.projectId, projectId),
+    conceptProjectId
+      ? eq(archAiRendersTable.conceptProjectId, conceptProjectId)
+      : eq(archAiRendersTable.projectId, projectId),
   ];
   if (ambiente) conditions.push(eq(archAiRendersTable.ambiente, ambiente));
 
@@ -133,10 +138,12 @@ archAiRenderRouter.get("/arch/ai-renders", authenticate, async (req: Request, re
 
   return res.json({
     success: true,
-    project_id: projectId,
+    project_id: projectId || null,
+    concept_project_id: conceptProjectId || null,
     versions: renders.map((render, index) => ({
       id: render.id,
       project_id: render.projectId,
+      concept_project_id: render.conceptProjectId,
       parent_render_id: render.parentRenderId,
       ambiente: render.ambiente,
       mode: render.mode,
@@ -182,6 +189,7 @@ archAiRenderRouter.get("/arch/ai-render/:id", authenticate, async (req: Request,
     success: render.status === "concluido",
     render_id: render.id,
     project_id: render.projectId,
+    concept_project_id: render.conceptProjectId,
     parent_render_id: render.parentRenderId,
     status: render.status,
     result_image_url: render.resultImageUrl,
