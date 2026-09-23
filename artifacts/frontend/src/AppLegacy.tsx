@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { DemoBanner } from "@/components/DemoBanner";
 import { SidebarLayout } from "@/components/layout/SidebarLayout";
 import { lazy, Suspense, useEffect, useState } from "react";
+import VideoHome from "@/pages/video/VideoHome";
 import {
   useGetTenant,
   getGetTenantQueryKey,
@@ -92,7 +93,7 @@ const Onboarding         = lazy(() => import("@/pages/Onboarding"));
 const OnboardingIntegracoes = lazy(() => import("@/pages/OnboardingIntegracoes"));
 const Content            = lazy(() => import("@/pages/ContentHub"));
 const MarketingInstagram = lazy(() => import("@/pages/MarketingInstagram"));
-const VideoHome          = lazy(() => import("@/pages/video/VideoHome"));
+
 const VideoAvatarPage    = lazy(() => import("@/pages/video/VideoAvatarPage"));
 const VideoProdutoPage   = lazy(() => import("@/pages/video/VideoProdutoPage"));
 const VideoEdicaoPage    = lazy(() => import("@/pages/video/VideoEdicaoPage"));
