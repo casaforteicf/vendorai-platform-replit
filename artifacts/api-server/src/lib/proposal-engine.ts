@@ -471,6 +471,59 @@ function resolveProposalPresentationMode(
   return presentation.etapas[stageId] ?? presentation.modoPadrao;
 }
 
+function escapeProposalText(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function proposalScopeDescription(item: PresentableProposalItem): string {
+  const rawDescription = (item.descricao ?? "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (rawDescription) {
+    const max = 220;
+    const concise = rawDescription.length > max
+      ? `${rawDescription.slice(0, max - 1).trimEnd()}…`
+      : rawDescription;
+    return escapeProposalText(concise);
+  }
+
+  const itemName = item.nome.trim() || "esta atividade";
+  return escapeProposalText(
+    `Contempla ${itemName}, conforme especificações, quantitativos, padrões e condições definidos para esta etapa.`,
+  );
+}
+
+function renderProposalScopeTable<T extends PresentableProposalItem>(items: T[]): string {
+  if (!items.length) return "";
+  const rows = items.map((item) => `
+    <tr>
+      <td class="scope-item">${escapeProposalText(item.nome)}</td>
+      <td class="scope-description">${proposalScopeDescription(item)}</td>
+    </tr>`
+  ).join("");
+
+  return `
+  <div class="scope-block">
+    <div class="scope-heading">
+      <span>O que está contemplado nesta etapa</span>
+      <span class="scope-count">${items.length} ${items.length === 1 ? "atividade" : "atividades"}</span>
+    </div>
+    <table class="scope-table">
+      <thead>
+        <tr><th>Previsto</th><th>Breve descrição da atividade</th></tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+}
+
 export function renderProposalHtml(json: unknown, theme: {
   cream: string; cream2: string; ink: string;
   navyDeep: string; navyMid: string;
@@ -770,6 +823,53 @@ export function renderProposalHtml(json: unknown, theme: {
   .orc-meta-item span:first-child { font-family: "JetBrains Mono", monospace; font-size: 6pt; text-transform: uppercase; letter-spacing: .07em; color: #8b84a8; display: block; margin-bottom: 1px; }
   .orc-meta-item span:last-child { font-size: 9pt; font-weight: 600; color: ${theme.navyDeep}; }
   .orc-obs { margin-top: 3mm; padding: 3mm 4mm; background: ${theme.cream2}; border-radius: 6px; border: 1px solid ${theme.concreteLine}; font-size: 8pt; color: #4a4368; line-height: 1.55; }
+  .scope-block { margin: 2mm 0 4mm; break-inside: avoid; }
+  .scope-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4mm;
+    padding: 2.2mm 2.5mm;
+    background: ${theme.cream2};
+    border: 1px solid ${theme.concreteLine};
+    border-bottom: 0;
+    border-radius: 6px 6px 0 0;
+    font-size: 7.5pt;
+    font-weight: 700;
+    color: ${theme.navyDeep};
+  }
+  .scope-count {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 5.8pt;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: ${theme.navyMid};
+    opacity: .65;
+    white-space: nowrap;
+  }
+  table.scope-table { width: 100%; border-collapse: collapse; font-size: 7.5pt; }
+  table.scope-table th {
+    padding: 1.8mm 2.3mm;
+    background: #fff;
+    border: 1px solid ${theme.concreteLine};
+    color: ${theme.navyMid};
+    font-family: "JetBrains Mono", monospace;
+    font-size: 5.8pt;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    text-align: left;
+  }
+  table.scope-table th:first-child { width: 34%; }
+  table.scope-table td {
+    padding: 2mm 2.3mm;
+    border: 1px solid ${theme.concreteLine};
+    vertical-align: top;
+    line-height: 1.4;
+  }
+  .scope-item { font-weight: 600; color: ${theme.navyDeep}; }
+  .scope-description { color: #5f5874; }
 
   /* ── proposal visuals ── */
   .img-hero-wrap {
@@ -944,16 +1044,18 @@ ${orcamento ? (() => {
     const stageTitle = group.hasStageHeader
       ? `<div class="orc-stage-title"><span><strong>Etapa ${group.ordem}</strong> · ${group.nome}</span><strong>${fmtBRL(etapaTotal)}</strong></div>`
       : "";
+    const scopeTable = renderProposalScopeTable(group.itens);
 
     if (mode === "resumo_etapa") {
-      return group.hasStageHeader
+      const summary = group.hasStageHeader
         ? `<div class="orc-stage-summary"><span><strong>Etapa ${group.ordem}</strong> · ${group.nome}</span><strong>${fmtBRL(etapaTotal)}</strong></div>`
         : `<div class="orc-stage-summary"><span>Valor do orçamento</span><strong>${fmtBRL(etapaTotal)}</strong></div>`;
+      return `${summary}${scopeTable}`;
     }
 
     if (mode === "preco_medio") {
       const rows = group.itens.map((i) => `<tr>
-        <td>${i.nome}${i.descricao ? `<span class="orc-desc">${i.descricao}</span>` : ""}${i.sku ? `<span class="orc-desc">SKU: ${i.sku}</span>` : ""}</td>
+        <td>${i.nome}${i.sku ? `<span class="orc-desc">SKU: ${i.sku}</span>` : ""}</td>
         <td class="r">${fmtBRL(i.valorUnitario)}</td>
       </tr>`).join("");
       return `<div class="orc-stage-block">${stageTitle}
@@ -961,13 +1063,14 @@ ${orcamento ? (() => {
           <thead><tr><th>Item</th><th class="r">Valor por item</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
+        ${scopeTable}
       </div>`;
     }
 
     const rows = group.itens.map((i) => {
       const subtotal = i.quantidade * i.valorUnitario;
       return `<tr>
-        <td>${i.nome}${i.descricao ? `<span class="orc-desc">${i.descricao}</span>` : ""}${i.sku ? `<span class="orc-desc">SKU: ${i.sku}</span>` : ""}</td>
+        <td>${i.nome}${i.sku ? `<span class="orc-desc">SKU: ${i.sku}</span>` : ""}</td>
         <td class="r">${i.quantidade}</td>
         <td class="r">${fmtBRL(i.valorUnitario)}</td>
         <td class="r">${fmtBRL(subtotal)}</td>
@@ -978,6 +1081,7 @@ ${orcamento ? (() => {
         <thead><tr><th>Item</th><th class="r">Qtd.</th><th class="r">Valor Unit.</th><th class="r">Subtotal</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
+      ${scopeTable}
     </div>`;
   }).join("");
   const metaItems = [
@@ -1117,16 +1221,18 @@ export function renderOrcamentoPdf(args: {
     const stageTitle = group.hasStageHeader
       ? `<div class="stage-title"><span><strong>Etapa ${group.ordem}</strong> · ${group.nome}</span><strong>${fmtBRL(etapaTotal)}</strong></div>`
       : "";
+    const scopeTable = renderProposalScopeTable(group.itens);
 
     if (mode === "resumo_etapa") {
-      return group.hasStageHeader
+      const summary = group.hasStageHeader
         ? `<div class="stage-summary"><span><strong>Etapa ${group.ordem}</strong> · ${group.nome}</span><strong>${fmtBRL(etapaTotal)}</strong></div>`
         : `<div class="stage-summary"><span>Valor do orçamento</span><strong>${fmtBRL(etapaTotal)}</strong></div>`;
+      return `${summary}${scopeTable}`;
     }
 
     if (mode === "preco_medio") {
       const rows = group.itens.map((i) => `<tr>
-        <td>${i.nome}${i.descricao ? `<br><span class="row-desc">${i.descricao}</span>` : ""}${i.sku ? `<br><span class="row-desc">SKU: ${i.sku}</span>` : ""}</td>
+        <td>${i.nome}${i.sku ? `<br><span class="row-desc">SKU: ${i.sku}</span>` : ""}</td>
         <td class="r fw">${fmtBRL(i.valorUnitario)}</td>
       </tr>`).join("");
       return `<div class="stage-block">${stageTitle}
@@ -1134,13 +1240,14 @@ export function renderOrcamentoPdf(args: {
           <thead><tr><th>Descrição</th><th class="r">Valor por item</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
+        ${scopeTable}
       </div>`;
     }
 
     const rows = group.itens.map((i) => {
       const sub = i.quantidade * i.valorUnitario;
       return `<tr>
-        <td>${i.nome}${i.descricao ? `<br><span class="row-desc">${i.descricao}</span>` : ""}${i.sku ? `<br><span class="row-desc">SKU: ${i.sku}</span>` : ""}</td>
+        <td>${i.nome}${i.sku ? `<br><span class="row-desc">SKU: ${i.sku}</span>` : ""}</td>
         <td class="r">${i.quantidade}</td>
         <td class="r">${fmtBRL(i.valorUnitario)}</td>
         <td class="r fw">${fmtBRL(sub)}</td>
@@ -1151,6 +1258,7 @@ export function renderOrcamentoPdf(args: {
         <thead><tr><th>Descrição</th><th class="r">Qtd.</th><th class="r">Valor Unit.</th><th class="r">Subtotal</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
+      ${scopeTable}
     </div>`;
   }).join("");
   const metaRows = [
@@ -1322,7 +1430,53 @@ export function renderOrcamentoPdf(args: {
   .stage-block { margin: 3mm 0 5mm; }
   .stage-title, .stage-summary { display: flex; align-items: center; justify-content: space-between; gap: 5mm; padding: 3mm 3.5mm; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; color: #334155; font-size: 8.5pt; }
   .stage-block table.items { margin-top: 1.5mm; }
-  .stage-summary { margin: 3mm 0; font-size: 9pt; }
+  .stage-summary { margin: 3mm 0 1.5mm; font-size: 9pt; }
+  .scope-block { margin: 1.5mm 0 4mm; break-inside: avoid; }
+  .scope-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4mm;
+    padding: 2.2mm 2.5mm;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-bottom: 0;
+    border-radius: 6px 6px 0 0;
+    font-size: 7.5pt;
+    font-weight: 700;
+    color: #334155;
+  }
+  .scope-count {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 5.8pt;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: #94a3b8;
+    white-space: nowrap;
+  }
+  table.scope-table { width: 100%; border-collapse: collapse; font-size: 7.5pt; }
+  table.scope-table th {
+    padding: 1.8mm 2.3mm;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    color: #94a3b8;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 5.8pt;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    text-align: left;
+  }
+  table.scope-table th:first-child { width: 34%; }
+  table.scope-table td {
+    padding: 2mm 2.3mm;
+    border: 1px solid #e2e8f0;
+    vertical-align: top;
+    line-height: 1.4;
+  }
+  .scope-item { font-weight: 600; color: #334155; }
+  .scope-description { color: #64748b; }
 
   .total-row { display: flex; justify-content: flex-end; margin-top: 3mm; }
   .total-box { border: 1px solid #bfdbfe; border-radius: 7px; padding: 3mm 5mm; text-align: right; background: #eff6ff; }
