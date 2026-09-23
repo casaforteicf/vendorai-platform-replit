@@ -339,8 +339,14 @@ const publishBodySchema = z.object({
 });
 const patchMediaBodySchema = z.object({
   objectPath: z.string().min(1),
-  field: z.enum(["imageUrl", "videoUrl"]).default("imageUrl"),
+  field: z.enum(["imageUrl", "videoUrl", "coverUrl"]).default("imageUrl"),
   append: z.boolean().optional().default(false),
+});
+const reelCoverBodySchema = z.object({
+  thumbOffsetMs: z.number().int().min(0).max(3_600_000),
+});
+const feedCoverBodySchema = z.object({
+  imageIndex: z.number().int().min(0).max(9),
 });
 
 // POST .../variations/:idx/generate-image — gera imagem via IA e salva na variação
@@ -441,6 +447,9 @@ router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/image", asyn
     imageUrl?: string | null;
     imageUrls?: string[];
     videoUrl?: string;
+    coverUrl?: string;
+    coverSource?: "upload" | "frame";
+    thumbOffsetMs?: number;
     framed?: boolean;
     imageSource?: "ai" | "upload";
   })[];
@@ -470,16 +479,124 @@ router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/image", asyn
       responseImageUrls = [mediaUrl];
       variations[idx] = { ...variation, imageUrl: mediaUrl, imageUrls: undefined, imageSource: "upload", framed: false };
     }
-  } else {
+  } else if (body.data.field === "videoUrl") {
     variations[idx] = { ...variation, videoUrl: mediaUrl };
+  } else {
+    variations[idx] = {
+      ...variation,
+      coverUrl: mediaUrl,
+      coverSource: "upload",
+      thumbOffsetMs: undefined,
+    };
   }
 
   await db
     .update(contentGenerationsTable)
-    .set({ result: { variations } })
+    .set({ result: { ...gen.result, variations } })
     .where(eq(contentGenerationsTable.id, contentId));
 
   res.json({ success: true, mediaUrl, field: body.data.field, imageUrls: responseImageUrls });
+});
+
+router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/feed-cover", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const contentId = String(req.params["contentId"]);
+  const idx = parseInt(String(req.params["idx"]), 10);
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" });
+    return;
+  }
+
+  const body = feedCoverBodySchema.safeParse(req.body);
+  if (!body.success) {
+    res.status(422).json({ error: "Selecione uma imagem válida para a capa." });
+    return;
+  }
+
+  const [gen] = await db
+    .select()
+    .from(contentGenerationsTable)
+    .where(and(eq(contentGenerationsTable.id, contentId), eq(contentGenerationsTable.tenantId, tenantId)))
+    .limit(1);
+
+  if (!gen) { res.status(404).json({ error: "Conteúdo não encontrado" }); return; }
+  if (gen.type !== "feed") { res.status(422).json({ error: "Capa por reordenação está disponível apenas para Feed/Carrossel." }); return; }
+
+  const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & {
+    imageUrl?: string | null;
+    imageUrls?: string[];
+  })[];
+  const variation = variations[idx];
+  if (!variation) { res.status(400).json({ error: "Variação inválida" }); return; }
+
+  const currentUrls = variation.imageUrls ?? (variation.imageUrl ? [variation.imageUrl] : []);
+  const selected = currentUrls[body.data.imageIndex];
+  if (!selected) { res.status(422).json({ error: "Essa imagem não existe mais no carrossel." }); return; }
+
+  const nextUrls = [selected, ...currentUrls.filter((_, imageIndex) => imageIndex !== body.data.imageIndex)];
+  variations[idx] = {
+    ...variation,
+    imageUrl: nextUrls[0],
+    imageUrls: nextUrls.length > 1 ? nextUrls : undefined,
+  };
+
+  await db
+    .update(contentGenerationsTable)
+    .set({ result: { ...gen.result, variations } })
+    .where(eq(contentGenerationsTable.id, contentId));
+
+  res.json({ success: true, imageUrls: nextUrls });
+});
+
+router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/reel-cover", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const contentId = String(req.params["contentId"]);
+  const idx = parseInt(String(req.params["idx"]), 10);
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" });
+    return;
+  }
+
+  const body = reelCoverBodySchema.safeParse(req.body);
+  if (!body.success) {
+    res.status(422).json({ error: "Informe um frame válido em milissegundos." });
+    return;
+  }
+
+  const [gen] = await db
+    .select()
+    .from(contentGenerationsTable)
+    .where(and(eq(contentGenerationsTable.id, contentId), eq(contentGenerationsTable.tenantId, tenantId)))
+    .limit(1);
+
+  if (!gen) { res.status(404).json({ error: "Conteúdo não encontrado" }); return; }
+  if (gen.type !== "reels") { res.status(422).json({ error: "A seleção de capa por frame está disponível apenas para Reels." }); return; }
+
+  const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & {
+    videoUrl?: string;
+    coverUrl?: string;
+    coverSource?: "upload" | "frame";
+    thumbOffsetMs?: number;
+  })[];
+  const variation = variations[idx];
+  if (!variation) { res.status(400).json({ error: "Variação inválida" }); return; }
+  if (!variation.videoUrl) { res.status(422).json({ error: "Adicione o vídeo antes de escolher um frame de capa." }); return; }
+
+  variations[idx] = {
+    ...variation,
+    coverUrl: undefined,
+    coverSource: "frame",
+    thumbOffsetMs: body.data.thumbOffsetMs,
+  };
+
+  await db
+    .update(contentGenerationsTable)
+    .set({ result: { ...gen.result, variations } })
+    .where(eq(contentGenerationsTable.id, contentId));
+
+  res.json({ success: true, coverSource: "frame", thumbOffsetMs: body.data.thumbOffsetMs });
 });
 
 const applyBrandFrameBodySchema = z.object({

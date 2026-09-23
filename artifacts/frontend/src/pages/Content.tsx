@@ -39,7 +39,16 @@ type ProductSource = "catalog" | "varejo" | "supermercado" | "insumo";
 interface FeedVariation { caption: string; hashtags: string[]; imageUrl?: string; imageUrls?: string[] }
 interface StoriesVariation { text: string; cta: string; imageUrl?: string; imageUrls?: string[] }
 interface ReelsScene { visual: string; fala: string; duracao: string }
-interface ReelsVariation { title: string; scenes: ReelsScene[]; audioSuggestion: string; cta: string; videoUrl?: string }
+interface ReelsVariation {
+  title: string;
+  scenes: ReelsScene[];
+  audioSuggestion: string;
+  cta: string;
+  videoUrl?: string;
+  coverUrl?: string;
+  coverSource?: "upload" | "frame";
+  thumbOffsetMs?: number;
+}
 interface LinkedInVariation { hook: string; caption: string; hashtags: string[] }
 interface YouTubeScriptBlock { bloco: string; conteudo: string }
 interface YouTubeVariation { titulo: string; descricao: string; tags: string[]; roteiro: YouTubeScriptBlock[] }
@@ -281,6 +290,8 @@ function FeedCard({
   onUploadClick,
   onApplyBrandFrame,
   applyingFrameIdx,
+  onSetCover,
+  settingCoverIdx,
 }: {
   v: FeedVariation;
   editing?: boolean;
@@ -292,6 +303,8 @@ function FeedCard({
   onUploadClick?: () => void;
   onApplyBrandFrame?: (imgIdx: number) => void;
   applyingFrameIdx?: number | null;
+  onSetCover?: (imgIdx: number) => void;
+  settingCoverIdx?: number | null;
 }) {
   const displayCaption = editing ? editedCaption : v.caption;
   const displayHashtagsStr = editing ? editedHashtags : (v.hashtags ?? []).join(" ");
@@ -310,6 +323,9 @@ function FeedCard({
                 className="w-full h-full object-cover"
                 loading="lazy"
               />
+              {images.length > 1 && idx === 0 && (
+                <Badge className="absolute left-1.5 top-1.5 z-10 h-5 px-1.5 text-[10px]">Capa</Badge>
+              )}
               <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors opacity-0 group-hover:opacity-100">
                 <button
                   onClick={() => onRemoveImage?.(idx)}
@@ -343,6 +359,23 @@ function FeedCard({
                         <Wand2 className="h-3 w-3 mr-1" />
                       )}
                       Moldura
+                    </Button>
+                  )}
+                  {images.length > 1 && idx > 0 && onSetCover && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="text-xs"
+                      disabled={settingCoverIdx === idx}
+                      onClick={() => onSetCover(idx)}
+                      title="Move esta imagem para a primeira posição e usa como capa do carrossel"
+                    >
+                      {settingCoverIdx === idx ? (
+                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                      ) : (
+                        <ImageIcon className="h-3 w-3 mr-1" />
+                      )}
+                      Definir capa
                     </Button>
                   )}
                 </div>
@@ -539,6 +572,130 @@ function ReelsCard({ v }: { v: ReelsVariation }) {
   );
 }
 
+function ReelCoverPanel({
+  v,
+  contentId,
+  variationIndex,
+  tenantId,
+  onCoverChange,
+}: {
+  v: ReelsVariation;
+  contentId: string;
+  variationIndex: number;
+  tenantId: string;
+  onCoverChange: (cover: Pick<ReelsVariation, "coverUrl" | "coverSource" | "thumbOffsetMs">) => void;
+}) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [frameSeconds, setFrameSeconds] = useState(() => Math.max(0, (v.thumbOffsetMs ?? 0) / 1000));
+  const [savingFrame, setSavingFrame] = useState(false);
+
+  async function useVideoFrame() {
+    if (!v.videoUrl) {
+      toast({ title: "Adicione o vídeo primeiro", description: "Depois escolha o instante que será usado como capa.", variant: "destructive" });
+      return;
+    }
+    const thumbOffsetMs = Math.max(0, Math.round(frameSeconds * 1000));
+    setSavingFrame(true);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/content/${contentId}/variations/${variationIndex}/reel-cover`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`,
+        },
+        body: JSON.stringify({ thumbOffsetMs }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Não foi possível salvar o frame.");
+      onCoverChange({ coverUrl: undefined, coverSource: "frame", thumbOffsetMs });
+      qc.invalidateQueries({ queryKey: ["content", tenantId] });
+      toast({ title: "Frame definido como capa", description: `O Reel usará o frame em ${(thumbOffsetMs / 1000).toFixed(1)}s.` });
+    } catch (error) {
+      toast({ title: "Erro ao definir capa", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+    } finally {
+      setSavingFrame(false);
+    }
+  }
+
+  const frameLabel = typeof v.thumbOffsetMs === "number" ? `${(v.thumbOffsetMs / 1000).toFixed(1)}s` : "automático";
+
+  return (
+    <div className="mt-4 rounded-xl border bg-muted/15 p-3 sm:p-4">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold">Capa da publicação</p>
+          <p className="text-xs text-muted-foreground">Defina o que aparecerá no perfil antes de publicar o Reel.</p>
+        </div>
+        <Badge variant="outline" className="w-fit text-[10px]">
+          {v.coverUrl ? "Imagem personalizada" : v.coverSource === "frame" ? `Frame ${frameLabel}` : "Capa automática"}
+        </Badge>
+      </div>
+
+      <div className="mt-3 grid gap-3 sm:grid-cols-[150px_1fr]">
+        <div className="mx-auto w-[132px] overflow-hidden rounded-lg border bg-muted sm:mx-0" style={{ aspectRatio: "3 / 4" }}>
+          {v.coverUrl ? (
+            <img src={v.coverUrl} alt="Capa do Reel" className="h-full w-full object-cover" />
+          ) : v.videoUrl ? (
+            <video
+              src={`${v.videoUrl}#t=${Math.max(0, frameSeconds)}`}
+              muted
+              playsInline
+              preload="metadata"
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center px-3 text-center text-[11px] text-muted-foreground">
+              Adicione o vídeo para visualizar a capa
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-3">
+          <div className="rounded-lg border bg-background/60 p-3">
+            <p className="text-xs font-medium">Usar imagem como capa</p>
+            <p className="mb-2 mt-0.5 text-[11px] text-muted-foreground">JPG, PNG ou WebP. A imagem fica vinculada a este Reel.</p>
+            <MediaUploadButton
+              contentId={contentId}
+              variationIndex={variationIndex}
+              tenantId={tenantId}
+              mediaType="image"
+              fieldOverride="coverUrl"
+              labelOverride={v.coverUrl ? "Trocar capa" : "Enviar capa"}
+              onUploaded={(url) => onCoverChange({ coverUrl: url, coverSource: "upload", thumbOffsetMs: undefined })}
+            />
+          </div>
+
+          <div className="rounded-lg border bg-background/60 p-3">
+            <p className="text-xs font-medium">Ou escolher um frame do vídeo</p>
+            <div className="mt-2 flex flex-wrap items-end gap-2">
+              <label className="space-y-1">
+                <span className="block text-[11px] text-muted-foreground">Instante em segundos</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.1}
+                  value={frameSeconds}
+                  onChange={(e) => setFrameSeconds(Math.max(0, Number(e.target.value) || 0))}
+                  className="h-8 w-28 rounded-md border bg-background px-2 text-xs"
+                />
+              </label>
+              <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs" onClick={useVideoFrame} disabled={savingFrame || !v.videoUrl}>
+                {savingFrame ? <Loader2 className="h-3 w-3 animate-spin" /> : <Clapperboard className="h-3 w-3" />}
+                {savingFrame ? "Salvando…" : "Usar este frame"}
+              </Button>
+            </div>
+          </div>
+
+          <p className="text-[11px] text-muted-foreground">
+            A prévia acima usa recorte 3:4 para representar como a capa aparecerá no perfil. O vídeo continua em 9:16.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LinkedInCard({ v }: { v: LinkedInVariation }) {
   const fullText = [v.hook, "", v.caption, "", (v.hashtags ?? []).join(" ")].join("\n");
   return (
@@ -617,8 +774,8 @@ function PublishInstagramButton({
   async function handlePublish() {
     if (!hasImage) {
       toast({
-        title: "Imagem expirada",
-        description: "Imagens do DALL-E expiram em ~1h. Regere o conteúdo para publicar.",
+        title: "Mídia indisponível",
+        description: "Adicione ou gere a mídia necessária antes de publicar.",
         variant: "destructive",
       });
       return;
@@ -674,7 +831,7 @@ function PublishInstagramButton({
       size="sm"
       onClick={handlePublish}
       disabled={publishing}
-      title={!hasImage ? "Imagem expirada — regere o conteúdo para publicar" : "Publicar no Instagram"}
+      title={!hasImage ? "Mídia obrigatória ausente" : "Publicar no Instagram"}
       className={cn("h-7 px-2 text-xs gap-1", !hasImage && "opacity-50")}
     >
       {publishing
@@ -694,6 +851,8 @@ function MediaUploadButton({
   triggerRef,
   allowMultipleImages = false,
   currentImageCount = 0,
+  fieldOverride,
+  labelOverride,
 }: {
   contentId: string;
   variationIndex: number;
@@ -703,6 +862,8 @@ function MediaUploadButton({
   triggerRef?: React.MutableRefObject<(() => void) | null>;
   allowMultipleImages?: boolean;
   currentImageCount?: number;
+  fieldOverride?: "imageUrl" | "videoUrl" | "coverUrl";
+  labelOverride?: string;
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -724,7 +885,7 @@ function MediaUploadButton({
     : ["image/jpeg", "image/png", "image/webp"];
   const maxBytes = isVideo ? 100 * 1024 * 1024 : 10 * 1024 * 1024;
   const accept = isVideo ? "video/mp4,video/quicktime,video/webm" : "image/jpeg,image/png,image/webp";
-  const field = isVideo ? "videoUrl" : "imageUrl";
+  const field = fieldOverride ?? (isVideo ? "videoUrl" : "imageUrl");
   const maxFeedImages = 10;
 
   function validateFile(file: File): string | null {
@@ -829,11 +990,11 @@ function MediaUploadButton({
 
   const uploadLabel = uploading && uploadProgress
     ? `Enviando ${uploadProgress.current}/${uploadProgress.total}…`
-    : isVideo
+    : labelOverride ?? (isVideo
       ? "Meu vídeo"
       : allowMultipleImages
         ? "Adicionar imagens"
-        : "Minha imagem";
+        : "Minha imagem");
 
   return (
     <>
@@ -854,7 +1015,7 @@ function MediaUploadButton({
         size="sm"
         onClick={() => inputRef.current?.click()}
         disabled={uploading || (!isVideo && allowMultipleImages && currentImageCount >= maxFeedImages)}
-        title={isVideo ? "Usar meu vídeo" : allowMultipleImages ? "Adicionar uma ou várias imagens" : "Usar minha imagem"}
+        title={labelOverride ?? (isVideo ? "Usar meu vídeo" : allowMultipleImages ? "Adicionar uma ou várias imagens" : "Usar minha imagem")}
         className="h-7 px-2 text-xs gap-1"
       >
         {uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
@@ -1036,13 +1197,17 @@ function VariationCard({
   const [localImageUrl, setLocalImageUrl] = useState<string | undefined>(undefined);
   const [localImageUrls, setLocalImageUrls] = useState<string[] | null>(null);
   const [localVideoUrl, setLocalVideoUrl] = useState<string | undefined>(undefined);
+  const [localReelCover, setLocalReelCover] = useState<Pick<ReelsVariation, "coverUrl" | "coverSource" | "thumbOffsetMs"> | null>(null);
   const uploadTriggerRef = useRef<(() => void) | null>(null);
   const qc = useQueryClient();
   const [, setLocation] = useLocation();
 
   const effectiveVariation =
     (type === "reels" || type === "tiktok")
-      ? localVideoUrl ? { ...variation, videoUrl: localVideoUrl } : variation
+      ? (() => {
+          const base = localVideoUrl ? { ...variation, videoUrl: localVideoUrl } : variation;
+          return type === "reels" && localReelCover ? { ...base, ...localReelCover } : base;
+        })()
       : (() => {
           const base = localImageUrl ? { ...variation, imageUrl: localImageUrl } : variation;
           if (localImageUrls !== null) {
@@ -1053,6 +1218,7 @@ function VariationCard({
 
   const hasImage = !!(effectiveVariation as { imageUrl?: string }).imageUrl ||
     !!((effectiveVariation as { imageUrls?: string[] }).imageUrls?.length);
+  const hasVideo = !!(effectiveVariation as ReelsVariation).videoUrl;
 
   async function handleRemoveImage(imgIdx: number) {
     const ev = effectiveVariation as FeedVariation | StoriesVariation;
@@ -1098,6 +1264,33 @@ function VariationCard({
       toast({ title: "Erro ao aplicar moldura", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
     } finally {
       setApplyingFrameIdx(null);
+    }
+  }
+
+  const [settingFeedCoverIdx, setSettingFeedCoverIdx] = useState<number | null>(null);
+
+  async function handleSetFeedCover(imgIdx: number) {
+    if (!contentId || !tenantId) return;
+    setSettingFeedCoverIdx(imgIdx);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/content/${contentId}/variations/${index}/feed-cover`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`,
+        },
+        body: JSON.stringify({ imageIndex: imgIdx }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { imageUrls?: string[]; error?: string };
+      if (!res.ok || !data.imageUrls?.length) throw new Error(data.error ?? "Não foi possível definir a capa.");
+      setLocalImageUrls(data.imageUrls);
+      setLocalImageUrl(data.imageUrls[0]);
+      qc.invalidateQueries({ queryKey: ["content", tenantId] });
+      toast({ title: "Capa do carrossel atualizada", description: "A imagem escolhida agora é a primeira página da publicação." });
+    } catch (error) {
+      toast({ title: "Erro ao definir capa", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+    } finally {
+      setSettingFeedCoverIdx(null);
     }
   }
 
@@ -1332,17 +1525,15 @@ function VariationCard({
                     triggerRef={(type !== "reels" && type !== "tiktok") ? uploadTriggerRef : undefined}
                   />
                 )}
-                {type === "feed" || type === "stories" ? (
-                  contentId && tenantId && (
-                    <PublishInstagramButton
-                      contentId={contentId}
-                      variationIndex={index}
-                      hasImage={hasImage}
-                      tenantId={tenantId}
-                      captionOverride={captionOverride}
-                    />
-                  )
-                ) : null}
+                {(type === "feed" || type === "stories" || type === "reels") && contentId && tenantId && (
+                  <PublishInstagramButton
+                    contentId={contentId}
+                    variationIndex={index}
+                    hasImage={type === "reels" ? hasVideo : hasImage}
+                    tenantId={tenantId}
+                    captionOverride={captionOverride}
+                  />
+                )}
               </>
             )}
           </div>
@@ -1361,6 +1552,8 @@ function VariationCard({
             onUploadClick={contentId && tenantId ? () => uploadTriggerRef.current?.() : undefined}
             onApplyBrandFrame={contentId && tenantId ? handleApplyBrandFrame : undefined}
             applyingFrameIdx={applyingFrameIdx}
+            onSetCover={contentId && tenantId ? handleSetFeedCover : undefined}
+            settingCoverIdx={settingFeedCoverIdx}
           />
         )}
         {type === "stories" && (
@@ -1375,7 +1568,20 @@ function VariationCard({
             onUploadClick={contentId && tenantId ? () => uploadTriggerRef.current?.() : undefined}
           />
         )}
-        {type === "reels" && <ReelsCard v={effectiveVariation as ReelsVariation} />}
+        {type === "reels" && (
+          <>
+            <ReelsCard v={effectiveVariation as ReelsVariation} />
+            {contentId && tenantId && (
+              <ReelCoverPanel
+                v={effectiveVariation as ReelsVariation}
+                contentId={contentId}
+                variationIndex={index}
+                tenantId={tenantId}
+                onCoverChange={setLocalReelCover}
+              />
+            )}
+          </>
+        )}
         {type === "tiktok" && <ReelsCard v={effectiveVariation as ReelsVariation} />}
         {type === "linkedin" && <LinkedInCard v={displayVariation as LinkedInVariation} />}
         {type === "youtube" && <YouTubeCard v={displayVariation as YouTubeVariation} />}

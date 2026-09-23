@@ -162,19 +162,30 @@ export async function publishReelPost(
   caption: string,
   videoUrl: string,
   log: Logger,
+  cover?: { coverUrl?: string; thumbOffsetMs?: number },
 ): Promise<string> {
-  log.info({ instagramAccountId }, "instagram-publish: creating reel media container");
+  log.info(
+    { instagramAccountId, coverMode: cover?.coverUrl ? "upload" : typeof cover?.thumbOffsetMs === "number" ? "frame" : "automatic" },
+    "instagram-publish: creating reel media container",
+  );
+
+  const params = new URLSearchParams({
+    media_type: "REELS",
+    video_url: videoUrl,
+    caption,
+    share_to_feed: "true",
+    access_token: token,
+  });
+  if (cover?.coverUrl) {
+    params.set("cover_url", cover.coverUrl);
+  } else if (typeof cover?.thumbOffsetMs === "number") {
+    params.set("thumb_offset", String(Math.max(0, Math.round(cover.thumbOffsetMs))));
+  }
 
   const container = (await gFetch(`${GRAPH}/${encodeURIComponent(instagramAccountId)}/media`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      media_type: "REELS",
-      video_url: videoUrl,
-      caption,
-      share_to_feed: "true",
-      access_token: token,
-    }).toString(),
+    body: params.toString(),
   })) as { id: string };
 
   await waitForVideoContainer(container.id, token, log);
