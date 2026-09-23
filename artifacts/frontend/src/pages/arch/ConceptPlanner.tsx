@@ -3348,7 +3348,7 @@ export default function ConceptPlanner() {
           ...Object.values(spaceFloorMaterials),
         ],
         geometryLock: {
-          frontSide: sitePlacement.frontSide,
+          frontSide: normalizeSitePlacement(sitePlacement).frontSide,
           exteriorWalls: modelLevels.flatMap((level) => [
             ...(level.walls ?? []).filter((wall) => wall.exterior).map((wall) => ({
               floor: level.floor,
@@ -7114,7 +7114,7 @@ export default function ConceptPlanner() {
                     <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">Conceitual</span>
                   </div>
                   <div className="mt-4 overflow-hidden rounded-2xl border bg-slate-50">
-                    <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} rooms={safeRooms} facade={facadePreferences} />
+                    <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} rooms={safeRooms} sitePlacement={normalizeSitePlacement(sitePlacement)} facade={facadePreferences} />
                   </div>
                 </div>
               </div>

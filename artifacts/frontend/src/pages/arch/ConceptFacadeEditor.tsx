@@ -17,7 +17,7 @@ import ConceptDerivedFacade from "./ConceptDerivedFacade";
 import type { ConceptFacadePreferences } from "./ConceptVolumetry";
 import type { ConceptModelLevel } from "./ConceptModel3D";
 import type { ConceptRoomShape } from "./conceptGeometry";
-import type { SitePlacement } from "./conceptSitePlacement";
+import { normalizeSitePlacement, type SitePlacement } from "./conceptSitePlacement";
 import { applySiteExteriorToFacade, buildSiteExteriorPlan } from "./conceptSiteExterior";
 import {
   DEFAULT_FACADE_DESIGN,
@@ -258,6 +258,7 @@ export default function ConceptFacadeEditor({
   realisticPreviewLoading = false,
   onApplyDevelopment,
 }: Props) {
+  const safeSitePlacement = useMemo(() => normalizeSitePlacement(sitePlacement), [sitePlacement]);
   const [panel, setPanel] = useState<"style" | "volumes" | "materials" | "frames" | "outdoor" | "lighting" | "ai">("style");
   const [panelOpen, setPanelOpen] = useState(() => typeof window === "undefined" ? true : window.innerWidth >= 768);
   const [panelExpanded, setPanelExpanded] = useState(false);
@@ -280,7 +281,7 @@ export default function ConceptFacadeEditor({
   );
 
   const siteExteriorPlan = useMemo(
-    () => buildSiteExteriorPlan(rooms, lotWidth, lotDepth, sitePlacement),
+    () => buildSiteExteriorPlan(rooms, lotWidth, lotDepth, safeSitePlacement),
     [rooms, lotWidth, lotDepth, sitePlacement],
   );
 
@@ -872,7 +873,7 @@ export default function ConceptFacadeEditor({
             lotWidth={lotWidth}
             levels={levels}
             rooms={rooms}
-            sitePlacement={sitePlacement}
+            sitePlacement={safeSitePlacement}
             facade={facade}
             design={design}
             selectedVolumeId={selectedVolumeId}

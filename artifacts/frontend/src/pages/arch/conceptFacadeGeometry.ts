@@ -1,6 +1,6 @@
 import type { ConceptModelLevel } from "./ConceptModel3D";
 import type { ConceptRoomShape } from "./conceptGeometry";
-import type { SitePlacement } from "./conceptSitePlacement";
+import { normalizeSitePlacement, type SitePlacement } from "./conceptSitePlacement";
 
 export type DerivedFacadeOpening = {
   id: string;
@@ -55,14 +55,15 @@ export function buildDerivedFacadeModel(
   rooms: ConceptRoomShape[],
   placement: SitePlacement,
 ): DerivedFacadeModel {
+  const safePlacement = normalizeSitePlacement(placement);
   const currentRooms = buildingRooms(rooms);
   const bounds = facadeBounds(rooms, levels);
-  const horizontalFront = placement.frontSide === "top" || placement.frontSide === "bottom";
-  const front = placement.frontSide === "top"
+  const horizontalFront = safePlacement.frontSide === "top" || safePlacement.frontSide === "bottom";
+  const front = safePlacement.frontSide === "top"
     ? bounds.minY
-    : placement.frontSide === "bottom"
+    : safePlacement.frontSide === "bottom"
       ? bounds.maxY
-      : placement.frontSide === "left"
+      : safePlacement.frontSide === "left"
         ? bounds.minX
         : bounds.maxX;
 
@@ -105,7 +106,7 @@ export function buildDerivedFacadeModel(
   );
 
   return {
-    frontSide: placement.frontSide,
+    frontSide: safePlacement.frontSide,
     minAxis,
     maxAxis,
     width,

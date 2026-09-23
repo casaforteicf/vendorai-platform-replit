@@ -1,5 +1,5 @@
 import type { FacadeDesignState, FacadeVolume } from "./conceptFacadeDesign";
-import type { SitePlacement } from "./conceptSitePlacement";
+import { normalizeSitePlacement, type SitePlacement } from "./conceptSitePlacement";
 
 type RoomLike = {
   kind: string;
@@ -21,12 +21,13 @@ export type SiteExteriorPlan = {
 };
 
 function projectedPercent(room: RoomLike, lotWidth: number, lotDepth: number, placement: SitePlacement) {
+  const safePlacement = normalizeSitePlacement(placement);
   const cx = room.x + room.width / 2;
   const cy = room.y + room.depth / 2;
 
-  if (placement.frontSide === "left") return Math.max(0, Math.min(100, ((lotDepth - cy) / Math.max(1, lotDepth)) * 100));
-  if (placement.frontSide === "right") return Math.max(0, Math.min(100, (cy / Math.max(1, lotDepth)) * 100));
-  if (placement.frontSide === "top") return Math.max(0, Math.min(100, ((lotWidth - cx) / Math.max(1, lotWidth)) * 100));
+  if (safePlacement.frontSide === "left") return Math.max(0, Math.min(100, ((lotDepth - cy) / Math.max(1, lotDepth)) * 100));
+  if (safePlacement.frontSide === "right") return Math.max(0, Math.min(100, (cy / Math.max(1, lotDepth)) * 100));
+  if (safePlacement.frontSide === "top") return Math.max(0, Math.min(100, ((lotWidth - cx) / Math.max(1, lotWidth)) * 100));
   return Math.max(0, Math.min(100, (cx / Math.max(1, lotWidth)) * 100));
 }
 
@@ -36,19 +37,20 @@ export function buildSiteExteriorPlan(
   lotDepth: number,
   placement: SitePlacement,
 ): SiteExteriorPlan {
+  const safePlacement = normalizeSitePlacement(placement);
   const garage = rooms.find((room) => room.kind === "garagem");
   const pool = rooms.find((room) => room.kind === "piscina");
   const gourmet = rooms.find((room) => room.kind === "gourmet");
-  const garagePercent = garage ? projectedPercent(garage, lotWidth, lotDepth, placement) : null;
+  const garagePercent = garage ? projectedPercent(garage, lotWidth, lotDepth, safePlacement) : null;
   const garageSide = garagePercent == null ? null : garagePercent < 40 ? "left" : garagePercent > 60 ? "right" : "center";
 
   return {
     frontLabel:
-      placement.frontSide === "bottom" ? "frente inferior"
-        : placement.frontSide === "top" ? "frente superior"
-        : placement.frontSide === "left" ? "frente lateral esquerda"
+      safePlacement.frontSide === "bottom" ? "frente inferior"
+        : safePlacement.frontSide === "top" ? "frente superior"
+        : safePlacement.frontSide === "left" ? "frente lateral esquerda"
         : "frente lateral direita",
-    frontageLength: placement.frontSide === "left" || placement.frontSide === "right" ? lotDepth : lotWidth,
+    frontageLength: safePlacement.frontSide === "left" || safePlacement.frontSide === "right" ? lotDepth : lotWidth,
     garagePercent,
     garageSide,
     hasPool: Boolean(pool),
