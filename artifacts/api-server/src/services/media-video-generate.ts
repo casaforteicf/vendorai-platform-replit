@@ -43,6 +43,8 @@ const execFileAsync = promisify(execFile);
 const PRIVATE_DIR = process.env["PRIVATE_OBJECT_DIR"] ?? "";
 const DEFAULT_POLL_MS = 5_000;
 const LEASE_MINUTES = 30;
+const STALE_RUNNING_MINUTES = 5;
+const IMAGE_GENERATION_TIMEOUT_MS = 180_000;
 const FPS = 30;
 const MAX_PROMPT_LENGTH = 4_000;
 const MAX_STYLE_LENGTH = 300;
@@ -114,6 +116,21 @@ function outputDimensions(aspectRatio: VideoAspectRatio): { width: number; heigh
     : { width: 720, height: 1280 };
 }
 
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} excedeu ${Math.round(ms / 1000)}s`)), ms);
+        timer.unref?.();
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 function isModelAvailabilityError(error: unknown): boolean {
   const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
   return message.includes("model") && (
@@ -172,24 +189,24 @@ async function generateFirstScene(input: {
   const openai = await getOpenAIForTenant(input.tenantId);
   const preferredModel = process.env["VENDORAI_IMAGE_MODEL"]?.trim() || "gpt-image-2";
   try {
-    const result = await openai.images.generate({
+    const result = await withTimeout(openai.images.generate({
       model: preferredModel,
       prompt: input.prompt,
       n: 1,
       size: input.size,
       quality: "medium",
-    });
+    }), IMAGE_GENERATION_TIMEOUT_MS, "Geração da primeira cena");
     return { buffer: extractImageBuffer(result), model: preferredModel, continuity: "generated" };
   } catch (error) {
     if (preferredModel === "gpt-image-1" || !isModelAvailabilityError(error)) throw error;
     const fallbackModel = "gpt-image-1";
-    const result = await openai.images.generate({
+    const result = await withTimeout(openai.images.generate({
       model: fallbackModel,
       prompt: input.prompt,
       n: 1,
       size: input.size,
       quality: "medium",
-    });
+    }), IMAGE_GENERATION_TIMEOUT_MS, "Geração da primeira cena (fallback)");
     return { buffer: extractImageBuffer(result), model: fallbackModel, continuity: "generated" };
   }
 }
@@ -207,23 +224,23 @@ async function generateNextScene(input: {
     const mimeType = input.previousMimeType?.startsWith("image/") ? input.previousMimeType : "image/png";
     const extension = mimeType.includes("jpeg") ? "jpg" : mimeType.includes("webp") ? "webp" : "png";
     const previousFile = await toFile(input.previous, `previous-scene.${extension}`, { type: mimeType });
-    const result = await openai.images.edit({
+    const result = await withTimeout(openai.images.edit({
       model: input.model,
       image: previousFile,
       prompt: input.prompt,
       n: 1,
       size: input.size,
       quality: "medium",
-    });
+    }), IMAGE_GENERATION_TIMEOUT_MS, "Geração da cena por continuidade");
     return { buffer: extractImageBuffer(result), model: input.model, continuity: "edited" };
   } catch {
-    const result = await openai.images.generate({
+    const result = await withTimeout(openai.images.generate({
       model: input.model,
       prompt: input.prompt,
       n: 1,
       size: input.size,
       quality: "medium",
-    });
+    }), IMAGE_GENERATION_TIMEOUT_MS, "Regeneração da cena");
     return { buffer: extractImageBuffer(result), model: input.model, continuity: "regenerated" };
   }
 }
@@ -476,6 +493,7 @@ async function claimNextVideo(runnerToken: string): Promise<ClaimedVideo | null>
            OR output->>'runnerToken' IS NULL
            OR output->>'leaseUntil' IS NULL
            OR NULLIF(output->>'leaseUntil', '')::timestamptz < NOW()
+           OR updated_at < NOW() - ($3::text || ' minutes')::interval
          )
        ORDER BY created_at ASC
        FOR UPDATE SKIP LOCKED
@@ -490,7 +508,7 @@ async function claimNextVideo(runnerToken: string): Promise<ClaimedVideo | null>
        FROM candidate
       WHERE j.id = candidate.id
       RETURNING j.id, j.tenant_id, j.project_id, j.input`,
-    [runnerToken, LEASE_MINUTES],
+    [runnerToken, LEASE_MINUTES, STALE_RUNNING_MINUTES],
   );
   const row = result.rows[0] as Record<string, unknown> | undefined;
   if (!row) return null;
@@ -927,7 +945,10 @@ export function startMediaVideoGenerateRunner(
     busy = true;
     try {
       const video = await claimNextVideo(runnerToken);
-      if (video) await processClaimedVideo(video, runnerToken, logger);
+      if (video) {
+        logger.info({ jobId: video.id, tenantId: video.tenantId, projectId: video.projectId }, "media-video-generate: job reivindicado");
+        await processClaimedVideo(video, runnerToken, logger);
+      }
     } catch (error) {
       logger.error({ err: error }, "media-video-generate: runner falhou");
     } finally {
