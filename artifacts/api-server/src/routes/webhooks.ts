@@ -207,7 +207,7 @@ async function metaCallAction(input: {
   sdp?: string;
   opaqueData?: string;
 }) {
-  const version = process.env["META_GRAPH_API_VERSION"]?.trim() || "v20.0";
+  const version = process.env["META_GRAPH_API_VERSION"]?.trim() || "v26.0";
   const payload: Record<string, unknown> = {
     messaging_product: "whatsapp",
     call_id: input.callId,
