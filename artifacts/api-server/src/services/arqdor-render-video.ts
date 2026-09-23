@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { pool } from "@workspace/db";
 import { ObjectStorageService } from "../lib/objectStorage.js";
-import { bufferToDataUrl, callReplicateVeo31 } from "../lib/arch-render-pipeline.js";
+import { bufferToDataUrl } from "../lib/arch-render-pipeline.js";
+import { generateVeoVideo } from "./media-provider-execution.js";
 import {
   ARQDOR_NEGATIVE_PROMPTS,
   buildArqdorRenderToVideoPrompt,
@@ -91,8 +92,8 @@ export async function startArqdorRenderVideo(input: {
     try {
       await pool.query(`UPDATE arch_render_videos SET status='running' WHERE id=$1 AND tenant_id=$2`, [jobId, input.tenantId]);
       const source = await renderImageBuffer(String(render.result_image_url));
-      const generation = await callReplicateVeo31({
-        model: "google/veo-3.1-lite",
+      const generation = await generateVeoVideo({
+        cinema: false,
         prompt: buildArqdorRenderToVideoPrompt(input.movement),
         image: bufferToDataUrl(source.buffer, source.mime),
         aspectRatio: input.aspectRatio,
@@ -113,7 +114,7 @@ export async function startArqdorRenderVideo(input: {
             SET status='done', provider='replicate', model=$1, provider_prediction_id=$2,
                 video_url=$3, completed_at=NOW(), error_message=NULL
           WHERE id=$4 AND tenant_id=$5`,
-        [generation.model, generation.predictionId, videoUrl, jobId, input.tenantId],
+        [`${generation.provider}:${generation.model}`, generation.providerJobId, videoUrl, jobId, input.tenantId],
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
