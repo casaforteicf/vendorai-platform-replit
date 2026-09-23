@@ -40,6 +40,7 @@ function isArqdorEligibleVertical(vertical: string | null | undefined) {
     normalized === "arquitetura & design" ||
     normalized === "obras" ||
     normalized.includes("construtora") ||
+    normalized.includes("construcao") ||
     normalized.includes("gestao de obras") ||
     normalized.includes("marcenaria") ||
     normalized.includes("fabrica de moveis") ||
@@ -192,12 +193,14 @@ router.get("/tenants/:tenantId/nav-modules", async (req, res) => {
   // módulo — um tenant "Padaria" com secundária "Confeitaria / Doceria"
   // deve ganhar os módulos de ambas, não só da primeira.
   const arqdorEligible = isArqdorEligibleVertical(tenant?.vertical) || isArqdorEligibleVertical(tenant?.verticalSecundaria);
+  const obrasEligible = arqdorEligible;
   const varejoEligible = isVarejoEligibleVertical(tenant?.vertical) || isVarejoEligibleVertical(tenant?.verticalSecundaria);
   const supermercadoEligible = isSupermercadoEligibleVertical(tenant?.vertical) || isSupermercadoEligibleVertical(tenant?.verticalSecundaria);
   const salaoEligible = isSalaoEligibleVertical(tenant?.vertical) || isSalaoEligibleVertical(tenant?.verticalSecundaria);
   const clinicaEligible = isClinicaEligibleVertical(tenant?.vertical) || isClinicaEligibleVertical(tenant?.verticalSecundaria);
   const VERTICAL_GATED_ELIGIBILITY: Partial<Record<NavModuleKey, boolean>> = {
     arch: arqdorEligible,
+    obras: obrasEligible,
     varejo: varejoEligible,
     supermercado: supermercadoEligible,
     beauty: salaoEligible,
