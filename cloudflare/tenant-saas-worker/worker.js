@@ -1,4 +1,4 @@
-const RAILWAY_ORIGIN = "https://vendorai-platform-replit-production.up.railway.app";
+const RAILWAY_ORIGIN = "https://workspaceapi-server-production-350d.up.railway.app";
 
 function upstreamRequest(request, env) {
   const incoming = new URL(request.url);

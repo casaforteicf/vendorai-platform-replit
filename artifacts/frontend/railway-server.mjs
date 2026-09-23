@@ -6,7 +6,7 @@ import { Readable } from "node:stream";
 const port = Number(process.env.PORT || 3000);
 const host = "0.0.0.0";
 const publicDir = resolve(process.cwd(), "artifacts/frontend/dist/public");
-const apiOrigin = process.env.API_ORIGIN || "https://vendorai-platform-replit-production.up.railway.app";
+const apiOrigin = process.env.API_ORIGIN || "https://workspaceapi-server-production-350d.up.railway.app";
 const obrasGovOrigin = "https://api-publica.obrasgov.gestao.gov.br";
 
 if (!Number.isFinite(port) || port <= 0) {
