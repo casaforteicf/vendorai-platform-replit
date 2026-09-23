@@ -212,7 +212,7 @@ async function syncAcceptedProposalToWorkBaseline(
     (item) => Boolean(item.etapaId || item.etapaNome || item.etapaOrdem),
   ) || Object.keys(presentation.cronogramaEtapas ?? {}).length > 0;
 
-  let [archProject] = await db
+  const [archProject] = await db
     .select({
       id: archProjetosTable.id,
       obraId: archProjetosTable.obraId,
@@ -515,12 +515,12 @@ async function syncAcceptedProposalToWorkBaseline(
         propostaId: proposta.id,
         numero: proposta.numero,
         titulo: proposta.titulo,
-        acceptedAt: proposta.acceptedAt?.toISOString?.() ?? null,
+        acceptedAt: proposta.acceptedAt ? proposta.acceptedAt.toISOString() : null,
         valorTotal: proposta.valorTotal,
         formaPagamento: proposta.formaPagamento,
         condPagamento: proposta.condPagamento,
         prazoEntrega: proposta.prazoEntrega,
-        validadeAte: proposta.validadeAte?.toISOString?.() ?? null,
+        validadeAte: proposta.validadeAte ? proposta.validadeAte.toISOString() : null,
         paymentCompositions: proposta.paymentCompositions ?? [],
         apresentacao: proposta.apresentacao,
         itens: proposta.itens ?? [],
