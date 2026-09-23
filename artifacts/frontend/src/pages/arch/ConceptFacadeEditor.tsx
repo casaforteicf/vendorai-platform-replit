@@ -267,7 +267,7 @@ export default function ConceptFacadeEditor({
   const [aiBusy, setAiBusy] = useState(false);
   const [aiResult, setAiResult] = useState<AIDevelopmentResponse | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
-  const siteSyncInitializedRef = useRef(false);
+  const dismissedSiteVolumeIdsRef = useRef<Set<string>>(new Set());
 
   const resolvedConceptProjectId = useMemo(() => {
     if (conceptProjectId) return conceptProjectId;
@@ -295,10 +295,8 @@ export default function ConceptFacadeEditor({
   ];
 
   useEffect(() => {
-    if (siteSyncInitializedRef.current) return;
-    siteSyncInitializedRef.current = true;
     const alreadySynced = design.volumes.some((volume) => volume.label.startsWith("Implantação ·"));
-    if (!alreadySynced) {
+    if (!alreadySynced && dismissedSiteVolumeIdsRef.current.size === 0) {
       onDesignChange(applySiteExteriorToFacade(design, siteExteriorPlan));
     }
   }, [design, onDesignChange, siteExteriorPlan]);
@@ -341,6 +339,9 @@ export default function ConceptFacadeEditor({
 
   const deleteSelected = () => {
     if (!selectedVolume) return;
+    if (selectedVolume.label.startsWith("Implantação ·")) {
+      dismissedSiteVolumeIdsRef.current.add(selectedVolume.id);
+    }
     onDesignChange({
       ...design,
       volumes: (Array.isArray(design.volumes) ? design.volumes : []).filter((volume) => volume.id !== selectedVolume.id),
@@ -695,7 +696,10 @@ export default function ConceptFacadeEditor({
 
                 <button
                   type="button"
-                  onClick={() => onDesignChange(applySiteExteriorToFacade(design, siteExteriorPlan))}
+                  onClick={() => {
+                    dismissedSiteVolumeIdsRef.current.clear();
+                    onDesignChange(applySiteExteriorToFacade(design, siteExteriorPlan));
+                  }}
                   className="mt-3 w-full rounded-xl bg-slate-950 px-3 py-2.5 text-[11px] font-bold text-white"
                 >
                   {siteSynced ? "Reaplicar implantação" : "Aplicar implantação ao exterior"}
