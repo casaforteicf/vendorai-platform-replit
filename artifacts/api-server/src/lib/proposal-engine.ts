@@ -431,6 +431,7 @@ type ProposalPresentationConfig = {
   mostrarTotalGeral?: boolean;
   previsaoInicio?: string;
   cronogramaEtapas?: Record<string, ProposalStageSchedule>;
+  imagensEtapas?: Record<string, string>;
   mostrarCronogramaExecucao?: boolean;
   mostrarFisicoFinanceiro?: boolean;
 };
@@ -455,6 +456,7 @@ function normalizeProposalPresentation(
     mostrarTotalGeral: value?.mostrarTotalGeral ?? true,
     previsaoInicio: value?.previsaoInicio ?? "",
     cronogramaEtapas: value?.cronogramaEtapas ?? {},
+    imagensEtapas: value?.imagensEtapas ?? {},
     mostrarCronogramaExecucao: value?.mostrarCronogramaExecucao ?? true,
     mostrarFisicoFinanceiro: value?.mostrarFisicoFinanceiro ?? true,
   };
@@ -767,7 +769,22 @@ function renderProposalScopeTable<T extends PresentableProposalItem>(items: T[])
       </thead>
       <tbody>${rows}</tbody>
     </table>
-  </div>`;
+  </div>
+
+function renderProposalStageImage(
+  presentation: Required<ProposalPresentationConfig>,
+  stageId: string,
+  stageName: string,
+): string {
+  const url = presentation.imagensEtapas[stageId];
+  if (!url) return "";
+  return `
+    <figure class="proposal-stage-visual">
+      <img src="${escapeProposalText(url)}" alt="Imagem representativa da etapa ${escapeProposalText(stageName)}" loading="lazy" onerror="this.parentElement.style.display='none'" />
+      <figcaption>Imagem ilustrativa gerada por IA · ${escapeProposalText(stageName)}</figcaption>
+    </figure>`;
+}
+`;
 }
 
 export function renderProposalHtml(json: unknown, theme: {
@@ -1063,6 +1080,9 @@ export function renderProposalHtml(json: unknown, theme: {
   .orc-stage-title, .orc-stage-summary { display: flex; align-items: center; justify-content: space-between; gap: 5mm; padding: 2.8mm 3mm; background: ${theme.cream2}; border: 1px solid ${theme.concreteLine}; border-radius: 6px; color: ${theme.navyDeep}; font-size: 8.5pt; }
   .orc-stage-block .orc-table { margin-top: 1.5mm; margin-bottom: 0; }
   .orc-stage-summary { margin: 3.5mm 0; font-size: 9pt; }
+  .proposal-stage-visual { margin: 2mm 0 3mm; break-inside: avoid; }
+  .proposal-stage-visual img { width: 100%; height: 38mm; object-fit: cover; display: block; border-radius: 7px; border: 1px solid ${theme.concreteLine}; }
+  .proposal-stage-visual figcaption { margin-top: 1mm; font-family: "JetBrains Mono", monospace; font-size: 5.5pt; color: ${theme.navyMid}; opacity: .65; }
   .orc-total-row { display: flex; justify-content: flex-end; margin-top: 3mm; }
   .orc-total-box { border: 1px solid ${theme.accentSoft}; border-radius: 7px; padding: 3mm 5mm; text-align: right; background: ${theme.cream2}; }
   .orc-total-label { font-family: "JetBrains Mono", monospace; font-size: 6.5pt; text-transform: uppercase; letter-spacing: .07em; color: #8b84a8; display: block; margin-bottom: 1mm; }
@@ -1369,12 +1389,15 @@ ${orcamento ? (() => {
       ? `<div class="orc-stage-title"><span><strong>Etapa ${group.ordem}</strong> · ${group.nome}</span><strong>${fmtBRL(etapaTotal)}</strong></div>`
       : "";
     const scopeTable = renderProposalScopeTable(group.itens);
+    const stageVisual = group.hasStageHeader
+      ? renderProposalStageImage(presentation, group.id, group.nome)
+      : "";
 
     if (mode === "resumo_etapa") {
       const summary = group.hasStageHeader
         ? `<div class="orc-stage-summary"><span><strong>Etapa ${group.ordem}</strong> · ${group.nome}</span><strong>${fmtBRL(etapaTotal)}</strong></div>`
         : `<div class="orc-stage-summary"><span>Valor do orçamento</span><strong>${fmtBRL(etapaTotal)}</strong></div>`;
-      return `${summary}${scopeTable}`;
+      return `${summary}${stageVisual}${scopeTable}`;
     }
 
     if (mode === "preco_medio") {
@@ -1383,6 +1406,7 @@ ${orcamento ? (() => {
         <td class="r">${fmtBRL(i.valorUnitario)}</td>
       </tr>`).join("");
       return `<div class="orc-stage-block">${stageTitle}
+        ${stageVisual}
         <table class="orc-table orc-table-compact">
           <thead><tr><th>Item</th><th class="r">Valor por item</th></tr></thead>
           <tbody>${rows}</tbody>
@@ -1401,6 +1425,7 @@ ${orcamento ? (() => {
       </tr>`;
     }).join("");
     return `<div class="orc-stage-block">${stageTitle}
+      ${stageVisual}
       <table class="orc-table">
         <thead><tr><th>Item</th><th class="r">Qtd.</th><th class="r">Valor Unit.</th><th class="r">Subtotal</th></tr></thead>
         <tbody>${rows}</tbody>
@@ -1618,12 +1643,15 @@ export function renderOrcamentoPdf(args: {
       ? `<div class="stage-title"><span><strong>Etapa ${group.ordem}</strong> · ${group.nome}</span><strong>${fmtBRL(etapaTotal)}</strong></div>`
       : "";
     const scopeTable = renderProposalScopeTable(group.itens);
+    const stageVisual = group.hasStageHeader
+      ? renderProposalStageImage(presentation, group.id, group.nome)
+      : "";
 
     if (mode === "resumo_etapa") {
       const summary = group.hasStageHeader
         ? `<div class="stage-summary"><span><strong>Etapa ${group.ordem}</strong> · ${group.nome}</span><strong>${fmtBRL(etapaTotal)}</strong></div>`
         : `<div class="stage-summary"><span>Valor do orçamento</span><strong>${fmtBRL(etapaTotal)}</strong></div>`;
-      return `${summary}${scopeTable}`;
+      return `${summary}${stageVisual}${scopeTable}`;
     }
 
     if (mode === "preco_medio") {
@@ -1632,6 +1660,7 @@ export function renderOrcamentoPdf(args: {
         <td class="r fw">${fmtBRL(i.valorUnitario)}</td>
       </tr>`).join("");
       return `<div class="stage-block">${stageTitle}
+        ${stageVisual}
         <table class="items compact">
           <thead><tr><th>Descrição</th><th class="r">Valor por item</th></tr></thead>
           <tbody>${rows}</tbody>
@@ -1650,6 +1679,7 @@ export function renderOrcamentoPdf(args: {
       </tr>`;
     }).join("");
     return `<div class="stage-block">${stageTitle}
+      ${stageVisual}
       <table class="items">
         <thead><tr><th>Descrição</th><th class="r">Qtd.</th><th class="r">Valor Unit.</th><th class="r">Subtotal</th></tr></thead>
         <tbody>${rows}</tbody>
@@ -1852,6 +1882,9 @@ export function renderOrcamentoPdf(args: {
   .stage-title, .stage-summary { display: flex; align-items: center; justify-content: space-between; gap: 5mm; padding: 3mm 3.5mm; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; color: #334155; font-size: 8.5pt; }
   .stage-block table.items { margin-top: 1.5mm; }
   .stage-summary { margin: 3mm 0 1.5mm; font-size: 9pt; }
+  .proposal-stage-visual { margin: 2mm 0 3mm; break-inside: avoid; }
+  .proposal-stage-visual img { width: 100%; height: 42mm; object-fit: cover; display: block; border-radius: 7px; border: 1px solid #e2e8f0; }
+  .proposal-stage-visual figcaption { margin-top: 1mm; font-family: "JetBrains Mono", monospace; font-size: 5.5pt; color: #94a3b8; }
   .scope-block { margin: 1.5mm 0 4mm; break-inside: avoid; }
   .scope-heading {
     display: flex;
