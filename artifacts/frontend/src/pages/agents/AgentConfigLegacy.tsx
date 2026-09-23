@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
+import { isAgentAllowedForVertical } from "@/lib/verticalAgentPolicy";
 import { useToast } from "@/hooks/use-toast";
 import {
   Card,
@@ -163,11 +164,6 @@ const FLOW_ORDER = [
   "suporte",
   "farmacia",
 ];
-
-function isPharmacyVertical(vertical?: string | null) {
-  return vertical?.trim().toLocaleLowerCase("pt-BR") === "farmácia" ||
-    vertical?.trim().toLocaleLowerCase("pt-BR") === "farmacia";
-}
 
 function normalizeText(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -847,7 +843,7 @@ export default function AgentConfig() {
   });
   const effectiveVertical = tenantOverride?.vertical ?? user?.tenantVertical;
   const visibleAgents = (agents ?? []).filter((agent) =>
-    agent.agentKey !== "farmacia" || isPharmacyVertical(effectiveVertical)
+    isAgentAllowedForVertical(agent.agentKey, effectiveVertical)
   );
 
   const categories = useMemo(() => {

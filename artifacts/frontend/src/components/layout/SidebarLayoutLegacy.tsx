@@ -33,17 +33,39 @@ function GroupedNavSection({
   active: boolean;
   children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(active);
+  const storageKey = `vendorai_nav_group_${label
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")}`;
+
+  // O estado do grupo precisa sobreviver à troca de rota. A sidebar pode
+  // remontar quando o usuário abre uma tela e, sem persistência, um grupo
+  // que estava aberto voltava ao estado inicial e "fechava" após o clique.
+  const [open, setOpen] = useState<boolean>(() => {
+    if (typeof window === "undefined") return active;
+    return active || window.localStorage.getItem(storageKey) === "true";
+  });
 
   React.useEffect(() => {
-    if (active) setOpen(true);
-  }, [active]);
+    if (!active) return;
+    setOpen(true);
+    window.localStorage.setItem(storageKey, "true");
+  }, [active, storageKey]);
+
+  const toggleOpen = () => {
+    setOpen((value) => {
+      const next = !value;
+      window.localStorage.setItem(storageKey, String(next));
+      return next;
+    });
+  };
 
   return (
     <div>
       <button
         type="button"
-        onClick={() => setOpen((value) => !value)}
+        onClick={toggleOpen}
         className={cn(
           "w-full flex min-h-[44px] items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition-all",
           active
@@ -63,7 +85,7 @@ function GroupedNavSection({
   );
 }
 
-export function SidebarLayout({ children }: { children: React.ReactNode }) {
+export function SidebarLayout({ children, arqdorVisible = false }: { children: React.ReactNode; arqdorVisible?: boolean }) {
   const { user, logout, tenantOverride, clearTenantOverride, token, isEffectiveAdmin } = useAuth();
   const [location] = useLocation();
   // Menu lateral desktop -- botão manual (não mais hover) que alterna entre
@@ -386,13 +408,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
 
   const effectiveBucket = findVerticalBucket(effectiveVertical);
   const effectiveSecondaryBucket = findVerticalBucket(effectiveVerticalSecundaria);
-  const isConstrucao = effectiveBucket === "construcao" || effectiveSecondaryBucket === "construcao";
-  const isVarejo = effectiveBucket === "varejo" || effectiveSecondaryBucket === "varejo";
-  const isSupermercado = effectiveBucket === "supermercado" || effectiveSecondaryBucket === "supermercado";
-  const isSalao = effectiveBucket === "salao" || effectiveSecondaryBucket === "salao" || effectiveVertical === "Pet Shop (Varejo)";
   const isPetShop = effectiveVertical === "Pet Shop (Varejo)";
-  const isClinica = effectiveBucket === "clinica" || effectiveSecondaryBucket === "clinica";
-  const isFarmacia = effectiveBucket === "farmacia" || effectiveSecondaryBucket === "farmacia";
 
   const allNavItems = [
     { name: "Dashboard",     href: "/",             icon: LayoutDashboard, sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "suporte", "entrega", "administrador", "outro"] as UserFunction[] },
@@ -458,6 +474,9 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Minhas Entregas", href: "/fretes/motorista",       icon: Navigation,  sellerHidden: false, section: "fretes",   fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
     { name: "Estoque",       href: "/veiculos/estoque",         icon: Car,         sellerHidden: false, section: "veiculos", fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
     { name: "Test-Drives",   href: "/veiculos/test-drives",     icon: Calendar,    sellerHidden: false, section: "veiculos", fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
+    { name: "Estoque",       href: "/estoque",                  icon: Package,     sellerHidden: false, section: "distribuidora", fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
+    { name: "Pedidos",       href: "/food/pedidos",             icon: UtensilsCrossed, sellerHidden: false, section: "food_service", fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
+    { name: "Cardápio",      href: "/food/cardapio",            icon: BookOpen,    sellerHidden: false, section: "food_service", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Clínica",       href: "/clinic",                   icon: Stethoscope, sellerHidden: false, section: "clinica",      fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Agenda",        href: "/clinic/agenda",            icon: Calendar,    sellerHidden: false, section: "clinica",      fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
     { name: "Médicos",       href: "/clinic/medicos",           icon: User2,       sellerHidden: false, section: "clinica",      fn: ["administrador", "outro"] as UserFunction[] },
@@ -519,19 +538,57 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   };
   const scoutVerticalLabel = effectiveBucket ? BUCKET_SCOUT_LABEL[effectiveBucket] : undefined;
 
+  // Política única de experiência por vertical:
+  // - "crm", inteligência e administração são capacidades compartilhadas;
+  // - cada seção operacional pertence explicitamente a um bucket;
+  // - uma vertical nunca herda a operação de outra vertical por acidente;
+  // - Arqdor é tratado fora desta lista e só aparece quando arqdorVisible=true.
+  const VERTICAL_OPERATION_SECTIONS: Record<Exclude<VerticalBucket, "core" | "arquitetura" | "seguros">, string[]> = {
+    construcao: ["construcao"],
+    varejo: ["varejo"],
+    supermercado: ["supermercado"],
+    salao: ["salao"],
+    clinica: ["clinica"],
+    farmacia: ["farmacia"],
+    imoveis: ["imoveis"],
+    fretes: ["fretes"],
+    veiculos: ["veiculos"],
+    servicos: ["servicos"],
+    distribuidora: ["distribuidora"],
+    food_service: ["food_service"],
+  };
+  const activeBuckets = new Set<VerticalBucket>(
+    [
+      effectiveBucket,
+      effectiveSecondaryBucket,
+      ...(effectiveVertical === "Pet Shop (Varejo)" ? (["salao"] as VerticalBucket[]) : []),
+    ].filter((bucket): bucket is VerticalBucket => Boolean(bucket))
+  );
+  const sectionBuckets = new Map<string, VerticalBucket[]>();
+  Object.entries(VERTICAL_OPERATION_SECTIONS).forEach(([bucket, sections]) => {
+    sections.forEach((section) => {
+      const list = sectionBuckets.get(section) ?? [];
+      list.push(bucket as VerticalBucket);
+      sectionBuckets.set(section, list);
+    });
+  });
+
   function isVisible(item: typeof allNavItems[0]) {
     if (isStartPlan && !START_PLAN_HREFS.has(item.href)) return false;
     if (activeVerticalAllowlist && !activeVerticalAllowlist.has(item.href)) return false;
     if (disabledHrefs.has(item.href)) return false;
     if (isSeller && item.sellerHidden) return false;
-    const knownSections = ["crm", "construcao", "varejo", "supermercado", "arch", "salao", "clinica", "farmacia", "inteligencia", "hub"];
+    const knownSections = [
+      "crm", "construcao", "varejo", "supermercado", "salao", "clinica", "farmacia",
+      "imoveis", "fretes", "veiculos", "servicos", "distribuidora", "food_service",
+      "inteligencia", "hub", "arch",
+    ];
     if (!knownSections.includes(item.section)) return false;
-    if (item.section === "construcao" && !isConstrucao) return false;
-    if (item.section === "varejo" && !isVarejo) return false;
-    if (item.section === "supermercado" && !isSupermercado) return false;
-    if (item.section === "salao" && !isSalao) return false;
-    if (item.section === "clinica" && !isClinica) return false;
-    if (item.section === "farmacia" && !isFarmacia) return false;
+    // /arch/* nunca é montado como seção genérica: o Arqdor entra uma única
+    // vez, pelo shell principal, somente nas verticais elegíveis.
+    if (item.section === "arch") return false;
+    const allowedBuckets = sectionBuckets.get(item.section);
+    if (allowedBuckets && !allowedBuckets.some((bucket) => activeBuckets.has(bucket))) return false;
     const isAdmin = isSuperAdmin || isTenantAdmin;
     if (isAdmin) return true;
     return userFunction ? item.fn.includes(userFunction) : true;
@@ -563,13 +620,8 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     : [];
 
   const crmNav = navigation.filter((i) => i.section === "crm");
-  const construcaoNav = navigation.filter((i) => i.section === "construcao");
-  const varejoNav = navigation.filter((i) => i.section === "varejo");
-  const supermercadoNav = navigation.filter((i) => i.section === "supermercado");
-  const archNav = navigation.filter((i) => i.section === "arch");
-  const salaoNav       = navigation.filter((i) => i.section === "salao");
-  const clinicaNav     = navigation.filter((i) => i.section === "clinica");
-  const farmaciaNav    = navigation.filter((i) => i.section === "farmacia");
+  const verticalOperationSectionNames = new Set(Object.values(VERTICAL_OPERATION_SECTIONS).flat());
+  const verticalNav = navigation.filter((i) => verticalOperationSectionNames.has(i.section));
   const inteligenciaNav= navigation.filter((i) => i.section === "inteligencia");
   const hubNav         = navigation.filter((i) => i.section === "hub");
 
@@ -627,6 +679,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     return (
       <Link
         href={item.href}
+        data-arqdor-tool-entry={item.arqdorToolEntry ? "true" : undefined}
         onClick={() => {
           if (item.href === "/faq") sessionStorage.setItem("vendorai_help_from", location);
           onNavigate?.();
@@ -656,31 +709,56 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
 
 
   function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
-    const [relatoriosOpen, setRelatoriosOpen] = useState(
-      location === "/relatorios" || location.startsWith("/relatorios/") || location === "/analytics"
-    );
-    const isRelatorio =
-      location === "/relatorios" ||
-      location.startsWith("/relatorios/") ||
-      location === "/analytics";
+    const relatoriosStorageKey = "vendorai_nav_group_relatorios";
+    const relatoriosActive =
+      location === "/relatorios" || location.startsWith("/relatorios/") || location === "/analytics";
+    const [relatoriosOpen, setRelatoriosOpen] = useState<boolean>(() => {
+      if (typeof window === "undefined") return relatoriosActive;
+      return relatoriosActive || window.localStorage.getItem(relatoriosStorageKey) === "true";
+    });
+    const isRelatorio = relatoriosActive;
     const isConteudo =
       location.startsWith("/content") ||
       location === "/ads" ||
       location === "/marketing/plano-de-midia" ||
       location === "/marketing/instagram" ||
       location === "/marketing/facebook-marketplace";
-    const [conteudoOpen, setConteudoOpen] = useState(isConteudo);
+    const marketingStorageKey = "vendorai_nav_group_marketing";
+    const [conteudoOpen, setConteudoOpen] = useState<boolean>(() => {
+      if (typeof window === "undefined") return isConteudo;
+      return isConteudo || window.localStorage.getItem(marketingStorageKey) === "true";
+    });
+
+    React.useEffect(() => {
+      if (isConteudo) {
+        setConteudoOpen(true);
+        window.localStorage.setItem(marketingStorageKey, "true");
+      }
+    }, [isConteudo]);
+
+    React.useEffect(() => {
+      if (relatoriosActive) {
+        setRelatoriosOpen(true);
+        window.localStorage.setItem(relatoriosStorageKey, "true");
+      }
+    }, [relatoriosActive]);
     const isGeradorConteudo = location === "/content";
     const isCampanhas = location.startsWith("/content?tab=campanhas");
 
+    const homeHrefs = new Set(["/", "/trabalho"]);
     const commercialHrefs = new Set(["/propostas", "/catalogo", "/pacotes"]);
-    const operationHrefs = new Set(["/entregas", "/erp", "/organizacao", "/usuarios", "/configuracoes"]);
+    const financeHrefs = new Set(["/erp"]);
+    const administrationHrefs = new Set(["/organizacao", "/usuarios", "/configuracoes"]);
+    const operationHrefs = new Set(["/entregas"]);
     const aiKnowledgeHrefs = new Set(["/agents/config", "/base-conhecimento"]);
     const reportHrefs = new Set(["/analytics"]);
     const pracaHrefs = new Set(["/entregas-praca", "/praca-executivo", "/praca-conciliacao", "/logistica-praca"]);
     const marketingHrefs = new Set(["/marketing/facebook-marketplace"]);
     const groupedCoreHrefs = new Set([
+      ...homeHrefs,
       ...commercialHrefs,
+      ...financeHrefs,
+      ...administrationHrefs,
       ...operationHrefs,
       ...aiKnowledgeHrefs,
       ...reportHrefs,
@@ -688,15 +766,23 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
       ...marketingHrefs,
     ]);
 
+    const homeNav = crmNav.filter((item) => homeHrefs.has(item.href));
     const crmAtendimentoNav = crmNav.filter((item) => !groupedCoreHrefs.has(item.href));
     const commercialNav = crmNav.filter((item) => commercialHrefs.has(item.href));
+    const financeNav = crmNav.filter((item) => financeHrefs.has(item.href));
+    const administrationNav = crmNav.filter((item) => administrationHrefs.has(item.href));
     const operationNav = crmNav.filter((item) => operationHrefs.has(item.href));
     const aiKnowledgeNav = crmNav.filter((item) => aiKnowledgeHrefs.has(item.href));
     const analyticsNav = crmNav.filter((item) => reportHrefs.has(item.href));
     const pracaAiNav = crmNav.filter((item) => pracaHrefs.has(item.href));
-    const pracaAiEnabled = (tenantNavModules ?? []).some(
-      (module) => module.moduleKey === "praca_ai" && module.isEnabled
-    );
+    const verticalOperationNav = [
+      ...operationNav,
+      ...verticalNav.filter((item) => item.href !== "/beauty/agenda" && item.href !== "/clinic/agenda"),
+    ].filter((item, index, items) => items.findIndex((candidate) => candidate.href === item.href) === index);
+
+    // Praça.ai fica oculto para todos os tenants nesta fase. A infraestrutura
+    // e as rotas permanecem preservadas para o Super Admin e reativação futura.
+    const pracaAiEnabled = false;
     const isPracaAi =
       location === "/stories" ||
       location === "/variedades-dia" ||
@@ -708,15 +794,21 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
       items.some((item) => location === item.href || (item.href !== "/" && location.startsWith(item.href)));
     return (
       <>
-        <GroupedNavSection
-          label="CRM & Atendimento"
-          icon={Briefcase}
-          active={groupActive(crmAtendimentoNav)}
-        >
-          {crmAtendimentoNav.map((item) => (
-            <NavItem key={item.href} item={item} onNavigate={onNavigate} />
-          ))}
-        </GroupedNavSection>
+        {homeNav.map((item) => (
+          <NavItem key={item.href} item={item} onNavigate={onNavigate} />
+        ))}
+
+        {crmAtendimentoNav.length > 0 && (
+          <GroupedNavSection
+            label="CRM & Atendimento"
+            icon={Briefcase}
+            active={groupActive(crmAtendimentoNav)}
+          >
+            {crmAtendimentoNav.map((item) => (
+              <NavItem key={item.href} item={item} onNavigate={onNavigate} />
+            ))}
+          </GroupedNavSection>
+        )}
 
         {commercialNav.length > 0 && (
           <GroupedNavSection
@@ -729,6 +821,29 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
             ))}
           </GroupedNavSection>
         )}
+
+        {verticalOperationNav.length > 0 && (
+          <GroupedNavSection
+            label="Operação"
+            icon={ClipboardCheck}
+            active={groupActive(verticalOperationNav)}
+          >
+            {verticalOperationNav.map((item) => (
+              <NavItem key={item.href} item={item} onNavigate={onNavigate} />
+            ))}
+          </GroupedNavSection>
+        )}
+
+        {arqdorVisible && (
+          <NavItem
+            item={{ name: "Arqdor.ai", href: "/arch", icon: DraftingCompass, arqdorToolEntry: true }}
+            onNavigate={onNavigate}
+          />
+        )}
+
+        {financeNav.map((item) => (
+          <NavItem key={item.href} item={item} onNavigate={onNavigate} />
+        ))}
 
         {pracaAiEnabled && (
           <GroupedNavSection label="Praça.ai" icon={Store} active={isPracaAi}>
@@ -791,7 +906,11 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
         {/* Marketing submenu — fonte declarativa oficial */}
         <div>
           <button
-            onClick={() => setConteudoOpen((v) => !v)}
+            onClick={() => setConteudoOpen((v) => {
+              const next = !v;
+              window.localStorage.setItem(marketingStorageKey, String(next));
+              return next;
+            })}
             className={cn(
               "w-full flex min-h-[44px] items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition-all",
               isConteudo
@@ -916,7 +1035,11 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
         {/* Relatórios submenu */}
         <div>
           <button
-            onClick={() => setRelatoriosOpen((v) => !v)}
+            onClick={() => setRelatoriosOpen((v) => {
+              const next = !v;
+              window.localStorage.setItem(relatoriosStorageKey, String(next));
+              return next;
+            })}
             className={cn(
               "w-full flex min-h-[44px] items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition-all",
               isRelatorio
@@ -987,18 +1110,6 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
           )}
         </div>
 
-        {operationNav.length > 0 && (
-          <GroupedNavSection
-            label="Operação & Gestão"
-            icon={WalletCards}
-            active={groupActive(operationNav)}
-          >
-            {operationNav.map((item) => (
-              <NavItem key={item.href} item={item} onNavigate={onNavigate} />
-            ))}
-          </GroupedNavSection>
-        )}
-
         {aiKnowledgeNav.length > 0 && (
           <GroupedNavSection
             label="IA & Conhecimento"
@@ -1011,85 +1122,13 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
           </GroupedNavSection>
         )}
 
-        {construcaoNav.length > 0 && (
+        {administrationNav.length > 0 && (
           <GroupedNavSection
-            label="Construção Civil"
-            icon={HardHat}
-            active={groupActive(construcaoNav)}
+            label="Administração"
+            icon={Settings}
+            active={groupActive(administrationNav)}
           >
-            {construcaoNav.map((item) => (
-              <NavItem key={item.href} item={item} onNavigate={onNavigate} />
-            ))}
-          </GroupedNavSection>
-        )}
-
-        {varejoNav.length > 0 && (
-          <GroupedNavSection
-            label="Varejo"
-            icon={Shirt}
-            active={groupActive(varejoNav)}
-          >
-            {varejoNav.map((item) => (
-              <NavItem key={item.href} item={item} onNavigate={onNavigate} />
-            ))}
-          </GroupedNavSection>
-        )}
-
-        {supermercadoNav.length > 0 && (
-          <GroupedNavSection
-            label="Supermercado"
-            icon={ShoppingCart}
-            active={groupActive(supermercadoNav)}
-          >
-            {supermercadoNav.map((item) => (
-              <NavItem key={item.href} item={item} onNavigate={onNavigate} />
-            ))}
-          </GroupedNavSection>
-        )}
-
-        {archNav.length > 0 && (
-          <GroupedNavSection
-            label="Arqdor.ai"
-            icon={DraftingCompass}
-            active={groupActive(archNav)}
-          >
-            {archNav.map((item) => (
-              <NavItem key={item.href} item={item} onNavigate={onNavigate} />
-            ))}
-          </GroupedNavSection>
-        )}
-
-        {salaoNav.length > 0 && (
-          <GroupedNavSection
-            label={isPetShop ? "Serviços Pet" : "Salão & Serviços"}
-            icon={Scissors}
-            active={groupActive(salaoNav)}
-          >
-            {salaoNav.map((item) => (
-              <NavItem key={item.href} item={item} onNavigate={onNavigate} />
-            ))}
-          </GroupedNavSection>
-        )}
-
-        {clinicaNav.length > 0 && (
-          <GroupedNavSection
-            label="Clínica"
-            icon={Stethoscope}
-            active={groupActive(clinicaNav)}
-          >
-            {clinicaNav.map((item) => (
-              <NavItem key={item.href} item={item} onNavigate={onNavigate} />
-            ))}
-          </GroupedNavSection>
-        )}
-
-        {farmaciaNav.length > 0 && (
-          <GroupedNavSection
-            label="Farmácia"
-            icon={Pill}
-            active={groupActive(farmaciaNav)}
-          >
-            {farmaciaNav.map((item) => (
+            {administrationNav.map((item) => (
               <NavItem key={item.href} item={item} onNavigate={onNavigate} />
             ))}
           </GroupedNavSection>
