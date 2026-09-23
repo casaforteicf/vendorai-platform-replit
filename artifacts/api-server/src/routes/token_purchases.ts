@@ -94,7 +94,7 @@ async function createFixedAiCreditPack(tenantId: string) {
       billingType: "UNDEFINED",
       value: AI_CREDIT_PACK_PRICE_BRL,
       dueDate: dueDateStr,
-      description: `VendorAI — +${AI_CREDIT_PACK_CREDITS.toLocaleString("pt-BR")} créditos de IA`,
+      description: `Vendor.ai — +${AI_CREDIT_PACK_CREDITS.toLocaleString("pt-BR")} Tokens`,
       // Reutiliza o fluxo de webhook já idempotente: pagamento confirmado marca
       // a compra como paga e credita o tenant. O trigger do banco espelha esse
       // saldo em ai_credits_usd para o hard-cap financeiro do AI Gateway.
@@ -143,7 +143,7 @@ router.get(
 );
 
 // ── POST /tenants/:tenantId/ai-credit-pack-purchases ─────────────────────────
-// Compra deliberada e administrativa: R$499 = +25.000 créditos VendorAI.
+// Compra deliberada e administrativa no padrão canônico: R$165 = +165.000 Tokens.
 router.post(
   "/tenants/:tenantId/ai-credit-pack-purchases",
   requireSameTenanOrSuperAdmin(),
@@ -280,8 +280,8 @@ router.get(
 
 // ── POST /tenants/:tenantId/generation-pack-purchases ────────────────────────
 // Compatibilidade com o fluxo antigo de conteúdo. O pacote agora é o mesmo
-// produto comercial de R$499 e entrega +25.000 créditos de IA; adicionalmente
-// libera +200 gerações de conteúdo para não manter duas cobranças diferentes.
+// Compatibilidade com o fluxo antigo: a compra agora usa o pacote canônico de Tokens.
+// Novas franquias devem ser controladas pelo ledger/cotas, não por moedas paralelas.
 router.post(
   "/tenants/:tenantId/generation-pack-purchases",
   requireSameTenanOrSuperAdmin(),
