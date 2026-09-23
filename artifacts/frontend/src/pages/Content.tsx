@@ -290,6 +290,8 @@ function FeedCard({
   onUploadClick,
   onApplyBrandFrame,
   applyingFrameIdx,
+  onSetCover,
+  settingCoverIdx,
 }: {
   v: FeedVariation;
   editing?: boolean;
@@ -301,6 +303,8 @@ function FeedCard({
   onUploadClick?: () => void;
   onApplyBrandFrame?: (imgIdx: number) => void;
   applyingFrameIdx?: number | null;
+  onSetCover?: (imgIdx: number) => void;
+  settingCoverIdx?: number | null;
 }) {
   const displayCaption = editing ? editedCaption : v.caption;
   const displayHashtagsStr = editing ? editedHashtags : (v.hashtags ?? []).join(" ");
@@ -319,6 +323,9 @@ function FeedCard({
                 className="w-full h-full object-cover"
                 loading="lazy"
               />
+              {images.length > 1 && idx === 0 && (
+                <Badge className="absolute left-1.5 top-1.5 z-10 h-5 px-1.5 text-[10px]">Capa</Badge>
+              )}
               <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors opacity-0 group-hover:opacity-100">
                 <button
                   onClick={() => onRemoveImage?.(idx)}
@@ -352,6 +359,23 @@ function FeedCard({
                         <Wand2 className="h-3 w-3 mr-1" />
                       )}
                       Moldura
+                    </Button>
+                  )}
+                  {images.length > 1 && idx > 0 && onSetCover && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="text-xs"
+                      disabled={settingCoverIdx === idx}
+                      onClick={() => onSetCover(idx)}
+                      title="Move esta imagem para a primeira posição e usa como capa do carrossel"
+                    >
+                      {settingCoverIdx === idx ? (
+                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                      ) : (
+                        <ImageIcon className="h-3 w-3 mr-1" />
+                      )}
+                      Definir capa
                     </Button>
                   )}
                 </div>
@@ -614,7 +638,7 @@ function ReelCoverPanel({
             <img src={v.coverUrl} alt="Capa do Reel" className="h-full w-full object-cover" />
           ) : v.videoUrl ? (
             <video
-              src={v.videoUrl}
+              src={`${v.videoUrl}#t=${Math.max(0, frameSeconds)}`}
               muted
               playsInline
               preload="metadata"
@@ -1243,6 +1267,33 @@ function VariationCard({
     }
   }
 
+  const [settingFeedCoverIdx, setSettingFeedCoverIdx] = useState<number | null>(null);
+
+  async function handleSetFeedCover(imgIdx: number) {
+    if (!contentId || !tenantId) return;
+    setSettingFeedCoverIdx(imgIdx);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/content/${contentId}/variations/${index}/feed-cover`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`,
+        },
+        body: JSON.stringify({ imageIndex: imgIdx }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { imageUrls?: string[]; error?: string };
+      if (!res.ok || !data.imageUrls?.length) throw new Error(data.error ?? "Não foi possível definir a capa.");
+      setLocalImageUrls(data.imageUrls);
+      setLocalImageUrl(data.imageUrls[0]);
+      qc.invalidateQueries({ queryKey: ["content", tenantId] });
+      toast({ title: "Capa do carrossel atualizada", description: "A imagem escolhida agora é a primeira página da publicação." });
+    } catch (error) {
+      toast({ title: "Erro ao definir capa", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+    } finally {
+      setSettingFeedCoverIdx(null);
+    }
+  }
+
   const { toast } = useToast();
 
   const [improvedVariation, setImprovedVariation] = useState<ContentVariation | null>(null);
@@ -1501,6 +1552,8 @@ function VariationCard({
             onUploadClick={contentId && tenantId ? () => uploadTriggerRef.current?.() : undefined}
             onApplyBrandFrame={contentId && tenantId ? handleApplyBrandFrame : undefined}
             applyingFrameIdx={applyingFrameIdx}
+            onSetCover={contentId && tenantId ? handleSetFeedCover : undefined}
+            settingCoverIdx={settingFeedCoverIdx}
           />
         )}
         {type === "stories" && (
