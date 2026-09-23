@@ -21,6 +21,7 @@ import { LayoutIntelligenceCard } from "@/components/LayoutIntelligenceCard";
 import { HighlightCoverGenerator } from "@/components/HighlightCoverGenerator";
 
 type FeedVariation = { caption: string; hashtags: string[]; imageUrl?: string; imageUrls?: string[] };
+type ReelVariationPreview = { title?: string; videoUrl?: string; coverUrl?: string; coverSource?: "upload" | "frame"; thumbOffsetMs?: number };
 type ContentLibraryItem = {
   id: string;
   type: string;
@@ -150,16 +151,29 @@ export default function MarketingInstagram() {
   });
 
   const draftOptions: DraftOption[] = (library?.items ?? [])
-    .filter((item) => item.type === "feed")
+    .filter((item) => item.type === "feed" || item.type === "reels")
     .map((item) => {
+      const fallbackLabel = item.theme || new Date(item.savedAt).toLocaleDateString("pt-BR");
+      if (item.type === "reels") {
+        const v = item.variation as ReelVariationPreview;
+        return {
+          id: item.id,
+          label: `Reel — ${fallbackLabel}`,
+          thumbnailUrl: v.coverUrl,
+          mediaType: "VIDEO" as const,
+        };
+      }
+
       const v = item.variation as FeedVariation;
+      const imageUrls = v.imageUrls?.length ? v.imageUrls : v.imageUrl ? [v.imageUrl] : [];
       return {
         id: item.id,
-        label: `Feed — ${item.theme || new Date(item.savedAt).toLocaleDateString("pt-BR")}`,
-        thumbnailUrl: v.imageUrl ?? v.imageUrls?.[0],
+        label: `${imageUrls.length > 1 ? "Carrossel" : "Feed"} — ${fallbackLabel}`,
+        thumbnailUrl: imageUrls[0],
+        mediaType: imageUrls.length > 1 ? "CAROUSEL_ALBUM" as const : "IMAGE" as const,
       };
     })
-    .filter((d) => d.thumbnailUrl);
+    .filter((d): d is DraftOption => Boolean(d.thumbnailUrl));
 
   const instagramCalendar = calendar.filter(isInstagramItem);
   const today = new Date();
