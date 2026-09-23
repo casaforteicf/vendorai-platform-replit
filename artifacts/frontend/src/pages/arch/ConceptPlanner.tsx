@@ -38,7 +38,7 @@ import { type ConceptFacadePreferences } from "./ConceptVolumetry";
 import ConceptPlan2D, { type ConceptPlanObject } from "./ConceptPlan2D";
 import ConceptTypologyPreview from "./ConceptTypologyPreview";
 import ConceptDerivedFacade from "./ConceptDerivedFacade";
-import ConceptFacadeEditor from "./ConceptFacadeEditor";
+import ConceptFacadeEditor, { type AIDevelopmentResponse } from "./ConceptFacadeEditor";
 import ConceptClientBriefPanel from "./ConceptClientBriefPanel";
 import ConceptSitePlacementPanel from "./ConceptSitePlacementPanel";
 import { DEFAULT_SITE_PLACEMENT, getBuildingBounds, normalizeSitePlacement, type SitePlacement } from "./conceptSitePlacement";
@@ -148,6 +148,13 @@ type EditorSnapshot = {
   objects: ConceptPlanObject[];
   spaceProfiles: SpaceProfile[];
   wallMaterials: Record<string, string>;
+};
+
+type ConceptSaveOverrides = {
+  rooms?: Room[];
+  customWalls?: CustomWall[];
+  customOpenings?: CustomOpening[];
+  facadePreferences?: ConceptFacadePreferences;
 };
 
 type CustomerProfile = {
@@ -1145,17 +1152,39 @@ export default function ConceptPlanner() {
     };
   }, []);
 
-  const saveConcept = async (stepOverride?: number, savedTourPointsOverride?: SavedTourPoint[]) => {
+  const saveConcept = async (
+    stepOverride?: number,
+    savedTourPointsOverride?: SavedTourPoint[],
+    overrides?: ConceptSaveOverrides,
+  ) => {
     setSaveState("saving");
+    const nextRooms = overrides?.rooms ?? rooms;
+    const nextCustomWalls = overrides?.customWalls ?? customWalls;
+    const nextCustomOpenings = overrides?.customOpenings ?? customOpenings;
+    const nextFacadePreferences = overrides?.facadePreferences ?? facadePreferences;
     const payload = {
       title: "Meu pré-projeto",
       currentStep: stepOverride ?? step,
       lot: { width: lotWidth, depth: lotDepth },
-      configuration: { floors, desiredArea, typology, layoutPreferences, wallFirstFloors, showDimensions, customWalls, customOpenings, spaceProfiles, objects, wallMaterials, savedTourPoints: savedTourPointsOverride ?? savedTourPoints, sitePlacement },
-      rooms,
+      configuration: {
+        floors,
+        desiredArea,
+        typology,
+        layoutPreferences,
+        wallFirstFloors,
+        showDimensions,
+        customWalls: nextCustomWalls,
+        customOpenings: nextCustomOpenings,
+        spaceProfiles,
+        objects,
+        wallMaterials,
+        savedTourPoints: savedTourPointsOverride ?? savedTourPoints,
+        sitePlacement,
+      },
+      rooms: nextRooms,
       openingOverrides,
       customerProfile,
-      facadePreferences,
+      facadePreferences: nextFacadePreferences,
       facadeDesign,
       conceptRender,
       selectedVariant: layoutVariant,
@@ -1179,6 +1208,87 @@ export default function ConceptPlanner() {
       setSaveState("error");
       return null;
     }
+  };
+
+  const applyAiDevelopment = async (result: AIDevelopmentResponse) => {
+    const before = snapshotEditor();
+    const roomPatchById = new Map(
+      (result.layoutSuggestion?.roomPatches ?? []).map((patch) => [patch.id, patch]),
+    );
+
+    const nextRooms = safeRooms.map((room) => {
+      const patch = roomPatchById.get(room.id);
+      if (!patch || room.locked) return room;
+      const width = Math.max(0.8, Math.min(lotWidth, Number(patch.width) || room.width));
+      const depth = Math.max(0.8, Math.min(lotDepth, Number(patch.depth) || room.depth));
+      const x = Math.max(0, Math.min(Math.max(0, lotWidth - width), Number(patch.x) || 0));
+      const y = Math.max(0, Math.min(Math.max(0, lotDepth - depth), Number(patch.y) || 0));
+      return {
+        ...room,
+        x: Math.round(x * 100) / 100,
+        y: Math.round(y * 100) / 100,
+        width: Math.round(width * 100) / 100,
+        depth: Math.round(depth * 100) / 100,
+      };
+    });
+
+    const existingWallIds = new Set(safeCustomWalls.map((wall) => wall.id));
+    const nextWalls = [...safeCustomWalls];
+    for (const wall of result.layoutSuggestion?.wallSuggestions ?? []) {
+      if (existingWallIds.has(wall.id)) continue;
+      nextWalls.push({
+        id: wall.id,
+        floor: Math.max(0, Math.min(floors - 1, Math.round(wall.floor))),
+        x1: Math.max(0, Math.min(lotWidth, wall.x1)),
+        y1: Math.max(0, Math.min(lotDepth, wall.y1)),
+        x2: Math.max(0, Math.min(lotWidth, wall.x2)),
+        y2: Math.max(0, Math.min(lotDepth, wall.y2)),
+        thickness: Math.max(0.08, Math.min(0.35, wall.thickness ?? 0.14)),
+      });
+      existingWallIds.add(wall.id);
+    }
+
+    const existingOpeningIds = new Set(safeCustomOpenings.map((opening) => opening.id));
+    const nextOpenings = [...safeCustomOpenings];
+    for (const opening of result.layoutSuggestion?.openingSuggestions ?? []) {
+      if (existingOpeningIds.has(opening.id) || !existingWallIds.has(opening.wallId)) continue;
+      nextOpenings.push({
+        id: opening.id,
+        wallId: opening.wallId,
+        floor: Math.max(0, Math.min(floors - 1, Math.round(opening.floor))),
+        type: opening.type,
+        offset: Math.max(0.08, Math.min(0.92, opening.offset)),
+        width: opening.width,
+        height: opening.height,
+        sillHeight: opening.sillHeight,
+        openingStyle: opening.openingStyle,
+        swing: opening.swing,
+      });
+      existingOpeningIds.add(opening.id);
+    }
+
+    const nextFacade = result.facadeSuggestion
+      ? { ...facadePreferences, ...result.facadeSuggestion }
+      : facadePreferences;
+
+    setRooms(nextRooms);
+    setCustomWalls(nextWalls);
+    setCustomOpenings(nextOpenings);
+    setFacadePreferences(nextFacade);
+    pushRoomHistory(before);
+    setSelectedId(null);
+    setSelectedWallId(null);
+    setSelectedCustomWallId(null);
+    setSelectedOpeningId(null);
+    setSelectedClosedSpaceId(null);
+    setSelectedObjectId(null);
+
+    await saveConcept(4, undefined, {
+      rooms: nextRooms,
+      customWalls: nextWalls,
+      customOpenings: nextOpenings,
+      facadePreferences: nextFacade,
+    });
   };
 
   const sharePublicTour = async () => {
@@ -6078,6 +6188,7 @@ export default function ConceptPlanner() {
 
                   {editorView === "facade" && (
                     <ConceptFacadeEditor
+                      conceptProjectId={conceptId}
                       lotWidth={lotWidth}
                       lotDepth={lotDepth}
                       sitePlacement={sitePlacement}
@@ -6087,6 +6198,7 @@ export default function ConceptPlanner() {
                       design={facadeDesign}
                       onFacadeChange={setFacadePreferences}
                       onDesignChange={setFacadeDesign}
+                      onApplyDevelopment={applyAiDevelopment}
                       realisticPreviewUrl={latestFacadeRenderUrl}
                       realisticPreviewLoading={conceptRender?.status === "processing"}
                       onOpenRender={() => void generateConceptRender({ source: "facade", renderView: "exterior" })}
