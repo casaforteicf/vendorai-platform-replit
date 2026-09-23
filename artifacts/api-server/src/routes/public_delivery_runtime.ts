@@ -82,7 +82,7 @@ router.post("/public/delivery-runtime/:token/chat", limiter, async (req, res) =>
     const parsed = chatSchema.safeParse(req.body ?? {});
     if (!parsed.success) return res.status(422).json({ error: "Histórico inválido" });
 
-    const { payload, tenant, profile } = await validateDelivery(String(req.params.token));
+    const { payload, lead, tenant, profile } = await validateDelivery(String(req.params.token));
     const resolved = resolveKind(payload.toolRef);
     const agentKey = "agentKey" in resolved ? resolved.agentKey : null;
     if (!agentKey || !PUBLIC_AGENT_KEYS.has(agentKey)) {
@@ -120,7 +120,27 @@ router.post("/public/delivery-runtime/:token/chat", limiter, async (req, res) =>
       })),
     ], { maxTokens: 500, temperature: 0.4 });
 
-    res.json({ reply: result.content.trim(), agentKey });
+    const reply = result.content.trim();
+    const currentDiscovery = (lead.discoveryData ?? {}) as Record<string, unknown>;
+    await db.update(leadsTable)
+      .set({
+        discoveryData: {
+          ...currentDiscovery,
+          public_delivery_agent_session: {
+            agentKey,
+            campaignId: payload.campaignId,
+            history: [...parsed.data.history, { from: "agent", text: reply }].slice(-8),
+            updatedAt: new Date().toISOString(),
+          },
+        },
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(leadsTable.id, payload.leadId),
+        eq(leadsTable.tenantId, payload.tenantId),
+      ));
+
+    res.json({ reply, agentKey });
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : "Falha ao responder" });
   }

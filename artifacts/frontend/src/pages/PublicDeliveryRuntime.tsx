@@ -19,6 +19,15 @@ function getToken() {
   return new URLSearchParams(window.location.search).get("deliveryToken") ?? "";
 }
 
+async function trackDeliveryEvent(token: string, event: "started" | "completed" | "cta_clicked") {
+  if (!token) return;
+  await fetch(`/api/public/smart-delivery/${encodeURIComponent(token)}/event`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ event }),
+  }).catch(() => undefined);
+}
+
 export default function PublicDeliveryRuntime() {
   const token = useMemo(getToken, []);
   const [ctx, setCtx] = useState<Context | null>(null);
@@ -54,7 +63,10 @@ export default function PublicDeliveryRuntime() {
         const res = await fetch(`/api/public/delivery-runtime/${encodeURIComponent(token)}/context`);
         const body = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(body?.error ?? "Entrega indisponível.");
-        if (alive) setCtx(body as Context);
+        if (alive) {
+          setCtx(body as Context);
+          void trackDeliveryEvent(token, "started");
+        }
       } catch (err) {
         if (alive) setError(err instanceof Error ? err.message : "Entrega indisponível.");
       } finally {
@@ -80,7 +92,12 @@ export default function PublicDeliveryRuntime() {
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.error ?? "Não foi possível responder.");
-      setHistory((current) => [...current, { from: "agent", text: body.reply }]);
+      setHistory((current) => {
+        const updated = [...current, { from: "agent" as const, text: body.reply }];
+        const leadTurns = updated.filter((item) => item.from === "lead").length;
+        if (leadTurns >= 2) void trackDeliveryEvent(token, "completed");
+        return updated;
+      });
     } catch (err) {
       setHistory((current) => [...current, {
         from: "agent",
@@ -114,6 +131,7 @@ export default function PublicDeliveryRuntime() {
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.error ?? "Não foi possível gerar o pré-projeto.");
       setPreProject(body);
+      void trackDeliveryEvent(token, "completed");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível gerar o pré-projeto.");
     } finally {
@@ -176,21 +194,39 @@ export default function PublicDeliveryRuntime() {
                 {sending && <div className="flex justify-start"><div className="rounded-2xl bg-slate-100 px-4 py-3"><Loader2 className="h-4 w-4 animate-spin" /></div></div>}
               </div>
             </div>
-            <div className="flex gap-2 border-t p-3 sm:p-4">
-              <Input
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    void sendMessage();
-                  }
-                }}
-                placeholder="Digite sua mensagem..."
-              />
-              <Button type="button" onClick={() => void sendMessage()} disabled={!message.trim() || sending}>
-                <Send className="h-4 w-4" />
-              </Button>
+            <div className="border-t p-3 sm:p-4">
+              <div className="flex gap-2">
+                <Input
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      void sendMessage();
+                    }
+                  }}
+                  placeholder="Digite sua mensagem..."
+                />
+                <Button type="button" onClick={() => void sendMessage()} disabled={!message.trim() || sending}>
+                  <Send className="h-4 w-4" />
+                </Button>
+              </div>
+              {history.length >= 2 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="mt-3 w-full"
+                  onClick={() => {
+                    void trackDeliveryEvent(token, "cta_clicked");
+                    setHistory((current) => [...current, {
+                      from: "agent",
+                      text: "Perfeito. Registrei seu interesse e a equipe dará sequência usando tudo que você já informou aqui.",
+                    }]);
+                  }}
+                >
+                  Quero avançar
+                </Button>
+              )}
             </div>
           </div>
         )}
@@ -237,6 +273,17 @@ export default function PublicDeliveryRuntime() {
                     </ul>
                   </div>
                 ) : null)}
+                <Button
+                  type="button"
+                  className="w-full"
+                  onClick={() => {
+                    void trackDeliveryEvent(token, "cta_clicked");
+                    setPreProject((current: any) => ({ ...current, requestedNextStep: true }));
+                  }}
+                  disabled={Boolean(preProject?.requestedNextStep)}
+                >
+                  {preProject?.requestedNextStep ? "Interesse registrado" : "Quero avançar com este projeto"}
+                </Button>
                 <p className="text-xs text-slate-400">Estudo preliminar. Não substitui projeto arquitetônico, estrutural ou aprovação técnica.</p>
               </div>
             )}
