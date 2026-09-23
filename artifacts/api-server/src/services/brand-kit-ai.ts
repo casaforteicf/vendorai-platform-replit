@@ -248,7 +248,6 @@ export async function buildBrandStudioProposal(input: {
   const openai = await getOpenAIForTenant(input.tenantId);
   const completion = await openai.chat.completions.create({
     model: process.env["VENDORAI_BRAND_STUDIO_MODEL"]?.trim() || "gpt-5.6-luna",
-    temperature: 0.65,
     response_format: { type: "json_object" },
     messages: [
       { role: "system", content: system },
