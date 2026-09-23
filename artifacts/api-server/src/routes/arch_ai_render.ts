@@ -7,6 +7,8 @@ import { syncApprovedRenderSpecifications } from "../lib/arqdor-approved-render-
 import { archAiRenderRouter as legacyArchAiRenderRouter } from "./arch_ai_render_legacy.js";
 
 import { RenderGalleryError, updateConceptRenderGallery } from "../services/arch-concept-render-gallery.js";
+import { getArqdorRenderVideo, startArqdorRenderVideo } from "../services/arqdor-render-video.js";
+import type { ArqdorVideoMovement } from "../lib/arqdor-render-prompts.js";
 
 export const archAiRenderRouter = Router();
 
@@ -136,6 +138,65 @@ for (const action of ["primary", "regenerate"] as const) {
     }
   });
 }
+
+
+const ARQDOR_VIDEO_MOVEMENTS = new Set<ArqdorVideoMovement>([
+  "zoom_in_soft", "zoom_out_soft", "pan_left_soft", "pan_right_soft",
+  "tilt_up_soft", "tilt_down_soft", "orbit_left_soft", "orbit_right_soft",
+  "parallax_soft", "cinematic_micro_movement",
+]);
+
+archAiRenderRouter.post("/arch/ai-render/:id/video-5s", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  if (!tid) return res.status(403).json({ success: false, error: "Tenant não identificado" });
+  const movement = String(req.body?.movement ?? "cinematic_micro_movement") as ArqdorVideoMovement;
+  if (!ARQDOR_VIDEO_MOVEMENTS.has(movement)) {
+    return res.status(400).json({ success: false, error: "Movimento de câmera inválido" });
+  }
+  const aspectRatio = req.body?.aspect_ratio === "9:16" ? "9:16" : "16:9";
+  try {
+    const result = await startArqdorRenderVideo({
+      tenantId: tid,
+      renderId: String(req.params["id"]),
+      movement,
+      aspectRatio,
+      logger: req.log,
+    });
+    return res.status(202).json({
+      success: true,
+      video_job_id: result.jobId,
+      status: result.status,
+      duration_seconds: 5,
+      movement,
+      aspect_ratio: aspectRatio,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message === "RENDER_NOT_FOUND") return res.status(404).json({ success: false, error: "Render não encontrado" });
+    if (message === "RENDER_NOT_READY") return res.status(409).json({ success: false, error: "Finalize o render antes de gerar o vídeo" });
+    req.log?.error?.({ error }, "arch/render-video: falha ao criar job");
+    return res.status(500).json({ success: false, error: "Não foi possível iniciar o vídeo do render" });
+  }
+});
+
+archAiRenderRouter.get("/arch/ai-render-video/:id", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  if (!tid) return res.status(403).json({ success: false, error: "Tenant não identificado" });
+  const job = await getArqdorRenderVideo(tid, String(req.params["id"]));
+  if (!job) return res.status(404).json({ success: false, error: "Vídeo não encontrado" });
+  return res.json({
+    success: job.status === "done",
+    video_job_id: job.id,
+    render_id: job.render_id,
+    movement: job.movement,
+    aspect_ratio: job.aspect_ratio,
+    status: job.status,
+    video_url: job.video_url,
+    error: job.error_message,
+    created_at: job.created_at,
+    completed_at: job.completed_at,
+  });
+});
 
 // Fonte oficial do histórico persistente. Registrada antes do router legado para
 // expor todos os metadados adicionados à tabela sem alterar o pipeline grande.

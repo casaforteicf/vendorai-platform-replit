@@ -21,6 +21,21 @@ type Step =
 
 type CanvasMode = "fit" | "1to1";
 type SaveState  = "saved" | "unsaved" | "saving" | "error";
+type RenderPreset =
+  | "facade_exterior_preserve"
+  | "interior_layout_preserve"
+  | "material_detail_enhancer"
+  | "distortion_correction"
+  | "camera_perspective_lock"
+  | "joinery_precision"
+  | "roof_openings_lock"
+  | "lighting_realism"
+  | "landscape_controlled"
+  | "pool_water_fidelity";
+type VideoMovement =
+  | "zoom_in_soft" | "zoom_out_soft" | "pan_left_soft" | "pan_right_soft"
+  | "tilt_up_soft" | "tilt_down_soft" | "orbit_left_soft" | "orbit_right_soft"
+  | "parallax_soft" | "cinematic_micro_movement";
 
 // P2-13: selection rect (percentage coords of displayed image)
 type SelectionRect = { x: number; y: number; w: number; h: number; label: string; id: string };
@@ -101,6 +116,18 @@ async function apiPatch(path: string, body: unknown) {
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result as string); r.onerror = reject; r.readAsDataURL(file); });
 }
+async function waitForVideoCompletion(jobId: string, timeoutAttempts = 120) {
+  let attempts = 0;
+  while (attempts < timeoutAttempts) {
+    await new Promise((r) => setTimeout(r, 3000));
+    const data = await apiGet(`/api/arch/ai-render-video/${jobId}`);
+    if (data.status === "done" && data.video_url) return data;
+    if (data.status === "error") throw new Error(data.error ?? "Erro ao gerar vídeo do render");
+    attempts++;
+  }
+  throw new Error("TIMEOUT");
+}
+
 async function waitForRenderCompletion(renderId: string, timeoutAttempts = 90) {
   let attempts = 0;
   while (attempts < timeoutAttempts) {
@@ -978,6 +1005,7 @@ function RightPanel({
   specificationId, enviandoOrcamento, orcamentoMsg, onEnviarOrcamento,
   areaM2, setAreaM2, peDireitoM, setPeDireitoM, onSalvarMedidasAmbiente, onSalvarMedidasItem,
   onNextStep, onStartRender, onApplyMelhoria, onApprove, onSendToSpec,
+  renderPreset, setRenderPreset, videoMovement, setVideoMovement, videoGenerating, renderVideoUrl, onGenerateVideo5s,
   onShowCreateModal, onUpload,
   selections, selectedMaterial, onOpenMaterialLib, onClearSelection, onRemoveSelection,
   approvalRecord, approvalNote, setApprovalNote,
@@ -996,6 +1024,9 @@ function RightPanel({
   onSalvarMedidasItem: (itemId: string, patch: { larguraCm?: string; alturaCm?: string; profundidadeCm?: string }) => void;
   onNextStep: () => void; onStartRender: () => void;
   onApplyMelhoria: () => void; onApprove: () => void; onSendToSpec: () => void;
+  renderPreset: RenderPreset; setRenderPreset: (v: RenderPreset) => void;
+  videoMovement: VideoMovement; setVideoMovement: (v: VideoMovement) => void;
+  videoGenerating: boolean; renderVideoUrl: string | null; onGenerateVideo5s: () => void;
   onShowCreateModal: () => void; onUpload: () => void;
   selections: SelectionRect[]; selectedMaterial: CatalogItem | null;
   onOpenMaterialLib: () => void; onClearSelection: () => void; onRemoveSelection: (id: string) => void;
@@ -1124,13 +1155,48 @@ function RightPanel({
                     <PanelLabel>Render IA</PanelLabel>
                     <InfoBox>{arq.projectMeta?.titulo} · {ambiente}</InfoBox>
                     {!renderUrl && !loading && (
-                      <><div style={{ fontSize: 11, color: D.muted, lineHeight: 1.5 }}>Tempo estimado: 30–90 segundos</div><DkBtn onClick={onStartRender} disabled={loading}>✦ Gerar Render com IA</DkBtn></>
+                      <>
+                        <div style={{ fontSize: 11, color: D.muted, lineHeight: 1.5 }}>Fidelidade automática ativa. Escolha apenas o objetivo principal.</div>
+                        <select value={renderPreset} onChange={(e) => setRenderPreset(e.target.value as RenderPreset)} style={inputStyle}>
+                          <option value="interior_layout_preserve">Interior · preservar layout</option>
+                          <option value="facade_exterior_preserve">Fachada · preservar volumetria</option>
+                          <option value="material_detail_enhancer">Detalhe · melhorar materiais</option>
+                          <option value="distortion_correction">Corrigir distorções</option>
+                          <option value="camera_perspective_lock">Travar câmera e perspectiva</option>
+                          <option value="joinery_precision">Marcenaria de precisão</option>
+                          <option value="roof_openings_lock">Cobertura e aberturas</option>
+                          <option value="lighting_realism">Iluminação realista</option>
+                          <option value="landscape_controlled">Paisagismo controlado</option>
+                          <option value="pool_water_fidelity">Piscina e água</option>
+                        </select>
+                        <div style={{ fontSize: 11, color: D.muted, lineHeight: 1.5 }}>Tempo estimado: 30–90 segundos</div>
+                        <DkBtn onClick={onStartRender} disabled={loading}>✦ Gerar Render com IA</DkBtn>
+                      </>
                     )}
                     {loading && <div style={{ display: "flex", alignItems: "center", gap: 8, color: D.muted, fontSize: 11 }}><DkSpinner size={14} /> Processando…</div>}
                     {renderUrl && !loading && (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         <div style={{ fontSize: 11, color: D.green, padding: "6px 8px", background: D.greenDim, borderRadius: 6 }}>✓ Render gerado com sucesso</div>
                         <DkBtn variant="secondary" onClick={onStartRender} small>↺ Novo render</DkBtn>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 5, padding: "7px 8px", borderRadius: 7, background: D.card, border: `1px solid ${D.border}` }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: D.text }}>🎬 Gerar vídeo de 5s deste render</div>
+                          <select value={videoMovement} onChange={(e) => setVideoMovement(e.target.value as VideoMovement)} style={inputStyle}>
+                            <option value="cinematic_micro_movement">Movimento cinematográfico suave</option>
+                            <option value="zoom_in_soft">Zoom in suave</option>
+                            <option value="zoom_out_soft">Zoom out suave</option>
+                            <option value="pan_left_soft">Pan para esquerda</option>
+                            <option value="pan_right_soft">Pan para direita</option>
+                            <option value="tilt_up_soft">Tilt para cima</option>
+                            <option value="tilt_down_soft">Tilt para baixo</option>
+                            <option value="orbit_left_soft">Órbita leve esquerda</option>
+                            <option value="orbit_right_soft">Órbita leve direita</option>
+                            <option value="parallax_soft">Parallax suave</option>
+                          </select>
+                          <DkBtn variant="secondary" onClick={onGenerateVideo5s} disabled={videoGenerating} small>
+                            {videoGenerating ? "Gerando vídeo…" : "▶ Gerar vídeo 5s"}
+                          </DkBtn>
+                          {renderVideoUrl && <a href={renderVideoUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: D.green, textDecoration: "none" }}>✓ Abrir vídeo gerado</a>}
+                        </div>
                         <DkBtn onClick={onNextStep}>→ Melhorar</DkBtn>
                         <DkBtn variant="ghost" onClick={onNextStep} small>Pular melhoria →</DkBtn>
                       </div>
@@ -1591,6 +1657,10 @@ function RenderStudioInner() {
   const [err, setErr] = useState<string | null>(null);
   const [melhoriaPrompt, setMelhoriaPrompt] = useState("");
   const [melhoriaMode, setMelhoriaMode] = useState<"improve" | "change-material" | "change-lighting">("improve");
+  const [renderPreset, setRenderPreset] = useState<RenderPreset>("interior_layout_preserve");
+  const [videoMovement, setVideoMovement] = useState<VideoMovement>("cinematic_micro_movement");
+  const [videoGenerating, setVideoGenerating] = useState(false);
+  const [renderVideoUrl, setRenderVideoUrl] = useState<string | null>(null);
 
   // P0/P1 modals & UI
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -1762,6 +1832,7 @@ function RenderStudioInner() {
       const { render_id } = await apiPost("/api/arch/ai-render", {
         project_id: arq.projectId ?? undefined, original_image_url: imageDataUrl, mode: "preservar",
         ambiente: ambiente.toLowerCase().replace(/\s+/g, "_"),
+        render_presets: [renderPreset],
         user_notes: "Preservar absolutamente o projeto, medidas, câmera, perspectiva, layout, marcenaria, circulação, aberturas e proporções.",
       });
       setRenderId(render_id); setProcessingStage("Gerando render…");
@@ -1773,6 +1844,24 @@ function RenderStudioInner() {
       setSaveState("saved"); setLastSavedAt(new Date());
     } catch (e: unknown) { setErr(categorizeError(e)); setSaveState("error"); }
     finally { clearProgressStages(); setLoading(false); }
+  }
+
+  async function generateRenderVideo5s() {
+    if (!renderId || videoGenerating) return;
+    setVideoGenerating(true); setErr(null); setRenderVideoUrl(null);
+    try {
+      const created = await apiPost(`/api/arch/ai-render/${renderId}/video-5s`, {
+        movement: videoMovement,
+        aspect_ratio: "16:9",
+      });
+      const done = await waitForVideoCompletion(created.video_job_id);
+      setRenderVideoUrl(done.video_url);
+      logEvent("render_video_created", `Vídeo 5s gerado · ${videoMovement}`);
+    } catch (e: unknown) {
+      setErr(categorizeError(e));
+    } finally {
+      setVideoGenerating(false);
+    }
   }
 
   // Apply melhoria (P2-17: structured preservation; P2-18: parentVersionId)
@@ -2027,6 +2116,9 @@ function RenderStudioInner() {
           onSalvarMedidasAmbiente={handleSalvarMedidasAmbiente} onSalvarMedidasItem={handleSalvarMedidasItem}
           onNextStep={handleNextStep} onStartRender={startRender}
           onApplyMelhoria={applyMelhoria} onApprove={handleApprove} onSendToSpec={handleSendToSpec}
+          renderPreset={renderPreset} setRenderPreset={setRenderPreset}
+          videoMovement={videoMovement} setVideoMovement={setVideoMovement}
+          videoGenerating={videoGenerating} renderVideoUrl={renderVideoUrl} onGenerateVideo5s={generateRenderVideo5s}
           onShowCreateModal={() => setShowCreateModal(true)} onUpload={handleUpload}
           selections={selections} selectedMaterial={selectedMaterial}
           onOpenMaterialLib={() => setShowMaterialLib(true)}
