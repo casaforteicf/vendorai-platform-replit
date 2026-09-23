@@ -34,6 +34,10 @@ import { buildOwnPerformancePromptBlock } from "../services/content-performance.
 import { resolveContentContext } from "../services/contentContextLibrary.js";
 import { applyBrandFrame, generateHighlightCover } from "../services/brandFrame.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
+import {
+  normalizeInstagramCoverSource,
+  renderInstagramProfileCover,
+} from "../services/instagram-cover.js";
 
 const router: IRouter = Router();
 
@@ -345,6 +349,14 @@ const patchMediaBodySchema = z.object({
 const reelCoverBodySchema = z.object({
   thumbOffsetMs: z.number().int().min(0).max(3_600_000),
 });
+const reelCoverCropBodySchema = z.object({
+  zoom: z.coerce.number().min(1).max(3),
+  x: z.coerce.number().min(-1).max(1),
+  y: z.coerce.number().min(-1).max(1),
+});
+const reelCoverGenerateBodySchema = z.object({
+  instructions: z.string().trim().max(500).optional(),
+});
 const feedCoverBodySchema = z.object({
   imageIndex: z.number().int().min(0).max(9),
 });
@@ -448,7 +460,9 @@ router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/image", asyn
     imageUrls?: string[];
     videoUrl?: string;
     coverUrl?: string;
-    coverSource?: "upload" | "frame";
+    coverOriginalUrl?: string;
+    coverSource?: "upload" | "frame" | "ai";
+    coverCrop?: { zoom: number; x: number; y: number };
     thumbOffsetMs?: number;
     framed?: boolean;
     imageSource?: "ai" | "upload";
@@ -482,12 +496,24 @@ router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/image", asyn
   } else if (body.data.field === "videoUrl") {
     variations[idx] = { ...variation, videoUrl: mediaUrl };
   } else {
-    variations[idx] = {
-      ...variation,
-      coverUrl: mediaUrl,
-      coverSource: "upload",
-      thumbOffsetMs: undefined,
-    };
+    try {
+      const sourceBuffer = await fetchVariationImageBuffer(mediaUrl);
+      const rendered = await renderInstagramProfileCover(sourceBuffer, { zoom: 1, x: 0, y: 0 });
+      const coverUrl = await saveContentImageBuffer(rendered.buffer, "instagram-reel-cover.jpg");
+      variations[idx] = {
+        ...variation,
+        coverUrl,
+        coverOriginalUrl: mediaUrl,
+        coverSource: "upload",
+        coverCrop: rendered.crop,
+        thumbOffsetMs: undefined,
+      };
+    } catch (error) {
+      req.log.error({ error }, "instagram-cover: falha ao preparar capa enviada");
+      const message = error instanceof Error ? error.message : "Falha ao preparar a capa";
+      res.status(422).json({ error: message });
+      return;
+    }
   }
 
   await db
@@ -495,7 +521,14 @@ router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/image", asyn
     .set({ result: { ...gen.result, variations } })
     .where(eq(contentGenerationsTable.id, contentId));
 
-  res.json({ success: true, mediaUrl, field: body.data.field, imageUrls: responseImageUrls });
+  const savedVariation = variations[idx] as typeof variations[number] & { coverUrl?: string };
+  res.json({
+    success: true,
+    mediaUrl: body.data.field === "coverUrl" ? savedVariation.coverUrl ?? mediaUrl : mediaUrl,
+    originalMediaUrl: body.data.field === "coverUrl" ? mediaUrl : undefined,
+    field: body.data.field,
+    imageUrls: responseImageUrls,
+  });
 });
 
 router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/feed-cover", async (req, res) => {
@@ -577,7 +610,9 @@ router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/reel-cover",
   const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & {
     videoUrl?: string;
     coverUrl?: string;
-    coverSource?: "upload" | "frame";
+    coverOriginalUrl?: string;
+    coverSource?: "upload" | "frame" | "ai";
+    coverCrop?: { zoom: number; x: number; y: number };
     thumbOffsetMs?: number;
   })[];
   const variation = variations[idx];
@@ -587,7 +622,9 @@ router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/reel-cover",
   variations[idx] = {
     ...variation,
     coverUrl: undefined,
+    coverOriginalUrl: undefined,
     coverSource: "frame",
+    coverCrop: undefined,
     thumbOffsetMs: body.data.thumbOffsetMs,
   };
 
@@ -597,6 +634,177 @@ router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/reel-cover",
     .where(eq(contentGenerationsTable.id, contentId));
 
   res.json({ success: true, coverSource: "frame", thumbOffsetMs: body.data.thumbOffsetMs });
+});
+
+router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/reel-cover/crop", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const contentId = String(req.params["contentId"]);
+  const idx = parseInt(String(req.params["idx"]), 10);
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" });
+    return;
+  }
+
+  const body = reelCoverCropBodySchema.safeParse(req.body);
+  if (!body.success) {
+    res.status(422).json({ error: "Enquadramento inválido para a capa." });
+    return;
+  }
+
+  const [gen] = await db
+    .select()
+    .from(contentGenerationsTable)
+    .where(and(eq(contentGenerationsTable.id, contentId), eq(contentGenerationsTable.tenantId, tenantId)))
+    .limit(1);
+
+  if (!gen) { res.status(404).json({ error: "Conteúdo não encontrado" }); return; }
+  if (gen.type !== "reels") { res.status(422).json({ error: "Enquadramento de capa disponível apenas para Reels." }); return; }
+
+  const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & {
+    coverUrl?: string;
+    coverOriginalUrl?: string;
+    coverSource?: "upload" | "frame" | "ai";
+    coverCrop?: { zoom: number; x: number; y: number };
+  })[];
+  const variation = variations[idx];
+  if (!variation) { res.status(400).json({ error: "Variação inválida" }); return; }
+  if (variation.coverSource === "frame") {
+    res.status(422).json({ error: "Para crop/zoom, use uma imagem de capa enviada ou gerada por IA." });
+    return;
+  }
+
+  const sourceUrl = variation.coverOriginalUrl ?? variation.coverUrl;
+  if (!sourceUrl) {
+    res.status(422).json({ error: "Adicione ou gere uma imagem de capa antes de ajustar o enquadramento." });
+    return;
+  }
+
+  try {
+    const sourceBuffer = await fetchVariationImageBuffer(sourceUrl);
+    const rendered = await renderInstagramProfileCover(sourceBuffer, body.data);
+    const coverUrl = await saveContentImageBuffer(rendered.buffer, "instagram-reel-cover.jpg");
+    variations[idx] = {
+      ...variation,
+      coverUrl,
+      coverOriginalUrl: sourceUrl,
+      coverCrop: rendered.crop,
+    };
+
+    await db
+      .update(contentGenerationsTable)
+      .set({ result: { ...gen.result, variations } })
+      .where(eq(contentGenerationsTable.id, contentId));
+
+    res.json({ success: true, coverUrl, coverCrop: rendered.crop });
+  } catch (error) {
+    req.log.error({ error }, "instagram-cover: falha ao aplicar crop");
+    const message = error instanceof Error ? error.message : "Não foi possível reenquadrar a capa.";
+    res.status(422).json({ error: message });
+  }
+});
+
+router.post("/tenants/:tenantId/content/:contentId/variations/:idx/reel-cover/generate", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const contentId = String(req.params["contentId"]);
+  const idx = parseInt(String(req.params["idx"]), 10);
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" });
+    return;
+  }
+
+  const body = reelCoverGenerateBodySchema.safeParse(req.body ?? {});
+  if (!body.success) {
+    res.status(422).json({ error: "Orientação inválida para geração da capa." });
+    return;
+  }
+
+  const [[gen], [profile]] = await Promise.all([
+    db
+      .select()
+      .from(contentGenerationsTable)
+      .where(and(eq(contentGenerationsTable.id, contentId), eq(contentGenerationsTable.tenantId, tenantId)))
+      .limit(1),
+    db
+      .select()
+      .from(businessProfilesTable)
+      .where(eq(businessProfilesTable.tenantId, tenantId))
+      .limit(1),
+  ]);
+
+  if (!gen) { res.status(404).json({ error: "Conteúdo não encontrado" }); return; }
+  if (gen.type !== "reels") { res.status(422).json({ error: "Geração de capa disponível apenas para Reels." }); return; }
+
+  const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & {
+    title?: string;
+    coverUrl?: string;
+    coverOriginalUrl?: string;
+    coverSource?: "upload" | "frame" | "ai";
+    coverCrop?: { zoom: number; x: number; y: number };
+    thumbOffsetMs?: number;
+  })[];
+  const variation = variations[idx];
+  if (!variation) { res.status(400).json({ error: "Variação inválida" }); return; }
+
+  const extra = body.data.instructions ? ` Orientação adicional: ${body.data.instructions}.` : "";
+  const observations = [
+    "Crie uma capa premium para Reel do Instagram.",
+    "Mantenha o assunto principal claramente reconhecível e centralizado.",
+    "Reserve margens visuais generosas para evitar cortes no perfil.",
+    "Composição fotográfica profissional, alto contraste e leitura imediata em tela pequena.",
+    "Sem texto, sem letras, sem marca d'água.",
+    extra,
+  ].join(" ");
+
+  try {
+    const generated = await generateImagesForContent(
+      profile ?? {},
+      tenantId,
+      variation.title ? `${gen.theme} — ${variation.title}` : gen.theme,
+      gen.productName ?? undefined,
+      "feed",
+      1,
+      undefined,
+      undefined,
+      observations,
+      "4:5",
+    );
+    const generatedUrl = generated[0];
+    if (!generatedUrl) throw new Error("A IA não retornou uma imagem de capa.");
+
+    const generatedBuffer = await fetchVariationImageBuffer(generatedUrl);
+    const normalizedSource = await normalizeInstagramCoverSource(generatedBuffer);
+    const sourceUrl = await saveContentImageBuffer(normalizedSource, "instagram-reel-cover-source.jpg");
+    const rendered = await renderInstagramProfileCover(normalizedSource, { zoom: 1, x: 0, y: 0 });
+    const coverUrl = await saveContentImageBuffer(rendered.buffer, "instagram-reel-cover-ai.jpg");
+
+    variations[idx] = {
+      ...variation,
+      coverUrl,
+      coverOriginalUrl: sourceUrl,
+      coverSource: "ai",
+      coverCrop: rendered.crop,
+      thumbOffsetMs: undefined,
+    };
+
+    await db
+      .update(contentGenerationsTable)
+      .set({ result: { ...gen.result, variations } })
+      .where(eq(contentGenerationsTable.id, contentId));
+
+    res.json({
+      success: true,
+      coverUrl,
+      coverOriginalUrl: sourceUrl,
+      coverSource: "ai",
+      coverCrop: rendered.crop,
+    });
+  } catch (error) {
+    req.log.error({ error }, "instagram-cover: falha ao gerar capa com IA");
+    const message = error instanceof Error ? error.message : "Não foi possível gerar a capa.";
+    res.status(502).json({ error: message });
+  }
 });
 
 const applyBrandFrameBodySchema = z.object({
@@ -620,6 +828,13 @@ async function fetchVariationImageBuffer(url: string): Promise<Buffer> {
   if (!res.ok) throw new Error(`Falha ao baixar imagem de origem (${res.status})`);
   return Buffer.from(await res.arrayBuffer());
 }
+
+async function saveContentImageBuffer(buffer: Buffer, filename: string): Promise<string> {
+  const objectStorage = new ObjectStorageService();
+  const objectPath = await objectStorage.savePrivateBuffer(buffer, "image/jpeg", filename);
+  return `/api/storage/objects${objectPath.replace(/^\/objects/, "")}`;
+}
+
 
 router.post("/tenants/:tenantId/content/:contentId/variations/:idx/apply-brand-frame", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
