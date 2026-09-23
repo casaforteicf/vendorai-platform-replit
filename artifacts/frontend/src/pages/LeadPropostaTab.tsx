@@ -398,6 +398,18 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     isLoading: loadingProducts,
   } = useListLeadProducts(leadId, { request: { headers: { Authorization: `Bearer ${token}` } } });
 
+  const productProposalImages = Array.from(new Set(
+    (products as any[])
+      .map((product) => typeof product?.imagemUrl === "string" ? product.imagemUrl.trim() : "")
+      .filter((url): url is string => Boolean(url)),
+  ));
+  const effectiveProposalImages = Array.from(new Set([
+    ...proposalImages,
+    ...productProposalImages,
+  ]));
+  const proposalHasMinimumImages = effectiveProposalImages.length >= 2;
+  const proposalPrimaryPageCount = selectedOrcamentoId !== "__none__" ? 5 : 4;
+
   const generateMutation = useGenerateLeadProposal({
     request: { headers: { Authorization: `Bearer ${token}` } },
   });
@@ -611,6 +623,27 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     );
   }
 
+  function proposalImageSlotLabel(index: number) {
+    const slots = selectedOrcamentoId !== "__none__"
+      ? ["Capa", "Situação / problema", "Implicação / valor", "Solução", "Orçamento"]
+      : ["Capa", "Situação / problema", "Implicação / valor", "Solução"];
+    return slots[index] ?? `Visual extra ${index - slots.length + 1}`;
+  }
+
+  function moveProposalImage(index: number, direction: -1 | 1) {
+    setProposalImages((prev) => {
+      const target = index + direction;
+      if (target < 0 || target >= prev.length) return prev;
+      const next = [...prev];
+      const current = next[index];
+      const swap = next[target];
+      if (!current || !swap) return prev;
+      next[index] = swap;
+      next[target] = current;
+      return next;
+    });
+  }
+
   async function handleProposalImageUpload(files: FileList) {
     setImageUploading(true);
     const uploaded: string[] = [];
@@ -668,6 +701,17 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
 
   async function generateProposal(notes?: string) {
     if (!leadId || !token) return;
+
+    const imagesForProposal = effectiveProposalImages.slice(0, 12);
+    if (imagesForProposal.length < 2) {
+      toast({
+        title: "Adicione pelo menos 2 imagens",
+        description: "Para uma apresentação completa, importe imagens, selecione renders ou vincule produtos com imagem. O ideal é cobrir todas as páginas principais.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setRefineOpen(false);
     setGenerating(true);
     try {
@@ -679,7 +723,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
           websiteUrl: websiteUrl || undefined,
           corDestaque: corDestaque || undefined,
           corSecundaria: corSecundaria || undefined,
-          imagens: proposalImages.length > 0 ? proposalImages : undefined,
+          imagens: imagesForProposal,
           objetivo: lead?.objetivo || undefined,
           propostaId: selectedOrcamentoId !== "__none__" ? selectedOrcamentoId : undefined,
           apresentacao: selectedOrcamentoId !== "__none__" ? currentProposalPresentation() : undefined,
@@ -876,7 +920,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
             </Button>
           </CardTitle>
           <p className="text-xs text-muted-foreground">
-            Defina a identidade visual do cliente e os materiais que a IA deve usar na proposta.
+            A marca da empresa vem automaticamente do Kit da Marca. Aqui você define o contexto do cliente e as imagens da apresentação.
           </p>
         </CardHeader>
 
@@ -993,30 +1037,73 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
           <div className="border-t" />
 
           <section className="space-y-3">
-            <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
-              <ImagePlus className="h-3.5 w-3.5 text-muted-foreground" />
-              Materiais visuais
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold text-foreground">
+              <span className="flex items-center gap-2">
+                <ImagePlus className="h-3.5 w-3.5 text-muted-foreground" />
+                Materiais visuais
+              </span>
+              <Badge
+                variant="outline"
+                className={proposalHasMinimumImages ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}
+              >
+                {effectiveProposalImages.length}/2 mínimo
+              </Badge>
             </div>
+
+            <p className="text-xs text-muted-foreground">
+              Ideal: {proposalPrimaryPageCount} imagens diferentes, uma para cada página principal. O sistema exige no mínimo 2 e usa imagens de produtos vinculados como complemento quando necessário.
+            </p>
+
+            {productProposalImages.filter((url) => !proposalImages.includes(url)).length > 0 && (
+              <p className="rounded-md border border-dashed bg-muted/30 px-2.5 py-2 text-[11px] text-muted-foreground">
+                {productProposalImages.filter((url) => !proposalImages.includes(url)).length} imagem(ns) de produto será(ão) usada(s) automaticamente depois das imagens selecionadas.
+              </p>
+            )}
 
             {proposalImages.length > 0 && (
               <div className="space-y-1.5">
-                <p className="text-xs text-muted-foreground font-medium">
-                  Selecionadas (1ª será destaque na capa):
-                </p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs text-muted-foreground font-medium">
+                    Ordem da apresentação — cada imagem ocupa uma página:
+                  </p>
+                  <span className={`text-[10px] font-medium ${effectiveProposalImages.length >= proposalPrimaryPageCount ? "text-emerald-600" : "text-amber-600"}`}>
+                    {Math.min(effectiveProposalImages.length, proposalPrimaryPageCount)}/{proposalPrimaryPageCount} páginas principais cobertas
+                  </span>
+                </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
                   {proposalImages.map((url, idx) => (
-                    <div key={idx} className="relative group rounded overflow-hidden border aspect-video bg-muted">
-                      {idx === 0 && (
-                        <span className="absolute top-0.5 left-0.5 z-10 bg-black/70 text-white text-[9px] font-medium px-1 py-0.5 rounded">
-                          Capa
-                        </span>
-                      )}
+                    <div key={`${url}-${idx}`} className="relative group rounded overflow-hidden border aspect-video bg-muted">
+                      <span className="absolute top-0.5 left-0.5 z-10 max-w-[78%] truncate bg-black/75 text-white text-[9px] font-medium px-1 py-0.5 rounded">
+                        {idx + 1} · {proposalImageSlotLabel(idx)}
+                      </span>
                       <img
                         src={url}
-                        alt={`Imagem ${idx + 1}`}
+                        alt={`Imagem ${idx + 1} — ${proposalImageSlotLabel(idx)}`}
                         className="w-full h-full object-cover"
                         onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                       />
+                      <div className="absolute bottom-0.5 left-0.5 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          type="button"
+                          onClick={() => moveProposalImage(idx, -1)}
+                          disabled={idx === 0}
+                          className="bg-black/65 text-white rounded p-0.5 disabled:opacity-30"
+                          aria-label="Mover imagem para antes"
+                          title="Mover para antes"
+                        >
+                          <ChevronUp className="h-2.5 w-2.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveProposalImage(idx, 1)}
+                          disabled={idx === proposalImages.length - 1}
+                          className="bg-black/65 text-white rounded p-0.5 disabled:opacity-30"
+                          aria-label="Mover imagem para depois"
+                          title="Mover para depois"
+                        >
+                          <ChevronDown className="h-2.5 w-2.5" />
+                        </button>
+                      </div>
                       <button
                         type="button"
                         onClick={() => setProposalImages((prev) => prev.filter((_, i) => i !== idx))}
@@ -1067,7 +1154,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
             {imageSourceTab === "upload" && (
               <div className="space-y-2">
                 <p className="text-xs text-muted-foreground">
-                  Envie imagens do seu computador para compor a proposta.
+                  Para máxima qualidade, use uma imagem diferente por página: capa, contexto, valor, solução e, quando houver, orçamento.
                 </p>
                 <input
                   ref={imageInputRef}

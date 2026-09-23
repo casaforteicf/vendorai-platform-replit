@@ -364,8 +364,31 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
   const primaryColor = ctx.lead.corDestaque || "#A78BFA";
   const theme = generateTheme(primaryColor);
 
-  const bodyImagens: string[] | null = Array.isArray(req.body?.imagens) ? req.body.imagens : null;
   const bodyPropostaId: string | null = req.body?.propostaId ? String(req.body.propostaId) : null;
+  const requestedImages: string[] = Array.isArray(req.body?.imagens)
+    ? req.body.imagens
+        .filter((value: unknown): value is string => typeof value === "string" && value.trim().length > 0)
+        .map((value: string) => value.trim())
+    : [];
+
+  // Toda proposta precisa ter base visual. A seleção manual tem prioridade e,
+  // quando necessário, imagens dos produtos vinculados completam o mínimo.
+  const bodyImagens = Array.from(new Set(requestedImages));
+  const productImages = (ctx.products as any[])
+    .map((product) => typeof product?.imagemUrl === "string" ? product.imagemUrl.trim() : "")
+    .filter((url): url is string => Boolean(url));
+
+  for (const imageUrl of productImages) {
+    if (bodyImagens.length >= 2) break;
+    if (!bodyImagens.includes(imageUrl)) bodyImagens.push(imageUrl);
+  }
+
+  if (bodyImagens.length < 2) {
+    res.status(400).json({
+      error: "A apresentação precisa de pelo menos 2 imagens. Importe imagens, selecione renders ou vincule produtos com imagem.",
+    });
+    return;
+  }
   const rawPresentation = req.body?.apresentacao;
   const presentationModes = new Set(["completo", "resumo_etapa", "preco_medio"]);
   const bodyPresentation = rawPresentation && typeof rawPresentation === "object"
