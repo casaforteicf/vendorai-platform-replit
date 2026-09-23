@@ -46,7 +46,9 @@ interface ReelsVariation {
   cta: string;
   videoUrl?: string;
   coverUrl?: string;
-  coverSource?: "upload" | "frame";
+  coverOriginalUrl?: string;
+  coverSource?: "upload" | "frame" | "ai";
+  coverCrop?: { zoom: number; x: number; y: number };
   thumbOffsetMs?: number;
 }
 interface LinkedInVariation { hook: string; caption: string; hashtags: string[] }
@@ -583,12 +585,45 @@ function ReelCoverPanel({
   contentId: string;
   variationIndex: number;
   tenantId: string;
-  onCoverChange: (cover: Pick<ReelsVariation, "coverUrl" | "coverSource" | "thumbOffsetMs">) => void;
+  onCoverChange: (
+    cover: Pick<
+      ReelsVariation,
+      "coverUrl" | "coverOriginalUrl" | "coverSource" | "coverCrop" | "thumbOffsetMs"
+    >,
+  ) => void;
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [frameSeconds, setFrameSeconds] = useState(() => Math.max(0, (v.thumbOffsetMs ?? 0) / 1000));
   const [savingFrame, setSavingFrame] = useState(false);
+  const [generatingCover, setGeneratingCover] = useState(false);
+  const [savingCrop, setSavingCrop] = useState(false);
+  const [showSafeZone, setShowSafeZone] = useState(true);
+  const [aiInstructions, setAiInstructions] = useState("");
+  const [crop, setCrop] = useState(() => ({
+    zoom: v.coverCrop?.zoom ?? 1,
+    x: v.coverCrop?.x ?? 0,
+    y: v.coverCrop?.y ?? 0,
+  }));
+
+  useEffect(() => {
+    if (v.coverCrop) {
+      setCrop(v.coverCrop);
+    } else if (v.coverSource === "frame") {
+      setCrop({ zoom: 1, x: 0, y: 0 });
+    }
+  }, [v.coverCrop?.zoom, v.coverCrop?.x, v.coverCrop?.y, v.coverSource]);
+
+  const frameLabel = typeof v.thumbOffsetMs === "number" ? `${(v.thumbOffsetMs / 1000).toFixed(1)}s` : "automático";
+  const imageSource = v.coverOriginalUrl ?? v.coverUrl;
+  const canCrop = Boolean(imageSource && v.coverSource !== "frame");
+  const coverModeLabel = v.coverSource === "ai"
+    ? "Gerada com IA"
+    : v.coverUrl
+      ? "Imagem personalizada"
+      : v.coverSource === "frame"
+        ? `Frame ${frameLabel}`
+        : "Capa automática";
 
   async function useVideoFrame() {
     if (!v.videoUrl) {
@@ -608,7 +643,13 @@ function ReelCoverPanel({
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new Error(data.error ?? "Não foi possível salvar o frame.");
-      onCoverChange({ coverUrl: undefined, coverSource: "frame", thumbOffsetMs });
+      onCoverChange({
+        coverUrl: undefined,
+        coverOriginalUrl: undefined,
+        coverSource: "frame",
+        coverCrop: undefined,
+        thumbOffsetMs,
+      });
       qc.invalidateQueries({ queryKey: ["content", tenantId] });
       toast({ title: "Frame definido como capa", description: `O Reel usará o frame em ${(thumbOffsetMs / 1000).toFixed(1)}s.` });
     } catch (error) {
@@ -618,51 +659,215 @@ function ReelCoverPanel({
     }
   }
 
-  const frameLabel = typeof v.thumbOffsetMs === "number" ? `${(v.thumbOffsetMs / 1000).toFixed(1)}s` : "automático";
+  async function generateCoverWithAi() {
+    setGeneratingCover(true);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/content/${contentId}/variations/${variationIndex}/reel-cover/generate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`,
+        },
+        body: JSON.stringify({ instructions: aiInstructions.trim() || undefined }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        coverUrl?: string;
+        coverOriginalUrl?: string;
+        coverSource?: "ai";
+        coverCrop?: { zoom: number; x: number; y: number };
+        error?: string;
+      };
+      if (!res.ok || !data.coverUrl) {
+        throw new Error(data.error ?? "Não foi possível gerar a capa.");
+      }
+      const nextCrop = data.coverCrop ?? { zoom: 1, x: 0, y: 0 };
+      setCrop(nextCrop);
+      onCoverChange({
+        coverUrl: data.coverUrl,
+        coverOriginalUrl: data.coverOriginalUrl,
+        coverSource: "ai",
+        coverCrop: nextCrop,
+        thumbOffsetMs: undefined,
+      });
+      qc.invalidateQueries({ queryKey: ["content", tenantId] });
+      toast({ title: "Capa gerada com IA", description: "A nova capa já está pronta para enquadramento e publicação." });
+    } catch (error) {
+      toast({ title: "Erro ao gerar capa", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+    } finally {
+      setGeneratingCover(false);
+    }
+  }
+
+  async function applyCrop() {
+    if (!canCrop) {
+      toast({ title: "Use uma imagem de capa", description: "Crop e zoom ficam disponíveis para capa enviada ou gerada com IA.", variant: "destructive" });
+      return;
+    }
+    setSavingCrop(true);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/content/${contentId}/variations/${variationIndex}/reel-cover/crop`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`,
+        },
+        body: JSON.stringify(crop),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        coverUrl?: string;
+        coverCrop?: { zoom: number; x: number; y: number };
+        error?: string;
+      };
+      if (!res.ok || !data.coverUrl) {
+        throw new Error(data.error ?? "Não foi possível aplicar o enquadramento.");
+      }
+      const nextCrop = data.coverCrop ?? crop;
+      setCrop(nextCrop);
+      onCoverChange({
+        coverUrl: data.coverUrl,
+        coverOriginalUrl: v.coverOriginalUrl ?? imageSource,
+        coverSource: v.coverSource === "ai" ? "ai" : "upload",
+        coverCrop: nextCrop,
+        thumbOffsetMs: undefined,
+      });
+      qc.invalidateQueries({ queryKey: ["content", tenantId] });
+      toast({ title: "Enquadramento aplicado", description: "A capa final 3:4 foi salva e será usada na publicação." });
+    } catch (error) {
+      toast({ title: "Erro ao enquadrar capa", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+    } finally {
+      setSavingCrop(false);
+    }
+  }
+
+  function previewMedia(aspectRatio: string, safeInset: string) {
+    const originX = 50 + crop.x * 42;
+    const originY = 50 + crop.y * 42;
+
+    return (
+      <div className="relative w-full overflow-hidden rounded-lg bg-black/90" style={{ aspectRatio }}>
+        {imageSource && v.coverSource !== "frame" ? (
+          <img
+            src={imageSource}
+            alt="Prévia da capa do Reel"
+            className="h-full w-full object-cover"
+            style={{
+              objectPosition: `${originX}% ${originY}%`,
+              transform: `scale(${crop.zoom})`,
+              transformOrigin: `${originX}% ${originY}%`,
+            }}
+          />
+        ) : v.videoUrl ? (
+          <video
+            src={`${v.videoUrl}#t=${Math.max(0, frameSeconds)}`}
+            muted
+            playsInline
+            preload="metadata"
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center px-3 text-center text-[11px] text-white/65">
+            Adicione o vídeo ou uma imagem de capa
+          </div>
+        )}
+        {showSafeZone && (
+          <div className={cn("pointer-events-none absolute border border-dashed border-white/80 shadow-[0_0_0_999px_rgba(0,0,0,.08)]", safeInset)}>
+            <span className="absolute left-1 top-1 rounded bg-black/55 px-1 py-0.5 text-[8px] font-medium text-white">
+              zona segura
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="mt-4 rounded-xl border bg-muted/15 p-3 sm:p-4">
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-sm font-semibold">Capa da publicação</p>
-          <p className="text-xs text-muted-foreground">Defina o que aparecerá no perfil antes de publicar o Reel.</p>
+          <p className="text-xs text-muted-foreground">Escolha, gere e enquadre a capa antes de agendar ou publicar o Reel.</p>
         </div>
-        <Badge variant="outline" className="w-fit text-[10px]">
-          {v.coverUrl ? "Imagem personalizada" : v.coverSource === "frame" ? `Frame ${frameLabel}` : "Capa automática"}
-        </Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline" className="w-fit text-[10px]">{coverModeLabel}</Badge>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-[11px]"
+            onClick={() => setShowSafeZone((value) => !value)}
+          >
+            <Eye className="mr-1 h-3 w-3" />
+            {showSafeZone ? "Ocultar zona segura" : "Mostrar zona segura"}
+          </Button>
+        </div>
       </div>
 
-      <div className="mt-3 grid gap-3 sm:grid-cols-[150px_1fr]">
-        <div className="mx-auto w-[132px] overflow-hidden rounded-lg border bg-muted sm:mx-0" style={{ aspectRatio: "3 / 4" }}>
-          {v.coverUrl ? (
-            <img src={v.coverUrl} alt="Capa do Reel" className="h-full w-full object-cover" />
-          ) : v.videoUrl ? (
-            <video
-              src={`${v.videoUrl}#t=${Math.max(0, frameSeconds)}`}
-              muted
-              playsInline
-              preload="metadata"
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            <div className="flex h-full items-center justify-center px-3 text-center text-[11px] text-muted-foreground">
-              Adicione o vídeo para visualizar a capa
-            </div>
-          )}
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="font-medium">Publicação</span>
+            <span className="text-muted-foreground">4:5</span>
+          </div>
+          {previewMedia("4 / 5", "inset-x-[8%] inset-y-[9%]")}
         </div>
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="font-medium">Perfil</span>
+            <span className="text-muted-foreground">3:4</span>
+          </div>
+          {previewMedia("3 / 4", "inset-[8%]")}
+        </div>
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="font-medium">Tela cheia</span>
+            <span className="text-muted-foreground">9:16</span>
+          </div>
+          {previewMedia("9 / 16", "inset-x-[9%] inset-y-[12%]")}
+        </div>
+      </div>
 
+      <div className="mt-4 grid gap-3 lg:grid-cols-2">
         <div className="space-y-3">
           <div className="rounded-lg border bg-background/60 p-3">
-            <p className="text-xs font-medium">Usar imagem como capa</p>
-            <p className="mb-2 mt-0.5 text-[11px] text-muted-foreground">JPG, PNG ou WebP. A imagem fica vinculada a este Reel.</p>
-            <MediaUploadButton
-              contentId={contentId}
-              variationIndex={variationIndex}
-              tenantId={tenantId}
-              mediaType="image"
-              fieldOverride="coverUrl"
-              labelOverride={v.coverUrl ? "Trocar capa" : "Enviar capa"}
-              onUploaded={(url) => onCoverChange({ coverUrl: url, coverSource: "upload", thumbOffsetMs: undefined })}
+            <p className="text-xs font-medium">Imagem de capa</p>
+            <p className="mb-2 mt-0.5 text-[11px] text-muted-foreground">Envie uma imagem ou deixe a IA criar usando o tema, produto e Kit da Marca.</p>
+            <div className="flex flex-wrap gap-2">
+              <MediaUploadButton
+                contentId={contentId}
+                variationIndex={variationIndex}
+                tenantId={tenantId}
+                mediaType="image"
+                fieldOverride="coverUrl"
+                labelOverride={v.coverUrl ? "Trocar capa" : "Enviar capa"}
+                onUploaded={(url, _imageUrls, metadata) => {
+                  const nextCrop = { zoom: 1, x: 0, y: 0 };
+                  setCrop(nextCrop);
+                  onCoverChange({
+                    coverUrl: url,
+                    coverOriginalUrl: metadata?.originalMediaUrl ?? url,
+                    coverSource: "upload",
+                    coverCrop: nextCrop,
+                    thumbOffsetMs: undefined,
+                  });
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1.5 text-xs"
+                onClick={generateCoverWithAi}
+                disabled={generatingCover}
+              >
+                {generatingCover ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
+                {generatingCover ? "Gerando…" : "Gerar capa com IA"}
+              </Button>
+            </div>
+            <Textarea
+              value={aiInstructions}
+              onChange={(e) => setAiInstructions(e.target.value)}
+              className="mt-2 min-h-[58px] resize-none text-xs"
+              placeholder="Orientação opcional para a IA: ex. destacar produto, fundo claro, arquitetura brasileira, sem pessoas..."
             />
           </div>
 
@@ -686,10 +891,91 @@ function ReelCoverPanel({
               </Button>
             </div>
           </div>
+        </div>
 
-          <p className="text-[11px] text-muted-foreground">
-            A prévia acima usa recorte 3:4 para representar como a capa aparecerá no perfil. O vídeo continua em 9:16.
-          </p>
+        <div className={cn("rounded-lg border bg-background/60 p-3", !canCrop && "opacity-60")}>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-xs font-medium">Enquadramento da capa</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">Ajuste o foco visual. O sistema gera a capa final 3:4 no servidor.</p>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-[11px]"
+              disabled={!canCrop || savingCrop}
+              onClick={() => setCrop({ zoom: 1, x: 0, y: 0 })}
+            >
+              <RefreshCw className="mr-1 h-3 w-3" />
+              Centralizar
+            </Button>
+          </div>
+
+          <div className="mt-3 space-y-3">
+            <label className="block space-y-1">
+              <span className="flex items-center justify-between text-[11px]">
+                <span>Zoom</span>
+                <span className="text-muted-foreground">{crop.zoom.toFixed(2)}x</span>
+              </span>
+              <input
+                type="range"
+                min={1}
+                max={3}
+                step={0.05}
+                value={crop.zoom}
+                disabled={!canCrop}
+                onChange={(e) => setCrop((current) => ({ ...current, zoom: Number(e.target.value) }))}
+                className="w-full"
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="flex items-center justify-between text-[11px]">
+                <span>Posição horizontal</span>
+                <span className="text-muted-foreground">{Math.round(crop.x * 100)}%</span>
+              </span>
+              <input
+                type="range"
+                min={-1}
+                max={1}
+                step={0.02}
+                value={crop.x}
+                disabled={!canCrop}
+                onChange={(e) => setCrop((current) => ({ ...current, x: Number(e.target.value) }))}
+                className="w-full"
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="flex items-center justify-between text-[11px]">
+                <span>Posição vertical</span>
+                <span className="text-muted-foreground">{Math.round(crop.y * 100)}%</span>
+              </span>
+              <input
+                type="range"
+                min={-1}
+                max={1}
+                step={0.02}
+                value={crop.y}
+                disabled={!canCrop}
+                onChange={(e) => setCrop((current) => ({ ...current, y: Number(e.target.value) }))}
+                className="w-full"
+              />
+            </label>
+          </div>
+
+          <Button
+            type="button"
+            size="sm"
+            className="mt-3 w-full gap-1.5"
+            disabled={!canCrop || savingCrop}
+            onClick={applyCrop}
+          >
+            {savingCrop ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+            {savingCrop ? "Aplicando…" : "Aplicar enquadramento"}
+          </Button>
+          {!canCrop && (
+            <p className="mt-2 text-[10px] text-muted-foreground">Envie ou gere uma imagem para liberar crop e zoom.</p>
+          )}
         </div>
       </div>
     </div>
@@ -858,7 +1144,11 @@ function MediaUploadButton({
   variationIndex: number;
   tenantId: string;
   mediaType: "image" | "video";
-  onUploaded: (mediaUrl: string, imageUrls?: string[]) => void;
+  onUploaded: (
+    mediaUrl: string,
+    imageUrls?: string[],
+    metadata?: { originalMediaUrl?: string },
+  ) => void;
   triggerRef?: React.MutableRefObject<(() => void) | null>;
   allowMultipleImages?: boolean;
   currentImageCount?: number;
@@ -898,7 +1188,10 @@ function MediaUploadButton({
     return null;
   }
 
-  async function uploadFile(file: File, append: boolean): Promise<{ mediaUrl: string; imageUrls?: string[] }> {
+  async function uploadFile(
+    file: File,
+    append: boolean,
+  ): Promise<{ mediaUrl: string; imageUrls?: string[]; originalMediaUrl?: string }> {
     const metaRes = await fetch("/api/storage/uploads/request-url", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -925,11 +1218,20 @@ function MediaUploadButton({
         body: JSON.stringify({ objectPath, field, append }),
       }
     );
-    const patchData = (await patchRes.json().catch(() => ({}))) as { mediaUrl?: string; imageUrls?: string[]; error?: string };
+    const patchData = (await patchRes.json().catch(() => ({}))) as {
+      mediaUrl?: string;
+      originalMediaUrl?: string;
+      imageUrls?: string[];
+      error?: string;
+    };
     if (!patchRes.ok || !patchData.mediaUrl) {
       throw new Error(patchData.error ?? `Falha ao salvar ${isVideo ? "vídeo" : "imagem"}`);
     }
-    return { mediaUrl: patchData.mediaUrl, imageUrls: patchData.imageUrls };
+    return {
+      mediaUrl: patchData.mediaUrl,
+      imageUrls: patchData.imageUrls,
+      originalMediaUrl: patchData.originalMediaUrl,
+    };
   }
 
   async function handleFiles(files: File[]) {
@@ -962,15 +1264,19 @@ function MediaUploadButton({
     try {
       let lastMediaUrl = "";
       let latestImageUrls: string[] | undefined;
+      let lastOriginalMediaUrl: string | undefined;
 
       for (let i = 0; i < selectedFiles.length; i++) {
         setUploadProgress({ current: i + 1, total: selectedFiles.length });
         const result = await uploadFile(selectedFiles[i]!, !isVideo && allowMultipleImages);
         lastMediaUrl = result.mediaUrl;
         if (result.imageUrls) latestImageUrls = result.imageUrls;
+        if (result.originalMediaUrl) lastOriginalMediaUrl = result.originalMediaUrl;
       }
 
-      if (lastMediaUrl) onUploaded(lastMediaUrl, latestImageUrls);
+      if (lastMediaUrl) {
+        onUploaded(lastMediaUrl, latestImageUrls, { originalMediaUrl: lastOriginalMediaUrl });
+      }
       qc.invalidateQueries({ queryKey: ["content", tenantId] });
       toast({
         title: !isVideo && selectedFiles.length > 1
@@ -1197,7 +1503,9 @@ function VariationCard({
   const [localImageUrl, setLocalImageUrl] = useState<string | undefined>(undefined);
   const [localImageUrls, setLocalImageUrls] = useState<string[] | null>(null);
   const [localVideoUrl, setLocalVideoUrl] = useState<string | undefined>(undefined);
-  const [localReelCover, setLocalReelCover] = useState<Pick<ReelsVariation, "coverUrl" | "coverSource" | "thumbOffsetMs"> | null>(null);
+  const [localReelCover, setLocalReelCover] = useState<
+    Pick<ReelsVariation, "coverUrl" | "coverOriginalUrl" | "coverSource" | "coverCrop" | "thumbOffsetMs"> | null
+  >(null);
   const uploadTriggerRef = useRef<(() => void) | null>(null);
   const qc = useQueryClient();
   const [, setLocation] = useLocation();

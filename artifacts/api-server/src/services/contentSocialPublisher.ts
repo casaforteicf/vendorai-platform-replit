@@ -245,6 +245,7 @@ export async function publishContentGenerationToInstagram(params: {
     ...(Array.isArray(variationRecord.imageUrls) ? variationRecord.imageUrls : []),
     variationRecord.imageUrl,
     variationRecord.videoUrl,
+    variationRecord.coverUrl,
   ].filter((value): value is string => typeof value === "string" && Boolean(value.trim()));
   try {
     await assertMediaPublishReady({ tenantId: params.tenantId, mediaUrls: qualityMediaUrls });

@@ -21,7 +21,15 @@ import { LayoutIntelligenceCard } from "@/components/LayoutIntelligenceCard";
 import { HighlightCoverGenerator } from "@/components/HighlightCoverGenerator";
 
 type FeedVariation = { caption: string; hashtags: string[]; imageUrl?: string; imageUrls?: string[] };
-type ReelVariationPreview = { title?: string; videoUrl?: string; coverUrl?: string; coverSource?: "upload" | "frame"; thumbOffsetMs?: number };
+type ReelVariationPreview = {
+  title?: string;
+  videoUrl?: string;
+  coverUrl?: string;
+  coverOriginalUrl?: string;
+  coverSource?: "upload" | "frame" | "ai";
+  coverCrop?: { zoom: number; x: number; y: number };
+  thumbOffsetMs?: number;
+};
 type ContentLibraryItem = {
   id: string;
   type: string;
