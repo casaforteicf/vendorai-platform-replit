@@ -586,6 +586,10 @@ archPublicRouter.get("/arch/public-tour/:token", async (req, res) => {
       openingOverrides: archConceptProjectsTable.openingOverrides,
       facadePreferences: archConceptProjectsTable.facadePreferences,
       conceptRender: archConceptProjectsTable.conceptRender,
+      primaryImageUrl: sql<string | null>`(SELECT result_image_url FROM arch_ai_renders
+        WHERE tenant_id = ${archConceptProjectsTable.tenantId}
+          AND concept_project_id = ${archConceptProjectsTable.id}
+          AND is_primary = true AND status = 'concluido' LIMIT 1)`,
       updatedAt: archConceptProjectsTable.updatedAt,
     })
     .from(archConceptProjectsTable)
@@ -613,7 +617,7 @@ archPublicRouter.get("/arch/public-tour/:token", async (req, res) => {
     rooms: concept.rooms,
     openingOverrides: concept.openingOverrides,
     facadePreferences: concept.facadePreferences,
-    coverImageUrl: (() => {
+    coverImageUrl: concept.primaryImageUrl ?? (() => {
       const render = (concept.conceptRender ?? {}) as Record<string, unknown>;
       const direct = typeof render.resultImageUrl === "string" ? render.resultImageUrl : "";
       if (direct) return direct;
@@ -5685,3 +5689,4 @@ router.get("/arch/office/indicators", authenticate, async (req, res) => {
 
 export { archPublicRouter };
 export default router;
+

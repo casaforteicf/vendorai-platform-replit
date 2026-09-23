@@ -1,0 +1,62 @@
+// Run with TypeScript 5.9, React 18, jsdom 26 and @testing-library/react 16.
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const ts = require('typescript');
+const { JSDOM } = require('jsdom');
+const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost' });
+global.window = dom.window;
+global.document = dom.window.document;
+Object.defineProperty(global, 'navigator', { value: dom.window.navigator, configurable: true });
+global.HTMLElement = dom.window.HTMLElement;
+const React = require('react');
+const { render, screen, fireEvent, waitFor, cleanup } = require('@testing-library/react');
+const source = fs.readFileSync('artifacts/frontend/src/pages/arch/ConceptRenderGalleryActions.tsx', 'utf8');
+const compiled = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
+const componentModule = { exports: {} };
+const context = { require, module: componentModule, exports: componentModule.exports, crypto: require('node:crypto'), fetch: (...args) => global.fetch(...args) };
+vm.runInNewContext(compiled, context);
+const { ConceptRenderGalleryActions } = componentModule.exports;
+
+async function main() {
+  const a = { renderId: 'a', resultImageUrl: 'https://result/a', generatedAt: '2026-09-23T00:00:00Z', renderView: 'exterior', canRegenerate: true };
+  const b = { ...a, renderId: 'b', resultImageUrl: 'https://result/b' };
+  let regenerated;
+  let primary;
+  const props = { versions: [a, b], selected: a, primaryId: null, processing: false, onPrimary: (id) => { primary = id; }, onRegenerated: (id) => { regenerated = id; } };
+  const view = render(React.createElement(ConceptRenderGalleryActions, props));
+  fireEvent.change(screen.getByRole('combobox', { name: 'Comparar com' }), { target: { value: 'b' } });
+  assert.equal(screen.getByRole('img', { name: 'Render versão 1' }).getAttribute('src'), a.resultImageUrl);
+  assert.equal(screen.getByRole('img', { name: 'Render versão 2' }).getAttribute('src'), b.resultImageUrl);
+  const calls = [];
+  let release;
+  global.fetch = (url, options) => {
+    calls.push({ url, body: JSON.parse(options.body) });
+    return new Promise((resolve, reject) => { release = { resolve, reject }; });
+  };
+  const regenerate = screen.getByRole('button', { name: 'Regenerar com referência salva' });
+  fireEvent.click(regenerate);
+  fireEvent.click(regenerate);
+  assert.equal(calls.length, 1, 'double click starts only one request');
+  release.reject(new Error('Conexão interrompida'));
+  await screen.findByRole('alert');
+  fireEvent.click(screen.getByRole('button', { name: 'Regenerar com referência salva' }));
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].body.request_id, calls[1].body.request_id, 'retry keeps idempotency key');
+  release.resolve({ ok: true, status: 202, json: async () => ({ render_id: 'new-render' }) });
+  await waitFor(() => assert.equal(regenerated, 'new-render'));
+  await waitFor(() => assert.equal(screen.getByRole('button', { name: 'Definir como principal' }).disabled, false));
+  fireEvent.click(screen.getByRole('button', { name: 'Definir como principal' }));
+  assert.equal(primary, undefined, 'selection changes only after server confirmation');
+  release.resolve({ ok: true, status: 200, json: async () => ({ render_id: 'a' }) });
+  await waitFor(() => assert.equal(primary, 'a'));
+  view.rerender(React.createElement(ConceptRenderGalleryActions, { ...props, primaryId: 'a', processing: true }));
+  assert.equal(screen.getByRole('button', { name: 'Render principal' }).disabled, true);
+  assert.equal(screen.getByRole('button', { name: 'Regenerar com referência salva' }).disabled, true);
+  view.rerender(React.createElement(ConceptRenderGalleryActions, { ...props, selected: { ...a, canRegenerate: false } }));
+  assert.equal(screen.getByRole('button', { name: 'Regenerar com referência salva' }).disabled, true);
+  cleanup();
+  dom.window.close();
+  console.log('PASS: comparison, duplicate click, lost-response retry, confirmed primary, processing/legacy guards');
+}
+main().catch((error) => { console.error(error); process.exitCode = 1; });
