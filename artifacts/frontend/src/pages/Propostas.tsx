@@ -182,6 +182,81 @@ function roundBudgetNumber(value: number | string | null | undefined): number {
   return Number(roundedUp.toFixed(2));
 }
 
+function formatBudgetMoneyValue(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return "";
+  return roundBudgetNumber(value).toFixed(2).replace(".", ",");
+}
+
+function BudgetMoneyInput({
+  value,
+  onChange,
+  className = "",
+  disabled = false,
+  placeholder = "0,00",
+}: {
+  value: number | null | undefined;
+  onChange: (value: number | undefined) => void;
+  className?: string;
+  disabled?: boolean;
+  placeholder?: string;
+}) {
+  const [draft, setDraft] = useState(() => formatBudgetMoneyValue(value));
+  const focusedRef = useRef(false);
+
+  useEffect(() => {
+    if (!focusedRef.current) setDraft(formatBudgetMoneyValue(value));
+  }, [value]);
+
+  const commit = () => {
+    const normalized = draft.trim().replace(",", ".");
+    if (!normalized) {
+      setDraft("");
+      onChange(undefined);
+      return;
+    }
+    const parsed = Number(normalized);
+    const next = roundBudgetNumber(Number.isFinite(parsed) ? parsed : Number(value ?? 0));
+    setDraft(formatBudgetMoneyValue(next));
+    onChange(next);
+  };
+
+  return (
+    <Input
+      type="text"
+      inputMode="decimal"
+      className={className}
+      disabled={disabled}
+      placeholder={placeholder}
+      value={draft}
+      onFocus={(event) => {
+        focusedRef.current = true;
+        const input = event.currentTarget;
+        requestAnimationFrame(() => {
+          if (document.activeElement === input) input.select();
+        });
+      }}
+      onBlur={() => {
+        focusedRef.current = false;
+        commit();
+      }}
+      onChange={(event) => {
+        const raw = event.target.value;
+        if (!/^\d*(?:[.,]\d{0,6})?$/.test(raw)) return;
+        setDraft(raw);
+        const parsed = Number(raw.replace(",", "."));
+        if (raw && Number.isFinite(parsed)) onChange(parsed);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          commit();
+          event.currentTarget.blur();
+        }
+      }}
+    />
+  );
+}
+
 // ── Catalog Modal (CRUD) ──────────────────────────────────────────────────────
 const catFormSchema = z.object({
   nome: z.string().min(1, "Obrigatório"),
@@ -3515,15 +3590,11 @@ function newFreeItem(): FreeItem {
                                       <TableCell className="py-1.5">
                                         <div className="relative flex items-center justify-end">
                                           <span className="absolute left-2 text-muted-foreground text-xs pointer-events-none">R$</span>
-                                          <Input
-                                            type="number"
-                                            min={0}
-                                            step={0.01}
+                                          <BudgetMoneyInput
                                             className="h-8 text-sm text-right font-mono pl-7 w-32"
                                             disabled={!selected}
-                                            placeholder="0,00"
-                                            value={selected ? precoUnit : ""}
-                                            onChange={(e) => updateCatLine(idx, { precoUnitarioOverride: roundBudgetNumber(parseFloat(e.target.value) || 0) })}
+                                            value={selected ? precoUnit : undefined}
+                                            onChange={(value) => updateCatLine(idx, { precoUnitarioOverride: value ?? 0 })}
                                           />
                                           {selected && <span className="ml-1 text-xs text-muted-foreground shrink-0">/{unidade}</span>}
                                         </div>
@@ -3680,14 +3751,10 @@ function newFreeItem(): FreeItem {
                                 />
                               </TableCell>
                               <TableCell className="py-1.5">
-                                <Input
-                                  type="number"
-                                  min={0}
-                                  step={0.01}
+                                <BudgetMoneyInput
                                   className="h-8 text-sm w-28"
-                                  value={item.valorUnitario || ""}
-                                  placeholder="0,00"
-                                  onChange={(e) => updateFreeItem(item.id, { valorUnitario: roundBudgetNumber(parseFloat(e.target.value) || 0) })}
+                                  value={item.valorUnitario}
+                                  onChange={(value) => updateFreeItem(item.id, { valorUnitario: value ?? 0 })}
                                 />
                               </TableCell>
                               <TableCell className="py-1.5 text-right font-mono text-sm font-medium">
@@ -3753,13 +3820,9 @@ function newFreeItem(): FreeItem {
 
                 <div className="grid gap-1.5 max-w-xs">
                   <FormLabel>Valor total (R$)</FormLabel>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={importValorTotal || ""}
-                    onChange={(e) => setImportValorTotal(roundBudgetNumber(parseFloat(e.target.value) || 0))}
-                    placeholder="0,00"
+                  <BudgetMoneyInput
+                    value={importValorTotal || undefined}
+                    onChange={(value) => setImportValorTotal(value ?? 0)}
                   />
                 </div>
 
@@ -3808,14 +3871,10 @@ function newFreeItem(): FreeItem {
                       <FormItem>
                         <FormLabel>Valor Mensal (R$)</FormLabel>
                         <FormControl>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
+                          <BudgetMoneyInput
                             placeholder="Ex: 1500,00"
-                            {...field}
-                            value={field.value ?? ""}
-                            onChange={(e) => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))}
+                            value={field.value}
+                            onChange={field.onChange}
                           />
                         </FormControl>
                         <FormMessage />
@@ -3951,7 +4010,11 @@ function newFreeItem(): FreeItem {
                   <FormField control={form.control} name={`paymentCompositions.${idx}.valor` as const} render={({ field }) => (
                     <FormItem className="space-y-1">
                       <FormControl>
-                        <Input type="number" step="0.01" placeholder="Valor" {...field} value={field.value ?? ""} />
+                        <BudgetMoneyInput
+                          placeholder="Valor"
+                          value={field.value}
+                          onChange={field.onChange}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
