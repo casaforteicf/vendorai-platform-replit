@@ -520,7 +520,7 @@ function buildProposalScheduleRows<T extends PresentableProposalItem>(
   presentation: Required<ProposalPresentationConfig>,
   total: number,
 ) {
-  let cursor = proposalDate(presentation.previsaoInicio);
+  const globalStart = proposalDate(presentation.previsaoInicio);
   const rows = groups.map((group) => {
     const config = presentation.cronogramaEtapas[group.id] ?? {};
     const value = group.itens.reduce(
@@ -529,8 +529,9 @@ function buildProposalScheduleRows<T extends PresentableProposalItem>(
     );
     const financialPercent = total > 0 ? (value / total) * 100 : 0;
 
-    const explicitStart = proposalDate(config.inicioPrevisto);
-    const start = explicitStart ?? cursor;
+    // Cada etapa possui sua própria janela. Isso permite que várias etapas
+    // aconteçam ao mesmo tempo e gerem cobrança no mesmo período.
+    const start = proposalDate(config.inicioPrevisto) ?? globalStart;
     const explicitEnd = proposalDate(config.fimPrevisto);
     const configuredDuration = Number(config.duracaoDias ?? 0);
     const duration = configuredDuration > 0
@@ -539,9 +540,6 @@ function buildProposalScheduleRows<T extends PresentableProposalItem>(
         ? proposalDiffDays(start, explicitEnd)
         : undefined;
     const end = explicitEnd ?? (start && duration ? proposalAddDays(start, duration - 1) : null);
-
-    if (end) cursor = proposalAddDays(end, 1);
-    else if (start && duration) cursor = proposalAddDays(start, duration);
 
     const configuredPhysical = Number(config.percentualFisico);
     return {
@@ -585,6 +583,138 @@ function buildProposalScheduleRows<T extends PresentableProposalItem>(
       physicalPercent: Math.max(0, Math.min(100, automaticPhysical)),
     };
   });
+}
+
+type ProposalScheduleRow = {
+  id: string;
+  ordem: number;
+  nome: string;
+  value: number;
+  physicalPercent: number;
+  start: Date | null;
+  end: Date | null;
+  duration?: number;
+};
+
+function proposalMonthKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function proposalMonthLabel(key: string): string {
+  const [year, month] = key.split("-").map(Number);
+  const date = new Date(year, Math.max(0, month - 1), 1);
+  return date.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" }).replace(".", "");
+}
+
+function proposalMonthBounds(key: string): { start: Date; end: Date } {
+  const [year, month] = key.split("-").map(Number);
+  return {
+    start: new Date(year, month - 1, 1, 12, 0, 0),
+    end: new Date(year, month, 0, 12, 0, 0),
+  };
+}
+
+function proposalOverlapDays(start: Date, end: Date, rangeStart: Date, rangeEnd: Date): number {
+  const from = start.getTime() > rangeStart.getTime() ? start : rangeStart;
+  const to = end.getTime() < rangeEnd.getTime() ? end : rangeEnd;
+  if (to.getTime() < from.getTime()) return 0;
+  return proposalDiffDays(from, to);
+}
+
+function buildProposalMonthlyMatrix(rows: ProposalScheduleRow[]) {
+  const scheduled = rows.filter(
+    (row) => row.start && row.end && Number(row.duration ?? 0) > 0,
+  );
+  if (!scheduled.length) return [];
+
+  const firstStart = scheduled.reduce(
+    (min, row) => row.start!.getTime() < min.getTime() ? row.start! : min,
+    scheduled[0].start!,
+  );
+  const lastEnd = scheduled.reduce(
+    (max, row) => row.end!.getTime() > max.getTime() ? row.end! : max,
+    scheduled[0].end!,
+  );
+
+  const periods: string[] = [];
+  const cursor = new Date(firstStart.getFullYear(), firstStart.getMonth(), 1, 12, 0, 0);
+  const limit = new Date(lastEnd.getFullYear(), lastEnd.getMonth(), 1, 12, 0, 0);
+  while (cursor.getTime() <= limit.getTime() && periods.length < 36) {
+    periods.push(proposalMonthKey(cursor));
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+
+  return periods.map((period) => {
+    const bounds = proposalMonthBounds(period);
+    const stages = scheduled.map((row) => {
+      const overlapDays = proposalOverlapDays(row.start!, row.end!, bounds.start, bounds.end);
+      const share = row.duration && overlapDays > 0 ? overlapDays / row.duration : 0;
+      return {
+        id: row.id,
+        ordem: row.ordem,
+        nome: row.nome,
+        amount: row.value * share,
+        physical: row.physicalPercent * share,
+        share,
+      };
+    });
+
+    return {
+      key: period,
+      label: proposalMonthLabel(period),
+      stages,
+      amount: stages.reduce((sum, stage) => sum + stage.amount, 0),
+      physical: stages.reduce((sum, stage) => sum + stage.physical, 0),
+    };
+  });
+}
+
+function renderProposalMonthlyMatrix(
+  rows: ProposalScheduleRow[],
+  fmtMoney: (value: number) => string,
+): string {
+  const periods = buildProposalMonthlyMatrix(rows);
+  if (!periods.length) return "";
+
+  const chunks: typeof periods[] = [];
+  for (let index = 0; index < periods.length; index += 5) {
+    chunks.push(periods.slice(index, index + 5));
+  }
+
+  return chunks.map((chunk, chunkIndex) => {
+    const body = rows.map((row) => {
+      const cells = chunk.map((period) => {
+        const stage = period.stages.find((item) => item.id === row.id);
+        if (!stage || stage.share <= 0) return '<td class="period-empty">—</td>';
+        return `<td class="period-cell">
+          <strong>${fmtMoney(stage.amount)}</strong>
+          <span>${(stage.share * 100).toFixed(1)}% da etapa</span>
+          <span>Físico ${stage.physical.toFixed(1)}%</span>
+        </td>`;
+      }).join("");
+      return `<tr>
+        <td class="period-stage"><strong>Etapa ${row.ordem}</strong><span>${escapeProposalText(row.nome || "Execução")}</span></td>
+        ${cells}
+      </tr>`;
+    }).join("");
+
+    const financialFooter = chunk.map((period) => `<td class="r"><strong>${fmtMoney(period.amount)}</strong></td>`).join("");
+    const physicalFooter = chunk.map((period) => `<td class="r"><strong>${period.physical.toFixed(1)}%</strong></td>`).join("");
+
+    return `<div class="period-matrix-group">
+      <div class="period-matrix-caption">${chunks.length > 1 ? `Períodos ${chunkIndex * 5 + 1}–${chunkIndex * 5 + chunk.length}` : "Cobrança por período"}</div>
+      <table class="period-matrix">
+        <thead>
+          <tr><th>Etapa do orçamento</th>${chunk.map((period) => `<th class="r">${period.label}</th>`).join("")}</tr>
+        </thead>
+        <tbody>${body}</tbody>
+        <tfoot>
+          <tr><td>Cobrança do período</td>${financialFooter}</tr>
+          <tr><td>Avanço físico do período</td>${physicalFooter}</tr>
+        </tfoot>
+      </table>
+    </div>`;
+  }).join("");
 }
 
 function escapeProposalText(value: string): string {
