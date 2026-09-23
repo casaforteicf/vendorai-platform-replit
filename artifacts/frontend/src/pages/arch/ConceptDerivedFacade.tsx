@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import type { ConceptFacadePreferences } from "./ConceptVolumetry";
-import type { SitePlacement } from "./conceptSitePlacement";
+import { normalizeSitePlacement, type SitePlacement } from "./conceptSitePlacement";
 import { buildDerivedFacadeModel } from "./conceptFacadeGeometry";
 import {
   FACADE_MATERIALS,
@@ -195,14 +195,15 @@ export default function ConceptDerivedFacade({
   } | null>(null);
   const colors = facadePalette(facade, design);
   const lineMode = viewMode === "line";
+  const safeSitePlacement = normalizeSitePlacement(sitePlacement);
   const builtRooms = (Array.isArray(rooms) ? rooms : []).filter((room) => room.kind !== "piscina");
-  const derivedFacade = buildDerivedFacadeModel(levels, rooms, sitePlacement);
+  const derivedFacade = buildDerivedFacadeModel(levels, rooms, safeSitePlacement);
   const overall = {
     minX: derivedFacade.minAxis,
     maxX: derivedFacade.maxAxis,
     width: Math.max(6, derivedFacade.width),
   };
-  const facadeHorizontal = sitePlacement.frontSide === "top" || sitePlacement.frontSide === "bottom";
+  const facadeHorizontal = safeSitePlacement.frontSide === "top" || safeSitePlacement.frontSide === "bottom";
   const roomAxisStart = (room: ConceptRoomShape) => facadeHorizontal ? room.x : room.y;
   const roomAxisSize = (room: ConceptRoomShape) => facadeHorizontal ? room.width : room.depth;
 
