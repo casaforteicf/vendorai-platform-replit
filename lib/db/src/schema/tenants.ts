@@ -2,6 +2,7 @@ import {
   pgTable,
   text,
   integer,
+  bigint,
   numeric,
   timestamp,
   boolean,
@@ -134,7 +135,7 @@ export const tenantsTable = pgTable(
     cancelamentoSolicitadoEm: timestamp("cancelamento_solicitado_em"),
     canceladoEm: timestamp("cancelado_em"),
     motivoCancelamento: text("motivo_cancelamento"),
-    tokenCredits: integer("token_credits").notNull().default(0),
+    tokenCredits: bigint("token_credits", { mode: "number" }).notNull().default(0),
     partnerId: text("partner_id").references(() => partnersTable.id, {
       onDelete: "set null",
     }),
