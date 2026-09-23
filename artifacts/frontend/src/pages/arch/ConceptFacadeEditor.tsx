@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Box,
   Copy,
@@ -267,6 +267,7 @@ export default function ConceptFacadeEditor({
   const [aiBusy, setAiBusy] = useState(false);
   const [aiResult, setAiResult] = useState<AIDevelopmentResponse | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
+  const siteSyncInitializedRef = useRef(false);
 
   const resolvedConceptProjectId = useMemo(() => {
     if (conceptProjectId) return conceptProjectId;
@@ -294,6 +295,8 @@ export default function ConceptFacadeEditor({
   ];
 
   useEffect(() => {
+    if (siteSyncInitializedRef.current) return;
+    siteSyncInitializedRef.current = true;
     const alreadySynced = design.volumes.some((volume) => volume.label.startsWith("Implantação ·"));
     if (!alreadySynced) {
       onDesignChange(applySiteExteriorToFacade(design, siteExteriorPlan));
