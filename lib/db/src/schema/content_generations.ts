@@ -16,7 +16,9 @@ export type ReelsVariation = {
   cta: string;
   videoUrl?: string;
   coverUrl?: string;
-  coverSource?: "upload" | "frame";
+  coverOriginalUrl?: string;
+  coverSource?: "upload" | "frame" | "ai";
+  coverCrop?: { zoom: number; x: number; y: number };
   thumbOffsetMs?: number;
 };
 export type LinkedInVariation = { hook: string; caption: string; hashtags: string[] };
