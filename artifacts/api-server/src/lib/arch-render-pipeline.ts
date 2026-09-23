@@ -702,73 +702,116 @@ export async function callReplicateVeo31(params: {
 
   const MODEL = "google/veo-3.1";
   const { prompt, logger } = params;
-  logger?.info({ model: MODEL }, "Veo31: creating prediction");
-
   type Prediction = { id: string; status: string; output?: string | string[]; error?: string };
-  const createRes = await fetch(
-    `https://api.replicate.com/v1/models/${MODEL}/predictions`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Token ${token}`,
-        "Content-Type": "application/json",
-        Prefer: "wait=60",
-      },
-      body: JSON.stringify({
-        input: {
-          prompt,
-          aspect_ratio: params.aspectRatio ?? "16:9",
-          duration: params.duration ?? 8,
-          resolution: params.resolution ?? "1080p",
-          generate_audio: params.generateAudio !== false,
-          ...(params.negativePrompt ? { negative_prompt: params.negativePrompt } : {}),
-          ...(params.image ? { image: params.image } : {}),
-          ...(params.lastFrame ? { last_frame: params.lastFrame } : {}),
-          ...(params.referenceImages?.length
-            ? { reference_images: params.referenceImages.slice(0, 3) }
-            : {}),
+
+  const isRetryableVeoError = (message: string, status?: number) => {
+    const normalized = message.toLowerCase();
+    return status === 429
+      || status === 500
+      || status === 502
+      || status === 503
+      || status === 504
+      || normalized.includes("high load")
+      || normalized.includes("cannot process your request")
+      || normalized.includes("try again later")
+      || normalized.includes("resource exhausted")
+      || normalized.includes("temporarily unavailable")
+      || normalized.includes("overloaded");
+  };
+
+  const maxAttempts = 4;
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      logger?.info({ model: MODEL, attempt, maxAttempts }, "Veo31: creating prediction");
+
+      const createRes = await fetch(
+        `https://api.replicate.com/v1/models/${MODEL}/predictions`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Token ${token}`,
+            "Content-Type": "application/json",
+            Prefer: "wait=60",
+          },
+          body: JSON.stringify({
+            input: {
+              prompt,
+              aspect_ratio: params.aspectRatio ?? "16:9",
+              duration: params.duration ?? 8,
+              resolution: params.resolution ?? "1080p",
+              generate_audio: params.generateAudio !== false,
+              ...(params.negativePrompt ? { negative_prompt: params.negativePrompt } : {}),
+              ...(params.image ? { image: params.image } : {}),
+              ...(params.lastFrame ? { last_frame: params.lastFrame } : {}),
+              ...(params.referenceImages?.length
+                ? { reference_images: params.referenceImages.slice(0, 3) }
+                : {}),
+            },
+          }),
+          signal: AbortSignal.timeout(120_000),
         },
-      }),
-      signal: AbortSignal.timeout(120_000),
-    },
-  );
+      );
 
-  if (!createRes.ok) {
-    const body = await createRes.json().catch(() => ({})) as Record<string, unknown>;
-    throw new Error(`Veo31 HTTP ${createRes.status}: ${body["detail"] ?? JSON.stringify(body)}`);
+      if (!createRes.ok) {
+        const body = await createRes.json().catch(() => ({})) as Record<string, unknown>;
+        const detail = String(body["detail"] ?? JSON.stringify(body));
+        const error = new Error(`Veo31 HTTP ${createRes.status}: ${detail}`);
+        if (!isRetryableVeoError(detail, createRes.status) || attempt === maxAttempts) throw error;
+        throw Object.assign(error, { retryable: true });
+      }
+
+      let prediction = await createRes.json() as Prediction;
+      if (!prediction.id) throw new Error("Veo31: resposta sem identificador de geração");
+
+      let polls = 0;
+      while (prediction.status === "starting" || prediction.status === "processing") {
+        if (polls >= 180) throw new Error("Veo31: polling timeout");
+        await new Promise<void>((resolve) => setTimeout(resolve, 4000));
+        const pollRes = await fetch(
+          `https://api.replicate.com/v1/predictions/${prediction.id}`,
+          {
+            headers: { Authorization: `Token ${token}` },
+            signal: AbortSignal.timeout(30_000),
+          },
+        );
+        if (!pollRes.ok) throw new Error(`Veo31: status indisponível (${pollRes.status})`);
+        prediction = await pollRes.json() as Prediction;
+        polls += 1;
+      }
+
+      if (prediction.status !== "succeeded" || !prediction.output) {
+        const message = `Veo31 ${prediction.status}: ${prediction.error ?? "no output"}`;
+        const error = new Error(message);
+        if (!isRetryableVeoError(message) || attempt === maxAttempts) throw error;
+        throw Object.assign(error, { retryable: true });
+      }
+
+      const outputUrl = Array.isArray(prediction.output) ? prediction.output[0] : prediction.output;
+      if (!outputUrl) throw new Error("Veo31: empty output URL");
+
+      const videoRes = await fetch(outputUrl, { signal: AbortSignal.timeout(120_000) });
+      if (!videoRes.ok) throw new Error(`Veo31: download failed (${videoRes.status})`);
+      const buffer = Buffer.from(await videoRes.arrayBuffer());
+      if (!buffer.length) throw new Error("Veo31: empty video output");
+
+      logger?.info({ model: MODEL, polls, predictionId: prediction.id, attempt }, "Veo31: prediction succeeded");
+      return { buffer, predictionId: prediction.id, model: MODEL };
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      const retryable = (error as { retryable?: boolean } | null)?.retryable === true
+        || isRetryableVeoError(lastError.message);
+      if (!retryable || attempt === maxAttempts) throw lastError;
+
+      const delayMs = Math.min(90_000, 12_000 * Math.pow(2, attempt - 1));
+      logger?.warn(
+        { err: lastError, attempt, maxAttempts, delayMs },
+        "Veo31: provider busy; retrying automatically",
+      );
+      await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+    }
   }
 
-  let prediction = await createRes.json() as Prediction;
-  if (!prediction.id) throw new Error("Veo31: resposta sem identificador de geração");
-
-  let polls = 0;
-  while (prediction.status === "starting" || prediction.status === "processing") {
-    if (polls >= 180) throw new Error("Veo31: polling timeout");
-    await new Promise<void>((resolve) => setTimeout(resolve, 4000));
-    const pollRes = await fetch(
-      `https://api.replicate.com/v1/predictions/${prediction.id}`,
-      {
-        headers: { Authorization: `Token ${token}` },
-        signal: AbortSignal.timeout(30_000),
-      },
-    );
-    if (!pollRes.ok) throw new Error(`Veo31: status indisponível (${pollRes.status})`);
-    prediction = await pollRes.json() as Prediction;
-    polls += 1;
-  }
-
-  if (prediction.status !== "succeeded" || !prediction.output) {
-    throw new Error(`Veo31 ${prediction.status}: ${prediction.error ?? "no output"}`);
-  }
-
-  const outputUrl = Array.isArray(prediction.output) ? prediction.output[0] : prediction.output;
-  if (!outputUrl) throw new Error("Veo31: empty output URL");
-
-  const videoRes = await fetch(outputUrl, { signal: AbortSignal.timeout(120_000) });
-  if (!videoRes.ok) throw new Error(`Veo31: download failed (${videoRes.status})`);
-  const buffer = Buffer.from(await videoRes.arrayBuffer());
-  if (!buffer.length) throw new Error("Veo31: empty video output");
-
-  logger?.info({ model: MODEL, polls, predictionId: prediction.id }, "Veo31: prediction succeeded");
-  return { buffer, predictionId: prediction.id, model: MODEL };
+  throw lastError ?? new Error("Veo31: falha após tentativas automáticas");
 }
