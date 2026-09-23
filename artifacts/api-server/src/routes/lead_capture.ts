@@ -131,7 +131,7 @@ router.post("/tenants/:tenantId/lead-capture/campaigns", async (req, res) => {
     ? req.body.deliveryToolKeys.map((v: unknown) => String(v)).filter(Boolean)
     : [];
   if (!name) return res.status(422).json({ error: "Nome da campanha é obrigatório" });
-  if (!magnets.length) return res.status(422).json({ error: "Adicione ao menos uma isca" });
+  if (!magnets.length) return res.status(422).json({ error: "Adicione ao menos uma entrada" });
   if (!deliveryToolKeys.length) return res.status(422).json({ error: "Selecione ao menos uma entrega gratuita" });
 
   const [created] = await db.insert(leadCaptureCampaignsTable).values({
