@@ -155,7 +155,9 @@ type ConceptSaveOverrides = {
   rooms?: Room[];
   customWalls?: CustomWall[];
   customOpenings?: CustomOpening[];
+  objects?: ConceptPlanObject[];
   facadePreferences?: ConceptFacadePreferences;
+  facadeDesign?: FacadeDesignState;
 };
 
 type CustomerProfile = {
@@ -1168,7 +1170,9 @@ export default function ConceptPlanner() {
     const nextRooms = overrides?.rooms ?? rooms;
     const nextCustomWalls = overrides?.customWalls ?? customWalls;
     const nextCustomOpenings = overrides?.customOpenings ?? customOpenings;
+    const nextObjects = overrides?.objects ?? objects;
     const nextFacadePreferences = overrides?.facadePreferences ?? facadePreferences;
+    const nextFacadeDesign = overrides?.facadeDesign ?? facadeDesign;
     const payload = {
       title: "Meu pré-projeto",
       currentStep: stepOverride ?? step,
@@ -1183,7 +1187,7 @@ export default function ConceptPlanner() {
         customWalls: nextCustomWalls,
         customOpenings: nextCustomOpenings,
         spaceProfiles,
-        objects,
+        objects: nextObjects,
         wallMaterials,
         savedTourPoints: savedTourPointsOverride ?? savedTourPoints,
         sitePlacement,
@@ -1192,7 +1196,7 @@ export default function ConceptPlanner() {
       openingOverrides,
       customerProfile,
       facadePreferences: nextFacadePreferences,
-      facadeDesign,
+      facadeDesign: nextFacadeDesign,
       conceptRender,
       selectedVariant: layoutVariant,
     };
@@ -1215,6 +1219,11 @@ export default function ConceptPlanner() {
       setSaveState("error");
       return null;
     }
+  };
+
+  const handleFacadeDesignChange = (next: FacadeDesignState) => {
+    setFacadeDesign(next);
+    void saveConcept(4, undefined, { facadeDesign: next });
   };
 
   const applyAiDevelopment = async (result: AIDevelopmentResponse) => {
@@ -1756,9 +1765,12 @@ export default function ConceptPlanner() {
   const deleteSelectedObject = () => {
     if (!selectedObjectId) return;
     const before = snapshotEditor();
-    setObjects((prev) => (Array.isArray(prev) ? prev : []).filter((object) => object.id !== selectedObjectId));
+    const nextObjects = safeObjects.filter((object) => object.id !== selectedObjectId);
+    objectsRef.current = nextObjects;
+    setObjects(nextObjects);
     setSelectedObjectId(null);
     pushRoomHistory(before);
+    void saveConcept(4, undefined, { objects: nextObjects });
   };
 
   const duplicateSelectedObject = () => {
@@ -1803,9 +1815,12 @@ export default function ConceptPlanner() {
 
   const deleteObject = (objectId: string) => {
     const before = snapshotEditor();
-    setObjects((prev) => (Array.isArray(prev) ? prev : []).filter((object) => object.id !== objectId));
+    const nextObjects = safeObjects.filter((object) => object.id !== objectId);
+    objectsRef.current = nextObjects;
+    setObjects(nextObjects);
     setSelectedObjectId((current) => current === objectId ? null : current);
     pushRoomHistory(before);
+    void saveConcept(4, undefined, { objects: nextObjects });
   };
 
   const armPaintTool = (
@@ -6285,7 +6300,7 @@ export default function ConceptPlanner() {
                       facade={facadePreferences}
                       design={facadeDesign}
                       onFacadeChange={setFacadePreferences}
-                      onDesignChange={setFacadeDesign}
+                      onDesignChange={handleFacadeDesignChange}
                       onApplyDevelopment={applyAiDevelopment}
                       realisticPreviewUrl={latestFacadeRenderUrl}
                       realisticPreviewLoading={conceptRender?.status === "processing"}
