@@ -1,1 +1,0 @@
-`admin_partners.ts` now mounts both the preserved legacy partners router and `partner_referral_history.ts`, so `/api/admin/partners-commercial/history` is available through the existing partners route registration.
