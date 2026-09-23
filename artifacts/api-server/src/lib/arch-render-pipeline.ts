@@ -691,6 +691,10 @@ export async function callReplicateVeo31(params: {
   duration?: 4 | 6 | 8;
   resolution?: "720p" | "1080p";
   generateAudio?: boolean;
+  negativePrompt?: string;
+  image?: string;
+  lastFrame?: string;
+  referenceImages?: string[];
   logger?: Logger;
 }): Promise<{ buffer: Buffer; predictionId: string; model: string }> {
   const token = process.env["REPLICATE_API_TOKEN"];
@@ -717,6 +721,12 @@ export async function callReplicateVeo31(params: {
           duration: params.duration ?? 8,
           resolution: params.resolution ?? "1080p",
           generate_audio: params.generateAudio !== false,
+          ...(params.negativePrompt ? { negative_prompt: params.negativePrompt } : {}),
+          ...(params.image ? { image: params.image } : {}),
+          ...(params.lastFrame ? { last_frame: params.lastFrame } : {}),
+          ...(params.referenceImages?.length
+            ? { reference_images: params.referenceImages.slice(0, 3) }
+            : {}),
         },
       }),
       signal: AbortSignal.timeout(120_000),
