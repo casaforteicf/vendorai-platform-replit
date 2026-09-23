@@ -766,6 +766,7 @@ export default function ConceptPlanner() {
   const [openingOverrides, setOpeningOverrides] = useState<Record<string, OpeningOverride>>({});
   const [conceptId, setConceptId] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "loading" | "saving" | "saved" | "error">("loading");
+  const [aiDevelopmentState, setAiDevelopmentState] = useState<"idle" | "running" | "error">("idle");
   const [customerProfile, setCustomerProfile] = useState<CustomerProfile>({});
   const [facadePreferences, setFacadePreferences] = useState<ConceptFacadePreferences>(DEFAULT_FACADE);
   const [facadeDesign, setFacadeDesign] = useState<FacadeDesignState>(DEFAULT_FACADE_DESIGN);
@@ -1289,6 +1290,33 @@ export default function ConceptPlanner() {
       customOpenings: nextOpenings,
       facadePreferences: nextFacade,
     });
+  };
+
+  const runAiDevelopment = async () => {
+    if (aiDevelopmentState === "running") return;
+    setAiDevelopmentState("running");
+    try {
+      const projectId = await saveConcept(4);
+      if (!projectId) throw new Error("Não foi possível salvar o pré-projeto antes da análise.");
+      const response = await fetch(`/api/arch/concept-projects/${projectId}/develop-with-ai`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "assistido",
+          preserveLayout: true,
+          style: facadePreferences.style,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error((payload as { error?: string }).error ?? "Falha ao desenvolver com IA.");
+      await applyAiDevelopment(payload as AIDevelopmentResponse);
+      setEditorView("plan");
+      setEditorLibraryTab("build");
+      setAiDevelopmentState("idle");
+    } catch {
+      setAiDevelopmentState("error");
+      window.setTimeout(() => setAiDevelopmentState("idle"), 3000);
+    }
   };
 
   const sharePublicTour = async () => {
@@ -4308,6 +4336,19 @@ export default function ConceptPlanner() {
                   title="Salvar projeto"
                 >
                   <Check className="h-4 w-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void runAiDevelopment()}
+                  disabled={aiDevelopmentState === "running" || saveState === "loading"}
+                  className={aiDevelopmentState === "error"
+                    ? "hidden h-10 items-center gap-2 rounded-xl border border-red-400/30 bg-red-500/15 px-3 text-xs font-bold text-red-100 disabled:opacity-50 md:inline-flex"
+                    : "hidden h-10 items-center gap-2 rounded-xl border border-orange-400/30 bg-orange-500/15 px-3 text-xs font-bold text-orange-100 transition hover:bg-orange-500/25 disabled:opacity-50 md:inline-flex"}
+                  title="Desenvolver layout, paredes, aberturas e fachada com IA"
+                >
+                  <Sparkles className={aiDevelopmentState === "running" ? "h-4 w-4 animate-pulse" : "h-4 w-4"} />
+                  {aiDevelopmentState === "running" ? "IA analisando..." : aiDevelopmentState === "error" ? "Tentar IA novamente" : "Desenvolver com IA"}
                 </button>
 
                 <button
