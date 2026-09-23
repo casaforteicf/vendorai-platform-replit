@@ -516,6 +516,16 @@ export function renderProposalHtml(json: unknown, theme: {
   const navName = tenantName || "Proposta Comercial";
   const navLogoUrl = tenantLogoUrl || null;
   const today = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+  const visualImages = (imagens || []).filter(
+    (url): url is string => typeof url === "string" && url.trim().length > 0,
+  );
+  const pageImage = (index: number) => visualImages[index] || null;
+  const renderPageVisual = (index: number, alt: string, className = "") => {
+    const url = pageImage(index);
+    return url
+      ? `<div class="page-visual ${className}"><img src="${url}" alt="${alt}" loading="lazy" onerror="this.style.display='none'" /></div>`
+      : "";
+  };
 
   const facts = (situation.facts || []).map((f: any) =>
     `<div class="fact"><span class="num">${f.num}</span><span class="lbl">${f.label}</span></div>`
@@ -544,10 +554,21 @@ export function renderProposalHtml(json: unknown, theme: {
   const docHdr = (label: string) => `
   <div class="doc-hdr">
     <div class="doc-hdr-left">
-      ${navLogoUrl ? `<img src="${navLogoUrl}" alt="${navName}" class="doc-hdr-logo" onerror="this.style.display='none'" />` : ""}
-      <span class="doc-hdr-name">${navName}</span>
+      ${navLogoUrl
+        ? `<img src="${navLogoUrl}" alt="${navName}" class="doc-hdr-logo" onerror="this.style.display='none'" />`
+        : `<span class="doc-hdr-name">${navName}</span>`}
     </div>
     <span class="doc-hdr-right">${label}</span>
+  </div>`;
+
+  const docFooter = () => `
+  <div class="doc-footer">
+    <div class="doc-footer-brand">
+      ${navLogoUrl
+        ? `<img src="${navLogoUrl}" alt="${navName}" class="doc-footer-logo" onerror="this.style.display='none'" />`
+        : `<span class="doc-footer-name">${navName}</span>`}
+    </div>
+    <span class="doc-footer-meta">${websiteUrl || "Proposta Comercial"}</span>
   </div>`;
 
   return `<!DOCTYPE html>
@@ -596,6 +617,26 @@ export function renderProposalHtml(json: unknown, theme: {
   .doc-hdr-logo { height: 20px; object-fit: contain; max-width: 120px; }
   .doc-hdr-name { font-weight: 700; font-size: 8.5pt; color: ${theme.navyDeep}; }
   .doc-hdr-right { font-family: "JetBrains Mono", monospace; font-size: 6.5pt; letter-spacing: .08em; text-transform: uppercase; color: ${theme.navyMid}; opacity: .65; }
+  .doc-footer {
+    margin-top: auto;
+    padding-top: 4mm;
+    border-top: 1px solid ${theme.concreteLine};
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 5mm;
+    min-height: 11mm;
+  }
+  .doc-footer-brand { display: flex; align-items: center; min-width: 0; }
+  .doc-footer-logo { height: 16px; max-width: 105px; object-fit: contain; display: block; }
+  .doc-footer-name { font-size: 7pt; font-weight: 700; color: ${theme.navyDeep}; }
+  .doc-footer-meta {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 6pt;
+    color: ${theme.navyMid};
+    opacity: .55;
+    text-align: right;
+  }
 
   /* ── cover page ── */
   .cover {
@@ -609,7 +650,7 @@ export function renderProposalHtml(json: unknown, theme: {
     margin-bottom: 20mm;
   }
   .cover-logo-wrap { display: flex; align-items: center; gap: 8px; }
-  .cover-logo-img { height: 32px; object-fit: contain; max-width: 150px; }
+  .cover-logo-img { height: 34px; object-fit: contain; max-width: 165px; }
   .cover-company { font-weight: 800; font-size: 11pt; color: ${theme.navyDeep}; }
   .cover-date { font-family: "JetBrains Mono", monospace; font-size: 7pt; color: ${theme.navyMid}; opacity: .6; text-transform: uppercase; letter-spacing: .07em; padding-top: 5px; }
   .cover-body { flex: 1; display: flex; flex-direction: column; gap: 5mm; }
@@ -627,11 +668,16 @@ export function renderProposalHtml(json: unknown, theme: {
     border-top: 1px solid ${theme.concreteLine};
     display: flex;
     justify-content: space-between;
+    align-items: center;
+    gap: 6mm;
     font-family: "JetBrains Mono", monospace;
     font-size: 6.5pt;
     color: ${theme.navyMid};
-    opacity: .55;
   }
+  .cover-footer-brand { display: flex; align-items: center; min-width: 0; }
+  .cover-footer-logo { height: 18px; max-width: 110px; object-fit: contain; display: block; }
+  .cover-footer-name { font-weight: 700; color: ${theme.navyDeep}; }
+  .cover-footer-meta { opacity: .55; text-align: right; }
 
   /* ── typography ── */
   h2 { font-family: "Instrument Serif", serif; font-weight: 400; font-size: 14.5pt; line-height: 1.15; color: ${theme.navyDeep}; margin-bottom: 2.5mm; }
@@ -722,9 +768,28 @@ export function renderProposalHtml(json: unknown, theme: {
   .orc-meta-item span:last-child { font-size: 9pt; font-weight: 600; color: ${theme.navyDeep}; }
   .orc-obs { margin-top: 3mm; padding: 3mm 4mm; background: ${theme.cream2}; border-radius: 6px; border: 1px solid ${theme.concreteLine}; font-size: 8pt; color: #4a4368; line-height: 1.55; }
 
-  /* ── hero image (cover visual) ── */
-  .img-hero-wrap { margin: 5mm 0 4mm; border-radius: 10px; overflow: hidden; border: 1px solid ${theme.concreteLine}; }
-  .img-hero-wrap img { width: 100%; max-height: 72mm; object-fit: cover; display: block; }
+  /* ── proposal visuals ── */
+  .img-hero-wrap {
+    margin: 5mm 0 4mm;
+    height: 88mm;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid ${theme.concreteLine};
+    background: ${theme.cream2};
+  }
+  .img-hero-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .page-visual {
+    width: 100%;
+    height: 46mm;
+    margin: 4mm 0 5mm;
+    border-radius: 9px;
+    overflow: hidden;
+    border: 1px solid ${theme.concreteLine};
+    background: ${theme.cream2};
+  }
+  .page-visual img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .page-visual.compact { height: 34mm; margin: 3.5mm 0 4mm; }
+  .page-visual.budget { height: 27mm; margin: 2.5mm 0 3mm; border-radius: 7px; }
 
   /* ── gallery ── */
   .gallery { display: grid; gap: 3mm; margin: 3.5mm 0; }
@@ -745,8 +810,9 @@ export function renderProposalHtml(json: unknown, theme: {
 <div class="page cover">
   <div class="cover-top">
     <div class="cover-logo-wrap">
-      ${navLogoUrl ? `<img src="${navLogoUrl}" alt="${navName}" class="cover-logo-img" onerror="this.style.display='none'" />` : ""}
-      <span class="cover-company">${navName}</span>
+      ${navLogoUrl
+        ? `<img src="${navLogoUrl}" alt="${navName}" class="cover-logo-img" onerror="this.style.display='none'" />`
+        : `<span class="cover-company">${navName}</span>`}
     </div>
     <span class="cover-date">${today}</span>
   </div>
@@ -765,8 +831,12 @@ export function renderProposalHtml(json: unknown, theme: {
   </div>
 
   <div class="cover-footer">
-    <span>${navName} · Proposta Comercial</span>
-    <span>${clientName || meta.clientName || "Cliente"}${websiteUrl ? ` · ${websiteUrl}` : ""}</span>
+    <div class="cover-footer-brand">
+      ${navLogoUrl
+        ? `<img src="${navLogoUrl}" alt="${navName}" class="cover-footer-logo" onerror="this.style.display='none'" />`
+        : `<span class="cover-footer-name">${navName}</span>`}
+    </div>
+    <span class="cover-footer-meta">Proposta Comercial · ${clientName || meta.clientName || "Cliente"}${websiteUrl ? ` · ${websiteUrl}` : ""}</span>
   </div>
 </div>
 
@@ -779,6 +849,7 @@ export function renderProposalHtml(json: unknown, theme: {
   <p class="lead-text">${situation.subtitle || ""}</p>
   <div class="facts">${facts}</div>
   ${situation.bridge ? `<p class="bridge">${situation.bridge}</p>` : ""}
+  ${renderPageVisual(1, `Imagem de contexto para ${clientName || meta.clientName || "cliente"}`)}
 
   <hr class="sec-divider" />
 
@@ -786,6 +857,7 @@ export function renderProposalHtml(json: unknown, theme: {
   <h2>${problem.title || ""}</h2>
   <p class="lead-text">${problem.subtitle || ""}</p>
   <div class="cards">${problemCards}</div>
+  ${docFooter()}
 </div>
 
 <!-- ══ PAGE 3: IMPLICAÇÃO + VALOR ══ -->
@@ -804,6 +876,8 @@ export function renderProposalHtml(json: unknown, theme: {
   <h2>${value.title || ""}</h2>
   <div class="questions">${questions}</div>
   ${value.close ? `<p class="need-close">${value.close}</p>` : ""}
+  ${renderPageVisual(2, `Imagem de valor para ${clientName || meta.clientName || "cliente"}`)}
+  ${docFooter()}
 </div>
 
 <!-- ══ PAGE 4: SOLUÇÃO + MÓDULOS + CTA ══ -->
@@ -814,6 +888,7 @@ export function renderProposalHtml(json: unknown, theme: {
   <h2>${solution.title || ""}</h2>
   <p class="lead-text">${solution.subtitle || ""}</p>
   <div class="agents">${agents}</div>
+  ${renderPageVisual(3, `Imagem da solução para ${clientName || meta.clientName || "cliente"}`, "compact")}
 
   <hr class="sec-divider" />
 
@@ -846,6 +921,7 @@ export function renderProposalHtml(json: unknown, theme: {
       return items.length > 0 ? `<div class="contact-strip">${items.join("")}</div>` : "";
     })()}
   </div>
+  ${docFooter()}
 </div>
 
 ${orcamento ? (() => {
@@ -911,6 +987,7 @@ ${orcamento ? (() => {
   ${docHdr(`Orçamento para ${clientName || meta.clientName || "Cliente"}`)}
   <div class="sec-label">Orçamento${orcamento.numero ? " · " + orcamento.numero : ""}</div>
   <h2>${orcamento.titulo}</h2>
+  ${renderPageVisual(4, `Imagem do projeto para ${clientName || meta.clientName || "cliente"}`, "budget")}
   ${itensValidos.length > 0 ? `
   ${presentationBlocks}
   ${presentation.mostrarTotalGeral ? `<div class="orc-total-row">
@@ -921,16 +998,18 @@ ${orcamento ? (() => {
   </div>` : ""}` : ""}
   ${metaItems ? `<div class="orc-meta">${metaItems}</div>` : ""}
   ${orcamento.observacoes ? `<div class="orc-obs">${orcamento.observacoes}</div>` : ""}
+  ${docFooter()}
 </div>`;
 })() : ""}
 
-${imagens && imagens.length > 1 ? imagens.slice(1).map((url, idx) => `
+${visualImages.length > (orcamento ? 5 : 4) ? visualImages.slice(orcamento ? 5 : 4).map((url, idx) => `
 <div class="page">
   ${docHdr(`Visualizações · ${clientName || meta.clientName || "Cliente"}`)}
-  <div class="sec-label">Visualização do Projeto${imagens.length > 2 ? ` · ${idx + 1}` : ""}</div>
+  <div class="sec-label">Visualização adicional${visualImages.length > (orcamento ? 6 : 5) ? ` · ${idx + 1}` : ""}</div>
   <div style="flex:1;display:flex;align-items:center;justify-content:center;margin:4mm 0;">
-    <img src="${url}" alt="Visualização do projeto" style="max-width:100%;max-height:220mm;object-fit:contain;border-radius:8px;border:1px solid #e2e8f0;" onerror="this.style.display='none'" />
+    <img src="${url}" alt="Visualização adicional do projeto" style="max-width:100%;max-height:205mm;object-fit:contain;border-radius:8px;border:1px solid #e2e8f0;" onerror="this.style.display='none'" />
   </div>
+  ${docFooter()}
 </div>`).join("\n") : ""}
 
 </body>
