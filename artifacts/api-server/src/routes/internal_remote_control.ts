@@ -81,20 +81,23 @@ router.post("/internal/remote-control/media/video/generate", requireRemoteContro
   if (tenant.status !== "active") return res.status(409).json({ error: "tenant_not_active", status: tenant.status });
 
   if (parsed.data.idempotencyKey) {
-    const [existing] = await db.select({
+    const candidates = await db.select({
       id: mediaJobsTable.id,
       projectId: mediaJobsTable.projectId,
       status: mediaJobsTable.status,
       output: mediaJobsTable.output,
       error: mediaJobsTable.error,
-      context: mediaJobsTable.context,
+      input: mediaJobsTable.input,
     }).from(mediaJobsTable).where(and(
       eq(mediaJobsTable.tenantId, tenant.id),
       eq(mediaJobsTable.operation, "video_generate"),
     )).limit(100);
 
-    const context = existing?.context as Record<string, unknown> | undefined;
-    if (existing && context?.["remoteIdempotencyKey"] === parsed.data.idempotencyKey) {
+    const existing = candidates.find((candidate) => {
+      const input = candidate.input as Record<string, unknown> | undefined;
+      return input?.["remoteIdempotencyKey"] === parsed.data.idempotencyKey;
+    });
+    if (existing) {
       return res.status(200).json({
         accepted: true,
         duplicate: true,
