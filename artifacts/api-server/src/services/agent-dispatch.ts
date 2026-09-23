@@ -1130,6 +1130,29 @@ export async function processAgentInternal(params: {
       );
     }
 
+    // Reuse Smart Delivery output as conversational context so Prospector/Closer
+    // do not ask again what the lead already provided in the public experience.
+    if (resolvedAgentName === "sdr" || resolvedAgentName === "closer") {
+      const deliveryDiscovery = (ctx.lead.discoveryData ?? {}) as Record<string, unknown>;
+      const arqdorResult = deliveryDiscovery["public_arqdor_preproject"];
+      const publicAgentSession = deliveryDiscovery["public_delivery_agent_session"];
+      if (arqdorResult || publicAgentSession) {
+        enrichedScenario = {
+          ...(enrichedScenario ?? {}),
+          smartDeliveryContext: {
+            ...(arqdorResult ? { arqdorPreProject: arqdorResult } : {}),
+            ...(publicAgentSession ? { publicAgentSession } : {}),
+            instruction:
+              "Use estes dados como contexto já confirmado pelo próprio lead. Não repita perguntas já respondidas; avance a conversa a partir do resultado da Entrega Inteligente.",
+          },
+        };
+        log.info(
+          { tenantId, leadId, hasArqdor: !!arqdorResult, hasPublicAgentSession: !!publicAgentSession },
+          "dispatch: smart delivery context injected into SDR/Closer",
+        );
+      }
+    }
+
     // For scheduler: inject the most recent active agendamento so the agent knows the real
     // meet link and can reference it instead of echoing a placeholder.
     if (resolvedAgentName === "scheduler") {
