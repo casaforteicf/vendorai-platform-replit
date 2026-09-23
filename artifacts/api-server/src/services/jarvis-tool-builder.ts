@@ -13,8 +13,10 @@ import {
   businessProfilesTable,
   db,
   tenantLeadCaptureToolsTable,
+  tenantAgentConfigsTable,
 } from "@workspace/db";
 import { callOpenAI } from "../lib/ai-gateway.js";
+import { getTenantCommercialAccess } from "../middlewares/commercialProductAccess.js";
 import {
   buildVerticalStarterDefinition,
   findVerticalBlueprint,
@@ -270,17 +272,31 @@ export async function syncTenantLeadCaptureToolsFromExistingCapabilities(tenantI
   createdOrUpdated: number;
   skipped: number;
 }> {
-  const apps = await db
-    .select({
-      id: appInstancesTable.id,
-      name: appInstancesTable.name,
-      status: appInstancesTable.status,
-    })
-    .from(appInstancesTable)
-    .where(and(
-      eq(appInstancesTable.tenantId, tenantId),
-      eq(appInstancesTable.status, "published"),
-    ));
+  const [apps, agentConfigs, commercialAccess] = await Promise.all([
+    db
+      .select({
+        id: appInstancesTable.id,
+        name: appInstancesTable.name,
+        status: appInstancesTable.status,
+      })
+      .from(appInstancesTable)
+      .where(and(
+        eq(appInstancesTable.tenantId, tenantId),
+        eq(appInstancesTable.status, "published"),
+      )),
+    db
+      .select({
+        agentKey: tenantAgentConfigsTable.agentKey,
+        ativo: tenantAgentConfigsTable.ativo,
+        nomePerfil: tenantAgentConfigsTable.nomePerfil,
+      })
+      .from(tenantAgentConfigsTable)
+      .where(and(
+        eq(tenantAgentConfigsTable.tenantId, tenantId),
+        eq(tenantAgentConfigsTable.ativo, true),
+      )),
+    getTenantCommercialAccess(tenantId),
+  ]);
 
   let createdOrUpdated = 0;
   let skipped = 0;
@@ -360,7 +376,110 @@ export async function syncTenantLeadCaptureToolsFromExistingCapabilities(tenantI
     createdOrUpdated += 1;
   }
 
-  return { discovered: apps.length, createdOrUpdated, skipped };
+
+  const publicAgentLabels: Record<string, string> = {
+    prospector: "Prospector consultivo",
+    sdr: "Assistente comercial",
+    suporte: "Agente de suporte",
+    farmacia: "Agente da Farmácia",
+    agendamento: "Agente de agendamento",
+  };
+
+  for (const agent of agentConfigs) {
+    if (!Object.prototype.hasOwnProperty.call(publicAgentLabels, agent.agentKey)) {
+      skipped += 1;
+      continue;
+    }
+    const toolKey = `agent.public.${agent.agentKey}`;
+    const metadata = {
+      source: "auto_discovered_agent",
+      agentKey: agent.agentKey,
+      publicPath: `/entrega/agente/${agent.agentKey}`,
+      autoDiscovered: true,
+      lastSyncedAt: new Date().toISOString(),
+    };
+    await db
+      .insert(tenantLeadCaptureToolsTable)
+      .values({
+        tenantId,
+        toolKey,
+        toolLabel: agent.nomePerfil?.trim() || publicAgentLabels[agent.agentKey]!,
+        deliveryType: "agent",
+        enabled: true,
+        freePolicy: { mode: "session", limit: 1 },
+        metadata,
+        updatedAt: new Date(),
+      } as any)
+      .onConflictDoUpdate({
+        target: [tenantLeadCaptureToolsTable.tenantId, tenantLeadCaptureToolsTable.toolKey],
+        set: {
+          toolLabel: agent.nomePerfil?.trim() || publicAgentLabels[agent.agentKey]!,
+          deliveryType: "agent",
+          metadata,
+          updatedAt: new Date(),
+        },
+      });
+    createdOrUpdated += 1;
+  }
+
+  if (commercialAccess.moduleKeys.has("sdr")) {
+    const metadata = {
+      source: "auto_discovered_simulator",
+      publicPath: "/entrega/simulador/sdr",
+      autoDiscovered: true,
+      lastSyncedAt: new Date().toISOString(),
+    };
+    await db
+      .insert(tenantLeadCaptureToolsTable)
+      .values({
+        tenantId,
+        toolKey: "simulator.sdr",
+        toolLabel: "Simulador de atendimento",
+        deliveryType: "simulator",
+        enabled: true,
+        freePolicy: { mode: "session", limit: 1 },
+        metadata,
+        updatedAt: new Date(),
+      } as any)
+      .onConflictDoUpdate({
+        target: [tenantLeadCaptureToolsTable.tenantId, tenantLeadCaptureToolsTable.toolKey],
+        set: { metadata, updatedAt: new Date() },
+      });
+    createdOrUpdated += 1;
+  }
+
+  if (commercialAccess.moduleKeys.has("arch")) {
+    const metadata = {
+      source: "auto_discovered_arqdor",
+      publicPath: "/entrega/arqdor/pre-projeto",
+      moduleKey: "arch",
+      autoDiscovered: true,
+      lastSyncedAt: new Date().toISOString(),
+    };
+    await db
+      .insert(tenantLeadCaptureToolsTable)
+      .values({
+        tenantId,
+        toolKey: "arqdor.pre_project.public",
+        toolLabel: "Pré-Projeto ARQDOR",
+        deliveryType: "pre_project",
+        enabled: true,
+        freePolicy: { mode: "uses", limit: 1 },
+        metadata,
+        updatedAt: new Date(),
+      } as any)
+      .onConflictDoUpdate({
+        target: [tenantLeadCaptureToolsTable.tenantId, tenantLeadCaptureToolsTable.toolKey],
+        set: { metadata, updatedAt: new Date() },
+      });
+    createdOrUpdated += 1;
+  }
+
+  return {
+    discovered: apps.length + agentConfigs.length + (commercialAccess.moduleKeys.has("sdr") ? 1 : 0) + (commercialAccess.moduleKeys.has("arch") ? 1 : 0),
+    createdOrUpdated,
+    skipped,
+  };
 }
 
 export type ExistingLeadCaptureToolRecommendation = {
