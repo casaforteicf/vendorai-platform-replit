@@ -18,6 +18,8 @@ import { z } from "zod/v4";
 import {
   db,
   archAiRendersTable,
+  archConceptProjectsTable,
+  archProjetosTable,
   archProjectConfigsTable,
   automationLogsTable,
 } from "@workspace/db";
@@ -117,6 +119,24 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
     ambiente, estilo, iluminacao, angulo,
     mask_zones, user_notes, materials,
   } = parsed.data;
+
+  if (project_id && concept_project_id) {
+    return res.status(400).json({ success: false, error: "Informe project_id ou concept_project_id, não ambos." });
+  }
+  if (concept_project_id) {
+    const [concept] = await db.select({ id: archConceptProjectsTable.id })
+      .from(archConceptProjectsTable)
+      .where(and(eq(archConceptProjectsTable.id, concept_project_id), eq(archConceptProjectsTable.tenantId, tid)))
+      .limit(1);
+    if (!concept) return res.status(404).json({ success: false, error: "Pré-projeto não encontrado." });
+  }
+  if (project_id) {
+    const [project] = await db.select({ id: archProjetosTable.id })
+      .from(archProjetosTable)
+      .where(and(eq(archProjetosTable.id, project_id), eq(archProjetosTable.tenantId, tid)))
+      .limit(1);
+    if (!project) return res.status(404).json({ success: false, error: "Projeto não encontrado." });
+  }
 
   // Sanitiza: no modo Preservar, remove mobiliário solto das zonas
   const safeMaskZones = mode === "preservar"
@@ -526,7 +546,7 @@ async function processRenderJob(params: RenderJobParams): Promise<void> {
 
       await db.update(archAiRendersTable)
         .set({ segmentationConfidence: segConf })
-        .where(eq(archAiRendersTable.id, renderId));
+        .where(and(eq(archAiRendersTable.id, renderId), eq(archAiRendersTable.tenantId, tid)));
 
     } else if (mode === "criar" && params.userNotes) {
       // ── 3b. Ajuste pós-geração de elemento pontual (Fill Pro + máscara) ─
@@ -573,7 +593,7 @@ async function processRenderJob(params: RenderJobParams): Promise<void> {
         logger?.warn({ renderId, retentativas }, "arch/ai-render: rejeitado_auto, tentando novamente");
         await db.update(archAiRendersTable)
           .set({ retentativas: String(retentativas + 1) })
-          .where(eq(archAiRendersTable.id, renderId));
+          .where(and(eq(archAiRendersTable.id, renderId), eq(archAiRendersTable.tenantId, tid)));
         return processRenderJob({ ...params, retentativas: retentativas + 1 });
       }
       if (!validation.valid) {
@@ -582,7 +602,7 @@ async function processRenderJob(params: RenderJobParams): Promise<void> {
 
       await db.update(archAiRendersTable)
         .set({ maskFileUrl })
-        .where(eq(archAiRendersTable.id, renderId));
+        .where(and(eq(archAiRendersTable.id, renderId), eq(archAiRendersTable.tenantId, tid)));
 
     } else {
       // ── 3c. Modo Criar: geração livre via Flux 1.1 Pro Ultra (raw:true) ─
@@ -612,7 +632,7 @@ async function processRenderJob(params: RenderJobParams): Promise<void> {
         erroMsg:         null,
         concluidoEm:     new Date(),
       })
-      .where(eq(archAiRendersTable.id, renderId));
+      .where(and(eq(archAiRendersTable.id, renderId), eq(archAiRendersTable.tenantId, tid)));
 
     logger?.info({ renderId, motor }, "arch/ai-render: concluído com sucesso");
 
@@ -621,7 +641,7 @@ async function processRenderJob(params: RenderJobParams): Promise<void> {
 
     await db.update(archAiRendersTable)
       .set({ status: "erro", erroMsg: String(err?.message ?? err) })
-      .where(eq(archAiRendersTable.id, renderId));
+      .where(and(eq(archAiRendersTable.id, renderId), eq(archAiRendersTable.tenantId, tid)));
 
     db.insert(automationLogsTable).values({
       flow: "arch_ai_render", step: "processRenderJob",
