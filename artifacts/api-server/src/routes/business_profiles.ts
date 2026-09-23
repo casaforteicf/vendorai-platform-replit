@@ -14,6 +14,7 @@ import type { ChannelId } from "@workspace/vendor-brain/platform-foundation";
 import { resolveTenantCreativePlan } from "../services/creativeDesignBridge";
 import { buildGenerationDesignQa } from "../services/contentCreativeRuntime";
 import { enrichSiteGeneratorServicesContext, inspectGeneratedSite, resolveSiteCreativeRuntime } from "../services/siteCreativeRuntime";
+import { getOpenAIForTenant } from "../lib/agent-engine.js";
 
 const router: IRouter = Router();
 
@@ -52,6 +53,147 @@ router.post("/business-profiles", async (req, res) => {
       return;
     }
     throw err;
+  }
+});
+
+type BusinessContextAiField = "all" | "diferenciais" | "publicoAlvo" | "missao" | "visao" | "valores";
+
+const BUSINESS_CONTEXT_AI_FIELDS = new Set<BusinessContextAiField>([
+  "all",
+  "diferenciais",
+  "publicoAlvo",
+  "missao",
+  "visao",
+  "valores",
+]);
+
+function trimText(value: unknown, max = 4000): string {
+  return typeof value === "string" ? value.trim().slice(0, max) : "";
+}
+
+function normalizeBusinessContextSuggestions(raw: any) {
+  return {
+    diferenciais: trimText(raw?.diferenciais, 3000),
+    publicoAlvo: trimText(raw?.publicoAlvo, 3000),
+    missao: trimText(raw?.missao, 1200),
+    visao: trimText(raw?.visao, 1200),
+    valores: Array.isArray(raw?.valores)
+      ? raw.valores.map((value: unknown) => trimText(value, 180)).filter(Boolean).slice(0, 8)
+      : [],
+  };
+}
+
+router.post("/tenants/:tenantId/business-context/generate", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccessTenant(req, tenantId)) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const requestedField = BUSINESS_CONTEXT_AI_FIELDS.has(req.body?.field)
+    ? (req.body.field as BusinessContextAiField)
+    : "all";
+  const current = req.body?.current && typeof req.body.current === "object" ? req.body.current : {};
+
+  try {
+    const [profileRows, tenantRows] = await Promise.all([
+      db.select().from(businessProfilesTable).where(eq(businessProfilesTable.tenantId, tenantId)).limit(1),
+      db.select({
+        name: tenantsTable.name,
+        nomeEmpresa: tenantsTable.nomeEmpresa,
+        vertical: tenantsTable.vertical,
+        segmento: tenantsTable.segmento,
+        descricao: tenantsTable.descricao,
+        site: tenantsTable.site,
+      }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1),
+    ]);
+
+    const profile = profileRows[0] ?? null;
+    const tenant = tenantRows[0] ?? null;
+    const productsSource = Array.isArray(current.produtos)
+      ? current.produtos
+      : Array.isArray(profile?.produtos)
+        ? profile.produtos
+        : [];
+
+    const businessContext = {
+      empresa: {
+        razaoSocial: profile?.razaoSocial || tenant?.nomeEmpresa || tenant?.name || "",
+        nomeFantasia: profile?.nomeFantasia || tenant?.nomeEmpresa || tenant?.name || "",
+        segmento: profile?.vertical || tenant?.segmento || tenant?.vertical || "",
+        descricao: tenant?.descricao || "",
+        site: tenant?.site || "",
+        endereco: profile?.endereco || "",
+      },
+      contextoAtual: {
+        diferenciais: trimText(current.diferenciais ?? profile?.diferenciais, 3000),
+        publicoAlvo: trimText(current.publicoAlvo ?? profile?.publicoAlvo, 3000),
+        concorrentes: Array.isArray(current.concorrentes) ? current.concorrentes.slice(0, 20) : (profile?.concorrentes ?? []),
+        canaisVenda: Array.isArray(current.canaisVenda) ? current.canaisVenda.slice(0, 20) : (profile?.canaisVenda ?? []),
+        missao: trimText(current.missao ?? (profile?.discoveryData as any)?.missao, 1200),
+        visao: trimText(current.visao ?? (profile?.discoveryData as any)?.visao, 1200),
+        valores: Array.isArray(current.valores)
+          ? current.valores.slice(0, 12)
+          : Array.isArray((profile?.discoveryData as any)?.valores)
+            ? (profile?.discoveryData as any).valores.slice(0, 12)
+            : [],
+        historia: trimText(current.historia ?? (profile?.discoveryData as any)?.historia, 2500),
+        produtosServicos: productsSource.slice(0, 60).map((item: any) => ({
+          nome: trimText(item?.nome, 180),
+          descricao: trimText(item?.descricao, 500),
+        })).filter((item: any) => item.nome),
+      },
+    };
+
+    const requestedInstruction = requestedField === "all"
+      ? "Gere ou melhore os cinco blocos: diferenciais, publicoAlvo, missao, visao e valores."
+      : `Gere ou melhore somente o bloco "${requestedField}". Nos demais campos, devolva string vazia ou lista vazia.`;
+
+    const openai = await getOpenAIForTenant(tenantId);
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.35,
+      max_tokens: 1800,
+      response_format: { type: "json_object" } as any,
+      messages: [
+        {
+          role: "system",
+          content: `Você é um estrategista de posicionamento empresarial. Ajude a empresa a escrever seu contexto institucional de forma clara, específica e útil para CRM, marketing e agentes de IA.
+Regras:
+- Use apenas o contexto fornecido. Não invente números, prêmios, clientes, certificações, liderança de mercado ou superioridade não comprovada.
+- Diferenciais: 4 a 8 pontos concretos em texto corrido ou linhas curtas, conectando capacidades reais a benefícios.
+- Público-alvo: descreva segmentos, perfil de cliente, principais necessidades e situações de compra. Evite generalidades.
+- Missão: uma frase objetiva explicando por que a empresa existe e qual valor entrega.
+- Visão: uma frase aspiracional e crível sobre onde quer chegar; não invente prazo ou meta numérica.
+- Valores: 5 a 7 valores curtos, específicos e coerentes com o negócio.
+- Preserve o que já estiver bom no texto atual e melhore clareza, coerência e especificidade.
+- Responda somente JSON válido no formato: {"diferenciais":"", "publicoAlvo":"", "missao":"", "visao":"", "valores":[""]}.`,
+        },
+        {
+          role: "user",
+          content: `${requestedInstruction}
+
+Contexto da empresa:
+${JSON.stringify(businessContext)}`,
+        },
+      ],
+    });
+
+    const content = response.choices[0]?.message?.content ?? "{}";
+    let parsed: any = {};
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      const match = content.match(/\{[\s\S]*\}/);
+      if (match) parsed = JSON.parse(match[0]);
+    }
+
+    const suggestions = normalizeBusinessContextSuggestions(parsed);
+    res.setHeader("Cache-Control", "no-store");
+    res.status(200).json({ field: requestedField, suggestions });
+  } catch (error) {
+    req.log?.error({ error, tenantId, requestedField }, "business-context: AI generation failed");
+    res.status(500).json({ error: "Não foi possível gerar as sugestões com IA agora." });
   }
 });
 
