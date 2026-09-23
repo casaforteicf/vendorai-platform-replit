@@ -40,6 +40,9 @@ export function SocialIntegrationsPanel({ providers: providersFilter, mode = "co
   const [publishOpen, setPublishOpen] = useState<Provider | null>(null);
   const [publishMediaUrl, setPublishMediaUrl] = useState("");
   const [publishText, setPublishText] = useState("");
+  const [youtubeTitle, setYoutubeTitle] = useState("");
+  const [youtubeTags, setYoutubeTags] = useState("");
+  const [youtubePrivacyStatus, setYoutubePrivacyStatus] = useState<"public" | "unlisted" | "private">("public");
   const [uploading, setUploading] = useState<Provider | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -115,6 +118,13 @@ export function SocialIntegrationsPanel({ providers: providersFilter, mode = "co
           text: publishText.trim() || undefined,
           mediaUrl: publishMediaUrl.trim() || undefined,
           contentType: item.provider === "youtube" ? "video" : "post",
+          ...(item.provider === "youtube" ? {
+            youtubeTitle: youtubeTitle.trim() || undefined,
+            youtubeDescription: publishText.trim() || undefined,
+            youtubeTags: youtubeTags.split(",").map((tag) => tag.trim()).filter(Boolean),
+            youtubePrivacyStatus,
+            youtubeDefaultLanguage: "pt-BR",
+          } : {}),
         }),
       });
       const data = await response.json();
@@ -123,6 +133,9 @@ export function SocialIntegrationsPanel({ providers: providersFilter, mode = "co
       setPublishOpen(null);
       setPublishText("");
       setPublishMediaUrl("");
+      setYoutubeTitle("");
+      setYoutubeTags("");
+      setYoutubePrivacyStatus("public");
     } catch (error) {
       toast({ title: `Falha ao publicar em ${labels[item.provider]}.`, description: error instanceof Error ? error.message : undefined, variant: "destructive" });
     } finally {
@@ -268,8 +281,33 @@ export function SocialIntegrationsPanel({ providers: providersFilter, mode = "co
                         value={publishMediaUrl}
                         onChange={(e) => setPublishMediaUrl(e.target.value)}
                       />
-                      <Input
-                        placeholder="Título/legenda"
+                      {item.provider === "youtube" && (
+                        <>
+                          <Input
+                            placeholder="Título do vídeo no YouTube"
+                            maxLength={100}
+                            value={youtubeTitle}
+                            onChange={(e) => setYoutubeTitle(e.target.value)}
+                          />
+                          <Input
+                            placeholder="Tags separadas por vírgula"
+                            value={youtubeTags}
+                            onChange={(e) => setYoutubeTags(e.target.value)}
+                          />
+                          <select
+                            className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                            value={youtubePrivacyStatus}
+                            onChange={(e) => setYoutubePrivacyStatus(e.target.value as "public" | "unlisted" | "private")}
+                          >
+                            <option value="public">Público</option>
+                            <option value="unlisted">Não listado</option>
+                            <option value="private">Privado</option>
+                          </select>
+                        </>
+                      )}
+                      <textarea
+                        className="min-h-[96px] w-full rounded-md border bg-background px-3 py-2 text-sm"
+                        placeholder={item.provider === "youtube" ? "Descrição do vídeo" : "Título/legenda"}
                         value={publishText}
                         onChange={(e) => setPublishText(e.target.value)}
                       />
