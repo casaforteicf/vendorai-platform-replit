@@ -1,0 +1,201 @@
+export type ArqdorRenderPreset =
+  | "facade_exterior_preserve"
+  | "interior_layout_preserve"
+  | "material_detail_enhancer"
+  | "distortion_correction"
+  | "camera_perspective_lock"
+  | "joinery_precision"
+  | "roof_openings_lock"
+  | "lighting_realism"
+  | "landscape_controlled"
+  | "pool_water_fidelity";
+
+export type ArqdorVideoMovement =
+  | "zoom_in_soft"
+  | "zoom_out_soft"
+  | "pan_left_soft"
+  | "pan_right_soft"
+  | "tilt_up_soft"
+  | "tilt_down_soft"
+  | "orbit_left_soft"
+  | "orbit_right_soft"
+  | "parallax_soft"
+  | "cinematic_micro_movement";
+
+const UNIVERSAL_PRESERVE = [
+  "Treat the supplied image/model as the authoritative source of truth.",
+  "Preserve the exact geometry, proportions, spatial relationships, openings, object positions, architectural boundaries, camera orientation and design intent.",
+  "Do not redesign, reinterpret, relocate, resize, add or remove structural or fixed elements unless explicitly requested.",
+  "Any enhancement must be visual only: realism, materials, lighting, texture fidelity and photographic quality.",
+  "When uncertain, preserve the original instead of inventing.",
+].join(" ");
+
+const NEGATIVE_GEOMETRY = [
+  "deformed","distorted","disfigured","poorly drawn","bad architecture","impossible geometry",
+  "warped windows","crooked walls","slanted walls","bent walls","floating elements",
+  "collapsed structure","broken structure","misaligned openings","warped doors","uneven rooflines",
+  "bent roof","twisted columns","inconsistent perspective","unrealistic proportions",
+  "curved straight lines","asymmetrical facade","malformed stairs","unstable structure",
+].join(", ");
+
+const NEGATIVE_QUALITY = [
+  "blurry","low quality","grainy","low resolution","error","cropped","jpeg artifacts",
+  "shaky image","color fringing","overexposed","underexposed","noisy image",
+  "washed out colors","oversaturated","banding","pixelated","out of focus",
+  "motion blur","ghosting","compression artifacts",
+].join(", ");
+
+const NEGATIVE_REALISM = [
+  "painting","illustration","drawing","sketch","cartoon","anime","clay model","miniature",
+  "toy-like","stylized","abstract","fantasy style","low poly","hand-drawn","comic style",
+  "watercolor","oil painting",
+].join(", ");
+
+const NEGATIVE_CLUTTER = [
+  "clutter","messy scene","visual clutter","excessive objects","too many decorations",
+  "random objects","distracting background","crowded composition","unnecessary furniture",
+  "duplicated objects","floating decor","chaotic layout","overdecorated","messy landscaping",
+  "excessive props","random vehicles","random people",
+].join(", ");
+
+const NEGATIVE_TEXT = [
+  "text","watermark","signature","caption","subtitle","label","brand name",
+  "fake text","gibberish text","UI text","unreadable letters","distorted typography",
+].join(", ");
+
+const NEGATIVE_MATERIALS = [
+  "fake materials","melted textures","plastic-looking surfaces","unnatural reflections",
+  "inconsistent shadows","unrealistic lighting","texture stretching","texture seams",
+  "repeated texture pattern","glossy concrete","fake wood grain","unnatural stone texture",
+].join(", ");
+
+export const ARQDOR_NEGATIVE_PROMPTS = {
+  architecture: [NEGATIVE_GEOMETRY, NEGATIVE_QUALITY, NEGATIVE_REALISM, NEGATIVE_CLUTTER, NEGATIVE_TEXT, NEGATIVE_MATERIALS].join(", "),
+  interior: [
+    NEGATIVE_GEOMETRY, NEGATIVE_QUALITY, NEGATIVE_REALISM, NEGATIVE_CLUTTER, NEGATIVE_TEXT, NEGATIVE_MATERIALS,
+    "floating furniture, misaligned cabinets, warped furniture, floating shelves, broken joinery, uneven countertop, distorted chairs, fused objects, malformed decor",
+  ].join(", "),
+  material: [
+    NEGATIVE_QUALITY, NEGATIVE_TEXT, NEGATIVE_MATERIALS,
+    "warped alignment, broken alignment, distorted reflections, fake shadows",
+  ].join(", "),
+  video: [
+    "scene change","geometry change","object transformation","morphing architecture","warped facade",
+    "distorted walls","moving structure","flicker","unstable frame","shaking camera","sudden motion",
+    "floating elements","inconsistent perspective","duplicated objects","random new objects",
+    "people appearing","cars appearing","lighting flicker","texture crawling","melted textures",
+    "text","watermark","logo","low quality","blurry","noisy image","broken alignment",
+  ].join(", "),
+} as const;
+
+const PRESETS: Record<ArqdorRenderPreset, string> = {
+  facade_exterior_preserve: [
+    "Professional architectural photography of the provided 3D model, eye-level perspective.",
+    "Strictly preserve all original geometric volumes, building proportions, facade composition, rooflines, openings and structural shapes without adding new objects or modifying boundaries.",
+    "Maintain exact architectural alignment and straight lines.",
+    "Enhance only the existing materials, texture fidelity, glazing reflections and physically plausible depth.",
+    "Use realistic soft shadows and controlled natural light. Photorealistic architectural photography, sharp focus, professional Brazilian architecture presentation.",
+  ].join(" "),
+  interior_layout_preserve: [
+    "High-end interior design photography of the exact layout provided.",
+    "Do not alter, move, replace, resize or reinterpret any furniture, cabinetry, wall, opening or fixed element from the original image.",
+    "Maintain strict layout fidelity, joinery alignment, proportions and exact object positions.",
+    "Enhance realistic surfaces, wood grain, fabric weave, stone and metal without changing the design.",
+    "Use soft natural ambient light, accurate contact shadows and architectural magazine photography quality.",
+  ].join(" "),
+  material_detail_enhancer: [
+    "Macro architectural photography focusing on the material detail already shown.",
+    "Maintain strict structural alignment and exact object positions from the base image.",
+    "Enhance micro-texture sharpness, surface roughness, veins, grain and physically correct reflections while preserving the original design colors.",
+    "Professional macro-lens look with controlled shallow depth of field and accurate white balance.",
+  ].join(" "),
+  distortion_correction: [
+    "CORRECTION PASS: repair geometric and visual distortions only.",
+    "Restore straight walls, true verticals, aligned windows and doors, stable roof/parapet lines, correct furniture and joinery geometry and the exact proportions visible in the source.",
+    "Do not redesign or introduce new details. Preserve all correct regions unchanged.",
+  ].join(" "),
+  camera_perspective_lock: [
+    "CAMERA LOCK: preserve the source camera position, horizon, focal perspective, visible extents and vanishing-point relationships.",
+    "Keep architectural verticals vertical and straight lines straight. Avoid wide-angle stretching, barrel distortion, keystone distortion, crop drift or unintended zoom.",
+  ].join(" "),
+  joinery_precision: [
+    "JOINERY LOCK: preserve cabinetry modules, door widths, drawer lines, handles/recesses, countertop thickness, appliance gaps, panel joints, shelves and all horizontal/vertical alignments exactly.",
+    "No warped cabinets, floating shelves, uneven doors, duplicated modules or changed proportions.",
+  ].join(" "),
+  roof_openings_lock: [
+    "OPENINGS AND ROOF LOCK: preserve the exact count, position, size relationship and alignment of every door and window.",
+    "Preserve roof slopes, parapets, eaves, ridges, gutters and overhang geometry. Never bend, merge, relocate or invent openings or roof elements.",
+  ].join(" "),
+  lighting_realism: [
+    "LIGHTING ONLY: improve illumination while preserving geometry, layout, materials and camera.",
+    "Use physically plausible sun/sky or interior fixtures, consistent shadow direction, realistic exposure, balanced highlights and believable contact shadows.",
+  ].join(" "),
+  landscape_controlled: [
+    "CONTROLLED LANDSCAPING: improve vegetation only where spatially plausible.",
+    "Do not hide facade openings, entrances, garage, architectural edges or circulation. Never place plants through walls, slabs, paving or pool edges.",
+  ].join(" "),
+  pool_water_fidelity: [
+    "POOL/WATER LOCK: preserve pool shape, coping, level, deck boundaries and all edge geometry.",
+    "Water must remain contained inside the pool with physically plausible transparency, caustics and reflections. No warped coping, flooded deck or melted water edges.",
+  ].join(" "),
+};
+
+export function inferArqdorRenderPresets(input: {
+  ambiente?: string | null;
+  renderView?: string | null;
+  source?: string | null;
+  userNotes?: string | null;
+  explicit?: ArqdorRenderPreset[];
+}): ArqdorRenderPreset[] {
+  const explicit = input.explicit ?? [];
+  if (explicit.length) return Array.from(new Set(explicit));
+  const text = `${input.ambiente ?? ""} ${input.renderView ?? ""} ${input.source ?? ""} ${input.userNotes ?? ""}`.toLowerCase();
+  const result: ArqdorRenderPreset[] = [];
+  if (/fachada|exterior|facade/.test(text)) result.push("facade_exterior_preserve", "camera_perspective_lock", "roof_openings_lock");
+  else result.push("interior_layout_preserve", "camera_perspective_lock");
+  if (/cozinha|roupeiro|arm[aá]rio|marcenaria|cabinet|joinery/.test(text)) result.push("joinery_precision");
+  if (/piscina|pool|agua|água/.test(text)) result.push("pool_water_fidelity");
+  if (/jardim|paisag|landscap/.test(text)) result.push("landscape_controlled");
+  if (/detalhe|close|macro|material/.test(text)) result.push("material_detail_enhancer");
+  return Array.from(new Set(result));
+}
+
+export function buildArqdorFidelityBlock(input: {
+  presets: ArqdorRenderPreset[];
+  negativeKind?: "architecture" | "interior" | "material";
+}): string {
+  const negativeKind = input.negativeKind ?? (input.presets.includes("facade_exterior_preserve") ? "architecture" : "interior");
+  return [
+    "ARQDOR FIDELITY POLICY:",
+    UNIVERSAL_PRESERVE,
+    ...input.presets.map((preset) => PRESETS[preset]),
+    `AVOID / NEGATIVE CONSTRAINTS: ${ARQDOR_NEGATIVE_PROMPTS[negativeKind]}.`,
+    "FINAL FIDELITY CHECK: compare the result against the source before finishing. If a requested enhancement conflicts with source geometry, preserve the source geometry.",
+  ].join("\n");
+}
+
+const MOVEMENT_TEXT: Record<ArqdorVideoMovement, string> = {
+  zoom_in_soft: "very slow dolly-in / zoom-in, no geometry change",
+  zoom_out_soft: "very slow dolly-out / zoom-out, no geometry change",
+  pan_left_soft: "slow horizontal camera pan to the left",
+  pan_right_soft: "slow horizontal camera pan to the right",
+  tilt_up_soft: "slow controlled tilt upward",
+  tilt_down_soft: "slow controlled tilt downward",
+  orbit_left_soft: "very subtle left orbit with minimal parallax",
+  orbit_right_soft: "very subtle right orbit with minimal parallax",
+  parallax_soft: "subtle camera parallax with extremely small displacement",
+  cinematic_micro_movement: "almost-static cinematic micro movement with gentle depth drift",
+};
+
+export function buildArqdorRenderToVideoPrompt(movement: ArqdorVideoMovement): string {
+  return [
+    "Use the supplied architectural render as the absolute source-of-truth first frame.",
+    "Preserve architecture, geometry, facade/interior composition, openings, roof, materials, furniture, landscaping, lighting logic and all visible objects exactly as shown.",
+    "Do not add, remove, relocate, redesign, resize, morph or replace anything.",
+    `Camera movement: ${MOVEMENT_TEXT[movement]}.`,
+    "The camera movement must be subtle, stable and physically plausible.",
+    "Only animate camera motion and natural micro-reflections. Do not animate the building or objects.",
+    "Maintain straight architectural lines, stable texture coordinates and consistent exposure through the full clip.",
+    "Photorealistic premium architectural presentation.",
+  ].join(" ");
+}
