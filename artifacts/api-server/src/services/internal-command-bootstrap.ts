@@ -16,6 +16,10 @@ type BootstrapCommand = {
     duration?: number;
     style?: string;
     generationMode?: "ai_only" | "guided";
+    engine?: string;
+    qualityMode?: string;
+    audio?: Record<string, unknown>;
+    voiceoverScript?: string;
     source?: string;
     metadata?: Record<string, unknown>;
   };
@@ -100,6 +104,10 @@ async function executeBootstrapCommand(command: BootstrapCommand) {
         aspectRatio: p.aspectRatio ?? "landscape",
         duration: Math.max(4, Math.min(60, Math.round(p.duration ?? 15))),
         generationMode: p.generationMode ?? "ai_only",
+        engine: p.engine,
+        qualityMode: p.qualityMode,
+        audio: p.audio,
+        voiceoverScript: p.voiceoverScript,
         mediaInputs: [],
         source: p.source ?? "internal-command-bootstrap",
         remoteControl: true,
