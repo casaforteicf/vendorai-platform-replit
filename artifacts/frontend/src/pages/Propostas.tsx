@@ -1822,6 +1822,15 @@ interface FreeItem  { id: string; nome: string; quantidade: number; valorUnitari
 
 type ProposalPresentationMode = "completo" | "resumo_etapa" | "preco_medio";
 
+type ProposalStageSchedule = {
+  duracaoDias?: number;
+  percentualFisico?: number;
+  inicioPrevisto?: string;
+  fimPrevisto?: string;
+  observacao?: string;
+  marcoPagamento?: string;
+};
+
 const PROPOSAL_PRESENTATION_OPTIONS: Array<{
   value: ProposalPresentationMode;
   label: string;
@@ -2167,6 +2176,10 @@ function newFreeItem(): FreeItem {
     const [presentationDefaultMode, setPresentationDefaultMode] = useState<ProposalPresentationMode>("completo");
     const [presentationStageModes, setPresentationStageModes] = useState<Record<string, ProposalPresentationMode>>({});
     const [showProposalGrandTotal, setShowProposalGrandTotal] = useState(true);
+    const [proposalStartDate, setProposalStartDate] = useState("");
+    const [proposalStageSchedule, setProposalStageSchedule] = useState<Record<string, ProposalStageSchedule>>({});
+    const [showExecutionSchedule, setShowExecutionSchedule] = useState(true);
+    const [showPhysicalFinancial, setShowPhysicalFinancial] = useState(true);
     const standardBudgetAppliedRef = useRef(false);
     // livre mode
     const [freeItems, setFreeItems] = useState<FreeItem[]>([newFreeItem()]);
@@ -2220,6 +2233,10 @@ function newFreeItem(): FreeItem {
         presentationDefaultMode,
         presentationStageModes,
         showProposalGrandTotal,
+        proposalStartDate,
+        proposalStageSchedule,
+        showExecutionSchedule,
+        showPhysicalFinancial,
       }));
     }
 
@@ -2262,6 +2279,10 @@ function newFreeItem(): FreeItem {
             presentationDefaultMode?: ProposalPresentationMode;
             presentationStageModes?: Record<string, ProposalPresentationMode>;
             showProposalGrandTotal?: boolean;
+            proposalStartDate?: string;
+            proposalStageSchedule?: Record<string, ProposalStageSchedule>;
+            showExecutionSchedule?: boolean;
+            showPhysicalFinancial?: boolean;
           };
           if (draft.form) form.reset({ ...form.getValues(), ...draft.form });
           if (draft.mode) setMode(draft.mode);
@@ -2273,6 +2294,10 @@ function newFreeItem(): FreeItem {
           if (draft.presentationDefaultMode) setPresentationDefaultMode(draft.presentationDefaultMode);
           if (draft.presentationStageModes) setPresentationStageModes(draft.presentationStageModes);
           if (draft.showProposalGrandTotal !== undefined) setShowProposalGrandTotal(draft.showProposalGrandTotal);
+          if (draft.proposalStartDate !== undefined) setProposalStartDate(draft.proposalStartDate);
+          if (draft.proposalStageSchedule) setProposalStageSchedule(draft.proposalStageSchedule);
+          if (draft.showExecutionSchedule !== undefined) setShowExecutionSchedule(draft.showExecutionSchedule);
+          if (draft.showPhysicalFinancial !== undefined) setShowPhysicalFinancial(draft.showPhysicalFinancial);
           standardBudgetAppliedRef.current = true;
         }
       } catch {
@@ -2302,6 +2327,10 @@ function newFreeItem(): FreeItem {
       presentationDefaultMode,
       presentationStageModes,
       showProposalGrandTotal,
+      proposalStartDate,
+      proposalStageSchedule,
+      showExecutionSchedule,
+      showPhysicalFinancial,
       form,
     ]);
 
@@ -2377,10 +2406,18 @@ function newFreeItem(): FreeItem {
         modoPadrao?: ProposalPresentationMode;
         etapas?: Record<string, ProposalPresentationMode>;
         mostrarTotalGeral?: boolean;
+        previsaoInicio?: string;
+        cronogramaEtapas?: Record<string, ProposalStageSchedule>;
+        mostrarCronogramaExecucao?: boolean;
+        mostrarFisicoFinanceiro?: boolean;
       } | null | undefined;
       setPresentationDefaultMode(currentPresentation?.modoPadrao ?? "completo");
       setPresentationStageModes(currentPresentation?.etapas ?? {});
       setShowProposalGrandTotal(currentPresentation?.mostrarTotalGeral ?? true);
+      setProposalStartDate(currentPresentation?.previsaoInicio ?? "");
+      setProposalStageSchedule(currentPresentation?.cronogramaEtapas ?? {});
+      setShowExecutionSchedule(currentPresentation?.mostrarCronogramaExecucao ?? true);
+      setShowPhysicalFinancial(currentPresentation?.mostrarFisicoFinanceiro ?? true);
 
       form.reset({
         leadId: editingProposta.leadId,
@@ -2886,6 +2923,14 @@ function newFreeItem(): FreeItem {
         ])
       ),
       mostrarTotalGeral: showProposalGrandTotal,
+      previsaoInicio: proposalStartDate || undefined,
+      cronogramaEtapas: Object.fromEntries(
+        orcamentoEtapas
+          .map((etapa) => [etapa.id, proposalStageSchedule[etapa.id] ?? {}] as const)
+          .filter(([, value]) => Object.values(value).some((entry) => entry !== undefined && entry !== "")),
+      ),
+      mostrarCronogramaExecucao: showExecutionSchedule,
+      mostrarFisicoFinanceiro: showPhysicalFinancial,
     };
   }
 
@@ -3800,6 +3845,113 @@ function newFreeItem(): FreeItem {
                   <div className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
                     Exemplo: Fundação em <strong>Resumo da etapa</strong> mostra apenas o valor macro; Esquadrias em <strong>Preço por item</strong> mostra cada item e seu valor unitário na mesma proposta.
                   </div>
+
+                  <Separator />
+
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-sm font-semibold">Cronograma e físico-financeiro</p>
+                      <p className="text-xs text-muted-foreground">
+                        Defina a previsão de início e o prazo de cada etapa. A proposta calcula automaticamente período, peso financeiro e valor da etapa.
+                      </p>
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-[220px_1fr_1fr] md:items-end">
+                      <div className="space-y-1.5">
+                        <Label>Previsão de início</Label>
+                        <Input
+                          type="date"
+                          value={proposalStartDate}
+                          onChange={(event) => setProposalStartDate(event.target.value)}
+                        />
+                      </div>
+                      <div className="flex items-center gap-3 rounded-md border bg-background px-3 py-2.5">
+                        <Switch checked={showExecutionSchedule} onCheckedChange={setShowExecutionSchedule} />
+                        <div>
+                          <p className="text-sm font-medium">Cronograma de execução</p>
+                          <p className="text-[11px] text-muted-foreground">Mostra início, término e duração por etapa.</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 rounded-md border bg-background px-3 py-2.5">
+                        <Switch checked={showPhysicalFinancial} onCheckedChange={setShowPhysicalFinancial} />
+                        <div>
+                          <p className="text-sm font-medium">Cronograma físico-financeiro</p>
+                          <p className="text-[11px] text-muted-foreground">Mostra peso físico, participação financeira, valor e marco de pagamento.</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      {orcamentoEtapas.map((etapa, index) => {
+                        const schedule = proposalStageSchedule[etapa.id] ?? {};
+                        return (
+                          <div
+                            key={`schedule-${etapa.id}`}
+                            className="grid gap-2 rounded-lg border bg-background p-3 md:grid-cols-[minmax(180px,1fr)_120px_120px_minmax(220px,1fr)] md:items-end"
+                          >
+                            <div>
+                              <p className="text-sm font-medium">Etapa {index + 1} · {etapa.nome || `Etapa ${index + 1}`}</p>
+                              <p className="text-[11px] text-muted-foreground">Execução sequencial a partir da previsão de início.</p>
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Duração (dias)</Label>
+                              <Input
+                                type="number"
+                                min="1"
+                                placeholder="Ex: 15"
+                                value={schedule.duracaoDias ?? ""}
+                                onChange={(event) => {
+                                  const raw = event.target.value;
+                                  setProposalStageSchedule((prev) => ({
+                                    ...prev,
+                                    [etapa.id]: {
+                                      ...(prev[etapa.id] ?? {}),
+                                      duracaoDias: raw === "" ? undefined : Math.max(1, Number(raw)),
+                                    },
+                                  }));
+                                }}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Peso físico (%)</Label>
+                              <Input
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="0.01"
+                                placeholder="Auto"
+                                value={schedule.percentualFisico ?? ""}
+                                onChange={(event) => {
+                                  const raw = event.target.value;
+                                  setProposalStageSchedule((prev) => ({
+                                    ...prev,
+                                    [etapa.id]: {
+                                      ...(prev[etapa.id] ?? {}),
+                                      percentualFisico: raw === "" ? undefined : Math.min(100, Math.max(0, Number(raw))),
+                                    },
+                                  }));
+                                }}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Marco / condição da etapa</Label>
+                              <Input
+                                placeholder="Ex: pagamento na conclusão da fundação"
+                                value={schedule.marcoPagamento ?? ""}
+                                onChange={(event) => setProposalStageSchedule((prev) => ({
+                                  ...prev,
+                                  [etapa.id]: {
+                                    ...(prev[etapa.id] ?? {}),
+                                    marcoPagamento: event.target.value || undefined,
+                                  },
+                                }))}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             )}
@@ -3968,7 +4120,7 @@ function newFreeItem(): FreeItem {
             <div className="grid grid-cols-2 gap-3">
               <FormField control={form.control} name="validadeAte" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Validade <span className="text-muted-foreground text-xs">(opcional)</span></FormLabel>
+                  <FormLabel>Validade da proposta <span className="text-muted-foreground text-xs">(opcional)</span></FormLabel>
                   <FormControl><Input type="date" {...field} value={field.value ?? ""} /></FormControl>
                   <FormMessage />
                 </FormItem>
