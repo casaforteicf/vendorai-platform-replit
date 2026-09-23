@@ -33,6 +33,7 @@ const deliveryToolRecommendationSchema = z.object({
 });
 
 router.post("/tenants/:tenantId/campaigns/recommend-delivery-tool", async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately validated against authenticated tenant or Super Admin
   const tenantId = String(req.params.tenantId);
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
     return res.status(403).json({ error: "Access denied to this tenant" });
