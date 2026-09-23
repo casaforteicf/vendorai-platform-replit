@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { OrcamentoRevisoesCard } from "@/components/OrcamentoRevisoesCard";
 import {
   Select,
@@ -157,6 +158,36 @@ interface LeadPropostaTabProps {
   lead: any;
 }
 
+type ProposalPresentationMode = "completo" | "resumo_etapa" | "preco_medio";
+
+const PROPOSAL_PRESENTATION_OPTIONS: Array<{
+  value: ProposalPresentationMode;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "resumo_etapa",
+    label: "Somente valor da etapa",
+    description: "Oculta itens, quantidades e valores unitários; mostra apenas o total da etapa.",
+  },
+  {
+    value: "preco_medio",
+    label: "Valores individuais",
+    description: "Mostra os itens e o valor por item, sem quantidade nem subtotal.",
+  },
+  {
+    value: "completo",
+    label: "Completo",
+    description: "Mostra item, quantidade, valor unitário e subtotal.",
+  },
+];
+
+function normalizeProposalPresentationMode(value: unknown): ProposalPresentationMode {
+  return value === "resumo_etapa" || value === "preco_medio" || value === "completo"
+    ? value
+    : "completo";
+}
+
 const BASE = typeof import.meta.env !== "undefined" && import.meta.env.BASE_URL
   ? import.meta.env.BASE_URL.replace(/\/$/, "")
   : "";
@@ -176,6 +207,11 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const [activeVersion, setActiveVersion] = useState<number | null>(null);
   const [showProducts, setShowProducts] = useState(false);
   const [selectedOrcamentoId, setSelectedOrcamentoId] = useState<string>("__none__");
+  const [proposalPresentationDefaultMode, setProposalPresentationDefaultMode] =
+    useState<ProposalPresentationMode>("completo");
+  const [proposalPresentationStageModes, setProposalPresentationStageModes] =
+    useState<Record<string, ProposalPresentationMode>>({});
+  const [proposalShowGrandTotal, setProposalShowGrandTotal] = useState(true);
 
   // Refinement dialog
   const [refineOpen, setRefineOpen] = useState(false);
@@ -371,6 +407,61 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const deleteProductMutation = useDeleteLeadProduct({
     request: { headers: { Authorization: `Bearer ${token}` } },
   });
+
+  const selectedOrcamento = (orcamentos as any[]).find((orc) => orc.id === selectedOrcamentoId) ?? null;
+  const selectedOrcamentoStages = (() => {
+    const items = Array.isArray(selectedOrcamento?.itens) ? selectedOrcamento.itens : [];
+    const hasStages = items.some((item: any) => item?.etapaId || item?.etapaNome || item?.etapaOrdem);
+    if (!hasStages) return [] as Array<{ id: string; ordem: number; nome: string; total: number }>;
+
+    const groups = new Map<string, { id: string; ordem: number; nome: string; total: number }>();
+    items.forEach((item: any, index: number) => {
+      const rawOrder = Number(item?.etapaOrdem);
+      const ordem = Number.isFinite(rawOrder) && rawOrder > 0 ? rawOrder : index + 1;
+      const nome = String(item?.etapaNome || `Etapa ${ordem}`);
+      const id = String(item?.etapaId || `__stage_${ordem}_${nome}`);
+      const current = groups.get(id) ?? { id, ordem, nome, total: 0 };
+      current.total += Number(item?.quantidade || 0) * Number(item?.valorUnitario || 0);
+      groups.set(id, current);
+    });
+
+    return Array.from(groups.values()).sort((a, b) => a.ordem - b.ordem);
+  })();
+
+  function handleProposalBudgetChange(value: string) {
+    setSelectedOrcamentoId(value);
+    setProposalPresentationStageModes({});
+
+    if (value === "__none__") {
+      setProposalPresentationDefaultMode("completo");
+      setProposalShowGrandTotal(true);
+      return;
+    }
+
+    const budget = (orcamentos as any[]).find((orc) => orc.id === value);
+    const presentation = budget?.apresentacao;
+    setProposalPresentationDefaultMode(normalizeProposalPresentationMode(presentation?.modoPadrao));
+    setProposalPresentationStageModes(
+      presentation?.etapas && typeof presentation.etapas === "object"
+        ? Object.fromEntries(
+            Object.entries(presentation.etapas)
+              .filter(([, mode]) => mode === "completo" || mode === "resumo_etapa" || mode === "preco_medio")
+              .map(([stageId, mode]) => [stageId, mode as ProposalPresentationMode]),
+          )
+        : {},
+    );
+    setProposalShowGrandTotal(
+      typeof presentation?.mostrarTotalGeral === "boolean" ? presentation.mostrarTotalGeral : true,
+    );
+  }
+
+  function currentProposalPresentation() {
+    return {
+      modoPadrao: proposalPresentationDefaultMode,
+      etapas: proposalPresentationStageModes,
+      mostrarTotalGeral: proposalShowGrandTotal,
+    };
+  }
 
   useEffect(() => {
     // Sync lead fields when lead prop changes
@@ -591,6 +682,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
           imagens: proposalImages.length > 0 ? proposalImages : undefined,
           objetivo: lead?.objetivo || undefined,
           propostaId: selectedOrcamentoId !== "__none__" ? selectedOrcamentoId : undefined,
+          apresentacao: selectedOrcamentoId !== "__none__" ? currentProposalPresentation() : undefined,
           proposalTemplateId: selectedProposalTemplateId !== "__auto__" ? selectedProposalTemplateId : undefined,
           refinementNotes: notes?.trim() || undefined,
         } as any,
@@ -622,21 +714,21 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     }
 
     try {
-      const res = await fetch(`/api/leads/${leadId}/proposals/${version}`, {
+      const res = await fetch(`/api/leads/${leadId}/proposals/${version}/download`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error(`Falha ao carregar proposta (${res.status})`);
-      const data = await res.json();
-      if (!data?.htmlContent || typeof data.htmlContent !== "string") {
+      const htmlContent = await res.text();
+      if (!htmlContent.trim()) {
         throw new Error("Conteúdo da proposta não disponível");
       }
 
-      setPreviewHtml(data.htmlContent);
+      setPreviewHtml(htmlContent);
       setActiveVersion(version);
 
       if (previewWindow && !previewWindow.closed) {
         const blobUrl = window.URL.createObjectURL(
-          new Blob([data.htmlContent], { type: "text/html;charset=utf-8" }),
+          new Blob([htmlContent], { type: "text/html;charset=utf-8" }),
         );
         previewWindow.location.replace(blobUrl);
         previewWindow.focus();
@@ -1243,7 +1335,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
               </label>
               <Select
                 value={selectedOrcamentoId}
-                onValueChange={setSelectedOrcamentoId}
+                onValueChange={handleProposalBudgetChange}
               >
                 <SelectTrigger className="h-10 min-w-0 w-full max-w-full text-sm [&>span]:truncate">
                   <SelectValue placeholder="Nenhum orçamento" />
@@ -1263,10 +1355,112 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                   })}
                 </SelectContent>
               </Select>
+
               {selectedOrcamentoId !== "__none__" && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  O orçamento selecionado será embutido como seção de precificação na proposta gerada.
-                </p>
+                <div className="mt-3 space-y-3 rounded-xl border bg-muted/20 p-3">
+                  <div>
+                    <p className="text-sm font-semibold">Como apresentar os valores ao cliente</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Esta escolha altera somente a apresentação desta proposta. O orçamento interno continua completo.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">Modo padrão</label>
+                      <Select
+                        value={proposalPresentationDefaultMode}
+                        onValueChange={(value) =>
+                          setProposalPresentationDefaultMode(value as ProposalPresentationMode)
+                        }
+                      >
+                        <SelectTrigger className="h-9 w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {PROPOSAL_PRESENTATION_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-[11px] text-muted-foreground">
+                        {PROPOSAL_PRESENTATION_OPTIONS.find(
+                          (option) => option.value === proposalPresentationDefaultMode,
+                        )?.description}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3 rounded-lg border bg-background px-3 py-2 md:min-w-[190px]">
+                      <div>
+                        <p className="text-xs font-medium">Total geral</p>
+                        <p className="text-[11px] text-muted-foreground">Mostrar no final</p>
+                      </div>
+                      <Switch checked={proposalShowGrandTotal} onCheckedChange={setProposalShowGrandTotal} />
+                    </div>
+                  </div>
+
+                  {selectedOrcamentoStages.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-xs font-semibold">Configuração por etapa</p>
+                        <span className="text-[11px] text-muted-foreground">
+                          Você pode misturar formatos na mesma proposta.
+                        </span>
+                      </div>
+                      <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+                        {selectedOrcamentoStages.map((stage) => (
+                          <div
+                            key={stage.id}
+                            className="grid gap-2 rounded-lg border bg-background p-2.5 sm:grid-cols-[minmax(0,1fr)_220px] sm:items-center"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-xs font-medium">
+                                Etapa {stage.ordem} · {stage.nome}
+                              </p>
+                              <p className="text-[11px] text-muted-foreground">
+                                {stage.total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                              </p>
+                            </div>
+                            <Select
+                              value={proposalPresentationStageModes[stage.id] ?? "__default__"}
+                              onValueChange={(value) =>
+                                setProposalPresentationStageModes((current) => {
+                                  const next = { ...current };
+                                  if (value === "__default__") {
+                                    delete next[stage.id];
+                                  } else {
+                                    next[stage.id] = value as ProposalPresentationMode;
+                                  }
+                                  return next;
+                                })
+                              }
+                            >
+                              <SelectTrigger className="h-8 w-full text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__default__">
+                                  Usar padrão
+                                </SelectItem>
+                                {PROPOSAL_PRESENTATION_OPTIONS.map((option) => (
+                                  <SelectItem key={option.value} value={option.value}>
+                                    {option.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <p className="text-[11px] text-muted-foreground">
+                    Exemplo: Fundação pode mostrar somente o valor da etapa, enquanto Esquadrias pode mostrar valores individuais.
+                  </p>
+                </div>
               )}
             </div>
           )}
