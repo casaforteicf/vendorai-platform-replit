@@ -769,7 +769,8 @@ function renderProposalScopeTable<T extends PresentableProposalItem>(items: T[])
       </thead>
       <tbody>${rows}</tbody>
     </table>
-  </div>
+  </div>`;
+}
 
 function renderProposalStageImage(
   presentation: Required<ProposalPresentationConfig>,
@@ -783,8 +784,6 @@ function renderProposalStageImage(
       <img src="${escapeProposalText(url)}" alt="Imagem representativa da etapa ${escapeProposalText(stageName)}" loading="lazy" onerror="this.parentElement.style.display='none'" />
       <figcaption>Imagem ilustrativa gerada por IA · ${escapeProposalText(stageName)}</figcaption>
     </figure>`;
-}
-`;
 }
 
 export function renderProposalHtml(json: unknown, theme: {
