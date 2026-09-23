@@ -119,6 +119,7 @@ vi.mock("../lib/agent-engine.js", () => ({
 }));
 
 vi.mock("../lib/ai-gateway.js", () => ({
+  callGoogleVertexImage: vi.fn(),
   callReplicateFlux: vi.fn(),
   callOpenAI: vi.fn(),
 }));

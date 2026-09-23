@@ -68,7 +68,7 @@ import { objectStorageClient, ObjectStorageService } from "../lib/objectStorage.
 import { iniciarRender, processarSolicitacao } from "../services/blenderService.js";
 import { toFile } from "openai";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
-import { callReplicateFlux, callOpenAI } from "../lib/ai-gateway.js";
+import { callGoogleVertexImage, callReplicateFlux, callOpenAI } from "../lib/ai-gateway.js";
 import { arqOrchestrator } from "../lib/arqdor/orchestrator/index.js";
 import { automationLogsTable } from "@workspace/db";
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
@@ -2956,6 +2956,44 @@ const angleMapArch: Record<string, string> = {
   aerea:       "aerial top-down bird's-eye view",
 };
 
+function buildArchPreservationRules(isExterior: boolean): string {
+  return isExterior
+    ? [
+        "ARCHITECTURAL FIDELITY IS THE HIGHEST PRIORITY. PHOTOREALISM IS SECOND. AESTHETIC ENHANCEMENT IS THIRD.",
+        "ABSOLUTE PRESERVATION — NEVER BREAK:",
+        "• Treat the supplied image as a locked architectural source, not as inspiration for a redesign.",
+        "• Preserve exactly the building geometry, apparent dimensions, proportions, footprint, number of floors, walls, slabs, roofs, columns, beams, canopies and every structural volume.",
+        "• Preserve exactly every door, window, frame, opening, garage bay, access, driveway and circulation element: same position, size, rhythm and shape.",
+        "• Preserve the exact camera position, focal viewpoint, framing, perspective, horizon and vertical alignment.",
+        "• Preserve the position and scale of existing landscaping, vehicles and objects. You may make them look real, but do not add, remove, duplicate or relocate them.",
+        "• Do not redesign, beautify or reinterpret the architecture. Do not invent architectural elements.",
+        "PERMITTED CHANGES ONLY:",
+        "• Convert existing 3D/CGI materials into physically believable real-world materials with correct texture scale, micro-imperfections, reflectance and roughness.",
+        "• Convert existing 3D vegetation into natural photographic vegetation while keeping its location and massing.",
+        "• Improve physically plausible light, shadows, glass reflections/transparency, interior depth visible through glazing, sky and restrained professional post-production.",
+      ].join(" ")
+    : [
+        "ARCHITECTURAL FIDELITY IS THE HIGHEST PRIORITY. PHOTOREALISM IS SECOND. AESTHETIC ENHANCEMENT IS THIRD.",
+        "ABSOLUTE PRESERVATION — NEVER BREAK:",
+        "• Treat the supplied image as a locked interior design source, not as inspiration for a redesign.",
+        "• Preserve exactly room geometry, walls, ceiling, floor, openings, built-ins, furniture, objects and their positions, dimensions, rotation and proportions.",
+        "• Preserve the exact camera position, focal viewpoint, framing, perspective and vertical alignment.",
+        "• Do not add, remove, duplicate, move or replace furniture, decoration, plants or architectural elements.",
+        "PERMITTED CHANGES ONLY:",
+        "• Convert existing surfaces and objects into physically believable real-world materials with correct texture scale, micro-imperfections, reflectance and roughness.",
+        "• Improve physically plausible lighting, shadows, reflections, glazing, fabric response and restrained professional post-production.",
+      ].join(" ");
+}
+
+const ARCH_PHOTOREALISM_OUTPUT = [
+  "FINAL IMAGE STANDARD:",
+  "• The result must look like a real completed project photographed by a high-end professional architectural photographer, not like a 3D render, illustration, animation or CGI.",
+  "• Full-frame architectural photography look, natural lens behavior, straight verticals, realistic exposure and white balance, natural dynamic range and subtle photographic depth.",
+  "• Materials must never look plastic or excessively smooth; include subtle real-world imperfections.",
+  "• Avoid cartoon style, illustration, obvious CGI, fake vegetation, excessive HDR, excessive saturation, bloom, warped lines, deformed objects, floating elements and duplicated elements.",
+  "• Use refined Brazilian architectural-photography context and restrained magazine-quality post-production.",
+].join(" ");
+
 // ── POST /api/arch/render — Renderização por IA com preservação estrutural ──
 router.post("/arch/render", async (req, res) => {
   const tid = tenantId(req);
@@ -2973,23 +3011,7 @@ router.post("/arch/render", async (req, res) => {
   const { referenceImageUrl, lighting, angle, roomType, estilo, materials, userNotes } = parsed.data;
   const isExterior = !roomType || roomType === "fachada externa";
 
-  const preservationRules = isExterior
-    ? [
-        "ABSOLUTE PRESERVATION RULES — NEVER BREAK:",
-        "• DO NOT add any new element (trees, cars, people, plants, decorations) not already visible in the reference.",
-        "• DO NOT remove, move, or alter any existing architectural element.",
-        "• DO NOT change viewpoint, perspective, or camera position.",
-        "• Preserve PIXEL-EXACTLY: building shape, footprint, number of floors, all window positions, all door positions, roof geometry, every structural volume.",
-        "PERMITTED CHANGES ONLY: material quality and texture on specified surfaces, lighting condition.",
-      ].join(" ")
-    : [
-        "ABSOLUTE PRESERVATION RULES — NEVER BREAK:",
-        "• DO NOT add any object, furniture, plant, decoration, or element not already present in the reference.",
-        "• DO NOT remove, move, reposition, or replace any existing furniture or object.",
-        "• DO NOT change viewpoint, perspective, or camera angle.",
-        "• Preserve PIXEL-EXACTLY: room geometry, all wall/window/door positions, ceiling height, every piece of furniture in its exact place.",
-        "PERMITTED CHANGES ONLY: material quality and texture on specified surfaces, lighting condition.",
-      ].join(" ");
+  const preservationRules = buildArchPreservationRules(isExterior);
 
   const materialInstructions = materials.length > 0
     ? [
@@ -3002,9 +3024,9 @@ router.post("/arch/render", async (req, res) => {
     ? `LIGHTING CONDITION: ${lightingMapArch[lighting]}`
     : null;
 
-  const angleInstruction = angleMapArch[angle]
-    ? `CAMERA ANGLE: render from a ${angleMapArch[angle]}.`
-    : null;
+  const angleInstruction = referenceImageUrl
+    ? "CAMERA LOCK: preserve the exact camera position, framing, perspective and field of view of the supplied reference image."
+    : (angleMapArch[angle] ? `CAMERA ANGLE: render from a ${angleMapArch[angle]}.` : null);
 
   const estiloMap: Record<string, string> = {
     minimalista:   "minimalist style with clean lines, neutral palette (white/grey/beige), uncluttered spaces",
@@ -3019,15 +3041,15 @@ router.post("/arch/render", async (req, res) => {
     : null;
 
   const prompt = [
-    "You are a professional architectural visualization engine.",
-    `Transform this ${isExterior ? "architectural photo" : "interior photo"} into a photorealistic render.`,
+    "You are a professional architectural photographer and photorealism engine.",
+    `Transform the supplied ${isExterior ? "3D architectural exterior/reference view" : "3D interior/reference view"} into a TRUE PHOTOREALISTIC ARCHITECTURAL PHOTOGRAPH.`,
     preservationRules,
     materialInstructions,
     estiloInstruction,
     lightingInstruction,
     angleInstruction,
-    userNotes ? `Additional notes: ${userNotes}` : null,
-    "Output: ultra-sharp 4K detail, high dynamic range, photorealistic, Brazilian architecture context.",
+    userNotes ? `Additional user request, subordinate to preservation rules: ${userNotes}` : null,
+    ARCH_PHOTOREALISM_OUTPUT,
   ].filter(Boolean).join(" ");
 
   try {
@@ -3042,8 +3064,26 @@ router.post("/arch/render", async (req, res) => {
         return res.status(400).json({ success: false, error: "referenceImageUrl deve ser um data URL base64 válido (data:<mime>;base64,<dados>)" });
       }
 
-      // ── Try Replicate Flux+ControlNet first ───────────────────────
-      if (process.env["REPLICATE_API_TOKEN"]) {
+      // ── Primary: Google Vertex Gemini Image ─────────────────────────
+      if (process.env["GOOGLE_CLOUD_PROJECT"] && process.env["GOOGLE_VERTEX_IMAGE_ENABLED"] !== "false") {
+        try {
+          b64 = await callGoogleVertexImage({
+            referenceImageDataUrl: referenceImageUrl,
+            prompt,
+            logger: req.log,
+          });
+          motor = process.env["GOOGLE_VERTEX_IMAGE_MODEL"]?.trim() || "gemini-3.1-flash-image";
+        } catch (vertexErr: any) {
+          req.log.warn({ err: vertexErr?.message, tenantId: tid }, "arch/render: Vertex falhou → fallback Replicate/OpenAI");
+          db.insert(automationLogsTable).values({
+            flow: "render_fallback", step: "vertex_to_replicate",
+            status: "warning", errorMessage: vertexErr?.message ?? "Vertex failed",
+          }).catch(() => undefined);
+        }
+      }
+
+      // ── Fallback 1: Replicate Flux+ControlNet ────────────────────
+      if (!b64 && process.env["REPLICATE_API_TOKEN"]) {
         try {
           b64    = await callReplicateFlux({ controlImageDataUrl: referenceImageUrl, prompt, logger: req.log });
           motor  = "replicate-flux";
@@ -3056,7 +3096,7 @@ router.post("/arch/render", async (req, res) => {
         }
       }
 
-      // ── Fallback: gpt-image-1 (img2img) ──────────────────────────
+      // ── Fallback 2: gpt-image-1 (img2img) ────────────────────────
       if (!b64) {
         const openai    = await getOpenAIForTenant(tid);
         const mimeType  = dataUrlMatch[1];
@@ -3069,12 +3109,22 @@ router.post("/arch/render", async (req, res) => {
         b64 = (result.data?.[0] as Record<string, unknown>)?.["b64_json"] as string | undefined;
       }
     } else {
-      // No reference image — text-to-image via gpt-image-1
-      const openai = await getOpenAIForTenant(tid);
-      const result = await (openai.images.generate as Function)({
-        model: "gpt-image-1", prompt, n: 1, size: "1536x1024", quality: "high",
-      });
-      b64 = (result.data?.[0] as Record<string, unknown>)?.["b64_json"] as string | undefined;
+      // No reference image — prefer Vertex, fallback to gpt-image-1
+      if (process.env["GOOGLE_CLOUD_PROJECT"] && process.env["GOOGLE_VERTEX_IMAGE_ENABLED"] !== "false") {
+        try {
+          b64 = await callGoogleVertexImage({ prompt, logger: req.log });
+          motor = process.env["GOOGLE_VERTEX_IMAGE_MODEL"]?.trim() || "gemini-3.1-flash-image";
+        } catch (vertexErr: any) {
+          req.log.warn({ err: vertexErr?.message, tenantId: tid }, "arch/render: Vertex text-to-image falhou → fallback gpt-image-1");
+        }
+      }
+      if (!b64) {
+        const openai = await getOpenAIForTenant(tid);
+        const result = await (openai.images.generate as Function)({
+          model: "gpt-image-1", prompt, n: 1, size: "1536x1024", quality: "high",
+        });
+        b64 = (result.data?.[0] as Record<string, unknown>)?.["b64_json"] as string | undefined;
+      }
     }
 
     if (!b64) throw new Error("Motor de render não retornou imagem");
@@ -3085,8 +3135,8 @@ router.post("/arch/render", async (req, res) => {
 
     const buf = await sharp(baseBuffer)
       .resize(targetSize.width, targetSize.height, {
-        fit: "cover",
-        position: "centre",
+        fit: "inside",
+        withoutEnlargement: false,
         kernel: sharp.kernel.lanczos3,
       })
       .sharpen({ sigma: 0.65, m1: 0.7, m2: 1.1 })
@@ -3146,7 +3196,24 @@ async function executeRenderJob(opts: {
       const dataUrlMatch = dataUrl.match(/^data:([^;]+);base64,([\s\S]+)$/);
       if (!dataUrlMatch) throw new Error("Imagem de referência deve ser um data URL base64 válido");
 
-      if (process.env["REPLICATE_API_TOKEN"]) {
+      if (process.env["GOOGLE_CLOUD_PROJECT"] && process.env["GOOGLE_VERTEX_IMAGE_ENABLED"] !== "false") {
+        try {
+          b64 = await callGoogleVertexImage({
+            referenceImageDataUrl: dataUrl,
+            prompt,
+            logger: log,
+          });
+          motor = process.env["GOOGLE_VERTEX_IMAGE_MODEL"]?.trim() || "gemini-3.1-flash-image";
+        } catch (vertexErr: any) {
+          log.warn({ err: vertexErr?.message, tenantId: tid }, "arch/ai-render: Vertex falhou → fallback Replicate/OpenAI");
+          db.insert(automationLogsTable).values({
+            flow: "render_fallback", step: "vertex_to_replicate",
+            status: "warning", errorMessage: vertexErr?.message ?? "Vertex failed",
+          }).catch(() => undefined);
+        }
+      }
+
+      if (!b64 && process.env["REPLICATE_API_TOKEN"]) {
         try {
           b64   = await callReplicateFlux({ controlImageDataUrl: dataUrl, prompt, logger: log });
           motor = "replicate-flux";
@@ -3171,11 +3238,21 @@ async function executeRenderJob(opts: {
         b64 = (result.data?.[0] as Record<string, unknown>)?.["b64_json"] as string | undefined;
       }
     } else {
-      const openai = await getOpenAIForTenant(tid);
-      const result = await (openai.images.generate as Function)({
-        model: "gpt-image-1", prompt, n: 1, size: "1536x1024", quality: "high",
-      });
-      b64 = (result.data?.[0] as Record<string, unknown>)?.["b64_json"] as string | undefined;
+      if (process.env["GOOGLE_CLOUD_PROJECT"] && process.env["GOOGLE_VERTEX_IMAGE_ENABLED"] !== "false") {
+        try {
+          b64 = await callGoogleVertexImage({ prompt, logger: log });
+          motor = process.env["GOOGLE_VERTEX_IMAGE_MODEL"]?.trim() || "gemini-3.1-flash-image";
+        } catch (vertexErr: any) {
+          log.warn({ err: vertexErr?.message, tenantId: tid }, "arch/ai-render: Vertex text-to-image falhou → fallback gpt-image-1");
+        }
+      }
+      if (!b64) {
+        const openai = await getOpenAIForTenant(tid);
+        const result = await (openai.images.generate as Function)({
+          model: "gpt-image-1", prompt, n: 1, size: "1536x1024", quality: "high",
+        });
+        b64 = (result.data?.[0] as Record<string, unknown>)?.["b64_json"] as string | undefined;
+      }
     }
 
     if (!b64) throw new Error("Motor de render não retornou imagem");
@@ -3187,8 +3264,8 @@ async function executeRenderJob(opts: {
 
     const buf = await sharp(baseBuffer)
       .resize(targetSize.width, targetSize.height, {
-        fit: "cover",
-        position: "centre",
+        fit: "inside",
+        withoutEnlargement: false,
         kernel: sharp.kernel.lanczos3,
       })
       .sharpen({ sigma: 0.65, m1: 0.7, m2: 1.1 })
@@ -3230,23 +3307,7 @@ function buildAiRenderPrompt(opts: {
   const { ambiente, mode, estilo, lighting, angle, userNotes, ajustePrompt } = opts;
   const isExterior = !ambiente || ambiente === "fachada_externa" || ambiente === "fachada externa";
 
-  const preservationRules = isExterior
-    ? [
-        "ABSOLUTE PRESERVATION RULES — NEVER BREAK:",
-        "• DO NOT add any new element not already visible in the reference.",
-        "• DO NOT remove, move, or alter any existing architectural element.",
-        "• DO NOT change viewpoint, perspective, or camera position.",
-        "• Preserve PIXEL-EXACTLY: building shape, all window positions, all door positions, roof geometry.",
-        "PERMITTED CHANGES ONLY: material quality and texture on specified surfaces, lighting condition.",
-      ].join(" ")
-    : [
-        "ABSOLUTE PRESERVATION RULES — NEVER BREAK:",
-        "• DO NOT add any object not already present in the reference.",
-        "• DO NOT remove, move, or replace any existing furniture or object.",
-        "• DO NOT change viewpoint, perspective, or camera angle.",
-        "• Preserve PIXEL-EXACTLY: room geometry, all wall/window/door positions, every piece of furniture in its exact place.",
-        "PERMITTED CHANGES ONLY: material quality and texture on specified surfaces, lighting condition.",
-      ].join(" ");
+  const preservationRules = buildArchPreservationRules(isExterior);
 
   const estiloMap: Record<string, string> = {
     minimalista:   "minimalist style with clean lines, neutral palette, uncluttered spaces",
@@ -3261,25 +3322,27 @@ function buildAiRenderPrompt(opts: {
     ? `LIGHTING CONDITION: ${lightingMapArch[lighting as keyof typeof lightingMapArch]}`
     : null;
 
-  const angleInstruction = angle && angleMapArch[angle as keyof typeof angleMapArch]
-    ? `CAMERA ANGLE: render from a ${angleMapArch[angle as keyof typeof angleMapArch]}.`
-    : null;
+  const angleInstruction = mode === "preservar"
+    ? "CAMERA LOCK: preserve the exact camera position, framing, perspective and field of view of the supplied reference image."
+    : (angle && angleMapArch[angle as keyof typeof angleMapArch]
+        ? `CAMERA ANGLE: render from a ${angleMapArch[angle as keyof typeof angleMapArch]}.`
+        : null);
 
   const estiloInstruction = estilo && estiloMap[estilo]
     ? `VISUAL STYLE: ${estiloMap[estilo]}.`
     : null;
 
   return [
-    "You are a professional architectural visualization engine.",
+    "You are a professional architectural photographer and photorealism engine.",
     ajustePrompt
-      ? `Apply the following adjustment to the render: ${ajustePrompt}`
-      : `Transform this ${isExterior ? "architectural photo" : "interior photo"} into a photorealistic render.`,
+      ? `Apply ONLY the following requested adjustment while preserving everything else: ${ajustePrompt}`
+      : `Transform the supplied ${isExterior ? "3D architectural exterior/reference view" : "3D interior/reference view"} into a TRUE PHOTOREALISTIC ARCHITECTURAL PHOTOGRAPH.`,
     mode === "preservar" ? preservationRules : null,
     estiloInstruction,
     lightingInstruction,
     angleInstruction,
-    userNotes ? `Additional notes: ${userNotes}` : null,
-    "Output: ultra-sharp 4K detail, high dynamic range, photorealistic, Brazilian architecture context.",
+    userNotes ? `Additional user request, subordinate to preservation rules: ${userNotes}` : null,
+    ARCH_PHOTOREALISM_OUTPUT,
   ].filter(Boolean).join(" ");
 }
 
