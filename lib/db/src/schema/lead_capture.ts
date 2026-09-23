@@ -1,4 +1,4 @@
-import { boolean, integer, jsonb, pgTable, text, timestamp, unique } from "drizzle-orm/pg-core";
+import { boolean, jsonb, pgTable, text, timestamp, unique } from "drizzle-orm/pg-core";
 import { tenantsTable } from "./tenants";
 
 export type LeadCaptureMagnet = {
