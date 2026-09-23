@@ -30,6 +30,7 @@ export type ProposalBuilderTemplate = {
   id: string;
   name: string;
   vertical: string;
+  proposalKind?: "construction_project" | "architecture_service" | "retail_quote" | "distribution_b2b" | "vehicle_sale" | "insurance_quote" | "professional_service" | "generic";
   isDefault: boolean;
   modules: ProposalBuilderModule[];
   aiRules: {
@@ -64,44 +65,117 @@ export const ALLOWED_PROPOSAL_MODULES: ProposalBuilderModuleKey[] = [
 
 export function defaultProposalBuilderTemplate(
   verticalRaw: string | null | undefined,
+  context?: {
+    companyName?: string | null;
+    products?: unknown;
+    salesChannels?: unknown;
+    discoveryData?: Record<string, unknown> | null;
+  },
 ): Omit<ProposalBuilderTemplate, "id" | "createdAt" | "updatedAt"> {
-  const vertical = String(verticalRaw ?? "geral")
+  const normalize = (value: unknown) => String(value ?? "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
 
-  const construction = /(construcao|construtora|arquitetura|reforma|obra|icf)/.test(vertical);
-  const keys: ProposalBuilderModuleKey[] = construction
-    ? [
-        "capa",
-        "apresentacao_empresa",
-        "diferenciais",
-        "resumo_executivo",
-        "escopo",
-        "etapas_orcamento",
-        "imagem_por_etapa",
-        "cronograma",
-        "fisico_financeiro",
-        "condicoes_comerciais",
-        "validade_inicio",
-        "aceite",
-        "portal_cliente",
-      ]
-    : [
-        "capa",
-        "apresentacao_empresa",
-        "diferenciais",
-        "resumo_executivo",
-        "escopo",
-        "tabela_itens",
-        "condicoes_comerciais",
-        "validade_inicio",
-        "aceite",
-      ];
+  const vertical = normalize(verticalRaw || "geral");
+  const contextText = [
+    vertical,
+    normalize(context?.companyName),
+    normalize(JSON.stringify(context?.products ?? "")),
+    normalize(JSON.stringify(context?.salesChannels ?? "")),
+    normalize(JSON.stringify(context?.discoveryData ?? {})),
+  ].join(" ");
+
+  const isBuildingMaterials = /(material(is)? de construcao|loja de material|varejo.*construcao|distribuidora.*construcao|atacado.*construcao|ferragens|tintas|revestimentos|pisos|acabamentos)/.test(contextText);
+  const isDistributor = /(distribuidora|distribuicao|atacado|b2b)/.test(contextText);
+  const isArchitecture = /(arquitetura|interiores|design de interiores|escritorio de arquitetura|arqdor)/.test(contextText);
+  const isConstructionProject = !isBuildingMaterials && /(construtora|execucao de obra|construcao civil|reforma|obra|icf)/.test(contextText);
+  const isVehicle = /(veiculo|automovel|carro|moto|seminovo|concessionaria|mobilidade eletrica)/.test(contextText);
+  const isInsurance = /(seguro|corretora de seguros|apolice)/.test(contextText);
+  const isProfessionalService = /(advocacia|contabilidade|clinica|consultoria|agencia|servico profissional)/.test(contextText);
+
+  const proposalKind: NonNullable<ProposalBuilderTemplate["proposalKind"]> =
+    isBuildingMaterials && isDistributor ? "distribution_b2b"
+      : isBuildingMaterials ? "retail_quote"
+      : isArchitecture ? "architecture_service"
+      : isConstructionProject ? "construction_project"
+      : isVehicle ? "vehicle_sale"
+      : isInsurance ? "insurance_quote"
+      : isProfessionalService ? "professional_service"
+      : "generic";
+
+  const keysByKind: Record<NonNullable<ProposalBuilderTemplate["proposalKind"]>, ProposalBuilderModuleKey[]> = {
+    construction_project: [
+      "capa", "apresentacao_empresa", "diferenciais", "resumo_executivo", "escopo",
+      "etapas_orcamento", "imagem_por_etapa", "cronograma", "fisico_financeiro",
+      "condicoes_comerciais", "validade_inicio", "aceite", "portal_cliente",
+    ],
+    architecture_service: [
+      "capa", "apresentacao_empresa", "diferenciais", "resumo_executivo", "escopo",
+      "etapas_orcamento", "imagem_por_etapa", "cronograma",
+      "condicoes_comerciais", "validade_inicio", "aceite", "anexos", "portal_cliente",
+    ],
+    retail_quote: [
+      "capa", "apresentacao_empresa", "diferenciais", "resumo_executivo",
+      "tabela_itens", "condicoes_comerciais", "validade_inicio", "aceite", "anexos",
+    ],
+    distribution_b2b: [
+      "capa", "apresentacao_empresa", "diferenciais", "resumo_executivo",
+      "tabela_itens", "condicoes_comerciais", "validade_inicio", "aceite", "anexos",
+    ],
+    vehicle_sale: [
+      "capa", "apresentacao_empresa", "diferenciais", "resumo_executivo",
+      "tabela_itens", "condicoes_comerciais", "validade_inicio", "aceite", "anexos",
+    ],
+    insurance_quote: [
+      "capa", "apresentacao_empresa", "diferenciais", "resumo_executivo",
+      "escopo", "condicoes_comerciais", "validade_inicio", "aceite", "anexos",
+    ],
+    professional_service: [
+      "capa", "apresentacao_empresa", "diferenciais", "resumo_executivo",
+      "escopo", "etapas_orcamento", "condicoes_comerciais", "validade_inicio", "aceite",
+    ],
+    generic: [
+      "capa", "apresentacao_empresa", "diferenciais", "resumo_executivo",
+      "escopo", "tabela_itens", "condicoes_comerciais", "validade_inicio", "aceite",
+    ],
+  };
+  const keys = keysByKind[proposalKind];
+
+  const names: Record<NonNullable<ProposalBuilderTemplate["proposalKind"]>, string> = {
+    construction_project: "Obra · Proposta completa",
+    architecture_service: "Arquitetura · Projeto e honorários",
+    retail_quote: "Varejo · Orçamento comercial",
+    distribution_b2b: "Distribuição B2B · Cotação comercial",
+    vehicle_sale: "Veículos · Proposta de venda",
+    insurance_quote: "Seguros · Cotação e coberturas",
+    professional_service: "Serviços · Proposta profissional",
+    generic: "Proposta comercial padrão",
+  };
+
+  const nonConstructionRules = proposalKind === "retail_quote" || proposalKind === "distribution_b2b"
+    ? {
+        tone: "profissional, comercial e objetivo",
+        technicalLevel: "detalhar produto, aplicação, quantidade, condição, prazo e entrega sem transformar a proposta em cronograma de obra",
+        imageRules: [
+          "Priorizar imagens reais ou representativas dos produtos, categorias e aplicações vendidas.",
+          "Não gerar imagens de fundação, estrutura, instalações ou etapas de obra apenas porque o segmento contém a palavra construção.",
+        ],
+        contentRules: [
+          "Organizar a proposta por produtos, categorias, quantidades, preços, condições comerciais, entrega e validade.",
+          "Se houver venda B2B, destacar mix, disponibilidade, prazo, frete e condições aplicáveis ao cliente.",
+        ],
+        avoid: [
+          "Não usar cronograma físico-financeiro, radier, fundação, estrutura ou gestão de obra sem evidência explícita no escopo.",
+          "Não apresentar custo interno, margem ou preço de fornecedor.",
+        ],
+      }
+    : null;
 
   return {
-    name: construction ? "Construção · Proposta completa" : "Proposta comercial padrão",
+    name: names[proposalKind],
     vertical: vertical || "geral",
+    proposalKind,
     isDefault: true,
     modules: keys.map((key, index) => ({
       key,
@@ -109,34 +183,35 @@ export function defaultProposalBuilderTemplate(
       order: index + 1,
       required: key === "capa" || key === "condicoes_comerciais" || key === "aceite",
     })),
-    aiRules: construction
-      ? {
-          tone: "profissional, técnico e comercial, com texto objetivo",
-          technicalLevel:
-            "explicar o suficiente para o cliente entender o que está contratado sem expor custos internos",
-          imageRules: [
-            "A imagem de cada etapa deve representar tecnicamente o escopo real daquela etapa, nunca uma foto genérica de obra.",
-            "Se a fundação for radier, mostrar radier, base, malhas/armaduras e passagens; não mostrar baldrame quando ele não fizer parte do escopo.",
-            "Em instalações, priorizar tubos PEX, mangueiras/conduítes corrugados, tubulações, caixas e passagens técnicas visíveis.",
-            "Não inserir textos, logotipos, selos ou marcas d'água nas imagens das etapas.",
-          ],
-          contentRules: [
-            "Organizar orçamento por etapas e resumir claramente o que está contemplado em cada uma.",
-            "Permitir etapas simultâneas no cronograma e no físico-financeiro.",
-            "Usar somente a identidade visual oficial do tenant cadastrada no Kit da Marca/Business Profile.",
-          ],
-          avoid: [
-            "Não inventar escopo técnico que não exista no orçamento.",
-            "Não apresentar custo interno, margem, preço de fornecedor ou informação privada ao cliente.",
-          ],
-        }
-      : {
-          tone: "profissional, claro e comercial",
-          technicalLevel: "adequado ao segmento do tenant",
-          imageRules: ["Usar imagens coerentes com o produto ou serviço efetivamente ofertado."],
-          contentRules: ["Usar dados do orçamento e do perfil do tenant como fonte principal."],
-          avoid: ["Não inventar condições comerciais ou escopo inexistente."],
-        },
+    aiRules: nonConstructionRules
+      ?? (proposalKind === "construction_project"
+        ? {
+            tone: "profissional, técnico e comercial, com texto objetivo",
+            technicalLevel:
+              "explicar o suficiente para o cliente entender o que está contratado sem expor custos internos",
+            imageRules: [
+              "A imagem de cada etapa deve representar tecnicamente o escopo real daquela etapa, nunca uma foto genérica de obra.",
+              "Se a fundação for radier, mostrar radier, base, malhas/armaduras e passagens; não mostrar baldrame quando ele não fizer parte do escopo.",
+              "Em instalações, priorizar tubos PEX, mangueiras/conduítes corrugados, tubulações, caixas e passagens técnicas visíveis.",
+              "Não inserir textos, logotipos, selos ou marcas d'água nas imagens das etapas.",
+            ],
+            contentRules: [
+              "Organizar orçamento por etapas e resumir claramente o que está contemplado em cada uma.",
+              "Permitir etapas simultâneas no cronograma e no físico-financeiro.",
+              "Usar somente a identidade visual oficial do tenant cadastrada no Kit da Marca/Business Profile.",
+            ],
+            avoid: [
+              "Não inventar escopo técnico que não exista no orçamento.",
+              "Não apresentar custo interno, margem, preço de fornecedor ou informação privada ao cliente.",
+            ],
+          }
+        : {
+            tone: "profissional, claro e comercial",
+            technicalLevel: "adequado ao segmento e ao tipo de operação do tenant",
+            imageRules: ["Usar imagens coerentes com o produto ou serviço efetivamente ofertado."],
+            contentRules: ["Usar dados do orçamento, catálogo, operação e perfil do tenant como fonte principal."],
+            avoid: ["Não inventar condições comerciais, escopo ou módulos operacionais inexistentes."],
+          }),
     createdBy: "ai",
   };
 }
@@ -186,6 +261,17 @@ export function normalizeProposalBuilderTemplate(
       typeof source.vertical === "string" && source.vertical.trim()
         ? source.vertical.trim().slice(0, 80)
         : fallback.vertical,
+    proposalKind:
+      source.proposalKind === "construction_project"
+      || source.proposalKind === "architecture_service"
+      || source.proposalKind === "retail_quote"
+      || source.proposalKind === "distribution_b2b"
+      || source.proposalKind === "vehicle_sale"
+      || source.proposalKind === "insurance_quote"
+      || source.proposalKind === "professional_service"
+      || source.proposalKind === "generic"
+        ? source.proposalKind
+        : fallback.proposalKind,
     isDefault: source.isDefault !== false,
     modules: modules.length ? modules : fallback.modules,
     aiRules: {
@@ -256,7 +342,12 @@ export async function ensureTenantProposalBuilderTemplate({
     };
   }
 
-  const fallback = defaultProposalBuilderTemplate(profile.vertical);
+  const fallback = defaultProposalBuilderTemplate(profile.vertical, {
+    companyName: profile.nomeFantasia || profile.razaoSocial,
+    products: profile.produtos,
+    salesChannels: profile.canaisVenda,
+    discoveryData: discovery,
+  });
   let proposed: unknown = fallback;
 
   try {
@@ -267,9 +358,20 @@ export async function ensureTenantProposalBuilderTemplate({
       `Vertical/segmento: ${profile.vertical || "não informado"}`,
       `Diferenciais: ${profile.diferenciais || "não informado"}`,
       `Público-alvo: ${profile.publicoAlvo || "não informado"}`,
+      `Produtos/serviços cadastrados: ${JSON.stringify(profile.produtos ?? [])}`,
+      `Canais de venda: ${JSON.stringify(profile.canaisVenda ?? [])}`,
+      `Contexto adicional do tenant: ${JSON.stringify(discovery).slice(0, 6000)}`,
+      `Modelo seguro sugerido pelo classificador: ${JSON.stringify(fallback)}`,
       `Módulos permitidos: ${ALLOWED_PROPOSAL_MODULES.join(", ")}`,
+      "Antes de escolher os módulos, classifique o TIPO DE OPERAÇÃO real do tenant. Não use apenas a palavra do segmento.",
+      "Diferencie explicitamente construtora/execução de obra de loja ou distribuidora de materiais de construção.",
+      "Se for loja/distribuidora de materiais de construção, NÃO use cronograma físico-financeiro, radier, fundação, instalações ou portal de obra por padrão. Priorize produtos, preços, mix, prazo, frete/entrega, validade, imagens de produto/aplicação e aceite.",
+      "Se for construtora/execução de obra, use etapas, escopo, imagens por etapa, cronograma, físico-financeiro e portal quando fizer sentido.",
+      "Se for arquitetura/interiores, trate como projeto/honorários, etapas do projeto, imagens/renders e cronograma, sem assumir execução completa de obra.",
+      "Se já existir um modelo ativo, use-o como referência para evoluir a nova versão sem perder as decisões válidas.",
+      `Modelo ativo anterior: ${JSON.stringify(existingTemplates.find((item) => item.id === discovery.activeProposalBuilderTemplateId) ?? existingTemplates.find((item) => item.isDefault) ?? null)}`,
       "Formato obrigatório:",
-      '{"name":"...","vertical":"...","isDefault":true,"modules":[{"key":"capa","enabled":true,"order":1,"required":true}],"aiRules":{"tone":"...","technicalLevel":"...","imageRules":["..."],"contentRules":["..."],"avoid":["..."]}}',
+      '{"name":"...","vertical":"...","proposalKind":"construction_project|architecture_service|retail_quote|distribution_b2b|vehicle_sale|insurance_quote|professional_service|generic","isDefault":true,"modules":[{"key":"capa","enabled":true,"order":1,"required":true}],"aiRules":{"tone":"...","technicalLevel":"...","imageRules":["..."],"contentRules":["..."],"avoid":["..."]}}',
       "Para construção civil, imagens por etapa precisam ser tecnicamente coerentes com o orçamento. Ex.: radier não deve virar baldrame; instalações devem mostrar PEX, conduítes/mangueiras corrugadas, hidráulica e elétrica quando estes itens estiverem no escopo.",
       "Nunca recomende exibir custos internos, margens ou preços de fornecedor ao cliente.",
     ].join("\n");
