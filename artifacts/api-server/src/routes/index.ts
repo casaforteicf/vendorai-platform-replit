@@ -53,6 +53,7 @@ import invitesRouter, { invitesProtectedRouter } from "./invites";
 import onboardingRouter from "./onboarding";
 import onboardingImplementationRouter from "./onboarding_implementation";
 import contentRouter from "./content";
+import leadCaptureRouter from "./lead_capture";
 import contentReferenceCreatorsRouter from "./content_reference_creators.js";
 import contentPerformanceRouter from "./content_performance.js";
 import evolutionWhatsappAuthRouter from "./evolution_whatsapp_auth.js";
@@ -357,6 +358,7 @@ router.use(consentsRouter);
 
 // Business Hub
 router.use(businessProfilesRouter);
+router.use(leadCaptureRouter);
 
 // Agent Config
 router.use(agentConfigsRouter);
