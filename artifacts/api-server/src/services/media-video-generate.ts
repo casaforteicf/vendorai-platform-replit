@@ -13,7 +13,7 @@ import {
   pool,
 } from "@workspace/db";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
-import { callReplicateVeo31 } from "../lib/arch-render-pipeline.js";
+import { generateVeoVideo } from "./media-provider-execution.js";
 import { objectStorageClient } from "../lib/objectStorage.js";
 import { applyBrandIntroOutro } from "./media-brand-video.js";
 import { resolveVideoContextPack } from "./video-context-pack.js";
@@ -761,6 +761,7 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
 
       const premiumClipPaths: string[] = [];
       const predictionIds: string[] = [];
+      const generationProviders: string[] = [];
       const premiumTempPaths: string[] = [];
 
       for (let sceneIndex = 0; sceneIndex < premiumSceneCount; sceneIndex += 1) {
@@ -799,9 +800,9 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
           "Do not render captions, brand names or logos inside the generated frames. Official Vendor.ai identity is applied later by a deterministic compositor.",
         ].filter(Boolean).join("\n");
 
-        const premiumScene = await callReplicateVeo31({
+        const premiumScene = await generateVeoVideo({
           prompt: scenePrompt,
-          model: nativeVideoModel,
+          cinema: useCinemaNativeVideo,
           aspectRatio: aspectRatio === "portrait" ? "9:16" : "16:9",
           duration: 8,
           resolution: nativeVideoResolution,
@@ -818,15 +819,18 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
         await writeFile(clipPath, premiumScene.buffer);
         premiumClipPaths.push(clipPath);
         premiumTempPaths.push(clipPath);
-        predictionIds.push(premiumScene.predictionId);
+        predictionIds.push(premiumScene.providerJobId);
+        generationProviders.push(premiumScene.provider);
       }
 
       const premiumRawPath = join(tmpdir(), `video-premium-${video.id}-raw.mp4`);
       premiumTempPaths.push(premiumRawPath);
+      const clipsHaveAudio = nativeAudioEnabled
+        && (await Promise.all(premiumClipPaths.map((clipPath) => hasAudioStream(clipPath)))).every(Boolean);
       await concatPremiumClips({
         clipPaths: premiumClipPaths,
         outputPath: premiumRawPath,
-        withAudio: nativeAudioEnabled,
+        withAudio: clipsHaveAudio,
       });
 
       await persistRunning({
@@ -903,11 +907,12 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
           actualDuration,
           sceneCount: premiumSceneCount,
           engine: nativeVideoModel,
-          provider: "replicate",
+          provider: Array.from(new Set(generationProviders)).join("+") || "unknown",
+          providers: generationProviders,
           qualityMode: effectiveQualityMode,
           resolution: nativeVideoResolution,
-          audioApplied: nativeAudioEnabled,
-          nativeAudio: nativeAudioEnabled,
+          audioApplied: clipsHaveAudio,
+          nativeAudio: clipsHaveAudio,
           predictionIds,
           referenceImages,
           generationEngine: useCinemaNativeVideo ? "native-video-premium-v5-multishot-references" : "native-video-lite-v1-multishot",
