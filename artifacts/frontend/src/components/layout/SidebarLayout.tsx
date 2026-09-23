@@ -267,7 +267,11 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const pathname = location.split("?")[0];
     const inArqdorContext = pathname === "/arch" || pathname.startsWith("/arch/");
-    if (user?.platformRole === "super_admin") return;
+    // Super admin fora de um tenant continua no shell administrativo.
+    // Em modo "visualizando tenant" (tenantOverride), deve enxergar exatamente
+    // o mesmo workspace Arqdor do tenant, incluindo Pré-Projeto e ferramentas.
+    const isPureSuperAdmin = user?.platformRole === "super_admin" && !tenantOverride;
+    if (isPureSuperAdmin) return;
 
     const restoreContext = () => {
       document
@@ -403,7 +407,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
       observer.disconnect();
       restoreContext();
     };
-  }, [arqdorVisible, location, setLocation, user?.platformRole]);
+  }, [arqdorVisible, location, setLocation, tenantOverride, user?.platformRole]);
 
   useEffect(() => {
     const isPureSuperAdmin = user?.platformRole === "super_admin" && !tenantOverride;
