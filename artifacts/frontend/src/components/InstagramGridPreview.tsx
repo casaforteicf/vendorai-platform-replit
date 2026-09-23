@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, LayoutGrid, ExternalLink } from "lucide-react";
+import { Loader2, LayoutGrid, ExternalLink, Play, Images } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type InstagramGridItem = {
@@ -20,6 +20,7 @@ export type DraftOption = {
   id: string;
   label: string;
   thumbnailUrl?: string;
+  mediaType?: "IMAGE" | "VIDEO" | "CAROUSEL_ALBUM";
 };
 
 export function InstagramGridPreview({ tenantId, draftOptions }: { tenantId: string; draftOptions: DraftOption[] }) {
@@ -44,13 +45,25 @@ export function InstagramGridPreview({ tenantId, draftOptions }: { tenantId: str
   // próximo post publicado realmente apareceria — empurrando o resto e
   // cortando o último ladrilho pra manter a grade em múltiplos de 3.
   const realItems = data?.items ?? [];
-  const gridTiles: Array<{ key: string; url: string | null; isPreview: boolean; permalink?: string | null }> = selectedDraft
+  const gridTiles: Array<{
+    key: string;
+    url: string | null;
+    isPreview: boolean;
+    mediaType?: "IMAGE" | "VIDEO" | "CAROUSEL_ALBUM";
+    permalink?: string | null;
+  }> = selectedDraft
     ? [
-        { key: "preview", url: selectedDraft.thumbnailUrl ?? null, isPreview: true },
+        {
+          key: "preview",
+          url: selectedDraft.thumbnailUrl ?? null,
+          isPreview: true,
+          mediaType: selectedDraft.mediaType ?? "IMAGE",
+        },
         ...realItems.slice(0, 11).map((item) => ({
           key: item.id,
           url: item.mediaType === "VIDEO" ? item.thumbnailUrl : item.mediaUrl,
           isPreview: false,
+          mediaType: item.mediaType,
           permalink: item.permalink,
         })),
       ]
@@ -58,6 +71,7 @@ export function InstagramGridPreview({ tenantId, draftOptions }: { tenantId: str
         key: item.id,
         url: item.mediaType === "VIDEO" ? item.thumbnailUrl : item.mediaUrl,
         isPreview: false,
+        mediaType: item.mediaType,
         permalink: item.permalink,
       }));
 
@@ -69,7 +83,7 @@ export function InstagramGridPreview({ tenantId, draftOptions }: { tenantId: str
           Prévia da grade do Instagram
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          Como a grade real está hoje — teste um rascunho da Biblioteca na posição de próximo post antes de publicar, pra ver se combina com o que já está lá.
+          Prévia do perfil em recorte 3:4 — teste um rascunho da Biblioteca na posição do próximo post antes de publicar.
         </p>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -105,7 +119,7 @@ export function InstagramGridPreview({ tenantId, draftOptions }: { tenantId: str
               const inner = (
                 <div
                   className={cn(
-                    "aspect-square w-full overflow-hidden bg-muted/40 relative",
+                    "w-full overflow-hidden bg-muted/40 relative aspect-[3/4]",
                     tile.isPreview && "ring-2 ring-primary ring-offset-1",
                   )}
                 >
@@ -116,6 +130,16 @@ export function InstagramGridPreview({ tenantId, draftOptions }: { tenantId: str
                   )}
                   {tile.isPreview && (
                     <Badge className="absolute top-1 left-1 text-[9px] px-1 py-0 h-4">prévia</Badge>
+                  )}
+                  {tile.mediaType === "VIDEO" && (
+                    <span className="absolute right-1 top-1 rounded bg-black/55 p-1 text-white" title="Reel">
+                      <Play className="h-3 w-3 fill-current" />
+                    </span>
+                  )}
+                  {tile.mediaType === "CAROUSEL_ALBUM" && (
+                    <span className="absolute right-1 top-1 rounded bg-black/55 p-1 text-white" title="Carrossel">
+                      <Images className="h-3 w-3" />
+                    </span>
                   )}
                 </div>
               );
