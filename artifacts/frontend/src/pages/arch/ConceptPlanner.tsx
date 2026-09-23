@@ -3227,7 +3227,7 @@ export default function ConceptPlanner() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          project_id: renderProjectId,
+          concept_project_id: renderProjectId,
           original_image_url: originalImage,
           mode: "preservar",
           ambiente: renderView === "interior" ? "interior" : "fachada",
@@ -3331,7 +3331,7 @@ export default function ConceptPlanner() {
 
     const recoverRenderHistory = async () => {
       try {
-        const response = await fetch(`/api/arch/ai-renders?project_id=${encodeURIComponent(conceptId)}`);
+        const response = await fetch(`/api/arch/ai-renders?concept_project_id=${encodeURIComponent(conceptId)}`);
         if (!response.ok) return;
         const payload = await response.json() as {
           versions?: Array<{
