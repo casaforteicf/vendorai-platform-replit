@@ -40,7 +40,7 @@ import { ObjectStorageService } from "../lib/objectStorage.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 import { tryIngestTechnicianSupportMessage } from "../services/support-whatsapp-ingest.js";
 import { tryHandleSupportFeedbackMessage } from "../services/support-feedback.js";
-import { registerVoiceTurn } from "../services/voice-agent-orchestrator.js";
+import { startVoiceSession, registerVoiceTurn, endVoiceSession } from "../services/voice-agent-orchestrator.js";
 import { createVendorAiVoiceStream, resolveDefaultVendorAiVoice } from "../services/vendorai-voice-engine.js";
 
 const objectStorage = new ObjectStorageService();
@@ -146,6 +146,219 @@ router.post("/webhooks/voice/call-turn", async (req, res) => {
     }
   }
 });
+
+
+async function ensureVoiceLeadForPhone(input: {
+  tenantId: string;
+  phone: string;
+  name?: string;
+}) {
+  const match = await findLeadByDedup(input.tenantId, input.phone, null, null);
+  if (match.found) return match.lead;
+
+  const normalized = storePhone(input.phone);
+  const [lead] = await db
+    .insert(leadsTable)
+    .values({
+      tenantId: input.tenantId,
+      nome: input.name?.trim() || input.phone,
+      telefone: normalized,
+      status: "novo",
+      source: "whatsapp",
+    })
+    .returning();
+
+  await db.insert(dealsTable).values({
+    tenantId: input.tenantId,
+    leadId: lead.id,
+    titulo: lead.nome,
+    etapa: "em_aquecimento",
+  });
+
+  return lead;
+}
+
+async function callWorkerJson<T>(path: string, body: Record<string, unknown>): Promise<T> {
+  const baseUrl = process.env["VENDORAI_CALL_WORKER_URL"]?.replace(/\/$/, "");
+  if (!baseUrl) throw new Error("VENDORAI_CALL_WORKER_URL não configurada");
+
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  const secret = process.env["VENDORAI_CALL_WORKER_SECRET"];
+  if (secret) headers["x-vendorai-call-worker-secret"] = secret;
+
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(15_000),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(`Voice call worker ${response.status}: ${JSON.stringify(payload).slice(0, 500)}`);
+  }
+  return payload as T;
+}
+
+async function metaCallAction(input: {
+  phoneNumberId: string;
+  accessToken: string;
+  action: "pre_accept" | "accept" | "reject" | "terminate";
+  callId: string;
+  sdp?: string;
+  opaqueData?: string;
+}) {
+  const version = process.env["META_GRAPH_API_VERSION"]?.trim() || "v20.0";
+  const payload: Record<string, unknown> = {
+    messaging_product: "whatsapp",
+    call_id: input.callId,
+    action: input.action,
+  };
+  if (input.sdp && (input.action === "pre_accept" || input.action === "accept")) {
+    payload["session"] = { sdp_type: "answer", sdp: input.sdp };
+  }
+  if (input.opaqueData) payload["biz_opaque_callback_data"] = input.opaqueData.slice(0, 512);
+
+  const response = await fetch(
+    `https://graph.facebook.com/${version}/${input.phoneNumberId}/calls`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${input.accessToken}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(15_000),
+    },
+  );
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || (body && typeof body === "object" && "error" in body)) {
+    throw new Error(`Meta Calling API ${response.status}: ${JSON.stringify(body).slice(0, 500)}`);
+  }
+  return body;
+}
+
+async function handleMetaCallWebhook(input: {
+  value: Record<string, unknown>;
+  phoneNumberId: string;
+  whatsappConnection: {
+    tenantId: string;
+    metaAccessToken: string | null;
+  };
+  log: Request["log"];
+}) {
+  const calls = (input.value["calls"] ?? []) as Array<Record<string, unknown>>;
+  if (!calls.length) return;
+
+  const contacts = (input.value["contacts"] ?? []) as Array<Record<string, unknown>>;
+  const senderName = (contacts[0] as any)?.profile?.name as string | undefined;
+  const tenantId = input.whatsappConnection.tenantId;
+  const accessToken = input.whatsappConnection.metaAccessToken;
+  if (!accessToken) throw new Error("Meta access token ausente para WhatsApp Calling");
+
+  for (const call of calls) {
+    const callId = String(call["id"] ?? "");
+    const event = String(call["event"] ?? "");
+    const direction = String(call["direction"] ?? "");
+    const from = String(call["from"] ?? "");
+    if (!callId || !event) continue;
+
+    if (event === "connect" && direction === "USER_INITIATED") {
+      const session = (call["session"] ?? {}) as Record<string, unknown>;
+      const remoteSdp = String(session["sdp"] ?? "");
+      if (!remoteSdp || !from) {
+        input.log.warn({ callId, event, direction }, "meta-calling: inbound connect missing SDP/from");
+        continue;
+      }
+
+      const lead = await ensureVoiceLeadForPhone({
+        tenantId,
+        phone: from,
+        name: senderName,
+      });
+
+      const voiceSession = await startVoiceSession({
+        tenantId,
+        leadId: lead.id,
+        source: "whatsapp",
+        log: input.log,
+      });
+
+      const answer = await callWorkerJson<{ sdp: string; sdpType: string }>(
+        "/v1/calls/inbound-answer",
+        {
+          call_key: callId,
+          tenant_id: tenantId,
+          lead_id: lead.id,
+          session_id: voiceSession.sessionId,
+          remote_sdp: remoteSdp,
+        },
+      );
+
+      await metaCallAction({
+        phoneNumberId: input.phoneNumberId,
+        accessToken,
+        action: "pre_accept",
+        callId,
+        sdp: answer.sdp,
+        opaqueData: `tenant=${tenantId};lead=${lead.id};session=${voiceSession.sessionId}`,
+      });
+
+      await metaCallAction({
+        phoneNumberId: input.phoneNumberId,
+        accessToken,
+        action: "accept",
+        callId,
+        sdp: answer.sdp,
+        opaqueData: `tenant=${tenantId};lead=${lead.id};session=${voiceSession.sessionId}`,
+      });
+
+      input.log.info(
+        { tenantId, leadId: lead.id, callId, sessionId: voiceSession.sessionId },
+        "meta-calling: inbound WhatsApp call accepted by voice agent",
+      );
+      continue;
+    }
+
+    if (event === "terminate") {
+      await callWorkerJson<{ ok: boolean }>(
+        `/v1/calls/${encodeURIComponent(callId)}/terminate`,
+        {},
+      ).catch((error) => {
+        input.log.warn({ error, callId }, "meta-calling: worker terminate failed");
+      });
+
+      if (from) {
+        const match = await findLeadByDedup(tenantId, from, null, null);
+        if (match.found) {
+          const [conversation] = await db
+            .select({ metadata: conversationsTable.metadata })
+            .from(conversationsTable)
+            .where(and(
+              eq(conversationsTable.tenantId, tenantId),
+              eq(conversationsTable.leadId, match.lead.id),
+            ))
+            .orderBy(sql`${conversationsTable.updatedAt} DESC`)
+            .limit(1);
+          const voiceMeta = conversation?.metadata && typeof conversation.metadata === "object"
+            ? (conversation.metadata as Record<string, unknown>)["voiceSession"]
+            : null;
+          const currentSessionId = voiceMeta && typeof voiceMeta === "object"
+            ? String((voiceMeta as Record<string, unknown>)["sessionId"] ?? "")
+            : "";
+          if (currentSessionId) {
+            await endVoiceSession({
+              tenantId,
+              leadId: match.lead.id,
+              sessionId: currentSessionId,
+            }).catch((error) => input.log.warn({ error, callId }, "meta-calling: session end failed"));
+          }
+        }
+      }
+
+      input.log.info({ tenantId, callId }, "meta-calling: call terminated");
+    }
+  }
+}
 
 async function attributeWhatsAppLeadFromCampaignCode(
   tenantId: string,
@@ -1768,9 +1981,9 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
     for (const entry of entries) {
       const changes = (entry.changes ?? []) as Array<Record<string, unknown>>;
       for (const change of changes) {
-        if (change.field !== "messages") continue;
-
         const value    = change.value as Record<string, unknown>;
+        const field = String(change.field ?? "");
+        if (field !== "messages" && field !== "calls") continue;
         const metadata = (value.metadata ?? {}) as Record<string, string>;
         const phoneNumberId = metadata["phone_number_id"];
         if (!phoneNumberId) continue;
@@ -1795,6 +2008,21 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
           continue;
         }
         const { tenantId } = whatsappConnection;
+
+        if (field === "calls") {
+          void handleMetaCallWebhook({
+            value,
+            phoneNumberId,
+            whatsappConnection: {
+              tenantId,
+              metaAccessToken: whatsappConnection.metaAccessToken,
+            },
+            log: req.log,
+          }).catch((error) => {
+            req.log.error({ error, phoneNumberId, tenantId }, "meta-calling: webhook handling failed");
+          });
+          continue;
+        }
 
         const incomingMsgs = (value.messages ?? []) as Array<Record<string, unknown>>;
         const contacts     = (value.contacts ?? []) as Array<Record<string, unknown>>;
