@@ -148,6 +148,8 @@ archAiRenderRouter.get("/arch/ai-renders", authenticate, async (req: Request, re
       ambiente: render.ambiente,
       mode: render.mode,
       status: render.status,
+      erro_msg: render.erroMsg,
+      iluminacao: render.iluminacao,
       version_tag: render.versionTag,
       operation_type: render.operationType,
       material_id: render.materialId,
@@ -218,3 +220,4 @@ archAiRenderRouter.get("/arch/ai-render/:id", authenticate, async (req: Request,
 });
 
 archAiRenderRouter.use(legacyArchAiRenderRouter);
+
