@@ -15,6 +15,9 @@ export type ReelsVariation = {
   audioSuggestion: string;
   cta: string;
   videoUrl?: string;
+  coverUrl?: string;
+  coverSource?: "upload" | "frame";
+  thumbOffsetMs?: number;
 };
 export type LinkedInVariation = { hook: string; caption: string; hashtags: string[] };
 export type YouTubeScriptBlock = { bloco: string; conteudo: string };
