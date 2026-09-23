@@ -33,17 +33,39 @@ function GroupedNavSection({
   active: boolean;
   children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(active);
+  const storageKey = `vendorai_nav_group_${label
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")}`;
+
+  // O estado do grupo precisa sobreviver à troca de rota. A sidebar pode
+  // remontar quando o usuário abre uma tela e, sem persistência, um grupo
+  // que estava aberto voltava ao estado inicial e "fechava" após o clique.
+  const [open, setOpen] = useState<boolean>(() => {
+    if (typeof window === "undefined") return active;
+    return active || window.localStorage.getItem(storageKey) === "true";
+  });
 
   React.useEffect(() => {
-    if (active) setOpen(true);
-  }, [active]);
+    if (!active) return;
+    setOpen(true);
+    window.localStorage.setItem(storageKey, "true");
+  }, [active, storageKey]);
+
+  const toggleOpen = () => {
+    setOpen((value) => {
+      const next = !value;
+      window.localStorage.setItem(storageKey, String(next));
+      return next;
+    });
+  };
 
   return (
     <div>
       <button
         type="button"
-        onClick={() => setOpen((value) => !value)}
+        onClick={toggleOpen}
         className={cn(
           "w-full flex min-h-[44px] items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition-all",
           active
@@ -696,20 +718,39 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
 
 
   function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
-    const [relatoriosOpen, setRelatoriosOpen] = useState(
-      location === "/relatorios" || location.startsWith("/relatorios/") || location === "/analytics"
-    );
-    const isRelatorio =
-      location === "/relatorios" ||
-      location.startsWith("/relatorios/") ||
-      location === "/analytics";
+    const relatoriosStorageKey = "vendorai_nav_group_relatorios";
+    const relatoriosActive =
+      location === "/relatorios" || location.startsWith("/relatorios/") || location === "/analytics";
+    const [relatoriosOpen, setRelatoriosOpen] = useState<boolean>(() => {
+      if (typeof window === "undefined") return relatoriosActive;
+      return relatoriosActive || window.localStorage.getItem(relatoriosStorageKey) === "true";
+    });
+    const isRelatorio = relatoriosActive;
     const isConteudo =
       location.startsWith("/content") ||
       location === "/ads" ||
       location === "/marketing/plano-de-midia" ||
       location === "/marketing/instagram" ||
       location === "/marketing/facebook-marketplace";
-    const [conteudoOpen, setConteudoOpen] = useState(isConteudo);
+    const marketingStorageKey = "vendorai_nav_group_marketing";
+    const [conteudoOpen, setConteudoOpen] = useState<boolean>(() => {
+      if (typeof window === "undefined") return isConteudo;
+      return isConteudo || window.localStorage.getItem(marketingStorageKey) === "true";
+    });
+
+    React.useEffect(() => {
+      if (isConteudo) {
+        setConteudoOpen(true);
+        window.localStorage.setItem(marketingStorageKey, "true");
+      }
+    }, [isConteudo]);
+
+    React.useEffect(() => {
+      if (relatoriosActive) {
+        setRelatoriosOpen(true);
+        window.localStorage.setItem(relatoriosStorageKey, "true");
+      }
+    }, [relatoriosActive]);
     const isGeradorConteudo = location === "/content";
     const isCampanhas = location.startsWith("/content?tab=campanhas");
 
@@ -874,7 +915,11 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
         {/* Marketing submenu — fonte declarativa oficial */}
         <div>
           <button
-            onClick={() => setConteudoOpen((v) => !v)}
+            onClick={() => setConteudoOpen((v) => {
+              const next = !v;
+              window.localStorage.setItem(marketingStorageKey, String(next));
+              return next;
+            })}
             className={cn(
               "w-full flex min-h-[44px] items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition-all",
               isConteudo
@@ -999,7 +1044,11 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
         {/* Relatórios submenu */}
         <div>
           <button
-            onClick={() => setRelatoriosOpen((v) => !v)}
+            onClick={() => setRelatoriosOpen((v) => {
+              const next = !v;
+              window.localStorage.setItem(relatoriosStorageKey, String(next));
+              return next;
+            })}
             className={cn(
               "w-full flex min-h-[44px] items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition-all",
               isRelatorio
