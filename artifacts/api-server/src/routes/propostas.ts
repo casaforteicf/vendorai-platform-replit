@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq, inArray, like, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, like, or, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
@@ -112,68 +112,202 @@ router.post("/propostas", async (req, res) => {
   res.status(201).json(proposta);
 });
 
+router.post("/tenants/:tenantId/leads/:leadId/propostas/reconcile", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  const leadId = String(req.params.leadId);
+  const dealId = typeof req.body?.dealId === "string" && req.body.dealId.trim()
+    ? req.body.dealId.trim()
+    : null;
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const [lead] = await db
+    .select({
+      id: leadsTable.id,
+      nome: leadsTable.nome,
+      telefone: leadsTable.telefone,
+      email: leadsTable.email,
+      documento: leadsTable.documento,
+    })
+    .from(leadsTable)
+    .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)))
+    .limit(1);
+
+  if (!lead) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+
+  // A ligação pelo deal é a evidência mais forte: se o orçamento já aponta
+  // para o negócio atual, apenas corrige o lead legado/duplicado.
+  if (dealId) {
+    const [deal] = await db
+      .select({ id: dealsTable.id, leadId: dealsTable.leadId })
+      .from(dealsTable)
+      .where(and(eq(dealsTable.id, dealId), eq(dealsTable.tenantId, tenantId)))
+      .limit(1);
+
+    if (!deal) {
+      res.status(404).json({ error: "Deal not found" });
+      return;
+    }
+    if (deal.leadId && deal.leadId !== leadId) {
+      res.status(409).json({ error: "Deal does not belong to this lead" });
+      return;
+    }
+
+    const [proposalByDeal] = await db
+      .select()
+      .from(propostasTable)
+      .where(and(eq(propostasTable.tenantId, tenantId), eq(propostasTable.dealId, dealId)))
+      .orderBy(desc(propostasTable.createdAt))
+      .limit(1);
+
+    if (proposalByDeal) {
+      if (proposalByDeal.leadId === leadId) {
+        res.json({ proposal: proposalByDeal, relinked: false, source: "deal" });
+        return;
+      }
+
+      const [relinked] = await db
+        .update(propostasTable)
+        .set({ leadId, updatedAt: new Date() })
+        .where(and(
+          eq(propostasTable.id, proposalByDeal.id),
+          eq(propostasTable.tenantId, tenantId),
+        ))
+        .returning();
+
+      res.json({ proposal: relinked ?? proposalByDeal, relinked: true, source: "deal" });
+      return;
+    }
+  }
+
+  // Se já existe orçamento diretamente no lead, não cria nem duplica nada.
+  const [proposalByLead] = await db
+    .select()
+    .from(propostasTable)
+    .where(and(eq(propostasTable.tenantId, tenantId), eq(propostasTable.leadId, leadId)))
+    .orderBy(desc(propostasTable.createdAt))
+    .limit(1);
+
+  if (proposalByLead) {
+    res.json({ proposal: proposalByLead, relinked: false, source: "lead" });
+    return;
+  }
+
+  // Alguns registros antigos ficaram ligados a um lead duplicado. Só fazemos
+  // a reconciliação quando há identidade forte (documento, e-mail ou telefone)
+  // e todos os orçamentos encontrados pertencem a um único lead de origem.
+  const normalizedName = String(lead.nome ?? "").trim().toLowerCase();
+  const normalizedEmail = String(lead.email ?? "").trim().toLowerCase();
+  const normalizedPhone = String(lead.telefone ?? "").replace(/\D/g, "");
+  const normalizedDocument = String(lead.documento ?? "").replace(/\D/g, "");
+
+  const phoneAndNameMatch = normalizedPhone.length >= 8 && normalizedName
+    ? and(
+        sql`regexp_replace(coalesce(${leadsTable.telefone}, ''), '[^0-9]', '', 'g') = ${normalizedPhone}`,
+        sql`lower(trim(${leadsTable.nome})) = ${normalizedName}`,
+      )
+    : undefined;
+
+  const identityMatch = or(
+    normalizedEmail
+      ? sql`lower(trim(coalesce(${leadsTable.email}, ''))) = ${normalizedEmail}`
+      : undefined,
+    normalizedDocument.length >= 6
+      ? sql`regexp_replace(coalesce(${leadsTable.documento}, ''), '[^0-9]', '', 'g') = ${normalizedDocument}`
+      : undefined,
+    phoneAndNameMatch,
+  );
+
+  if (!identityMatch) {
+    res.json({ proposal: null, relinked: false, source: "none" });
+    return;
+  }
+
+  const identityLeads = await db
+    .select({ id: leadsTable.id })
+    .from(leadsTable)
+    .where(and(eq(leadsTable.tenantId, tenantId), identityMatch))
+    .limit(25);
+
+  const duplicateLeadIds = identityLeads
+    .map((row) => row.id)
+    .filter((candidateId) => candidateId !== leadId);
+
+  if (duplicateLeadIds.length === 0) {
+    res.json({ proposal: null, relinked: false, source: "none" });
+    return;
+  }
+
+  const candidateProposals = await db
+    .select()
+    .from(propostasTable)
+    .where(and(
+      eq(propostasTable.tenantId, tenantId),
+      inArray(propostasTable.leadId, duplicateLeadIds),
+    ))
+    .orderBy(desc(propostasTable.createdAt));
+
+  if (candidateProposals.length === 0) {
+    res.json({ proposal: null, relinked: false, source: "none" });
+    return;
+  }
+
+  const sourceLeadIds = Array.from(new Set(candidateProposals.map((proposal) => proposal.leadId)));
+  if (sourceLeadIds.length !== 1) {
+    res.json({ proposal: null, relinked: false, source: "ambiguous" });
+    return;
+  }
+
+  const sourceLeadId = sourceLeadIds[0];
+  await db
+    .update(propostasTable)
+    .set({ leadId, updatedAt: new Date() })
+    .where(and(
+      eq(propostasTable.tenantId, tenantId),
+      eq(propostasTable.leadId, sourceLeadId),
+    ));
+
+  const [relinkedProposal] = await db
+    .select()
+    .from(propostasTable)
+    .where(and(eq(propostasTable.tenantId, tenantId), eq(propostasTable.leadId, leadId)))
+    .orderBy(desc(propostasTable.createdAt))
+    .limit(1);
+
+  res.json({
+    proposal: relinkedProposal ?? null,
+    relinked: Boolean(relinkedProposal),
+    source: relinkedProposal ? "identity" : "none",
+  });
+});
+
 router.get("/tenants/:tenantId/propostas", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   const { leadId, dealId } = req.query as Record<string, string | undefined>;
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
 
   const conditions = [eq(propostasTable.tenantId, tenantId)];
   if (leadId) conditions.push(eq(propostasTable.leadId, leadId));
   if (dealId) conditions.push(eq(propostasTable.dealId, dealId));
 
-  let propostas = await db
+  const propostas = await db
     .select()
     .from(propostasTable)
     .where(and(...conditions))
     .orderBy(propostasTable.createdAt);
 
-  // Recompõe dados legados: havia negócios que chegaram à etapa Orçamento
-  // antes da criação obrigatória do registro em propostas. Ao consultar os
-  // orçamentos do lead, recuperamos o negócio mais recente nessa etapa e
-  // materializamos um rascunho único, vinculado ao lead e ao deal.
-  if (leadId && !dealId && propostas.length === 0) {
-    const [legacyDeal] = await db
-      .select()
-      .from(dealsTable)
-      .where(and(
-        eq(dealsTable.tenantId, tenantId),
-        eq(dealsTable.leadId, leadId),
-        eq(dealsTable.etapa, "proposta"),
-      ))
-      .orderBy(desc(dealsTable.createdAt))
-      .limit(1);
-
-    if (legacyDeal) {
-      const numero = await generateNumero(tenantId);
-      const [recovered] = await db
-        .insert(propostasTable)
-        .values({
-          tenantId,
-          leadId,
-          dealId: legacyDeal.id,
-          titulo: `Orçamento — ${legacyDeal.titulo}`,
-          itens: legacyDeal.valor
-            ? [{
-                nome: "Valor comercial do negócio",
-                descricao: "Valor recuperado da oportunidade comercial na pipeline.",
-                quantidade: 1,
-                valorUnitario: Number(legacyDeal.valor),
-                unidade: "un",
-                ordemExecucao: 1,
-                statusExecucao: "pendente",
-              }]
-            : [],
-          valorTotal: legacyDeal.valor ? String(legacyDeal.valor) : null,
-          status: "rascunho",
-          numero,
-          autoGenerated: true,
-          observacoes: "Orçamento recuperado automaticamente a partir de um negócio legado já na etapa Orçamento.",
-        })
-        .returning();
-
-      if (recovered) propostas = [recovered];
-    }
-  }
-
+  // GET é somente leitura. Reconciliação de dados legados acontece no endpoint
+  // explícito /propostas/reconcile e nunca cria um orçamento novo.
   res.json(propostas);
 });
 
