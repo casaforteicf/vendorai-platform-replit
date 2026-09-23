@@ -1,5 +1,7 @@
 import { useRef, useState } from "react";
 import type { ConceptFacadePreferences } from "./ConceptVolumetry";
+import type { SitePlacement } from "./conceptSitePlacement";
+import { buildDerivedFacadeModel } from "./conceptFacadeGeometry";
 import {
   FACADE_MATERIALS,
   getFacadeMaterial,
@@ -14,6 +16,7 @@ type Props = {
   lotWidth: number;
   levels: ConceptModelLevel[];
   rooms: ConceptRoomShape[];
+  sitePlacement: SitePlacement;
   facade: ConceptFacadePreferences;
   design?: FacadeDesignState;
   selectedVolumeId?: string | null;
@@ -189,6 +192,7 @@ export default function ConceptDerivedFacade({
   lotWidth,
   levels,
   rooms,
+  sitePlacement,
   facade,
   design,
   selectedVolumeId,
@@ -210,7 +214,12 @@ export default function ConceptDerivedFacade({
   const colors = facadePalette(facade, design);
   const lineMode = viewMode === "line";
   const builtRooms = (Array.isArray(rooms) ? rooms : []).filter((room) => room.kind !== "piscina");
-  const fallback = modelBounds(levels) ?? { minX: 0, maxX: Math.max(6, lotWidth), width: Math.max(6, lotWidth) };
+  const derivedFacade = buildDerivedFacadeModel(levels, rooms, sitePlacement);
+  const fallback = modelBounds(levels) ?? {
+    minX: derivedFacade.minAxis,
+    maxX: derivedFacade.maxAxis,
+    width: derivedFacade.width,
+  };
 
   const overall = builtRooms.length
     ? (() => {
@@ -223,7 +232,7 @@ export default function ConceptDerivedFacade({
   const maxFloorFromRooms = builtRooms.reduce((max, room) => Math.max(max, room.floor), 0);
   const maxFloorFromLevels = levels.reduce((max, level) => Math.max(max, level.floor), 0);
   const maxFloor = Math.max(maxFloorFromRooms, maxFloorFromLevels);
-  const floors = maxFloor + 1;
+  const floors = derivedFacade.floors;
 
   const facadeWidth = 106;
   const scaleX = facadeWidth / Math.max(6, overall.width);
