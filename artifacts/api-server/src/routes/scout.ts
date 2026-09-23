@@ -18,6 +18,7 @@ import { resolveVerticalRevenueProfile } from "../services/verticalRevenueEngine
 import { renderTemplate } from "../lib/proactiveMessageGuard.js";
 import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 import { ensureMinimumScoutRulesForTenant } from "../services/scoutVerticalRuleLibrary.js";
+import { analyzeTenantExpansion } from "../services/tenantExpansionScout.js";
 
 const router: IRouter = Router();
 
@@ -65,6 +66,16 @@ function fallbackOpportunityExplanation(op: {
     },
   };
 }
+
+// ─── Expansão VendorAI (plataforma → tenant) ─────────────────────────────────
+// Somente Super Admin: não mistura a carteira do tenant com a relação comercial
+// entre VendorAI e o próprio tenant. O motor apenas recomenda; não libera acesso.
+router.get("/admin/tenants/:tenantId/scout/expansion", async (req, res) => {
+  const { tenantId } = req.params;
+  if (!isSuperAdmin(req)) return res.status(403).json({ error: "Super admin only." });
+  const analysis = await analyzeTenantExpansion(tenantId);
+  return res.json(analysis);
+});
 
 // ─── Regras ───────────────────────────────────────────────────────────────────
 
