@@ -49,7 +49,7 @@ async function graphJson(input: {
   accessToken: string;
   body?: Record<string, unknown>;
 }) {
-  const version = process.env["META_GRAPH_API_VERSION"]?.trim() || "v20.0";
+  const version = process.env["META_GRAPH_API_VERSION"]?.trim() || "v26.0";
   const response = await fetch(`https://graph.facebook.com/${version}/${input.path}`, {
     method: input.method ?? "POST",
     headers: {
