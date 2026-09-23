@@ -69,11 +69,22 @@ export async function callGoogleVertexVeo(params: {
 
   if (params.image) {
     const match = params.image.match(/^data:([^;]+);base64,(.+)$/s);
-    if (!match) throw new Error("Google Vertex image-to-video requires a base64 data URL");
-    instance["image"] = {
-      bytesBase64Encoded: match[2],
-      mimeType: match[1],
-    };
+    if (match) {
+      instance["image"] = {
+        bytesBase64Encoded: match[2],
+        mimeType: match[1],
+      };
+    } else if (/^https?:\/\//i.test(params.image)) {
+      const source = await fetch(params.image, { signal: AbortSignal.timeout(30_000) });
+      if (!source.ok) throw new Error(`Unable to download Vertex reference image (${source.status})`);
+      const mimeType = source.headers.get("content-type")?.split(";")[0] || "image/png";
+      const bytes = Buffer.from(await source.arrayBuffer()).toString("base64");
+      instance["image"] = { bytesBase64Encoded: bytes, mimeType };
+    } else if (params.image.startsWith("gs://")) {
+      instance["image"] = { gcsUri: params.image, mimeType: "image/png" };
+    } else {
+      throw new Error("Google Vertex image-to-video requires data:, https:// or gs:// image input");
+    }
   }
 
   const parameters: Record<string, unknown> = {
