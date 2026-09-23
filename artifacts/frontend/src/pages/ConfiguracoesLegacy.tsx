@@ -153,11 +153,13 @@ import {
   ChevronDown,
   ChevronUp,
   TrendingUp,
+  Megaphone,
 } from "lucide-react";
 import { SiteGeneratorTab } from "./SiteGenerator";
 import { SdrTemplatesSection } from "@/components/SdrTemplatesSection";
 import { FaturamentoTab } from "./FaturamentoTab";
 import { ContractTemplateTab } from "@/components/ContractTemplateTab";
+import { BrandKitSettings } from "@/components/BrandKitSettings";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -2277,10 +2279,14 @@ export default function Configuracoes() {
         }}
       >
         <div className="overflow-x-auto pb-0.5">
-        <TabsList className={cn("grid w-max sm:w-full max-w-3xl", (isTenantAdmin && showFaturamento) ? "grid-cols-9" : isTenantAdmin ? "grid-cols-8" : showFaturamento ? "grid-cols-7" : "grid-cols-6")}>
+        <TabsList className={cn("grid w-max sm:w-full max-w-3xl", (isTenantAdmin && showFaturamento) ? "grid-cols-10" : isTenantAdmin ? "grid-cols-9" : showFaturamento ? "grid-cols-8" : "grid-cols-7")}>
           <TabsTrigger value="perfil" className="gap-1.5">
             <Building2 className="h-4 w-4" />
             Perfil
+          </TabsTrigger>
+          <TabsTrigger value="marketing" className="gap-1.5">
+            <Megaphone className="h-4 w-4" />
+            Marketing
           </TabsTrigger>
           <TabsTrigger value="analise" className="gap-1.5">
             <Brain className="h-4 w-4" />
@@ -2322,6 +2328,11 @@ export default function Configuracoes() {
           )}
         </TabsList>
         </div>
+
+        {/* ── Tab: Marketing / Kit da Marca ─────────────────────────────── */}
+        <TabsContent value="marketing">
+          <BrandKitSettings />
+        </TabsContent>
 
         {/* ── Tab: Perfil da Empresa ──────────────────────────────────────── */}
         <TabsContent value="perfil">

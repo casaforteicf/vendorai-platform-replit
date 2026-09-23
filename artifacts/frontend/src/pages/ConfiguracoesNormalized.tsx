@@ -3,6 +3,7 @@ import ConfiguracoesLegacy from "./ConfiguracoesLegacy";
 
 const SECTION_LABELS: Record<string, { label: string; title: string }> = {
   Perfil: { label: "Empresa", title: "Dados da empresa, marca, posicionamento e contexto institucional" },
+  Marketing: { label: "Marketing", title: "Kit da Marca e identidade central usada por conteúdo, anúncios, vídeos e agentes" },
   "Análise": { label: "Comercial", title: "Parâmetros comerciais, análises e sinais usados pela inteligência" },
   "Calendário": { label: "Agenda e Automações", title: "Regras de agenda, disponibilidade, calendários e automações relacionadas" },
   "Integrações": { label: "Integrações", title: "WhatsApp, Meta, Google e demais conexões externas" },
@@ -14,6 +15,7 @@ const SECTION_LABELS: Record<string, { label: string; title: string }> = {
 
 const CONFIG_SEARCH_INDEX = [
   { section: "Empresa", terms: "empresa perfil razão social nome fantasia cnpj telefone email instagram endereço segmento marca logo favicon cor missão visão história público alvo diferenciais concorrentes" },
+  { section: "Marketing", terms: "marketing kit da marca marca branding identidade logo cor cores tipografia tom de voz posicionamento mensagens chave estilo visual referências cta" },
   { section: "Comercial", terms: "comercial fechamento venda preço desconto margem comissão estoque aprovação inteligência análise regras abordagem" },
   { section: "Agenda e Automações", terms: "agenda calendário disponibilidade horário agendamento automação avaliação google pós-venda gatilho lembrete" },
   { section: "Integrações", terms: "integrações whatsapp instagram facebook meta ads google gmail smtp zapsign pagamento erp estoque ecommerce api webhook token conexão" },
@@ -324,7 +326,8 @@ export default function Configuracoes() {
             <span>Cada informação deve ter uma única fonte oficial para evitar divergências entre CRM, IA, propostas, marketing e automações.</span>
           </div>
           <div class="config-governance__sources" aria-label="Fontes oficiais">
-            <span><b>Empresa</b> identidade e posicionamento</span>
+            <span><b>Empresa</b> dados cadastrais e institucionais</span>
+            <span><b>Marketing</b> Kit da Marca e identidade de comunicação</span>
             <span><b>Catálogo</b> produtos, serviços, preços e estoque</span>
             <span><b>IA e Agentes</b> comportamento e limites</span>
             <span><b>Integrações</b> conexões e saúde</span>
@@ -523,7 +526,7 @@ export default function Configuracoes() {
         .config-governance__copy { display: grid; gap: .2rem; }
         .config-governance__copy strong { font-size: .9rem; }
         .config-governance__copy span { font-size: .78rem; line-height: 1.4; color: hsl(var(--muted-foreground)); }
-        .config-governance__sources { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .45rem; }
+        .config-governance__sources { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .45rem; }
         .config-governance__sources span {
           display: grid; gap: .1rem; min-width: 0; padding: .55rem .65rem; border: 1px solid hsl(var(--border));
           border-radius: .6rem; background: hsl(var(--background)); font-size: .7rem; line-height: 1.25; color: hsl(var(--muted-foreground));
