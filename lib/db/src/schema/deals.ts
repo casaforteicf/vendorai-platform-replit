@@ -41,6 +41,9 @@ export const dealsTable = pgTable("deals", {
   leadId: text("lead_id").references(() => leadsTable.id, { onDelete: "set null" }),
   titulo: text("titulo").notNull(),
   valor: numeric("valor", { precision: 12, scale: 2 }),
+  // Indica qual negócio/revisão do cliente entra nos indicadores atuais da pipeline.
+  // A exclusividade por tenant+lead é garantida por trigger/índice na migration.
+  pipelineActive: boolean("pipeline_active").notNull().default(true),
   // Era pgEnum(dealEtapaEnum) — virou texto livre em favor de etapas
   // customizáveis por tenant (ver pipeline_stages.ts). Os 11 valores do
   // enum antigo continuam sendo os únicos com automação de verdade
