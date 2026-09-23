@@ -611,6 +611,23 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     );
   }
 
+  function proposalImageSlotLabel(index: number) {
+    const slots = selectedOrcamentoId !== "__none__"
+      ? ["Capa", "Situação / problema", "Implicação / valor", "Solução", "Orçamento"]
+      : ["Capa", "Situação / problema", "Implicação / valor", "Solução"];
+    return slots[index] ?? `Visual extra ${index - slots.length + 1}`;
+  }
+
+  function moveProposalImage(index: number, direction: -1 | 1) {
+    setProposalImages((prev) => {
+      const target = index + direction;
+      if (target < 0 || target >= prev.length) return prev;
+      const next = [...prev];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }
+
   async function handleProposalImageUpload(files: FileList) {
     setImageUploading(true);
     const uploaded: string[] = [];
@@ -876,7 +893,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
             </Button>
           </CardTitle>
           <p className="text-xs text-muted-foreground">
-            Defina a identidade visual do cliente e os materiais que a IA deve usar na proposta.
+            A marca da empresa vem automaticamente do Kit da Marca. Aqui você define o contexto do cliente e as imagens da apresentação.
           </p>
         </CardHeader>
 
@@ -1000,23 +1017,48 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
 
             {proposalImages.length > 0 && (
               <div className="space-y-1.5">
-                <p className="text-xs text-muted-foreground font-medium">
-                  Selecionadas (1ª será destaque na capa):
-                </p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs text-muted-foreground font-medium">
+                    Ordem da apresentação — cada imagem ocupa uma página:
+                  </p>
+                  <span className={`text-[10px] font-medium ${proposalImages.length >= (selectedOrcamentoId !== "__none__" ? 5 : 4) ? "text-emerald-600" : "text-amber-600"}`}>
+                    {proposalImages.length}/{selectedOrcamentoId !== "__none__" ? 5 : 4} páginas principais cobertas
+                  </span>
+                </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
                   {proposalImages.map((url, idx) => (
-                    <div key={idx} className="relative group rounded overflow-hidden border aspect-video bg-muted">
-                      {idx === 0 && (
-                        <span className="absolute top-0.5 left-0.5 z-10 bg-black/70 text-white text-[9px] font-medium px-1 py-0.5 rounded">
-                          Capa
-                        </span>
-                      )}
+                    <div key={`${url}-${idx}`} className="relative group rounded overflow-hidden border aspect-video bg-muted">
+                      <span className="absolute top-0.5 left-0.5 z-10 max-w-[78%] truncate bg-black/75 text-white text-[9px] font-medium px-1 py-0.5 rounded">
+                        {idx + 1} · {proposalImageSlotLabel(idx)}
+                      </span>
                       <img
                         src={url}
-                        alt={`Imagem ${idx + 1}`}
+                        alt={`Imagem ${idx + 1} — ${proposalImageSlotLabel(idx)}`}
                         className="w-full h-full object-cover"
                         onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                       />
+                      <div className="absolute bottom-0.5 left-0.5 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          type="button"
+                          onClick={() => moveProposalImage(idx, -1)}
+                          disabled={idx === 0}
+                          className="bg-black/65 text-white rounded p-0.5 disabled:opacity-30"
+                          aria-label="Mover imagem para antes"
+                          title="Mover para antes"
+                        >
+                          <ChevronUp className="h-2.5 w-2.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveProposalImage(idx, 1)}
+                          disabled={idx === proposalImages.length - 1}
+                          className="bg-black/65 text-white rounded p-0.5 disabled:opacity-30"
+                          aria-label="Mover imagem para depois"
+                          title="Mover para depois"
+                        >
+                          <ChevronDown className="h-2.5 w-2.5" />
+                        </button>
+                      </div>
                       <button
                         type="button"
                         onClick={() => setProposalImages((prev) => prev.filter((_, i) => i !== idx))}
@@ -1067,7 +1109,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
             {imageSourceTab === "upload" && (
               <div className="space-y-2">
                 <p className="text-xs text-muted-foreground">
-                  Envie imagens do seu computador para compor a proposta.
+                  Para uma apresentação completa, use 4 imagens principais — ou 5 quando houver orçamento: capa, contexto, valor, solução e orçamento.
                 </p>
                 <input
                   ref={imageInputRef}
