@@ -960,6 +960,51 @@ export function renderProposalHtml(json: unknown, theme: {
   }
   .scope-item { font-weight: 600; color: ${theme.navyDeep}; }
   .scope-description { color: #5f5874; }
+  .commercial-section { margin-top: 4mm; }
+  .commercial-title {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 6.5pt;
+    text-transform: uppercase;
+    letter-spacing: .09em;
+    color: ${theme.accent};
+    margin-bottom: 2mm;
+    font-weight: 700;
+  }
+  .payment-table, .schedule-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 7.5pt;
+    margin-top: 2mm;
+  }
+  .payment-table th, .schedule-table th {
+    padding: 1.8mm 2.2mm;
+    border: 1px solid ${theme.concreteLine};
+    background: ${theme.cream2};
+    font-family: "JetBrains Mono", monospace;
+    font-size: 5.8pt;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: ${theme.navyMid};
+    text-align: left;
+  }
+  .payment-table td, .schedule-table td {
+    padding: 2mm 2.2mm;
+    border: 1px solid ${theme.concreteLine};
+    vertical-align: top;
+    line-height: 1.35;
+  }
+  .payment-table .r, .schedule-table .r { text-align: right; }
+  .schedule-intro {
+    margin: 1mm 0 4mm;
+    padding: 3mm 3.5mm;
+    background: ${theme.cream2};
+    border: 1px solid ${theme.concreteLine};
+    border-radius: 7px;
+    font-size: 8pt;
+    color: #5f5874;
+  }
+  .schedule-intro strong { color: ${theme.navyDeep}; }
+  .schedule-note { color: #7b7591; font-size: 6.8pt; display: block; margin-top: .8mm; }
 
   /* ── proposal visuals ── */
   .img-hero-wrap {
@@ -1128,7 +1173,8 @@ ${orcamento ? (() => {
   const calculatedTotal = itensValidos.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
   const totalExibido = orcamento.valorTotal ? parseFloat(orcamento.valorTotal) : calculatedTotal;
   const presentation = normalizeProposalPresentation(orcamento.apresentacao);
-  const presentationBlocks = groupProposalPresentationItems(itensValidos).map((group) => {
+  const groupedItems = groupProposalPresentationItems(itensValidos);
+  const presentationBlocks = groupedItems.map((group) => {
     const mode = resolveProposalPresentationMode(presentation, group.id);
     const etapaTotal = group.itens.reduce((sum, item) => sum + item.quantidade * item.valorUnitario, 0);
     const stageTitle = group.hasStageHeader
@@ -1176,9 +1222,75 @@ ${orcamento ? (() => {
   }).join("");
   const metaItems = [
     orcamento.formaPagamento ? `<div class="orc-meta-item"><span>Forma de Pagamento</span><span>${FORMA_LABELS[orcamento.formaPagamento] || orcamento.formaPagamento}</span></div>` : "",
-    orcamento.condPagamento ? `<div class="orc-meta-item"><span>Condição</span><span>${orcamento.condPagamento}</span></div>` : "",
-    orcamento.prazoEntrega ? `<div class="orc-meta-item"><span>Prazo de Entrega</span><span>${orcamento.prazoEntrega}</span></div>` : "",
+    orcamento.condPagamento ? `<div class="orc-meta-item"><span>Condição de Pagamento</span><span>${escapeProposalText(orcamento.condPagamento)}</span></div>` : "",
+    orcamento.prazoEntrega ? `<div class="orc-meta-item"><span>Prazo / Entrega</span><span>${escapeProposalText(orcamento.prazoEntrega)}</span></div>` : "",
+    orcamento.validadeAte ? `<div class="orc-meta-item"><span>Validade da Proposta</span><span>${proposalFormatDate(orcamento.validadeAte)}</span></div>` : "",
+    presentation.previsaoInicio ? `<div class="orc-meta-item"><span>Previsão de Início</span><span>${proposalFormatDate(presentation.previsaoInicio)}</span></div>` : "",
   ].filter(Boolean).join("");
+
+  const paymentRows = (orcamento.paymentCompositions ?? [])
+    .filter((item) => item?.forma && Number(item?.valor ?? 0) > 0)
+    .map((item) => `<tr>
+      <td>${FORMA_LABELS[item.forma] || escapeProposalText(item.forma)}</td>
+      <td class="r">${fmtBRL(Number(item.valor))}</td>
+    </tr>`)
+    .join("");
+  const paymentCompositionHtml = paymentRows
+    ? `<div class="commercial-section">
+        <div class="commercial-title">Composição de pagamento</div>
+        <table class="payment-table">
+          <thead><tr><th>Forma / parcela</th><th class="r">Valor</th></tr></thead>
+          <tbody>${paymentRows}</tbody>
+        </table>
+      </div>`
+    : "";
+
+  const scheduleRows = buildProposalScheduleRows(groupedItems, presentation, totalExibido);
+  const executionScheduleRows = scheduleRows.map((row) => `<tr>
+    <td><strong>Etapa ${row.ordem}</strong> · ${escapeProposalText(row.nome || "Execução")}</td>
+    <td>${row.start ? proposalFormatDate(row.start) : "A definir"}</td>
+    <td>${row.duration ? `${row.duration} dias` : "A definir"}</td>
+    <td>${row.end ? proposalFormatDate(row.end) : "A definir"}</td>
+  </tr>`).join("");
+  const physicalFinancialRows = scheduleRows.map((row) => `<tr>
+    <td><strong>Etapa ${row.ordem}</strong> · ${escapeProposalText(row.nome || "Execução")}</td>
+    <td>${row.start && row.end ? `${proposalFormatDate(row.start)} a ${proposalFormatDate(row.end)}` : row.duration ? `${row.duration} dias` : "A definir"}</td>
+    <td class="r">${row.physicalPercent.toFixed(2)}%</td>
+    <td class="r">${row.financialPercent.toFixed(2)}%</td>
+    <td class="r">${fmtBRL(row.value)}</td>
+    <td>${row.marcoPagamento ? escapeProposalText(row.marcoPagamento) : "Conforme condição comercial"}${row.observacao ? `<span class="schedule-note">${escapeProposalText(row.observacao)}</span>` : ""}</td>
+  </tr>`).join("");
+
+  const schedulePage = scheduleRows.length && (presentation.mostrarCronogramaExecucao || presentation.mostrarFisicoFinanceiro)
+    ? `
+<div class="page">
+  ${docHdr(`Cronograma · ${clientName || meta.clientName || "Cliente"}`)}
+  <div class="sec-label">Planejamento da execução</div>
+  <h2>Cronograma e físico-financeiro</h2>
+  <div class="schedule-intro">
+    ${presentation.previsaoInicio ? `<strong>Previsão de início:</strong> ${proposalFormatDate(presentation.previsaoInicio)}.` : "<strong>Previsão de início:</strong> a definir."}
+    Os períodos consideram a sequência e a duração cadastrada de cada etapa e podem ser ajustados antes do aceite.
+  </div>
+  ${presentation.mostrarCronogramaExecucao ? `
+    <div class="commercial-section">
+      <div class="commercial-title">Cronograma de execução</div>
+      <table class="schedule-table">
+        <thead><tr><th>Etapa</th><th>Início</th><th>Duração</th><th>Término</th></tr></thead>
+        <tbody>${executionScheduleRows}</tbody>
+      </table>
+    </div>` : ""}
+  ${presentation.mostrarFisicoFinanceiro ? `
+    <div class="commercial-section">
+      <div class="commercial-title">Cronograma físico-financeiro</div>
+      <table class="schedule-table">
+        <thead><tr><th>Etapa</th><th>Período</th><th class="r">Peso físico</th><th class="r">% financeiro</th><th class="r">Valor</th><th>Marco / pagamento</th></tr></thead>
+        <tbody>${physicalFinancialRows}</tbody>
+      </table>
+    </div>` : ""}
+  ${docFooter()}
+</div>`
+    : "";
+
   return `
 <div class="page">
   ${docHdr(`Orçamento para ${clientName || meta.clientName || "Cliente"}`)}
@@ -1193,10 +1305,12 @@ ${orcamento ? (() => {
       <span class="orc-total-value">${fmtBRL(totalExibido)}</span>
     </div>
   </div>` : ""}` : ""}
-  ${metaItems ? `<div class="orc-meta">${metaItems}</div>` : ""}
-  ${orcamento.observacoes ? `<div class="orc-obs">${orcamento.observacoes}</div>` : ""}
+  ${metaItems ? `<div class="commercial-section"><div class="commercial-title">Condições comerciais</div><div class="orc-meta">${metaItems}</div></div>` : ""}
+  ${paymentCompositionHtml}
+  ${orcamento.observacoes ? `<div class="orc-obs">${escapeProposalText(orcamento.observacoes)}</div>` : ""}
   ${docFooter()}
-</div>`;
+</div>
+${schedulePage}`;
 })() : ""}
 
 ${visualImages.length > (orcamento ? 5 : 4) ? visualImages.slice(orcamento ? 5 : 4).map((url, idx) => `
