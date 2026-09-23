@@ -3065,7 +3065,7 @@ router.post("/arch/render", async (req, res) => {
       }
 
       // ── Primary: Google Vertex Gemini Image ─────────────────────────
-      if (process.env["GOOGLE_CLOUD_PROJECT"] && process.env["GOOGLE_VERTEX_IMAGE_ENABLED"] !== "false") {
+      if ((Boolean(process.env["GEMINI_API_KEY"]) || (process.env["GOOGLE_CLOUD_PROJECT"] && process.env["GOOGLE_VERTEX_IMAGE_ENABLED"] !== "false"))) {
         try {
           b64 = await callGoogleVertexImage({
             referenceImageDataUrl: referenceImageUrl,
@@ -3110,7 +3110,7 @@ router.post("/arch/render", async (req, res) => {
       }
     } else {
       // No reference image — prefer Vertex, fallback to gpt-image-1
-      if (process.env["GOOGLE_CLOUD_PROJECT"] && process.env["GOOGLE_VERTEX_IMAGE_ENABLED"] !== "false") {
+      if ((Boolean(process.env["GEMINI_API_KEY"]) || (process.env["GOOGLE_CLOUD_PROJECT"] && process.env["GOOGLE_VERTEX_IMAGE_ENABLED"] !== "false"))) {
         try {
           b64 = await callGoogleVertexImage({ prompt, logger: req.log });
           motor = process.env["GOOGLE_VERTEX_IMAGE_MODEL"]?.trim() || "gemini-3.1-flash-image";
@@ -3196,7 +3196,7 @@ async function executeRenderJob(opts: {
       const dataUrlMatch = dataUrl.match(/^data:([^;]+);base64,([\s\S]+)$/);
       if (!dataUrlMatch) throw new Error("Imagem de referência deve ser um data URL base64 válido");
 
-      if (process.env["GOOGLE_CLOUD_PROJECT"] && process.env["GOOGLE_VERTEX_IMAGE_ENABLED"] !== "false") {
+      if ((Boolean(process.env["GEMINI_API_KEY"]) || (process.env["GOOGLE_CLOUD_PROJECT"] && process.env["GOOGLE_VERTEX_IMAGE_ENABLED"] !== "false"))) {
         try {
           b64 = await callGoogleVertexImage({
             referenceImageDataUrl: dataUrl,
@@ -3238,7 +3238,7 @@ async function executeRenderJob(opts: {
         b64 = (result.data?.[0] as Record<string, unknown>)?.["b64_json"] as string | undefined;
       }
     } else {
-      if (process.env["GOOGLE_CLOUD_PROJECT"] && process.env["GOOGLE_VERTEX_IMAGE_ENABLED"] !== "false") {
+      if ((Boolean(process.env["GEMINI_API_KEY"]) || (process.env["GOOGLE_CLOUD_PROJECT"] && process.env["GOOGLE_VERTEX_IMAGE_ENABLED"] !== "false"))) {
         try {
           b64 = await callGoogleVertexImage({ prompt, logger: log });
           motor = process.env["GOOGLE_VERTEX_IMAGE_MODEL"]?.trim() || "gemini-3.1-flash-image";
