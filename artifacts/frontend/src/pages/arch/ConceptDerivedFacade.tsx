@@ -215,12 +215,6 @@ export default function ConceptDerivedFacade({
   const lineMode = viewMode === "line";
   const builtRooms = (Array.isArray(rooms) ? rooms : []).filter((room) => room.kind !== "piscina");
   const derivedFacade = buildDerivedFacadeModel(levels, rooms, sitePlacement);
-  const fallback = modelBounds(levels) ?? {
-    minX: derivedFacade.minAxis,
-    maxX: derivedFacade.maxAxis,
-    width: derivedFacade.width,
-  };
-
   const overall = {
     minX: derivedFacade.minAxis,
     maxX: derivedFacade.maxAxis,
@@ -265,7 +259,6 @@ export default function ConceptDerivedFacade({
   const socialGlassW = clamp(socialRegionW - 4.5, 18, 31);
   const socialGlassX = clamp(socialX + 2, baseX + 3, baseX + facadeWidth - socialGlassW - 3);
 
-  const upper = floorBounds(builtRooms, maxFloor);
   const upperAxisRooms = builtRooms.filter((room) => room.floor === maxFloor);
   const upperMinAxis = upperAxisRooms.length ? Math.min(...upperAxisRooms.map(roomAxisStart)) : overall.minX;
   const upperMaxAxis = upperAxisRooms.length ? Math.max(...upperAxisRooms.map((room) => roomAxisStart(room) + roomAxisSize(room))) : overall.maxX;
