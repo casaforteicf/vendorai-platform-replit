@@ -40,10 +40,112 @@ import { ObjectStorageService } from "../lib/objectStorage.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 import { tryIngestTechnicianSupportMessage } from "../services/support-whatsapp-ingest.js";
 import { tryHandleSupportFeedbackMessage } from "../services/support-feedback.js";
+import { registerVoiceTurn } from "../services/voice-agent-orchestrator.js";
+import { createVendorAiVoiceStream, resolveDefaultVendorAiVoice } from "../services/vendorai-voice-engine.js";
 
 const objectStorage = new ObjectStorageService();
 
 const router: IRouter = Router();
+
+
+const voiceBridgeSchema = z.object({
+  tenantId: z.string().min(1),
+  leadId: z.string().min(1),
+  sessionId: z.string().min(1),
+  audioBase64: z.string().min(1),
+  mimeType: z.string().default("audio/wav"),
+  language: z.string().default("pt-br"),
+});
+
+router.post("/webhooks/voice/call-turn", async (req, res) => {
+  const expected = process.env["VENDORAI_VOICE_BRIDGE_SECRET"];
+  const provided = req.headers["x-vendorai-voice-bridge-secret"];
+  if (!expected || typeof provided !== "string" || provided !== expected) {
+    res.status(401).json({ error: "Invalid voice bridge secret" });
+    return;
+  }
+
+  const parsed = voiceBridgeSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const audio = Buffer.from(parsed.data.audioBase64, "base64");
+  if (!audio.length || audio.length > 8 * 1024 * 1024) {
+    res.status(422).json({ error: "VOICE_AUDIO_INVALID" });
+    return;
+  }
+
+  try {
+    const transcript = (await transcribeAudioBuffer(audio, parsed.data.tenantId, req.log)).trim();
+    if (!transcript) {
+      res.status(204).end();
+      return;
+    }
+
+    const turn = await registerVoiceTurn({
+      tenantId: parsed.data.tenantId,
+      leadId: parsed.data.leadId,
+      sessionId: parsed.data.sessionId,
+      transcript,
+      log: req.log,
+    });
+
+    const text = turn.reply?.text?.trim();
+    if (!text) {
+      res.status(200).json({ transcript, turn, audio: false });
+      return;
+    }
+
+    const defaultVoice = await resolveDefaultVendorAiVoice({
+      tenantId: parsed.data.tenantId,
+      language: parsed.data.language,
+    });
+    if (!defaultVoice) {
+      res.status(200).json({
+        transcript,
+        turn,
+        audio: false,
+        warning: "DUBLE_VOICE_NOT_CONFIGURED",
+      });
+      return;
+    }
+
+    const stream = await createVendorAiVoiceStream({
+      tenantId: parsed.data.tenantId,
+      identityId: defaultVoice.identityId,
+      voiceProfileId: defaultVoice.voiceProfileId,
+      text,
+      language: parsed.data.language,
+    });
+
+    res.status(200);
+    res.setHeader("content-type", "application/x-ndjson; charset=utf-8");
+    res.setHeader("cache-control", "no-store");
+    res.setHeader("x-vendorai-transcript", encodeURIComponent(transcript.slice(0, 500)));
+    res.setHeader("x-vendorai-agent", turn.state.specialist);
+    res.setHeader("x-vendorai-voice-job-id", stream.jobId);
+
+    const reader = stream.response.body!.getReader();
+    req.on("close", () => {
+      void reader.cancel("call_bridge_disconnected");
+    });
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) res.write(Buffer.from(value));
+    }
+    res.end();
+  } catch (error) {
+    req.log.error({ error }, "voice bridge: call turn failed");
+    if (!res.headersSent) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "VOICE_BRIDGE_FAILED" });
+    } else {
+      res.end();
+    }
+  }
+});
 
 async function attributeWhatsAppLeadFromCampaignCode(
   tenantId: string,
