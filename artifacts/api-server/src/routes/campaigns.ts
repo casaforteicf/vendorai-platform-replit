@@ -18,7 +18,7 @@ import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { callReplicateFlux11Pro, callReplicateFluxKontext } from "../lib/arch-render-pipeline.js";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.js";
 import { buildCampaignMarketingIntelligence } from "../services/campaign-marketing-intelligence.js";
-import { recommendExistingLeadCaptureToolWithJarvis } from "../services/jarvis-tool-builder.js";
+import { recommendExistingLeadCaptureToolWithJarvis, syncTenantLeadCaptureToolsFromExistingCapabilities } from "../services/jarvis-tool-builder.js";
 
 const router: IRouter = Router();
 
@@ -53,6 +53,7 @@ router.post("/tenants/:tenantId/campaigns/recommend-delivery-tool", async (req, 
   ].filter(Boolean).join("\n") || "Campanha comercial sem contexto adicional.";
 
   try {
+    await syncTenantLeadCaptureToolsFromExistingCapabilities(tenantId);
     const result = await recommendExistingLeadCaptureToolWithJarvis({ tenantId, brief });
     return res.json(result);
   } catch (err) {
