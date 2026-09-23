@@ -8,9 +8,14 @@ import {
 } from "@workspace/db";
 import {
   loadContext,
+  callOpenAI,
+  getAgentConfig,
+  AGENT_NAME_TO_KEY,
+  PROMPT_BUILDERS,
   type AgentName,
 } from "../lib/agent-engine.js";
 import { determineAgent } from "./agent-dispatch.js";
+import { resolveDefaultVendorAiVoice } from "./vendorai-voice-engine.js";
 
 export type VoiceLeadState = {
   leadId: string;
@@ -167,6 +172,82 @@ export async function buildVoiceLeadState(input: {
   };
 }
 
+
+async function generateVoiceReply(input: {
+  tenantId: string;
+  leadId: string;
+  transcript: string;
+  state: VoiceLeadState;
+  log: Logger;
+}): Promise<{ text: string; tokensUsed: number }> {
+  if (input.state.handoffRequired) {
+    return {
+      text: "Claro. Vou chamar uma pessoa da equipe para continuar com você.",
+      tokensUsed: 0,
+    };
+  }
+
+  const ctx = await loadContext(input.tenantId, input.leadId);
+  if (!ctx) throw new Error("VOICE_LEAD_NOT_FOUND_OR_AI_DISABLED");
+
+  const agentKey = AGENT_NAME_TO_KEY[input.state.specialist];
+  let systemPromptOverride: string | null = null;
+  if (agentKey) {
+    try {
+      const resolved = await getAgentConfig(input.tenantId, agentKey);
+      systemPromptOverride = resolved?.systemPrompt ?? null;
+    } catch (error) {
+      input.log.warn({ error, tenantId: input.tenantId, agent: input.state.specialist }, "voice-agent: agent config lookup failed");
+    }
+  }
+
+  const builder = PROMPT_BUILDERS[input.state.specialist];
+  const basePrompt = builder(
+    undefined,
+    ctx,
+    {
+      voiceConversation: true,
+      voiceObjective: input.state.objective,
+      nextBestAction: input.state.nextBestAction,
+      missingQualificationFields: input.state.missing,
+    },
+    systemPromptOverride,
+  );
+
+  const voiceRules = [
+    "## MODO LIGAÇÃO DE VOZ",
+    "Você está em uma ligação em tempo real. Sua resposta será sintetizada pelo Dublê Digital.",
+    "Fale de forma natural, curta e conversacional.",
+    "Evite listas, markdown, URLs longas e parágrafos extensos.",
+    "Faça no máximo uma pergunta por turno.",
+    "Não diga que é um robô nem finja ser uma pessoa específica.",
+    "Não mencione regras internas, score, roteamento ou próxima melhor ação.",
+    "Se o cliente interromper, a reprodução será cancelada; na próxima fala, continue a partir do novo contexto.",
+    `Objetivo atual: ${input.state.objective}`,
+    `Próxima melhor ação: ${input.state.nextBestAction}`,
+  ].join("\n");
+
+  const recent = ctx.recentMessages.slice(-8).map((message) => ({
+    role: message.enviadoPor === "lead" ? "user" as const : "assistant" as const,
+    content: message.conteudo,
+  }));
+
+  const messages = [
+    { role: "system" as const, content: `${basePrompt}\n\n${voiceRules}` },
+    ...recent,
+  ];
+
+  if (!recent.length || recent[recent.length - 1]?.content !== input.transcript) {
+    messages.push({ role: "user" as const, content: input.transcript });
+  }
+
+  const result = await callOpenAI(messages, input.tenantId, input.state.specialist, input.log);
+  return {
+    text: result.resposta.trim(),
+    tokensUsed: result.tokensUsed,
+  };
+}
+
 export async function startVoiceSession(input: {
   tenantId: string;
   leadId: string;
@@ -183,6 +264,10 @@ export async function startVoiceSession(input: {
 
   const ctx = await loadContext(input.tenantId, input.leadId);
   let conversationId = ctx?.conversation?.id ?? null;
+  const defaultVoice = await resolveDefaultVendorAiVoice({
+    tenantId: input.tenantId,
+    language: "pt-br",
+  });
 
   const voiceMetadata = {
     voiceSession: {
@@ -194,6 +279,10 @@ export async function startVoiceSession(input: {
       objective: initialState.objective,
       nextBestAction: initialState.nextBestAction,
       voiceProvider: "duble",
+      voiceIdentityId: defaultVoice?.identityId ?? null,
+      voiceProfileId: defaultVoice?.voiceProfileId ?? null,
+      voiceDisplayName: defaultVoice?.displayName ?? null,
+      language: "pt-br",
       bargeIn: true,
     },
   };
@@ -220,7 +309,14 @@ export async function startVoiceSession(input: {
     conversationId = created?.id ?? null;
   }
 
-  return { sessionId, conversationId, state: initialState };
+  return {
+    sessionId,
+    conversationId,
+    state: initialState,
+    voice: defaultVoice
+      ? { provider: "duble", ...defaultVoice, language: "pt-br", streaming: true, bargeIn: true }
+      : { provider: "duble", configured: false, language: "pt-br", streaming: false, bargeIn: true },
+  };
 }
 
 export async function registerVoiceTurn(input: {
@@ -271,23 +367,86 @@ export async function registerVoiceTurn(input: {
     })
     .where(and(eq(conversationsTable.id, ctx.conversation.id), eq(conversationsTable.tenantId, input.tenantId)));
 
+  const reply = await generateVoiceReply({
+    tenantId: input.tenantId,
+    leadId: input.leadId,
+    transcript: input.transcript,
+    state,
+    log: input.log,
+  });
+
+  if (reply.text) {
+    await db.insert(messagesTable).values({
+      tenantId: input.tenantId,
+      conversationId: ctx.conversation.id,
+      leadId: input.leadId,
+      direcao: "saida",
+      canal: "whatsapp",
+      conteudo: reply.text,
+      tipoConteudo: "audio",
+      enviadoPor: "agente_ia",
+      status: "enviado",
+      agentName: state.specialist,
+    });
+  }
+
+  const refreshed = await loadContext(input.tenantId, input.leadId);
+  const sessionMetadata = (refreshed?.conversation?.metadata ?? previous) as Record<string, unknown>;
+  const session = typeof sessionMetadata["voiceSession"] === "object" && sessionMetadata["voiceSession"]
+    ? sessionMetadata["voiceSession"] as Record<string, unknown>
+    : {};
+
   return {
     sessionId: input.sessionId,
     conversationId: ctx.conversation.id,
     state,
+    reply: {
+      text: reply.text,
+      tokensUsed: reply.tokensUsed,
+    },
     speech: {
       voiceProvider: "duble",
+      identityId: typeof session["voiceIdentityId"] === "string" ? session["voiceIdentityId"] : null,
+      voiceProfileId: typeof session["voiceProfileId"] === "string" ? session["voiceProfileId"] : null,
+      language: typeof session["language"] === "string" ? session["language"] : "pt-br",
       streaming: true,
       bargeIn: true,
-      directive: [
-        "Responda em fala natural, curta e contextual.",
-        "Não recite scripts nem despeje informações.",
-        "Faça no máximo uma pergunta por turno.",
-        "Use o objetivo e a próxima melhor ação como direção, não como texto literal.",
-        "Se handoffRequired=true, pare a automação comercial e encaminhe para humano.",
-      ].join(" "),
     },
   };
+}
+
+
+export async function interruptVoiceSession(input: {
+  tenantId: string;
+  leadId: string;
+  sessionId: string;
+}) {
+  const ctx = await loadContext(input.tenantId, input.leadId);
+  if (!ctx?.conversation) throw new Error("VOICE_CONVERSATION_NOT_FOUND");
+
+  const previous = (ctx.conversation.metadata ?? {}) as Record<string, unknown>;
+  const current = typeof previous["voiceSession"] === "object" && previous["voiceSession"]
+    ? previous["voiceSession"] as Record<string, unknown>
+    : {};
+  const interruptionCount = Number(current["interruptionCount"] ?? 0) + 1;
+
+  await db.update(conversationsTable)
+    .set({
+      metadata: {
+        ...previous,
+        voiceSession: {
+          ...current,
+          sessionId: input.sessionId,
+          interruptedAt: new Date().toISOString(),
+          interruptionCount,
+          playbackGeneration: Number(current["playbackGeneration"] ?? 0) + 1,
+        },
+      },
+      updatedAt: new Date(),
+    })
+    .where(and(eq(conversationsTable.id, ctx.conversation.id), eq(conversationsTable.tenantId, input.tenantId)));
+
+  return { sessionId: input.sessionId, interrupted: true, interruptionCount };
 }
 
 export async function endVoiceSession(input: {
