@@ -22,6 +22,47 @@ import { StoreSwitcher } from "@/components/StoreSwitcher";
 import { NovidadesBell } from "@/components/NovidadesBell";
 import { applyTenantTheme, resetTenantTheme } from "@/lib/tenantTheme";
 
+function GroupedNavSection({
+  label,
+  icon: Icon,
+  active,
+  children,
+}: {
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  active: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(active);
+
+  React.useEffect(() => {
+    if (active) setOpen(true);
+  }, [active]);
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className={cn(
+          "w-full flex min-h-[44px] items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition-all",
+          active
+            ? "bg-primary/10 text-primary"
+            : "text-muted-foreground hover:bg-sidebar-accent/80 hover:text-foreground"
+        )}
+        aria-expanded={open}
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <Icon className="h-4 w-4 shrink-0" />
+          <span className="truncate">{label}</span>
+        </div>
+        {open ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
+      </button>
+      {open && <div className="ml-4 mt-1 space-y-1">{children}</div>}
+    </div>
+  );
+}
+
 export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const { user, logout, tenantOverride, clearTenantOverride, token, isEffectiveAdmin } = useAuth();
   const [location] = useLocation();
@@ -622,47 +663,6 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
-
-  function GroupedNavSection({
-    label,
-    icon: Icon,
-    active,
-    children,
-  }: {
-    label: string;
-    icon: React.ComponentType<{ className?: string }>;
-    active: boolean;
-    children: React.ReactNode;
-  }) {
-    const [open, setOpen] = useState(active);
-
-    React.useEffect(() => {
-      if (active) setOpen(true);
-    }, [active]);
-
-    return (
-      <div>
-        <button
-          type="button"
-          onClick={() => setOpen((value) => !value)}
-          className={cn(
-            "w-full flex min-h-[44px] items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition-all",
-            active
-              ? "bg-primary/10 text-primary"
-              : "text-muted-foreground hover:bg-sidebar-accent/80 hover:text-foreground"
-          )}
-          aria-expanded={open}
-        >
-          <div className="flex items-center gap-3 min-w-0">
-            <Icon className="h-4 w-4 shrink-0" />
-            <span className="truncate">{label}</span>
-          </div>
-          {open ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
-        </button>
-        {open && <div className="ml-4 mt-1 space-y-1">{children}</div>}
-      </div>
-    );
-  }
 
   function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
     const [relatoriosOpen, setRelatoriosOpen] = useState(
