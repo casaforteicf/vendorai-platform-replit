@@ -47,6 +47,7 @@ interface VideoCard {
 type AdvancedSection = "design" | "duble" | "broll" | "brand" | null;
 type WorkspaceTab = "projects" | "create" | "publish" | "results";
 
+// frontend deploy marker: video tenant deep-link
 const WORKFLOW_STEPS = ["Briefing", "Roteiro", "Storyboard", "Produção", "Finalização"];
 
 const WORKSPACE_TABS: Array<{
