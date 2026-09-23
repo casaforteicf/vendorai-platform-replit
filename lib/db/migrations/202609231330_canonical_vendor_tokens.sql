@@ -11,6 +11,24 @@ ALTER TABLE token_purchases
   ALTER COLUMN credits TYPE bigint
   USING credits::bigint;
 
+CREATE TABLE IF NOT EXISTS vendor_token_transactions (
+  id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  tenant_id text NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  tokens_delta bigint NOT NULL,
+  kind text NOT NULL,
+  source text NOT NULL,
+  reference_id text,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamp NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS vendor_token_transactions_tenant_created_idx
+  ON vendor_token_transactions(tenant_id, created_at);
+
+CREATE UNIQUE INDEX IF NOT EXISTS vendor_token_transactions_source_reference_uq
+  ON vendor_token_transactions(source, reference_id)
+  WHERE reference_id IS NOT NULL;
+
 UPDATE tenants
 SET token_credits = token_credits * 20
 WHERE token_credits <> 0;
@@ -18,6 +36,20 @@ WHERE token_credits <> 0;
 UPDATE token_purchases
 SET credits = credits * 20
 WHERE credits <> 0;
+
+-- Seed the ledger with each tenant's migrated opening balance.
+INSERT INTO vendor_token_transactions
+  (tenant_id, tokens_delta, kind, source, reference_id, metadata)
+SELECT
+  id,
+  token_credits,
+  'migration',
+  'canonical_vendor_tokens_v1',
+  id,
+  jsonb_build_object('tokensPerBrl', 1000, 'legacyScaleFactor', 20)
+FROM tenants
+WHERE token_credits <> 0
+ON CONFLICT (source, reference_id) DO NOTHING;
 
 ALTER TABLE tenants
   DROP CONSTRAINT IF EXISTS tenants_token_credits_nonnegative;
