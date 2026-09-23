@@ -202,14 +202,29 @@ async function publishTikTok(
 
 async function publishYouTube(
   token: string,
-  input: { text?: string | null; mediaUrl?: string | null; contentType: string },
+  input: { text?: string | null; mediaUrl?: string | null; contentType: string; metadata?: Record<string, unknown> | null },
 ): Promise<PublishResult> {
   if (!input.mediaUrl) throw new SocialPublishError("youtube_media_required");
   if (input.contentType !== "video" && input.contentType !== "short") {
     throw new SocialPublishError(`youtube_media_type_not_supported:${input.contentType}`);
   }
+
+  const metadata = input.metadata && typeof input.metadata === "object" ? input.metadata : {};
+  const youtube = metadata["youtube"] && typeof metadata["youtube"] === "object"
+    ? metadata["youtube"] as Record<string, unknown>
+    : {};
   const media = await fetchRemoteMedia(input.mediaUrl);
-  const title = (input.text?.split(/\r?\n/)[0] || "Vídeo VendorAI").slice(0, 100);
+  const fallbackTitle = input.text?.split(/\r?\n/)[0] || "Vídeo VendorAI";
+  const title = String(youtube["title"] || fallbackTitle).slice(0, 100);
+  const description = String(youtube["description"] ?? input.text ?? "").slice(0, 5000);
+  const categoryId = String(youtube["categoryId"] || "22");
+  const tags = Array.isArray(youtube["tags"])
+    ? youtube["tags"].map((value) => String(value).trim()).filter(Boolean).slice(0, 50)
+    : [];
+  const requestedPrivacy = String(youtube["privacyStatus"] || "public");
+  const privacyStatus = requestedPrivacy === "private" || requestedPrivacy === "unlisted" ? requestedPrivacy : "public";
+  const selfDeclaredMadeForKids = youtube["madeForKids"] === true;
+
   const init = await fetch("https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status", {
     method: "POST",
     headers: {
@@ -219,13 +234,20 @@ async function publishYouTube(
       "X-Upload-Content-Type": media.contentType,
     },
     body: JSON.stringify({
-      snippet: { title, description: input.text || "", categoryId: "22" },
-      status: { privacyStatus: "public", selfDeclaredMadeForKids: false },
+      snippet: {
+        title,
+        description,
+        categoryId,
+        ...(tags.length ? { tags } : {}),
+        ...(youtube["defaultLanguage"] ? { defaultLanguage: String(youtube["defaultLanguage"]) } : {}),
+      },
+      status: { privacyStatus, selfDeclaredMadeForKids },
     }),
   });
   if (!init.ok) throw new SocialPublishError(`youtube_upload_init_${init.status}: ${(await init.text()).slice(0, 500)}`);
   const uploadUrl = init.headers.get("location");
   if (!uploadUrl) throw new SocialPublishError("youtube_upload_missing_location");
+
   const uploaded = await fetch(uploadUrl, {
     method: "PUT",
     headers: { "Content-Type": media.contentType, "Content-Length": String(media.bytes.byteLength) },
@@ -234,7 +256,51 @@ async function publishYouTube(
   if (!uploaded.ok) throw new SocialPublishError(`youtube_upload_${uploaded.status}: ${(await uploaded.text()).slice(0, 500)}`);
   const data = await uploaded.json() as { id?: string };
   if (!data.id) throw new SocialPublishError("youtube_upload_missing_id");
-  return { externalId: data.id, status: "published" };
+
+  const applied: Record<string, unknown> = { title, description, categoryId, privacyStatus, tags };
+
+  const thumbnailUrl = typeof youtube["thumbnailUrl"] === "string" ? youtube["thumbnailUrl"] : "";
+  if (thumbnailUrl) {
+    try {
+      const thumbnail = await fetchRemoteMedia(thumbnailUrl);
+      const response = await fetch(
+        `https://www.googleapis.com/upload/youtube/v3/thumbnails/set?videoId=${encodeURIComponent(data.id)}&uploadType=media`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": thumbnail.contentType },
+          body: thumbnail.bytes,
+        },
+      );
+      if (!response.ok) throw new Error(`thumbnail_${response.status}: ${(await response.text()).slice(0, 300)}`);
+      applied["thumbnailApplied"] = true;
+    } catch (error) {
+      logger.warn({ error, videoId: data.id }, "YouTube publicado, mas a thumbnail personalizada não pôde ser aplicada");
+      applied["thumbnailApplied"] = false;
+    }
+  }
+
+  const playlistId = typeof youtube["playlistId"] === "string" ? youtube["playlistId"].trim() : "";
+  if (playlistId) {
+    try {
+      const response = await fetch("https://www.googleapis.com/youtube/v3/playlistItems?part=snippet", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          snippet: {
+            playlistId,
+            resourceId: { kind: "youtube#video", videoId: data.id },
+          },
+        }),
+      });
+      if (!response.ok) throw new Error(`playlist_${response.status}: ${(await response.text()).slice(0, 300)}`);
+      applied["playlistApplied"] = true;
+    } catch (error) {
+      logger.warn({ error, videoId: data.id, playlistId }, "YouTube publicado, mas não foi possível adicionar o vídeo à playlist");
+      applied["playlistApplied"] = false;
+    }
+  }
+
+  return { externalId: data.id, status: "published", metadata: { youtube: applied } };
 }
 
 export async function publishSocialPublication(tenantId: string, publicationId: string) {
@@ -260,7 +326,7 @@ export async function publishSocialPublication(tenantId: string, publicationId: 
     .where(and(eq(socialPublicationsTable.id, publication.id), eq(socialPublicationsTable.tenantId, tenantId)));
 
   try {
-    const input = { text: publication.text, mediaUrl: publication.mediaUrl, contentType: publication.contentType };
+    const input = { text: publication.text, mediaUrl: publication.mediaUrl, contentType: publication.contentType, metadata: publication.metadata };
     const result = provider === "youtube"
       ? await publishYouTube(connection.accessToken, input)
       : provider === "linkedin"
