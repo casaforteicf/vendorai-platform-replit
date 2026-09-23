@@ -1,6 +1,6 @@
 /**
  * Proposal generation engine — AI-driven SPIN proposal builder
- * Uses Claude (Anthropic) with OpenAI fallback, same pattern as site_generator.ts
+ * Uses Anthropic when available, with automatic OpenAI fallback for provider failures.
  */
 import { Router, type IRouter } from "express";
 import type { Logger } from "pino";
@@ -54,9 +54,12 @@ export async function callProposalAI(
       );
       return { content: result.content, provider: "anthropic", model: "claude-opus-4-8" };
     } catch (anthropicErr: any) {
-      // 402 = billing/credit exhausted — do NOT fall back to OpenAI (same root cause)
-      if (anthropicErr?.status === 402) throw anthropicErr;
-      log.error({ error: anthropicErr?.message }, "Anthropic failed for proposal, falling back to OpenAI");
+      // Any Anthropic failure (including billing/credit 402 and rate-limit 429)
+      // must fall back to OpenAI before surfacing an error to the user.
+      log.error(
+        { error: anthropicErr?.message, status: anthropicErr?.status },
+        "Anthropic failed for proposal, falling back to OpenAI",
+      );
     }
   }
 
