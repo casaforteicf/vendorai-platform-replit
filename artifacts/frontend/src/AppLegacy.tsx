@@ -547,19 +547,31 @@ function ConstrucaoRoute({ component: Component, ...rest }: any) {
   const [, setLocation] = useLocation();
   const rawIsSA = !isLoading && !!token && user?.platformRole === "super_admin";
   const effectiveVertical = rawIsSA && tenantOverride ? tenantOverride.vertical : user?.tenantVertical;
+  const normalizedVertical = (effectiveVertical ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+  const isConstrucaoVertical =
+    normalizedVertical === "construcao & reforma" ||
+    normalizedVertical === "construcao civil" ||
+    normalizedVertical === "obras" ||
+    normalizedVertical === "gestao de obras" ||
+    normalizedVertical.includes("construtora") ||
+    normalizedVertical.includes("construcao");
 
   useEffect(() => {
     if (!isLoading && !token) {
       setLocation("/login");
-    } else if (!isLoading && user && !rawIsSA && effectiveVertical !== "Construção & Reforma") {
+    } else if (!isLoading && user && !rawIsSA && !isConstrucaoVertical) {
       setLocation("/");
-    } else if (!isLoading && rawIsSA && effectiveVertical !== "Construção & Reforma") {
+    } else if (!isLoading && rawIsSA && !isConstrucaoVertical) {
       setLocation("/admin/verticais");
     }
-  }, [token, user, isLoading, effectiveVertical, rawIsSA, setLocation]);
+  }, [token, user, isLoading, isConstrucaoVertical, rawIsSA, setLocation]);
 
   if (isLoading || !token || !user) return <Spinner />;
-  if (effectiveVertical !== "Construção & Reforma") return null;
+  if (!isConstrucaoVertical) return null;
 
   return (
     <SidebarLayout>
