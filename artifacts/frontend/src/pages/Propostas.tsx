@@ -2914,7 +2914,7 @@ function newFreeItem(): FreeItem {
             apresentacao: proposalPresentationConfig(),
             arquivoImportadoUrl: importArquivo?.url || undefined,
             arquivoImportadoNome: importArquivo?.nome || undefined,
-          },
+          } as any,
         },
         {
           onSuccess: () => {
@@ -3119,7 +3119,7 @@ function newFreeItem(): FreeItem {
       }
 
       createLivreMut.mutate(
-        { data: { tenantId, leadId: vals.leadId, dealId: activeDealId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, ...recFields, apresentacao: proposalPresentationConfig(), itens: valid.map((i) => ({ nome: i.nome, quantidade: roundBudgetNumber(i.quantidade), valorUnitario: roundBudgetNumber(i.valorUnitario) })), valorTotal: freeTotal, paymentCompositions: paymentComp2?.length ? paymentComp2.map((pc) => ({ forma: pc.forma as PaymentCompositionLineForma, valor: roundBudgetNumber(pc.valor), comprovanteUrl: pc.comprovanteUrl })) : undefined, skipAsaasBilling: skipAsaas2 } },
+        { data: { tenantId, leadId: vals.leadId, dealId: activeDealId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, ...recFields, apresentacao: proposalPresentationConfig(), itens: valid.map((i) => ({ nome: i.nome, quantidade: roundBudgetNumber(i.quantidade), valorUnitario: roundBudgetNumber(i.valorUnitario) })), valorTotal: freeTotal, paymentCompositions: paymentComp2?.length ? paymentComp2.map((pc) => ({ forma: pc.forma as PaymentCompositionLineForma, valor: roundBudgetNumber(pc.valor), comprovanteUrl: pc.comprovanteUrl })) : undefined, skipAsaasBilling: skipAsaas2 } as any },
         {
           onSuccess: () => {
             toast({ title: "Orçamento criado com sucesso" });
