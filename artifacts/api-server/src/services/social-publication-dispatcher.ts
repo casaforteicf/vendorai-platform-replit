@@ -10,6 +10,7 @@ import { logger } from "../lib/logger.js";
 import { publishSocialPublication } from "./social-publication-publisher.js";
 import { publishInstagramOrganicPublication } from "./instagram-organic-publication.js";
 import { publishFacebookOrganicPublication } from "./facebook-organic-publication.js";
+import { fanOutYoutubeVideoToConnectedChannels } from "./youtube-cross-channel-fanout.js";
 import {
   assertMediaPublishReady,
   CreativeQualityGateBlockedError,
@@ -197,6 +198,12 @@ export async function publishAnySocialPublication(tenantId: string, publicationI
       ));
     }
     throw error;
+  }
+
+  if (publication.provider === "youtube" && ["video", "short"].includes(publication.contentType || "")) {
+    await fanOutYoutubeVideoToConnectedChannels(tenantId, publication).catch((error) => {
+      logger.warn({ error, tenantId, publicationId }, "YouTube será publicado, mas o fan-out para outros canais falhou");
+    });
   }
 
   const published = publication.provider === "instagram"
