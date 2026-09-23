@@ -1,4 +1,4 @@
-const RAILWAY_ORIGIN = "https://vendorai-platform-replit-production.up.railway.app";
+const RAILWAY_ORIGIN = "https://workspaceapi-server-production-350d.up.railway.app";
 const OBRASGOV_ORIGIN = "https://api-publica.obrasgov.gestao.gov.br";
 
 function pathAfterPrefix(pathname, prefix) {
