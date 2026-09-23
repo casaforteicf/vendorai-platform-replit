@@ -5,7 +5,7 @@ import { safeToolTarget, verifySmartDeliveryToken } from "../services/smart-deli
 
 const router: IRouter = Router();
 
-router.get("/api/public/smart-delivery/:token", async (req, res) => {
+router.get("/public/smart-delivery/:token", async (req, res) => {
   try {
     const payload = verifySmartDeliveryToken(String(req.params.token));
 
@@ -45,7 +45,7 @@ router.get("/api/public/smart-delivery/:token", async (req, res) => {
   }
 });
 
-router.post("/api/public/smart-delivery/:token/event", async (req, res) => {
+router.post("/public/smart-delivery/:token/event", async (req, res) => {
   try {
     const payload = verifySmartDeliveryToken(String(req.params.token));
     const event = String(req.body?.event ?? "").trim();
