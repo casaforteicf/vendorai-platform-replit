@@ -127,6 +127,7 @@ router.post("/tenants/:tenantId/leads/:leadId/propostas/reconcile", async (req, 
   const [lead] = await db
     .select({
       id: leadsTable.id,
+      nome: leadsTable.nome,
       telefone: leadsTable.telefone,
       email: leadsTable.email,
       documento: leadsTable.documento,
@@ -201,20 +202,26 @@ router.post("/tenants/:tenantId/leads/:leadId/propostas/reconcile", async (req, 
   // Alguns registros antigos ficaram ligados a um lead duplicado. Só fazemos
   // a reconciliação quando há identidade forte (documento, e-mail ou telefone)
   // e todos os orçamentos encontrados pertencem a um único lead de origem.
+  const normalizedName = String(lead.nome ?? "").trim().toLowerCase();
   const normalizedEmail = String(lead.email ?? "").trim().toLowerCase();
   const normalizedPhone = String(lead.telefone ?? "").replace(/\D/g, "");
   const normalizedDocument = String(lead.documento ?? "").replace(/\D/g, "");
+
+  const phoneAndNameMatch = normalizedPhone.length >= 8 && normalizedName
+    ? and(
+        sql`regexp_replace(coalesce(${leadsTable.telefone}, ''), '[^0-9]', '', 'g') = ${normalizedPhone}`,
+        sql`lower(trim(${leadsTable.nome})) = ${normalizedName}`,
+      )
+    : undefined;
 
   const identityMatch = or(
     normalizedEmail
       ? sql`lower(trim(coalesce(${leadsTable.email}, ''))) = ${normalizedEmail}`
       : undefined,
-    normalizedPhone.length >= 8
-      ? sql`regexp_replace(coalesce(${leadsTable.telefone}, ''), '[^0-9]', '', 'g') = ${normalizedPhone}`
-      : undefined,
     normalizedDocument.length >= 6
       ? sql`regexp_replace(coalesce(${leadsTable.documento}, ''), '[^0-9]', '', 'g') = ${normalizedDocument}`
       : undefined,
+    phoneAndNameMatch,
   );
 
   if (!identityMatch) {
