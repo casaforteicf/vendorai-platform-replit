@@ -8,6 +8,7 @@ import os
 import time
 import wave
 from dataclasses import dataclass, field
+from fractions import Fraction
 from typing import Any
 
 import av
@@ -117,15 +118,15 @@ class OutboundAudioTrack(MediaStreamTrack):
         frame = av.AudioFrame.from_ndarray(samples, format="s16", layout="mono")
         frame.sample_rate = self._sample_rate
         frame.pts = self._pts
-        frame.time_base = av.Rational(1, self._sample_rate)
+        frame.time_base = Fraction(1, self._sample_rate)
         self._pts += self._frame_samples
         await asyncio.sleep(self._frame_samples / self._sample_rate)
         return frame
 
-    async def stop(self) -> None:
+    def stop(self) -> None:
         self._closed = True
         self.clear()
-        await super().stop()
+        super().stop()
 
 
 @dataclass
@@ -149,7 +150,7 @@ class CallSession:
         self.closed = True
         for task in list(self.tasks):
             task.cancel()
-        self.outbound.clear()
+        self.outbound.stop()
         await self.pc.close()
 
 
