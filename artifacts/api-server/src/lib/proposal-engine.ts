@@ -519,7 +519,10 @@ export function renderProposalHtml(json: unknown, theme: {
   const visualImages = (imagens || []).filter(
     (url): url is string => typeof url === "string" && url.trim().length > 0,
   );
-  const pageImage = (index: number) => visualImages[index] || null;
+  const pageImage = (index: number) => {
+    if (visualImages.length === 0) return null;
+    return visualImages[index] || visualImages[index % visualImages.length] || null;
+  };
   const renderPageVisual = (index: number, alt: string, className = "") => {
     const url = pageImage(index);
     return url
