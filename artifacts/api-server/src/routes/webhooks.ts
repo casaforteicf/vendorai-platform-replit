@@ -237,6 +237,17 @@ async function metaCallAction(input: {
   return body;
 }
 
+
+function parseVoiceOpaqueData(value: unknown): Record<string, string> {
+  if (typeof value !== "string" || !value) return {};
+  return Object.fromEntries(
+    value
+      .split(";")
+      .map((part) => part.split("=", 2))
+      .filter((pair): pair is [string, string] => pair.length === 2 && Boolean(pair[0]) && Boolean(pair[1])),
+  );
+}
+
 async function handleMetaCallWebhook(input: {
   value: Record<string, unknown>;
   phoneNumberId: string;
@@ -261,6 +272,34 @@ async function handleMetaCallWebhook(input: {
     const direction = String(call["direction"] ?? "");
     const from = String(call["from"] ?? "");
     if (!callId || !event) continue;
+
+    if (event === "connect" && direction === "BUSINESS_INITIATED") {
+      const session = (call["session"] ?? {}) as Record<string, unknown>;
+      const remoteSdp = String(session["sdp"] ?? "");
+      const opaque = parseVoiceOpaqueData(call["biz_opaque_callback_data"]);
+      const callKey = opaque["callKey"] ?? "";
+      if (!remoteSdp || !callKey) {
+        input.log.warn({ callId, direction, hasSdp: Boolean(remoteSdp), callKey }, "meta-calling: outbound connect missing SDP/correlation");
+        continue;
+      }
+
+      await callWorkerJson<{ ok: boolean }>(
+        `/v1/calls/${encodeURIComponent(callKey)}/remote-answer`,
+        { sdp: remoteSdp },
+      );
+
+      input.log.info(
+        {
+          tenantId,
+          callId,
+          callKey,
+          leadId: opaque["lead"] ?? null,
+          sessionId: opaque["session"] ?? null,
+        },
+        "meta-calling: outbound WhatsApp call WebRTC answer applied",
+      );
+      continue;
+    }
 
     if (event === "connect" && direction === "USER_INITIATED") {
       const session = (call["session"] ?? {}) as Record<string, unknown>;
