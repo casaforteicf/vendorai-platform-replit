@@ -17,6 +17,7 @@ const MAIN_ITEMS = [
 ];
 
 const TOOL_ITEMS = [
+  { label: "Kit da Marca", href: "/configuracoes?tab=marketing" },
   { label: "Mídias", href: "/midias" },
   { label: "Biblioteca de Informações", href: "/midias/informacoes" },
   { label: "Vídeos com IA", href: "/content-studio/video" },
@@ -35,6 +36,11 @@ function normalize(value: string) {
 function isActiveHref(href: string) {
   const target = new URL(href, window.location.origin);
   if (target.pathname !== window.location.pathname) return false;
+
+  if (target.pathname === "/configuracoes" && target.searchParams.get("tab")) {
+    const current = new URLSearchParams(window.location.search);
+    return current.get("tab") === target.searchParams.get("tab");
+  }
 
   if (target.pathname === "/content") {
     const targetTab = target.searchParams.get("tab") ?? "visao-geral";
