@@ -86,8 +86,9 @@ test('invalid opening and a solid volume across a window are blocked without del
 });
 
 test('facade component renders all storeys without inventing windows or entrances', () => {
-  const React = require('react');
-  const { renderToStaticMarkup } = require('react-dom/server');
+  const frontendRequire = require('node:module').createRequire(path.join(base, '../../../package.json'));
+  const React = frontendRequire('react');
+  const { renderToStaticMarkup } = frontendRequire('react-dom/server');
   const Facade = require(path.join(base, 'ConceptDerivedFacade.tsx')).default;
   const svg = renderToStaticMarkup(React.createElement(Facade, {
     lotWidth: 15, levels: [level(0), level(1), level(2)], rooms: [room(0), room(1), room(2)], sitePlacement: placement,
