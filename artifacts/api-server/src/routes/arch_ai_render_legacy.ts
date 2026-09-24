@@ -61,6 +61,35 @@ function tenantId(req: Request): string | null {
   return (req as any).user?.tenantId ?? null;
 }
 
+function sanitizeRenderErrorForUser(value: unknown): string | null {
+  if (value == null) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const low = raw.toLowerCase();
+
+  if (
+    low.includes("http 402") ||
+    low.includes("insufficient credit") ||
+    low.includes("purchase credit") ||
+    low.includes("replicate.com/account/billing") ||
+    low.includes("billing hard limit") ||
+    low.includes("insufficient_quota") ||
+    low.includes("exceeded your current quota")
+  ) {
+    return "O render está temporariamente indisponível por limite do provedor. O administrador da plataforma já pode corrigir isso sem expor dados de cobrança ao tenant. Tente novamente em alguns minutos.";
+  }
+  if (low.includes("http 429") || low.includes("rate limit") || low.includes("too many requests")) {
+    return "Há muitos renders sendo processados ao mesmo tempo. Aguarde cerca de um minuto e tente novamente.";
+  }
+  if (low.includes("http 401") || low.includes("http 403") || low.includes("authentication")) {
+    return "O provedor de render recusou a autenticação da plataforma. Avise o administrador.";
+  }
+  return raw
+    .replace(/https?:\/\/replicate\.com\/\S+/gi, "")
+    .replace(/replicate/gi, "provedor de render")
+    .trim();
+}
+
 // ── Esquemas de validação ──────────────────────────────────────────────────────
 
 const renderBodySchema = z.object({
@@ -311,7 +340,7 @@ archAiRenderRouter.get("/arch/ai-render/:id", authenticate, async (req: Request,
     mask_zones:             render.maskZones,
     composited:             render.composited,
     segmentation_confidence: render.segmentationConfidence,
-    erro_msg:               render.erroMsg,
+    erro_msg:               sanitizeRenderErrorForUser(render.erroMsg),
     prompt:                 render.prompt,
     motor:                  render.motor,
     approved_by:            render.approvedBy,
@@ -767,13 +796,16 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
   } catch (err: any) {
     logger?.error({ err, renderId }, "arch/ai-render: erro no job");
 
+    const rawErrorMessage = String(err?.message ?? err);
+    const safeErrorMessage = sanitizeRenderErrorForUser(rawErrorMessage) ?? "O render não pôde ser concluído. Tente novamente em alguns minutos.";
+
     await db.update(archAiRendersTable)
-      .set({ status: "erro", erroMsg: String(err?.message ?? err) })
+      .set({ status: "erro", erroMsg: safeErrorMessage })
       .where(ownedRender);
 
     db.insert(automationLogsTable).values({
       flow: "arch_ai_render", step: "processRenderJob",
-      status: "error", errorMessage: String(err?.message ?? err),
+      status: "error", errorMessage: rawErrorMessage,
     }).catch(() => undefined);
   }
 }
