@@ -6,7 +6,11 @@ export type ConceptTypology =
   | "terrea_suites"
   | "sobrado_estreito"
   | "sobrado_3q"
-  | "sobrado_master";
+  | "sobrado_master"
+  | "terrea_economica"
+  | "terrea_home_office"
+  | "sobrado_3suites"
+  | "terrea_campo";
 
 export type LayoutPreferenceKey =
   | "garageFront"
@@ -244,6 +248,98 @@ export const CONCEPT_TYPOLOGIES: Array<{
       { kind: "banheiro", label: "Banho suíte 2", x: 2.6, y: 4, width: 2.6, depth: 2.2, floor: 1 },
       { kind: "suite", label: "Suíte 3", x: 5.2, y: 9.3, width: 4, depth: 3.6, floor: 1 },
       { kind: "banheiro", label: "Banho suíte 3", x: 9.2, y: 9.3, width: 2.8, depth: 2.2, floor: 1 },
+    ],
+  },
+  {
+    id: "terrea_economica",
+    title: "Térrea econômica",
+    subtitle: "2 quartos · cozinha integrada · ideal para Minha Casa Minha Vida",
+    floors: 1,
+    suggestedArea: 60,
+    minLotWidth: 10,
+    rooms: [
+      { kind: "sala", label: "Sala", x: 0, y: 0, width: 4, depth: 3.8, floor: 0 },
+      { kind: "cozinha", label: "Cozinha integrada", x: 4, y: 0, width: 3, depth: 3.8, floor: 0 },
+      { kind: "quarto", label: "Quarto 1", x: 0, y: 3.8, width: 2.9, depth: 3, floor: 0 },
+      { kind: "circulacao", label: "Circulação", x: 2.9, y: 3.8, width: 1.2, depth: 3, floor: 0 },
+      { kind: "quarto", label: "Quarto 2", x: 4.1, y: 3.8, width: 2.9, depth: 3, floor: 0 },
+      { kind: "lavanderia", label: "Área de serviço", x: 0, y: 6.8, width: 2.4, depth: 1.6, floor: 0 },
+      { kind: "banheiro", label: "Banheiro", x: 2.4, y: 6.8, width: 2.2, depth: 1.6, floor: 0 },
+    ],
+  },
+  {
+    id: "terrea_home_office",
+    title: "Térrea com home office",
+    subtitle: "suíte com closet + 2 quartos · escritório · garagem dupla",
+    floors: 1,
+    suggestedArea: 170,
+    minLotWidth: 14,
+    rooms: [
+      { kind: "garagem", label: "Garagem 2 vagas", x: 0, y: 0, width: 5, depth: 5.5, floor: 0 },
+      { kind: "sala", label: "Sala de estar + jantar", x: 5, y: 0, width: 6, depth: 5.5, floor: 0 },
+      { kind: "outro", label: "Home office", x: 0, y: 5.5, width: 3.2, depth: 4.4, floor: 0 },
+      { kind: "lavanderia", label: "Lavanderia", x: 3.2, y: 5.5, width: 1.8, depth: 2.2, floor: 0 },
+      { kind: "banheiro", label: "Banheiro social", x: 3.2, y: 7.7, width: 1.8, depth: 2.2, floor: 0 },
+      { kind: "circulacao", label: "Hall íntimo", x: 5, y: 5.5, width: 1.2, depth: 10, floor: 0 },
+      { kind: "cozinha", label: "Cozinha", x: 6.2, y: 5.5, width: 4.8, depth: 3.2, floor: 0 },
+      { kind: "quarto", label: "Quarto 1", x: 6.2, y: 8.7, width: 4.8, depth: 3.4, floor: 0 },
+      { kind: "quarto", label: "Quarto 2", x: 6.2, y: 12.1, width: 4.8, depth: 3.4, floor: 0 },
+      { kind: "suite", label: "Suíte", x: 0, y: 9.9, width: 5, depth: 3.6, floor: 0 },
+      { kind: "banheiro", label: "Banho suíte", x: 0, y: 13.5, width: 2.4, depth: 2, floor: 0 },
+      { kind: "outro", label: "Closet", x: 2.4, y: 13.5, width: 2.6, depth: 2, floor: 0 },
+    ],
+  },
+  {
+    id: "sobrado_3suites",
+    title: "Sobrado 3 suítes",
+    subtitle: "3 suítes no superior · lavabo · varanda gourmet · lotes de 10 m",
+    floors: 2,
+    suggestedArea: 170,
+    minLotWidth: 10,
+    rooms: [
+      { kind: "garagem", label: "Garagem 1 vaga", x: 0, y: 0, width: 3, depth: 5.5, floor: 0 },
+      { kind: "sala", label: "Sala de estar", x: 3, y: 0, width: 5, depth: 5.5, floor: 0 },
+      { kind: "escada", label: "Escada", x: 0, y: 5.5, width: 2.6, depth: 3.6, floor: 0 },
+      { kind: "cozinha", label: "Cozinha + jantar", x: 2.6, y: 5.5, width: 5.4, depth: 3.6, floor: 0 },
+      { kind: "banheiro", label: "Lavabo", x: 0, y: 9.1, width: 1.6, depth: 2.2, floor: 0 },
+      { kind: "lavanderia", label: "Lavanderia", x: 1.6, y: 9.1, width: 2.4, depth: 2.2, floor: 0 },
+      { kind: "gourmet", label: "Varanda gourmet", x: 4, y: 9.1, width: 4, depth: 2.2, floor: 0 },
+      { kind: "escada", label: "Escada", x: 0, y: 5.5, width: 2.6, depth: 3.6, floor: 1 },
+      { kind: "suite", label: "Suíte 1", x: 0, y: 0, width: 4, depth: 3.6, floor: 1 },
+      { kind: "suite", label: "Suíte 2", x: 4, y: 0, width: 4, depth: 3.6, floor: 1 },
+      { kind: "banheiro", label: "Banho suíte 1", x: 0, y: 3.6, width: 2.4, depth: 1.9, floor: 1 },
+      { kind: "circulacao", label: "Hall íntimo", x: 2.4, y: 3.6, width: 3.2, depth: 1.9, floor: 1 },
+      { kind: "banheiro", label: "Banho suíte 2", x: 5.6, y: 3.6, width: 2.4, depth: 1.9, floor: 1 },
+      { kind: "circulacao", label: "Circulação", x: 2.6, y: 5.5, width: 1.2, depth: 3.6, floor: 1 },
+      { kind: "suite", label: "Suíte 3", x: 3.8, y: 5.5, width: 4.2, depth: 3.6, floor: 1 },
+      { kind: "banheiro", label: "Banho suíte 3", x: 3.8, y: 9.1, width: 2.4, depth: 2.2, floor: 1 },
+      { kind: "outro", label: "Closet", x: 6.2, y: 9.1, width: 1.8, depth: 2.2, floor: 1 },
+    ],
+  },
+  {
+    id: "terrea_campo",
+    title: "Térrea de campo",
+    subtitle: "3 suítes · varanda frontal · gourmet + piscina · lotes de 20 m",
+    floors: 1,
+    suggestedArea: 235,
+    minLotWidth: 20,
+    rooms: [
+      { kind: "garagem", label: "Garagem 2 vagas", x: 0, y: 0, width: 5.6, depth: 5.5, floor: 0 },
+      { kind: "outro", label: "Varanda", x: 5.6, y: 0, width: 10.4, depth: 2.6, floor: 0 },
+      { kind: "sala", label: "Sala de estar + jantar", x: 5.6, y: 2.6, width: 6.4, depth: 5, floor: 0 },
+      { kind: "cozinha", label: "Cozinha", x: 12, y: 2.6, width: 4, depth: 5, floor: 0 },
+      { kind: "lavanderia", label: "Lavanderia", x: 0, y: 5.5, width: 3.4, depth: 2.1, floor: 0 },
+      { kind: "banheiro", label: "Lavabo", x: 3.4, y: 5.5, width: 2.2, depth: 2.1, floor: 0 },
+      { kind: "circulacao", label: "Hall íntimo", x: 0, y: 7.6, width: 12, depth: 1.2, floor: 0 },
+      { kind: "gourmet", label: "Espaço gourmet", x: 12, y: 7.6, width: 4, depth: 7, floor: 0 },
+      { kind: "suite", label: "Suíte 1", x: 0, y: 8.8, width: 3.6, depth: 3.8, floor: 0 },
+      { kind: "banheiro", label: "Banho suíte 1", x: 0, y: 12.6, width: 3.6, depth: 2, floor: 0 },
+      { kind: "suite", label: "Suíte 2", x: 3.6, y: 8.8, width: 3.6, depth: 3.8, floor: 0 },
+      { kind: "banheiro", label: "Banho suíte 2", x: 3.6, y: 12.6, width: 3.6, depth: 2, floor: 0 },
+      { kind: "suite", label: "Suíte master", x: 7.2, y: 8.8, width: 4.8, depth: 3.8, floor: 0 },
+      { kind: "outro", label: "Closet master", x: 7.2, y: 12.6, width: 2.4, depth: 2, floor: 0 },
+      { kind: "banheiro", label: "Banho suíte master", x: 9.6, y: 12.6, width: 2.4, depth: 2, floor: 0 },
+      { kind: "piscina", label: "Piscina", x: 11, y: 16, width: 5, depth: 3, floor: 0 },
     ],
   },
 ];

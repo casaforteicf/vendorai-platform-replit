@@ -67,6 +67,17 @@ export function buildDerivedFacadeModel(
   const maxAxis = horizontalFront ? bounds.maxX : bounds.maxY;
   const width = Math.max(1, maxAxis - minAxis);
   const openings: DerivedFacadeOpening[] = [];
+  // Parede do fundo de uma varanda frontal também aparece na fachada (é onde fica a porta de entrada).
+  const porchBacks = currentRooms
+    .filter((room) => /varanda/i.test(room.label ?? "") && room.kind !== "gourmet")
+    .map((room) => ({
+      floor: room.floor,
+      start: horizontalFront ? room.x : room.y,
+      end: horizontalFront ? room.x + room.width : room.y + room.depth,
+      back: safePlacement.frontSide === "top" ? room.y + room.depth
+        : safePlacement.frontSide === "bottom" ? room.y
+          : safePlacement.frontSide === "left" ? room.x + room.width : room.x,
+    }));
 
   for (const level of levels ?? []) {
     // Each storey can have a setback: its front is not the ground-floor front.
@@ -89,7 +100,11 @@ export function buildDerivedFacadeModel(
       const onFront = horizontalFront
         ? opening.orientation === "horizontal" && Math.abs(opening.y - visibleFront) <= 0.32
         : opening.orientation === "vertical" && Math.abs(opening.x - visibleFront) <= 0.32;
-      if (!onFront) continue;
+      const behindPorch = porchBacks.some((porch) => porch.floor === level.floor
+        && axis >= porch.start - 0.01 && axis <= porch.end + 0.01
+        && (horizontalFront ? opening.orientation === "horizontal" && Math.abs(opening.y - porch.back) <= 0.32
+          : opening.orientation === "vertical" && Math.abs(opening.x - porch.back) <= 0.32));
+      if (!onFront && !behindPorch) continue;
       openings.push({
         id: opening.id,
         type: opening.type,
@@ -101,6 +116,29 @@ export function buildDerivedFacadeModel(
         openingStyle: opening.openingStyle,
         swing: opening.swing,
       });
+    }
+  }
+
+  // Porta e janela no mesmo trecho da fachada (ex.: porta de entrada no fundo da varanda e a
+  // porta-janela da sala) não podem se sobrepor no desenho: a janela recua para o lado livre.
+  for (const door of openings.filter((item) => item.type === "door")) {
+    const doorStart = door.axis - door.width / 2 - 0.15;
+    const doorEnd = door.axis + door.width / 2 + 0.15;
+    for (let index = openings.length - 1; index >= 0; index -= 1) {
+      const win = openings[index];
+      if (win.type !== "window" || win.floor !== door.floor) continue;
+      const winStart = win.axis - win.width / 2;
+      const winEnd = win.axis + win.width / 2;
+      if (winEnd <= doorStart || winStart >= doorEnd) continue;
+      const left = doorStart - winStart;
+      const right = winEnd - doorEnd;
+      const keep = Math.max(left, right);
+      if (keep < 0.6) {
+        openings.splice(index, 1);
+        continue;
+      }
+      win.width = keep;
+      win.axis = left >= right ? winStart + keep / 2 : doorEnd + keep / 2;
     }
   }
 
