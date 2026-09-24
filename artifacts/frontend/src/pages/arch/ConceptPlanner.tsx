@@ -731,6 +731,39 @@ function conceptUrlParams() {
   return { id: params.get("id"), isNew: params.get("novo") === "1" };
 }
 
+// Valores internos da fachada ("rustico_contemporaneo", "medio"...) exibidos em português correto.
+const FACADE_VALUE_LABELS: Record<string, string> = {
+  contemporaneo: "Contemporâneo",
+  minimalista: "Minimalista",
+  tropical: "Tropical",
+  industrial: "Industrial",
+  rustico_contemporaneo: "Rústico contemporâneo",
+  classico_contemporaneo: "Clássico contemporâneo",
+  platibanda: "Platibanda",
+  aparente: "Telhado aparente",
+  misto: "Misto (platibanda + telhado)",
+  pintura: "Pintura",
+  madeira: "Madeira",
+  pedra: "Pedra",
+  concreto: "Concreto aparente",
+  claro: "Claro",
+  medio: "Médio",
+  escuro: "Escuro",
+  preto: "Preto",
+  branco: "Branco",
+  bronze: "Bronze",
+  leve: "Leve",
+  intenso: "Intenso",
+};
+
+function readableFacadeValue(value: unknown) {
+  const key = String(value ?? "").trim();
+  if (!key) return "—";
+  if (FACADE_VALUE_LABELS[key]) return FACADE_VALUE_LABELS[key];
+  const text = key.replaceAll("_", " ");
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 const WORKSPACE_STEP = 4;
 const RESULT_STEP = 6;
 
@@ -7362,7 +7395,7 @@ export default function ConceptPlanner() {
               </div>
 
               <div data-concept-render-source="true" className="mt-4 overflow-hidden rounded-2xl border bg-slate-50">
-                <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} rooms={safeRooms} sitePlacement={normalizeSitePlacement(sitePlacement)} facade={facadePreferences} design={facadeDesign} />
+                <ConceptDerivedFacade viewMode="material" lotWidth={lotWidth} levels={modelLevels} rooms={safeRooms} sitePlacement={normalizeSitePlacement(sitePlacement)} facade={facadePreferences} design={facadeDesign} />
               </div>
 
               <div className="mt-4 rounded-2xl border bg-muted/30 p-4">
@@ -7440,10 +7473,10 @@ export default function ConceptPlanner() {
             {handoffState !== "sent" && (
               <button
                 type="button"
-                onClick={() => document.getElementById("dados-cliente")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                onClick={() => document.getElementById(startContactValid ? "enviar-profissional" : "dados-cliente")?.scrollIntoView({ behavior: "smooth", block: "start" })}
                 className="fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-30 inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-orange-500 px-4 text-sm font-semibold text-white shadow-xl md:hidden print:hidden"
               >
-                <Send className="h-4 w-4" /> Informar contato e enviar
+                <Send className="h-4 w-4" /> {startContactValid ? "Enviar ao profissional" : "Informar contato e enviar"}
               </button>
             )}
             <div className="rounded-3xl border bg-card p-6 shadow-sm sm:p-8">
@@ -7498,7 +7531,14 @@ export default function ConceptPlanner() {
                   <div className="rounded-3xl border border-dashed bg-card p-8 text-center">
                     <Sparkles className="mx-auto h-8 w-8 text-orange-500" />
                     <div className="mt-3 font-semibold">Render ainda não gerado</div>
-                    <p className="mt-1 text-sm text-muted-foreground">Volte à etapa Fachada para gerar a imagem conceitual.</p>
+                    <p className="mt-1 text-sm text-muted-foreground">A imagem realista da fachada valoriza muito o pré-projeto para o cliente.</p>
+                    <button
+                      type="button"
+                      onClick={() => { goToJourneyStage(3); setEditorView("render"); window.scrollTo({ top: 0 }); }}
+                      className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-xl bg-orange-500 px-4 text-sm font-semibold text-white print:hidden"
+                    >
+                      <Sparkles className="h-4 w-4" /> Gerar imagem realista
+                    </button>
                   </div>
                 )}
 
@@ -7511,7 +7551,7 @@ export default function ConceptPlanner() {
                     <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">Conceitual</span>
                   </div>
                   <div className="mt-4 overflow-hidden rounded-2xl border bg-slate-50">
-                    <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} rooms={safeRooms} sitePlacement={normalizeSitePlacement(sitePlacement)} facade={facadePreferences} design={facadeDesign} />
+                    <ConceptDerivedFacade viewMode="material" lotWidth={lotWidth} levels={modelLevels} rooms={safeRooms} sitePlacement={normalizeSitePlacement(sitePlacement)} facade={facadePreferences} design={facadeDesign} />
                   </div>
                 </div>
               </div>
@@ -7560,17 +7600,17 @@ export default function ConceptPlanner() {
                   <h3 className="font-semibold">Preferências de fachada</h3>
                   <div className="mt-4 space-y-2 text-sm">
                     {[
-                      ["Estilo", String(facadePreferences.style ?? "").replaceAll("_", " ")],
+                      ["Estilo", facadePreferences.style],
                       ["Cobertura", facadePreferences.roof],
                       ["Material principal", facadePreferences.primaryMaterial],
                       ["Material de destaque", facadePreferences.accentMaterial],
                       ["Tom", facadePreferences.facadeTone],
                       ["Esquadrias", facadePreferences.frameTone],
                       ["Paisagismo", facadePreferences.landscaping],
-                    ].map(([label, value]) => (
+                    ].map(([label, raw]) => [label, readableFacadeValue(raw)]).map(([label, value]) => (
                       <div key={label} className="flex items-center justify-between gap-4 border-b py-2 last:border-b-0">
                         <span className="text-muted-foreground">{label}</span>
-                        <span className="font-medium capitalize">{value}</span>
+                        <span className="font-medium">{value}</span>
                       </div>
                     ))}
                   </div>
@@ -7586,7 +7626,7 @@ export default function ConceptPlanner() {
                       Nome
                       <input
                         value={customerProfile.name ?? ""}
-                        onInput={(event) => setCustomerProfile((prev) => ({ ...prev, name: event.currentTarget.value }))}
+                        onInput={(event) => { const value = event.currentTarget.value; setCustomerProfile((prev) => ({ ...prev, name: value })); }}
                         onChange={(event) => setCustomerProfile((prev) => ({ ...prev, name: event.target.value }))}
                         placeholder="Nome do cliente"
                         className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm outline-none"
@@ -7596,7 +7636,7 @@ export default function ConceptPlanner() {
                       WhatsApp / telefone
                       <input
                         value={customerProfile.phone ?? ""}
-                        onInput={(event) => setCustomerProfile((prev) => ({ ...prev, phone: event.currentTarget.value }))}
+                        onInput={(event) => { const value = event.currentTarget.value; setCustomerProfile((prev) => ({ ...prev, phone: value })); }}
                         onChange={(event) => setCustomerProfile((prev) => ({ ...prev, phone: event.target.value }))}
                         placeholder="(49) 99999-9999"
                         className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm outline-none"
@@ -7607,7 +7647,7 @@ export default function ConceptPlanner() {
                       <input
                         type="email"
                         value={customerProfile.email ?? ""}
-                        onInput={(event) => setCustomerProfile((prev) => ({ ...prev, email: event.currentTarget.value }))}
+                        onInput={(event) => { const value = event.currentTarget.value; setCustomerProfile((prev) => ({ ...prev, email: value })); }}
                         onChange={(event) => setCustomerProfile((prev) => ({ ...prev, email: event.target.value }))}
                         placeholder="cliente@email.com"
                         className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm outline-none"
@@ -7627,7 +7667,7 @@ export default function ConceptPlanner() {
                       Faixa de investimento
                       <select
                         value={customerProfile.budgetRange ?? ""}
-                        onInput={(event) => setCustomerProfile((prev) => ({ ...prev, budgetRange: event.currentTarget.value }))}
+                        onInput={(event) => { const value = event.currentTarget.value; setCustomerProfile((prev) => ({ ...prev, budgetRange: value })); }}
                         onChange={(event) => setCustomerProfile((prev) => ({ ...prev, budgetRange: event.target.value }))}
                         className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm"
                       >
@@ -7642,7 +7682,7 @@ export default function ConceptPlanner() {
                       Quando pretende começar?
                       <select
                         value={customerProfile.timeframe ?? ""}
-                        onInput={(event) => setCustomerProfile((prev) => ({ ...prev, timeframe: event.currentTarget.value }))}
+                        onInput={(event) => { const value = event.currentTarget.value; setCustomerProfile((prev) => ({ ...prev, timeframe: value })); }}
                         onChange={(event) => setCustomerProfile((prev) => ({ ...prev, timeframe: event.target.value }))}
                         className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm"
                       >
@@ -7657,7 +7697,7 @@ export default function ConceptPlanner() {
                       Observações
                       <textarea
                         value={customerProfile.notes ?? ""}
-                        onInput={(event) => setCustomerProfile((prev) => ({ ...prev, notes: event.currentTarget.value }))}
+                        onInput={(event) => { const value = event.currentTarget.value; setCustomerProfile((prev) => ({ ...prev, notes: value })); }}
                         onChange={(event) => setCustomerProfile((prev) => ({ ...prev, notes: event.target.value }))}
                         placeholder="Preferências, prioridades, limitações ou qualquer detalhe importante."
                         rows={3}
@@ -7670,7 +7710,7 @@ export default function ConceptPlanner() {
                   </div>
                 </div>
 
-                <div className="rounded-3xl border border-orange-200 bg-orange-50 p-5 shadow-sm print:hidden">
+                <div id="enviar-profissional" className="scroll-mt-4 rounded-3xl border border-orange-200 bg-orange-50 p-5 shadow-sm print:hidden">
                   <div className="flex items-start gap-3">
                     <Send className="mt-0.5 h-5 w-5 text-orange-600" />
                     <div className="flex-1">
