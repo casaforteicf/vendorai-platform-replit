@@ -438,3 +438,23 @@
     animation-duration: 0.001ms !important;
   }
 }
+
+
+/* Barra do editor é clara (acima), mas os botões dela foram escritos com classes de tema escuro:
+   ícones e textos claros ficavam quase invisíveis. Ajusta as cores só dentro da barra. */
+.arqdor-reference-ui .arq-app-bar .border-white\/10 { border-color: var(--arq-border, #e2e8f0); }
+.arqdor-reference-ui .arq-app-bar .bg-white\/5 { background-color: #f8fafc; }
+.arqdor-reference-ui .arq-app-bar .text-slate-200,
+.arqdor-reference-ui .arq-app-bar .text-slate-300,
+.arqdor-reference-ui .arq-app-bar .text-slate-400 { color: #334155; }
+.arqdor-reference-ui .arq-app-bar .text-slate-500 { color: #64748b; }
+.arqdor-reference-ui .arq-app-bar .text-orange-100 { color: #c2410c; }
+.arqdor-reference-ui .arq-app-bar .text-red-100,
+.arqdor-reference-ui .arq-app-bar .text-red-300 { color: #b91c1c; }
+.arqdor-reference-ui .arq-app-bar .text-amber-200 { color: #b45309; }
+.arqdor-reference-ui .arq-app-bar .text-emerald-300 { color: #047857; }
+.arqdor-reference-ui .arq-app-bar .text-orange-300 { color: #c2410c; }
+.arqdor-reference-ui .arq-app-bar .hover\:text-white:hover { color: #0f172a; }
+.arqdor-reference-ui .arq-app-bar .hover\:bg-white\/5:hover,
+.arqdor-reference-ui .arq-app-bar .hover\:bg-white\/10:hover { background-color: #f1f5f9; }
+.arqdor-reference-ui .arq-app-bar .bg-white.shadow-sm.text-slate-950 { background-color: #0f172a; color: #fff; }
