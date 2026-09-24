@@ -80,6 +80,7 @@ function Window({
   frame,
   id,
   sill = false,
+  depth = false,
 }: {
   x: number;
   y: number;
@@ -88,11 +89,18 @@ function Window({
   frame: string;
   id: string;
   sill?: boolean;
+  depth?: boolean;
 }) {
   const panes = width > height * 1.3 ? 2 : 1;
+  const reveal = Math.min(0.9, Math.max(0.35, height * 0.07));
   return (
     <g>
       <rect x={x} y={y} width={width} height={height} fill={"url(#" + id + ")"} stroke={frame} strokeWidth="0.7" />
+      {/* Requadro: a esquadria fica recuada na parede, então o topo e a lateral recebem sombra */}
+      {depth && <>
+        <rect x={x} y={y} width={width} height={reveal} fill="#000" fillOpacity="0.22" pointerEvents="none" />
+        <rect x={x} y={y} width={reveal * 0.7} height={height} fill="#000" fillOpacity="0.12" pointerEvents="none" />
+      </>}
       {Array.from({ length: panes - 1 }, (_, index) => (
         <line key={index} x1={x + (width / panes) * (index + 1)} y1={y} x2={x + (width / panes) * (index + 1)} y2={y + height}
           stroke={frame} strokeWidth="0.45" />
@@ -103,19 +111,30 @@ function Window({
   );
 }
 
-function Tree({ x, ground, scale, height, line = false, back = false }: {
-  x: number; ground: number; scale: number; height: number; line?: boolean; back?: boolean;
+function Tree({ x, ground, scale, height, line = false, back = false, night = false }: {
+  x: number; ground: number; scale: number; height: number; line?: boolean; back?: boolean; night?: boolean;
 }) {
   const h = height * scale;
   const r = h * 0.28;
   const trunk = h * 0.42;
-  const leaf = line ? "#ffffff" : back ? "#8fa487" : "#5f7d56";
-  const leafDark = line ? "#ffffff" : back ? "#7d9377" : "#4d6a47";
+  const leaf = line ? "#ffffff" : night ? (back ? "#2c3b33" : "#2f4236") : back ? "#8fa487" : "#5f7d56";
+  const leafDark = line ? "#ffffff" : night ? (back ? "#233029" : "#24332a") : back ? "#7d9377" : "#4d6a47";
   return <g data-facade-tree="true" opacity={back ? 0.75 : 1}>
     <line x1={x} y1={ground} x2={x} y2={ground - trunk} stroke={line ? "#475569" : "#6b5444"} strokeWidth={Math.max(0.35, 0.12 * scale)} />
     <circle cx={x - r * 0.45} cy={ground - trunk - r * 0.55} r={r * 0.72} fill={leafDark} stroke={line ? "#475569" : "none"} strokeWidth="0.25" />
     <circle cx={x + r * 0.5} cy={ground - trunk - r * 0.6} r={r * 0.68} fill={leafDark} stroke={line ? "#475569" : "none"} strokeWidth="0.25" />
     <circle cx={x} cy={ground - trunk - r * 1.05} r={r * 0.85} fill={leaf} stroke={line ? "#475569" : "none"} strokeWidth="0.25" />
+    {!line && <circle cx={x - r * 0.25} cy={ground - trunk - r * 1.3} r={r * 0.42} fill="#ffffff" fillOpacity={night ? 0.03 : 0.1} />}
+  </g>;
+}
+
+/** Arbusto baixo junto à fachada (jardineira). */
+function Shrub({ x, ground, scale, night }: { x: number; ground: number; scale: number; night: boolean }) {
+  const r = 0.38 * scale;
+  return <g pointerEvents="none">
+    <ellipse cx={x} cy={ground - r * 0.55} rx={r * 1.25} ry={r * 0.75} fill={night ? "#243229" : "#4f6e48"} />
+    <ellipse cx={x - r * 0.45} cy={ground - r * 0.85} rx={r * 0.7} ry={r * 0.55} fill={night ? "#2c3d32" : "#62845a"} />
+    <ellipse cx={x + r * 0.5} cy={ground - r * 0.8} rx={r * 0.65} ry={r * 0.5} fill={night ? "#28382e" : "#587a50"} />
   </g>;
 }
 
@@ -170,6 +189,9 @@ export default function ConceptDerivedFacade({
   } | null>(null);
   const colors = facadePalette(facade, design);
   const lineMode = viewMode === "line";
+  const lighting = lineMode ? "day" : (design?.lighting ?? "day");
+  const night = lighting === "night";
+  const sunset = lighting === "sunset";
   const safeSitePlacement = normalizeSitePlacement(sitePlacement);
   const derivedFacade = buildDerivedFacadeModel(levels, rooms, safeSitePlacement);
   const facadeWidth = 92;
@@ -189,7 +211,7 @@ export default function ConceptDerivedFacade({
   const roofY = buildingTop;
   const mainFill = lineMode ? "#fff" : design ? `url(#facade-material-${design.surfaceMaterials.main})` : colors.wall;
   const frameColor = lineMode ? "#334155" : colors.frame;
-  const glassPatternId = lineMode ? "technical-glass" : "derived-facade-glass";
+  const glassPatternId = lineMode ? "technical-glass" : night ? "facade-glass-night" : sunset ? "facade-glass-sunset" : "derived-facade-glass";
   const entranceFill = lineMode ? "#fff" : design ? getFacadeMaterial(design.surfaceMaterials.entrance).baseColor : colors.accent;
   const frontOpenings = derivedFacade.openings;
   const garageFill = design ? getFacadeMaterial(design.surfaceMaterials.garage).baseColor : colors.frame;
@@ -209,6 +231,21 @@ export default function ConceptDerivedFacade({
     ...(landscaping === "intenso" ? [{ x: buildingLeft + facadeWidth * 0.7, height: 5.4, back: true }] : []),
     
   ];
+
+  const groundStory = derivedFacade.stories.find((story) => story.floor === 0) ?? derivedFacade.stories[0];
+  const shrubs: number[] = [];
+  if (showTrees && !lineMode && groundStory) {
+    const blocked = [
+      ...(derivedFacade.garageRange ? [[Math.min(derivedFacade.garageRange.start, derivedFacade.garageRange.end) - 0.3, Math.max(derivedFacade.garageRange.start, derivedFacade.garageRange.end) + 0.3]] : []),
+      ...derivedFacade.openings.filter((opening) => opening.floor === 0 && (opening.type === "door" || opening.sillHeight < 0.3))
+        .map((opening) => [opening.axis - opening.width / 2 - 0.5, opening.axis + opening.width / 2 + 0.5]),
+      ...derivedFacade.porchRanges.filter((porch) => porch.floor === 0).map((porch) => [Math.min(porch.start, porch.end), Math.max(porch.start, porch.end)]),
+    ];
+    const step = landscaping === "leve" ? 2.4 : landscaping === "intenso" ? 1.1 : 1.6;
+    for (let axis = groundStory.minAxis + 0.6; axis <= groundStory.maxAxis - 0.6; axis += step) {
+      if (!blocked.some(([start, end]) => axis >= start && axis <= end)) shrubs.push(axis);
+    }
+  }
 
   const handlePointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
     if (!drag || drag.pointerId !== event.pointerId || !onVolumeChange) return;
@@ -368,6 +405,48 @@ export default function ConceptDerivedFacade({
           <rect width="5" height="3.4" fill={colors.accent} />
           <path d="M0 1.7 H5 M2.5 0 V1.7 M1.2 1.7 V3.4 M4 1.7 V3.4" stroke="#ffffff" strokeOpacity="0.13" strokeWidth="0.22" />
         </pattern>
+        <linearGradient id="facade-sky-day" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#cfdfeb" />
+          <stop offset="70%" stopColor="#eef3f6" />
+          <stop offset="100%" stopColor="#f6f4ef" />
+        </linearGradient>
+        <linearGradient id="facade-sky-sunset" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#8a9bc0" />
+          <stop offset="45%" stopColor="#f2b389" />
+          <stop offset="100%" stopColor="#fbe3c8" />
+        </linearGradient>
+        <linearGradient id="facade-sky-night" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#0b1526" />
+          <stop offset="75%" stopColor="#1c2a43" />
+          <stop offset="100%" stopColor="#2a3651" />
+        </linearGradient>
+        <linearGradient id="facade-glass-night" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#ffd28a" />
+          <stop offset="60%" stopColor="#f4b25e" />
+          <stop offset="100%" stopColor="#c9843c" />
+        </linearGradient>
+        <linearGradient id="facade-glass-sunset" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#f1c7a3" />
+          <stop offset="40%" stopColor="#8e8e99" />
+          <stop offset="100%" stopColor="#353b47" />
+        </linearGradient>
+        <linearGradient id="facade-wall-light" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.14" />
+          <stop offset="55%" stopColor="#ffffff" stopOpacity="0" />
+          <stop offset="100%" stopColor="#000000" stopOpacity="0.07" />
+        </linearGradient>
+        <linearGradient id="facade-eave-shadow" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#000000" stopOpacity="0.2" />
+          <stop offset="100%" stopColor="#000000" stopOpacity="0" />
+        </linearGradient>
+        <linearGradient id="facade-uplight" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0%" stopColor="#ffe3ad" stopOpacity="0.55" />
+          <stop offset="100%" stopColor="#ffe3ad" stopOpacity="0" />
+        </linearGradient>
+        <radialGradient id="facade-ground-shadow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="#000000" stopOpacity="0.28" />
+          <stop offset="100%" stopColor="#000000" stopOpacity="0" />
+        </radialGradient>
         <filter id="derived-facade-shadow" x="-20%" y="-30%" width="140%" height="180%">
           <feDropShadow dx="0" dy="2.2" stdDeviation="2.1" floodColor="#475569" floodOpacity="0.22" />
         </filter>
@@ -376,15 +455,36 @@ export default function ConceptDerivedFacade({
         </filter>
       </defs>
 
-      <rect x="0" y={facadeViewY} width="140" height={facadeViewHeight} fill={lineMode ? "#fff" : "url(#derived-sky)"} />
+      {/* Céu e chão se estendem além do quadro para preencher as sobras quando a tela é mais larga ou mais alta */}
+      <rect x="-200" y={facadeViewY - 200} width="540" height={groundY - facadeViewY + 200} fill={lineMode ? "#fff" : `url(#facade-sky-${lighting})`} />
+      {!lineMode && <rect x="-200" y={groundY} width="540" height="200" fill={night ? "#1b2433" : sunset ? "#efe1cf" : "#ecebe6"} />}
+      {night && <g pointerEvents="none" fill="#ffffff">
+        <circle cx="131" cy={facadeViewY + 4} r="1.8" fillOpacity="0.85" />
+        {[[22, 4], [38, 9], [57, 5], [76, 11], [95, 6], [131, 12]].map(([sx, sy]) => (
+          <circle key={`${sx}-${sy}`} cx={sx} cy={facadeViewY + sy} r="0.28" fillOpacity="0.7" />
+        ))}
+      </g>}
+      {sunset && <circle cx="120" cy={groundY - 6} r="7" fill="#ffd8a8" fillOpacity="0.55" pointerEvents="none" />}
 
       {/* Calçada e linha do terreno */}
       <rect x="0" y={groundY} width="140" height={0.45 * scaleX} fill={lineMode ? "url(#technical-paving)" : pavingFill} />
+      {!lineMode && <g pointerEvents="none">
+        <rect x="0" y={groundY} width="140" height={0.22 * scaleX} fill={night ? "#23332a" : "#86a672"} />
+        {derivedFacade.garageRange && (() => {
+          const start = Math.min(derivedFacade.garageRange.start, derivedFacade.garageRange.end);
+          const end = Math.max(derivedFacade.garageRange.start, derivedFacade.garageRange.end);
+          return <rect x={rangeX(start, end)} y={groundY} width={(end - start) * scaleX} height={0.22 * scaleX} fill={pavingFill} />;
+        })()}
+        {entranceOpening && <rect x={mapX(entranceOpening.axis) - (entranceOpening.width / 2 + 0.3) * scaleX} y={groundY}
+          width={(entranceOpening.width + 0.6) * scaleX} height={0.22 * scaleX} fill={pavingFill} />}
+        <rect x={baseX - 2} y={groundY - 0.35 * scaleX} width={facadeWidth + 4} height={0.7 * scaleX} fill="url(#facade-ground-shadow)" />
+        {night && <rect x="0" y={groundY} width="140" height={0.45 * scaleX} fill="#0b1220" fillOpacity="0.45" />}
+      </g>}
       <path d={`M0 ${groundY} H140`} stroke="#64748b" strokeWidth="0.35" />
 
       {/* Paisagismo atrás da casa (árvores de fundo) */}
       {showTrees && !lineMode && trees.filter((tree) => tree.back).map((tree) => (
-        <Tree key={`back-${tree.x}`} x={tree.x} ground={groundY} scale={scaleX} height={tree.height} line={lineMode} back />
+        <Tree key={`back-${tree.x}`} x={tree.x} ground={groundY} scale={scaleX} height={tree.height} line={lineMode} back night={night} />
       ))}
 
       {/* Pavimentos */}
@@ -396,6 +496,11 @@ export default function ConceptDerivedFacade({
           <rect x={x} y={top} width={w} height={storyHeight}
             fill={mainFill} stroke={selectedSurface === "main" ? "#f97316" : "#334155"} strokeWidth="0.45"
             onClick={(event) => { event.stopPropagation(); onSelectSurface?.("main"); }} />
+          {!lineMode && <g pointerEvents="none">
+            <rect x={x} y={top} width={w} height={storyHeight} fill="url(#facade-wall-light)" />
+            <rect x={x} y={top} width={w} height={0.45 * scaleX} fill="url(#facade-eave-shadow)" />
+            {story.floor === 0 && <rect x={x} y={groundY - 0.22 * scaleX} width={w} height={0.22 * scaleX} fill={colors.wallShade} fillOpacity="0.9" />}
+          </g>}
           {story.floor < derivedFacade.floors - 1 && (
             <rect x={x - 0.08 * scaleX} y={top - 0.12 * scaleX} width={w + 0.16 * scaleX} height={0.24 * scaleX}
               fill={lineMode ? "#fff" : colors.wallShade} stroke="#334155" strokeWidth="0.3" />
@@ -410,6 +515,7 @@ export default function ConceptDerivedFacade({
         const top = buildingTop - (facade.roof === "platibanda" ? 0.9 * scaleX : 0);
         return <rect x={x} y={top} width={panelWidth} height={groundY - top}
           fill={lineMode ? "url(#technical-accent)" : `url(#facade-material-${design?.surfaceMaterials.accent ?? "wood-natural"})`}
+          filter={lineMode ? undefined : "url(#derived-facade-shadow)"}
           stroke={selectedSurface === "accent" ? "#f97316" : "#334155"} strokeWidth="0.4"
           onClick={(event) => { event.stopPropagation(); onSelectSurface?.("accent"); }} />;
       })()}
@@ -442,6 +548,7 @@ export default function ConceptDerivedFacade({
         return <g onClick={(event) => { event.stopPropagation(); onSelectSurface?.("garage"); }}>
           <rect x={x} y={groundY - h} width={w} height={h} fill={lineMode ? "#fff" : garageFill}
             stroke={selectedSurface === "garage" ? "#f97316" : "#334155"} strokeWidth="0.45" />
+          {!lineMode && <rect x={x} y={groundY - h} width={w} height={0.28 * scaleX} fill="url(#facade-eave-shadow)" pointerEvents="none" />}
           {Array.from({ length: slats - 1 }, (_, index) => {
             const lx = x + (w / slats) * (index + 1);
             return <line key={index} x1={lx} y1={groundY - h + 0.08 * scaleX} x2={lx} y2={groundY - 0.05 * scaleX}
@@ -453,6 +560,34 @@ export default function ConceptDerivedFacade({
       {/* Volumes de composição escolhidos pelo usuário */}
       {elevationVolumes.map(renderVolume)}
 
+      <Roof x={roofX} y={roofY} width={roofW} facade={facade} scale={scaleX}
+        color={lineMode ? "#fff" : colors.roof} wall={mainFill} line={lineMode} />
+
+      {/* Luz ambiente: fim de tarde aquece, noite escurece a casa (as janelas acesas vêm por cima) */}
+      {(night || sunset) && (() => {
+        const parapet = 1.0 * scaleX;
+        const rise = Math.min(1.8 * scaleX, roofW * 0.2);
+        const eave = 0.6 * scaleX;
+        const roofStart = facade.roof === "misto" ? roofX + roofW * 0.45 : roofX;
+        return <>
+          <clipPath id="facade-ambient-clip">
+            {derivedFacade.stories.map((story) => (
+              <rect key={story.floor} x={rangeX(story.minAxis, story.maxAxis) - 0.1} y={groundY - (story.floor + 1) * storyHeight}
+                width={(story.maxAxis - story.minAxis) * scaleX + 0.2} height={storyHeight} />
+            ))}
+            {(facade.roof === "platibanda" || facade.roof === "misto") && (
+              <rect x={roofX - 0.06 * scaleX} y={roofY - parapet} width={(facade.roof === "misto" ? roofW * 0.45 : roofW) + 0.12 * scaleX} height={parapet} />
+            )}
+            {facade.roof !== "platibanda" && (
+              <path d={`M${roofStart - eave} ${roofY + 0.05 * scaleX} L${roofStart + (roofX + roofW - roofStart) / 2} ${roofY - rise} L${roofX + roofW + eave} ${roofY + 0.05 * scaleX} Z`} />
+            )}
+          </clipPath>
+          <rect x={baseX - 20} y={roofY - rise - parapet - 2} width={facadeWidth + 40} height={groundY - roofY + rise + parapet + 2}
+            clipPath="url(#facade-ambient-clip)" pointerEvents="none"
+            fill={night ? "#0b1220" : "#f59e0b"} fillOpacity={night ? 0.5 : 0.1} />
+        </>;
+      })()}
+
       {/* Portas e janelas */}
       {frontOpenings.map((opening) => {
         const width = opening.width * scaleX;
@@ -463,12 +598,17 @@ export default function ConceptDerivedFacade({
         return <g key={`${opening.floor}-${opening.id}`}
           onClick={(event) => { event.stopPropagation(); onSelectSurface?.(opening.type === "door" ? "entrance" : "frames"); }}>
           {opening.type === "window"
-            ? <Window x={x} y={y} width={width} height={height} frame={frameColor} id={glassPatternId} sill={opening.sillHeight > 0.3} />
+            ? <Window x={x} y={y} width={width} height={height} frame={frameColor} id={glassPatternId} sill={opening.sillHeight > 0.3} depth={!lineMode} />
             : <g>
               <rect x={x} y={y} width={width} height={height} fill={entranceFill}
                 stroke={selectedSurface === "entrance" ? "#f97316" : frameColor} strokeWidth="0.55" />
-              <line x1={x + width * 0.82} y1={y + height * 0.38} x2={x + width * 0.82} y2={y + height * 0.62}
-                stroke={lineMode ? "#334155" : "#d4d4d8"} strokeWidth="0.45" strokeLinecap="round" />
+              {!lineMode && Array.from({ length: Math.max(3, Math.round(opening.width / 0.14)) - 1 }, (_, index) => {
+                const gx = x + (width / Math.max(3, Math.round(opening.width / 0.14))) * (index + 1);
+                return <line key={index} x1={gx} y1={y + 0.05 * scaleX} x2={gx} y2={y + height - 0.05 * scaleX} stroke="#000" strokeOpacity="0.14" strokeWidth="0.16" />;
+              })}
+              <line x1={x + width * 0.8} y1={y + height * 0.28} x2={x + width * 0.8} y2={y + height * 0.72}
+                stroke={lineMode ? "#334155" : "#d4d4d8"} strokeWidth={lineMode ? 0.45 : 0.55} strokeLinecap="round" />
+              {night && <rect x={x} y={y} width={width} height={height} fill="#0b1220" fillOpacity="0.35" pointerEvents="none" />}
             </g>}
           {entrance && !hasCanopyVolume && (
             <rect x={x - 0.7 * scaleX} y={groundY - 2.75 * scaleX} width={width + 1.4 * scaleX} height={0.16 * scaleX}
@@ -477,12 +617,25 @@ export default function ConceptDerivedFacade({
         </g>;
       })}
 
-      <Roof x={roofX} y={roofY} width={roofW} facade={facade} scale={scaleX}
-        color={lineMode ? "#fff" : colors.roof} wall={mainFill} line={lineMode} />
+
+      {night && <g pointerEvents="none">
+        {entranceOpening && (() => {
+          const cx = mapX(entranceOpening.axis);
+          return <>
+            <rect x={cx - (entranceOpening.width / 2 + 0.9) * scaleX} y={groundY - 2.7 * scaleX} width={0.5 * scaleX} height={2.7 * scaleX} fill="url(#facade-uplight)" />
+            <rect x={cx + (entranceOpening.width / 2 + 0.4) * scaleX} y={groundY - 2.7 * scaleX} width={0.5 * scaleX} height={2.7 * scaleX} fill="url(#facade-uplight)" />
+          </>;
+        })()}
+        {derivedFacade.stories.filter((story) => story.floor === 0).flatMap((story) => [story.minAxis + 0.5, story.maxAxis - 0.5]).map((axis) => (
+          <rect key={`wash-${axis}`} x={mapX(axis) - 0.3 * scaleX} y={groundY - 2.4 * scaleX} width={0.6 * scaleX} height={2.4 * scaleX} fill="url(#facade-uplight)" />
+        ))}
+      </g>}
+
+      {shrubs.map((axis) => <Shrub key={`shrub-${axis}`} x={mapX(axis)} ground={groundY} scale={scaleX} night={night} />)}
 
       {/* Paisagismo na frente */}
       {showTrees && trees.filter((tree) => !tree.back).map((tree) => (
-        <Tree key={`front-${tree.x}`} x={tree.x} ground={groundY} scale={scaleX} height={tree.height} line={lineMode} />
+        <Tree key={`front-${tree.x}`} x={tree.x} ground={groundY} scale={scaleX} height={tree.height} line={lineMode} night={night} />
       ))}
 
       <text data-render-ignore="true" x="70" y={groundY + 0.45 * scaleX + 4} textAnchor="middle" fontSize="1.65" fill="#667085">
