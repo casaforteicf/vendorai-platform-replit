@@ -474,8 +474,10 @@ router.post("/arch/concept-projects", authenticate, async (req, res) => {
   const userId = req.user?.sub;
   if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
 
+  // status e vínculo com o projeto só mudam pelo envio ao profissional, nunca pelo cliente.
+  const { status: _ignoredStatus, archProjetoId: _ignoredProject, ...body } = (req.body ?? {}) as Record<string, unknown>;
   const parsed = insertArchConceptProjectSchema.safeParse({
-    ...req.body,
+    ...body,
     tenantId: tid,
     ownerUserId: userId,
   });
@@ -507,6 +509,29 @@ router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
     status?: unknown;
     archProjetoId?: unknown;
   };
+
+  // O editor salva a configuração inteira a cada alteração e não conhece o link público do tour.
+  // Sem isto, o primeiro salvamento depois de compartilhar apagava o token e o link parava de abrir.
+  if (safeUpdates.configuration && typeof safeUpdates.configuration === "object") {
+    const [current] = await db
+      .select({ configuration: archConceptProjectsTable.configuration })
+      .from(archConceptProjectsTable)
+      .where(and(
+        eq(archConceptProjectsTable.id, id),
+        eq(archConceptProjectsTable.tenantId, tid),
+        eq(archConceptProjectsTable.ownerUserId, userId),
+      ))
+      .limit(1);
+    const currentConfig = (current?.configuration ?? {}) as Record<string, unknown>;
+    const incoming = { ...(safeUpdates.configuration as Record<string, unknown>) };
+    delete incoming.publicTourToken;
+    delete incoming.publicTourEnabled;
+    delete incoming.publicTourUpdatedAt;
+    for (const key of ["publicTourToken", "publicTourEnabled", "publicTourUpdatedAt"]) {
+      if (key in currentConfig) incoming[key] = currentConfig[key];
+    }
+    (safeUpdates as Record<string, unknown>).configuration = incoming;
+  }
 
   const [updated] = await db
     .update(archConceptProjectsTable)
@@ -606,18 +631,28 @@ REGRAS INEGOCIÁVEIS:
   try {
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 4200,
-      system: "Você é um arquiteto residencial sênior especialista em plantas de casas brasileiras. Responda somente com JSON válido.",
+      // Três plantas completas em JSON passavam de 4.200 tokens: a resposta vinha cortada,
+      // o JSON.parse quebrava e o usuário recebia erro 500 depois de ~1 minuto de espera.
+      max_tokens: 9000,
+      system: "Você é um arquiteto residencial sênior especialista em plantas de casas brasileiras. Responda somente com JSON válido, compacto, sem comentários nem texto fora do JSON.",
       messages: [{ role: "user", content: prompt }],
     });
     const raw = message.content
       .filter((item: any) => item.type === "text")
       .map((item: any) => item.text)
       .join("");
+    if ((message as any).stop_reason === "max_tokens") {
+      return res.status(422).json({ error: "A IA especialista gerou uma resposta longa demais. Tente novamente." });
+    }
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return res.status(422).json({ error: "A IA especialista não retornou uma planta válida." });
 
-    const decoded = JSON.parse(jsonMatch[0]) as any;
+    let decoded: any;
+    try {
+      decoded = JSON.parse(jsonMatch[0]);
+    } catch {
+      return res.status(422).json({ error: "A IA especialista devolveu uma planta incompleta. Tente novamente." });
+    }
     const requested = Array.isArray(decoded?.alternatives) ? decoded.alternatives : [];
     const allowedIds = new Set(["compact", "balanced", "integrated"]);
     const alternatives = requested
@@ -887,9 +922,12 @@ archPublicRouter.get("/arch/public-tour/:token", async (req, res) => {
     ...safeConfiguration
   } = configuration;
 
+  // O título pode trazer o nome do cliente ("Pré-projeto — Ana"); o tour é público.
+  const publicTitle = typeof concept.title === "string" && /^pré-projeto\s*[—-]/i.test(concept.title) ? "Pré-projeto" : concept.title;
+
   return res.json({
     id: concept.id,
-    title: concept.title,
+    title: publicTitle,
     lot: concept.lot,
     configuration: safeConfiguration,
     rooms: concept.rooms,
