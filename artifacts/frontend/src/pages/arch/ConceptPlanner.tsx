@@ -4737,29 +4737,6 @@ export default function ConceptPlanner() {
 
             {layoutIssues.length > 0 && (
               <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMobileValidationOpen(true);
-                    setLibraryOpen(false);
-                  }}
-                  className={blockingLayoutIssues.length > 0
-                    ? "absolute right-3 top-20 z-40 rounded-full border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-600 shadow md:hidden"
-                    : "absolute right-3 top-20 z-40 rounded-full border border-amber-200 bg-white px-3 py-2 text-xs font-bold text-amber-700 shadow md:hidden"}
-                >
-                  {blockingLayoutIssues.length > 0 ? `${blockingLayoutIssues.length} erro(s)` : `${layoutIssues.length} aviso(s)`}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setMobileValidationOpen(true)}
-                  className={blockingLayoutIssues.length > 0
-                    ? "absolute right-4 top-20 z-40 hidden rounded-xl border border-red-200 bg-white/95 px-3 py-2 text-xs font-bold text-red-700 shadow-lg backdrop-blur md:block"
-                    : "absolute right-4 top-20 z-40 hidden rounded-xl border border-amber-200 bg-white/95 px-3 py-2 text-xs font-bold text-amber-700 shadow-lg backdrop-blur md:block"}
-                >
-                  {blockingLayoutIssues.length > 0 ? `${blockingLayoutIssues.length} erro(s)` : `${layoutIssues.length} aviso(s)`}
-                </button>
-
                 {mobileValidationOpen && (
                   <div className="fixed inset-0 z-[80]">
                     <button
@@ -4785,17 +4762,29 @@ export default function ConceptPlanner() {
                         </button>
                       </div>
                       <div className="max-h-[calc(68vh-74px)] space-y-2 overflow-y-auto px-4 py-4">
-                        {layoutIssues.map((issue) => (
+                        {[...blockingLayoutIssues, ...layoutIssues.filter((issue) => issue.severity !== "error")].map((issue) => (
                           <div
                             key={issue.id}
                             className={issue.severity === "error"
                               ? "rounded-xl bg-red-50 px-3 py-3 text-sm text-red-700"
                               : "rounded-xl bg-amber-50 px-3 py-3 text-sm text-amber-900"}
                           >
+                            <div className="mb-1 text-xs font-bold">{issue.severity === "error" ? "Impede a geração" : "Recomendação"}</div>
                             {issue.message}
                             <button type="button" className="mt-2 block text-xs font-semibold underline" onClick={() => {
                               const floor = /^floor-(\d+)-|^opening-(\d+)-/.exec(issue.id);
                               if (floor) setActiveFloor(Number(floor[1] ?? floor[2]));
+                              setSelectedId(issue.roomId ?? null);
+                              setSelectedObjectId(null);
+                              setSelectedOpeningId(null);
+                              if (issue.id.startsWith("opening-")) setSelectedOpeningId(issue.id.replace(/^opening-\d+-/, ""));
+                              if (issue.id.startsWith("object-")) {
+                                const objectId = issue.id.slice("object-".length);
+                                const object = safeObjects.find((item) => item.id === objectId);
+                                if (object) { setActiveFloor(object.floor); setSelectedObjectId(objectId); }
+                              }
+                              setEditorLibraryTab("build");
+                              setLibraryOpen(false);
                               setEditorView(issue.id.startsWith("volume-") ? "facade" : "plan");
                               setMobileValidationOpen(false);
                             }}>
@@ -4985,6 +4974,12 @@ export default function ConceptPlanner() {
                     </button>
                   ))}
                 </div>
+              )}
+              {layoutIssues.length > 0 && (
+                <button type="button" onClick={() => setMobileValidationOpen(true)}
+                  className={`min-h-10 shrink-0 rounded-xl border px-3 text-xs font-bold ${blockingLayoutIssues.length ? "border-red-200 bg-red-50 text-red-700" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+                  {blockingLayoutIssues.length > 0 ? `${blockingLayoutIssues.length} erro(s)` : `${layoutIssues.length} aviso(s)`}
+                </button>
               )}
               {conceptJourneyContinueLabel(journeyIndex) && (
                 <button
@@ -6368,7 +6363,7 @@ export default function ConceptPlanner() {
                         closedSpaceLabels={Object.fromEntries(
                           closedSpaces.map((space) => [
                             space.id,
-                            spaceAssignments.get(space.id)?.label ?? "",
+                            spaceAssignments.get(space.id)?.label || modelLevels.find((level) => level.floor === activeFloor)?.labels[space.id] || "",
                           ]),
                         )}
                         selectedId={selectedId}
@@ -7890,5 +7885,6 @@ export default function ConceptPlanner() {
     </div>
   );
 }
+
 
 

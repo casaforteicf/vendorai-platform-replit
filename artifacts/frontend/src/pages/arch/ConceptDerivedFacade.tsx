@@ -241,6 +241,7 @@ export default function ConceptDerivedFacade({
       className="block h-full w-full"
       role="img"
       aria-label="Fachada arquitetônica conceitual derivada do pré-projeto"
+        letterSpacing="normal"
     >
       <defs>
         <pattern id="technical-wall" width="7" height="7" patternUnits="userSpaceOnUse">
@@ -352,3 +353,4 @@ export default function ConceptDerivedFacade({
     </svg>
   );
 }
+

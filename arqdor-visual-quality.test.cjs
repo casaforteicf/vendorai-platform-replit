@@ -14,7 +14,7 @@ const base = path.join(__dirname, 'artifacts/frontend/src/pages/arch');
 const { buildDerivedFacadeModel } = require(path.join(base, 'conceptFacadeGeometry.ts'));
 const { inspectConceptVisualQuality } = require(path.join(base, 'conceptVisualQuality.ts'));
 const { conceptReferenceSize } = require(path.join(base, 'conceptReferenceImage.ts'));
-const { buildFacadeMeshBoxes } = require(path.join(base, 'conceptFacadeMeshes.ts'));
+const { buildFacadeMeshBoxes, facadeBoxFaces } = require(path.join(base, 'conceptFacadeMeshes.ts'));
 const { DEFAULT_FACADE_DESIGN } = require(path.join(base, 'conceptFacadeDesign.ts'));
 const placement = { frontSide: 'top', setbackFront: 0, setbackRear: 0, setbackLeft: 0, setbackRight: 0 };
 const room = (floor, x = 0, y = 0, width = 10) => ({ id: `room-${floor}`, kind: 'sala', label: 'Sala', floor, x, y, width, depth: 5 });
@@ -98,4 +98,25 @@ test('facade component renders all storeys without inventing windows or entrance
   const storeys = [...svg.matchAll(/<rect[^>]*width="([^"]+)"[^>]*height="([^"]+)"/g)].filter((match) => Math.abs(Number(match[1]) - 106) < 1e-6 && Math.abs(Number(match[2]) - 31.376) < 1e-6);
   assert.equal(storeys.length, 3);
   assert.equal((svg.match(/fill="url\(#technical-glass\)"/g) || []).length, 0);
+});
+
+
+
+test('compatible 3D preserves each facade box on every street side without filling a portal', () => {
+  const design = { ...DEFAULT_FACADE_DESIGN, volumes: [{ id: 'portal', kind: 'portal', x: 20, y: 0, width: 30, height: 100, depth: 0.4, materialId: 'concrete-light' }] };
+  for (const side of ['top', 'bottom', 'left', 'right']) {
+    const boxes = buildFacadeMeshBoxes(design, { minX: 2, maxX: 12, minZ: 3, maxZ: 23 }, 5.92, side);
+    assert.equal(boxes.length, 3);
+    for (const box of boxes) {
+      const vertices = facadeBoxFaces(box).flat();
+      const extent = key => Math.max(...vertices.map(p => p[key])) - Math.min(...vertices.map(p => p[key]));
+      assert.ok(Math.abs(extent('x') - box.width) < 1e-9);
+      assert.ok(Math.abs(extent('y') - box.depth) < 1e-9);
+      assert.ok(Math.abs(extent('z') - box.height) < 1e-9);
+      assert.ok(vertices.every(p => p.z >= 0 && p.z <= 5.92));
+    }
+    const lintel = boxes[0];
+    const center = { x: lintel.x, z: lintel.z, y: 2.96 };
+    assert.ok(boxes.every(box => !(Math.abs(center.x - box.x) < box.width / 2 && Math.abs(center.z - box.z) < box.depth / 2 && Math.abs(center.y - box.y) < box.height / 2)));
+  }
 });

@@ -1,4 +1,5 @@
 import type { SiteFrontSide } from "./conceptSitePlacement";
+import { buildFacadeMeshBoxes, facadeBoxFaces } from "./conceptFacadeMeshes";
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 import { Layers3, Maximize2, RotateCcw, RotateCw, Sparkles, ZoomIn, ZoomOut } from "lucide-react";
 import type { OpeningMarker, WallSegment } from "./conceptGeometry";
@@ -411,7 +412,7 @@ function splitWallForOpenings(
     })
     .map((opening) => {
       const along = vertical ? opening.y : opening.x;
-      const width = Math.max(0.5, opening.width ?? (opening.type === "door" ? 0.95 : 1.35));
+      const width = Math.max(0.05, opening.width ?? (opening.type === "door" ? 0.9 : 1.2));
       return {
         ...opening,
         start: Math.max(wallStart, along - width / 2),
@@ -446,12 +447,12 @@ function splitWallForOpenings(
     const openingSegment = makeSegment(opening.start, opening.end);
     if (openingSegment) {
       const openingHeight = Math.max(
-        0.5,
+        0.05,
         Math.min(WALL_HEIGHT, opening.height ?? (opening.type === "door" ? 2.1 : 1.2)),
       );
       const sillHeight = opening.type === "door"
         ? 0
-        : Math.max(0, Math.min(WALL_HEIGHT - 0.3, opening.sillHeight ?? 0.9));
+        : Math.max(0, Math.min(WALL_HEIGHT, opening.sillHeight ?? 0.9));
       const headHeight = Math.min(WALL_HEIGHT, sillHeight + openingHeight);
 
       if (sillHeight > 0.04) {
@@ -987,15 +988,22 @@ export default function ConceptModel3D({
 
   const exteriorMaterial = getFacadeMaterial(facadeDesign?.surfaceMaterials.main);
   const accentMaterial = getFacadeMaterial(facadeDesign?.surfaceMaterials.accent);
-  const allSpaces = levels.flatMap((level) => level.closedSpaces);
-  const buildingBounds = allSpaces.length
-    ? {
-        minX: Math.min(...allSpaces.map((space) => space.bounds.x)),
-        maxX: Math.max(...allSpaces.map((space) => space.bounds.x + space.bounds.width)),
-        minY: Math.min(...allSpaces.map((space) => space.bounds.y)),
-        maxY: Math.max(...allSpaces.map((space) => space.bounds.y + space.bounds.height)),
-      }
-    : { minX: frameBounds.minX, maxX: frameBounds.maxX, minY: frameBounds.minY, maxY: frameBounds.maxY };
+  const buildingBounds = useMemo(() => {
+    const coordinates = levels.flatMap((level) => [
+      ...[...level.walls, ...level.customWalls].flatMap((wall) => [
+        { x: wall.x1, y: wall.y1 }, { x: wall.x2, y: wall.y2 },
+      ]),
+      ...level.closedSpaces.flatMap((space) => space.cells.flatMap((cell) => [
+        { x: cell.x, y: cell.y }, { x: cell.x + cell.width, y: cell.y + cell.height },
+      ])),
+    ]).filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+    return coordinates.length ? {
+      minX: Math.min(...coordinates.map((point) => point.x)),
+      maxX: Math.max(...coordinates.map((point) => point.x)),
+      minY: Math.min(...coordinates.map((point) => point.y)),
+      maxY: Math.max(...coordinates.map((point) => point.y)),
+    } : { minX: 0, maxX: lotWidth, minY: 0, maxY: lotDepth };
+  }, [levels, lotWidth, lotDepth]);
 
   const lightingPalette = lightingMode === "night"
     ? {
@@ -1733,6 +1741,7 @@ export default function ConceptModel3D({
         className={`block h-[calc(100dvh-64px)] min-h-[620px] w-full touch-none select-none transition-opacity ${webglReady ? "pointer-events-none opacity-0" : "opacity-100"} ${paintTool ? "cursor-crosshair" : cameraPan || orbitGesture ? "cursor-grabbing" : "cursor-grab"}`}
         role="img"
         aria-label="Modelo tridimensional conceitual da planta"
+        letterSpacing="normal"
       >
         <defs>
           <linearGradient id="concept3d-floor" x1="0" y1="0" x2="1" y2="1">
@@ -1826,6 +1835,7 @@ export default function ConceptModel3D({
 
         {visibleLevels.map((level) => {
           const levelBase = level.floor * LEVEL_HEIGHT;
+          const wallBase = levelBase + FLOOR_THICKNESS;
           const allWalls = [
             ...level.walls.map((wall) => ({
               id: wall.id,
@@ -1899,8 +1909,8 @@ export default function ConceptModel3D({
                     const shape = wallPolygon(
                       piece.wall,
                       rotation, projectionWidth, projectionDepth, zoom,
-                      levelBase + piece.zMin,
-                      levelBase + piece.zMax,
+                      wallBase + piece.zMin,
+                      wallBase + piece.zMax,
                     );
                     const selectedWallMaterial = wall3dMaterial(level.wallMaterials?.[wall.id]);
                     return (
@@ -1944,11 +1954,11 @@ export default function ConceptModel3D({
               </g>
 
               {level.openings.map((opening) => {
-                const width = Math.max(0.5, opening.width ?? (opening.type === "door" ? 0.95 : 1.35));
-                const height = Math.max(0.5, Math.min(WALL_HEIGHT, opening.height ?? (opening.type === "door" ? 2.1 : 1.2)));
+                const width = Math.max(0.05, opening.width ?? (opening.type === "door" ? 0.9 : 1.2));
+                const height = Math.max(0.05, Math.min(WALL_HEIGHT, opening.height ?? (opening.type === "door" ? 2.1 : 1.2)));
                 const sill = opening.type === "door"
-                  ? 0.02
-                  : Math.max(0, Math.min(WALL_HEIGHT - 0.3, opening.sillHeight ?? 0.9));
+                  ? 0
+                  : Math.max(0, Math.min(WALL_HEIGHT, opening.sillHeight ?? 0.9));
                 const segment = opening.orientation === "vertical"
                   ? {
                       x1: opening.x,
@@ -1970,15 +1980,15 @@ export default function ConceptModel3D({
                   projectionWidth,
                   projectionDepth,
                   zoom,
-                  levelBase + sill,
-                  levelBase + Math.min(WALL_HEIGHT, sill + height),
+                  wallBase + sill,
+                  wallBase + Math.min(WALL_HEIGHT, sill + height),
                 );
                 const selected = selectedOpeningId === opening.id;
                 const isDoor = opening.type === "door";
                 const frameColor = lightingMode === "night" ? "#e2e8f0" : "#334155";
                 const rail = Math.min(0.08, Math.max(0.035, width * 0.06));
-                const zMin = levelBase + sill;
-                const zMax = levelBase + Math.min(WALL_HEIGHT, sill + height);
+                const zMin = wallBase + sill;
+                const zMax = wallBase + Math.min(WALL_HEIGHT, sill + height);
                 const frameSegments = opening.orientation === "vertical"
                   ? [
                       { x1: opening.x, y1: opening.y - width / 2, x2: opening.x, y2: opening.y - width / 2 + rail, thickness: 0.055, z0: zMin, z1: zMax },
@@ -2339,30 +2349,22 @@ export default function ConceptModel3D({
             );
           })}
 
-        {showAllFloors && !interiorMode && facadeDesign?.volumes.map((volume) => {
-          const x1 = buildingBounds.minX + buildingWidth * (volume.x / 100);
-          const x2 = Math.min(buildingBounds.maxX, x1 + buildingWidth * (volume.width / 100));
-          const y = buildingBounds.minY - Math.max(0.08, volume.depth);
-          const zTop = Math.max(0.2, totalBuildingHeight * (1 - volume.y / 100));
-          const zBottom = Math.max(0, totalBuildingHeight * (1 - (volume.y + volume.height) / 100));
-          const shape = wallPolygon(
-            {
-              x1,
-              y1: y,
-              x2: Math.max(x1 + 0.25, x2),
-              y2: y,
-              thickness: Math.max(0.12, volume.depth),
-            },
-            rotation, projectionWidth, projectionDepth, zoom,
-            zBottom,
-            Math.max(zBottom + 0.18, zTop),
-          );
-          const material = getFacadeMaterial(volume.materialId);
+        {showAllFloors && !interiorMode && facadeDesign && buildFacadeMeshBoxes(
+          facadeDesign,
+          { minX: buildingBounds.minX, maxX: buildingBounds.maxX, minZ: buildingBounds.minY, maxZ: buildingBounds.maxY },
+          totalBuildingHeight,
+          frontSide,
+        ).map((box, boxIndex) => {
+          const material = getFacadeMaterial(box.materialId);
+          const faces = facadeBoxFaces(box).map((face) => face.map((point) =>
+            project(point, rotation, projectionWidth, projectionDepth, zoom),
+          )).sort((a, b) => a.reduce((sum, p) => sum + p.y, 0) - b.reduce((sum, p) => sum + p.y, 0));
           return (
-            <g key={`facade-volume-3d-${volume.id}`} opacity={volume.opacity ?? 1}>
-              <polygon points={points(shape.sideA)} fill={material.baseColor} stroke={material.lineColor} strokeWidth="0.06" />
-              <polygon points={points(shape.sideB)} fill={material.shadeColor} stroke={material.lineColor} strokeWidth="0.06" />
-              <polygon points={points(shape.top)} fill={material.baseColor} stroke={material.lineColor} strokeWidth="0.06" />
+            <g key={`facade-volume-3d-${box.id}-${boxIndex}`} opacity={box.opacity}>
+              {faces.map((face, index) => (
+                <polygon key={index} points={points(face)} fill={index % 2 ? material.shadeColor : material.baseColor}
+                  stroke={material.lineColor} strokeWidth="0.025" />
+              ))}
             </g>
           );
         })}

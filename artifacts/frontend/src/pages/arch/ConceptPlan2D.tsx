@@ -1263,6 +1263,7 @@ export default function ConceptPlan2D({
         preserveAspectRatio="xMidYMid meet"
         role="img"
         aria-label="Planta conceitual arquitetônica"
+        letterSpacing="normal"
       >
         <defs>
           <pattern id="concept-grid" width="1" height="1" patternUnits="userSpaceOnUse">
