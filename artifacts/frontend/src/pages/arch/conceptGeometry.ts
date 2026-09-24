@@ -174,6 +174,7 @@ export function buildConceptGeometry(
   lotWidth: number,
   lotDepth: number,
   floor: number,
+  frontSide: "top" | "bottom" | "left" | "right" = "top",
 ): ConceptGeometry {
   const floorRooms = (Array.isArray(rooms) ? rooms : []).filter((room) => room.floor === floor && room.kind !== "piscina");
   const wallMap = new Map<string, WallSegment>();
@@ -301,13 +302,19 @@ export function buildConceptGeometry(
         : side === "left" ? room.x
           : side === "right" ? lotWidth - (room.x + room.width)
             : lotDepth - (room.y + room.depth);
-      return { side, best, length: best ? best[1] - best[0] : 0, boundary };
+      // Preferência de fachada: primeiro o lado da rua, depois os fundos, por último as laterais.
+      const opposite = { top: "bottom", bottom: "top", left: "right", right: "left" }[frontSide];
+      const facing = side === frontSide ? 2 : side === opposite ? 1 : 0;
+      return { side, best, length: best ? best[1] - best[0] : 0, boundary, facing };
     }).filter((item) => item.length >= 0.8)
       // Código Civil, art. 1.301: janela a menos de 1,5 m da divisa não pode. Entre os lados
       // permitidos, fica o que tem mais espaço livre à frente (normalmente a frente ou os fundos),
       // e não mais o lado mais próximo da divisa — que jogava todas as janelas nas laterais.
       .sort((left, right) => (right.boundary >= MIN_WINDOW_SETBACK - EPS ? 1 : 0) - (left.boundary >= MIN_WINDOW_SETBACK - EPS ? 1 : 0)
         || (right.length >= spec.width + 0.4 ? 1 : 0) - (left.length >= spec.width + 0.4 ? 1 : 0)
+        // Antes vencia o lado com mais espaço livre: em lote largo as janelas da frente iam todas
+        // para as laterais e a fachada ficava cega.
+        || right.facing - left.facing
         || right.boundary - left.boundary
         || right.length - left.length);
 

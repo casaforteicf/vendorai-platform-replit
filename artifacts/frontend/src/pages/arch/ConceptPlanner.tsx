@@ -2200,8 +2200,8 @@ export default function ConceptPlanner() {
   };
 
   const baseGeometry = useMemo(
-    () => buildConceptGeometry(rooms, lotWidth, lotDepth, activeFloor),
-    [rooms, lotWidth, lotDepth, activeFloor],
+    () => buildConceptGeometry(rooms, lotWidth, lotDepth, activeFloor, normalizeSitePlacement(sitePlacement).frontSide),
+    [rooms, lotWidth, lotDepth, activeFloor, sitePlacement],
   );
   const activateWallFirstFloor = () => {
     if (wallFirstActive) return;
@@ -2468,7 +2468,7 @@ export default function ConceptPlanner() {
 
   const modelLevels = useMemo<ConceptModelLevel[]>(() => {
     return Array.from({ length: floors }, (_, floorIndex) => {
-      const base = buildConceptGeometry(safeRooms, lotWidth, lotDepth, floorIndex);
+      const base = buildConceptGeometry(safeRooms, lotWidth, lotDepth, floorIndex, normalizeSitePlacement(sitePlacement).frontSide);
       const floorGeometry = {
         ...base,
         openings: base.openings.map((opening) => {
@@ -2578,7 +2578,7 @@ export default function ConceptPlanner() {
           })),
       };
     });
-  }, [floors, safeRooms, lotWidth, lotDepth, openingOverrides, safeCustomWalls, safeCustomOpenings, safeSpaceProfiles, safeWallFirstFloors, wallMaterials]);
+  }, [floors, safeRooms, lotWidth, lotDepth, openingOverrides, safeCustomWalls, safeCustomOpenings, safeSpaceProfiles, safeWallFirstFloors, wallMaterials, sitePlacement]);
 
   const selectedClosedSpace = closedSpaces.find((space) => space.id === selectedClosedSpaceId) ?? null;
   const selectedSpaceProfile = selectedClosedSpace ? spaceAssignments.get(selectedClosedSpace.id) ?? null : null;
