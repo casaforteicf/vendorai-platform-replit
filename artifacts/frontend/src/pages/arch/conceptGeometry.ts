@@ -61,6 +61,114 @@ function keyOf(x1: number, y1: number, x2: number, y2: number) {
     : `${bx}:${by}:${ax}:${ay}`;
 }
 
+const PRIVATE_BATH = /(su[ií]te|master)/i;
+const MIN_WINDOW_SETBACK = 1.5;
+
+function lower(value: string | undefined) {
+  return (value ?? "").toLocaleLowerCase("pt-BR");
+}
+
+function isCloset(room: ConceptRoomShape) {
+  return /closet/.test(lower(room.label));
+}
+
+function isLavabo(room: ConceptRoomShape) {
+  return room.kind === "banheiro" && /lavabo/.test(lower(room.label));
+}
+
+function isPrivateBath(room: ConceptRoomShape) {
+  return room.kind === "banheiro" && PRIVATE_BATH.test(room.label ?? "");
+}
+
+function isVeranda(room: ConceptRoomShape) {
+  return /varanda|sacada/.test(lower(room.label));
+}
+
+function circulationLike(kind: string) {
+  return kind === "circulacao" || kind === "escada";
+}
+
+const OPEN_PAIRS = new Set([
+  "sala|cozinha", "sala|gourmet", "sala|garagem", "sala|quarto", "sala|banheiro",
+  "cozinha|lavanderia", "cozinha|gourmet", "cozinha|garagem",
+  "lavanderia|garagem", "lavanderia|gourmet", "gourmet|garagem",
+]);
+
+function doorAllowed(a: ConceptRoomShape, b: ConceptRoomShape, floorRooms: ConceptRoomShape[]) {
+  if (a.kind === "piscina" || b.kind === "piscina") return false;
+
+  if (isCloset(a) || isCloset(b)) {
+    const other = isCloset(a) ? b : a;
+    return other.kind === "suite";
+  }
+  if (isPrivateBath(a) || isPrivateBath(b)) {
+    const bath = isPrivateBath(a) ? a : b;
+    const other = bath === a ? b : a;
+    if (other.kind !== "suite") return false;
+    const bathLabel = lower(bath.label);
+    const owners = floorRooms.filter((room) => room.kind === "suite" && bathLabel.includes(lower(room.label)));
+    return owners.length === 0 || owners.some((room) => room.id === other.id);
+  }
+  if (isLavabo(a) || isLavabo(b)) {
+    const other = isLavabo(a) ? b : a;
+    return other.kind === "sala" || circulationLike(other.kind);
+  }
+  if (isVeranda(a) || isVeranda(b)) {
+    const other = isVeranda(a) ? b : a;
+    return ["sala", "gourmet", "suite", "quarto"].includes(other.kind) || circulationLike(other.kind);
+  }
+  if (circulationLike(a.kind) || circulationLike(b.kind)) return true;
+  if (a.kind === b.kind) return a.kind === "sala" || a.kind === "outro";
+  if (a.kind === "outro" || b.kind === "outro") return true;
+  const key = [a.kind, b.kind].sort().join("|");
+  return OPEN_PAIRS.has(key) || OPEN_PAIRS.has([b.kind, a.kind].join("|")) || OPEN_PAIRS.has([a.kind, b.kind].join("|"));
+}
+
+type WindowSpec = { width: number; height: number; sill: number; style: OpeningMarker["openingStyle"] };
+
+function windowSpec(room: ConceptRoomShape): WindowSpec | null {
+  if (isCloset(room) || isVeranda(room) || /dep[oó]sito|despensa/.test(lower(room.label))) return null;
+  switch (room.kind) {
+    case "sala": return { width: 2.4, height: 2.1, sill: 0, style: "sliding" };
+    case "gourmet": return { width: 3.0, height: 2.1, sill: 0, style: "sliding" };
+    case "suite": return { width: 1.8, height: 1.2, sill: 1.0, style: "sliding" };
+    case "quarto": return { width: 1.5, height: 1.2, sill: 1.0, style: "sliding" };
+    case "cozinha": return { width: 1.5, height: 1.0, sill: 1.1, style: "sliding" };
+    case "banheiro": return { width: 0.8, height: 0.6, sill: 1.5, style: "tilt_turn" };
+    case "lavanderia": return { width: 1.0, height: 0.8, sill: 1.3, style: "tilt_turn" };
+    case "outro": return { width: 1.2, height: 1.2, sill: 1.0, style: "sliding" };
+    default: return null;
+  }
+}
+
+/** Trechos da parede de um lado do cômodo que não encostam em nenhum outro cômodo. */
+function freeIntervals(room: ConceptRoomShape, side: "top" | "bottom" | "left" | "right", floorRooms: ConceptRoomShape[]) {
+  const horizontal = side === "top" || side === "bottom";
+  const start = horizontal ? room.x : room.y;
+  const end = horizontal ? room.x + room.width : room.y + room.depth;
+  const covered: Array<[number, number]> = [];
+  for (const other of floorRooms) {
+    if (other.id === room.id) continue;
+    const touches = side === "top" ? nearly(other.y + other.depth, room.y)
+      : side === "bottom" ? nearly(other.y, room.y + room.depth)
+        : side === "left" ? nearly(other.x + other.width, room.x)
+          : nearly(other.x, room.x + room.width);
+    if (!touches) continue;
+    const a = Math.max(start, horizontal ? other.x : other.y);
+    const b = Math.min(end, horizontal ? other.x + other.width : other.y + other.depth);
+    if (b - a > EPS) covered.push([a, b]);
+  }
+  covered.sort((left, right) => left[0] - right[0]);
+  const free: Array<[number, number]> = [];
+  let cursor = start;
+  for (const [a, b] of covered) {
+    if (a - cursor > EPS) free.push([cursor, a]);
+    cursor = Math.max(cursor, b);
+  }
+  if (end - cursor > EPS) free.push([cursor, end]);
+  return free;
+}
+
 export function buildConceptGeometry(
   rooms: ConceptRoomShape[],
   lotWidth: number,
@@ -116,6 +224,10 @@ export function buildConceptGeometry(
 
   const openings: OpeningMarker[] = [];
 
+  // Portas: antes toda dupla de cômodos encostados ganhava porta (garagem→quarto, banheiro→cozinha,
+  // banho da suíte→corredor...). Agora só entre ambientes que fazem sentido se ligar. Se algum
+  // cômodo ficar sem nenhuma porta por essa regra (plantas livres), volta a regra antiga para ele.
+  const candidates: Array<{ a: ConceptRoomShape; b: ConceptRoomShape; marker: OpeningMarker; shared: number }> = [];
   for (let i = 0; i < floorRooms.length; i += 1) {
     const a = floorRooms[i];
     for (let j = i + 1; j < floorRooms.length; j += 1) {
@@ -124,84 +236,125 @@ export function buildConceptGeometry(
       if (nearly(a.x + a.width, b.x) || nearly(b.x + b.width, a.x)) {
         const yStart = Math.max(a.y, b.y);
         const yEnd = Math.min(a.y + a.depth, b.y + b.depth);
-        if (overlap(a.y, a.y + a.depth, b.y, b.y + b.depth) >= 0.8) {
-          openings.push({
+        const shared = overlap(a.y, a.y + a.depth, b.y, b.y + b.depth);
+        if (shared >= 0.8) {
+          candidates.push({ a, b, shared, marker: {
             id: `door-v-${a.id}-${b.id}`,
             type: "door",
             x: nearly(a.x + a.width, b.x) ? b.x : a.x,
             y: (yStart + yEnd) / 2,
             orientation: "vertical",
             roomId: a.id,
-          });
+          } });
         }
       }
 
       if (nearly(a.y + a.depth, b.y) || nearly(b.y + b.depth, a.y)) {
         const xStart = Math.max(a.x, b.x);
         const xEnd = Math.min(a.x + a.width, b.x + b.width);
-        if (overlap(a.x, a.x + a.width, b.x, b.x + b.width) >= 0.8) {
-          openings.push({
+        const shared = overlap(a.x, a.x + a.width, b.x, b.x + b.width);
+        if (shared >= 0.8) {
+          candidates.push({ a, b, shared, marker: {
             id: `door-h-${a.id}-${b.id}`,
             type: "door",
             x: (xStart + xEnd) / 2,
             y: nearly(a.y + a.depth, b.y) ? b.y : a.y,
             orientation: "horizontal",
             roomId: a.id,
-          });
+          } });
         }
       }
     }
   }
 
-  const windowKinds = new Set(["sala", "cozinha", "suite", "quarto", "gourmet", "outro"]);
+  const connected = new Set<string>();
+  for (const candidate of candidates) {
+    if (!doorAllowed(candidate.a, candidate.b, floorRooms)) continue;
+    openings.push(candidate.marker);
+    connected.add(candidate.a.id);
+    connected.add(candidate.b.id);
+  }
   for (const room of floorRooms) {
-    if (!windowKinds.has(room.kind)) continue;
-
-    const distances = [
-      { side: "top" as const, value: room.y },
-      { side: "left" as const, value: room.x },
-      { side: "right" as const, value: lotWidth - (room.x + room.width) },
-      { side: "bottom" as const, value: lotDepth - (room.y + room.depth) },
-    ].sort((a, b) => a.value - b.value);
-
-    const side = distances[0]?.side;
-    if (side === "top") {
-      openings.push({
-        id: `window-top-${room.id}`,
-        type: "window",
-        x: room.x + room.width / 2,
-        y: room.y,
-        orientation: "horizontal",
-        roomId: room.id,
-      });
-    } else if (side === "bottom") {
-      openings.push({
-        id: `window-bottom-${room.id}`,
-        type: "window",
-        x: room.x + room.width / 2,
-        y: room.y + room.depth,
-        orientation: "horizontal",
-        roomId: room.id,
-      });
-    } else if (side === "left") {
-      openings.push({
-        id: `window-left-${room.id}`,
-        type: "window",
-        x: room.x,
-        y: room.y + room.depth / 2,
-        orientation: "vertical",
-        roomId: room.id,
-      });
-    } else if (side === "right") {
-      openings.push({
-        id: `window-right-${room.id}`,
-        type: "window",
-        x: room.x + room.width,
-        y: room.y + room.depth / 2,
-        orientation: "vertical",
-        roomId: room.id,
-      });
+    if (connected.has(room.id)) continue;
+    const fallback = candidates
+      .filter((candidate) => candidate.a.id === room.id || candidate.b.id === room.id)
+      .sort((left, right) => right.shared - left.shared)[0];
+    if (fallback && !openings.some((opening) => opening.id === fallback.marker.id)) {
+      openings.push(fallback.marker);
+      connected.add(fallback.a.id);
+      connected.add(fallback.b.id);
     }
+  }
+
+  // Janelas: só em parede realmente externa (antes podiam cair numa parede interna), com medidas
+  // de projeto por ambiente — porta-janela na sala, peitoril de 1,00 m nos quartos, basculante no banho.
+  let entrancePlaced = false;
+  const entranceRooms = [...floorRooms].sort((left, right) => (left.kind === "sala" ? 0 : 1) - (right.kind === "sala" ? 0 : 1));
+  for (const room of entranceRooms) {
+    const spec = windowSpec(room);
+    if (!spec) continue;
+
+    const sides = (["top", "bottom", "left", "right"] as const).map((side) => {
+      const free = freeIntervals(room, side, floorRooms);
+      const best = free.sort((left, right) => (right[1] - right[0]) - (left[1] - left[0]))[0];
+      const boundary = side === "top" ? room.y
+        : side === "left" ? room.x
+          : side === "right" ? lotWidth - (room.x + room.width)
+            : lotDepth - (room.y + room.depth);
+      return { side, best, length: best ? best[1] - best[0] : 0, boundary };
+    }).filter((item) => item.length >= 0.8)
+      // Código Civil, art. 1.301: janela a menos de 1,5 m da divisa não pode. Entre os lados
+      // permitidos, fica o que tem mais espaço livre à frente (normalmente a frente ou os fundos),
+      // e não mais o lado mais próximo da divisa — que jogava todas as janelas nas laterais.
+      .sort((left, right) => (right.boundary >= MIN_WINDOW_SETBACK - EPS ? 1 : 0) - (left.boundary >= MIN_WINDOW_SETBACK - EPS ? 1 : 0)
+        || (right.length >= spec.width + 0.4 ? 1 : 0) - (left.length >= spec.width + 0.4 ? 1 : 0)
+        || right.boundary - left.boundary
+        || right.length - left.length);
+
+    const chosen = sides[0];
+    if (!chosen?.best) continue;
+    const horizontal = chosen.side === "top" || chosen.side === "bottom";
+    let intervalStart = chosen.best[0];
+    let intervalLength = chosen.length;
+
+    // Porta de entrada: na sala do térreo (ou no hall social), no mesmo lado da janela principal.
+    if (floor === 0 && !entrancePlaced && (room.kind === "sala" || /hall social/.test(lower(room.label)))) {
+      const doorWidth = 1.0;
+      const doorCenter = intervalStart + 0.3 + doorWidth / 2;
+      if (intervalLength >= doorWidth + 0.6) {
+        openings.push({
+          id: `entrance-${room.id}`,
+          type: "door",
+          x: horizontal ? doorCenter : chosen.side === "left" ? room.x : room.x + room.width,
+          y: horizontal ? (chosen.side === "top" ? room.y : room.y + room.depth) : doorCenter,
+          orientation: horizontal ? "horizontal" : "vertical",
+          roomId: room.id,
+          width: doorWidth,
+          height: 2.2,
+          sillHeight: 0,
+          openingStyle: "hinged",
+        });
+        entrancePlaced = true;
+        intervalStart += doorWidth + 0.6;
+        intervalLength -= doorWidth + 0.6;
+        if (intervalLength < 0.9) continue;
+      }
+    }
+
+    const width = Math.max(0.5, Math.min(spec.width, intervalLength - 0.4));
+    const center = intervalStart + intervalLength / 2;
+    openings.push({
+      id: `window-${chosen.side}-${room.id}`,
+      type: "window",
+      x: horizontal ? center : chosen.side === "left" ? room.x : room.x + room.width,
+      y: horizontal ? (chosen.side === "top" ? room.y : room.y + room.depth) : center,
+      orientation: horizontal ? "horizontal" : "vertical",
+      roomId: room.id,
+      width: Math.round(width * 100) / 100,
+      height: spec.height,
+      sillHeight: spec.sill,
+      openingStyle: spec.style,
+    });
   }
 
   return { walls, openings };
@@ -452,6 +605,7 @@ export function validateConceptLayout(
   lotWidth: number,
   lotDepth: number,
   floor: number,
+  site?: { frontSide?: "top" | "bottom" | "left" | "right"; setbackFront?: number },
 ): LayoutIssue[] {
   const current = (Array.isArray(rooms) ? rooms : []).filter((room) => room.floor === floor);
   const issues: LayoutIssue[] = [];
@@ -538,7 +692,14 @@ export function validateConceptLayout(
   }
 
   const garage = current.find((room) => room.kind === "garagem");
-  if (garage && garage.y > 3) {
+  // Distância até a frente real do lote (lado escolhido na implantação), descontando o recuo
+  // frontal obrigatório. Antes media sempre a partir de y = 0 e acusava todo modelo com recuo.
+  const garageFrontGap = !garage ? 0
+    : site?.frontSide === "bottom" ? lotDepth - (garage.y + garage.depth)
+      : site?.frontSide === "left" ? garage.x
+        : site?.frontSide === "right" ? lotWidth - (garage.x + garage.width)
+          : garage.y;
+  if (garage && garageFrontGap > Math.max(0, site?.setbackFront ?? 0) + 3) {
     issues.push({
       id: `garage-access-${garage.id}`,
       severity: "warning",

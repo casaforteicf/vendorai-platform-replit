@@ -15,7 +15,7 @@ export function inspectConceptVisualQuality(input: {
   const issues: LayoutIssue[] = [];
   for (const level of input.levels) {
     if (!input.wallFirstFloors.includes(level.floor)) {
-      issues.push(...validateConceptLayout(input.rooms, input.lotWidth, input.lotDepth, level.floor)
+      issues.push(...validateConceptLayout(input.rooms, input.lotWidth, input.lotDepth, level.floor, input.placement)
         .map((issue) => ({ ...issue, id: `floor-${level.floor}-${issue.id}`, message: `Pavimento ${level.floor + 1}: ${issue.message}` })));
     }
     for (const opening of level.openings) {

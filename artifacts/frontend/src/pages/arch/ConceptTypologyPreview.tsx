@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { CONCEPT_TYPOLOGIES, type ConceptTypology } from "./conceptTemplates";
+import { CONCEPT_TYPOLOGIES, type ConceptTypology, type TemplateRoom } from "./conceptTemplates";
 
 type Props = {
   typology: ConceptTypology;
@@ -8,75 +8,154 @@ type Props = {
   variant?: number;
 };
 
-const REAL_PROJECT_IMAGES: Record<ConceptTypology, { src: string; position?: string }> = {
-  terrea_2q: {
-    src: "https://images.pexels.com/photos/9976121/pexels-photo-9976121.jpeg?auto=compress&dpr=1&h=750&w=1260",
-    position: "center",
-  },
-  terrea_3q: {
-    src: "https://images.pexels.com/photos/7587880/pexels-photo-7587880.jpeg?auto=compress&dpr=1&h=750&w=1260",
-    position: "center",
-  },
-  terrea_lazer: {
-    src: "https://images.pexels.com/photos/29334485/pexels-photo-29334485/free-photo-of-modern-brazilian-patio-with-pool-and-seating.png?auto=compress&dpr=1&h=750&w=1260",
-    position: "center",
-  },
-  sobrado_3q: {
-    src: "https://images.pexels.com/photos/32666364/pexels-photo-32666364.jpeg?cs=tinysrgb&w=1260&fit=max",
-    position: "center",
-  },
-  sobrado_master: {
-    src: "https://images.pexels.com/photos/29334668/pexels-photo-29334668/free-photo-of-modern-luxury-villa-with-pool-in-brazil.png?auto=compress&dpr=1&h=750&w=1260",
-    position: "center",
-  },
+// Miniatura fiel ao modelo: é a própria planta que o editor vai abrir.
+// Antes o cartão mostrava fotos de banco de imagens de casas que não tinham relação com a planta gerada.
+const FILL: Record<TemplateRoom["kind"], string> = {
+  sala: "#f4efe6",
+  cozinha: "#eef2ea",
+  gourmet: "#eef2ea",
+  suite: "#eaf0f6",
+  quarto: "#eaf0f6",
+  banheiro: "#e3eef2",
+  lavanderia: "#eceef0",
+  garagem: "#eceef0",
+  circulacao: "#f7f7f5",
+  escada: "#f1f1ef",
+  piscina: "#cfe8f3",
+  outro: "#f3f1ec",
 };
 
-export default function ConceptTypologyPreview({
-  typology,
-  lotWidth,
-  lotDepth,
-}: Props) {
+function shortLabel(room: TemplateRoom) {
+  const label = room.label
+    .replace("Garagem 2 vagas", "Garagem")
+    .replace("Garagem 1 vaga", "Garagem")
+    .replace("Sala de estar + jantar", "Estar/jantar")
+    .replace("Sala + jantar", "Estar/jantar")
+    .replace("Sala de estar", "Estar")
+    .replace("Cozinha com ilha", "Cozinha")
+    .replace("Cozinha + copa", "Cozinha")
+    .replace("Cozinha integrada", "Cozinha")
+    .replace("Cozinha + jantar", "Cozinha")
+    .replace("Espaço gourmet", "Gourmet")
+    .replace("Hall + circulação", "")
+    .replace("Hall + mezanino", "")
+    .replace("Hall íntimo", "")
+    .replace("Circulação", "")
+    .replace("Banho suíte master", "Banho")
+    .replace(/Banho suíte.*/, "Banho")
+    .replace("Banheiro social", "Banho")
+    .replace("Closet master", "Closet")
+    .replace("Lavanderia", "Serviço");
+  return label;
+}
+
+function FloorPlan({ rooms, x, y, scale, title }: { rooms: TemplateRoom[]; x: number; y: number; scale: number; title?: string }) {
+  const minX = Math.min(...rooms.map((room) => room.x ?? 0));
+  const minY = Math.min(...rooms.map((room) => room.y ?? 0));
+  return (
+    <g transform={`translate(${x} ${y})`}>
+      {title && (
+        <text x={0} y={-4} fontSize="7" fontWeight="700" fill="#64748b" letterSpacing="0.6">{title}</text>
+      )}
+      {rooms.map((room, index) => {
+        const rx = ((room.x ?? 0) - minX) * scale;
+        const ry = ((room.y ?? 0) - minY) * scale;
+        const rw = room.width * scale;
+        const rh = room.depth * scale;
+        const label = shortLabel(room);
+        const pool = room.kind === "piscina";
+        const fontSize = Math.min(6.4, Math.max(4.2, Math.min(rw, rh) / 3.4));
+        return (
+          <g key={`${room.label}-${index}`}>
+            <rect
+              x={rx}
+              y={ry}
+              width={rw}
+              height={rh}
+              fill={FILL[room.kind]}
+              stroke={pool ? "#7bb6cf" : "#1f2937"}
+              strokeWidth={pool ? 0.8 : 1.6}
+              rx={pool ? 2 : 0}
+            />
+            {room.kind === "escada" && Array.from({ length: 7 }, (_, step) => (
+              <line
+                key={step}
+                x1={rx + 2}
+                x2={rx + rw - 2}
+                y1={ry + ((step + 1) * rh) / 8}
+                y2={ry + ((step + 1) * rh) / 8}
+                stroke="#94a3b8"
+                strokeWidth="0.6"
+              />
+            ))}
+            {label && rw > 16 && rh > 10 && (
+              <text
+                x={rx + rw / 2}
+                y={ry + rh / 2 + fontSize / 3}
+                textAnchor="middle"
+                fontSize={fontSize}
+                fontWeight="600"
+                fill={pool ? "#2f7390" : "#334155"}
+              >
+                {label}
+              </text>
+            )}
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+export default function ConceptTypologyPreview({ typology }: Props) {
   const template = useMemo(
     () => CONCEPT_TYPOLOGIES.find((item) => item.id === typology) ?? CONCEPT_TYPOLOGIES[0],
     [typology],
   );
 
-  const image = REAL_PROJECT_IMAGES[typology];
+  const floors = useMemo(
+    () => Array.from({ length: template.floors }, (_, floor) => template.rooms.filter((room) => room.floor === floor)),
+    [template],
+  );
+
+  const viewW = 320;
+  const viewH = 200;
+  const pad = 14;
+  const gap = floors.length > 1 ? 22 : 0;
+  const titleSpace = floors.length > 1 ? 10 : 0;
+  const all = template.rooms;
+  const totalW = Math.max(...all.map((room) => (room.x ?? 0) + room.width)) - Math.min(...all.map((room) => room.x ?? 0));
+  const totalD = Math.max(...all.map((room) => (room.y ?? 0) + room.depth)) - Math.min(...all.map((room) => room.y ?? 0));
+  const scale = Math.min(
+    (viewW - pad * 2 - gap) / (totalW * floors.length),
+    (viewH - pad * 2 - titleSpace) / totalD,
+  );
+  const drawnW = totalW * scale * floors.length + gap;
+  const offsetX = (viewW - drawnW) / 2;
+  const offsetY = (viewH - totalD * scale - titleSpace) / 2 + titleSpace;
 
   return (
-    <div
-      className="relative h-full min-h-[190px] overflow-hidden rounded-xl bg-slate-200"
+    <svg
+      viewBox={`0 0 ${viewW} ${viewH}`}
+      className="h-full w-full"
       role="img"
-      aria-label={`Referência visual real para ${template.title}`}
+      aria-label={`Planta do modelo ${template.title}`}
+      preserveAspectRatio="xMidYMid meet"
     >
-      <img
-        src={image.src}
-        alt={`Referência arquitetônica real de ${template.title}`}
-        className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 hover:scale-[1.02]"
-        style={{ objectPosition: image.position ?? "center" }}
-        loading="lazy"
-        referrerPolicy="no-referrer"
-      />
-
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/35 via-transparent to-black/45" />
-
-      <div className="absolute left-3 top-3 flex flex-wrap gap-2">
-        <span className="rounded-full border border-white/30 bg-black/55 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.08em] text-white backdrop-blur-sm">
-          {template.floors === 1 ? "Casa térrea" : "Sobrado"}
-        </span>
-        <span className="rounded-full border border-white/30 bg-white/90 px-2.5 py-1 text-[10px] font-bold text-slate-700 backdrop-blur-sm">
-          Referência real
-        </span>
-      </div>
-
-      <div className="absolute bottom-3 left-3 right-3 flex items-end justify-between gap-3">
-        <div className="rounded-lg bg-black/45 px-2.5 py-1.5 text-white backdrop-blur-sm">
-          <div className="text-xs font-extrabold">{template.suggestedArea} m²</div>
-          <div className="text-[10px] font-medium text-white/85">
-            lote {lotWidth.toFixed(0)} × {lotDepth.toFixed(0)} m
-          </div>
-        </div>
-      </div>
-    </div>
+      <rect width={viewW} height={viewH} fill="#fbfaf7" />
+      {floors.map((rooms, floor) => (
+        <FloorPlan
+          key={floor}
+          rooms={rooms}
+          x={offsetX + floor * (totalW * scale + gap)}
+          y={offsetY}
+          scale={scale}
+          title={floors.length > 1 ? (floor === 0 ? "TÉRREO" : "SUPERIOR") : undefined}
+        />
+      ))}
+      <text x={viewW - 10} y={viewH - 8} textAnchor="end" fontSize="7" fill="#94a3b8">
+        {totalW.toFixed(1).replace(".", ",")} × {totalD.toFixed(1).replace(".", ",")} m · frente ↑
+      </text>
+    </svg>
   );
 }
