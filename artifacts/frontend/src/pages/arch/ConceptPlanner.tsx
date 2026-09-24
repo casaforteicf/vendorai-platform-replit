@@ -34,6 +34,10 @@ import {
   X,
   FolderOpen,
   Trash2,
+  MapPin,
+  DoorOpen,
+  Sofa,
+  Paintbrush,
 } from "lucide-react";
 import { buildConceptGeometry, nudgeOpening, validateConceptLayout } from "./conceptGeometry";
 import { type ConceptFacadePreferences } from "./ConceptVolumetry";
@@ -42,6 +46,7 @@ import ConceptTypologyPreview from "./ConceptTypologyPreview";
 import ConceptDerivedFacade from "./ConceptDerivedFacade";
 import ConceptFacadeEditor, { type AIDevelopmentResponse } from "./ConceptFacadeEditor";
 import ConceptClientBriefPanel from "./ConceptClientBriefPanel";
+import { CONCEPT_JOURNEY, conceptJourneyContinueLabel, conceptJourneyIndex } from "./conceptJourney";
 import ConceptSitePlacementPanel from "./ConceptSitePlacementPanel";
 import { DEFAULT_SITE_PLACEMENT, getBuildingBounds, normalizeSitePlacement, type SitePlacement } from "./conceptSitePlacement";
 import { type ClientBriefAlternative } from "./conceptClientBrief";
@@ -166,6 +171,7 @@ type CustomerProfile = {
   name?: string;
   phone?: string;
   email?: string;
+  instagram?: string;
   budgetRange?: string;
   timeframe?: string;
   notes?: string;
@@ -749,7 +755,7 @@ export default function ConceptPlanner() {
     }
   }, [step]);
 
-  const [interactionMode, setInteractionMode] = useState<"room" | "space" | "wall" | "opening" | "draw-wall" | "navigate">("draw-wall");
+  const [interactionMode, setInteractionMode] = useState<"room" | "space" | "wall" | "opening" | "draw-wall" | "navigate">("navigate");
   const [rooms, setRooms] = useState<Room[]>([]);
   const roomsRef = useRef<Room[]>(rooms);
   const customWallsRef = useRef<CustomWall[]>([]);
@@ -817,6 +823,9 @@ export default function ConceptPlanner() {
   const [modelCategory, setModelCategory] = useState<"todos" | "terreas" | "sobrados" | "lazer">("todos");
   const [modelGalleryOpen, setModelGalleryOpen] = useState(false);
   const [projectListOpen, setProjectListOpen] = useState(false);
+  const [startChooserDismissed, setStartChooserDismissed] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [projectListError, setProjectListError] = useState<string | null>(null);
   const [projectList, setProjectList] = useState<ConceptListItem[]>([]);
   const [projectListState, setProjectListState] = useState<"idle" | "loading" | "error">("idle");
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
@@ -1182,7 +1191,8 @@ export default function ConceptPlanner() {
         setRooms(loadedRooms);
         setOpeningOverrides(draft.openingOverrides && typeof draft.openingOverrides === "object" ? draft.openingOverrides : {});
         setCustomerProfile(draft.customerProfile ?? {});
-        setFacadePreferences(draft.facadePreferences ?? DEFAULT_FACADE);
+        // Rascunhos antigos podem ter só parte dos campos; completar evita quebrar a tela de Resultado.
+        setFacadePreferences({ ...DEFAULT_FACADE, ...(draft.facadePreferences ?? {}) });
         setFacadeDesign(normalizeFacadeDesign(draft.facadeDesign));
         setConceptRender(draft.conceptRender ?? { status: "idle" });
         setLayoutVariant(draft.selectedVariant ?? 0);
@@ -1333,6 +1343,40 @@ export default function ConceptPlanner() {
           ? "Salvo"
           : "";
 
+  const startContactValid =
+    (customerProfile.name ?? "").trim().length >= 2 &&
+    (customerProfile.phone ?? "").replace(/\D/g, "").length >= 10 &&
+    (customerProfile.instagram ?? "").trim().replace(/^@+/, "").length >= 2;
+
+  const journeyIndex = conceptJourneyIndex({ step, editorView, libraryTab: editorLibraryTab });
+
+  const goToJourneyStage = (index: number) => {
+    const isWide = typeof window !== "undefined" && window.innerWidth >= 768;
+    if (index >= 4) {
+      void saveConcept(RESULT_STEP);
+      setStep(RESULT_STEP);
+      window.scrollTo({ top: 0 });
+      return;
+    }
+    setStep(WORKSPACE_STEP);
+    if (index === 0) {
+      setEditorView("plan");
+      setEditorLibraryTab("site");
+      setLibraryOpen(true);
+    } else if (index === 1) {
+      setEditorView("plan");
+      setEditorLibraryTab(editorExperienceMode === "professional" ? "models" : "brief");
+      setLibraryOpen(true);
+    } else if (index === 2) {
+      setEditorView("plan");
+      if (!["build", "furniture", "materials", "outdoor"].includes(editorLibraryTab)) setEditorLibraryTab("build");
+      setLibraryOpen(isWide);
+    } else {
+      setEditorView("facade");
+      setLibraryOpen(false);
+    }
+  };
+
   const loadProjectList = async () => {
     setProjectListState("loading");
     try {
@@ -1363,14 +1407,13 @@ export default function ConceptPlanner() {
   };
 
   const deleteConceptFromList = async (item: ConceptListItem) => {
-    const name = item.customerName ?? item.title ?? "este pré-projeto";
-    if (!window.confirm(`Excluir ${name}? Essa ação não pode ser desfeita.`)) return;
     setDeletingProjectId(item.id);
+    setProjectListError(null);
     try {
       const response = await fetch(`/api/arch/concept-projects/${encodeURIComponent(item.id)}`, { method: "DELETE" });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
-        window.alert((body as { error?: string }).error ?? "Não foi possível excluir.");
+        setProjectListError((body as { error?: string }).error ?? "Não foi possível excluir.");
         return;
       }
       if (item.id === (conceptIdRef.current ?? conceptId)) {
@@ -1379,8 +1422,11 @@ export default function ConceptPlanner() {
         return;
       }
       setProjectList((prev) => prev.filter((row) => row.id !== item.id));
+    } catch {
+      setProjectListError("Sem conexão. Tente de novo.");
     } finally {
       setDeletingProjectId(null);
+      setConfirmDeleteId(null);
     }
   };
 
@@ -4550,7 +4596,7 @@ export default function ConceptPlanner() {
                 </a>
 
                 <div className="hidden min-w-0 sm:block">
-                  <div className="truncate text-sm font-semibold text-white">{customerProfile.name?.trim() ? `Pré-projeto — ${customerProfile.name.trim()}` : "Pré-projeto"}</div>
+                  <div className="truncate text-sm font-semibold text-slate-950">{customerProfile.name?.trim() ? `Pré-projeto — ${customerProfile.name.trim()}` : "Pré-projeto"}</div>
                   <div className="text-[11px] text-slate-400">Arqdor Pro · editor arquitetônico</div>
                 </div>
 
@@ -4608,10 +4654,10 @@ export default function ConceptPlanner() {
                   <span>{activeFloor === 0 ? "Térreo" : activeFloor === 1 ? "Superior" : `Pav. ${activeFloor + 1}`}</span>
                   <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
                 </button>
-                <div className="ml-1 hidden items-center rounded-xl border border-white/10 bg-white/5 p-1 xl:flex">
+                <div className="ml-1 flex items-center rounded-xl border border-white/10 bg-white/5 p-1">
                   <button
                     type="button"
-                    onClick={() => { setEditorExperienceMode("guided"); if (editorLibraryTab === "models") setEditorLibraryTab("site"); }}
+                    onClick={() => setEditorExperienceMode("guided")}
                     className={editorExperienceMode === "guided"
                       ? "rounded-lg bg-white px-3 py-2 text-[11px] font-bold text-slate-950 shadow-sm"
                       : "rounded-lg px-3 py-2 text-[11px] font-semibold text-slate-300 hover:bg-white/10"}
@@ -4625,43 +4671,11 @@ export default function ConceptPlanner() {
                       ? "rounded-lg bg-white px-3 py-2 text-[11px] font-bold text-slate-950 shadow-sm"
                       : "rounded-lg px-3 py-2 text-[11px] font-semibold text-slate-300 hover:bg-white/10"}
                   >
-                    Profissional
+                    <span className="sm:hidden">Pro</span><span className="hidden sm:inline">Profissional</span>
                   </button>
                 </div>
               </div>
 
-              <div className="order-3 hidden w-full min-w-0 sm:block lg:absolute lg:left-1/2 lg:top-1/2 lg:order-none lg:w-auto lg:-translate-x-1/2 lg:-translate-y-1/2">
-                <div className="flex w-full snap-x overflow-x-auto rounded-xl border border-white/10 bg-white/5 p-1 shadow-sm [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:inline-flex lg:w-auto">
-                  {([
-                    ["plan", "2D"],
-                    ["model3d", "3D"],
-                    ["facade", "Fachada"],
-                    ["render", "Render"],
-                  ] as const).map(([value, label]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => {
-                        setStep(4);
-                        setEditorView(value);
-                        if (value !== "plan") setLibraryOpen(false);
-                      }}
-                      className={editorView === value
-                        ? "shrink-0 snap-center rounded-lg bg-white px-3 py-2 text-xs font-bold text-slate-950 shadow-sm sm:px-4"
-                        : "shrink-0 snap-center rounded-lg px-3 py-2 text-xs font-bold text-slate-400 hover:bg-white/5 hover:text-white sm:px-4"}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => { void saveConcept(RESULT_STEP); setStep(RESULT_STEP); window.scrollTo({ top: 0 }); }}
-                    className="shrink-0 snap-center rounded-lg px-3 py-2 text-xs font-bold text-orange-300 hover:bg-white/5 hover:text-orange-200 sm:px-4"
-                  >
-                    Enviar
-                  </button>
-                </div>
-              </div>
 
               <div className="flex shrink-0 items-center gap-1">
                 {editorView === "plan" && editorExperienceMode === "professional" && (
@@ -4727,18 +4741,6 @@ export default function ConceptPlanner() {
                       : "hidden h-10 w-10 place-items-center rounded-xl bg-orange-500 text-white shadow-sm hover:bg-orange-600 disabled:opacity-60 sm:grid"}
                 >
                   <Share2 className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditorView("facade");
-                    setLibraryOpen(false);
-                    void saveConcept(4);
-                  }}
-                  title="Abrir edição de fachada"
-                  className="ml-1 inline-flex h-10 shrink-0 items-center gap-1 rounded-xl bg-orange-500 px-2.5 text-xs font-bold text-white shadow-sm hover:bg-orange-600 sm:gap-2 sm:px-3"
-                >
-                  Fachada <ArrowRight className="h-4 w-4" />
                 </button>
               </div>
             </div>
@@ -4809,6 +4811,193 @@ export default function ConceptPlanner() {
                 )}
               </>
             )}
+
+            {saveState !== "loading" && !startChooserDismissed && !modelGalleryOpen && safeRooms.length === 0 && customWalls.length === 0 && (
+              <div className="fixed inset-0 z-[110] flex items-end justify-center bg-slate-950/55 sm:items-center sm:p-6">
+                <div className="max-h-[92dvh] w-full max-w-2xl overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-7" role="dialog" aria-label="Como quer começar">
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-500">Novo pré-projeto</div>
+                  <h2 className="mt-1 text-xl font-bold text-slate-950">Como você quer começar?</h2>
+                  <p className="mt-1 text-sm text-slate-500">Dá pra mudar tudo depois. Leva poucos minutos.</p>
+
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                    <label className="text-xs font-semibold text-slate-700">
+                      Frente do terreno (m)
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        min={5}
+                        value={lotWidth}
+                        onChange={(event) => setLotWidth(Math.max(5, Number(event.target.value) || 5))}
+                        className="mt-1 h-11 w-full rounded-xl border px-3 text-base font-normal outline-none focus:border-orange-400"
+                      />
+                    </label>
+                    <label className="text-xs font-semibold text-slate-700">
+                      Fundo do terreno (m)
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        min={10}
+                        value={lotDepth}
+                        onChange={(event) => setLotDepth(Math.max(10, Number(event.target.value) || 10))}
+                        className="mt-1 h-11 w-full rounded-xl border px-3 text-base font-normal outline-none focus:border-orange-400"
+                      />
+                    </label>
+                    <label className="text-xs font-semibold text-slate-700">
+                      Nome do cliente <span className="text-orange-600">*</span>
+                      <input
+                        value={customerProfile.name ?? ""}
+                        onChange={(event) => setCustomerProfile((prev) => ({ ...prev, name: event.target.value }))}
+                        autoComplete="name"
+                        className="mt-1 h-11 w-full rounded-xl border px-3 text-base font-normal outline-none focus:border-orange-400"
+                      />
+                    </label>
+                    <label className="text-xs font-semibold text-slate-700">
+                      WhatsApp <span className="text-orange-600">*</span>
+                      <input
+                        type="tel"
+                        inputMode="tel"
+                        value={customerProfile.phone ?? ""}
+                        onChange={(event) => setCustomerProfile((prev) => ({ ...prev, phone: event.target.value }))}
+                        autoComplete="tel"
+                        placeholder="(49) 99999-9999"
+                        className="mt-1 h-11 w-full rounded-xl border px-3 text-base font-normal outline-none focus:border-orange-400"
+                      />
+                    </label>
+                    <label className="text-xs font-semibold text-slate-700 sm:col-span-2">
+                      Instagram <span className="text-orange-600">*</span>
+                      <div className="mt-1 flex h-11 items-center rounded-xl border px-3 focus-within:border-orange-400">
+                        <span className="text-base font-normal text-slate-400">@</span>
+                        <input
+                          value={(customerProfile.instagram ?? "").replace(/^@+/, "")}
+                          onChange={(event) => setCustomerProfile((prev) => ({ ...prev, instagram: event.target.value.trim().replace(/^@+/, "") }))}
+                          autoCapitalize="none"
+                          autoCorrect="off"
+                          placeholder="perfil do cliente"
+                          className="h-full w-full bg-transparent pl-0.5 text-base font-normal outline-none"
+                        />
+                      </div>
+                    </label>
+                  </div>
+                  {!startContactValid && (
+                    <p className="mt-3 rounded-xl bg-orange-50 px-3 py-2 text-xs text-orange-900">
+                      Preencha nome, WhatsApp (com DDD) e Instagram para começar.
+                    </p>
+                  )}
+
+                  <div className="mt-5 grid gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStartChooserDismissed(true);
+                        setEditorView("plan");
+                        setModelGalleryOpen(true);
+                      }}
+                      disabled={!startContactValid}
+                      className="flex min-h-16 items-center gap-3 rounded-2xl border-2 border-orange-400 bg-orange-50 p-4 text-left disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      <LayoutGrid className="h-6 w-6 shrink-0 text-orange-600" />
+                      <span>
+                        <span className="block text-sm font-bold text-slate-950">Escolher um modelo pronto</span>
+                        <span className="block text-xs text-slate-600">Térreas, sobrados e casas com lazer. O jeito mais rápido.</span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStartChooserDismissed(true);
+                        setEditorExperienceMode("guided");
+                        setEditorView("plan");
+                        setEditorLibraryTab("brief");
+                        setLibraryOpen(true);
+                      }}
+                      disabled={!startContactValid}
+                      className="flex min-h-16 items-center gap-3 rounded-2xl border p-4 text-left hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      <Sparkles className="h-6 w-6 shrink-0 text-slate-700" />
+                      <span>
+                        <span className="block text-sm font-bold text-slate-950">Descrever o que a casa precisa</span>
+                        <span className="block text-xs text-slate-600">Quartos, banheiros, garagem… a planta é montada a partir disso.</span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStartChooserDismissed(true);
+                        startBlankPlan();
+                      }}
+                      disabled={!startContactValid}
+                      className="flex min-h-16 items-center gap-3 rounded-2xl border p-4 text-left hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      <Plus className="h-6 w-6 shrink-0 text-slate-700" />
+                      <span>
+                        <span className="block text-sm font-bold text-slate-950">Desenhar do zero</span>
+                        <span className="block text-xs text-slate-600">Para quem já sabe o que quer e prefere traçar as paredes.</span>
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="arq-journey-row flex flex-wrap items-center gap-2 border-b bg-white px-3 py-2 sm:px-4">
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-bold text-slate-950">
+                  <span className="sm:hidden">{journeyIndex + 1}/{CONCEPT_JOURNEY.length} · </span>
+                  <span className="hidden sm:inline">Etapa {journeyIndex + 1} de {CONCEPT_JOURNEY.length} · </span>
+                  {CONCEPT_JOURNEY[journeyIndex].label}
+                </div>
+                <div className={journeyIndex === 2 || journeyIndex === 3 ? "hidden truncate text-xs text-slate-500 sm:block" : "truncate text-xs text-slate-500"}>
+                  {CONCEPT_JOURNEY[journeyIndex].helper}
+                </div>
+              </div>
+              <div className="hidden shrink-0 rounded-xl border bg-slate-50 p-1 sm:flex">
+                {CONCEPT_JOURNEY.map((stage, index) => (
+                  <button
+                    key={stage.id}
+                    type="button"
+                    onClick={() => goToJourneyStage(index)}
+                    className={journeyIndex === index
+                      ? "min-h-9 rounded-lg bg-slate-950 px-3 text-xs font-bold text-white"
+                      : index < journeyIndex
+                        ? "min-h-9 rounded-lg px-3 text-xs font-semibold text-emerald-700 hover:bg-white"
+                        : "min-h-9 rounded-lg px-3 text-xs font-semibold text-slate-500 hover:bg-white"}
+                  >
+                    {index < journeyIndex ? "✓ " : `${index + 1}. `}{stage.label}
+                  </button>
+                ))}
+              </div>
+              {(journeyIndex === 2 || journeyIndex === 3) && (
+                <div className="flex shrink-0 rounded-xl border bg-slate-50 p-1">
+                  {(journeyIndex === 2
+                    ? ([["plan", "Planta 2D"], ["model3d", "3D"]] as const)
+                    : ([["facade", "Fachada"], ["render", "Imagem"]] as const)
+                  ).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => {
+                        setEditorView(value);
+                        if (value !== "plan") setLibraryOpen(false);
+                      }}
+                      className={editorView === value
+                        ? "min-h-9 rounded-lg bg-white px-3 text-xs font-bold text-slate-950 shadow-sm"
+                        : "min-h-9 rounded-lg px-3 text-xs font-semibold text-slate-500"}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {conceptJourneyContinueLabel(journeyIndex) && (
+                <button
+                  type="button"
+                  onClick={() => goToJourneyStage(journeyIndex + 1)}
+                  className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-xl bg-orange-500 px-4 text-sm font-semibold text-white shadow-sm hover:bg-orange-600"
+                >
+                  {conceptJourneyContinueLabel(journeyIndex)} <ArrowRight className="h-4 w-4" />
+                </button>
+              )}
+            </div>
 
             <div
               data-concept-render-source="true"
@@ -4937,7 +5126,7 @@ export default function ConceptPlanner() {
               </div>
             )}
 
-            <div className="arq-workspace-shell relative min-h-[calc(100dvh-56px)] overflow-hidden bg-[#f6f7f8]">
+            <div className="arq-workspace-shell relative min-h-[calc(100dvh-112px)] overflow-hidden bg-[#f6f7f8]">
               <aside className={editorView !== "plan"
                   ? "arq-workspace-sidebar hidden"
                   : (selected || selectedCustomWall || selectedOpening || selectedClosedSpace || selectedWall)
@@ -4948,16 +5137,16 @@ export default function ConceptPlanner() {
                     <div className="flex flex-col items-center gap-2">
                       {([
                         ["site", Ruler, "Terreno"],
+                        ["placement", MapPin, "Implantação"],
                         ["brief", FileText, "Necessidades"],
-                        ["placement", Home, "Implantação"],
                         ["models", LayoutGrid, "Modelos"],
+                        ["rooms", DoorOpen, "Ambientes"],
                         ["build", Layers3, "Construir"],
-                        ["rooms", Home, "Ambientes"],
-                        ["furniture", LayoutGrid, editorExperienceMode === "guided" ? "Mobiliar" : "Itens"],
-                        ["materials", Sparkles, editorExperienceMode === "guided" ? "Acabamentos" : "Materiais"],
+                        ["furniture", Sofa, editorExperienceMode === "guided" ? "Mobiliar" : "Itens"],
+                        ["materials", Paintbrush, editorExperienceMode === "guided" ? "Acabamentos" : "Materiais"],
                         ["outdoor", Trees, "Externo"],
                       ] as Array<[EditorLibraryTab, typeof Ruler, string]>)
-                        .filter(([value]) => editorExperienceMode === "professional" ? value !== "brief" && value !== "placement" : value !== "models")
+                        .filter(([value]) => editorExperienceMode === "professional" ? value !== "brief" && value !== "placement" : true)
                         .map(([value, Icon, label]) => (
                         <button
                           key={value}
@@ -5001,11 +5190,6 @@ export default function ConceptPlanner() {
                                     ? "Materiais"
                                     : "Área externa"}
                       </div>
-                      {editorExperienceMode === "guided" && editorView === "plan" && (
-                        <div className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-orange-600">
-                          Etapa {Math.max(1, GUIDED_LIBRARY_FLOW.findIndex((item) => item.id === editorLibraryTab) + 1)} de {GUIDED_LIBRARY_FLOW.length}
-                        </div>
-                      )}
                       <div className="mt-0.5 text-[11px] text-muted-foreground">
                         {editorExperienceMode === "guided"
                           ? (GUIDED_LIBRARY_FLOW.find((item) => item.id === editorLibraryTab)?.helper ?? "Escolha uma etapa para continuar.")
@@ -5027,42 +5211,6 @@ export default function ConceptPlanner() {
                                     ? "Aplique no objeto selecionado"
                                     : "Lazer e área externa"}
                       </div>
-                      {editorExperienceMode === "guided" && editorView === "plan" && (
-                        <div className="mt-3 flex items-center gap-2">
-                          <div className="flex min-w-0 flex-1 gap-1">
-                            {GUIDED_LIBRARY_FLOW.map((item, index) => (
-                              <span
-                                key={item.id}
-                                className={item.id === editorLibraryTab
-                                  ? "h-1.5 flex-1 rounded-full bg-orange-500"
-                                  : index < GUIDED_LIBRARY_FLOW.findIndex((flow) => flow.id === editorLibraryTab)
-                                    ? "h-1.5 flex-1 rounded-full bg-emerald-400"
-                                    : "h-1.5 flex-1 rounded-full bg-slate-200"}
-                              />
-                            ))}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const current = GUIDED_LIBRARY_FLOW.findIndex((item) => item.id === editorLibraryTab);
-                              const nextIndex = Math.max(0, current) + 1;
-                              const next = GUIDED_LIBRARY_FLOW[nextIndex];
-                              if (next) {
-                                setEditorLibraryTab(next.id);
-                                setLibraryOpen(true);
-                              } else {
-                                setEditorView("facade");
-                                setLibraryOpen(false);
-                              }
-                            }}
-                            className="shrink-0 rounded-lg bg-slate-950 px-2.5 py-1.5 text-[10px] font-bold text-white"
-                          >
-                            {GUIDED_LIBRARY_FLOW.findIndex((item) => item.id === editorLibraryTab) >= GUIDED_LIBRARY_FLOW.length - 1
-                              ? "Ir para fachada"
-                              : "Próximo"}
-                          </button>
-                        </div>
-                      )}
                     </div>
                     <button
                       type="button"
@@ -6687,34 +6835,19 @@ export default function ConceptPlanner() {
               </div>
 
               <div className="fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-30 flex items-center justify-between rounded-2xl border bg-white/95 p-1.5 shadow-xl backdrop-blur md:hidden">
-                {([
-                  ["plan", "2D"],
-                  ["model3d", "3D"],
-                  ["facade", "Fachada"],
-                  ["render", "Render"],
-                ] as const).map(([value, label]) => (
+                {CONCEPT_JOURNEY.map((stage, index) => (
                   <button
-                    key={value}
+                    key={stage.id}
                     type="button"
-                    onClick={() => {
-                      setStep(4);
-                      setEditorView(value);
-                      setLibraryOpen(false);
-                    }}
-                    className={editorView === value
-                      ? "flex-1 rounded-xl bg-slate-950 px-2 py-2.5 text-xs font-bold text-white"
-                      : "flex-1 rounded-xl px-2 py-2.5 text-xs font-semibold text-slate-500"}
+                    onClick={() => goToJourneyStage(index)}
+                    className={journeyIndex === index
+                      ? "flex min-h-11 flex-1 flex-col items-center justify-center rounded-xl bg-slate-950 px-1 py-1.5 text-[11px] font-bold text-white"
+                      : "flex min-h-11 flex-1 flex-col items-center justify-center rounded-xl px-1 py-1.5 text-[11px] font-semibold text-slate-500"}
                   >
-                    {label}
+                    <span className={index < journeyIndex && journeyIndex !== index ? "text-emerald-600" : ""}>{index < journeyIndex ? "✓" : index + 1}</span>
+                    {stage.label}
                   </button>
                 ))}
-                <button
-                  type="button"
-                  onClick={() => { void saveConcept(RESULT_STEP); setStep(RESULT_STEP); window.scrollTo({ top: 0 }); }}
-                  className="flex-1 rounded-xl px-2 py-2.5 text-xs font-bold text-orange-600"
-                >
-                  Enviar
-                </button>
               </div>
 
               {hasEditorSelection && (editorView === "plan" || editorView === "model3d") && (
@@ -7230,7 +7363,7 @@ export default function ConceptPlanner() {
                   <p className="text-sm text-muted-foreground">Garagem, entrada, pavimentos, cobertura e aberturas são compostos como fachada frontal.</p>
                 </div>
                 <div className="rounded-full bg-orange-500/10 px-3 py-1 text-xs font-semibold capitalize text-orange-700">
-                  {facadePreferences.style.replaceAll("_", " ")}
+                  {String(facadePreferences.style ?? "").replaceAll("_", " ")}
                 </div>
               </div>
 
@@ -7310,6 +7443,15 @@ export default function ConceptPlanner() {
             >
               <ArrowLeft className="h-4 w-4" /> Voltar ao editor
             </button>
+            {handoffState !== "sent" && (
+              <button
+                type="button"
+                onClick={() => document.getElementById("dados-cliente")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                className="fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-30 inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-orange-500 px-4 text-sm font-semibold text-white shadow-xl md:hidden print:hidden"
+              >
+                <Send className="h-4 w-4" /> Informar contato e enviar
+              </button>
+            )}
             <div className="rounded-3xl border bg-card p-6 shadow-sm sm:p-8">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
@@ -7424,7 +7566,7 @@ export default function ConceptPlanner() {
                   <h3 className="font-semibold">Preferências de fachada</h3>
                   <div className="mt-4 space-y-2 text-sm">
                     {[
-                      ["Estilo", facadePreferences.style.replaceAll("_", " ")],
+                      ["Estilo", String(facadePreferences.style ?? "").replaceAll("_", " ")],
                       ["Cobertura", facadePreferences.roof],
                       ["Material principal", facadePreferences.primaryMaterial],
                       ["Material de destaque", facadePreferences.accentMaterial],
@@ -7440,7 +7582,7 @@ export default function ConceptPlanner() {
                   </div>
                 </div>
 
-                <div className="rounded-3xl border bg-card p-5 shadow-sm print:hidden">
+                <div id="dados-cliente" className="scroll-mt-4 rounded-3xl border bg-card p-5 shadow-sm print:hidden">
                   <h3 className="font-semibold">Dados do cliente</h3>
                   <p className="mt-1 text-xs text-muted-foreground">
                     Essas informações qualificam o contato e entram no CRM quando o pré-projeto for enviado.
@@ -7474,6 +7616,16 @@ export default function ConceptPlanner() {
                         onInput={(event) => setCustomerProfile((prev) => ({ ...prev, email: event.currentTarget.value }))}
                         onChange={(event) => setCustomerProfile((prev) => ({ ...prev, email: event.target.value }))}
                         placeholder="cliente@email.com"
+                        className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm outline-none"
+                      />
+                    </label>
+                    <label className="text-xs font-semibold">
+                      Instagram
+                      <input
+                        value={customerProfile.instagram ?? ""}
+                        onChange={(event) => setCustomerProfile((prev) => ({ ...prev, instagram: event.target.value }))}
+                        placeholder="@cliente"
+                        autoCapitalize="none"
                         className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm outline-none"
                       />
                     </label>
@@ -7661,6 +7813,9 @@ export default function ConceptPlanner() {
             </div>
 
             <div className="flex-1 overflow-y-auto px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+              {projectListError && (
+                <div className="mx-2 mb-2 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700">{projectListError}</div>
+              )}
               {projectListState === "loading" && projectList.length === 0 && (
                 <div className="px-2 py-8 text-center text-sm text-muted-foreground">Carregando…</div>
               )}
@@ -7698,10 +7853,25 @@ export default function ConceptPlanner() {
                           </div>
                         </div>
                       </button>
-                      {!item.sentToProfessional && (
+                      {!item.sentToProfessional && confirmDeleteId === item.id && (
+                        <div className="flex shrink-0 items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => void deleteConceptFromList(item)}
+                            disabled={deletingProjectId === item.id}
+                            className="min-h-9 rounded-xl bg-red-600 px-3 text-xs font-semibold text-white disabled:opacity-50"
+                          >
+                            {deletingProjectId === item.id ? "Excluindo…" : "Excluir"}
+                          </button>
+                          <button type="button" onClick={() => setConfirmDeleteId(null)} className="min-h-9 rounded-xl border px-3 text-xs font-semibold">
+                            Cancelar
+                          </button>
+                        </div>
+                      )}
+                      {!item.sentToProfessional && confirmDeleteId !== item.id && (
                         <button
                           type="button"
-                          onClick={() => void deleteConceptFromList(item)}
+                          onClick={() => setConfirmDeleteId(item.id)}
                           disabled={deletingProjectId === item.id}
                           className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border text-muted-foreground hover:text-red-600 disabled:opacity-50"
                           aria-label="Excluir pré-projeto"

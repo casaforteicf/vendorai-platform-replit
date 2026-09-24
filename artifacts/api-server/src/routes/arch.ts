@@ -767,6 +767,7 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
   const lot = (concept.lot ?? {}) as { width?: number; depth?: number };
   const facade = (concept.facadePreferences ?? {}) as Record<string, string>;
   const customer = (concept.customerProfile ?? {}) as {
+    instagram?: string;
     name?: string;
     phone?: string;
     email?: string;
@@ -832,6 +833,7 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
           nome: customer.name.trim(),
           telefone: storePhone(customer.phone?.trim() || null),
           email: customer.email?.trim() || null,
+          instagramHandle: customer.instagram?.trim().replace(/^@+/, "") || null,
           source: "arqdor_concept",
           objetivo: "Projeto residencial",
           orcamento: customer.budgetRange?.trim() || null,
