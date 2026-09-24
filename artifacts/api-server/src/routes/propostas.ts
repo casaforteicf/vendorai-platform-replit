@@ -38,6 +38,7 @@ import {
 const router: IRouter = Router();
 
 router.get("/tenants/:tenantId/proposal-builder/templates", async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately authorized against the authenticated tenant or Super Admin
   const tenantId = String(req.params.tenantId);
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
@@ -69,6 +70,7 @@ router.get("/tenants/:tenantId/proposal-builder/templates", async (req, res) => 
 });
 
 router.post("/tenants/:tenantId/proposal-builder/templates/ai-bootstrap", async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately authorized against the authenticated tenant or Super Admin
   const tenantId = String(req.params.tenantId);
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
@@ -96,6 +98,7 @@ router.post("/tenants/:tenantId/proposal-builder/templates/ai-bootstrap", async 
 });
 
 router.put("/tenants/:tenantId/proposal-builder/templates/:templateId", async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately authorized against the authenticated tenant or Super Admin
   const tenantId = String(req.params.tenantId);
   const templateId = String(req.params.templateId);
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
