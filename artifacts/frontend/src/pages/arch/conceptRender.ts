@@ -1,3 +1,4 @@
+import { conceptReferenceSize } from "./conceptReferenceImage";
 import type { ConceptFacadePreferences, VolumetryRoom } from "./ConceptVolumetry";
 import type { SitePlacement } from "./conceptSitePlacement";
 import { buildSiteExteriorPlan } from "./conceptSiteExterior";
@@ -176,10 +177,10 @@ export function buildConceptRenderBrief(input: ConceptRenderBriefInput) {
       ? `EXACT OPENING LOCK: these are the authoritative doors/windows from the model. Preserve count, floor, center position, dimensions and sill relationships; do not add, remove, merge or relocate openings: ${exactOpeningSummary}.`
       : "",
     pool
-      ? `Preserve the pool exactly at its modeled position and approximate size ${pool.width.toFixed(1)} x ${pool.depth.toFixed(1)} m.`
+      ? `A pool exists at its modeled position (${pool.x.toFixed(1)}, ${pool.y.toFixed(1)}) with size ${pool.width.toFixed(1)} x ${pool.depth.toFixed(1)} m. Show it ONLY if visible in the reference; never move it into the camera view.`
       : "Do not invent a swimming pool.",
     renderView === "interior"
-      ? "Preserve all modeled openings and furniture. Improve only realism, material quality, lighting, decor coherence and photographic finish without changing positions or dimensions."
+      ? "Preserve all visible modeled openings and furniture, including each object silhouette, count and orientation. Improve only materials and lighting. Never add decorations, merge objects, stretch furniture or expose objects hidden behind walls."
       : "Use the line elevation only as strict geometry/composition guidance. Preserve every major edge, opening location, floor count, garage/entrance relationship, wall/gate position and added volume, while replacing schematic linework and hatching with realistic construction materials and depth.",
     "GEOMETRY HAS PRIORITY OVER STYLE: if a realism or style instruction conflicts with the source geometry, the source geometry always wins.",
     "SILHOUETTE LOCK: preserve the exact outer silhouette, floor-to-floor alignment, parapet/roof outline, garage width, entrance position and every major vertical/horizontal break visible in the source.",
@@ -191,7 +192,7 @@ export function buildConceptRenderBrief(input: ConceptRenderBriefInput) {
     "Use realistic exterior materials, physically plausible daylight, architectural shadows, reflections and professional real-estate photography quality.",
     renderView === "interior"
       ? "Preserve the current 3D camera direction as closely as possible. Use natural eye-level architectural perspective; avoid fisheye distortion."
-      : "Use a frontal or slight 3/4 architectural camera that clearly preserves the source elevation composition; avoid aerial or distorted perspectives.",
+      : "Keep the exact frontal camera and projection of the reference elevation. Do not introduce a 3/4 view, rotate the camera or invent unseen side walls. Keep vertical and horizontal lines straight.",
     `Structured room reference for preservation: ${roomSummary}`,
     objectSummary ? `CRITICAL FURNITURE/OBJECT PRESERVATION: ${objectSummary}` : "",
     uniqueWallMaterials.length ? `Wall material IDs selected in editor: ${uniqueWallMaterials.join(", ")}. Preserve these assignments where visible.` : "",
@@ -203,10 +204,15 @@ export function buildConceptRenderBrief(input: ConceptRenderBriefInput) {
 export async function svgElementToPngDataUrl(svg: SVGSVGElement, scale = 1.7) {
   const clone = svg.cloneNode(true) as SVGSVGElement;
   clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  clone.querySelectorAll('[data-render-ignore="true"]').forEach((node) => node.remove());
 
   const viewBox = svg.viewBox.baseVal;
-  const width = Math.max(800, Math.round((viewBox.width || svg.clientWidth || 900) * scale));
-  const height = Math.max(560, Math.round((viewBox.height || svg.clientHeight || 650) * scale));
+  const sourceWidth = viewBox.width || svg.clientWidth || 900;
+  const sourceHeight = viewBox.height || svg.clientHeight || 650;
+  const { width, height } = conceptReferenceSize(sourceWidth, sourceHeight, Math.max(1600, Math.max(sourceWidth, sourceHeight) * scale), true);
+  clone.setAttribute("width", String(width));
+  clone.setAttribute("height", String(height));
+  clone.removeAttribute("class");
 
   const serialized = new XMLSerializer().serializeToString(clone);
   const svgBlob = new Blob([serialized], { type: "image/svg+xml;charset=utf-8" });

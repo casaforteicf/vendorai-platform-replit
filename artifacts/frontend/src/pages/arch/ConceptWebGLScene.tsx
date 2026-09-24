@@ -1,3 +1,6 @@
+import { buildFacadeMeshBoxes } from "./conceptFacadeMeshes";
+import { getFacadeMaterial, type FacadeDesignState } from "./conceptFacadeDesign";
+import type { SiteFrontSide } from "./conceptSitePlacement";
 import { useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent } from "react";
 import type { ConceptModelLevel } from "./ConceptModel3D";
 import type { ConceptPlanObject } from "./ConceptPlan2D";
@@ -14,6 +17,8 @@ type Props = {
   lotDepth: number;
   activeFloor: number;
   levels: ConceptModelLevel[];
+  facadeDesign?: FacadeDesignState;
+  frontSide?: SiteFrontSide;
   objects: ConceptPlanObject[];
   selectedObjectId?: string | null;
   selectedWallId?: string | null;
@@ -236,6 +241,8 @@ export default function ConceptWebGLScene({
   roof,
   lightingMode,
   renderQuality = "realistic",
+  facadeDesign,
+  frontSide = "bottom",
   cameraPresetDegrees,
   cameraZoom,
   transformMode = "translate",
@@ -1116,7 +1123,9 @@ export default function ConceptWebGLScene({
       const baseY = floor * 2.96 + 0.16;
       const horizontal = Math.abs(dy) < 0.03;
       const vertical = Math.abs(dx) < 0.03;
-      const color = materialColor(materialId ?? "pintura-branca");
+      const color = !materialId && wall.exterior && facadeDesign
+        ? Number.parseInt(getFacadeMaterial(facadeDesign.surfaceMaterials.main).baseColor.slice(1), 16)
+        : materialColor(materialId ?? "pintura-branca");
 
       const addPiece = (
         alongStart: number,
@@ -1198,7 +1207,7 @@ export default function ConceptWebGLScene({
             && along <= wallEnd + 0.1;
         })
         .map((opening) => {
-          const width = Math.max(0.45, opening.width ?? (opening.type === "door" ? 0.9 : 1.2));
+          const width = Math.max(0.05, opening.width ?? (opening.type === "door" ? 0.9 : 1.2));
           const center = horizontal ? opening.x : opening.y;
           return {
             opening,
@@ -1219,12 +1228,12 @@ export default function ConceptWebGLScene({
         if (item.start > cursor + 0.03) addPiece(cursor, item.start, 0, 2.8);
 
         const openingHeight = Math.max(
-          0.5,
-          Math.min(2.75, item.opening.height ?? (item.opening.type === "door" ? 2.1 : 1.2)),
+          0.05,
+          Math.min(2.8, item.opening.height ?? (item.opening.type === "door" ? 2.1 : 1.2)),
         );
         const sill = item.opening.type === "door"
           ? 0
-          : Math.max(0.15, Math.min(2.2, item.opening.sillHeight ?? 0.9));
+          : Math.max(0, Math.min(2.8, item.opening.sillHeight ?? 0.9));
         const top = Math.min(2.8, sill + openingHeight);
 
         if (sill > 0.03) addPiece(item.start, item.end, 0, sill);
@@ -1354,11 +1363,11 @@ export default function ConceptWebGLScene({
       }
 
       for (const opening of level.openings ?? []) {
-        const width = Math.max(0.5, opening.width ?? (opening.type === "door" ? 0.9 : 1.2));
-        const height = Math.max(0.5, opening.height ?? (opening.type === "door" ? 2.1 : 1.2));
-        const sill = opening.type === "door" ? 0.02 : Math.max(0.2, opening.sillHeight ?? 0.9);
+        const width = Math.max(0.05, opening.width ?? (opening.type === "door" ? 0.9 : 1.2));
+        const height = Math.max(0.05, opening.height ?? (opening.type === "door" ? 2.1 : 1.2));
+        const sill = opening.type === "door" ? 0 : Math.max(0, opening.sillHeight ?? 0.9);
         const glass = opening.type === "window";
-        const frameColor = 0x334155;
+        const frameColor = facadeDesign ? Number.parseInt(getFacadeMaterial(facadeDesign.surfaceMaterials.frames).baseColor.slice(1), 16) : 0x334155;
         const frameThickness = 0.055;
         const panelDepth = 0.035;
         const panel = makeBox(
@@ -1367,7 +1376,7 @@ export default function ConceptWebGLScene({
           Math.max(0.1, height - frameThickness * 2),
           opening.orientation === "vertical" ? Math.max(0.1, width - frameThickness * 2) : panelDepth,
           opening.x - lotWidth / 2,
-          floorBase + sill + height / 2,
+          floorBase + 0.16 + sill + height / 2,
           opening.y - lotDepth / 2,
           glass
             ? (lightingMode === "night" ? 0xffd77a : 0x8ecae6)
@@ -1384,20 +1393,20 @@ export default function ConceptWebGLScene({
         };
 
         if (opening.orientation === "horizontal") {
-          addFrame(frameThickness, height, 0.08, opening.x - width / 2 + frameThickness / 2 - lotWidth / 2, floorBase + sill + height / 2, opening.y - lotDepth / 2);
-          addFrame(frameThickness, height, 0.08, opening.x + width / 2 - frameThickness / 2 - lotWidth / 2, floorBase + sill + height / 2, opening.y - lotDepth / 2);
-          addFrame(width, frameThickness, 0.08, opening.x - lotWidth / 2, floorBase + sill + frameThickness / 2, opening.y - lotDepth / 2);
-          addFrame(width, frameThickness, 0.08, opening.x - lotWidth / 2, floorBase + sill + height - frameThickness / 2, opening.y - lotDepth / 2);
+          addFrame(frameThickness, height, 0.08, opening.x - width / 2 + frameThickness / 2 - lotWidth / 2, floorBase + 0.16 + sill + height / 2, opening.y - lotDepth / 2);
+          addFrame(frameThickness, height, 0.08, opening.x + width / 2 - frameThickness / 2 - lotWidth / 2, floorBase + 0.16 + sill + height / 2, opening.y - lotDepth / 2);
+          addFrame(width, frameThickness, 0.08, opening.x - lotWidth / 2, floorBase + 0.16 + sill + frameThickness / 2, opening.y - lotDepth / 2);
+          addFrame(width, frameThickness, 0.08, opening.x - lotWidth / 2, floorBase + 0.16 + sill + height - frameThickness / 2, opening.y - lotDepth / 2);
           if (glass && opening.openingStyle !== "fixed") {
-            addFrame(frameThickness, height - frameThickness * 2, 0.065, opening.x - lotWidth / 2, floorBase + sill + height / 2, opening.y - lotDepth / 2);
+            addFrame(frameThickness, height - frameThickness * 2, 0.065, opening.x - lotWidth / 2, floorBase + 0.16 + sill + height / 2, opening.y - lotDepth / 2);
           }
         } else {
-          addFrame(0.08, height, frameThickness, opening.x - lotWidth / 2, floorBase + sill + height / 2, opening.y - width / 2 + frameThickness / 2 - lotDepth / 2);
-          addFrame(0.08, height, frameThickness, opening.x - lotWidth / 2, floorBase + sill + height / 2, opening.y + width / 2 - frameThickness / 2 - lotDepth / 2);
-          addFrame(0.08, frameThickness, width, opening.x - lotWidth / 2, floorBase + sill + frameThickness / 2, opening.y - lotDepth / 2);
-          addFrame(0.08, frameThickness, width, opening.x - lotWidth / 2, floorBase + sill + height - frameThickness / 2, opening.y - lotDepth / 2);
+          addFrame(0.08, height, frameThickness, opening.x - lotWidth / 2, floorBase + 0.16 + sill + height / 2, opening.y - width / 2 + frameThickness / 2 - lotDepth / 2);
+          addFrame(0.08, height, frameThickness, opening.x - lotWidth / 2, floorBase + 0.16 + sill + height / 2, opening.y + width / 2 - frameThickness / 2 - lotDepth / 2);
+          addFrame(0.08, frameThickness, width, opening.x - lotWidth / 2, floorBase + 0.16 + sill + frameThickness / 2, opening.y - lotDepth / 2);
+          addFrame(0.08, frameThickness, width, opening.x - lotWidth / 2, floorBase + 0.16 + sill + height - frameThickness / 2, opening.y - lotDepth / 2);
           if (glass && opening.openingStyle !== "fixed") {
-            addFrame(0.065, height - frameThickness * 2, frameThickness, opening.x - lotWidth / 2, floorBase + sill + height / 2, opening.y - lotDepth / 2);
+            addFrame(0.065, height - frameThickness * 2, frameThickness, opening.x - lotWidth / 2, floorBase + 0.16 + sill + height / 2, opening.y - lotDepth / 2);
           }
         }
       }
@@ -1602,6 +1611,15 @@ export default function ConceptWebGLScene({
       }
     }
 
+    if (facadeDesign && shellBounds && showAllFloors && !interiorMode) {
+      const buildingHeight = (Math.max(0, ...levels.map((level) => level.floor)) + 1) * 2.96;
+      for (const box of buildFacadeMeshBoxes(facadeDesign, shellBounds, buildingHeight, frontSide)) {
+        const material = getFacadeMaterial(box.materialId);
+        makeBox(modelRoot, box.width, box.height, box.depth, box.x, box.y, box.z,
+          Number.parseInt(material.baseColor.slice(1), 16),
+          { transparent: box.opacity < 1, opacity: box.opacity });
+      }
+    }
     const sceneBounds = new THREE.Box3().setFromObject(modelRoot);
     const hasRenderableContent = modelRoot.children.length > 0 && !sceneBounds.isEmpty();
     if (hasRenderableContent && !runtime.contentFramed) {
@@ -1644,6 +1662,8 @@ export default function ConceptWebGLScene({
     showRoof,
     roof,
     visibleFloors,
+    facadeDesign,
+    frontSide,
   ]);
 
   useEffect(() => {

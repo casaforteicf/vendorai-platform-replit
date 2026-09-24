@@ -21,6 +21,7 @@ export type DerivedFacadeModel = {
   width: number;
   floors: number;
   height: number;
+  stories: Array<{ floor: number; minAxis: number; maxAxis: number }>;
   openings: DerivedFacadeOpening[];
   garageRange?: { start: number; end: number };
 };
@@ -43,10 +44,10 @@ function facadeBounds(
   const wallXs = walls.flatMap((wall) => [wall.x1, wall.x2]);
   const wallYs = walls.flatMap((wall) => [wall.y1, wall.y2]);
   return {
-    minX: Math.min(...(xs.length ? xs : wallXs.length ? wallXs : [0])),
-    maxX: Math.max(...(xs.length ? xs : wallXs.length ? wallXs : [8])),
-    minY: Math.min(...(ys.length ? ys : wallYs.length ? wallYs : [0])),
-    maxY: Math.max(...(ys.length ? ys : wallYs.length ? wallYs : [8])),
+    minX: Math.min(...(xs.length || wallXs.length ? [...xs, ...wallXs] : [0])),
+    maxX: Math.max(...(xs.length || wallXs.length ? [...xs, ...wallXs] : [8])),
+    minY: Math.min(...(ys.length || wallYs.length ? [...ys, ...wallYs] : [0])),
+    maxY: Math.max(...(ys.length || wallYs.length ? [...ys, ...wallYs] : [8])),
   };
 }
 
@@ -59,13 +60,6 @@ export function buildDerivedFacadeModel(
   const currentRooms = buildingRooms(rooms);
   const bounds = facadeBounds(rooms, levels);
   const horizontalFront = safePlacement.frontSide === "top" || safePlacement.frontSide === "bottom";
-  const front = safePlacement.frontSide === "top"
-    ? bounds.minY
-    : safePlacement.frontSide === "bottom"
-      ? bounds.maxY
-      : safePlacement.frontSide === "left"
-        ? bounds.minX
-        : bounds.maxX;
 
   const minAxis = horizontalFront ? bounds.minX : bounds.minY;
   const maxAxis = horizontalFront ? bounds.maxX : bounds.maxY;
@@ -73,18 +67,34 @@ export function buildDerivedFacadeModel(
   const openings: DerivedFacadeOpening[] = [];
 
   for (const level of levels ?? []) {
+    // Each storey can have a setback: its front is not the ground-floor front.
+    const floorBounds = facadeBounds(currentRooms.filter((room) => room.floor === level.floor), [level]);
+    const floorFront = safePlacement.frontSide === "top" ? floorBounds.minY
+      : safePlacement.frontSide === "bottom" ? floorBounds.maxY
+      : safePlacement.frontSide === "left" ? floorBounds.minX : floorBounds.maxX;
     for (const opening of level.openings ?? []) {
+      const axis = horizontalFront ? opening.x : opening.y;
+      const frontWalls = [...(level.walls ?? []), ...(level.customWalls ?? [])].filter((wall) => {
+        const parallel = horizontalFront ? Math.abs(wall.y2 - wall.y1) < 0.01 : Math.abs(wall.x2 - wall.x1) < 0.01;
+        const a = horizontalFront ? wall.x1 : wall.y1;
+        const b = horizontalFront ? wall.x2 : wall.y2;
+        return parallel && axis >= Math.min(a, b) - 0.01 && axis <= Math.max(a, b) + 0.01;
+      });
+      const depths = frontWalls.map((wall) => horizontalFront ? wall.y1 : wall.x1);
+      const visibleFront = depths.length
+        ? (safePlacement.frontSide === "top" || safePlacement.frontSide === "left" ? Math.min(...depths) : Math.max(...depths))
+        : floorFront;
       const onFront = horizontalFront
-        ? Math.abs(opening.y - front) <= 0.32
-        : Math.abs(opening.x - front) <= 0.32;
+        ? opening.orientation === "horizontal" && Math.abs(opening.y - visibleFront) <= 0.32
+        : opening.orientation === "vertical" && Math.abs(opening.x - visibleFront) <= 0.32;
       if (!onFront) continue;
       openings.push({
         id: opening.id,
         type: opening.type,
         floor: level.floor,
         axis: horizontalFront ? opening.x : opening.y,
-        width: Math.max(0.45, opening.width ?? (opening.type === "door" ? 0.9 : 1.2)),
-        height: Math.max(0.5, opening.height ?? (opening.type === "door" ? 2.1 : 1.2)),
+        width: Math.max(0.05, opening.width ?? (opening.type === "door" ? 0.9 : 1.2)),
+        height: Math.max(0.05, opening.height ?? (opening.type === "door" ? 2.1 : 1.2)),
         sillHeight: opening.type === "door" ? 0 : Math.max(0, opening.sillHeight ?? 0.9),
         openingStyle: opening.openingStyle,
         swing: opening.swing,
@@ -112,6 +122,11 @@ export function buildDerivedFacadeModel(
     width,
     floors: maxFloor + 1,
     height: (maxFloor + 1) * 2.96,
+    stories: Array.from({ length: maxFloor + 1 }, (_, floor) => {
+      const floorBounds = facadeBounds(currentRooms.filter((room) => room.floor === floor), (levels ?? []).filter((level) => level.floor === floor));
+      return { floor, minAxis: horizontalFront ? floorBounds.minX : floorBounds.minY,
+        maxAxis: horizontalFront ? floorBounds.maxX : floorBounds.maxY };
+    }),
     openings,
     garageRange,
   };
