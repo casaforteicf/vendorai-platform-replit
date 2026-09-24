@@ -320,67 +320,105 @@ export function generateLayoutVariant<T extends ConceptRoomShape>(
   const candidateStep = 0.5;
   for (const room of movable) {
     const target = targetFor(room);
-    const candidates: Array<{ x: number; y: number; distance: number }> = [];
+    const candidates: Array<{ x: number; y: number; distance: number; connected: boolean }> = [];
 
-    for (let y = 0; y <= Math.max(0, lotDepth - room.depth) + EPS; y += candidateStep) {
-      for (let x = 0; x <= Math.max(0, lotWidth - room.width) + EPS; x += candidateStep) {
-        if (!fits(room, x, y) || !touchesBuilding(room, x, y)) continue;
-        const dx = x - target.x;
-        const dy = y - target.y;
-        let score = dx * dx + dy * dy;
+    // Besides the coarse grid, include exact coordinates derived from already
+    // placed room edges. This is critical when room dimensions are not multiples
+    // of 0.5 m; otherwise a room can never land exactly adjacent to its neighbor,
+    // leaving no valid candidate and falling back to overlapping saved coordinates.
+    const xCandidates = new Set<number>([
+      0,
+      Math.max(0, lotWidth - room.width),
+      Math.max(0, Math.min(lotWidth - room.width, target.x)),
+    ]);
+    const yCandidates = new Set<number>([
+      0,
+      Math.max(0, lotDepth - room.depth),
+      Math.max(0, Math.min(lotDepth - room.depth, target.y)),
+    ]);
 
-        const touches = placed.filter((neighbor) => {
-          const verticalTouch =
-            (nearly(x + room.width, neighbor.x) || nearly(x, neighbor.x + neighbor.width)) &&
-            overlap(y, y + room.depth, neighbor.y, neighbor.y + neighbor.depth) >= 0.8;
-          const horizontalTouch =
-            (nearly(y + room.depth, neighbor.y) || nearly(y, neighbor.y + neighbor.depth)) &&
-            overlap(x, x + room.width, neighbor.x, neighbor.x + neighbor.width) >= 0.8;
-          return verticalTouch || horizontalTouch;
-        });
+    for (let x = 0; x <= Math.max(0, lotWidth - room.width) + EPS; x += candidateStep) xCandidates.add(x);
+    for (let y = 0; y <= Math.max(0, lotDepth - room.depth) + EPS; y += candidateStep) yCandidates.add(y);
 
-        const adjacentKinds = new Set(touches.map((neighbor) => neighbor.kind));
-        const reward = (kind: string, value: number) => {
-          if (adjacentKinds.has(kind)) score -= value;
-        };
-        const penalize = (kind: string, value: number) => {
-          if (adjacentKinds.has(kind)) score += value;
-        };
+    for (const box of occupied) {
+      xCandidates.add(box.x1 - room.width);
+      xCandidates.add(box.x2);
+      yCandidates.add(box.y1 - room.depth);
+      yCandidates.add(box.y2);
+    }
 
-        if (room.kind === "cozinha") {
-          reward("sala", 18);
-          reward("gourmet", 22);
-          reward("lavanderia", 10);
-        } else if (room.kind === "gourmet") {
-          reward("cozinha", 22);
-          reward("sala", 8);
-        } else if (room.kind === "lavanderia") {
-          reward("cozinha", 18);
-          penalize("quarto", 8);
-          penalize("suite", 8);
-        } else if (room.kind === "banheiro") {
-          reward("circulacao", 24);
-          reward("suite", 10);
-          reward("quarto", 8);
-          reward("lavanderia", 5);
-        } else if (room.kind === "quarto" || room.kind === "suite") {
-          reward("circulacao", 28);
-          reward("banheiro", 8);
-          penalize("garagem", 20);
-          penalize("gourmet", 10);
-        } else if (room.kind === "circulacao") {
-          reward("sala", 12);
-          reward("escada", 20);
-        } else if (room.kind === "escada") {
-          reward("circulacao", 24);
-          reward("sala", 10);
-        }
+    const scoreCandidate = (x: number, y: number) => {
+      if (!fits(room, x, y)) return;
+      const connected = touchesBuilding(room, x, y);
+      const dx = x - target.x;
+      const dy = y - target.y;
+      let score = dx * dx + dy * dy + (connected ? 0 : 250);
 
-        candidates.push({ x, y, distance: score });
+      const touches = placed.filter((neighbor) => {
+        const verticalTouch =
+          (nearly(x + room.width, neighbor.x) || nearly(x, neighbor.x + neighbor.width)) &&
+          overlap(y, y + room.depth, neighbor.y, neighbor.y + neighbor.depth) >= 0.8;
+        const horizontalTouch =
+          (nearly(y + room.depth, neighbor.y) || nearly(y, neighbor.y + neighbor.depth)) &&
+          overlap(x, x + room.width, neighbor.x, neighbor.x + neighbor.width) >= 0.8;
+        return verticalTouch || horizontalTouch;
+      });
+
+      const adjacentKinds = new Set(touches.map((neighbor) => neighbor.kind));
+      const reward = (kind: string, value: number) => {
+        if (adjacentKinds.has(kind)) score -= value;
+      };
+      const penalize = (kind: string, value: number) => {
+        if (adjacentKinds.has(kind)) score += value;
+      };
+
+      if (room.kind === "cozinha") {
+        reward("sala", 18);
+        reward("gourmet", 22);
+        reward("lavanderia", 10);
+      } else if (room.kind === "gourmet") {
+        reward("cozinha", 22);
+        reward("sala", 8);
+      } else if (room.kind === "lavanderia") {
+        reward("cozinha", 18);
+        penalize("quarto", 8);
+        penalize("suite", 8);
+      } else if (room.kind === "banheiro") {
+        reward("circulacao", 24);
+        reward("suite", 10);
+        reward("quarto", 8);
+        reward("lavanderia", 5);
+      } else if (room.kind === "quarto" || room.kind === "suite") {
+        reward("circulacao", 28);
+        reward("banheiro", 8);
+        penalize("garagem", 20);
+        penalize("gourmet", 10);
+      } else if (room.kind === "circulacao") {
+        reward("sala", 12);
+        reward("escada", 20);
+      } else if (room.kind === "escada") {
+        reward("circulacao", 24);
+        reward("sala", 10);
+      }
+
+      candidates.push({ x, y, distance: score, connected });
+    };
+
+    for (const y of yCandidates) {
+      if (y < -EPS || y > lotDepth - room.depth + EPS) continue;
+      for (const x of xCandidates) {
+        if (x < -EPS || x > lotWidth - room.width + EPS) continue;
+        scoreCandidate(x, y);
       }
     }
 
-    candidates.sort((a, b) => a.distance - b.distance || a.y - b.y || a.x - b.x);
+    candidates.sort((a, b) =>
+      Number(b.connected) - Number(a.connected) ||
+      a.distance - b.distance ||
+      a.y - b.y ||
+      a.x - b.x
+    );
+
     const found = candidates[0] ?? null;
     const next = {
       ...room,
@@ -455,6 +493,12 @@ export function validateConceptLayout(
     }
   }
 
+  const overlappingRoomIds = new Set(
+    issues
+      .filter((issue) => issue.id.startsWith("overlap-"))
+      .flatMap((issue) => issue.id.replace(/^overlap-/, "").split("-")),
+  );
+
   const indoor = current.filter((room) => room.kind !== "piscina");
   if (indoor.length > 1) {
     const connected = new Set<string>();
@@ -482,7 +526,7 @@ export function validateConceptLayout(
     }
 
     for (const room of indoor) {
-      if (!connected.has(room.id)) {
+      if (!connected.has(room.id) && !overlappingRoomIds.has(room.id)) {
         issues.push({
           id: `isolated-${room.id}`,
           severity: "warning",
