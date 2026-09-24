@@ -80,3 +80,19 @@ describe("conceptGeometry stability", () => {
     expect(vertical.y).toBe(0);
   });
 });
+
+describe("validação da garagem com recuo e frente do lote", () => {
+  it("não acusa garagem logo após o recuo frontal", () => {
+    const rooms = [{ id: "g", kind: "garagem", label: "Garagem", floor: 0, x: 1.5, y: 4, width: 5.8, depth: 5.5 }];
+    const issues = validateConceptLayout(rooms as never, 12, 30, 0, { frontSide: "top", setbackFront: 4 });
+    expect(issues.some((issue) => issue.id.startsWith("garage-access"))).toBe(false);
+  });
+
+  it("mede a partir do lado da frente escolhido", () => {
+    const rooms = [{ id: "g", kind: "garagem", label: "Garagem", floor: 0, x: 1.5, y: 20.5, width: 5.8, depth: 5.5 }];
+    expect(validateConceptLayout(rooms as never, 12, 30, 0, { frontSide: "bottom", setbackFront: 4 })
+      .some((issue) => issue.id.startsWith("garage-access"))).toBe(false);
+    expect(validateConceptLayout(rooms as never, 12, 30, 0, { frontSide: "top", setbackFront: 4 })
+      .some((issue) => issue.id.startsWith("garage-access"))).toBe(true);
+  });
+});

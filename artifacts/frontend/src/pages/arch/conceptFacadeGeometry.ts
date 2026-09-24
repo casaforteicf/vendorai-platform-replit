@@ -24,6 +24,8 @@ export type DerivedFacadeModel = {
   stories: Array<{ floor: number; minAxis: number; maxAxis: number }>;
   openings: DerivedFacadeOpening[];
   garageRange?: { start: number; end: number };
+  /** Varandas encostadas na frente: aparecem como recuo aberto, não como parede cega. */
+  porchRanges: Array<{ floor: number; start: number; end: number }>;
 };
 
 function buildingRooms(rooms: ConceptRoomShape[]) {
@@ -102,7 +104,19 @@ export function buildDerivedFacadeModel(
     }
   }
 
-  const garage = currentRooms.find((room) => room.kind === "garagem" && room.floor === 0);
+  const frontEdge = (room: ConceptRoomShape) => safePlacement.frontSide === "top" ? room.y
+    : safePlacement.frontSide === "bottom" ? -(room.y + room.depth)
+      : safePlacement.frontSide === "left" ? room.x : -(room.x + room.width);
+  const floorFrontEdge = (floor: number) => Math.min(...currentRooms.filter((room) => room.floor === floor).map(frontEdge));
+  const touchesFront = (room: ConceptRoomShape) => frontEdge(room) - floorFrontEdge(room.floor) < 0.35;
+
+  // Portão só quando a garagem abre para a rua (antes desenhava portão em garagem nos fundos).
+  const garage = currentRooms.find((room) => room.kind === "garagem" && room.floor === 0 && touchesFront(room));
+  const porchRanges = currentRooms
+    .filter((room) => /varanda|sacada/i.test(room.label ?? "") && touchesFront(room))
+    .map((room) => horizontalFront
+      ? { floor: room.floor, start: room.x, end: room.x + room.width }
+      : { floor: room.floor, start: room.y, end: room.y + room.depth });
   const garageRange = garage
     ? horizontalFront
       ? { start: garage.x, end: garage.x + garage.width }
@@ -129,5 +143,6 @@ export function buildDerivedFacadeModel(
     }),
     openings,
     garageRange,
+    porchRanges,
   };
 }

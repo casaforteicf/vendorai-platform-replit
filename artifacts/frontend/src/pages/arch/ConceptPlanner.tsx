@@ -49,7 +49,7 @@ import ConceptFacadeEditor, { type AIDevelopmentResponse } from "./ConceptFacade
 import ConceptClientBriefPanel from "./ConceptClientBriefPanel";
 import { CONCEPT_JOURNEY, conceptJourneyContinueLabel, conceptJourneyIndex } from "./conceptJourney";
 import ConceptSitePlacementPanel from "./ConceptSitePlacementPanel";
-import { DEFAULT_SITE_PLACEMENT, getBuildingBounds, normalizeSitePlacement, type SitePlacement } from "./conceptSitePlacement";
+import { DEFAULT_SITE_PLACEMENT, getBuildingBounds, migrateLegacySitePlacement, normalizeSitePlacement, resolveSiteSetbacks, type SitePlacement } from "./conceptSitePlacement";
 import { type ClientBriefAlternative } from "./conceptClientBrief";
 import ConceptModel3D, { type ConceptModelLevel } from "./ConceptModel3D";
 import {
@@ -57,7 +57,7 @@ import {
   normalizeFacadeDesign,
   type FacadeDesignState,
 } from "./conceptFacadeDesign";
-import { buildTypologyRooms, CONCEPT_TYPOLOGIES, DEFAULT_LAYOUT_PREFERENCES, type ConceptTypology, type LayoutPreferences, type LayoutPreferenceKey } from "./conceptTemplates";
+import { buildTypologyPlan, buildTypologyRooms, CONCEPT_TYPOLOGIES, DEFAULT_LAYOUT_PREFERENCES, type ConceptTypology, type LayoutPreferences, type LayoutPreferenceKey } from "./conceptTemplates";
 import { generateTypologyLayout } from "./conceptTypologyLayout";
 import { ConceptRenderGalleryActions } from "./ConceptRenderGalleryActions";
 import { inspectConceptVisualQuality } from "./conceptVisualQuality";
@@ -1189,7 +1189,7 @@ export default function ConceptPlanner() {
         setObjects(normalizeLoadedObjects(draft.configuration?.objects, loadedFloors));
         setWallMaterials(draft.configuration?.wallMaterials && typeof draft.configuration.wallMaterials === "object" ? draft.configuration.wallMaterials : {});
         setSavedTourPoints(Array.isArray(draft.configuration?.savedTourPoints) ? draft.configuration.savedTourPoints : []);
-        setSitePlacement(normalizeSitePlacement(draft.configuration?.sitePlacement));
+        setSitePlacement(migrateLegacySitePlacement(draft.configuration?.sitePlacement));
         setRooms(loadedRooms);
         setOpeningOverrides(draft.openingOverrides && typeof draft.openingOverrides === "object" ? draft.openingOverrides : {});
         setCustomerProfile(draft.customerProfile ?? {});
@@ -1608,17 +1608,26 @@ export default function ConceptPlanner() {
     const template = CONCEPT_TYPOLOGIES.find((item) => item.id === nextTypology);
     if (!template) return;
 
-    let nextRooms = buildTypologyRooms(nextTypology) as Room[];
-    for (let floor = 0; floor < template.floors; floor += 1) {
-      nextRooms = generateTypologyLayout(
-        nextRooms,
-        lotWidth,
-        lotDepth,
-        floor,
-        nextTypology,
-        layoutVariant,
-        layoutPreferences,
-      ) as Room[];
+    // Modelos desenhados entram com as posições do projeto (girados para a frente escolhida
+    // e dentro dos recuos). Só se não couberem no lote é que voltam ao encaixe automático.
+    const placement = normalizeSitePlacement(sitePlacement);
+    const drawn = buildTypologyPlan(nextTypology, lotWidth, lotDepth, placement.frontSide, resolveSiteSetbacks(placement));
+    // Modelo desenhado que não cabe no lote não é mais "espremido" pelo encaixe automático
+    // (que gerava cômodos soltos e erros). O cartão já avisa o lote mínimo.
+    if (!drawn && template.rooms.every((room) => typeof room.x === "number")) return;
+    let nextRooms = (drawn ?? buildTypologyRooms(nextTypology)) as Room[];
+    if (!drawn) {
+      for (let floor = 0; floor < template.floors; floor += 1) {
+        nextRooms = generateTypologyLayout(
+          nextRooms,
+          lotWidth,
+          lotDepth,
+          floor,
+          nextTypology,
+          layoutVariant,
+          layoutPreferences,
+        ) as Room[];
+      }
     }
 
     setTypology(nextTypology);
@@ -4373,8 +4382,10 @@ export default function ConceptPlanner() {
                       <button
                         key={item.id}
                         type="button"
+                        disabled={lotWidth < item.minLotWidth}
+                        title={lotWidth < item.minLotWidth ? `Este modelo precisa de lote com pelo menos ${item.minLotWidth} m de frente` : undefined}
                         onClick={() => { applyTypology(item.id); closeLibraryOnMobile(); }}
-                        className="group text-left"
+                        className="group text-left disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <div className={typology === item.id
                           ? "relative overflow-hidden rounded-2xl border-2 border-orange-500 bg-slate-50 shadow-sm"
@@ -4388,16 +4399,6 @@ export default function ConceptPlanner() {
                             />
                           </div>
 
-                          <div className="absolute left-3 top-3 flex gap-2">
-                            <span className="rounded-full bg-white/95 px-2.5 py-1 text-[10px] font-bold shadow-sm">
-                              {item.floors === 1 ? "TÉRREA" : "SOBRADO"}
-                            </span>
-                            {(item.rooms.some((room) => room.kind === "piscina" || room.kind === "gourmet")) && (
-                              <span className="rounded-full bg-white/95 px-2.5 py-1 text-[10px] font-bold shadow-sm">
-                                LAZER
-                              </span>
-                            )}
-                          </div>
 
                           {typology === item.id ? (
                             <div className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full bg-orange-500 text-white shadow">
@@ -5068,7 +5069,7 @@ export default function ConceptPlanner() {
                         }}
                         className="group overflow-hidden rounded-2xl border bg-white text-left transition hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-lg"
                       >
-                        <div className="grid aspect-[4/3] place-items-center bg-gradient-to-br from-slate-50 to-slate-100">
+                        <div className="grid h-24 place-items-center bg-gradient-to-br from-slate-50 to-slate-100 sm:aspect-[4/3] sm:h-auto">
                           <div className="grid h-16 w-16 place-items-center rounded-2xl border-2 border-dashed border-slate-300 bg-white text-slate-500">
                             <Plus className="h-7 w-7" />
                           </div>
@@ -5082,6 +5083,8 @@ export default function ConceptPlanner() {
                         <button
                           key={item.id}
                           type="button"
+                          disabled={lotWidth < item.minLotWidth}
+                          title={lotWidth < item.minLotWidth ? `Este modelo precisa de lote com pelo menos ${item.minLotWidth} m de frente` : undefined}
                           onClick={() => {
                             applyTypology(item.id);
                             setModelGalleryOpen(false);
@@ -5089,24 +5092,19 @@ export default function ConceptPlanner() {
                           }}
                           className={typology === item.id
                             ? "group overflow-hidden rounded-2xl border-2 border-orange-500 bg-white text-left shadow-md"
-                            : "group overflow-hidden rounded-2xl border bg-white text-left transition hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-lg"}
+                            : "group overflow-hidden rounded-2xl border bg-white text-left transition hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-none"}
                         >
                           <div className="relative aspect-[4/3] overflow-hidden">
                             <ConceptTypologyCardVisual item={item} lotWidth={lotWidth} lotDepth={lotDepth} />
-                            <div className="absolute left-3 top-3 flex gap-2">
-                              <span className="rounded-full bg-white/95 px-2.5 py-1 text-[9px] font-bold shadow-sm">
-                                {item.floors === 1 ? "TÉRREA" : "SOBRADO"}
-                              </span>
-                              {item.rooms.some((room) => room.kind === "piscina" || room.kind === "gourmet") && (
-                                <span className="rounded-full bg-white/95 px-2.5 py-1 text-[9px] font-bold shadow-sm">LAZER</span>
-                              )}
-                            </div>
                           </div>
                           <div className="p-4">
                             <div className="flex items-start justify-between gap-3">
                               <div>
                                 <div className="font-semibold text-slate-950">{item.title}</div>
                                 <div className="mt-1 text-xs text-slate-500">{item.subtitle}</div>
+                                <div className={lotWidth < item.minLotWidth ? "mt-1 text-[11px] font-semibold text-orange-700" : "mt-1 text-[11px] text-slate-400"}>
+                                  {lotWidth < item.minLotWidth ? `Precisa de lote com ${item.minLotWidth} m de frente` : `Lote a partir de ${item.minLotWidth} m de frente`}
+                                </div>
                               </div>
                               <div className="shrink-0 text-sm font-bold text-slate-700">≈ {item.suggestedArea} m²</div>
                             </div>
@@ -5305,8 +5303,10 @@ export default function ConceptPlanner() {
                           <button
                             key={item.id}
                             type="button"
+                            disabled={lotWidth < item.minLotWidth}
+                            title={lotWidth < item.minLotWidth ? `Este modelo precisa de lote com pelo menos ${item.minLotWidth} m de frente` : undefined}
                             onClick={() => applyTypology(item.id)}
-                            className="overflow-hidden rounded-xl border bg-white text-left transition hover:border-slate-300 hover:shadow-sm"
+                            className="overflow-hidden rounded-xl border bg-white text-left transition hover:border-slate-300 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             <div className="aspect-[16/8] overflow-hidden">
                               <ConceptTypologyCardVisual item={item} lotWidth={lotWidth} lotDepth={lotDepth} />

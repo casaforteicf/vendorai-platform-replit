@@ -79,6 +79,7 @@ function Window({
   height,
   frame,
   id,
+  sill = false,
 }: {
   x: number;
   y: number;
@@ -86,28 +87,61 @@ function Window({
   height: number;
   frame: string;
   id: string;
+  sill?: boolean;
 }) {
+  const panes = width > height * 1.3 ? 2 : 1;
   return (
     <g>
-      <rect x={x} y={y} width={width} height={height} rx="0.45" fill={"url(#" + id + ")"} stroke={frame} strokeWidth="0.72" />
-      <line x1={x + width / 2} y1={y} x2={x + width / 2} y2={y + height} stroke="#d8e0e4" strokeOpacity="0.52" strokeWidth="0.32" />
-      <line x1={x} y1={y + height * 0.58} x2={x + width} y2={y + height * 0.58} stroke="#d8e0e4" strokeOpacity="0.24" strokeWidth="0.26" />
+      <rect x={x} y={y} width={width} height={height} fill={"url(#" + id + ")"} stroke={frame} strokeWidth="0.7" />
+      {Array.from({ length: panes - 1 }, (_, index) => (
+        <line key={index} x1={x + (width / panes) * (index + 1)} y1={y} x2={x + (width / panes) * (index + 1)} y2={y + height}
+          stroke={frame} strokeWidth="0.45" />
+      ))}
+      <path d={`M${x + width * 0.12} ${y + height * 0.85} L${x + width * 0.34} ${y + height * 0.15}`} stroke="#ffffff" strokeOpacity="0.35" strokeWidth="0.35" />
+      {sill && <rect x={x - 0.35} y={y + height} width={width + 0.7} height="0.35" fill="#e5e7eb" stroke="#64748b" strokeWidth="0.2" />}
     </g>
   );
 }
 
-function Roof({ x, y, width, facade, color, scale }: {
-  x: number; y: number; width: number; facade: ConceptFacadePreferences; color: string; scale: number;
+function Tree({ x, ground, scale, height, line = false, back = false }: {
+  x: number; ground: number; scale: number; height: number; line?: boolean; back?: boolean;
 }) {
-  const edge = 0.12 * scale;
-  const parapet = 0.3 * scale;
-  if (facade.roof === "platibanda") return <rect x={x - edge} y={y - parapet} width={width + edge * 2} height={parapet} fill={color} stroke="#334155" strokeWidth="0.45" />;
-  const rise = Math.min(2 * scale, width * 0.22);
+  const h = height * scale;
+  const r = h * 0.28;
+  const trunk = h * 0.42;
+  const leaf = line ? "#ffffff" : back ? "#8fa487" : "#5f7d56";
+  const leafDark = line ? "#ffffff" : back ? "#7d9377" : "#4d6a47";
+  return <g data-facade-tree="true" opacity={back ? 0.75 : 1}>
+    <line x1={x} y1={ground} x2={x} y2={ground - trunk} stroke={line ? "#475569" : "#6b5444"} strokeWidth={Math.max(0.35, 0.12 * scale)} />
+    <circle cx={x - r * 0.45} cy={ground - trunk - r * 0.55} r={r * 0.72} fill={leafDark} stroke={line ? "#475569" : "none"} strokeWidth="0.25" />
+    <circle cx={x + r * 0.5} cy={ground - trunk - r * 0.6} r={r * 0.68} fill={leafDark} stroke={line ? "#475569" : "none"} strokeWidth="0.25" />
+    <circle cx={x} cy={ground - trunk - r * 1.05} r={r * 0.85} fill={leaf} stroke={line ? "#475569" : "none"} strokeWidth="0.25" />
+  </g>;
+}
+
+function Roof({ x, y, width, facade, color, scale, wall, line }: {
+  x: number; y: number; width: number; facade: ConceptFacadePreferences; color: string; scale: number; wall: string; line: boolean;
+}) {
+  // Platibanda de verdade: prolongamento da parede (~0,9 m) com rufo no topo — antes era uma
+  // tampa fina de 30 cm que deixava a casa com cara de caixa.
+  const parapet = 0.9 * scale;
+  const cap = 0.08 * scale;
+  const capOverhang = 0.06 * scale;
+  const platibanda = (px: number, pw: number) => <g>
+    <rect x={px} y={y - parapet} width={pw} height={parapet} fill={wall} stroke="#334155" strokeWidth="0.45" />
+    <rect x={px - capOverhang} y={y - parapet - cap} width={pw + capOverhang * 2} height={cap} fill={line ? "#fff" : "#9aa1a6"} stroke="#334155" strokeWidth="0.3" />
+    {!line && <rect x={px} y={y - parapet} width={pw} height={0.1 * scale} fill="#000" fillOpacity="0.08" />}
+  </g>;
+  if (facade.roof === "platibanda") return platibanda(x, width);
+  const eave = 0.6 * scale;
+  const rise = Math.min(1.8 * scale, width * 0.2);
   const start = facade.roof === "misto" ? x + width * 0.45 : x;
   const span = x + width - start;
   return <g>
-    {facade.roof === "misto" && <rect x={x - edge} y={y - parapet} width={width * 0.45 + edge} height={parapet} fill={color} stroke="#334155" strokeWidth="0.45" />}
-    <path d={`M${start - edge} ${y} L${start + span / 2} ${y - rise} L${x + width + edge} ${y} Z`} fill={color} stroke="#334155" strokeWidth="0.45" />
+    {facade.roof === "misto" && platibanda(x, width * 0.45)}
+    <path d={`M${start - eave} ${y + 0.05 * scale} L${start + span / 2} ${y - rise} L${x + width + eave} ${y + 0.05 * scale} Z`}
+      fill={color} stroke="#334155" strokeWidth="0.45" />
+    {!line && <path d={`M${start - eave} ${y + 0.05 * scale} H${x + width + eave}`} stroke="#000" strokeOpacity="0.2" strokeWidth={0.12 * scale} />}
   </g>;
 }
 
@@ -138,11 +172,11 @@ export default function ConceptDerivedFacade({
   const lineMode = viewMode === "line";
   const safeSitePlacement = normalizeSitePlacement(sitePlacement);
   const derivedFacade = buildDerivedFacadeModel(levels, rooms, safeSitePlacement);
-  const facadeWidth = 106;
+  const facadeWidth = 92;
   // One metric scale for both axes: a 1 m opening must never get stretched.
   const scaleX = facadeWidth / derivedFacade.width;
   const storyHeight = 2.96 * scaleX;
-  const baseX = 17;
+  const baseX = 24;
   const groundY = 63;
   const buildingHeight = storyHeight * derivedFacade.floors;
   const buildingTop = groundY - buildingHeight;
@@ -153,11 +187,28 @@ export default function ConceptDerivedFacade({
   const roofX = rangeX(topStory.minAxis, topStory.maxAxis);
   const roofW = (topStory.maxAxis - topStory.minAxis) * scaleX;
   const roofY = buildingTop;
-  const mainFill = lineMode ? "#fff" : colors.wall;
+  const mainFill = lineMode ? "#fff" : design ? `url(#facade-material-${design.surfaceMaterials.main})` : colors.wall;
   const frameColor = lineMode ? "#334155" : colors.frame;
   const glassPatternId = lineMode ? "technical-glass" : "derived-facade-glass";
   const entranceFill = lineMode ? "#fff" : design ? getFacadeMaterial(design.surfaceMaterials.entrance).baseColor : colors.accent;
   const frontOpenings = derivedFacade.openings;
+  const garageFill = design ? getFacadeMaterial(design.surfaceMaterials.garage).baseColor : colors.frame;
+  const pavingFill = design ? getFacadeMaterial(design.surfaceMaterials.paving).baseColor : "#d6d3cd";
+  // Muro, portão e jardim automáticos da implantação ficam na divisa do lote: no 3D fazem sentido,
+  // mas na elevação caíam em cima da casa. A elevação desenha portão e paisagismo próprios.
+  const elevationVolumes = (design?.volumes ?? []).filter((volume) => !/^site-auto-(wall|gate|planter)/.test(volume.id));
+  const entranceOpening = derivedFacade.openings.find((opening) => opening.type === "door" && opening.floor === 0);
+  const hasCanopyVolume = elevationVolumes.some((volume) => volume.kind === "canopy" || volume.kind === "portal");
+  const landscaping = facade.landscaping ?? "medio";
+  const showTrees = design?.showLandscaping ?? true;
+  const buildingLeft = baseX;
+  const buildingRight = baseX + facadeWidth;
+  const trees = [
+    { x: Math.max(14, buildingLeft - Math.min(0.9 * scaleX, 8)), height: landscaping === "intenso" ? 5.2 : 4.2, back: false },
+    { x: Math.min(126, buildingRight + Math.min(0.9 * scaleX, 8)), height: landscaping === "leve" ? 3 : 3.8, back: false },
+    ...(landscaping === "intenso" ? [{ x: buildingLeft + facadeWidth * 0.7, height: 5.4, back: true }] : []),
+    
+  ];
 
   const handlePointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
     if (!drag || drag.pointerId !== event.pointerId || !onVolumeChange) return;
@@ -219,8 +270,8 @@ export default function ConceptDerivedFacade({
     </g>;
   };
 
-  const facadeViewY = roofY - Math.max(0.5 * scaleX, facade.roof === "platibanda" ? 0 : Math.min(2 * scaleX, roofW * 0.22)) - 3;
-  const facadeViewHeight = groundY + 8 - facadeViewY;
+  const facadeViewY = roofY - Math.max(1.05 * scaleX, facade.roof === "platibanda" ? 0 : Math.min(1.8 * scaleX, roofW * 0.2)) - 3;
+  const facadeViewHeight = groundY + 0.45 * scaleX + 7 - facadeViewY;
 
   return (
     <svg
@@ -299,6 +350,10 @@ export default function ConceptDerivedFacade({
           <stop offset="72%" stopColor="#eef2f4" />
           <stop offset="100%" stopColor="#e8ece8" />
         </linearGradient>
+        <linearGradient id="derived-sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#e8eef3" />
+          <stop offset="100%" stopColor="#f6f4ef" />
+        </linearGradient>
         <linearGradient id="derived-facade-glass" x1="0" y1="0" x2="1" y2="1">
           <stop offset="0%" stopColor="#91a8b3" />
           <stop offset="35%" stopColor="#617783" />
@@ -321,33 +376,116 @@ export default function ConceptDerivedFacade({
         </filter>
       </defs>
 
-      <rect x="0" y={facadeViewY} width="140" height={facadeViewHeight} fill={lineMode ? "#fff" : "#eef2f4"} />
-      <path d={`M0 ${groundY} H140`} stroke="#94a3b8" strokeWidth="0.3" />
-      {derivedFacade.stories.map((story) => (
-        <rect key={story.floor} x={rangeX(story.minAxis, story.maxAxis)}
-          y={groundY - (story.floor + 1) * storyHeight}
-          width={(story.maxAxis - story.minAxis) * scaleX} height={storyHeight}
-          fill={mainFill} stroke={selectedSurface === "main" ? "#f97316" : "#334155"} strokeWidth="0.45"
-          onClick={() => onSelectSurface?.("main")} />
+      <rect x="0" y={facadeViewY} width="140" height={facadeViewHeight} fill={lineMode ? "#fff" : "url(#derived-sky)"} />
+
+      {/* Calçada e linha do terreno */}
+      <rect x="0" y={groundY} width="140" height={0.45 * scaleX} fill={lineMode ? "url(#technical-paving)" : pavingFill} />
+      <path d={`M0 ${groundY} H140`} stroke="#64748b" strokeWidth="0.35" />
+
+      {/* Paisagismo atrás da casa (árvores de fundo) */}
+      {showTrees && !lineMode && trees.filter((tree) => tree.back).map((tree) => (
+        <Tree key={`back-${tree.x}`} x={tree.x} ground={groundY} scale={scaleX} height={tree.height} line={lineMode} back />
       ))}
-      {design?.volumes.map(renderVolume)}
+
+      {/* Pavimentos */}
+      {derivedFacade.stories.map((story) => {
+        const x = rangeX(story.minAxis, story.maxAxis);
+        const w = (story.maxAxis - story.minAxis) * scaleX;
+        const top = groundY - (story.floor + 1) * storyHeight;
+        return <g key={story.floor}>
+          <rect x={x} y={top} width={w} height={storyHeight}
+            fill={mainFill} stroke={selectedSurface === "main" ? "#f97316" : "#334155"} strokeWidth="0.45"
+            onClick={(event) => { event.stopPropagation(); onSelectSurface?.("main"); }} />
+          {story.floor < derivedFacade.floors - 1 && (
+            <rect x={x - 0.08 * scaleX} y={top - 0.12 * scaleX} width={w + 0.16 * scaleX} height={0.24 * scaleX}
+              fill={lineMode ? "#fff" : colors.wallShade} stroke="#334155" strokeWidth="0.3" />
+          )}
+        </g>;
+      })}
+
+      {/* Painel de destaque (madeira, pedra, tijolo...) marcando a entrada, do chão ao topo */}
+      {entranceOpening && elevationVolumes.length === 0 && (() => {
+        const panelWidth = (entranceOpening.width + 1.3) * scaleX;
+        const x = mapX(entranceOpening.axis) - panelWidth / 2;
+        const top = buildingTop - (facade.roof === "platibanda" ? 0.9 * scaleX : 0);
+        return <rect x={x} y={top} width={panelWidth} height={groundY - top}
+          fill={lineMode ? "url(#technical-accent)" : `url(#facade-material-${design?.surfaceMaterials.accent ?? "wood-natural"})`}
+          stroke={selectedSurface === "accent" ? "#f97316" : "#334155"} strokeWidth="0.4"
+          onClick={(event) => { event.stopPropagation(); onSelectSurface?.("accent"); }} />;
+      })()}
+
+      {/* Varandas: recuo aberto com pilares e fundo envidraçado */}
+      {derivedFacade.porchRanges.map((porch) => {
+        const x = rangeX(porch.start, porch.end);
+        const w = Math.abs(porch.end - porch.start) * scaleX;
+        const top = groundY - (porch.floor + 1) * storyHeight + 0.35 * scaleX;
+        const bottom = groundY - porch.floor * storyHeight;
+        const column = 0.22 * scaleX;
+        return <g key={`porch-${porch.floor}-${porch.start}`}>
+          <rect x={x} y={top} width={w} height={bottom - top} fill={lineMode ? "url(#technical-wall)" : "#4b5359"} fillOpacity={lineMode ? 1 : 0.28} stroke="#334155" strokeWidth="0.3" />
+          <Window x={x + w * 0.18} y={bottom - 2.1 * scaleX} width={w * 0.64} height={2.1 * scaleX} frame={frameColor} id={glassPatternId} />
+          <rect x={x} y={top} width={column} height={bottom - top} fill={mainFill} stroke="#334155" strokeWidth="0.3" />
+          <rect x={x + w - column} y={top} width={column} height={bottom - top} fill={mainFill} stroke="#334155" strokeWidth="0.3" />
+        </g>;
+      })}
+
+      {/* Portão da garagem */}
+      {derivedFacade.garageRange && (() => {
+        const inset = 0.3;
+        const start = Math.min(derivedFacade.garageRange.start, derivedFacade.garageRange.end) + inset;
+        const end = Math.max(derivedFacade.garageRange.start, derivedFacade.garageRange.end) - inset;
+        if (end - start < 2) return null;
+        const x = rangeX(start, end);
+        const w = (end - start) * scaleX;
+        const h = Math.min(2.4, 2.96 - 0.3) * scaleX;
+        const slats = Math.max(8, Math.round((end - start) / 0.12));
+        return <g onClick={(event) => { event.stopPropagation(); onSelectSurface?.("garage"); }}>
+          <rect x={x} y={groundY - h} width={w} height={h} fill={lineMode ? "#fff" : garageFill}
+            stroke={selectedSurface === "garage" ? "#f97316" : "#334155"} strokeWidth="0.45" />
+          {Array.from({ length: slats - 1 }, (_, index) => {
+            const lx = x + (w / slats) * (index + 1);
+            return <line key={index} x1={lx} y1={groundY - h + 0.08 * scaleX} x2={lx} y2={groundY - 0.05 * scaleX}
+              stroke={lineMode ? "#94a3b8" : "#000"} strokeOpacity={lineMode ? 0.8 : 0.18} strokeWidth="0.18" />;
+          })}
+        </g>;
+      })()}
+
+      {/* Volumes de composição escolhidos pelo usuário */}
+      {elevationVolumes.map(renderVolume)}
+
+      {/* Portas e janelas */}
       {frontOpenings.map((opening) => {
         const width = opening.width * scaleX;
         const height = opening.height * scaleX;
         const x = mapX(opening.axis) - width / 2;
-        const y = groundY - opening.floor * storyHeight - (0.16 + opening.sillHeight + opening.height) * scaleX;
-        return <g key={`${opening.floor}-${opening.id}`} onClick={() => onSelectSurface?.(opening.type === "door" ? "entrance" : "frames")}>
+        const y = groundY - opening.floor * storyHeight - (opening.sillHeight + opening.height) * scaleX;
+        const entrance = opening.type === "door" && opening.floor === 0;
+        return <g key={`${opening.floor}-${opening.id}`}
+          onClick={(event) => { event.stopPropagation(); onSelectSurface?.(opening.type === "door" ? "entrance" : "frames"); }}>
           {opening.type === "window"
-            ? <Window x={x} y={y} width={width} height={height} frame={frameColor} id={glassPatternId} />
-            : <rect x={x} y={y} width={width} height={height} fill={entranceFill} stroke={frameColor} strokeWidth="0.45" />}
+            ? <Window x={x} y={y} width={width} height={height} frame={frameColor} id={glassPatternId} sill={opening.sillHeight > 0.3} />
+            : <g>
+              <rect x={x} y={y} width={width} height={height} fill={entranceFill}
+                stroke={selectedSurface === "entrance" ? "#f97316" : frameColor} strokeWidth="0.55" />
+              <line x1={x + width * 0.82} y1={y + height * 0.38} x2={x + width * 0.82} y2={y + height * 0.62}
+                stroke={lineMode ? "#334155" : "#d4d4d8"} strokeWidth="0.45" strokeLinecap="round" />
+            </g>}
+          {entrance && !hasCanopyVolume && (
+            <rect x={x - 0.7 * scaleX} y={groundY - 2.75 * scaleX} width={width + 1.4 * scaleX} height={0.16 * scaleX}
+              fill={lineMode ? "#fff" : colors.accent} stroke="#334155" strokeWidth="0.35" />
+          )}
         </g>;
       })}
-      <Roof x={roofX} y={roofY} width={roofW} facade={facade} scale={scaleX} color={lineMode ? "#fff" : colors.roof} />
-      {(design?.showLandscaping ?? true) && <g fill={lineMode ? "#fff" : "#6f8962"} stroke="#71816c" strokeWidth="0.2">
-        {[baseX - 2, baseX + facadeWidth + 2].map((x) => <path key={x}
-          d={`M${x} ${groundY} q-2 -1 -1 -3 q1 -1 1 1 q0 -4 1 -3 q2 1 0 4 Z`} />)}
-      </g>}
-      <text data-render-ignore="true" x="70" y={groundY + 5} textAnchor="middle" fontSize="1.65" fill="#667085">
+
+      <Roof x={roofX} y={roofY} width={roofW} facade={facade} scale={scaleX}
+        color={lineMode ? "#fff" : colors.roof} wall={mainFill} line={lineMode} />
+
+      {/* Paisagismo na frente */}
+      {showTrees && trees.filter((tree) => !tree.back).map((tree) => (
+        <Tree key={`front-${tree.x}`} x={tree.x} ground={groundY} scale={scaleX} height={tree.height} line={lineMode} />
+      ))}
+
+      <text data-render-ignore="true" x="70" y={groundY + 0.45 * scaleX + 4} textAnchor="middle" fontSize="1.65" fill="#667085">
         {derivedFacade.width.toFixed(1)} m de frente construída · lote {lotWidth.toFixed(1)} m
       </text>
     </svg>

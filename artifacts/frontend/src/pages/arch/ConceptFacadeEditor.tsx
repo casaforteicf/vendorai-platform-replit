@@ -117,6 +117,52 @@ const STYLE_DESCRIPTIONS: Record<ConceptFacadePreferences["style"], string> = {
   rustico_contemporaneo: "Pedra, madeira e volumes mais acolhedores.",
 };
 
+// Cada estilo agora muda de fato a fachada (cobertura, materiais, esquadrias e paisagismo).
+// Antes só trocava o nome enviado ao render e a elevação continuava igual.
+type StylePreset = {
+  facade: Partial<ConceptFacadePreferences>;
+  materials: Partial<FacadeDesignState["surfaceMaterials"]>;
+};
+
+export const FACADE_STYLE_PRESETS: Record<ConceptFacadePreferences["style"], StylePreset> = {
+  contemporaneo: {
+    facade: { roof: "platibanda", primaryMaterial: "pintura", accentMaterial: "madeira", facadeTone: "claro", frameTone: "preto", landscaping: "medio" },
+    materials: { main: "paint-offwhite", accent: "wood-natural", entrance: "wood-natural", garage: "metal-black", frames: "metal-black", paving: "concrete-light" },
+  },
+  minimalista: {
+    facade: { roof: "platibanda", primaryMaterial: "pintura", accentMaterial: "concreto", facadeTone: "claro", frameTone: "preto", landscaping: "leve" },
+    materials: { main: "paint-offwhite", accent: "concrete-light", entrance: "paint-greige", garage: "paint-offwhite", frames: "metal-black", paving: "concrete-light" },
+  },
+  tropical: {
+    facade: { roof: "aparente", primaryMaterial: "pintura", accentMaterial: "madeira", facadeTone: "claro", frameTone: "bronze", landscaping: "intenso" },
+    materials: { main: "paint-offwhite", accent: "wood-natural", entrance: "wood-dark", garage: "wood-natural", frames: "wood-dark", paving: "stone-sand" },
+  },
+  industrial: {
+    facade: { roof: "platibanda", primaryMaterial: "concreto", accentMaterial: "nenhum", facadeTone: "medio", frameTone: "preto", landscaping: "leve" },
+    materials: { main: "concrete-light", accent: "brick-light", entrance: "metal-black", garage: "metal-black", frames: "metal-black", paving: "concrete-dark" },
+  },
+  classico_contemporaneo: {
+    facade: { roof: "aparente", primaryMaterial: "pintura", accentMaterial: "pedra", facadeTone: "medio", frameTone: "bronze", landscaping: "medio" },
+    materials: { main: "paint-greige", accent: "stone-sand", entrance: "wood-dark", garage: "paint-greige", frames: "wood-dark", paving: "stone-sand" },
+  },
+  rustico_contemporaneo: {
+    facade: { roof: "misto", primaryMaterial: "pintura", accentMaterial: "pedra", facadeTone: "claro", frameTone: "bronze", landscaping: "intenso" },
+    materials: { main: "paint-offwhite", accent: "stone-graphite", entrance: "wood-dark", garage: "wood-dark", frames: "wood-dark", paving: "stone-sand" },
+  },
+};
+
+export function applyFacadeStylePreset(
+  style: ConceptFacadePreferences["style"],
+  facade: ConceptFacadePreferences,
+  design: FacadeDesignState,
+) {
+  const preset = FACADE_STYLE_PRESETS[style];
+  return {
+    facade: { ...facade, ...preset.facade, style },
+    design: { ...design, surfaceMaterials: { ...design.surfaceMaterials, ...preset.materials } },
+  };
+}
+
 function FacadeStylePreview({ style }: { style: ConceptFacadePreferences["style"] }) {
   const industrial = style === "industrial";
   const tropical = style === "tropical";
@@ -264,6 +310,7 @@ export default function ConceptFacadeEditor({
   const [panelExpanded, setPanelExpanded] = useState(false);
   const [selectedSurface, setSelectedSurface] = useState<FacadeSurfaceKey>("main");
   const [selectedVolumeId, setSelectedVolumeId] = useState<string | null>(null);
+  const [elevationMode, setElevationMode] = useState<"material" | "line">("material");
   const [aiBusy, setAiBusy] = useState(false);
   const [aiResult, setAiResult] = useState<AIDevelopmentResponse | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
@@ -814,19 +861,39 @@ export default function ConceptFacadeEditor({
           <div className="p-4 pt-11">
             <div className="text-sm font-semibold">Escolha o estilo</div>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
-              Escolha a linguagem da fachada. A elevação permanece em linhas para editar com clareza; o Render gera a imagem realista.
+              Cada estilo já aplica cobertura, materiais e esquadrias na sua casa. Depois ajuste o que quiser e gere a imagem realista.
             </p>
             <div className="mt-4 flex snap-x gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:grid md:grid-cols-2 md:overflow-visible md:pb-0">
               {STYLE_LABELS.map(([value, label]) => (
                 <button
                   key={value}
                   type="button"
-                  onClick={() => onFacadeChange({ ...facade, style: value })}
+                  onClick={() => {
+                    const next = applyFacadeStylePreset(value, facade, design);
+                    onFacadeChange(next.facade);
+                    onDesignChange(next.design);
+                  }}
                   className={facade.style === value
                     ? "w-[76%] shrink-0 snap-center overflow-hidden rounded-2xl border-2 border-orange-500 bg-orange-50 text-left shadow-sm md:w-auto"
                     : "w-[76%] shrink-0 snap-center overflow-hidden rounded-2xl border bg-white text-left hover:border-slate-300 hover:shadow-sm md:w-auto"}
                 >
-                  <FacadeStylePreview style={value} />
+                  <div className="h-24 w-full overflow-hidden bg-slate-50" aria-hidden="true">
+                    {rooms.length > 0 ? (
+                      <ConceptDerivedFacade
+                        viewMode="material"
+                        lotWidth={lotWidth}
+                        levels={levels}
+                        rooms={rooms}
+                        sitePlacement={safeSitePlacement}
+                        {...(() => {
+                          const preview = applyFacadeStylePreset(value, facade, { ...design, volumes: [] });
+                          return { facade: preview.facade, design: preview.design };
+                        })()}
+                      />
+                    ) : (
+                      <FacadeStylePreview style={value} />
+                    )}
+                  </div>
                   <div className="p-2.5">
                     <div className="text-[11px] font-bold text-slate-800">{label}</div>
                     <div className="mt-1 min-h-[32px] text-[9px] leading-4 text-slate-500">{STYLE_DESCRIPTIONS[value]}</div>
@@ -876,7 +943,7 @@ export default function ConceptFacadeEditor({
         <div className="relative min-w-0 overflow-hidden border-r border-slate-200 bg-white">
           <div className="absolute inset-x-0 bottom-20 top-0 xl:inset-0">
           <ConceptDerivedFacade
-            viewMode="line"
+            viewMode={elevationMode}
             lotWidth={lotWidth}
             levels={levels}
             rooms={rooms}
@@ -889,7 +956,7 @@ export default function ConceptFacadeEditor({
               if (id) { setPanel("volumes"); setPanelOpen(false); }
             }}
             onVolumeChange={updateVolume}
-            selectedSurface={selectedSurface}
+            selectedSurface={panel === "materials" && panelOpen ? selectedSurface : null}
             onSelectSurface={(surface) => {
               if (!surface) return;
               setSelectedSurface(surface);
@@ -900,9 +967,19 @@ export default function ConceptFacadeEditor({
           />
           </div>
 
-          <div className="pointer-events-none absolute left-4 top-16 z-20 rounded-xl border bg-white/95 px-3 py-2 shadow-sm backdrop-blur md:top-4">
-            <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-orange-600">Fachada em linhas</div>
-            <div className="mt-0.5 text-[10px] font-semibold text-slate-600">Elevação arquitetônica editável</div>
+          <div className="absolute left-4 top-16 z-20 flex rounded-xl border bg-white/95 p-1 shadow-sm backdrop-blur md:top-4">
+            {([["material", "Cores"], ["line", "Linhas"]] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setElevationMode(value)}
+                className={elevationMode === value
+                  ? "min-h-8 rounded-lg bg-slate-950 px-3 text-xs font-bold text-white"
+                  : "min-h-8 rounded-lg px-3 text-xs font-semibold text-slate-600"}
+              >
+                {label}
+              </button>
+            ))}
           </div>
 
           <div className="absolute right-4 top-16 z-20 flex items-center gap-2 rounded-xl border bg-white/95 px-3 py-2 shadow-sm backdrop-blur md:top-4">

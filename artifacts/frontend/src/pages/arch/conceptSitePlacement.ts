@@ -8,8 +8,10 @@ export type SitePlacement = {
   setbackRight: number;
 };
 
+// A planta 2D, os modelos e o encaixe automático tratam o topo do lote (y = 0) como frente/acesso.
+// O padrão antigo era "bottom", e a fachada gerada mostrava os fundos da casa.
 export const DEFAULT_SITE_PLACEMENT: SitePlacement = {
-  frontSide: "bottom",
+  frontSide: "top",
   setbackFront: 4,
   setbackRear: 2,
   setbackLeft: 1.5,
@@ -245,4 +247,18 @@ export function buildSitePlacementSuggestions(
       metrics: clearanceMetrics(freeAreaOrigin, bounds, lotWidth, lotDepth, placement),
     },
   ];
+}
+
+/**
+ * Rascunhos salvos com o padrão antigo (frente "bottom" e recuos padrão, nunca ajustados pelo usuário)
+ * passam a usar a frente no topo, igual à planta.
+ */
+export function migrateLegacySitePlacement(value: unknown): SitePlacement {
+  const placement = normalizeSitePlacement(value);
+  const untouchedLegacyDefault = placement.frontSide === "bottom"
+    && placement.setbackFront === 4
+    && placement.setbackRear === 2
+    && placement.setbackLeft === 1.5
+    && placement.setbackRight === 1.5;
+  return untouchedLegacyDefault ? { ...placement, frontSide: "top" } : placement;
 }
