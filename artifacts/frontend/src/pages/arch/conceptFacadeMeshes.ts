@@ -3,6 +3,23 @@ import type { SiteFrontSide } from "./conceptSitePlacement";
 
 export type FacadeMeshBox = { id: string; width: number; height: number; depth: number; x: number; y: number; z: number; materialId: FacadeMaterialId; opacity: number };
 
+/** Convert the same metric box used by WebGL to the plan's x/y + elevation z. */
+export function facadeBoxFaces(box: FacadeMeshBox) {
+  const minX = box.x - box.width / 2;
+  const maxX = box.x + box.width / 2;
+  const minY = box.z - box.depth / 2;
+  const maxY = box.z + box.depth / 2;
+  const bottom = box.y - box.height / 2;
+  const top = box.y + box.height / 2;
+  const a = { x: minX, y: minY, z: bottom };
+  const b = { x: maxX, y: minY, z: bottom };
+  const c = { x: maxX, y: maxY, z: bottom };
+  const d = { x: minX, y: maxY, z: bottom };
+  const at = { ...a, z: top }, bt = { ...b, z: top };
+  const ct = { ...c, z: top }, dt = { ...d, z: top };
+  return [[a, b, bt, at], [b, c, ct, bt], [c, d, dt, ct], [d, a, at, dt], [at, bt, ct, dt]];
+}
+
 /** Metric projections shared with the facade's percentage coordinate system. */
 export function buildFacadeMeshBoxes(design: FacadeDesignState, bounds: {
   minX: number; maxX: number; minZ: number; maxZ: number;

@@ -29,6 +29,9 @@
 }
 
 .arqdor-reference-ui h1 { font-weight: 760; }
+/* Technical SVGs use metres as user units. Inheriting the chrome's negative
+   pixel letter spacing collapses their labels after the SVG transform. */
+.arqdor-reference-ui svg[role="img"] { letter-spacing: normal; }
 .arqdor-reference-ui h2,
 .arqdor-reference-ui h3 { font-weight: 700; }
 
