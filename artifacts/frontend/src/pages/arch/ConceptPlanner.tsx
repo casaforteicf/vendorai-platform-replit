@@ -706,6 +706,7 @@ function StepPill({ index, current, label }: { index: number; current: number; l
 }
 
 const WORKSPACE_STEP = 4;
+const RESULT_STEP = 6;
 
 export default function ConceptPlanner() {
   const [step, setStep] = useState(WORKSPACE_STEP);
@@ -721,9 +722,12 @@ export default function ConceptPlanner() {
   const [editorExperienceMode, setEditorExperienceMode] = useState<EditorExperienceMode>("guided");
 
   useEffect(() => {
-    if (step !== WORKSPACE_STEP) {
+    // O pré-projeto tem só duas telas: o workspace (2D/3D/Fachada/Render) e o Resultado,
+    // onde ficam o resumo, os dados do cliente e o envio ao profissional. Antes, esta
+    // trava forçava tudo de volta pro workspace e o Resultado nunca abria.
+    if (step !== WORKSPACE_STEP && step !== RESULT_STEP) {
       setStep(WORKSPACE_STEP);
-      setEditorView("plan");
+      setEditorView("render");
     }
   }, [step]);
 
@@ -771,6 +775,8 @@ export default function ConceptPlanner() {
   }>(null);
   const [openingOverrides, setOpeningOverrides] = useState<Record<string, OpeningOverride>>({});
   const [conceptId, setConceptId] = useState<string | null>(null);
+  const conceptIdRef = useRef<string | null>(null);
+  const creatingConceptRef = useRef<Promise<string | null> | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "loading" | "saving" | "saved" | "error">("loading");
   const [aiDevelopmentState, setAiDevelopmentState] = useState<"idle" | "running" | "error">("idle");
   const [customerProfile, setCustomerProfile] = useState<CustomerProfile>({});
@@ -1102,6 +1108,7 @@ export default function ConceptPlanner() {
           return;
         }
 
+        conceptIdRef.current = draft.id;
         setConceptId(draft.id);
         setArchProjetoId(draft.archProjetoId ?? null);
         if (draft.archProjetoId) setHandoffState("sent");
@@ -1174,7 +1181,7 @@ export default function ConceptPlanner() {
     const nextFacadePreferences = overrides?.facadePreferences ?? facadePreferences;
     const nextFacadeDesign = overrides?.facadeDesign ?? facadeDesign;
     const payload = {
-      title: "Meu pré-projeto",
+      title: customerProfile.name?.trim() ? `Pré-projeto — ${customerProfile.name.trim()}` : "Meu pré-projeto",
       currentStep: stepOverride ?? step,
       lot: { width: lotWidth, depth: lotDepth },
       configuration: {
@@ -1201,25 +1208,93 @@ export default function ConceptPlanner() {
       selectedVariant: layoutVariant,
     };
 
-    try {
+    // Dois salvamentos simultâneos num pré-projeto novo criavam dois registros (dois POST).
+    // Se já existe uma criação em andamento, espera ela terminar e salva por PATCH.
+    if (!conceptIdRef.current && !conceptId && creatingConceptRef.current) {
+      await creatingConceptRef.current.catch(() => null);
+    }
+    const targetId = conceptIdRef.current ?? conceptId;
+
+    const request = (async () => {
       const response = await fetch(
-        conceptId ? `/api/arch/concept-projects/${conceptId}` : "/api/arch/concept-projects",
+        targetId ? `/api/arch/concept-projects/${targetId}` : "/api/arch/concept-projects",
         {
-          method: conceptId ? "PATCH" : "POST",
+          method: targetId ? "PATCH" : "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         },
       );
       if (!response.ok) throw new Error("Falha ao salvar pré-projeto");
       const saved = (await response.json()) as ConceptDraftResponse;
+      conceptIdRef.current = saved.id;
       setConceptId(saved.id);
-      setSaveState("saved");
       return saved.id;
+    })();
+    if (!targetId) creatingConceptRef.current = request;
+
+    try {
+      const savedId = await request;
+      setSaveState("saved");
+      return savedId;
     } catch {
       setSaveState("error");
       return null;
+    } finally {
+      if (creatingConceptRef.current === request) creatingConceptRef.current = null;
     }
   };
+
+  // Salvamento automático: antes o trabalho só era gravado ao tocar no ✓ (sem nenhum
+  // retorno visual) ou em algumas ações pontuais — fechar o app no celular perdia a edição.
+  const autosaveKey = useMemo(() => JSON.stringify([
+    rooms, customWalls, customOpenings, objects, openingOverrides, wallMaterials,
+    lotWidth, lotDepth, floors, desiredArea, typology, layoutPreferences, sitePlacement,
+    facadePreferences, spaceProfiles, customerProfile, showDimensions, wallFirstFloors,
+  ]), [
+    rooms, customWalls, customOpenings, objects, openingOverrides, wallMaterials,
+    lotWidth, lotDepth, floors, desiredArea, typology, layoutPreferences, sitePlacement,
+    facadePreferences, spaceProfiles, customerProfile, showDimensions, wallFirstFloors,
+  ]);
+  const [lastSavedKey, setLastSavedKey] = useState<string | null>(null);
+  const hasUnsavedChanges = lastSavedKey !== null && lastSavedKey !== autosaveKey;
+
+  useEffect(() => {
+    if (saveState === "loading") return;
+    if (lastSavedKey === null) {
+      setLastSavedKey(autosaveKey);
+      return;
+    }
+    if (autosaveKey === lastSavedKey) return;
+    const delay = saveState === "error" ? 15000 : 2500;
+    const timer = setTimeout(() => {
+      const keyBeingSaved = autosaveKey;
+      void saveConcept().then((savedId) => {
+        setLastSavedKey(savedId ? keyBeingSaved : "__falha__");
+      });
+    }, delay);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autosaveKey, lastSavedKey, saveState]);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [hasUnsavedChanges]);
+
+  const saveStatusLabel = saveState === "saving"
+    ? "Salvando…"
+    : saveState === "error"
+      ? "Erro ao salvar"
+      : hasUnsavedChanges
+        ? "Alterações não salvas"
+        : saveState === "saved"
+          ? "Salvo"
+          : "";
 
   const handleFacadeDesignChange = (next: FacadeDesignState) => {
     setFacadeDesign(next);
@@ -4387,7 +4462,7 @@ export default function ConceptPlanner() {
                 </a>
 
                 <div className="hidden min-w-0 sm:block">
-                  <div className="truncate text-sm font-semibold text-white">Projeto residencial</div>
+                  <div className="truncate text-sm font-semibold text-white">{customerProfile.name?.trim() ? `Pré-projeto — ${customerProfile.name.trim()}` : "Pré-projeto"}</div>
                   <div className="text-[11px] text-slate-400">Arqdor Pro · editor arquitetônico</div>
                 </div>
 
@@ -4399,18 +4474,30 @@ export default function ConceptPlanner() {
                 >
                   <Check className="h-4 w-4" />
                 </button>
+                {saveStatusLabel && (
+                  <span
+                    className={saveState === "error"
+                      ? "shrink-0 text-[11px] font-semibold text-red-300"
+                      : hasUnsavedChanges
+                        ? "shrink-0 text-[11px] text-amber-200"
+                        : "shrink-0 text-[11px] text-slate-400"}
+                    aria-live="polite"
+                  >
+                    {saveStatusLabel}
+                  </span>
+                )}
 
                 <button
                   type="button"
                   onClick={() => void runAiDevelopment()}
                   disabled={aiDevelopmentState === "running" || saveState === "loading"}
                   className={aiDevelopmentState === "error"
-                    ? "hidden h-10 items-center gap-2 rounded-xl border border-red-400/30 bg-red-500/15 px-3 text-xs font-bold text-red-100 disabled:opacity-50 md:inline-flex"
-                    : "hidden h-10 items-center gap-2 rounded-xl border border-orange-400/30 bg-orange-500/15 px-3 text-xs font-bold text-orange-100 transition hover:bg-orange-500/25 disabled:opacity-50 md:inline-flex"}
+                    ? "inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-red-400/30 bg-red-500/15 px-3 text-xs font-bold text-red-100 disabled:opacity-50"
+                    : "inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-orange-400/30 bg-orange-500/15 px-3 text-xs font-bold text-orange-100 transition hover:bg-orange-500/25 disabled:opacity-50"}
                   title="Desenvolver layout, paredes, aberturas e fachada com IA"
                 >
                   <Sparkles className={aiDevelopmentState === "running" ? "h-4 w-4 animate-pulse" : "h-4 w-4"} />
-                  {aiDevelopmentState === "running" ? "IA analisando..." : aiDevelopmentState === "error" ? "Tentar IA novamente" : "Desenvolver com IA"}
+                  <span className="hidden md:inline">{aiDevelopmentState === "running" ? "IA analisando..." : aiDevelopmentState === "error" ? "Tentar IA novamente" : "Desenvolver com IA"}</span>
                 </button>
 
                 <button
@@ -4468,6 +4555,13 @@ export default function ConceptPlanner() {
                       {label}
                     </button>
                   ))}
+                  <button
+                    type="button"
+                    onClick={() => { void saveConcept(RESULT_STEP); setStep(RESULT_STEP); window.scrollTo({ top: 0 }); }}
+                    className="shrink-0 snap-center rounded-lg px-3 py-2 text-xs font-bold text-orange-300 hover:bg-white/5 hover:text-orange-200 sm:px-4"
+                  >
+                    Enviar
+                  </button>
                 </div>
               </div>
 
@@ -4627,6 +4721,7 @@ export default function ConceptPlanner() {
                 lotWidth={lotWidth}
                 levels={modelLevels}
                 rooms={safeRooms}
+                sitePlacement={normalizeSitePlacement(sitePlacement)}
                 facade={facadePreferences}
                 design={facadeDesign}
               />
@@ -6515,6 +6610,13 @@ export default function ConceptPlanner() {
                     {label}
                   </button>
                 ))}
+                <button
+                  type="button"
+                  onClick={() => { void saveConcept(RESULT_STEP); setStep(RESULT_STEP); window.scrollTo({ top: 0 }); }}
+                  className="flex-1 rounded-xl px-2 py-2.5 text-xs font-bold text-orange-600"
+                >
+                  Enviar
+                </button>
               </div>
 
               {hasEditorSelection && (editorView === "plan" || editorView === "model3d") && (
@@ -7035,7 +7137,7 @@ export default function ConceptPlanner() {
               </div>
 
               <div data-concept-render-source="true" className="mt-4 overflow-hidden rounded-2xl border bg-slate-50">
-                <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} rooms={safeRooms} facade={facadePreferences} />
+                <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} rooms={safeRooms} sitePlacement={normalizeSitePlacement(sitePlacement)} facade={facadePreferences} design={facadeDesign} />
               </div>
 
               <div className="mt-4 rounded-2xl border bg-muted/30 p-4">
@@ -7102,7 +7204,14 @@ export default function ConceptPlanner() {
         )}
 
         {step === 6 && (
-          <section className="mx-auto max-w-6xl space-y-5 print:max-w-none">
+          <section className="mx-auto max-w-6xl space-y-5 px-3 pt-4 print:max-w-none sm:px-6">
+            <button
+              type="button"
+              onClick={() => { setStep(WORKSPACE_STEP); setEditorView("render"); }}
+              className="inline-flex items-center gap-2 rounded-xl border bg-background px-3 py-2 text-sm font-semibold shadow-sm print:hidden"
+            >
+              <ArrowLeft className="h-4 w-4" /> Voltar ao editor
+            </button>
             <div className="rounded-3xl border bg-card p-6 shadow-sm sm:p-8">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
