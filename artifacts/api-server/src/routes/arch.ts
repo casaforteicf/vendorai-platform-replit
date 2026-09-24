@@ -112,6 +112,76 @@ const developConceptWithAiSchema = z.object({
   ]).optional(),
 });
 
+const specialistHousePlanSchema = z.object({
+  lotWidth: z.number().min(5).max(100),
+  lotDepth: z.number().min(8).max(200),
+  brief: z.object({
+    bedrooms: z.number().int().min(1).max(8),
+    suites: z.number().int().min(0).max(6),
+    floors: z.number().int().min(1).max(3),
+    garageSpaces: z.number().int().min(0).max(5),
+    gourmet: z.boolean(),
+    pool: z.boolean(),
+    office: z.boolean(),
+    integratedKitchen: z.boolean(),
+    privateAwaySocial: z.boolean(),
+  }),
+  rooms: z.array(z.object({
+    id: z.string().min(1),
+    kind: z.string().min(1),
+    label: z.string().min(1),
+    width: z.number().positive(),
+    depth: z.number().positive(),
+    floor: z.number().int().min(0).max(5),
+    locked: z.boolean().optional(),
+  })).min(1).max(50),
+});
+
+function sanitizeSpecialistPlan(
+  plan: any,
+  input: z.infer<typeof specialistHousePlanSchema>,
+) {
+  const source = new Map(input.rooms.map((room) => [room.id, room]));
+  const patches = Array.isArray(plan?.roomPatches) ? plan.roomPatches : [];
+  const rooms = input.rooms.map((room) => {
+    const patch = patches.find((item: any) => item?.id === room.id);
+    if (!patch || room.locked) return { ...room, x: 0, y: 0 };
+    const width = Math.max(1.2, Math.min(input.lotWidth, Number(patch.width ?? room.width)));
+    const depth = Math.max(1.2, Math.min(input.lotDepth, Number(patch.depth ?? room.depth)));
+    const x = Math.max(0, Math.min(input.lotWidth - width, Number(patch.x ?? 0)));
+    const y = Math.max(0, Math.min(input.lotDepth - depth, Number(patch.y ?? 0)));
+    return { ...room, width, depth, x, y };
+  });
+
+  // The AI is allowed to position only known rooms. Reject any proposal with
+  // actual rectangle intersections; deterministic layout remains as fallback.
+  for (let floor = 0; floor < input.brief.floors; floor += 1) {
+    const floorRooms = rooms.filter((room) => room.floor === floor && room.kind !== "piscina");
+    for (let i = 0; i < floorRooms.length; i += 1) {
+      for (let j = i + 1; j < floorRooms.length; j += 1) {
+        const a = floorRooms[i];
+        const b = floorRooms[j];
+        const overlapX = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+        const overlapY = Math.min(a.y + a.depth, b.y + b.depth) - Math.max(a.y, b.y);
+        if (overlapX > 0.05 && overlapY > 0.05) return null;
+      }
+    }
+  }
+
+  const suggestedArea = Math.round(
+    rooms
+      .filter((room) => room.kind !== "piscina")
+      .reduce((sum, room) => sum + room.width * room.depth, 0),
+  );
+
+  return {
+    rooms,
+    suggestedArea,
+    notes: Array.isArray(plan?.notes) ? plan.notes.map(String).slice(0, 8) : [],
+    designRationale: String(plan?.designRationale ?? ""),
+  };
+}
+
 function conceptGeometryHealth(concept: { rooms: unknown; configuration: unknown }) {
   const rooms = Array.isArray(concept.rooms) ? concept.rooms as Array<Record<string, unknown>> : [];
   const configuration = (concept.configuration ?? {}) as Record<string, unknown>;
@@ -452,6 +522,129 @@ router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
 
   if (!updated) return res.status(404).json({ error: "Pré-projeto não encontrado." });
   return res.json(updated);
+});
+
+router.post("/arch/concept-plan-specialist", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const userId = req.user?.sub;
+  if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
+
+  const parsed = specialistHousePlanSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Briefing arquitetônico inválido.", details: parsed.error.flatten() });
+  }
+
+  const input = parsed.data;
+  const program = input.rooms.map((room) => ({
+    id: room.id,
+    kind: room.kind,
+    label: room.label,
+    width: room.width,
+    depth: room.depth,
+    floor: room.floor,
+    locked: Boolean(room.locked),
+  }));
+
+  const prompt = `Você é um ARQUITETO ESPECIALISTA EM PROJETO RESIDENCIAL UNIFAMILIAR NO BRASIL.
+Sua função é criar plantas de casas plausíveis, funcionais e não genéricas a partir do lote e do programa fornecidos.
+
+Pense como arquiteto, não como gerador de retângulos. Considere:
+- setorização social, íntima e serviço;
+- circulação curta e legível, sem corredores desperdiçados;
+- relação entrada social / garagem / cozinha / serviço;
+- cozinha próxima de lavanderia e, quando solicitado, gourmet;
+- quartos e suítes protegidos de ruído e passagem;
+- banheiros e áreas molhadas racionalizados em prumadas/núcleos;
+- escada em posição estrutural e funcional, alinhada entre pavimentos;
+- garagem com acesso realista ao interior da casa;
+- área gourmet e piscina conectadas ao lazer, quando existirem;
+- proporções de ambientes residenciais brasileiras, mobiliário e ergonomia implícitos;
+- orientação norte como referência de projeto quando não houver outra orientação: evite tratar fachadas e dormitórios como peças arbitrárias;
+- implantação coerente no lote, evitando recortes e volumes sem lógica;
+- nenhuma sobreposição entre ambientes;
+- todos os ambientes dentro do lote.
+
+LOTE: ${input.lotWidth} m x ${input.lotDepth} m.
+BRIEFING: ${JSON.stringify(input.brief)}
+PROGRAMA FIXO DE AMBIENTES (use exatamente estes IDs e pavimentos; não invente nem remova ambientes):
+${JSON.stringify(program)}
+
+Crie 3 soluções REALMENTE DIFERENTES:
+A) compacta e eficiente;
+B) equilibrada, com circulação e setorização mais clássicas;
+C) integrada/contemporânea, valorizando área social e lazer.
+
+Cada solução deve ser arquitetonicamente defensável. Não apenas espelhe a mesma planta.
+Responda APENAS JSON válido:
+{
+  "alternatives": [
+    {
+      "id": "compact|balanced|integrated",
+      "title": "nome curto",
+      "description": "diferença espacial principal",
+      "designRationale": "explicação arquitetônica objetiva",
+      "roomPatches": [
+        { "id": "ID_EXISTENTE", "x": 0, "y": 0, "width": 3.2, "depth": 3.0 }
+      ],
+      "notes": ["decisão 1", "decisão 2"]
+    }
+  ]
+}
+
+REGRAS INEGOCIÁVEIS:
+- use TODOS os IDs fornecidos exatamente uma vez em cada alternativa;
+- mantenha o pavimento original;
+- não sobreponha retângulos;
+- não posicione ambiente fora do lote;
+- escadas de pavimentos diferentes devem ficar alinhadas;
+- não coloque cozinha atravessando garagem, lavanderia ou hall;
+- não use hall como espaço residual dentro de outro ambiente;
+- se houver sala/cozinha integradas, elas podem encostar e compartilhar borda, mas não ocupar a mesma área;
+- preserve dimensões próximas das fornecidas, alterando-as somente quando melhorar funcionalidade;
+- as três alternativas precisam ter lógica espacial distinta.`;
+
+  try {
+    const message = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 4200,
+      system: "Você é um arquiteto residencial sênior especialista em plantas de casas brasileiras. Responda somente com JSON válido.",
+      messages: [{ role: "user", content: prompt }],
+    });
+    const raw = message.content
+      .filter((item: any) => item.type === "text")
+      .map((item: any) => item.text)
+      .join("");
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return res.status(422).json({ error: "A IA especialista não retornou uma planta válida." });
+
+    const decoded = JSON.parse(jsonMatch[0]) as any;
+    const requested = Array.isArray(decoded?.alternatives) ? decoded.alternatives : [];
+    const allowedIds = new Set(["compact", "balanced", "integrated"]);
+    const alternatives = requested
+      .filter((plan: any) => allowedIds.has(String(plan?.id)))
+      .map((plan: any) => {
+        const sanitized = sanitizeSpecialistPlan(plan, input);
+        if (!sanitized) return null;
+        return {
+          id: String(plan.id),
+          title: String(plan.title ?? plan.id),
+          description: String(plan.description ?? ""),
+          ...sanitized,
+        };
+      })
+      .filter(Boolean);
+
+    if (alternatives.length < 3) {
+      return res.status(422).json({
+        error: "A IA especialista não conseguiu gerar três soluções geometricamente válidas. Tente novamente.",
+      });
+    }
+
+    return res.json({ alternatives });
+  } catch (error) {
+    const safe = sanitizeAIError(error);
+    return res.status(safe.status).json({ error: safe.message });
+  }
 });
 
 router.post("/arch/concept-projects/:id/develop-with-ai", authenticate, async (req, res) => {
