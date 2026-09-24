@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import {
   buildClientBriefAlternatives,
+  buildClientBriefPlan,
   type ClientBrief,
   type ClientBriefAlternative,
 } from "./conceptClientBrief";
@@ -191,6 +192,9 @@ export default function ConceptClientBriefPanel({
 }: Props) {
   const [brief, setBrief] = useState<ClientBrief>(DEFAULT_BRIEF);
   const [showAlternatives, setShowAlternatives] = useState(false);
+  const [alternatives, setAlternatives] = useState<ClientBriefAlternative[]>([]);
+  const [generating, setGenerating] = useState(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
 
   const summary = useMemo(() => {
     const items = [
@@ -205,10 +209,82 @@ export default function ConceptClientBriefPanel({
     return items.join(" · ");
   }, [brief]);
 
-  const alternatives = useMemo(
-    () => showAlternatives ? buildClientBriefAlternatives(brief, lotWidth, lotDepth) : [],
-    [brief, lotWidth, lotDepth, showAlternatives],
-  );
+  const generateSpecialistAlternatives = async () => {
+    setGenerating(true);
+    setGenerationError(null);
+    try {
+      const base = buildClientBriefPlan(brief);
+      const token = typeof window !== "undefined" ? localStorage.getItem("vendorai_token") : null;
+      const response = await fetch("/api/arch/concept-plan-specialist", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          lotWidth,
+          lotDepth,
+          brief,
+          rooms: base.rooms,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !Array.isArray(payload?.alternatives)) {
+        throw new Error(payload?.error ?? "Não foi possível gerar as plantas com a IA especialista.");
+      }
+
+      const byId = new Map(
+        (payload.alternatives as any[]).map((item) => [String(item.id), item]),
+      );
+      const metadata = {
+        compact: {
+          title: "Opção A · Compacta",
+          description: "Circulação eficiente e implantação compacta.",
+          variant: 0 as const,
+        },
+        balanced: {
+          title: "Opção B · Equilibrada",
+          description: "Setorização equilibrada entre social, íntimo e serviço.",
+          variant: 1 as const,
+        },
+        integrated: {
+          title: "Opção C · Integrada",
+          description: "Área social e lazer mais conectados, com linguagem contemporânea.",
+          variant: 2 as const,
+        },
+      };
+
+      const next = (["compact", "balanced", "integrated"] as const).map((id) => {
+        const item = byId.get(id);
+        if (!item || !Array.isArray(item.rooms)) throw new Error("A IA especialista retornou uma alternativa incompleta.");
+        return {
+          ...base,
+          id,
+          title: item.title || metadata[id].title,
+          description: item.description || metadata[id].description,
+          variant: metadata[id].variant,
+          suggestedArea: Number(item.suggestedArea ?? base.suggestedArea),
+          rooms: item.rooms,
+        } satisfies ClientBriefAlternative;
+      });
+
+      setAlternatives(next);
+      setShowAlternatives(true);
+    } catch (error) {
+      // Fail-safe: the editor remains usable even if the provider is temporarily
+      // unavailable. The fallback is explicit instead of silently pretending it
+      // came from the specialist.
+      setAlternatives(buildClientBriefAlternatives(brief, lotWidth, lotDepth));
+      setGenerationError(
+        error instanceof Error
+          ? `${error.message} Exibindo opções locais de contingência.`
+          : "IA especialista indisponível. Exibindo opções locais de contingência.",
+      );
+      setShowAlternatives(true);
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   if (showAlternatives) {
     return (
@@ -221,11 +297,22 @@ export default function ConceptClientBriefPanel({
             <div>
               <div className="text-sm font-bold text-slate-900">Escolha uma planta inicial</div>
               <p className="mt-1 text-[11px] leading-5 text-slate-600">
-                Geramos três organizações diferentes para o mesmo briefing. Todas continuam editáveis.
+                A IA arquiteta analisa lote, setorização, circulação, áreas molhadas, escada, garagem e lazer antes de propor três plantas editáveis.
               </p>
+              {!generationError && (
+                <div className="mt-2 inline-flex rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold text-emerald-700">
+                  IA especialista em planta residencial
+                </div>
+              )}
             </div>
           </div>
         </div>
+
+        {generationError && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[10px] leading-4 text-amber-800">
+            {generationError}
+          </div>
+        )}
 
         <div className="rounded-xl border bg-slate-50 p-3">
           <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Seu briefing</div>
@@ -427,11 +514,12 @@ export default function ConceptClientBriefPanel({
 
       <button
         type="button"
-        onClick={() => setShowAlternatives(true)}
-        className="flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3.5 text-sm font-bold text-white shadow-sm hover:bg-orange-600"
+        onClick={generateSpecialistAlternatives}
+        disabled={generating}
+        className="flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3.5 text-sm font-bold text-white shadow-sm hover:bg-orange-600 disabled:cursor-wait disabled:opacity-60"
       >
         <Sparkles className="h-4 w-4" />
-        Gerar 3 opções de planta
+        {generating ? "IA arquiteta estudando o projeto..." : "Gerar 3 opções com IA arquiteta"}
       </button>
 
       <p className="text-center text-[10px] leading-4 text-slate-400">
