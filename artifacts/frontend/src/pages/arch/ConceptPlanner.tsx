@@ -32,6 +32,8 @@ import {
   Clock3,
   Box,
   X,
+  FolderOpen,
+  Trash2,
 } from "lucide-react";
 import { buildConceptGeometry, nudgeOpening, validateConceptLayout } from "./conceptGeometry";
 import { type ConceptFacadePreferences } from "./ConceptVolumetry";
@@ -705,7 +707,24 @@ function StepPill({ index, current, label }: { index: number; current: number; l
   );
 }
 
+type ConceptListItem = {
+  id: string;
+  title: string | null;
+  status: string | null;
+  sentToProfessional: boolean;
+  customerName: string | null;
+  thumbnailUrl: string | null;
+  updatedAt: string | null;
+};
+
+function conceptUrlParams() {
+  if (typeof window === "undefined") return { id: null as string | null, isNew: false };
+  const params = new URLSearchParams(window.location.search);
+  return { id: params.get("id"), isNew: params.get("novo") === "1" };
+}
+
 const WORKSPACE_STEP = 4;
+const RESULT_STEP = 6;
 
 export default function ConceptPlanner() {
   const [step, setStep] = useState(WORKSPACE_STEP);
@@ -721,9 +740,12 @@ export default function ConceptPlanner() {
   const [editorExperienceMode, setEditorExperienceMode] = useState<EditorExperienceMode>("guided");
 
   useEffect(() => {
-    if (step !== WORKSPACE_STEP) {
+    // O pré-projeto tem só duas telas: o workspace (2D/3D/Fachada/Render) e o Resultado,
+    // onde ficam o resumo, os dados do cliente e o envio ao profissional. Antes, esta
+    // trava forçava tudo de volta pro workspace e o Resultado nunca abria.
+    if (step !== WORKSPACE_STEP && step !== RESULT_STEP) {
       setStep(WORKSPACE_STEP);
-      setEditorView("plan");
+      setEditorView("render");
     }
   }, [step]);
 
@@ -771,6 +793,9 @@ export default function ConceptPlanner() {
   }>(null);
   const [openingOverrides, setOpeningOverrides] = useState<Record<string, OpeningOverride>>({});
   const [conceptId, setConceptId] = useState<string | null>(null);
+  const conceptIdRef = useRef<string | null>(null);
+  const navigatingAwayRef = useRef(false);
+  const creatingConceptRef = useRef<Promise<string | null> | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "loading" | "saving" | "saved" | "error">("loading");
   const [aiDevelopmentState, setAiDevelopmentState] = useState<"idle" | "running" | "error">("idle");
   const [customerProfile, setCustomerProfile] = useState<CustomerProfile>({});
@@ -791,6 +816,10 @@ export default function ConceptPlanner() {
   const [modelSearch, setModelSearch] = useState("");
   const [modelCategory, setModelCategory] = useState<"todos" | "terreas" | "sobrados" | "lazer">("todos");
   const [modelGalleryOpen, setModelGalleryOpen] = useState(false);
+  const [projectListOpen, setProjectListOpen] = useState(false);
+  const [projectList, setProjectList] = useState<ConceptListItem[]>([]);
+  const [projectListState, setProjectListState] = useState<"idle" | "loading" | "error">("idle");
+  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
   const [furnitureSearch, setFurnitureSearch] = useState("");
   const [furnitureCategory, setFurnitureCategory] = useState<"Todos" | "Sala" | "Quarto" | "Jantar" | "Cozinha" | "Escritório" | "Decoração" | "Iluminação" | "Exterior">("Todos");
   const [libraryMode, setLibraryMode] = useState<"all" | "favorites" | "recent">("all");
@@ -1094,7 +1123,16 @@ export default function ConceptPlanner() {
 
     const loadLatest = async () => {
       try {
-        const response = await fetch("/api/arch/concept-projects/latest");
+        const { id: requestedId, isNew } = conceptUrlParams();
+        if (isNew && !requestedId) {
+          if (!cancelled) setSaveState("idle");
+          return;
+        }
+        const response = await fetch(
+          requestedId
+            ? `/api/arch/concept-projects/${encodeURIComponent(requestedId)}`
+            : "/api/arch/concept-projects/latest",
+        );
         if (!response.ok) throw new Error("Falha ao carregar pré-projeto");
         const draft = (await response.json()) as ConceptDraftResponse | null;
         if (cancelled || !draft) {
@@ -1102,6 +1140,7 @@ export default function ConceptPlanner() {
           return;
         }
 
+        conceptIdRef.current = draft.id;
         setConceptId(draft.id);
         setArchProjetoId(draft.archProjetoId ?? null);
         if (draft.archProjetoId) setHandoffState("sent");
@@ -1174,7 +1213,7 @@ export default function ConceptPlanner() {
     const nextFacadePreferences = overrides?.facadePreferences ?? facadePreferences;
     const nextFacadeDesign = overrides?.facadeDesign ?? facadeDesign;
     const payload = {
-      title: "Meu pré-projeto",
+      title: customerProfile.name?.trim() ? `Pré-projeto — ${customerProfile.name.trim()}` : "Meu pré-projeto",
       currentStep: stepOverride ?? step,
       lot: { width: lotWidth, depth: lotDepth },
       configuration: {
@@ -1201,23 +1240,147 @@ export default function ConceptPlanner() {
       selectedVariant: layoutVariant,
     };
 
-    try {
+    // Dois salvamentos simultâneos num pré-projeto novo criavam dois registros (dois POST).
+    // Se já existe uma criação em andamento, espera ela terminar e salva por PATCH.
+    if (!conceptIdRef.current && !conceptId && creatingConceptRef.current) {
+      await creatingConceptRef.current.catch(() => null);
+    }
+    const targetId = conceptIdRef.current ?? conceptId;
+
+    const request = (async () => {
       const response = await fetch(
-        conceptId ? `/api/arch/concept-projects/${conceptId}` : "/api/arch/concept-projects",
+        targetId ? `/api/arch/concept-projects/${targetId}` : "/api/arch/concept-projects",
         {
-          method: conceptId ? "PATCH" : "POST",
+          method: targetId ? "PATCH" : "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         },
       );
       if (!response.ok) throw new Error("Falha ao salvar pré-projeto");
       const saved = (await response.json()) as ConceptDraftResponse;
+      conceptIdRef.current = saved.id;
       setConceptId(saved.id);
-      setSaveState("saved");
+      if (!targetId && typeof window !== "undefined") {
+        // Mantém o pré-projeto recém-criado aberto se a página for recarregada.
+        window.history.replaceState(null, "", `/arch/concept?id=${encodeURIComponent(saved.id)}`);
+      }
       return saved.id;
+    })();
+    if (!targetId) creatingConceptRef.current = request;
+
+    try {
+      const savedId = await request;
+      setSaveState("saved");
+      return savedId;
     } catch {
       setSaveState("error");
       return null;
+    } finally {
+      if (creatingConceptRef.current === request) creatingConceptRef.current = null;
+    }
+  };
+
+  // Salvamento automático: antes o trabalho só era gravado ao tocar no ✓ (sem nenhum
+  // retorno visual) ou em algumas ações pontuais — fechar o app no celular perdia a edição.
+  const autosaveKey = useMemo(() => JSON.stringify([
+    rooms, customWalls, customOpenings, objects, openingOverrides, wallMaterials,
+    lotWidth, lotDepth, floors, desiredArea, typology, layoutPreferences, sitePlacement,
+    facadePreferences, spaceProfiles, customerProfile, showDimensions, wallFirstFloors,
+  ]), [
+    rooms, customWalls, customOpenings, objects, openingOverrides, wallMaterials,
+    lotWidth, lotDepth, floors, desiredArea, typology, layoutPreferences, sitePlacement,
+    facadePreferences, spaceProfiles, customerProfile, showDimensions, wallFirstFloors,
+  ]);
+  const [lastSavedKey, setLastSavedKey] = useState<string | null>(null);
+  const hasUnsavedChanges = lastSavedKey !== null && lastSavedKey !== autosaveKey;
+
+  useEffect(() => {
+    if (saveState === "loading") return;
+    if (lastSavedKey === null) {
+      setLastSavedKey(autosaveKey);
+      return;
+    }
+    if (autosaveKey === lastSavedKey) return;
+    const delay = saveState === "error" ? 15000 : 2500;
+    const timer = setTimeout(() => {
+      const keyBeingSaved = autosaveKey;
+      void saveConcept().then((savedId) => {
+        setLastSavedKey(savedId ? keyBeingSaved : "__falha__");
+      });
+    }, delay);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autosaveKey, lastSavedKey, saveState]);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      if (navigatingAwayRef.current) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [hasUnsavedChanges]);
+
+  const saveStatusLabel = saveState === "saving"
+    ? "Salvando…"
+    : saveState === "error"
+      ? "Erro ao salvar"
+      : hasUnsavedChanges
+        ? "Alterações não salvas"
+        : saveState === "saved"
+          ? "Salvo"
+          : "";
+
+  const loadProjectList = async () => {
+    setProjectListState("loading");
+    try {
+      const response = await fetch("/api/arch/concept-projects", { cache: "no-store" });
+      if (!response.ok) throw new Error();
+      const rows = (await response.json()) as ConceptListItem[];
+      setProjectList(Array.isArray(rows) ? rows : []);
+      setProjectListState("idle");
+    } catch {
+      setProjectListState("error");
+    }
+  };
+
+  const openProjectList = () => {
+    setProjectListOpen(true);
+    void loadProjectList();
+  };
+
+  const goToConcept = async (target: { id?: string; isNew?: boolean }) => {
+    // Grava o que estiver pendente antes de trocar de pré-projeto.
+    if (hasUnsavedChanges || saveState === "error") {
+      const saved = await saveConcept();
+      if (!saved) return;
+      setLastSavedKey(autosaveKey);
+    }
+    navigatingAwayRef.current = true;
+    window.location.assign(target.isNew ? "/arch/concept?novo=1" : `/arch/concept?id=${encodeURIComponent(target.id ?? "")}`);
+  };
+
+  const deleteConceptFromList = async (item: ConceptListItem) => {
+    const name = item.customerName ?? item.title ?? "este pré-projeto";
+    if (!window.confirm(`Excluir ${name}? Essa ação não pode ser desfeita.`)) return;
+    setDeletingProjectId(item.id);
+    try {
+      const response = await fetch(`/api/arch/concept-projects/${encodeURIComponent(item.id)}`, { method: "DELETE" });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        window.alert((body as { error?: string }).error ?? "Não foi possível excluir.");
+        return;
+      }
+      if (item.id === (conceptIdRef.current ?? conceptId)) {
+        navigatingAwayRef.current = true;
+        window.location.assign("/arch/concept?novo=1");
+        return;
+      }
+      setProjectList((prev) => prev.filter((row) => row.id !== item.id));
+    } finally {
+      setDeletingProjectId(null);
     }
   };
 
@@ -4387,9 +4550,19 @@ export default function ConceptPlanner() {
                 </a>
 
                 <div className="hidden min-w-0 sm:block">
-                  <div className="truncate text-sm font-semibold text-white">Projeto residencial</div>
+                  <div className="truncate text-sm font-semibold text-white">{customerProfile.name?.trim() ? `Pré-projeto — ${customerProfile.name.trim()}` : "Pré-projeto"}</div>
                   <div className="text-[11px] text-slate-400">Arqdor Pro · editor arquitetônico</div>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={openProjectList}
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10 hover:text-white"
+                  title="Meus pré-projetos"
+                  aria-label="Meus pré-projetos"
+                >
+                  <FolderOpen className="h-4 w-4" />
+                </button>
 
                 <button
                   type="button"
@@ -4399,18 +4572,30 @@ export default function ConceptPlanner() {
                 >
                   <Check className="h-4 w-4" />
                 </button>
+                {saveStatusLabel && (
+                  <span
+                    className={saveState === "error"
+                      ? "shrink-0 text-[11px] font-semibold text-red-300"
+                      : hasUnsavedChanges
+                        ? "shrink-0 text-[11px] text-amber-200"
+                        : "shrink-0 text-[11px] text-slate-400"}
+                    aria-live="polite"
+                  >
+                    {saveStatusLabel}
+                  </span>
+                )}
 
                 <button
                   type="button"
                   onClick={() => void runAiDevelopment()}
                   disabled={aiDevelopmentState === "running" || saveState === "loading"}
                   className={aiDevelopmentState === "error"
-                    ? "hidden h-10 items-center gap-2 rounded-xl border border-red-400/30 bg-red-500/15 px-3 text-xs font-bold text-red-100 disabled:opacity-50 md:inline-flex"
-                    : "hidden h-10 items-center gap-2 rounded-xl border border-orange-400/30 bg-orange-500/15 px-3 text-xs font-bold text-orange-100 transition hover:bg-orange-500/25 disabled:opacity-50 md:inline-flex"}
+                    ? "inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-red-400/30 bg-red-500/15 px-3 text-xs font-bold text-red-100 disabled:opacity-50"
+                    : "inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-orange-400/30 bg-orange-500/15 px-3 text-xs font-bold text-orange-100 transition hover:bg-orange-500/25 disabled:opacity-50"}
                   title="Desenvolver layout, paredes, aberturas e fachada com IA"
                 >
                   <Sparkles className={aiDevelopmentState === "running" ? "h-4 w-4 animate-pulse" : "h-4 w-4"} />
-                  {aiDevelopmentState === "running" ? "IA analisando..." : aiDevelopmentState === "error" ? "Tentar IA novamente" : "Desenvolver com IA"}
+                  <span className="hidden md:inline">{aiDevelopmentState === "running" ? "IA analisando..." : aiDevelopmentState === "error" ? "Tentar IA novamente" : "Desenvolver com IA"}</span>
                 </button>
 
                 <button
@@ -4468,6 +4653,13 @@ export default function ConceptPlanner() {
                       {label}
                     </button>
                   ))}
+                  <button
+                    type="button"
+                    onClick={() => { void saveConcept(RESULT_STEP); setStep(RESULT_STEP); window.scrollTo({ top: 0 }); }}
+                    className="shrink-0 snap-center rounded-lg px-3 py-2 text-xs font-bold text-orange-300 hover:bg-white/5 hover:text-orange-200 sm:px-4"
+                  >
+                    Enviar
+                  </button>
                 </div>
               </div>
 
@@ -4627,6 +4819,7 @@ export default function ConceptPlanner() {
                 lotWidth={lotWidth}
                 levels={modelLevels}
                 rooms={safeRooms}
+                sitePlacement={normalizeSitePlacement(sitePlacement)}
                 facade={facadePreferences}
                 design={facadeDesign}
               />
@@ -6515,6 +6708,13 @@ export default function ConceptPlanner() {
                     {label}
                   </button>
                 ))}
+                <button
+                  type="button"
+                  onClick={() => { void saveConcept(RESULT_STEP); setStep(RESULT_STEP); window.scrollTo({ top: 0 }); }}
+                  className="flex-1 rounded-xl px-2 py-2.5 text-xs font-bold text-orange-600"
+                >
+                  Enviar
+                </button>
               </div>
 
               {hasEditorSelection && (editorView === "plan" || editorView === "model3d") && (
@@ -7035,7 +7235,7 @@ export default function ConceptPlanner() {
               </div>
 
               <div data-concept-render-source="true" className="mt-4 overflow-hidden rounded-2xl border bg-slate-50">
-                <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} rooms={safeRooms} facade={facadePreferences} />
+                <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} rooms={safeRooms} sitePlacement={normalizeSitePlacement(sitePlacement)} facade={facadePreferences} design={facadeDesign} />
               </div>
 
               <div className="mt-4 rounded-2xl border bg-muted/30 p-4">
@@ -7102,7 +7302,14 @@ export default function ConceptPlanner() {
         )}
 
         {step === 6 && (
-          <section className="mx-auto max-w-6xl space-y-5 print:max-w-none">
+          <section className="mx-auto max-w-6xl space-y-5 px-3 pt-4 print:max-w-none sm:px-6">
+            <button
+              type="button"
+              onClick={() => { setStep(WORKSPACE_STEP); setEditorView("render"); }}
+              className="inline-flex items-center gap-2 rounded-xl border bg-background px-3 py-2 text-sm font-semibold shadow-sm print:hidden"
+            >
+              <ArrowLeft className="h-4 w-4" /> Voltar ao editor
+            </button>
             <div className="rounded-3xl border bg-card p-6 shadow-sm sm:p-8">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
@@ -7424,6 +7631,93 @@ export default function ConceptPlanner() {
           </div>
         )}
       </main>
+
+      {projectListOpen && (
+        <div className="fixed inset-0 z-[120] flex items-end justify-center bg-slate-950/60 p-0 sm:items-center sm:p-6" onClick={() => setProjectListOpen(false)}>
+          <div
+            className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl bg-background shadow-2xl sm:rounded-3xl"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-label="Meus pré-projetos"
+          >
+            <div className="flex items-center justify-between gap-3 border-b px-5 py-4">
+              <div>
+                <h2 className="text-lg font-bold">Meus pré-projetos</h2>
+                <p className="text-xs text-muted-foreground">Um pré-projeto por cliente. Toque para abrir.</p>
+              </div>
+              <button type="button" onClick={() => setProjectListOpen(false)} className="grid h-9 w-9 place-items-center rounded-xl border" aria-label="Fechar">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="border-b px-5 py-3">
+              <button
+                type="button"
+                onClick={() => void goToConcept({ isNew: true })}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white"
+              >
+                <Plus className="h-4 w-4" /> Novo pré-projeto
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+              {projectListState === "loading" && projectList.length === 0 && (
+                <div className="px-2 py-8 text-center text-sm text-muted-foreground">Carregando…</div>
+              )}
+              {projectListState === "error" && (
+                <div className="px-2 py-8 text-center text-sm text-red-600">
+                  Não foi possível carregar a lista.{" "}
+                  <button type="button" className="font-semibold underline" onClick={() => void loadProjectList()}>Tentar de novo</button>
+                </div>
+              )}
+              {projectListState === "idle" && projectList.length === 0 && (
+                <div className="px-2 py-8 text-center text-sm text-muted-foreground">Nenhum pré-projeto salvo ainda.</div>
+              )}
+              <ul className="space-y-2">
+                {projectList.map((item) => {
+                  const isCurrent = item.id === (conceptIdRef.current ?? conceptId);
+                  const label = item.customerName ?? (item.title && item.title !== "Meu pré-projeto" ? item.title : "Sem cliente definido");
+                  return (
+                    <li key={item.id} className={isCurrent ? "flex items-center gap-3 rounded-2xl border border-orange-300 bg-orange-50/60 p-2" : "flex items-center gap-3 rounded-2xl border p-2"}>
+                      <button
+                        type="button"
+                        onClick={() => { if (isCurrent) setProjectListOpen(false); else void goToConcept({ id: item.id }); }}
+                        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                      >
+                        <div className="h-14 w-20 shrink-0 overflow-hidden rounded-xl bg-muted">
+                          {item.thumbnailUrl
+                            ? <img src={item.thumbnailUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+                            : <div className="grid h-full w-full place-items-center text-muted-foreground"><Home className="h-5 w-5" /></div>}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold">{label}</div>
+                          <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                            {item.updatedAt && <span>{new Date(item.updatedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" })}</span>}
+                            {isCurrent && <span className="rounded-full bg-orange-100 px-2 py-0.5 font-semibold text-orange-700">Aberto</span>}
+                            {item.sentToProfessional && <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-700">Enviado</span>}
+                          </div>
+                        </div>
+                      </button>
+                      {!item.sentToProfessional && (
+                        <button
+                          type="button"
+                          onClick={() => void deleteConceptFromList(item)}
+                          disabled={deletingProjectId === item.id}
+                          className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border text-muted-foreground hover:text-red-600 disabled:opacity-50"
+                          aria-label="Excluir pré-projeto"
+                          title="Excluir"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

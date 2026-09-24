@@ -162,7 +162,23 @@ export async function callReplicateFluxKontext(params: {
 
     if (!createRes.ok) {
       const body = await createRes.json().catch(() => ({})) as Record<string, unknown>;
-      throw new Error(`FluxKontext HTTP ${createRes.status}: ${body["detail"] ?? JSON.stringify(body)}`);
+      const detail = String(body["detail"] ?? JSON.stringify(body));
+      logger?.error({ model: MODEL, status: createRes.status, detail }, "FluxKontext: falha ao criar geração");
+      // Esta mensagem vai direto pra tela do usuário (erro_msg). Antes aparecia o texto cru
+      // do Replicate em inglês, com link de cobrança da conta da plataforma.
+      if (createRes.status === 402) {
+        throw new Error("O gerador de imagens está temporariamente indisponível (sem crédito). Avise o administrador da plataforma e tente de novo em alguns minutos.");
+      }
+      if (createRes.status === 429) {
+        throw new Error("Muitos renders ao mesmo tempo. Aguarde cerca de um minuto e tente de novo.");
+      }
+      if (createRes.status === 401 || createRes.status === 403) {
+        throw new Error("O gerador de imagens recusou a autenticação da plataforma. Avise o administrador.");
+      }
+      if (createRes.status === 422) {
+        throw new Error("A imagem de referência não foi aceita pelo gerador. Ajuste a vista (fachada ou 3D) e tente de novo.");
+      }
+      throw new Error(`O gerador de imagens falhou (código ${createRes.status}). Tente de novo em instantes.`);
     }
 
     prediction = await createRes.json() as Prediction;

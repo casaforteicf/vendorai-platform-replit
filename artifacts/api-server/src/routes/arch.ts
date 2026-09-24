@@ -292,6 +292,91 @@ router.get("/arch/concept-projects/latest", authenticate, async (req, res) => {
   return res.json(row ?? null);
 });
 
+// Lista dos pré-projetos do usuário — antes só existia /latest, então cada usuário
+// tinha na prática um único pré-projeto (sempre reabria o último).
+router.get("/arch/concept-projects", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const userId = req.user?.sub;
+  if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
+
+  const rows = await db
+    .select({
+      id: archConceptProjectsTable.id,
+      title: archConceptProjectsTable.title,
+      status: archConceptProjectsTable.status,
+      archProjetoId: archConceptProjectsTable.archProjetoId,
+      customerProfile: archConceptProjectsTable.customerProfile,
+      conceptRender: archConceptProjectsTable.conceptRender,
+      lot: archConceptProjectsTable.lot,
+      createdAt: archConceptProjectsTable.createdAt,
+      updatedAt: archConceptProjectsTable.updatedAt,
+    })
+    .from(archConceptProjectsTable)
+    .where(
+      and(
+        eq(archConceptProjectsTable.tenantId, tid),
+        eq(archConceptProjectsTable.ownerUserId, userId),
+      ),
+    )
+    .orderBy(desc(archConceptProjectsTable.updatedAt))
+    .limit(200);
+
+  return res.json(rows.map((row) => {
+    const customer = (row.customerProfile ?? {}) as { name?: string };
+    const render = (row.conceptRender ?? {}) as { resultImageUrl?: string; history?: Array<{ resultImageUrl?: string }> };
+    const history = Array.isArray(render.history) ? render.history : [];
+    return {
+      id: row.id,
+      title: row.title,
+      status: row.status,
+      sentToProfessional: Boolean(row.archProjetoId),
+      customerName: typeof customer.name === "string" && customer.name.trim() ? customer.name.trim() : null,
+      thumbnailUrl: render.resultImageUrl ?? history[history.length - 1]?.resultImageUrl ?? null,
+      lot: row.lot,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+  }));
+});
+
+// Excluir rascunho. Pré-projeto já enviado ao profissional fica protegido, porque o
+// Projeto Arqdor e o lead no CRM apontam pra ele.
+router.delete("/arch/concept-projects/:id", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const userId = req.user?.sub;
+  const id = String(req.params.id);
+  if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
+
+  const [row] = await db
+    .select({ id: archConceptProjectsTable.id, archProjetoId: archConceptProjectsTable.archProjetoId })
+    .from(archConceptProjectsTable)
+    .where(
+      and(
+        eq(archConceptProjectsTable.id, id),
+        eq(archConceptProjectsTable.tenantId, tid),
+        eq(archConceptProjectsTable.ownerUserId, userId),
+      ),
+    )
+    .limit(1);
+
+  if (!row) return res.status(404).json({ error: "Pré-projeto não encontrado." });
+  if (row.archProjetoId) {
+    return res.status(409).json({ error: "Este pré-projeto já foi enviado ao profissional e não pode ser excluído." });
+  }
+
+  await db
+    .delete(archConceptProjectsTable)
+    .where(
+      and(
+        eq(archConceptProjectsTable.id, id),
+        eq(archConceptProjectsTable.tenantId, tid),
+        eq(archConceptProjectsTable.ownerUserId, userId),
+      ),
+    );
+
+  return res.json({ ok: true });
+});
+
 router.get("/arch/concept-projects/:id", authenticate, async (req, res) => {
   const tid = tenantId(req);
   const userId = req.user?.sub;
