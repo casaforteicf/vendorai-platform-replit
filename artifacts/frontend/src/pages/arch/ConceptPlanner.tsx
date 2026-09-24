@@ -32,6 +32,8 @@ import {
   Clock3,
   Box,
   X,
+  FolderOpen,
+  Trash2,
 } from "lucide-react";
 import { buildConceptGeometry, nudgeOpening, validateConceptLayout } from "./conceptGeometry";
 import { type ConceptFacadePreferences } from "./ConceptVolumetry";
@@ -705,6 +707,22 @@ function StepPill({ index, current, label }: { index: number; current: number; l
   );
 }
 
+type ConceptListItem = {
+  id: string;
+  title: string | null;
+  status: string | null;
+  sentToProfessional: boolean;
+  customerName: string | null;
+  thumbnailUrl: string | null;
+  updatedAt: string | null;
+};
+
+function conceptUrlParams() {
+  if (typeof window === "undefined") return { id: null as string | null, isNew: false };
+  const params = new URLSearchParams(window.location.search);
+  return { id: params.get("id"), isNew: params.get("novo") === "1" };
+}
+
 const WORKSPACE_STEP = 4;
 const RESULT_STEP = 6;
 
@@ -776,6 +794,7 @@ export default function ConceptPlanner() {
   const [openingOverrides, setOpeningOverrides] = useState<Record<string, OpeningOverride>>({});
   const [conceptId, setConceptId] = useState<string | null>(null);
   const conceptIdRef = useRef<string | null>(null);
+  const navigatingAwayRef = useRef(false);
   const creatingConceptRef = useRef<Promise<string | null> | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "loading" | "saving" | "saved" | "error">("loading");
   const [aiDevelopmentState, setAiDevelopmentState] = useState<"idle" | "running" | "error">("idle");
@@ -797,6 +816,10 @@ export default function ConceptPlanner() {
   const [modelSearch, setModelSearch] = useState("");
   const [modelCategory, setModelCategory] = useState<"todos" | "terreas" | "sobrados" | "lazer">("todos");
   const [modelGalleryOpen, setModelGalleryOpen] = useState(false);
+  const [projectListOpen, setProjectListOpen] = useState(false);
+  const [projectList, setProjectList] = useState<ConceptListItem[]>([]);
+  const [projectListState, setProjectListState] = useState<"idle" | "loading" | "error">("idle");
+  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
   const [furnitureSearch, setFurnitureSearch] = useState("");
   const [furnitureCategory, setFurnitureCategory] = useState<"Todos" | "Sala" | "Quarto" | "Jantar" | "Cozinha" | "Escritório" | "Decoração" | "Iluminação" | "Exterior">("Todos");
   const [libraryMode, setLibraryMode] = useState<"all" | "favorites" | "recent">("all");
@@ -1100,7 +1123,16 @@ export default function ConceptPlanner() {
 
     const loadLatest = async () => {
       try {
-        const response = await fetch("/api/arch/concept-projects/latest");
+        const { id: requestedId, isNew } = conceptUrlParams();
+        if (isNew && !requestedId) {
+          if (!cancelled) setSaveState("idle");
+          return;
+        }
+        const response = await fetch(
+          requestedId
+            ? `/api/arch/concept-projects/${encodeURIComponent(requestedId)}`
+            : "/api/arch/concept-projects/latest",
+        );
         if (!response.ok) throw new Error("Falha ao carregar pré-projeto");
         const draft = (await response.json()) as ConceptDraftResponse | null;
         if (cancelled || !draft) {
@@ -1228,6 +1260,10 @@ export default function ConceptPlanner() {
       const saved = (await response.json()) as ConceptDraftResponse;
       conceptIdRef.current = saved.id;
       setConceptId(saved.id);
+      if (!targetId && typeof window !== "undefined") {
+        // Mantém o pré-projeto recém-criado aberto se a página for recarregada.
+        window.history.replaceState(null, "", `/arch/concept?id=${encodeURIComponent(saved.id)}`);
+      }
       return saved.id;
     })();
     if (!targetId) creatingConceptRef.current = request;
@@ -1279,6 +1315,7 @@ export default function ConceptPlanner() {
   useEffect(() => {
     if (!hasUnsavedChanges) return;
     const warn = (event: BeforeUnloadEvent) => {
+      if (navigatingAwayRef.current) return;
       event.preventDefault();
       event.returnValue = "";
     };
@@ -1295,6 +1332,57 @@ export default function ConceptPlanner() {
         : saveState === "saved"
           ? "Salvo"
           : "";
+
+  const loadProjectList = async () => {
+    setProjectListState("loading");
+    try {
+      const response = await fetch("/api/arch/concept-projects", { cache: "no-store" });
+      if (!response.ok) throw new Error();
+      const rows = (await response.json()) as ConceptListItem[];
+      setProjectList(Array.isArray(rows) ? rows : []);
+      setProjectListState("idle");
+    } catch {
+      setProjectListState("error");
+    }
+  };
+
+  const openProjectList = () => {
+    setProjectListOpen(true);
+    void loadProjectList();
+  };
+
+  const goToConcept = async (target: { id?: string; isNew?: boolean }) => {
+    // Grava o que estiver pendente antes de trocar de pré-projeto.
+    if (hasUnsavedChanges || saveState === "error") {
+      const saved = await saveConcept();
+      if (!saved) return;
+      setLastSavedKey(autosaveKey);
+    }
+    navigatingAwayRef.current = true;
+    window.location.assign(target.isNew ? "/arch/concept?novo=1" : `/arch/concept?id=${encodeURIComponent(target.id ?? "")}`);
+  };
+
+  const deleteConceptFromList = async (item: ConceptListItem) => {
+    const name = item.customerName ?? item.title ?? "este pré-projeto";
+    if (!window.confirm(`Excluir ${name}? Essa ação não pode ser desfeita.`)) return;
+    setDeletingProjectId(item.id);
+    try {
+      const response = await fetch(`/api/arch/concept-projects/${encodeURIComponent(item.id)}`, { method: "DELETE" });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        window.alert((body as { error?: string }).error ?? "Não foi possível excluir.");
+        return;
+      }
+      if (item.id === (conceptIdRef.current ?? conceptId)) {
+        navigatingAwayRef.current = true;
+        window.location.assign("/arch/concept?novo=1");
+        return;
+      }
+      setProjectList((prev) => prev.filter((row) => row.id !== item.id));
+    } finally {
+      setDeletingProjectId(null);
+    }
+  };
 
   const handleFacadeDesignChange = (next: FacadeDesignState) => {
     setFacadeDesign(next);
@@ -4468,6 +4556,16 @@ export default function ConceptPlanner() {
 
                 <button
                   type="button"
+                  onClick={openProjectList}
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10 hover:text-white"
+                  title="Meus pré-projetos"
+                  aria-label="Meus pré-projetos"
+                >
+                  <FolderOpen className="h-4 w-4" />
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => void saveConcept(4)}
                   className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10 hover:text-white"
                   title="Salvar projeto"
@@ -7533,6 +7631,93 @@ export default function ConceptPlanner() {
           </div>
         )}
       </main>
+
+      {projectListOpen && (
+        <div className="fixed inset-0 z-[120] flex items-end justify-center bg-slate-950/60 p-0 sm:items-center sm:p-6" onClick={() => setProjectListOpen(false)}>
+          <div
+            className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl bg-background shadow-2xl sm:rounded-3xl"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-label="Meus pré-projetos"
+          >
+            <div className="flex items-center justify-between gap-3 border-b px-5 py-4">
+              <div>
+                <h2 className="text-lg font-bold">Meus pré-projetos</h2>
+                <p className="text-xs text-muted-foreground">Um pré-projeto por cliente. Toque para abrir.</p>
+              </div>
+              <button type="button" onClick={() => setProjectListOpen(false)} className="grid h-9 w-9 place-items-center rounded-xl border" aria-label="Fechar">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="border-b px-5 py-3">
+              <button
+                type="button"
+                onClick={() => void goToConcept({ isNew: true })}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white"
+              >
+                <Plus className="h-4 w-4" /> Novo pré-projeto
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+              {projectListState === "loading" && projectList.length === 0 && (
+                <div className="px-2 py-8 text-center text-sm text-muted-foreground">Carregando…</div>
+              )}
+              {projectListState === "error" && (
+                <div className="px-2 py-8 text-center text-sm text-red-600">
+                  Não foi possível carregar a lista.{" "}
+                  <button type="button" className="font-semibold underline" onClick={() => void loadProjectList()}>Tentar de novo</button>
+                </div>
+              )}
+              {projectListState === "idle" && projectList.length === 0 && (
+                <div className="px-2 py-8 text-center text-sm text-muted-foreground">Nenhum pré-projeto salvo ainda.</div>
+              )}
+              <ul className="space-y-2">
+                {projectList.map((item) => {
+                  const isCurrent = item.id === (conceptIdRef.current ?? conceptId);
+                  const label = item.customerName ?? (item.title && item.title !== "Meu pré-projeto" ? item.title : "Sem cliente definido");
+                  return (
+                    <li key={item.id} className={isCurrent ? "flex items-center gap-3 rounded-2xl border border-orange-300 bg-orange-50/60 p-2" : "flex items-center gap-3 rounded-2xl border p-2"}>
+                      <button
+                        type="button"
+                        onClick={() => { if (isCurrent) setProjectListOpen(false); else void goToConcept({ id: item.id }); }}
+                        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                      >
+                        <div className="h-14 w-20 shrink-0 overflow-hidden rounded-xl bg-muted">
+                          {item.thumbnailUrl
+                            ? <img src={item.thumbnailUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+                            : <div className="grid h-full w-full place-items-center text-muted-foreground"><Home className="h-5 w-5" /></div>}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold">{label}</div>
+                          <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                            {item.updatedAt && <span>{new Date(item.updatedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" })}</span>}
+                            {isCurrent && <span className="rounded-full bg-orange-100 px-2 py-0.5 font-semibold text-orange-700">Aberto</span>}
+                            {item.sentToProfessional && <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-700">Enviado</span>}
+                          </div>
+                        </div>
+                      </button>
+                      {!item.sentToProfessional && (
+                        <button
+                          type="button"
+                          onClick={() => void deleteConceptFromList(item)}
+                          disabled={deletingProjectId === item.id}
+                          className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border text-muted-foreground hover:text-red-600 disabled:opacity-50"
+                          aria-label="Excluir pré-projeto"
+                          title="Excluir"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
