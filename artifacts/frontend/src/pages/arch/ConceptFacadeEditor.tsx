@@ -47,7 +47,40 @@ type Props = {
   onOpenGallery?: () => void;
   realisticPreviewUrl?: string | null;
   realisticPreviewLoading?: boolean;
-  onApplyDevelopment?: (result: AIDevelopmentResponse) => void | Promise<void>;
+};
+
+export type FacadeStudyResponse = {
+  mode: "diagnose" | "develop";
+  intervention: "leve" | "moderada" | "marcante";
+  geometryLocked?: boolean;
+  diagnosis?: {
+    score?: number;
+    summary?: string;
+    strengths?: string[];
+    issues?: string[];
+    opportunities?: string[];
+  } | null;
+  concept?: {
+    title?: string;
+    architecturalDirection?: string;
+    entryStrategy?: string;
+    roofStrategy?: string;
+    materialStrategy?: string;
+    landscapeStrategy?: string;
+    whyItFitsClient?: string;
+  } | null;
+  facadeSuggestion?: Partial<ConceptFacadePreferences> | null;
+  designSuggestion?: {
+    surfaceMaterials?: Partial<FacadeDesignState["surfaceMaterials"]>;
+    volumes?: FacadeVolume[];
+  } | null;
+  openingRecommendations?: Array<{
+    type?: "window" | "door";
+    recommendation?: string;
+    reason?: string;
+    requiresClientApproval?: boolean;
+  }>;
+  warnings?: string[];
 };
 
 export type AIDevelopmentResponse = {
@@ -302,7 +335,6 @@ export default function ConceptFacadeEditor({
   onOpenGallery,
   realisticPreviewUrl,
   realisticPreviewLoading = false,
-  onApplyDevelopment,
 }: Props) {
   const safeSitePlacement = useMemo(() => normalizeSitePlacement(sitePlacement), [sitePlacement]);
   const [panel, setPanel] = useState<"style" | "volumes" | "materials" | "frames" | "outdoor" | "lighting" | "ai">("style");
@@ -312,8 +344,10 @@ export default function ConceptFacadeEditor({
   const [selectedVolumeId, setSelectedVolumeId] = useState<string | null>(null);
   const [elevationMode, setElevationMode] = useState<"material" | "line">("material");
   const [aiBusy, setAiBusy] = useState(false);
-  const [aiResult, setAiResult] = useState<AIDevelopmentResponse | null>(null);
+  const [aiResult, setAiResult] = useState<FacadeStudyResponse | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [facadeIntervention, setFacadeIntervention] = useState<"leve" | "moderada" | "marcante">("moderada");
+  const [facadeStudyApplied, setFacadeStudyApplied] = useState(false);
   const dismissedSiteVolumeIdsRef = useRef<Set<string>>(new Set());
 
   const resolvedConceptProjectId = useMemo(() => {
@@ -420,39 +454,58 @@ export default function ConceptFacadeEditor({
     });
   };
 
-  const developWithAI = async () => {
+  const runFacadeStudy = async (action: "diagnose" | "develop") => {
     if (!resolvedConceptProjectId || aiBusy) return;
     setAiBusy(true);
     setAiError(null);
+    if (action === "develop") setFacadeStudyApplied(false);
     try {
       const token = typeof window !== "undefined" ? localStorage.getItem("vendorai_token") : null;
-      const response = await fetch(`/api/arch/concept-projects/${resolvedConceptProjectId}/develop-with-ai`, {
+      const response = await fetch(`/api/arch/concept-projects/${resolvedConceptProjectId}/facade-study`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ mode: "assistido", preserveLayout: true, style: facade.style }),
+        body: JSON.stringify({
+          action,
+          intervention: facadeIntervention,
+          facade,
+          facadeDesign: design,
+        }),
       });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload?.error ?? "Falha ao desenvolver com IA.");
-      setAiResult(payload as AIDevelopmentResponse);
+      if (!response.ok) throw new Error(payload?.error ?? "Falha no estudo de fachada com IA.");
+      setAiResult(payload as FacadeStudyResponse);
+      setPanel("ai");
+      setPanelOpen(true);
     } catch (error) {
-      setAiError(error instanceof Error ? error.message : "Falha ao desenvolver com IA.");
+      setAiError(error instanceof Error ? error.message : "Falha no estudo de fachada com IA.");
     } finally {
       setAiBusy(false);
     }
   };
 
-  const applyAISuggestion = async () => {
-    if (!aiResult) return;
-    if (onApplyDevelopment) {
-      await onApplyDevelopment(aiResult);
-      return;
-    }
+  const applyFacadeStudy = () => {
+    if (!aiResult || aiResult.mode !== "develop") return;
     if (aiResult.facadeSuggestion) {
       onFacadeChange({ ...facade, ...aiResult.facadeSuggestion });
     }
+    if (aiResult.designSuggestion) {
+      const generatedVolumes = Array.isArray(aiResult.designSuggestion.volumes)
+        ? aiResult.designSuggestion.volumes
+        : [];
+      const existingManualVolumes = design.volumes.filter((volume) => !volume.id.startsWith("ai-facade-"));
+      onDesignChange({
+        ...design,
+        surfaceMaterials: {
+          ...design.surfaceMaterials,
+          ...(aiResult.designSuggestion.surfaceMaterials ?? {}),
+        },
+        volumes: [...existingManualVolumes, ...generatedVolumes],
+      });
+    }
+    setFacadeStudyApplied(true);
   };
 
   return (
@@ -564,46 +617,149 @@ export default function ConceptFacadeEditor({
 
         {panel === "ai" && (
           <div className="p-4 pt-11">
-            <div className="text-sm font-semibold">Desenvolver com IA</div>
+            <div className="text-sm font-semibold">Estudo de Fachada com IA</div>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
-              Analisa o pré-projeto salvo, preserva o layout e propõe uma fachada coerente com a geometria real.
+              Primeiro a IA analisa a fachada do projeto. Depois desenvolve uma proposta sobre a mesma casa. O render vem por último.
             </p>
-            <button type="button" onClick={() => void developWithAI()} disabled={!resolvedConceptProjectId || aiBusy}
-              className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-3 py-3 text-xs font-bold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50">
-              {aiBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <WandSparkles className="h-4 w-4" />}
-              Desenvolver com IA
-            </button>
-            {!resolvedConceptProjectId && <p className="mt-2 text-[10px] text-amber-700">Abra um pré-projeto salvo para usar o desenvolvimento com IA.</p>}
+
+            <div className="mt-4 rounded-xl border bg-slate-50 p-3">
+              <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Nível de intervenção</div>
+              <div className="mt-2 grid grid-cols-3 gap-1.5">
+                {([
+                  ["leve", "Leve"],
+                  ["moderada", "Moderada"],
+                  ["marcante", "Marcante"],
+                ] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setFacadeIntervention(value)}
+                    className={facadeIntervention === value
+                      ? "rounded-lg bg-slate-950 px-2 py-2 text-[10px] font-bold text-white"
+                      : "rounded-lg border bg-white px-2 py-2 text-[10px] font-bold text-slate-600"}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-2 text-[9px] leading-4 text-slate-500">
+                {facadeIntervention === "leve"
+                  ? "Materiais, cores, paisagismo e detalhes."
+                  : facadeIntervention === "moderada"
+                    ? "Pode propor pórtico, marquise, painel, ripado e cobertura compatível."
+                    : "Composição mais autoral, sem transformar o projeto em outra casa."}
+              </div>
+            </div>
+
+            <div className="mt-3 grid gap-2">
+              <button
+                type="button"
+                onClick={() => void runFacadeStudy("diagnose")}
+                disabled={!resolvedConceptProjectId || aiBusy}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-3 text-xs font-bold text-slate-800 disabled:opacity-50"
+              >
+                {aiBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                1. Analisar fachada atual
+              </button>
+              <button
+                type="button"
+                onClick={() => void runFacadeStudy("develop")}
+                disabled={!resolvedConceptProjectId || aiBusy}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-3 py-3 text-xs font-bold text-white shadow-sm disabled:opacity-50"
+              >
+                {aiBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <WandSparkles className="h-4 w-4" />}
+                2. Desenvolver proposta de fachada
+              </button>
+            </div>
+
+            {!resolvedConceptProjectId && (
+              <p className="mt-2 text-[10px] text-amber-700">Salve o pré-projeto antes de iniciar o estudo de fachada.</p>
+            )}
             {aiError && <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-[11px] text-red-700">{aiError}</div>}
-            {aiResult && (
+
+            {aiResult?.diagnosis && (
               <div className="mt-4 space-y-3 rounded-xl border bg-slate-50 p-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-slate-700">Saúde geométrica</span>
-                  <span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold text-slate-700">{aiResult.geometryHealth?.score ?? 0}/100</span>
+                  <span className="text-[11px] font-bold text-slate-700">Diagnóstico arquitetônico</span>
+                  <span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold text-slate-700">
+                    {Math.max(0, Math.min(100, Number(aiResult.diagnosis.score ?? 0)))}/100
+                  </span>
                 </div>
-                {!!aiResult.geometryHealth?.messages?.length && <ul className="space-y-1 text-[10px] leading-4 text-slate-600">{aiResult.geometryHealth.messages.slice(0,5).map((message) => <li key={message}>• {message}</li>)}</ul>}
-                {!!aiResult.layoutSuggestion?.roomPatches?.length && (
-                  <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[10px] text-sky-800">
-                    {aiResult.layoutSuggestion.roomPatches.length} ambiente(s) com ajuste de layout sugerido.
+                {aiResult.diagnosis.summary && (
+                  <p className="text-[10px] leading-4 text-slate-600">{aiResult.diagnosis.summary}</p>
+                )}
+                {!!aiResult.diagnosis.strengths?.length && (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2.5">
+                    <div className="text-[9px] font-bold uppercase text-emerald-700">Pontos fortes</div>
+                    <ul className="mt-1 space-y-1 text-[10px] leading-4 text-emerald-900">
+                      {aiResult.diagnosis.strengths.slice(0,4).map((item) => <li key={item}>• {item}</li>)}
+                    </ul>
                   </div>
                 )}
-                {!!aiResult.layoutSuggestion?.wallSuggestions?.length && (
-                  <div className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-[10px] text-violet-800">
-                    {aiResult.layoutSuggestion.wallSuggestions.length} parede(s) sugerida(s).
+                {!!aiResult.diagnosis.issues?.length && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5">
+                    <div className="text-[9px] font-bold uppercase text-amber-700">O que melhorar</div>
+                    <ul className="mt-1 space-y-1 text-[10px] leading-4 text-amber-900">
+                      {aiResult.diagnosis.issues.slice(0,5).map((item) => <li key={item}>• {item}</li>)}
+                    </ul>
                   </div>
-                )}
-                {!!aiResult.layoutSuggestion?.openingSuggestions?.length && (
-                  <div className="rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 text-[10px] text-cyan-800">
-                    {aiResult.layoutSuggestion.openingSuggestions.length} abertura(s) sugerida(s).
-                  </div>
-                )}
-                {(aiResult.facadeSuggestion || aiResult.layoutSuggestion) && (
-                  <button type="button" onClick={() => void applyAISuggestion()} className="w-full rounded-lg border border-orange-300 bg-white px-3 py-2 text-[11px] font-bold text-orange-600">
-                    Aplicar desenvolvimento ao projeto
-                  </button>
                 )}
               </div>
             )}
+
+            {aiResult?.concept && (
+              <div className="mt-3 rounded-xl border border-orange-200 bg-orange-50 p-3">
+                <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-orange-700">
+                  {aiResult.concept.title || "Proposta de fachada"}
+                </div>
+                {aiResult.concept.architecturalDirection && (
+                  <p className="mt-1 text-[10px] leading-4 text-orange-950">{aiResult.concept.architecturalDirection}</p>
+                )}
+                <div className="mt-2 space-y-1 text-[10px] leading-4 text-slate-700">
+                  {aiResult.concept.entryStrategy && <div><b>Entrada:</b> {aiResult.concept.entryStrategy}</div>}
+                  {aiResult.concept.roofStrategy && <div><b>Cobertura:</b> {aiResult.concept.roofStrategy}</div>}
+                  {aiResult.concept.materialStrategy && <div><b>Materiais:</b> {aiResult.concept.materialStrategy}</div>}
+                  {aiResult.concept.landscapeStrategy && <div><b>Paisagismo:</b> {aiResult.concept.landscapeStrategy}</div>}
+                  {aiResult.concept.whyItFitsClient && <div><b>DNA do cliente:</b> {aiResult.concept.whyItFitsClient}</div>}
+                </div>
+              </div>
+            )}
+
+            {!!aiResult?.openingRecommendations?.length && (
+              <div className="mt-3 rounded-xl border border-cyan-200 bg-cyan-50 p-3">
+                <div className="text-[9px] font-bold uppercase text-cyan-700">Aberturas — somente recomendação</div>
+                <ul className="mt-1 space-y-1 text-[10px] leading-4 text-cyan-900">
+                  {aiResult.openingRecommendations.slice(0,5).map((item, index) => (
+                    <li key={index}>• {item.recommendation}{item.reason ? ` — ${item.reason}` : ""}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {aiResult?.mode === "develop" && (aiResult.facadeSuggestion || aiResult.designSuggestion) && (
+              <button
+                type="button"
+                onClick={applyFacadeStudy}
+                className="mt-3 w-full rounded-xl border border-orange-300 bg-white px-3 py-3 text-[11px] font-bold text-orange-700"
+              >
+                3. Aplicar proposta ao projeto
+              </button>
+            )}
+
+            {facadeStudyApplied && (
+              <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-[10px] leading-4 text-emerald-800">
+                Proposta aplicada à fachada atual. Revise o modelo e, quando estiver aprovado, gere o render fotorealista.
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={onOpenRender}
+              disabled={realisticPreviewLoading || !onOpenRender || aiBusy}
+              className="mt-3 w-full rounded-xl bg-slate-950 px-3 py-3 text-xs font-bold text-white disabled:opacity-50"
+            >
+              {realisticPreviewLoading ? "Renderizando..." : "4. Gerar render da fachada"}
+            </button>
           </div>
         )}
 
