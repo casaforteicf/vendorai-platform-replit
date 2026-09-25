@@ -39,7 +39,15 @@ export type ClientBriefPlan = {
   rooms: ReturnType<typeof buildTypologyRooms>;
 };
 
-export type ClientBriefAlternativeId = "compact" | "balanced" | "integrated";
+export type ClientBriefAlternativeId = "primary" | "compact" | "balanced" | "integrated";
+
+export type ArchitectureDNA = {
+  concept?: string;
+  spatialStrategy?: string;
+  volumeStrategy?: string;
+  roofStrategy?: string;
+  materialIntent?: string;
+};
 
 export type ProjectBriefSnapshot = {
   brief: ClientBrief;
@@ -48,6 +56,12 @@ export type ProjectBriefSnapshot = {
   selectedAlternativeTitle?: string;
   clientFitSummary?: string;
   designRationale?: string;
+  intervention?: "preservar" | "otimizar" | "valorizar" | "assinatura";
+  architectureDNA?: ArchitectureDNA;
+  experienceStrategy?: string[];
+  daylightStrategy?: string[];
+  facadeDirection?: string[];
+  selfCritique?: string[];
 };
 
 export type ClientBriefAlternative = ClientBriefPlan & {
@@ -60,6 +74,12 @@ export type ClientBriefAlternative = ClientBriefPlan & {
   qualityIssues?: string[];
   qualityStrengths?: string[];
   clientFitSummary?: string;
+  intervention?: "preservar" | "otimizar" | "valorizar" | "assinatura";
+  architectureDNA?: ArchitectureDNA;
+  experienceStrategy?: string[];
+  daylightStrategy?: string[];
+  facadeDirection?: string[];
+  selfCritique?: string[];
   projectBrief?: ProjectBriefSnapshot;
 };
 
