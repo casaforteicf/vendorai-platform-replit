@@ -197,7 +197,7 @@ function evaluateSpecialistPlan(
   for (let floor = 0; floor < input.brief.floors; floor += 1) {
     const floorRooms = rooms.filter((room) => room.floor === floor && room.kind !== "piscina");
     if (!floorRooms.length) {
-      issues.push(\`Pavimento \${floor + 1} sem ambientes.\`);
+      issues.push(`Pavimento ${floor + 1} sem ambientes.`);
       score -= 35;
       continue;
     }
@@ -205,17 +205,17 @@ function evaluateSpecialistPlan(
     for (let i = 0; i < floorRooms.length; i += 1) {
       for (let j = i + 1; j < floorRooms.length; j += 1) {
         if (specialistOverlap(floorRooms[i], floorRooms[j])) {
-          issues.push(\`Sobreposição: \${floorRooms[i].label} × \${floorRooms[j].label}.\`);
+          issues.push(`Sobreposição: ${floorRooms[i].label} × ${floorRooms[j].label}.`);
           score -= 35;
         }
       }
     }
 
     if (!specialistConnected(floorRooms)) {
-      issues.push(\`Pavimento \${floor + 1} está fragmentado: existem ambientes sem conexão física com a casa.\`);
+      issues.push(`Pavimento ${floor + 1} está fragmentado: existem ambientes sem conexão física com a casa.`);
       score -= 35;
     } else {
-      strengths.push(\`Pavimento \${floor + 1} forma um conjunto contínuo.\`);
+      strengths.push(`Pavimento ${floor + 1} forma um conjunto contínuo.`);
     }
 
     const minX = Math.min(...floorRooms.map((room) => room.x));
@@ -226,10 +226,10 @@ function evaluateSpecialistPlan(
     const roomArea = floorRooms.reduce((sum, room) => sum + room.width * room.depth, 0);
     const compactness = roomArea / bboxArea;
     if (compactness < 0.52) {
-      issues.push(\`Pavimento \${floor + 1} tem vazios/resíduos excessivos na implantação.\`);
+      issues.push(`Pavimento ${floor + 1} tem vazios/resíduos excessivos na implantação.`);
       score -= 18;
     } else if (compactness >= 0.72) {
-      strengths.push(\`Implantação compacta e eficiente no pavimento \${floor + 1}.\`);
+      strengths.push(`Implantação compacta e eficiente no pavimento ${floor + 1}.`);
     }
   }
 
@@ -247,10 +247,10 @@ function evaluateSpecialistPlan(
     });
     const candidates = ownNamed.length ? ownNamed : sameFloorBaths;
     if (!candidates.some((bath) => specialistTouches(suite, bath, 0.55))) {
-      issues.push(\`\${suite.label} não possui banheiro de suíte adjacente e diretamente conectável.\`);
+      issues.push(`${suite.label} não possui banheiro de suíte adjacente e diretamente conectável.`);
       score -= 28;
     } else {
-      strengths.push(\`\${suite.label} possui banheiro próprio adjacente.\`);
+      strengths.push(`${suite.label} possui banheiro próprio adjacente.`);
     }
   }
 
@@ -333,8 +333,8 @@ function sanitizeSpecialistPlan(
     const patch = patches.find((item: any) => item?.id === room.id);
     const width = Math.max(1.2, Math.min(input.lotWidth, Number(patch?.width ?? room.width)));
     const depth = Math.max(1.2, Math.min(input.lotDepth, Number(patch?.depth ?? room.depth)));
-    const sourceX = typeof room.x === "number" && typeof room.x === "number" && Number.isFinite(room.x) ? room.x : 0;
-    const sourceY = typeof room.y === "number" && typeof room.y === "number" && Number.isFinite(room.y) ? room.y : 0;
+    const sourceX = typeof room.x === "number" && Number.isFinite(room.x) ? room.x : 0;
+    const sourceY = typeof room.y === "number" && Number.isFinite(room.y) ? room.y : 0;
     const rawX = room.locked ? sourceX : Number(patch?.x ?? sourceX);
     const rawY = room.locked ? sourceY : Number(patch?.y ?? sourceY);
     const x = Math.max(0, Math.min(input.lotWidth - width, Number.isFinite(rawX) ? rawX : sourceX));
@@ -829,7 +829,7 @@ REGRAS INEGOCIÁVEIS:
 
     for (let attempt = 1; attempt <= 3 && approvedAlternatives.length < 3; attempt += 1) {
       const retryContext = rejectedFeedback.length
-        ? \`\n\nVALIDAÇÃO DAS TENTATIVAS ANTERIORES — CORRIJA ESTES PROBLEMAS NESTA NOVA GERAÇÃO:\n- \${rejectedFeedback.slice(-16).join("\n- ")}\`
+        ? `\n\nVALIDAÇÃO DAS TENTATIVAS ANTERIORES — CORRIJA ESTES PROBLEMAS NESTA NOVA GERAÇÃO:\n- ${rejectedFeedback.slice(-16).join("\n- ")}`
         : "";
 
       const message = await anthropic.messages.create({
@@ -873,11 +873,11 @@ REGRAS INEGOCIÁVEIS:
       for (const plan of requested.filter((item: any) => allowedIds.has(String(item?.id)))) {
         const sanitized = sanitizeSpecialistPlan(plan, input);
         if (!sanitized) {
-          rejectedFeedback.push(\`\${String(plan?.id ?? "alternativa")}: faltam ambientes, há IDs duplicados ou o programa não foi respeitado.\`);
+          rejectedFeedback.push(`${String(plan?.id ?? "alternativa")}: faltam ambientes, há IDs duplicados ou o programa não foi respeitado.`);
           continue;
         }
         if (sanitized.rejected) {
-          rejectedFeedback.push(...sanitized.quality.issues.map((issue) => \`\${String(plan.id)}: \${issue}\`));
+          rejectedFeedback.push(...sanitized.quality.issues.map((issue) => `${String(plan.id)}: ${issue}`));
           continue;
         }
         acceptedThisAttempt.push({
@@ -919,7 +919,8 @@ REGRAS INEGOCIÁVEIS:
   } catch (error) {
     const safe = sanitizeAIError(error);
     return res.status(safe.status).json({ error: safe.message });
-  }});
+  }
+});
 
 router.post("/arch/concept-projects/:id/develop-with-ai", authenticate, async (req, res) => {
   const tid = tenantId(req);
