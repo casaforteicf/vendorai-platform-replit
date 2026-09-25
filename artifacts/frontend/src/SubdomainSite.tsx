@@ -157,6 +157,32 @@ function FaqItem({ pergunta, resposta, color }: { pergunta: string; resposta: st
   );
 }
 
+// Botão opcional "Projete sua casa" (link público do pré-projeto Arqdor) no site montado em
+// blocos. O site em HTML gerado já recebe o botão pelo servidor.
+function ArqdorSiteButton({ slug }: { slug: string }) {
+  const [button, setButton] = useState<{ path: string; label: string; color: string } | null>(null);
+  useEffect(() => {
+    fetch(`/api/public/arqdor/${encodeURIComponent(slug)}/site-button`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => setButton(data?.enabled ? data : null))
+      .catch(() => setButton(null));
+  }, [slug]);
+  if (!button) return null;
+  const host = window.location.hostname;
+  const appOrigin = host.endsWith("appvendorai.com") && !host.startsWith("app.") ? "https://app.appvendorai.com" : window.location.origin;
+  return (
+    <a
+      href={`${appOrigin}${button.path}`}
+      target="_blank"
+      rel="noopener"
+      className="fixed bottom-4 left-4 z-[60] inline-flex items-center gap-2 rounded-full px-5 py-3.5 text-[15px] font-semibold text-white shadow-2xl"
+      style={{ background: button.color }}
+    >
+      🏠 {button.label}
+    </a>
+  );
+}
+
 function TenantSite({ slug }: { slug: string }) {
   const [htmlStatus, setHtmlStatus] = useState<"checking" | "available" | "unavailable">("checking");
   const [checkoutProduto, setCheckoutProduto] = useState<CheckoutProduct | null>(null);
@@ -440,6 +466,8 @@ function TenantSite({ slug }: { slug: string }) {
           <MessageCircle className="h-6 w-6" />
         </a>
       )}
+
+      <ArqdorSiteButton slug={slug} />
 
       {checkoutProduto && (
         <CheckoutModal

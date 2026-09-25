@@ -868,7 +868,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [modelGalleryOpen, setModelGalleryOpen] = useState(false);
   const [projectListOpen, setProjectListOpen] = useState(false);
   const [publicLinkOpen, setPublicLinkOpen] = useState(false);
-  const [publicLink, setPublicLink] = useState<{ slug: string; enabled: boolean; canManage: boolean } | null>(null);
+  const [publicLink, setPublicLink] = useState<{
+    slug: string; enabled: boolean; canManage: boolean;
+    showOnSite?: boolean; siteButtonLabel?: string; siteButtonColor?: string;
+  } | null>(null);
   const [publicLinkState, setPublicLinkState] = useState<"idle" | "loading" | "saving" | "error">("idle");
   const [publicLinkCopied, setPublicLinkCopied] = useState<"link" | "code" | null>(null);
   const [renderLightingOverride, setRenderLightingOverride] = useState<"day" | "sunset" | "night" | null>(null);
@@ -1435,7 +1438,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
   const publicLinkUrl = publicLink ? `${window.location.origin}/projeto/${publicLink.slug}` : "";
   const publicLinkEmbed = publicLink
-    ? `<a href="${publicLinkUrl}" target="_blank" rel="noopener" style="display:inline-block;padding:14px 22px;border-radius:12px;background:#f97316;color:#fff;font-weight:600;text-decoration:none;font-family:sans-serif">Projete sua casa</a>`
+    ? `<a href="${publicLinkUrl}" target="_blank" rel="noopener" style="display:inline-block;padding:14px 22px;border-radius:12px;background:${publicLink.siteButtonColor ?? "#f97316"};color:#fff;font-weight:600;text-decoration:none;font-family:sans-serif">${(publicLink.siteButtonLabel ?? "Projete sua casa").replace(/[<>&"]/g, "")}</a>`
     : "";
 
   const loadPublicLink = async () => {
@@ -1450,21 +1453,32 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     }
   };
 
-  const togglePublicLink = async (enabled: boolean) => {
+  // Salva sempre a configuração completa: ligar/desligar o link não pode apagar a escolha do
+  // botão no site (e vice-versa).
+  const savePublicLink = async (patch: { enabled?: boolean; showOnSite?: boolean; siteButtonLabel?: string; siteButtonColor?: string }) => {
+    if (!publicLink) return;
+    const next = { ...publicLink, ...patch };
     setPublicLinkState("saving");
     try {
       const response = await fetch("/api/arch/public-link", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled }),
+        body: JSON.stringify({
+          enabled: next.enabled,
+          showOnSite: Boolean(next.showOnSite),
+          siteButtonLabel: next.siteButtonLabel ?? "Projete sua casa",
+          siteButtonColor: next.siteButtonColor ?? "#f97316",
+        }),
       });
       if (!response.ok) throw new Error();
-      setPublicLink((prev) => (prev ? { ...prev, enabled } : prev));
+      const saved = await response.json();
+      setPublicLink((prev) => (prev ? { ...prev, ...saved } : prev));
       setPublicLinkState("idle");
     } catch {
       setPublicLinkState("error");
     }
   };
+  const togglePublicLink = (enabled: boolean) => savePublicLink({ enabled });
 
   const copyPublicLink = async (kind: "link" | "code") => {
     try {
@@ -8027,6 +8041,58 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   <button type="button" onClick={() => void copyPublicLink("code")} className="mt-2 min-h-9 rounded-xl border px-3 text-xs font-semibold">
                     {publicLinkCopied === "code" ? "Copiado!" : "Copiar código do botão"}
                   </button>
+                </div>
+                <div className="rounded-2xl border p-3">
+                  <label className="flex items-start justify-between gap-3">
+                    <span>
+                      <span className="block text-sm font-semibold">Mostrar botão no site da empresa</span>
+                      <span className="block text-xs text-muted-foreground">Opcional. Aparece no canto do site feito pelo Vendor.ai. Desligado, o site fica como está.</span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      className="mt-1 h-5 w-5 shrink-0 accent-orange-500"
+                      checked={Boolean(publicLink.showOnSite)}
+                      disabled={!publicLink.canManage || !publicLink.enabled || publicLinkState === "saving"}
+                      onChange={(event) => void savePublicLink({ showOnSite: event.target.checked })}
+                    />
+                  </label>
+                  {!publicLink.enabled && <p className="mt-2 text-xs text-muted-foreground">Ative o link para poder mostrar o botão no site.</p>}
+                  {publicLink.enabled && publicLink.showOnSite && (
+                    <div className="mt-3 grid grid-cols-[1fr_auto] items-end gap-2">
+                      <label className="text-xs font-semibold">
+                        Texto do botão
+                        <input
+                          defaultValue={publicLink.siteButtonLabel ?? "Projete sua casa"}
+                          maxLength={40}
+                          disabled={!publicLink.canManage}
+                          onBlur={(event) => {
+                            const value = event.currentTarget.value.trim() || "Projete sua casa";
+                            if (value !== publicLink.siteButtonLabel) void savePublicLink({ siteButtonLabel: value });
+                          }}
+                          className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm font-normal outline-none"
+                        />
+                      </label>
+                      <label className="text-xs font-semibold">
+                        Cor
+                        <input
+                          type="color"
+                          value={publicLink.siteButtonColor ?? "#f97316"}
+                          disabled={!publicLink.canManage}
+                          onChange={(event) => void savePublicLink({ siteButtonColor: event.target.value })}
+                          className="mt-1 block h-10 w-14 cursor-pointer rounded-xl border bg-background p-1"
+                        />
+                      </label>
+                      <div className="col-span-2 pt-1">
+                        <span
+                          className="inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold text-white shadow"
+                          style={{ background: publicLink.siteButtonColor ?? "#f97316" }}
+                        >
+                          🏠 {publicLink.siteButtonLabel ?? "Projete sua casa"}
+                        </span>
+                        <span className="ml-2 text-xs text-muted-foreground">prévia</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <p className="text-xs text-muted-foreground">Cada cliente pode gerar até 5 imagens realistas por dia.</p>
               </div>

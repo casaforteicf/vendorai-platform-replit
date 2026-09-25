@@ -30,6 +30,39 @@ const profileLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+export const DEFAULT_SITE_BUTTON_LABEL = "Projete sua casa";
+export const DEFAULT_SITE_BUTTON_COLOR = "#f97316";
+
+const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (char) => (
+  { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[char] ?? char
+));
+
+/**
+ * Botão flutuante "Projete sua casa" no site gerado do tenant, só quando o link público está
+ * ativo E o tenant marcou a opção de mostrar no site. Caso contrário devolve o HTML intacto.
+ */
+export async function injectArqdorSiteButton(html: string, tenantId: string): Promise<string> {
+  try {
+    const result = await pool.query<{ slug: string; site_button_label: string | null; site_button_color: string | null }>(
+      `SELECT t.slug, l.site_button_label, l.site_button_color
+         FROM arqdor_public_links l JOIN tenants t ON t.id = l.tenant_id
+        WHERE l.tenant_id = $1 AND l.enabled = true AND l.show_on_site = true AND l.owner_user_id IS NOT NULL
+        LIMIT 1`,
+      [tenantId],
+    );
+    const row = result.rows[0];
+    if (!row?.slug) return html;
+    const base = (process.env.APP_URL?.trim() || "https://app.appvendorai.com").replace(/\/$/, "");
+    const url = `${base}/projeto/${encodeURIComponent(row.slug)}`;
+    const color = /^#[0-9a-fA-F]{6}$/.test(row.site_button_color ?? "") ? row.site_button_color : DEFAULT_SITE_BUTTON_COLOR;
+    const label = escapeHtml((row.site_button_label ?? "").trim() || DEFAULT_SITE_BUTTON_LABEL);
+    const button = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" data-arqdor-site-button="true" style="position:fixed;left:16px;bottom:16px;z-index:2147483000;display:inline-flex;align-items:center;gap:8px;padding:14px 20px;border-radius:999px;background:${color};color:#fff;font:600 15px/1.2 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;text-decoration:none;box-shadow:0 10px 30px rgba(15,23,42,.25)">&#127968; ${label}</a>`;
+    return /<\/body>/i.test(html) ? html.replace(/<\/body>(?![\s\S]*<\/body>)/i, `${button}</body>`) : `${html}${button}`;
+  } catch {
+    return html;
+  }
+}
+
 type PublicLinkRow = {
   tenant_id: string;
   tenant_name: string;
@@ -82,6 +115,26 @@ arqdorPublicLinkRouter.get("/public/arqdor/:slug", profileLimiter, async (req, r
     return res.status(404).json({ error: "Este link de pré-projeto não está disponível." });
   }
   return res.json({ tenantName: link.tenant_name, slug: link.slug });
+});
+
+// Botão "Projete sua casa" para o site montado em blocos (sem HTML gerado): o frontend pergunta
+// se o tenant ativou a opção. Responde 404 quando desligado, sem revelar mais nada.
+arqdorPublicLinkRouter.get("/public/arqdor/:slug/site-button", profileLimiter, async (req, res) => {
+  const result = await pool.query<{ slug: string; site_button_label: string | null; site_button_color: string | null }>(
+    `SELECT t.slug, l.site_button_label, l.site_button_color
+       FROM tenants t JOIN arqdor_public_links l ON l.tenant_id = t.id
+      WHERE (t.slug = $1 OR t.subdomain_slug = $1) AND l.enabled = true AND l.show_on_site = true AND l.owner_user_id IS NOT NULL
+      LIMIT 1`,
+    [String(req.params.slug)],
+  );
+  const row = result.rows[0];
+  if (!row) return res.status(404).json({ enabled: false });
+  return res.json({
+    enabled: true,
+    path: `/projeto/${encodeURIComponent(row.slug)}`,
+    label: (row.site_button_label ?? "").trim() || DEFAULT_SITE_BUTTON_LABEL,
+    color: /^#[0-9a-fA-F]{6}$/.test(row.site_button_color ?? "") ? row.site_button_color : DEFAULT_SITE_BUTTON_COLOR,
+  });
 });
 
 arqdorPublicLinkRouter.post("/public/arqdor/:slug/cadastro", signupLimiter, async (req, res) => {
@@ -199,15 +252,26 @@ function isTenantAdmin(req: Request) {
 arqdorPublicLinkAdminRouter.get("/arch/public-link", async (req, res) => {
   const user = req.user;
   if (!user?.tenantId || user.accessScope === "preprojeto") return res.status(403).json({ error: "Acesso negado." });
-  const result = await pool.query<{ slug: string; enabled: boolean | null; renders_per_day: number | null }>(
-    `SELECT t.slug, l.enabled, l.renders_per_day
+  const result = await pool.query<{
+    slug: string; enabled: boolean | null; renders_per_day: number | null;
+    show_on_site: boolean | null; site_button_label: string | null; site_button_color: string | null;
+  }>(
+    `SELECT t.slug, l.enabled, l.renders_per_day, l.show_on_site, l.site_button_label, l.site_button_color
        FROM tenants t LEFT JOIN arqdor_public_links l ON l.tenant_id = t.id
       WHERE t.id = $1`,
     [user.tenantId],
   );
   const row = result.rows[0];
   if (!row) return res.status(404).json({ error: "Empresa não encontrada." });
-  return res.json({ slug: row.slug, enabled: Boolean(row.enabled), rendersPerDay: row.renders_per_day ?? 5, canManage: isTenantAdmin(req) });
+  return res.json({
+    slug: row.slug,
+    enabled: Boolean(row.enabled),
+    rendersPerDay: row.renders_per_day ?? 5,
+    showOnSite: Boolean(row.show_on_site),
+    siteButtonLabel: row.site_button_label ?? DEFAULT_SITE_BUTTON_LABEL,
+    siteButtonColor: row.site_button_color ?? DEFAULT_SITE_BUTTON_COLOR,
+    canManage: isTenantAdmin(req),
+  });
 });
 
 arqdorPublicLinkAdminRouter.put("/arch/public-link", async (req, res) => {
@@ -215,12 +279,20 @@ arqdorPublicLinkAdminRouter.put("/arch/public-link", async (req, res) => {
   if (!user?.tenantId || user.accessScope === "preprojeto") return res.status(403).json({ error: "Acesso negado." });
   if (!isTenantAdmin(req)) return res.status(403).json({ error: "Somente o administrador pode ativar o link público." });
   const enabled = req.body?.enabled === true;
+  // Botão no site do tenant: opcional (desligado por padrão), com texto e cor escolhidos.
+  const showOnSite = req.body?.showOnSite === true;
+  const label = typeof req.body?.siteButtonLabel === "string" ? req.body.siteButtonLabel.trim().slice(0, 40) : "";
+  const color = typeof req.body?.siteButtonColor === "string" && /^#[0-9a-fA-F]{6}$/.test(req.body.siteButtonColor)
+    ? req.body.siteButtonColor
+    : DEFAULT_SITE_BUTTON_COLOR;
   // Os pré-projetos que chegam pelo link ficam na lista de quem ativou.
   await pool.query(
-    `INSERT INTO arqdor_public_links (tenant_id, enabled, owner_user_id)
-     VALUES ($1, $2, $3)
-     ON CONFLICT (tenant_id) DO UPDATE SET enabled = EXCLUDED.enabled, owner_user_id = EXCLUDED.owner_user_id, updated_at = now()`,
-    [user.tenantId, enabled, user.sub],
+    `INSERT INTO arqdor_public_links (tenant_id, enabled, owner_user_id, show_on_site, site_button_label, site_button_color)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (tenant_id) DO UPDATE SET enabled = EXCLUDED.enabled, owner_user_id = EXCLUDED.owner_user_id,
+       show_on_site = EXCLUDED.show_on_site, site_button_label = EXCLUDED.site_button_label,
+       site_button_color = EXCLUDED.site_button_color, updated_at = now()`,
+    [user.tenantId, enabled, user.sub, showOnSite, label || DEFAULT_SITE_BUTTON_LABEL, color],
   );
-  return res.json({ enabled });
+  return res.json({ enabled, showOnSite, siteButtonLabel: label || DEFAULT_SITE_BUTTON_LABEL, siteButtonColor: color });
 });
