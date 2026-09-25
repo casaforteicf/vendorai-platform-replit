@@ -50,6 +50,11 @@ const BULAS_BASE = [
 
 const router: IRouter = Router();
 
+function routeTenantId(req: any): string {
+  // tenant-audit: reviewed tenant route; handlers enforce canAccess or the stricter canAccessPharmacyLeaflets before tenant-scoped work.
+  return String(req.params.tenantId ?? req.params["tenantId"]);
+}
+
 function tid(req: Express.Request): string {
   return (req as any).user?.tenantId as string;
 }
@@ -185,7 +190,7 @@ async function syncFarmaciaProdutoToProdutoCatalogo(tenantId: string, produto: F
 // ─── Produtos ─────────────────────────────────────────────────────────────────
 
 router.get("/tenants/:tenantId/farmacia/produtos", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const { categoria, destaque, q } = req.query;
@@ -202,7 +207,7 @@ router.get("/tenants/:tenantId/farmacia/produtos", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/farmacia/produtos", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   let payload;
@@ -214,7 +219,7 @@ router.post("/tenants/:tenantId/farmacia/produtos", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/farmacia/produtos/:produtoId", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const produtoId = req.params.produtoId as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
@@ -225,7 +230,7 @@ router.get("/tenants/:tenantId/farmacia/produtos/:produtoId", async (req, res) =
 });
 
 router.put("/tenants/:tenantId/farmacia/produtos/:produtoId", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const produtoId = req.params.produtoId as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
@@ -242,7 +247,7 @@ router.put("/tenants/:tenantId/farmacia/produtos/:produtoId", async (req, res) =
 });
 
 router.delete("/tenants/:tenantId/farmacia/produtos/:produtoId", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const produtoId = req.params.produtoId as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
@@ -260,7 +265,7 @@ router.delete("/tenants/:tenantId/farmacia/produtos/:produtoId", async (req, res
 // ─── Biblioteca de bulas para revisão ───────────────────────────────────────
 
 router.get("/tenants/:tenantId/farmacia/bulas", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!await canAccessPharmacyLeaflets(req, tenantId)) return res.status(403).json({ error: "Bulas disponíveis somente para a vertical Farmácia." });
   const conditions = [eq(farmaciaBulasTable.tenantId, tenantId)];
   if (req.query.status) conditions.push(eq(farmaciaBulasTable.status, req.query.status as any));
@@ -270,7 +275,7 @@ router.get("/tenants/:tenantId/farmacia/bulas", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/farmacia/bulas/importar-base", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!await canAccessPharmacyLeaflets(req, tenantId)) return res.status(403).json({ error: "Bulas disponíveis somente para a vertical Farmácia." });
   await db.insert(farmaciaBulasTable).values(BULAS_BASE.map(([principioAtivo, sintomasReferencia]) => ({
     tenantId, principioAtivo, sintomasReferencia, status: "pendente" as const,
@@ -281,7 +286,7 @@ router.post("/tenants/:tenantId/farmacia/bulas/importar-base", async (req, res) 
 });
 
 router.put("/tenants/:tenantId/farmacia/bulas/:bulaId", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!await canAccessPharmacyLeaflets(req, tenantId)) return res.status(403).json({ error: "Bulas disponíveis somente para a vertical Farmácia." });
   const {
     principioAtivo,
@@ -311,7 +316,7 @@ router.put("/tenants/:tenantId/farmacia/bulas/:bulaId", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/farmacia/bulas/:bulaId/aprovar", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!await canAccessPharmacyLeaflets(req, tenantId)) return res.status(403).json({ error: "Bulas disponíveis somente para a vertical Farmácia." });
   const { responsavelNome, responsavelRegistro, fonteUrl, posologia } = req.body;
   const required = [responsavelNome, responsavelRegistro, fonteUrl, posologia?.concentracao,
@@ -331,7 +336,7 @@ router.post("/tenants/:tenantId/farmacia/bulas/:bulaId/aprovar", async (req, res
 // ─── Pedidos ──────────────────────────────────────────────────────────────────
 
 router.get("/tenants/:tenantId/farmacia/pedidos", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const conditions = [eq(farmaciaPedidoTable.tenantId, tenantId)];
@@ -345,7 +350,7 @@ router.get("/tenants/:tenantId/farmacia/pedidos", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/farmacia/pedidos", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const {
@@ -476,7 +481,7 @@ router.post("/tenants/:tenantId/farmacia/pedidos", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/farmacia/pedidos/:pedidoId", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const pedidoId = req.params.pedidoId as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
@@ -498,7 +503,7 @@ router.get("/tenants/:tenantId/farmacia/pedidos/:pedidoId", async (req, res) => 
 });
 
 router.put("/tenants/:tenantId/farmacia/pedidos/:pedidoId", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const pedidoId = req.params.pedidoId as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
@@ -523,7 +528,7 @@ router.put("/tenants/:tenantId/farmacia/pedidos/:pedidoId", async (req, res) => 
 
 // Anexar receita — destrava pedido preso em 'aguardando_receita'.
 router.post("/tenants/:tenantId/farmacia/pedidos/:pedidoId/anexar-receita", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const pedidoId = req.params.pedidoId as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
@@ -567,7 +572,7 @@ router.post("/tenants/:tenantId/farmacia/pedidos/:pedidoId/anexar-receita", asyn
 // ─── Receitas médicas ───────────────────────────────────────────────────────
 
 router.get("/tenants/:tenantId/farmacia/receitas", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const conditions = [eq(receitasMedicasTable.tenantId, tenantId)];
@@ -581,7 +586,7 @@ router.get("/tenants/:tenantId/farmacia/receitas", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/farmacia/receitas", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const parsed = insertReceitaMedicaSchema.safeParse({ ...req.body, tenantId });
@@ -625,7 +630,7 @@ router.delete("/farmacia/receitas/:id", async (req, res) => {
 // Usa um endpoint não-documentado da ANVISA (ver lib/anvisaBulario.ts) — não
 // rodar em lote sem antes confirmar que funciona pra 1-2 produtos reais.
 router.post("/tenants/:tenantId/farmacia/produtos/:id/sincronizar-bula", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!await canAccessPharmacyLeaflets(req, tenantId)) return res.status(403).json({ error: "Bulas disponíveis somente para a vertical Farmácia." });
 
   const [produto] = await db.select().from(farmaciaProdutoTable)
