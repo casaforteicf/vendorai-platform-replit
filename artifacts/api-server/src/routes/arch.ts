@@ -351,7 +351,6 @@ function buildSpecialistDoorGraph(rooms: SpecialistPlanRoom[]) {
       const a = rooms[i];
       const b = rooms[j];
       if (!specialistTouches(a, b, 0.55)) continue;
-      const floorRooms = rooms.filter((room) => room.floor === a.floor);
       if (!specialistDoorAllowed(a, b)) continue;
       graph.get(a.id)?.add(b.id);
       graph.get(b.id)?.add(a.id);
