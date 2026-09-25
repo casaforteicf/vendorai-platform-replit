@@ -1000,6 +1000,28 @@ router.post("/arch/concept-plan-specialist", authenticate, async (req, res) => {
         );
       }
     }
+
+    const requestIds = new Set(roomProgram.map((item) => item.id));
+    const relationByPair = new Map<string, Set<string>>();
+    for (const rule of input.brief.adjacencyRules ?? []) {
+      if (!requestIds.has(rule.fromRequestId) || !requestIds.has(rule.toRequestId)) {
+        programErrors.push("Existe uma relação entre ambientes que referencia um ambiente inexistente.");
+        continue;
+      }
+      if (rule.fromRequestId === rule.toRequestId) {
+        programErrors.push("Uma relação entre ambientes não pode usar o mesmo ambiente nos dois lados.");
+        continue;
+      }
+      const pair = [rule.fromRequestId, rule.toRequestId].sort().join("::");
+      const relations = relationByPair.get(pair) ?? new Set<string>();
+      relations.add(rule.relation);
+      relationByPair.set(pair, relations);
+    }
+    for (const relations of relationByPair.values()) {
+      if (relations.has("away") && (relations.has("near") || relations.has("direct"))) {
+        programErrors.push("O mesmo par de ambientes não pode estar configurado como próximo/conectado e afastado ao mesmo tempo.");
+      }
+    }
   }
 
   if (programErrors.length) {
