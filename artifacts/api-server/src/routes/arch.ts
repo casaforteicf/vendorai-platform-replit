@@ -173,6 +173,7 @@ const specialistHousePlanSchema = z.object({
     targetArea: z.number().min(2.4).max(120).optional(),
     required: z.boolean().optional(),
     programRequestId: z.string().max(120).optional(),
+    floorFlexible: z.boolean().optional(),
   })).min(1).max(50),
 });
 
@@ -409,10 +410,15 @@ function sanitizeSpecialistPlan(
     const sourceY = typeof room.y === "number" && Number.isFinite(room.y) ? room.y : 0;
     const rawX = room.locked ? sourceX : Number(patch?.x ?? sourceX);
     const rawY = room.locked ? sourceY : Number(patch?.y ?? sourceY);
+    const requestedFloor = Number(patch?.floor);
+    const floor = room.floorFlexible && Number.isFinite(requestedFloor)
+      ? Math.max(0, Math.min(input.brief.floors - 1, Math.round(requestedFloor)))
+      : room.floor;
     const x = Math.max(0, Math.min(input.lotWidth - width, Number.isFinite(rawX) ? rawX : sourceX));
     const y = Math.max(0, Math.min(input.lotDepth - depth, Number.isFinite(rawY) ? rawY : sourceY));
     return {
       ...room,
+      floor,
       width: Math.round(width * 100) / 100,
       depth: Math.round(depth * 100) / 100,
       x: Math.round(x * 100) / 100,
@@ -851,6 +857,10 @@ router.post("/arch/concept-plan-specialist", authenticate, async (req, res) => {
     x: typeof room.x === "number" && Number.isFinite(room.x) ? room.x : 0,
     y: typeof room.y === "number" && Number.isFinite(room.y) ? room.y : 0,
     locked: Boolean(room.locked),
+    targetArea: room.targetArea,
+    required: room.required !== false,
+    programRequestId: room.programRequestId,
+    floorFlexible: Boolean(room.floorFlexible),
   }));
 
   const interventionGuidance: Record<typeof input.intervention, string> = {
@@ -897,7 +907,8 @@ ${JSON.stringify(program)}
 
 REGRAS FUNCIONAIS INEGOCIÁVEIS:
 - use TODOS os IDs fornecidos exatamente uma vez;
-- mantenha o pavimento original;
+- mantenha o pavimento original quando floorFlexible=false;
+- quando floorFlexible=true, você pode escolher o pavimento 0..${input.brief.floors - 1} para melhorar setorização, circulação e privacidade;
 - nenhum ambiente pode ficar solto ou sem conexão física coerente;
 - não sobreponha ambientes e não ultrapasse o lote;
 - suíte deve ter banheiro próprio adjacente e diretamente conectável;
@@ -951,7 +962,7 @@ Responda SOMENTE JSON válido:
     "facadeDirection": ["regra de composição da fachada 1"],
     "selfCritique": ["problema identificado e corrigido 1"],
     "roomPatches": [
-      { "id": "ID_EXISTENTE", "x": 0, "y": 0, "width": 3.2, "depth": 3.0 }
+      { "id": "ID_EXISTENTE", "floor": 0, "x": 0, "y": 0, "width": 3.2, "depth": 3.0 }
     ],
     "notes": ["decisão técnica 1", "decisão técnica 2"]
   }
