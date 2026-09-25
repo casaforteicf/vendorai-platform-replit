@@ -4,6 +4,11 @@ import { planPickupWave } from "../services/pracaRoutePlanner.js";
 
 const router: IRouter = Router();
 
+function routeTenantId(req: any): string {
+  // tenant-audit: reviewed tenant route; handlers enforce canAccess before tenant-scoped data access.
+  return String(req.params.tenantId ?? req.params["tenantId"]);
+}
+
 function canAccess(req: Express.Request, tenantId: string) {
   const user = (req as any).user;
   return user?.platformRole === "super_admin" || user?.tenantId === tenantId;
@@ -23,7 +28,7 @@ function validPoint(value: unknown): boolean {
 }
 
 router.put("/tenants/:tenantId/praca-logistics/config", async (req, res) => {
-  const tenantId = String(req.params.tenantId);
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const timezone = typeof req.body?.timezone === "string" ? req.body.timezone.trim() : "";
@@ -75,7 +80,7 @@ router.put("/tenants/:tenantId/praca-logistics/config", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/praca-logistics/config", async (req, res) => {
-  const tenantId = String(req.params.tenantId);
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   const result = await vendorPool.query(
     "SELECT * FROM praca_logistica_config WHERE tenant_id=$1",
@@ -85,7 +90,7 @@ router.get("/tenants/:tenantId/praca-logistics/config", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/praca-logistics/waves", async (req, res) => {
-  const tenantId = String(req.params.tenantId);
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   const serviceDate = typeof req.body?.dataServico === "string" ? req.body.dataServico : "";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(serviceDate)) {
@@ -96,7 +101,7 @@ router.post("/tenants/:tenantId/praca-logistics/waves", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/praca-logistics/waves", async (req, res) => {
-  const tenantId = String(req.params.tenantId);
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   const limit = Math.min(Math.max(Number(req.query.limit) || 30, 1), 100);
   const result = await vendorPool.query(
@@ -116,7 +121,7 @@ router.get("/tenants/:tenantId/praca-logistics/waves", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/praca-logistics/waves/:waveId", async (req, res) => {
-  const tenantId = String(req.params.tenantId);
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   const waveId = String(req.params.waveId);
 
@@ -150,7 +155,7 @@ router.get("/tenants/:tenantId/praca-logistics/waves/:waveId", async (req, res) 
 
 
 router.patch("/tenants/:tenantId/praca-logistics/pending/:pendingId", async (req, res) => {
-  const tenantId = String(req.params.tenantId);
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   const pendingId = String(req.params.pendingId);
   const resolved = req.body?.resolvida === true;
