@@ -18,6 +18,16 @@ export type ClientBrief = {
   privateAwaySocial: boolean;
 };
 
+export type ClientVision = {
+  lifestyle: "familia" | "receber" | "tranquilidade" | "praticidade" | "misto";
+  protagonist: "social" | "cozinha" | "gourmet" | "suite" | "jardim";
+  priorities: Array<"luz_natural" | "privacidade" | "integracao" | "natureza" | "armazenamento" | "flexibilidade">;
+  budgetStrategy: "otimizar" | "equilibrar" | "priorizar_experiencia";
+  futureNeeds: string;
+  mustHave: string;
+  avoid: string;
+};
+
 export type ClientBriefPlan = {
   typology: ConceptTypology;
   floors: number;
@@ -37,6 +47,7 @@ export type ClientBriefAlternative = ClientBriefPlan & {
   designRationale?: string;
   qualityIssues?: string[];
   qualityStrengths?: string[];
+  clientFitSummary?: string;
 };
 
 function nextId(prefix: string, index: number) {
