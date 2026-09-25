@@ -115,10 +115,10 @@ const developConceptWithAiSchema = z.object({
 const facadeStudySchema = z.object({
   action: z.enum(["diagnose", "develop"]),
   intervention: z.enum(["leve", "moderada", "marcante"]).default("moderada"),
-  facade: z.record(z.any()).default({}),
+  facade: z.record(z.string(), z.unknown()).default({}),
   facadeDesign: z.object({
-    surfaceMaterials: z.record(z.string()).optional(),
-    volumes: z.array(z.record(z.any())).max(40).optional(),
+    surfaceMaterials: z.record(z.string(), z.string()).optional(),
+    volumes: z.array(z.record(z.string(), z.unknown())).max(40).optional(),
     lighting: z.enum(["day", "sunset", "night"]).optional(),
     showLandscaping: z.boolean().optional(),
   }).optional(),
