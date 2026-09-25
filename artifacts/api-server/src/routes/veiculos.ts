@@ -24,6 +24,11 @@ import {
 import { autoCreateAdCampaignIfNeeded } from "../lib/adAutoCreate.js";
 
 const router: IRouter = Router();
+
+function routeTenantId(req: any): string {
+  // tenant-audit: reviewed tenant route; every caller immediately enforces canAccess before tenant-scoped data access.
+  return String(req.params.tenantId ?? req.params["tenantId"]);
+}
 const vehicleLookupService = new VehicleLookupService();
 const vehicleLookupLimiter = rateLimit({
   windowMs: 60_000,
@@ -131,7 +136,7 @@ async function syncVeiculoToProdutoCatalogo(veiculo: VeiculosEstoque): Promise<v
 // ─── Estoque ──────────────────────────────────────────────────────────────────
 
 router.get("/tenants/:tenantId/veiculos/estoque", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const conditions = [eq(veiculosEstoqueTable.tenantId, tenantId)];
@@ -146,7 +151,7 @@ router.get("/tenants/:tenantId/veiculos/estoque", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/veiculos/estoque", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   // Mitigação de risco de procedência: anúncio nunca nasce 'disponivel'
@@ -176,7 +181,7 @@ router.post("/tenants/:tenantId/veiculos/estoque", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/veiculos/estoque/:id", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const id = req.params.id as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
@@ -187,7 +192,7 @@ router.get("/tenants/:tenantId/veiculos/estoque/:id", async (req, res) => {
 });
 
 router.put("/tenants/:tenantId/veiculos/estoque/:id", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const id = req.params.id as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
@@ -215,7 +220,7 @@ router.put("/tenants/:tenantId/veiculos/estoque/:id", async (req, res) => {
 
 // Confirmar vistoria — único jeito de destravar o anúncio pra 'disponivel'.
 router.patch("/tenants/:tenantId/veiculos/estoque/:id/vistoria", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const id = req.params.id as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
@@ -232,7 +237,7 @@ router.patch("/tenants/:tenantId/veiculos/estoque/:id/vistoria", async (req, res
 });
 
 router.delete("/tenants/:tenantId/veiculos/estoque/:id", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const id = req.params.id as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
@@ -248,7 +253,7 @@ router.delete("/tenants/:tenantId/veiculos/estoque/:id", async (req, res) => {
 // ─── Test-drives ──────────────────────────────────────────────────────────────
 
 router.get("/tenants/:tenantId/veiculos/test-drives", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const conditions = [eq(veiculosTestDrivesTable.tenantId, tenantId)];
@@ -291,7 +296,7 @@ router.get("/tenants/:tenantId/veiculos/test-drives", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/veiculos/test-drives", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const { veiculoId, clienteId, dataHora } = req.body as {
@@ -324,7 +329,7 @@ router.post("/tenants/:tenantId/veiculos/test-drives", async (req, res) => {
 });
 
 router.patch("/tenants/:tenantId/veiculos/test-drives/:id", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const id = req.params.id as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
@@ -352,7 +357,7 @@ router.patch("/tenants/:tenantId/veiculos/test-drives/:id", async (req, res) => 
 // formal da FIPE — se houver mais de um candidato plausível, retorna a
 // lista pra escolha manual em vez de arriscar salvar o modelo errado.
 router.post("/tenants/:tenantId/veiculos/:id/atualizar-fipe", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [veiculo] = await db.select().from(veiculosEstoqueTable)
