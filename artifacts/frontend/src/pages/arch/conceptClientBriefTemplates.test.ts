@@ -3,6 +3,7 @@ import {
   buildClientBriefAlternatives,
   buildClientBriefPlan,
   buildDefaultRoomProgram,
+  buildRecommendedAdjacencyRules,
   countBriefAlternativeErrors,
   rebalanceClientRoomProgramToDesiredArea,
   validateClientRoomProgram,
@@ -151,4 +152,92 @@ it("preserva dimensões fixadas pelo cliente ao rebalancear", () => {
   expect(suite.targetArea).toBe(18);
   expect(suite.preferredWidth).toBe(4);
   expect(suite.preferredDepth).toBe(4.5);
+});
+
+
+describe("grafo de adjacências", () => {
+  it("gera relações recomendadas coerentes com o briefing", () => {
+    const base = {
+      bedrooms: 3,
+      suites: 1,
+      floors: 1,
+      garageSpaces: 2,
+      gourmet: true,
+      pool: true,
+      office: false,
+      integratedKitchen: true,
+      privateAwaySocial: true,
+      desiredAreaTotal: 220,
+    } as const;
+    const roomProgram = buildDefaultRoomProgram(base);
+    const adjacencyRules = buildRecommendedAdjacencyRules({ ...base, roomProgram });
+    const living = roomProgram.find((item) => item.kind === "sala")!;
+    const kitchen = roomProgram.find((item) => item.kind === "cozinha")!;
+    const suite = roomProgram.find((item) => item.kind === "suite")!;
+    const garage = roomProgram.find((item) => item.kind === "garagem")!;
+
+    expect(adjacencyRules.some((rule) =>
+      rule.relation === "direct"
+      && new Set([rule.fromRequestId, rule.toRequestId]).has(living.id)
+      && new Set([rule.fromRequestId, rule.toRequestId]).has(kitchen.id)
+    )).toBe(true);
+    expect(adjacencyRules.some((rule) =>
+      rule.relation === "away"
+      && new Set([rule.fromRequestId, rule.toRequestId]).has(suite.id)
+      && new Set([rule.fromRequestId, rule.toRequestId]).has(garage.id)
+    )).toBe(true);
+  });
+
+  it("bloqueia relações contraditórias entre o mesmo par", () => {
+    const base = {
+      bedrooms: 2,
+      suites: 1,
+      floors: 1,
+      garageSpaces: 1,
+      gourmet: false,
+      pool: false,
+      office: false,
+      integratedKitchen: true,
+      privateAwaySocial: true,
+      desiredAreaTotal: 140,
+    } as const;
+    const roomProgram = buildDefaultRoomProgram(base);
+    const a = roomProgram[0];
+    const b = roomProgram[1];
+    const validation = validateClientRoomProgram({
+      ...base,
+      roomProgram,
+      adjacencyRules: [
+        { id: "r1", fromRequestId: a.id, toRequestId: b.id, relation: "direct", required: true },
+        { id: "r2", fromRequestId: a.id, toRequestId: b.id, relation: "away", required: true },
+      ],
+    });
+    expect(validation.status).toBe("blocked");
+    expect(validation.errors.some((message) => message.includes("próximos/conectados") || message.includes("afastados"))).toBe(true);
+  });
+
+  it("bloqueia relação que aponta para ambiente removido", () => {
+    const base = {
+      bedrooms: 2,
+      suites: 1,
+      floors: 1,
+      garageSpaces: 1,
+      gourmet: false,
+      pool: false,
+      office: false,
+      integratedKitchen: true,
+      privateAwaySocial: true,
+      desiredAreaTotal: 140,
+    } as const;
+    const roomProgram = buildDefaultRoomProgram(base);
+    const validation = validateClientRoomProgram({
+      ...base,
+      roomProgram,
+      adjacencyRules: [
+        { id: "r1", fromRequestId: roomProgram[0].id, toRequestId: "removed-room", relation: "near", required: true },
+      ],
+    });
+    expect(validation.status).toBe("blocked");
+    expect(validation.errors.some((message) => message.includes("ambiente removido"))).toBe(true);
+  });
 });
