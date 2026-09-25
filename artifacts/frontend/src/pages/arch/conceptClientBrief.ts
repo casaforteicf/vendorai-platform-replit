@@ -34,6 +34,16 @@ export type ClientRoomRequest = {
   notes?: string;
 };
 
+export type ClientAdjacencyRelation = "direct" | "near" | "away";
+
+export type ClientAdjacencyRule = {
+  id: string;
+  fromRequestId: string;
+  toRequestId: string;
+  relation: ClientAdjacencyRelation;
+  required: boolean;
+};
+
 export type ClientBrief = {
   bedrooms: 2 | 3 | 4;
   suites: 0 | 1 | 2;
@@ -46,6 +56,7 @@ export type ClientBrief = {
   privateAwaySocial: boolean;
   desiredAreaTotal?: number;
   roomProgram?: ClientRoomRequest[];
+  adjacencyRules?: ClientAdjacencyRule[];
 };
 
 export type ClientVision = {
@@ -124,6 +135,7 @@ export function validateClientRoomProgram(
   },
 ): ClientProgramValidation {
   const program = Array.isArray(brief.roomProgram) ? brief.roomProgram : [];
+  const adjacencyRules = Array.isArray(brief.adjacencyRules) ? brief.adjacencyRules : [];
   const errors: string[] = [];
   const warnings: string[] = [];
 
@@ -154,6 +166,28 @@ export function validateClientRoomProgram(
           `${item.label}: ${preferredWidth.toFixed(2)} × ${preferredDepth.toFixed(2)} m resulta em ${dimensionArea.toFixed(1)} m², diferente da meta de ${item.targetArea.toFixed(1)} m².`,
         );
       }
+    }
+  }
+
+  const requestIds = new Set(program.map((item) => item.id));
+  const relationByPair = new Map<string, Set<ClientAdjacencyRelation>>();
+  for (const rule of adjacencyRules) {
+    if (!requestIds.has(rule.fromRequestId) || !requestIds.has(rule.toRequestId)) {
+      errors.push("Existe uma relação entre ambientes que aponta para um ambiente removido.");
+      continue;
+    }
+    if (rule.fromRequestId === rule.toRequestId) {
+      errors.push("Uma relação de proximidade não pode usar o mesmo ambiente nos dois lados.");
+      continue;
+    }
+    const pair = [rule.fromRequestId, rule.toRequestId].sort().join("::");
+    const set = relationByPair.get(pair) ?? new Set<ClientAdjacencyRelation>();
+    set.add(rule.relation);
+    relationByPair.set(pair, set);
+  }
+  for (const relations of relationByPair.values()) {
+    if (relations.has("away") && (relations.has("near") || relations.has("direct"))) {
+      errors.push("Há ambientes configurados ao mesmo tempo para ficar próximos/conectados e afastados.");
     }
   }
 
