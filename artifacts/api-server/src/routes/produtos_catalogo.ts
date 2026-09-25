@@ -18,6 +18,15 @@ import {
 const router: IRouter = Router();
 const objectStorage = new ObjectStorageService();
 
+function routeTenantId(req: any): string {
+  // tenant-audit: reviewed tenant route; callers enforce same-tenant or super-admin access before tenant-scoped data access.
+  return String(req.params.tenantId ?? req.params["tenantId"]);
+}
+
+function canAccessTenant(req: any, tenantId: string): boolean {
+  return req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId;
+}
+
 async function categoriaPertenceAoTenant(categoriaId: string, tenantId: string): Promise<boolean> {
   const [categoria] = await db
     .select({ id: categoriasProdutoTable.id })
@@ -153,10 +162,15 @@ router.post("/produtos-catalogo", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/produtos-catalogo", async (req, res) => {
+  const tenantId = routeTenantId(req);
+  if (!canAccessTenant(req, tenantId)) {
+    res.status(403).json({ error: "Access denied" });
+    return;
+  }
   const products = await db
     .select()
     .from(produtosCatalogoTable)
-    .where(eq(produtosCatalogoTable.tenantId, String(req.params.tenantId)))
+    .where(eq(produtosCatalogoTable.tenantId, tenantId))
     .orderBy(produtosCatalogoTable.nome);
   res.json(await attachCategoriaInfo(products));
 });
@@ -165,7 +179,7 @@ router.get("/tenants/:tenantId/produtos-catalogo", async (req, res) => {
 // produtos criados automaticamente pelo sync do ERP, aguardando o lojista
 // conferir/editar e aprovar antes de entrarem ativos no catálogo.
 router.get("/tenants/:tenantId/produtos-catalogo/pendentes-revisao", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
     res.status(403).json({ error: "Access denied" });
     return;
@@ -386,7 +400,7 @@ const bulkPracaAiBodySchema = z.object({
 });
 
 router.patch("/tenants/:tenantId/produtos-catalogo/praca-ai-bulk", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
 
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
     res.status(403).json({ error: "Access denied" });
@@ -439,7 +453,7 @@ router.patch("/tenants/:tenantId/produtos-catalogo/praca-ai-bulk", async (req, r
 const importBodySchema = z.object({ csv: z.string().min(1) });
 
 router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
 
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
     res.status(403).json({ error: "Access denied" });
@@ -701,7 +715,11 @@ router.post("/tenants/:tenantId/produtos-catalogo/gerar-imagem-ia", async (req, 
     res.status(422).json({ error: parsed.error.message });
     return;
   }
-  const tenantId = String(req.params["tenantId"]);
+  const tenantId = routeTenantId(req);
+  if (!canAccessTenant(req, tenantId)) {
+    res.status(403).json({ error: "Access denied" });
+    return;
+  }
   const { nome, descricao, categoriaNome } = parsed.data;
 
   const promptParts = [
