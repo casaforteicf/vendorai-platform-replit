@@ -159,6 +159,14 @@ const specialistHousePlanSchema = z.object({
       relation: z.enum(["direct", "near", "away"]),
       required: z.boolean(),
     })).max(60).optional(),
+    accessRules: z.array(z.object({
+      id: z.string().min(1).max(120),
+      fromRequestId: z.string().min(1).max(120),
+      toRequestId: z.string().min(1).max(120),
+      mode: z.enum(["required_direct", "forbidden_direct"]),
+      required: z.boolean(),
+      reason: z.string().max(300).optional(),
+    })).max(80).optional(),
   }),
   vision: z.object({
     lifestyle: z.enum(["familia", "receber", "tranquilidade", "praticidade", "misto"]),
@@ -279,6 +287,89 @@ function specialistConnected(rooms: SpecialistPlanRoom[]) {
   return visited.size === rooms.length;
 }
 
+function specialistLower(value: string | undefined) {
+  return (value ?? "").toLocaleLowerCase("pt-BR");
+}
+
+function specialistIsPrivateBath(room: SpecialistPlanRoom) {
+  return room.kind === "banheiro" && /su[ií]te|master/i.test(room.label ?? "");
+}
+
+function specialistDoorAllowed(a: SpecialistPlanRoom, b: SpecialistPlanRoom, floorRooms: SpecialistPlanRoom[]) {
+  if (a.floor !== b.floor || a.kind === "piscina" || b.kind === "piscina") return false;
+
+  if (specialistIsPrivateBath(a) || specialistIsPrivateBath(b)) {
+    const bath = specialistIsPrivateBath(a) ? a : b;
+    const other = bath === a ? b : a;
+    if (other.kind !== "suite") return false;
+    const bathNumber = bath.label.match(/\d+/)?.[0];
+    const suiteNumber = other.label.match(/\d+/)?.[0];
+    if (bathNumber && suiteNumber && bathNumber !== suiteNumber) return false;
+    return true;
+  }
+
+  const lavabo = (room: SpecialistPlanRoom) => room.kind === "banheiro" && /lavabo/i.test(room.label ?? "");
+  if (lavabo(a) || lavabo(b)) {
+    const other = lavabo(a) ? b : a;
+    return other.kind === "sala" || other.kind === "circulacao" || other.kind === "escada";
+  }
+
+  if (a.kind === "circulacao" || a.kind === "escada" || b.kind === "circulacao" || b.kind === "escada") return true;
+  if ((a.kind === "garagem" && ["suite","quarto","banheiro"].includes(b.kind))
+    || (b.kind === "garagem" && ["suite","quarto","banheiro"].includes(a.kind))) return false;
+
+  if (a.kind === b.kind) return ["sala","outro"].includes(a.kind);
+  const pair = new Set([a.kind, b.kind]);
+  if (pair.has("sala") && ["cozinha","gourmet","quarto","suite","outro","garagem"].some((kind) => pair.has(kind))) return true;
+  if (pair.has("cozinha") && ["lavanderia","gourmet","garagem","outro"].some((kind) => pair.has(kind))) return true;
+  if (pair.has("lavanderia") && ["garagem","gourmet","outro"].some((kind) => pair.has(kind))) return true;
+  if (pair.has("gourmet") && ["garagem","outro"].some((kind) => pair.has(kind))) return true;
+  if (a.kind === "outro" || b.kind === "outro") return true;
+  return false;
+}
+
+function buildSpecialistDoorGraph(rooms: SpecialistPlanRoom[]) {
+  const graph = new Map<string, Set<string>>();
+  for (const room of rooms) graph.set(room.id, new Set());
+  for (let i = 0; i < rooms.length; i += 1) {
+    for (let j = i + 1; j < rooms.length; j += 1) {
+      const a = rooms[i];
+      const b = rooms[j];
+      if (!specialistTouches(a, b, 0.55)) continue;
+      const floorRooms = rooms.filter((room) => room.floor === a.floor);
+      if (!specialistDoorAllowed(a, b, floorRooms)) continue;
+      graph.get(a.id)?.add(b.id);
+      graph.get(b.id)?.add(a.id);
+    }
+  }
+  return graph;
+}
+
+function specialistReachableFromPublicAnchor(rooms: SpecialistPlanRoom[]) {
+  const indoor = rooms.filter((room) => room.kind !== "piscina");
+  if (!indoor.length) return { reachable: new Set<string>(), unreachable: [] as SpecialistPlanRoom[] };
+  const graph = buildSpecialistDoorGraph(indoor);
+  const anchor =
+    indoor.find((room) => room.kind === "sala")
+    ?? indoor.find((room) => room.kind === "circulacao")
+    ?? indoor.find((room) => room.kind === "cozinha")
+    ?? indoor[0];
+  const reachable = new Set<string>([anchor.id]);
+  const queue = [anchor.id];
+  while (queue.length) {
+    const id = queue.shift()!;
+    for (const next of graph.get(id) ?? []) {
+      if (reachable.has(next)) continue;
+      reachable.add(next);
+      queue.push(next);
+    }
+  }
+  return {
+    reachable,
+    unreachable: indoor.filter((room) => !reachable.has(room.id)),
+  };
+}
+
 function evaluateSpecialistPlan(
   rooms: SpecialistPlanRoom[],
   input: z.infer<typeof specialistHousePlanSchema>,
@@ -345,6 +436,50 @@ function evaluateSpecialistPlan(
     } else {
       strengths.push(`${suite.label} possui banheiro próprio adjacente.`);
     }
+  }
+
+  const accessRules = input.brief.accessRules ?? [];
+  for (const rule of accessRules) {
+    const sources = rooms.filter((room) => room.programRequestId === rule.fromRequestId);
+    const targets = rooms.filter((room) => room.programRequestId === rule.toRequestId);
+    if (!sources.length || !targets.length) {
+      if (rule.required) {
+        issues.push("Grafo funcional: uma regra obrigatória referencia ambiente ausente na planta.");
+        score -= 24;
+      }
+      continue;
+    }
+    const directExists = sources.some((source) =>
+      targets.some((target) =>
+        source.floor === target.floor
+        && specialistTouches(source, target, 0.55)
+        && specialistDoorAllowed(source, target, rooms.filter((room) => room.floor === source.floor))
+      )
+    );
+    const fromLabel = input.brief.roomProgram?.find((item) => item.id === rule.fromRequestId)?.label ?? sources[0]?.label ?? "Ambiente";
+    const toLabel = input.brief.roomProgram?.find((item) => item.id === rule.toRequestId)?.label ?? targets[0]?.label ?? "Ambiente";
+    if (rule.mode === "required_direct" && !directExists) {
+      issues.push(`Acesso obrigatório: ${fromLabel} precisa ter porta/conexão direta válida com ${toLabel}.`);
+      score -= 30;
+    } else if (rule.mode === "forbidden_direct" && directExists) {
+      issues.push(`Acesso proibido: ${fromLabel} não pode abrir diretamente para ${toLabel}.`);
+      score -= 30;
+    } else {
+      strengths.push(
+        rule.mode === "required_direct"
+          ? `${fromLabel} possui acesso direto válido para ${toLabel}.`
+          : `${fromLabel} está protegido de acesso direto inadequado com ${toLabel}.`
+      );
+    }
+  }
+
+  const circulationGraph = specialistReachableFromPublicAnchor(rooms);
+  if (circulationGraph.unreachable.length) {
+    const labels = circulationGraph.unreachable.slice(0, 5).map((room) => room.label).join(", ");
+    issues.push(`Grafo funcional fragmentado: não há percurso de portas válido até ${labels}.`);
+    score -= 35;
+  } else {
+    strengths.push("Todos os ambientes internos possuem percurso de circulação válido a partir do setor público.");
   }
 
   const adjacencyRules = input.brief.adjacencyRules ?? [];
@@ -520,7 +655,10 @@ function evaluateSpecialistPlan(
       issue.includes("fragmentado") ||
       issue.includes("não possui banheiro de suíte") ||
       issue.includes("muito abaixo da meta") ||
-      issue.startsWith("Adjacência obrigatória:")
+      issue.startsWith("Adjacência obrigatória:") ||
+      issue.startsWith("Acesso obrigatório:") ||
+      issue.startsWith("Acesso proibido:") ||
+      issue.startsWith("Grafo funcional fragmentado:")
     ) ? "approved" : "rejected",
     issues: [...new Set(issues)].slice(0, 12),
     strengths: [...new Set(strengths)].slice(0, 8),
@@ -1141,6 +1279,7 @@ BRIEFING OBJETIVO: ${JSON.stringify(input.brief)}
 ÁREA CONSTRUÍDA DESEJADA: ${input.brief.desiredAreaTotal ?? "não informada"} m².
 PROGRAMA DE NECESSIDADES DECLARADO PELO CLIENTE: ${JSON.stringify(input.brief.roomProgram ?? [])}
 GRAFO DE RELAÇÕES ENTRE AMBIENTES: ${JSON.stringify(input.brief.adjacencyRules ?? [])}
+GRAFO DE ACESSOS E PORTAS: ${JSON.stringify(input.brief.accessRules ?? [])}
 VISÃO / DNA DO CLIENTE: ${JSON.stringify(input.vision ?? {})}
 CONTEXTO FAMILIAR E ROTINA: ${JSON.stringify(input.household ?? {})}
 CONTEXTO DO TERRENO: ${JSON.stringify(input.siteContext ?? {})}
@@ -1165,6 +1304,8 @@ REGRAS FUNCIONAIS INEGOCIÁVEIS:
 - quando floorFlexible=true, você pode escolher o pavimento 0..${input.brief.floors - 1} para melhorar setorização, circulação e privacidade;
 - nenhum ambiente pode ficar solto ou sem conexão física coerente;
 - cumpra o GRAFO DE RELAÇÕES: direct = contato de parede suficiente para ligação/porta; near = mesmo pavimento e distância curta; away = separação física/privacidade ou outro pavimento;
+- cumpra o GRAFO DE ACESSOS: required_direct exige parede compartilhada suficiente E uma porta arquitetonicamente permitida; forbidden_direct proíbe conexão por porta entre os ambientes;
+- a casa precisa formar um grafo de circulação real: todos os ambientes internos devem ser alcançáveis por uma sequência plausível de portas a partir do setor público; contato de parede sem porta válida não conta como circulação;
 - regras de relação com required=true são INEGOCIÁVEIS; regras required=false são preferências que devem ser maximizadas sem quebrar requisitos obrigatórios;
 - não sobreponha ambientes e não ultrapasse o lote;
 - suíte deve ter banheiro próprio adjacente e diretamente conectável;
