@@ -84,16 +84,21 @@ function assertOrdered(source: string, needles: string[], label: string) {
 
 assertOrdered(routeIndex, [
   "router.use(jarvisEmailActionsRouter);",
-  "router.use(jarvisExternalActionsRouter);",
+  "router.use(mountJarvisAuxiliaryRouter(jarvisExternalActionsRouter));",
   "router.use(agentTasksRouter);",
   "router.use(agentsRouter);",
 ], "index.ts/JARVIS ações externas");
 assertOrdered(routeIndex, [
-  "router.use(jarvisNaturalActionsRouter);",
-  "router.use(jarvisActionPlansRouter);",
-  "router.use(jarvisMissionsRouter);",
-  "router.use(supportRouter);",
+  "router.use(mountJarvisAuxiliaryRouter(jarvisNaturalActionsRouter));",
+  "router.use(mountJarvisAuxiliaryRouter(jarvisActionPlansRouter));",
+  "router.use(mountJarvisAuxiliaryRouter(jarvisMissionsRouter));",
+  "router.use(mountJarvisAuxiliaryRouter(supportRouter));",
 ], "index.ts/JARVIS chat final");
+
+if (!routeIndex.includes('if (req.method === "POST" && req.path === "/support/chat") return next();')) {
+  errors.push("index.ts/JARVIS: routers auxiliares devem ignorar /support/chat para manter uma única entrada efetiva.");
+}
+
 
 const jarvisEmail = read("artifacts/api-server/src/routes/jarvis_email_actions.ts");
 assertOrdered(jarvisEmail, [
@@ -139,9 +144,10 @@ const currentJarvisHandlers = jarvisChatFiles.reduce((total, file) => {
   return total + (source.match(/router\.post\(["']\/support\/chat["']/g)?.length ?? 0);
 }, 0);
 if (currentJarvisHandlers < 9) {
-  warnings.push(`JARVIS: limpeza física dos handlers avançou para ${currentJarvisHandlers}; revise este baseline e mantenha o orquestrador como única entrada efetiva.`);
-} else {
-  warnings.push(`JARVIS: orquestrador explícito ativo; ainda existem ${currentJarvisHandlers} registros físicos de /support/chat a consolidar sem remover endpoints auxiliares.`);
+  errors.push(`JARVIS: pipeline interno perdeu etapas de /support/chat (handlers=${currentJarvisHandlers}).`);
+}
+if (!routeIndex.includes("mountJarvisAuxiliaryRouter")) {
+  errors.push("JARVIS: routers internos precisam estar isolados da entrada externa de /support/chat.");
 }
 
 if (warnings.length) {
