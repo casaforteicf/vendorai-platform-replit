@@ -4712,6 +4712,23 @@ export default function ConceptPlanner() {
                   </span>
                 )}
 
+                {projectBrief && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditorExperienceMode("guided");
+                      setEditorView("plan");
+                      setEditorLibraryTab("brief");
+                      setLibraryOpen(true);
+                    }}
+                    className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-3 text-xs font-bold text-emerald-100 transition hover:bg-emerald-500/20"
+                    title="Abrir o briefing mestre que orienta este projeto"
+                  >
+                    <Heart className="h-4 w-4" />
+                    <span className="hidden lg:inline">DNA do projeto</span>
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => void runAiDevelopment()}
@@ -5595,6 +5612,7 @@ export default function ConceptPlanner() {
                     <ConceptClientBriefPanel
                       lotWidth={lotWidth}
                       lotDepth={lotDepth}
+                      initialProjectBrief={projectBrief}
                       onGenerate={applyClientBrief}
                     />
                   )}
