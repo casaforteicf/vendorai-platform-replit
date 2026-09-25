@@ -15,6 +15,7 @@ import {
 import {
   buildClientBriefAlternatives,
   buildClientBriefPlan,
+  countBriefAlternativeErrors,
   type ClientBrief,
   type ClientBriefAlternative,
 } from "./conceptClientBrief";
@@ -23,6 +24,11 @@ type Props = {
   lotWidth: number;
   lotDepth: number;
   onGenerate: (alternative: ClientBriefAlternative) => void;
+  /** Frente e recuos da implantação, para as opções já nascerem dentro do terreno. */
+  placement?: {
+    frontSide: "top" | "bottom" | "left" | "right";
+    setbacks: { top: number; bottom: number; left: number; right: number };
+  };
 };
 
 const DEFAULT_BRIEF: ClientBrief = {
@@ -189,6 +195,7 @@ export default function ConceptClientBriefPanel({
   lotWidth,
   lotDepth,
   onGenerate,
+  placement,
 }: Props) {
   const [brief, setBrief] = useState<ClientBrief>(DEFAULT_BRIEF);
   const [showAlternatives, setShowAlternatives] = useState(false);
@@ -254,7 +261,7 @@ export default function ConceptClientBriefPanel({
         },
       };
 
-      const next = (["compact", "balanced", "integrated"] as const).map((id) => {
+      const specialist = (["compact", "balanced", "integrated"] as const).map((id) => {
         const item = byId.get(id);
         if (!item || !Array.isArray(item.rooms)) throw new Error("A IA especialista retornou uma alternativa incompleta.");
         return {
@@ -268,13 +275,25 @@ export default function ConceptClientBriefPanel({
         } satisfies ClientBriefAlternative;
       });
 
+      // Planta da IA com sobreposição, cômodo fora do lote ou fora dos recuos é descartada e
+      // substituída por um modelo desenhado compatível (antes caía direto no projeto: 24 erros).
+      const valid = specialist.filter((item) =>
+        countBriefAlternativeErrors(item.rooms, item.floors, lotWidth, lotDepth) === 0
+        && (item.rooms as Array<{ x: number; y: number; width: number; depth: number }>).every((room) => room.x >= 0 && room.y >= 0 && room.x + room.width <= lotWidth + 0.01 && room.y + room.depth <= lotDepth + 0.01),
+      );
+      const fallback = buildClientBriefAlternatives(brief, lotWidth, lotDepth, placement);
+      const next = [...valid, ...fallback].slice(0, 3);
+      if (!next.length) throw new Error("Nenhuma planta coube neste terreno.");
       setAlternatives(next);
+      if (valid.length < specialist.length) {
+        setGenerationError(`${specialist.length - valid.length} planta(s) da IA tinham erros e foram trocadas por modelos desenhados que atendem ao pedido.`);
+      }
       setShowAlternatives(true);
     } catch (error) {
       // Fail-safe: the editor remains usable even if the provider is temporarily
       // unavailable. The fallback is explicit instead of silently pretending it
       // came from the specialist.
-      setAlternatives(buildClientBriefAlternatives(brief, lotWidth, lotDepth));
+      setAlternatives(buildClientBriefAlternatives(brief, lotWidth, lotDepth, placement));
       setGenerationError(
         error instanceof Error
           ? `${error.message} Exibindo opções locais de contingência.`
