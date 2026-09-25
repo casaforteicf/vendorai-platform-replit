@@ -642,6 +642,38 @@ export default function ConceptClientBriefPanel({
                   </div>
                 ) : null}
 
+                {alternative.programCompliance?.adjacency?.length ? (
+                  <div className="mt-2 rounded-lg border bg-slate-50 px-2.5 py-2">
+                    <div className="flex items-center justify-between gap-2 text-[10px]">
+                      <span className="font-bold text-slate-700">Relações entre ambientes</span>
+                      <span className={(alternative.programCompliance.adjacencySatisfiedCount ?? 0)
+                        === (alternative.programCompliance.adjacencyTotalCount ?? 0)
+                          ? "font-bold text-emerald-700"
+                          : "font-bold text-amber-700"}
+                      >
+                        {alternative.programCompliance.adjacencySatisfiedCount ?? 0}/{alternative.programCompliance.adjacencyTotalCount ?? 0} atendidas
+                      </span>
+                    </div>
+                    <div className="mt-2 space-y-1">
+                      {alternative.programCompliance.adjacency.map((rule) => (
+                        <div key={rule.id} className="flex items-center justify-between gap-2 text-[9px]">
+                          <span className="min-w-0 truncate text-slate-600">
+                            {rule.fromLabel} · {rule.relation === "direct" ? "conectado a" : rule.relation === "near" ? "próximo de" : "afastado de"} · {rule.toLabel}
+                          </span>
+                          <span className={rule.satisfied
+                            ? "shrink-0 font-bold text-emerald-700"
+                            : rule.required
+                              ? "shrink-0 font-bold text-red-600"
+                              : "shrink-0 font-bold text-amber-600"}
+                          >
+                            {rule.satisfied ? "OK" : rule.required ? "Corrigir" : "Preferência"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
                 <button
                   type="button"
                   onClick={() => onGenerate(alternative)}
