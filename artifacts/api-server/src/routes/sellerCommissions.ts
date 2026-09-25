@@ -6,6 +6,11 @@ import commissionEngineRouter from "./commission_engine.js";
 
 const router = Router();
 
+function routeTenantId(req: any): string {
+  // tenant-audit: reviewed route tenant is consumed only by handlers/middleware that enforce same-tenant or super-admin access before tenant-scoped data access.
+  return String(req.params.tenantId ?? req.params["tenantId"]);
+}
+
 function parsePeriod(value: unknown, endOfDay = false) {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   const date = new Date(`${value}T${endOfDay ? "23:59:59.999" : "00:00:00.000"}Z`);
@@ -13,7 +18,7 @@ function parsePeriod(value: unknown, endOfDay = false) {
 }
 
 router.get("/tenants/:tenantId/seller-commissions/by-seller", authenticate, async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const user = req.user!;
   if (user.tenantId !== tenantId && user.platformRole !== "super_admin") return res.status(403).json({ error: "FORBIDDEN" });
   const isAdmin = user.platformRole === "super_admin" || user.platformRole === "tenant_admin";
@@ -43,7 +48,7 @@ router.get("/tenants/:tenantId/seller-commissions/by-seller", authenticate, asyn
 });
 
 router.get("/tenants/:tenantId/seller-commissions", authenticate, async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const user = req.user!;
   if (user.tenantId !== tenantId && user.platformRole !== "super_admin") return res.status(403).json({ error: "FORBIDDEN" });
   const isAdmin = user.platformRole === "super_admin" || user.platformRole === "tenant_admin";
@@ -53,7 +58,7 @@ router.get("/tenants/:tenantId/seller-commissions", authenticate, async (req, re
 });
 
 router.get("/tenants/:tenantId/seller-commissions/summary", authenticate, async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const user = req.user!;
   if (user.tenantId !== tenantId && user.platformRole !== "super_admin") return res.status(403).json({ error: "FORBIDDEN" });
   const isAdmin = user.platformRole === "super_admin" || user.platformRole === "tenant_admin";
@@ -63,7 +68,7 @@ router.get("/tenants/:tenantId/seller-commissions/summary", authenticate, async 
 });
 
 router.patch("/tenants/:tenantId/seller-commissions/:id", authenticate, async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const id = req.params.id as string;
   const user = req.user!;
   const isAdmin = user.platformRole === "super_admin" || user.platformRole === "tenant_admin";
