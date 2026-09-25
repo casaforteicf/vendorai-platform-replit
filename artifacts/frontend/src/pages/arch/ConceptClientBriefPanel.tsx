@@ -22,6 +22,7 @@ import {
   buildClientBriefPlan,
   buildDefaultRoomProgram,
   countBriefAlternativeErrors,
+  rebalanceClientRoomProgramToDesiredArea,
   validateClientRoomProgram,
   type ClientBrief,
   type ClientRoomRequest,
@@ -777,6 +778,16 @@ export default function ConceptClientBriefPanel({
               Úteis ≈ {Math.round(requestedProgramArea)} m² · estimado ≈ {programValidation.estimatedBuiltArea} m²
             </span>
           </div>
+          <button
+            type="button"
+            onClick={() => setBrief((current) => ({
+              ...current,
+              roomProgram: rebalanceClientRoomProgramToDesiredArea(current),
+            }))}
+            className="mt-2 w-full rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-[10px] font-bold text-orange-700 hover:bg-orange-100"
+          >
+            Ajustar automaticamente as metragens à área total
+          </button>
           {programValidation.status !== "ok" && (
             <div className={programValidation.status === "blocked"
               ? "mt-3 rounded-lg border border-red-200 bg-red-50 p-2.5 text-[10px] leading-4 text-red-700"
