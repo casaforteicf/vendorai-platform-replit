@@ -240,3 +240,58 @@ export async function svgElementToPngDataUrl(svg: SVGSVGElement, scale = 1.7) {
     URL.revokeObjectURL(objectUrl);
   }
 }
+
+// ── Resumo curto para o motor de imagem ────────────────────────────────────────────────
+// O FLUX Kontext só lê o começo do texto (cerca de 512 tokens). O briefing completo, com
+// coordenadas de paredes e aberturas, passava de 2.000 tokens: materiais, cores e luz eram
+// cortados e o motor inventava uma casa diferente. Este resumo vai primeiro e cabe inteiro.
+
+const MATERIAL_EN: Record<string, string> = {
+  "paint-offwhite": "smooth off-white painted plaster",
+  "paint-greige": "smooth warm greige painted plaster",
+  "concrete-light": "light grey exposed concrete",
+  "concrete-dark": "dark graphite exposed concrete",
+  "wood-natural": "natural warm wood slat cladding",
+  "wood-dark": "dark brown wood slat cladding",
+  "stone-sand": "sand-colored natural stone cladding",
+  "stone-graphite": "graphite natural stone cladding",
+  "brick-light": "light exposed brick",
+  "metal-black": "matte black metal",
+};
+
+export type ConceptKontextSummaryInput = {
+  floors: number;
+  facadeWidth: number;
+  facade: ConceptFacadePreferences;
+  facadeDesign?: FacadeDesignState;
+  lightingMode: "day" | "sunset" | "night";
+  frontOpenings: Array<{ floor: number; type: "door" | "window" }>;
+  hasGarage: boolean;
+};
+
+export function buildConceptKontextSummary(input: ConceptKontextSummaryInput) {
+  const material = (id: string | undefined, fallback: string) => (id && MATERIAL_EN[id]) || fallback;
+  const design = input.facadeDesign;
+  const walls = material(design?.surfaceMaterials.main, materialLabel[input.facade.primaryMaterial]);
+  const accent = material(design?.surfaceMaterials.accent, accentLabel[input.facade.accentMaterial]);
+  const garage = material(design?.surfaceMaterials.garage, "dark vertical-slat garage door");
+  const entrance = material(design?.surfaceMaterials.entrance, "wood entrance door");
+  const floorWord = input.floors > 1 ? `${input.floors}-storey` : "single-storey";
+  const openingCount = Array.from({ length: input.floors }, (_, floor) => {
+    const windows = input.frontOpenings.filter((item) => item.floor === floor && item.type === "window").length;
+    const doors = input.frontOpenings.filter((item) => item.floor === floor && item.type === "door").length;
+    const label = floor === 0 ? "ground floor" : `floor ${floor + 1}`;
+    return `${label}: ${windows} window${windows === 1 ? "" : "s"}${doors ? `, ${doors} door${doors === 1 ? "" : "s"}` : ""}`;
+  }).join("; ");
+  const light = input.lightingMode === "night"
+    ? "night scene, warm lights on inside the windows, soft wall-washer lights, dark blue sky"
+    : input.lightingMode === "sunset"
+      ? "golden late-afternoon sunlight, warm sky"
+      : "clear daylight, soft natural shadows, light blue sky";
+  return [
+    `A ${floorWord} ${styleLabel[input.facade.style]} house, front facade about ${input.facadeWidth.toFixed(0)} m wide, ${roofLabel[input.facade.roof]}.`,
+    `Walls: ${walls}. Accent volume at the entrance: ${accent}. ${input.hasGarage ? `Garage door: ${garage}. ` : ""}Entrance door: ${entrance}. ${frameLabel[input.facade.frameTone]}.`,
+    `Front openings exactly as drawn — ${openingCount}.`,
+    `Light: ${light}.`,
+  ].join(" ");
+}

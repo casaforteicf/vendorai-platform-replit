@@ -35,6 +35,8 @@ export function withLightingVariation(notes: unknown, lighting: string) {
   return original.split("\n")
     .filter((line) => !/^(Lighting:|(?:EXTERIOR|INTERIOR) LIGHTING:|LIGHTING VARIATION:)/i.test(line))
     .map((line) => line.replace(/Lighting scenario selected in editor: [^.]+\./g, `Lighting scenario selected in editor: ${lighting}.`)
+      // Resumo curto do render (primeiro bloco, o único que o motor lê inteiro).
+      .replace(/Light: [^.]+\./g, `Light: ${instruction}.`)
       .replace(/physically plausible daylight/g, "physically plausible lighting"))
     .concat(`LIGHTING VARIATION: ${instruction}. This scenario overrides the reference image lighting. Preserve all geometry, materials and camera framing.`)
     .join("\n");

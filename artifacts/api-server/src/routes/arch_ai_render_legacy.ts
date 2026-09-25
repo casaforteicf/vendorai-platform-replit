@@ -942,6 +942,19 @@ function buildKontextPrompt(p: {
       : p.iluminacao === "sunset"
         ? "Warm sunset light with long soft shadows, balanced sky exposure and warm reflections."
         : "Neutral natural daylight with physically plausible shadows and controlled reflections.";
+    // Pedido curto: o FLUX Kontext lê só ~512 tokens. O texto longo abaixo passava disso e os
+    // materiais/luz/aberturas eram cortados, gerando uma casa diferente da desenhada.
+    const [summary, details] = (p.userNotes ?? "").split("---DETALHES---");
+    if (details !== undefined && summary.trim()) {
+      return [
+        "Turn this architectural facade illustration into a photorealistic photograph of the exact same house, with the same camera angle and framing.",
+        summary.trim(),
+        "Keep every wall edge, the roof and parapet line, the garage door, the entrance door and every window in the same place, size and count. Keep the colors and materials shown in the image. Do not add, remove, move or resize any window, door, floor, volume or roof.",
+        "Replace the flat illustrated surfaces with real textures (plaster, wood grain, glass reflections, metal), add depth with window reveals, soft contact shadows and a real sky and garden.",
+        light,
+        "Photographic realism, eye-level view, straight verticals. No drawing style, no text, no people, no cars.",
+      ].join("\n");
+    }
     return [
       "Convert the reference geometry into a photorealistic architectural EXTERIOR photograph of the SAME built house.",
       "SOURCE-OF-TRUTH LOCK: the reference image and the structured geometry notes are authoritative. Geometry always has priority over style, realism, landscaping or composition improvements.",
