@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  assessProjectBriefCompleteness,
   buildClientBriefAlternatives,
   buildClientBriefPlan,
+  buildProjectBriefSnapshot,
   buildDefaultRoomProgram,
   buildRecommendedAdjacencyRules,
   countBriefAlternativeErrors,
@@ -239,5 +241,68 @@ describe("grafo de adjacências", () => {
     });
     expect(validation.status).toBe("blocked");
     expect(validation.errors.some((message) => message.includes("ambiente removido"))).toBe(true);
+  });
+});
+
+
+describe("briefing arquitetônico v2", () => {
+  it("consolida família, terreno e DNA em um único snapshot", () => {
+    const base = {
+      bedrooms: 3,
+      suites: 1,
+      floors: 1,
+      garageSpaces: 2,
+      gourmet: true,
+      pool: false,
+      office: true,
+      integratedKitchen: true,
+      privateAwaySocial: true,
+      desiredAreaTotal: 180,
+    } as const;
+    const roomProgram = buildDefaultRoomProgram(base);
+    const briefWithProgram = {
+      ...base,
+      roomProgram,
+      adjacencyRules: buildRecommendedAdjacencyRules({ ...base, roomProgram }),
+    };
+    const vision = {
+      lifestyle: "familia" as const,
+      protagonist: "social" as const,
+      priorities: ["luz_natural", "privacidade", "integracao"] as const,
+      budgetStrategy: "equilibrar" as const,
+      futureNeeds: "Escritório pode virar dormitório no futuro.",
+      mustHave: "Sala conectada ao jardim.",
+      avoid: "Corredores longos.",
+      aestheticReferences: "Arquitetura brasileira contemporânea.",
+      preferredMaterials: "Madeira e pedra.",
+      constructionMethod: "icf" as const,
+      budgetTarget: 850000,
+    };
+    const snapshot = buildProjectBriefSnapshot({
+      brief: briefWithProgram,
+      vision: { ...vision, priorities: [...vision.priorities] },
+      household: {
+        residents: 4,
+        children: 2,
+        workFromHome: "frequente",
+        hostingFrequency: "alta",
+        cookingProfile: "intenso",
+        routineNotes: "Família cozinha e recebe aos fins de semana.",
+      },
+      siteContext: {
+        frontSide: "top",
+        northSide: "right",
+        topography: "plano",
+        desiredViews: "Jardim dos fundos.",
+        privacyNotes: "Evitar exposição para a rua.",
+      },
+      intervention: "valorizar",
+    });
+
+    expect(snapshot.version).toBe(2);
+    expect(snapshot.household?.residents).toBe(4);
+    expect(snapshot.siteContext?.northSide).toBe("right");
+    expect(snapshot.briefingCompleteness).toBeGreaterThanOrEqual(80);
+    expect(assessProjectBriefCompleteness(snapshot)).toBe(snapshot.briefingCompleteness);
   });
 });
