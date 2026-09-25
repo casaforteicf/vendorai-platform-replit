@@ -76,6 +76,7 @@ import { pickNextVendedor } from "../lib/round-robin.js";
 import { ensureStandardConstructionCatalog } from "../lib/ensure-standard-construction-catalog.js";
 import { ensureArqdorStarterLibrary } from "../lib/arqdor/starter-library.js";
 import { searchPolyHavenModels, resolvePolyHavenModel } from "../lib/arqdor/polyhaven.js";
+import { buildArchitecturalStrategyRepertoire } from "../lib/arqdor-architecture-strategies.js";
 
 function sanitizeAIError(err: any): { status: number; message: string } {
   const raw: string = err?.message ?? String(err ?? "");
@@ -787,6 +788,11 @@ router.post("/arch/concept-plan-specialist", authenticate, async (req, res) => {
     assinatura: "Busque uma solução autoral e marcante, com partido arquitetônico claro e experiência espacial memorável, mantendo programa, lote, funcionalidade e construtibilidade como restrições absolutas.",
   };
 
+  const strategyRepertoire = buildArchitecturalStrategyRepertoire({
+    intervention: input.intervention,
+    vision: input.vision ?? null,
+  });
+
   const basePrompt = `Você é o ARQDOR ARCHITECT AI, arquiteto residencial sênior especializado em casas brasileiras.
 
 OBJETIVO:
@@ -831,6 +837,11 @@ REGRAS FUNCIONAIS INEGOCIÁVEIS:
 - áreas molhadas devem ser racionalizadas quando possível;
 - preserve ambientes locked;
 - a planta deve poder originar uma fachada coerente: aberturas, volumes e cobertura não podem depender de invenções posteriores.
+
+REPERTÓRIO DE ESTRATÉGIAS ARQUITETÔNICAS:
+${strategyRepertoire}
+
+Use o repertório para pensar, não para copiar. Escolha poucas estratégias compatíveis e explique implicitamente sua aplicação no designRationale/architectureDNA.
 
 CRITÉRIOS DE QUALIDADE:
 - funcionalidade;
@@ -1018,6 +1029,12 @@ router.post("/arch/concept-projects/:id/facade-study", authenticate, async (req,
   const currentDesign = parsed.data.facadeDesign ?? {};
   const action = parsed.data.action;
   const intervention = parsed.data.intervention;
+  const projectBrief = (config.projectBrief ?? null) as Record<string, any> | null;
+  const facadeIntervention = intervention === "marcante" ? "assinatura" : intervention === "moderada" ? "valorizar" : "preservar";
+  const facadeRepertoire = buildArchitecturalStrategyRepertoire({
+    intervention: facadeIntervention,
+    vision: projectBrief?.vision ?? null,
+  });
 
   const prompt = `Você é o Arqdor Facade Architect AI, arquiteto especialista em composição de fachadas residenciais brasileiras.
 
@@ -1056,7 +1073,17 @@ REGRAS INEGOCIÁVEIS:
 - "marcante" = composição mais autoral, porém sem transformar o projeto em outra casa;
 - cobertura deve continuar tecnicamente compatível com a volumetria;
 - evite excesso de elementos decorativos e fachadas genéricas;
-- priorize hierarquia de entrada, proporção, ritmo, cheios/vazios, materialidade, proteção solar e coerência com a planta.
+- priorize hierarquia de entrada, proporção, ritmo, cheios/vazios, materialidade, proteção solar e coerência com a planta;
+- não empilhe elementos "contemporâneos" sem função. Portal, ripado, pergolado, moldura e volume deslocado só entram quando reforçam uma decisão espacial, climática ou de hierarquia.
+
+REPERTÓRIO PARA A FACHADA — estratégias, não templates:
+${facadeRepertoire}
+
+DIREÇÃO JÁ DEFINIDA NO DNA DO PROJETO:
+${JSON.stringify(projectBrief?.architectureDNA ?? null)}
+${JSON.stringify(projectBrief?.facadeDirection ?? null)}
+
+A fachada deve dar continuidade ao DNA acima sempre que ele existir.
 
 Se ACTION=diagnose, foque no diagnóstico e deixe as sugestões estruturadas.
 Se ACTION=develop, entregue também uma proposta aplicável ao editor.
@@ -1221,6 +1248,11 @@ router.post("/arch/concept-projects/:id/develop-with-ai", authenticate, async (r
   const config = (concept.configuration ?? {}) as Record<string, unknown>;
   const facade = (concept.facadePreferences ?? {}) as Record<string, unknown>;
   const requestedStyle = parsed.data.style ?? String(facade.style ?? "contemporaneo");
+  const projectBrief = (config.projectBrief ?? null) as Record<string, any> | null;
+  const developmentRepertoire = buildArchitecturalStrategyRepertoire({
+    intervention: parsed.data.mode === "preservacao_maxima" ? "preservar" : parsed.data.mode === "automatico" ? "valorizar" : "otimizar",
+    vision: projectBrief?.vision ?? null,
+  });
 
   const prompt = `Você é o Copiloto de Desenvolvimento Arquitetônico do Arqdor.
 Analise este pré-projeto residencial brasileiro e proponha SOMENTE ajustes compatíveis com a geometria existente.
@@ -1273,7 +1305,18 @@ REGRAS DE GEOMETRIA:
 - Manter tudo dentro do lote.
 - wallSuggestions devem ser ortogonais e só devem existir quando realmente melhorarem o fechamento/circulação.
 - openingSuggestions só devem apontar para uma parede existente ou sugerida.
-- Preserve garagem, escada e circulação salvo erro claro de projeto.`;
+- Preserve garagem, escada e circulação salvo erro claro de projeto.
+
+REPERTÓRIO DE APOIO:
+${developmentRepertoire}
+
+DNA ARQUITETÔNICO JÁ DEFINIDO:
+${JSON.stringify(projectBrief?.architectureDNA ?? null)}
+${JSON.stringify(projectBrief?.experienceStrategy ?? null)}
+${JSON.stringify(projectBrief?.daylightStrategy ?? null)}
+${JSON.stringify(projectBrief?.facadeDirection ?? null)}
+
+Não substitua esse DNA por uma solução aleatória. Evolua o mesmo projeto e sinalize conflitos.`;
 
   try {
     const message = await anthropic.messages.create({
