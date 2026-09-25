@@ -11,7 +11,7 @@ export type ConceptJourneyStage = {
 
 export const CONCEPT_JOURNEY: ConceptJourneyStage[] = [
   { id: "terreno", label: "Terreno", helper: "Informe as medidas do lote e o lado da frente." },
-  { id: "casa", label: "Casa", helper: "Escolha um modelo ou descreva o que a casa precisa ter." },
+  { id: "casa", label: "Casa", helper: "Defina cômodos, quantidades, metragens e como a casa precisa funcionar." },
   { id: "ajustes", label: "Ajustes", helper: "Ajuste cômodos, paredes, portas, móveis e acabamentos. Veja em 2D ou 3D." },
   { id: "fachada", label: "Fachada", helper: "Defina o estilo da fachada e gere a imagem realista." },
   { id: "enviar", label: "Enviar", helper: "Revise o resumo, informe o contato e envie ao profissional." },

@@ -9,6 +9,41 @@ import {
 import { validateConceptLayout } from "./conceptGeometry";
 import { generateTypologyLayout } from "./conceptTypologyLayout";
 
+export type ClientRoomRequestKind =
+  | "sala"
+  | "cozinha"
+  | "suite"
+  | "quarto"
+  | "banheiro"
+  | "lavanderia"
+  | "garagem"
+  | "gourmet"
+  | "piscina"
+  | "outro";
+
+export type ClientRoomRequest = {
+  id: string;
+  kind: ClientRoomRequestKind;
+  label: string;
+  quantity: number;
+  targetArea: number;
+  preferredWidth?: number;
+  preferredDepth?: number;
+  floorPreference?: "terreo" | "superior" | "qualquer";
+  required?: boolean;
+  notes?: string;
+};
+
+export type ClientAdjacencyRelation = "direct" | "near" | "away";
+
+export type ClientAdjacencyRule = {
+  id: string;
+  fromRequestId: string;
+  toRequestId: string;
+  relation: ClientAdjacencyRelation;
+  required: boolean;
+};
+
 export type ClientBrief = {
   bedrooms: 2 | 3 | 4;
   suites: 0 | 1 | 2;
@@ -19,6 +54,9 @@ export type ClientBrief = {
   office: boolean;
   integratedKitchen: boolean;
   privateAwaySocial: boolean;
+  desiredAreaTotal?: number;
+  roomProgram?: ClientRoomRequest[];
+  adjacencyRules?: ClientAdjacencyRule[];
 };
 
 export type ClientVision = {
@@ -31,6 +69,189 @@ export type ClientVision = {
   avoid: string;
 };
 
+const MIN_ROOM_AREAS: Record<ClientRoomRequestKind, number> = {
+  sala: 18,
+  cozinha: 8,
+  suite: 11,
+  quarto: 8,
+  banheiro: 2.4,
+  lavanderia: 3.5,
+  garagem: 12,
+  gourmet: 10,
+  piscina: 8,
+  outro: 5,
+};
+
+export function rebalanceClientRoomProgramToDesiredArea(brief: ClientBrief): ClientRoomRequest[] {
+  const program = Array.isArray(brief.roomProgram) ? brief.roomProgram : [];
+  const desiredArea = Number(brief.desiredAreaTotal);
+  if (!program.length || !Number.isFinite(desiredArea) || desiredArea < 40) return program;
+
+  const targetNetArea = desiredArea / 1.14;
+  const fixedArea = program.reduce((sum, item) => {
+    if (item.kind === "piscina") return sum;
+    const hasFixedDimensions = Number(item.preferredWidth) >= 1.2 && Number(item.preferredDepth) >= 1.2;
+    return hasFixedDimensions
+      ? sum + item.quantity * Number(item.preferredWidth) * Number(item.preferredDepth)
+      : sum;
+  }, 0);
+
+  const flexible = program.filter((item) => {
+    if (item.kind === "piscina") return false;
+    return !(Number(item.preferredWidth) >= 1.2 && Number(item.preferredDepth) >= 1.2);
+  });
+  const flexibleCurrent = flexible.reduce((sum, item) => sum + item.quantity * item.targetArea, 0);
+  const availableFlexible = Math.max(0, targetNetArea - fixedArea);
+  const factor = flexibleCurrent > 0 ? availableFlexible / flexibleCurrent : 1;
+
+  return program.map((item) => {
+    const hasFixedDimensions = Number(item.preferredWidth) >= 1.2 && Number(item.preferredDepth) >= 1.2;
+    if (item.kind === "piscina") return item;
+    if (hasFixedDimensions) {
+      const area = Number(item.preferredWidth) * Number(item.preferredDepth);
+      return { ...item, targetArea: Math.round(area * 2) / 2 };
+    }
+    const minimum = MIN_ROOM_AREAS[item.kind] ?? 5;
+    const scaled = Math.max(minimum, item.targetArea * factor);
+    return { ...item, targetArea: Math.round(scaled * 2) / 2 };
+  });
+}
+
+export type ClientProgramValidation = {
+  status: "ok" | "warning" | "blocked";
+  errors: string[];
+  warnings: string[];
+  netProgramArea: number;
+  estimatedBuiltArea: number;
+  desiredArea: number | null;
+};
+
+export function validateClientRoomProgram(
+  brief: ClientBrief,
+  lot?: {
+    width: number;
+    depth: number;
+    setbacks?: { top: number; bottom: number; left: number; right: number };
+  },
+): ClientProgramValidation {
+  const program = Array.isArray(brief.roomProgram) ? brief.roomProgram : [];
+  const adjacencyRules = Array.isArray(brief.adjacencyRules) ? brief.adjacencyRules : [];
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  if (!program.length) {
+    errors.push("Informe pelo menos um ambiente antes de desenvolver o projeto.");
+  }
+
+  for (const item of program) {
+    if (!item.label.trim()) errors.push("Existe um ambiente sem nome.");
+    if (!Number.isFinite(item.quantity) || item.quantity < 1) {
+      errors.push(`${item.label || "Ambiente"} precisa ter quantidade mínima de 1.`);
+    }
+    if (!Number.isFinite(item.targetArea) || item.targetArea < 2.4) {
+      errors.push(`${item.label || "Ambiente"} precisa ter uma metragem válida.`);
+    }
+    const preferredWidth = Number(item.preferredWidth);
+    const preferredDepth = Number(item.preferredDepth);
+    if (Number.isFinite(preferredWidth) && preferredWidth > 0 && preferredWidth < 1.2) {
+      errors.push(`${item.label}: largura desejada muito pequena (${preferredWidth.toFixed(2)} m).`);
+    }
+    if (Number.isFinite(preferredDepth) && preferredDepth > 0 && preferredDepth < 1.2) {
+      errors.push(`${item.label}: profundidade desejada muito pequena (${preferredDepth.toFixed(2)} m).`);
+    }
+    if (Number.isFinite(preferredWidth) && preferredWidth > 0 && Number.isFinite(preferredDepth) && preferredDepth > 0) {
+      const dimensionArea = preferredWidth * preferredDepth;
+      if (Math.abs(dimensionArea - item.targetArea) / Math.max(1, item.targetArea) > 0.22) {
+        warnings.push(
+          `${item.label}: ${preferredWidth.toFixed(2)} × ${preferredDepth.toFixed(2)} m resulta em ${dimensionArea.toFixed(1)} m², diferente da meta de ${item.targetArea.toFixed(1)} m².`,
+        );
+      }
+    }
+  }
+
+  const requestIds = new Set(program.map((item) => item.id));
+  const relationByPair = new Map<string, Set<ClientAdjacencyRelation>>();
+  for (const rule of adjacencyRules) {
+    if (!requestIds.has(rule.fromRequestId) || !requestIds.has(rule.toRequestId)) {
+      errors.push("Existe uma relação entre ambientes que aponta para um ambiente removido.");
+      continue;
+    }
+    if (rule.fromRequestId === rule.toRequestId) {
+      errors.push("Uma relação de proximidade não pode usar o mesmo ambiente nos dois lados.");
+      continue;
+    }
+    const pair = [rule.fromRequestId, rule.toRequestId].sort().join("::");
+    const set = relationByPair.get(pair) ?? new Set<ClientAdjacencyRelation>();
+    set.add(rule.relation);
+    relationByPair.set(pair, set);
+  }
+  for (const relations of relationByPair.values()) {
+    if (relations.has("away") && (relations.has("near") || relations.has("direct"))) {
+      errors.push("Há ambientes configurados ao mesmo tempo para ficar próximos/conectados e afastados.");
+    }
+  }
+
+  const requiredSuites = program
+    .filter((item) => item.kind === "suite" && item.required !== false)
+    .reduce((sum, item) => sum + item.quantity, 0);
+  const suiteBaths = program
+    .filter((item) => item.kind === "banheiro" && /su[ií]te|master/i.test(item.label))
+    .reduce((sum, item) => sum + item.quantity, 0);
+  if (requiredSuites > suiteBaths) {
+    errors.push(`O programa tem ${requiredSuites} suíte(s), mas apenas ${suiteBaths} banheiro(s) de suíte.`);
+  }
+
+  const nonPoolProgram = program.filter((item) => item.kind !== "piscina");
+  const netProgramArea = nonPoolProgram.reduce(
+    (sum, item) => sum + Math.max(0, item.quantity) * Math.max(0, item.targetArea),
+    0,
+  );
+  // Aproximação para paredes, circulação técnica e pequenos ajustes de projeto.
+  const estimatedBuiltArea = Math.round(netProgramArea * 1.14);
+  const desiredArea = Number.isFinite(Number(brief.desiredAreaTotal))
+    ? Number(brief.desiredAreaTotal)
+    : null;
+
+  if (desiredArea) {
+    if (netProgramArea > desiredArea * 1.02) {
+      errors.push(
+        `Os ambientes somam cerca de ${Math.round(netProgramArea)} m² úteis, acima da área total desejada de ${Math.round(desiredArea)} m².`,
+      );
+    } else if (estimatedBuiltArea > desiredArea * 1.12) {
+      warnings.push(
+        `Com paredes e circulação, o programa tende a chegar perto de ${estimatedBuiltArea} m², acima da meta de ${Math.round(desiredArea)} m².`,
+      );
+    } else if (estimatedBuiltArea < desiredArea * 0.65) {
+      warnings.push(
+        `O programa ocupa cerca de ${estimatedBuiltArea} m² estimados; ainda existe bastante área sem destino em relação à meta de ${Math.round(desiredArea)} m².`,
+      );
+    }
+  }
+
+  if (lot) {
+    const setbacks = lot.setbacks ?? { top: 0, bottom: 0, left: 0, right: 0 };
+    const usableWidth = Math.max(0, lot.width - setbacks.left - setbacks.right);
+    const usableDepth = Math.max(0, lot.depth - setbacks.top - setbacks.bottom);
+    const grossCapacity = usableWidth * usableDepth * Math.max(1, brief.floors);
+    if (desiredArea && desiredArea > grossCapacity * 0.96) {
+      errors.push(
+        `A meta de ${Math.round(desiredArea)} m² não cabe fisicamente na área disponível do lote considerando os recuos informados.`,
+      );
+    } else if (estimatedBuiltArea > grossCapacity * 0.9) {
+      warnings.push("O programa está muito próximo do limite físico disponível no lote; a implantação pode ficar comprometida.");
+    }
+  }
+
+  return {
+    status: errors.length ? "blocked" : warnings.length ? "warning" : "ok",
+    errors: [...new Set(errors)],
+    warnings: [...new Set(warnings)],
+    netProgramArea: Math.round(netProgramArea * 10) / 10,
+    estimatedBuiltArea,
+    desiredArea,
+  };
+}
+
 export type ClientBriefPlan = {
   typology: ConceptTypology;
   floors: number;
@@ -39,7 +260,15 @@ export type ClientBriefPlan = {
   rooms: ReturnType<typeof buildTypologyRooms>;
 };
 
-export type ClientBriefAlternativeId = "compact" | "balanced" | "integrated";
+export type ClientBriefAlternativeId = "primary" | "compact" | "balanced" | "integrated";
+
+export type ArchitectureDNA = {
+  concept?: string;
+  spatialStrategy?: string;
+  volumeStrategy?: string;
+  roofStrategy?: string;
+  materialIntent?: string;
+};
 
 export type ProjectBriefSnapshot = {
   brief: ClientBrief;
@@ -48,6 +277,12 @@ export type ProjectBriefSnapshot = {
   selectedAlternativeTitle?: string;
   clientFitSummary?: string;
   designRationale?: string;
+  intervention?: "preservar" | "otimizar" | "valorizar" | "assinatura";
+  architectureDNA?: ArchitectureDNA;
+  experienceStrategy?: string[];
+  daylightStrategy?: string[];
+  facadeDirection?: string[];
+  selfCritique?: string[];
 };
 
 export type ClientBriefAlternative = ClientBriefPlan & {
@@ -60,12 +295,212 @@ export type ClientBriefAlternative = ClientBriefPlan & {
   qualityIssues?: string[];
   qualityStrengths?: string[];
   clientFitSummary?: string;
+  intervention?: "preservar" | "otimizar" | "valorizar" | "assinatura";
+  architectureDNA?: ArchitectureDNA;
+  experienceStrategy?: string[];
+  daylightStrategy?: string[];
+  facadeDirection?: string[];
+  selfCritique?: string[];
+  programCompliance?: {
+    desiredAreaTotal?: number | null;
+    actualAreaTotal?: number;
+    outsideTargetCount?: number;
+    rooms?: Array<{
+      id: string;
+      label: string;
+      required?: boolean;
+      targetArea: number;
+      targetWidth?: number | null;
+      targetDepth?: number | null;
+      actualWidth?: number;
+      actualDepth?: number;
+      actualArea: number;
+      deviationPct: number;
+      status: "ok" | "warning" | "outside_target";
+    }>;
+    adjacency?: Array<{
+      id: string;
+      fromLabel: string;
+      toLabel: string;
+      relation: ClientAdjacencyRelation;
+      required: boolean;
+      satisfied: boolean;
+    }>;
+    adjacencySatisfiedCount?: number;
+    adjacencyTotalCount?: number;
+  };
   projectBrief?: ProjectBriefSnapshot;
 };
 
 function nextId(prefix: string, index: number) {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
   return `${prefix}-${index}-${Date.now()}`;
+}
+
+function roomProgramId(prefix: string) {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+export function buildDefaultRoomProgram(brief: Pick<ClientBrief,
+  "bedrooms" | "suites" | "floors" | "garageSpaces" | "gourmet" | "pool" | "office"
+>): ClientRoomRequest[] {
+  const nonSuiteBedrooms = Math.max(0, brief.bedrooms - brief.suites);
+  const sleepingFloor = brief.floors === 2 ? "superior" as const : "terreo" as const;
+  return [
+    { id: roomProgramId("sala"), kind: "sala", label: "Sala de estar + jantar", quantity: 1, targetArea: 28, floorPreference: "terreo", required: true },
+    { id: roomProgramId("cozinha"), kind: "cozinha", label: "Cozinha", quantity: 1, targetArea: 14, floorPreference: "terreo", required: true },
+    ...(brief.suites > 0 ? [
+      { id: roomProgramId("suite"), kind: "suite" as const, label: "Suíte", quantity: brief.suites, targetArea: 16, floorPreference: sleepingFloor, required: true },
+      { id: roomProgramId("suite-bath"), kind: "banheiro" as const, label: "Banho suíte", quantity: brief.suites, targetArea: 5, floorPreference: sleepingFloor, required: true },
+    ] : []),
+    ...(nonSuiteBedrooms > 0 ? [
+      { id: roomProgramId("quarto"), kind: "quarto" as const, label: "Quarto", quantity: nonSuiteBedrooms, targetArea: 12, floorPreference: sleepingFloor, required: true },
+      { id: roomProgramId("social-bath"), kind: "banheiro" as const, label: "Banheiro social", quantity: 1, targetArea: 4.5, floorPreference: sleepingFloor, required: true },
+    ] : []),
+    { id: roomProgramId("lavanderia"), kind: "lavanderia", label: "Lavanderia", quantity: 1, targetArea: 6, floorPreference: "terreo", required: true },
+    { id: roomProgramId("garagem"), kind: "garagem", label: `Garagem ${brief.garageSpaces} ${brief.garageSpaces === 1 ? "vaga" : "vagas"}`, quantity: 1, targetArea: brief.garageSpaces * 15, floorPreference: "terreo", required: true },
+    ...(brief.gourmet ? [
+      { id: roomProgramId("gourmet"), kind: "gourmet" as const, label: "Espaço gourmet", quantity: 1, targetArea: 20, floorPreference: "terreo" as const, required: true },
+      { id: roomProgramId("lavabo"), kind: "banheiro" as const, label: "Lavabo", quantity: 1, targetArea: 3, floorPreference: "terreo" as const, required: false },
+    ] : []),
+    ...(brief.office ? [
+      { id: roomProgramId("office"), kind: "outro" as const, label: "Escritório", quantity: 1, targetArea: 10, floorPreference: "terreo" as const, required: true },
+    ] : []),
+    ...(brief.pool ? [
+      { id: roomProgramId("pool"), kind: "piscina" as const, label: "Piscina", quantity: 1, targetArea: 18, floorPreference: "terreo" as const, required: true },
+    ] : []),
+  ];
+}
+
+export function buildRecommendedAdjacencyRules(brief: ClientBrief): ClientAdjacencyRule[] {
+  const program = Array.isArray(brief.roomProgram) ? brief.roomProgram : [];
+  const find = (predicate: (item: ClientRoomRequest) => boolean) => program.find(predicate);
+  const living = find((item) => item.kind === "sala");
+  const kitchen = find((item) => item.kind === "cozinha");
+  const gourmet = find((item) => item.kind === "gourmet");
+  const laundry = find((item) => item.kind === "lavanderia");
+  const garage = find((item) => item.kind === "garagem");
+  const pool = find((item) => item.kind === "piscina");
+  const suite = find((item) => item.kind === "suite");
+  const suiteBath = find((item) => item.kind === "banheiro" && /su[ií]te|master/i.test(item.label));
+
+  const rules: ClientAdjacencyRule[] = [];
+  const add = (
+    from: ClientRoomRequest | undefined,
+    to: ClientRoomRequest | undefined,
+    relation: ClientAdjacencyRelation,
+    required: boolean,
+  ) => {
+    if (!from || !to || from.id === to.id) return;
+    const pairExists = rules.some((rule) =>
+      (rule.fromRequestId === from.id && rule.toRequestId === to.id)
+      || (rule.fromRequestId === to.id && rule.toRequestId === from.id)
+    );
+    if (pairExists) return;
+    rules.push({
+      id: roomProgramId("adj"),
+      fromRequestId: from.id,
+      toRequestId: to.id,
+      relation,
+      required,
+    });
+  };
+
+  if (brief.integratedKitchen) add(living, kitchen, "direct", true);
+  add(kitchen, gourmet, "near", true);
+  add(kitchen, laundry, "near", false);
+  add(gourmet, pool, "near", false);
+  add(suite, suiteBath, "direct", true);
+  if (brief.privateAwaySocial) {
+    add(suite, gourmet, "away", true);
+    add(suite, garage, "away", true);
+  }
+  return rules;
+}
+
+function roomDimensionsForArea(
+  kind: ClientRoomRequestKind,
+  area: number,
+  preferredWidth?: number,
+  preferredDepth?: number,
+) {
+  const safeArea = Math.max(kind === "banheiro" ? 2.4 : 4, Math.min(kind === "garagem" ? 90 : 70, area));
+  const requestedWidth = Number(preferredWidth);
+  const requestedDepth = Number(preferredDepth);
+  if (Number.isFinite(requestedWidth) && requestedWidth >= 1.2 && Number.isFinite(requestedDepth) && requestedDepth >= 1.2) {
+    return {
+      width: Math.round(requestedWidth * 100) / 100,
+      depth: Math.round(requestedDepth * 100) / 100,
+    };
+  }
+  const preferredWidthByKind: Partial<Record<ClientRoomRequestKind, number>> = {
+    banheiro: 2.0,
+    lavanderia: 2.4,
+    cozinha: 3.4,
+    sala: 4.6,
+    suite: 3.8,
+    quarto: 3.2,
+    garagem: 5.5,
+    gourmet: 4.5,
+    piscina: 6,
+    outro: 3.2,
+  };
+  let width = Math.min(preferredWidthByKind[kind] ?? Math.sqrt(safeArea), Math.max(1.5, safeArea / 1.8));
+  let depth = safeArea / width;
+  if (depth < 1.5) {
+    depth = 1.5;
+    width = safeArea / depth;
+  }
+  return {
+    width: Math.round(width * 20) / 20,
+    depth: Math.round(depth * 20) / 20,
+  };
+}
+
+function expandRoomProgram(brief: ClientBrief) {
+  const program = Array.isArray(brief.roomProgram) && brief.roomProgram.length
+    ? brief.roomProgram
+    : buildDefaultRoomProgram(brief);
+
+  return program.flatMap((request, requestIndex) => {
+    const quantity = Math.max(0, Math.min(8, Math.round(Number(request.quantity) || 0)));
+    if (!quantity) return [];
+    return Array.from({ length: quantity }, (_, index) => {
+      const dims = roomDimensionsForArea(
+        request.kind,
+        Number(request.targetArea) || 8,
+        request.preferredWidth,
+        request.preferredDepth,
+      );
+      const numbered = quantity > 1;
+      const floorFlexible = request.floorPreference === "qualquer" && brief.floors > 1;
+      const privateKind = request.kind === "suite" || request.kind === "quarto"
+        || (request.kind === "banheiro" && /su[ií]te|banheiro social|master/i.test(request.label));
+      const floor = request.floorPreference === "superior" && brief.floors > 1
+        ? 1
+        : floorFlexible && privateKind
+          ? 1
+          : 0;
+      return {
+        id: nextId(`program-${request.kind}`, requestIndex * 10 + index),
+        kind: request.kind,
+        label: numbered ? `${request.label} ${index + 1}` : request.label,
+        width: dims.width,
+        depth: dims.depth,
+        floor,
+        x: 0,
+        y: 0,
+        targetArea: Math.round((Number(request.targetArea) || dims.width * dims.depth) * 100) / 100,
+        targetWidth: Number.isFinite(Number(request.preferredWidth)) ? Number(request.preferredWidth) : undefined,
+        targetDepth: Number.isFinite(Number(request.preferredDepth)) ? Number(request.preferredDepth) : undefined,
+        programNotes: request.notes?.trim() || undefined,
+        required: request.required !== false,
+        programRequestId: request.id,
+        floorFlexible,
+      };
+    });
+  });
 }
 
 function chooseBaseTypology(brief: ClientBrief): ConceptTypology {
@@ -210,6 +645,15 @@ export function buildClientBriefPlan(brief: ClientBrief): ClientBriefPlan {
     });
   }
 
+  // O programa de necessidades preenchido pelo cliente é autoritativo.
+  // Circulação e escadas são geradas pelo sistema; os demais ambientes vêm do briefing,
+  // com quantidade e área-alvo explícitas em vez de serem adivinhados pelo template.
+  if (Array.isArray(brief.roomProgram) && brief.roomProgram.length) {
+    const systemRooms = rooms.filter((room) => room.kind === "circulacao" || room.kind === "escada");
+    const requestedRooms = expandRoomProgram(brief);
+    rooms = [...systemRooms, ...requestedRooms];
+  }
+
   const layoutPreferences: LayoutPreferences = {
     ...DEFAULT_LAYOUT_PREFERENCES,
     kitchenNearGourmet: brief.gourmet,
@@ -218,10 +662,15 @@ export function buildClientBriefPlan(brief: ClientBrief): ClientBriefPlan {
     privateAwaySocial: brief.privateAwaySocial,
   };
 
+  const requestedTotal = Number(brief.desiredAreaTotal);
+  const suggestedArea = Number.isFinite(requestedTotal) && requestedTotal >= 40
+    ? Math.round(requestedTotal)
+    : calculateSuggestedArea(rooms);
+
   return {
     typology,
     floors: brief.floors,
-    suggestedArea: calculateSuggestedArea(rooms),
+    suggestedArea,
     layoutPreferences,
     rooms,
   };

@@ -76,6 +76,7 @@ import { pickNextVendedor } from "../lib/round-robin.js";
 import { ensureStandardConstructionCatalog } from "../lib/ensure-standard-construction-catalog.js";
 import { ensureArqdorStarterLibrary } from "../lib/arqdor/starter-library.js";
 import { searchPolyHavenModels, resolvePolyHavenModel } from "../lib/arqdor/polyhaven.js";
+import { buildArchitecturalStrategyRepertoire } from "../lib/arqdor-architecture-strategies.js";
 
 function sanitizeAIError(err: any): { status: number; message: string } {
   const raw: string = err?.message ?? String(err ?? "");
@@ -127,6 +128,7 @@ const facadeStudySchema = z.object({
 const specialistHousePlanSchema = z.object({
   lotWidth: z.number().min(5).max(100),
   lotDepth: z.number().min(8).max(200),
+  intervention: z.enum(["preservar", "otimizar", "valorizar", "assinatura"]).default("valorizar"),
   brief: z.object({
     bedrooms: z.number().int().min(1).max(8),
     suites: z.number().int().min(0).max(6),
@@ -137,6 +139,26 @@ const specialistHousePlanSchema = z.object({
     office: z.boolean(),
     integratedKitchen: z.boolean(),
     privateAwaySocial: z.boolean(),
+    desiredAreaTotal: z.number().min(40).max(1200).optional(),
+    roomProgram: z.array(z.object({
+      id: z.string().min(1).max(120),
+      kind: z.enum(["sala","cozinha","suite","quarto","banheiro","lavanderia","garagem","gourmet","piscina","outro"]),
+      label: z.string().min(1).max(120),
+      quantity: z.number().int().min(0).max(8),
+      targetArea: z.number().min(2.4).max(120),
+      preferredWidth: z.number().min(1.2).max(30).optional(),
+      preferredDepth: z.number().min(1.2).max(30).optional(),
+      floorPreference: z.enum(["terreo","superior","qualquer"]).optional(),
+      required: z.boolean().optional(),
+      notes: z.string().max(300).optional(),
+    })).max(40).optional(),
+    adjacencyRules: z.array(z.object({
+      id: z.string().min(1).max(120),
+      fromRequestId: z.string().min(1).max(120),
+      toRequestId: z.string().min(1).max(120),
+      relation: z.enum(["direct", "near", "away"]),
+      required: z.boolean(),
+    })).max(60).optional(),
   }),
   vision: z.object({
     lifestyle: z.enum(["familia", "receber", "tranquilidade", "praticidade", "misto"]),
@@ -157,6 +179,13 @@ const specialistHousePlanSchema = z.object({
     x: z.number().optional(),
     y: z.number().optional(),
     locked: z.boolean().optional(),
+    targetArea: z.number().min(2.4).max(120).optional(),
+    targetWidth: z.number().min(1.2).max(30).optional(),
+    targetDepth: z.number().min(1.2).max(30).optional(),
+    programNotes: z.string().max(300).optional(),
+    required: z.boolean().optional(),
+    programRequestId: z.string().max(120).optional(),
+    floorFlexible: z.boolean().optional(),
   })).min(1).max(50),
 });
 
@@ -190,6 +219,23 @@ function specialistSharedEdge(a: SpecialistPlanRoom, b: SpecialistPlanRoom) {
 
 function specialistTouches(a: SpecialistPlanRoom, b: SpecialistPlanRoom, minShared = 0.65) {
   return specialistSharedEdge(a, b) >= minShared;
+}
+
+function specialistRoomGap(a: SpecialistPlanRoom, b: SpecialistPlanRoom) {
+  if (a.floor !== b.floor) return Number.POSITIVE_INFINITY;
+  const gapX = Math.max(0, Math.max(a.x, b.x) - Math.min(a.x + a.width, b.x + b.width));
+  const gapY = Math.max(0, Math.max(a.y, b.y) - Math.min(a.y + a.depth, b.y + b.depth));
+  return Math.hypot(gapX, gapY);
+}
+
+function specialistAdjacencySatisfied(
+  a: SpecialistPlanRoom,
+  b: SpecialistPlanRoom,
+  relation: "direct" | "near" | "away",
+) {
+  if (relation === "direct") return a.floor === b.floor && specialistTouches(a, b, 0.55);
+  if (relation === "near") return a.floor === b.floor && specialistRoomGap(a, b) <= 2.5;
+  return a.floor !== b.floor || specialistRoomGap(a, b) >= 3.0;
 }
 
 function specialistConnected(rooms: SpecialistPlanRoom[]) {
@@ -275,6 +321,46 @@ function evaluateSpecialistPlan(
     }
   }
 
+  const adjacencyRules = input.brief.adjacencyRules ?? [];
+  for (const rule of adjacencyRules) {
+    const sources = rooms.filter((room) => room.programRequestId === rule.fromRequestId);
+    const targets = rooms.filter((room) => room.programRequestId === rule.toRequestId);
+    if (!sources.length || !targets.length) {
+      const message = `Relação entre ambientes não pôde ser verificada porque um dos grupos não existe na planta.`;
+      issues.push(rule.required ? `Adjacência obrigatória: ${message}` : `Preferência de adjacência: ${message}`);
+      score -= rule.required ? 22 : 6;
+      continue;
+    }
+
+    let satisfied = false;
+    if (rule.relation === "away") {
+      satisfied = sources.every((source) =>
+        targets.every((target) => specialistAdjacencySatisfied(source, target, "away"))
+      );
+    } else {
+      satisfied = sources.every((source) =>
+        targets.some((target) => specialistAdjacencySatisfied(source, target, rule.relation))
+      );
+    }
+
+    const fromLabel = input.brief.roomProgram?.find((item) => item.id === rule.fromRequestId)?.label ?? sources[0]?.label ?? "Ambiente";
+    const toLabel = input.brief.roomProgram?.find((item) => item.id === rule.toRequestId)?.label ?? targets[0]?.label ?? "Ambiente";
+    const relationLabel = rule.relation === "direct"
+      ? "conectado diretamente a"
+      : rule.relation === "near"
+        ? "próximo de"
+        : "afastado de";
+
+    if (!satisfied) {
+      issues.push(
+        `${rule.required ? "Adjacência obrigatória" : "Preferência de adjacência"}: ${fromLabel} deve ficar ${relationLabel} ${toLabel}.`,
+      );
+      score -= rule.required ? 22 : 7;
+    } else {
+      strengths.push(`${fromLabel} está ${relationLabel} ${toLabel}, conforme o briefing.`);
+    }
+  }
+
   const kitchen = rooms.find((room) => room.kind === "cozinha");
   const living = rooms.find((room) => room.kind === "sala");
   const gourmet = rooms.find((room) => room.kind === "gourmet");
@@ -310,6 +396,79 @@ function evaluateSpecialistPlan(
   const builtArea = rooms
     .filter((room) => room.kind !== "piscina")
     .reduce((sum, room) => sum + room.width * room.depth, 0);
+
+  const ergonomicMinWidth: Record<string, number> = {
+    sala: 3.0,
+    cozinha: 2.4,
+    suite: 3.0,
+    quarto: 2.7,
+    banheiro: 1.2,
+    lavanderia: 1.5,
+    garagem: 2.7,
+    gourmet: 3.0,
+    piscina: 2.0,
+    outro: 2.2,
+    circulacao: 0.9,
+    escada: 1.0,
+  };
+
+  for (const room of rooms) {
+    const targetArea = Number(room.targetArea);
+    if (!Number.isFinite(targetArea) || targetArea <= 0 || room.kind === "circulacao" || room.kind === "escada") continue;
+    const actualArea = room.width * room.depth;
+    const ratio = actualArea / targetArea;
+    const minDimension = Math.min(room.width, room.depth);
+    const ergonomicMin = ergonomicMinWidth[room.kind] ?? 1.8;
+    if (minDimension < ergonomicMin) {
+      issues.push(`${room.label} tem dimensão útil muito estreita (${minDimension.toFixed(2)} m; referência mínima ${ergonomicMin.toFixed(2)} m).`);
+      score -= room.required !== false ? 14 : 7;
+    }
+    const aspectRatio = Math.max(room.width, room.depth) / Math.max(0.1, minDimension);
+    if (!["circulacao", "garagem", "piscina"].includes(room.kind) && aspectRatio > 3.2) {
+      issues.push(`${room.label} ficou excessivamente alongado para uso confortável.`);
+      score -= 7;
+    }
+    const targetWidth = Number(room.targetWidth);
+    const targetDepth = Number(room.targetDepth);
+    if (Number.isFinite(targetWidth) && Number.isFinite(targetDepth)) {
+      const direct = Math.abs(room.width - targetWidth) / targetWidth + Math.abs(room.depth - targetDepth) / targetDepth;
+      const rotated = Math.abs(room.width - targetDepth) / targetDepth + Math.abs(room.depth - targetWidth) / targetWidth;
+      const dimensionDeviation = Math.min(direct, rotated);
+      if (dimensionDeviation > 0.42) {
+        issues.push(`${room.label} ficou distante das dimensões preferidas de ${targetWidth.toFixed(2)} × ${targetDepth.toFixed(2)} m.`);
+        score -= room.required !== false ? 10 : 5;
+      } else if (dimensionDeviation <= 0.2) {
+        strengths.push(`${room.label} respeita as dimensões preferidas.`);
+      }
+    }
+    if (room.required !== false && ratio < 0.72) {
+      issues.push(`${room.label} ficou com ${actualArea.toFixed(1)} m², muito abaixo da meta de ${targetArea.toFixed(1)} m².`);
+      score -= 18;
+    } else if (ratio < 0.82) {
+      issues.push(`${room.label} ficou abaixo da metragem pedida (${actualArea.toFixed(1)} m² vs ${targetArea.toFixed(1)} m²).`);
+      score -= 8;
+    } else if (ratio > 1.35) {
+      issues.push(`${room.label} ficou muito acima da metragem pedida (${actualArea.toFixed(1)} m² vs ${targetArea.toFixed(1)} m²).`);
+      score -= 6;
+    } else if (ratio >= 0.9 && ratio <= 1.2) {
+      strengths.push(`${room.label} respeita a metragem-alvo.`);
+    }
+  }
+
+  const desiredAreaTotal = Number(input.brief.desiredAreaTotal);
+  if (Number.isFinite(desiredAreaTotal) && desiredAreaTotal > 0) {
+    const totalRatio = builtArea / desiredAreaTotal;
+    if (totalRatio < 0.72 || totalRatio > 1.28) {
+      issues.push(`Área resultante de ${builtArea.toFixed(0)} m² está distante da meta total de ${desiredAreaTotal.toFixed(0)} m².`);
+      score -= 16;
+    } else if (totalRatio < 0.82 || totalRatio > 1.18) {
+      issues.push(`Área resultante de ${builtArea.toFixed(0)} m² ficou fora da faixa desejável da meta de ${desiredAreaTotal.toFixed(0)} m².`);
+      score -= 8;
+    } else {
+      strengths.push(`Área global próxima da meta de ${desiredAreaTotal.toFixed(0)} m².`);
+    }
+  }
+
   if (builtArea > 0 && circulationArea / builtArea > 0.16) {
     issues.push("Área de circulação está acima de 16% da área construída.");
     score -= 10;
@@ -333,7 +492,9 @@ function evaluateSpecialistPlan(
     status: score >= 72 && !issues.some((issue) =>
       issue.startsWith("Sobreposição:") ||
       issue.includes("fragmentado") ||
-      issue.includes("não possui banheiro de suíte")
+      issue.includes("não possui banheiro de suíte") ||
+      issue.includes("muito abaixo da meta") ||
+      issue.startsWith("Adjacência obrigatória:")
     ) ? "approved" : "rejected",
     issues: [...new Set(issues)].slice(0, 12),
     strengths: [...new Set(strengths)].slice(0, 8),
@@ -358,10 +519,15 @@ function sanitizeSpecialistPlan(
     const sourceY = typeof room.y === "number" && Number.isFinite(room.y) ? room.y : 0;
     const rawX = room.locked ? sourceX : Number(patch?.x ?? sourceX);
     const rawY = room.locked ? sourceY : Number(patch?.y ?? sourceY);
+    const requestedFloor = Number(patch?.floor);
+    const floor = room.floorFlexible && Number.isFinite(requestedFloor)
+      ? Math.max(0, Math.min(input.brief.floors - 1, Math.round(requestedFloor)))
+      : room.floor;
     const x = Math.max(0, Math.min(input.lotWidth - width, Number.isFinite(rawX) ? rawX : sourceX));
     const y = Math.max(0, Math.min(input.lotDepth - depth, Number.isFinite(rawY) ? rawY : sourceY));
     return {
       ...room,
+      floor,
       width: Math.round(width * 100) / 100,
       depth: Math.round(depth * 100) / 100,
       x: Math.round(x * 100) / 100,
@@ -378,6 +544,47 @@ function sanitizeSpecialistPlan(
       .reduce((sum, room) => sum + room.width * room.depth, 0),
   );
 
+  const programItems = rooms
+    .filter((room) => Number.isFinite(Number(room.targetArea)) && room.kind !== "circulacao" && room.kind !== "escada")
+    .map((room) => {
+      const targetArea = Number(room.targetArea);
+      const actualArea = Math.round(room.width * room.depth * 10) / 10;
+      const deviationPct = targetArea > 0 ? Math.round(((actualArea - targetArea) / targetArea) * 100) : 0;
+      return {
+        id: room.id,
+        label: room.label,
+        required: room.required !== false,
+        targetArea,
+        targetWidth: Number.isFinite(Number(room.targetWidth)) ? Number(room.targetWidth) : null,
+        targetDepth: Number.isFinite(Number(room.targetDepth)) ? Number(room.targetDepth) : null,
+        actualWidth: room.width,
+        actualDepth: room.depth,
+        actualArea,
+        deviationPct,
+        status: Math.abs(deviationPct) <= 15 ? "ok" : Math.abs(deviationPct) <= 25 ? "warning" : "outside_target",
+      };
+    });
+
+  const adjacencyItems = (input.brief.adjacencyRules ?? []).map((rule) => {
+    const sources = rooms.filter((room) => room.programRequestId === rule.fromRequestId);
+    const targets = rooms.filter((room) => room.programRequestId === rule.toRequestId);
+    const satisfied = rule.relation === "away"
+      ? sources.length > 0 && targets.length > 0 && sources.every((source) =>
+          targets.every((target) => specialistAdjacencySatisfied(source, target, "away"))
+        )
+      : sources.length > 0 && targets.length > 0 && sources.every((source) =>
+          targets.some((target) => specialistAdjacencySatisfied(source, target, rule.relation))
+        );
+    return {
+      id: rule.id,
+      fromLabel: input.brief.roomProgram?.find((item) => item.id === rule.fromRequestId)?.label ?? "Ambiente",
+      toLabel: input.brief.roomProgram?.find((item) => item.id === rule.toRequestId)?.label ?? "Ambiente",
+      relation: rule.relation,
+      required: rule.required,
+      satisfied,
+    };
+  });
+
   return {
     rejected: false as const,
     rooms,
@@ -386,6 +593,15 @@ function sanitizeSpecialistPlan(
     designRationale: String(plan?.designRationale ?? ""),
     architectureScore: quality.score,
     quality,
+    programCompliance: {
+      desiredAreaTotal: input.brief.desiredAreaTotal ?? null,
+      actualAreaTotal: suggestedArea,
+      rooms: programItems,
+      outsideTargetCount: programItems.filter((item) => item.status === "outside_target").length,
+      adjacency: adjacencyItems,
+      adjacencySatisfiedCount: adjacencyItems.filter((item) => item.satisfied).length,
+      adjacencyTotalCount: adjacencyItems.length,
+    },
   };
 }
 
@@ -767,6 +983,81 @@ router.post("/arch/concept-plan-specialist", authenticate, async (req, res) => {
   }
 
   const input = parsed.data;
+  const programErrors: string[] = [];
+  const programWarnings: string[] = [];
+  const roomProgram = input.brief.roomProgram ?? [];
+
+  if (roomProgram.length) {
+    const netRequestedArea = roomProgram
+      .filter((item) => item.kind !== "piscina")
+      .reduce((sum, item) => sum + item.quantity * item.targetArea, 0);
+    const desiredArea = Number(input.brief.desiredAreaTotal);
+
+    if (Number.isFinite(desiredArea) && netRequestedArea > desiredArea * 1.02) {
+      programErrors.push(
+        `Os ambientes solicitados somam ${Math.round(netRequestedArea)} m² úteis, acima da área total desejada de ${Math.round(desiredArea)} m².`,
+      );
+    } else if (Number.isFinite(desiredArea) && netRequestedArea * 1.14 > desiredArea * 1.12) {
+      programWarnings.push(
+        `O programa pode ultrapassar a meta de ${Math.round(desiredArea)} m² depois de paredes e circulação.`,
+      );
+    }
+
+    const requestedSuites = roomProgram
+      .filter((item) => item.kind === "suite" && item.required !== false)
+      .reduce((sum, item) => sum + item.quantity, 0);
+    const requestedSuiteBaths = roomProgram
+      .filter((item) => item.kind === "banheiro" && /su[ií]te|master/i.test(item.label))
+      .reduce((sum, item) => sum + item.quantity, 0);
+    if (requestedSuites > requestedSuiteBaths) {
+      programErrors.push(
+        `O programa possui ${requestedSuites} suíte(s), mas apenas ${requestedSuiteBaths} banheiro(s) de suíte.`,
+      );
+    }
+
+    for (const request of roomProgram) {
+      const expanded = input.rooms.filter((room) => room.programRequestId === request.id);
+      if (expanded.length !== request.quantity) {
+        programErrors.push(
+          `${request.label}: foram preparados ${expanded.length} ambiente(s), mas o briefing pede ${request.quantity}.`,
+        );
+      }
+    }
+
+    const requestIds = new Set(roomProgram.map((item) => item.id));
+    const relationByPair = new Map<string, Set<string>>();
+    for (const rule of input.brief.adjacencyRules ?? []) {
+      if (!requestIds.has(rule.fromRequestId) || !requestIds.has(rule.toRequestId)) {
+        programErrors.push("Existe uma relação entre ambientes que referencia um ambiente inexistente.");
+        continue;
+      }
+      if (rule.fromRequestId === rule.toRequestId) {
+        programErrors.push("Uma relação entre ambientes não pode usar o mesmo ambiente nos dois lados.");
+        continue;
+      }
+      const pair = [rule.fromRequestId, rule.toRequestId].sort().join("::");
+      const relations = relationByPair.get(pair) ?? new Set<string>();
+      relations.add(rule.relation);
+      relationByPair.set(pair, relations);
+    }
+    for (const relations of relationByPair.values()) {
+      if (relations.has("away") && (relations.has("near") || relations.has("direct"))) {
+        programErrors.push("O mesmo par de ambientes não pode estar configurado como próximo/conectado e afastado ao mesmo tempo.");
+      }
+    }
+  }
+
+  if (programErrors.length) {
+    return res.status(422).json({
+      error: "O programa de necessidades precisa ser ajustado antes de desenvolver a planta.",
+      programValidation: {
+        status: "blocked",
+        errors: [...new Set(programErrors)],
+        warnings: [...new Set(programWarnings)],
+      },
+    });
+  }
+
   const program = input.rooms.map((room) => ({
     id: room.id,
     kind: room.kind,
@@ -777,119 +1068,164 @@ router.post("/arch/concept-plan-specialist", authenticate, async (req, res) => {
     x: typeof room.x === "number" && Number.isFinite(room.x) ? room.x : 0,
     y: typeof room.y === "number" && Number.isFinite(room.y) ? room.y : 0,
     locked: Boolean(room.locked),
+    targetArea: room.targetArea,
+    targetWidth: room.targetWidth,
+    targetDepth: room.targetDepth,
+    programNotes: room.programNotes,
+    required: room.required !== false,
+    programRequestId: room.programRequestId,
+    floorFlexible: Boolean(room.floorFlexible),
   }));
 
-  const prompt = `Você é um ARQUITETO ESPECIALISTA EM PROJETO RESIDENCIAL UNIFAMILIAR NO BRASIL.
-Sua função é criar plantas de casas plausíveis, funcionais e não genéricas a partir do lote e do programa fornecidos.
+  const interventionGuidance: Record<typeof input.intervention, string> = {
+    preservar: "Preserve ao máximo a organização atual. Corrija apenas incoerências funcionais, circulação, adjacências e dimensões problemáticas.",
+    otimizar: "Mantenha o partido reconhecível, mas melhore circulação, ergonomia, adjacências, iluminação natural e eficiência construtiva.",
+    valorizar: "Evolua a arquitetura de forma perceptível: fortaleça o partido, eixos visuais, integração interior-exterior, setorização, luz natural e identidade, sem abandonar o briefing.",
+    assinatura: "Busque uma solução autoral e marcante, com partido arquitetônico claro e experiência espacial memorável, mantendo programa, lote, funcionalidade e construtibilidade como restrições absolutas.",
+  };
 
-Pense como arquiteto, não como gerador de retângulos. Considere:
-- setorização social, íntima e serviço;
-- circulação curta e legível, sem corredores desperdiçados;
-- relação entrada social / garagem / cozinha / serviço;
-- cozinha próxima de lavanderia e, quando solicitado, gourmet;
-- quartos e suítes protegidos de ruído e passagem;
-- banheiros e áreas molhadas racionalizados em prumadas/núcleos;
-- CADA suíte deve ter seu banheiro próprio encostado diretamente nela; banheiro de suíte separado invalida a solução;
-- organize o projeto como um GRAFO DE ADJACÊNCIAS: nenhum ambiente pode ser uma ilha sem conexão com o restante da casa;
-- escada em posição estrutural e funcional, alinhada entre pavimentos;
-- garagem com acesso realista ao interior da casa;
-- área gourmet e piscina conectadas ao lazer, quando existirem;
-- proporções de ambientes residenciais brasileiras, mobiliário e ergonomia implícitos;
-- orientação norte como referência de projeto quando não houver outra orientação: evite tratar fachadas e dormitórios como peças arbitrárias;
-- implantação coerente no lote, evitando recortes e volumes sem lógica;
-- nenhuma sobreposição entre ambientes;
-- todos os ambientes dentro do lote.
+  const strategyRepertoire = buildArchitecturalStrategyRepertoire({
+    intervention: input.intervention,
+    vision: input.vision ?? null,
+  });
+
+  const basePrompt = `Você é o ARQDOR ARCHITECT AI, arquiteto residencial sênior especializado em casas brasileiras.
+
+OBJETIVO:
+Desenvolver UM ÚNICO PROJETO PRINCIPAL e refiná-lo. Não gere três alternativas. Não trate o problema como distribuição de retângulos.
+
+MODO DE INTERVENÇÃO: ${input.intervention}
+${interventionGuidance[input.intervention]}
+
+Antes de propor coordenadas, pense internamente nesta ordem:
+1. intenção do cliente e rotina;
+2. partido arquitetônico;
+3. implantação no lote e orientação solar;
+4. setorização social / íntima / serviço;
+5. grafo de adjacências obrigatórias e proibidas;
+6. circulação e acessos;
+7. mobiliário e ergonomia implícitos;
+8. relação interior / jardim / gourmet / piscina;
+9. coerência volumétrica e futura fachada;
+10. crítica arquitetônica do próprio projeto;
+11. refinamento antes da resposta.
 
 LOTE: ${input.lotWidth} m x ${input.lotDepth} m.
 BRIEFING OBJETIVO: ${JSON.stringify(input.brief)}
-VISÃO DO CLIENTE / COMO ELE QUER VIVER A CASA: ${JSON.stringify(input.vision ?? {})}
+ÁREA CONSTRUÍDA DESEJADA: ${input.brief.desiredAreaTotal ?? "não informada"} m².
+PROGRAMA DE NECESSIDADES DECLARADO PELO CLIENTE: ${JSON.stringify(input.brief.roomProgram ?? [])}
+GRAFO DE RELAÇÕES ENTRE AMBIENTES: ${JSON.stringify(input.brief.adjacencyRules ?? [])}
+VISÃO / DNA DO CLIENTE: ${JSON.stringify(input.vision ?? {})}
 
-A VISÃO DO CLIENTE É PARTE DO PROJETO, NÃO UMA OBSERVAÇÃO DECORATIVA.
-Traduza desejos subjetivos em decisões espaciais concretas. Exemplos:
-- "receber amigos" deve influenciar relações sala/cozinha/gourmet/lavabo/lazer;
-- "privacidade" deve influenciar acessos, visadas e separação do setor íntimo;
-- "luz natural" deve influenciar perímetro, aberturas possíveis e profundidade dos ambientes;
-- "contato com natureza" deve aproximar ambientes protagonistas de jardim, pátio ou lazer;
-- "flexibilidade" deve favorecer ambientes reversíveis e circulação neutra;
-- "otimizar custo" deve reduzir recortes, perímetro, corredores e dispersão de áreas molhadas;
-- tudo que estiver em mustHave é requisito prioritário;
-- tudo que estiver em avoid deve ser evitado explicitamente.
-
-PROGRAMA FIXO DE AMBIENTES (use exatamente estes IDs e pavimentos; não invente nem remova ambientes):
+PROGRAMA FIXO DE AMBIENTES:
 ${JSON.stringify(program)}
 
-Crie 3 soluções REALMENTE DIFERENTES:
-A) compacta e eficiente;
-B) equilibrada, com circulação e setorização mais clássicas;
-C) integrada/contemporânea, valorizando área social e lazer.
+REGRAS FUNCIONAIS INEGOCIÁVEIS:
+- use TODOS os IDs fornecidos exatamente uma vez;
+- mantenha o pavimento original quando floorFlexible=false;
+- quando floorFlexible=true, você pode escolher o pavimento 0..${input.brief.floors - 1} para melhorar setorização, circulação e privacidade;
+- nenhum ambiente pode ficar solto ou sem conexão física coerente;
+- cumpra o GRAFO DE RELAÇÕES: direct = contato de parede suficiente para ligação/porta; near = mesmo pavimento e distância curta; away = separação física/privacidade ou outro pavimento;
+- regras de relação com required=true são INEGOCIÁVEIS; regras required=false são preferências que devem ser maximizadas sem quebrar requisitos obrigatórios;
+- não sobreponha ambientes e não ultrapasse o lote;
+- suíte deve ter banheiro próprio adjacente e diretamente conectável;
+- numeração de suítes e banheiros correspondentes deve ser respeitada;
+- cozinha integrada deve tocar sala; cozinha deve manter relação eficiente com serviço e gourmet quando existentes;
+- garagem deve acessar setor social/serviço, nunca diretamente quarto/suíte;
+- área íntima deve evitar contato direto com garagem/gourmet quando privacidade for prioridade;
+- escadas devem ser funcionais e alinhadas entre pavimentos;
+- reduza corredores residuais, recortes gratuitos e perímetro construtivo sem propósito;
+- considere dimensões reais de mobiliário, portas e circulação;
+- quando targetWidth/targetDepth existirem, trate-os como preferência geométrica forte; ajuste somente se necessário para funcionalidade;
+- use programNotes para entender o uso real do ambiente (ex.: cama king, ilha, mesa, vista, armazenamento), sem inventar funções não pedidas;
+- trate targetArea de cada ambiente como META DE ÁREA: pode variar moderadamente para viabilizar a planta, mas não ignore nem reduza drasticamente sem motivo;
+- respeite a área construída total desejada como alvo global; se a soma do programa tornar esse alvo impossível, priorize ambientes marcados required e registre a compensação no designRationale/notes;
+- não invente closet, lavabo, despensa, varanda ou outro cômodo que não esteja no programa, salvo circulação técnica indispensável;
+- áreas molhadas devem ser racionalizadas quando possível;
+- preserve ambientes locked;
+- a planta deve poder originar uma fachada coerente: aberturas, volumes e cobertura não podem depender de invenções posteriores.
 
-Cada solução deve ser arquitetonicamente defensável. Não apenas espelhe a mesma planta.
-Responda APENAS JSON válido:
+REPERTÓRIO DE ESTRATÉGIAS ARQUITETÔNICAS:
+${strategyRepertoire}
+
+Use o repertório para pensar, não para copiar. Escolha poucas estratégias compatíveis e explique implicitamente sua aplicação no designRationale/architectureDNA.
+
+CRITÉRIOS DE QUALIDADE:
+- funcionalidade;
+- circulação;
+- privacidade;
+- iluminação natural;
+- integração interior-exterior;
+- eficiência construtiva;
+- força do partido arquitetônico;
+- identidade não genérica;
+- coerência futura entre planta, fachada e cobertura.
+
+Responda SOMENTE JSON válido:
 {
-  "alternatives": [
-    {
-      "id": "compact|balanced|integrated",
-      "title": "nome curto",
-      "description": "diferença espacial principal",
-      "designRationale": "explicação arquitetônica objetiva",
-      "clientFitSummary": "como esta solução traduz a rotina, desejos e prioridades específicas do cliente",
-      "roomPatches": [
-        { "id": "ID_EXISTENTE", "x": 0, "y": 0, "width": 3.2, "depth": 3.0 }
-      ],
-      "notes": ["decisão 1", "decisão 2"]
-    }
-  ]
+  "solution": {
+    "id": "primary",
+    "title": "Projeto principal",
+    "description": "síntese curta da solução",
+    "designRationale": "partido arquitetônico e decisões principais",
+    "clientFitSummary": "como o projeto traduz a rotina e prioridades do cliente",
+    "architectureDNA": {
+      "concept": "conceito central",
+      "spatialStrategy": "estratégia espacial",
+      "volumeStrategy": "direção volumétrica",
+      "roofStrategy": "direção de cobertura",
+      "materialIntent": "intenção material sem inventar produto específico"
+    },
+    "experienceStrategy": ["decisão espacial 1", "decisão espacial 2"],
+    "daylightStrategy": ["decisão de iluminação natural 1"],
+    "facadeDirection": ["regra de composição da fachada 1"],
+    "selfCritique": ["problema identificado e corrigido 1"],
+    "roomPatches": [
+      { "id": "ID_EXISTENTE", "floor": 0, "x": 0, "y": 0, "width": 3.2, "depth": 3.0 }
+    ],
+    "notes": ["decisão técnica 1", "decisão técnica 2"]
+  }
 }
 
-REGRAS INEGOCIÁVEIS:
-- use TODOS os IDs fornecidos exatamente uma vez em cada alternativa;
-- mantenha o pavimento original;
-- não sobreponha retângulos;
-- não posicione ambiente fora do lote;
-- escadas de pavimentos diferentes devem ficar alinhadas;
-- não coloque cozinha atravessando garagem, lavanderia ou hall;
-- não use hall como espaço residual dentro de outro ambiente;
-- se houver sala/cozinha integradas, elas podem encostar e compartilhar borda, mas não ocupar a mesma área;
-- preserve dimensões próximas das fornecidas, alterando-as somente quando melhorar funcionalidade;
-- as três alternativas precisam ter lógica espacial distinta;
-- a casa de cada pavimento deve formar um conjunto físico contínuo, sem cômodos soltos;
-- evite vazios gigantes entre setores e corredores muito longos;
-- garagem precisa tocar um ambiente de acesso social/serviço, nunca abrir diretamente para quarto/suíte;
-- quando houver "Banho suíte", ele DEVE compartilhar parede com a suíte correspondente;
-- quando houver mais de uma suíte, respeite a numeração do quarto e do banho correspondente.`;
+NÃO explique fora do JSON.
+NÃO entregue alternativas.
+NÃO aceite a primeira solução mental: critique e refine antes de responder.`;
 
   try {
     const rejectedFeedback: string[] = [];
-    let approvedAlternatives: any[] = [];
+    let bestApproved: any = null;
 
-    for (let attempt = 1; attempt <= 3 && approvedAlternatives.length < 3; attempt += 1) {
+    for (let attempt = 1; attempt <= 4; attempt += 1) {
       const retryContext = rejectedFeedback.length
-        ? `\n\nVALIDAÇÃO DAS TENTATIVAS ANTERIORES — CORRIJA ESTES PROBLEMAS NESTA NOVA GERAÇÃO:\n- ${rejectedFeedback.slice(-16).join("\n- ")}`
+        ? `\n\nCRÍTICA / VALIDAÇÃO DA ITERAÇÃO ANTERIOR — REFAÇA O MESMO PROJETO CORRIGINDO ESTES PONTOS, SEM TROCAR ALEATORIAMENTE O PARTIDO:\n- ${rejectedFeedback.slice(-16).join("\n- ")}`
         : "";
 
       const message = await anthropic.messages.create({
         model: "claude-sonnet-4-6",
-        max_tokens: 9000,
+        max_tokens: 7000,
         system: [
-          "Você é o Arqdor Architect AI, arquiteto residencial sênior especialista em plantas de casas brasileiras.",
-          "Seu trabalho é concepção arquitetônica funcional, não distribuição visual de caixas.",
-          "Antes de responder, faça internamente: programa → setorização → grafo de adjacências → implantação → circulação → checagem.",
-          "Responda somente com JSON válido, compacto, sem comentários nem texto fora do JSON.",
+          "Você é o Arqdor Architect AI, arquiteto residencial sênior.",
+          "Seu trabalho é desenvolver e refinar um único projeto principal.",
+          "Faça internamente: intenção → partido → implantação → adjacências → circulação → luz → volumetria → crítica → refinamento.",
+          "Priorize arquitetura funcional e interessante, nunca estética desconectada da planta.",
+          "Responda somente JSON válido e compacto.",
         ].join(" "),
-        messages: [{ role: "user", content: prompt + retryContext }],
+        messages: [{ role: "user", content: basePrompt + retryContext }],
       });
 
       const raw = message.content
         .filter((item: any) => item.type === "text")
         .map((item: any) => item.text)
         .join("");
+
       if ((message as any).stop_reason === "max_tokens") {
-        rejectedFeedback.push("Resposta foi truncada por excesso de tokens; seja mais compacto.");
+        rejectedFeedback.push("A resposta foi truncada; mantenha o JSON mais compacto.");
         continue;
       }
+
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
-        rejectedFeedback.push("Resposta não continha JSON válido.");
+        rejectedFeedback.push("A resposta não continha JSON válido.");
         continue;
       }
 
@@ -897,59 +1233,77 @@ REGRAS INEGOCIÁVEIS:
       try {
         decoded = JSON.parse(jsonMatch[0]);
       } catch {
-        rejectedFeedback.push("JSON retornado estava incompleto ou inválido.");
+        rejectedFeedback.push("O JSON retornado estava inválido.");
         continue;
       }
 
-      const requested = Array.isArray(decoded?.alternatives) ? decoded.alternatives : [];
-      const allowedIds = new Set(["compact", "balanced", "integrated"]);
-      const acceptedThisAttempt: any[] = [];
-
-      for (const plan of requested.filter((item: any) => allowedIds.has(String(item?.id)))) {
-        const sanitized = sanitizeSpecialistPlan(plan, input);
-        if (!sanitized) {
-          rejectedFeedback.push(`${String(plan?.id ?? "alternativa")}: faltam ambientes, há IDs duplicados ou o programa não foi respeitado.`);
-          continue;
-        }
-        if (sanitized.rejected) {
-          rejectedFeedback.push(...sanitized.quality.issues.map((issue) => `${String(plan.id)}: ${issue}`));
-          continue;
-        }
-        acceptedThisAttempt.push({
-          id: String(plan.id),
-          title: String(plan.title ?? plan.id),
-          description: String(plan.description ?? ""),
-          clientFitSummary: String(plan.clientFitSummary ?? "").slice(0, 700),
-          ...sanitized,
-        });
+      const plan = decoded?.solution;
+      if (!plan || String(plan.id ?? "primary") !== "primary") {
+        rejectedFeedback.push("A resposta não trouxe o projeto principal no formato esperado.");
+        continue;
       }
 
-      const byId = new Map(approvedAlternatives.map((item) => [item.id, item]));
-      for (const item of acceptedThisAttempt) {
-        const current = byId.get(item.id);
-        if (!current || Number(item.architectureScore ?? 0) > Number(current.architectureScore ?? 0)) {
-          byId.set(item.id, item);
-        }
+      const sanitized = sanitizeSpecialistPlan({ ...plan, id: "primary" }, input);
+      if (!sanitized) {
+        rejectedFeedback.push("Programa incompleto: faltam ambientes, há IDs duplicados ou o programa não foi respeitado.");
+        continue;
       }
-      approvedAlternatives = [...byId.values()];
+      if (sanitized.rejected) {
+        rejectedFeedback.push(...sanitized.quality.issues);
+        continue;
+      }
+
+      const candidate = {
+        id: "primary",
+        title: String(plan.title ?? "Projeto principal"),
+        description: String(plan.description ?? "Projeto principal refinado pela IA arquiteta."),
+        clientFitSummary: String(plan.clientFitSummary ?? "").slice(0, 900),
+        architectureDNA: plan.architectureDNA && typeof plan.architectureDNA === "object" ? plan.architectureDNA : {},
+        experienceStrategy: Array.isArray(plan.experienceStrategy) ? plan.experienceStrategy.map(String).slice(0, 8) : [],
+        daylightStrategy: Array.isArray(plan.daylightStrategy) ? plan.daylightStrategy.map(String).slice(0, 8) : [],
+        facadeDirection: Array.isArray(plan.facadeDirection) ? plan.facadeDirection.map(String).slice(0, 8) : [],
+        selfCritique: Array.isArray(plan.selfCritique) ? plan.selfCritique.map(String).slice(0, 8) : [],
+        intervention: input.intervention,
+        refinementPass: attempt,
+        ...sanitized,
+      };
+
+      if (!bestApproved || Number(candidate.architectureScore ?? 0) > Number(bestApproved.architectureScore ?? 0)) {
+        bestApproved = candidate;
+      }
+
+      if (Number(candidate.architectureScore ?? 0) >= 82) break;
+
+      rejectedFeedback.push(
+        `Pontuação arquitetônica ${candidate.architectureScore}/100: refine circulação, adjacências, compactação e coerência do partido sem recomeçar do zero.`,
+        ...(candidate.quality?.issues ?? []),
+        ...(candidate.selfCritique ?? []).map((item: string) => `Autocrítica: ${item}`),
+      );
     }
 
-    const order = ["compact", "balanced", "integrated"];
-    approvedAlternatives.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
-
-    if (approvedAlternatives.length < 3) {
+    if (!bestApproved) {
       return res.status(422).json({
-        error: "A IA arquiteta não conseguiu aprovar três plantas funcionais após validação automática. Gere novamente.",
+        error: "A IA arquiteta não conseguiu aprovar o projeto principal após os ciclos automáticos de crítica e refinamento.",
         validationIssues: [...new Set(rejectedFeedback)].slice(-12),
       });
     }
 
     return res.json({
-      alternatives: approvedAlternatives,
+      solution: bestApproved,
+      alternatives: [bestApproved],
       architectAgent: {
         model: "claude-sonnet-4-6",
-        validation: "functional-adjacency-v1",
-        minimumScore: 72,
+        reasoning: "intent-party-adjacency-daylight-volume-critique-refine-v2",
+        validation: "functional-adjacency-v2",
+        targetScore: 82,
+        intervention: input.intervention,
+        refinementPasses: bestApproved.refinementPass,
+      },
+      programCompliance: bestApproved.programCompliance ?? null,
+      programValidation: {
+        status: programWarnings.length ? "warning" : "ok",
+        errors: [],
+        warnings: [...new Set(programWarnings)],
       },
     });
   } catch (error) {
@@ -988,6 +1342,12 @@ router.post("/arch/concept-projects/:id/facade-study", authenticate, async (req,
   const currentDesign = parsed.data.facadeDesign ?? {};
   const action = parsed.data.action;
   const intervention = parsed.data.intervention;
+  const projectBrief = (config.projectBrief ?? null) as Record<string, any> | null;
+  const facadeIntervention = intervention === "marcante" ? "assinatura" : intervention === "moderada" ? "valorizar" : "preservar";
+  const facadeRepertoire = buildArchitecturalStrategyRepertoire({
+    intervention: facadeIntervention,
+    vision: projectBrief?.vision ?? null,
+  });
 
   const prompt = `Você é o Arqdor Facade Architect AI, arquiteto especialista em composição de fachadas residenciais brasileiras.
 
@@ -1026,7 +1386,17 @@ REGRAS INEGOCIÁVEIS:
 - "marcante" = composição mais autoral, porém sem transformar o projeto em outra casa;
 - cobertura deve continuar tecnicamente compatível com a volumetria;
 - evite excesso de elementos decorativos e fachadas genéricas;
-- priorize hierarquia de entrada, proporção, ritmo, cheios/vazios, materialidade, proteção solar e coerência com a planta.
+- priorize hierarquia de entrada, proporção, ritmo, cheios/vazios, materialidade, proteção solar e coerência com a planta;
+- não empilhe elementos "contemporâneos" sem função. Portal, ripado, pergolado, moldura e volume deslocado só entram quando reforçam uma decisão espacial, climática ou de hierarquia.
+
+REPERTÓRIO PARA A FACHADA — estratégias, não templates:
+${facadeRepertoire}
+
+DIREÇÃO JÁ DEFINIDA NO DNA DO PROJETO:
+${JSON.stringify(projectBrief?.architectureDNA ?? null)}
+${JSON.stringify(projectBrief?.facadeDirection ?? null)}
+
+A fachada deve dar continuidade ao DNA acima sempre que ele existir.
 
 Se ACTION=diagnose, foque no diagnóstico e deixe as sugestões estruturadas.
 Se ACTION=develop, entregue também uma proposta aplicável ao editor.
@@ -1191,6 +1561,11 @@ router.post("/arch/concept-projects/:id/develop-with-ai", authenticate, async (r
   const config = (concept.configuration ?? {}) as Record<string, unknown>;
   const facade = (concept.facadePreferences ?? {}) as Record<string, unknown>;
   const requestedStyle = parsed.data.style ?? String(facade.style ?? "contemporaneo");
+  const projectBrief = (config.projectBrief ?? null) as Record<string, any> | null;
+  const developmentRepertoire = buildArchitecturalStrategyRepertoire({
+    intervention: parsed.data.mode === "preservacao_maxima" ? "preservar" : parsed.data.mode === "automatico" ? "valorizar" : "otimizar",
+    vision: projectBrief?.vision ?? null,
+  });
 
   const prompt = `Você é o Copiloto de Desenvolvimento Arquitetônico do Arqdor.
 Analise este pré-projeto residencial brasileiro e proponha SOMENTE ajustes compatíveis com a geometria existente.
@@ -1243,7 +1618,18 @@ REGRAS DE GEOMETRIA:
 - Manter tudo dentro do lote.
 - wallSuggestions devem ser ortogonais e só devem existir quando realmente melhorarem o fechamento/circulação.
 - openingSuggestions só devem apontar para uma parede existente ou sugerida.
-- Preserve garagem, escada e circulação salvo erro claro de projeto.`;
+- Preserve garagem, escada e circulação salvo erro claro de projeto.
+
+REPERTÓRIO DE APOIO:
+${developmentRepertoire}
+
+DNA ARQUITETÔNICO JÁ DEFINIDO:
+${JSON.stringify(projectBrief?.architectureDNA ?? null)}
+${JSON.stringify(projectBrief?.experienceStrategy ?? null)}
+${JSON.stringify(projectBrief?.daylightStrategy ?? null)}
+${JSON.stringify(projectBrief?.facadeDirection ?? null)}
+
+Não substitua esse DNA por uma solução aleatória. Evolua o mesmo projeto e sinalize conflitos.`;
 
   try {
     const message = await anthropic.messages.create({

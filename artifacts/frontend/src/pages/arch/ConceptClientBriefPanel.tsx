@@ -5,18 +5,29 @@ import {
   CarFront,
   ChefHat,
   Check,
+  ChevronDown,
   Home,
   Laptop,
   Layers3,
+  Minus,
+  Plus,
+  Ruler,
   Sparkles,
+  Trash2,
   Waves,
   type LucideIcon,
 } from "lucide-react";
 import {
   buildClientBriefAlternatives,
   buildClientBriefPlan,
+  buildDefaultRoomProgram,
+  buildRecommendedAdjacencyRules,
   countBriefAlternativeErrors,
+  rebalanceClientRoomProgramToDesiredArea,
+  validateClientRoomProgram,
+  type ClientAdjacencyRule,
   type ClientBrief,
+  type ClientRoomRequest,
   type ClientBriefAlternative,
   type ClientVision,
   type ProjectBriefSnapshot,
@@ -35,7 +46,7 @@ type Props = {
   };
 };
 
-const DEFAULT_BRIEF: ClientBrief = {
+const DEFAULT_BRIEF_BASE: ClientBrief = {
   bedrooms: 3,
   suites: 1,
   floors: 1,
@@ -45,6 +56,12 @@ const DEFAULT_BRIEF: ClientBrief = {
   office: false,
   integratedKitchen: true,
   privateAwaySocial: true,
+  desiredAreaTotal: 180,
+};
+
+const DEFAULT_BRIEF: ClientBrief = {
+  ...DEFAULT_BRIEF_BASE,
+  roomProgram: buildDefaultRoomProgram(DEFAULT_BRIEF_BASE),
 };
 
 const DEFAULT_VISION: ClientVision = {
@@ -56,6 +73,40 @@ const DEFAULT_VISION: ClientVision = {
   mustHave: "",
   avoid: "",
 };
+const STANDARD_PROGRAM_KEYS = new Set([
+  "sala","cozinha","suite","quarto","suite-bath","social-bath","lavabo","lavanderia","garagem","gourmet","office","pool",
+]);
+
+function roomRequestKey(item: ClientRoomRequest) {
+  const label = item.label.toLowerCase();
+  if (item.kind === "banheiro" && /su[ií]te|master/.test(label)) return "suite-bath";
+  if (item.kind === "banheiro" && /lavabo/.test(label)) return "lavabo";
+  if (item.kind === "banheiro") return "social-bath";
+  if (item.kind === "outro" && /escrit|office/.test(label)) return "office";
+  if (item.kind === "piscina") return "pool";
+  return item.kind;
+}
+
+function reconcileRoomProgram(currentProgram: ClientRoomRequest[], nextBrief: ClientBrief) {
+  const defaults = buildDefaultRoomProgram(nextBrief);
+  const currentByKey = new Map(currentProgram.map((item) => [roomRequestKey(item), item]));
+  const merged = defaults.map((item) => {
+    const previous = currentByKey.get(roomRequestKey(item));
+    if (!previous) return item;
+    return {
+      ...item,
+      id: previous.id,
+      targetArea: previous.targetArea,
+      preferredWidth: previous.preferredWidth,
+      preferredDepth: previous.preferredDepth,
+      required: previous.required,
+      notes: previous.notes,
+      floorPreference: nextBrief.floors === 1 ? "terreo" as const : previous.floorPreference ?? item.floorPreference,
+    };
+  });
+  const custom = currentProgram.filter((item) => !STANDARD_PROGRAM_KEYS.has(roomRequestKey(item)));
+  return [...merged, ...custom];
+}
 
 function ChoiceButton({
   active,
@@ -213,13 +264,135 @@ export default function ConceptClientBriefPanel({
   onImproveCurrent,
   placement,
 }: Props) {
-  const [brief, setBrief] = useState<ClientBrief>(() => initialProjectBrief?.brief ?? DEFAULT_BRIEF);
+  const [brief, setBrief] = useState<ClientBrief>(() => {
+    const initial = initialProjectBrief?.brief ?? DEFAULT_BRIEF;
+    return {
+      ...initial,
+      desiredAreaTotal: initial.desiredAreaTotal ?? DEFAULT_BRIEF.desiredAreaTotal,
+      roomProgram: Array.isArray(initial.roomProgram) && initial.roomProgram.length
+        ? initial.roomProgram
+        : buildDefaultRoomProgram(initial),
+    };
+  });
   const [vision, setVision] = useState<ClientVision>(() => initialProjectBrief?.vision ?? DEFAULT_VISION);
   const [dreamStep, setDreamStep] = useState(0);
   const [showAlternatives, setShowAlternatives] = useState(false);
   const [alternatives, setAlternatives] = useState<ClientBriefAlternative[]>([]);
   const [generating, setGenerating] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
+  const [expandedRoomId, setExpandedRoomId] = useState<string | null>(null);
+  const [intervention, setIntervention] = useState<"preservar" | "otimizar" | "valorizar" | "assinatura">(
+    () => initialProjectBrief?.intervention ?? "valorizar",
+  );
+
+  const roomProgram = brief.roomProgram ?? [];
+  const adjacencyRules = brief.adjacencyRules ?? [];
+
+  const updateBriefStructure = (recipe: (current: ClientBrief) => ClientBrief) => {
+    setBrief((current) => {
+      const next = recipe(current);
+      const nextProgram = reconcileRoomProgram(current.roomProgram ?? [], next);
+      const validIds = new Set(nextProgram.map((item) => item.id));
+      return {
+        ...next,
+        roomProgram: nextProgram,
+        adjacencyRules: (current.adjacencyRules ?? []).filter(
+          (rule) => validIds.has(rule.fromRequestId) && validIds.has(rule.toRequestId),
+        ),
+      };
+    });
+  };
+
+  const updateRoomRequest = (id: string, patch: Partial<ClientRoomRequest>) => {
+    setBrief((current) => ({
+      ...current,
+      roomProgram: (current.roomProgram ?? []).map((item) => item.id === id ? { ...item, ...patch } : item),
+    }));
+  };
+
+  const removeRoomRequest = (id: string) => {
+    setBrief((current) => ({
+      ...current,
+      roomProgram: (current.roomProgram ?? []).filter((item) => item.id !== id),
+      adjacencyRules: (current.adjacencyRules ?? []).filter(
+        (rule) => rule.fromRequestId !== id && rule.toRequestId !== id,
+      ),
+    }));
+  };
+
+  const addRoomRequest = () => {
+    const id = typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `custom-room-${Date.now()}`;
+    setBrief((current) => ({
+      ...current,
+      roomProgram: [
+        ...(current.roomProgram ?? []),
+        {
+          id,
+          kind: "outro",
+          label: "Novo ambiente",
+          quantity: 1,
+          targetArea: 10,
+          floorPreference: current.floors === 2 ? "qualquer" : "terreo",
+          required: true,
+        },
+      ],
+    }));
+  };
+
+  const addAdjacencyRule = () => {
+    if (roomProgram.length < 2) return;
+    const id = typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `adjacency-${Date.now()}`;
+    const first = roomProgram[0];
+    const second = roomProgram.find((item) => item.id !== first.id);
+    if (!second) return;
+    setBrief((current) => ({
+      ...current,
+      adjacencyRules: [
+        ...(current.adjacencyRules ?? []),
+        {
+          id,
+          fromRequestId: first.id,
+          toRequestId: second.id,
+          relation: "near",
+          required: true,
+        },
+      ],
+    }));
+  };
+
+  const updateAdjacencyRule = (id: string, patch: Partial<ClientAdjacencyRule>) => {
+    setBrief((current) => ({
+      ...current,
+      adjacencyRules: (current.adjacencyRules ?? []).map((rule) =>
+        rule.id === id ? { ...rule, ...patch } : rule
+      ),
+    }));
+  };
+
+  const removeAdjacencyRule = (id: string) => {
+    setBrief((current) => ({
+      ...current,
+      adjacencyRules: (current.adjacencyRules ?? []).filter((rule) => rule.id !== id),
+    }));
+  };
+
+  const requestedProgramArea = useMemo(
+    () => roomProgram.reduce((sum, item) => sum + Math.max(0, item.quantity) * Math.max(0, item.targetArea), 0),
+    [roomProgram],
+  );
+
+  const programValidation = useMemo(
+    () => validateClientRoomProgram(brief, {
+      width: lotWidth,
+      depth: lotDepth,
+      setbacks: placement?.setbacks,
+    }),
+    [brief, lotWidth, lotDepth, placement?.setbacks],
+  );
 
   const summary = useMemo(() => {
     const items = [
@@ -230,6 +403,7 @@ export default function ConceptClientBriefPanel({
       brief.gourmet ? "gourmet" : null,
       brief.pool ? "piscina" : null,
       brief.office ? "escritório" : null,
+      brief.desiredAreaTotal ? `meta ${Math.round(brief.desiredAreaTotal)} m²` : null,
     ].filter(Boolean);
     return items.join(" · ");
   }, [brief]);
@@ -242,10 +416,16 @@ export default function ConceptClientBriefPanel({
       await onImproveCurrent({
         brief,
         vision,
+        intervention,
         selectedAlternativeId: initialProjectBrief.selectedAlternativeId,
         selectedAlternativeTitle: initialProjectBrief.selectedAlternativeTitle,
         clientFitSummary: initialProjectBrief.clientFitSummary,
         designRationale: initialProjectBrief.designRationale,
+        architectureDNA: initialProjectBrief.architectureDNA,
+        experienceStrategy: initialProjectBrief.experienceStrategy,
+        daylightStrategy: initialProjectBrief.daylightStrategy,
+        facadeDirection: initialProjectBrief.facadeDirection,
+        selfCritique: initialProjectBrief.selfCritique,
       });
     } catch (error) {
       setGenerationError(
@@ -259,6 +439,10 @@ export default function ConceptClientBriefPanel({
   };
 
   const generateSpecialistAlternatives = async () => {
+    if (programValidation.status === "blocked") {
+      setGenerationError(programValidation.errors[0] ?? "Revise o programa de necessidades antes de gerar.");
+      return;
+    }
     setGenerating(true);
     setGenerationError(null);
     try {
@@ -275,85 +459,71 @@ export default function ConceptClientBriefPanel({
           lotDepth,
           brief,
           vision,
+          intervention,
           rooms: base.rooms,
         }),
       });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok || !Array.isArray(payload?.alternatives)) {
-        throw new Error(payload?.error ?? "Não foi possível gerar as plantas com a IA especialista.");
+      const item = payload?.solution ?? (Array.isArray(payload?.alternatives) ? payload.alternatives[0] : null);
+      if (!response.ok || !item || !Array.isArray(item.rooms)) {
+        throw new Error(payload?.error ?? "Não foi possível desenvolver o projeto principal com a IA arquiteta.");
       }
 
-      const byId = new Map(
-        (payload.alternatives as any[]).map((item) => [String(item.id), item]),
-      );
-      const metadata = {
-        compact: {
-          title: "Opção A · Compacta",
-          description: "Circulação eficiente e implantação compacta.",
-          variant: 0 as const,
-        },
-        balanced: {
-          title: "Opção B · Equilibrada",
-          description: "Setorização equilibrada entre social, íntimo e serviço.",
-          variant: 1 as const,
-        },
-        integrated: {
-          title: "Opção C · Integrada",
-          description: "Área social e lazer mais conectados, com linguagem contemporânea.",
-          variant: 2 as const,
-        },
-      };
-
-      const specialist = (["compact", "balanced", "integrated"] as const).map((id) => {
-        const item = byId.get(id);
-        if (!item || !Array.isArray(item.rooms)) throw new Error("A IA especialista retornou uma alternativa incompleta.");
-        return {
-          ...base,
-          id,
-          title: item.title || metadata[id].title,
-          description: item.description || metadata[id].description,
-          variant: metadata[id].variant,
-          suggestedArea: Number(item.suggestedArea ?? base.suggestedArea),
-          rooms: item.rooms,
-          architectureScore: Number.isFinite(Number(item.architectureScore)) ? Number(item.architectureScore) : undefined,
-          designRationale: typeof item.designRationale === "string" ? item.designRationale : undefined,
-          qualityIssues: Array.isArray(item.quality?.issues) ? item.quality.issues.map(String) : undefined,
-          qualityStrengths: Array.isArray(item.quality?.strengths) ? item.quality.strengths.map(String) : undefined,
+      const primary = {
+        ...base,
+        id: "primary" as const,
+        title: item.title || "Projeto principal",
+        description: item.description || "Solução arquitetônica refinada a partir do seu briefing.",
+        variant: 0 as const,
+        suggestedArea: Number(item.suggestedArea ?? base.suggestedArea),
+        rooms: item.rooms,
+        architectureScore: Number.isFinite(Number(item.architectureScore)) ? Number(item.architectureScore) : undefined,
+        designRationale: typeof item.designRationale === "string" ? item.designRationale : undefined,
+        qualityIssues: Array.isArray(item.quality?.issues) ? item.quality.issues.map(String) : undefined,
+        qualityStrengths: Array.isArray(item.quality?.strengths) ? item.quality.strengths.map(String) : undefined,
+        clientFitSummary: typeof item.clientFitSummary === "string" ? item.clientFitSummary : undefined,
+        intervention,
+        architectureDNA: item.architectureDNA && typeof item.architectureDNA === "object" ? item.architectureDNA : undefined,
+        experienceStrategy: Array.isArray(item.experienceStrategy) ? item.experienceStrategy.map(String) : undefined,
+        daylightStrategy: Array.isArray(item.daylightStrategy) ? item.daylightStrategy.map(String) : undefined,
+        facadeDirection: Array.isArray(item.facadeDirection) ? item.facadeDirection.map(String) : undefined,
+        selfCritique: Array.isArray(item.selfCritique) ? item.selfCritique.map(String) : undefined,
+        programCompliance: item.programCompliance && typeof item.programCompliance === "object" ? item.programCompliance : undefined,
+        projectBrief: {
+          brief,
+          vision,
+          intervention,
+          selectedAlternativeId: "primary" as const,
+          selectedAlternativeTitle: item.title || "Projeto principal",
           clientFitSummary: typeof item.clientFitSummary === "string" ? item.clientFitSummary : undefined,
-          projectBrief: {
-            brief,
-            vision,
-            selectedAlternativeId: id,
-            selectedAlternativeTitle: item.title || metadata[id].title,
-            clientFitSummary: typeof item.clientFitSummary === "string" ? item.clientFitSummary : undefined,
-            designRationale: typeof item.designRationale === "string" ? item.designRationale : undefined,
-          },
-        } satisfies ClientBriefAlternative;
-      });
+          designRationale: typeof item.designRationale === "string" ? item.designRationale : undefined,
+          architectureDNA: item.architectureDNA && typeof item.architectureDNA === "object" ? item.architectureDNA : undefined,
+          experienceStrategy: Array.isArray(item.experienceStrategy) ? item.experienceStrategy.map(String) : undefined,
+          daylightStrategy: Array.isArray(item.daylightStrategy) ? item.daylightStrategy.map(String) : undefined,
+          facadeDirection: Array.isArray(item.facadeDirection) ? item.facadeDirection.map(String) : undefined,
+          selfCritique: Array.isArray(item.selfCritique) ? item.selfCritique.map(String) : undefined,
+        },
+      } satisfies ClientBriefAlternative;
 
-      // Planta da IA com sobreposição, cômodo fora do lote ou fora dos recuos é descartada e
-      // substituída por um modelo desenhado compatível (antes caía direto no projeto: 24 erros).
-      const valid = specialist.filter((item) =>
-        countBriefAlternativeErrors(item.rooms, item.floors, lotWidth, lotDepth) === 0
-        && (item.rooms as Array<{ x: number; y: number; width: number; depth: number }>).every((room) => room.x >= 0 && room.y >= 0 && room.x + room.width <= lotWidth + 0.01 && room.y + room.depth <= lotDepth + 0.01),
-      );
-      const fallback = buildClientBriefAlternatives(brief, lotWidth, lotDepth, placement);
-      const next = [...valid, ...fallback].slice(0, 3);
-      if (!next.length) throw new Error("Nenhuma planta coube neste terreno.");
-      setAlternatives(next);
-      if (valid.length < specialist.length) {
-        setGenerationError(`${specialist.length - valid.length} planta(s) da IA tinham erros e foram trocadas por modelos desenhados que atendem ao pedido.`);
+      const valid =
+        countBriefAlternativeErrors(primary.rooms, primary.floors, lotWidth, lotDepth) === 0
+        && (primary.rooms as Array<{ x: number; y: number; width: number; depth: number }>).every(
+          (room) => room.x >= 0 && room.y >= 0 && room.x + room.width <= lotWidth + 0.01 && room.y + room.depth <= lotDepth + 0.01,
+        );
+
+      if (!valid) {
+        throw new Error("O projeto principal retornou inconsistências geométricas e não foi aplicado.");
       }
+
+      setAlternatives([primary]);
       setShowAlternatives(true);
     } catch (error) {
-      // Fail-safe: the editor remains usable even if the provider is temporarily
-      // unavailable. The fallback is explicit instead of silently pretending it
-      // came from the specialist.
-      setAlternatives(buildClientBriefAlternatives(brief, lotWidth, lotDepth, placement));
+      const fallback = buildClientBriefAlternatives(brief, lotWidth, lotDepth, placement)[0];
+      setAlternatives(fallback ? [fallback] : []);
       setGenerationError(
         error instanceof Error
-          ? `${error.message} Exibindo opções locais de contingência.`
-          : "IA especialista indisponível. Exibindo opções locais de contingência.",
+          ? `${error.message} Exibindo uma base local de contingência para você continuar.`
+          : "IA especialista indisponível. Exibindo uma base local de contingência.",
       );
       setShowAlternatives(true);
     } finally {
@@ -370,9 +540,9 @@ export default function ConceptClientBriefPanel({
               <Sparkles className="h-5 w-5" />
             </span>
             <div>
-              <div className="text-sm font-bold text-slate-900">Escolha uma planta inicial</div>
+              <div className="text-sm font-bold text-slate-900">Projeto principal desenvolvido</div>
               <p className="mt-1 text-[11px] leading-5 text-slate-600">
-                A IA arquiteta analisa lote, setorização, circulação, áreas molhadas, escada, garagem e lazer antes de propor três plantas editáveis.
+                A IA arquiteta desenvolve uma solução principal, critica o próprio projeto e refina partido, circulação, luz natural, integração e coerência com a futura fachada antes de apresentar.
               </p>
               {!generationError && (
                 <div className="mt-2 inline-flex rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold text-emerald-700">
@@ -441,6 +611,69 @@ export default function ConceptClientBriefPanel({
                   </div>
                 )}
 
+                {alternative.programCompliance?.rooms?.length ? (
+                  <div className="mt-2 rounded-lg border bg-slate-50 px-2.5 py-2">
+                    <div className="flex items-center justify-between gap-2 text-[10px]">
+                      <span className="font-bold text-slate-700">Metragens solicitadas × projeto</span>
+                      <span className={alternative.programCompliance.outsideTargetCount
+                        ? "font-bold text-amber-700"
+                        : "font-bold text-emerald-700"}
+                      >
+                        {alternative.programCompliance.outsideTargetCount
+                          ? `${alternative.programCompliance.outsideTargetCount} fora da meta`
+                          : "Dentro da meta"}
+                      </span>
+                    </div>
+                    <div className="mt-2 max-h-32 space-y-1 overflow-y-auto pr-1">
+                      {alternative.programCompliance.rooms.map((room) => (
+                        <div key={room.id} className="flex items-center justify-between gap-2 text-[9px] text-slate-600">
+                          <span className="truncate">{room.label}</span>
+                          <span className={room.status === "outside_target"
+                            ? "shrink-0 font-bold text-red-600"
+                            : room.status === "warning"
+                              ? "shrink-0 font-bold text-amber-600"
+                              : "shrink-0 font-semibold text-emerald-700"}
+                          >
+                            {room.actualArea.toFixed(1)} / {room.targetArea.toFixed(1)} m²
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {alternative.programCompliance?.adjacency?.length ? (
+                  <div className="mt-2 rounded-lg border bg-slate-50 px-2.5 py-2">
+                    <div className="flex items-center justify-between gap-2 text-[10px]">
+                      <span className="font-bold text-slate-700">Relações entre ambientes</span>
+                      <span className={(alternative.programCompliance.adjacencySatisfiedCount ?? 0)
+                        === (alternative.programCompliance.adjacencyTotalCount ?? 0)
+                          ? "font-bold text-emerald-700"
+                          : "font-bold text-amber-700"}
+                      >
+                        {alternative.programCompliance.adjacencySatisfiedCount ?? 0}/{alternative.programCompliance.adjacencyTotalCount ?? 0} atendidas
+                      </span>
+                    </div>
+                    <div className="mt-2 space-y-1">
+                      {alternative.programCompliance.adjacency.map((rule) => (
+                        <div key={rule.id} className="flex items-center justify-between gap-2 text-[9px]">
+                          <span className="min-w-0 truncate text-slate-600">
+                            {rule.fromLabel} · {rule.relation === "direct" ? "conectado a" : rule.relation === "near" ? "próximo de" : "afastado de"} · {rule.toLabel}
+                          </span>
+                          <span className={rule.satisfied
+                            ? "shrink-0 font-bold text-emerald-700"
+                            : rule.required
+                              ? "shrink-0 font-bold text-red-600"
+                              : "shrink-0 font-bold text-amber-600"}
+                          >
+                            {rule.satisfied ? "OK" : rule.required ? "Corrigir" : "Preferência"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
                 <button
                   type="button"
                   onClick={() => onGenerate(alternative)}
@@ -480,7 +713,7 @@ export default function ConceptClientBriefPanel({
             <p className="mt-1 text-[11px] leading-5 text-slate-600">
               {initialProjectBrief
                 ? "Este briefing continua orientando a IA durante todo o desenvolvimento. Você pode revisar as preferências sem perder as edições feitas na planta."
-                : "Escolha as necessidades principais. O Arqdor gera três propostas para você comparar."}
+                : "Escolha as necessidades principais. O Arqdor desenvolve um projeto principal e o refina com crítica arquitetônica automática."}
             </p>
             {initialProjectBrief?.selectedAlternativeTitle && (
               <div className="mt-2 inline-flex rounded-full bg-white px-2 py-1 text-[10px] font-bold text-orange-700 shadow-sm">
@@ -501,7 +734,7 @@ export default function ConceptClientBriefPanel({
             <ChoiceButton
               key={value}
               active={brief.bedrooms === value}
-              onClick={() => setBrief((current) => ({
+              onClick={() => updateBriefStructure((current) => ({
                 ...current,
                 bedrooms: value,
                 suites: Math.min(current.suites, value) as ClientBrief["suites"],
@@ -520,7 +753,7 @@ export default function ConceptClientBriefPanel({
             <ChoiceButton
               key={value}
               active={brief.suites === value}
-              onClick={() => setBrief((current) => ({ ...current, suites: value }))}
+              onClick={() => updateBriefStructure((current) => ({ ...current, suites: value }))}
             >
               {value === 0 ? "Sem suíte" : value === 1 ? "1 suíte" : "2 suítes"}
             </ChoiceButton>
@@ -536,13 +769,13 @@ export default function ConceptClientBriefPanel({
         <div className="grid grid-cols-2 gap-2">
           <ChoiceButton
             active={brief.floors === 1}
-            onClick={() => setBrief((current) => ({ ...current, floors: 1 }))}
+            onClick={() => updateBriefStructure((current) => ({ ...current, floors: 1 }))}
           >
             Casa térrea
           </ChoiceButton>
           <ChoiceButton
             active={brief.floors === 2}
-            onClick={() => setBrief((current) => ({ ...current, floors: 2 }))}
+            onClick={() => updateBriefStructure((current) => ({ ...current, floors: 2 }))}
           >
             Sobrado
           </ChoiceButton>
@@ -559,7 +792,7 @@ export default function ConceptClientBriefPanel({
             <ChoiceButton
               key={value}
               active={brief.garageSpaces === value}
-              onClick={() => setBrief((current) => ({ ...current, garageSpaces: value }))}
+              onClick={() => updateBriefStructure((current) => ({ ...current, garageSpaces: value }))}
             >
               {value} {value === 1 ? "vaga" : "vagas"}
             </ChoiceButton>
@@ -574,22 +807,423 @@ export default function ConceptClientBriefPanel({
           icon={ChefHat}
           title="Área gourmet"
           helper="Mantém cozinha e lazer próximos."
-          onClick={() => setBrief((current) => ({ ...current, gourmet: !current.gourmet }))}
+          onClick={() => updateBriefStructure((current) => ({ ...current, gourmet: !current.gourmet }))}
         />
         <ToggleCard
           active={brief.pool}
           icon={Waves}
           title="Piscina"
           helper="Reserva a área de lazer no fundo do lote."
-          onClick={() => setBrief((current) => ({ ...current, pool: !current.pool }))}
+          onClick={() => updateBriefStructure((current) => ({ ...current, pool: !current.pool }))}
         />
         <ToggleCard
           active={brief.office}
           icon={Laptop}
           title="Escritório"
           helper="Adiciona um ambiente dedicado para trabalho."
-          onClick={() => setBrief((current) => ({ ...current, office: !current.office }))}
+          onClick={() => updateBriefStructure((current) => ({ ...current, office: !current.office }))}
         />
+      </section>
+
+      <section className="rounded-2xl border border-orange-200 bg-orange-50/40 p-4 shadow-sm">
+        <div className="flex items-start gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-orange-500 text-white">
+            <Ruler className="h-4 w-4" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-bold text-slate-900">Programa de necessidades e metragens</div>
+            <p className="mt-1 text-[10px] leading-4 text-slate-600">
+              Informe os ambientes, m² e, quando quiser, largura × profundidade. A IA usa mobiliário, circulação e relações funcionais para transformar essas metas em espaços utilizáveis.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-xl border bg-white p-3">
+          <label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">
+            Área construída desejada
+          </label>
+          <div className="mt-2 flex items-center gap-2">
+            <input
+              type="number"
+              min={40}
+              max={1200}
+              step={5}
+              value={brief.desiredAreaTotal ?? ""}
+              onChange={(event) => {
+                const value = Number(event.target.value);
+                setBrief((current) => ({
+                  ...current,
+                  desiredAreaTotal: Number.isFinite(value) ? Math.max(40, Math.min(1200, value)) : undefined,
+                }));
+              }}
+              className="w-28 rounded-lg border px-3 py-2 text-sm font-bold text-slate-900 outline-none focus:border-orange-400"
+            />
+            <span className="text-xs font-semibold text-slate-500">m²</span>
+            <span className="ml-auto text-[10px] text-slate-500">
+              Úteis ≈ {Math.round(requestedProgramArea)} m² · estimado ≈ {programValidation.estimatedBuiltArea} m²
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setBrief((current) => ({
+              ...current,
+              roomProgram: rebalanceClientRoomProgramToDesiredArea(current),
+            }))}
+            className="mt-2 w-full rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-[10px] font-bold text-orange-700 hover:bg-orange-100"
+          >
+            Ajustar automaticamente as metragens à área total
+          </button>
+          {programValidation.status !== "ok" && (
+            <div className={programValidation.status === "blocked"
+              ? "mt-3 rounded-lg border border-red-200 bg-red-50 p-2.5 text-[10px] leading-4 text-red-700"
+              : "mt-3 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-[10px] leading-4 text-amber-700"}
+            >
+              <div className="font-bold">
+                {programValidation.status === "blocked" ? "Ajuste necessário antes de gerar" : "Atenção ao programa"}
+              </div>
+              {[...programValidation.errors, ...programValidation.warnings].slice(0, 3).map((message) => (
+                <div key={message} className="mt-1">• {message}</div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-3 space-y-2">
+          {roomProgram.map((item) => {
+            const expanded = expandedRoomId === item.id;
+            return (
+              <div key={item.id} className="rounded-xl border bg-white p-3">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setExpandedRoomId(expanded ? null : item.id)}
+                    className="min-w-0 flex-1 text-left"
+                  >
+                    <div className="truncate text-[11px] font-bold text-slate-800">{item.label}</div>
+                    <div className="mt-0.5 text-[9px] text-slate-500">
+                      {item.quantity}× · {item.targetArea.toFixed(1)} m² cada
+                      {item.preferredWidth && item.preferredDepth
+                        ? ` · ${item.preferredWidth.toFixed(1)} × ${item.preferredDepth.toFixed(1)} m`
+                        : ""}
+                      {item.required === false ? " · desejável" : " · obrigatório"}
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setExpandedRoomId(expanded ? null : item.id)}
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border text-slate-500"
+                    aria-label={expanded ? `Fechar detalhes de ${item.label}` : `Editar ${item.label}`}
+                  >
+                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeRoomRequest(item.id)}
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border text-slate-400 hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+                    aria-label={`Remover ${item.label}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+
+                {expanded && (
+                  <div className="mt-3 border-t pt-3">
+                    <div>
+                      <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">Nome do ambiente</div>
+                      <input
+                        value={item.label}
+                        onChange={(event) => updateRoomRequest(item.id, { label: event.target.value.slice(0, 120) })}
+                        className="h-9 w-full rounded-lg border px-2.5 text-[11px] font-bold text-slate-800 outline-none focus:border-orange-400"
+                      />
+                    </div>
+
+                    <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
+                      <div>
+                        <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">Tipo de ambiente</div>
+                        <select
+                          value={item.kind}
+                          onChange={(event) => updateRoomRequest(item.id, { kind: event.target.value as ClientRoomRequest["kind"] })}
+                          className="h-9 w-full rounded-lg border bg-white px-2 text-[10px] font-semibold text-slate-700 outline-none focus:border-orange-400"
+                        >
+                          <option value="sala">Sala / estar / jantar</option>
+                          <option value="cozinha">Cozinha</option>
+                          <option value="suite">Suíte</option>
+                          <option value="quarto">Quarto</option>
+                          <option value="banheiro">Banheiro / lavabo</option>
+                          <option value="lavanderia">Lavanderia</option>
+                          <option value="garagem">Garagem</option>
+                          <option value="gourmet">Gourmet</option>
+                          <option value="piscina">Piscina</option>
+                          <option value="outro">Outro / closet / despensa</option>
+                        </select>
+                      </div>
+                      <label className="flex min-w-20 flex-col justify-end">
+                        <span className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">Prioridade</span>
+                        <button
+                          type="button"
+                          onClick={() => updateRoomRequest(item.id, { required: item.required === false })}
+                          className={item.required === false
+                            ? "h-9 rounded-lg border bg-white px-2 text-[9px] font-semibold text-slate-500"
+                            : "h-9 rounded-lg border border-orange-300 bg-orange-50 px-2 text-[9px] font-bold text-orange-700"}
+                        >
+                          {item.required === false ? "Desejável" : "Obrigatório"}
+                        </button>
+                      </label>
+                    </div>
+
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <div>
+                        <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">Quantidade</div>
+                        <div className="flex h-9 items-center overflow-hidden rounded-lg border">
+                          <button
+                            type="button"
+                            onClick={() => updateRoomRequest(item.id, { quantity: Math.max(1, item.quantity - 1) })}
+                            className="grid h-full w-9 place-items-center text-slate-500 hover:bg-slate-50"
+                          >
+                            <Minus className="h-3.5 w-3.5" />
+                          </button>
+                          <div className="flex-1 text-center text-xs font-bold text-slate-800">{item.quantity}</div>
+                          <button
+                            type="button"
+                            onClick={() => updateRoomRequest(item.id, { quantity: Math.min(8, item.quantity + 1) })}
+                            className="grid h-full w-9 place-items-center text-slate-500 hover:bg-slate-50"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                      <div>
+                        <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">m² por ambiente</div>
+                        <div className="flex h-9 items-center rounded-lg border px-2">
+                          <input
+                            type="number"
+                            min={2.4}
+                            max={120}
+                            step={0.5}
+                            value={item.targetArea}
+                            onChange={(event) => {
+                              const value = Number(event.target.value);
+                              if (Number.isFinite(value)) updateRoomRequest(item.id, { targetArea: Math.max(2.4, Math.min(120, value)) });
+                            }}
+                            className="min-w-0 flex-1 bg-transparent text-right text-xs font-bold text-slate-800 outline-none"
+                          />
+                          <span className="ml-1 text-[10px] text-slate-400">m²</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <div>
+                        <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">Largura desejada</div>
+                        <div className="flex h-9 items-center rounded-lg border px-2">
+                          <input
+                            type="number"
+                            min={1.2}
+                            max={30}
+                            step={0.1}
+                            value={item.preferredWidth ?? ""}
+                            placeholder="IA"
+                            onChange={(event) => {
+                              const raw = event.target.value;
+                              updateRoomRequest(item.id, {
+                                preferredWidth: raw === "" ? undefined : Math.max(1.2, Math.min(30, Number(raw))),
+                              });
+                            }}
+                            className="min-w-0 flex-1 bg-transparent text-right text-xs font-bold text-slate-800 outline-none"
+                          />
+                          <span className="ml-1 text-[10px] text-slate-400">m</span>
+                        </div>
+                      </div>
+                      <div>
+                        <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">Profundidade</div>
+                        <div className="flex h-9 items-center rounded-lg border px-2">
+                          <input
+                            type="number"
+                            min={1.2}
+                            max={30}
+                            step={0.1}
+                            value={item.preferredDepth ?? ""}
+                            placeholder="IA"
+                            onChange={(event) => {
+                              const raw = event.target.value;
+                              updateRoomRequest(item.id, {
+                                preferredDepth: raw === "" ? undefined : Math.max(1.2, Math.min(30, Number(raw))),
+                              });
+                            }}
+                            className="min-w-0 flex-1 bg-transparent text-right text-xs font-bold text-slate-800 outline-none"
+                          />
+                          <span className="ml-1 text-[10px] text-slate-400">m</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-2">
+                      <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">O que este ambiente precisa ter?</div>
+                      <input
+                        value={item.notes ?? ""}
+                        onChange={(event) => updateRoomRequest(item.id, { notes: event.target.value.slice(0, 300) })}
+                        placeholder="Ex.: cama king + TV, ilha para 4 lugares, janela para o jardim..."
+                        className="h-9 w-full rounded-lg border px-2.5 text-[10px] text-slate-700 outline-none focus:border-orange-400"
+                      />
+                    </div>
+
+                    {brief.floors > 1 && (
+                      <div className="mt-2">
+                        <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">Pavimento preferido</div>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {([
+                            ["terreo", "Térreo"],
+                            ["superior", "Superior"],
+                            ["qualquer", "IA decide"],
+                          ] as const).map(([value, label]) => (
+                            <button
+                              key={value}
+                              type="button"
+                              onClick={() => updateRoomRequest(item.id, { floorPreference: value })}
+                              className={item.floorPreference === value
+                                ? "rounded-lg border border-orange-400 bg-orange-50 px-2 py-1.5 text-[9px] font-bold text-orange-700"
+                                : "rounded-lg border bg-white px-2 py-1.5 text-[9px] font-semibold text-slate-500"}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <button
+          type="button"
+          onClick={addRoomRequest}
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-orange-300 bg-white px-3 py-2.5 text-[11px] font-bold text-orange-700 hover:bg-orange-50"
+        >
+          <Plus className="h-4 w-4" />
+          Adicionar outro ambiente
+        </button>
+
+        <div className="mt-3 rounded-xl bg-slate-900 px-3 py-2.5 text-[10px] leading-4 text-white">
+          <span className="font-bold">Regra da IA:</span> este programa é a base do projeto. Ela deve respeitar área, dimensões preferidas e uso real do ambiente; circulação e escada podem ser criadas quando necessárias.
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex items-start gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-slate-900 text-white">
+            <Layers3 className="h-4 w-4" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-bold text-slate-900">Relações entre ambientes</div>
+            <p className="mt-1 text-[10px] leading-4 text-slate-500">
+              Diga quais espaços precisam ficar conectados, próximos ou afastados. Regras obrigatórias serão validadas na planta antes da aprovação.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-3 space-y-2">
+          {adjacencyRules.map((rule) => (
+            <div key={rule.id} className="rounded-xl border bg-slate-50 p-3">
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                <select
+                  value={rule.fromRequestId}
+                  onChange={(event) => {
+                    const nextId = event.target.value;
+                    updateAdjacencyRule(rule.id, {
+                      fromRequestId: nextId,
+                      toRequestId: nextId === rule.toRequestId
+                        ? roomProgram.find((item) => item.id !== nextId)?.id ?? rule.toRequestId
+                        : rule.toRequestId,
+                    });
+                  }}
+                  className="h-9 min-w-0 rounded-lg border bg-white px-2 text-[10px] font-semibold text-slate-700"
+                >
+                  {roomProgram.map((item) => (
+                    <option key={item.id} value={item.id}>{item.label}</option>
+                  ))}
+                </select>
+
+                <select
+                  value={rule.relation}
+                  onChange={(event) => updateAdjacencyRule(rule.id, {
+                    relation: event.target.value as ClientAdjacencyRule["relation"],
+                  })}
+                  className="h-9 rounded-lg border bg-white px-2 text-[9px] font-bold text-slate-700"
+                  aria-label="Tipo de relação"
+                >
+                  <option value="direct">↔ Conectado</option>
+                  <option value="near">≈ Próximo</option>
+                  <option value="away">⇥ Afastado</option>
+                </select>
+
+                <select
+                  value={rule.toRequestId}
+                  onChange={(event) => updateAdjacencyRule(rule.id, { toRequestId: event.target.value })}
+                  className="h-9 min-w-0 rounded-lg border bg-white px-2 text-[10px] font-semibold text-slate-700"
+                >
+                  {roomProgram
+                    .filter((item) => item.id !== rule.fromRequestId)
+                    .map((item) => (
+                      <option key={item.id} value={item.id}>{item.label}</option>
+                    ))}
+                </select>
+              </div>
+
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => updateAdjacencyRule(rule.id, { required: !rule.required })}
+                  className={rule.required
+                    ? "rounded-lg border border-orange-300 bg-orange-50 px-2.5 py-1.5 text-[9px] font-bold text-orange-700"
+                    : "rounded-lg border bg-white px-2.5 py-1.5 text-[9px] font-semibold text-slate-500"}
+                >
+                  {rule.required ? "Regra obrigatória" : "Preferência"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => removeAdjacencyRule(rule.id)}
+                  className="grid h-8 w-8 place-items-center rounded-lg border bg-white text-slate-400 hover:text-red-600"
+                  aria-label="Remover relação"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            disabled={roomProgram.length < 2}
+            onClick={() => setBrief((current) => ({
+              ...current,
+              adjacencyRules: buildRecommendedAdjacencyRules(current),
+            }))}
+            className="flex items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2.5 text-[10px] font-bold text-orange-700 disabled:opacity-40"
+          >
+            <Sparkles className="h-4 w-4" />
+            Aplicar relações recomendadas
+          </button>
+          <button
+            type="button"
+            disabled={roomProgram.length < 2}
+            onClick={addAdjacencyRule}
+            className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 px-3 py-2.5 text-[10px] font-bold text-slate-700 disabled:opacity-40"
+          >
+            <Plus className="h-4 w-4" />
+            Adicionar relação
+          </button>
+        </div>
+
+        <div className="mt-3 grid grid-cols-3 gap-1.5 text-center text-[9px] text-slate-500">
+          <div className="rounded-lg bg-slate-50 p-2"><b>Conectado</b><br />parede/porta em comum</div>
+          <div className="rounded-lg bg-slate-50 p-2"><b>Próximo</b><br />mesmo setor e curta distância</div>
+          <div className="rounded-lg bg-slate-50 p-2"><b>Afastado</b><br />protege privacidade/ruído</div>
+        </div>
       </section>
 
       <section className="space-y-2">
@@ -774,11 +1408,40 @@ export default function ConceptClientBriefPanel({
         </div>
       </div>
 
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="text-xs font-bold text-slate-800">Como a IA deve evoluir o projeto?</div>
+          <p className="mt-1 text-[10px] leading-4 text-slate-500">
+            O modo muda a liberdade arquitetônica, mas nunca libera a IA para ignorar o briefing ou a funcionalidade.
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            {([
+              ["preservar", "Preservar"],
+              ["otimizar", "Otimizar"],
+              ["valorizar", "Valorizar"],
+              ["assinatura", "Assinatura"],
+            ] as const).map(([value, label]) => (
+              <ChoiceButton
+                key={value}
+                active={intervention === value}
+                onClick={() => setIntervention(value)}
+              >
+                {label}
+              </ChoiceButton>
+            ))}
+          </div>
+          <div className="mt-2 text-[10px] leading-4 text-slate-500">
+            {intervention === "preservar" && "Corrige problemas mantendo quase toda a organização atual."}
+            {intervention === "otimizar" && "Melhora circulação, ergonomia, adjacências e eficiência."}
+            {intervention === "valorizar" && "Fortalece partido, luz, integração e identidade arquitetônica."}
+            {intervention === "assinatura" && "Busca uma solução mais autoral e marcante, sem perder construtibilidade."}
+          </div>
+        </section>
+
       <button
         type="button"
         onClick={initialProjectBrief ? improveCurrentModel : generateSpecialistAlternatives}
-        disabled={generating}
-        className="flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3.5 text-sm font-bold text-white shadow-sm hover:bg-orange-600 disabled:cursor-wait disabled:opacity-60"
+        disabled={generating || (!initialProjectBrief && programValidation.status === "blocked")}
+        className="flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3.5 text-sm font-bold text-white shadow-sm hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
       >
         <Sparkles className="h-4 w-4" />
         {generating
@@ -787,13 +1450,15 @@ export default function ConceptClientBriefPanel({
             : "IA arquiteta estudando o projeto..."
           : initialProjectBrief
             ? "Melhorar este modelo com o briefing"
-            : "Gerar 3 opções com IA arquiteta"}
+            : "Desenvolver meu projeto com IA arquiteta"}
       </button>
 
       <p className="text-center text-[10px] leading-4 text-slate-400">
         {initialProjectBrief
           ? "A IA trabalha sobre o modelo atual. Ela não cria três plantas novas e preserva as edições já feitas sempre que forem compatíveis com o briefing."
-          : "Você escolhe a melhor base e depois pode mover ambientes, alterar medidas, portas, janelas e materiais."}
+          : programValidation.status === "blocked"
+            ? "Revise os avisos do programa de necessidades. A IA só será liberada quando área, cômodos e metragens forem compatíveis."
+            : "A IA cria uma base principal coerente; depois você pode editar medidas, portas, janelas, cobertura, fachada e materiais sem perder o DNA do projeto."}
       </p>
     </div>
   );
