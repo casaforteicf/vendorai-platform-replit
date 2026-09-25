@@ -265,6 +265,10 @@ export default function ConceptClientBriefPanel({
           variant: metadata[id].variant,
           suggestedArea: Number(item.suggestedArea ?? base.suggestedArea),
           rooms: item.rooms,
+          architectureScore: Number.isFinite(Number(item.architectureScore)) ? Number(item.architectureScore) : undefined,
+          designRationale: typeof item.designRationale === "string" ? item.designRationale : undefined,
+          qualityIssues: Array.isArray(item.quality?.issues) ? item.quality.issues.map(String) : undefined,
+          qualityStrengths: Array.isArray(item.quality?.strengths) ? item.quality.strengths.map(String) : undefined,
         } satisfies ClientBriefAlternative;
       });
 
@@ -328,9 +332,16 @@ export default function ConceptClientBriefPanel({
                     <div className="text-xs font-bold text-slate-900">{alternative.title}</div>
                     <p className="mt-1 text-[10px] leading-4 text-slate-500">{alternative.description}</p>
                   </div>
-                  <span className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">
-                    ≈ {alternative.suggestedArea} m²
-                  </span>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">
+                      ≈ {alternative.suggestedArea} m²
+                    </span>
+                    {typeof alternative.architectureScore === "number" && (
+                      <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold text-emerald-700">
+                        Qualidade {alternative.architectureScore}/100
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="mt-3">
@@ -344,6 +355,12 @@ export default function ConceptClientBriefPanel({
                 {alternative.floors > 1 && (
                   <div className="mt-2 text-[10px] font-semibold text-slate-500">
                     Prévia mostra o térreo · projeto com {alternative.floors} pavimentos
+                  </div>
+                )}
+
+                {alternative.designRationale && (
+                  <div className="mt-2 rounded-lg bg-emerald-50 px-2.5 py-2 text-[10px] leading-4 text-emerald-900">
+                    <span className="font-bold">Lógica da planta: </span>{alternative.designRationale}
                   </div>
                 )}
 
