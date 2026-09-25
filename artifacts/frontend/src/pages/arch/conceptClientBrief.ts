@@ -9,6 +9,29 @@ import {
 import { validateConceptLayout } from "./conceptGeometry";
 import { generateTypologyLayout } from "./conceptTypologyLayout";
 
+export type ClientRoomRequestKind =
+  | "sala"
+  | "cozinha"
+  | "suite"
+  | "quarto"
+  | "banheiro"
+  | "lavanderia"
+  | "garagem"
+  | "gourmet"
+  | "piscina"
+  | "outro";
+
+export type ClientRoomRequest = {
+  id: string;
+  kind: ClientRoomRequestKind;
+  label: string;
+  quantity: number;
+  targetArea: number;
+  floorPreference?: "terreo" | "superior" | "qualquer";
+  required?: boolean;
+  notes?: string;
+};
+
 export type ClientBrief = {
   bedrooms: 2 | 3 | 4;
   suites: 0 | 1 | 2;
@@ -19,6 +42,8 @@ export type ClientBrief = {
   office: boolean;
   integratedKitchen: boolean;
   privateAwaySocial: boolean;
+  desiredAreaTotal?: number;
+  roomProgram?: ClientRoomRequest[];
 };
 
 export type ClientVision = {
@@ -86,6 +111,94 @@ export type ClientBriefAlternative = ClientBriefPlan & {
 function nextId(prefix: string, index: number) {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
   return `${prefix}-${index}-${Date.now()}`;
+}
+
+function roomProgramId(prefix: string) {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+export function buildDefaultRoomProgram(brief: Pick<ClientBrief,
+  "bedrooms" | "suites" | "floors" | "garageSpaces" | "gourmet" | "pool" | "office"
+>): ClientRoomRequest[] {
+  const nonSuiteBedrooms = Math.max(0, brief.bedrooms - brief.suites);
+  const sleepingFloor = brief.floors === 2 ? "superior" as const : "terreo" as const;
+  return [
+    { id: roomProgramId("sala"), kind: "sala", label: "Sala de estar + jantar", quantity: 1, targetArea: 28, floorPreference: "terreo", required: true },
+    { id: roomProgramId("cozinha"), kind: "cozinha", label: "Cozinha", quantity: 1, targetArea: 14, floorPreference: "terreo", required: true },
+    ...(brief.suites > 0 ? [
+      { id: roomProgramId("suite"), kind: "suite" as const, label: "Suíte", quantity: brief.suites, targetArea: 16, floorPreference: sleepingFloor, required: true },
+      { id: roomProgramId("suite-bath"), kind: "banheiro" as const, label: "Banho suíte", quantity: brief.suites, targetArea: 5, floorPreference: sleepingFloor, required: true },
+    ] : []),
+    ...(nonSuiteBedrooms > 0 ? [
+      { id: roomProgramId("quarto"), kind: "quarto" as const, label: "Quarto", quantity: nonSuiteBedrooms, targetArea: 12, floorPreference: sleepingFloor, required: true },
+      { id: roomProgramId("social-bath"), kind: "banheiro" as const, label: "Banheiro social", quantity: 1, targetArea: 4.5, floorPreference: sleepingFloor, required: true },
+    ] : []),
+    { id: roomProgramId("lavanderia"), kind: "lavanderia", label: "Lavanderia", quantity: 1, targetArea: 6, floorPreference: "terreo", required: true },
+    { id: roomProgramId("garagem"), kind: "garagem", label: `Garagem ${brief.garageSpaces} ${brief.garageSpaces === 1 ? "vaga" : "vagas"}`, quantity: 1, targetArea: brief.garageSpaces * 15, floorPreference: "terreo", required: true },
+    ...(brief.gourmet ? [
+      { id: roomProgramId("gourmet"), kind: "gourmet" as const, label: "Espaço gourmet", quantity: 1, targetArea: 20, floorPreference: "terreo" as const, required: true },
+      { id: roomProgramId("lavabo"), kind: "banheiro" as const, label: "Lavabo", quantity: 1, targetArea: 3, floorPreference: "terreo" as const, required: false },
+    ] : []),
+    ...(brief.office ? [
+      { id: roomProgramId("office"), kind: "outro" as const, label: "Escritório", quantity: 1, targetArea: 10, floorPreference: "terreo" as const, required: true },
+    ] : []),
+    ...(brief.pool ? [
+      { id: roomProgramId("pool"), kind: "piscina" as const, label: "Piscina", quantity: 1, targetArea: 18, floorPreference: "terreo" as const, required: true },
+    ] : []),
+  ];
+}
+
+function roomDimensionsForArea(kind: ClientRoomRequestKind, area: number) {
+  const safeArea = Math.max(kind === "banheiro" ? 2.4 : 4, Math.min(kind === "garagem" ? 90 : 70, area));
+  const preferredWidth: Partial<Record<ClientRoomRequestKind, number>> = {
+    banheiro: 2.0,
+    lavanderia: 2.4,
+    cozinha: 3.4,
+    sala: 4.6,
+    suite: 3.8,
+    quarto: 3.2,
+    garagem: 5.5,
+    gourmet: 4.5,
+    piscina: 6,
+    outro: 3.2,
+  };
+  let width = Math.min(preferredWidth[kind] ?? Math.sqrt(safeArea), Math.max(1.5, safeArea / 1.8));
+  let depth = safeArea / width;
+  if (depth < 1.5) {
+    depth = 1.5;
+    width = safeArea / depth;
+  }
+  return {
+    width: Math.round(width * 20) / 20,
+    depth: Math.round(depth * 20) / 20,
+  };
+}
+
+function expandRoomProgram(brief: ClientBrief) {
+  const program = Array.isArray(brief.roomProgram) && brief.roomProgram.length
+    ? brief.roomProgram
+    : buildDefaultRoomProgram(brief);
+
+  return program.flatMap((request, requestIndex) => {
+    const quantity = Math.max(0, Math.min(8, Math.round(Number(request.quantity) || 0)));
+    if (!quantity) return [];
+    return Array.from({ length: quantity }, (_, index) => {
+      const dims = roomDimensionsForArea(request.kind, Number(request.targetArea) || 8);
+      const numbered = quantity > 1;
+      const floor = request.floorPreference === "superior" && brief.floors > 1 ? 1 : 0;
+      return {
+        id: nextId(`program-${request.kind}`, requestIndex * 10 + index),
+        kind: request.kind,
+        label: numbered ? `${request.label} ${index + 1}` : request.label,
+        width: dims.width,
+        depth: dims.depth,
+        floor,
+        x: 0,
+        y: 0,
+      };
+    });
+  });
 }
 
 function chooseBaseTypology(brief: ClientBrief): ConceptTypology {
@@ -230,6 +343,15 @@ export function buildClientBriefPlan(brief: ClientBrief): ClientBriefPlan {
     });
   }
 
+  // O programa de necessidades preenchido pelo cliente é autoritativo.
+  // Circulação e escadas são geradas pelo sistema; os demais ambientes vêm do briefing,
+  // com quantidade e área-alvo explícitas em vez de serem adivinhados pelo template.
+  if (Array.isArray(brief.roomProgram) && brief.roomProgram.length) {
+    const systemRooms = rooms.filter((room) => room.kind === "circulacao" || room.kind === "escada");
+    const requestedRooms = expandRoomProgram(brief);
+    rooms = [...systemRooms, ...requestedRooms];
+  }
+
   const layoutPreferences: LayoutPreferences = {
     ...DEFAULT_LAYOUT_PREFERENCES,
     kitchenNearGourmet: brief.gourmet,
@@ -238,10 +360,15 @@ export function buildClientBriefPlan(brief: ClientBrief): ClientBriefPlan {
     privateAwaySocial: brief.privateAwaySocial,
   };
 
+  const requestedTotal = Number(brief.desiredAreaTotal);
+  const suggestedArea = Number.isFinite(requestedTotal) && requestedTotal >= 40
+    ? Math.round(requestedTotal)
+    : calculateSuggestedArea(rooms);
+
   return {
     typology,
     floors: brief.floors,
-    suggestedArea: calculateSuggestedArea(rooms),
+    suggestedArea,
     layoutPreferences,
     rooms,
   };
