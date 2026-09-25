@@ -127,6 +127,7 @@ const facadeStudySchema = z.object({
 const specialistHousePlanSchema = z.object({
   lotWidth: z.number().min(5).max(100),
   lotDepth: z.number().min(8).max(200),
+  intervention: z.enum(["preservar", "otimizar", "valorizar", "assinatura"]).default("valorizar"),
   brief: z.object({
     bedrooms: z.number().int().min(1).max(8),
     suites: z.number().int().min(0).max(6),
@@ -779,117 +780,134 @@ router.post("/arch/concept-plan-specialist", authenticate, async (req, res) => {
     locked: Boolean(room.locked),
   }));
 
-  const prompt = `Você é um ARQUITETO ESPECIALISTA EM PROJETO RESIDENCIAL UNIFAMILIAR NO BRASIL.
-Sua função é criar plantas de casas plausíveis, funcionais e não genéricas a partir do lote e do programa fornecidos.
+  const interventionGuidance: Record<typeof input.intervention, string> = {
+    preservar: "Preserve ao máximo a organização atual. Corrija apenas incoerências funcionais, circulação, adjacências e dimensões problemáticas.",
+    otimizar: "Mantenha o partido reconhecível, mas melhore circulação, ergonomia, adjacências, iluminação natural e eficiência construtiva.",
+    valorizar: "Evolua a arquitetura de forma perceptível: fortaleça o partido, eixos visuais, integração interior-exterior, setorização, luz natural e identidade, sem abandonar o briefing.",
+    assinatura: "Busque uma solução autoral e marcante, com partido arquitetônico claro e experiência espacial memorável, mantendo programa, lote, funcionalidade e construtibilidade como restrições absolutas.",
+  };
 
-Pense como arquiteto, não como gerador de retângulos. Considere:
-- setorização social, íntima e serviço;
-- circulação curta e legível, sem corredores desperdiçados;
-- relação entrada social / garagem / cozinha / serviço;
-- cozinha próxima de lavanderia e, quando solicitado, gourmet;
-- quartos e suítes protegidos de ruído e passagem;
-- banheiros e áreas molhadas racionalizados em prumadas/núcleos;
-- CADA suíte deve ter seu banheiro próprio encostado diretamente nela; banheiro de suíte separado invalida a solução;
-- organize o projeto como um GRAFO DE ADJACÊNCIAS: nenhum ambiente pode ser uma ilha sem conexão com o restante da casa;
-- escada em posição estrutural e funcional, alinhada entre pavimentos;
-- garagem com acesso realista ao interior da casa;
-- área gourmet e piscina conectadas ao lazer, quando existirem;
-- proporções de ambientes residenciais brasileiras, mobiliário e ergonomia implícitos;
-- orientação norte como referência de projeto quando não houver outra orientação: evite tratar fachadas e dormitórios como peças arbitrárias;
-- implantação coerente no lote, evitando recortes e volumes sem lógica;
-- nenhuma sobreposição entre ambientes;
-- todos os ambientes dentro do lote.
+  const basePrompt = `Você é o ARQDOR ARCHITECT AI, arquiteto residencial sênior especializado em casas brasileiras.
+
+OBJETIVO:
+Desenvolver UM ÚNICO PROJETO PRINCIPAL e refiná-lo. Não gere três alternativas. Não trate o problema como distribuição de retângulos.
+
+MODO DE INTERVENÇÃO: ${input.intervention}
+${interventionGuidance[input.intervention]}
+
+Antes de propor coordenadas, pense internamente nesta ordem:
+1. intenção do cliente e rotina;
+2. partido arquitetônico;
+3. implantação no lote e orientação solar;
+4. setorização social / íntima / serviço;
+5. grafo de adjacências obrigatórias e proibidas;
+6. circulação e acessos;
+7. mobiliário e ergonomia implícitos;
+8. relação interior / jardim / gourmet / piscina;
+9. coerência volumétrica e futura fachada;
+10. crítica arquitetônica do próprio projeto;
+11. refinamento antes da resposta.
 
 LOTE: ${input.lotWidth} m x ${input.lotDepth} m.
 BRIEFING OBJETIVO: ${JSON.stringify(input.brief)}
-VISÃO DO CLIENTE / COMO ELE QUER VIVER A CASA: ${JSON.stringify(input.vision ?? {})}
+VISÃO / DNA DO CLIENTE: ${JSON.stringify(input.vision ?? {})}
 
-A VISÃO DO CLIENTE É PARTE DO PROJETO, NÃO UMA OBSERVAÇÃO DECORATIVA.
-Traduza desejos subjetivos em decisões espaciais concretas. Exemplos:
-- "receber amigos" deve influenciar relações sala/cozinha/gourmet/lavabo/lazer;
-- "privacidade" deve influenciar acessos, visadas e separação do setor íntimo;
-- "luz natural" deve influenciar perímetro, aberturas possíveis e profundidade dos ambientes;
-- "contato com natureza" deve aproximar ambientes protagonistas de jardim, pátio ou lazer;
-- "flexibilidade" deve favorecer ambientes reversíveis e circulação neutra;
-- "otimizar custo" deve reduzir recortes, perímetro, corredores e dispersão de áreas molhadas;
-- tudo que estiver em mustHave é requisito prioritário;
-- tudo que estiver em avoid deve ser evitado explicitamente.
-
-PROGRAMA FIXO DE AMBIENTES (use exatamente estes IDs e pavimentos; não invente nem remova ambientes):
+PROGRAMA FIXO DE AMBIENTES:
 ${JSON.stringify(program)}
 
-Crie 3 soluções REALMENTE DIFERENTES:
-A) compacta e eficiente;
-B) equilibrada, com circulação e setorização mais clássicas;
-C) integrada/contemporânea, valorizando área social e lazer.
+REGRAS FUNCIONAIS INEGOCIÁVEIS:
+- use TODOS os IDs fornecidos exatamente uma vez;
+- mantenha o pavimento original;
+- nenhum ambiente pode ficar solto ou sem conexão física coerente;
+- não sobreponha ambientes e não ultrapasse o lote;
+- suíte deve ter banheiro próprio adjacente e diretamente conectável;
+- numeração de suítes e banheiros correspondentes deve ser respeitada;
+- cozinha integrada deve tocar sala; cozinha deve manter relação eficiente com serviço e gourmet quando existentes;
+- garagem deve acessar setor social/serviço, nunca diretamente quarto/suíte;
+- área íntima deve evitar contato direto com garagem/gourmet quando privacidade for prioridade;
+- escadas devem ser funcionais e alinhadas entre pavimentos;
+- reduza corredores residuais, recortes gratuitos e perímetro construtivo sem propósito;
+- considere dimensões reais de mobiliário, portas e circulação;
+- áreas molhadas devem ser racionalizadas quando possível;
+- preserve ambientes locked;
+- a planta deve poder originar uma fachada coerente: aberturas, volumes e cobertura não podem depender de invenções posteriores.
 
-Cada solução deve ser arquitetonicamente defensável. Não apenas espelhe a mesma planta.
-Responda APENAS JSON válido:
+CRITÉRIOS DE QUALIDADE:
+- funcionalidade;
+- circulação;
+- privacidade;
+- iluminação natural;
+- integração interior-exterior;
+- eficiência construtiva;
+- força do partido arquitetônico;
+- identidade não genérica;
+- coerência futura entre planta, fachada e cobertura.
+
+Responda SOMENTE JSON válido:
 {
-  "alternatives": [
-    {
-      "id": "compact|balanced|integrated",
-      "title": "nome curto",
-      "description": "diferença espacial principal",
-      "designRationale": "explicação arquitetônica objetiva",
-      "clientFitSummary": "como esta solução traduz a rotina, desejos e prioridades específicas do cliente",
-      "roomPatches": [
-        { "id": "ID_EXISTENTE", "x": 0, "y": 0, "width": 3.2, "depth": 3.0 }
-      ],
-      "notes": ["decisão 1", "decisão 2"]
-    }
-  ]
+  "solution": {
+    "id": "primary",
+    "title": "Projeto principal",
+    "description": "síntese curta da solução",
+    "designRationale": "partido arquitetônico e decisões principais",
+    "clientFitSummary": "como o projeto traduz a rotina e prioridades do cliente",
+    "architectureDNA": {
+      "concept": "conceito central",
+      "spatialStrategy": "estratégia espacial",
+      "volumeStrategy": "direção volumétrica",
+      "roofStrategy": "direção de cobertura",
+      "materialIntent": "intenção material sem inventar produto específico"
+    },
+    "experienceStrategy": ["decisão espacial 1", "decisão espacial 2"],
+    "daylightStrategy": ["decisão de iluminação natural 1"],
+    "facadeDirection": ["regra de composição da fachada 1"],
+    "selfCritique": ["problema identificado e corrigido 1"],
+    "roomPatches": [
+      { "id": "ID_EXISTENTE", "x": 0, "y": 0, "width": 3.2, "depth": 3.0 }
+    ],
+    "notes": ["decisão técnica 1", "decisão técnica 2"]
+  }
 }
 
-REGRAS INEGOCIÁVEIS:
-- use TODOS os IDs fornecidos exatamente uma vez em cada alternativa;
-- mantenha o pavimento original;
-- não sobreponha retângulos;
-- não posicione ambiente fora do lote;
-- escadas de pavimentos diferentes devem ficar alinhadas;
-- não coloque cozinha atravessando garagem, lavanderia ou hall;
-- não use hall como espaço residual dentro de outro ambiente;
-- se houver sala/cozinha integradas, elas podem encostar e compartilhar borda, mas não ocupar a mesma área;
-- preserve dimensões próximas das fornecidas, alterando-as somente quando melhorar funcionalidade;
-- as três alternativas precisam ter lógica espacial distinta;
-- a casa de cada pavimento deve formar um conjunto físico contínuo, sem cômodos soltos;
-- evite vazios gigantes entre setores e corredores muito longos;
-- garagem precisa tocar um ambiente de acesso social/serviço, nunca abrir diretamente para quarto/suíte;
-- quando houver "Banho suíte", ele DEVE compartilhar parede com a suíte correspondente;
-- quando houver mais de uma suíte, respeite a numeração do quarto e do banho correspondente.`;
+NÃO explique fora do JSON.
+NÃO entregue alternativas.
+NÃO aceite a primeira solução mental: critique e refine antes de responder.`;
 
   try {
     const rejectedFeedback: string[] = [];
-    let approvedAlternatives: any[] = [];
+    let bestApproved: any = null;
 
-    for (let attempt = 1; attempt <= 3 && approvedAlternatives.length < 3; attempt += 1) {
+    for (let attempt = 1; attempt <= 4; attempt += 1) {
       const retryContext = rejectedFeedback.length
-        ? `\n\nVALIDAÇÃO DAS TENTATIVAS ANTERIORES — CORRIJA ESTES PROBLEMAS NESTA NOVA GERAÇÃO:\n- ${rejectedFeedback.slice(-16).join("\n- ")}`
+        ? `\n\nCRÍTICA / VALIDAÇÃO DA ITERAÇÃO ANTERIOR — REFAÇA O MESMO PROJETO CORRIGINDO ESTES PONTOS, SEM TROCAR ALEATORIAMENTE O PARTIDO:\n- ${rejectedFeedback.slice(-16).join("\n- ")}`
         : "";
 
       const message = await anthropic.messages.create({
         model: "claude-sonnet-4-6",
-        max_tokens: 9000,
+        max_tokens: 7000,
         system: [
-          "Você é o Arqdor Architect AI, arquiteto residencial sênior especialista em plantas de casas brasileiras.",
-          "Seu trabalho é concepção arquitetônica funcional, não distribuição visual de caixas.",
-          "Antes de responder, faça internamente: programa → setorização → grafo de adjacências → implantação → circulação → checagem.",
-          "Responda somente com JSON válido, compacto, sem comentários nem texto fora do JSON.",
+          "Você é o Arqdor Architect AI, arquiteto residencial sênior.",
+          "Seu trabalho é desenvolver e refinar um único projeto principal.",
+          "Faça internamente: intenção → partido → implantação → adjacências → circulação → luz → volumetria → crítica → refinamento.",
+          "Priorize arquitetura funcional e interessante, nunca estética desconectada da planta.",
+          "Responda somente JSON válido e compacto.",
         ].join(" "),
-        messages: [{ role: "user", content: prompt + retryContext }],
+        messages: [{ role: "user", content: basePrompt + retryContext }],
       });
 
       const raw = message.content
         .filter((item: any) => item.type === "text")
         .map((item: any) => item.text)
         .join("");
+
       if ((message as any).stop_reason === "max_tokens") {
-        rejectedFeedback.push("Resposta foi truncada por excesso de tokens; seja mais compacto.");
+        rejectedFeedback.push("A resposta foi truncada; mantenha o JSON mais compacto.");
         continue;
       }
+
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
-        rejectedFeedback.push("Resposta não continha JSON válido.");
+        rejectedFeedback.push("A resposta não continha JSON válido.");
         continue;
       }
 
@@ -897,59 +915,71 @@ REGRAS INEGOCIÁVEIS:
       try {
         decoded = JSON.parse(jsonMatch[0]);
       } catch {
-        rejectedFeedback.push("JSON retornado estava incompleto ou inválido.");
+        rejectedFeedback.push("O JSON retornado estava inválido.");
         continue;
       }
 
-      const requested = Array.isArray(decoded?.alternatives) ? decoded.alternatives : [];
-      const allowedIds = new Set(["compact", "balanced", "integrated"]);
-      const acceptedThisAttempt: any[] = [];
-
-      for (const plan of requested.filter((item: any) => allowedIds.has(String(item?.id)))) {
-        const sanitized = sanitizeSpecialistPlan(plan, input);
-        if (!sanitized) {
-          rejectedFeedback.push(`${String(plan?.id ?? "alternativa")}: faltam ambientes, há IDs duplicados ou o programa não foi respeitado.`);
-          continue;
-        }
-        if (sanitized.rejected) {
-          rejectedFeedback.push(...sanitized.quality.issues.map((issue) => `${String(plan.id)}: ${issue}`));
-          continue;
-        }
-        acceptedThisAttempt.push({
-          id: String(plan.id),
-          title: String(plan.title ?? plan.id),
-          description: String(plan.description ?? ""),
-          clientFitSummary: String(plan.clientFitSummary ?? "").slice(0, 700),
-          ...sanitized,
-        });
+      const plan = decoded?.solution;
+      if (!plan || String(plan.id ?? "primary") !== "primary") {
+        rejectedFeedback.push("A resposta não trouxe o projeto principal no formato esperado.");
+        continue;
       }
 
-      const byId = new Map(approvedAlternatives.map((item) => [item.id, item]));
-      for (const item of acceptedThisAttempt) {
-        const current = byId.get(item.id);
-        if (!current || Number(item.architectureScore ?? 0) > Number(current.architectureScore ?? 0)) {
-          byId.set(item.id, item);
-        }
+      const sanitized = sanitizeSpecialistPlan({ ...plan, id: "primary" }, input);
+      if (!sanitized) {
+        rejectedFeedback.push("Programa incompleto: faltam ambientes, há IDs duplicados ou o programa não foi respeitado.");
+        continue;
       }
-      approvedAlternatives = [...byId.values()];
+      if (sanitized.rejected) {
+        rejectedFeedback.push(...sanitized.quality.issues);
+        continue;
+      }
+
+      const candidate = {
+        id: "primary",
+        title: String(plan.title ?? "Projeto principal"),
+        description: String(plan.description ?? "Projeto principal refinado pela IA arquiteta."),
+        clientFitSummary: String(plan.clientFitSummary ?? "").slice(0, 900),
+        architectureDNA: plan.architectureDNA && typeof plan.architectureDNA === "object" ? plan.architectureDNA : {},
+        experienceStrategy: Array.isArray(plan.experienceStrategy) ? plan.experienceStrategy.map(String).slice(0, 8) : [],
+        daylightStrategy: Array.isArray(plan.daylightStrategy) ? plan.daylightStrategy.map(String).slice(0, 8) : [],
+        facadeDirection: Array.isArray(plan.facadeDirection) ? plan.facadeDirection.map(String).slice(0, 8) : [],
+        selfCritique: Array.isArray(plan.selfCritique) ? plan.selfCritique.map(String).slice(0, 8) : [],
+        intervention: input.intervention,
+        refinementPass: attempt,
+        ...sanitized,
+      };
+
+      if (!bestApproved || Number(candidate.architectureScore ?? 0) > Number(bestApproved.architectureScore ?? 0)) {
+        bestApproved = candidate;
+      }
+
+      if (Number(candidate.architectureScore ?? 0) >= 82) break;
+
+      rejectedFeedback.push(
+        `Pontuação arquitetônica ${candidate.architectureScore}/100: refine circulação, adjacências, compactação e coerência do partido sem recomeçar do zero.`,
+        ...(candidate.quality?.issues ?? []),
+        ...(candidate.selfCritique ?? []).map((item: string) => `Autocrítica: ${item}`),
+      );
     }
 
-    const order = ["compact", "balanced", "integrated"];
-    approvedAlternatives.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
-
-    if (approvedAlternatives.length < 3) {
+    if (!bestApproved) {
       return res.status(422).json({
-        error: "A IA arquiteta não conseguiu aprovar três plantas funcionais após validação automática. Gere novamente.",
+        error: "A IA arquiteta não conseguiu aprovar o projeto principal após os ciclos automáticos de crítica e refinamento.",
         validationIssues: [...new Set(rejectedFeedback)].slice(-12),
       });
     }
 
     return res.json({
-      alternatives: approvedAlternatives,
+      solution: bestApproved,
+      alternatives: [bestApproved],
       architectAgent: {
         model: "claude-sonnet-4-6",
-        validation: "functional-adjacency-v1",
-        minimumScore: 72,
+        reasoning: "intent-party-adjacency-daylight-volume-critique-refine-v2",
+        validation: "functional-adjacency-v2",
+        targetScore: 82,
+        intervention: input.intervention,
+        refinementPasses: bestApproved.refinementPass,
       },
     });
   } catch (error) {
