@@ -1,3 +1,4 @@
+// Audit guard: single effective JARVIS chat entry + AI Gateway-only agent calls.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
