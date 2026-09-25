@@ -18,11 +18,13 @@ import {
   type ClientBrief,
   type ClientBriefAlternative,
   type ClientVision,
+  type ProjectBriefSnapshot,
 } from "./conceptClientBrief";
 
 type Props = {
   lotWidth: number;
   lotDepth: number;
+  initialProjectBrief?: ProjectBriefSnapshot | null;
   onGenerate: (alternative: ClientBriefAlternative) => void;
 };
 
@@ -199,10 +201,11 @@ function PlanMiniPreview({
 export default function ConceptClientBriefPanel({
   lotWidth,
   lotDepth,
+  initialProjectBrief,
   onGenerate,
 }: Props) {
-  const [brief, setBrief] = useState<ClientBrief>(DEFAULT_BRIEF);
-  const [vision, setVision] = useState<ClientVision>(DEFAULT_VISION);
+  const [brief, setBrief] = useState<ClientBrief>(() => initialProjectBrief?.brief ?? DEFAULT_BRIEF);
+  const [vision, setVision] = useState<ClientVision>(() => initialProjectBrief?.vision ?? DEFAULT_VISION);
   const [dreamStep, setDreamStep] = useState(0);
   const [showAlternatives, setShowAlternatives] = useState(false);
   const [alternatives, setAlternatives] = useState<ClientBriefAlternative[]>([]);
@@ -426,10 +429,19 @@ export default function ConceptClientBriefPanel({
             <Sparkles className="h-5 w-5" />
           </span>
           <div>
-            <div className="text-sm font-bold text-slate-900">O que sua casa precisa?</div>
+            <div className="text-sm font-bold text-slate-900">
+              {initialProjectBrief ? "DNA do projeto" : "O que sua casa precisa?"}
+            </div>
             <p className="mt-1 text-[11px] leading-5 text-slate-600">
-              Escolha as necessidades principais. O Arqdor gera três propostas para você comparar.
+              {initialProjectBrief
+                ? "Este briefing continua orientando a IA durante todo o desenvolvimento. Você pode revisar as preferências sem perder as edições feitas na planta."
+                : "Escolha as necessidades principais. O Arqdor gera três propostas para você comparar."}
             </p>
+            {initialProjectBrief?.selectedAlternativeTitle && (
+              <div className="mt-2 inline-flex rounded-full bg-white px-2 py-1 text-[10px] font-bold text-orange-700 shadow-sm">
+                Base atual: {initialProjectBrief.selectedAlternativeTitle}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -724,7 +736,11 @@ export default function ConceptClientBriefPanel({
         className="flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3.5 text-sm font-bold text-white shadow-sm hover:bg-orange-600 disabled:cursor-wait disabled:opacity-60"
       >
         <Sparkles className="h-4 w-4" />
-        {generating ? "IA arquiteta estudando o projeto..." : "Gerar 3 opções com IA arquiteta"}
+        {generating
+          ? "IA arquiteta estudando o projeto..."
+          : initialProjectBrief
+            ? "Reinterpretar briefing e gerar 3 novas opções"
+            : "Gerar 3 opções com IA arquiteta"}
       </button>
 
       <p className="text-center text-[10px] leading-4 text-slate-400">
