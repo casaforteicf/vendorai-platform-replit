@@ -749,6 +749,30 @@ function sanitizeSpecialistPlan(
     };
   });
 
+  const accessItems = (input.brief.accessRules ?? []).map((rule) => {
+    const sources = rooms.filter((room) => room.programRequestId === rule.fromRequestId);
+    const targets = rooms.filter((room) => room.programRequestId === rule.toRequestId);
+    const directExists = sources.some((source) =>
+      targets.some((target) =>
+        source.floor === target.floor
+        && specialistTouches(source, target, 0.55)
+        && specialistDoorAllowed(source, target, rooms.filter((room) => room.floor === source.floor))
+      )
+    );
+    const satisfied = rule.mode === "required_direct" ? directExists : !directExists;
+    return {
+      id: rule.id,
+      fromLabel: input.brief.roomProgram?.find((item) => item.id === rule.fromRequestId)?.label ?? "Ambiente",
+      toLabel: input.brief.roomProgram?.find((item) => item.id === rule.toRequestId)?.label ?? "Ambiente",
+      mode: rule.mode,
+      required: rule.required,
+      reason: rule.reason,
+      satisfied,
+    };
+  });
+
+  const circulationGraph = specialistReachableFromPublicAnchor(rooms);
+
   return {
     rejected: false as const,
     rooms,
@@ -765,6 +789,13 @@ function sanitizeSpecialistPlan(
       adjacency: adjacencyItems,
       adjacencySatisfiedCount: adjacencyItems.filter((item) => item.satisfied).length,
       adjacencyTotalCount: adjacencyItems.length,
+      access: accessItems,
+      accessSatisfiedCount: accessItems.filter((item) => item.satisfied).length,
+      accessTotalCount: accessItems.length,
+      circulation: {
+        connected: circulationGraph.unreachable.length === 0,
+        unreachableRooms: circulationGraph.unreachable.map((room) => room.label),
+      },
     },
   };
 }
@@ -1207,6 +1238,27 @@ router.post("/arch/concept-plan-specialist", authenticate, async (req, res) => {
     for (const relations of relationByPair.values()) {
       if (relations.has("away") && (relations.has("near") || relations.has("direct"))) {
         programErrors.push("O mesmo par de ambientes não pode estar configurado como próximo/conectado e afastado ao mesmo tempo.");
+      }
+    }
+
+    const accessByPair = new Map<string, Set<string>>();
+    for (const rule of input.brief.accessRules ?? []) {
+      if (!requestIds.has(rule.fromRequestId) || !requestIds.has(rule.toRequestId)) {
+        programErrors.push("Existe uma regra de acesso que referencia um ambiente inexistente.");
+        continue;
+      }
+      if (rule.fromRequestId === rule.toRequestId) {
+        programErrors.push("Uma regra de acesso não pode relacionar um ambiente com ele mesmo.");
+        continue;
+      }
+      const pair = [rule.fromRequestId, rule.toRequestId].sort().join("::");
+      const modes = accessByPair.get(pair) ?? new Set<string>();
+      modes.add(rule.mode);
+      accessByPair.set(pair, modes);
+    }
+    for (const modes of accessByPair.values()) {
+      if (modes.has("required_direct") && modes.has("forbidden_direct")) {
+        programErrors.push("O mesmo par de ambientes possui acesso direto simultaneamente obrigatório e proibido.");
       }
     }
   }
