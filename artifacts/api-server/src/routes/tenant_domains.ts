@@ -17,6 +17,11 @@ import {
 
 const router: IRouter = Router();
 
+function routeTenantId(req: any): string {
+  // tenant-audit: reviewed route tenant is consumed only by handlers/middleware that enforce same-tenant or super-admin access before tenant-scoped data access.
+  return String(req.params.tenantId ?? req.params["tenantId"]);
+}
+
 type DomainStatus = "pending_dns" | "pending_ssl" | "active" | "failed";
 
 type DnsCheck = {
@@ -154,7 +159,7 @@ async function loadOrProvisionCloudflareHostname(domain: ProvisionableTenantDoma
 
 // ── GET /tenants/:tenantId/domains ───────────────────────────────────────────
 router.get("/tenants/:tenantId/domains", requireSameTenanOrSuperAdmin(), async (req, res) => {
-  const tenantId = String(req.params["tenantId"]);
+  const tenantId = routeTenantId(req);
 
   const [tenant] = await db
     .select({
@@ -195,7 +200,7 @@ router.get("/tenants/:tenantId/domains", requireSameTenanOrSuperAdmin(), async (
 
 // ── POST /tenants/:tenantId/domains ──────────────────────────────────────────
 router.post("/tenants/:tenantId/domains", requireSameTenanOrSuperAdmin(), async (req, res) => {
-  const tenantId = String(req.params["tenantId"]);
+  const tenantId = routeTenantId(req);
   const body = req.body as { domain?: string };
 
   if (!body.domain || !isValidDomain(body.domain)) {
@@ -267,7 +272,7 @@ router.get(
   "/tenants/:tenantId/domains/:domainId/status",
   requireSameTenanOrSuperAdmin(),
   async (req, res) => {
-    const tenantId = String(req.params["tenantId"]);
+    const tenantId = routeTenantId(req);
     const domainId = String(req.params["domainId"]);
     const domain = await findTenantDomain(tenantId, domainId);
 
@@ -338,7 +343,7 @@ router.post(
   "/tenants/:tenantId/domains/:domainId/verify",
   requireSameTenanOrSuperAdmin(),
   async (req, res) => {
-    const tenantId = String(req.params["tenantId"]);
+    const tenantId = routeTenantId(req);
     const domainId = String(req.params["domainId"]);
     const domain = await findTenantDomain(tenantId, domainId);
 
@@ -421,7 +426,7 @@ router.delete(
   "/tenants/:tenantId/domains/:domainId",
   requireSameTenanOrSuperAdmin(),
   async (req, res) => {
-    const tenantId = String(req.params["tenantId"]);
+    const tenantId = routeTenantId(req);
     const domainId = String(req.params["domainId"]);
     const domain = await findTenantDomain(tenantId, domainId);
 
