@@ -18,8 +18,10 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import {
+  assessProjectBriefCompleteness,
   buildClientBriefAlternatives,
   buildClientBriefPlan,
+  buildProjectBriefSnapshot,
   buildDefaultRoomProgram,
   buildRecommendedAdjacencyRules,
   countBriefAlternativeErrors,
@@ -30,7 +32,9 @@ import {
   type ClientRoomRequest,
   type ClientBriefAlternative,
   type ClientVision,
+  type HouseholdContext,
   type ProjectBriefSnapshot,
+  type ProjectSiteContext,
 } from "./conceptClientBrief";
 
 type Props = {
@@ -72,6 +76,32 @@ const DEFAULT_VISION: ClientVision = {
   futureNeeds: "",
   mustHave: "",
   avoid: "",
+  aestheticReferences: "",
+  preferredMaterials: "",
+  maintenancePreference: "equilibrada",
+  constructionMethod: "nao_definido",
+};
+
+const DEFAULT_HOUSEHOLD: HouseholdContext = {
+  residents: 3,
+  children: 0,
+  elderly: 0,
+  pets: false,
+  accessibilityNeeds: false,
+  workFromHome: "ocasional",
+  hostingFrequency: "media",
+  cookingProfile: "cotidiano",
+  routineNotes: "",
+};
+
+const DEFAULT_SITE_CONTEXT: ProjectSiteContext = {
+  northSide: "nao_informado",
+  topography: "nao_informado",
+  desiredViews: "",
+  avoidViews: "",
+  privacyNotes: "",
+  existingElements: "",
+  climateNotes: "",
 };
 const STANDARD_PROGRAM_KEYS = new Set([
   "sala","cozinha","suite","quarto","suite-bath","social-bath","lavabo","lavanderia","garagem","gourmet","office","pool",
@@ -274,7 +304,13 @@ export default function ConceptClientBriefPanel({
         : buildDefaultRoomProgram(initial),
     };
   });
-  const [vision, setVision] = useState<ClientVision>(() => initialProjectBrief?.vision ?? DEFAULT_VISION);
+  const [vision, setVision] = useState<ClientVision>(() => ({ ...DEFAULT_VISION, ...(initialProjectBrief?.vision ?? {}) }));
+  const [household, setHousehold] = useState<HouseholdContext>(() => ({ ...DEFAULT_HOUSEHOLD, ...(initialProjectBrief?.household ?? {}) }));
+  const [siteContext, setSiteContext] = useState<ProjectSiteContext>(() => ({
+    ...DEFAULT_SITE_CONTEXT,
+    ...(initialProjectBrief?.siteContext ?? {}),
+    frontSide: initialProjectBrief?.siteContext?.frontSide ?? placement?.frontSide,
+  }));
   const [dreamStep, setDreamStep] = useState(0);
   const [showAlternatives, setShowAlternatives] = useState(false);
   const [alternatives, setAlternatives] = useState<ClientBriefAlternative[]>([]);
@@ -413,20 +449,14 @@ export default function ConceptClientBriefPanel({
     setGenerating(true);
     setGenerationError(null);
     try {
-      await onImproveCurrent({
+      await onImproveCurrent(buildProjectBriefSnapshot({
         brief,
         vision,
+        household,
+        siteContext: { ...siteContext, frontSide: placement?.frontSide ?? siteContext.frontSide },
         intervention,
-        selectedAlternativeId: initialProjectBrief.selectedAlternativeId,
-        selectedAlternativeTitle: initialProjectBrief.selectedAlternativeTitle,
-        clientFitSummary: initialProjectBrief.clientFitSummary,
-        designRationale: initialProjectBrief.designRationale,
-        architectureDNA: initialProjectBrief.architectureDNA,
-        experienceStrategy: initialProjectBrief.experienceStrategy,
-        daylightStrategy: initialProjectBrief.daylightStrategy,
-        facadeDirection: initialProjectBrief.facadeDirection,
-        selfCritique: initialProjectBrief.selfCritique,
-      });
+        previous: initialProjectBrief,
+      }));
     } catch (error) {
       setGenerationError(
         error instanceof Error
@@ -459,6 +489,8 @@ export default function ConceptClientBriefPanel({
           lotDepth,
           brief,
           vision,
+          household,
+          siteContext: { ...siteContext, frontSide: placement?.frontSide ?? siteContext.frontSide },
           intervention,
           rooms: base.rooms,
         }),
@@ -489,20 +521,24 @@ export default function ConceptClientBriefPanel({
         facadeDirection: Array.isArray(item.facadeDirection) ? item.facadeDirection.map(String) : undefined,
         selfCritique: Array.isArray(item.selfCritique) ? item.selfCritique.map(String) : undefined,
         programCompliance: item.programCompliance && typeof item.programCompliance === "object" ? item.programCompliance : undefined,
-        projectBrief: {
+        projectBrief: buildProjectBriefSnapshot({
           brief,
           vision,
+          household,
+          siteContext: { ...siteContext, frontSide: placement?.frontSide ?? siteContext.frontSide },
           intervention,
-          selectedAlternativeId: "primary" as const,
-          selectedAlternativeTitle: item.title || "Projeto principal",
-          clientFitSummary: typeof item.clientFitSummary === "string" ? item.clientFitSummary : undefined,
-          designRationale: typeof item.designRationale === "string" ? item.designRationale : undefined,
-          architectureDNA: item.architectureDNA && typeof item.architectureDNA === "object" ? item.architectureDNA : undefined,
-          experienceStrategy: Array.isArray(item.experienceStrategy) ? item.experienceStrategy.map(String) : undefined,
-          daylightStrategy: Array.isArray(item.daylightStrategy) ? item.daylightStrategy.map(String) : undefined,
-          facadeDirection: Array.isArray(item.facadeDirection) ? item.facadeDirection.map(String) : undefined,
-          selfCritique: Array.isArray(item.selfCritique) ? item.selfCritique.map(String) : undefined,
-        },
+          patch: {
+            selectedAlternativeId: "primary" as const,
+            selectedAlternativeTitle: item.title || "Projeto principal",
+            clientFitSummary: typeof item.clientFitSummary === "string" ? item.clientFitSummary : undefined,
+            designRationale: typeof item.designRationale === "string" ? item.designRationale : undefined,
+            architectureDNA: item.architectureDNA && typeof item.architectureDNA === "object" ? item.architectureDNA : undefined,
+            experienceStrategy: Array.isArray(item.experienceStrategy) ? item.experienceStrategy.map(String) : undefined,
+            daylightStrategy: Array.isArray(item.daylightStrategy) ? item.daylightStrategy.map(String) : undefined,
+            facadeDirection: Array.isArray(item.facadeDirection) ? item.facadeDirection.map(String) : undefined,
+            selfCritique: Array.isArray(item.selfCritique) ? item.selfCritique.map(String) : undefined,
+          },
+        }),
       } satisfies ClientBriefAlternative;
 
       const valid =
@@ -1260,7 +1296,7 @@ export default function ConceptClientBriefPanel({
         <div className="mt-4 rounded-xl bg-slate-50 p-3">
           <div className="mb-3 flex items-center justify-between">
             <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
-              Pergunta {dreamStep + 1} de 4
+              Pergunta {dreamStep + 1} de 6
             </span>
             <span className="text-[10px] font-semibold text-slate-500">IA arquiteta</span>
           </div>
@@ -1339,6 +1375,88 @@ export default function ConceptClientBriefPanel({
           {dreamStep === 3 && (
             <div className="space-y-3">
               <div>
+                <div className="text-xs font-bold text-slate-900">Quem vai morar e como a casa precisa funcionar?</div>
+                <p className="mt-1 text-[10px] leading-4 text-slate-500">
+                  Isso ajuda a IA a dimensionar convivência, privacidade, home office, acessibilidade e uso diário.
+                </p>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <label className="text-[10px] font-semibold text-slate-600">
+                  Moradores
+                  <input type="number" min={1} max={12} value={household.residents ?? 1}
+                    onChange={(event) => setHousehold((current) => ({ ...current, residents: Math.max(1, Math.min(12, Number(event.target.value) || 1)) }))}
+                    className="mt-1 w-full rounded-lg border px-2 py-2 text-xs" />
+                </label>
+                <label className="text-[10px] font-semibold text-slate-600">
+                  Crianças
+                  <input type="number" min={0} max={8} value={household.children ?? 0}
+                    onChange={(event) => setHousehold((current) => ({ ...current, children: Math.max(0, Math.min(8, Number(event.target.value) || 0)) }))}
+                    className="mt-1 w-full rounded-lg border px-2 py-2 text-xs" />
+                </label>
+                <label className="text-[10px] font-semibold text-slate-600">
+                  Idosos
+                  <input type="number" min={0} max={6} value={household.elderly ?? 0}
+                    onChange={(event) => setHousehold((current) => ({ ...current, elderly: Math.max(0, Math.min(6, Number(event.target.value) || 0)) }))}
+                    className="mt-1 w-full rounded-lg border px-2 py-2 text-xs" />
+                </label>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <ChoiceButton active={household.pets === true} onClick={() => setHousehold((current) => ({ ...current, pets: !current.pets }))}>Tem animais</ChoiceButton>
+                <ChoiceButton active={household.accessibilityNeeds === true} onClick={() => setHousehold((current) => ({ ...current, accessibilityNeeds: !current.accessibilityNeeds }))}>Precisa acessibilidade</ChoiceButton>
+              </div>
+              <div>
+                <div className="mb-2 text-[10px] font-bold text-slate-700">Home office</div>
+                <div className="grid grid-cols-3 gap-2">
+                  {([["nao","Não"],["ocasional","Ocasional"],["frequente","Frequente"]] as const).map(([value,label]) => (
+                    <ChoiceButton key={value} active={household.workFromHome === value} onClick={() => setHousehold((current) => ({ ...current, workFromHome: value }))}>{label}</ChoiceButton>
+                  ))}
+                </div>
+              </div>
+              <textarea value={household.routineNotes ?? ""}
+                onChange={(event) => setHousehold((current) => ({ ...current, routineNotes: event.target.value.slice(0, 700) }))}
+                placeholder="Conte algo importante da rotina: horários, receber pessoas, cozinhar, crianças, hobbies..."
+                className="min-h-20 w-full rounded-xl border px-3 py-2 text-xs outline-none" />
+            </div>
+          )}
+
+          {dreamStep === 4 && (
+            <div className="space-y-3">
+              <div>
+                <div className="text-xs font-bold text-slate-900">Como é o terreno e o que devemos aproveitar ou proteger?</div>
+                <p className="mt-1 text-[10px] leading-4 text-slate-500">
+                  Mesmo quando alguns dados ainda não são conhecidos, registre o que você sabe. A implantação usará isso como diretriz.
+                </p>
+              </div>
+              <div>
+                <div className="mb-2 text-[10px] font-bold text-slate-700">Norte do terreno</div>
+                <div className="grid grid-cols-3 gap-2">
+                  {([["nao_informado","Não sei"],["top","Superior"],["bottom","Inferior"],["left","Esquerda"],["right","Direita"]] as const).map(([value,label]) => (
+                    <ChoiceButton key={value} active={siteContext.northSide === value} onClick={() => setSiteContext((current) => ({ ...current, northSide: value }))}>{label}</ChoiceButton>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div className="mb-2 text-[10px] font-bold text-slate-700">Topografia</div>
+                <div className="grid grid-cols-3 gap-2">
+                  {([["nao_informado","Não sei"],["plano","Plano"],["declive","Declive"],["aclive","Aclive"],["irregular","Irregular"]] as const).map(([value,label]) => (
+                    <ChoiceButton key={value} active={siteContext.topography === value} onClick={() => setSiteContext((current) => ({ ...current, topography: value }))}>{label}</ChoiceButton>
+                  ))}
+                </div>
+              </div>
+              <textarea value={siteContext.desiredViews ?? ""}
+                onChange={(event) => setSiteContext((current) => ({ ...current, desiredViews: event.target.value.slice(0, 500) }))}
+                placeholder="Vistas que gostaria de valorizar: jardim, piscina, pôr do sol, paisagem..."
+                className="min-h-16 w-full rounded-xl border px-3 py-2 text-xs outline-none" />
+              <textarea value={siteContext.privacyNotes ?? ""}
+                onChange={(event) => setSiteContext((current) => ({ ...current, privacyNotes: event.target.value.slice(0, 500) }))}
+                placeholder="Privacidade, vizinhos, rua ou pontos que devem ficar protegidos"
+                className="min-h-16 w-full rounded-xl border px-3 py-2 text-xs outline-none" />
+            </div>
+          )}
+
+          {dreamStep === 5 && (
+            <div className="space-y-3">
+              <div>
                 <div className="text-xs font-bold text-slate-900">Agora me conte o que faria essa casa ser realmente de vocês.</div>
                 <p className="mt-1 text-[10px] leading-4 text-slate-500">
                   Pode escrever de forma natural. Ex.: “quero ver a piscina da cozinha”, “não quero corredor comprido”, “preciso pensar em filhos no futuro”.
@@ -1362,6 +1480,48 @@ export default function ConceptClientBriefPanel({
                 placeholder="Como sua família ou rotina pode mudar nos próximos anos?"
                 className="min-h-16 w-full rounded-xl border px-3 py-2 text-xs outline-none"
               />
+              <textarea
+                value={vision.aestheticReferences ?? ""}
+                onChange={(event) => setVision((current) => ({ ...current, aestheticReferences: event.target.value.slice(0, 700) }))}
+                placeholder="Referências estéticas: estilos, casas, arquitetos, sensações ou imagens que representam o que vocês gostam"
+                className="min-h-16 w-full rounded-xl border px-3 py-2 text-xs outline-none"
+              />
+              <textarea
+                value={vision.preferredMaterials ?? ""}
+                onChange={(event) => setVision((current) => ({ ...current, preferredMaterials: event.target.value.slice(0, 500) }))}
+                placeholder="Materiais que gostam ou querem evitar"
+                className="min-h-16 w-full rounded-xl border px-3 py-2 text-xs outline-none"
+              />
+              <div>
+                <div className="mb-2 text-[10px] font-bold text-slate-700">Método construtivo</div>
+                <select
+                  value={vision.constructionMethod ?? "nao_definido"}
+                  onChange={(event) => setVision((current) => ({ ...current, constructionMethod: event.target.value as ClientVision["constructionMethod"] }))}
+                  className="w-full rounded-xl border bg-white px-3 py-2 text-xs"
+                >
+                  <option value="nao_definido">Ainda não definido</option>
+                  <option value="icf">ICF</option>
+                  <option value="alvenaria">Alvenaria convencional</option>
+                  <option value="alvenaria_estrutural">Alvenaria estrutural</option>
+                  <option value="steel_frame">Steel frame</option>
+                  <option value="wood_frame">Wood frame</option>
+                  <option value="concreto">Concreto</option>
+                  <option value="pre_fabricado">Pré-fabricado</option>
+                  <option value="hibrido">Híbrido</option>
+                </select>
+              </div>
+              <label className="block text-[10px] font-bold text-slate-700">
+                Orçamento-alvo da obra (opcional)
+                <input
+                  type="number"
+                  min={0}
+                  step={10000}
+                  value={vision.budgetTarget ?? ""}
+                  onChange={(event) => setVision((current) => ({ ...current, budgetTarget: Number(event.target.value) > 0 ? Number(event.target.value) : undefined }))}
+                  placeholder="Ex.: 750000"
+                  className="mt-1 w-full rounded-xl border px-3 py-2 text-xs"
+                />
+              </label>
               <div>
                 <div className="mb-2 text-[10px] font-bold text-slate-700">Na hora de decidir, a prioridade é:</div>
                 <div className="grid grid-cols-3 gap-2">
@@ -1390,8 +1550,8 @@ export default function ConceptClientBriefPanel({
             </button>
             <button
               type="button"
-              onClick={() => setDreamStep((current) => Math.min(3, current + 1))}
-              disabled={dreamStep === 3}
+              onClick={() => setDreamStep((current) => Math.min(5, current + 1))}
+              disabled={dreamStep === 5}
               className="rounded-lg bg-slate-950 px-3 py-2 text-[10px] font-bold text-white disabled:opacity-35"
             >
               Próxima pergunta
@@ -1404,7 +1564,12 @@ export default function ConceptClientBriefPanel({
         <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Resumo</div>
         <div className="mt-1 text-[11px] font-semibold leading-5 text-slate-700">{summary}</div>
         <div className="mt-2 text-[10px] leading-4 text-slate-500">
-          Estilo de vida: {vision.lifestyle} · coração da casa: {vision.protagonist} · prioridades: {vision.priorities.length}
+          Estilo de vida: {vision.lifestyle} · coração da casa: {vision.protagonist} · prioridades: {vision.priorities.length} · briefing {assessProjectBriefCompleteness({
+            brief,
+            vision,
+            household,
+            siteContext: { ...siteContext, frontSide: placement?.frontSide ?? siteContext.frontSide },
+          })}% completo
         </div>
       </div>
 
