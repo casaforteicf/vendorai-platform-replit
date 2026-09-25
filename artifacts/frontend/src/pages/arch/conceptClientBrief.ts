@@ -424,7 +424,7 @@ function roomDimensionsForArea(
       depth: Math.round(requestedDepth * 100) / 100,
     };
   }
-  const preferredWidth: Partial<Record<ClientRoomRequestKind, number>> = {
+  const preferredWidthByKind: Partial<Record<ClientRoomRequestKind, number>> = {
     banheiro: 2.0,
     lavanderia: 2.4,
     cozinha: 3.4,
@@ -436,7 +436,7 @@ function roomDimensionsForArea(
     piscina: 6,
     outro: 3.2,
   };
-  let width = Math.min(preferredWidth[kind] ?? Math.sqrt(safeArea), Math.max(1.5, safeArea / 1.8));
+  let width = Math.min(preferredWidthByKind[kind] ?? Math.sqrt(safeArea), Math.max(1.5, safeArea / 1.8));
   let depth = safeArea / width;
   if (depth < 1.5) {
     depth = 1.5;
