@@ -236,6 +236,7 @@ type QualityDimensionKey =
   | "geometry"
   | "constructability"
   | "furnitureFit"
+  | "siteClimate"
   | "architecturalCoherence";
 
 type QualityDimension = {
@@ -394,6 +395,8 @@ function qualityDimensionForIssue(issue: string): QualityDimensionKey {
   if (low.includes("metragem") || low.includes("área resultante") || low.includes("meta total")
     || low.includes("adjacência obrigatória") || low.includes("programa")) return "program";
   if (low.includes("mobiliário") || low.includes("folga reduzida") || low.includes("abertura de portas")) return "furnitureFit";
+  if (low.includes("insolação") || low.includes("orientação solar") || low.includes("fachada oeste") || low.includes("exposição à rua")
+    || low.includes("ventilação") || low.includes("implantação climática")) return "siteClimate";
   if (low.includes("lavanderia") || low.includes("compacta") || low.includes("perímetro")) return "constructability";
   return "architecturalCoherence";
 }
@@ -530,6 +533,122 @@ function wallKey(x1: number, y1: number, x2: number, y2: number) {
   const b = [Math.round(x2 * 100), Math.round(y2 * 100)];
   const ordered = a[0] < b[0] || (a[0] === b[0] && a[1] <= b[1]) ? [a,b] : [b,a];
   return ordered.flat().join(":");
+}
+
+type CardinalSide = "north" | "south" | "east" | "west";
+type ModelSide = "top" | "bottom" | "left" | "right";
+
+function cardinalForModelSide(side: ModelSide, northSide: string | undefined): CardinalSide | null {
+  const north = northSide && ["top","bottom","left","right"].includes(northSide) ? northSide as ModelSide : null;
+  if (!north) return null;
+  const clockwise: ModelSide[] = ["top","right","bottom","left"];
+  const cardinal: CardinalSide[] = ["north","east","south","west"];
+  const offset = clockwise.indexOf(north);
+  const index = clockwise.indexOf(side);
+  return cardinal[(index - offset + 4) % 4];
+}
+
+function exposedModelSides(room: SpecialistPlanRoom, rooms: SpecialistPlanRoom[]) {
+  const sameFloor = rooms.filter((item) => item.floor === room.floor && item.id !== room.id && item.kind !== "piscina");
+  const exposure: ModelSide[] = [];
+  const sideCovered = (side: ModelSide) => sameFloor.some((other) => {
+    if (side === "top") return Math.abs(other.y + other.depth - room.y) <= PLAN_EPS
+      && Math.min(other.x + other.width, room.x + room.width) - Math.max(other.x, room.x) > 0.55;
+    if (side === "bottom") return Math.abs(other.y - (room.y + room.depth)) <= PLAN_EPS
+      && Math.min(other.x + other.width, room.x + room.width) - Math.max(other.x, room.x) > 0.55;
+    if (side === "left") return Math.abs(other.x + other.width - room.x) <= PLAN_EPS
+      && Math.min(other.y + other.depth, room.y + room.depth) - Math.max(other.y, room.y) > 0.55;
+    return Math.abs(other.x - (room.x + room.width)) <= PLAN_EPS
+      && Math.min(other.y + other.depth, room.y + room.depth) - Math.max(other.y, room.y) > 0.55;
+  });
+  for (const side of ["top","right","bottom","left"] as const) {
+    if (!sideCovered(side)) exposure.push(side);
+  }
+  return exposure;
+}
+
+function evaluateSiteClimateFit(
+  rooms: SpecialistPlanRoom[],
+  input: z.infer<typeof specialistHousePlanSchema>,
+) {
+  const northSide = input.siteContext?.northSide;
+  const frontSide = (input.siteContext?.frontSide ?? "top") as ModelSide;
+  const hasNorth = northSide && northSide !== "nao_informado";
+  const roomAnalysis = rooms
+    .filter((room) => room.kind !== "piscina" && room.kind !== "circulacao" && room.kind !== "escada")
+    .map((room) => {
+      const modelSides = exposedModelSides(room, rooms);
+      const cardinalSides = hasNorth
+        ? modelSides.map((side) => cardinalForModelSide(side, northSide)).filter(Boolean) as CardinalSide[]
+        : [];
+      const frontExposed = modelSides.includes(frontSide);
+      const issues: string[] = [];
+      let score = 100;
+
+      const habitable = ["sala","suite","quarto","cozinha","gourmet","outro"].includes(room.kind);
+      if (hasNorth && habitable && cardinalSides.length === 0) {
+        issues.push(`${room.label} não possui fachada externa clara para iluminação/ventilação.`);
+        score -= 45;
+      }
+      if (hasNorth && (room.kind === "suite" || room.kind === "quarto")) {
+        const favorable = cardinalSides.includes("east") || cardinalSides.includes("north");
+        const westOnly = cardinalSides.length > 0 && cardinalSides.every((side) => side === "west");
+        if (!favorable) {
+          issues.push(`${room.label} não aproveita orientação norte/leste para insolação mais favorável.`);
+          score -= 18;
+        }
+        if (westOnly) {
+          issues.push(`${room.label} depende de fachada oeste; prever proteção solar reforçada.`);
+          score -= 10;
+        }
+      }
+      if (frontExposed && (room.kind === "suite" || room.kind === "quarto") && input.brief.privateAwaySocial) {
+        issues.push(`${room.label} possui exposição à rua/frente apesar da prioridade de privacidade.`);
+        score -= 18;
+      }
+      if (hasNorth && room.kind === "sala" && cardinalSides.includes("west") && !cardinalSides.includes("north")) {
+        issues.push("Sala principal tem exposição oeste relevante; prever sombreamento e controle solar.");
+        score -= 8;
+      }
+
+      return {
+        roomId: room.id,
+        label: room.label,
+        modelSides,
+        cardinalSides,
+        frontExposed,
+        score: Math.max(0, score),
+        issues,
+      };
+    });
+
+  const issues = roomAnalysis.flatMap((item) => item.issues);
+  const score = roomAnalysis.length
+    ? Math.round(roomAnalysis.reduce((sum, item) => sum + item.score, 0) / roomAnalysis.length)
+    : 100;
+  const topography = input.siteContext?.topography ?? "nao_informado";
+  const recommendations: string[] = [];
+  if (!hasNorth) recommendations.push("Informe o norte do lote para ativar análise solar completa.");
+  if (topography === "declive" || topography === "aclive" || topography === "irregular") {
+    recommendations.push("Topografia não plana: priorizar implantação em níveis e minimizar movimentação de terra na etapa volumétrica.");
+  }
+  if (input.siteContext?.desiredViews?.trim()) {
+    recommendations.push(`Preservar e enquadrar vistas desejadas: ${input.siteContext.desiredViews.trim()}`);
+  }
+  if (input.siteContext?.privacyNotes?.trim()) {
+    recommendations.push(`Controlar privacidade conforme briefing: ${input.siteContext.privacyNotes.trim()}`);
+  }
+
+  return {
+    score,
+    status: score < 58 ? "blocked" as const : score < 78 ? "warning" as const : "approved" as const,
+    northSide: northSide ?? "nao_informado",
+    frontSide,
+    topography,
+    roomAnalysis,
+    issues,
+    recommendations,
+  };
 }
 
 function buildWallFirstModel(
@@ -692,6 +811,7 @@ function buildArchitecturalQualityGateV2(issues: string[]) {
     "geometry",
     "constructability",
     "furnitureFit",
+    "siteClimate",
     "architecturalCoherence",
   ];
   const dimensionIssues = Object.fromEntries(keys.map((key) => [key, [] as string[]])) as Record<QualityDimensionKey, string[]>;
@@ -738,9 +858,10 @@ function buildArchitecturalQualityGateV2(issues: string[]) {
     privacy: 0.08,
     ergonomics: 0.14,
     geometry: 0.14,
-    constructability: 0.08,
-    furnitureFit: 0.14,
-    architecturalCoherence: 0.08,
+    constructability: 0.07,
+    furnitureFit: 0.13,
+    siteClimate: 0.10,
+    architecturalCoherence: 0.06,
   };
 
   const score = Math.round(keys.reduce((sum, key) => sum + dimensions[key].score * weights[key], 0));
@@ -1032,7 +1153,8 @@ function evaluateSpecialistPlan(
   }
 
   const furnitureFit = evaluateFurnitureFit(rooms);
-  issues.push(...furnitureFit.issues);
+  const siteClimate = evaluateSiteClimateFit(rooms, input);
+  issues.push(...furnitureFit.issues, ...siteClimate.issues);
 
   const uniqueIssues = [...new Set(issues)];
   const gate = buildArchitecturalQualityGateV2(uniqueIssues);
@@ -1041,15 +1163,21 @@ function evaluateSpecialistPlan(
     status: furnitureFit.status,
     issues: furnitureFit.issues.slice(0, 8),
   };
+  gate.dimensions.siteClimate = {
+    score: siteClimate.score,
+    status: siteClimate.status,
+    issues: siteClimate.issues.slice(0, 8),
+  };
   gate.score = Math.round(
     gate.dimensions.program.score * 0.16
     + gate.dimensions.circulation.score * 0.18
     + gate.dimensions.privacy.score * 0.08
     + gate.dimensions.ergonomics.score * 0.14
-    + gate.dimensions.geometry.score * 0.14
-    + gate.dimensions.constructability.score * 0.08
-    + gate.dimensions.furnitureFit.score * 0.14
-    + gate.dimensions.architecturalCoherence.score * 0.08
+    + gate.dimensions.geometry.score * 0.13
+    + gate.dimensions.constructability.score * 0.07
+    + gate.dimensions.furnitureFit.score * 0.13
+    + gate.dimensions.siteClimate.score * 0.10
+    + gate.dimensions.architecturalCoherence.score * 0.01
   );
   const furnitureBlocked = furnitureFit.status === "blocked";
   if (furnitureBlocked) {
@@ -1072,7 +1200,11 @@ function evaluateSpecialistPlan(
     hardBlockers: gate.hardBlockers,
     dimensions: gate.dimensions,
     furnitureFit,
-  } as SpecialistPlanQuality & { furnitureFit: ReturnType<typeof evaluateFurnitureFit> };
+    siteClimate,
+  } as SpecialistPlanQuality & {
+    furnitureFit: ReturnType<typeof evaluateFurnitureFit>;
+    siteClimate: ReturnType<typeof evaluateSiteClimateFit>;
+  };
 }
 
 function sanitizeSpecialistPlan(
@@ -1209,6 +1341,7 @@ function sanitizeSpecialistPlan(
         unreachableRooms: circulationGraph.unreachable.map((room) => room.label),
       },
       furnitureFit: (quality as SpecialistPlanQuality & { furnitureFit?: ReturnType<typeof evaluateFurnitureFit> }).furnitureFit ?? null,
+      siteClimate: (quality as SpecialistPlanQuality & { siteClimate?: ReturnType<typeof evaluateSiteClimateFit> }).siteClimate ?? null,
     },
   };
 }
@@ -1874,6 +2007,9 @@ INTERPRETAÇÃO OBRIGATÓRIA DO BRIEFING:
 - home office frequente deve receber localização, privacidade e iluminação compatíveis;
 - frequência de receber pessoas e intensidade de uso da cozinha devem influenciar área social, cozinha, gourmet e fluxos;
 - use norte, topografia, vistas e privacidade do terreno para orientar implantação, aberturas e setorização quando informados;
+- no hemisfério sul, trate fachadas norte/leste como oportunidades relevantes de insolação útil e controle com sombreamento adequado; trate exposição oeste com cuidado especial;
+- evite colocar dormitórios expostos diretamente à rua quando a privacidade for prioridade;
+- se o terreno tiver aclive/declive/irregularidade, proponha uma implantação que reduza movimentação de terra e permita evolução posterior em níveis;
 - referências estéticas e materiais orientam linguagem e DNA, mas nunca podem quebrar funcionalidade;
 - método construtivo deve orientar racionalidade geométrica e repetição/modulação quando aplicável;
 - orçamento-alvo e estratégia de custo devem limitar complexidade gratuita de perímetro, vãos, recortes e cobertura;
