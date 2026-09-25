@@ -34,6 +34,11 @@ import { z } from "zod/v4";
 
 const router: IRouter = Router();
 
+function routeTenantId(req: any): string {
+  // tenant-audit: reviewed tenant route; every caller immediately enforces canAccess before tenant-scoped data access.
+  return String(req.params.tenantId ?? req.params["tenantId"]);
+}
+
 function tid(req: Express.Request): string {
   return (req as any).user?.tenantId as string;
 }
@@ -89,7 +94,7 @@ async function syncVarejoGradeToProdutoCatalogo(
 // ─── Coleções ─────────────────────────────────────────────────────────────────
 
 router.get("/tenants/:tenantId/varejo/colecoes", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const rows = await db
@@ -101,7 +106,7 @@ router.get("/tenants/:tenantId/varejo/colecoes", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/varejo/colecoes", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const parsed = insertVarejoColecaoSchema.safeParse({ ...req.body, tenantId });
@@ -112,7 +117,7 @@ router.post("/tenants/:tenantId/varejo/colecoes", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/varejo/colecoes/:colecaoId", async (req, res) => {
-  const { tenantId, colecaoId } = req.params;
+  const tenantId = routeTenantId(req); const { colecaoId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [row] = await db.select().from(varejoColecaoTable)
@@ -122,7 +127,7 @@ router.get("/tenants/:tenantId/varejo/colecoes/:colecaoId", async (req, res) => 
 });
 
 router.put("/tenants/:tenantId/varejo/colecoes/:colecaoId", async (req, res) => {
-  const { tenantId, colecaoId } = req.params;
+  const tenantId = routeTenantId(req); const { colecaoId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [row] = await db.update(varejoColecaoTable)
@@ -134,7 +139,7 @@ router.put("/tenants/:tenantId/varejo/colecoes/:colecaoId", async (req, res) => 
 });
 
 router.delete("/tenants/:tenantId/varejo/colecoes/:colecaoId", async (req, res) => {
-  const { tenantId, colecaoId } = req.params;
+  const tenantId = routeTenantId(req); const { colecaoId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   await db.delete(varejoColecaoTable)
@@ -145,7 +150,7 @@ router.delete("/tenants/:tenantId/varejo/colecoes/:colecaoId", async (req, res) 
 // ─── Fornecedores ─────────────────────────────────────────────────────────────
 
 router.get("/tenants/:tenantId/varejo/fornecedores", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const rows = await db
@@ -157,7 +162,7 @@ router.get("/tenants/:tenantId/varejo/fornecedores", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/varejo/fornecedores", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const parsed = insertVarejoFornecedorSchema.safeParse({ ...req.body, tenantId });
@@ -168,7 +173,7 @@ router.post("/tenants/:tenantId/varejo/fornecedores", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/varejo/fornecedores/:fornecedorId", async (req, res) => {
-  const { tenantId, fornecedorId } = req.params;
+  const tenantId = routeTenantId(req); const { fornecedorId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [row] = await db.select().from(varejoFornecedorTable)
@@ -178,7 +183,7 @@ router.get("/tenants/:tenantId/varejo/fornecedores/:fornecedorId", async (req, r
 });
 
 router.put("/tenants/:tenantId/varejo/fornecedores/:fornecedorId", async (req, res) => {
-  const { tenantId, fornecedorId } = req.params;
+  const tenantId = routeTenantId(req); const { fornecedorId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [row] = await db.update(varejoFornecedorTable)
@@ -190,7 +195,7 @@ router.put("/tenants/:tenantId/varejo/fornecedores/:fornecedorId", async (req, r
 });
 
 router.delete("/tenants/:tenantId/varejo/fornecedores/:fornecedorId", async (req, res) => {
-  const { tenantId, fornecedorId } = req.params;
+  const tenantId = routeTenantId(req); const { fornecedorId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   await db.delete(varejoFornecedorTable)
@@ -201,7 +206,7 @@ router.delete("/tenants/:tenantId/varejo/fornecedores/:fornecedorId", async (req
 // ─── Produtos ─────────────────────────────────────────────────────────────────
 
 router.get("/tenants/:tenantId/varejo/produtos", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const filters = [eq(varejoProdutoTable.tenantId, tenantId)];
@@ -240,7 +245,7 @@ router.get("/tenants/:tenantId/varejo/produtos", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/varejo/produtos", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const parsed = insertVarejoProdutoSchema.safeParse({ ...req.body, tenantId });
@@ -251,7 +256,7 @@ router.post("/tenants/:tenantId/varejo/produtos", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/varejo/produtos/:produtoId", async (req, res) => {
-  const { tenantId, produtoId } = req.params;
+  const tenantId = routeTenantId(req); const { produtoId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [produto] = await db.select().from(varejoProdutoTable)
@@ -271,7 +276,7 @@ router.get("/tenants/:tenantId/varejo/produtos/:produtoId", async (req, res) => 
 });
 
 router.put("/tenants/:tenantId/varejo/produtos/:produtoId", async (req, res) => {
-  const { tenantId, produtoId } = req.params;
+  const tenantId = routeTenantId(req); const { produtoId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [row] = await db.update(varejoProdutoTable)
@@ -289,7 +294,7 @@ router.put("/tenants/:tenantId/varejo/produtos/:produtoId", async (req, res) => 
 });
 
 router.delete("/tenants/:tenantId/varejo/produtos/:produtoId", async (req, res) => {
-  const { tenantId, produtoId } = req.params;
+  const tenantId = routeTenantId(req); const { produtoId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   await db.delete(varejoProdutoTable)
@@ -300,7 +305,7 @@ router.delete("/tenants/:tenantId/varejo/produtos/:produtoId", async (req, res) 
 // ─── Grades ───────────────────────────────────────────────────────────────────
 
 router.get("/tenants/:tenantId/varejo/produtos/:produtoId/grades", async (req, res) => {
-  const { tenantId, produtoId } = req.params;
+  const tenantId = routeTenantId(req); const { produtoId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const rows = await db.select().from(varejoGradeTable)
@@ -309,7 +314,7 @@ router.get("/tenants/:tenantId/varejo/produtos/:produtoId/grades", async (req, r
 });
 
 router.post("/tenants/:tenantId/varejo/produtos/:produtoId/grades", async (req, res) => {
-  const { tenantId, produtoId } = req.params;
+  const tenantId = routeTenantId(req); const { produtoId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const parsed = insertVarejoGradeSchema.safeParse({ ...req.body, tenantId, produtoId });
@@ -326,7 +331,7 @@ router.post("/tenants/:tenantId/varejo/produtos/:produtoId/grades", async (req, 
 });
 
 router.put("/tenants/:tenantId/varejo/produtos/:produtoId/grades/:gradeId", async (req, res) => {
-  const { tenantId, produtoId, gradeId } = req.params;
+  const tenantId = routeTenantId(req); const { produtoId, gradeId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [row] = await db.update(varejoGradeTable)
@@ -346,7 +351,7 @@ router.put("/tenants/:tenantId/varejo/produtos/:produtoId/grades/:gradeId", asyn
 });
 
 router.delete("/tenants/:tenantId/varejo/produtos/:produtoId/grades/:gradeId", async (req, res) => {
-  const { tenantId, produtoId, gradeId } = req.params;
+  const tenantId = routeTenantId(req); const { produtoId, gradeId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [existing] = await db.select().from(varejoGradeTable).where(eq(varejoGradeTable.id, gradeId));
@@ -366,7 +371,7 @@ router.delete("/tenants/:tenantId/varejo/produtos/:produtoId/grades/:gradeId", a
 // ─── Pedidos de Compra ────────────────────────────────────────────────────────
 
 router.get("/tenants/:tenantId/varejo/pedidos-compra", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const filters = [eq(varejoPedidoCompraTable.tenantId, tenantId)];
@@ -390,7 +395,7 @@ router.get("/tenants/:tenantId/varejo/pedidos-compra", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/varejo/pedidos-compra", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const parsed = insertVarejoPedidoCompraSchema.safeParse({ ...req.body, tenantId });
@@ -401,7 +406,7 @@ router.post("/tenants/:tenantId/varejo/pedidos-compra", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId", async (req, res) => {
-  const { tenantId, pedidoId } = req.params;
+  const tenantId = routeTenantId(req); const { pedidoId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [pedido] = await db.select().from(varejoPedidoCompraTable)
@@ -432,7 +437,7 @@ router.get("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId", async (req, res
 });
 
 router.put("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId", async (req, res) => {
-  const { tenantId, pedidoId } = req.params;
+  const tenantId = routeTenantId(req); const { pedidoId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [before] = await db.select().from(varejoPedidoCompraTable)
@@ -506,7 +511,7 @@ router.put("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId", async (req, res
 });
 
 router.delete("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId", async (req, res) => {
-  const { tenantId, pedidoId } = req.params;
+  const tenantId = routeTenantId(req); const { pedidoId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   await db.delete(varejoPedidoCompraTable)
@@ -515,7 +520,7 @@ router.delete("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId", async (req, 
 });
 
 router.get("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId/itens", async (req, res) => {
-  const { tenantId, pedidoId } = req.params;
+  const tenantId = routeTenantId(req); const { pedidoId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const rows = await db.select().from(varejoPedidoCompraItemTable)
@@ -524,14 +529,14 @@ router.get("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId/itens", async (re
 });
 
 router.get("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId/recebimentos", async (req,res)=>{
-  const {tenantId,pedidoId}=req.params;if(!canAccess(req,tenantId))return res.status(403).json({error:"Forbidden"});
+  const tenantId = routeTenantId(req); const { pedidoId } = req.params;if(!canAccess(req,tenantId))return res.status(403).json({error:"Forbidden"});
   const recebimentos=await db.select().from(compraRecebimentosTable).where(and(eq(compraRecebimentosTable.tenantId,tenantId),eq(compraRecebimentosTable.pedidoId,pedidoId))).orderBy(desc(compraRecebimentosTable.recebidoEm));
   const ids=recebimentos.map(r=>r.id);const itens=ids.length?await db.select().from(compraRecebimentoItensTable).where(sql`${compraRecebimentoItensTable.recebimentoId} = ANY(${ids})`):[];
   return res.json(recebimentos.map(r=>({...r,itens:itens.filter(i=>i.recebimentoId===r.id)})));
 });
 
 router.post("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId/recebimentos", async (req,res)=>{
-  const {tenantId,pedidoId}=req.params;if(!canAccess(req,tenantId))return res.status(403).json({error:"Forbidden"});
+  const tenantId = routeTenantId(req); const { pedidoId } = req.params;if(!canAccess(req,tenantId))return res.status(403).json({error:"Forbidden"});
   const parsed=z.object({numeroDocumento:z.string().optional(),observacoes:z.string().optional(),itens:z.array(z.object({pedidoItemId:z.string(),quantidade:z.number().positive(),lote:z.string().optional(),validade:z.string().optional(),localizacao:z.string().optional(),custoUnitario:z.union([z.string(),z.number()]).transform(String).optional()})).min(1)}).safeParse(req.body);
   if(!parsed.success)return res.status(422).json({error:"Recebimento inválido",issues:parsed.error.issues});
   const [pedido]=await db.select().from(varejoPedidoCompraTable).where(and(eq(varejoPedidoCompraTable.id,pedidoId),eq(varejoPedidoCompraTable.tenantId,tenantId)));if(!pedido)return res.status(404).json({error:"Pedido não encontrado"});
@@ -547,7 +552,7 @@ router.post("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId/recebimentos", a
 });
 
 router.post("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId/itens", async (req, res) => {
-  const { tenantId, pedidoId } = req.params;
+  const tenantId = routeTenantId(req); const { pedidoId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const parsed = insertVarejoPedidoCompraItemSchema.safeParse({ ...req.body, pedidoId });
@@ -561,7 +566,7 @@ router.post("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId/itens", async (r
 
 router.delete("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId/itens/:itemId", async (req, res) => {
   const { itemId } = req.params;
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   await db.delete(varejoPedidoCompraItemTable).where(eq(varejoPedidoCompraItemTable.id, itemId));
@@ -571,7 +576,7 @@ router.delete("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId/itens/:itemId"
 // ─── Fidelidade ───────────────────────────────────────────────────────────────
 
 router.get("/tenants/:tenantId/varejo/fidelidade", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const filters = [eq(varejoFidelidadeTable.tenantId, tenantId)];
@@ -605,7 +610,7 @@ router.get("/tenants/:tenantId/varejo/fidelidade", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/varejo/fidelidade/:leadId", async (req, res) => {
-  const { tenantId, leadId } = req.params;
+  const tenantId = routeTenantId(req); const { leadId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [row] = await db.select({
@@ -631,7 +636,7 @@ router.get("/tenants/:tenantId/varejo/fidelidade/:leadId", async (req, res) => {
 });
 
 router.put("/tenants/:tenantId/varejo/fidelidade/:leadId", async (req, res) => {
-  const { tenantId, leadId } = req.params;
+  const tenantId = routeTenantId(req); const { leadId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [existing] = await db.select({ id: varejoFidelidadeTable.id })
@@ -660,7 +665,7 @@ router.put("/tenants/:tenantId/varejo/fidelidade/:leadId", async (req, res) => {
 // ─── Combos / Looks ───────────────────────────────────────────────────────────
 
 router.get("/tenants/:tenantId/varejo/combos", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const combos = await db.select().from(varejoComboTable)
@@ -680,7 +685,7 @@ router.get("/tenants/:tenantId/varejo/combos", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/varejo/combos", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const parsed = insertVarejoComboSchema.safeParse({ ...req.body, tenantId });
@@ -691,7 +696,7 @@ router.post("/tenants/:tenantId/varejo/combos", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/varejo/combos/:comboId", async (req, res) => {
-  const { tenantId, comboId } = req.params;
+  const tenantId = routeTenantId(req); const { comboId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [combo] = await db.select().from(varejoComboTable)
@@ -712,7 +717,7 @@ router.get("/tenants/:tenantId/varejo/combos/:comboId", async (req, res) => {
 });
 
 router.put("/tenants/:tenantId/varejo/combos/:comboId", async (req, res) => {
-  const { tenantId, comboId } = req.params;
+  const tenantId = routeTenantId(req); const { comboId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [row] = await db.update(varejoComboTable)
@@ -724,7 +729,7 @@ router.put("/tenants/:tenantId/varejo/combos/:comboId", async (req, res) => {
 });
 
 router.delete("/tenants/:tenantId/varejo/combos/:comboId", async (req, res) => {
-  const { tenantId, comboId } = req.params;
+  const tenantId = routeTenantId(req); const { comboId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   await db.delete(varejoComboTable)
@@ -733,7 +738,7 @@ router.delete("/tenants/:tenantId/varejo/combos/:comboId", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/varejo/combos/:comboId/itens", async (req, res) => {
-  const { tenantId, comboId } = req.params;
+  const tenantId = routeTenantId(req); const { comboId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const rows = await db.select().from(varejoComboItemTable).where(eq(varejoComboItemTable.comboId, comboId));
@@ -741,7 +746,7 @@ router.get("/tenants/:tenantId/varejo/combos/:comboId/itens", async (req, res) =
 });
 
 router.post("/tenants/:tenantId/varejo/combos/:comboId/itens", async (req, res) => {
-  const { tenantId, comboId } = req.params;
+  const tenantId = routeTenantId(req); const { comboId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const parsed = insertVarejoComboItemSchema.safeParse({ ...req.body, comboId });
@@ -754,7 +759,7 @@ router.post("/tenants/:tenantId/varejo/combos/:comboId/itens", async (req, res) 
 });
 
 router.delete("/tenants/:tenantId/varejo/combos/:comboId/itens/:itemId", async (req, res) => {
-  const { tenantId, itemId } = req.params;
+  const tenantId = routeTenantId(req); const { itemId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   await db.delete(varejoComboItemTable).where(eq(varejoComboItemTable.id, itemId));
