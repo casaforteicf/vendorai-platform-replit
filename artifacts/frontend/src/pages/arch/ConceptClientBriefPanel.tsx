@@ -245,10 +245,16 @@ export default function ConceptClientBriefPanel({
       await onImproveCurrent({
         brief,
         vision,
+        intervention,
         selectedAlternativeId: initialProjectBrief.selectedAlternativeId,
         selectedAlternativeTitle: initialProjectBrief.selectedAlternativeTitle,
         clientFitSummary: initialProjectBrief.clientFitSummary,
         designRationale: initialProjectBrief.designRationale,
+        architectureDNA: initialProjectBrief.architectureDNA,
+        experienceStrategy: initialProjectBrief.experienceStrategy,
+        daylightStrategy: initialProjectBrief.daylightStrategy,
+        facadeDirection: initialProjectBrief.facadeDirection,
+        selfCritique: initialProjectBrief.selfCritique,
       });
     } catch (error) {
       setGenerationError(
@@ -762,8 +768,7 @@ export default function ConceptClientBriefPanel({
         </div>
       </div>
 
-      {!initialProjectBrief && (
-        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="text-xs font-bold text-slate-800">Como a IA deve evoluir o projeto?</div>
           <p className="mt-1 text-[10px] leading-4 text-slate-500">
             O modo muda a liberdade arquitetônica, mas nunca libera a IA para ignorar o briefing ou a funcionalidade.
@@ -791,7 +796,6 @@ export default function ConceptClientBriefPanel({
             {intervention === "assinatura" && "Busca uma solução mais autoral e marcante, sem perder construtibilidade."}
           </div>
         </section>
-      )}
 
       <button
         type="button"
