@@ -389,6 +389,12 @@ export type ClientBriefAlternative = ClientBriefPlan & {
   description: string;
   variant: 0 | 1 | 2;
   architectureScore?: number;
+  qualityGateVersion?: 2;
+  qualityDimensions?: Partial<Record<
+    "program" | "circulation" | "privacy" | "ergonomics" | "geometry" | "constructability" | "architecturalCoherence",
+    { score: number; status: "approved" | "warning" | "blocked"; issues: string[] }
+  >>;
+  hardBlockers?: string[];
   designRationale?: string;
   qualityIssues?: string[];
   qualityStrengths?: string[];
