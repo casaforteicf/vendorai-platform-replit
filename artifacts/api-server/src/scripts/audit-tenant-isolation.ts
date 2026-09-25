@@ -1,5 +1,5 @@
-// Batch 2 tenant-isolation review trigger.
 #!/usr/bin/env tsx
+// Batch 2 tenant-isolation review trigger.
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
