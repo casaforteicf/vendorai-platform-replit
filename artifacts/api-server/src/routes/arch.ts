@@ -1434,6 +1434,109 @@ router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
   return res.json(updated);
 });
 
+async function runIndependentArchitecturalCritic(
+  candidate: any,
+  input: z.infer<typeof specialistHousePlanSchema>,
+) {
+  const criticPrompt = `Você é o ARQDOR ARCHITECTURAL CRITIC, um arquiteto residencial sênior independente.
+Você NÃO criou este projeto. Sua função é encontrar problemas que o agente autor pode ter ignorado.
+
+BRIEFING:
+${JSON.stringify({
+  brief: input.brief,
+  vision: input.vision ?? {},
+  household: input.household ?? {},
+  siteContext: input.siteContext ?? {},
+})}
+
+PROJETO CANDIDATO:
+${JSON.stringify({
+  designRationale: candidate.designRationale,
+  architectureDNA: candidate.architectureDNA,
+  rooms: candidate.rooms,
+  programCompliance: candidate.programCompliance,
+  quality: candidate.quality,
+})}
+
+AUDITE COM RIGOR:
+1. o projeto traduz a rotina e prioridades ou apenas cumpre metragem?
+2. os acessos e a privacidade fazem sentido para uso cotidiano?
+3. dormitórios, banheiros, cozinha, estar/jantar, garagem e gourmet são realmente utilizáveis?
+4. existe corredor residual, passagem constrangedora ou circulação atravessando funções?
+5. a implantação e o partido têm lógica arquitetônica reconhecível?
+6. há conflito entre planta, futura volumetria, cobertura e fachada?
+7. o projeto está excessivamente genérico ou sem decisão espacial clara?
+8. há decisão que cria custo/complexidade sem benefício evidente?
+9. necessidades futuras e acessibilidade foram tratadas quando o briefing pede?
+10. há algum problema suficientemente grave para impedir apresentação ao cliente?
+
+Não penalize gosto pessoal. Julgue funcionalidade, coerência, adequação ao briefing e qualidade arquitetônica.
+Não invente requisitos ausentes do briefing.
+
+Responda SOMENTE JSON:
+{
+  "approved": true,
+  "score": 0,
+  "blockingIssues": [],
+  "improvements": [],
+  "strengths": [],
+  "summary": "avaliação curta"
+}`;
+
+  const reviewMessage = await anthropic.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 2200,
+    system: [
+      "Você é um crítico arquitetônico independente do agente que desenhou a planta.",
+      "Seja rigoroso, objetivo e conservador ao criar bloqueios.",
+      "Bloqueie somente problemas materiais de funcionalidade, briefing, circulação, privacidade, ergonomia ou coerência arquitetônica.",
+      "Responda somente JSON válido.",
+    ].join(" "),
+    messages: [{ role: "user", content: criticPrompt }],
+  });
+
+  const raw = reviewMessage.content
+    .filter((item: any) => item.type === "text")
+    .map((item: any) => item.text)
+    .join("");
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (!match) {
+    return {
+      approved: false,
+      score: 0,
+      blockingIssues: ["O crítico independente não retornou uma avaliação estruturada."],
+      improvements: [],
+      strengths: [],
+      summary: "Falha de avaliação do crítico independente.",
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(match[0]);
+    const blockingIssues = Array.isArray(parsed.blockingIssues) ? parsed.blockingIssues.map(String).slice(0, 8) : [];
+    const improvements = Array.isArray(parsed.improvements) ? parsed.improvements.map(String).slice(0, 10) : [];
+    const strengths = Array.isArray(parsed.strengths) ? parsed.strengths.map(String).slice(0, 8) : [];
+    const score = Math.max(0, Math.min(100, Number(parsed.score) || 0));
+    return {
+      approved: Boolean(parsed.approved) && blockingIssues.length === 0 && score >= 75,
+      score,
+      blockingIssues,
+      improvements,
+      strengths,
+      summary: String(parsed.summary ?? "").slice(0, 900),
+    };
+  } catch {
+    return {
+      approved: false,
+      score: 0,
+      blockingIssues: ["O crítico independente retornou JSON inválido."],
+      improvements: [],
+      strengths: [],
+      summary: "Falha de avaliação do crítico independente.",
+    };
+  }
+}
+
 router.post("/arch/concept-plan-specialist", authenticate, async (req, res) => {
   const tid = tenantId(req);
   const userId = req.user?.sub;
@@ -1772,16 +1875,31 @@ NÃO aceite a primeira solução mental: critique e refine antes de responder.`;
         ...sanitized,
       };
 
-      if (!bestApproved || Number(candidate.architectureScore ?? 0) > Number(bestApproved.architectureScore ?? 0)) {
-        bestApproved = candidate;
+      const criticReview = await runIndependentArchitecturalCritic(candidate, input);
+      const reviewedCandidate = {
+        ...candidate,
+        criticReview,
+      };
+
+      if (!criticReview.approved) {
+        rejectedFeedback.push(
+          ...criticReview.blockingIssues.map((item: string) => `Crítico independente — bloqueio: ${item}`),
+          ...criticReview.improvements.map((item: string) => `Crítico independente — melhoria: ${item}`),
+        );
+        continue;
       }
 
-      if (Number(candidate.architectureScore ?? 0) >= 82) break;
+      if (!bestApproved || Number(reviewedCandidate.architectureScore ?? 0) > Number(bestApproved.architectureScore ?? 0)) {
+        bestApproved = reviewedCandidate;
+      }
+
+      if (Number(reviewedCandidate.architectureScore ?? 0) >= 78 && Number(criticReview.score ?? 0) >= 82) break;
 
       rejectedFeedback.push(
-        `Pontuação arquitetônica ${candidate.architectureScore}/100: refine circulação, adjacências, compactação e coerência do partido sem recomeçar do zero.`,
-        ...(candidate.quality?.issues ?? []),
-        ...(candidate.selfCritique ?? []).map((item: string) => `Autocrítica: ${item}`),
+        `Pontuação arquitetônica ${reviewedCandidate.architectureScore}/100 e crítico independente ${criticReview.score}/100: refine o mesmo partido antes de apresentar.`,
+        ...(reviewedCandidate.quality?.issues ?? []),
+        ...(criticReview.improvements ?? []).map((item: string) => `Crítico independente: ${item}`),
+        ...(reviewedCandidate.selfCritique ?? []).map((item: string) => `Autocrítica do autor: ${item}`),
       );
     }
 
@@ -1797,13 +1915,14 @@ NÃO aceite a primeira solução mental: critique e refine antes de responder.`;
       alternatives: [bestApproved],
       architectAgent: {
         model: "claude-sonnet-4-6",
-        reasoning: "intent-party-adjacency-daylight-volume-critique-refine-v2",
+        reasoning: "architect-propose-validator-independent-critic-refine-v3",
         validation: "architectural-quality-gate-v2",
         targetScore: 78,
         qualityGate: bestApproved.quality?.dimensions ?? null,
         hardBlockers: bestApproved.quality?.hardBlockers ?? [],
         intervention: input.intervention,
         refinementPasses: bestApproved.refinementPass,
+        critic: bestApproved.criticReview ?? null,
       },
       programCompliance: bestApproved.programCompliance ?? null,
       programValidation: {
