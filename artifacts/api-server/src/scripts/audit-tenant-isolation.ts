@@ -1,3 +1,4 @@
+// Batch 2 tenant-isolation review trigger.
 #!/usr/bin/env tsx
 import fs from "fs";
 import path from "path";
