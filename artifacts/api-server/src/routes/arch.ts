@@ -590,11 +590,11 @@ function buildArchitecturalQualityGateV2(issues: string[]) {
   })) as Record<QualityDimensionKey, QualityDimension>;
 
   const weights: Record<QualityDimensionKey, number> = {
-    program: 0.18,
-    circulation: 0.20,
-    privacy: 0.10,
-    ergonomics: 0.16,
-    geometry: 0.16,
+    program: 0.16,
+    circulation: 0.18,
+    privacy: 0.08,
+    ergonomics: 0.14,
+    geometry: 0.14,
     constructability: 0.08,
     furnitureFit: 0.14,
     architecturalCoherence: 0.08,
@@ -898,6 +898,16 @@ function evaluateSpecialistPlan(
     status: furnitureFit.status,
     issues: furnitureFit.issues.slice(0, 8),
   };
+  gate.score = Math.round(
+    gate.dimensions.program.score * 0.16
+    + gate.dimensions.circulation.score * 0.18
+    + gate.dimensions.privacy.score * 0.08
+    + gate.dimensions.ergonomics.score * 0.14
+    + gate.dimensions.geometry.score * 0.14
+    + gate.dimensions.constructability.score * 0.08
+    + gate.dimensions.furnitureFit.score * 0.14
+    + gate.dimensions.architecturalCoherence.score * 0.08
+  );
   const furnitureBlocked = furnitureFit.status === "blocked";
   if (furnitureBlocked) {
     gate.approved = false;
@@ -909,6 +919,7 @@ function evaluateSpecialistPlan(
     ])].slice(0, 12);
   }
   score = gate.score;
+  if (score < 78) gate.approved = false;
   return {
     version: 2,
     score,
