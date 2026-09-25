@@ -537,6 +537,7 @@ export default function ConceptClientBriefPanel({
         qualityGateVersion: item.quality?.version === 2 ? 2 : undefined,
         qualityDimensions: item.quality?.dimensions && typeof item.quality.dimensions === "object" ? item.quality.dimensions : undefined,
         hardBlockers: Array.isArray(item.quality?.hardBlockers) ? item.quality.hardBlockers.map(String) : undefined,
+        criticReview: item.criticReview && typeof item.criticReview === "object" ? item.criticReview : undefined,
         designRationale: typeof item.designRationale === "string" ? item.designRationale : undefined,
         qualityIssues: Array.isArray(item.quality?.issues) ? item.quality.issues.map(String) : undefined,
         qualityStrengths: Array.isArray(item.quality?.strengths) ? item.quality.strengths.map(String) : undefined,
@@ -698,6 +699,34 @@ export default function ConceptClientBriefPanel({
                         );
                       })}
                     </div>
+                  </div>
+                )}
+
+                {alternative.criticReview && (
+                  <div className="mt-2 rounded-lg border border-cyan-100 bg-cyan-50 px-2.5 py-2">
+                    <div className="flex items-center justify-between gap-2 text-[10px]">
+                      <span className="font-bold text-cyan-900">Crítico arquitetônico independente</span>
+                      <span className={alternative.criticReview.unavailable
+                        ? "font-bold text-amber-600"
+                        : alternative.criticReview.approved
+                          ? "font-bold text-emerald-700"
+                          : "font-bold text-red-600"}
+                      >
+                        {alternative.criticReview.unavailable
+                          ? "Indisponível"
+                          : `${alternative.criticReview.score}/100`}
+                      </span>
+                    </div>
+                    {alternative.criticReview.summary && (
+                      <p className="mt-1 text-[9px] leading-4 text-cyan-900">{alternative.criticReview.summary}</p>
+                    )}
+                    {alternative.criticReview.improvements?.length ? (
+                      <div className="mt-1 text-[9px] leading-4 text-slate-600">
+                        {alternative.criticReview.improvements.slice(0, 3).map((item, index) => (
+                          <div key={index}>• {item}</div>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 )}
 
