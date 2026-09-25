@@ -21,6 +21,7 @@ import {
   buildClientBriefAlternatives,
   buildClientBriefPlan,
   buildDefaultRoomProgram,
+  buildRecommendedAdjacencyRules,
   countBriefAlternativeErrors,
   rebalanceClientRoomProgramToDesiredArea,
   validateClientRoomProgram,
@@ -1162,15 +1163,29 @@ export default function ConceptClientBriefPanel({
           ))}
         </div>
 
-        <button
-          type="button"
-          disabled={roomProgram.length < 2}
-          onClick={addAdjacencyRule}
-          className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 px-3 py-2.5 text-[10px] font-bold text-slate-700 disabled:opacity-40"
-        >
-          <Plus className="h-4 w-4" />
-          Adicionar relação entre ambientes
-        </button>
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            disabled={roomProgram.length < 2}
+            onClick={() => setBrief((current) => ({
+              ...current,
+              adjacencyRules: buildRecommendedAdjacencyRules(current),
+            }))}
+            className="flex items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2.5 text-[10px] font-bold text-orange-700 disabled:opacity-40"
+          >
+            <Sparkles className="h-4 w-4" />
+            Aplicar relações recomendadas
+          </button>
+          <button
+            type="button"
+            disabled={roomProgram.length < 2}
+            onClick={addAdjacencyRule}
+            className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 px-3 py-2.5 text-[10px] font-bold text-slate-700 disabled:opacity-40"
+          >
+            <Plus className="h-4 w-4" />
+            Adicionar relação
+          </button>
+        </div>
 
         <div className="mt-3 grid grid-cols-3 gap-1.5 text-center text-[9px] text-slate-500">
           <div className="rounded-lg bg-slate-50 p-2"><b>Conectado</b><br />parede/porta em comum</div>
