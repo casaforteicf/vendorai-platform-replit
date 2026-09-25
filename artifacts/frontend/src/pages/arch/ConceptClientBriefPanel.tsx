@@ -64,9 +64,15 @@ const DEFAULT_BRIEF_BASE: ClientBrief = {
   desiredAreaTotal: 180,
 };
 
-const DEFAULT_BRIEF: ClientBrief = {
+const DEFAULT_ROOM_PROGRAM = buildDefaultRoomProgram(DEFAULT_BRIEF_BASE);
+const DEFAULT_BRIEF_WITH_PROGRAM: ClientBrief = {
   ...DEFAULT_BRIEF_BASE,
-  roomProgram: buildDefaultRoomProgram(DEFAULT_BRIEF_BASE),
+  roomProgram: DEFAULT_ROOM_PROGRAM,
+};
+const DEFAULT_BRIEF: ClientBrief = {
+  ...DEFAULT_BRIEF_WITH_PROGRAM,
+  adjacencyRules: buildRecommendedAdjacencyRules(DEFAULT_BRIEF_WITH_PROGRAM),
+  accessRules: buildRecommendedAccessRules(DEFAULT_BRIEF_WITH_PROGRAM),
 };
 
 const DEFAULT_VISION: ClientVision = {
@@ -297,12 +303,22 @@ export default function ConceptClientBriefPanel({
 }: Props) {
   const [brief, setBrief] = useState<ClientBrief>(() => {
     const initial = initialProjectBrief?.brief ?? DEFAULT_BRIEF;
-    return {
+    const roomProgram = Array.isArray(initial.roomProgram) && initial.roomProgram.length
+      ? initial.roomProgram
+      : buildDefaultRoomProgram(initial);
+    const withProgram: ClientBrief = {
       ...initial,
       desiredAreaTotal: initial.desiredAreaTotal ?? DEFAULT_BRIEF.desiredAreaTotal,
-      roomProgram: Array.isArray(initial.roomProgram) && initial.roomProgram.length
-        ? initial.roomProgram
-        : buildDefaultRoomProgram(initial),
+      roomProgram,
+    };
+    return {
+      ...withProgram,
+      adjacencyRules: Array.isArray(initial.adjacencyRules) && initial.adjacencyRules.length
+        ? initial.adjacencyRules
+        : buildRecommendedAdjacencyRules(withProgram),
+      accessRules: Array.isArray(initial.accessRules) && initial.accessRules.length
+        ? initial.accessRules
+        : buildRecommendedAccessRules(withProgram),
     };
   });
   const [vision, setVision] = useState<ClientVision>(() => ({ ...DEFAULT_VISION, ...(initialProjectBrief?.vision ?? {}) }));
