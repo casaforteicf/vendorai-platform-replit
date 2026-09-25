@@ -220,6 +220,9 @@ export default function ConceptClientBriefPanel({
   const [alternatives, setAlternatives] = useState<ClientBriefAlternative[]>([]);
   const [generating, setGenerating] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
+  const [intervention, setIntervention] = useState<"preservar" | "otimizar" | "valorizar" | "assinatura">(
+    () => initialProjectBrief?.intervention ?? "valorizar",
+  );
 
   const summary = useMemo(() => {
     const items = [
@@ -275,85 +278,70 @@ export default function ConceptClientBriefPanel({
           lotDepth,
           brief,
           vision,
+          intervention,
           rooms: base.rooms,
         }),
       });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok || !Array.isArray(payload?.alternatives)) {
-        throw new Error(payload?.error ?? "Não foi possível gerar as plantas com a IA especialista.");
+      const item = payload?.solution ?? (Array.isArray(payload?.alternatives) ? payload.alternatives[0] : null);
+      if (!response.ok || !item || !Array.isArray(item.rooms)) {
+        throw new Error(payload?.error ?? "Não foi possível desenvolver o projeto principal com a IA arquiteta.");
       }
 
-      const byId = new Map(
-        (payload.alternatives as any[]).map((item) => [String(item.id), item]),
-      );
-      const metadata = {
-        compact: {
-          title: "Opção A · Compacta",
-          description: "Circulação eficiente e implantação compacta.",
-          variant: 0 as const,
-        },
-        balanced: {
-          title: "Opção B · Equilibrada",
-          description: "Setorização equilibrada entre social, íntimo e serviço.",
-          variant: 1 as const,
-        },
-        integrated: {
-          title: "Opção C · Integrada",
-          description: "Área social e lazer mais conectados, com linguagem contemporânea.",
-          variant: 2 as const,
-        },
-      };
-
-      const specialist = (["compact", "balanced", "integrated"] as const).map((id) => {
-        const item = byId.get(id);
-        if (!item || !Array.isArray(item.rooms)) throw new Error("A IA especialista retornou uma alternativa incompleta.");
-        return {
-          ...base,
-          id,
-          title: item.title || metadata[id].title,
-          description: item.description || metadata[id].description,
-          variant: metadata[id].variant,
-          suggestedArea: Number(item.suggestedArea ?? base.suggestedArea),
-          rooms: item.rooms,
-          architectureScore: Number.isFinite(Number(item.architectureScore)) ? Number(item.architectureScore) : undefined,
-          designRationale: typeof item.designRationale === "string" ? item.designRationale : undefined,
-          qualityIssues: Array.isArray(item.quality?.issues) ? item.quality.issues.map(String) : undefined,
-          qualityStrengths: Array.isArray(item.quality?.strengths) ? item.quality.strengths.map(String) : undefined,
+      const primary = {
+        ...base,
+        id: "primary" as const,
+        title: item.title || "Projeto principal",
+        description: item.description || "Solução arquitetônica refinada a partir do seu briefing.",
+        variant: 0 as const,
+        suggestedArea: Number(item.suggestedArea ?? base.suggestedArea),
+        rooms: item.rooms,
+        architectureScore: Number.isFinite(Number(item.architectureScore)) ? Number(item.architectureScore) : undefined,
+        designRationale: typeof item.designRationale === "string" ? item.designRationale : undefined,
+        qualityIssues: Array.isArray(item.quality?.issues) ? item.quality.issues.map(String) : undefined,
+        qualityStrengths: Array.isArray(item.quality?.strengths) ? item.quality.strengths.map(String) : undefined,
+        clientFitSummary: typeof item.clientFitSummary === "string" ? item.clientFitSummary : undefined,
+        intervention,
+        architectureDNA: item.architectureDNA && typeof item.architectureDNA === "object" ? item.architectureDNA : undefined,
+        experienceStrategy: Array.isArray(item.experienceStrategy) ? item.experienceStrategy.map(String) : undefined,
+        daylightStrategy: Array.isArray(item.daylightStrategy) ? item.daylightStrategy.map(String) : undefined,
+        facadeDirection: Array.isArray(item.facadeDirection) ? item.facadeDirection.map(String) : undefined,
+        selfCritique: Array.isArray(item.selfCritique) ? item.selfCritique.map(String) : undefined,
+        projectBrief: {
+          brief,
+          vision,
+          intervention,
+          selectedAlternativeId: "primary" as const,
+          selectedAlternativeTitle: item.title || "Projeto principal",
           clientFitSummary: typeof item.clientFitSummary === "string" ? item.clientFitSummary : undefined,
-          projectBrief: {
-            brief,
-            vision,
-            selectedAlternativeId: id,
-            selectedAlternativeTitle: item.title || metadata[id].title,
-            clientFitSummary: typeof item.clientFitSummary === "string" ? item.clientFitSummary : undefined,
-            designRationale: typeof item.designRationale === "string" ? item.designRationale : undefined,
-          },
-        } satisfies ClientBriefAlternative;
-      });
+          designRationale: typeof item.designRationale === "string" ? item.designRationale : undefined,
+          architectureDNA: item.architectureDNA && typeof item.architectureDNA === "object" ? item.architectureDNA : undefined,
+          experienceStrategy: Array.isArray(item.experienceStrategy) ? item.experienceStrategy.map(String) : undefined,
+          daylightStrategy: Array.isArray(item.daylightStrategy) ? item.daylightStrategy.map(String) : undefined,
+          facadeDirection: Array.isArray(item.facadeDirection) ? item.facadeDirection.map(String) : undefined,
+          selfCritique: Array.isArray(item.selfCritique) ? item.selfCritique.map(String) : undefined,
+        },
+      } satisfies ClientBriefAlternative;
 
-      // Planta da IA com sobreposição, cômodo fora do lote ou fora dos recuos é descartada e
-      // substituída por um modelo desenhado compatível (antes caía direto no projeto: 24 erros).
-      const valid = specialist.filter((item) =>
-        countBriefAlternativeErrors(item.rooms, item.floors, lotWidth, lotDepth) === 0
-        && (item.rooms as Array<{ x: number; y: number; width: number; depth: number }>).every((room) => room.x >= 0 && room.y >= 0 && room.x + room.width <= lotWidth + 0.01 && room.y + room.depth <= lotDepth + 0.01),
-      );
-      const fallback = buildClientBriefAlternatives(brief, lotWidth, lotDepth, placement);
-      const next = [...valid, ...fallback].slice(0, 3);
-      if (!next.length) throw new Error("Nenhuma planta coube neste terreno.");
-      setAlternatives(next);
-      if (valid.length < specialist.length) {
-        setGenerationError(`${specialist.length - valid.length} planta(s) da IA tinham erros e foram trocadas por modelos desenhados que atendem ao pedido.`);
+      const valid =
+        countBriefAlternativeErrors(primary.rooms, primary.floors, lotWidth, lotDepth) === 0
+        && (primary.rooms as Array<{ x: number; y: number; width: number; depth: number }>).every(
+          (room) => room.x >= 0 && room.y >= 0 && room.x + room.width <= lotWidth + 0.01 && room.y + room.depth <= lotDepth + 0.01,
+        );
+
+      if (!valid) {
+        throw new Error("O projeto principal retornou inconsistências geométricas e não foi aplicado.");
       }
+
+      setAlternatives([primary]);
       setShowAlternatives(true);
     } catch (error) {
-      // Fail-safe: the editor remains usable even if the provider is temporarily
-      // unavailable. The fallback is explicit instead of silently pretending it
-      // came from the specialist.
-      setAlternatives(buildClientBriefAlternatives(brief, lotWidth, lotDepth, placement));
+      const fallback = buildClientBriefAlternatives(brief, lotWidth, lotDepth, placement)[0];
+      setAlternatives(fallback ? [fallback] : []);
       setGenerationError(
         error instanceof Error
-          ? `${error.message} Exibindo opções locais de contingência.`
-          : "IA especialista indisponível. Exibindo opções locais de contingência.",
+          ? `${error.message} Exibindo uma base local de contingência para você continuar.`
+          : "IA especialista indisponível. Exibindo uma base local de contingência.",
       );
       setShowAlternatives(true);
     } finally {
@@ -370,9 +358,9 @@ export default function ConceptClientBriefPanel({
               <Sparkles className="h-5 w-5" />
             </span>
             <div>
-              <div className="text-sm font-bold text-slate-900">Escolha uma planta inicial</div>
+              <div className="text-sm font-bold text-slate-900">Projeto principal desenvolvido</div>
               <p className="mt-1 text-[11px] leading-5 text-slate-600">
-                A IA arquiteta analisa lote, setorização, circulação, áreas molhadas, escada, garagem e lazer antes de propor três plantas editáveis.
+                A IA arquiteta desenvolve uma solução principal, critica o próprio projeto e refina partido, circulação, luz natural, integração e coerência com a futura fachada antes de apresentar.
               </p>
               {!generationError && (
                 <div className="mt-2 inline-flex rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold text-emerald-700">
@@ -480,7 +468,7 @@ export default function ConceptClientBriefPanel({
             <p className="mt-1 text-[11px] leading-5 text-slate-600">
               {initialProjectBrief
                 ? "Este briefing continua orientando a IA durante todo o desenvolvimento. Você pode revisar as preferências sem perder as edições feitas na planta."
-                : "Escolha as necessidades principais. O Arqdor gera três propostas para você comparar."}
+                : "Escolha as necessidades principais. O Arqdor desenvolve um projeto principal e o refina com crítica arquitetônica automática."}
             </p>
             {initialProjectBrief?.selectedAlternativeTitle && (
               <div className="mt-2 inline-flex rounded-full bg-white px-2 py-1 text-[10px] font-bold text-orange-700 shadow-sm">
@@ -774,6 +762,37 @@ export default function ConceptClientBriefPanel({
         </div>
       </div>
 
+      {!initialProjectBrief && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="text-xs font-bold text-slate-800">Como a IA deve evoluir o projeto?</div>
+          <p className="mt-1 text-[10px] leading-4 text-slate-500">
+            O modo muda a liberdade arquitetônica, mas nunca libera a IA para ignorar o briefing ou a funcionalidade.
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            {([
+              ["preservar", "Preservar"],
+              ["otimizar", "Otimizar"],
+              ["valorizar", "Valorizar"],
+              ["assinatura", "Assinatura"],
+            ] as const).map(([value, label]) => (
+              <ChoiceButton
+                key={value}
+                active={intervention === value}
+                onClick={() => setIntervention(value)}
+              >
+                {label}
+              </ChoiceButton>
+            ))}
+          </div>
+          <div className="mt-2 text-[10px] leading-4 text-slate-500">
+            {intervention === "preservar" && "Corrige problemas mantendo quase toda a organização atual."}
+            {intervention === "otimizar" && "Melhora circulação, ergonomia, adjacências e eficiência."}
+            {intervention === "valorizar" && "Fortalece partido, luz, integração e identidade arquitetônica."}
+            {intervention === "assinatura" && "Busca uma solução mais autoral e marcante, sem perder construtibilidade."}
+          </div>
+        </section>
+      )}
+
       <button
         type="button"
         onClick={initialProjectBrief ? improveCurrentModel : generateSpecialistAlternatives}
@@ -787,13 +806,13 @@ export default function ConceptClientBriefPanel({
             : "IA arquiteta estudando o projeto..."
           : initialProjectBrief
             ? "Melhorar este modelo com o briefing"
-            : "Gerar 3 opções com IA arquiteta"}
+            : "Desenvolver meu projeto com IA arquiteta"}
       </button>
 
       <p className="text-center text-[10px] leading-4 text-slate-400">
         {initialProjectBrief
           ? "A IA trabalha sobre o modelo atual. Ela não cria três plantas novas e preserva as edições já feitas sempre que forem compatíveis com o briefing."
-          : "Você escolhe a melhor base e depois pode mover ambientes, alterar medidas, portas, janelas e materiais."}
+          : "A IA cria uma base principal coerente; depois você pode editar medidas, portas, janelas, cobertura, fachada e materiais sem perder o DNA do projeto."}
       </p>
     </div>
   );
