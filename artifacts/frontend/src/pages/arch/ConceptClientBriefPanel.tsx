@@ -21,6 +21,7 @@ import {
   buildClientBriefPlan,
   buildDefaultRoomProgram,
   countBriefAlternativeErrors,
+  validateClientRoomProgram,
   type ClientBrief,
   type ClientRoomRequest,
   type ClientBriefAlternative,
@@ -328,6 +329,15 @@ export default function ConceptClientBriefPanel({
     [roomProgram],
   );
 
+  const programValidation = useMemo(
+    () => validateClientRoomProgram(brief, {
+      width: lotWidth,
+      depth: lotDepth,
+      setbacks: placement?.setbacks,
+    }),
+    [brief, lotWidth, lotDepth, placement?.setbacks],
+  );
+
   const summary = useMemo(() => {
     const items = [
       `${brief.bedrooms} dormitórios`,
@@ -373,6 +383,10 @@ export default function ConceptClientBriefPanel({
   };
 
   const generateSpecialistAlternatives = async () => {
+    if (programValidation.status === "blocked") {
+      setGenerationError(programValidation.errors[0] ?? "Revise o programa de necessidades antes de gerar.");
+      return;
+    }
     setGenerating(true);
     setGenerationError(null);
     try {
@@ -726,13 +740,21 @@ export default function ConceptClientBriefPanel({
             />
             <span className="text-xs font-semibold text-slate-500">m²</span>
             <span className="ml-auto text-[10px] text-slate-500">
-              Ambientes somam ≈ {Math.round(requestedProgramArea)} m²
+              Úteis ≈ {Math.round(requestedProgramArea)} m² · estimado ≈ {programValidation.estimatedBuiltArea} m²
             </span>
           </div>
-          {brief.desiredAreaTotal && requestedProgramArea > brief.desiredAreaTotal * 0.9 && (
-            <p className="mt-2 text-[10px] leading-4 text-amber-700">
-              A soma dos ambientes já ocupa grande parte da área desejada. A IA ainda precisa reservar paredes e circulação.
-            </p>
+          {programValidation.status !== "ok" && (
+            <div className={programValidation.status === "blocked"
+              ? "mt-3 rounded-lg border border-red-200 bg-red-50 p-2.5 text-[10px] leading-4 text-red-700"
+              : "mt-3 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-[10px] leading-4 text-amber-700"}
+            >
+              <div className="font-bold">
+                {programValidation.status === "blocked" ? "Ajuste necessário antes de gerar" : "Atenção ao programa"}
+              </div>
+              {[...programValidation.errors, ...programValidation.warnings].slice(0, 3).map((message) => (
+                <div key={message} className="mt-1">• {message}</div>
+              ))}
+            </div>
           )}
         </div>
 
@@ -1086,8 +1108,8 @@ export default function ConceptClientBriefPanel({
       <button
         type="button"
         onClick={initialProjectBrief ? improveCurrentModel : generateSpecialistAlternatives}
-        disabled={generating}
-        className="flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3.5 text-sm font-bold text-white shadow-sm hover:bg-orange-600 disabled:cursor-wait disabled:opacity-60"
+        disabled={generating || (!initialProjectBrief && programValidation.status === "blocked")}
+        className="flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3.5 text-sm font-bold text-white shadow-sm hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
       >
         <Sparkles className="h-4 w-4" />
         {generating
@@ -1102,7 +1124,9 @@ export default function ConceptClientBriefPanel({
       <p className="text-center text-[10px] leading-4 text-slate-400">
         {initialProjectBrief
           ? "A IA trabalha sobre o modelo atual. Ela não cria três plantas novas e preserva as edições já feitas sempre que forem compatíveis com o briefing."
-          : "A IA cria uma base principal coerente; depois você pode editar medidas, portas, janelas, cobertura, fachada e materiais sem perder o DNA do projeto."}
+          : programValidation.status === "blocked"
+            ? "Revise os avisos do programa de necessidades. A IA só será liberada quando área, cômodos e metragens forem compatíveis."
+            : "A IA cria uma base principal coerente; depois você pode editar medidas, portas, janelas, cobertura, fachada e materiais sem perder o DNA do projeto."}
       </p>
     </div>
   );
