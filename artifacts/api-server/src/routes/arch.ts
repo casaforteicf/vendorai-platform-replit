@@ -170,6 +170,9 @@ const specialistHousePlanSchema = z.object({
     x: z.number().optional(),
     y: z.number().optional(),
     locked: z.boolean().optional(),
+    targetArea: z.number().min(2.4).max(120).optional(),
+    required: z.boolean().optional(),
+    programRequestId: z.string().max(120).optional(),
   })).min(1).max(50),
 });
 
@@ -323,6 +326,40 @@ function evaluateSpecialistPlan(
   const builtArea = rooms
     .filter((room) => room.kind !== "piscina")
     .reduce((sum, room) => sum + room.width * room.depth, 0);
+
+  for (const room of rooms) {
+    const targetArea = Number(room.targetArea);
+    if (!Number.isFinite(targetArea) || targetArea <= 0 || room.kind === "circulacao" || room.kind === "escada") continue;
+    const actualArea = room.width * room.depth;
+    const ratio = actualArea / targetArea;
+    if (room.required !== false && ratio < 0.72) {
+      issues.push(`${room.label} ficou com ${actualArea.toFixed(1)} m², muito abaixo da meta de ${targetArea.toFixed(1)} m².`);
+      score -= 18;
+    } else if (ratio < 0.82) {
+      issues.push(`${room.label} ficou abaixo da metragem pedida (${actualArea.toFixed(1)} m² vs ${targetArea.toFixed(1)} m²).`);
+      score -= 8;
+    } else if (ratio > 1.35) {
+      issues.push(`${room.label} ficou muito acima da metragem pedida (${actualArea.toFixed(1)} m² vs ${targetArea.toFixed(1)} m²).`);
+      score -= 6;
+    } else if (ratio >= 0.9 && ratio <= 1.2) {
+      strengths.push(`${room.label} respeita a metragem-alvo.`);
+    }
+  }
+
+  const desiredAreaTotal = Number(input.brief.desiredAreaTotal);
+  if (Number.isFinite(desiredAreaTotal) && desiredAreaTotal > 0) {
+    const totalRatio = builtArea / desiredAreaTotal;
+    if (totalRatio < 0.72 || totalRatio > 1.28) {
+      issues.push(`Área resultante de ${builtArea.toFixed(0)} m² está distante da meta total de ${desiredAreaTotal.toFixed(0)} m².`);
+      score -= 16;
+    } else if (totalRatio < 0.82 || totalRatio > 1.18) {
+      issues.push(`Área resultante de ${builtArea.toFixed(0)} m² ficou fora da faixa desejável da meta de ${desiredAreaTotal.toFixed(0)} m².`);
+      score -= 8;
+    } else {
+      strengths.push(`Área global próxima da meta de ${desiredAreaTotal.toFixed(0)} m².`);
+    }
+  }
+
   if (builtArea > 0 && circulationArea / builtArea > 0.16) {
     issues.push("Área de circulação está acima de 16% da área construída.");
     score -= 10;
@@ -346,7 +383,8 @@ function evaluateSpecialistPlan(
     status: score >= 72 && !issues.some((issue) =>
       issue.startsWith("Sobreposição:") ||
       issue.includes("fragmentado") ||
-      issue.includes("não possui banheiro de suíte")
+      issue.includes("não possui banheiro de suíte") ||
+      issue.includes("muito abaixo da meta")
     ) ? "approved" : "rejected",
     issues: [...new Set(issues)].slice(0, 12),
     strengths: [...new Set(strengths)].slice(0, 8),
@@ -391,6 +429,23 @@ function sanitizeSpecialistPlan(
       .reduce((sum, room) => sum + room.width * room.depth, 0),
   );
 
+  const programItems = rooms
+    .filter((room) => Number.isFinite(Number(room.targetArea)) && room.kind !== "circulacao" && room.kind !== "escada")
+    .map((room) => {
+      const targetArea = Number(room.targetArea);
+      const actualArea = Math.round(room.width * room.depth * 10) / 10;
+      const deviationPct = targetArea > 0 ? Math.round(((actualArea - targetArea) / targetArea) * 100) : 0;
+      return {
+        id: room.id,
+        label: room.label,
+        required: room.required !== false,
+        targetArea,
+        actualArea,
+        deviationPct,
+        status: Math.abs(deviationPct) <= 15 ? "ok" : Math.abs(deviationPct) <= 25 ? "warning" : "outside_target",
+      };
+    });
+
   return {
     rejected: false as const,
     rooms,
@@ -399,6 +454,12 @@ function sanitizeSpecialistPlan(
     designRationale: String(plan?.designRationale ?? ""),
     architectureScore: quality.score,
     quality,
+    programCompliance: {
+      desiredAreaTotal: input.brief.desiredAreaTotal ?? null,
+      actualAreaTotal: suggestedArea,
+      rooms: programItems,
+      outsideTargetCount: programItems.filter((item) => item.status === "outside_target").length,
+    },
   };
 }
 
@@ -1008,6 +1069,7 @@ NÃO aceite a primeira solução mental: critique e refine antes de responder.`;
         intervention: input.intervention,
         refinementPasses: bestApproved.refinementPass,
       },
+      programCompliance: bestApproved.programCompliance ?? null,
     });
   } catch (error) {
     const safe = sanitizeAIError(error);
