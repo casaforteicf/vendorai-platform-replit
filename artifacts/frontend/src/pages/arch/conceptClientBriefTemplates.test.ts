@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildClientBriefAlternatives, countBriefAlternativeErrors } from "./conceptClientBrief";
+import {
+  buildClientBriefAlternatives,
+  buildClientBriefPlan,
+  buildDefaultRoomProgram,
+  countBriefAlternativeErrors,
+  validateClientRoomProgram,
+} from "./conceptClientBrief";
 
 const brief = { bedrooms: 3, suites: 1, floors: 1, garageSpaces: 2, gourmet: true, pool: false, office: false } as never;
 
@@ -29,5 +35,72 @@ describe("opções das Necessidades a partir dos modelos desenhados", () => {
     const options = buildClientBriefAlternatives({ ...(brief as object), floors: 2 } as never, 10, 25);
     expect(options.length).toBeGreaterThan(0);
     for (const option of options) expect(countBriefAlternativeErrors(option.rooms, option.floors, 10, 25)).toBe(0);
+  });
+});
+
+
+describe("programa de necessidades", () => {
+  it("bloqueia quando os ambientes úteis ultrapassam a área total desejada", () => {
+    const base = {
+      bedrooms: 3,
+      suites: 1,
+      floors: 1,
+      garageSpaces: 2,
+      gourmet: true,
+      pool: false,
+      office: false,
+      integratedKitchen: true,
+      privateAwaySocial: true,
+      desiredAreaTotal: 100,
+    } as const;
+    const validation = validateClientRoomProgram({
+      ...base,
+      roomProgram: buildDefaultRoomProgram(base),
+    });
+    expect(validation.status).toBe("blocked");
+    expect(validation.errors.length).toBeGreaterThan(0);
+  });
+
+  it("leva as metragens solicitadas para os ambientes preparados para a IA", () => {
+    const base = {
+      bedrooms: 2,
+      suites: 1,
+      floors: 2,
+      garageSpaces: 1,
+      gourmet: false,
+      pool: false,
+      office: false,
+      integratedKitchen: true,
+      privateAwaySocial: true,
+      desiredAreaTotal: 140,
+    } as const;
+    const roomProgram = buildDefaultRoomProgram(base).map((item) =>
+      item.kind === "sala" ? { ...item, targetArea: 31 } : item
+    );
+    const plan = buildClientBriefPlan({ ...base, roomProgram });
+    const living = plan.rooms.find((room) => room.kind === "sala") as any;
+    expect(living.targetArea).toBe(31);
+    expect(living.required).toBe(true);
+  });
+
+  it("marca pavimento flexível quando o cliente deixa a IA decidir", () => {
+    const base = {
+      bedrooms: 2,
+      suites: 1,
+      floors: 2,
+      garageSpaces: 1,
+      gourmet: false,
+      pool: false,
+      office: false,
+      integratedKitchen: true,
+      privateAwaySocial: true,
+      desiredAreaTotal: 140,
+    } as const;
+    const roomProgram = buildDefaultRoomProgram(base).map((item) =>
+      item.kind === "quarto" ? { ...item, floorPreference: "qualquer" as const } : item
+    );
+    const plan = buildClientBriefPlan({ ...base, roomProgram });
+    const bedroom = plan.rooms.find((room) => room.kind === "quarto") as any;
+    expect(bedroom.floorFlexible).toBe(true);
   });
 });
