@@ -38,6 +38,15 @@ export type ClientBriefPlan = {
 
 export type ClientBriefAlternativeId = "compact" | "balanced" | "integrated";
 
+export type ProjectBriefSnapshot = {
+  brief: ClientBrief;
+  vision: ClientVision;
+  selectedAlternativeId?: ClientBriefAlternativeId;
+  selectedAlternativeTitle?: string;
+  clientFitSummary?: string;
+  designRationale?: string;
+};
+
 export type ClientBriefAlternative = ClientBriefPlan & {
   id: ClientBriefAlternativeId;
   title: string;
@@ -48,6 +57,7 @@ export type ClientBriefAlternative = ClientBriefPlan & {
   qualityIssues?: string[];
   qualityStrengths?: string[];
   clientFitSummary?: string;
+  projectBrief?: ProjectBriefSnapshot;
 };
 
 function nextId(prefix: string, index: number) {
