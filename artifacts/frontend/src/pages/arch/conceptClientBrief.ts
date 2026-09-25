@@ -44,6 +44,17 @@ export type ClientAdjacencyRule = {
   required: boolean;
 };
 
+export type ClientAccessRuleMode = "required_direct" | "forbidden_direct";
+
+export type ClientAccessRule = {
+  id: string;
+  fromRequestId: string;
+  toRequestId: string;
+  mode: ClientAccessRuleMode;
+  required: boolean;
+  reason?: string;
+};
+
 export type ClientBrief = {
   bedrooms: 2 | 3 | 4;
   suites: 0 | 1 | 2;
@@ -57,6 +68,7 @@ export type ClientBrief = {
   desiredAreaTotal?: number;
   roomProgram?: ClientRoomRequest[];
   adjacencyRules?: ClientAdjacencyRule[];
+  accessRules?: ClientAccessRule[];
 };
 
 export type ClientVision = {
@@ -164,8 +176,9 @@ export function validateClientRoomProgram(
 ): ClientProgramValidation {
   const program = Array.isArray(brief.roomProgram) ? brief.roomProgram : [];
   const adjacencyRules = Array.isArray(brief.adjacencyRules) ? brief.adjacencyRules : [];
-  const errors: string[] = [];
-  const warnings: string[] = [];
+  const accessValidation = validateClientAccessRules(brief);
+  const errors: string[] = [...accessValidation.errors];
+  const warnings: string[] = [...accessValidation.warnings];
 
   if (!program.length) {
     errors.push("Informe pelo menos um ambiente antes de desenvolver o projeto.");
@@ -502,6 +515,104 @@ export function buildRecommendedAdjacencyRules(brief: ClientBrief): ClientAdjace
     add(suite, garage, "away", true);
   }
   return rules;
+}
+
+
+export function buildRecommendedAccessRules(brief: ClientBrief): ClientAccessRule[] {
+  const program = Array.isArray(brief.roomProgram) ? brief.roomProgram : [];
+  const rules: ClientAccessRule[] = [];
+  const findAll = (predicate: (item: ClientRoomRequest) => boolean) => program.filter(predicate);
+  const suites = findAll((item) => item.kind === "suite");
+  const suiteBaths = findAll((item) => item.kind === "banheiro" && /su[ií]te|master/i.test(item.label));
+  const garages = findAll((item) => item.kind === "garagem");
+  const privateRooms = findAll((item) => item.kind === "suite" || item.kind === "quarto");
+
+  const add = (
+    from: ClientRoomRequest | undefined,
+    to: ClientRoomRequest | undefined,
+    mode: ClientAccessRuleMode,
+    required: boolean,
+    reason: string,
+  ) => {
+    if (!from || !to || from.id === to.id) return;
+    const pair = [from.id, to.id].sort().join("::");
+    if (rules.some((rule) => [rule.fromRequestId, rule.toRequestId].sort().join("::") === pair && rule.mode === mode)) return;
+    rules.push({
+      id: roomProgramId("access"),
+      fromRequestId: from.id,
+      toRequestId: to.id,
+      mode,
+      required,
+      reason,
+    });
+  };
+
+  suites.forEach((suite, index) => {
+    const numbered = suite.label.match(/\d+/)?.[0];
+    const namedBath = numbered
+      ? suiteBaths.find((bath) => bath.label.match(/\d+/)?.[0] === numbered)
+      : suiteBaths[index] ?? suiteBaths[0];
+    add(suite, namedBath, "required_direct", true, "Banheiro de suíte precisa ter acesso direto pela própria suíte.");
+  });
+
+  for (const garage of garages) {
+    for (const privateRoom of privateRooms) {
+      add(garage, privateRoom, "forbidden_direct", true, "Garagem não deve abrir diretamente para quarto ou suíte.");
+    }
+  }
+
+  return rules;
+}
+
+export type FunctionalGraphValidation = {
+  status: "ok" | "warning" | "blocked";
+  errors: string[];
+  warnings: string[];
+};
+
+export function validateClientAccessRules(brief: ClientBrief): FunctionalGraphValidation {
+  const program = Array.isArray(brief.roomProgram) ? brief.roomProgram : [];
+  const rules = Array.isArray(brief.accessRules) ? brief.accessRules : [];
+  const ids = new Set(program.map((item) => item.id));
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const byPair = new Map<string, Set<ClientAccessRuleMode>>();
+
+  for (const rule of rules) {
+    if (!ids.has(rule.fromRequestId) || !ids.has(rule.toRequestId)) {
+      errors.push("Existe uma regra de acesso apontando para um ambiente removido.");
+      continue;
+    }
+    if (rule.fromRequestId === rule.toRequestId) {
+      errors.push("Uma regra de acesso não pode relacionar o ambiente com ele mesmo.");
+      continue;
+    }
+    const pair = [rule.fromRequestId, rule.toRequestId].sort().join("::");
+    const modes = byPair.get(pair) ?? new Set<ClientAccessRuleMode>();
+    modes.add(rule.mode);
+    byPair.set(pair, modes);
+  }
+
+  for (const modes of byPair.values()) {
+    if (modes.has("required_direct") && modes.has("forbidden_direct")) {
+      errors.push("O mesmo par de ambientes está configurado simultaneamente com acesso direto obrigatório e proibido.");
+    }
+  }
+
+  const suites = program.filter((item) => item.kind === "suite" && item.required !== false);
+  const suiteBaths = program.filter((item) => item.kind === "banheiro" && /su[ií]te|master/i.test(item.label));
+  if (suites.length && !suiteBaths.length) {
+    errors.push("Há suíte sem banheiro privativo correspondente no programa.");
+  }
+  if (rules.length === 0 && program.length > 1) {
+    warnings.push("O grafo de acessos ainda não foi definido; aplique as regras recomendadas para validar portas e circulação.");
+  }
+
+  return {
+    status: errors.length ? "blocked" : warnings.length ? "warning" : "ok",
+    errors: [...new Set(errors)],
+    warnings: [...new Set(warnings)],
+  };
 }
 
 function roomDimensionsForArea(
