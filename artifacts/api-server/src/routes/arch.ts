@@ -152,6 +152,13 @@ const specialistHousePlanSchema = z.object({
       required: z.boolean().optional(),
       notes: z.string().max(300).optional(),
     })).max(40).optional(),
+    adjacencyRules: z.array(z.object({
+      id: z.string().min(1).max(120),
+      fromRequestId: z.string().min(1).max(120),
+      toRequestId: z.string().min(1).max(120),
+      relation: z.enum(["direct", "near", "away"]),
+      required: z.boolean(),
+    })).max(60).optional(),
   }),
   vision: z.object({
     lifestyle: z.enum(["familia", "receber", "tranquilidade", "praticidade", "misto"]),
@@ -212,6 +219,23 @@ function specialistSharedEdge(a: SpecialistPlanRoom, b: SpecialistPlanRoom) {
 
 function specialistTouches(a: SpecialistPlanRoom, b: SpecialistPlanRoom, minShared = 0.65) {
   return specialistSharedEdge(a, b) >= minShared;
+}
+
+function specialistRoomGap(a: SpecialistPlanRoom, b: SpecialistPlanRoom) {
+  if (a.floor !== b.floor) return Number.POSITIVE_INFINITY;
+  const gapX = Math.max(0, Math.max(a.x, b.x) - Math.min(a.x + a.width, b.x + b.width));
+  const gapY = Math.max(0, Math.max(a.y, b.y) - Math.min(a.y + a.depth, b.y + b.depth));
+  return Math.hypot(gapX, gapY);
+}
+
+function specialistAdjacencySatisfied(
+  a: SpecialistPlanRoom,
+  b: SpecialistPlanRoom,
+  relation: "direct" | "near" | "away",
+) {
+  if (relation === "direct") return a.floor === b.floor && specialistTouches(a, b, 0.55);
+  if (relation === "near") return a.floor === b.floor && specialistRoomGap(a, b) <= 2.5;
+  return a.floor !== b.floor || specialistRoomGap(a, b) >= 3.0;
 }
 
 function specialistConnected(rooms: SpecialistPlanRoom[]) {
@@ -294,6 +318,46 @@ function evaluateSpecialistPlan(
       score -= 28;
     } else {
       strengths.push(`${suite.label} possui banheiro próprio adjacente.`);
+    }
+  }
+
+  const adjacencyRules = input.brief.adjacencyRules ?? [];
+  for (const rule of adjacencyRules) {
+    const sources = rooms.filter((room) => room.programRequestId === rule.fromRequestId);
+    const targets = rooms.filter((room) => room.programRequestId === rule.toRequestId);
+    if (!sources.length || !targets.length) {
+      const message = `Relação entre ambientes não pôde ser verificada porque um dos grupos não existe na planta.`;
+      issues.push(rule.required ? `Adjacência obrigatória: ${message}` : `Preferência de adjacência: ${message}`);
+      score -= rule.required ? 22 : 6;
+      continue;
+    }
+
+    let satisfied = false;
+    if (rule.relation === "away") {
+      satisfied = sources.every((source) =>
+        targets.every((target) => specialistAdjacencySatisfied(source, target, "away"))
+      );
+    } else {
+      satisfied = sources.every((source) =>
+        targets.some((target) => specialistAdjacencySatisfied(source, target, rule.relation))
+      );
+    }
+
+    const fromLabel = input.brief.roomProgram?.find((item) => item.id === rule.fromRequestId)?.label ?? sources[0]?.label ?? "Ambiente";
+    const toLabel = input.brief.roomProgram?.find((item) => item.id === rule.toRequestId)?.label ?? targets[0]?.label ?? "Ambiente";
+    const relationLabel = rule.relation === "direct"
+      ? "conectado diretamente a"
+      : rule.relation === "near"
+        ? "próximo de"
+        : "afastado de";
+
+    if (!satisfied) {
+      issues.push(
+        `${rule.required ? "Adjacência obrigatória" : "Preferência de adjacência"}: ${fromLabel} deve ficar ${relationLabel} ${toLabel}.`,
+      );
+      score -= rule.required ? 22 : 7;
+    } else {
+      strengths.push(`${fromLabel} está ${relationLabel} ${toLabel}, conforme o briefing.`);
     }
   }
 
@@ -429,7 +493,8 @@ function evaluateSpecialistPlan(
       issue.startsWith("Sobreposição:") ||
       issue.includes("fragmentado") ||
       issue.includes("não possui banheiro de suíte") ||
-      issue.includes("muito abaixo da meta")
+      issue.includes("muito abaixo da meta") ||
+      issue.startsWith("Adjacência obrigatória:")
     ) ? "approved" : "rejected",
     issues: [...new Set(issues)].slice(0, 12),
     strengths: [...new Set(strengths)].slice(0, 8),
@@ -1004,6 +1069,7 @@ LOTE: ${input.lotWidth} m x ${input.lotDepth} m.
 BRIEFING OBJETIVO: ${JSON.stringify(input.brief)}
 ÁREA CONSTRUÍDA DESEJADA: ${input.brief.desiredAreaTotal ?? "não informada"} m².
 PROGRAMA DE NECESSIDADES DECLARADO PELO CLIENTE: ${JSON.stringify(input.brief.roomProgram ?? [])}
+GRAFO DE RELAÇÕES ENTRE AMBIENTES: ${JSON.stringify(input.brief.adjacencyRules ?? [])}
 VISÃO / DNA DO CLIENTE: ${JSON.stringify(input.vision ?? {})}
 
 PROGRAMA FIXO DE AMBIENTES:
@@ -1014,6 +1080,8 @@ REGRAS FUNCIONAIS INEGOCIÁVEIS:
 - mantenha o pavimento original quando floorFlexible=false;
 - quando floorFlexible=true, você pode escolher o pavimento 0..${input.brief.floors - 1} para melhorar setorização, circulação e privacidade;
 - nenhum ambiente pode ficar solto ou sem conexão física coerente;
+- cumpra o GRAFO DE RELAÇÕES: direct = contato de parede suficiente para ligação/porta; near = mesmo pavimento e distância curta; away = separação física/privacidade ou outro pavimento;
+- regras de relação com required=true são INEGOCIÁVEIS; regras required=false são preferências que devem ser maximizadas sem quebrar requisitos obrigatórios;
 - não sobreponha ambientes e não ultrapasse o lote;
 - suíte deve ter banheiro próprio adjacente e diretamente conectável;
 - numeração de suítes e banheiros correspondentes deve ser respeitada;
