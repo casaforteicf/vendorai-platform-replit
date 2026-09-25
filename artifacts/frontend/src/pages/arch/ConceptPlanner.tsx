@@ -5549,6 +5549,10 @@ export default function ConceptPlanner() {
                     <ConceptClientBriefPanel
                       lotWidth={lotWidth}
                       lotDepth={lotDepth}
+                      placement={{
+                        frontSide: normalizeSitePlacement(sitePlacement).frontSide,
+                        setbacks: resolveSiteSetbacks(normalizeSitePlacement(sitePlacement)),
+                      }}
                       onGenerate={applyClientBrief}
                     />
                   )}
