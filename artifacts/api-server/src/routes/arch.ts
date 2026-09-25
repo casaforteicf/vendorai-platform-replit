@@ -146,6 +146,8 @@ const specialistHousePlanSchema = z.object({
       label: z.string().min(1).max(120),
       quantity: z.number().int().min(0).max(8),
       targetArea: z.number().min(2.4).max(120),
+      preferredWidth: z.number().min(1.2).max(30).optional(),
+      preferredDepth: z.number().min(1.2).max(30).optional(),
       floorPreference: z.enum(["terreo","superior","qualquer"]).optional(),
       required: z.boolean().optional(),
       notes: z.string().max(300).optional(),
@@ -171,6 +173,9 @@ const specialistHousePlanSchema = z.object({
     y: z.number().optional(),
     locked: z.boolean().optional(),
     targetArea: z.number().min(2.4).max(120).optional(),
+    targetWidth: z.number().min(1.2).max(30).optional(),
+    targetDepth: z.number().min(1.2).max(30).optional(),
+    programNotes: z.string().max(300).optional(),
     required: z.boolean().optional(),
     programRequestId: z.string().max(120).optional(),
     floorFlexible: z.boolean().optional(),
@@ -328,11 +333,50 @@ function evaluateSpecialistPlan(
     .filter((room) => room.kind !== "piscina")
     .reduce((sum, room) => sum + room.width * room.depth, 0);
 
+  const ergonomicMinWidth: Record<string, number> = {
+    sala: 3.0,
+    cozinha: 2.4,
+    suite: 3.0,
+    quarto: 2.7,
+    banheiro: 1.2,
+    lavanderia: 1.5,
+    garagem: 2.7,
+    gourmet: 3.0,
+    piscina: 2.0,
+    outro: 2.2,
+    circulacao: 0.9,
+    escada: 1.0,
+  };
+
   for (const room of rooms) {
     const targetArea = Number(room.targetArea);
     if (!Number.isFinite(targetArea) || targetArea <= 0 || room.kind === "circulacao" || room.kind === "escada") continue;
     const actualArea = room.width * room.depth;
     const ratio = actualArea / targetArea;
+    const minDimension = Math.min(room.width, room.depth);
+    const ergonomicMin = ergonomicMinWidth[room.kind] ?? 1.8;
+    if (minDimension < ergonomicMin) {
+      issues.push(`${room.label} tem dimensão útil muito estreita (${minDimension.toFixed(2)} m; referência mínima ${ergonomicMin.toFixed(2)} m).`);
+      score -= room.required !== false ? 14 : 7;
+    }
+    const aspectRatio = Math.max(room.width, room.depth) / Math.max(0.1, minDimension);
+    if (!["circulacao", "garagem", "piscina"].includes(room.kind) && aspectRatio > 3.2) {
+      issues.push(`${room.label} ficou excessivamente alongado para uso confortável.`);
+      score -= 7;
+    }
+    const targetWidth = Number(room.targetWidth);
+    const targetDepth = Number(room.targetDepth);
+    if (Number.isFinite(targetWidth) && Number.isFinite(targetDepth)) {
+      const direct = Math.abs(room.width - targetWidth) / targetWidth + Math.abs(room.depth - targetDepth) / targetDepth;
+      const rotated = Math.abs(room.width - targetDepth) / targetDepth + Math.abs(room.depth - targetWidth) / targetWidth;
+      const dimensionDeviation = Math.min(direct, rotated);
+      if (dimensionDeviation > 0.42) {
+        issues.push(`${room.label} ficou distante das dimensões preferidas de ${targetWidth.toFixed(2)} × ${targetDepth.toFixed(2)} m.`);
+        score -= room.required !== false ? 10 : 5;
+      } else if (dimensionDeviation <= 0.2) {
+        strengths.push(`${room.label} respeita as dimensões preferidas.`);
+      }
+    }
     if (room.required !== false && ratio < 0.72) {
       issues.push(`${room.label} ficou com ${actualArea.toFixed(1)} m², muito abaixo da meta de ${targetArea.toFixed(1)} m².`);
       score -= 18;
@@ -446,6 +490,10 @@ function sanitizeSpecialistPlan(
         label: room.label,
         required: room.required !== false,
         targetArea,
+        targetWidth: Number.isFinite(Number(room.targetWidth)) ? Number(room.targetWidth) : null,
+        targetDepth: Number.isFinite(Number(room.targetDepth)) ? Number(room.targetDepth) : null,
+        actualWidth: room.width,
+        actualDepth: room.depth,
         actualArea,
         deviationPct,
         status: Math.abs(deviationPct) <= 15 ? "ok" : Math.abs(deviationPct) <= 25 ? "warning" : "outside_target",
@@ -911,6 +959,9 @@ router.post("/arch/concept-plan-specialist", authenticate, async (req, res) => {
     y: typeof room.y === "number" && Number.isFinite(room.y) ? room.y : 0,
     locked: Boolean(room.locked),
     targetArea: room.targetArea,
+    targetWidth: room.targetWidth,
+    targetDepth: room.targetDepth,
+    programNotes: room.programNotes,
     required: room.required !== false,
     programRequestId: room.programRequestId,
     floorFlexible: Boolean(room.floorFlexible),
@@ -972,6 +1023,8 @@ REGRAS FUNCIONAIS INEGOCIÁVEIS:
 - escadas devem ser funcionais e alinhadas entre pavimentos;
 - reduza corredores residuais, recortes gratuitos e perímetro construtivo sem propósito;
 - considere dimensões reais de mobiliário, portas e circulação;
+- quando targetWidth/targetDepth existirem, trate-os como preferência geométrica forte; ajuste somente se necessário para funcionalidade;
+- use programNotes para entender o uso real do ambiente (ex.: cama king, ilha, mesa, vista, armazenamento), sem inventar funções não pedidas;
 - trate targetArea de cada ambiente como META DE ÁREA: pode variar moderadamente para viabilizar a planta, mas não ignore nem reduza drasticamente sem motivo;
 - respeite a área construída total desejada como alvo global; se a soma do programa tornar esse alvo impossível, priorize ambientes marcados required e registre a compensação no designRationale/notes;
 - não invente closet, lavabo, despensa, varanda ou outro cômodo que não esteja no programa, salvo circulação técnica indispensável;
