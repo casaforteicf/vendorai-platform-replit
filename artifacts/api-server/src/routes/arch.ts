@@ -987,7 +987,12 @@ Preservar layout: ${parsed.data.preserveLayout ? "sim" : "não"}
 Estilo desejado: ${requestedStyle}
 Lote: ${JSON.stringify(concept.lot)}
 Configuração: ${JSON.stringify(config)}
+BRIEFING MESTRE / DNA DO PROJETO: ${JSON.stringify(config.projectBrief ?? null)}
 Ambientes: ${JSON.stringify(rooms)}
+
+O BRIEFING MESTRE é a intenção principal do cliente e deve continuar orientando qualquer desenvolvimento posterior.
+O usuário pode editar medidas, paredes, portas, janelas, implantação, fachada, materiais e telhado; essas edições refinam o projeto, mas não devem apagar silenciosamente desejos, prioridades, restrições e necessidades futuras registradas no briefing.
+Se uma alteração entrar em conflito com o briefing, preserve a alteração explícita do usuário e sinalize o conflito em geometryWarnings/notes em vez de reinterpretar o projeto inteiro.
 Preferências atuais de fachada: ${JSON.stringify(facade)}
 Saúde geométrica preliminar: ${JSON.stringify(geometryHealth)}
 
