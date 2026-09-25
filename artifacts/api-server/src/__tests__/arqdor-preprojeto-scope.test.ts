@@ -50,4 +50,11 @@ describe("acesso do cliente pelo link público do pré-projeto", () => {
     query.mockResolvedValueOnce({ rows: [{ concept_project_id: "c1" }] });
     expect((await run({ method: "GET", path: "/arch/ai-render/r1" })).passed).toBe(true);
   });
+
+  it("estudo de fachada com IA tem limite por hora", async () => {
+    for (let index = 0; index < 6; index += 1) {
+      expect((await run({ method: "POST", path: "/arch/concept-projects/c1/facade-study" })).passed).toBe(true);
+    }
+    expect((await run({ method: "POST", path: "/arch/concept-projects/c1/facade-study" })).status).toBe(429);
+  });
 });

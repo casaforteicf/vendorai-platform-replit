@@ -110,6 +110,20 @@ export async function enforcePreProjectScope(req: Request, res: Parameters<Reque
   const own = `/arch/concept-projects/${conceptId}`;
 
   if (path === own && (method === "GET" || method === "PATCH")) return next();
+  // Estudo de fachada e desenvolvimento com IA custam por chamada: mesmo limite da IA de plantas,
+  // para um link público não virar consumo ilimitado de IA.
+  if (method === "POST" && (path === `${own}/facade-study` || path === `${own}/develop-with-ai`)) {
+    const now = Date.now();
+    const key = `${conceptId}:${path.slice(own.length)}`;
+    const recent = (preProjectSpecialistCalls.get(key) ?? []).filter((at) => now - at < PREPROJECT_SPECIALIST_WINDOW_MS);
+    if (recent.length >= PREPROJECT_SPECIALIST_MAX) {
+      res.status(429).json({ error: "Limite de uso da IA atingido. Tente novamente em uma hora." });
+      return;
+    }
+    recent.push(now);
+    preProjectSpecialistCalls.set(key, recent);
+    return next();
+  }
   if (path.startsWith(`${own}/`) && ["GET", "POST", "PATCH"].includes(method)) return next();
   if (method === "GET" && (path.startsWith("/arch/polyhaven/") || path === "/arch/catalogo")) return next();
   if (method === "GET" && path === "/arch/ai-renders" && String(req.query?.concept_project_id ?? "") === conceptId) return next();
