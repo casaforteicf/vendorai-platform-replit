@@ -1,4 +1,5 @@
 #!/usr/bin/env tsx
+// Batch 4 tenant-isolation review trigger.
 // Batch 3 tenant-isolation review trigger.
 // Batch 2 tenant-isolation review trigger.
 import fs from "fs";
