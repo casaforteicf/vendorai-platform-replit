@@ -24,6 +24,7 @@ import {
   countBriefAlternativeErrors,
   rebalanceClientRoomProgramToDesiredArea,
   validateClientRoomProgram,
+  type ClientAdjacencyRule,
   type ClientBrief,
   type ClientRoomRequest,
   type ClientBriefAlternative,
@@ -93,7 +94,10 @@ function reconcileRoomProgram(currentProgram: ClientRoomRequest[], nextBrief: Cl
     if (!previous) return item;
     return {
       ...item,
+      id: previous.id,
       targetArea: previous.targetArea,
+      preferredWidth: previous.preferredWidth,
+      preferredDepth: previous.preferredDepth,
       required: previous.required,
       notes: previous.notes,
       floorPreference: nextBrief.floors === 1 ? "terreo" as const : previous.floorPreference ?? item.floorPreference,
@@ -281,13 +285,19 @@ export default function ConceptClientBriefPanel({
   );
 
   const roomProgram = brief.roomProgram ?? [];
+  const adjacencyRules = brief.adjacencyRules ?? [];
 
   const updateBriefStructure = (recipe: (current: ClientBrief) => ClientBrief) => {
     setBrief((current) => {
       const next = recipe(current);
+      const nextProgram = reconcileRoomProgram(current.roomProgram ?? [], next);
+      const validIds = new Set(nextProgram.map((item) => item.id));
       return {
         ...next,
-        roomProgram: reconcileRoomProgram(current.roomProgram ?? [], next),
+        roomProgram: nextProgram,
+        adjacencyRules: (current.adjacencyRules ?? []).filter(
+          (rule) => validIds.has(rule.fromRequestId) && validIds.has(rule.toRequestId),
+        ),
       };
     });
   };
@@ -303,6 +313,9 @@ export default function ConceptClientBriefPanel({
     setBrief((current) => ({
       ...current,
       roomProgram: (current.roomProgram ?? []).filter((item) => item.id !== id),
+      adjacencyRules: (current.adjacencyRules ?? []).filter(
+        (rule) => rule.fromRequestId !== id && rule.toRequestId !== id,
+      ),
     }));
   };
 
@@ -324,6 +337,45 @@ export default function ConceptClientBriefPanel({
           required: true,
         },
       ],
+    }));
+  };
+
+  const addAdjacencyRule = () => {
+    if (roomProgram.length < 2) return;
+    const id = typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `adjacency-${Date.now()}`;
+    const first = roomProgram[0];
+    const second = roomProgram.find((item) => item.id !== first.id);
+    if (!second) return;
+    setBrief((current) => ({
+      ...current,
+      adjacencyRules: [
+        ...(current.adjacencyRules ?? []),
+        {
+          id,
+          fromRequestId: first.id,
+          toRequestId: second.id,
+          relation: "near",
+          required: true,
+        },
+      ],
+    }));
+  };
+
+  const updateAdjacencyRule = (id: string, patch: Partial<ClientAdjacencyRule>) => {
+    setBrief((current) => ({
+      ...current,
+      adjacencyRules: (current.adjacencyRules ?? []).map((rule) =>
+        rule.id === id ? { ...rule, ...patch } : rule
+      ),
+    }));
+  };
+
+  const removeAdjacencyRule = (id: string) => {
+    setBrief((current) => ({
+      ...current,
+      adjacencyRules: (current.adjacencyRules ?? []).filter((rule) => rule.id !== id),
     }));
   };
 
@@ -1023,6 +1075,107 @@ export default function ConceptClientBriefPanel({
 
         <div className="mt-3 rounded-xl bg-slate-900 px-3 py-2.5 text-[10px] leading-4 text-white">
           <span className="font-bold">Regra da IA:</span> este programa é a base do projeto. Ela deve respeitar área, dimensões preferidas e uso real do ambiente; circulação e escada podem ser criadas quando necessárias.
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex items-start gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-slate-900 text-white">
+            <Layers3 className="h-4 w-4" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-bold text-slate-900">Relações entre ambientes</div>
+            <p className="mt-1 text-[10px] leading-4 text-slate-500">
+              Diga quais espaços precisam ficar conectados, próximos ou afastados. Regras obrigatórias serão validadas na planta antes da aprovação.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-3 space-y-2">
+          {adjacencyRules.map((rule) => (
+            <div key={rule.id} className="rounded-xl border bg-slate-50 p-3">
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                <select
+                  value={rule.fromRequestId}
+                  onChange={(event) => {
+                    const nextId = event.target.value;
+                    updateAdjacencyRule(rule.id, {
+                      fromRequestId: nextId,
+                      toRequestId: nextId === rule.toRequestId
+                        ? roomProgram.find((item) => item.id !== nextId)?.id ?? rule.toRequestId
+                        : rule.toRequestId,
+                    });
+                  }}
+                  className="h-9 min-w-0 rounded-lg border bg-white px-2 text-[10px] font-semibold text-slate-700"
+                >
+                  {roomProgram.map((item) => (
+                    <option key={item.id} value={item.id}>{item.label}</option>
+                  ))}
+                </select>
+
+                <select
+                  value={rule.relation}
+                  onChange={(event) => updateAdjacencyRule(rule.id, {
+                    relation: event.target.value as ClientAdjacencyRule["relation"],
+                  })}
+                  className="h-9 rounded-lg border bg-white px-2 text-[9px] font-bold text-slate-700"
+                  aria-label="Tipo de relação"
+                >
+                  <option value="direct">↔ Conectado</option>
+                  <option value="near">≈ Próximo</option>
+                  <option value="away">⇥ Afastado</option>
+                </select>
+
+                <select
+                  value={rule.toRequestId}
+                  onChange={(event) => updateAdjacencyRule(rule.id, { toRequestId: event.target.value })}
+                  className="h-9 min-w-0 rounded-lg border bg-white px-2 text-[10px] font-semibold text-slate-700"
+                >
+                  {roomProgram
+                    .filter((item) => item.id !== rule.fromRequestId)
+                    .map((item) => (
+                      <option key={item.id} value={item.id}>{item.label}</option>
+                    ))}
+                </select>
+              </div>
+
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => updateAdjacencyRule(rule.id, { required: !rule.required })}
+                  className={rule.required
+                    ? "rounded-lg border border-orange-300 bg-orange-50 px-2.5 py-1.5 text-[9px] font-bold text-orange-700"
+                    : "rounded-lg border bg-white px-2.5 py-1.5 text-[9px] font-semibold text-slate-500"}
+                >
+                  {rule.required ? "Regra obrigatória" : "Preferência"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => removeAdjacencyRule(rule.id)}
+                  className="grid h-8 w-8 place-items-center rounded-lg border bg-white text-slate-400 hover:text-red-600"
+                  aria-label="Remover relação"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          disabled={roomProgram.length < 2}
+          onClick={addAdjacencyRule}
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 px-3 py-2.5 text-[10px] font-bold text-slate-700 disabled:opacity-40"
+        >
+          <Plus className="h-4 w-4" />
+          Adicionar relação entre ambientes
+        </button>
+
+        <div className="mt-3 grid grid-cols-3 gap-1.5 text-center text-[9px] text-slate-500">
+          <div className="rounded-lg bg-slate-50 p-2"><b>Conectado</b><br />parede/porta em comum</div>
+          <div className="rounded-lg bg-slate-50 p-2"><b>Próximo</b><br />mesmo setor e curta distância</div>
+          <div className="rounded-lg bg-slate-50 p-2"><b>Afastado</b><br />protege privacidade/ruído</div>
         </div>
       </section>
 
