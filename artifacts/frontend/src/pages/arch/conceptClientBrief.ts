@@ -395,6 +395,43 @@ export type ClientBriefAlternative = ClientBriefPlan & {
     { score: number; status: "approved" | "warning" | "blocked"; issues: string[] }
   >>;
   hardBlockers?: string[];
+  wallFirstModel?: {
+    version: 1;
+    source: string;
+    zones: Array<{
+      id: string;
+      kind: "social" | "private" | "service" | "circulation" | "external";
+      floor: number;
+      roomIds: string[];
+      labels: string[];
+    }>;
+    walls: Array<{
+      id: string;
+      floor: number;
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+      exterior: boolean;
+      roomIds: string[];
+    }>;
+    portals: Array<{
+      id: string;
+      floor: number;
+      fromRoomId: string;
+      toRoomId: string;
+      sharedLength: number;
+      required: boolean;
+    }>;
+    metrics: {
+      wallCount: number;
+      interiorWallCount: number;
+      exteriorWallCount: number;
+      portalCount: number;
+      requiredPortalCount: number;
+      wallContinuityScore: number;
+    };
+  };
   criticReview?: {
     approved: boolean;
     score: number;
