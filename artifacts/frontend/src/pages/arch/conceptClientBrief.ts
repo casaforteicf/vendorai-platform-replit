@@ -395,6 +395,15 @@ export type ClientBriefAlternative = ClientBriefPlan & {
     { score: number; status: "approved" | "warning" | "blocked"; issues: string[] }
   >>;
   hardBlockers?: string[];
+  criticReview?: {
+    approved: boolean;
+    score: number;
+    blockingIssues: string[];
+    improvements: string[];
+    strengths: string[];
+    summary: string;
+    unavailable?: boolean;
+  };
   designRationale?: string;
   qualityIssues?: string[];
   qualityStrengths?: string[];
