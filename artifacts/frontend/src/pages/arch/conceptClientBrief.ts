@@ -426,6 +426,21 @@ export type ClientBriefAlternative = ClientBriefPlan & {
     }>;
     adjacencySatisfiedCount?: number;
     adjacencyTotalCount?: number;
+    access?: Array<{
+      id: string;
+      fromLabel: string;
+      toLabel: string;
+      mode: ClientAccessRuleMode;
+      required: boolean;
+      reason?: string;
+      satisfied: boolean;
+    }>;
+    accessSatisfiedCount?: number;
+    accessTotalCount?: number;
+    circulation?: {
+      connected: boolean;
+      unreachableRooms: string[];
+    };
   };
   projectBrief?: ProjectBriefSnapshot;
 };
