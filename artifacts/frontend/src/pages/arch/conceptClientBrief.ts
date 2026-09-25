@@ -296,7 +296,14 @@ function expandRoomProgram(brief: ClientBrief) {
     return Array.from({ length: quantity }, (_, index) => {
       const dims = roomDimensionsForArea(request.kind, Number(request.targetArea) || 8);
       const numbered = quantity > 1;
-      const floor = request.floorPreference === "superior" && brief.floors > 1 ? 1 : 0;
+      const floorFlexible = request.floorPreference === "qualquer" && brief.floors > 1;
+      const privateKind = request.kind === "suite" || request.kind === "quarto"
+        || (request.kind === "banheiro" && /su[ií]te|banheiro social|master/i.test(request.label));
+      const floor = request.floorPreference === "superior" && brief.floors > 1
+        ? 1
+        : floorFlexible && privateKind
+          ? 1
+          : 0;
       return {
         id: nextId(`program-${request.kind}`, requestIndex * 10 + index),
         kind: request.kind,
@@ -309,6 +316,7 @@ function expandRoomProgram(brief: ClientBrief) {
         targetArea: Math.round((Number(request.targetArea) || dims.width * dims.depth) * 100) / 100,
         required: request.required !== false,
         programRequestId: request.id,
+        floorFlexible,
       };
     });
   });
