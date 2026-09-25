@@ -718,6 +718,41 @@ export default function ConceptClientBriefPanel({
                   </div>
                 ) : null}
 
+                {alternative.programCompliance?.access?.length ? (
+                  <div className="mt-2 rounded-lg border border-blue-100 bg-blue-50 px-2.5 py-2">
+                    <div className="flex items-center justify-between gap-2 text-[10px]">
+                      <span className="font-bold text-blue-900">Circulação e portas</span>
+                      <span className={(alternative.programCompliance.accessSatisfiedCount ?? 0)
+                        === (alternative.programCompliance.accessTotalCount ?? 0)
+                          && alternative.programCompliance.circulation?.connected !== false
+                          ? "font-bold text-emerald-700"
+                          : "font-bold text-red-600"}
+                      >
+                        {alternative.programCompliance.circulation?.connected === false
+                          ? "Fluxo interrompido"
+                          : `${alternative.programCompliance.accessSatisfiedCount ?? 0}/${alternative.programCompliance.accessTotalCount ?? 0} regras OK`}
+                      </span>
+                    </div>
+                    <div className="mt-2 space-y-1">
+                      {alternative.programCompliance.access.map((rule) => (
+                        <div key={rule.id} className="flex items-center justify-between gap-2 text-[9px]">
+                          <span className="min-w-0 truncate text-slate-600">
+                            {rule.fromLabel} · {rule.mode === "required_direct" ? "porta obrigatória" : "acesso direto proibido"} · {rule.toLabel}
+                          </span>
+                          <span className={rule.satisfied ? "shrink-0 font-bold text-emerald-700" : "shrink-0 font-bold text-red-600"}>
+                            {rule.satisfied ? "OK" : "Corrigir"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    {alternative.programCompliance.circulation?.unreachableRooms?.length ? (
+                      <div className="mt-2 rounded-md bg-red-50 px-2 py-1.5 text-[9px] font-semibold text-red-700">
+                        Sem percurso válido: {alternative.programCompliance.circulation.unreachableRooms.join(", ")}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 <button
                   type="button"
                   onClick={() => onGenerate(alternative)}
