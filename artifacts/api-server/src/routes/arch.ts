@@ -228,11 +228,29 @@ type SpecialistPlanRoom = z.infer<typeof specialistHousePlanSchema>["rooms"][num
   y: number;
 };
 
+type QualityDimensionKey =
+  | "program"
+  | "circulation"
+  | "privacy"
+  | "ergonomics"
+  | "geometry"
+  | "constructability"
+  | "architecturalCoherence";
+
+type QualityDimension = {
+  score: number;
+  status: "approved" | "warning" | "blocked";
+  issues: string[];
+};
+
 type SpecialistPlanQuality = {
+  version: 2;
   score: number;
   status: "approved" | "rejected";
   issues: string[];
   strengths: string[];
+  hardBlockers: string[];
+  dimensions: Record<QualityDimensionKey, QualityDimension>;
 };
 
 const PLAN_EPS = 0.06;
@@ -363,6 +381,88 @@ function specialistReachableFromPublicAnchor(rooms: SpecialistPlanRoom[]) {
   return {
     reachable,
     unreachable: indoor.filter((room) => !reachable.has(room.id)),
+  };
+}
+
+function qualityDimensionForIssue(issue: string): QualityDimensionKey {
+  const low = issue.toLocaleLowerCase("pt-BR");
+  if (low.includes("sobreposição") || low.includes("pavimento") || low.includes("vazios/resíduos")) return "geometry";
+  if (low.includes("grafo funcional") || low.includes("acesso obrigatório") || low.includes("acesso proibido")
+    || low.includes("acesso coerente") || low.includes("circulação está acima")) return "circulation";
+  if (low.includes("privacidade") || low.includes("afastado de")) return "privacy";
+  if (low.includes("estreita") || low.includes("alongado") || low.includes("dimensões preferidas")) return "ergonomics";
+  if (low.includes("metragem") || low.includes("área resultante") || low.includes("meta total")
+    || low.includes("adjacência obrigatória") || low.includes("programa")) return "program";
+  if (low.includes("lavanderia") || low.includes("compacta") || low.includes("perímetro")) return "constructability";
+  return "architecturalCoherence";
+}
+
+function buildArchitecturalQualityGateV2(issues: string[]) {
+  const keys: QualityDimensionKey[] = [
+    "program",
+    "circulation",
+    "privacy",
+    "ergonomics",
+    "geometry",
+    "constructability",
+    "architecturalCoherence",
+  ];
+  const dimensionIssues = Object.fromEntries(keys.map((key) => [key, [] as string[]])) as Record<QualityDimensionKey, string[]>;
+
+  for (const issue of issues) {
+    dimensionIssues[qualityDimensionForIssue(issue)].push(issue);
+  }
+
+  const hardBlockers = issues.filter((issue) =>
+    issue.startsWith("Sobreposição:")
+    || issue.includes("Pavimento") && issue.includes("sem ambientes")
+    || issue.includes("está fragmentado")
+    || issue.includes("não possui banheiro de suíte")
+    || issue.includes("muito abaixo da meta")
+    || issue.startsWith("Adjacência obrigatória:")
+    || issue.startsWith("Acesso obrigatório:")
+    || issue.startsWith("Acesso proibido:")
+    || issue.startsWith("Grafo funcional fragmentado:")
+  );
+
+  const blockerSet = new Set(hardBlockers);
+  const dimensions = Object.fromEntries(keys.map((key) => {
+    const categoryIssues = dimensionIssues[key];
+    let dimensionScore = 100;
+    for (const issue of categoryIssues) {
+      dimensionScore -= blockerSet.has(issue) ? 38 : 12;
+    }
+    dimensionScore = Math.max(0, Math.min(100, dimensionScore));
+    const hasBlocker = categoryIssues.some((issue) => blockerSet.has(issue));
+    return [key, {
+      score: dimensionScore,
+      status: hasBlocker || dimensionScore < 55
+        ? "blocked"
+        : dimensionScore < 78
+          ? "warning"
+          : "approved",
+      issues: categoryIssues.slice(0, 8),
+    } satisfies QualityDimension];
+  })) as Record<QualityDimensionKey, QualityDimension>;
+
+  const weights: Record<QualityDimensionKey, number> = {
+    program: 0.18,
+    circulation: 0.20,
+    privacy: 0.10,
+    ergonomics: 0.16,
+    geometry: 0.16,
+    constructability: 0.10,
+    architecturalCoherence: 0.10,
+  };
+
+  const score = Math.round(keys.reduce((sum, key) => sum + dimensions[key].score * weights[key], 0));
+  const coreBlocked = keys.some((key) => dimensions[key].status === "blocked");
+
+  return {
+    score,
+    dimensions,
+    hardBlockers: [...new Set(hardBlockers)].slice(0, 12),
+    approved: hardBlockers.length === 0 && !coreBlocked && score >= 78,
   };
 }
 
@@ -643,21 +743,17 @@ function evaluateSpecialistPlan(
     }
   }
 
-  score = Math.max(0, Math.min(100, score));
+  const uniqueIssues = [...new Set(issues)];
+  const gate = buildArchitecturalQualityGateV2(uniqueIssues);
+  score = gate.score;
   return {
+    version: 2,
     score,
-    status: score >= 72 && !issues.some((issue) =>
-      issue.startsWith("Sobreposição:") ||
-      issue.includes("fragmentado") ||
-      issue.includes("não possui banheiro de suíte") ||
-      issue.includes("muito abaixo da meta") ||
-      issue.startsWith("Adjacência obrigatória:") ||
-      issue.startsWith("Acesso obrigatório:") ||
-      issue.startsWith("Acesso proibido:") ||
-      issue.startsWith("Grafo funcional fragmentado:")
-    ) ? "approved" : "rejected",
-    issues: [...new Set(issues)].slice(0, 12),
+    status: gate.approved ? "approved" : "rejected",
+    issues: uniqueIssues.slice(0, 12),
     strengths: [...new Set(strengths)].slice(0, 8),
+    hardBlockers: gate.hardBlockers,
+    dimensions: gate.dimensions,
   };
 }
 
@@ -1526,8 +1622,10 @@ NÃO aceite a primeira solução mental: critique e refine antes de responder.`;
       architectAgent: {
         model: "claude-sonnet-4-6",
         reasoning: "intent-party-adjacency-daylight-volume-critique-refine-v2",
-        validation: "functional-adjacency-v2",
-        targetScore: 82,
+        validation: "architectural-quality-gate-v2",
+        targetScore: 78,
+        qualityGate: bestApproved.quality?.dimensions ?? null,
+        hardBlockers: bestApproved.quality?.hardBlockers ?? [],
         intervention: input.intervention,
         refinementPasses: bestApproved.refinementPass,
       },
