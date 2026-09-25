@@ -537,6 +537,7 @@ export default function ConceptClientBriefPanel({
         qualityGateVersion: item.quality?.version === 2 ? 2 : undefined,
         qualityDimensions: item.quality?.dimensions && typeof item.quality.dimensions === "object" ? item.quality.dimensions : undefined,
         hardBlockers: Array.isArray(item.quality?.hardBlockers) ? item.quality.hardBlockers.map(String) : undefined,
+        wallFirstModel: item.wallFirstModel && typeof item.wallFirstModel === "object" ? item.wallFirstModel : undefined,
         criticReview: item.criticReview && typeof item.criticReview === "object" ? item.criticReview : undefined,
         designRationale: typeof item.designRationale === "string" ? item.designRationale : undefined,
         qualityIssues: Array.isArray(item.quality?.issues) ? item.quality.issues.map(String) : undefined,
@@ -660,6 +661,31 @@ export default function ConceptClientBriefPanel({
                 {alternative.floors > 1 && (
                   <div className="mt-2 text-[10px] font-semibold text-slate-500">
                     Prévia mostra o térreo · projeto com {alternative.floors} pavimentos
+                  </div>
+                )}
+
+                {alternative.wallFirstModel && (
+                  <div className="mt-2 rounded-lg border border-indigo-100 bg-indigo-50 px-2.5 py-2">
+                    <div className="flex items-center justify-between gap-2 text-[10px]">
+                      <span className="font-bold text-indigo-900">Modelo Architecture-First</span>
+                      <span className="font-bold text-indigo-700">
+                        Paredes {alternative.wallFirstModel.metrics.wallContinuityScore}/100
+                      </span>
+                    </div>
+                    <div className="mt-2 grid grid-cols-3 gap-1.5 text-center text-[9px]">
+                      <div className="rounded-md bg-white/80 px-2 py-1.5">
+                        <b>{alternative.wallFirstModel.zones.length}</b><br />zonas
+                      </div>
+                      <div className="rounded-md bg-white/80 px-2 py-1.5">
+                        <b>{alternative.wallFirstModel.metrics.wallCount}</b><br />paredes
+                      </div>
+                      <div className="rounded-md bg-white/80 px-2 py-1.5">
+                        <b>{alternative.wallFirstModel.metrics.portalCount}</b><br />conexões
+                      </div>
+                    </div>
+                    <div className="mt-2 text-[9px] leading-4 text-indigo-800">
+                      O Arqdor registrou setorização, limites e conexões como modelo arquitetônico próprio; os ambientes continuam em formato compatível com o editor atual.
+                    </div>
                   </div>
                 )}
 
