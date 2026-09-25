@@ -18,12 +18,16 @@ import {
   countBriefAlternativeErrors,
   type ClientBrief,
   type ClientBriefAlternative,
+  type ClientVision,
+  type ProjectBriefSnapshot,
 } from "./conceptClientBrief";
 
 type Props = {
   lotWidth: number;
   lotDepth: number;
+  initialProjectBrief?: ProjectBriefSnapshot | null;
   onGenerate: (alternative: ClientBriefAlternative) => void;
+  onImproveCurrent?: (projectBrief: ProjectBriefSnapshot) => Promise<void>;
   /** Frente e recuos da implantação, para as opções já nascerem dentro do terreno. */
   placement?: {
     frontSide: "top" | "bottom" | "left" | "right";
@@ -41,6 +45,16 @@ const DEFAULT_BRIEF: ClientBrief = {
   office: false,
   integratedKitchen: true,
   privateAwaySocial: true,
+};
+
+const DEFAULT_VISION: ClientVision = {
+  lifestyle: "misto",
+  protagonist: "social",
+  priorities: ["luz_natural", "privacidade", "integracao"],
+  budgetStrategy: "equilibrar",
+  futureNeeds: "",
+  mustHave: "",
+  avoid: "",
 };
 
 function ChoiceButton({
@@ -194,10 +208,14 @@ function PlanMiniPreview({
 export default function ConceptClientBriefPanel({
   lotWidth,
   lotDepth,
+  initialProjectBrief,
   onGenerate,
+  onImproveCurrent,
   placement,
 }: Props) {
-  const [brief, setBrief] = useState<ClientBrief>(DEFAULT_BRIEF);
+  const [brief, setBrief] = useState<ClientBrief>(() => initialProjectBrief?.brief ?? DEFAULT_BRIEF);
+  const [vision, setVision] = useState<ClientVision>(() => initialProjectBrief?.vision ?? DEFAULT_VISION);
+  const [dreamStep, setDreamStep] = useState(0);
   const [showAlternatives, setShowAlternatives] = useState(false);
   const [alternatives, setAlternatives] = useState<ClientBriefAlternative[]>([]);
   const [generating, setGenerating] = useState(false);
@@ -216,6 +234,30 @@ export default function ConceptClientBriefPanel({
     return items.join(" · ");
   }, [brief]);
 
+  const improveCurrentModel = async () => {
+    if (!initialProjectBrief || !onImproveCurrent) return;
+    setGenerating(true);
+    setGenerationError(null);
+    try {
+      await onImproveCurrent({
+        brief,
+        vision,
+        selectedAlternativeId: initialProjectBrief.selectedAlternativeId,
+        selectedAlternativeTitle: initialProjectBrief.selectedAlternativeTitle,
+        clientFitSummary: initialProjectBrief.clientFitSummary,
+        designRationale: initialProjectBrief.designRationale,
+      });
+    } catch (error) {
+      setGenerationError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível melhorar o modelo atual com o briefing.",
+      );
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   const generateSpecialistAlternatives = async () => {
     setGenerating(true);
     setGenerationError(null);
@@ -232,6 +274,7 @@ export default function ConceptClientBriefPanel({
           lotWidth,
           lotDepth,
           brief,
+          vision,
           rooms: base.rooms,
         }),
       });
@@ -272,6 +315,19 @@ export default function ConceptClientBriefPanel({
           variant: metadata[id].variant,
           suggestedArea: Number(item.suggestedArea ?? base.suggestedArea),
           rooms: item.rooms,
+          architectureScore: Number.isFinite(Number(item.architectureScore)) ? Number(item.architectureScore) : undefined,
+          designRationale: typeof item.designRationale === "string" ? item.designRationale : undefined,
+          qualityIssues: Array.isArray(item.quality?.issues) ? item.quality.issues.map(String) : undefined,
+          qualityStrengths: Array.isArray(item.quality?.strengths) ? item.quality.strengths.map(String) : undefined,
+          clientFitSummary: typeof item.clientFitSummary === "string" ? item.clientFitSummary : undefined,
+          projectBrief: {
+            brief,
+            vision,
+            selectedAlternativeId: id,
+            selectedAlternativeTitle: item.title || metadata[id].title,
+            clientFitSummary: typeof item.clientFitSummary === "string" ? item.clientFitSummary : undefined,
+            designRationale: typeof item.designRationale === "string" ? item.designRationale : undefined,
+          },
         } satisfies ClientBriefAlternative;
       });
 
@@ -347,9 +403,16 @@ export default function ConceptClientBriefPanel({
                     <div className="text-xs font-bold text-slate-900">{alternative.title}</div>
                     <p className="mt-1 text-[10px] leading-4 text-slate-500">{alternative.description}</p>
                   </div>
-                  <span className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">
-                    ≈ {alternative.suggestedArea} m²
-                  </span>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">
+                      ≈ {alternative.suggestedArea} m²
+                    </span>
+                    {typeof alternative.architectureScore === "number" && (
+                      <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold text-emerald-700">
+                        Qualidade {alternative.architectureScore}/100
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="mt-3">
@@ -363,6 +426,18 @@ export default function ConceptClientBriefPanel({
                 {alternative.floors > 1 && (
                   <div className="mt-2 text-[10px] font-semibold text-slate-500">
                     Prévia mostra o térreo · projeto com {alternative.floors} pavimentos
+                  </div>
+                )}
+
+                {alternative.designRationale && (
+                  <div className="mt-2 rounded-lg bg-emerald-50 px-2.5 py-2 text-[10px] leading-4 text-emerald-900">
+                    <span className="font-bold">Lógica da planta: </span>{alternative.designRationale}
+                  </div>
+                )}
+
+                {alternative.clientFitSummary && (
+                  <div className="mt-2 rounded-lg bg-orange-50 px-2.5 py-2 text-[10px] leading-4 text-orange-900">
+                    <span className="font-bold">Por que combina com vocês: </span>{alternative.clientFitSummary}
                   </div>
                 )}
 
@@ -399,10 +474,19 @@ export default function ConceptClientBriefPanel({
             <Sparkles className="h-5 w-5" />
           </span>
           <div>
-            <div className="text-sm font-bold text-slate-900">O que sua casa precisa?</div>
+            <div className="text-sm font-bold text-slate-900">
+              {initialProjectBrief ? "DNA do projeto" : "O que sua casa precisa?"}
+            </div>
             <p className="mt-1 text-[11px] leading-5 text-slate-600">
-              Escolha as necessidades principais. O Arqdor gera três propostas para você comparar.
+              {initialProjectBrief
+                ? "Este briefing continua orientando a IA durante todo o desenvolvimento. Você pode revisar as preferências sem perder as edições feitas na planta."
+                : "Escolha as necessidades principais. O Arqdor gera três propostas para você comparar."}
             </p>
+            {initialProjectBrief?.selectedAlternativeTitle && (
+              <div className="mt-2 inline-flex rounded-full bg-white px-2 py-1 text-[10px] font-bold text-orange-700 shadow-sm">
+                Base atual: {initialProjectBrief.selectedAlternativeTitle}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -526,23 +610,190 @@ export default function ConceptClientBriefPanel({
         />
       </section>
 
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex items-start gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-slate-950 text-white">
+            <Sparkles className="h-4 w-4" />
+          </span>
+          <div>
+            <div className="text-xs font-bold text-slate-900">Entrevista do projeto dos sonhos</div>
+            <p className="mt-1 text-[10px] leading-4 text-slate-500">
+              A IA não vai perguntar só quantos quartos. Ela entende como vocês vivem, o que valorizam e o que querem evitar.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-xl bg-slate-50 p-3">
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+              Pergunta {dreamStep + 1} de 4
+            </span>
+            <span className="text-[10px] font-semibold text-slate-500">IA arquiteta</span>
+          </div>
+
+          {dreamStep === 0 && (
+            <div>
+              <div className="text-xs font-bold text-slate-900">Como vocês querem viver a casa no dia a dia?</div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {([
+                  ["familia", "Vida em família"],
+                  ["receber", "Receber amigos"],
+                  ["tranquilidade", "Privacidade e calma"],
+                  ["praticidade", "Praticidade"],
+                  ["misto", "Um pouco de tudo"],
+                ] as const).map(([value, label]) => (
+                  <ChoiceButton key={value} active={vision.lifestyle === value} onClick={() => setVision((current) => ({ ...current, lifestyle: value }))}>
+                    {label}
+                  </ChoiceButton>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {dreamStep === 1 && (
+            <div>
+              <div className="text-xs font-bold text-slate-900">Qual espaço deve ser o coração da casa?</div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {([
+                  ["social", "Sala / convivência"],
+                  ["cozinha", "Cozinha"],
+                  ["gourmet", "Gourmet"],
+                  ["suite", "Suíte principal"],
+                  ["jardim", "Jardim / lazer"],
+                ] as const).map(([value, label]) => (
+                  <ChoiceButton key={value} active={vision.protagonist === value} onClick={() => setVision((current) => ({ ...current, protagonist: value }))}>
+                    {label}
+                  </ChoiceButton>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {dreamStep === 2 && (
+            <div>
+              <div className="text-xs font-bold text-slate-900">O que mais importa no projeto?</div>
+              <p className="mt-1 text-[10px] text-slate-500">Escolha quantos itens fizerem sentido.</p>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {([
+                  ["luz_natural", "Muita luz natural"],
+                  ["privacidade", "Privacidade"],
+                  ["integracao", "Ambientes integrados"],
+                  ["natureza", "Contato com natureza"],
+                  ["armazenamento", "Muito armazenamento"],
+                  ["flexibilidade", "Ambientes flexíveis"],
+                ] as const).map(([value, label]) => {
+                  const active = vision.priorities.includes(value);
+                  return (
+                    <ChoiceButton
+                      key={value}
+                      active={active}
+                      onClick={() => setVision((current) => ({
+                        ...current,
+                        priorities: active
+                          ? current.priorities.filter((item) => item !== value)
+                          : [...current.priorities, value],
+                      }))}
+                    >
+                      {label}
+                    </ChoiceButton>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {dreamStep === 3 && (
+            <div className="space-y-3">
+              <div>
+                <div className="text-xs font-bold text-slate-900">Agora me conte o que faria essa casa ser realmente de vocês.</div>
+                <p className="mt-1 text-[10px] leading-4 text-slate-500">
+                  Pode escrever de forma natural. Ex.: “quero ver a piscina da cozinha”, “não quero corredor comprido”, “preciso pensar em filhos no futuro”.
+                </p>
+              </div>
+              <textarea
+                value={vision.mustHave}
+                onChange={(event) => setVision((current) => ({ ...current, mustHave: event.target.value.slice(0, 700) }))}
+                placeholder="O que não pode faltar?"
+                className="min-h-20 w-full rounded-xl border px-3 py-2 text-xs outline-none"
+              />
+              <textarea
+                value={vision.avoid}
+                onChange={(event) => setVision((current) => ({ ...current, avoid: event.target.value.slice(0, 500) }))}
+                placeholder="O que você não quer no projeto?"
+                className="min-h-16 w-full rounded-xl border px-3 py-2 text-xs outline-none"
+              />
+              <textarea
+                value={vision.futureNeeds}
+                onChange={(event) => setVision((current) => ({ ...current, futureNeeds: event.target.value.slice(0, 500) }))}
+                placeholder="Como sua família ou rotina pode mudar nos próximos anos?"
+                className="min-h-16 w-full rounded-xl border px-3 py-2 text-xs outline-none"
+              />
+              <div>
+                <div className="mb-2 text-[10px] font-bold text-slate-700">Na hora de decidir, a prioridade é:</div>
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    ["otimizar", "Otimizar custo"],
+                    ["equilibrar", "Equilibrar"],
+                    ["priorizar_experiencia", "Priorizar experiência"],
+                  ] as const).map(([value, label]) => (
+                    <ChoiceButton key={value} active={vision.budgetStrategy === value} onClick={() => setVision((current) => ({ ...current, budgetStrategy: value }))}>
+                      {label}
+                    </ChoiceButton>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-4 flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => setDreamStep((current) => Math.max(0, current - 1))}
+              disabled={dreamStep === 0}
+              className="rounded-lg border bg-white px-3 py-2 text-[10px] font-bold text-slate-600 disabled:opacity-35"
+            >
+              Voltar
+            </button>
+            <button
+              type="button"
+              onClick={() => setDreamStep((current) => Math.min(3, current + 1))}
+              disabled={dreamStep === 3}
+              className="rounded-lg bg-slate-950 px-3 py-2 text-[10px] font-bold text-white disabled:opacity-35"
+            >
+              Próxima pergunta
+            </button>
+          </div>
+        </div>
+      </section>
+
       <div className="rounded-xl border bg-slate-50 p-3">
         <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Resumo</div>
         <div className="mt-1 text-[11px] font-semibold leading-5 text-slate-700">{summary}</div>
+        <div className="mt-2 text-[10px] leading-4 text-slate-500">
+          Estilo de vida: {vision.lifestyle} · coração da casa: {vision.protagonist} · prioridades: {vision.priorities.length}
+        </div>
       </div>
 
       <button
         type="button"
-        onClick={generateSpecialistAlternatives}
+        onClick={initialProjectBrief ? improveCurrentModel : generateSpecialistAlternatives}
         disabled={generating}
         className="flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3.5 text-sm font-bold text-white shadow-sm hover:bg-orange-600 disabled:cursor-wait disabled:opacity-60"
       >
         <Sparkles className="h-4 w-4" />
-        {generating ? "IA arquiteta estudando o projeto..." : "Gerar 3 opções com IA arquiteta"}
+        {generating
+          ? initialProjectBrief
+            ? "IA arquiteta melhorando o modelo atual..."
+            : "IA arquiteta estudando o projeto..."
+          : initialProjectBrief
+            ? "Melhorar este modelo com o briefing"
+            : "Gerar 3 opções com IA arquiteta"}
       </button>
 
       <p className="text-center text-[10px] leading-4 text-slate-400">
-        Você escolhe a melhor base e depois pode mover ambientes, alterar medidas, portas, janelas e materiais.
+        {initialProjectBrief
+          ? "A IA trabalha sobre o modelo atual. Ela não cria três plantas novas e preserva as edições já feitas sempre que forem compatíveis com o briefing."
+          : "Você escolhe a melhor base e depois pode mover ambientes, alterar medidas, portas, janelas e materiais."}
       </p>
     </div>
   );

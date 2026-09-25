@@ -461,3 +461,43 @@
 .arqdor-reference-ui .arq-app-bar .hover\:bg-white\/5:hover,
 .arqdor-reference-ui .arq-app-bar .hover\:bg-white\/10:hover { background-color: #f1f5f9; }
 .arqdor-reference-ui .arq-app-bar .bg-white.shadow-sm.text-slate-950 { background-color: #0f172a; color: #fff; }
+
+
+/* Pré-projeto mobile: canvas em primeiro lugar, jornada compacta e sem CTA gigante. */
+@media (max-width: 767px) {
+  .arqdor-reference-ui .arq-journey-row {
+    position: sticky;
+    top: var(--arq-chrome-height);
+    z-index: 52;
+    gap: 6px;
+    padding: 7px 8px;
+    background: rgba(255,255,255,.98);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 1px 0 rgb(15 23 42 / .06);
+  }
+
+  .arqdor-reference-ui .arq-journey-row > .min-w-0.flex-1 {
+    min-width: 120px;
+  }
+
+  .arqdor-reference-ui .arq-journey-row .arq-journey-continue {
+    min-height: 36px;
+    padding-left: 10px;
+    padding-right: 10px;
+    font-size: 12px;
+  }
+
+  .arqdor-reference-ui .arq-journey-row .arq-auto-fix {
+    min-height: 36px;
+    padding-left: 9px;
+    padding-right: 9px;
+  }
+
+  .arqdor-reference-ui .arq-workspace-center {
+    min-height: calc(100dvh - var(--arq-chrome-height) - 52px);
+  }
+
+  .arqdor-reference-ui .arq-canvas {
+    min-height: calc(100dvh - var(--arq-chrome-height) - 52px);
+  }
+}
