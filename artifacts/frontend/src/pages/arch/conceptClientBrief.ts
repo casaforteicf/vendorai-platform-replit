@@ -33,6 +33,10 @@ export type ClientBriefAlternative = ClientBriefPlan & {
   title: string;
   description: string;
   variant: 0 | 1 | 2;
+  architectureScore?: number;
+  designRationale?: string;
+  qualityIssues?: string[];
+  qualityStrengths?: string[];
 };
 
 function nextId(prefix: string, index: number) {
@@ -102,6 +106,34 @@ export function buildClientBriefPlan(brief: ClientBrief): ClientBriefPlan {
     ...rooms.filter((room) => room.kind !== "suite" && room.kind !== "quarto"),
     ...normalizedSleepingRooms,
   ];
+
+  // O programa precisa representar a suíte de verdade: dormitório + banheiro próprio.
+  // Antes o briefing podia pedir 2 suítes e manter apenas 1 banho de suíte do template,
+  // tornando impossível para a IA gerar uma planta arquitetonicamente correta.
+  const existingSuiteBaths = rooms.filter(
+    (room) => room.kind === "banheiro" && /su[ií]te|master/i.test(room.label),
+  );
+  if (existingSuiteBaths.length > requestedSuites) {
+    const keepIds = new Set(existingSuiteBaths.slice(0, requestedSuites).map((room) => room.id));
+    rooms = rooms.filter(
+      (room) => room.kind !== "banheiro" || !/su[ií]te|master/i.test(room.label) || keepIds.has(room.id),
+    );
+  }
+  const currentSuiteBaths = rooms.filter(
+    (room) => room.kind === "banheiro" && /su[ií]te|master/i.test(room.label),
+  );
+  for (let index = currentSuiteBaths.length; index < requestedSuites; index += 1) {
+    rooms.push({
+      id: nextId("client-suite-bath", rooms.length + index),
+      kind: "banheiro",
+      label: requestedSuites > 1 ? `Banho suíte ${index + 1}` : "Banho suíte",
+      width: 1.8,
+      depth: 2.4,
+      floor: sleepingFloor,
+      x: 0,
+      y: 0,
+    });
+  }
 
   const garageWidth = brief.garageSpaces === 1 ? 3.2 : brief.garageSpaces === 2 ? 5.8 : 8.4;
   const garage = rooms.find((room) => room.kind === "garagem");
