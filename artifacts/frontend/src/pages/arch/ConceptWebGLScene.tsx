@@ -1,5 +1,6 @@
 import { buildFacadeMeshBoxes } from "./conceptFacadeMeshes";
 import { getFacadeMaterial, type FacadeDesignState } from "./conceptFacadeDesign";
+import { buildRoofPlan } from "./conceptRoofPlan";
 import type { SiteFrontSide } from "./conceptSitePlacement";
 import { useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent } from "react";
 import type { ConceptModelLevel } from "./ConceptModel3D";
@@ -109,6 +110,7 @@ type Runtime = {
     fov: number;
   };
   contentFramed: boolean;
+  contentCenter?: { x: number; y: number; z: number; span: number };
   walkWalls: Array<{
     x1: number;
     y1: number;
@@ -118,6 +120,10 @@ type Runtime = {
     doorGaps: Array<{ center: number; halfWidth: number }>;
   }>;
 };
+
+// "Frente" e "Iso" devem olhar para a fachada da rua. O ângulo 0 da câmera fica do lado de baixo
+// da planta; sem este ajuste, com a frente no topo (padrão), a câmera mostrava os fundos da casa.
+const FRONT_CAMERA_OFFSET: Record<"top" | "bottom" | "left" | "right", number> = { bottom: 0, top: 180, left: 270, right: 90 };
 
 const THREE_SRC = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";
 const ORBIT_SRC = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/js/controls/OrbitControls.min.js";
@@ -513,6 +519,8 @@ export default function ConceptWebGLScene({
           const height = Math.max(1, rect.height);
           renderer.setSize(width, height, false);
           camera.aspect = width / height;
+          // Celular em pé: abre o ângulo de visão para a casa inteira caber na largura da tela.
+          camera.fov = camera.aspect < 1 ? Math.min(74, 46 / Math.max(0.6, camera.aspect)) : 46;
           camera.updateProjectionMatrix();
         };
         const observer = new ResizeObserver(resize);
@@ -776,22 +784,28 @@ export default function ConceptWebGLScene({
   useEffect(() => {
     const runtime = runtimeRef.current;
     if (!runtime || engineState !== "ready" || ["walk", "panorama"].includes(runtime.navigationMode)) return;
-    const radius = Math.max(9, Math.hypot(lotWidth, lotDepth) * 0.82) / Math.max(0.6, cameraZoom);
-    const radians = (cameraPresetDegrees * Math.PI) / 180;
+    // Enquadra a casa (não o centro do lote, que em lote fundo fica no quintal vazio).
+    const focus = runtime.contentCenter;
+    const narrowFit = runtime.camera?.aspect < 1 ? 1 / Math.max(0.45, runtime.camera.aspect) : 1;
+    const baseRadius = focus ? Math.max(9, focus.span * 1.35) : Math.max(9, Math.hypot(lotWidth, lotDepth) * 0.82);
+    const radius = baseRadius * narrowFit / Math.max(0.6, cameraZoom);
+    const radians = ((cameraPresetDegrees + FRONT_CAMERA_OFFSET[frontSide ?? "bottom"]) * Math.PI) / 180;
     const elevation = Math.max(5.5, radius * 0.54);
+    const cx = focus?.x ?? 0;
+    const cz = focus?.z ?? 0;
     runtime.cameraGoal = {
       position: {
-        x: Math.sin(radians) * radius,
+        x: cx + Math.sin(radians) * radius,
         y: elevation,
-        z: Math.cos(radians) * radius,
+        z: cz + Math.cos(radians) * radius,
       },
       target: {
-        x: 0,
+        x: cx,
         y: Math.max(1.5, levels.length * 1.15),
-        z: 0,
+        z: cz,
       },
     };
-  }, [cameraPresetDegrees, cameraZoom, engineState, levels.length, lotDepth, lotWidth]);
+  }, [cameraPresetDegrees, cameraZoom, engineState, frontSide, levels.length, lotDepth, lotWidth]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;
@@ -1549,64 +1563,77 @@ export default function ConceptWebGLScene({
 
     if (showRoof && !interiorMode && showAllFloors) {
       const highestFloor = Math.max(0, ...levels.map((level) => level.floor));
-      const roofY = highestFloor * 2.96 + 3.02;
-      const roofOverhang = roof === "platibanda" ? 0.10 : 0.32;
-      const roofWidth = Math.max(2, shellBounds.width + roofOverhang * 2);
-      const roofDepth = Math.max(2, shellBounds.depth + roofOverhang * 2);
-      const roofCenterX = shellBounds.centerX;
-      const roofCenterZ = shellBounds.centerZ;
+      const roofPlan = buildRoofPlan(levels.map((level) => ({
+        floor: level.floor,
+        cells: (level.closedSpaces ?? []).flatMap((space) => space.cells ?? []),
+      })));
+      const wallColor = facadeDesign
+        ? Number.parseInt(getFacadeMaterial(facadeDesign.surfaceMaterials.main).baseColor.slice(1), 16)
+        : 0xf1efe9;
+      const toScene = (x: number, y: number) => ({ x: x - lotWidth / 2, z: y - lotDepth / 2 });
+      const slabTop = (floor: number) => floor * 2.96 + 3.02;
+      const pitched = roof === "aparente" || roof === "misto";
 
-      if (roof === "platibanda") {
-        const slab = makeBox(modelRoot, roofWidth, 0.16, roofDepth, roofCenterX, roofY, roofCenterZ, 0x4b5563);
-        slab.castShadow = true;
-        for (const [x, z, w, d] of [
-          [roofCenterX, roofCenterZ - roofDepth / 2 + 0.08, roofWidth, 0.16],
-          [roofCenterX, roofCenterZ + roofDepth / 2 - 0.08, roofWidth, 0.16],
-          [roofCenterX - roofWidth / 2 + 0.08, roofCenterZ, 0.16, roofDepth],
-          [roofCenterX + roofWidth / 2 - 0.08, roofCenterZ, 0.16, roofDepth],
-        ] as const) {
-          makeBox(modelRoot, w, 0.48, d, x, roofY + 0.24, z, 0xf4f4f5);
-        }
-      } else {
-        const pitch = 0.42;
+      // Lajes: cada trecho na altura do próprio pavimento (no telhado aparente, o último pavimento
+      // recebe o telhado inclinado abaixo; aqui ficam só as lajes dos pavimentos inferiores).
+      for (const slab of roofPlan.slabs) {
+        if (pitched && slab.floor === highestFloor) continue;
+        const center = toScene(slab.x + slab.width / 2, slab.y + slab.height / 2);
+        const mesh = makeBox(modelRoot, slab.width, 0.16, slab.height, center.x, slabTop(slab.floor), center.z, 0xb8bcc2);
+        mesh.castShadow = true;
+      }
+      // Platibanda de 0,9 m na cor da fachada, com rufo escuro, contornando só a borda externa.
+      for (const edge of roofPlan.edges) {
+        if (pitched && edge.floor === highestFloor) continue;
+        const horizontal = Math.abs(edge.y1 - edge.y2) < 0.001;
+        const length = horizontal ? Math.abs(edge.x2 - edge.x1) : Math.abs(edge.y2 - edge.y1);
+        if (length < 0.05) continue;
+        const center = toScene((edge.x1 + edge.x2) / 2, (edge.y1 + edge.y2) / 2);
+        const baseY = slabTop(edge.floor);
+        const w = horizontal ? length + 0.15 : 0.15;
+        const d = horizontal ? 0.15 : length + 0.15;
+        const parapet = makeBox(modelRoot, w, 0.9, d, center.x, baseY + 0.45, center.z, wallColor);
+        parapet.castShadow = true;
+        makeBox(modelRoot, w + 0.04, 0.05, d + 0.04, center.x, baseY + 0.925, center.z, 0x52525b);
+      }
+
+      if (pitched) {
+        const topSlabs = roofPlan.slabs.filter((slab) => slab.floor === highestFloor);
+        const minX = Math.min(...topSlabs.map((slab) => slab.x));
+        const maxX = Math.max(...topSlabs.map((slab) => slab.x + slab.width));
+        const minY = Math.min(...topSlabs.map((slab) => slab.y));
+        const maxY = Math.max(...topSlabs.map((slab) => slab.y + slab.height));
+        const bounds = topSlabs.length
+          ? { width: maxX - minX, depth: maxY - minY, ...(() => { const c = toScene((minX + maxX) / 2, (minY + maxY) / 2); return { centerX: c.x, centerZ: c.z }; })() }
+          : shellBounds;
+        const roofY = highestFloor * 2.96 + 3.02;
+        const roofOverhang = 0.45;
+        const roofWidth = Math.max(2, bounds.width + roofOverhang * 2);
+        const roofDepth = Math.max(2, bounds.depth + roofOverhang * 2);
+        const pitch = 0.36;
         const halfDepth = roofDepth / 2;
         const slopeLength = Math.sqrt(halfDepth * halfDepth + (halfDepth * pitch) * (halfDepth * pitch));
-        const roofMaterial = 0x6b4f3e;
-        const left = makeBox(
-          modelRoot,
-          roofWidth,
-          0.14,
-          slopeLength,
-          roofCenterX,
-          roofY + halfDepth * pitch / 2,
-          roofCenterZ - halfDepth / 2,
-          roofMaterial,
-        );
+        const roofMaterial = 0x7a4a33;
+        const left = makeBox(modelRoot, roofWidth, 0.12, slopeLength, bounds.centerX, roofY + halfDepth * pitch / 2, bounds.centerZ - halfDepth / 2, roofMaterial);
         left.rotation.x = -Math.atan(pitch);
-        const right = makeBox(
-          modelRoot,
-          roofWidth,
-          0.14,
-          slopeLength,
-          roofCenterX,
-          roofY + halfDepth * pitch / 2,
-          roofCenterZ + halfDepth / 2,
-          roofMaterial,
-        );
+        left.castShadow = true;
+        const right = makeBox(modelRoot, roofWidth, 0.12, slopeLength, bounds.centerX, roofY + halfDepth * pitch / 2, bounds.centerZ + halfDepth / 2, roofMaterial);
         right.rotation.x = Math.atan(pitch);
-
-        if (roof === "misto") {
-          const frontSlab = makeBox(
-            modelRoot,
-            roofWidth * 0.36,
-            0.18,
-            roofDepth * 0.34,
-            roofCenterX - roofWidth * 0.24,
-            roofY + 0.10,
-            roofCenterZ - roofDepth * 0.24,
-            0x4b5563,
+        right.castShadow = true;
+        // Oitões (empenas) fechando as laterais do telhado na cor da parede.
+        for (const side of [-1, 1]) {
+          const gable = new THREE.Mesh(
+            new THREE.ExtrudeGeometry(new THREE.Shape([
+              new THREE.Vector2(-bounds.depth / 2, 0),
+              new THREE.Vector2(bounds.depth / 2, 0),
+              new THREE.Vector2(0, (bounds.depth / 2) * pitch),
+            ]), { depth: 0.14, bevelEnabled: false }),
+            makeMat(wallColor),
           );
-          frontSlab.castShadow = true;
+          gable.rotation.y = Math.PI / 2;
+          gable.position.set(bounds.centerX + side * (bounds.width / 2) - (side > 0 ? 0.14 : 0), roofY - 0.06, bounds.centerZ);
+          gable.castShadow = true;
+          modelRoot.add(gable);
         }
       }
     }
@@ -1629,8 +1656,11 @@ export default function ConceptWebGLScene({
       sceneBounds.getCenter(center);
       const horizontalSpan = Math.max(6, size.x, size.z);
       const verticalSpan = Math.max(3, size.y);
-      const distance = Math.max(9, horizontalSpan * 1.35, verticalSpan * 2.4) / Math.max(0.65, cameraZoom);
-      const radians = (cameraPresetDegrees * Math.PI) / 180;
+      // Tela em pé (celular) tem campo de visão horizontal estreito: afasta a câmera para a casa caber.
+      const narrowFit = runtime.camera.aspect < 1 ? 1 / Math.max(0.45, runtime.camera.aspect) : 1;
+      const distance = Math.max(9, horizontalSpan * 1.35, verticalSpan * 2.4) * narrowFit / Math.max(0.65, cameraZoom);
+      runtime.contentCenter = { x: center.x, y: center.y, z: center.z, span: horizontalSpan };
+      const radians = ((cameraPresetDegrees + FRONT_CAMERA_OFFSET[frontSide ?? "bottom"]) * Math.PI) / 180;
       runtime.camera.position.set(
         center.x + Math.sin(radians) * distance,
         center.y + Math.max(5.2, distance * 0.48),
@@ -1641,6 +1671,8 @@ export default function ConceptWebGLScene({
       runtime.camera.far = Math.max(500, distance * 20);
       runtime.camera.updateProjectionMatrix();
       runtime.controls.update();
+      // Descarta a animação de câmera pedida antes do enquadramento (mirava o centro do lote).
+      runtime.cameraGoal = null;
       runtime.contentFramed = true;
     }
     setSceneContentReady(hasRenderableContent);
@@ -1934,7 +1966,7 @@ export default function ConceptWebGLScene({
       );
     } else {
       const radius = Math.max(9, Math.hypot(lotWidth, lotDepth) * 0.82) / Math.max(0.6, cameraZoom);
-      const radians = (cameraPresetDegrees * Math.PI) / 180;
+      const radians = ((cameraPresetDegrees + FRONT_CAMERA_OFFSET[frontSide ?? "bottom"]) * Math.PI) / 180;
       runtime.cameraGoal = {
         position: {
           x: Math.sin(radians) * radius,
@@ -1948,7 +1980,7 @@ export default function ConceptWebGLScene({
         },
       };
     }
-  }, [activeFloor, cameraPresetDegrees, cameraZoom, engineState, levels.length, lotDepth, lotWidth, navigationMode, renderQuality]);
+  }, [activeFloor, cameraPresetDegrees, cameraZoom, engineState, levels.length, lotDepth, lotWidth, navigationMode, renderQuality, frontSide]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;

@@ -941,7 +941,7 @@ export default function ConceptFacadeEditor({
 
       <div className={`absolute inset-x-0 bottom-0 top-14 grid grid-cols-1 bg-slate-200 md:top-16 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)] ${panelOpen ? "md:left-[316px]" : ""}`}>
         <div className="relative min-w-0 overflow-hidden border-r border-slate-200 bg-white">
-          <div className="absolute inset-x-0 bottom-20 top-0 xl:inset-0">
+          <div className="absolute inset-x-0 bottom-[calc(11.5rem+env(safe-area-inset-bottom))] top-28 md:bottom-20 md:top-0 xl:inset-0">
           <ConceptDerivedFacade
             viewMode={elevationMode}
             lotWidth={lotWidth}
@@ -990,12 +990,12 @@ export default function ConceptFacadeEditor({
           </div>
         </div>
 
-        <div className="absolute bottom-4 right-4 z-20 flex gap-2 xl:hidden">
+        <div className="absolute inset-x-3 bottom-[calc(7.25rem+env(safe-area-inset-bottom))] z-20 flex gap-2 md:inset-x-auto md:bottom-4 md:right-4 xl:hidden">
           <button type="button" onClick={onOpenRender} disabled={realisticPreviewLoading || !onOpenRender}
-            className="rounded-xl bg-orange-500 px-4 py-3 text-xs font-bold text-white disabled:opacity-50">
-            {realisticPreviewLoading ? "Gerando..." : "Gerar render"}
+            className="min-h-12 flex-1 rounded-xl bg-orange-500 px-4 py-3 text-sm font-bold text-white shadow-lg disabled:opacity-50 md:min-h-0 md:flex-none md:text-xs">
+            {realisticPreviewLoading ? "Gerando..." : "Gerar imagem realista"}
           </button>
-          <button type="button" onClick={onOpenGallery} className="rounded-xl border bg-white px-4 py-3 text-xs font-semibold">
+          <button type="button" onClick={onOpenGallery} className="min-h-12 rounded-xl border bg-white px-4 py-3 text-sm font-semibold shadow-lg md:min-h-0 md:text-xs">
             Galeria
           </button>
         </div>

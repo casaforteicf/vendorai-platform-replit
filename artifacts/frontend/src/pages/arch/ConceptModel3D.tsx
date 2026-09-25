@@ -7,6 +7,7 @@ import type { ClosedSpace } from "./conceptWallNetwork";
 import { getFacadeMaterial, type FacadeDesignState } from "./conceptFacadeDesign";
 import type { ConceptPlanObject } from "./ConceptPlan2D";
 import ConceptWebGLScene from "./ConceptWebGLScene";
+import { buildRoofPlan } from "./conceptRoofPlan";
 import { CONCEPT_PBR_MATERIALS } from "./catalogs/conceptMaterialCatalog";
 import { listConceptModelVariants } from "./catalogs/conceptModelCatalog";
 
@@ -957,6 +958,39 @@ export default function ConceptModel3D({
   );
   const topBounds = roofBounds(topLevel);
   const topZ = ((topLevel?.floor ?? 0) * LEVEL_HEIGHT) + WALL_HEIGHT + FLOOR_THICKNESS;
+  // Cobertura por pavimento (mesma regra do 3D Pro): laje na altura de cada parte e platibanda no contorno real.
+  const roofPlan = buildRoofPlan(levels.map((level) => ({
+    floor: level.floor,
+    cells: (level.closedSpaces ?? []).flatMap((space) => space.cells ?? []),
+  })));
+  const roofTopZ = (floor: number) => floor * LEVEL_HEIGHT + WALL_HEIGHT + FLOOR_THICKNESS;
+  const renderRoofFloor = (floor: number) => {
+    if (!showRoof || !showAllFloors || interiorMode) return null;
+    const topFloor = floor >= Math.max(0, ...levels.map((level) => level.floor));
+    if (topFloor && roof !== "platibanda") return null;
+    const slabs = roofPlan.slabs.filter((slab) => slab.floor === floor);
+    const edges = roofPlan.edges.filter((edge) => edge.floor === floor);
+    if (!slabs.length && !edges.length) return null;
+    const z = roofTopZ(floor);
+    return (
+      <g key={`roof-floor-${floor}`}>
+        {slabs.map((slab, index) => (
+          <polygon key={`roof-slab-${floor}-${index}`}
+            points={points(quad(slab.x, slab.y, slab.x + slab.width, slab.y + slab.height, z, rotation, projectionWidth, projectionDepth, zoom))}
+            fill="#c3c7cc" stroke="#c3c7cc" strokeWidth="0.12" strokeLinejoin="round" />
+        ))}
+        {edges.map((edge, index) => {
+          const corners = [
+            project({ x: edge.x1, y: edge.y1, z }, rotation, projectionWidth, projectionDepth, zoom),
+            project({ x: edge.x2, y: edge.y2, z }, rotation, projectionWidth, projectionDepth, zoom),
+            project({ x: edge.x2, y: edge.y2, z: z + 0.9 }, rotation, projectionWidth, projectionDepth, zoom),
+            project({ x: edge.x1, y: edge.y1, z: z + 0.9 }, rotation, projectionWidth, projectionDepth, zoom),
+          ];
+          return <polygon key={`roof-parapet-${floor}-${index}`} points={points(corners)} fill="#efece6" stroke="#8b9096" strokeWidth="0.06" />;
+        })}
+      </g>
+    );
+  };
 
   const maxLevel = Math.max(0, ...levels.map((level) => level.floor));
   const totalBuildingHeight = Math.max(LEVEL_HEIGHT, (maxLevel + 1) * LEVEL_HEIGHT);
@@ -1866,7 +1900,8 @@ export default function ConceptModel3D({
                         rotation, projectionWidth, projectionDepth, zoom,
                       ))}
                       fill={floor3dMaterial(level.floorMaterials?.[space.id])?.fill ?? (level.floor === activeFloor ? "#e2e8f0" : "#cbd5e1")}
-                      fillOpacity={selectedClosedSpaceId === space.id ? "0.96" : level.floorMaterials?.[space.id] ? "0.82" : level.floor === activeFloor ? "0.42" : "0.28"}
+                      // Vista externa com todos os pavimentos: laje opaca (antes parecia vidro azulado).
+                      fillOpacity={selectedClosedSpaceId === space.id ? "0.96" : showAllFloors && !interiorMode && level.floor > 0 ? "1" : level.floorMaterials?.[space.id] ? "0.82" : level.floor === activeFloor ? "0.42" : "0.28"}
                       stroke={selectedClosedSpaceId === space.id ? "#f97316" : floor3dMaterial(level.floorMaterials?.[space.id])?.edge ?? "#94a3b8"}
                       strokeOpacity={selectedClosedSpaceId === space.id ? "1" : level.floorMaterials?.[space.id] ? "0.68" : "0.35"}
                       strokeWidth={selectedClosedSpaceId === space.id ? "0.10" : "0.04"}
@@ -2147,9 +2182,9 @@ export default function ConceptModel3D({
                           levelBase - FLOOR_THICKNESS,
                           rotation, projectionWidth, projectionDepth, zoom,
                         ))}
-                        fill="#64748b"
-                        fillOpacity="0.7"
-                        stroke="#475569"
+                        fill={showAllFloors && !interiorMode ? "#d6d3d1" : "#64748b"}
+                        fillOpacity={showAllFloors && !interiorMode ? "1" : "0.7"}
+                        stroke={showAllFloors && !interiorMode ? "#a8a29e" : "#475569"}
                         strokeWidth="0.05"
                       />
                     ))
@@ -2179,6 +2214,7 @@ export default function ConceptModel3D({
                   );
                 });
               })}
+              {level.floor < maxLevel && renderRoofFloor(level.floor)}
             </g>
           );
         })}
@@ -2369,7 +2405,7 @@ export default function ConceptModel3D({
           );
         })}
 
-        {showRoof && showAllFloors && !interiorMode && topBounds && roof === "platibanda" && (
+        {showRoof && showAllFloors && !interiorMode && topBounds && roof === "platibanda" && roofPlan.slabs.length === 0 && (
           <polygon
             points={points(quad(
               topBounds.minX,
@@ -2379,12 +2415,12 @@ export default function ConceptModel3D({
               topZ,
               rotation, projectionWidth, projectionDepth, zoom,
             ))}
-            fill="#d5d9dc"
-            fillOpacity="0.94"
+            fill="#c3c7cc"
             stroke="#737b82"
             strokeWidth="0.08"
           />
         )}
+        {roofPlan.slabs.length > 0 && renderRoofFloor(maxLevel)}
 
         {showRoof && showAllFloors && !interiorMode && topBounds && (roof === "aparente" || roof === "misto") && (() => {
           const midY = (topBounds.minY + topBounds.maxY) / 2;
