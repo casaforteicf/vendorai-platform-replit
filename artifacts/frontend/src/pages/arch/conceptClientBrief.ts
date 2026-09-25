@@ -363,6 +363,52 @@ export function buildDefaultRoomProgram(brief: Pick<ClientBrief,
   ];
 }
 
+export function buildRecommendedAdjacencyRules(brief: ClientBrief): ClientAdjacencyRule[] {
+  const program = Array.isArray(brief.roomProgram) ? brief.roomProgram : [];
+  const find = (predicate: (item: ClientRoomRequest) => boolean) => program.find(predicate);
+  const living = find((item) => item.kind === "sala");
+  const kitchen = find((item) => item.kind === "cozinha");
+  const gourmet = find((item) => item.kind === "gourmet");
+  const laundry = find((item) => item.kind === "lavanderia");
+  const garage = find((item) => item.kind === "garagem");
+  const pool = find((item) => item.kind === "piscina");
+  const suite = find((item) => item.kind === "suite");
+  const suiteBath = find((item) => item.kind === "banheiro" && /su[ií]te|master/i.test(item.label));
+
+  const rules: ClientAdjacencyRule[] = [];
+  const add = (
+    from: ClientRoomRequest | undefined,
+    to: ClientRoomRequest | undefined,
+    relation: ClientAdjacencyRelation,
+    required: boolean,
+  ) => {
+    if (!from || !to || from.id === to.id) return;
+    const pairExists = rules.some((rule) =>
+      (rule.fromRequestId === from.id && rule.toRequestId === to.id)
+      || (rule.fromRequestId === to.id && rule.toRequestId === from.id)
+    );
+    if (pairExists) return;
+    rules.push({
+      id: roomProgramId("adj"),
+      fromRequestId: from.id,
+      toRequestId: to.id,
+      relation,
+      required,
+    });
+  };
+
+  if (brief.integratedKitchen) add(living, kitchen, "direct", true);
+  add(kitchen, gourmet, "near", true);
+  add(kitchen, laundry, "near", false);
+  add(gourmet, pool, "near", false);
+  add(suite, suiteBath, "direct", true);
+  if (brief.privateAwaySocial) {
+    add(suite, gourmet, "away", true);
+    add(suite, garage, "away", true);
+  }
+  return rules;
+}
+
 function roomDimensionsForArea(
   kind: ClientRoomRequestKind,
   area: number,
