@@ -284,6 +284,14 @@ export default function ConceptClientBriefPanel({
           qualityIssues: Array.isArray(item.quality?.issues) ? item.quality.issues.map(String) : undefined,
           qualityStrengths: Array.isArray(item.quality?.strengths) ? item.quality.strengths.map(String) : undefined,
           clientFitSummary: typeof item.clientFitSummary === "string" ? item.clientFitSummary : undefined,
+          projectBrief: {
+            brief,
+            vision,
+            selectedAlternativeId: id,
+            selectedAlternativeTitle: item.title || metadata[id].title,
+            clientFitSummary: typeof item.clientFitSummary === "string" ? item.clientFitSummary : undefined,
+            designRationale: typeof item.designRationale === "string" ? item.designRationale : undefined,
+          },
         } satisfies ClientBriefAlternative;
       });
 
