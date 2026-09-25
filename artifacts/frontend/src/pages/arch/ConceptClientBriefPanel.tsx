@@ -678,6 +678,7 @@ export default function ConceptClientBriefPanel({
                         ["ergonomics", "Ergonomia"],
                         ["geometry", "Geometria"],
                         ["constructability", "Construção"],
+                        ["furnitureFit", "Mobiliário"],
                         ["architecturalCoherence", "Coerência"],
                       ] as const).map(([key, label]) => {
                         const dimension = alternative.qualityDimensions?.[key];
@@ -769,6 +770,42 @@ export default function ConceptClientBriefPanel({
                           >
                             {rule.satisfied ? "OK" : rule.required ? "Corrigir" : "Preferência"}
                           </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {alternative.programCompliance?.furnitureFit ? (
+                  <div className="mt-2 rounded-lg border border-violet-100 bg-violet-50 px-2.5 py-2">
+                    <div className="flex items-center justify-between gap-2 text-[10px]">
+                      <span className="font-bold text-violet-900">Furniture Fit Engine</span>
+                      <span className={alternative.programCompliance.furnitureFit.status === "blocked"
+                        ? "font-bold text-red-600"
+                        : alternative.programCompliance.furnitureFit.status === "warning"
+                          ? "font-bold text-amber-600"
+                          : "font-bold text-emerald-700"}
+                      >
+                        {alternative.programCompliance.furnitureFit.score}/100
+                      </span>
+                    </div>
+                    <div className="mt-2 space-y-1">
+                      {alternative.programCompliance.furnitureFit.items.slice(0, 8).map((item) => (
+                        <div key={item.roomId} className="rounded-md bg-white/80 px-2 py-1.5 text-[9px]">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-semibold text-slate-700">{item.label}</span>
+                            <span className={item.status === "blocked"
+                              ? "font-bold text-red-600"
+                              : item.status === "warning"
+                                ? "font-bold text-amber-600"
+                                : "font-bold text-emerald-700"}
+                            >
+                              {item.status === "blocked" ? "Não cabe" : item.status === "warning" ? "Apertado" : "Funcional"}
+                            </span>
+                          </div>
+                          <div className="mt-0.5 text-slate-500">
+                            {item.furniture.join(" · ")}
+                          </div>
                         </div>
                       ))}
                     </div>
