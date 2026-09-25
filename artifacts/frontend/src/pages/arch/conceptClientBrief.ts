@@ -318,6 +318,16 @@ export type ClientBriefAlternative = ClientBriefPlan & {
       deviationPct: number;
       status: "ok" | "warning" | "outside_target";
     }>;
+    adjacency?: Array<{
+      id: string;
+      fromLabel: string;
+      toLabel: string;
+      relation: ClientAdjacencyRelation;
+      required: boolean;
+      satisfied: boolean;
+    }>;
+    adjacencySatisfiedCount?: number;
+    adjacencyTotalCount?: number;
   };
   projectBrief?: ProjectBriefSnapshot;
 };
