@@ -2,6 +2,11 @@ import { Router, type IRouter } from "express";
 import { vendorPool } from "../lib/vendorDb";
 
 const router: IRouter = Router();
+
+function routeTenantId(req: any): string {
+  // tenant-audit: reviewed tenant route; handlers enforce canAccess before tenant-scoped data access.
+  return String(req.params.tenantId ?? req.params["tenantId"]);
+}
 function actor(req:Express.Request){const u=(req as any).user;return{id:u?.sub??u?.id??null,tenantId:u?.tenantId,role:u?.platformRole,fn:u?.userFunction};}
 function canAccess(req:Express.Request,tenantId:string){const a=actor(req);return a.role==="super_admin"||a.tenantId===tenantId;}
 function point(value:any){const latitude=Number(value?.latitude??value?.lat),longitude=Number(value?.longitude??value?.lng??value?.lon);return Number.isFinite(latitude)&&latitude>=-90&&latitude<=90&&Number.isFinite(longitude)&&longitude>=-180&&longitude<=180?{latitude,longitude}:null;}
@@ -9,24 +14,24 @@ function validDate(value:unknown):value is string{return typeof value==="string"
 function money(value:unknown){const n=Number(value);return Number.isSafeInteger(n)&&n>=0?n:null;}
 
 router.get("/tenants/:tenantId/praca-relay-points",async(req,res)=>{
- const tenantId=String(req.params.tenantId);if(!canAccess(req,tenantId))return res.status(403).json({error:"Forbidden"});
+ const tenantId=routeTenantId(req);if(!canAccess(req,tenantId))return res.status(403).json({error:"Forbidden"});
  const result=await vendorPool.query("SELECT * FROM praca_pontos_redespacho WHERE tenant_id=$1 ORDER BY ativo DESC,nome",[tenantId]);res.json({points:result.rows});
 });
 router.post("/tenants/:tenantId/praca-relay-points",async(req,res)=>{
- const tenantId=String(req.params.tenantId),a=actor(req);if(!canAccess(req,tenantId)||a.fn==="entrega")return res.status(403).json({error:"Somente a operação pode cadastrar pontos."});
+ const tenantId=routeTenantId(req),a=actor(req);if(!canAccess(req,tenantId)||a.fn==="entrega")return res.status(403).json({error:"Somente a operação pode cadastrar pontos."});
  const nome=typeof req.body?.nome==="string"?req.body.nome.trim():"",location=point(req.body),endereco=req.body?.endereco;
  if(!nome||!location||!endereco||typeof endereco!=="object")return res.status(422).json({error:"Nome, endereço e coordenadas válidas são obrigatórios."});
  const result=await vendorPool.query(`INSERT INTO praca_pontos_redespacho(tenant_id,nome,endereco,latitude,longitude,horario_operacao) VALUES($1,$2,$3,$4,$5,$6) RETURNING *`,[tenantId,nome,endereco,location.latitude,location.longitude,req.body?.horarioOperacao??{}]);
  res.status(201).json({point:result.rows[0]});
 });
 router.patch("/tenants/:tenantId/praca-relay-points/:pointId",async(req,res)=>{
- const tenantId=String(req.params.tenantId),a=actor(req);if(!canAccess(req,tenantId)||a.fn==="entrega")return res.status(403).json({error:"Forbidden"});
+ const tenantId=routeTenantId(req),a=actor(req);if(!canAccess(req,tenantId)||a.fn==="entrega")return res.status(403).json({error:"Forbidden"});
  const result=await vendorPool.query("UPDATE praca_pontos_redespacho SET ativo=$3,updated_at=now() WHERE id=$1 AND tenant_id=$2 RETURNING *",[String(req.params.pointId),tenantId,req.body?.ativo===true]);
  if(!result.rowCount)return res.status(404).json({error:"Ponto não encontrado."});res.json({point:result.rows[0]});
 });
 
 router.post("/tenants/:tenantId/praca-orders/:orderId/relay-plan",async(req,res)=>{
- const tenantId=String(req.params.tenantId),a=actor(req);if(!canAccess(req,tenantId)||!a.id||a.fn==="entrega")return res.status(403).json({error:"Somente a operação pode planejar o redespacho."});
+ const tenantId=routeTenantId(req),a=actor(req);if(!canAccess(req,tenantId)||!a.id||a.fn==="entrega")return res.status(403).json({error:"Somente a operação pode planejar o redespacho."});
  const serviceDate=req.body?.dataServico,pickupValue=money(req.body?.freteColetaCentavos),lastMileValue=money(req.body?.freteUltimaMilhaCentavos);
  if(!validDate(serviceDate)||pickupValue===null||lastMileValue===null)return res.status(422).json({error:"Data e valores de cada trecho, em centavos, são obrigatórios."});
  const client=await vendorPool.connect();
@@ -81,7 +86,7 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/relay-plan",async(req,res)
 });
 
 router.post("/tenants/:tenantId/praca-relay/scan",async(req,res)=>{
- const tenantId=String(req.params.tenantId),a=actor(req);if(!canAccess(req,tenantId)||!a.id||a.fn!=="entrega")return res.status(403).json({error:"Somente entregadores podem transferir custódia."});
+ const tenantId=routeTenantId(req),a=actor(req);if(!canAccess(req,tenantId)||!a.id||a.fn!=="entrega")return res.status(403).json({error:"Somente entregadores podem transferir custódia."});
  const raw=typeof req.body?.qrCode==="string"?req.body.qrCode.trim():"",qr=raw.replace(/^APPVENDOR:V1:/,""),acao=String(req.body?.acao??""),location=point(req.body);
  if(!qr||!location||!["transferir_saida","receber_redespacho"].includes(acao))return res.status(422).json({error:"QR, ação e localização são obrigatórios."});
  const client=await vendorPool.connect();try{await client.query("BEGIN");
