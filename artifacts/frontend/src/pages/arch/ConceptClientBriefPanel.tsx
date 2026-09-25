@@ -432,6 +432,7 @@ export default function ConceptClientBriefPanel({
         daylightStrategy: Array.isArray(item.daylightStrategy) ? item.daylightStrategy.map(String) : undefined,
         facadeDirection: Array.isArray(item.facadeDirection) ? item.facadeDirection.map(String) : undefined,
         selfCritique: Array.isArray(item.selfCritique) ? item.selfCritique.map(String) : undefined,
+        programCompliance: item.programCompliance && typeof item.programCompliance === "object" ? item.programCompliance : undefined,
         projectBrief: {
           brief,
           vision,
@@ -553,6 +554,37 @@ export default function ConceptClientBriefPanel({
                     <span className="font-bold">Por que combina com vocês: </span>{alternative.clientFitSummary}
                   </div>
                 )}
+
+                {alternative.programCompliance?.rooms?.length ? (
+                  <div className="mt-2 rounded-lg border bg-slate-50 px-2.5 py-2">
+                    <div className="flex items-center justify-between gap-2 text-[10px]">
+                      <span className="font-bold text-slate-700">Metragens solicitadas × projeto</span>
+                      <span className={alternative.programCompliance.outsideTargetCount
+                        ? "font-bold text-amber-700"
+                        : "font-bold text-emerald-700"}
+                      >
+                        {alternative.programCompliance.outsideTargetCount
+                          ? `${alternative.programCompliance.outsideTargetCount} fora da meta`
+                          : "Dentro da meta"}
+                      </span>
+                    </div>
+                    <div className="mt-2 max-h-32 space-y-1 overflow-y-auto pr-1">
+                      {alternative.programCompliance.rooms.map((room) => (
+                        <div key={room.id} className="flex items-center justify-between gap-2 text-[9px] text-slate-600">
+                          <span className="truncate">{room.label}</span>
+                          <span className={room.status === "outside_target"
+                            ? "shrink-0 font-bold text-red-600"
+                            : room.status === "warning"
+                              ? "shrink-0 font-bold text-amber-600"
+                              : "shrink-0 font-semibold text-emerald-700"}
+                          >
+                            {room.actualArea.toFixed(1)} / {room.targetArea.toFixed(1)} m²
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
 
                 <button
                   type="button"
