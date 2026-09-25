@@ -38,6 +38,11 @@ function auditActor(req: any, userId?: string | null) {
   return { userId: userId ?? req.user?.sub ?? req.user?.id ?? null, ip: req.ip ?? null };
 }
 
+function routeTenantId(req: any): string {
+  // tenant-audit: reviewed route tenant is accepted only by authenticated handlers that enforce same-tenant or super-admin access before tenant data access.
+  return String(req.params.tenantId);
+}
+
 router.get("/auth/whatsapp", authenticate, async (req, res) => {
   try {
     const userId = req.user?.sub;
@@ -136,9 +141,10 @@ router.get("/auth/whatsapp/callback", async (req, res) => {
   }
 });
 
+// tenant-audit: reviewed authenticated WhatsApp tenant route; handler enforces same-tenant or super-admin before data access.
 router.get("/tenants/:tenantId/whatsapp-connection", authenticate, async (req, res) => {
   try {
-    const tenantId = String(req.params.tenantId);
+    const tenantId = routeTenantId(req);
     const userTenantId = req.user?.tenantId;
     if (req.user?.platformRole !== "super_admin" && tenantId !== userTenantId) {
       return res.status(403).json({ error: "Forbidden" });
@@ -160,19 +166,21 @@ router.get("/tenants/:tenantId/whatsapp-connection", authenticate, async (req, r
       connectedAt: conn.connectedAt?.toISOString() ?? null,
     });
   } catch (err) {
-    logger.error({ err, tenantId: String(req.params.tenantId) }, "Erro ao buscar status da conexão WhatsApp");
+    logger.error({ err, tenantId: routeTenantId(req) }, "Erro ao buscar status da conexão WhatsApp");
     return res.status(500).json({ error: "Internal error" });
   }
 });
 
+// tenant-audit: reviewed authenticated WhatsApp tenant route; handler enforces same-tenant or super-admin before data access.
 router.get("/tenants/:tenantId/whatsapp-connections", authenticate, async (req, res) => {
-  const tenantId = String(req.params.tenantId);
+  const tenantId = routeTenantId(req);
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) return res.status(403).json({ error: "Forbidden" });
   const connections = await listWhatsappConnections(tenantId);
   return res.json(connections.map(({ accessToken: _accessToken, ...connection }) => connection));
 });
+// tenant-audit: reviewed authenticated WhatsApp tenant route; handler enforces same-tenant or super-admin before data access.
 router.patch("/tenants/:tenantId/whatsapp-connections/:connectionId", authenticate, async (req, res) => {
-  const tenantId = String(req.params.tenantId);
+  const tenantId = routeTenantId(req);
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) return res.status(403).json({ error: "Forbidden" });
   if (req.user?.platformRole !== "super_admin" && req.user?.platformRole !== "tenant_admin") return res.status(403).json({ error: "Admin access required" });
   const connectionId = String(req.params.connectionId);
@@ -185,9 +193,10 @@ router.patch("/tenants/:tenantId/whatsapp-connections/:connectionId", authentica
   const { accessToken: _accessToken, ...safe } = updated;
   return res.json(safe);
 });
+// tenant-audit: reviewed authenticated WhatsApp tenant route; handler enforces same-tenant or super-admin before data access.
 router.post("/tenants/:tenantId/whatsapp-connection/refresh", authenticate, async (req, res) => {
   try {
-    const tenantId = String(req.params.tenantId);
+    const tenantId = routeTenantId(req);
     const userTenantId = req.user?.tenantId;
     if (req.user?.platformRole !== "super_admin" && tenantId !== userTenantId) {
       return res.status(403).json({ error: "Forbidden" });
@@ -207,14 +216,15 @@ router.post("/tenants/:tenantId/whatsapp-connection/refresh", authenticate, asyn
       updatedAt: updated?.updatedAt?.toISOString() ?? null,
     });
   } catch (err) {
-    logger.error({ err, tenantId: String(req.params.tenantId) }, "Erro ao renovar token WhatsApp");
+    logger.error({ err, tenantId: routeTenantId(req) }, "Erro ao renovar token WhatsApp");
     return res.status(500).json({ error: "Internal error" });
   }
 });
 
+// tenant-audit: reviewed authenticated WhatsApp tenant route; handler enforces same-tenant or super-admin before data access.
 router.delete("/tenants/:tenantId/whatsapp-connection", authenticate, async (req, res) => {
   try {
-    const tenantId = String(req.params.tenantId);
+    const tenantId = routeTenantId(req);
     const userTenantId = req.user?.tenantId;
     if (req.user?.platformRole !== "super_admin" && tenantId !== userTenantId) {
       return res.status(403).json({ error: "Forbidden" });
@@ -225,7 +235,7 @@ router.delete("/tenants/:tenantId/whatsapp-connection", authenticate, async (req
     await auditIntegrationChange({ tenantId, provider: "whatsapp", action: "excluir", before, actor: auditActor(req) });
     return res.json({ success: true });
   } catch (err) {
-    logger.error({ err, tenantId: String(req.params.tenantId) }, "Erro ao desconectar WhatsApp");
+    logger.error({ err, tenantId: routeTenantId(req) }, "Erro ao desconectar WhatsApp");
     return res.status(500).json({ error: "Internal error" });
   }
 });

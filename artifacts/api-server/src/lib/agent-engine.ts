@@ -335,33 +335,23 @@ export function computeLimits(config: AgentConfig): LimitResult {
 // ── OpenAI call ───────────────────────────────────────────────────────────────
 export async function callOpenAI(
   messages: OpenAI.Chat.ChatCompletionMessageParam[],
-  tenantId?: string,
-  agentName?: AgentName,
+  tenantId: string,
+  agentName: AgentName,
   log?: Logger
 ): Promise<{ resposta: string; tokensUsed: number }> {
-  if (tenantId && agentName) {
-    const feature = AGENT_FEATURE_MAP[agentName];
-    const { content, inputTokens, outputTokens } = await gatewayCallOpenAI(
-      tenantId,
-      feature,
-      messages,
-      { model: "gpt-4o-mini", temperature: 0.7, maxTokens: 600, log }
-    );
-    return { resposta: content, tokensUsed: inputTokens + outputTokens };
-  }
+  if (!tenantId) throw new Error("tenantId is required for agent AI calls");
+  if (!agentName) throw new Error("agentName is required for agent AI calls");
 
-  // Fallback: direct call (for non-tenant contexts or until full migration)
-  const openai = tenantId ? await getOpenAIForTenant(tenantId) : getOpenAI();
-  const completion = await openai.chat.completions.create({
-    model:       "gpt-4o-mini",
+  const feature = AGENT_FEATURE_MAP[agentName];
+  if (!feature) throw new Error(`No AI Gateway feature mapping configured for agent ${agentName}`);
+
+  const { content, inputTokens, outputTokens } = await gatewayCallOpenAI(
+    tenantId,
+    feature,
     messages,
-    temperature: 0.7,
-    max_tokens:  600,
-  });
-  return {
-    resposta:   completion.choices[0]?.message?.content?.trim() ?? "",
-    tokensUsed: completion.usage?.total_tokens ?? 0,
-  };
+    { model: "gpt-4o-mini", temperature: 0.7, maxTokens: 600, log }
+  );
+  return { resposta: content, tokensUsed: inputTokens + outputTokens };
 }
 
 // ── Counter updater ───────────────────────────────────────────────────────────
