@@ -58,6 +58,54 @@ export type ClientVision = {
   avoid: string;
 };
 
+const MIN_ROOM_AREAS: Record<ClientRoomRequestKind, number> = {
+  sala: 18,
+  cozinha: 8,
+  suite: 11,
+  quarto: 8,
+  banheiro: 2.4,
+  lavanderia: 3.5,
+  garagem: 12,
+  gourmet: 10,
+  piscina: 8,
+  outro: 5,
+};
+
+export function rebalanceClientRoomProgramToDesiredArea(brief: ClientBrief): ClientRoomRequest[] {
+  const program = Array.isArray(brief.roomProgram) ? brief.roomProgram : [];
+  const desiredArea = Number(brief.desiredAreaTotal);
+  if (!program.length || !Number.isFinite(desiredArea) || desiredArea < 40) return program;
+
+  const targetNetArea = desiredArea / 1.14;
+  const fixedArea = program.reduce((sum, item) => {
+    if (item.kind === "piscina") return sum;
+    const hasFixedDimensions = Number(item.preferredWidth) >= 1.2 && Number(item.preferredDepth) >= 1.2;
+    return hasFixedDimensions
+      ? sum + item.quantity * Number(item.preferredWidth) * Number(item.preferredDepth)
+      : sum;
+  }, 0);
+
+  const flexible = program.filter((item) => {
+    if (item.kind === "piscina") return false;
+    return !(Number(item.preferredWidth) >= 1.2 && Number(item.preferredDepth) >= 1.2);
+  });
+  const flexibleCurrent = flexible.reduce((sum, item) => sum + item.quantity * item.targetArea, 0);
+  const availableFlexible = Math.max(0, targetNetArea - fixedArea);
+  const factor = flexibleCurrent > 0 ? availableFlexible / flexibleCurrent : 1;
+
+  return program.map((item) => {
+    const hasFixedDimensions = Number(item.preferredWidth) >= 1.2 && Number(item.preferredDepth) >= 1.2;
+    if (item.kind === "piscina") return item;
+    if (hasFixedDimensions) {
+      const area = Number(item.preferredWidth) * Number(item.preferredDepth);
+      return { ...item, targetArea: Math.round(area * 2) / 2 };
+    }
+    const minimum = MIN_ROOM_AREAS[item.kind] ?? 5;
+    const scaled = Math.max(minimum, item.targetArea * factor);
+    return { ...item, targetArea: Math.round(scaled * 2) / 2 };
+  });
+}
+
 export type ClientProgramValidation = {
   status: "ok" | "warning" | "blocked";
   errors: string[];
