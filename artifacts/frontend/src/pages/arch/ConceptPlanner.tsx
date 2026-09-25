@@ -41,7 +41,7 @@ import {
   Sofa,
   Paintbrush,
 } from "lucide-react";
-import { buildConceptGeometry, nudgeOpening } from "./conceptGeometry";
+import { buildConceptGeometry, generateLayoutVariant, nudgeOpening } from "./conceptGeometry";
 import { type ConceptFacadePreferences } from "./ConceptVolumetry";
 import ConceptPlan2D, { type ConceptPlanObject } from "./ConceptPlan2D";
 import ConceptTypologyPreview from "./ConceptTypologyPreview";
@@ -1389,6 +1389,10 @@ export default function ConceptPlanner() {
   const journeyIndex = conceptJourneyIndex({ step, editorView, libraryTab: editorLibraryTab });
 
   const goToJourneyStage = (index: number) => {
+    if (index > journeyIndex && blockingLayoutIssues.length > 0) {
+      setMobileValidationOpen(true);
+      return;
+    }
     const isWide = typeof window !== "undefined" && window.innerWidth >= 768;
     if (index >= 4) {
       void saveConcept(RESULT_STEP);
@@ -2689,6 +2693,32 @@ export default function ConceptPlanner() {
     design: facadeDesign, placement: normalizeSitePlacement(sitePlacement),
   }), [safeRooms, modelLevels, lotWidth, lotDepth, safeWallFirstFloors, safeObjects, facadeDesign, sitePlacement]);
   const blockingLayoutIssues = blockingConceptIssues(layoutIssues);
+
+  const repairArchitecturalLayout = () => {
+    if (!safeRooms.length) return;
+    const before = snapshotEditor();
+    let nextRooms = safeRooms;
+    const nextVariant = (layoutVariant + 1) % 3;
+    for (let floor = 0; floor < floors; floor += 1) {
+      nextRooms = generateLayoutVariant(
+        nextRooms,
+        lotWidth,
+        lotDepth,
+        floor,
+        nextVariant,
+        layoutPreferences,
+      );
+    }
+    setRooms(nextRooms);
+    setLayoutVariant(nextVariant);
+    pushRoomHistory(before);
+    setSelectedId(null);
+    setSelectedOpeningId(null);
+    setSelectedWallId(null);
+    setSelectedCustomWallId(null);
+    setMobileValidationOpen(false);
+  };
+
   const selectedOpening = geometry.openings.find((opening) => opening.id === selectedOpeningId) ?? null;
   const selectedCustomOpening = selectedOpening
     ? safeCustomOpenings.find((opening) => opening.id === selectedOpening.id) ?? null
@@ -5037,13 +5067,24 @@ export default function ConceptPlanner() {
                   {blockingLayoutIssues.length > 0 ? `${blockingLayoutIssues.length} erro(s)` : `${layoutIssues.length} aviso(s)`}
                 </button>
               )}
+              {blockingLayoutIssues.length > 0 && (
+                <button
+                  type="button"
+                  onClick={repairArchitecturalLayout}
+                  className="arq-auto-fix inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-xl border border-orange-200 bg-orange-50 px-3 text-xs font-bold text-orange-700 hover:bg-orange-100"
+                >
+                  <Sparkles className="h-4 w-4" /> Corrigir planta
+                </button>
+              )}
               {conceptJourneyContinueLabel(journeyIndex) && (
                 <button
                   type="button"
                   onClick={() => goToJourneyStage(journeyIndex + 1)}
-                  className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-xl bg-orange-500 px-4 text-sm font-semibold text-white shadow-sm hover:bg-orange-600"
+                  disabled={blockingLayoutIssues.length > 0}
+                  title={blockingLayoutIssues.length > 0 ? "Corrija os erros arquitetônicos antes de avançar." : undefined}
+                  className="arq-journey-continue inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-xl bg-orange-500 px-4 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600 disabled:shadow-none"
                 >
-                  {conceptJourneyContinueLabel(journeyIndex)} <ArrowRight className="h-4 w-4" />
+                  {blockingLayoutIssues.length > 0 ? "Corrija os erros" : conceptJourneyContinueLabel(journeyIndex)} <ArrowRight className="h-4 w-4" />
                 </button>
               )}
             </div>
