@@ -169,6 +169,7 @@ type ConceptSaveOverrides = {
   objects?: ConceptPlanObject[];
   facadePreferences?: ConceptFacadePreferences;
   facadeDesign?: FacadeDesignState;
+  projectBrief?: ProjectBriefSnapshot;
 };
 
 type CustomerProfile = {
@@ -1263,6 +1264,7 @@ export default function ConceptPlanner() {
     const nextObjects = overrides?.objects ?? objects;
     const nextFacadePreferences = overrides?.facadePreferences ?? facadePreferences;
     const nextFacadeDesign = overrides?.facadeDesign ?? facadeDesign;
+    const nextProjectBrief = overrides?.projectBrief ?? projectBrief;
     const payload = {
       title: customerProfile.name?.trim() ? `Pré-projeto — ${customerProfile.name.trim()}` : "Meu pré-projeto",
       currentStep: stepOverride ?? step,
@@ -1281,7 +1283,7 @@ export default function ConceptPlanner() {
         wallMaterials,
         savedTourPoints: savedTourPointsOverride ?? savedTourPoints,
         sitePlacement,
-        projectBrief: projectBrief ?? undefined,
+        projectBrief: nextProjectBrief ?? undefined,
       },
       rooms: nextRooms,
       openingOverrides,
@@ -1562,11 +1564,16 @@ export default function ConceptPlanner() {
     });
   };
 
-  const runAiDevelopment = async () => {
+  const runAiDevelopment = async (projectBriefOverride?: ProjectBriefSnapshot) => {
     if (aiDevelopmentState === "running") return;
     setAiDevelopmentState("running");
     try {
-      const projectId = await saveConcept(4);
+      if (projectBriefOverride) setProjectBrief(projectBriefOverride);
+      const projectId = await saveConcept(
+        4,
+        undefined,
+        projectBriefOverride ? { projectBrief: projectBriefOverride } : undefined,
+      );
       if (!projectId) throw new Error("Não foi possível salvar o pré-projeto antes da análise.");
       const response = await fetch(`/api/arch/concept-projects/${projectId}/develop-with-ai`, {
         method: "POST",
@@ -5614,6 +5621,11 @@ export default function ConceptPlanner() {
                       lotDepth={lotDepth}
                       initialProjectBrief={projectBrief}
                       onGenerate={applyClientBrief}
+                      onImproveCurrent={async (nextProjectBrief) => {
+                        await runAiDevelopment(nextProjectBrief);
+                        setEditorLibraryTab("build");
+                        setLibraryOpen(true);
+                      }}
                     />
                   )}
 
