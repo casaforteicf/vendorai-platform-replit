@@ -745,7 +745,7 @@ export default function ConceptClientBriefPanel({
           <div className="min-w-0 flex-1">
             <div className="text-xs font-bold text-slate-900">Programa de necessidades e metragens</div>
             <p className="mt-1 text-[10px] leading-4 text-slate-600">
-              Informe exatamente os ambientes desejados. A metragem é uma meta por ambiente; a IA pode ajustar levemente para encaixar o projeto, mas não deve ignorar o programa.
+              Informe os ambientes, m² e, quando quiser, largura × profundidade. A IA usa mobiliário, circulação e relações funcionais para transformar essas metas em espaços utilizáveis.
             </p>
           </div>
         </div>
@@ -885,6 +885,61 @@ export default function ConceptClientBriefPanel({
                 </div>
               </div>
 
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <div>
+                  <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">Largura desejada</div>
+                  <div className="flex h-9 items-center rounded-lg border px-2">
+                    <input
+                      type="number"
+                      min={1.2}
+                      max={30}
+                      step={0.1}
+                      value={item.preferredWidth ?? ""}
+                      placeholder="IA"
+                      onChange={(event) => {
+                        const raw = event.target.value;
+                        updateRoomRequest(item.id, {
+                          preferredWidth: raw === "" ? undefined : Math.max(1.2, Math.min(30, Number(raw))),
+                        });
+                      }}
+                      className="min-w-0 flex-1 bg-transparent text-right text-xs font-bold text-slate-800 outline-none"
+                    />
+                    <span className="ml-1 text-[10px] text-slate-400">m</span>
+                  </div>
+                </div>
+                <div>
+                  <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">Profundidade</div>
+                  <div className="flex h-9 items-center rounded-lg border px-2">
+                    <input
+                      type="number"
+                      min={1.2}
+                      max={30}
+                      step={0.1}
+                      value={item.preferredDepth ?? ""}
+                      placeholder="IA"
+                      onChange={(event) => {
+                        const raw = event.target.value;
+                        updateRoomRequest(item.id, {
+                          preferredDepth: raw === "" ? undefined : Math.max(1.2, Math.min(30, Number(raw))),
+                        });
+                      }}
+                      className="min-w-0 flex-1 bg-transparent text-right text-xs font-bold text-slate-800 outline-none"
+                    />
+                    <span className="ml-1 text-[10px] text-slate-400">m</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-2">
+                <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">O que este ambiente precisa ter?</div>
+                <input
+                  value={item.notes ?? ""}
+                  onChange={(event) => updateRoomRequest(item.id, { notes: event.target.value.slice(0, 300) })}
+                  placeholder="Ex.: cama king + TV, ilha para 4 lugares, janela para o jardim..."
+                  className="h-9 w-full rounded-lg border px-2.5 text-[10px] text-slate-700 outline-none focus:border-orange-400"
+                />
+              </div>
+
               {brief.floors > 1 && (
                 <div className="mt-2">
                   <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">Pavimento preferido</div>
@@ -922,7 +977,7 @@ export default function ConceptClientBriefPanel({
         </button>
 
         <div className="mt-3 rounded-xl bg-slate-900 px-3 py-2.5 text-[10px] leading-4 text-white">
-          <span className="font-bold">Regra da IA:</span> este programa é a base do projeto. Circulação e escada podem ser criadas quando necessárias; os demais ambientes não devem aparecer por adivinhação.
+          <span className="font-bold">Regra da IA:</span> este programa é a base do projeto. Ela deve respeitar área, dimensões preferidas e uso real do ambiente; circulação e escada podem ser criadas quando necessárias.
         </div>
       </section>
 
