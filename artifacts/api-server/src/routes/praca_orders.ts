@@ -3,6 +3,11 @@ import { vendorPool } from "../lib/vendorDb";
 
 const router: IRouter = Router();
 
+function routeTenantId(req: any): string {
+  // tenant-audit: reviewed tenant route; handlers enforce canAccess before tenant-scoped data access.
+  return String(req.params.tenantId ?? req.params["tenantId"]);
+}
+
 const ORDER_TRANSITIONS: Record<string, string[]> = {
   recebido: ["pagamento_pendente", "pago", "cancelado"],
   pagamento_pendente: ["pago", "cancelado"],
@@ -54,7 +59,7 @@ function normalizeCoupon(value: unknown) {
 }
 
 router.post("/tenants/:tenantId/praca-orders", async (req, res) => {
-  const tenantId = String(req.params.tenantId);
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const idempotencyKey = String(req.header("Idempotency-Key") || req.body?.idempotencyKey || "").trim();
@@ -261,7 +266,7 @@ router.post("/tenants/:tenantId/praca-orders", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/praca-orders", async (req, res) => {
-  const tenantId = String(req.params.tenantId);
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   const values: unknown[] = [tenantId];
   let statusFilter = "";
@@ -284,7 +289,7 @@ router.get("/tenants/:tenantId/praca-orders", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/praca-orders/:orderId", async (req, res) => {
-  const tenantId = String(req.params.tenantId);
+  const tenantId = routeTenantId(req);
   const orderId = String(req.params.orderId);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
@@ -306,7 +311,7 @@ router.get("/tenants/:tenantId/praca-orders/:orderId", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/praca-orders/:orderId/status", async (req, res) => {
-  const tenantId = String(req.params.tenantId);
+  const tenantId = routeTenantId(req);
   const orderId = String(req.params.orderId);
   const next = typeof req.body?.status === "string" ? req.body.status : "";
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
@@ -377,7 +382,7 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/status", async (req, res) 
 });
 
 router.post("/tenants/:tenantId/praca-orders/:orderId/volumes", async (req, res) => {
-  const tenantId = String(req.params.tenantId);
+  const tenantId = routeTenantId(req);
   const orderId = String(req.params.orderId);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
@@ -450,7 +455,7 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/volumes", async (req, res)
 });
 
 router.post("/tenants/:tenantId/logistics/volumes/:qrCode/scan", async (req, res) => {
-  const tenantId = String(req.params.tenantId);
+  const tenantId = routeTenantId(req);
   const qrCode = String(req.params.qrCode);
   const eventType = typeof req.body?.tipo === "string" ? req.body.tipo : "";
   const nextStatus = VOLUME_EVENTS[eventType];

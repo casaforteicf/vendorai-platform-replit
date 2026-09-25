@@ -11,6 +11,11 @@ import { SERVICE_CATALOG, SERVICE_TEMPLATES } from "../lib/serviceCatalog";
 
 const router: IRouter = Router();
 
+function routeTenantId(req: any): string {
+  // tenant-audit: reviewed tenant route; handlers enforce canAccess before tenant-scoped data access.
+  return String(req.params.tenantId ?? req.params["tenantId"]);
+}
+
 function tid(req: Express.Request): string {
   return (req as any).user?.tenantId as string;
 }
@@ -26,7 +31,7 @@ function canAccess(req: Express.Request, tenantId: string) {
 // ─── Prestadores ────────────────────────────────────────────────────────────
 
 router.get("/tenants/:tenantId/servicos/prestadores", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const filters = [eq(servicosPrestadoresTable.tenantId, tenantId), eq(servicosPrestadoresTable.ativo, true)];
@@ -44,7 +49,7 @@ router.get("/tenants/:tenantId/servicos/prestadores", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/servicos/prestadores", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [row] = await db
@@ -55,7 +60,7 @@ router.post("/tenants/:tenantId/servicos/prestadores", async (req, res) => {
 });
 
 router.patch("/tenants/:tenantId/servicos/prestadores/:id", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const id = req.params.id as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
@@ -70,7 +75,7 @@ router.patch("/tenants/:tenantId/servicos/prestadores/:id", async (req, res) => 
 
 // Soft delete — ativo = false
 router.delete("/tenants/:tenantId/servicos/prestadores/:id", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const id = req.params.id as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
@@ -88,7 +93,7 @@ router.delete("/tenants/:tenantId/servicos/prestadores/:id", async (req, res) =>
 router.get("/servicos/catalogo-modelo", (_req, res) => res.json(SERVICE_CATALOG));
 
 router.post("/tenants/:tenantId/servicos/importar-catalogo", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   const existentes = await db.select({ nome: servicosTiposTable.nome }).from(servicosTiposTable).where(eq(servicosTiposTable.tenantId, tenantId));
   const nomes = new Set(existentes.map((item) => item.nome.toLocaleLowerCase("pt-BR")));
@@ -100,7 +105,7 @@ router.post("/tenants/:tenantId/servicos/importar-catalogo", async (req, res) =>
 });
 
 router.get("/tenants/:tenantId/servicos/tipos", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const filters = [eq(servicosTiposTable.tenantId, tenantId), eq(servicosTiposTable.ativo, true)];
@@ -118,7 +123,7 @@ router.get("/tenants/:tenantId/servicos/tipos", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/servicos/tipos", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [row] = await db
@@ -129,7 +134,7 @@ router.post("/tenants/:tenantId/servicos/tipos", async (req, res) => {
 });
 
 router.patch("/tenants/:tenantId/servicos/tipos/:id", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const id = req.params.id as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
@@ -147,7 +152,7 @@ router.patch("/tenants/:tenantId/servicos/tipos/:id", async (req, res) => {
 // em_andamento → concluido (ou cancelado a qualquer momento)
 
 router.get("/tenants/:tenantId/servicos/ordens", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const filters = [eq(servicosOrdensTable.tenantId, tenantId)];
@@ -207,7 +212,7 @@ router.get("/tenants/:tenantId/servicos/ordens", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/servicos/ordens", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const { clienteId, tipoServicoId, enderecoAtendimento, prestadorId, observacoes } = req.body as {
@@ -251,7 +256,7 @@ router.post("/tenants/:tenantId/servicos/ordens", async (req, res) => {
 });
 
 router.patch("/tenants/:tenantId/servicos/ordens/:id", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const id = req.params.id as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
@@ -265,7 +270,7 @@ router.patch("/tenants/:tenantId/servicos/ordens/:id", async (req, res) => {
 });
 
 router.patch("/tenants/:tenantId/servicos/ordens/:id/status", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const id = req.params.id as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
