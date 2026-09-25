@@ -276,6 +276,10 @@ export type ClientBriefAlternative = ClientBriefPlan & {
       label: string;
       required?: boolean;
       targetArea: number;
+      targetWidth?: number | null;
+      targetDepth?: number | null;
+      actualWidth?: number;
+      actualDepth?: number;
       actualArea: number;
       deviationPct: number;
       status: "ok" | "warning" | "outside_target";
