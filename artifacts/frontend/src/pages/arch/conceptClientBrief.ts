@@ -201,6 +201,20 @@ export type ClientBriefAlternative = ClientBriefPlan & {
   daylightStrategy?: string[];
   facadeDirection?: string[];
   selfCritique?: string[];
+  programCompliance?: {
+    desiredAreaTotal?: number | null;
+    actualAreaTotal?: number;
+    outsideTargetCount?: number;
+    rooms?: Array<{
+      id: string;
+      label: string;
+      required?: boolean;
+      targetArea: number;
+      actualArea: number;
+      deviationPct: number;
+      status: "ok" | "warning" | "outside_target";
+    }>;
+  };
   projectBrief?: ProjectBriefSnapshot;
 };
 
