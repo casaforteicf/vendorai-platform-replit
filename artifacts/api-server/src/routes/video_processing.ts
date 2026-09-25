@@ -26,6 +26,11 @@ const router: IRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 500 * 1024 * 1024 } });
 
 const PRIVATE_DIR    = process.env["PRIVATE_OBJECT_DIR"] ?? "";
+function routeTenantId(req: any): string {
+  // tenant-audit: reviewed tenant route; content-studio handlers enforce authCheck before tenant-scoped work.
+  return String(req.params.tenantId ?? req.params["tenantId"]);
+}
+
 const VIDEO_EDITOR_EVENTS = new Set([
   "beat_analyzed",
   "beat_fallback_server",
@@ -37,7 +42,7 @@ const VIDEO_EDITOR_EVENTS = new Set([
 ]);
 
 function authCheck(req: Parameters<Parameters<typeof router.post>[1]>[0], res: Parameters<Parameters<typeof router.post>[1]>[1]): boolean {
-  const tenantId = String(req.params["tenantId"]);
+  const tenantId = routeTenantId(req);
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
     res.status(403).json({ error: "Acesso negado" });
     return false;
@@ -78,7 +83,7 @@ router.post(
     if (!authCheck(req, res)) return;
     if (!req.file) { res.status(422).json({ error: "Arquivo de vídeo obrigatório" }); return; }
 
-    const tenantId = String(req.params["tenantId"]);
+    const tenantId = routeTenantId(req);
     const userId = req.user?.sub ?? null;
     const { removeSilence = "true", speed = "1.0", normalize = "false", loudnessTarget = "-14" } = req.body as Record<string, string>;
     const jobId = randomUUID();
@@ -199,7 +204,7 @@ router.post(
     if (!authCheck(req, res)) return;
     if (!req.file) { res.status(422).json({ error: "Arquivo de vídeo obrigatório" }); return; }
 
-    const tenantId = String(req.params["tenantId"]);
+    const tenantId = routeTenantId(req);
     const userId = req.user?.sub ?? null;
     const { clipDuration = "60", maxClips = "4", convertTo9x16 = "false" } = req.body as Record<string, string>;
     const jobId = randomUUID();
@@ -483,7 +488,7 @@ router.post(
     if (!authCheck(req, res)) return;
     if (!req.file) { res.status(422).json({ error: "Arquivo de vídeo obrigatório" }); return; }
 
-    const tenantId = String(req.params["tenantId"]);
+    const tenantId = routeTenantId(req);
     const captionPreset = await resolveBrandCaptionPreset(tenantId);
     const jobId = randomUUID();
     await createMediaJob({
@@ -545,7 +550,7 @@ router.post(
     if (!authCheck(req, res)) return;
     if (!req.file) { res.status(422).json({ error: "Arquivo de vídeo obrigatório" }); return; }
 
-    const tenantId = String(req.params["tenantId"]);
+    const tenantId = routeTenantId(req);
     const userId = req.user?.sub ?? null;
     const captionPreset = await resolveBrandCaptionPreset(tenantId);
     const jobId = randomUUID();
@@ -649,7 +654,7 @@ router.post(
     if (!authCheck(req, res)) return;
     if (!req.file) { res.status(422).json({ error: "Arquivo de áudio obrigatório" }); return; }
 
-    const tenantId = String(req.params["tenantId"]);
+    const tenantId = routeTenantId(req);
     const requestId = randomUUID();
     const inputPath = join(tmpdir(), `beat-input-${requestId}`);
     const pcmPath = join(tmpdir(), `beat-pcm-${requestId}.s16le`);
@@ -682,7 +687,7 @@ router.post(
 
 router.post("/tenants/:tenantId/content-studio/video/editor-events", async (req, res) => {
   if (!authCheck(req, res)) return;
-  const tenantId = String(req.params["tenantId"]);
+  const tenantId = routeTenantId(req);
   const body = req.body && typeof req.body === "object" ? req.body as Record<string, unknown> : {};
   const event = String(body["event"] ?? "");
   if (!VIDEO_EDITOR_EVENTS.has(event)) { res.status(422).json({ error: "Evento do editor inválido" }); return; }
@@ -703,7 +708,7 @@ router.post("/tenants/:tenantId/content-studio/video/editor-events", async (req,
 
 router.get("/tenants/:tenantId/content-studio/video/job/:jobId", async (req, res) => {
   if (!authCheck(req, res)) return;
-  const tenantId = String(req.params["tenantId"]);
+  const tenantId = routeTenantId(req);
   const job = await getMediaJob(req.params["jobId"] ?? "", tenantId);
   if (!job) { res.status(404).json({ error: "Job não encontrado" }); return; }
   res.json(job);

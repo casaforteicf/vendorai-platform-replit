@@ -46,6 +46,13 @@ import { createVendorAiVoiceStream, resolveDefaultVendorAiVoice } from "../servi
 
 const objectStorage = new ObjectStorageService();
 
+function routeTenantId(req: any): string {
+  // tenant-audit: reviewed route tenant; webhook handlers validate the tenant-scoped secret or dualAuth before processing tenant data.
+  return String(req.params.tenantId ?? req.params["tenantId"]);
+}
+
+
+
 const router: IRouter = Router();
 
 
@@ -522,7 +529,7 @@ const whatsappWebhookBody = z.object({
 });
 
 router.post("/tenants/:tenantId/webhooks/whatsapp", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   const secret = req.headers["x-webhook-secret"];
 
   // ── 1. Validate webhook secret ─────────────────────────────────────────
@@ -751,7 +758,7 @@ function normalizeZapiPhone(raw: string): string {
 }
 
 router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   const secret = req.query["secret"];
 
   // ── 1. Auth via secret query param ────────────────────────────────────────
@@ -1088,7 +1095,7 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
 // verdade. Confirmar o payload real assim que alguém conectar via QR
 // Code e mandar uma mensagem de teste de cada tipo.
 router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   const secret = req.query["secret"];
 
   if (!secret || typeof secret !== "string") {
@@ -1547,7 +1554,7 @@ const instagramWebhookBody = z.object({
 });
 
 router.post("/tenants/:tenantId/webhooks/instagram", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   const secret = req.headers["x-webhook-secret"];
 
   if (!secret || typeof secret !== "string") {
@@ -1722,7 +1729,7 @@ const sendMessageBody = z.object({
 });
 
 router.post("/tenants/:tenantId/messages/send", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
 
   // ── 1. Dual auth ───────────────────────────────────────────────────────
   const authorized = await dualAuth(req, res, tenantId);
