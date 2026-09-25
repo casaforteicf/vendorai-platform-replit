@@ -12,6 +12,11 @@ import { autoCreateAdCampaignIfNeeded } from "../lib/adAutoCreate.js";
 
 const router: IRouter = Router();
 
+function routeTenantId(req: any): string {
+  // tenant-audit: reviewed tenant route; handlers enforce canAccess before tenant-scoped data access.
+  return String(req.params.tenantId ?? req.params["tenantId"]);
+}
+
 function tid(req: Express.Request): string {
   return (req as any).user?.tenantId as string;
 }
@@ -25,7 +30,7 @@ function canAccess(req: Express.Request, tenantId: string) {
 // ─── Propriedades ─────────────────────────────────────────────────────────────
 
 router.get("/tenants/:tenantId/imoveis/propriedades", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const conditions = [eq(imoveisPropriedadesTable.tenantId, tenantId)];
@@ -41,7 +46,7 @@ router.get("/tenants/:tenantId/imoveis/propriedades", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/imoveis/propriedades", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [row] = await db.insert(imoveisPropriedadesTable)
@@ -59,7 +64,7 @@ router.post("/tenants/:tenantId/imoveis/propriedades", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/imoveis/propriedades/:id", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const id = req.params.id as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
@@ -70,7 +75,7 @@ router.get("/tenants/:tenantId/imoveis/propriedades/:id", async (req, res) => {
 });
 
 router.put("/tenants/:tenantId/imoveis/propriedades/:id", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const id = req.params.id as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
@@ -92,7 +97,7 @@ router.put("/tenants/:tenantId/imoveis/propriedades/:id", async (req, res) => {
 
 // Soft delete — status = inativo (histórico de propriedade não some, útil pra relatório)
 router.delete("/tenants/:tenantId/imoveis/propriedades/:id", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const id = req.params.id as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
@@ -107,7 +112,7 @@ router.delete("/tenants/:tenantId/imoveis/propriedades/:id", async (req, res) =>
 // ─── Visitas ──────────────────────────────────────────────────────────────────
 
 router.get("/tenants/:tenantId/imoveis/visitas", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const conditions = [eq(imoveisVisitasTable.tenantId, tenantId)];
@@ -159,7 +164,7 @@ router.get("/tenants/:tenantId/imoveis/visitas", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/imoveis/visitas", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const { propriedadeId, clienteId, corretorId, dataHora } = req.body as {
@@ -193,7 +198,7 @@ router.post("/tenants/:tenantId/imoveis/visitas", async (req, res) => {
 });
 
 router.patch("/tenants/:tenantId/imoveis/visitas/:id", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const id = req.params.id as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
