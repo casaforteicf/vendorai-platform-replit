@@ -6770,7 +6770,6 @@ export default function ConceptPlanner() {
                       design={facadeDesign}
                       onFacadeChange={setFacadePreferences}
                       onDesignChange={handleFacadeDesignChange}
-                      onApplyDevelopment={applyAiDevelopment}
                       realisticPreviewUrl={latestFacadeRenderUrl}
                       realisticPreviewLoading={conceptRender?.status === "processing"}
                       onOpenRender={() => void generateConceptRender({ source: "facade", renderView: "exterior" })}
