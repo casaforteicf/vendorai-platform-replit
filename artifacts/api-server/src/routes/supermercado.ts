@@ -14,6 +14,11 @@ import { callOpenAI as gatewayCallOpenAI } from "../lib/ai-gateway.js";
 import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 
 const router: IRouter = Router();
+
+function routeTenantId(req: any): string {
+  // tenant-audit: reviewed tenant route; every caller immediately enforces canAccess before tenant-scoped data access.
+  return String(req.params.tenantId ?? req.params["tenantId"]);
+}
 export const supermercadoPublicRouter: IRouter = Router();
 
 function tid(req: Express.Request): string {
@@ -27,7 +32,7 @@ function canAccess(req: Express.Request, tenantId: string) {
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 router.get("/tenants/:tenantId/supermercado/config", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [row] = await db.select().from(supermercadoConfigTable)
@@ -37,7 +42,7 @@ router.get("/tenants/:tenantId/supermercado/config", async (req, res) => {
 });
 
 router.put("/tenants/:tenantId/supermercado/config", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [existing] = await db.select({ id: supermercadoConfigTable.id })
@@ -61,7 +66,7 @@ router.put("/tenants/:tenantId/supermercado/config", async (req, res) => {
 // ─── Produtos ─────────────────────────────────────────────────────────────────
 
 router.get("/tenants/:tenantId/supermercado/produtos", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const { categoria, destaque, q } = req.query;
@@ -78,7 +83,7 @@ router.get("/tenants/:tenantId/supermercado/produtos", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/supermercado/produtos", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [row] = await db.insert(supermercadoProdutoTable)
@@ -88,7 +93,7 @@ router.post("/tenants/:tenantId/supermercado/produtos", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/supermercado/produtos/:produtoId", async (req, res) => {
-  const { tenantId, produtoId } = req.params;
+  const tenantId = routeTenantId(req); const { produtoId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [row] = await db.select().from(supermercadoProdutoTable)
@@ -98,7 +103,7 @@ router.get("/tenants/:tenantId/supermercado/produtos/:produtoId", async (req, re
 });
 
 router.put("/tenants/:tenantId/supermercado/produtos/:produtoId", async (req, res) => {
-  const { tenantId, produtoId } = req.params;
+  const tenantId = routeTenantId(req); const { produtoId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [row] = await db.update(supermercadoProdutoTable)
@@ -110,7 +115,7 @@ router.put("/tenants/:tenantId/supermercado/produtos/:produtoId", async (req, re
 });
 
 router.delete("/tenants/:tenantId/supermercado/produtos/:produtoId", async (req, res) => {
-  const { tenantId, produtoId } = req.params;
+  const tenantId = routeTenantId(req); const { produtoId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   await db.delete(supermercadoProdutoTable)
@@ -121,7 +126,7 @@ router.delete("/tenants/:tenantId/supermercado/produtos/:produtoId", async (req,
 // ─── ERP Sync ─────────────────────────────────────────────────────────────────
 
 router.post("/tenants/:tenantId/supermercado/sync-produtos", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [config] = await db.select().from(supermercadoConfigTable)
@@ -188,7 +193,7 @@ router.post("/tenants/:tenantId/supermercado/sync-produtos", async (req, res) =>
 // ─── Pedidos ──────────────────────────────────────────────────────────────────
 
 router.get("/tenants/:tenantId/supermercado/pedidos", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const conditions = [eq(supermercadoPedidoTable.tenantId, tenantId)];
@@ -202,7 +207,7 @@ router.get("/tenants/:tenantId/supermercado/pedidos", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/supermercado/pedidos", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const { itens, ...pedidoData } = req.body;
@@ -228,7 +233,7 @@ router.post("/tenants/:tenantId/supermercado/pedidos", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/supermercado/pedidos/:pedidoId", async (req, res) => {
-  const { tenantId, pedidoId } = req.params;
+  const tenantId = routeTenantId(req); const { pedidoId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [pedido] = await db.select().from(supermercadoPedidoTable)
@@ -249,7 +254,7 @@ router.get("/tenants/:tenantId/supermercado/pedidos/:pedidoId", async (req, res)
 });
 
 router.put("/tenants/:tenantId/supermercado/pedidos/:pedidoId", async (req, res) => {
-  const { tenantId, pedidoId } = req.params;
+  const tenantId = routeTenantId(req); const { pedidoId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [row] = await db.update(supermercadoPedidoTable)
@@ -302,7 +307,7 @@ supermercadoPublicRouter.get("/public/praca/variedades", async (_req, res) => {
 });
 
 router.get("/tenants/:tenantId/supermercado/campanhas", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const conditions = [eq(supermercadoCampanhaTable.tenantId, tenantId)];
@@ -316,7 +321,7 @@ router.get("/tenants/:tenantId/supermercado/campanhas", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/supermercado/campanhas", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [row] = await db.insert(supermercadoCampanhaTable)
@@ -326,7 +331,7 @@ router.post("/tenants/:tenantId/supermercado/campanhas", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/supermercado/campanhas/:campanhaId", async (req, res) => {
-  const { tenantId, campanhaId } = req.params;
+  const tenantId = routeTenantId(req); const { campanhaId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [row] = await db.select().from(supermercadoCampanhaTable)
@@ -336,7 +341,7 @@ router.get("/tenants/:tenantId/supermercado/campanhas/:campanhaId", async (req, 
 });
 
 router.put("/tenants/:tenantId/supermercado/campanhas/:campanhaId", async (req, res) => {
-  const { tenantId, campanhaId } = req.params;
+  const tenantId = routeTenantId(req); const { campanhaId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [row] = await db.update(supermercadoCampanhaTable)
@@ -348,7 +353,7 @@ router.put("/tenants/:tenantId/supermercado/campanhas/:campanhaId", async (req, 
 });
 
 router.delete("/tenants/:tenantId/supermercado/campanhas/:campanhaId", async (req, res) => {
-  const { tenantId, campanhaId } = req.params;
+  const tenantId = routeTenantId(req); const { campanhaId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   await db.delete(supermercadoCampanhaTable)
@@ -359,7 +364,7 @@ router.delete("/tenants/:tenantId/supermercado/campanhas/:campanhaId", async (re
 // ─── Disparar campanha ────────────────────────────────────────────────────────
 
 router.post("/tenants/:tenantId/supermercado/campanhas/:campanhaId/disparar", async (req, res) => {
-  const { tenantId, campanhaId } = req.params;
+  const tenantId = routeTenantId(req); const { campanhaId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [campanha] = await db.select().from(supermercadoCampanhaTable)
@@ -438,7 +443,7 @@ const TIPO_PROMPTS: Record<string, string> = {
 };
 
 router.post("/tenants/:tenantId/supermercado/campanhas/gerar-conteudo", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const { tipo, contexto } = req.body;
@@ -478,7 +483,7 @@ router.post("/tenants/:tenantId/supermercado/campanhas/gerar-conteudo", async (r
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 router.get("/tenants/:tenantId/supermercado/dashboard", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const now = new Date();

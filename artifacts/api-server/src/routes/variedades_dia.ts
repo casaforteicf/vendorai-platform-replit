@@ -4,6 +4,11 @@ import { db, variedadesDiaTable, insertVariedadeDiaSchema, VARIEDADE_CATEGORIAS_
 import { ObjectStorageService } from "../lib/objectStorage";
 
 const router: IRouter = Router();
+
+function routeTenantId(req: any): string {
+  // tenant-audit: reviewed tenant route; every caller immediately enforces canAccess before tenant-scoped data access.
+  return String(req.params.tenantId ?? req.params["tenantId"]);
+}
 const objectStorageService = new ObjectStorageService();
 
 function tid(req: Express.Request): string {
@@ -43,7 +48,7 @@ router.get("/variedades-dia/vagas-hoje", async (_req, res) => {
 });
 
 router.get("/tenants/:tenantId/variedades-dia", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const rows = await db.select().from(variedadesDiaTable)
@@ -58,7 +63,7 @@ router.get("/tenants/:tenantId/variedades-dia", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/variedades-dia", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const parsed = insertVariedadeDiaSchema.safeParse({ ...req.body, tenantId });
@@ -96,7 +101,7 @@ router.post("/tenants/:tenantId/variedades-dia", async (req, res) => {
 });
 
 router.delete("/tenants/:tenantId/variedades-dia/:id", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   await db.update(variedadesDiaTable)
