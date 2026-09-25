@@ -857,11 +857,11 @@ function buildArchitecturalQualityGateV2(issues: string[]) {
     circulation: 0.18,
     privacy: 0.08,
     ergonomics: 0.14,
-    geometry: 0.14,
+    geometry: 0.13,
     constructability: 0.07,
     furnitureFit: 0.13,
     siteClimate: 0.10,
-    architecturalCoherence: 0.06,
+    architecturalCoherence: 0.01,
   };
 
   const score = Math.round(keys.reduce((sum, key) => sum + dimensions[key].score * weights[key], 0));
@@ -1180,6 +1180,14 @@ function evaluateSpecialistPlan(
     + gate.dimensions.architecturalCoherence.score * 0.01
   );
   const furnitureBlocked = furnitureFit.status === "blocked";
+  const siteClimateBlocked = siteClimate.status === "blocked";
+  if (siteClimateBlocked) {
+    gate.approved = false;
+    gate.hardBlockers = [...new Set([
+      ...gate.hardBlockers,
+      "Site/Climate: implantação apresenta conflito grave de orientação, iluminação/ventilação ou privacidade.",
+    ])].slice(0, 12);
+  }
   if (furnitureBlocked) {
     gate.approved = false;
     gate.hardBlockers = [...new Set([
