@@ -22,6 +22,11 @@ import { analyzeTenantExpansion, getTenantExpansionHistory, updateTenantExpansio
 
 const router: IRouter = Router();
 
+function routeTenantId(req: any): string {
+  // tenant-audit: reviewed tenant route; callers enforce canAccess or explicit Super Admin access before tenant-scoped work.
+  return String(req.params.tenantId ?? req.params["tenantId"]);
+}
+
 function tid(req: Express.Request): string {
   return (req as any).user?.tenantId as string;
 }
@@ -72,7 +77,7 @@ function fallbackOpportunityExplanation(op: {
 // entre VendorAI e o próprio tenant. O motor apenas recomenda; não libera acesso.
 router.get("/admin/tenants/:tenantId/scout/expansion", async (req, res) => {
   // tenant-audit: reviewed cross-tenant expansion analysis is restricted to Super Admin by isSuperAdmin below
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!isSuperAdmin(req)) return res.status(403).json({ error: "Super admin only." });
   const analysis = await analyzeTenantExpansion(tenantId);
   return res.json(analysis);
@@ -80,7 +85,7 @@ router.get("/admin/tenants/:tenantId/scout/expansion", async (req, res) => {
 
 router.get("/admin/tenants/:tenantId/scout/expansion/history", async (req, res) => {
   // tenant-audit: reviewed cross-tenant expansion history is restricted to Super Admin by isSuperAdmin below
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!isSuperAdmin(req)) return res.status(403).json({ error: "Super admin only." });
   const history = await getTenantExpansionHistory(tenantId);
   return res.json(history);
@@ -88,7 +93,7 @@ router.get("/admin/tenants/:tenantId/scout/expansion/history", async (req, res) 
 
 router.patch("/admin/tenants/:tenantId/scout/expansion/:recommendationId", async (req, res) => {
   // tenant-audit: reviewed cross-tenant expansion update is restricted to Super Admin by isSuperAdmin below
-  const { tenantId, recommendationId } = req.params;
+  const tenantId = routeTenantId(req); const { recommendationId } = req.params;
   if (!isSuperAdmin(req)) return res.status(403).json({ error: "Super admin only." });
 
   const { status } = req.body as { status?: "presented" | "accepted" | "rejected" };
@@ -104,7 +109,7 @@ router.patch("/admin/tenants/:tenantId/scout/expansion/:recommendationId", async
 // ─── Regras ───────────────────────────────────────────────────────────────────
 
 router.get("/tenants/:tenantId/scout/regras", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   // Regras são tenant-scoped. Ao abrir a tela, preserva tudo que o cliente já
@@ -121,7 +126,7 @@ router.get("/tenants/:tenantId/scout/regras", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/scout/regras", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const { nome, tipo, condicoes, acao, ativo } = req.body as {
@@ -153,7 +158,7 @@ router.post("/tenants/:tenantId/scout/regras", async (req, res) => {
 });
 
 router.patch("/tenants/:tenantId/scout/regras/:id", async (req, res) => {
-  const { tenantId, id } = req.params;
+  const tenantId = routeTenantId(req); const { id } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const { tipo } = req.body as { tipo?: string };
@@ -172,7 +177,7 @@ router.patch("/tenants/:tenantId/scout/regras/:id", async (req, res) => {
 });
 
 router.delete("/tenants/:tenantId/scout/regras/:id", async (req, res) => {
-  const { tenantId, id } = req.params;
+  const tenantId = routeTenantId(req); const { id } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   try {
@@ -194,7 +199,7 @@ router.delete("/tenants/:tenantId/scout/regras/:id", async (req, res) => {
 });
 
 router.patch("/tenants/:tenantId/scout/regras/:id/toggle", async (req, res) => {
-  const { tenantId, id } = req.params;
+  const tenantId = routeTenantId(req); const { id } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [existing] = await db
@@ -216,7 +221,7 @@ router.patch("/tenants/:tenantId/scout/regras/:id/toggle", async (req, res) => {
 // ─── Oportunidades ────────────────────────────────────────────────────────────
 
 router.get("/tenants/:tenantId/scout/oportunidades", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const filters = [eq(scoutOportunidadesTable.tenantId, tenantId)];
@@ -326,7 +331,7 @@ router.get("/tenants/:tenantId/scout/oportunidades", async (req, res) => {
 });
 
 router.delete("/tenants/:tenantId/scout/oportunidades/:id", async (req, res) => {
-  const { tenantId, id } = req.params;
+  const tenantId = routeTenantId(req); const { id } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const role = (req as any).user?.platformRole;
@@ -341,7 +346,7 @@ router.delete("/tenants/:tenantId/scout/oportunidades/:id", async (req, res) => 
   return res.json({ ok: true, id: deleted.id });
 });
 router.patch("/tenants/:tenantId/scout/oportunidades/:id/encaminhar", async (req, res) => {
-  const { tenantId, id } = req.params;
+  const tenantId = routeTenantId(req); const { id } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   const { userId } = req.body as { userId?: string | null };
   if (userId) {
@@ -358,7 +363,7 @@ router.patch("/tenants/:tenantId/scout/oportunidades/:id/encaminhar", async (req
 });
 
 router.patch("/tenants/:tenantId/scout/oportunidades/:id/etapa", async (req, res) => {
-  const { tenantId, id } = req.params;
+  const tenantId = routeTenantId(req); const { id } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   const allowed = ["identificada", "em_analise", "encaminhada", "ia_aprovada", "em_contato", "convertida", "descartada"];
   const { etapa } = req.body as { etapa?: string };
@@ -372,7 +377,7 @@ router.patch("/tenants/:tenantId/scout/oportunidades/:id/etapa", async (req, res
 // Confirma o achado do Scout sem iniciar contato. A oportunidade so passa a
 // integrar o Pipeline Scout depois desta validacao humana.
 router.post("/tenants/:tenantId/scout/oportunidades/:id/confirmar", async (req, res) => {
-  const { tenantId, id } = req.params;
+  const tenantId = routeTenantId(req); const { id } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [op] = await db.select({
@@ -399,7 +404,7 @@ router.post("/tenants/:tenantId/scout/oportunidades/:id/confirmar", async (req, 
 
 // Depois da confirmacao, aprova a sequencia automatizada e dispara a mensagem.
 router.post("/tenants/:tenantId/scout/oportunidades/:id/aprovar", async (req, res) => {
-  const { tenantId, id } = req.params;
+  const tenantId = routeTenantId(req); const { id } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [op] = await db.select().from(scoutOportunidadesTable)
@@ -441,7 +446,7 @@ router.post("/tenants/:tenantId/scout/oportunidades/:id/aprovar", async (req, re
 });
 
 router.post("/tenants/:tenantId/scout/oportunidades/:id/rejeitar", async (req, res) => {
-  const { tenantId, id } = req.params;
+  const tenantId = routeTenantId(req); const { id } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [op] = await db.select().from(scoutOportunidadesTable)
@@ -464,7 +469,7 @@ router.post("/tenants/:tenantId/scout/oportunidades/:id/rejeitar", async (req, r
 // ─── Seguros Corporativos: Renovações e matriz conta × produto ────────────────
 
 router.get("/tenants/:tenantId/scout/insurance/renewals", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const rows = await db
@@ -513,7 +518,7 @@ router.get("/tenants/:tenantId/scout/insurance/renewals", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/scout/insurance/renewals/run", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const result = await runInsuranceRenewalForTenant(tenantId, req.log);
@@ -521,7 +526,7 @@ router.post("/tenants/:tenantId/scout/insurance/renewals/run", async (req, res) 
 });
 
 router.get("/tenants/:tenantId/scout/insurance/whitespace", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const rows = await db
@@ -562,7 +567,7 @@ router.get("/tenants/:tenantId/scout/insurance/whitespace", async (req, res) => 
 });
 
 router.post("/tenants/:tenantId/scout/insurance/whitespace/run", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const result = await runInsuranceWhitespaceForTenant(tenantId, req.log);
@@ -570,7 +575,7 @@ router.post("/tenants/:tenantId/scout/insurance/whitespace/run", async (req, res
 });
 
 router.post("/tenants/:tenantId/scout/insurance/renewals/:id/approve", async (req, res) => {
-  const { tenantId, id } = req.params;
+  const tenantId = routeTenantId(req); const { id } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [existing] = await db
@@ -606,7 +611,7 @@ router.post("/tenants/:tenantId/scout/insurance/renewals/:id/approve", async (re
 });
 
 router.get("/tenants/:tenantId/scout/insurance/accounts/:accountId/matrix", async (req, res) => {
-  const { tenantId, accountId } = req.params;
+  const tenantId = routeTenantId(req); const { accountId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const rows = await db
@@ -644,7 +649,7 @@ router.get("/tenants/:tenantId/scout/insurance/accounts/:accountId/matrix", asyn
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 router.get("/tenants/:tenantId/scout/dashboard", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   await ensureMinimumScoutRulesForTenant(tenantId);
 
@@ -693,7 +698,7 @@ router.get("/tenants/:tenantId/scout/dashboard", async (req, res) => {
 // ─── Disparo manual do Revenue Scout ─────────────────────────────────────────
 
 router.post("/tenants/:tenantId/scout/run", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const log = (req as any).log ?? console;
@@ -705,7 +710,7 @@ router.post("/tenants/:tenantId/scout/run", async (req, res) => {
 // ─── Converter oportunidade ───────────────────────────────────────────────────
 
 router.post("/tenants/:tenantId/scout/oportunidades/:id/converter", async (req, res) => {
-  const { tenantId, id } = req.params;
+  const tenantId = routeTenantId(req); const { id } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [row] = await db
@@ -721,7 +726,7 @@ router.post("/tenants/:tenantId/scout/oportunidades/:id/converter", async (req, 
 // ── POST /tenants/:tenantId/scout/oportunidades/:id/resultado ─────────────────
 // Marca o resultado final de uma oportunidade: "won" → converteu / "lost" → ignorado
 router.post("/tenants/:tenantId/scout/oportunidades/:id/resultado", async (req, res) => {
-  const { tenantId, id } = req.params;
+  const tenantId = routeTenantId(req); const { id } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const { resultado } = req.body as { resultado?: string };
