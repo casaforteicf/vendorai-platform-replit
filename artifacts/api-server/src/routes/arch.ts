@@ -487,6 +487,150 @@ function roomFurnitureEnvelope(room: SpecialistPlanRoom): { width: number; depth
   return null;
 }
 
+type WallFirstZone = {
+  id: string;
+  kind: "social" | "private" | "service" | "circulation" | "external";
+  floor: number;
+  roomIds: string[];
+  labels: string[];
+};
+
+type WallFirstSegment = {
+  id: string;
+  floor: number;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  exterior: boolean;
+  roomIds: string[];
+};
+
+type WallFirstPortal = {
+  id: string;
+  floor: number;
+  fromRoomId: string;
+  toRoomId: string;
+  sharedLength: number;
+  required: boolean;
+};
+
+function roomZoneKind(room: SpecialistPlanRoom): WallFirstZone["kind"] {
+  if (room.kind === "piscina") return "external";
+  if (room.kind === "suite" || room.kind === "quarto"
+    || (room.kind === "banheiro" && /su[ií]te|master/i.test(room.label ?? ""))) return "private";
+  if (room.kind === "lavanderia" || room.kind === "garagem"
+    || (room.kind === "banheiro" && !/lavabo|social/i.test(room.label ?? ""))) return "service";
+  if (room.kind === "circulacao" || room.kind === "escada") return "circulation";
+  return "social";
+}
+
+function wallKey(x1: number, y1: number, x2: number, y2: number) {
+  const a = [Math.round(x1 * 100), Math.round(y1 * 100)];
+  const b = [Math.round(x2 * 100), Math.round(y2 * 100)];
+  const ordered = a[0] < b[0] || (a[0] === b[0] && a[1] <= b[1]) ? [a,b] : [b,a];
+  return ordered.flat().join(":");
+}
+
+function buildWallFirstModel(
+  rooms: SpecialistPlanRoom[],
+  input: z.infer<typeof specialistHousePlanSchema>,
+) {
+  const zones: WallFirstZone[] = [];
+  for (let floor = 0; floor < input.brief.floors; floor += 1) {
+    const floorRooms = rooms.filter((room) => room.floor === floor);
+    for (const kind of ["social","private","service","circulation","external"] as const) {
+      const members = floorRooms.filter((room) => roomZoneKind(room) === kind);
+      if (!members.length) continue;
+      zones.push({
+        id: `zone:${floor}:${kind}`,
+        kind,
+        floor,
+        roomIds: members.map((room) => room.id),
+        labels: members.map((room) => room.label),
+      });
+    }
+  }
+
+  const wallMap = new Map<string, WallFirstSegment>();
+  for (const room of rooms.filter((item) => item.kind !== "piscina")) {
+    const edges = [
+      [room.x, room.y, room.x + room.width, room.y],
+      [room.x + room.width, room.y, room.x + room.width, room.y + room.depth],
+      [room.x + room.width, room.y + room.depth, room.x, room.y + room.depth],
+      [room.x, room.y + room.depth, room.x, room.y],
+    ] as const;
+    for (const [x1,y1,x2,y2] of edges) {
+      const key = `${room.floor}:${wallKey(x1,y1,x2,y2)}`;
+      const current = wallMap.get(key);
+      if (current) {
+        if (!current.roomIds.includes(room.id)) current.roomIds.push(room.id);
+        current.exterior = current.roomIds.length === 1;
+      } else {
+        wallMap.set(key, {
+          id: `wall:${key}`,
+          floor: room.floor,
+          x1, y1, x2, y2,
+          exterior: true,
+          roomIds: [room.id],
+        });
+      }
+    }
+  }
+
+  const accessRequiredPairs = new Set(
+    (input.brief.accessRules ?? [])
+      .filter((rule) => rule.mode === "required_direct")
+      .map((rule) => [rule.fromRequestId, rule.toRequestId].sort().join("::"))
+  );
+
+  const portals: WallFirstPortal[] = [];
+  for (let i = 0; i < rooms.length; i += 1) {
+    for (let j = i + 1; j < rooms.length; j += 1) {
+      const a = rooms[i];
+      const b = rooms[j];
+      if (a.floor !== b.floor || !specialistDoorAllowed(a,b)) continue;
+      const sharedLength = specialistSharedEdge(a,b);
+      if (sharedLength < 0.55) continue;
+      const requestPair = [a.programRequestId ?? a.id, b.programRequestId ?? b.id].sort().join("::");
+      portals.push({
+        id: `portal:${a.id}:${b.id}`,
+        floor: a.floor,
+        fromRoomId: a.id,
+        toRoomId: b.id,
+        sharedLength: Math.round(sharedLength * 100) / 100,
+        required: accessRequiredPairs.has(requestPair),
+      });
+    }
+  }
+
+  const walls = [...wallMap.values()];
+  const interiorWalls = walls.filter((wall) => wall.roomIds.length > 1);
+  const exteriorWalls = walls.filter((wall) => wall.roomIds.length === 1);
+  const wallContinuityScore = walls.length
+    ? Math.round((1 - Math.min(1, interiorWalls.filter((wall) => {
+        const length = Math.hypot(wall.x2-wall.x1, wall.y2-wall.y1);
+        return length < 0.55;
+      }).length / walls.length)) * 100)
+    : 0;
+
+  return {
+    version: 1,
+    source: "rooms-to-wall-first-transition",
+    zones,
+    walls,
+    portals,
+    metrics: {
+      wallCount: walls.length,
+      interiorWallCount: interiorWalls.length,
+      exteriorWallCount: exteriorWalls.length,
+      portalCount: portals.length,
+      requiredPortalCount: portals.filter((portal) => portal.required).length,
+      wallContinuityScore,
+    },
+  };
+}
+
 function evaluateFurnitureFit(rooms: SpecialistPlanRoom[]) {
   const items: FurnitureFitItem[] = [];
   for (const room of rooms) {
@@ -966,7 +1110,8 @@ function sanitizeSpecialistPlan(
   });
 
   const quality = evaluateSpecialistPlan(rooms, input);
-  if (quality.status !== "approved") return { rejected: true as const, rooms, quality };
+  const wallFirstModel = buildWallFirstModel(rooms, input);
+  if (quality.status !== "approved") return { rejected: true as const, rooms, quality, wallFirstModel };
 
   const suggestedArea = Math.round(
     rooms
@@ -1047,6 +1192,7 @@ function sanitizeSpecialistPlan(
     designRationale: String(plan?.designRationale ?? ""),
     architectureScore: quality.score,
     quality,
+    wallFirstModel,
     programCompliance: {
       desiredAreaTotal: input.brief.desiredAreaTotal ?? null,
       actualAreaTotal: suggestedArea,
@@ -1763,6 +1909,9 @@ REGRAS FUNCIONAIS INEGOCIÁVEIS:
 - áreas molhadas devem ser racionalizadas quando possível;
 - preserve ambientes locked;
 - a planta deve poder originar uma fachada coerente: aberturas, volumes e cobertura não podem depender de invenções posteriores.
+- pense WALL-FIRST: primeiro defina zonas, limites, eixos de circulação e paredes compartilhadas; os retângulos dos ambientes são uma representação compatível do resultado, não o raciocínio principal;
+- prefira alinhamentos de paredes, continuidade estrutural e poucos deslocamentos gratuitos; evite paredes quebradas sem função;
+- portas devem nascer das relações do grafo funcional e de paredes realmente compartilhadas; não trate a abertura como decoração posterior.
 
 REPERTÓRIO DE ESTRATÉGIAS ARQUITETÔNICAS:
 ${strategyRepertoire}
