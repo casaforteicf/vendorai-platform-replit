@@ -56,6 +56,102 @@ export type ClientVision = {
   avoid: string;
 };
 
+export type ClientProgramValidation = {
+  status: "ok" | "warning" | "blocked";
+  errors: string[];
+  warnings: string[];
+  netProgramArea: number;
+  estimatedBuiltArea: number;
+  desiredArea: number | null;
+};
+
+export function validateClientRoomProgram(
+  brief: ClientBrief,
+  lot?: {
+    width: number;
+    depth: number;
+    setbacks?: { top: number; bottom: number; left: number; right: number };
+  },
+): ClientProgramValidation {
+  const program = Array.isArray(brief.roomProgram) ? brief.roomProgram : [];
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  if (!program.length) {
+    errors.push("Informe pelo menos um ambiente antes de desenvolver o projeto.");
+  }
+
+  for (const item of program) {
+    if (!item.label.trim()) errors.push("Existe um ambiente sem nome.");
+    if (!Number.isFinite(item.quantity) || item.quantity < 1) {
+      errors.push(`${item.label || "Ambiente"} precisa ter quantidade mínima de 1.`);
+    }
+    if (!Number.isFinite(item.targetArea) || item.targetArea < 2.4) {
+      errors.push(`${item.label || "Ambiente"} precisa ter uma metragem válida.`);
+    }
+  }
+
+  const requiredSuites = program
+    .filter((item) => item.kind === "suite" && item.required !== false)
+    .reduce((sum, item) => sum + item.quantity, 0);
+  const suiteBaths = program
+    .filter((item) => item.kind === "banheiro" && /su[ií]te|master/i.test(item.label))
+    .reduce((sum, item) => sum + item.quantity, 0);
+  if (requiredSuites > suiteBaths) {
+    errors.push(`O programa tem ${requiredSuites} suíte(s), mas apenas ${suiteBaths} banheiro(s) de suíte.`);
+  }
+
+  const nonPoolProgram = program.filter((item) => item.kind !== "piscina");
+  const netProgramArea = nonPoolProgram.reduce(
+    (sum, item) => sum + Math.max(0, item.quantity) * Math.max(0, item.targetArea),
+    0,
+  );
+  // Aproximação para paredes, circulação técnica e pequenos ajustes de projeto.
+  const estimatedBuiltArea = Math.round(netProgramArea * 1.14);
+  const desiredArea = Number.isFinite(Number(brief.desiredAreaTotal))
+    ? Number(brief.desiredAreaTotal)
+    : null;
+
+  if (desiredArea) {
+    if (netProgramArea > desiredArea * 1.02) {
+      errors.push(
+        `Os ambientes somam cerca de ${Math.round(netProgramArea)} m² úteis, acima da área total desejada de ${Math.round(desiredArea)} m².`,
+      );
+    } else if (estimatedBuiltArea > desiredArea * 1.12) {
+      warnings.push(
+        `Com paredes e circulação, o programa tende a chegar perto de ${estimatedBuiltArea} m², acima da meta de ${Math.round(desiredArea)} m².`,
+      );
+    } else if (estimatedBuiltArea < desiredArea * 0.65) {
+      warnings.push(
+        `O programa ocupa cerca de ${estimatedBuiltArea} m² estimados; ainda existe bastante área sem destino em relação à meta de ${Math.round(desiredArea)} m².`,
+      );
+    }
+  }
+
+  if (lot) {
+    const setbacks = lot.setbacks ?? { top: 0, bottom: 0, left: 0, right: 0 };
+    const usableWidth = Math.max(0, lot.width - setbacks.left - setbacks.right);
+    const usableDepth = Math.max(0, lot.depth - setbacks.top - setbacks.bottom);
+    const grossCapacity = usableWidth * usableDepth * Math.max(1, brief.floors);
+    if (desiredArea && desiredArea > grossCapacity * 0.96) {
+      errors.push(
+        `A meta de ${Math.round(desiredArea)} m² não cabe fisicamente na área disponível do lote considerando os recuos informados.`,
+      );
+    } else if (estimatedBuiltArea > grossCapacity * 0.9) {
+      warnings.push("O programa está muito próximo do limite físico disponível no lote; a implantação pode ficar comprometida.");
+    }
+  }
+
+  return {
+    status: errors.length ? "blocked" : warnings.length ? "warning" : "ok",
+    errors: [...new Set(errors)],
+    warnings: [...new Set(warnings)],
+    netProgramArea: Math.round(netProgramArea * 10) / 10,
+    estimatedBuiltArea,
+    desiredArea,
+  };
+}
+
 export type ClientBriefPlan = {
   typology: ConceptTypology;
   floors: number;
@@ -196,6 +292,9 @@ function expandRoomProgram(brief: ClientBrief) {
         floor,
         x: 0,
         y: 0,
+        targetArea: Math.round((Number(request.targetArea) || dims.width * dims.depth) * 100) / 100,
+        required: request.required !== false,
+        programRequestId: request.id,
       };
     });
   });
