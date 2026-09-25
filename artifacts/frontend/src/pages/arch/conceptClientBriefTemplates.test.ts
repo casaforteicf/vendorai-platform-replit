@@ -4,6 +4,7 @@ import {
   buildClientBriefPlan,
   buildDefaultRoomProgram,
   countBriefAlternativeErrors,
+  rebalanceClientRoomProgramToDesiredArea,
   validateClientRoomProgram,
 } from "./conceptClientBrief";
 
@@ -103,4 +104,51 @@ describe("programa de necessidades", () => {
     const bedroom = plan.rooms.find((room) => room.kind === "quarto") as any;
     expect(bedroom.floorFlexible).toBe(true);
   });
+});
+
+
+it("redistribui metragens para aproximar o programa da área total", () => {
+  const base = {
+    bedrooms: 3,
+    suites: 1,
+    floors: 1,
+    garageSpaces: 2,
+    gourmet: true,
+    pool: false,
+    office: false,
+    integratedKitchen: true,
+    privateAwaySocial: true,
+    desiredAreaTotal: 180,
+  } as const;
+  const roomProgram = buildDefaultRoomProgram(base).map((item) => ({ ...item, targetArea: item.targetArea * 1.35 }));
+  const rebalanced = rebalanceClientRoomProgramToDesiredArea({ ...base, roomProgram });
+  const before = roomProgram.filter((item) => item.kind !== "piscina")
+    .reduce((sum, item) => sum + item.targetArea * item.quantity, 0);
+  const after = rebalanced.filter((item) => item.kind !== "piscina")
+    .reduce((sum, item) => sum + item.targetArea * item.quantity, 0);
+  expect(after).toBeLessThan(before);
+  expect(after).toBeGreaterThan(120);
+});
+
+it("preserva dimensões fixadas pelo cliente ao rebalancear", () => {
+  const base = {
+    bedrooms: 2,
+    suites: 1,
+    floors: 1,
+    garageSpaces: 1,
+    gourmet: false,
+    pool: false,
+    office: false,
+    integratedKitchen: true,
+    privateAwaySocial: true,
+    desiredAreaTotal: 120,
+  } as const;
+  const roomProgram = buildDefaultRoomProgram(base).map((item) =>
+    item.kind === "suite" ? { ...item, preferredWidth: 4, preferredDepth: 4.5, targetArea: 25 } : item
+  );
+  const rebalanced = rebalanceClientRoomProgramToDesiredArea({ ...base, roomProgram });
+  const suite = rebalanced.find((item) => item.kind === "suite")!;
+  expect(suite.targetArea).toBe(18);
+  expect(suite.preferredWidth).toBe(4);
+  expect(suite.preferredDepth).toBe(4.5);
 });
