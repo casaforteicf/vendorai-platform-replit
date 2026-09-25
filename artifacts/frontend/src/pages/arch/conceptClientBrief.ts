@@ -296,6 +296,10 @@ export type ArchitectureDNA = {
   volumeStrategy?: string;
   roofStrategy?: string;
   materialIntent?: string;
+  lifestyleIntent?: string;
+  siteIntent?: string;
+  costIntent?: string;
+  futureFlexibilityIntent?: string;
 };
 
 export type ProjectBriefSnapshot = {
