@@ -5,9 +5,11 @@ import {
   buildClientBriefPlan,
   buildProjectBriefSnapshot,
   buildDefaultRoomProgram,
+  buildRecommendedAccessRules,
   buildRecommendedAdjacencyRules,
   countBriefAlternativeErrors,
   rebalanceClientRoomProgramToDesiredArea,
+  validateClientAccessRules,
   validateClientRoomProgram,
 } from "./conceptClientBrief";
 
@@ -304,5 +306,69 @@ describe("briefing arquitetônico v2", () => {
     expect(snapshot.siteContext?.northSide).toBe("right");
     expect(snapshot.briefingCompleteness).toBeGreaterThanOrEqual(80);
     expect(assessProjectBriefCompleteness(snapshot)).toBe(snapshot.briefingCompleteness);
+  });
+});
+
+
+describe("grafo funcional de circulação", () => {
+  it("gera porta obrigatória entre suíte e banheiro e bloqueia acesso direto da garagem aos quartos", () => {
+    const base = {
+      bedrooms: 3,
+      suites: 1,
+      floors: 1,
+      garageSpaces: 2,
+      gourmet: true,
+      pool: false,
+      office: false,
+      integratedKitchen: true,
+      privateAwaySocial: true,
+      desiredAreaTotal: 180,
+    } as const;
+    const roomProgram = buildDefaultRoomProgram(base);
+    const accessRules = buildRecommendedAccessRules({ ...base, roomProgram });
+    const suite = roomProgram.find((item) => item.kind === "suite")!;
+    const suiteBath = roomProgram.find((item) => item.kind === "banheiro" && /su[ií]te|master/i.test(item.label))!;
+    const garage = roomProgram.find((item) => item.kind === "garagem")!;
+    const privateRoom = roomProgram.find((item) => item.kind === "quarto")!;
+
+    expect(accessRules.some((rule) =>
+      rule.mode === "required_direct"
+      && new Set([rule.fromRequestId, rule.toRequestId]).has(suite.id)
+      && new Set([rule.fromRequestId, rule.toRequestId]).has(suiteBath.id)
+    )).toBe(true);
+
+    expect(accessRules.some((rule) =>
+      rule.mode === "forbidden_direct"
+      && new Set([rule.fromRequestId, rule.toRequestId]).has(garage.id)
+      && new Set([rule.fromRequestId, rule.toRequestId]).has(privateRoom.id)
+    )).toBe(true);
+  });
+
+  it("bloqueia regra contraditória de porta obrigatória e proibida", () => {
+    const base = {
+      bedrooms: 2,
+      suites: 1,
+      floors: 1,
+      garageSpaces: 1,
+      gourmet: false,
+      pool: false,
+      office: false,
+      integratedKitchen: true,
+      privateAwaySocial: true,
+      desiredAreaTotal: 140,
+    } as const;
+    const roomProgram = buildDefaultRoomProgram(base);
+    const a = roomProgram[0];
+    const b = roomProgram[1];
+    const validation = validateClientAccessRules({
+      ...base,
+      roomProgram,
+      accessRules: [
+        { id: "a1", fromRequestId: a.id, toRequestId: b.id, mode: "required_direct", required: true },
+        { id: "a2", fromRequestId: a.id, toRequestId: b.id, mode: "forbidden_direct", required: true },
+      ],
+    });
+    expect(validation.status).toBe("blocked");
+    expect(validation.errors.some((message) => message.includes("obrigatório") && message.includes("proibido"))).toBe(true);
   });
 });
