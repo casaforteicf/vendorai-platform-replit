@@ -11,7 +11,10 @@ export interface JwtPayload {
   role: "admin" | "member";
   userFunction?: string;
   partnerId?: string;
-  accessScope?: "tenant" | "obra";
+  accessScope?: "tenant" | "obra" | "preprojeto";
+  /** Acesso do cliente final pelo link público: só este pré-projeto. */
+  conceptId?: string;
+  leadId?: string | null;
   obraId?: string;
   obraExecutorId?: string;
   obraPermissions?: string[];
@@ -45,6 +48,32 @@ export function signInternalActorToken(input: {
     actorType: input.actorType,
   };
   return jwt.sign(payload, secret!, { expiresIn: "15m" });
+}
+
+/**
+ * Acesso do cliente final vindo do link público do pré-projeto. O `sub` é o profissional dono
+ * do link (os pré-projetos aparecem na lista dele), mas o escopo "preprojeto" limita o token a
+ * este único pré-projeto (ver enforceAccessScope).
+ */
+export function signGuestConceptToken(input: {
+  ownerUserId: string;
+  tenantId: string;
+  conceptId: string;
+  leadId: string | null;
+  email: string;
+}): string {
+  const payload: JwtPayload = {
+    sub: input.ownerUserId,
+    email: `cliente+${input.conceptId.slice(0, 8)}@preprojeto.appvendorai.com`,
+    platformRole: "member",
+    tenantId: input.tenantId,
+    role: "member",
+    actorType: "human",
+    accessScope: "preprojeto",
+    conceptId: input.conceptId,
+    leadId: input.leadId,
+  };
+  return jwt.sign(payload, secret!, { expiresIn: "30d" });
 }
 
 export function verifyToken(token: string): JwtPayload {

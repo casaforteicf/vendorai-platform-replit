@@ -86,6 +86,7 @@ import { intakeRouter } from "./intake";
 import publicProposalsRouter from "./public_proposals";
 import construcaoRouter from "./construcao";
 import archRouter, { archPublicRouter } from "./arch";
+import { arqdorPublicLinkRouter, arqdorPublicLinkAdminRouter } from "./arqdor_public_link";
 import { archAiRenderRouter } from "./arch_ai_render";
 import archSpecObjectsRouter from "./arch_spec_objects";
 import archBudgetEngineRouter from "./arch_budget_engine";
@@ -229,6 +230,8 @@ router.use(accessLicensePublicRouter);
 router.use(publicAgentSimulatorRouter);
 router.use(smartDeliveryPublicRouter);
 router.use(publicDeliveryRuntimeRouter);
+
+router.use(arqdorPublicLinkRouter);
 
 // Protected — all routes below require a valid JWT
 router.use(authenticate);
@@ -531,6 +534,7 @@ router.use(prospectorFlowsRouter);
 router.use(partnerProspectorRouter);
 
 // Arch Hub
+router.use(arqdorPublicLinkAdminRouter);
 router.use(archRouter);
 router.use(archSpecObjectsRouter);
 router.use(archBudgetEngineRouter);

@@ -771,7 +771,11 @@ function readableFacadeValue(value: unknown) {
 const WORKSPACE_STEP = 4;
 const RESULT_STEP = 6;
 
-export default function ConceptPlanner() {
+export default function ConceptPlanner({ guestMode = false, guestBrand }: {
+  /** Cliente final vindo do link público: só o próprio pré-projeto, sem lista nem menu do sistema. */
+  guestMode?: boolean;
+  guestBrand?: string;
+} = {}) {
   const [step, setStep] = useState(WORKSPACE_STEP);
   const [lotWidth, setLotWidth] = useState(12);
   const [lotDepth, setLotDepth] = useState(30);
@@ -863,6 +867,10 @@ export default function ConceptPlanner() {
   const [modelCategory, setModelCategory] = useState<"todos" | "terreas" | "sobrados" | "lazer">("todos");
   const [modelGalleryOpen, setModelGalleryOpen] = useState(false);
   const [projectListOpen, setProjectListOpen] = useState(false);
+  const [publicLinkOpen, setPublicLinkOpen] = useState(false);
+  const [publicLink, setPublicLink] = useState<{ slug: string; enabled: boolean; canManage: boolean } | null>(null);
+  const [publicLinkState, setPublicLinkState] = useState<"idle" | "loading" | "saving" | "error">("idle");
+  const [publicLinkCopied, setPublicLinkCopied] = useState<"link" | "code" | null>(null);
   const [renderLightingOverride, setRenderLightingOverride] = useState<"day" | "sunset" | "night" | null>(null);
   const [startChooserDismissed, setStartChooserDismissed] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -1422,6 +1430,49 @@ export default function ConceptPlanner() {
     } else {
       setEditorView("facade");
       setLibraryOpen(false);
+    }
+  };
+
+  const publicLinkUrl = publicLink ? `${window.location.origin}/projeto/${publicLink.slug}` : "";
+  const publicLinkEmbed = publicLink
+    ? `<a href="${publicLinkUrl}" target="_blank" rel="noopener" style="display:inline-block;padding:14px 22px;border-radius:12px;background:#f97316;color:#fff;font-weight:600;text-decoration:none;font-family:sans-serif">Projete sua casa</a>`
+    : "";
+
+  const loadPublicLink = async () => {
+    setPublicLinkState("loading");
+    try {
+      const response = await fetch("/api/arch/public-link", { cache: "no-store" });
+      if (!response.ok) throw new Error();
+      setPublicLink(await response.json());
+      setPublicLinkState("idle");
+    } catch {
+      setPublicLinkState("error");
+    }
+  };
+
+  const togglePublicLink = async (enabled: boolean) => {
+    setPublicLinkState("saving");
+    try {
+      const response = await fetch("/api/arch/public-link", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+      if (!response.ok) throw new Error();
+      setPublicLink((prev) => (prev ? { ...prev, enabled } : prev));
+      setPublicLinkState("idle");
+    } catch {
+      setPublicLinkState("error");
+    }
+  };
+
+  const copyPublicLink = async (kind: "link" | "code") => {
+    try {
+      await navigator.clipboard.writeText(kind === "link" ? publicLinkUrl : publicLinkEmbed);
+      setPublicLinkCopied(kind);
+      setTimeout(() => setPublicLinkCopied(null), 2000);
+    } catch {
+      setPublicLinkCopied(null);
     }
   };
 
@@ -4675,20 +4726,20 @@ export default function ConceptPlanner() {
           <section className="min-h-screen overflow-hidden bg-[#eef1f4] arq-workspace-stage">
             <div className="arq-app-bar relative flex min-h-14 flex-wrap items-center justify-between gap-2 border-b border-slate-800 bg-slate-950 px-2 py-1.5 text-white shadow-[0_8px_30px_rgba(15,23,42,0.14)] sm:px-4 lg:h-14 lg:flex-nowrap lg:py-0">
               <div className="flex min-w-0 items-center gap-2">
-                <a
+                {!guestMode && <a
                   href="/arch"
                   className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10 hover:text-white"
                   title="Voltar ao Arqdor"
                 >
                   <ArrowLeft className="h-4 w-4" />
-                </a>
+                </a>}
 
                 <div className="hidden min-w-0 sm:block">
                   <div className="truncate text-sm font-semibold text-slate-950">{customerProfile.name?.trim() ? `Pré-projeto — ${customerProfile.name.trim()}` : "Pré-projeto"}</div>
-                  <div className="text-[11px] text-slate-400">Arqdor Pro · editor arquitetônico</div>
+                  <div className="text-[11px] text-slate-400">{guestMode ? `${guestBrand ?? "Pré-projeto"} · projete sua casa` : "Arqdor Pro · editor arquitetônico"}</div>
                 </div>
 
-                <button
+                {!guestMode && <button
                   type="button"
                   onClick={openProjectList}
                   className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10 hover:text-white"
@@ -4696,7 +4747,16 @@ export default function ConceptPlanner() {
                   aria-label="Meus pré-projetos"
                 >
                   <FolderOpen className="h-4 w-4" />
-                </button>
+                </button>}
+                {!guestMode && <button
+                  type="button"
+                  onClick={() => { setPublicLinkOpen(true); void loadPublicLink(); }}
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10 hover:text-white"
+                  title="Link para clientes"
+                  aria-label="Link para clientes"
+                >
+                  <Share2 className="h-4 w-4" />
+                </button>}
 
                 <button
                   type="button"
@@ -4944,6 +5004,7 @@ export default function ConceptPlanner() {
                         className="mt-1 h-11 w-full rounded-xl border px-3 text-base font-normal outline-none focus:border-orange-400"
                       />
                     </label>
+{!guestMode && <>
                     <label className="text-xs font-semibold text-slate-700">
                       Nome do cliente <span className="text-orange-600">*</span>
                       <input
@@ -4979,6 +5040,7 @@ export default function ConceptPlanner() {
                         />
                       </div>
                     </label>
+</>}
                   </div>
                   {!startContactValid && (
                     <p className="mt-3 rounded-xl bg-orange-50 px-3 py-2 text-xs text-orange-900">
@@ -7921,6 +7983,57 @@ export default function ConceptPlanner() {
           </div>
         )}
       </main>
+
+      {publicLinkOpen && !guestMode && (
+        <div className="fixed inset-0 z-[120] flex items-end justify-center bg-slate-950/60 sm:items-center sm:p-6" onClick={() => setPublicLinkOpen(false)}>
+          <div className="w-full max-w-lg rounded-t-3xl bg-background p-5 shadow-2xl sm:rounded-3xl" onClick={(event) => event.stopPropagation()} role="dialog" aria-label="Link para clientes">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-bold">Link para clientes</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Coloque no seu site. O cliente se cadastra (nome, WhatsApp, e-mail, Instagram e endereço), vira lead no CRM e projeta a casa dele aqui. Os projetos chegam na sua lista de pré-projetos.
+                </p>
+              </div>
+              <button type="button" onClick={() => setPublicLinkOpen(false)} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border" aria-label="Fechar"><X className="h-4 w-4" /></button>
+            </div>
+            {publicLinkState === "loading" && !publicLink && <p className="mt-4 text-sm text-muted-foreground">Carregando…</p>}
+            {publicLinkState === "error" && <p className="mt-4 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">Não foi possível carregar ou salvar. Tente de novo.</p>}
+            {publicLink && (
+              <div className="mt-4 space-y-3">
+                <label className="flex items-center justify-between gap-3 rounded-2xl border p-3">
+                  <span className="text-sm font-semibold">{publicLink.enabled ? "Link ativo" : "Link desativado"}</span>
+                  <input
+                    type="checkbox"
+                    className="h-5 w-5 accent-orange-500"
+                    checked={publicLink.enabled}
+                    disabled={!publicLink.canManage || publicLinkState === "saving"}
+                    onChange={(event) => void togglePublicLink(event.target.checked)}
+                  />
+                </label>
+                {!publicLink.canManage && <p className="text-xs text-muted-foreground">Somente o administrador pode ativar ou desativar.</p>}
+                <div className="rounded-2xl border p-3">
+                  <div className="text-xs font-semibold text-muted-foreground">Endereço</div>
+                  <div className="mt-1 break-all text-sm font-medium">{publicLinkUrl}</div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button type="button" onClick={() => void copyPublicLink("link")} className="min-h-9 rounded-xl bg-slate-950 px-3 text-xs font-semibold text-white">
+                      {publicLinkCopied === "link" ? "Copiado!" : "Copiar link"}
+                    </button>
+                    {publicLink.enabled && <a href={publicLinkUrl} target="_blank" rel="noopener" className="inline-flex min-h-9 items-center rounded-xl border px-3 text-xs font-semibold">Abrir</a>}
+                  </div>
+                </div>
+                <div className="rounded-2xl border p-3">
+                  <div className="text-xs font-semibold text-muted-foreground">Botão para colar no site</div>
+                  <pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-muted p-2 text-[11px]">{publicLinkEmbed}</pre>
+                  <button type="button" onClick={() => void copyPublicLink("code")} className="mt-2 min-h-9 rounded-xl border px-3 text-xs font-semibold">
+                    {publicLinkCopied === "code" ? "Copiado!" : "Copiar código do botão"}
+                  </button>
+                </div>
+                <p className="text-xs text-muted-foreground">Cada cliente pode gerar até 5 imagens realistas por dia.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {projectListOpen && (
         <div className="fixed inset-0 z-[120] flex items-end justify-center bg-slate-950/60 p-0 sm:items-center sm:p-6" onClick={() => setProjectListOpen(false)}>

@@ -137,6 +137,7 @@ const ArchPortalCliente = lazy(() => import("@/pages/arch/PortalCliente"));
 const ArchRender = lazy(() => import("@/pages/arch/RenderStudioPage"));
 const ArchConcept = lazy(() => import("@/pages/arch/ConceptPlanner"));
 const ArchPublicConceptTour = lazy(() => import("@/pages/arch/PublicConceptTour"));
+const ArchPublicConceptSignup = lazy(() => import("@/pages/arch/PublicConceptSignup"));
 const ArqWorkspace = lazy(() => import("@/modules/arqdor/workspace/ArqWorkspace"));
 
 // Construção
@@ -726,6 +727,7 @@ function AppRoutes() {
         <Route path="/relatorios/tipo-cliente">{() => <ProtectedRoute component={RelatorioTipoCliente} />}</Route>
         <Route path="/relatorios/dores">{() => <ProtectedRoute component={RelatorioDores} />}</Route>
         <Route path="/tour/arqdor/:token">{() => <ArchPublicConceptTour />}</Route>
+        <Route path="/projeto/:slug">{() => <ArchPublicConceptSignup />}</Route>
         <Route path="/arch">{() => <ProtectedRoute component={ArchDashboard} />}</Route>
         <Route path="/arch/projetos/novo">{() => <ProtectedRoute component={ArchProjetos} />}</Route>
         <Route path="/arch/projetos/:id">{() => <ProtectedRoute component={ArchProjetoDetalhe} />}</Route>
