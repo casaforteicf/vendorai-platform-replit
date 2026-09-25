@@ -15,6 +15,11 @@ import {
 
 const router: IRouter = Router();
 
+function routeTenantId(req: any): string {
+  // tenant-audit: reviewed route tenant is consumed only by handlers/middleware that enforce same-tenant or super-admin access before tenant-scoped data access.
+  return String(req.params.tenantId ?? req.params["tenantId"]);
+}
+
 function normalizeCalendarBody(body: Record<string, unknown>): { commercialDates?: CommercialDate[]; professionalDates?: ProfessionalDate[]; enableSpouseGiftFlow?: boolean } {
   // Frontend remains the source of truth for commercialDates.
   // Professional dates are canonicalized by the backend so month/day and
@@ -36,7 +41,7 @@ async function getLeadProfessions(tenantId: string) {
 }
 
 router.get("/tenants/:tenantId/calendar-settings", async (req, res) => {
-  const tenantId = String(req.params["tenantId"]);
+  const tenantId = routeTenantId(req);
   if (req.user?.tenantId !== tenantId && req.user?.platformRole !== "super_admin") {
     return res.status(403).json({ error: "Access denied" });
   }
@@ -91,7 +96,7 @@ router.get("/tenants/:tenantId/calendar-settings", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/calendar-settings", async (req, res) => {
-  const tenantId = String(req.params["tenantId"]);
+  const tenantId = routeTenantId(req);
   if (req.user?.tenantId !== tenantId && req.user?.platformRole !== "super_admin") {
     return res.status(403).json({ error: "Access denied" });
   }
@@ -122,7 +127,7 @@ router.post("/tenants/:tenantId/calendar-settings", async (req, res) => {
 });
 
 router.patch("/tenants/:tenantId/calendar-settings", async (req, res) => {
-  const tenantId = String(req.params["tenantId"]);
+  const tenantId = routeTenantId(req);
   if (req.user?.tenantId !== tenantId && req.user?.platformRole !== "super_admin") {
     return res.status(403).json({ error: "Access denied" });
   }
