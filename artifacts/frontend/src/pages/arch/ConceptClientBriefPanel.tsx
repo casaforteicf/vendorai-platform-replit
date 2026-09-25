@@ -68,6 +68,37 @@ const DEFAULT_VISION: ClientVision = {
   mustHave: "",
   avoid: "",
 };
+const STANDARD_PROGRAM_KEYS = new Set([
+  "sala","cozinha","suite","quarto","suite-bath","social-bath","lavabo","lavanderia","garagem","gourmet","office","pool",
+]);
+
+function roomRequestKey(item: ClientRoomRequest) {
+  const label = item.label.toLowerCase();
+  if (item.kind === "banheiro" && /su[ií]te|master/.test(label)) return "suite-bath";
+  if (item.kind === "banheiro" && /lavabo/.test(label)) return "lavabo";
+  if (item.kind === "banheiro") return "social-bath";
+  if (item.kind === "outro" && /escrit|office/.test(label)) return "office";
+  if (item.kind === "piscina") return "pool";
+  return item.kind;
+}
+
+function reconcileRoomProgram(currentProgram: ClientRoomRequest[], nextBrief: ClientBrief) {
+  const defaults = buildDefaultRoomProgram(nextBrief);
+  const currentByKey = new Map(currentProgram.map((item) => [roomRequestKey(item), item]));
+  const merged = defaults.map((item) => {
+    const previous = currentByKey.get(roomRequestKey(item));
+    if (!previous) return item;
+    return {
+      ...item,
+      targetArea: previous.targetArea,
+      required: previous.required,
+      notes: previous.notes,
+      floorPreference: nextBrief.floors === 1 ? "terreo" as const : previous.floorPreference ?? item.floorPreference,
+    };
+  });
+  const custom = currentProgram.filter((item) => !STANDARD_PROGRAM_KEYS.has(roomRequestKey(item)));
+  return [...merged, ...custom];
+}
 
 function ChoiceButton({
   active,
@@ -246,6 +277,16 @@ export default function ConceptClientBriefPanel({
   );
 
   const roomProgram = brief.roomProgram ?? [];
+
+  const updateBriefStructure = (recipe: (current: ClientBrief) => ClientBrief) => {
+    setBrief((current) => {
+      const next = recipe(current);
+      return {
+        ...next,
+        roomProgram: reconcileRoomProgram(current.roomProgram ?? [], next),
+      };
+    });
+  };
 
   const updateRoomRequest = (id: string, patch: Partial<ClientRoomRequest>) => {
     setBrief((current) => ({
@@ -559,7 +600,7 @@ export default function ConceptClientBriefPanel({
             <ChoiceButton
               key={value}
               active={brief.bedrooms === value}
-              onClick={() => setBrief((current) => ({
+              onClick={() => updateBriefStructure((current) => ({
                 ...current,
                 bedrooms: value,
                 suites: Math.min(current.suites, value) as ClientBrief["suites"],
@@ -578,7 +619,7 @@ export default function ConceptClientBriefPanel({
             <ChoiceButton
               key={value}
               active={brief.suites === value}
-              onClick={() => setBrief((current) => ({ ...current, suites: value }))}
+              onClick={() => updateBriefStructure((current) => ({ ...current, suites: value }))}
             >
               {value === 0 ? "Sem suíte" : value === 1 ? "1 suíte" : "2 suítes"}
             </ChoiceButton>
@@ -594,13 +635,13 @@ export default function ConceptClientBriefPanel({
         <div className="grid grid-cols-2 gap-2">
           <ChoiceButton
             active={brief.floors === 1}
-            onClick={() => setBrief((current) => ({ ...current, floors: 1 }))}
+            onClick={() => updateBriefStructure((current) => ({ ...current, floors: 1 }))}
           >
             Casa térrea
           </ChoiceButton>
           <ChoiceButton
             active={brief.floors === 2}
-            onClick={() => setBrief((current) => ({ ...current, floors: 2 }))}
+            onClick={() => updateBriefStructure((current) => ({ ...current, floors: 2 }))}
           >
             Sobrado
           </ChoiceButton>
@@ -617,7 +658,7 @@ export default function ConceptClientBriefPanel({
             <ChoiceButton
               key={value}
               active={brief.garageSpaces === value}
-              onClick={() => setBrief((current) => ({ ...current, garageSpaces: value }))}
+              onClick={() => updateBriefStructure((current) => ({ ...current, garageSpaces: value }))}
             >
               {value} {value === 1 ? "vaga" : "vagas"}
             </ChoiceButton>
@@ -632,21 +673,21 @@ export default function ConceptClientBriefPanel({
           icon={ChefHat}
           title="Área gourmet"
           helper="Mantém cozinha e lazer próximos."
-          onClick={() => setBrief((current) => ({ ...current, gourmet: !current.gourmet }))}
+          onClick={() => updateBriefStructure((current) => ({ ...current, gourmet: !current.gourmet }))}
         />
         <ToggleCard
           active={brief.pool}
           icon={Waves}
           title="Piscina"
           helper="Reserva a área de lazer no fundo do lote."
-          onClick={() => setBrief((current) => ({ ...current, pool: !current.pool }))}
+          onClick={() => updateBriefStructure((current) => ({ ...current, pool: !current.pool }))}
         />
         <ToggleCard
           active={brief.office}
           icon={Laptop}
           title="Escritório"
           helper="Adiciona um ambiente dedicado para trabalho."
-          onClick={() => setBrief((current) => ({ ...current, office: !current.office }))}
+          onClick={() => updateBriefStructure((current) => ({ ...current, office: !current.office }))}
         />
       </section>
 
