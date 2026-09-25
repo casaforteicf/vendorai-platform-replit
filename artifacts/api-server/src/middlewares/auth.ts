@@ -2,6 +2,7 @@ import { type Request, type RequestHandler } from "express";
 import { verifyToken, type JwtPayload } from "../lib/jwt.js";
 import {
   db,
+  pool,
   tenantsTable,
   invoicesTable,
   usersTable,
@@ -73,6 +74,89 @@ function isCriticalConfigurationMutation(req: Request): boolean {
   return /^\/tenants\/[^/]+\/(?:whatsapp-connections\/[^/]+|whatsapp-connection(?:\/refresh)?|instagram-connection(?:\/refresh)?|google-ads-connection(?:\/(?:select-account|refresh|data-manager))?|search-console-connection(?:\/(?:verify|refresh))?|meta-ads-connection(?:\/(?:select-account|refresh))?|social-connections\/(?:youtube|linkedin|tiktok))$/.test(req.path);
 }
 
+
+// ── Acesso do cliente final (link público do pré-projeto) ───────────────────────────────
+// O token "preprojeto" só abre o pré-projeto dele. A checagem roda dentro de `authenticate`
+// para valer também nas rotas que usam authenticate por conta própria antes do bloqueio geral.
+const PREPROJECT_SPECIALIST_WINDOW_MS = 60 * 60 * 1000;
+const PREPROJECT_SPECIALIST_MAX = 6;
+const preProjectSpecialistCalls = new Map<string, number[]>();
+
+function denyPreProject(res: Parameters<RequestHandler>[1]) {
+  res.status(403).json({
+    error: "PREPROJETO_SCOPE_DENIED",
+    message: "Este acesso é restrito ao seu pré-projeto.",
+  });
+}
+
+async function preProjectRenderQuotaReached(tenantId: string, conceptId: string) {
+  const result = await pool.query<{ used: string; quota: number | null }>(
+    `SELECT
+       (SELECT count(*) FROM arch_ai_renders
+         WHERE tenant_id = $1 AND concept_project_id = $2 AND created_at > now() - interval '1 day') AS used,
+       (SELECT renders_per_day FROM arqdor_public_links WHERE tenant_id = $1) AS quota`,
+    [tenantId, conceptId],
+  );
+  const row = result.rows[0];
+  return Number(row?.used ?? 0) >= (row?.quota ?? 5);
+}
+
+export async function enforcePreProjectScope(req: Request, res: Parameters<RequestHandler>[1], next: () => void) {
+  const user = req.user;
+  const conceptId = user?.conceptId;
+  if (!user || !conceptId) return denyPreProject(res);
+  const path = req.path;
+  const method = req.method;
+  const own = `/arch/concept-projects/${conceptId}`;
+
+  if (path === own && (method === "GET" || method === "PATCH")) return next();
+  if (path.startsWith(`${own}/`) && ["GET", "POST", "PATCH"].includes(method)) return next();
+  if (method === "GET" && (path.startsWith("/arch/polyhaven/") || path === "/arch/catalogo")) return next();
+  if (method === "GET" && path === "/arch/ai-renders" && String(req.query?.concept_project_id ?? "") === conceptId) return next();
+
+  if (method === "POST" && path === "/arch/concept-plan-specialist") {
+    const now = Date.now();
+    const recent = (preProjectSpecialistCalls.get(conceptId) ?? []).filter((at) => now - at < PREPROJECT_SPECIALIST_WINDOW_MS);
+    if (recent.length >= PREPROJECT_SPECIALIST_MAX) {
+      res.status(429).json({ error: "Limite de plantas com IA atingido. Tente novamente em uma hora." });
+      return;
+    }
+    recent.push(now);
+    preProjectSpecialistCalls.set(conceptId, recent);
+    return next();
+  }
+
+  try {
+    if (method === "POST" && path === "/arch/ai-render") {
+      const body = req.body && typeof req.body === "object" ? req.body as Record<string, unknown> : {};
+      if (String(body.concept_project_id ?? "") !== conceptId) return denyPreProject(res);
+      if (await preProjectRenderQuotaReached(user.tenantId, conceptId)) {
+        res.status(429).json({ error: "Você atingiu o limite de imagens de hoje. Tente novamente amanhã." });
+        return;
+      }
+      return next();
+    }
+    const renderMatch = path.match(/^\/arch\/ai-render\/([^/]+)(\/[^/]+)?$/);
+    if (renderMatch && (method === "GET" || method === "POST")) {
+      const owner = await pool.query<{ concept_project_id: string | null }>(
+        `SELECT concept_project_id FROM arch_ai_renders WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
+        [renderMatch[1], user.tenantId],
+      );
+      if (owner.rows[0]?.concept_project_id !== conceptId) return denyPreProject(res);
+      if (method === "POST" && await preProjectRenderQuotaReached(user.tenantId, conceptId)) {
+        res.status(429).json({ error: "Você atingiu o limite de imagens de hoje. Tente novamente amanhã." });
+        return;
+      }
+      return next();
+    }
+  } catch {
+    res.status(503).json({ error: "Não foi possível validar o acesso agora. Tente novamente." });
+    return;
+  }
+
+  return denyPreProject(res);
+}
+
 export const enforceAccessScope: RequestHandler = (req, res, next) => {
   const user = req.user;
   if (!user || user.accessScope !== "obra") {
@@ -107,6 +191,10 @@ export const authenticate: RequestHandler = (req, res, next) => {
   const token = authHeader.slice(7);
   try {
     req.user = verifyToken(token);
+    if (req.user.accessScope === "preprojeto") {
+      void enforcePreProjectScope(req, res, next);
+      return;
+    }
     if (isCriticalConfigurationMutation(req) && !isConfigurationAdmin(req.user)) {
       res.status(403).json({
         error: "CONFIGURATION_ADMIN_REQUIRED",
