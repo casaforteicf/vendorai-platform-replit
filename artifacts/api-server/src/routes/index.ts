@@ -191,6 +191,16 @@ import { db, tenantsTable } from "@workspace/db";
 
 const router: IRouter = Router();
 
+function mountJarvisAuxiliaryRouter(stage: IRouter) {
+  return (req: any, res: any, next: any) => {
+    // /support/chat has a single effective entry in jarvisEmailActionsRouter,
+    // which invokes these stage routers explicitly in deterministic order.
+    // Their auxiliary endpoints remain mounted normally here.
+    if (req.method === "POST" && req.path === "/support/chat") return next();
+    stage.handle(req, res, next);
+  };
+}
+
 // Public
 router.use(healthRouter);
 router.use(storageRouter);
@@ -392,7 +402,7 @@ router.use(customerIntelligenceRouter);
 // AI Hub — ações externas do JARVIS interceptam somente os tipos próprios
 // e reutilizam a mesma fila/endpoints antes do executor padrão.
 router.use(jarvisEmailActionsRouter);
-router.use(jarvisExternalActionsRouter);
+router.use(mountJarvisAuxiliaryRouter(jarvisExternalActionsRouter));
 router.use(agentTasksRouter);
 router.use(agentsRouter);
 router.use(voiceAgentRouter);
@@ -580,13 +590,13 @@ router.use(renderRouter);
 router.use(spinRouter);
 
 // JARVIS: comandos naturais controlados precisam interceptar o chat antes do LLM.
-router.use(jarvisNaturalActionsRouter);
+router.use(mountJarvisAuxiliaryRouter(jarvisNaturalActionsRouter));
 router.use(jarvisToolBuilderRouter);
-router.use(jarvisActionPlansRouter);
-router.use(jarvisMissionsRouter);
+router.use(mountJarvisAuxiliaryRouter(jarvisActionPlansRouter));
+router.use(mountJarvisAuxiliaryRouter(jarvisMissionsRouter));
 
 // Support chat + Dev IA
-router.use(supportRouter);
+router.use(mountJarvisAuxiliaryRouter(supportRouter));
 router.use(devAgentAutonomyRouter);
 
 // Contract Templates Hub
