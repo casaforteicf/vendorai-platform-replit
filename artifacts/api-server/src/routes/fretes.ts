@@ -15,6 +15,11 @@ import { geocodeAddress, distanceKm, estimarValorFrete, estimarEtaMinutos } from
 
 const router: IRouter = Router();
 
+function routeTenantId(req: any): string {
+  // tenant-audit: reviewed tenant route; handlers enforce canAccess before tenant-scoped work.
+  return String(req.params.tenantId ?? req.params["tenantId"]);
+}
+
 // Router separado — precisa ser registrado ANTES do middleware authenticate
 // no routes/index.ts (mesmo padrão de publicSiteRouter, archPublicRouter
 // etc), senão essas rotas ficam bloqueadas por exigir login igual as outras.
@@ -48,7 +53,7 @@ function withEta<T extends { localizacaoLat: number | null; localizacaoLng: numb
 // ─── Veículos ─────────────────────────────────────────────────────────────────
 
 router.get("/tenants/:tenantId/fretes/veiculos", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const conditions = [eq(fretesVeiculosTable.tenantId, tenantId), eq(fretesVeiculosTable.ativo, true)];
@@ -61,7 +66,7 @@ router.get("/tenants/:tenantId/fretes/veiculos", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/fretes/veiculos", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [row] = await db.insert(fretesVeiculosTable)
@@ -71,7 +76,7 @@ router.post("/tenants/:tenantId/fretes/veiculos", async (req, res) => {
 });
 
 router.patch("/tenants/:tenantId/fretes/veiculos/:id", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const id = req.params.id as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
@@ -85,7 +90,7 @@ router.patch("/tenants/:tenantId/fretes/veiculos/:id", async (req, res) => {
 
 // Soft delete — ativo = false
 router.delete("/tenants/:tenantId/fretes/veiculos/:id", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const id = req.params.id as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
@@ -102,7 +107,7 @@ router.delete("/tenants/:tenantId/fretes/veiculos/:id", async (req, res) => {
 // Cargas aprovadas ainda sem motorista — a "fila de ofertas" que qualquer
 // motorista do tenant pode ver e aceitar.
 router.get("/tenants/:tenantId/fretes/cargas/disponiveis", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const rows = await db.select().from(fretesCargasTable)
@@ -125,7 +130,7 @@ router.get("/tenants/:tenantId/fretes/cargas/disponiveis", async (req, res) => {
 
 // Entregas do motorista logado (aceitas por ele, ainda em andamento).
 router.get("/tenants/:tenantId/fretes/cargas/minhas", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   const motoristaId = (req as any).user?.sub as string;
 
@@ -146,7 +151,7 @@ router.get("/tenants/:tenantId/fretes/cargas/minhas", async (req, res) => {
 // Aceitar carga — atômico: só passa se ninguém pegou primeiro (evita dois
 // motoristas aceitando a mesma carga ao mesmo tempo).
 router.post("/tenants/:tenantId/fretes/cargas/:id/aceitar", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const id = req.params.id as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   const motoristaId = (req as any).user?.sub as string;
@@ -169,7 +174,7 @@ router.post("/tenants/:tenantId/fretes/cargas/:id/aceitar", async (req, res) => 
 
 // Motorista atualiza a posição ao vivo enquanto está com a carga.
 router.patch("/tenants/:tenantId/fretes/cargas/:id/localizacao", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const id = req.params.id as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   const userId = (req as any).user?.sub as string;
@@ -199,7 +204,7 @@ router.patch("/tenants/:tenantId/fretes/cargas/:id/localizacao", async (req, res
 // Rastro completo do trajeto — usado pra desenhar a linha percorrida no
 // mapa, não só o ponto atual.
 router.get("/tenants/:tenantId/fretes/cargas/:id/localizacao-historico", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const id = req.params.id as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
@@ -212,7 +217,7 @@ router.get("/tenants/:tenantId/fretes/cargas/:id/localizacao-historico", async (
 });
 
 router.get("/tenants/:tenantId/fretes/cargas", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const conditions = [eq(fretesCargasTable.tenantId, tenantId)];
@@ -256,7 +261,7 @@ router.get("/tenants/:tenantId/fretes/cargas", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/fretes/cargas", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const { clienteId, enderecoColeta, enderecoEntrega } = req.body as {
@@ -306,7 +311,7 @@ router.post("/tenants/:tenantId/fretes/cargas", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/fretes/cargas/:id", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const id = req.params.id as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
@@ -317,7 +322,7 @@ router.get("/tenants/:tenantId/fretes/cargas/:id", async (req, res) => {
 });
 
 router.patch("/tenants/:tenantId/fretes/cargas/:id", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const id = req.params.id as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
@@ -330,7 +335,7 @@ router.patch("/tenants/:tenantId/fretes/cargas/:id", async (req, res) => {
 });
 
 router.patch("/tenants/:tenantId/fretes/cargas/:id/status", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const id = req.params.id as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
@@ -460,7 +465,7 @@ fretesPublicRouter.post("/public/fretes/:id/avaliar", async (req, res) => {
 // na tela) — não faz otimização automática de trajeto por enquanto.
 
 router.get("/tenants/:tenantId/fretes/rotas", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const conditions = [eq(fretesRotasTable.tenantId, tenantId)];
@@ -489,7 +494,7 @@ router.get("/tenants/:tenantId/fretes/rotas", async (req, res) => {
 
 // Cria a rota e já vincula as cargas informadas, na ordem enviada.
 router.post("/tenants/:tenantId/fretes/rotas", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const { nome, motoristaId, veiculoId, cargaIds } = req.body as {
@@ -513,7 +518,7 @@ router.post("/tenants/:tenantId/fretes/rotas", async (req, res) => {
 });
 
 router.patch("/tenants/:tenantId/fretes/rotas/:id", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const id = req.params.id as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
