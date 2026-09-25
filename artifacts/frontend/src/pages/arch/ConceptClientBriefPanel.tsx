@@ -706,6 +706,7 @@ export default function ConceptClientBriefPanel({
                         ["geometry", "Geometria"],
                         ["constructability", "Construção"],
                         ["furnitureFit", "Mobiliário"],
+                        ["siteClimate", "Terreno/clima"],
                         ["architecturalCoherence", "Coerência"],
                       ] as const).map(([key, label]) => {
                         const dimension = alternative.qualityDimensions?.[key];
@@ -828,6 +829,32 @@ export default function ConceptClientBriefPanel({
                         </div>
                       ))}
                     </div>
+                  </div>
+                ) : null}
+
+                {alternative.programCompliance?.siteClimate ? (
+                  <div className="mt-2 rounded-lg border border-sky-100 bg-sky-50 px-2.5 py-2">
+                    <div className="flex items-center justify-between gap-2 text-[10px]">
+                      <span className="font-bold text-sky-900">Terreno + clima + implantação</span>
+                      <span className={alternative.programCompliance.siteClimate.status === "blocked"
+                        ? "font-bold text-red-600"
+                        : alternative.programCompliance.siteClimate.status === "warning"
+                          ? "font-bold text-amber-600"
+                          : "font-bold text-emerald-700"}
+                      >
+                        {alternative.programCompliance.siteClimate.score}/100
+                      </span>
+                    </div>
+                    <div className="mt-1 text-[9px] leading-4 text-sky-900">
+                      Norte: {alternative.programCompliance.siteClimate.northSide} · frente: {alternative.programCompliance.siteClimate.frontSide} · topografia: {alternative.programCompliance.siteClimate.topography}
+                    </div>
+                    {alternative.programCompliance.siteClimate.recommendations?.length ? (
+                      <div className="mt-2 space-y-1 text-[9px] leading-4 text-slate-600">
+                        {alternative.programCompliance.siteClimate.recommendations.slice(0, 3).map((item, index) => (
+                          <div key={index}>• {item}</div>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
 
