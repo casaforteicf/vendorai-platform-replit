@@ -237,6 +237,7 @@ type QualityDimensionKey =
   | "constructability"
   | "furnitureFit"
   | "siteClimate"
+  | "roofVolumetry"
   | "architecturalCoherence";
 
 type QualityDimension = {
@@ -397,6 +398,8 @@ function qualityDimensionForIssue(issue: string): QualityDimensionKey {
   if (low.includes("mobiliário") || low.includes("folga reduzida") || low.includes("abertura de portas")) return "furnitureFit";
   if (low.includes("insolação") || low.includes("orientação solar") || low.includes("fachada oeste") || low.includes("exposição à rua")
     || low.includes("ventilação") || low.includes("implantação climática")) return "siteClimate";
+  if (low.includes("cobertura") || low.includes("pavimento superior") || low.includes("áreas molhadas") || low.includes("prumada")
+    || low.includes("balanço") || low.includes("volumetria")) return "roofVolumetry";
   if (low.includes("lavanderia") || low.includes("compacta") || low.includes("perímetro")) return "constructability";
   return "architecturalCoherence";
 }
@@ -565,6 +568,92 @@ function exposedModelSides(room: SpecialistPlanRoom, rooms: SpecialistPlanRoom[]
     if (!sideCovered(side)) exposure.push(side);
   }
   return exposure;
+}
+
+function overlapArea(a: SpecialistPlanRoom, b: SpecialistPlanRoom) {
+  const ox = Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x));
+  const oy = Math.max(0, Math.min(a.y + a.depth, b.y + b.depth) - Math.max(a.y, b.y));
+  return ox * oy;
+}
+
+function evaluateRoofVolumetryFit(
+  rooms: SpecialistPlanRoom[],
+  input: z.infer<typeof specialistHousePlanSchema>,
+) {
+  const issues: string[] = [];
+  const recommendations: string[] = [];
+  let score = 100;
+
+  if (input.brief.floors > 1) {
+    for (let floor = 1; floor < input.brief.floors; floor += 1) {
+      const upper = rooms.filter((room) => room.floor === floor && room.kind !== "piscina");
+      const below = rooms.filter((room) => room.floor === floor - 1 && room.kind !== "piscina");
+      for (const room of upper) {
+        const supported = below.reduce((sum, base) => sum + overlapArea(room, base), 0);
+        const area = Math.max(0.1, room.width * room.depth);
+        const supportedRatio = Math.min(1, supported / area);
+        if (supportedRatio < 0.45) {
+          issues.push(`${room.label} no pavimento superior possui grande trecho sem apoio direto abaixo; revisar balanço/estrutura.`);
+          score -= 18;
+        } else if (supportedRatio < 0.70) {
+          recommendations.push(`${room.label}: verificar solução estrutural para trecho parcialmente em balanço.`);
+          score -= 7;
+        }
+      }
+    }
+  }
+
+  const wetKinds = (room: SpecialistPlanRoom) =>
+    room.kind === "banheiro" || room.kind === "cozinha" || room.kind === "lavanderia";
+  const upperWet = rooms.filter((room) => room.floor > 0 && wetKinds(room));
+  for (const room of upperWet) {
+    const belowWet = rooms.filter((base) => base.floor === room.floor - 1 && wetKinds(base));
+    const aligned = belowWet.some((base) => overlapArea(room, base) / Math.max(0.1, room.width * room.depth) >= 0.25);
+    if (!aligned) {
+      issues.push(`${room.label}: áreas molhadas sem alinhamento razoável com pavimento inferior; revisar prumada hidráulica.`);
+      score -= 9;
+    }
+  }
+
+  const wallFirst = buildWallFirstModel(rooms, input);
+  const exteriorByFloor = new Map<number, number>();
+  for (const wall of wallFirst.walls.filter((wall) => wall.exterior)) {
+    exteriorByFloor.set(wall.floor, (exteriorByFloor.get(wall.floor) ?? 0) + Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1));
+  }
+  const exteriorLengths = [...exteriorByFloor.values()];
+  if (exteriorLengths.length > 1) {
+    const max = Math.max(...exteriorLengths);
+    const min = Math.min(...exteriorLengths);
+    if (max > 0 && min / max < 0.35) {
+      recommendations.push("Volumetria entre pavimentos muito desigual; revisar recuos e coroamento para evitar cobertura fragmentada.");
+      score -= 6;
+    }
+  }
+
+  const roofStrategy = String(input.vision?.constructionMethod ?? "");
+  const complexity = wallFirst.metrics.wallCount / Math.max(1, rooms.filter((room) => room.kind !== "piscina").length);
+  if (complexity > 6.5) {
+    issues.push("Cobertura/volumetria tende a ficar excessivamente fragmentada pela quantidade de quebras de parede.");
+    score -= 12;
+  }
+
+  if (input.vision?.budgetStrategy === "otimizar" && complexity > 5.5) {
+    recommendations.push("Estratégia de custo pede volumetria e cobertura mais compactas.");
+    score -= 5;
+  }
+
+  return {
+    score: Math.max(0, Math.round(score)),
+    status: score < 58 ? "blocked" as const : score < 78 ? "warning" as const : "approved" as const,
+    issues,
+    recommendations,
+    metrics: {
+      upperFloorCount: Math.max(0, input.brief.floors - 1),
+      wetRoomCount: rooms.filter(wetKinds).length,
+      wallComplexityRatio: Math.round(complexity * 100) / 100,
+      exteriorWallLengthByFloor: Object.fromEntries([...exteriorByFloor.entries()].map(([floor, value]) => [String(floor), Math.round(value * 100) / 100])),
+    },
+  };
 }
 
 function evaluateSiteClimateFit(
@@ -812,6 +901,7 @@ function buildArchitecturalQualityGateV2(issues: string[]) {
     "constructability",
     "furnitureFit",
     "siteClimate",
+    "roofVolumetry",
     "architecturalCoherence",
   ];
   const dimensionIssues = Object.fromEntries(keys.map((key) => [key, [] as string[]])) as Record<QualityDimensionKey, string[]>;
@@ -859,8 +949,9 @@ function buildArchitecturalQualityGateV2(issues: string[]) {
     ergonomics: 0.14,
     geometry: 0.13,
     constructability: 0.07,
-    furnitureFit: 0.13,
-    siteClimate: 0.10,
+    furnitureFit: 0.12,
+    siteClimate: 0.09,
+    roofVolumetry: 0.10,
     architecturalCoherence: 0.01,
   };
 
@@ -1154,7 +1245,8 @@ function evaluateSpecialistPlan(
 
   const furnitureFit = evaluateFurnitureFit(rooms);
   const siteClimate = evaluateSiteClimateFit(rooms, input);
-  issues.push(...furnitureFit.issues, ...siteClimate.issues);
+  const roofVolumetry = evaluateRoofVolumetryFit(rooms, input);
+  issues.push(...furnitureFit.issues, ...siteClimate.issues, ...roofVolumetry.issues);
 
   const uniqueIssues = [...new Set(issues)];
   const gate = buildArchitecturalQualityGateV2(uniqueIssues);
@@ -1168,6 +1260,11 @@ function evaluateSpecialistPlan(
     status: siteClimate.status,
     issues: siteClimate.issues.slice(0, 8),
   };
+  gate.dimensions.roofVolumetry = {
+    score: roofVolumetry.score,
+    status: roofVolumetry.status,
+    issues: roofVolumetry.issues.slice(0, 8),
+  };
   gate.score = Math.round(
     gate.dimensions.program.score * 0.16
     + gate.dimensions.circulation.score * 0.18
@@ -1175,12 +1272,21 @@ function evaluateSpecialistPlan(
     + gate.dimensions.ergonomics.score * 0.14
     + gate.dimensions.geometry.score * 0.13
     + gate.dimensions.constructability.score * 0.07
-    + gate.dimensions.furnitureFit.score * 0.13
-    + gate.dimensions.siteClimate.score * 0.10
+    + gate.dimensions.furnitureFit.score * 0.12
+    + gate.dimensions.siteClimate.score * 0.09
+    + gate.dimensions.roofVolumetry.score * 0.10
     + gate.dimensions.architecturalCoherence.score * 0.01
   );
   const furnitureBlocked = furnitureFit.status === "blocked";
   const siteClimateBlocked = siteClimate.status === "blocked";
+  const roofVolumetryBlocked = roofVolumetry.status === "blocked";
+  if (roofVolumetryBlocked) {
+    gate.approved = false;
+    gate.hardBlockers = [...new Set([
+      ...gate.hardBlockers,
+      "Roof/Volumetry: conflito grave entre pavimentos, apoio estrutural, prumadas ou fragmentação de cobertura.",
+    ])].slice(0, 12);
+  }
   if (siteClimateBlocked) {
     gate.approved = false;
     gate.hardBlockers = [...new Set([
@@ -1209,9 +1315,11 @@ function evaluateSpecialistPlan(
     dimensions: gate.dimensions,
     furnitureFit,
     siteClimate,
+    roofVolumetry,
   } as SpecialistPlanQuality & {
     furnitureFit: ReturnType<typeof evaluateFurnitureFit>;
     siteClimate: ReturnType<typeof evaluateSiteClimateFit>;
+    roofVolumetry: ReturnType<typeof evaluateRoofVolumetryFit>;
   };
 }
 
@@ -1350,6 +1458,7 @@ function sanitizeSpecialistPlan(
       },
       furnitureFit: (quality as SpecialistPlanQuality & { furnitureFit?: ReturnType<typeof evaluateFurnitureFit> }).furnitureFit ?? null,
       siteClimate: (quality as SpecialistPlanQuality & { siteClimate?: ReturnType<typeof evaluateSiteClimateFit> }).siteClimate ?? null,
+      roofVolumetry: (quality as SpecialistPlanQuality & { roofVolumetry?: ReturnType<typeof evaluateRoofVolumetryFit> }).roofVolumetry ?? null,
     },
   };
 }
@@ -2053,6 +2162,9 @@ REGRAS FUNCIONAIS INEGOCIÁVEIS:
 - áreas molhadas devem ser racionalizadas quando possível;
 - preserve ambientes locked;
 - a planta deve poder originar uma fachada coerente: aberturas, volumes e cobertura não podem depender de invenções posteriores.
+- em sobrados, alinhe pavimentos sempre que possível; balanços devem ser deliberados e limitados, não consequência aleatória do encaixe;
+- agrupe e alinhe áreas molhadas entre pavimentos para permitir prumadas racionais;
+- a estratégia de cobertura deve ser plausível para a volumetria proposta e evitar encontros/recortes gratuitos;
 - pense WALL-FIRST: primeiro defina zonas, limites, eixos de circulação e paredes compartilhadas; os retângulos dos ambientes são uma representação compatível do resultado, não o raciocínio principal;
 - prefira alinhamentos de paredes, continuidade estrutural e poucos deslocamentos gratuitos; evite paredes quebradas sem função;
 - portas devem nascer das relações do grafo funcional e de paredes realmente compartilhadas; não trate a abertura como decoração posterior.
