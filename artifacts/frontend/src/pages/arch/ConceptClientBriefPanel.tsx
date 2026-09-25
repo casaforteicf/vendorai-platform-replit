@@ -1412,6 +1412,22 @@ export default function ConceptClientBriefPanel({
                   ))}
                 </div>
               </div>
+              <div>
+                <div className="mb-2 text-[10px] font-bold text-slate-700">Receber amigos e família</div>
+                <div className="grid grid-cols-3 gap-2">
+                  {([["baixa","Pouco"],["media","Às vezes"],["alta","Frequentemente"]] as const).map(([value,label]) => (
+                    <ChoiceButton key={value} active={household.hostingFrequency === value} onClick={() => setHousehold((current) => ({ ...current, hostingFrequency: value }))}>{label}</ChoiceButton>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div className="mb-2 text-[10px] font-bold text-slate-700">Uso da cozinha</div>
+                <div className="grid grid-cols-3 gap-2">
+                  {([["pratico","Prático"],["cotidiano","Cozinho no dia a dia"],["intenso","Cozinha é protagonista"]] as const).map(([value,label]) => (
+                    <ChoiceButton key={value} active={household.cookingProfile === value} onClick={() => setHousehold((current) => ({ ...current, cookingProfile: value }))}>{label}</ChoiceButton>
+                  ))}
+                </div>
+              </div>
               <textarea value={household.routineNotes ?? ""}
                 onChange={(event) => setHousehold((current) => ({ ...current, routineNotes: event.target.value.slice(0, 700) }))}
                 placeholder="Conte algo importante da rotina: horários, receber pessoas, cozinhar, crianças, hobbies..."
