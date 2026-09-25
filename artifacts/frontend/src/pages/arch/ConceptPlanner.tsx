@@ -1,3 +1,4 @@
+import { flushSync } from "react-dom";
 import { conceptReferenceSize } from "./conceptReferenceImage";
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./planner5d-reference.css";
@@ -61,7 +62,8 @@ import { buildTypologyPlan, buildTypologyRooms, CONCEPT_TYPOLOGIES, DEFAULT_LAYO
 import { generateTypologyLayout } from "./conceptTypologyLayout";
 import { ConceptRenderGalleryActions } from "./ConceptRenderGalleryActions";
 import { inspectConceptVisualQuality } from "./conceptVisualQuality";
-import { buildConceptRenderBrief, svgElementToPngDataUrl } from "./conceptRender";
+import { buildConceptKontextSummary, buildConceptRenderBrief, svgElementToPngDataUrl } from "./conceptRender";
+import { buildDerivedFacadeModel } from "./conceptFacadeGeometry";
 import { buildOrthogonalWallTopology, detectClosedSpaces, type ClosedSpace, type WallTopologyEndpointRef } from "./conceptWallNetwork";
 import { conceptStepCta, nextConceptStep, normalizeConceptStep, previousConceptStep } from "./conceptNavigation";
 import { CONCEPT_OPENING_FAMILIES } from "./catalogs/conceptOpeningCatalog";
@@ -858,6 +860,7 @@ export default function ConceptPlanner() {
   const [modelCategory, setModelCategory] = useState<"todos" | "terreas" | "sobrados" | "lazer">("todos");
   const [modelGalleryOpen, setModelGalleryOpen] = useState(false);
   const [projectListOpen, setProjectListOpen] = useState(false);
+  const [renderLightingOverride, setRenderLightingOverride] = useState<"day" | "sunset" | "night" | null>(null);
   const [startChooserDismissed, setStartChooserDismissed] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [projectListError, setProjectListError] = useState<string | null>(null);
@@ -3565,6 +3568,10 @@ export default function ConceptPlanner() {
     const source = options?.source ?? "facade";
     const renderView = options?.renderView ?? (source === "model3d" ? "interior" : "exterior");
     const lightingMode = options?.lightingMode ?? facadeDesign.lighting;
+    // A imagem de referência precisa estar na mesma luz pedida ao motor.
+    if (source === "facade" && lightingMode !== facadeDesign.lighting) {
+      flushSync(() => setRenderLightingOverride(lightingMode));
+    }
 
     setRenderError(null);
     setSelectedRenderVersionId(null);
@@ -3591,7 +3598,20 @@ export default function ConceptPlanner() {
         const svg = document.querySelector<SVGSVGElement>("[data-concept-render-source='true'] svg");
         if (!svg) throw new Error("Não foi possível localizar a volumetria para gerar o render.");
         originalImage = await svgElementToPngDataUrl(svg, 1.7);
+        setRenderLightingOverride(null);
       }
+      const derivedFacade = buildDerivedFacadeModel(modelLevels, safeRooms, normalizeSitePlacement(sitePlacement));
+      const kontextSummary = renderView === "exterior"
+        ? buildConceptKontextSummary({
+            floors: derivedFacade.floors,
+            facadeWidth: derivedFacade.width,
+            facade: facadePreferences,
+            facadeDesign,
+            lightingMode,
+            frontOpenings: derivedFacade.openings.map((opening) => ({ floor: opening.floor, type: opening.type })),
+            hasGarage: Boolean(derivedFacade.garageRange),
+          })
+        : "";
       const brief = buildConceptRenderBrief({
         lotWidth,
         lotDepth,
@@ -3670,7 +3690,9 @@ export default function ConceptPlanner() {
           source,
           render_view: renderView,
           ambiente: renderView === "interior" ? "interior" : "fachada",
+          // O resumo curto vem primeiro e separado: é o único trecho que o motor lê por inteiro.
           user_notes: [
+            kontextSummary ? `${kontextSummary}\n---DETALHES---` : "",
             brief,
             ...renderProfile,
             openingSummary ? `OPENINGS TO PRESERVE EXACTLY: ${openingSummary}` : "",
@@ -5031,13 +5053,16 @@ export default function ConceptPlanner() {
               className="fixed -left-[9999px] top-0 h-[650px] w-[900px] overflow-hidden"
               aria-hidden="true"
             >
+              {/* Referência do render em cores e com a luz escolhida: o motor de imagem copia
+                  materiais e cores do que vê. Em linhas técnicas ele inventava a casa. */}
               <ConceptDerivedFacade
+                viewMode="material"
                 lotWidth={lotWidth}
                 levels={modelLevels}
                 rooms={safeRooms}
                 sitePlacement={normalizeSitePlacement(sitePlacement)}
                 facade={facadePreferences}
-                design={facadeDesign}
+                design={{ ...facadeDesign, lighting: renderLightingOverride ?? facadeDesign.lighting }}
               />
             </div>
 
