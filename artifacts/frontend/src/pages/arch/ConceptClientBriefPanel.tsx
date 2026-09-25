@@ -756,6 +756,40 @@ export default function ConceptClientBriefPanel({
                 </button>
               </div>
 
+              <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
+                <div>
+                  <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">Tipo de ambiente</div>
+                  <select
+                    value={item.kind}
+                    onChange={(event) => updateRoomRequest(item.id, { kind: event.target.value as ClientRoomRequest["kind"] })}
+                    className="h-9 w-full rounded-lg border bg-white px-2 text-[10px] font-semibold text-slate-700 outline-none focus:border-orange-400"
+                  >
+                    <option value="sala">Sala / estar / jantar</option>
+                    <option value="cozinha">Cozinha</option>
+                    <option value="suite">Suíte</option>
+                    <option value="quarto">Quarto</option>
+                    <option value="banheiro">Banheiro / lavabo</option>
+                    <option value="lavanderia">Lavanderia</option>
+                    <option value="garagem">Garagem</option>
+                    <option value="gourmet">Gourmet</option>
+                    <option value="piscina">Piscina</option>
+                    <option value="outro">Outro / closet / despensa</option>
+                  </select>
+                </div>
+                <label className="flex min-w-20 flex-col justify-end">
+                  <span className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">Prioridade</span>
+                  <button
+                    type="button"
+                    onClick={() => updateRoomRequest(item.id, { required: item.required === false })}
+                    className={item.required === false
+                      ? "h-9 rounded-lg border bg-white px-2 text-[9px] font-semibold text-slate-500"
+                      : "h-9 rounded-lg border border-orange-300 bg-orange-50 px-2 text-[9px] font-bold text-orange-700"}
+                  >
+                    {item.required === false ? "Desejável" : "Obrigatório"}
+                  </button>
+                </label>
+              </div>
+
               <div className="mt-2 grid grid-cols-[1fr_1fr] gap-2">
                 <div>
                   <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">Quantidade</div>
