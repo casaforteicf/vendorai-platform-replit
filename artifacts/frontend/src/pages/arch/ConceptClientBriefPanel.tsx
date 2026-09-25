@@ -23,6 +23,7 @@ import {
   buildClientBriefPlan,
   buildProjectBriefSnapshot,
   buildDefaultRoomProgram,
+  buildRecommendedAccessRules,
   buildRecommendedAdjacencyRules,
   countBriefAlternativeErrors,
   rebalanceClientRoomProgramToDesiredArea,
@@ -323,6 +324,7 @@ export default function ConceptClientBriefPanel({
 
   const roomProgram = brief.roomProgram ?? [];
   const adjacencyRules = brief.adjacencyRules ?? [];
+  const accessRules = brief.accessRules ?? [];
 
   const updateBriefStructure = (recipe: (current: ClientBrief) => ClientBrief) => {
     setBrief((current) => {
@@ -333,6 +335,9 @@ export default function ConceptClientBriefPanel({
         ...next,
         roomProgram: nextProgram,
         adjacencyRules: (current.adjacencyRules ?? []).filter(
+          (rule) => validIds.has(rule.fromRequestId) && validIds.has(rule.toRequestId),
+        ),
+        accessRules: (current.accessRules ?? []).filter(
           (rule) => validIds.has(rule.fromRequestId) && validIds.has(rule.toRequestId),
         ),
       };
@@ -351,6 +356,9 @@ export default function ConceptClientBriefPanel({
       ...current,
       roomProgram: (current.roomProgram ?? []).filter((item) => item.id !== id),
       adjacencyRules: (current.adjacencyRules ?? []).filter(
+        (rule) => rule.fromRequestId !== id && rule.toRequestId !== id,
+      ),
+      accessRules: (current.accessRules ?? []).filter(
         (rule) => rule.fromRequestId !== id && rule.toRequestId !== id,
       ),
     }));
@@ -1238,6 +1246,7 @@ export default function ConceptClientBriefPanel({
             onClick={() => setBrief((current) => ({
               ...current,
               adjacencyRules: buildRecommendedAdjacencyRules(current),
+              accessRules: buildRecommendedAccessRules(current),
             }))}
             className="flex items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2.5 text-[10px] font-bold text-orange-700 disabled:opacity-40"
           >
@@ -1260,6 +1269,29 @@ export default function ConceptClientBriefPanel({
           <div className="rounded-lg bg-slate-50 p-2"><b>Próximo</b><br />mesmo setor e curta distância</div>
           <div className="rounded-lg bg-slate-50 p-2"><b>Afastado</b><br />protege privacidade/ruído</div>
         </div>
+
+        {accessRules.length > 0 && (
+          <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50 p-3">
+            <div className="text-[10px] font-bold text-blue-900">Grafo de circulação e portas</div>
+            <p className="mt-1 text-[9px] leading-4 text-blue-700">
+              Estas regras não medem apenas proximidade: definem acessos que precisam existir ou que são proibidos no projeto.
+            </p>
+            <div className="mt-2 space-y-1">
+              {accessRules.map((rule) => {
+                const from = roomProgram.find((item) => item.id === rule.fromRequestId)?.label ?? "Ambiente";
+                const to = roomProgram.find((item) => item.id === rule.toRequestId)?.label ?? "Ambiente";
+                return (
+                  <div key={rule.id} className="flex items-start gap-2 rounded-lg bg-white/80 px-2 py-1.5 text-[9px] text-slate-700">
+                    <span className={rule.mode === "required_direct" ? "font-bold text-emerald-700" : "font-bold text-red-600"}>
+                      {rule.mode === "required_direct" ? "PORTA OBRIGATÓRIA" : "ACESSO DIRETO PROIBIDO"}
+                    </span>
+                    <span className="min-w-0 flex-1">{from} ↔ {to}{rule.reason ? " · " + rule.reason : ""}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="space-y-2">
