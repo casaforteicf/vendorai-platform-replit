@@ -168,6 +168,32 @@ const specialistHousePlanSchema = z.object({
     futureNeeds: z.string().max(500).default(""),
     mustHave: z.string().max(700).default(""),
     avoid: z.string().max(500).default(""),
+    aestheticReferences: z.string().max(700).optional(),
+    preferredMaterials: z.string().max(500).optional(),
+    maintenancePreference: z.enum(["baixa", "equilibrada", "aceita_maior"]).optional(),
+    constructionMethod: z.enum(["nao_definido","icf","alvenaria","alvenaria_estrutural","steel_frame","wood_frame","concreto","pre_fabricado","hibrido"]).optional(),
+    budgetTarget: z.number().min(0).max(100000000).optional(),
+  }).optional(),
+  household: z.object({
+    residents: z.number().int().min(1).max(12).optional(),
+    children: z.number().int().min(0).max(8).optional(),
+    elderly: z.number().int().min(0).max(6).optional(),
+    pets: z.boolean().optional(),
+    accessibilityNeeds: z.boolean().optional(),
+    workFromHome: z.enum(["nao","ocasional","frequente"]).optional(),
+    hostingFrequency: z.enum(["baixa","media","alta"]).optional(),
+    cookingProfile: z.enum(["pratico","cotidiano","intenso"]).optional(),
+    routineNotes: z.string().max(700).optional(),
+  }).optional(),
+  siteContext: z.object({
+    frontSide: z.enum(["top","bottom","left","right"]).optional(),
+    northSide: z.enum(["top","bottom","left","right","nao_informado"]).optional(),
+    topography: z.enum(["plano","declive","aclive","irregular","nao_informado"]).optional(),
+    desiredViews: z.string().max(500).optional(),
+    avoidViews: z.string().max(500).optional(),
+    privacyNotes: z.string().max(500).optional(),
+    existingElements: z.string().max(700).optional(),
+    climateNotes: z.string().max(500).optional(),
   }).optional(),
   rooms: z.array(z.object({
     id: z.string().min(1),
@@ -1116,6 +1142,19 @@ BRIEFING OBJETIVO: ${JSON.stringify(input.brief)}
 PROGRAMA DE NECESSIDADES DECLARADO PELO CLIENTE: ${JSON.stringify(input.brief.roomProgram ?? [])}
 GRAFO DE RELAÇÕES ENTRE AMBIENTES: ${JSON.stringify(input.brief.adjacencyRules ?? [])}
 VISÃO / DNA DO CLIENTE: ${JSON.stringify(input.vision ?? {})}
+CONTEXTO FAMILIAR E ROTINA: ${JSON.stringify(input.household ?? {})}
+CONTEXTO DO TERRENO: ${JSON.stringify(input.siteContext ?? {})}
+
+INTERPRETAÇÃO OBRIGATÓRIA DO BRIEFING:
+- trate número/perfil dos moradores e rotina como condicionantes espaciais, não como texto decorativo;
+- se houver idosos ou necessidade de acessibilidade, reduza barreiras, evite dependência desnecessária de escadas e preserve circulação adequada;
+- home office frequente deve receber localização, privacidade e iluminação compatíveis;
+- frequência de receber pessoas e intensidade de uso da cozinha devem influenciar área social, cozinha, gourmet e fluxos;
+- use norte, topografia, vistas e privacidade do terreno para orientar implantação, aberturas e setorização quando informados;
+- referências estéticas e materiais orientam linguagem e DNA, mas nunca podem quebrar funcionalidade;
+- método construtivo deve orientar racionalidade geométrica e repetição/modulação quando aplicável;
+- orçamento-alvo e estratégia de custo devem limitar complexidade gratuita de perímetro, vãos, recortes e cobertura;
+- necessidades futuras devem gerar flexibilidade real sempre que possível, sem criar cômodos não solicitados.
 
 PROGRAMA FIXO DE AMBIENTES:
 ${JSON.stringify(program)}
@@ -1174,7 +1213,11 @@ Responda SOMENTE JSON válido:
       "spatialStrategy": "estratégia espacial",
       "volumeStrategy": "direção volumétrica",
       "roofStrategy": "direção de cobertura",
-      "materialIntent": "intenção material sem inventar produto específico"
+      "materialIntent": "intenção material sem inventar produto específico",
+      "lifestyleIntent": "como rotina e perfil familiar influenciaram o projeto",
+      "siteIntent": "como terreno, orientação, vistas e privacidade influenciaram a solução",
+      "costIntent": "como orçamento e método construtivo orientaram a racionalidade",
+      "futureFlexibilityIntent": "como necessidades futuras foram consideradas"
     },
     "experienceStrategy": ["decisão espacial 1", "decisão espacial 2"],
     "daylightStrategy": ["decisão de iluminação natural 1"],
