@@ -27,6 +27,8 @@ export type ClientRoomRequest = {
   label: string;
   quantity: number;
   targetArea: number;
+  preferredWidth?: number;
+  preferredDepth?: number;
   floorPreference?: "terreo" | "superior" | "qualquer";
   required?: boolean;
   notes?: string;
@@ -88,6 +90,22 @@ export function validateClientRoomProgram(
     }
     if (!Number.isFinite(item.targetArea) || item.targetArea < 2.4) {
       errors.push(`${item.label || "Ambiente"} precisa ter uma metragem válida.`);
+    }
+    const preferredWidth = Number(item.preferredWidth);
+    const preferredDepth = Number(item.preferredDepth);
+    if (Number.isFinite(preferredWidth) && preferredWidth > 0 && preferredWidth < 1.2) {
+      errors.push(`${item.label}: largura desejada muito pequena (${preferredWidth.toFixed(2)} m).`);
+    }
+    if (Number.isFinite(preferredDepth) && preferredDepth > 0 && preferredDepth < 1.2) {
+      errors.push(`${item.label}: profundidade desejada muito pequena (${preferredDepth.toFixed(2)} m).`);
+    }
+    if (Number.isFinite(preferredWidth) && preferredWidth > 0 && Number.isFinite(preferredDepth) && preferredDepth > 0) {
+      const dimensionArea = preferredWidth * preferredDepth;
+      if (Math.abs(dimensionArea - item.targetArea) / Math.max(1, item.targetArea) > 0.22) {
+        warnings.push(
+          `${item.label}: ${preferredWidth.toFixed(2)} × ${preferredDepth.toFixed(2)} m resulta em ${dimensionArea.toFixed(1)} m², diferente da meta de ${item.targetArea.toFixed(1)} m².`,
+        );
+      }
     }
   }
 
@@ -259,8 +277,21 @@ export function buildDefaultRoomProgram(brief: Pick<ClientBrief,
   ];
 }
 
-function roomDimensionsForArea(kind: ClientRoomRequestKind, area: number) {
+function roomDimensionsForArea(
+  kind: ClientRoomRequestKind,
+  area: number,
+  preferredWidth?: number,
+  preferredDepth?: number,
+) {
   const safeArea = Math.max(kind === "banheiro" ? 2.4 : 4, Math.min(kind === "garagem" ? 90 : 70, area));
+  const requestedWidth = Number(preferredWidth);
+  const requestedDepth = Number(preferredDepth);
+  if (Number.isFinite(requestedWidth) && requestedWidth >= 1.2 && Number.isFinite(requestedDepth) && requestedDepth >= 1.2) {
+    return {
+      width: Math.round(requestedWidth * 100) / 100,
+      depth: Math.round(requestedDepth * 100) / 100,
+    };
+  }
   const preferredWidth: Partial<Record<ClientRoomRequestKind, number>> = {
     banheiro: 2.0,
     lavanderia: 2.4,
@@ -294,7 +325,12 @@ function expandRoomProgram(brief: ClientBrief) {
     const quantity = Math.max(0, Math.min(8, Math.round(Number(request.quantity) || 0)));
     if (!quantity) return [];
     return Array.from({ length: quantity }, (_, index) => {
-      const dims = roomDimensionsForArea(request.kind, Number(request.targetArea) || 8);
+      const dims = roomDimensionsForArea(
+        request.kind,
+        Number(request.targetArea) || 8,
+        request.preferredWidth,
+        request.preferredDepth,
+      );
       const numbered = quantity > 1;
       const floorFlexible = request.floorPreference === "qualquer" && brief.floors > 1;
       const privateKind = request.kind === "suite" || request.kind === "quarto"
@@ -314,6 +350,9 @@ function expandRoomProgram(brief: ClientBrief) {
         x: 0,
         y: 0,
         targetArea: Math.round((Number(request.targetArea) || dims.width * dims.depth) * 100) / 100,
+        targetWidth: Number.isFinite(Number(request.preferredWidth)) ? Number(request.preferredWidth) : undefined,
+        targetDepth: Number.isFinite(Number(request.preferredDepth)) ? Number(request.preferredDepth) : undefined,
+        programNotes: request.notes?.trim() || undefined,
         required: request.required !== false,
         programRequestId: request.id,
         floorFlexible,
