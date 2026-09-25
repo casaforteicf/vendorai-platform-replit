@@ -4,6 +4,7 @@ import { db, generatedSitesTable, siteGenerationJobsTable, businessProfilesTable
 import type { SiteGeneratorConfig, SiteGeneratorProduct } from "@workspace/db";
 import Anthropic from "@anthropic-ai/sdk";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
+import { injectArqdorSiteButton } from "./arqdor_public_link.js";
 import { SITE_GENERATOR_SYSTEM_PROMPT, extractHtmlDocument, prepareSiteHtml, validateSiteHtml } from "../lib/site-html-quality.js";
 import { computeSiteSeoScore } from "../lib/site-seo-analysis.js";
 import { ensureRequiredImagesInHtml, normalizeRequiredImageUrls } from "../lib/site-required-images.js";
@@ -120,7 +121,7 @@ publicSiteGeneratorRouter.get("/sites/:siteSlug", async (req, res) => {
 
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader("X-Frame-Options", "SAMEORIGIN");
-  res.send(injectTenantMarketingTags(site.html, siteTenant ?? {}));
+  res.send(await injectArqdorSiteButton(injectTenantMarketingTags(site.html, siteTenant ?? {}), site.tenantId));
 });
 
 publicSiteGeneratorRouter.get("/public/:tenantSlug/site-html", async (req, res) => {
@@ -149,7 +150,7 @@ publicSiteGeneratorRouter.get("/public/:tenantSlug/site-html", async (req, res) 
       .limit(1);
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("X-Frame-Options", "SAMEORIGIN");
-    res.send(injectTenantMarketingTags(siteBySlug.html, tenantForSlug ?? {}));
+    res.send(await injectArqdorSiteButton(injectTenantMarketingTags(siteBySlug.html, tenantForSlug ?? {}), siteBySlug.tenantId));
     return;
   }
 
@@ -177,7 +178,7 @@ publicSiteGeneratorRouter.get("/public/:tenantSlug/site-html", async (req, res) 
 
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader("X-Frame-Options", "SAMEORIGIN");
-  res.send(injectTenantMarketingTags(site.html, tenant));
+  res.send(await injectArqdorSiteButton(injectTenantMarketingTags(site.html, tenant), tenant.id));
 });
 
 const router: IRouter = Router();
