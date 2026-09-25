@@ -126,6 +126,15 @@ const specialistHousePlanSchema = z.object({
     integratedKitchen: z.boolean(),
     privateAwaySocial: z.boolean(),
   }),
+  vision: z.object({
+    lifestyle: z.enum(["familia", "receber", "tranquilidade", "praticidade", "misto"]),
+    protagonist: z.enum(["social", "cozinha", "gourmet", "suite", "jardim"]),
+    priorities: z.array(z.enum(["luz_natural", "privacidade", "integracao", "natureza", "armazenamento", "flexibilidade"])).max(6),
+    budgetStrategy: z.enum(["otimizar", "equilibrar", "priorizar_experiencia"]),
+    futureNeeds: z.string().max(500).default(""),
+    mustHave: z.string().max(700).default(""),
+    avoid: z.string().max(500).default(""),
+  }).optional(),
   rooms: z.array(z.object({
     id: z.string().min(1),
     kind: z.string().min(1),
@@ -780,7 +789,20 @@ Pense como arquiteto, não como gerador de retângulos. Considere:
 - todos os ambientes dentro do lote.
 
 LOTE: ${input.lotWidth} m x ${input.lotDepth} m.
-BRIEFING: ${JSON.stringify(input.brief)}
+BRIEFING OBJETIVO: ${JSON.stringify(input.brief)}
+VISÃO DO CLIENTE / COMO ELE QUER VIVER A CASA: ${JSON.stringify(input.vision ?? {})}
+
+A VISÃO DO CLIENTE É PARTE DO PROJETO, NÃO UMA OBSERVAÇÃO DECORATIVA.
+Traduza desejos subjetivos em decisões espaciais concretas. Exemplos:
+- "receber amigos" deve influenciar relações sala/cozinha/gourmet/lavabo/lazer;
+- "privacidade" deve influenciar acessos, visadas e separação do setor íntimo;
+- "luz natural" deve influenciar perímetro, aberturas possíveis e profundidade dos ambientes;
+- "contato com natureza" deve aproximar ambientes protagonistas de jardim, pátio ou lazer;
+- "flexibilidade" deve favorecer ambientes reversíveis e circulação neutra;
+- "otimizar custo" deve reduzir recortes, perímetro, corredores e dispersão de áreas molhadas;
+- tudo que estiver em mustHave é requisito prioritário;
+- tudo que estiver em avoid deve ser evitado explicitamente.
+
 PROGRAMA FIXO DE AMBIENTES (use exatamente estes IDs e pavimentos; não invente nem remova ambientes):
 ${JSON.stringify(program)}
 
@@ -798,6 +820,7 @@ Responda APENAS JSON válido:
       "title": "nome curto",
       "description": "diferença espacial principal",
       "designRationale": "explicação arquitetônica objetiva",
+      "clientFitSummary": "como esta solução traduz a rotina, desejos e prioridades específicas do cliente",
       "roomPatches": [
         { "id": "ID_EXISTENTE", "x": 0, "y": 0, "width": 3.2, "depth": 3.0 }
       ],
@@ -884,6 +907,7 @@ REGRAS INEGOCIÁVEIS:
           id: String(plan.id),
           title: String(plan.title ?? plan.id),
           description: String(plan.description ?? ""),
+          clientFitSummary: String(plan.clientFitSummary ?? "").slice(0, 700),
           ...sanitized,
         });
       }
