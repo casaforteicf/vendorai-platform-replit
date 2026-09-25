@@ -5,6 +5,7 @@ import {
   CarFront,
   ChefHat,
   Check,
+  ChevronDown,
   Home,
   Laptop,
   Layers3,
@@ -273,6 +274,7 @@ export default function ConceptClientBriefPanel({
   const [alternatives, setAlternatives] = useState<ClientBriefAlternative[]>([]);
   const [generating, setGenerating] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
+  const [expandedRoomId, setExpandedRoomId] = useState<string | null>(null);
   const [intervention, setIntervention] = useState<"preservar" | "otimizar" | "valorizar" | "assinatura">(
     () => initialProjectBrief?.intervention ?? "valorizar",
   );
@@ -791,183 +793,217 @@ export default function ConceptClientBriefPanel({
         </div>
 
         <div className="mt-3 space-y-2">
-          {roomProgram.map((item) => (
-            <div key={item.id} className="rounded-xl border bg-white p-3">
-              <div className="flex items-center gap-2">
-                <input
-                  value={item.label}
-                  onChange={(event) => updateRoomRequest(item.id, { label: event.target.value.slice(0, 120) })}
-                  className="min-w-0 flex-1 rounded-lg border px-2.5 py-2 text-[11px] font-bold text-slate-800 outline-none focus:border-orange-400"
-                  aria-label="Nome do ambiente"
-                />
-                <button
-                  type="button"
-                  onClick={() => removeRoomRequest(item.id)}
-                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border text-slate-400 hover:border-red-200 hover:bg-red-50 hover:text-red-600"
-                  aria-label={`Remover ${item.label}`}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
-
-              <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
-                <div>
-                  <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">Tipo de ambiente</div>
-                  <select
-                    value={item.kind}
-                    onChange={(event) => updateRoomRequest(item.id, { kind: event.target.value as ClientRoomRequest["kind"] })}
-                    className="h-9 w-full rounded-lg border bg-white px-2 text-[10px] font-semibold text-slate-700 outline-none focus:border-orange-400"
-                  >
-                    <option value="sala">Sala / estar / jantar</option>
-                    <option value="cozinha">Cozinha</option>
-                    <option value="suite">Suíte</option>
-                    <option value="quarto">Quarto</option>
-                    <option value="banheiro">Banheiro / lavabo</option>
-                    <option value="lavanderia">Lavanderia</option>
-                    <option value="garagem">Garagem</option>
-                    <option value="gourmet">Gourmet</option>
-                    <option value="piscina">Piscina</option>
-                    <option value="outro">Outro / closet / despensa</option>
-                  </select>
-                </div>
-                <label className="flex min-w-20 flex-col justify-end">
-                  <span className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">Prioridade</span>
+          {roomProgram.map((item) => {
+            const expanded = expandedRoomId === item.id;
+            return (
+              <div key={item.id} className="rounded-xl border bg-white p-3">
+                <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => updateRoomRequest(item.id, { required: item.required === false })}
-                    className={item.required === false
-                      ? "h-9 rounded-lg border bg-white px-2 text-[9px] font-semibold text-slate-500"
-                      : "h-9 rounded-lg border border-orange-300 bg-orange-50 px-2 text-[9px] font-bold text-orange-700"}
+                    onClick={() => setExpandedRoomId(expanded ? null : item.id)}
+                    className="min-w-0 flex-1 text-left"
                   >
-                    {item.required === false ? "Desejável" : "Obrigatório"}
+                    <div className="truncate text-[11px] font-bold text-slate-800">{item.label}</div>
+                    <div className="mt-0.5 text-[9px] text-slate-500">
+                      {item.quantity}× · {item.targetArea.toFixed(1)} m² cada
+                      {item.preferredWidth && item.preferredDepth
+                        ? ` · ${item.preferredWidth.toFixed(1)} × ${item.preferredDepth.toFixed(1)} m`
+                        : ""}
+                      {item.required === false ? " · desejável" : " · obrigatório"}
+                    </div>
                   </button>
-                </label>
-              </div>
+                  <button
+                    type="button"
+                    onClick={() => setExpandedRoomId(expanded ? null : item.id)}
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border text-slate-500"
+                    aria-label={expanded ? `Fechar detalhes de ${item.label}` : `Editar ${item.label}`}
+                  >
+                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeRoomRequest(item.id)}
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border text-slate-400 hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+                    aria-label={`Remover ${item.label}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
 
-              <div className="mt-2 grid grid-cols-[1fr_1fr] gap-2">
-                <div>
-                  <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">Quantidade</div>
-                  <div className="flex h-9 items-center overflow-hidden rounded-lg border">
-                    <button
-                      type="button"
-                      onClick={() => updateRoomRequest(item.id, { quantity: Math.max(1, item.quantity - 1) })}
-                      className="grid h-full w-9 place-items-center text-slate-500 hover:bg-slate-50"
-                    >
-                      <Minus className="h-3.5 w-3.5" />
-                    </button>
-                    <div className="flex-1 text-center text-xs font-bold text-slate-800">{item.quantity}</div>
-                    <button
-                      type="button"
-                      onClick={() => updateRoomRequest(item.id, { quantity: Math.min(8, item.quantity + 1) })}
-                      className="grid h-full w-9 place-items-center text-slate-500 hover:bg-slate-50"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">m² por ambiente</div>
-                  <div className="flex h-9 items-center rounded-lg border px-2">
-                    <input
-                      type="number"
-                      min={2.4}
-                      max={120}
-                      step={0.5}
-                      value={item.targetArea}
-                      onChange={(event) => {
-                        const value = Number(event.target.value);
-                        if (Number.isFinite(value)) updateRoomRequest(item.id, { targetArea: Math.max(2.4, Math.min(120, value)) });
-                      }}
-                      className="min-w-0 flex-1 bg-transparent text-right text-xs font-bold text-slate-800 outline-none"
-                    />
-                    <span className="ml-1 text-[10px] text-slate-400">m²</span>
-                  </div>
-                </div>
-              </div>
+                {expanded && (
+                  <div className="mt-3 border-t pt-3">
+                    <div>
+                      <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">Nome do ambiente</div>
+                      <input
+                        value={item.label}
+                        onChange={(event) => updateRoomRequest(item.id, { label: event.target.value.slice(0, 120) })}
+                        className="h-9 w-full rounded-lg border px-2.5 text-[11px] font-bold text-slate-800 outline-none focus:border-orange-400"
+                      />
+                    </div>
 
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                <div>
-                  <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">Largura desejada</div>
-                  <div className="flex h-9 items-center rounded-lg border px-2">
-                    <input
-                      type="number"
-                      min={1.2}
-                      max={30}
-                      step={0.1}
-                      value={item.preferredWidth ?? ""}
-                      placeholder="IA"
-                      onChange={(event) => {
-                        const raw = event.target.value;
-                        updateRoomRequest(item.id, {
-                          preferredWidth: raw === "" ? undefined : Math.max(1.2, Math.min(30, Number(raw))),
-                        });
-                      }}
-                      className="min-w-0 flex-1 bg-transparent text-right text-xs font-bold text-slate-800 outline-none"
-                    />
-                    <span className="ml-1 text-[10px] text-slate-400">m</span>
-                  </div>
-                </div>
-                <div>
-                  <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">Profundidade</div>
-                  <div className="flex h-9 items-center rounded-lg border px-2">
-                    <input
-                      type="number"
-                      min={1.2}
-                      max={30}
-                      step={0.1}
-                      value={item.preferredDepth ?? ""}
-                      placeholder="IA"
-                      onChange={(event) => {
-                        const raw = event.target.value;
-                        updateRoomRequest(item.id, {
-                          preferredDepth: raw === "" ? undefined : Math.max(1.2, Math.min(30, Number(raw))),
-                        });
-                      }}
-                      className="min-w-0 flex-1 bg-transparent text-right text-xs font-bold text-slate-800 outline-none"
-                    />
-                    <span className="ml-1 text-[10px] text-slate-400">m</span>
-                  </div>
-                </div>
-              </div>
+                    <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
+                      <div>
+                        <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">Tipo de ambiente</div>
+                        <select
+                          value={item.kind}
+                          onChange={(event) => updateRoomRequest(item.id, { kind: event.target.value as ClientRoomRequest["kind"] })}
+                          className="h-9 w-full rounded-lg border bg-white px-2 text-[10px] font-semibold text-slate-700 outline-none focus:border-orange-400"
+                        >
+                          <option value="sala">Sala / estar / jantar</option>
+                          <option value="cozinha">Cozinha</option>
+                          <option value="suite">Suíte</option>
+                          <option value="quarto">Quarto</option>
+                          <option value="banheiro">Banheiro / lavabo</option>
+                          <option value="lavanderia">Lavanderia</option>
+                          <option value="garagem">Garagem</option>
+                          <option value="gourmet">Gourmet</option>
+                          <option value="piscina">Piscina</option>
+                          <option value="outro">Outro / closet / despensa</option>
+                        </select>
+                      </div>
+                      <label className="flex min-w-20 flex-col justify-end">
+                        <span className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">Prioridade</span>
+                        <button
+                          type="button"
+                          onClick={() => updateRoomRequest(item.id, { required: item.required === false })}
+                          className={item.required === false
+                            ? "h-9 rounded-lg border bg-white px-2 text-[9px] font-semibold text-slate-500"
+                            : "h-9 rounded-lg border border-orange-300 bg-orange-50 px-2 text-[9px] font-bold text-orange-700"}
+                        >
+                          {item.required === false ? "Desejável" : "Obrigatório"}
+                        </button>
+                      </label>
+                    </div>
 
-              <div className="mt-2">
-                <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">O que este ambiente precisa ter?</div>
-                <input
-                  value={item.notes ?? ""}
-                  onChange={(event) => updateRoomRequest(item.id, { notes: event.target.value.slice(0, 300) })}
-                  placeholder="Ex.: cama king + TV, ilha para 4 lugares, janela para o jardim..."
-                  className="h-9 w-full rounded-lg border px-2.5 text-[10px] text-slate-700 outline-none focus:border-orange-400"
-                />
-              </div>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <div>
+                        <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">Quantidade</div>
+                        <div className="flex h-9 items-center overflow-hidden rounded-lg border">
+                          <button
+                            type="button"
+                            onClick={() => updateRoomRequest(item.id, { quantity: Math.max(1, item.quantity - 1) })}
+                            className="grid h-full w-9 place-items-center text-slate-500 hover:bg-slate-50"
+                          >
+                            <Minus className="h-3.5 w-3.5" />
+                          </button>
+                          <div className="flex-1 text-center text-xs font-bold text-slate-800">{item.quantity}</div>
+                          <button
+                            type="button"
+                            onClick={() => updateRoomRequest(item.id, { quantity: Math.min(8, item.quantity + 1) })}
+                            className="grid h-full w-9 place-items-center text-slate-500 hover:bg-slate-50"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                      <div>
+                        <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">m² por ambiente</div>
+                        <div className="flex h-9 items-center rounded-lg border px-2">
+                          <input
+                            type="number"
+                            min={2.4}
+                            max={120}
+                            step={0.5}
+                            value={item.targetArea}
+                            onChange={(event) => {
+                              const value = Number(event.target.value);
+                              if (Number.isFinite(value)) updateRoomRequest(item.id, { targetArea: Math.max(2.4, Math.min(120, value)) });
+                            }}
+                            className="min-w-0 flex-1 bg-transparent text-right text-xs font-bold text-slate-800 outline-none"
+                          />
+                          <span className="ml-1 text-[10px] text-slate-400">m²</span>
+                        </div>
+                      </div>
+                    </div>
 
-              {brief.floors > 1 && (
-                <div className="mt-2">
-                  <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">Pavimento preferido</div>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {([
-                      ["terreo", "Térreo"],
-                      ["superior", "Superior"],
-                      ["qualquer", "IA decide"],
-                    ] as const).map(([value, label]) => (
-                      <button
-                        key={value}
-                        type="button"
-                        onClick={() => updateRoomRequest(item.id, { floorPreference: value })}
-                        className={item.floorPreference === value
-                          ? "rounded-lg border border-orange-400 bg-orange-50 px-2 py-1.5 text-[9px] font-bold text-orange-700"
-                          : "rounded-lg border bg-white px-2 py-1.5 text-[9px] font-semibold text-slate-500"}
-                      >
-                        {label}
-                      </button>
-                    ))}
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <div>
+                        <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">Largura desejada</div>
+                        <div className="flex h-9 items-center rounded-lg border px-2">
+                          <input
+                            type="number"
+                            min={1.2}
+                            max={30}
+                            step={0.1}
+                            value={item.preferredWidth ?? ""}
+                            placeholder="IA"
+                            onChange={(event) => {
+                              const raw = event.target.value;
+                              updateRoomRequest(item.id, {
+                                preferredWidth: raw === "" ? undefined : Math.max(1.2, Math.min(30, Number(raw))),
+                              });
+                            }}
+                            className="min-w-0 flex-1 bg-transparent text-right text-xs font-bold text-slate-800 outline-none"
+                          />
+                          <span className="ml-1 text-[10px] text-slate-400">m</span>
+                        </div>
+                      </div>
+                      <div>
+                        <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">Profundidade</div>
+                        <div className="flex h-9 items-center rounded-lg border px-2">
+                          <input
+                            type="number"
+                            min={1.2}
+                            max={30}
+                            step={0.1}
+                            value={item.preferredDepth ?? ""}
+                            placeholder="IA"
+                            onChange={(event) => {
+                              const raw = event.target.value;
+                              updateRoomRequest(item.id, {
+                                preferredDepth: raw === "" ? undefined : Math.max(1.2, Math.min(30, Number(raw))),
+                              });
+                            }}
+                            className="min-w-0 flex-1 bg-transparent text-right text-xs font-bold text-slate-800 outline-none"
+                          />
+                          <span className="ml-1 text-[10px] text-slate-400">m</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-2">
+                      <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">O que este ambiente precisa ter?</div>
+                      <input
+                        value={item.notes ?? ""}
+                        onChange={(event) => updateRoomRequest(item.id, { notes: event.target.value.slice(0, 300) })}
+                        placeholder="Ex.: cama king + TV, ilha para 4 lugares, janela para o jardim..."
+                        className="h-9 w-full rounded-lg border px-2.5 text-[10px] text-slate-700 outline-none focus:border-orange-400"
+                      />
+                    </div>
+
+                    {brief.floors > 1 && (
+                      <div className="mt-2">
+                        <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">Pavimento preferido</div>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {([
+                            ["terreo", "Térreo"],
+                            ["superior", "Superior"],
+                            ["qualquer", "IA decide"],
+                          ] as const).map(([value, label]) => (
+                            <button
+                              key={value}
+                              type="button"
+                              onClick={() => updateRoomRequest(item.id, { floorPreference: value })}
+                              className={item.floorPreference === value
+                                ? "rounded-lg border border-orange-400 bg-orange-50 px-2 py-1.5 text-[9px] font-bold text-orange-700"
+                                : "rounded-lg border bg-white px-2 py-1.5 text-[9px] font-semibold text-slate-500"}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
-            </div>
-          ))}
+                )}
+              </div>
+            );
+          })}
         </div>
 
         <button
+          type="button"
+          onClick={addRoomRequest}        <button
           type="button"
           onClick={addRoomRequest}
           className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-orange-300 bg-white px-3 py-2.5 text-[11px] font-bold text-orange-700 hover:bg-orange-50"
