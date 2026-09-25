@@ -8,15 +8,21 @@ import {
   Home,
   Laptop,
   Layers3,
+  Minus,
+  Plus,
+  Ruler,
   Sparkles,
+  Trash2,
   Waves,
   type LucideIcon,
 } from "lucide-react";
 import {
   buildClientBriefAlternatives,
   buildClientBriefPlan,
+  buildDefaultRoomProgram,
   countBriefAlternativeErrors,
   type ClientBrief,
+  type ClientRoomRequest,
   type ClientBriefAlternative,
   type ClientVision,
   type ProjectBriefSnapshot,
@@ -35,7 +41,7 @@ type Props = {
   };
 };
 
-const DEFAULT_BRIEF: ClientBrief = {
+const DEFAULT_BRIEF_BASE: ClientBrief = {
   bedrooms: 3,
   suites: 1,
   floors: 1,
@@ -45,6 +51,12 @@ const DEFAULT_BRIEF: ClientBrief = {
   office: false,
   integratedKitchen: true,
   privateAwaySocial: true,
+  desiredAreaTotal: 180,
+};
+
+const DEFAULT_BRIEF: ClientBrief = {
+  ...DEFAULT_BRIEF_BASE,
+  roomProgram: buildDefaultRoomProgram(DEFAULT_BRIEF_BASE),
 };
 
 const DEFAULT_VISION: ClientVision = {
@@ -213,7 +225,16 @@ export default function ConceptClientBriefPanel({
   onImproveCurrent,
   placement,
 }: Props) {
-  const [brief, setBrief] = useState<ClientBrief>(() => initialProjectBrief?.brief ?? DEFAULT_BRIEF);
+  const [brief, setBrief] = useState<ClientBrief>(() => {
+    const initial = initialProjectBrief?.brief ?? DEFAULT_BRIEF;
+    return {
+      ...initial,
+      desiredAreaTotal: initial.desiredAreaTotal ?? DEFAULT_BRIEF.desiredAreaTotal,
+      roomProgram: Array.isArray(initial.roomProgram) && initial.roomProgram.length
+        ? initial.roomProgram
+        : buildDefaultRoomProgram(initial),
+    };
+  });
   const [vision, setVision] = useState<ClientVision>(() => initialProjectBrief?.vision ?? DEFAULT_VISION);
   const [dreamStep, setDreamStep] = useState(0);
   const [showAlternatives, setShowAlternatives] = useState(false);
@@ -222,6 +243,48 @@ export default function ConceptClientBriefPanel({
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [intervention, setIntervention] = useState<"preservar" | "otimizar" | "valorizar" | "assinatura">(
     () => initialProjectBrief?.intervention ?? "valorizar",
+  );
+
+  const roomProgram = brief.roomProgram ?? [];
+
+  const updateRoomRequest = (id: string, patch: Partial<ClientRoomRequest>) => {
+    setBrief((current) => ({
+      ...current,
+      roomProgram: (current.roomProgram ?? []).map((item) => item.id === id ? { ...item, ...patch } : item),
+    }));
+  };
+
+  const removeRoomRequest = (id: string) => {
+    setBrief((current) => ({
+      ...current,
+      roomProgram: (current.roomProgram ?? []).filter((item) => item.id !== id),
+    }));
+  };
+
+  const addRoomRequest = () => {
+    const id = typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `custom-room-${Date.now()}`;
+    setBrief((current) => ({
+      ...current,
+      roomProgram: [
+        ...(current.roomProgram ?? []),
+        {
+          id,
+          kind: "outro",
+          label: "Novo ambiente",
+          quantity: 1,
+          targetArea: 10,
+          floorPreference: current.floors === 2 ? "qualquer" : "terreo",
+          required: true,
+        },
+      ],
+    }));
+  };
+
+  const requestedProgramArea = useMemo(
+    () => roomProgram.reduce((sum, item) => sum + Math.max(0, item.quantity) * Math.max(0, item.targetArea), 0),
+    [roomProgram],
   );
 
   const summary = useMemo(() => {
@@ -233,6 +296,7 @@ export default function ConceptClientBriefPanel({
       brief.gourmet ? "gourmet" : null,
       brief.pool ? "piscina" : null,
       brief.office ? "escritório" : null,
+      brief.desiredAreaTotal ? `meta ${Math.round(brief.desiredAreaTotal)} m²` : null,
     ].filter(Boolean);
     return items.join(" · ");
   }, [brief]);
@@ -584,6 +648,153 @@ export default function ConceptClientBriefPanel({
           helper="Adiciona um ambiente dedicado para trabalho."
           onClick={() => setBrief((current) => ({ ...current, office: !current.office }))}
         />
+      </section>
+
+      <section className="rounded-2xl border border-orange-200 bg-orange-50/40 p-4 shadow-sm">
+        <div className="flex items-start gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-orange-500 text-white">
+            <Ruler className="h-4 w-4" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-bold text-slate-900">Programa de necessidades e metragens</div>
+            <p className="mt-1 text-[10px] leading-4 text-slate-600">
+              Informe exatamente os ambientes desejados. A metragem é uma meta por ambiente; a IA pode ajustar levemente para encaixar o projeto, mas não deve ignorar o programa.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-xl border bg-white p-3">
+          <label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">
+            Área construída desejada
+          </label>
+          <div className="mt-2 flex items-center gap-2">
+            <input
+              type="number"
+              min={40}
+              max={1200}
+              step={5}
+              value={brief.desiredAreaTotal ?? ""}
+              onChange={(event) => {
+                const value = Number(event.target.value);
+                setBrief((current) => ({
+                  ...current,
+                  desiredAreaTotal: Number.isFinite(value) ? Math.max(40, Math.min(1200, value)) : undefined,
+                }));
+              }}
+              className="w-28 rounded-lg border px-3 py-2 text-sm font-bold text-slate-900 outline-none focus:border-orange-400"
+            />
+            <span className="text-xs font-semibold text-slate-500">m²</span>
+            <span className="ml-auto text-[10px] text-slate-500">
+              Ambientes somam ≈ {Math.round(requestedProgramArea)} m²
+            </span>
+          </div>
+          {brief.desiredAreaTotal && requestedProgramArea > brief.desiredAreaTotal * 0.9 && (
+            <p className="mt-2 text-[10px] leading-4 text-amber-700">
+              A soma dos ambientes já ocupa grande parte da área desejada. A IA ainda precisa reservar paredes e circulação.
+            </p>
+          )}
+        </div>
+
+        <div className="mt-3 space-y-2">
+          {roomProgram.map((item) => (
+            <div key={item.id} className="rounded-xl border bg-white p-3">
+              <div className="flex items-center gap-2">
+                <input
+                  value={item.label}
+                  onChange={(event) => updateRoomRequest(item.id, { label: event.target.value.slice(0, 120) })}
+                  className="min-w-0 flex-1 rounded-lg border px-2.5 py-2 text-[11px] font-bold text-slate-800 outline-none focus:border-orange-400"
+                  aria-label="Nome do ambiente"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeRoomRequest(item.id)}
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border text-slate-400 hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+                  aria-label={`Remover ${item.label}`}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+
+              <div className="mt-2 grid grid-cols-[1fr_1fr] gap-2">
+                <div>
+                  <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">Quantidade</div>
+                  <div className="flex h-9 items-center overflow-hidden rounded-lg border">
+                    <button
+                      type="button"
+                      onClick={() => updateRoomRequest(item.id, { quantity: Math.max(1, item.quantity - 1) })}
+                      className="grid h-full w-9 place-items-center text-slate-500 hover:bg-slate-50"
+                    >
+                      <Minus className="h-3.5 w-3.5" />
+                    </button>
+                    <div className="flex-1 text-center text-xs font-bold text-slate-800">{item.quantity}</div>
+                    <button
+                      type="button"
+                      onClick={() => updateRoomRequest(item.id, { quantity: Math.min(8, item.quantity + 1) })}
+                      className="grid h-full w-9 place-items-center text-slate-500 hover:bg-slate-50"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">m² por ambiente</div>
+                  <div className="flex h-9 items-center rounded-lg border px-2">
+                    <input
+                      type="number"
+                      min={2.4}
+                      max={120}
+                      step={0.5}
+                      value={item.targetArea}
+                      onChange={(event) => {
+                        const value = Number(event.target.value);
+                        if (Number.isFinite(value)) updateRoomRequest(item.id, { targetArea: Math.max(2.4, Math.min(120, value)) });
+                      }}
+                      className="min-w-0 flex-1 bg-transparent text-right text-xs font-bold text-slate-800 outline-none"
+                    />
+                    <span className="ml-1 text-[10px] text-slate-400">m²</span>
+                  </div>
+                </div>
+              </div>
+
+              {brief.floors > 1 && (
+                <div className="mt-2">
+                  <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">Pavimento preferido</div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {([
+                      ["terreo", "Térreo"],
+                      ["superior", "Superior"],
+                      ["qualquer", "IA decide"],
+                    ] as const).map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => updateRoomRequest(item.id, { floorPreference: value })}
+                        className={item.floorPreference === value
+                          ? "rounded-lg border border-orange-400 bg-orange-50 px-2 py-1.5 text-[9px] font-bold text-orange-700"
+                          : "rounded-lg border bg-white px-2 py-1.5 text-[9px] font-semibold text-slate-500"}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          onClick={addRoomRequest}
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-orange-300 bg-white px-3 py-2.5 text-[11px] font-bold text-orange-700 hover:bg-orange-50"
+        >
+          <Plus className="h-4 w-4" />
+          Adicionar outro ambiente
+        </button>
+
+        <div className="mt-3 rounded-xl bg-slate-900 px-3 py-2.5 text-[10px] leading-4 text-white">
+          <span className="font-bold">Regra da IA:</span> este programa é a base do projeto. Circulação e escada podem ser criadas quando necessárias; os demais ambientes não devem aparecer por adivinhação.
+        </div>
       </section>
 
       <section className="space-y-2">
