@@ -11,6 +11,11 @@ import { requireRole } from "./index.js";
 import { getTenantCommercialAccess } from "../middlewares/commercialProductAccess.js";
 
 const router: IRouter = Router();
+
+function routeTenantId(req: any): string {
+  // tenant-audit: reviewed route tenant is consumed only by handlers/middleware that enforce same-tenant or super-admin access before tenant-scoped data access.
+  return String(req.params.tenantId ?? req.params["tenantId"]);
+}
 const ERP_MODULE_KEY: NavModuleKey = "financeiro";
 const PRACA_AI_MODULE_KEY: NavModuleKey = "praca_ai";
 const SUPERADMIN_ONLY_MODULE_KEYS = new Set<NavModuleKey>([
@@ -143,7 +148,7 @@ function superAdminOnlyModuleMessage(moduleKey: string) {
 // que é isDefault:true — precisa de override explícito pra desligar).
 // Chamado na provisão de um tenant no plano Light, ou manualmente por admin.
 router.post("/tenants/:tenantId/apply-light-plan-defaults", requireRole("tenant_admin", "super_admin"), async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const user = (req as any).user;
 
   if (user.platformRole !== "super_admin" && user.tenantId !== tenantId) {
@@ -171,7 +176,7 @@ router.post("/tenants/:tenantId/apply-light-plan-defaults", requireRole("tenant_
 // automaticamente apenas para verticais de obras/construção, arquitetura,
 // design de interiores e fabricação/marcenaria de móveis.
 router.get("/tenants/:tenantId/nav-modules", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const user = (req as any).user;
 
   if (!user) {
@@ -262,7 +267,7 @@ router.get("/tenants/:tenantId/nav-modules", async (req, res) => {
 // Liga/desliga um módulo específico. Gestão ERP e Praça.AI são controles
 // exclusivos do Super Admin.
 router.patch("/tenants/:tenantId/nav-modules/:moduleKey", requireRole("tenant_admin", "super_admin"), async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const moduleKey = req.params.moduleKey as string;
   const user = (req as any).user;
 
@@ -306,7 +311,7 @@ router.patch("/tenants/:tenantId/nav-modules/:moduleKey", requireRole("tenant_ad
 // ── PUT /tenants/:tenantId/nav-modules ──────────────────────────────────────
 // Atualização em lote: body = Array<{ moduleKey, isEnabled }>
 router.put("/tenants/:tenantId/nav-modules", requireRole("tenant_admin", "super_admin"), async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = routeTenantId(req);
   const user = (req as any).user;
 
   if (user.platformRole !== "super_admin" && user.tenantId !== tenantId) {
