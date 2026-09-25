@@ -235,6 +235,7 @@ type QualityDimensionKey =
   | "ergonomics"
   | "geometry"
   | "constructability"
+  | "furnitureFit"
   | "architecturalCoherence";
 
 type QualityDimension = {
@@ -393,8 +394,150 @@ function qualityDimensionForIssue(issue: string): QualityDimensionKey {
   if (low.includes("estreita") || low.includes("alongado") || low.includes("dimensões preferidas")) return "ergonomics";
   if (low.includes("metragem") || low.includes("área resultante") || low.includes("meta total")
     || low.includes("adjacência obrigatória") || low.includes("programa")) return "program";
+  if (low.includes("mobiliário") || low.includes("folga reduzida") || low.includes("abertura de portas")) return "furnitureFit";
   if (low.includes("lavanderia") || low.includes("compacta") || low.includes("perímetro")) return "constructability";
   return "architecturalCoherence";
+}
+
+type FurnitureFitItem = {
+  roomId: string;
+  label: string;
+  status: "approved" | "warning" | "blocked";
+  score: number;
+  requiredEnvelope: { width: number; depth: number };
+  actual: { width: number; depth: number };
+  furniture: string[];
+  issues: string[];
+};
+
+function roomFurnitureEnvelope(room: SpecialistPlanRoom): { width: number; depth: number; furniture: string[] } | null {
+  const notes = (room.programNotes ?? "").toLocaleLowerCase("pt-BR");
+  const label = (room.label ?? "").toLocaleLowerCase("pt-BR");
+
+  if (room.kind === "suite" || room.kind === "quarto") {
+    const king = /king/.test(notes);
+    const queen = /queen/.test(notes);
+    const bedW = king ? 1.93 : queen || room.kind === "suite" ? 1.60 : 0.90;
+    const bedD = king ? 2.03 : queen || room.kind === "suite" ? 2.00 : 1.90;
+    const wardrobeD = 0.60;
+    const sideClear = room.kind === "suite" ? 0.60 : 0.50;
+    const footClear = 0.70;
+    return {
+      width: Math.round((bedW + sideClear * 2) * 100) / 100,
+      depth: Math.round((bedD + wardrobeD + footClear) * 100) / 100,
+      furniture: [king ? "cama king" : queen || room.kind === "suite" ? "cama queen" : "cama", "roupeiro", "circulação"],
+    };
+  }
+
+  if (room.kind === "banheiro") {
+    const showerW = /banheira/.test(notes) ? 1.70 : 0.90;
+    return {
+      width: Math.max(1.40, showerW),
+      depth: /banheira/.test(notes) ? 2.70 : 2.20,
+      furniture: [/banheira/.test(notes) ? "banheira" : "box", "vaso", "lavatório", "circulação"],
+    };
+  }
+
+  if (room.kind === "cozinha") {
+    const island = /ilha/.test(notes);
+    return {
+      width: island ? 3.60 : 2.40,
+      depth: island ? 3.20 : 2.60,
+      furniture: island
+        ? ["bancada", "geladeira", "cooktop", "ilha", "circulação de 0,90 m"]
+        : ["bancada", "geladeira", "cooktop", "circulação"],
+    };
+  }
+
+  if (room.kind === "sala") {
+    const dining = /jantar/.test(label) || /mesa|jantar/.test(notes);
+    return {
+      width: dining ? 3.60 : 3.00,
+      depth: dining ? 4.40 : 3.40,
+      furniture: dining ? ["sofá", "TV", "mesa de jantar", "cadeiras", "circulação"] : ["sofá", "TV", "circulação"],
+    };
+  }
+
+  if (room.kind === "garagem") {
+    const twoCars = /2|duas|dois/.test(label);
+    const threeCars = /3|três|tres/.test(label);
+    const cars = threeCars ? 3 : twoCars ? 2 : 1;
+    return {
+      width: cars === 1 ? 3.00 : cars === 2 ? 5.50 : 8.00,
+      depth: 5.50,
+      furniture: [cars === 1 ? "1 veículo" : `${cars} veículos`, "abertura de portas", "passagem"],
+    };
+  }
+
+  if (room.kind === "lavanderia") {
+    return { width: 1.60, depth: 2.20, furniture: ["máquina", "tanque", "bancada", "circulação"] };
+  }
+
+  if (room.kind === "gourmet") {
+    return {
+      width: /ilha|mesa/.test(notes) ? 3.60 : 3.00,
+      depth: /ilha|mesa/.test(notes) ? 3.80 : 3.20,
+      furniture: ["bancada", "churrasqueira/cozinha", "mesa/assentos", "circulação"],
+    };
+  }
+
+  if (room.kind === "outro" && /escrit|office/.test(label + " " + notes)) {
+    return { width: 2.40, depth: 2.60, furniture: ["mesa 1,20 m", "cadeira", "armazenamento", "circulação"] };
+  }
+
+  return null;
+}
+
+function evaluateFurnitureFit(rooms: SpecialistPlanRoom[]) {
+  const items: FurnitureFitItem[] = [];
+  for (const room of rooms) {
+    if (room.kind === "piscina" || room.kind === "circulacao" || room.kind === "escada") continue;
+    const envelope = roomFurnitureEnvelope(room);
+    if (!envelope) continue;
+
+    const directWidthRatio = room.width / envelope.width;
+    const directDepthRatio = room.depth / envelope.depth;
+    const rotatedWidthRatio = room.width / envelope.depth;
+    const rotatedDepthRatio = room.depth / envelope.width;
+    const directFit = Math.min(directWidthRatio, directDepthRatio);
+    const rotatedFit = Math.min(rotatedWidthRatio, rotatedDepthRatio);
+    const fitRatio = Math.max(directFit, rotatedFit);
+
+    const blocked = fitRatio < 0.88;
+    const warning = !blocked && fitRatio < 1.02;
+    const status: FurnitureFitItem["status"] = blocked ? "blocked" : warning ? "warning" : "approved";
+    const score = Math.max(0, Math.min(100, Math.round(fitRatio * 100)));
+    const issues = blocked
+      ? [`${room.label} não comporta com segurança o conjunto mínimo de mobiliário e circulação (${envelope.furniture.join(", ")}).`]
+      : warning
+        ? [`${room.label} comporta o mobiliário mínimo com folga reduzida; revise circulação e abertura de portas.`]
+        : [];
+
+    items.push({
+      roomId: room.id,
+      label: room.label,
+      status,
+      score,
+      requiredEnvelope: { width: envelope.width, depth: envelope.depth },
+      actual: { width: room.width, depth: room.depth },
+      furniture: envelope.furniture,
+      issues,
+    });
+  }
+
+  const blockers = items.filter((item) => item.status === "blocked");
+  const warnings = items.filter((item) => item.status === "warning");
+  const score = items.length
+    ? Math.round(items.reduce((sum, item) => sum + item.score, 0) / items.length)
+    : 100;
+
+  return {
+    status: blockers.length ? "blocked" as const : warnings.length ? "warning" as const : "approved" as const,
+    score,
+    items,
+    blockers: blockers.map((item) => item.label),
+    issues: items.flatMap((item) => item.issues),
+  };
 }
 
 function buildArchitecturalQualityGateV2(issues: string[]) {
@@ -405,6 +548,7 @@ function buildArchitecturalQualityGateV2(issues: string[]) {
     "ergonomics",
     "geometry",
     "constructability",
+    "furnitureFit",
     "architecturalCoherence",
   ];
   const dimensionIssues = Object.fromEntries(keys.map((key) => [key, [] as string[]])) as Record<QualityDimensionKey, string[]>;
@@ -451,8 +595,9 @@ function buildArchitecturalQualityGateV2(issues: string[]) {
     privacy: 0.10,
     ergonomics: 0.16,
     geometry: 0.16,
-    constructability: 0.10,
-    architecturalCoherence: 0.10,
+    constructability: 0.08,
+    furnitureFit: 0.14,
+    architecturalCoherence: 0.08,
   };
 
   const score = Math.round(keys.reduce((sum, key) => sum + dimensions[key].score * weights[key], 0));
@@ -743,8 +888,26 @@ function evaluateSpecialistPlan(
     }
   }
 
+  const furnitureFit = evaluateFurnitureFit(rooms);
+  issues.push(...furnitureFit.issues);
+
   const uniqueIssues = [...new Set(issues)];
   const gate = buildArchitecturalQualityGateV2(uniqueIssues);
+  gate.dimensions.furnitureFit = {
+    score: furnitureFit.score,
+    status: furnitureFit.status,
+    issues: furnitureFit.issues.slice(0, 8),
+  };
+  const furnitureBlocked = furnitureFit.status === "blocked";
+  if (furnitureBlocked) {
+    gate.approved = false;
+    gate.hardBlockers = [...new Set([
+      ...gate.hardBlockers,
+      ...furnitureFit.items
+        .filter((item) => item.status === "blocked")
+        .map((item) => `Furniture Fit: ${item.label} não comporta o uso mínimo.`),
+    ])].slice(0, 12);
+  }
   score = gate.score;
   return {
     version: 2,
@@ -754,7 +917,8 @@ function evaluateSpecialistPlan(
     strengths: [...new Set(strengths)].slice(0, 8),
     hardBlockers: gate.hardBlockers,
     dimensions: gate.dimensions,
-  };
+    furnitureFit,
+  } as SpecialistPlanQuality & { furnitureFit: ReturnType<typeof evaluateFurnitureFit> };
 }
 
 function sanitizeSpecialistPlan(
@@ -888,6 +1052,7 @@ function sanitizeSpecialistPlan(
         connected: circulationGraph.unreachable.length === 0,
         unreachableRooms: circulationGraph.unreachable.map((room) => room.label),
       },
+      furnitureFit: (quality as SpecialistPlanQuality & { furnitureFit?: ReturnType<typeof evaluateFurnitureFit> }).furnitureFit ?? null,
     },
   };
 }
@@ -1460,6 +1625,7 @@ REGRAS FUNCIONAIS INEGOCIÁVEIS:
 - escadas devem ser funcionais e alinhadas entre pavimentos;
 - reduza corredores residuais, recortes gratuitos e perímetro construtivo sem propósito;
 - considere dimensões reais de mobiliário, portas e circulação;
+- nenhuma solução pode depender apenas de área nominal: cada quarto/suíte deve comportar cama + roupeiro + circulação; banheiro deve comportar box/vaso/lavatório; cozinha deve acomodar bancada/eletros e ilha quando pedida; sala deve acomodar estar/jantar conforme o programa; garagem deve comportar veículos e abertura de portas;
 - quando targetWidth/targetDepth existirem, trate-os como preferência geométrica forte; ajuste somente se necessário para funcionalidade;
 - use programNotes para entender o uso real do ambiente (ex.: cama king, ilha, mesa, vista, armazenamento), sem inventar funções não pedidas;
 - trate targetArea de cada ambiente como META DE ÁREA: pode variar moderadamente para viabilizar a planta, mas não ignore nem reduza drasticamente sem motivo;
