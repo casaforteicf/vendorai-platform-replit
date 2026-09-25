@@ -534,6 +534,9 @@ export default function ConceptClientBriefPanel({
         suggestedArea: Number(item.suggestedArea ?? base.suggestedArea),
         rooms: item.rooms,
         architectureScore: Number.isFinite(Number(item.architectureScore)) ? Number(item.architectureScore) : undefined,
+        qualityGateVersion: item.quality?.version === 2 ? 2 : undefined,
+        qualityDimensions: item.quality?.dimensions && typeof item.quality.dimensions === "object" ? item.quality.dimensions : undefined,
+        hardBlockers: Array.isArray(item.quality?.hardBlockers) ? item.quality.hardBlockers.map(String) : undefined,
         designRationale: typeof item.designRationale === "string" ? item.designRationale : undefined,
         qualityIssues: Array.isArray(item.quality?.issues) ? item.quality.issues.map(String) : undefined,
         qualityStrengths: Array.isArray(item.quality?.strengths) ? item.quality.strengths.map(String) : undefined,
@@ -656,6 +659,44 @@ export default function ConceptClientBriefPanel({
                 {alternative.floors > 1 && (
                   <div className="mt-2 text-[10px] font-semibold text-slate-500">
                     Prévia mostra o térreo · projeto com {alternative.floors} pavimentos
+                  </div>
+                )}
+
+                {alternative.qualityDimensions && (
+                  <div className="mt-2 rounded-lg border bg-white px-2.5 py-2">
+                    <div className="flex items-center justify-between text-[10px]">
+                      <span className="font-bold text-slate-800">Architecture Quality Gate 2.0</span>
+                      <span className={(alternative.hardBlockers?.length ?? 0) === 0 ? "font-bold text-emerald-700" : "font-bold text-red-600"}>
+                        {(alternative.hardBlockers?.length ?? 0) === 0 ? "Sem bloqueios críticos" : `${alternative.hardBlockers?.length} bloqueio(s)`}
+                      </span>
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-1.5">
+                      {([
+                        ["program", "Programa"],
+                        ["circulation", "Circulação"],
+                        ["privacy", "Privacidade"],
+                        ["ergonomics", "Ergonomia"],
+                        ["geometry", "Geometria"],
+                        ["constructability", "Construção"],
+                        ["architecturalCoherence", "Coerência"],
+                      ] as const).map(([key, label]) => {
+                        const dimension = alternative.qualityDimensions?.[key];
+                        if (!dimension) return null;
+                        return (
+                          <div key={key} className="flex items-center justify-between rounded-md bg-slate-50 px-2 py-1.5 text-[9px]">
+                            <span className="font-semibold text-slate-600">{label}</span>
+                            <span className={dimension.status === "blocked"
+                              ? "font-bold text-red-600"
+                              : dimension.status === "warning"
+                                ? "font-bold text-amber-600"
+                                : "font-bold text-emerald-700"}
+                            >
+                              {dimension.score}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
 
