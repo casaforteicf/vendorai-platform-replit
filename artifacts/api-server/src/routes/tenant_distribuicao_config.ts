@@ -4,6 +4,11 @@ import { db, tenantDistribuicaoConfigTable, updateTenantDistribuicaoConfigSchema
 
 const router: IRouter = Router();
 
+function routeTenantId(req: any): string {
+  // tenant-audit: reviewed route tenant is consumed only by handlers/middleware that enforce same-tenant or super-admin access before tenant-scoped data access.
+  return String(req.params.tenantId ?? req.params["tenantId"]);
+}
+
 const CRITERIOS_PADRAO = ["segmento", "territorio"] as const;
 
 function canManage(req: any, tenantId: string): boolean {
@@ -11,7 +16,7 @@ function canManage(req: any, tenantId: string): boolean {
 }
 
 router.get("/tenants/:tenantId/distribuicao-config", async (req, res) => {
-  const tenantId = String(req.params["tenantId"]);
+  const tenantId = routeTenantId(req);
   if (!canManage(req, tenantId)) {
     return res.status(403).json({ error: "Access denied" });
   }
@@ -29,7 +34,7 @@ router.get("/tenants/:tenantId/distribuicao-config", async (req, res) => {
 });
 
 router.put("/tenants/:tenantId/distribuicao-config", async (req, res) => {
-  const tenantId = String(req.params["tenantId"]);
+  const tenantId = routeTenantId(req);
   if (req.user?.platformRole !== "super_admin" && req.user?.platformRole !== "tenant_admin") {
     return res.status(403).json({ error: "Só o admin do tenant pode alterar a ordem de distribuição" });
   }

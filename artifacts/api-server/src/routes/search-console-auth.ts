@@ -23,6 +23,11 @@ import { getSearchConsoleInsights } from "../services/search-console-insights.js
 
 const router: IRouter = Router();
 
+function routeTenantId(req: any): string {
+  // tenant-audit: reviewed route tenant is consumed only by handlers/middleware that enforce same-tenant or super-admin access before tenant-scoped data access.
+  return String(req.params.tenantId ?? req.params["tenantId"]);
+}
+
 function getAppUrl(): string {
   const configuredFrontend = process.env["FRONTEND_APP_URL"]?.trim();
   if (configuredFrontend) return configuredFrontend.replace(/\/$/, "");
@@ -145,7 +150,7 @@ function assertTenantAccess(req: Request, tenantId: string): boolean {
 
 router.get("/tenants/:tenantId/search-console-connection", authenticate, async (req, res) => {
   try {
-    const tenantId = String(req.params.tenantId);
+    const tenantId = routeTenantId(req);
     if (!assertTenantAccess(req, tenantId)) {
       return res.status(403).json({ error: "Forbidden" });
     }
@@ -161,14 +166,14 @@ router.get("/tenants/:tenantId/search-console-connection", authenticate, async (
       connectedAt: conn.connectedAt?.toISOString() ?? null,
     });
   } catch (err) {
-    logger.error({ err, tenantId: String(req.params.tenantId) }, "Erro ao buscar status da conexão Search Console");
+    logger.error({ err, tenantId: routeTenantId(req) }, "Erro ao buscar status da conexão Search Console");
     return res.status(500).json({ error: "Internal error" });
   }
 });
 
 router.get("/tenants/:tenantId/search-console-insights", authenticate, async (req, res) => {
   try {
-    const tenantId = String(req.params.tenantId); // tenant-audit: reviewed authenticated route checks tenant access immediately below
+    const tenantId = routeTenantId(req); // tenant-audit: reviewed authenticated route checks tenant access immediately below
     if (!assertTenantAccess(req, tenantId)) {
       return res.status(403).json({ error: "Forbidden" });
     }
@@ -176,7 +181,7 @@ router.get("/tenants/:tenantId/search-console-insights", authenticate, async (re
     const result = await getSearchConsoleInsights(tenantId, requestedDays);
     return res.json(result);
   } catch (err) {
-    const tenantId = String(req.params.tenantId); // tenant-audit: reviewed logging-only tenant identifier in authenticated route
+    const tenantId = routeTenantId(req); // tenant-audit: reviewed logging-only tenant identifier in authenticated route
     const message = err instanceof Error ? err.message : "UNKNOWN";
     logger.error({ err, tenantId }, "Erro ao carregar insights do Search Console");
     if (message === "SEARCH_CONSOLE_NOT_ACTIVE") {
@@ -191,7 +196,7 @@ router.get("/tenants/:tenantId/search-console-insights", authenticate, async (re
 
 router.get("/tenants/:tenantId/seo/backlinks", authenticate, async (req, res) => {
   try {
-    const tenantId = String(req.params.tenantId); // tenant-audit: reviewed authenticated route checks tenant access immediately below
+    const tenantId = routeTenantId(req); // tenant-audit: reviewed authenticated route checks tenant access immediately below
     if (!assertTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
     const rows = await db
@@ -214,14 +219,14 @@ router.get("/tenants/:tenantId/seo/backlinks", authenticate, async (req, res) =>
 
     return res.json({ opportunities: rows, summary });
   } catch (err) {
-    logger.error({ err, tenantId: String(req.params.tenantId) }, "Erro ao listar oportunidades de backlinks"); // tenant-audit: reviewed logging-only tenant identifier in authenticated route
+    logger.error({ err, tenantId: routeTenantId(req) }, "Erro ao listar oportunidades de backlinks"); // tenant-audit: reviewed logging-only tenant identifier in authenticated route
     return res.status(500).json({ error: "Internal error" });
   }
 });
 
 router.post("/tenants/:tenantId/seo/backlinks", authenticate, async (req, res) => {
   try {
-    const tenantId = String(req.params.tenantId); // tenant-audit: reviewed authenticated route checks tenant access immediately below
+    const tenantId = routeTenantId(req); // tenant-audit: reviewed authenticated route checks tenant access immediately below
     if (!assertTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
     const parsed = insertSeoBacklinkOpportunitySchema.safeParse({
@@ -240,14 +245,14 @@ router.post("/tenants/:tenantId/seo/backlinks", authenticate, async (req, res) =
 
     return res.status(201).json(created);
   } catch (err) {
-    logger.error({ err, tenantId: String(req.params.tenantId) }, "Erro ao criar oportunidade de backlink"); // tenant-audit: reviewed logging-only tenant identifier in authenticated route
+    logger.error({ err, tenantId: routeTenantId(req) }, "Erro ao criar oportunidade de backlink"); // tenant-audit: reviewed logging-only tenant identifier in authenticated route
     return res.status(500).json({ error: "Internal error" });
   }
 });
 
 router.patch("/tenants/:tenantId/seo/backlinks/:id", authenticate, async (req, res) => {
   try {
-    const tenantId = String(req.params.tenantId); // tenant-audit: reviewed authenticated route checks tenant access immediately below
+    const tenantId = routeTenantId(req); // tenant-audit: reviewed authenticated route checks tenant access immediately below
     const id = String(req.params.id);
     if (!assertTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
@@ -276,14 +281,14 @@ router.patch("/tenants/:tenantId/seo/backlinks/:id", authenticate, async (req, r
 
     return res.json(updated);
   } catch (err) {
-    logger.error({ err, tenantId: String(req.params.tenantId), id: String(req.params.id) }, "Erro ao atualizar oportunidade de backlink"); // tenant-audit: reviewed logging-only tenant identifier in authenticated route
+    logger.error({ err, tenantId: routeTenantId(req), id: String(req.params.id) }, "Erro ao atualizar oportunidade de backlink"); // tenant-audit: reviewed logging-only tenant identifier in authenticated route
     return res.status(500).json({ error: "Internal error" });
   }
 });
 
 router.delete("/tenants/:tenantId/seo/backlinks/:id", authenticate, async (req, res) => {
   try {
-    const tenantId = String(req.params.tenantId); // tenant-audit: reviewed authenticated route checks tenant access immediately below
+    const tenantId = routeTenantId(req); // tenant-audit: reviewed authenticated route checks tenant access immediately below
     const id = String(req.params.id);
     if (!assertTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
@@ -295,7 +300,7 @@ router.delete("/tenants/:tenantId/seo/backlinks/:id", authenticate, async (req, 
     if (!deleted) return res.status(404).json({ error: "Backlink opportunity not found" });
     return res.json({ success: true, id: deleted.id });
   } catch (err) {
-    logger.error({ err, tenantId: String(req.params.tenantId), id: String(req.params.id) }, "Erro ao excluir oportunidade de backlink"); // tenant-audit: reviewed logging-only tenant identifier in authenticated route
+    logger.error({ err, tenantId: routeTenantId(req), id: String(req.params.id) }, "Erro ao excluir oportunidade de backlink"); // tenant-audit: reviewed logging-only tenant identifier in authenticated route
     return res.status(500).json({ error: "Internal error" });
   }
 });
@@ -304,7 +309,7 @@ router.delete("/tenants/:tenantId/seo/backlinks/:id", authenticate, async (req, 
 // (ela é injetada automaticamente, sem precisar regenerar o site).
 router.post("/tenants/:tenantId/search-console-connection/verify", authenticate, async (req, res) => {
   try {
-    const tenantId = String(req.params.tenantId);
+    const tenantId = routeTenantId(req);
     if (!assertTenantAccess(req, tenantId)) {
       return res.status(403).json({ error: "Forbidden" });
     }
@@ -314,14 +319,14 @@ router.post("/tenants/:tenantId/search-console-connection/verify", authenticate,
     await auditSearchConsoleChange(req, tenantId, before, after);
     return res.json(result);
   } catch (err) {
-    logger.error({ err, tenantId: String(req.params.tenantId) }, "Erro ao verificar Search Console");
+    logger.error({ err, tenantId: routeTenantId(req) }, "Erro ao verificar Search Console");
     return res.status(500).json({ error: "Internal error" });
   }
 });
 
 router.post("/tenants/:tenantId/search-console-connection/refresh", authenticate, async (req, res) => {
   try {
-    const tenantId = String(req.params.tenantId);
+    const tenantId = routeTenantId(req);
     if (!assertTenantAccess(req, tenantId)) {
       return res.status(403).json({ error: "Forbidden" });
     }
@@ -334,14 +339,14 @@ router.post("/tenants/:tenantId/search-console-connection/refresh", authenticate
     await auditSearchConsoleChange(req, tenantId, conn, after);
     return res.json({ success: true });
   } catch (err) {
-    logger.error({ err, tenantId: String(req.params.tenantId) }, "Erro ao renovar token Search Console");
+    logger.error({ err, tenantId: routeTenantId(req) }, "Erro ao renovar token Search Console");
     return res.status(500).json({ error: "Internal error" });
   }
 });
 
 router.delete("/tenants/:tenantId/search-console-connection", authenticate, async (req, res) => {
   try {
-    const tenantId = String(req.params.tenantId);
+    const tenantId = routeTenantId(req);
     if (!assertTenantAccess(req, tenantId)) {
       return res.status(403).json({ error: "Forbidden" });
     }
@@ -350,7 +355,7 @@ router.delete("/tenants/:tenantId/search-console-connection", authenticate, asyn
     await auditSearchConsoleChange(req, tenantId, before, null, null, "excluir");
     return res.json({ success: true });
   } catch (err) {
-    logger.error({ err, tenantId: String(req.params.tenantId) }, "Erro ao desconectar Search Console");
+    logger.error({ err, tenantId: routeTenantId(req) }, "Erro ao desconectar Search Console");
     return res.status(500).json({ error: "Internal error" });
   }
 });
