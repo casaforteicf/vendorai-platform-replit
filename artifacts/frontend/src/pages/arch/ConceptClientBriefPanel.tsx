@@ -17,6 +17,7 @@ import {
   buildClientBriefPlan,
   type ClientBrief,
   type ClientBriefAlternative,
+  type ClientVision,
 } from "./conceptClientBrief";
 
 type Props = {
@@ -35,6 +36,16 @@ const DEFAULT_BRIEF: ClientBrief = {
   office: false,
   integratedKitchen: true,
   privateAwaySocial: true,
+};
+
+const DEFAULT_VISION: ClientVision = {
+  lifestyle: "misto",
+  protagonist: "social",
+  priorities: ["luz_natural", "privacidade", "integracao"],
+  budgetStrategy: "equilibrar",
+  futureNeeds: "",
+  mustHave: "",
+  avoid: "",
 };
 
 function ChoiceButton({
@@ -191,6 +202,8 @@ export default function ConceptClientBriefPanel({
   onGenerate,
 }: Props) {
   const [brief, setBrief] = useState<ClientBrief>(DEFAULT_BRIEF);
+  const [vision, setVision] = useState<ClientVision>(DEFAULT_VISION);
+  const [dreamStep, setDreamStep] = useState(0);
   const [showAlternatives, setShowAlternatives] = useState(false);
   const [alternatives, setAlternatives] = useState<ClientBriefAlternative[]>([]);
   const [generating, setGenerating] = useState(false);
@@ -225,6 +238,7 @@ export default function ConceptClientBriefPanel({
           lotWidth,
           lotDepth,
           brief,
+          vision,
           rooms: base.rooms,
         }),
       });
@@ -269,6 +283,7 @@ export default function ConceptClientBriefPanel({
           designRationale: typeof item.designRationale === "string" ? item.designRationale : undefined,
           qualityIssues: Array.isArray(item.quality?.issues) ? item.quality.issues.map(String) : undefined,
           qualityStrengths: Array.isArray(item.quality?.strengths) ? item.quality.strengths.map(String) : undefined,
+          clientFitSummary: typeof item.clientFitSummary === "string" ? item.clientFitSummary : undefined,
         } satisfies ClientBriefAlternative;
       });
 
@@ -361,6 +376,12 @@ export default function ConceptClientBriefPanel({
                 {alternative.designRationale && (
                   <div className="mt-2 rounded-lg bg-emerald-50 px-2.5 py-2 text-[10px] leading-4 text-emerald-900">
                     <span className="font-bold">Lógica da planta: </span>{alternative.designRationale}
+                  </div>
+                )}
+
+                {alternative.clientFitSummary && (
+                  <div className="mt-2 rounded-lg bg-orange-50 px-2.5 py-2 text-[10px] leading-4 text-orange-900">
+                    <span className="font-bold">Por que combina com vocês: </span>{alternative.clientFitSummary}
                   </div>
                 )}
 
@@ -524,9 +545,168 @@ export default function ConceptClientBriefPanel({
         />
       </section>
 
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex items-start gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-slate-950 text-white">
+            <Sparkles className="h-4 w-4" />
+          </span>
+          <div>
+            <div className="text-xs font-bold text-slate-900">Entrevista do projeto dos sonhos</div>
+            <p className="mt-1 text-[10px] leading-4 text-slate-500">
+              A IA não vai perguntar só quantos quartos. Ela entende como vocês vivem, o que valorizam e o que querem evitar.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-xl bg-slate-50 p-3">
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+              Pergunta {dreamStep + 1} de 4
+            </span>
+            <span className="text-[10px] font-semibold text-slate-500">IA arquiteta</span>
+          </div>
+
+          {dreamStep === 0 && (
+            <div>
+              <div className="text-xs font-bold text-slate-900">Como vocês querem viver a casa no dia a dia?</div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {([
+                  ["familia", "Vida em família"],
+                  ["receber", "Receber amigos"],
+                  ["tranquilidade", "Privacidade e calma"],
+                  ["praticidade", "Praticidade"],
+                  ["misto", "Um pouco de tudo"],
+                ] as const).map(([value, label]) => (
+                  <ChoiceButton key={value} active={vision.lifestyle === value} onClick={() => setVision((current) => ({ ...current, lifestyle: value }))}>
+                    {label}
+                  </ChoiceButton>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {dreamStep === 1 && (
+            <div>
+              <div className="text-xs font-bold text-slate-900">Qual espaço deve ser o coração da casa?</div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {([
+                  ["social", "Sala / convivência"],
+                  ["cozinha", "Cozinha"],
+                  ["gourmet", "Gourmet"],
+                  ["suite", "Suíte principal"],
+                  ["jardim", "Jardim / lazer"],
+                ] as const).map(([value, label]) => (
+                  <ChoiceButton key={value} active={vision.protagonist === value} onClick={() => setVision((current) => ({ ...current, protagonist: value }))}>
+                    {label}
+                  </ChoiceButton>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {dreamStep === 2 && (
+            <div>
+              <div className="text-xs font-bold text-slate-900">O que mais importa no projeto?</div>
+              <p className="mt-1 text-[10px] text-slate-500">Escolha quantos itens fizerem sentido.</p>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {([
+                  ["luz_natural", "Muita luz natural"],
+                  ["privacidade", "Privacidade"],
+                  ["integracao", "Ambientes integrados"],
+                  ["natureza", "Contato com natureza"],
+                  ["armazenamento", "Muito armazenamento"],
+                  ["flexibilidade", "Ambientes flexíveis"],
+                ] as const).map(([value, label]) => {
+                  const active = vision.priorities.includes(value);
+                  return (
+                    <ChoiceButton
+                      key={value}
+                      active={active}
+                      onClick={() => setVision((current) => ({
+                        ...current,
+                        priorities: active
+                          ? current.priorities.filter((item) => item !== value)
+                          : [...current.priorities, value],
+                      }))}
+                    >
+                      {label}
+                    </ChoiceButton>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {dreamStep === 3 && (
+            <div className="space-y-3">
+              <div>
+                <div className="text-xs font-bold text-slate-900">Agora me conte o que faria essa casa ser realmente de vocês.</div>
+                <p className="mt-1 text-[10px] leading-4 text-slate-500">
+                  Pode escrever de forma natural. Ex.: “quero ver a piscina da cozinha”, “não quero corredor comprido”, “preciso pensar em filhos no futuro”.
+                </p>
+              </div>
+              <textarea
+                value={vision.mustHave}
+                onChange={(event) => setVision((current) => ({ ...current, mustHave: event.target.value.slice(0, 700) }))}
+                placeholder="O que não pode faltar?"
+                className="min-h-20 w-full rounded-xl border px-3 py-2 text-xs outline-none"
+              />
+              <textarea
+                value={vision.avoid}
+                onChange={(event) => setVision((current) => ({ ...current, avoid: event.target.value.slice(0, 500) }))}
+                placeholder="O que você não quer no projeto?"
+                className="min-h-16 w-full rounded-xl border px-3 py-2 text-xs outline-none"
+              />
+              <textarea
+                value={vision.futureNeeds}
+                onChange={(event) => setVision((current) => ({ ...current, futureNeeds: event.target.value.slice(0, 500) }))}
+                placeholder="Como sua família ou rotina pode mudar nos próximos anos?"
+                className="min-h-16 w-full rounded-xl border px-3 py-2 text-xs outline-none"
+              />
+              <div>
+                <div className="mb-2 text-[10px] font-bold text-slate-700">Na hora de decidir, a prioridade é:</div>
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    ["otimizar", "Otimizar custo"],
+                    ["equilibrar", "Equilibrar"],
+                    ["priorizar_experiencia", "Priorizar experiência"],
+                  ] as const).map(([value, label]) => (
+                    <ChoiceButton key={value} active={vision.budgetStrategy === value} onClick={() => setVision((current) => ({ ...current, budgetStrategy: value }))}>
+                      {label}
+                    </ChoiceButton>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-4 flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => setDreamStep((current) => Math.max(0, current - 1))}
+              disabled={dreamStep === 0}
+              className="rounded-lg border bg-white px-3 py-2 text-[10px] font-bold text-slate-600 disabled:opacity-35"
+            >
+              Voltar
+            </button>
+            <button
+              type="button"
+              onClick={() => setDreamStep((current) => Math.min(3, current + 1))}
+              disabled={dreamStep === 3}
+              className="rounded-lg bg-slate-950 px-3 py-2 text-[10px] font-bold text-white disabled:opacity-35"
+            >
+              Próxima pergunta
+            </button>
+          </div>
+        </div>
+      </section>
+
       <div className="rounded-xl border bg-slate-50 p-3">
         <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Resumo</div>
         <div className="mt-1 text-[11px] font-semibold leading-5 text-slate-700">{summary}</div>
+        <div className="mt-2 text-[10px] leading-4 text-slate-500">
+          Estilo de vida: {vision.lifestyle} · coração da casa: {vision.protagonist} · prioridades: {vision.priorities.length}
+        </div>
       </div>
 
       <button
