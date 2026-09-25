@@ -565,6 +565,26 @@ function sanitizeSpecialistPlan(
       };
     });
 
+  const adjacencyItems = (input.brief.adjacencyRules ?? []).map((rule) => {
+    const sources = rooms.filter((room) => room.programRequestId === rule.fromRequestId);
+    const targets = rooms.filter((room) => room.programRequestId === rule.toRequestId);
+    const satisfied = rule.relation === "away"
+      ? sources.length > 0 && targets.length > 0 && sources.every((source) =>
+          targets.every((target) => specialistAdjacencySatisfied(source, target, "away"))
+        )
+      : sources.length > 0 && targets.length > 0 && sources.every((source) =>
+          targets.some((target) => specialistAdjacencySatisfied(source, target, rule.relation))
+        );
+    return {
+      id: rule.id,
+      fromLabel: input.brief.roomProgram?.find((item) => item.id === rule.fromRequestId)?.label ?? "Ambiente",
+      toLabel: input.brief.roomProgram?.find((item) => item.id === rule.toRequestId)?.label ?? "Ambiente",
+      relation: rule.relation,
+      required: rule.required,
+      satisfied,
+    };
+  });
+
   return {
     rejected: false as const,
     rooms,
@@ -578,6 +598,9 @@ function sanitizeSpecialistPlan(
       actualAreaTotal: suggestedArea,
       rooms: programItems,
       outsideTargetCount: programItems.filter((item) => item.status === "outside_target").length,
+      adjacency: adjacencyItems,
+      adjacencySatisfiedCount: adjacencyItems.filter((item) => item.satisfied).length,
+      adjacencyTotalCount: adjacencyItems.length,
     },
   };
 }
