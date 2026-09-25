@@ -707,6 +707,7 @@ export default function ConceptClientBriefPanel({
                         ["constructability", "Construção"],
                         ["furnitureFit", "Mobiliário"],
                         ["siteClimate", "Terreno/clima"],
+                        ["roofVolumetry", "Cobertura/volume"],
                         ["architecturalCoherence", "Coerência"],
                       ] as const).map(([key, label]) => {
                         const dimension = alternative.qualityDimensions?.[key];
@@ -829,6 +830,34 @@ export default function ConceptClientBriefPanel({
                         </div>
                       ))}
                     </div>
+                  </div>
+                ) : null}
+
+                {alternative.programCompliance?.roofVolumetry ? (
+                  <div className="mt-2 rounded-lg border border-amber-100 bg-amber-50 px-2.5 py-2">
+                    <div className="flex items-center justify-between gap-2 text-[10px]">
+                      <span className="font-bold text-amber-900">Cobertura + volumetria + construtibilidade</span>
+                      <span className={alternative.programCompliance.roofVolumetry.status === "blocked"
+                        ? "font-bold text-red-600"
+                        : alternative.programCompliance.roofVolumetry.status === "warning"
+                          ? "font-bold text-amber-700"
+                          : "font-bold text-emerald-700"}
+                      >
+                        {alternative.programCompliance.roofVolumetry.score}/100
+                      </span>
+                    </div>
+                    <div className="mt-1 text-[9px] leading-4 text-amber-900">
+                      Pavimentos superiores: {alternative.programCompliance.roofVolumetry.metrics.upperFloorCount} ·
+                      áreas molhadas: {alternative.programCompliance.roofVolumetry.metrics.wetRoomCount} ·
+                      complexidade: {alternative.programCompliance.roofVolumetry.metrics.wallComplexityRatio}
+                    </div>
+                    {alternative.programCompliance.roofVolumetry.recommendations?.length ? (
+                      <div className="mt-2 space-y-1 text-[9px] leading-4 text-slate-600">
+                        {alternative.programCompliance.roofVolumetry.recommendations.slice(0, 3).map((item, index) => (
+                          <div key={index}>• {item}</div>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
 
