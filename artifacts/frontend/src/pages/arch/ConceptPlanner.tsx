@@ -51,7 +51,7 @@ import ConceptClientBriefPanel from "./ConceptClientBriefPanel";
 import { CONCEPT_JOURNEY, conceptJourneyContinueLabel, conceptJourneyIndex } from "./conceptJourney";
 import ConceptSitePlacementPanel from "./ConceptSitePlacementPanel";
 import { DEFAULT_SITE_PLACEMENT, getBuildingBounds, migrateLegacySitePlacement, normalizeSitePlacement, resolveSiteSetbacks, type SitePlacement } from "./conceptSitePlacement";
-import { type ClientBriefAlternative } from "./conceptClientBrief";
+import { type ClientBriefAlternative, type ProjectBriefSnapshot } from "./conceptClientBrief";
 import ConceptModel3D, { type ConceptModelLevel } from "./ConceptModel3D";
 import {
   DEFAULT_FACADE_DESIGN,
@@ -339,6 +339,7 @@ type ConceptDraftResponse = {
     wallMaterials?: Record<string, string>;
     savedTourPoints?: SavedTourPoint[];
     sitePlacement?: SitePlacement;
+    projectBrief?: ProjectBriefSnapshot;
   };
   rooms: Room[];
   openingOverrides: Record<string, OpeningOverride>;
@@ -776,6 +777,7 @@ export default function ConceptPlanner() {
   const [sitePlacement, setSitePlacement] = useState<SitePlacement>(DEFAULT_SITE_PLACEMENT);
   const [typology, setTypology] = useState<ConceptTypology>("terrea_3q");
   const [layoutPreferences, setLayoutPreferences] = useState<LayoutPreferences>(DEFAULT_LAYOUT_PREFERENCES);
+  const [projectBrief, setProjectBrief] = useState<ProjectBriefSnapshot | null>(null);
   const [floors, setFloors] = useState(1);
   const [desiredArea, setDesiredArea] = useState(145);
   const [activeFloor, setActiveFloor] = useState(0);
@@ -1226,6 +1228,7 @@ export default function ConceptPlanner() {
         setWallMaterials(draft.configuration?.wallMaterials && typeof draft.configuration.wallMaterials === "object" ? draft.configuration.wallMaterials : {});
         setSavedTourPoints(Array.isArray(draft.configuration?.savedTourPoints) ? draft.configuration.savedTourPoints : []);
         setSitePlacement(migrateLegacySitePlacement(draft.configuration?.sitePlacement));
+        setProjectBrief(draft.configuration?.projectBrief ?? null);
         setRooms(loadedRooms);
         setOpeningOverrides(draft.openingOverrides && typeof draft.openingOverrides === "object" ? draft.openingOverrides : {});
         setCustomerProfile(draft.customerProfile ?? {});
@@ -1278,6 +1281,7 @@ export default function ConceptPlanner() {
         wallMaterials,
         savedTourPoints: savedTourPointsOverride ?? savedTourPoints,
         sitePlacement,
+        projectBrief: projectBrief ?? undefined,
       },
       rooms: nextRooms,
       openingOverrides,
@@ -1332,11 +1336,11 @@ export default function ConceptPlanner() {
   // retorno visual) ou em algumas ações pontuais — fechar o app no celular perdia a edição.
   const autosaveKey = useMemo(() => JSON.stringify([
     rooms, customWalls, customOpenings, objects, openingOverrides, wallMaterials,
-    lotWidth, lotDepth, floors, desiredArea, typology, layoutPreferences, sitePlacement,
+    lotWidth, lotDepth, floors, desiredArea, typology, layoutPreferences, sitePlacement, projectBrief,
     facadePreferences, spaceProfiles, customerProfile, showDimensions, wallFirstFloors,
   ]), [
     rooms, customWalls, customOpenings, objects, openingOverrides, wallMaterials,
-    lotWidth, lotDepth, floors, desiredArea, typology, layoutPreferences, sitePlacement,
+    lotWidth, lotDepth, floors, desiredArea, typology, layoutPreferences, sitePlacement, projectBrief,
     facadePreferences, spaceProfiles, customerProfile, showDimensions, wallFirstFloors,
   ]);
   const [lastSavedKey, setLastSavedKey] = useState<string | null>(null);
@@ -1694,6 +1698,7 @@ export default function ConceptPlanner() {
     setLayoutPreferences(generated.layoutPreferences);
     setFloors(generated.floors);
     setDesiredArea(generated.suggestedArea);
+    setProjectBrief(generated.projectBrief ?? null);
     setActiveFloor(0);
     setRooms(nextRooms);
     setCustomWalls([]);
