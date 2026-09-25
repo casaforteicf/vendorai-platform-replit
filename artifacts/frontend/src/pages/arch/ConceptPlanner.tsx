@@ -5620,6 +5620,10 @@ export default function ConceptPlanner() {
                       lotWidth={lotWidth}
                       lotDepth={lotDepth}
                       initialProjectBrief={projectBrief}
+                      placement={{
+                        frontSide: normalizeSitePlacement(sitePlacement).frontSide,
+                        setbacks: resolveSiteSetbacks(normalizeSitePlacement(sitePlacement)),
+                      }}
                       onGenerate={applyClientBrief}
                       onImproveCurrent={async (nextProjectBrief) => {
                         await runAiDevelopment(nextProjectBrief);

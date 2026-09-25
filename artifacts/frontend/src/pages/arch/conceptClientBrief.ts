@@ -1,9 +1,12 @@
 import {
+  CONCEPT_TYPOLOGIES,
   DEFAULT_LAYOUT_PREFERENCES,
+  buildTypologyPlan,
   buildTypologyRooms,
   type ConceptTypology,
   type LayoutPreferences,
 } from "./conceptTemplates";
+import { validateConceptLayout } from "./conceptGeometry";
 import { generateTypologyLayout } from "./conceptTypologyLayout";
 
 export type ClientBrief = {
@@ -265,7 +268,7 @@ function resizeRoomsForAlternative(
   });
 }
 
-export function buildClientBriefAlternatives(
+export function buildClientBriefAlternativesAuto(
   brief: ClientBrief,
   lotWidth: number,
   lotDepth: number,
@@ -345,4 +348,101 @@ export function buildClientBriefAlternatives(
       rooms,
     };
   });
+}
+
+
+// ── Plantas pelas Necessidades a partir dos modelos desenhados ─────────────────────────
+// O encaixe automático (buildClientBriefAlternativesAuto) empilhava cômodos soltos, fora do
+// lote e sobrepostos (ex.: 24 erros). Agora as opções são os modelos desenhados que mais se
+// aproximam do briefing e cabem no terreno: sempre sem erros.
+
+type BriefPlacement = {
+  frontSide: "top" | "bottom" | "left" | "right";
+  setbacks: { top: number; bottom: number; left: number; right: number };
+};
+
+const DEFAULT_PLACEMENT: BriefPlacement = {
+  frontSide: "top",
+  setbacks: { top: 4, bottom: 3, left: 1.5, right: 1.5 },
+};
+
+function templateFeatures(template: (typeof CONCEPT_TYPOLOGIES)[number]) {
+  const rooms = template.rooms;
+  const garage = rooms.find((room) => room.kind === "garagem");
+  const spaces = garage ? Number((garage.label.match(/(\d)\s*vaga/i) ?? [])[1] ?? (garage.width >= 7.5 ? 3 : garage.width >= 5 ? 2 : 1)) : 0;
+  return {
+    floors: template.floors,
+    bedrooms: rooms.filter((room) => room.kind === "suite" || room.kind === "quarto").length,
+    suites: rooms.filter((room) => room.kind === "suite").length,
+    garage: spaces,
+    gourmet: rooms.some((room) => room.kind === "gourmet"),
+    pool: rooms.some((room) => room.kind === "piscina"),
+    office: rooms.some((room) => /office|escrit/i.test(room.label)),
+  };
+}
+
+function briefDifferences(brief: ClientBrief, features: ReturnType<typeof templateFeatures>) {
+  const notes: string[] = [];
+  if (features.bedrooms !== brief.bedrooms) notes.push(`${features.bedrooms} dormitórios (pedido: ${brief.bedrooms})`);
+  if (features.suites !== Math.min(brief.suites, brief.bedrooms)) notes.push(`${features.suites} ${features.suites === 1 ? "suíte" : "suítes"} (pedido: ${brief.suites})`);
+  if (features.garage && features.garage !== brief.garageSpaces) notes.push(`${features.garage} ${features.garage === 1 ? "vaga" : "vagas"} (pedido: ${brief.garageSpaces})`);
+  if (brief.gourmet && !features.gourmet) notes.push("sem gourmet");
+  if (brief.pool && !features.pool) notes.push("sem piscina");
+  if (brief.office && !features.office) notes.push("sem escritório");
+  return notes;
+}
+
+export function buildClientBriefAlternatives(
+  brief: ClientBrief,
+  lotWidth: number,
+  lotDepth: number,
+  placement: BriefPlacement = DEFAULT_PLACEMENT,
+): ClientBriefAlternative[] {
+  const ids: ClientBriefAlternativeId[] = ["compact", "balanced", "integrated"];
+  const letters = ["A", "B", "C"];
+  const scored = CONCEPT_TYPOLOGIES.flatMap((template) => {
+    const rooms = buildTypologyPlan(template.id, lotWidth, lotDepth, placement.frontSide, placement.setbacks);
+    if (!rooms || template.minLotWidth > lotWidth + 0.01) return [];
+    const errors = Array.from({ length: template.floors }, (_, floor) =>
+      validateConceptLayout(rooms as never, lotWidth, lotDepth, floor, { frontSide: placement.frontSide, setbackFront: 0 })
+        .filter((issue) => issue.severity === "error").length,
+    ).reduce((sum, count) => sum + count, 0);
+    if (errors > 0) return [];
+    const features = templateFeatures(template);
+    const score =
+      Math.abs(features.floors - brief.floors) * 12
+      + Math.abs(features.bedrooms - brief.bedrooms) * 4
+      + Math.abs(features.suites - Math.min(brief.suites, brief.bedrooms)) * 2
+      + (features.garage ? Math.abs(features.garage - brief.garageSpaces) : brief.garageSpaces) * 1.5
+      + (brief.gourmet !== features.gourmet ? 2 : 0)
+      + (brief.pool !== features.pool ? 3 : 0)
+      + (brief.office !== features.office ? 1 : 0);
+    return [{ template, rooms, features, score }];
+  }).sort((a, b) => a.score - b.score).slice(0, 3);
+
+  return scored.map(({ template, rooms, features }, index) => {
+    const differences = briefDifferences(brief, features);
+    return {
+      id: ids[index],
+      title: `Opção ${letters[index]} · ${template.title}`,
+      description: differences.length
+        ? `${template.subtitle}. Diferenças do pedido: ${differences.join(", ")}.`
+        : `${template.subtitle}. Atende ao briefing.`,
+      variant: index as 0 | 1 | 2,
+      typology: template.id,
+      floors: template.floors,
+      suggestedArea: template.suggestedArea,
+      layoutPreferences: { ...DEFAULT_LAYOUT_PREFERENCES },
+      rooms: rooms as ClientBriefPlan["rooms"],
+    };
+  });
+}
+
+/** Conta erros de planta em uma alternativa (usado para descartar plantas inválidas da IA). */
+export function countBriefAlternativeErrors(rooms: ClientBriefPlan["rooms"], floors: number, lotWidth: number, lotDepth: number) {
+  let errors = 0;
+  for (let floor = 0; floor < Math.max(1, floors); floor += 1) {
+    errors += validateConceptLayout(rooms as never, lotWidth, lotDepth, floor).filter((issue) => issue.severity === "error").length;
+  }
+  return errors;
 }

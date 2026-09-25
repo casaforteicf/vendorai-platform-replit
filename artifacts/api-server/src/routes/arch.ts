@@ -1098,9 +1098,18 @@ Retorne SOMENTE JSON válido:
       .map((item: any) => item.text)
       .join("");
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if ((message as any).stop_reason === "max_tokens") {
+      return res.status(422).json({ error: "O estudo de fachada ficou longo demais e veio incompleto. Tente novamente." });
+    }
     if (!jsonMatch) return res.status(422).json({ error: "A IA não retornou um estudo de fachada válido." });
 
-    const ai = JSON.parse(jsonMatch[0]) as Record<string, any>;
+    // Resposta cortada ou JSON inválido vira aviso claro (422), não erro 500.
+    let ai: Record<string, any>;
+    try {
+      ai = JSON.parse(jsonMatch[0]) as Record<string, any>;
+    } catch {
+      return res.status(422).json({ error: "A IA devolveu um estudo de fachada incompleto. Tente novamente." });
+    }
     const allowedKinds = new Set(["box","portal","canopy","panel","slats","pergola","planter","frame","garage","balcony","wall","gate"]);
     const allowedMaterials = new Set(["paint-offwhite","paint-greige","concrete-light","concrete-dark","wood-natural","wood-dark","stone-sand","stone-graphite","brick-light","metal-black"]);
 
