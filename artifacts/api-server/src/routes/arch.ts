@@ -287,15 +287,11 @@ function specialistConnected(rooms: SpecialistPlanRoom[]) {
   return visited.size === rooms.length;
 }
 
-function specialistLower(value: string | undefined) {
-  return (value ?? "").toLocaleLowerCase("pt-BR");
-}
-
 function specialistIsPrivateBath(room: SpecialistPlanRoom) {
   return room.kind === "banheiro" && /su[ií]te|master/i.test(room.label ?? "");
 }
 
-function specialistDoorAllowed(a: SpecialistPlanRoom, b: SpecialistPlanRoom, floorRooms: SpecialistPlanRoom[]) {
+function specialistDoorAllowed(a: SpecialistPlanRoom, b: SpecialistPlanRoom) {
   if (a.floor !== b.floor || a.kind === "piscina" || b.kind === "piscina") return false;
 
   if (specialistIsPrivateBath(a) || specialistIsPrivateBath(b)) {
@@ -337,7 +333,7 @@ function buildSpecialistDoorGraph(rooms: SpecialistPlanRoom[]) {
       const b = rooms[j];
       if (!specialistTouches(a, b, 0.55)) continue;
       const floorRooms = rooms.filter((room) => room.floor === a.floor);
-      if (!specialistDoorAllowed(a, b, floorRooms)) continue;
+      if (!specialistDoorAllowed(a, b)) continue;
       graph.get(a.id)?.add(b.id);
       graph.get(b.id)?.add(a.id);
     }
@@ -453,7 +449,7 @@ function evaluateSpecialistPlan(
       targets.some((target) =>
         source.floor === target.floor
         && specialistTouches(source, target, 0.55)
-        && specialistDoorAllowed(source, target, rooms.filter((room) => room.floor === source.floor))
+        && specialistDoorAllowed(source, target)
       )
     );
     const fromLabel = input.brief.roomProgram?.find((item) => item.id === rule.fromRequestId)?.label ?? sources[0]?.label ?? "Ambiente";
@@ -756,7 +752,7 @@ function sanitizeSpecialistPlan(
       targets.some((target) =>
         source.floor === target.floor
         && specialistTouches(source, target, 0.55)
-        && specialistDoorAllowed(source, target, rooms.filter((room) => room.floor === source.floor))
+        && specialistDoorAllowed(source, target)
       )
     );
     const satisfied = rule.mode === "required_direct" ? directExists : !directExists;
