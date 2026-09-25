@@ -391,7 +391,7 @@ export type ClientBriefAlternative = ClientBriefPlan & {
   architectureScore?: number;
   qualityGateVersion?: 2;
   qualityDimensions?: Partial<Record<
-    "program" | "circulation" | "privacy" | "ergonomics" | "geometry" | "constructability" | "architecturalCoherence",
+    "program" | "circulation" | "privacy" | "ergonomics" | "geometry" | "constructability" | "furnitureFit" | "architecturalCoherence",
     { score: number; status: "approved" | "warning" | "blocked"; issues: string[] }
   >>;
   hardBlockers?: string[];
@@ -447,6 +447,22 @@ export type ClientBriefAlternative = ClientBriefPlan & {
       connected: boolean;
       unreachableRooms: string[];
     };
+    furnitureFit?: {
+      status: "approved" | "warning" | "blocked";
+      score: number;
+      blockers: string[];
+      issues: string[];
+      items: Array<{
+        roomId: string;
+        label: string;
+        status: "approved" | "warning" | "blocked";
+        score: number;
+        requiredEnvelope: { width: number; depth: number };
+        actual: { width: number; depth: number };
+        furniture: string[];
+        issues: string[];
+      }>;
+    } | null;
   };
   projectBrief?: ProjectBriefSnapshot;
 };
