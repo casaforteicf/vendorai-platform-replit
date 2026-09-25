@@ -26,6 +26,7 @@ type Props = {
   lotDepth: number;
   initialProjectBrief?: ProjectBriefSnapshot | null;
   onGenerate: (alternative: ClientBriefAlternative) => void;
+  onImproveCurrent?: (projectBrief: ProjectBriefSnapshot) => Promise<void>;
 };
 
 const DEFAULT_BRIEF: ClientBrief = {
@@ -203,6 +204,7 @@ export default function ConceptClientBriefPanel({
   lotDepth,
   initialProjectBrief,
   onGenerate,
+  onImproveCurrent,
 }: Props) {
   const [brief, setBrief] = useState<ClientBrief>(() => initialProjectBrief?.brief ?? DEFAULT_BRIEF);
   const [vision, setVision] = useState<ClientVision>(() => initialProjectBrief?.vision ?? DEFAULT_VISION);
@@ -224,6 +226,30 @@ export default function ConceptClientBriefPanel({
     ].filter(Boolean);
     return items.join(" · ");
   }, [brief]);
+
+  const improveCurrentModel = async () => {
+    if (!initialProjectBrief || !onImproveCurrent) return;
+    setGenerating(true);
+    setGenerationError(null);
+    try {
+      await onImproveCurrent({
+        brief,
+        vision,
+        selectedAlternativeId: initialProjectBrief.selectedAlternativeId,
+        selectedAlternativeTitle: initialProjectBrief.selectedAlternativeTitle,
+        clientFitSummary: initialProjectBrief.clientFitSummary,
+        designRationale: initialProjectBrief.designRationale,
+      });
+    } catch (error) {
+      setGenerationError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível melhorar o modelo atual com o briefing.",
+      );
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   const generateSpecialistAlternatives = async () => {
     setGenerating(true);
@@ -731,20 +757,24 @@ export default function ConceptClientBriefPanel({
 
       <button
         type="button"
-        onClick={generateSpecialistAlternatives}
+        onClick={initialProjectBrief ? improveCurrentModel : generateSpecialistAlternatives}
         disabled={generating}
         className="flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3.5 text-sm font-bold text-white shadow-sm hover:bg-orange-600 disabled:cursor-wait disabled:opacity-60"
       >
         <Sparkles className="h-4 w-4" />
         {generating
-          ? "IA arquiteta estudando o projeto..."
+          ? initialProjectBrief
+            ? "IA arquiteta melhorando o modelo atual..."
+            : "IA arquiteta estudando o projeto..."
           : initialProjectBrief
-            ? "Reinterpretar briefing e gerar 3 novas opções"
+            ? "Melhorar este modelo com o briefing"
             : "Gerar 3 opções com IA arquiteta"}
       </button>
 
       <p className="text-center text-[10px] leading-4 text-slate-400">
-        Você escolhe a melhor base e depois pode mover ambientes, alterar medidas, portas, janelas e materiais.
+        {initialProjectBrief
+          ? "A IA trabalha sobre o modelo atual. Ela não cria três plantas novas e preserva as edições já feitas sempre que forem compatíveis com o briefing."
+          : "Você escolhe a melhor base e depois pode mover ambientes, alterar medidas, portas, janelas e materiais."}
       </p>
     </div>
   );
