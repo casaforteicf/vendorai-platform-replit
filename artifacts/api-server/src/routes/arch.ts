@@ -139,6 +139,17 @@ const specialistHousePlanSchema = z.object({
     office: z.boolean(),
     integratedKitchen: z.boolean(),
     privateAwaySocial: z.boolean(),
+    desiredAreaTotal: z.number().min(40).max(1200).optional(),
+    roomProgram: z.array(z.object({
+      id: z.string().min(1).max(120),
+      kind: z.enum(["sala","cozinha","suite","quarto","banheiro","lavanderia","garagem","gourmet","piscina","outro"]),
+      label: z.string().min(1).max(120),
+      quantity: z.number().int().min(0).max(8),
+      targetArea: z.number().min(2.4).max(120),
+      floorPreference: z.enum(["terreo","superior","qualquer"]).optional(),
+      required: z.boolean().optional(),
+      notes: z.string().max(300).optional(),
+    })).max(40).optional(),
   }),
   vision: z.object({
     lifestyle: z.enum(["familia", "receber", "tranquilidade", "praticidade", "misto"]),
@@ -816,6 +827,8 @@ Antes de propor coordenadas, pense internamente nesta ordem:
 
 LOTE: ${input.lotWidth} m x ${input.lotDepth} m.
 BRIEFING OBJETIVO: ${JSON.stringify(input.brief)}
+ÁREA CONSTRUÍDA DESEJADA: ${input.brief.desiredAreaTotal ?? "não informada"} m².
+PROGRAMA DE NECESSIDADES DECLARADO PELO CLIENTE: ${JSON.stringify(input.brief.roomProgram ?? [])}
 VISÃO / DNA DO CLIENTE: ${JSON.stringify(input.vision ?? {})}
 
 PROGRAMA FIXO DE AMBIENTES:
@@ -834,6 +847,9 @@ REGRAS FUNCIONAIS INEGOCIÁVEIS:
 - escadas devem ser funcionais e alinhadas entre pavimentos;
 - reduza corredores residuais, recortes gratuitos e perímetro construtivo sem propósito;
 - considere dimensões reais de mobiliário, portas e circulação;
+- trate targetArea de cada ambiente como META DE ÁREA: pode variar moderadamente para viabilizar a planta, mas não ignore nem reduza drasticamente sem motivo;
+- respeite a área construída total desejada como alvo global; se a soma do programa tornar esse alvo impossível, priorize ambientes marcados required e registre a compensação no designRationale/notes;
+- não invente closet, lavabo, despensa, varanda ou outro cômodo que não esteja no programa, salvo circulação técnica indispensável;
 - áreas molhadas devem ser racionalizadas quando possível;
 - preserve ambientes locked;
 - a planta deve poder originar uma fachada coerente: aberturas, volumes e cobertura não podem depender de invenções posteriores.
