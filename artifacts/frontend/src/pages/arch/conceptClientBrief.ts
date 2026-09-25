@@ -67,6 +67,34 @@ export type ClientVision = {
   futureNeeds: string;
   mustHave: string;
   avoid: string;
+  aestheticReferences?: string;
+  preferredMaterials?: string;
+  maintenancePreference?: "baixa" | "equilibrada" | "aceita_maior";
+  constructionMethod?: "nao_definido" | "icf" | "alvenaria" | "alvenaria_estrutural" | "steel_frame" | "wood_frame" | "concreto" | "pre_fabricado" | "hibrido";
+  budgetTarget?: number;
+};
+
+export type HouseholdContext = {
+  residents?: number;
+  children?: number;
+  elderly?: number;
+  pets?: boolean;
+  accessibilityNeeds?: boolean;
+  workFromHome?: "nao" | "ocasional" | "frequente";
+  hostingFrequency?: "baixa" | "media" | "alta";
+  cookingProfile?: "pratico" | "cotidiano" | "intenso";
+  routineNotes?: string;
+};
+
+export type ProjectSiteContext = {
+  frontSide?: "top" | "bottom" | "left" | "right";
+  northSide?: "top" | "bottom" | "left" | "right" | "nao_informado";
+  topography?: "plano" | "declive" | "aclive" | "irregular" | "nao_informado";
+  desiredViews?: string;
+  avoidViews?: string;
+  privacyNotes?: string;
+  existingElements?: string;
+  climateNotes?: string;
 };
 
 const MIN_ROOM_AREAS: Record<ClientRoomRequestKind, number> = {
@@ -271,8 +299,11 @@ export type ArchitectureDNA = {
 };
 
 export type ProjectBriefSnapshot = {
+  version?: 2;
   brief: ClientBrief;
   vision: ClientVision;
+  household?: HouseholdContext;
+  siteContext?: ProjectSiteContext;
   selectedAlternativeId?: ClientBriefAlternativeId;
   selectedAlternativeTitle?: string;
   clientFitSummary?: string;
@@ -283,7 +314,57 @@ export type ProjectBriefSnapshot = {
   daylightStrategy?: string[];
   facadeDirection?: string[];
   selfCritique?: string[];
+  briefingCompleteness?: number;
 };
+
+export function assessProjectBriefCompleteness(snapshot: Pick<ProjectBriefSnapshot, "brief" | "vision" | "household" | "siteContext">) {
+  const { brief, vision, household, siteContext } = snapshot;
+  const checks = [
+    Boolean(brief.roomProgram?.length),
+    Number(brief.desiredAreaTotal) >= 40,
+    Boolean(brief.adjacencyRules?.length),
+    Boolean(vision.lifestyle),
+    Boolean(vision.protagonist),
+    Boolean(vision.priorities?.length),
+    Boolean(vision.mustHave?.trim() || vision.avoid?.trim()),
+    Boolean(vision.futureNeeds?.trim()),
+    Boolean(household?.residents && household.residents > 0),
+    Boolean(household?.routineNotes?.trim() || household?.workFromHome || household?.hostingFrequency),
+    Boolean(siteContext?.northSide && siteContext.northSide !== "nao_informado"),
+    Boolean(siteContext?.topography && siteContext.topography !== "nao_informado"),
+    Boolean(siteContext?.desiredViews?.trim() || siteContext?.privacyNotes?.trim()),
+    Boolean(vision.constructionMethod && vision.constructionMethod !== "nao_definido"),
+    Boolean(Number(vision.budgetTarget) > 0 || vision.budgetStrategy),
+    Boolean(vision.aestheticReferences?.trim() || vision.preferredMaterials?.trim()),
+  ];
+  const completed = checks.filter(Boolean).length;
+  return Math.round((completed / checks.length) * 100);
+}
+
+export function buildProjectBriefSnapshot(input: {
+  brief: ClientBrief;
+  vision: ClientVision;
+  household?: HouseholdContext;
+  siteContext?: ProjectSiteContext;
+  intervention?: ProjectBriefSnapshot["intervention"];
+  previous?: ProjectBriefSnapshot | null;
+  patch?: Partial<ProjectBriefSnapshot>;
+}): ProjectBriefSnapshot {
+  const snapshot: ProjectBriefSnapshot = {
+    version: 2,
+    ...(input.previous ?? {}),
+    brief: input.brief,
+    vision: input.vision,
+    household: input.household,
+    siteContext: input.siteContext,
+    intervention: input.intervention ?? input.previous?.intervention,
+    ...(input.patch ?? {}),
+  };
+  return {
+    ...snapshot,
+    briefingCompleteness: assessProjectBriefCompleteness(snapshot),
+  };
+}
 
 export type ClientBriefAlternative = ClientBriefPlan & {
   id: ClientBriefAlternativeId;
