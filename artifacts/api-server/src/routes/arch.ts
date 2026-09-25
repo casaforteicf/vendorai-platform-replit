@@ -333,8 +333,8 @@ function sanitizeSpecialistPlan(
     const patch = patches.find((item: any) => item?.id === room.id);
     const width = Math.max(1.2, Math.min(input.lotWidth, Number(patch?.width ?? room.width)));
     const depth = Math.max(1.2, Math.min(input.lotDepth, Number(patch?.depth ?? room.depth)));
-    const sourceX = Number.isFinite(room.x) ? Number(room.x) : 0;
-    const sourceY = Number.isFinite(room.y) ? Number(room.y) : 0;
+    const sourceX = typeof room.x === "number" && typeof room.x === "number" && Number.isFinite(room.x) ? room.x : 0;
+    const sourceY = typeof room.y === "number" && typeof room.y === "number" && Number.isFinite(room.y) ? room.y : 0;
     const rawX = room.locked ? sourceX : Number(patch?.x ?? sourceX);
     const rawY = room.locked ? sourceY : Number(patch?.y ?? sourceY);
     const x = Math.max(0, Math.min(input.lotWidth - width, Number.isFinite(rawX) ? rawX : sourceX));
@@ -753,8 +753,8 @@ router.post("/arch/concept-plan-specialist", authenticate, async (req, res) => {
     width: room.width,
     depth: room.depth,
     floor: room.floor,
-    x: Number.isFinite(room.x) ? room.x : 0,
-    y: Number.isFinite(room.y) ? room.y : 0,
+    x: typeof room.x === "number" && Number.isFinite(room.x) ? room.x : 0,
+    y: typeof room.y === "number" && Number.isFinite(room.y) ? room.y : 0,
     locked: Boolean(room.locked),
   }));
 
