@@ -847,6 +847,59 @@ router.post("/arch/concept-plan-specialist", authenticate, async (req, res) => {
   }
 
   const input = parsed.data;
+  const programErrors: string[] = [];
+  const programWarnings: string[] = [];
+  const roomProgram = input.brief.roomProgram ?? [];
+
+  if (roomProgram.length) {
+    const netRequestedArea = roomProgram
+      .filter((item) => item.kind !== "piscina")
+      .reduce((sum, item) => sum + item.quantity * item.targetArea, 0);
+    const desiredArea = Number(input.brief.desiredAreaTotal);
+
+    if (Number.isFinite(desiredArea) && netRequestedArea > desiredArea * 1.02) {
+      programErrors.push(
+        `Os ambientes solicitados somam ${Math.round(netRequestedArea)} m² úteis, acima da área total desejada de ${Math.round(desiredArea)} m².`,
+      );
+    } else if (Number.isFinite(desiredArea) && netRequestedArea * 1.14 > desiredArea * 1.12) {
+      programWarnings.push(
+        `O programa pode ultrapassar a meta de ${Math.round(desiredArea)} m² depois de paredes e circulação.`,
+      );
+    }
+
+    const requestedSuites = roomProgram
+      .filter((item) => item.kind === "suite" && item.required !== false)
+      .reduce((sum, item) => sum + item.quantity, 0);
+    const requestedSuiteBaths = roomProgram
+      .filter((item) => item.kind === "banheiro" && /su[ií]te|master/i.test(item.label))
+      .reduce((sum, item) => sum + item.quantity, 0);
+    if (requestedSuites > requestedSuiteBaths) {
+      programErrors.push(
+        `O programa possui ${requestedSuites} suíte(s), mas apenas ${requestedSuiteBaths} banheiro(s) de suíte.`,
+      );
+    }
+
+    for (const request of roomProgram) {
+      const expanded = input.rooms.filter((room) => room.programRequestId === request.id);
+      if (expanded.length !== request.quantity) {
+        programErrors.push(
+          `${request.label}: foram preparados ${expanded.length} ambiente(s), mas o briefing pede ${request.quantity}.`,
+        );
+      }
+    }
+  }
+
+  if (programErrors.length) {
+    return res.status(422).json({
+      error: "O programa de necessidades precisa ser ajustado antes de desenvolver a planta.",
+      programValidation: {
+        status: "blocked",
+        errors: [...new Set(programErrors)],
+        warnings: [...new Set(programWarnings)],
+      },
+    });
+  }
+
   const program = input.rooms.map((room) => ({
     id: room.id,
     kind: room.kind,
@@ -1081,6 +1134,11 @@ NÃO aceite a primeira solução mental: critique e refine antes de responder.`;
         refinementPasses: bestApproved.refinementPass,
       },
       programCompliance: bestApproved.programCompliance ?? null,
+      programValidation: {
+        status: programWarnings.length ? "warning" : "ok",
+        errors: [],
+        warnings: [...new Set(programWarnings)],
+      },
     });
   } catch (error) {
     const safe = sanitizeAIError(error);
