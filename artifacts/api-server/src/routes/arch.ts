@@ -112,6 +112,18 @@ const developConceptWithAiSchema = z.object({
   ]).optional(),
 });
 
+const facadeStudySchema = z.object({
+  action: z.enum(["diagnose", "develop"]),
+  intervention: z.enum(["leve", "moderada", "marcante"]).default("moderada"),
+  facade: z.record(z.any()).default({}),
+  facadeDesign: z.object({
+    surfaceMaterials: z.record(z.string()).optional(),
+    volumes: z.array(z.record(z.any())).max(40).optional(),
+    lighting: z.enum(["day", "sunset", "night"]).optional(),
+    showLandscaping: z.boolean().optional(),
+  }).optional(),
+});
+
 const specialistHousePlanSchema = z.object({
   lotWidth: z.number().min(5).max(100),
   lotDepth: z.number().min(8).max(200),
@@ -939,6 +951,199 @@ REGRAS INEGOCIÁVEIS:
         validation: "functional-adjacency-v1",
         minimumScore: 72,
       },
+    });
+  } catch (error) {
+    const safe = sanitizeAIError(error);
+    return res.status(safe.status).json({ error: safe.message });
+  }
+});
+
+router.post("/arch/concept-projects/:id/facade-study", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const userId = req.user?.sub;
+  const id = String(req.params.id);
+  if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
+
+  const parsed = facadeStudySchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Parâmetros do estudo de fachada inválidos.", details: parsed.error.flatten() });
+  }
+
+  const [concept] = await db
+    .select()
+    .from(archConceptProjectsTable)
+    .where(and(
+      eq(archConceptProjectsTable.id, id),
+      eq(archConceptProjectsTable.tenantId, tid),
+      eq(archConceptProjectsTable.ownerUserId, userId),
+    ))
+    .limit(1);
+
+  if (!concept) return res.status(404).json({ error: "Pré-projeto não encontrado." });
+
+  const config = (concept.configuration ?? {}) as Record<string, unknown>;
+  const rooms = Array.isArray(concept.rooms) ? concept.rooms : [];
+  const openingOverrides = concept.openingOverrides ?? {};
+  const currentFacade = parsed.data.facade ?? {};
+  const currentDesign = parsed.data.facadeDesign ?? {};
+  const action = parsed.data.action;
+  const intervention = parsed.data.intervention;
+
+  const prompt = `Você é o Arqdor Facade Architect AI, arquiteto especialista em composição de fachadas residenciais brasileiras.
+
+Sua tarefa NÃO é renderizar e NÃO é inventar outra casa.
+Você deve trabalhar SOBRE O PROJETO ATUAL.
+
+AÇÃO: ${action}
+NÍVEL DE INTERVENÇÃO: ${intervention}
+
+BRIEFING MESTRE / DNA DO CLIENTE:
+${JSON.stringify(config.projectBrief ?? null)}
+
+LOTE:
+${JSON.stringify(concept.lot)}
+
+AMBIENTES / GEOMETRIA DO PROJETO:
+${JSON.stringify(rooms)}
+
+ABERTURAS E AJUSTES EXISTENTES:
+${JSON.stringify(openingOverrides)}
+
+FACHADA ATUAL:
+${JSON.stringify(currentFacade)}
+
+DESIGN DE FACHADA ATUAL:
+${JSON.stringify(currentDesign)}
+
+REGRAS INEGOCIÁVEIS:
+- preserve a casa existente: número de pavimentos, implantação, posição geral da garagem, estrutura espacial e geometria principal;
+- não mova ambientes internos para "melhorar" estética;
+- não remova portas/janelas existentes;
+- se recomendar ajuste de abertura, trate como recomendação e explique o motivo, nunca como alteração silenciosa;
+- a solução deve nascer do DNA do cliente e da arquitetura atual;
+- "leve" = materiais, cores, paisagismo e detalhes;
+- "moderada" = pode propor pórtico, marquise, painel, ripado, moldura, jardineira, pergolado e ajustes de cobertura compatíveis;
+- "marcante" = composição mais autoral, porém sem transformar o projeto em outra casa;
+- cobertura deve continuar tecnicamente compatível com a volumetria;
+- evite excesso de elementos decorativos e fachadas genéricas;
+- priorize hierarquia de entrada, proporção, ritmo, cheios/vazios, materialidade, proteção solar e coerência com a planta.
+
+Se ACTION=diagnose, foque no diagnóstico e deixe as sugestões estruturadas.
+Se ACTION=develop, entregue também uma proposta aplicável ao editor.
+
+Retorne SOMENTE JSON válido:
+{
+  "diagnosis": {
+    "score": 0,
+    "summary": "...",
+    "strengths": ["..."],
+    "issues": ["..."],
+    "opportunities": ["..."]
+  },
+  "concept": {
+    "title": "...",
+    "architecturalDirection": "...",
+    "entryStrategy": "...",
+    "roofStrategy": "...",
+    "materialStrategy": "...",
+    "landscapeStrategy": "...",
+    "whyItFitsClient": "..."
+  },
+  "facadeSuggestion": {
+    "style": "contemporaneo|minimalista|classico_contemporaneo|tropical|industrial|rustico_contemporaneo",
+    "roof": "platibanda|aparente|misto",
+    "primaryMaterial": "pintura|madeira|pedra|concreto",
+    "accentMaterial": "nenhum|madeira|pedra|concreto",
+    "facadeTone": "claro|medio|escuro",
+    "frameTone": "preto|branco|bronze",
+    "landscaping": "leve|medio|intenso"
+  },
+  "designSuggestion": {
+    "surfaceMaterials": {
+      "main": "paint-offwhite|paint-greige|concrete-light|concrete-dark|wood-natural|wood-dark|stone-sand|stone-graphite|brick-light|metal-black",
+      "accent": "...",
+      "garage": "...",
+      "entrance": "...",
+      "paving": "...",
+      "frames": "..."
+    },
+    "volumes": [
+      {
+        "kind": "box|portal|canopy|panel|slats|pergola|planter|frame|garage|balcony|wall|gate",
+        "label": "...",
+        "x": 0,
+        "y": 0,
+        "width": 20,
+        "height": 30,
+        "depth": 0.5,
+        "materialId": "paint-offwhite"
+      }
+    ]
+  },
+  "openingRecommendations": [
+    { "type": "window|door", "recommendation": "...", "reason": "...", "requiresClientApproval": true }
+  ],
+  "warnings": ["..."]
+}`;
+
+  try {
+    const message = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 3200,
+      system: "Você é um arquiteto de fachadas. Responda somente JSON válido, sem markdown.",
+      messages: [{ role: "user", content: prompt }],
+    });
+    const raw = message.content
+      .filter((item: any) => item.type === "text")
+      .map((item: any) => item.text)
+      .join("");
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return res.status(422).json({ error: "A IA não retornou um estudo de fachada válido." });
+
+    const ai = JSON.parse(jsonMatch[0]) as Record<string, any>;
+    const allowedKinds = new Set(["box","portal","canopy","panel","slats","pergola","planter","frame","garage","balcony","wall","gate"]);
+    const allowedMaterials = new Set(["paint-offwhite","paint-greige","concrete-light","concrete-dark","wood-natural","wood-dark","stone-sand","stone-graphite","brick-light","metal-black"]);
+
+    const rawVolumes = Array.isArray(ai.designSuggestion?.volumes) ? ai.designSuggestion.volumes : [];
+    const volumes = rawVolumes.slice(0, 12).flatMap((volume: any, index: number) => {
+      if (!allowedKinds.has(String(volume?.kind)) || !allowedMaterials.has(String(volume?.materialId))) return [];
+      const clampNumber = (value: unknown, min: number, max: number, fallback: number) => {
+        const parsed = Number(value);
+        if (!Number.isFinite(parsed)) return fallback;
+        return Math.max(min, Math.min(max, parsed));
+      };
+      return [{
+        id: `ai-facade-${id.slice(0, 8)}-${index + 1}`,
+        kind: String(volume.kind),
+        label: String(volume.label ?? "Elemento de fachada").slice(0, 80),
+        x: clampNumber(volume.x, 0, 96, 36),
+        y: clampNumber(volume.y, 0, 96, 28),
+        width: clampNumber(volume.width, 4, 100, 20),
+        height: clampNumber(volume.height, 4, 100, 30),
+        depth: clampNumber(volume.depth, 0, 3, 0.5),
+        materialId: String(volume.materialId),
+        opacity: 1,
+      }];
+    });
+
+    const surfaceMaterials = ai.designSuggestion?.surfaceMaterials && typeof ai.designSuggestion.surfaceMaterials === "object"
+      ? Object.fromEntries(
+          Object.entries(ai.designSuggestion.surfaceMaterials)
+            .filter(([, value]) => allowedMaterials.has(String(value)))
+            .map(([key, value]) => [key, String(value)])
+        )
+      : {};
+
+    return res.json({
+      mode: action,
+      intervention,
+      diagnosis: ai.diagnosis ?? null,
+      concept: ai.concept ?? null,
+      facadeSuggestion: action === "develop" ? (ai.facadeSuggestion ?? null) : null,
+      designSuggestion: action === "develop" ? { surfaceMaterials, volumes } : null,
+      openingRecommendations: Array.isArray(ai.openingRecommendations) ? ai.openingRecommendations.slice(0, 8) : [],
+      warnings: Array.isArray(ai.warnings) ? ai.warnings.slice(0, 10) : [],
+      geometryLocked: true,
     });
   } catch (error) {
     const safe = sanitizeAIError(error);
