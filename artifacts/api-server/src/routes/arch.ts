@@ -182,6 +182,25 @@ const specialistHousePlanSchema = z.object({
     maintenancePreference: z.enum(["baixa", "equilibrada", "aceita_maior"]).optional(),
     constructionMethod: z.enum(["nao_definido","icf","alvenaria","alvenaria_estrutural","steel_frame","wood_frame","concreto","pre_fabricado","hibrido"]).optional(),
     budgetTarget: z.number().min(0).max(100000000).optional(),
+    tasteDNA: z.object({
+      massing: z.enum(["horizontal","vertical","pavilhoes","volumes_deslocados","neutro"]).optional(),
+      roofExpression: z.enum(["platibanda","aparente","misto","neutro"]).optional(),
+      openness: z.enum(["protegida","equilibrada","aberta"]).optional(),
+      symmetry: z.enum(["assimetrica","equilibrada","simetrica"]).optional(),
+      warmth: z.enum(["fria","neutra","acolhedora"]).optional(),
+      materialDensity: z.enum(["minimal","equilibrada","rica"]).optional(),
+      landscaping: z.enum(["leve","medio","intenso"]).optional(),
+      streetExpression: z.enum(["discreta","equilibrada","marcante"]).optional(),
+      preferredMoves: z.array(z.string().max(180)).max(12).optional(),
+      dislikedMoves: z.array(z.string().max(180)).max(12).optional(),
+      likedReferences: z.array(z.string().max(500)).max(12).optional(),
+      dislikedReferences: z.array(z.string().max(500)).max(12).optional(),
+      learnedSignals: z.array(z.object({
+        source: z.enum(["briefing","facade_option","manual_edit"]),
+        signal: z.string().max(220),
+        weight: z.number().min(-1).max(1),
+      })).max(40).optional(),
+    }).optional(),
   }).optional(),
   household: z.object({
     residents: z.number().int().min(1).max(12).optional(),
@@ -2558,6 +2577,7 @@ PROGRAMA DE NECESSIDADES DECLARADO PELO CLIENTE: ${JSON.stringify(input.brief.ro
 GRAFO DE RELAÇÕES ENTRE AMBIENTES: ${JSON.stringify(input.brief.adjacencyRules ?? [])}
 GRAFO DE ACESSOS E PORTAS: ${JSON.stringify(input.brief.accessRules ?? [])}
 VISÃO / DNA DO CLIENTE: ${JSON.stringify(input.vision ?? {})}
+TASTE DNA DO CLIENTE: ${JSON.stringify(input.vision?.tasteDNA ?? {})}
 CONTEXTO FAMILIAR E ROTINA: ${JSON.stringify(input.household ?? {})}
 CONTEXTO RESIDENCIAL BRASILEIRO: ${JSON.stringify(input.brazilianContext ?? {})}
 REGRAS MUNICIPAIS / VIABILIDADE INFORMADAS: ${JSON.stringify(input.regulatoryContext ?? {})}
@@ -2573,6 +2593,9 @@ INTERPRETAÇÃO OBRIGATÓRIA DO BRIEFING:
 - evite colocar dormitórios expostos diretamente à rua quando a privacidade for prioridade;
 - se o terreno tiver aclive/declive/irregularidade, proponha uma implantação que reduza movimentação de terra e permita evolução posterior em níveis;
 - referências estéticas e materiais orientam linguagem e DNA, mas nunca podem quebrar funcionalidade;
+- TASTE DNA deve orientar volumetria, expressão de cobertura, abertura, simetria, calor visual, materialidade, paisagismo e relação com a rua;
+- preferências negativas têm o mesmo peso das positivas: não repita movimentos explicitamente rejeitados;
+- learnedSignals são sinais de preferência, não ordens absolutas; preserve briefing, clima, funcionalidade e custo antes do gosto;
 - método construtivo deve orientar racionalidade geométrica e repetição/modulação quando aplicável;
 - orçamento-alvo e estratégia de custo devem limitar complexidade gratuita de perímetro, vãos, recortes e cobertura;
 - aplique VALUE ENGINEERING: preserve decisões que aumentam qualidade espacial, clima, privacidade ou identidade e simplifique decisões caras que não entregam benefício proporcional;
@@ -2657,7 +2680,8 @@ Responda SOMENTE JSON válido:
       "lifestyleIntent": "como rotina e perfil familiar influenciaram o projeto",
       "siteIntent": "como terreno, orientação, vistas e privacidade influenciaram a solução",
       "costIntent": "como orçamento e método construtivo orientaram a racionalidade",
-      "futureFlexibilityIntent": "como necessidades futuras foram consideradas"
+      "futureFlexibilityIntent": "como necessidades futuras foram consideradas",
+      "tasteIntent": "como o Taste DNA influenciou partido, volumetria, cobertura e linguagem"
     },
     "experienceStrategy": ["decisão espacial 1", "decisão espacial 2"],
     "daylightStrategy": ["decisão de iluminação natural 1"],
