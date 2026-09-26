@@ -12,6 +12,11 @@ import { autoRepairConceptLayout } from "./conceptAutoRepair";
 import { evaluateConceptIntent, type ConceptIntentInput } from "./conceptIntent";
 import { optimizeArchitecturalCandidates } from "./conceptMultiObjectiveOptimizer";
 import { runIterativeArchitecturalSearch } from "./conceptIterativeSearch";
+import {
+  recommendArchitecturalPatterns,
+  typologyPatternAffinity,
+  mergePatternPreferences,
+} from "./conceptPatternLibrary";
 import { generateTypologyLayout } from "./conceptTypologyLayout";
 
 export type ClientRoomRequestKind =
@@ -864,6 +869,8 @@ export function buildClientBriefAlternatives(
 ): ClientBriefAlternative[] {
   const ids: ClientBriefAlternativeId[] = ["compact", "balanced", "integrated"];
   const letters = ["A", "B", "C"];
+  const patternRecommendations = recommendArchitecturalPatterns(brief, lotWidth);
+  const patternPreferences = mergePatternPreferences(patternRecommendations);
   const scored = CONCEPT_TYPOLOGIES.flatMap((template) => {
     const rooms = buildTypologyPlan(template.id, lotWidth, lotDepth, placement.frontSide, placement.setbacks);
     if (!rooms || template.minLotWidth > lotWidth + 0.01) return [];
@@ -912,6 +919,7 @@ export function buildClientBriefAlternatives(
     const acceptance = selected?.acceptance ?? repair.after;
     if (acceptance.status === "blocked") return [];
     const features = templateFeatures(template);
+    const patternAffinity = typologyPatternAffinity(template.id, patternRecommendations);
     const score =
       Math.abs(features.floors - brief.floors) * 12
       + Math.abs(features.bedrooms - brief.bedrooms) * 4
@@ -920,7 +928,8 @@ export function buildClientBriefAlternatives(
       + (brief.gourmet !== features.gourmet ? 2 : 0)
       + (brief.pool !== features.pool ? 3 : 0)
       + (brief.office !== features.office ? 1 : 0)
-      + (100 - repair.afterIntent.score) / 8;
+      + (100 - repair.afterIntent.score) / 8
+      - patternAffinity;
     return [{
       template,
       rooms: repairedRooms,
@@ -954,7 +963,7 @@ export function buildClientBriefAlternatives(
       typology: template.id,
       floors: template.floors,
       suggestedArea: template.suggestedArea,
-      layoutPreferences: { ...DEFAULT_LAYOUT_PREFERENCES },
+      layoutPreferences: { ...DEFAULT_LAYOUT_PREFERENCES, ...patternPreferences },
       rooms: rooms as ClientBriefPlan["rooms"],
       architectureScore: selectedCandidate?.balanceScore ?? architectureScore,
       qualityIssues: [
@@ -966,6 +975,9 @@ export function buildClientBriefAlternatives(
           ? ["Planta passou no gate automático de coerência arquitetônica."]
           : ["Planta utilizável, mas requer revisão dos avisos arquitetônicos antes da aprovação final."]),
         ...intent.strengths,
+        ...patternRecommendations.slice(0, 2).map((item) =>
+          `Padrão aplicado: ${item.pattern.title}${item.reasons.length ? ` (${item.reasons.join(", ")})` : ""}.`
+        ),
         ...(selectedCandidate?.paretoEfficient
           ? [`Solução selecionada no Pareto front entre ${optimizer.candidates.length} candidato(s) internos, equilibrando múltiplos objetivos arquitetônicos.`]
           : []),
