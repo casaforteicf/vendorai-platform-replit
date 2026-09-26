@@ -33,6 +33,7 @@ export interface ArqProjectMeta {
 export interface ArqProjectState {
   loading:        boolean
   saving:         boolean
+  error:          string | null
   projectId:      string | null
   projectMeta:    ArqProjectMeta | null
   objects:        ProjectObject[]
@@ -54,6 +55,7 @@ export interface ArqProjectState {
 export function useArqProject(): ArqProjectState {
   const [loading,         setLoading]        = useState(false)
   const [saving,          setSaving]         = useState(false)
+  const [error,            setError]          = useState<string | null>(null)
   const [projectId,       setProjectId]      = useState<string | null>(null)
   const [projectMeta,     setProjectMeta]    = useState<ArqProjectMeta | null>(null)
   const [objects,         setObjects]        = useState<ProjectObject[]>([])
@@ -65,6 +67,7 @@ export function useArqProject(): ArqProjectState {
 
   async function fetchProjects() {
     setProjectsLoading(true)
+    setError(null)
     try {
       const res = await fetch(`${BASE}/arq/projects`, { headers: authHeaders() })
       if (res.ok) {
@@ -72,16 +75,20 @@ export function useArqProject(): ArqProjectState {
         setProjects(data)
         return data
       }
-    } catch { /* ignore */ }
+      throw new Error('Não foi possível carregar os projetos.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível carregar os projetos.')
+    }
     finally { setProjectsLoading(false) }
     return []
   }
 
   async function loadProject(id: string) {
     setLoading(true)
+    setError(null)
     try {
       const res = await fetch(`${BASE}/arq/projects/${id}`, { headers: authHeaders() })
-      if (!res.ok) return
+      if (!res.ok) throw new Error('Não foi possível carregar o projeto.')
       const data = await res.json()
       setProjectMeta(data.projeto as ArqProjectMeta)
       setProjectId(id)
@@ -115,7 +122,9 @@ export function useArqProject(): ArqProjectState {
         }))
       )
       localStorage.setItem('arq_last_project_id', id)
-    } catch { /* ignore */ }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível carregar o projeto.')
+    }
     finally { setLoading(false) }
   }
 
@@ -150,7 +159,7 @@ export function useArqProject(): ArqProjectState {
     if (!projectId) return
     setSaving(true)
     try {
-      await fetch(`${BASE}/arq/projects/${projectId}/objects`, {
+      const response = await fetch(`${BASE}/arq/projects/${projectId}/objects`, {
         method: 'PUT',
         headers: authHeaders(),
         body: JSON.stringify(objs.map(o => ({
@@ -169,16 +178,20 @@ export function useArqProject(): ArqProjectState {
           locked:          o.locked,
         }))),
       })
+      if (!response.ok) throw new Error('Não foi possível salvar os objetos do projeto.')
       setObjects(objs)
-    } catch { /* ignore */ }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível salvar os objetos do projeto.')
+    }
     finally { setSaving(false) }
   }
 
   async function saveMaterials(mats: ProjectMaterial[]) {
     if (!projectId) return
     setSaving(true)
+    setError(null)
     try {
-      await fetch(`${BASE}/arq/projects/${projectId}/materials`, {
+      const response = await fetch(`${BASE}/arq/projects/${projectId}/materials`, {
         method: 'PUT',
         headers: authHeaders(),
         body: JSON.stringify(mats.map(m => ({
@@ -192,15 +205,18 @@ export function useArqProject(): ArqProjectState {
           usedByObjects:    m.usedByObjects,
         }))),
       })
+      if (!response.ok) throw new Error('Não foi possível salvar os materiais do projeto.')
       setMaterials(mats)
-    } catch { /* ignore */ }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível salvar os materiais do projeto.')
+    }
     finally { setSaving(false) }
   }
 
   async function saveAieSnapshot(ctx: ProjectContext, result: any) {
     if (!projectId) return
     try {
-      await fetch(`${BASE}/arq/projects/${projectId}/aie-snapshots`, {
+      const response = await fetch(`${BASE}/arq/projects/${projectId}/aie-snapshots`, {
         method: 'POST',
         headers: authHeaders(),
         body: JSON.stringify({
@@ -209,7 +225,10 @@ export function useArqProject(): ArqProjectState {
           projectSnapshot: ctx,
         }),
       })
-    } catch { /* ignore */ }
+      if (!response.ok) throw new Error('Não foi possível salvar a análise inteligente do projeto.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível salvar a análise inteligente do projeto.')
+    }
   }
 
   function getProjectContext(): ProjectContext | null {
@@ -225,6 +244,7 @@ export function useArqProject(): ArqProjectState {
   return {
     loading,
     saving,
+    error,
     projectId,
     projectMeta,
     objects,
