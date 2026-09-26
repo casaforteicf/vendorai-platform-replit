@@ -790,6 +790,7 @@ export default function ConceptClientBriefPanel({
                         ["costValue", "Custo/valor"],
                         ["brazilianFit", "Contexto BR"],
                         ["codeCompliance", "Viabilidade"],
+                        ["technicalSystems", "Sistemas técnicos"],
                         ["architecturalCoherence", "Coerência"],
                       ] as const).map(([key, label]) => {
                         const dimension = alternative.qualityDimensions?.[key];
@@ -912,6 +913,29 @@ export default function ConceptClientBriefPanel({
                         </div>
                       ))}
                     </div>
+                  </div>
+                ) : null}
+
+                {alternative.programCompliance?.technicalSystems ? (
+                  <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2">
+                    <div className="flex items-center justify-between gap-2 text-[10px]">
+                      <span className="font-bold text-slate-900">Sistemas técnicos + serviço + acústica</span>
+                      <span className={alternative.programCompliance.technicalSystems.status === "blocked"
+                        ? "font-bold text-red-600"
+                        : alternative.programCompliance.technicalSystems.status === "warning"
+                          ? "font-bold text-amber-600"
+                          : "font-bold text-emerald-700"}
+                      >
+                        {alternative.programCompliance.technicalSystems.score}/100
+                      </span>
+                    </div>
+                    {alternative.programCompliance.technicalSystems.recommendations?.length ? (
+                      <div className="mt-2 space-y-1 text-[9px] leading-4 text-slate-600">
+                        {alternative.programCompliance.technicalSystems.recommendations.slice(0, 4).map((item, index) => (
+                          <div key={index}>• {item}</div>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
 
