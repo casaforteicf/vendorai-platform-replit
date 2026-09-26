@@ -74,6 +74,20 @@ export type FacadeStudyResponse = {
     surfaceMaterials?: Partial<FacadeDesignState["surfaceMaterials"]>;
     volumes?: FacadeVolume[];
   } | null;
+  directionOptions?: Array<{
+    id: string;
+    title: string;
+    positioning: "racional" | "equilibrada" | "autoral";
+    primaryMove: string;
+    secondaryMoves: string[];
+    whyItFitsClient: string;
+    tradeoffs: string[];
+    facadeSuggestion?: Partial<ConceptFacadePreferences>;
+    designSuggestion?: {
+      surfaceMaterials?: Partial<FacadeDesignState["surfaceMaterials"]>;
+      volumes?: FacadeVolume[];
+    };
+  }>;
   openingRecommendations?: Array<{
     type?: "window" | "door";
     recommendation?: string;
@@ -348,6 +362,7 @@ export default function ConceptFacadeEditor({
   const [aiError, setAiError] = useState<string | null>(null);
   const [facadeIntervention, setFacadeIntervention] = useState<"leve" | "moderada" | "marcante">("moderada");
   const [facadeStudyApplied, setFacadeStudyApplied] = useState(false);
+  const [selectedDirectionId, setSelectedDirectionId] = useState<string | null>(null);
   const dismissedSiteVolumeIdsRef = useRef<Set<string>>(new Set());
 
   const resolvedConceptProjectId = useMemo(() => {
@@ -477,6 +492,8 @@ export default function ConceptFacadeEditor({
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload?.error ?? "Falha no estudo de fachada com IA.");
       setAiResult(payload as FacadeStudyResponse);
+      const firstDirection = Array.isArray(payload?.directionOptions) ? payload.directionOptions[0] : null;
+      setSelectedDirectionId(firstDirection?.id ?? null);
       setPanel("ai");
       setPanelOpen(true);
     } catch (error) {
@@ -488,19 +505,23 @@ export default function ConceptFacadeEditor({
 
   const applyFacadeStudy = () => {
     if (!aiResult || aiResult.mode !== "develop") return;
-    if (aiResult.facadeSuggestion) {
-      onFacadeChange({ ...facade, ...aiResult.facadeSuggestion });
+    const selectedDirection = aiResult.directionOptions?.find((item) => item.id === selectedDirectionId);
+    const facadeSuggestion = selectedDirection?.facadeSuggestion ?? aiResult.facadeSuggestion;
+    const designSuggestion = selectedDirection?.designSuggestion ?? aiResult.designSuggestion;
+
+    if (facadeSuggestion) {
+      onFacadeChange({ ...facade, ...facadeSuggestion });
     }
-    if (aiResult.designSuggestion) {
-      const generatedVolumes = Array.isArray(aiResult.designSuggestion.volumes)
-        ? aiResult.designSuggestion.volumes
+    if (designSuggestion) {
+      const generatedVolumes = Array.isArray(designSuggestion.volumes)
+        ? designSuggestion.volumes
         : [];
       const existingManualVolumes = design.volumes.filter((volume) => !volume.id.startsWith("ai-facade-"));
       onDesignChange({
         ...design,
         surfaceMaterials: {
           ...design.surfaceMaterials,
-          ...(aiResult.designSuggestion.surfaceMaterials ?? {}),
+          ...(designSuggestion.surfaceMaterials ?? {}),
         },
         volumes: [...existingManualVolumes, ...generatedVolumes],
       });
@@ -725,6 +746,50 @@ export default function ConceptFacadeEditor({
               </div>
             )}
 
+            {!!aiResult?.directionOptions?.length && (
+              <div className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50 p-3">
+                <div className="text-[9px] font-bold uppercase tracking-[0.12em] text-indigo-700">
+                  Direções arquitetônicas
+                </div>
+                <p className="mt-1 text-[10px] leading-4 text-indigo-950">
+                  Todas mantêm a mesma planta. A diferença está na composição arquitetônica, cobertura, profundidade, entrada, materiais e paisagismo.
+                </p>
+                <div className="mt-2 space-y-2">
+                  {aiResult.directionOptions.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedDirectionId(option.id);
+                        setFacadeStudyApplied(false);
+                      }}
+                      className={selectedDirectionId === option.id
+                        ? "w-full rounded-xl border border-indigo-500 bg-white p-3 text-left shadow-sm"
+                        : "w-full rounded-xl border border-indigo-100 bg-white/70 p-3 text-left hover:border-indigo-300"}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-bold text-slate-900">{option.title}</span>
+                        <span className="rounded-full bg-indigo-100 px-2 py-1 text-[8px] font-bold uppercase text-indigo-700">
+                          {option.positioning}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-[10px] leading-4 text-slate-700">
+                        <b>Movimento principal:</b> {option.primaryMove}
+                      </div>
+                      {option.whyItFitsClient && (
+                        <div className="mt-1 text-[9px] leading-4 text-slate-500">{option.whyItFitsClient}</div>
+                      )}
+                      {!!option.tradeoffs?.length && (
+                        <div className="mt-1 text-[9px] leading-4 text-amber-700">
+                          Compromissos: {option.tradeoffs.slice(0,2).join(" · ")}
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {!!aiResult?.openingRecommendations?.length && (
               <div className="mt-3 rounded-xl border border-cyan-200 bg-cyan-50 p-3">
                 <div className="text-[9px] font-bold uppercase text-cyan-700">Aberturas — somente recomendação</div>
@@ -736,13 +801,13 @@ export default function ConceptFacadeEditor({
               </div>
             )}
 
-            {aiResult?.mode === "develop" && (aiResult.facadeSuggestion || aiResult.designSuggestion) && (
+            {aiResult?.mode === "develop" && (aiResult.facadeSuggestion || aiResult.designSuggestion || aiResult.directionOptions?.length) && (
               <button
                 type="button"
                 onClick={applyFacadeStudy}
                 className="mt-3 w-full rounded-xl border border-orange-300 bg-white px-3 py-3 text-[11px] font-bold text-orange-700"
               >
-                3. Aplicar proposta ao projeto
+                3. Aplicar direção selecionada ao projeto
               </button>
             )}
 
