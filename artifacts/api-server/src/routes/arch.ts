@@ -77,6 +77,7 @@ import { ensureStandardConstructionCatalog } from "../lib/ensure-standard-constr
 import { ensureArqdorStarterLibrary } from "../lib/arqdor/starter-library.js";
 import { searchPolyHavenModels, resolvePolyHavenModel } from "../lib/arqdor/polyhaven.js";
 import { buildArchitecturalStrategyRepertoire } from "../lib/arqdor-architecture-strategies.js";
+import { distanceToModule, getConstructionSystemProfile } from "../lib/arqdor/construction-systems.js";
 
 function sanitizeAIError(err: any): { status: number; message: string } {
   const raw: string = err?.message ?? String(err ?? "");
@@ -295,6 +296,7 @@ type QualityDimensionKey =
   | "brazilianFit"
   | "codeCompliance"
   | "technicalSystems"
+  | "structuralModulation"
   | "architecturalCoherence";
 
 type QualityDimension = {
@@ -466,6 +468,8 @@ function qualityDimensionForIssue(issue: string): QualityDimensionKey {
     || low.includes("regra municipal") || low.includes("pavimentos permitidos") || low.includes("viabilidade municipal")) return "codeCompliance";
   if (low.includes("área técnica") || low.includes("equipamentos") || low.includes("acústica") || low.includes("ruído")
     || low.includes("prumada técnica") || low.includes("manutenção") || low.includes("gás") || low.includes("lixo")) return "technicalSystems";
+  if (low.includes("modulação") || low.includes("modulacao") || low.includes("vão estrutural") || low.includes("vao estrutural")
+    || low.includes("parede portante") || low.includes("alinhamento estrutural") || low.includes("sistema construtivo")) return "structuralModulation";
   if (low.includes("lavanderia") || low.includes("compacta") || low.includes("perímetro")) return "constructability";
   return "architecturalCoherence";
 }
@@ -987,6 +991,109 @@ function evaluateBrazilianResidentialFit(
   };
 }
 
+function evaluateStructuralModulationFit(
+  rooms: SpecialistPlanRoom[],
+  input: z.infer<typeof specialistHousePlanSchema>,
+) {
+  const profile = getConstructionSystemProfile(input.vision?.constructionMethod);
+  const issues: string[] = [];
+  const recommendations: string[] = [...profile.rules];
+  const wallFirst = buildWallFirstModel(rooms, input);
+  let score = 100;
+
+  const buildingRooms = rooms.filter((room) => room.kind !== "piscina");
+  const longRooms = buildingRooms.filter((room) => Math.max(room.width, room.depth) > profile.cautionSpanM);
+  for (const room of longRooms) {
+    const span = Math.max(room.width, room.depth);
+    issues.push(`${room.label}: dimensão de ${span.toFixed(2)} m supera a faixa conceitual de cautela para ${profile.label} (${profile.cautionSpanM.toFixed(1)} m).`);
+    score -= span > profile.cautionSpanM * 1.25 ? 14 : 8;
+  }
+
+  const preferredSpanWarnings = buildingRooms
+    .filter((room) => Math.max(room.width, room.depth) > profile.preferredSpanM && Math.max(room.width, room.depth) <= profile.cautionSpanM);
+  if (preferredSpanWarnings.length) {
+    recommendations.push(
+      `Revisar vãos acima de ${profile.preferredSpanM.toFixed(1)} m em ${preferredSpanWarnings.slice(0, 4).map((room) => room.label).join(", ")}; podem exigir solução estrutural mais relevante.`
+    );
+    score -= Math.min(10, preferredSpanWarnings.length * 2);
+  }
+
+  if (profile.planningModuleM) {
+    const tolerance = Math.max(0.025, profile.planningModuleM * 0.12);
+    const candidateValues = wallFirst.walls.flatMap((wall) => [
+      wall.x1,
+      wall.y1,
+      wall.x2,
+      wall.y2,
+      Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1),
+    ]);
+    const offModule = candidateValues.filter((value) => distanceToModule(value, profile.planningModuleM!) > tolerance);
+    const offRatio = candidateValues.length ? offModule.length / candidateValues.length : 0;
+    if (offRatio > 0.45) {
+      issues.push(`Modulação ${profile.label}: ${Math.round(offRatio * 100)}% dos eixos/comprimentos analisados fogem da malha de ${profile.planningModuleM.toFixed(2)} m.`);
+      score -= profile.wallAlignmentImportance === "high" ? 18 : 10;
+    } else if (offRatio > 0.25) {
+      recommendations.push(`Ajustar eixos e comprimentos à malha de ${profile.planningModuleM.toFixed(2)} m para reduzir cortes e exceções.`);
+      score -= profile.wallAlignmentImportance === "high" ? 9 : 5;
+    }
+  }
+
+  if (input.brief.floors > 1) {
+    for (let floor = 1; floor < input.brief.floors; floor += 1) {
+      const upper = buildingRooms.filter((room) => room.floor === floor);
+      const below = buildingRooms.filter((room) => room.floor === floor - 1);
+      for (const room of upper) {
+        const supported = below.reduce((sum, base) => sum + overlapArea(room, base), 0);
+        const area = Math.max(0.1, room.width * room.depth);
+        const supportedRatio = Math.min(1, supported / area);
+        const unsupportedRatio = 1 - supportedRatio;
+        const conceptualOverhang = unsupportedRatio * Math.min(room.width, room.depth);
+
+        if (profile.wallAlignmentImportance === "high" && supportedRatio < 0.7) {
+          issues.push(`${room.label}: baixo alinhamento vertical (${Math.round(supportedRatio * 100)}% apoiado) para ${profile.label}.`);
+          score -= supportedRatio < 0.45 ? 18 : 10;
+        }
+        if (conceptualOverhang > profile.maxConceptualCantileverM) {
+          issues.push(`${room.label}: balanço conceitual estimado de ${conceptualOverhang.toFixed(2)} m supera a referência de ${profile.maxConceptualCantileverM.toFixed(1)} m para ${profile.label}.`);
+          score -= 12;
+        }
+      }
+    }
+  }
+
+  if (profile.openingModuleM && input.brief.roomProgram?.length) {
+    recommendations.push(`Coordenar portas e janelas à modulação de ${profile.openingModuleM.toFixed(2)} m quando compatível com ergonomia, iluminação e catálogo real do sistema.`);
+  }
+
+  const wallCountRatio = wallFirst.metrics.wallCount / Math.max(1, buildingRooms.length);
+  if (["icf","alvenaria_estrutural","steel_frame","wood_frame","pre_fabricado"].includes(profile.id) && wallCountRatio > 6) {
+    issues.push(`${profile.label}: excesso de quebras e segmentos de parede reduz racionalização do sistema.`);
+    score -= 10;
+  }
+
+  if (profile.id === "nao_definido") {
+    recommendations.unshift("Sistema construtivo ainda não definido: análise estrutural permanece conservadora e não deve bloquear decisões específicas de método.");
+    score = Math.max(score, 78);
+  }
+
+  return {
+    method: profile.id,
+    label: profile.label,
+    score: Math.max(0, Math.round(score)),
+    status: score < 58 ? "blocked" as const : score < 78 ? "warning" as const : "approved" as const,
+    issues: [...new Set(issues)].slice(0, 10),
+    recommendations: [...new Set(recommendations)].slice(0, 12),
+    profile: {
+      planningModuleM: profile.planningModuleM,
+      openingModuleM: profile.openingModuleM,
+      preferredSpanM: profile.preferredSpanM,
+      cautionSpanM: profile.cautionSpanM,
+      maxConceptualCantileverM: profile.maxConceptualCantileverM,
+      wallAlignmentImportance: profile.wallAlignmentImportance,
+    },
+  };
+}
+
 function evaluateTechnicalSystemsFit(
   rooms: SpecialistPlanRoom[],
   input: z.infer<typeof specialistHousePlanSchema>,
@@ -1401,6 +1508,7 @@ function buildArchitecturalQualityGateV2(issues: string[]) {
     "brazilianFit",
     "codeCompliance",
     "technicalSystems",
+    "structuralModulation",
     "architecturalCoherence",
   ];
   const dimensionIssues = Object.fromEntries(keys.map((key) => [key, [] as string[]])) as Record<QualityDimensionKey, string[]>;
@@ -1454,7 +1562,8 @@ function buildArchitecturalQualityGateV2(issues: string[]) {
     costValue: 0.06,
     brazilianFit: 0.04,
     codeCompliance: 0.04,
-    technicalSystems: 0.05,
+    technicalSystems: 0.04,
+    structuralModulation: 0.06,
     architecturalCoherence: 0.01,
   };
 
@@ -1753,7 +1862,8 @@ function evaluateSpecialistPlan(
   const brazilianFit = evaluateBrazilianResidentialFit(rooms, input);
   const regulatoryFit = evaluateRegulatoryFit(rooms, input);
   const technicalSystems = evaluateTechnicalSystemsFit(rooms, input);
-  issues.push(...furnitureFit.issues, ...siteClimate.issues, ...roofVolumetry.issues, ...costValue.issues, ...brazilianFit.issues, ...regulatoryFit.issues, ...technicalSystems.issues);
+  const structuralModulation = evaluateStructuralModulationFit(rooms, input);
+  issues.push(...furnitureFit.issues, ...siteClimate.issues, ...roofVolumetry.issues, ...costValue.issues, ...brazilianFit.issues, ...regulatoryFit.issues, ...technicalSystems.issues, ...structuralModulation.issues);
 
   const uniqueIssues = [...new Set(issues)];
   const gate = buildArchitecturalQualityGateV2(uniqueIssues);
@@ -1792,6 +1902,11 @@ function evaluateSpecialistPlan(
     status: technicalSystems.status,
     issues: technicalSystems.issues.slice(0, 8),
   };
+  gate.dimensions.structuralModulation = {
+    score: structuralModulation.score,
+    status: structuralModulation.status,
+    issues: structuralModulation.issues.slice(0, 8),
+  };
   gate.score = Math.round(
     gate.dimensions.program.score * 0.10
     + gate.dimensions.circulation.score * 0.13
@@ -1805,7 +1920,8 @@ function evaluateSpecialistPlan(
     + gate.dimensions.costValue.score * 0.06
     + gate.dimensions.brazilianFit.score * 0.04
     + gate.dimensions.codeCompliance.score * 0.04
-    + gate.dimensions.technicalSystems.score * 0.05
+    + gate.dimensions.technicalSystems.score * 0.04
+    + gate.dimensions.structuralModulation.score * 0.06
     + gate.dimensions.architecturalCoherence.score * 0.01
   );
   const furnitureBlocked = furnitureFit.status === "blocked";
@@ -1867,6 +1983,7 @@ function evaluateSpecialistPlan(
     brazilianFit,
     regulatoryFit,
     technicalSystems,
+    structuralModulation,
   } as SpecialistPlanQuality & {
     furnitureFit: ReturnType<typeof evaluateFurnitureFit>;
     siteClimate: ReturnType<typeof evaluateSiteClimateFit>;
@@ -1875,6 +1992,7 @@ function evaluateSpecialistPlan(
     brazilianFit: ReturnType<typeof evaluateBrazilianResidentialFit>;
     regulatoryFit: ReturnType<typeof evaluateRegulatoryFit>;
     technicalSystems: ReturnType<typeof evaluateTechnicalSystemsFit>;
+    structuralModulation: ReturnType<typeof evaluateStructuralModulationFit>;
   };
 }
 
@@ -2127,6 +2245,7 @@ function sanitizeSpecialistPlan(
       brazilianFit: (quality as SpecialistPlanQuality & { brazilianFit?: ReturnType<typeof evaluateBrazilianResidentialFit> }).brazilianFit ?? null,
       regulatoryFit: (quality as SpecialistPlanQuality & { regulatoryFit?: ReturnType<typeof evaluateRegulatoryFit> }).regulatoryFit ?? null,
       technicalSystems: (quality as SpecialistPlanQuality & { technicalSystems?: ReturnType<typeof evaluateTechnicalSystemsFit> }).technicalSystems ?? null,
+      structuralModulation: (quality as SpecialistPlanQuality & { structuralModulation?: ReturnType<typeof evaluateStructuralModulationFit> }).structuralModulation ?? null,
     },
   };
 }
@@ -2819,7 +2938,10 @@ INTERPRETAÇÃO OBRIGATÓRIA DO BRIEFING:
 - quando regulatoryContext estiver marcado como verificado, respeite seus recuos, pavimentos, taxa de ocupação e coeficiente de aproveitamento como restrições duras;
 - reserve lógica para áreas técnicas e manutenção: condensadoras, medidores, reservação de água, gás, lixo, equipamentos e futuras instalações não podem depender de sobras improvisadas;
 - use banheiros, closets, circulação e serviço como buffers acústicos quando necessário entre dormitórios e garagem/gourmet/lavanderia;
-- trate manutenção e acesso técnico como parte da arquitetura, sem expor equipamentos como elemento visual gratuito.
+- trate manutenção e acesso técnico como parte da arquitetura, sem expor equipamentos como elemento visual gratuito;
+- SISTEMA CONSTRUTIVO é uma restrição de concepção: use a modulação, alinhamento de paredes, vãos e limites de balanço compatíveis com o método escolhido;
+- não trate ICF, alvenaria estrutural, steel frame, wood frame ou pré-fabricado como simples troca de material; cada um exige racionalização geométrica própria;
+- esta análise é estrutural PRELIMINAR e nunca deve ser descrita como cálculo, dimensionamento ou aprovação estrutural.
 
 PROGRAMA FIXO DE AMBIENTES:
 ${JSON.stringify(program)}
