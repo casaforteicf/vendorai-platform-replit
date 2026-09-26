@@ -1570,6 +1570,12 @@ router.post("/arch/concept-projects/:id/facade-study", authenticate, async (req,
     .limit(1);
 
   if (!concept) return res.status(404).json({ error: "Pré-projeto não encontrado." });
+  if (concept.status === "submitted" && (concept.configuration as any)?.projectMaster && parsed.data.action === "develop") {
+    return res.status(409).json({
+      error: "O Projeto Mestre está congelado. Crie uma revisão antes de alterar a fachada.",
+      code: "PROJECT_MASTER_FROZEN",
+    });
+  }
 
   const config = (concept.configuration ?? {}) as Record<string, unknown>;
   const rooms = Array.isArray(concept.rooms) ? concept.rooms : [];
@@ -2373,7 +2379,8 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     else exteriorWallLength += wall.length;
   }
   for (const wall of customWalls) {
-    internalWallLength += segmentLength(wall.x1, wall.y1, wall.x2, wall.y2);
+    const key = edgeKey(wall.x1, wall.y1, wall.x2, wall.y2, wall.floor ?? 0);
+    if (!wallMap.has(key)) internalWallLength += segmentLength(wall.x1, wall.y1, wall.x2, wall.y2);
   }
   const totalWallLength = exteriorWallLength + internalWallLength;
 
@@ -2401,8 +2408,8 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
   const derivedWindows = indoorRooms.filter((room: any) => windowKinds.has(String(room.kind ?? "").toLowerCase())).length;
   const customDoorCount = customOpenings.filter((opening: any) => opening?.type === "door").length;
   const customWindowCount = customOpenings.filter((opening: any) => opening?.type === "window").length;
-  const doorCount = derivedDoors + customDoorCount;
-  const windowCount = derivedWindows + customWindowCount;
+  const doorCount = customDoorCount > 0 ? customDoorCount : derivedDoors;
+  const windowCount = customWindowCount > 0 ? customWindowCount : derivedWindows;
   const openingCount = Math.max(1, doorCount + windowCount);
 
   const customOpeningArea = customOpenings.reduce((sum: number, opening: any) => {
@@ -2410,7 +2417,9 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     const height = Math.max(0.4, Number(opening?.height ?? (opening?.type === "door" ? 2.1 : 1.2)));
     return sum + width * height;
   }, 0);
-  const defaultOpeningArea = derivedDoors * 0.9 * 2.1 + derivedWindows * 1.2 * 1.2;
+  const defaultOpeningArea =
+    (customDoorCount > 0 ? 0 : derivedDoors * 0.9 * 2.1)
+    + (customWindowCount > 0 ? 0 : derivedWindows * 1.2 * 1.2);
   const openingArea = customOpeningArea + defaultOpeningArea;
   const exteriorWallAreaGross = exteriorWallLength * WALL_HEIGHT_M;
   const internalWallFaceArea = internalWallLength * WALL_HEIGHT_M * 2;
@@ -2723,6 +2732,72 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     budgetId: preBudgetId,
     projectMaster,
   });
+  });
+});
+
+router.post("/arch/concept-projects/:id/revise", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const userId = req.user?.sub;
+  const id = String(req.params.id);
+  if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
+
+  const [concept] = await db
+    .select()
+    .from(archConceptProjectsTable)
+    .where(and(
+      eq(archConceptProjectsTable.id, id),
+      eq(archConceptProjectsTable.tenantId, tid),
+      eq(archConceptProjectsTable.ownerUserId, userId),
+    ))
+    .limit(1);
+
+  if (!concept) return res.status(404).json({ error: "Pré-projeto não encontrado." });
+  const configuration = (concept.configuration ?? {}) as any;
+  const master = configuration.projectMaster;
+  if (concept.status !== "submitted" || !master) {
+    return res.status(409).json({ error: "A revisão só pode ser criada a partir de um Projeto Mestre aprovado." });
+  }
+
+  const nextRevision = Math.max(2, Number(configuration.revisionNumber ?? master.version ?? 1) + 1);
+  const nextConfiguration = {
+    ...configuration,
+    projectMaster: undefined,
+    revisionOfConceptId: concept.id,
+    revisionNumber: nextRevision,
+    publicTourToken: undefined,
+    publicTourEnabled: false,
+    publicTourUpdatedAt: undefined,
+    facadeDesign: master.facadeDesign ?? configuration.facadeDesign,
+    objects: Array.isArray(master.objects) ? master.objects : (Array.isArray(configuration.objects) ? configuration.objects : []),
+    spaceProfiles: Array.isArray(master.spaceProfiles) ? master.spaceProfiles : (Array.isArray(configuration.spaceProfiles) ? configuration.spaceProfiles : []),
+    wallMaterials: master.wallMaterials ?? configuration.wallMaterials ?? {},
+  };
+
+  const [revision] = await db
+    .insert(archConceptProjectsTable)
+    .values({
+      tenantId: tid,
+      ownerUserId: userId,
+      archProjetoId: null,
+      title: `${String(concept.title ?? "Pré-projeto").replace(/\s+—\s+Revisão\s+\d+$/i, "")} — Revisão ${nextRevision}`,
+      status: "draft",
+      currentStep: Math.max(4, Number(concept.currentStep ?? 4)),
+      lot: master.lot ?? concept.lot,
+      configuration: nextConfiguration,
+      rooms: Array.isArray(master.rooms) ? master.rooms : concept.rooms,
+      openingOverrides: master.openingOverrides ?? concept.openingOverrides ?? {},
+      customerProfile: concept.customerProfile ?? {},
+      facadePreferences: master.facadePreferences ?? concept.facadePreferences,
+      conceptRender: {},
+      selectedVariant: concept.selectedVariant ?? 0,
+    })
+    .returning();
+
+  return res.status(201).json({
+    ok: true,
+    revision,
+    revisionOfConceptId: concept.id,
+    revisionNumber: nextRevision,
   });
 });
 function getPortalBaseUrl(req: Request): string {
