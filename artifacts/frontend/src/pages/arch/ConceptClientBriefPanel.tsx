@@ -745,6 +745,7 @@ export default function ConceptClientBriefPanel({
                         ["roofVolumetry", "Cobertura/volume"],
                         ["costValue", "Custo/valor"],
                         ["brazilianFit", "Contexto BR"],
+                        ["codeCompliance", "Viabilidade"],
                         ["architecturalCoherence", "Coerência"],
                       ] as const).map(([key, label]) => {
                         const dimension = alternative.qualityDimensions?.[key];
@@ -867,6 +868,53 @@ export default function ConceptClientBriefPanel({
                         </div>
                       ))}
                     </div>
+                  </div>
+                ) : null}
+
+                {alternative.programCompliance?.regulatoryFit ? (
+                  <div className="mt-2 rounded-lg border border-blue-100 bg-blue-50 px-2.5 py-2">
+                    <div className="flex items-center justify-between gap-2 text-[10px]">
+                      <span className="font-bold text-blue-900">Viabilidade municipal</span>
+                      <span className={alternative.programCompliance.regulatoryFit.status === "blocked"
+                        ? "font-bold text-red-600"
+                        : alternative.programCompliance.regulatoryFit.status === "warning"
+                          ? "font-bold text-amber-600"
+                          : "font-bold text-emerald-700"}
+                      >
+                        {alternative.programCompliance.regulatoryFit.verified ? "Fonte verificada" : "Preliminar"} · {alternative.programCompliance.regulatoryFit.score}/100
+                      </span>
+                    </div>
+                    {alternative.programCompliance.regulatoryFit.source?.municipality && (
+                      <div className="mt-1 text-[9px] text-blue-800">
+                        {alternative.programCompliance.regulatoryFit.source.municipality}
+                        {alternative.programCompliance.regulatoryFit.source.sourceName
+                          ? ` · ${alternative.programCompliance.regulatoryFit.source.sourceName}`
+                          : ""}
+                      </div>
+                    )}
+                    {alternative.programCompliance.regulatoryFit.checks?.length ? (
+                      <div className="mt-2 grid grid-cols-2 gap-1.5">
+                        {alternative.programCompliance.regulatoryFit.checks.slice(0, 8).map((check) => (
+                          <div key={check.id} className="flex items-center justify-between rounded-md bg-white/80 px-2 py-1.5 text-[9px]">
+                            <span className="truncate text-slate-600">{check.label}</span>
+                            <span className={check.status === "fail"
+                              ? "font-bold text-red-600"
+                              : check.status === "pending"
+                                ? "font-bold text-amber-600"
+                                : "font-bold text-emerald-700"}>
+                              {check.status === "pass" ? "OK" : check.status === "fail" ? "Fora" : "Pendente"}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    {alternative.programCompliance.regulatoryFit.recommendations?.length ? (
+                      <div className="mt-2 space-y-1 text-[9px] leading-4 text-slate-600">
+                        {alternative.programCompliance.regulatoryFit.recommendations.slice(0, 3).map((item, index) => (
+                          <div key={index}>• {item}</div>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
 
