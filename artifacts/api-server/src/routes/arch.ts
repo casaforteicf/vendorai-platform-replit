@@ -77,6 +77,7 @@ import { ensureStandardConstructionCatalog } from "../lib/ensure-standard-constr
 import { ensureArqdorStarterLibrary } from "../lib/arqdor/starter-library.js";
 import { searchPolyHavenModels, resolvePolyHavenModel } from "../lib/arqdor/polyhaven.js";
 import { buildArchitecturalStrategyRepertoire } from "../lib/arqdor-architecture-strategies.js";
+import { buildArchitecturalProjectStrategy } from "../lib/arqdor-project-strategy.js";
 
 function sanitizeAIError(err: any): { status: number; message: string } {
   const raw: string = err?.message ?? String(err ?? "");
@@ -1154,6 +1155,21 @@ router.post("/arch/concept-plan-specialist", authenticate, async (req, res) => {
     intervention: input.intervention,
     vision: input.vision ?? null,
   });
+  const architecturalStrategy = buildArchitecturalProjectStrategy({
+    lotWidth: input.lotWidth,
+    lotDepth: input.lotDepth,
+    floors: input.brief.floors,
+    intervention: input.intervention,
+    vision: input.vision ?? null,
+    brief: {
+      gourmet: input.brief.gourmet,
+      pool: input.brief.pool,
+      office: input.brief.office,
+      integratedKitchen: input.brief.integratedKitchen,
+      privateAwaySocial: input.brief.privateAwaySocial,
+      garageSpaces: input.brief.garageSpaces,
+    },
+  });
 
   const basePrompt = `Você é o ARQDOR ARCHITECT AI, arquiteto residencial sênior especializado em casas brasileiras.
 
@@ -1183,6 +1199,9 @@ PROGRAMA DE NECESSIDADES DECLARADO PELO CLIENTE: ${JSON.stringify(input.brief.ro
 GRAFO DE RELAÇÕES ENTRE AMBIENTES: ${JSON.stringify(input.brief.adjacencyRules ?? [])}
 VISÃO / DNA DO CLIENTE: ${JSON.stringify(input.vision ?? {})}
 DIRETRIZES ESPACIAIS DERIVADAS DA ROTINA: ${JSON.stringify(specialistLifestyleDirectives(input))}
+ESTRATÉGIA ARQUITETÔNICA OBRIGATÓRIA DEFINIDA ANTES DO DESENHO: ${JSON.stringify(architecturalStrategy)}
+
+A planta deve materializar esta estratégia. Você pode ajustar coordenadas e dimensões para resolver o projeto, mas NÃO deve trocar silenciosamente o partido, a setorização, a lógica de circulação ou os não negociáveis definidos acima.
 
 PROGRAMA FIXO DE AMBIENTES:
 ${JSON.stringify(program)}
@@ -1236,6 +1255,12 @@ Responda SOMENTE JSON válido:
     "description": "síntese curta da solução",
     "designRationale": "partido arquitetônico e decisões principais",
     "clientFitSummary": "como o projeto traduz a rotina e prioridades do cliente",
+    "architectureStrategy": {
+      "party": "partido aplicado",
+      "zoningSummary": "como social, íntimo e serviço foram organizados",
+      "circulationSummary": "como a circulação materializa a estratégia",
+      "siteResponse": "como implantação, exterior e luz influenciaram a solução"
+    },
     "architectureDNA": {
       "concept": "conceito central",
       "spatialStrategy": "estratégia espacial",
@@ -1325,6 +1350,12 @@ NÃO aceite a primeira solução mental: critique e refine antes de responder.`;
         title: String(plan.title ?? "Projeto principal"),
         description: String(plan.description ?? "Projeto principal refinado pela IA arquiteta."),
         clientFitSummary: String(plan.clientFitSummary ?? "").slice(0, 900),
+        architectureStrategy: {
+          ...architecturalStrategy,
+          applied: plan.architectureStrategy && typeof plan.architectureStrategy === "object"
+            ? plan.architectureStrategy
+            : {},
+        },
         architectureDNA: plan.architectureDNA && typeof plan.architectureDNA === "object" ? plan.architectureDNA : {},
         experienceStrategy: Array.isArray(plan.experienceStrategy) ? plan.experienceStrategy.map(String).slice(0, 8) : [],
         daylightStrategy: Array.isArray(plan.daylightStrategy) ? plan.daylightStrategy.map(String).slice(0, 8) : [],
@@ -1365,6 +1396,7 @@ NÃO aceite a primeira solução mental: critique e refine antes de responder.`;
         targetScore: 82,
         intervention: input.intervention,
         refinementPasses: bestApproved.refinementPass,
+        strategy: architecturalStrategy,
       },
       programCompliance: bestApproved.programCompliance ?? null,
       programValidation: {
