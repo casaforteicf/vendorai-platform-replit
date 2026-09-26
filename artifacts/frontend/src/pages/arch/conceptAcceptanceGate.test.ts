@@ -35,15 +35,15 @@ describe("Etapa 77 — quality gate do pré-projeto", () => {
       lotDepth: 20,
       floors: 1,
       rooms: [
-        // Usa uma garagem estreita para isolar o warning de largura funcional.
-        // Um quarto isolado introduz corretamente gates adicionais de acesso,
-        // circulação e abertura natural, que não pertencem a este teste.
-        room({ id: "garage", kind: "garagem", label: "Garagem", x: 0, y: 0, width: 2.1, depth: 5.5 }),
+        // Usa uma lavanderia estreita para isolar o warning de largura funcional.
+        // Diferente de dormitórios, cozinha ou garagem, ela não introduz aqui
+        // um erro adicional de acesso, abertura natural ou manobra de veículo.
+        room({ id: "laundry", kind: "lavanderia", label: "Lavanderia", x: 0, y: 0, width: 1.2, depth: 3 }),
       ],
     });
 
     expect(result.status).toBe("review");
-    expect(result.majorWarnings.some((issue) => issue.id.includes("functional-width-garage"))).toBe(true);
+    expect(result.majorWarnings.some((issue) => issue.id.includes("functional-width-laundry"))).toBe(true);
   });
 
   it("aprova uma solução simples sem erros ou avisos funcionais", () => {
