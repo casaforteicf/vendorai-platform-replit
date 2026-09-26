@@ -56,11 +56,21 @@ export type FacadeVolume = {
   locked?: boolean;
 };
 
+export type ParametricRoofConfig = {
+  waters: 1 | 2 | 4;
+  pitchDegrees: number;
+  overhang: number;
+  ridgeDirection: "auto" | "x" | "y";
+  parapetHeight: number;
+  gutter: boolean;
+};
+
 export type FacadeDesignState = {
   surfaceMaterials: Record<FacadeSurfaceKey, FacadeMaterialId>;
   volumes: FacadeVolume[];
   lighting: "day" | "sunset" | "night";
   showLandscaping: boolean;
+  roofConfig: ParametricRoofConfig;
 };
 
 export const FACADE_MATERIALS: FacadeMaterialDefinition[] = [
@@ -168,6 +178,14 @@ export const DEFAULT_FACADE_DESIGN: FacadeDesignState = {
   volumes: [],
   lighting: "day",
   showLandscaping: true,
+  roofConfig: {
+    waters: 2,
+    pitchDegrees: 20,
+    overhang: 0.45,
+    ridgeDirection: "auto",
+    parapetHeight: 0.9,
+    gutter: true,
+  },
 };
 
 export const FACADE_VOLUME_PRESETS: Array<{
@@ -214,6 +232,18 @@ export function normalizeFacadeDesign(value?: Partial<FacadeDesignState> | null)
       : [],
     lighting: value?.lighting ?? DEFAULT_FACADE_DESIGN.lighting,
     showLandscaping: value?.showLandscaping ?? DEFAULT_FACADE_DESIGN.showLandscaping,
+    roofConfig: {
+      waters: [1, 2, 4].includes(Number(value?.roofConfig?.waters))
+        ? Number(value?.roofConfig?.waters) as 1 | 2 | 4
+        : DEFAULT_FACADE_DESIGN.roofConfig.waters,
+      pitchDegrees: Math.max(3, Math.min(55, Number(value?.roofConfig?.pitchDegrees) || DEFAULT_FACADE_DESIGN.roofConfig.pitchDegrees)),
+      overhang: Math.max(0, Math.min(1.5, Number(value?.roofConfig?.overhang) || DEFAULT_FACADE_DESIGN.roofConfig.overhang)),
+      ridgeDirection: ["auto", "x", "y"].includes(String(value?.roofConfig?.ridgeDirection))
+        ? value!.roofConfig!.ridgeDirection
+        : DEFAULT_FACADE_DESIGN.roofConfig.ridgeDirection,
+      parapetHeight: Math.max(0.2, Math.min(1.6, Number(value?.roofConfig?.parapetHeight) || DEFAULT_FACADE_DESIGN.roofConfig.parapetHeight)),
+      gutter: value?.roofConfig?.gutter ?? DEFAULT_FACADE_DESIGN.roofConfig.gutter,
+    },
   };
 }
 
