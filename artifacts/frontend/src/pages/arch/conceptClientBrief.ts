@@ -494,6 +494,22 @@ export type ClientBriefAlternative = ClientBriefPlan & {
       wallContinuityScore: number;
     };
   };
+  multiObjective?: {
+    version: 1;
+    utilityScore: number;
+    vector: {
+      function: number;
+      circulation: number;
+      privacy: number;
+      ergonomics: number;
+      climate: number;
+      constructability: number;
+      cost: number;
+      futureFit: number;
+      identity: number;
+    };
+    weights: Record<string, number>;
+  };
   criticReview?: {
     approved: boolean;
     score: number;
