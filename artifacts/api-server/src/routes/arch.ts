@@ -2096,6 +2096,15 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     }
   }
 
+  const masterHealth = conceptGeometryHealth(concept);
+  if (masterHealth.status === "error") {
+    return res.status(422).json({
+      error: "O pré-projeto ainda possui inconsistências bloqueantes e não pode ser congelado como Projeto Mestre.",
+      code: "PROJECT_MASTER_NOT_READY",
+      health: masterHealth,
+    });
+  }
+
   const config = (concept.configuration ?? {}) as { floors?: number; desiredArea?: number };
   const lot = (concept.lot ?? {}) as { width?: number; depth?: number };
   const facade = (concept.facadePreferences ?? {}) as Record<string, string>;
