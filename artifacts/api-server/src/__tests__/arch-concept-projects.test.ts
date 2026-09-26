@@ -29,6 +29,8 @@ vi.mock("@workspace/db", () => {
       tenantId: "tenantId",
       ownerUserId: "ownerUserId",
       archProjetoId: "archProjetoId",
+      status: "status",
+      configuration: "configuration",
       updatedAt: "updatedAt",
     },
     archProjetosTable: {
@@ -196,6 +198,7 @@ function updateReturning(rows: unknown[]) {
 describe("Arqdor Concept — persistência e isolamento", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDbSelect.mockReturnValue(selectLimitReturning([conceptA]));
     mockDbExecute.mockResolvedValue({ rows: [{ pg_advisory_xact_lock: true }] });
     mockDbTransaction.mockImplementation(async (callback: (tx: typeof txDb) => unknown) => callback(txDb));
   });
@@ -370,7 +373,31 @@ describe("Arqdor Concept — persistência e isolamento", () => {
     expect(set).not.toHaveBeenCalledWith(expect.objectContaining({ archProjetoId: expect.anything() }));
   });
 
+  it("bloqueia edição depois que o Projeto Mestre foi congelado", async () => {
+    mockDbSelect.mockReturnValue(selectLimitReturning([{
+      ...conceptA,
+      status: "submitted",
+      configuration: {
+        ...conceptA.configuration,
+        projectMaster: {
+          version: 1,
+          frozenAt: "2026-09-26T19:30:00.000Z",
+        },
+      },
+    }]));
+
+    const res = await request(app)
+      .patch("/api/arch/concept-projects/concept-a")
+      .set("Authorization", `Bearer ${tokenA}`)
+      .send({ rooms: [] });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe("PROJECT_MASTER_FROZEN");
+    expect(mockDbUpdate).not.toHaveBeenCalled();
+  });
+
   it("retorna 404 quando PATCH não encontra linha do mesmo tenant/owner", async () => {
+    mockDbSelect.mockReturnValue(selectLimitReturning([]));
     updateReturning([]);
 
     const res = await request(app)
