@@ -160,14 +160,17 @@ export function optimizeArchitecturalCandidates(input: OptimizerInput): {
   }
 
   const searchSeeds = [...generated];
-  for (const seed of searchSeeds) {
-    const neighborhood = generateArchitecturalSearchNeighborhood({
-      rooms: seed,
-      lotWidth: input.lotWidth,
-      lotDepth: input.lotDepth,
-      maxCandidates: input.searchCandidates ?? 18,
-    });
-    for (const candidate of neighborhood) generated.push(candidate.rooms);
+  const searchCandidateLimit = input.searchCandidates ?? 18;
+  if (searchCandidateLimit > 0) {
+    for (const seed of searchSeeds) {
+      const neighborhood = generateArchitecturalSearchNeighborhood({
+        rooms: seed,
+        lotWidth: input.lotWidth,
+        lotDepth: input.lotDepth,
+        maxCandidates: searchCandidateLimit,
+      });
+      for (const candidate of neighborhood) generated.push(candidate.rooms);
+    }
   }
 
   const unique = [...new Map(generated.map((rooms) => [signature(rooms), rooms])).values()];
