@@ -4182,6 +4182,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     selected,
     roomHistory.length,
     roomFuture.length,
+    projectMaster,
   ]);
 
   return (
