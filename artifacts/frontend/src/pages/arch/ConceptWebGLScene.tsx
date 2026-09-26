@@ -1701,6 +1701,32 @@ export default function ConceptWebGLScene({
       }
     }
 
+    if (facadeDesign?.siteExterior?.zones?.length && showAllFloors && !interiorMode) {
+      const zoneColor: Record<string, number> = {
+        driveway: 0x9ca3af,
+        pedestrian: 0xd6d3d1,
+        deck: 0xb08968,
+        garden: 0x7fa66a,
+        service: 0xb8b8a8,
+        pool_buffer: 0xded7c8,
+      };
+      for (const zone of facadeDesign.siteExterior.zones) {
+        if (![zone.x, zone.y, zone.width, zone.depth].every(Number.isFinite) || zone.width <= 0 || zone.depth <= 0) continue;
+        const mesh = makeBox(
+          modelRoot,
+          zone.width,
+          zone.kind === "deck" ? 0.10 : 0.06,
+          zone.depth,
+          zone.x + zone.width / 2 - lotWidth / 2,
+          zone.kind === "deck" ? 0.09 : 0.04,
+          zone.y + zone.depth / 2 - lotDepth / 2,
+          zoneColor[zone.kind] ?? 0xcbd5e1,
+        );
+        mesh.userData.siteExteriorZoneId = zone.id;
+        mesh.receiveShadow = true;
+      }
+    }
+
     if (facadeDesign && shellBounds && showAllFloors && !interiorMode) {
       const buildingHeight = (Math.max(0, ...levels.map((level) => level.floor)) + 1) * 2.96;
       for (const box of buildFacadeMeshBoxes(facadeDesign, shellBounds, buildingHeight, frontSide)) {
