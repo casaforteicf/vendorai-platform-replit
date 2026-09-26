@@ -82,6 +82,7 @@ for (const file of files) {
   metrics.uiButtons += (source.match(/<Button\b/g) || []).length;
 
   for (const m of source.matchAll(/onClick\s*=\s*\{\s*\(\s*\)\s*=>\s*(?:\{\s*\}|null|undefined)\s*\}/g)) add("BLOCKER", "empty-click-handler", file, m.index, source, "Botão possui onClick vazio.");
+  for (const m of source.matchAll(/\bon[A-Z][A-Za-z0-9_]*\s*=\s*\{\s*\([^)]*\)\s*=>\s*\{\s*\}\s*\}/g)) add("HIGH", "noop-callback-prop", file, m.index, source, "Callback de interação foi conectado a uma função vazia.");
   for (const m of source.matchAll(/href\s*=\s*["\']#["\']/g)) add("BLOCKER", "hash-link", file, m.index, source, "Link aponta para # e não executa navegação real.");
   for (const m of source.matchAll(/disabled\s*=\s*\{\s*true\s*\}/g)) add("HIGH", "hard-disabled", file, m.index, source, "Controle está permanentemente desabilitado.");
   for (const m of source.matchAll(/(?:em breve|coming soon|not implemented|não implementad[oa]|funcionalidade indisponível)/gi)) add("MEDIUM", "unfinished-copy", file, m.index, source, "Texto sugere função/tela incompleta.");
