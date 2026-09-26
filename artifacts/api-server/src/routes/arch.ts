@@ -2107,6 +2107,10 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
 
   if (!concept) return res.status(404).json({ error: "Pré-projeto não encontrado." });
 
+  const config = (concept.configuration ?? {}) as any;
+  const isRevision = Boolean(config.revisionOfConceptId);
+  let linkedProject: any = null;
+
   if (concept.archProjetoId) {
     const [existingProject] = await tx
       .select()
@@ -2119,7 +2123,7 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
       )
       .limit(1);
 
-    if (existingProject) {
+    if (existingProject && !isRevision) {
       return res.json({
         ok: true,
         alreadyPromoted: true,
@@ -2129,9 +2133,8 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
         projectMaster: ((concept.configuration ?? {}) as any).projectMaster ?? null,
       });
     }
+    if (existingProject) linkedProject = existingProject;
   }
-
-  const config = (concept.configuration ?? {}) as any;
   const lot = (concept.lot ?? {}) as { width?: number; depth?: number };
   const sitePlacement = (config.sitePlacement ?? {}) as any;
   const masterAcceptance = evaluateProjectMasterAcceptance({
@@ -2169,8 +2172,8 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     })
     .join(", ");
 
-  let leadId: string | null = null;
-  let dealId: string | null = null;
+  let leadId: string | null = linkedProject?.leadId ?? null;
+  let dealId: string | null = linkedProject?.dealId ?? null;
 
   const hasCustomerName = Boolean(customer.name?.trim());
   const hasCustomerContact = Boolean(customer.phone?.trim() || customer.email?.trim());
@@ -2284,25 +2287,46 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     customer.notes ? `Observações do cliente: ${customer.notes}.` : null,
   ].filter(Boolean).join("\n");
 
-  const [project] = await tx
-    .insert(archProjetosTable)
-    .values({
-      tenantId: tid,
-      leadId,
-      dealId,
-      clienteNome: customer.name?.trim() || null,
-      clienteEmail: customer.email?.trim() || null,
-      clienteTelefone: customer.phone?.trim() || null,
-      titulo: concept.title || "Projeto originado do Arqdor Concept",
-      descricao: description,
-      status: "briefing",
-      pipelineStage: "briefing",
-      tipoObra: "Residencial",
-      areaM2: config.desiredArea != null ? String(config.desiredArea) : null,
-      portalToken: crypto.randomUUID(),
-      portalAtivo: false,
-    })
-    .returning();
+  let project: any = linkedProject;
+  if (project) {
+    const [updatedProject] = await tx
+      .update(archProjetosTable)
+      .set({
+        leadId,
+        dealId,
+        clienteNome: customer.name?.trim() || null,
+        clienteEmail: customer.email?.trim() || null,
+        clienteTelefone: customer.phone?.trim() || null,
+        titulo: concept.title || project.titulo,
+        descricao: description,
+        areaM2: config.desiredArea != null ? String(config.desiredArea) : null,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(archProjetosTable.id, project.id), eq(archProjetosTable.tenantId, tid)))
+      .returning();
+    project = updatedProject ?? project;
+  } else {
+    const [createdProject] = await tx
+      .insert(archProjetosTable)
+      .values({
+        tenantId: tid,
+        leadId,
+        dealId,
+        clienteNome: customer.name?.trim() || null,
+        clienteEmail: customer.email?.trim() || null,
+        clienteTelefone: customer.phone?.trim() || null,
+        titulo: concept.title || "Projeto originado do Arqdor Concept",
+        descricao: description,
+        status: "briefing",
+        pipelineStage: "briefing",
+        tipoObra: "Residencial",
+        areaM2: config.desiredArea != null ? String(config.desiredArea) : null,
+        portalToken: crypto.randomUUID(),
+        portalAtivo: false,
+      })
+      .returning();
+    project = createdProject;
+  }
 
   // O Concept passa a alimentar a mesma Obra/Orçamento/Cronograma usada pelo
   // restante do Vendor.ai. Os preços ficam zerados nesta fase: o pré-projeto
@@ -2481,22 +2505,40 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     });
   }
 
-  const obraId = crypto.randomUUID();
-  const [obra] = await tx
-    .insert(obrasTable)
-    .values({
-      id: obraId,
-      tenantId: tid,
-      nome: project.titulo,
-      descricao: `[ARQDOR:${project.id}] Obra criada automaticamente a partir do pré-projeto ${concept.id}.`,
-      clienteNome: customer.name?.trim() || null,
-      clienteContato: customer.phone?.trim() || customer.email?.trim() || null,
-      status: "planejamento",
-      orcamentoTotal: "0",
-      custoRealizado: "0",
-    })
-    .returning();
+  let obra: any = null;
+  let obraId = String(project?.obraId ?? "");
+  let createdNewObra = false;
 
+  if (obraId) {
+    const [existingObra] = await tx
+      .select()
+      .from(obrasTable)
+      .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)))
+      .limit(1);
+    obra = existingObra ?? null;
+  }
+
+  if (!obra) {
+    obraId = crypto.randomUUID();
+    const [createdObra] = await tx
+      .insert(obrasTable)
+      .values({
+        id: obraId,
+        tenantId: tid,
+        nome: project.titulo,
+        descricao: `[ARQDOR:${project.id}] Obra criada automaticamente a partir do pré-projeto ${concept.id}.`,
+        clienteNome: customer.name?.trim() || null,
+        clienteContato: customer.phone?.trim() || customer.email?.trim() || null,
+        status: "planejamento",
+        orcamentoTotal: "0",
+        custoRealizado: "0",
+      })
+      .returning();
+    obra = createdObra;
+    createdNewObra = true;
+  }
+
+  if (createdNewObra) {
   const executionStages = [
     { nome: "Projeto", days: 10 },
     { nome: "Serviços preliminares", days: 5 },
@@ -2561,16 +2603,18 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
       defasagemDias: 0,
     });
   }
+  }
 
   const preBudgetId = crypto.randomUUID();
+  const budgetVersion = Math.max(1, Number(config.revisionNumber ?? 1));
   await tx.execute(sql`
     INSERT INTO arch_budgets (
       id, tenant_id, project_id, title, client_name, status, version,
       subtotal_material, subtotal_labor, subtotal, discount_type,
       discount_value, discount_total, grand_total, notes, created_at, updated_at
     ) VALUES (
-      ${preBudgetId}, ${tid}, ${project.id}, 'Orçamento preliminar — Arqdor Concept',
-      ${customer.name?.trim() || null}, 'draft', 1,
+      ${preBudgetId}, ${tid}, ${project.id}, ${`Orçamento preliminar — Arqdor Concept v${budgetVersion}`},
+      ${customer.name?.trim() || null}, 'draft', ${budgetVersion},
       0, 0, 0, 'fixed', 0, 0, 0,
       'Quantitativos preliminares gerados automaticamente do pré-projeto. Preços devem ser resolvidos pelas composições/tabela de preços.',
       now(), now()
@@ -2652,7 +2696,7 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
   const frozenAt = new Date().toISOString();
   const existingMaster = (conceptConfiguration.projectMaster ?? null) as { version?: number } | null;
   const projectMaster = {
-    version: Math.max(1, Number(existingMaster?.version ?? 0) + 1),
+    version: Math.max(1, Number(conceptConfiguration.revisionNumber ?? existingMaster?.version ?? 1)),
     frozenAt,
     sourceConceptId: concept.id,
     sourceUpdatedAt: concept.updatedAt instanceof Date ? concept.updatedAt.toISOString() : String(concept.updatedAt ?? frozenAt),
@@ -2778,7 +2822,7 @@ router.post("/arch/concept-projects/:id/revise", authenticate, async (req, res) 
     .values({
       tenantId: tid,
       ownerUserId: userId,
-      archProjetoId: null,
+      archProjetoId: master.links?.archProjetoId ?? concept.archProjetoId ?? null,
       title: `${String(concept.title ?? "Pré-projeto").replace(/\s+—\s+Revisão\s+\d+$/i, "")} — Revisão ${nextRevision}`,
       status: "draft",
       currentStep: Math.max(4, Number(concept.currentStep ?? 4)),
