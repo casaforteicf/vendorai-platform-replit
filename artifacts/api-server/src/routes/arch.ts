@@ -294,6 +294,7 @@ type QualityDimensionKey =
   | "costValue"
   | "brazilianFit"
   | "codeCompliance"
+  | "technicalSystems"
   | "architecturalCoherence";
 
 type QualityDimension = {
@@ -463,6 +464,8 @@ function qualityDimensionForIssue(issue: string): QualityDimensionKey {
     || low.includes("contexto residencial brasileiro")) return "brazilianFit";
   if (low.includes("recuo") || low.includes("taxa de ocupação") || low.includes("coeficiente de aproveitamento")
     || low.includes("regra municipal") || low.includes("pavimentos permitidos") || low.includes("viabilidade municipal")) return "codeCompliance";
+  if (low.includes("área técnica") || low.includes("equipamentos") || low.includes("acústica") || low.includes("ruído")
+    || low.includes("prumada técnica") || low.includes("manutenção") || low.includes("gás") || low.includes("lixo")) return "technicalSystems";
   if (low.includes("lavanderia") || low.includes("compacta") || low.includes("perímetro")) return "constructability";
   return "architecturalCoherence";
 }
@@ -984,6 +987,90 @@ function evaluateBrazilianResidentialFit(
   };
 }
 
+function evaluateTechnicalSystemsFit(
+  rooms: SpecialistPlanRoom[],
+  input: z.infer<typeof specialistHousePlanSchema>,
+) {
+  const issues: string[] = [];
+  const recommendations: string[] = [];
+  let score = 100;
+
+  const kitchen = rooms.find((room) => room.kind === "cozinha");
+  const laundry = rooms.find((room) => room.kind === "lavanderia");
+  const garage = rooms.find((room) => room.kind === "garagem");
+  const bedrooms = rooms.filter((room) => room.kind === "suite" || room.kind === "quarto");
+  const noisy = rooms.filter((room) => room.kind === "garagem" || room.kind === "gourmet" || room.kind === "lavanderia");
+
+  if (kitchen && laundry && kitchen.floor === laundry.floor && specialistRoomGap(kitchen, laundry) > 4.0) {
+    issues.push("Área técnica/serviço: cozinha e lavanderia estão afastadas, aumentando percurso de instalações e rotina de serviço.");
+    score -= 10;
+  }
+
+  const directNoiseConflicts = bedrooms.flatMap((bedroom) =>
+    noisy.filter((source) => source.floor === bedroom.floor && specialistTouches(bedroom, source))
+      .map((source) => `${bedroom.label} ↔ ${source.label}`)
+  );
+  if (directNoiseConflicts.length) {
+    issues.push(`Acústica: dormitórios encostam diretamente em áreas ruidosas (${directNoiseConflicts.slice(0, 3).join(", ")}).`);
+    score -= Math.min(24, directNoiseConflicts.length * 8);
+  }
+
+  if (garage && laundry && garage.floor === laundry.floor && specialistRoomGap(garage, laundry) > 6.0) {
+    recommendations.push("Serviço/manutenção: considerar rota mais curta entre garagem/acesso de serviço e lavanderia/área técnica.");
+    score -= 5;
+  }
+
+  const wetRooms = rooms.filter((room) => ["banheiro","cozinha","lavanderia"].includes(room.kind));
+  if (wetRooms.length >= 4) {
+    const spread = wetRooms.reduce((sum, room) => {
+      const nearest = wetRooms
+        .filter((other) => other.id !== room.id && other.floor === room.floor)
+        .map((other) => specialistRoomGap(room, other))
+        .filter(Number.isFinite)
+        .sort((a,b) => a-b)[0];
+      return sum + (Number.isFinite(nearest) ? nearest : 0);
+    }, 0) / wetRooms.length;
+    if (spread > 4.5) {
+      recommendations.push("Prumada técnica: áreas molhadas estão dispersas; aproximar núcleos hidráulicos pode reduzir custo e manutenção.");
+      score -= 8;
+    }
+  }
+
+  const ctx = input.brazilianContext ?? {};
+  if (ctx.solarReady) {
+    recommendations.push("Área técnica: prever caminho de eletrodutos, inversor e acesso de manutenção para futura geração solar.");
+  }
+  if (ctx.rainwaterReady) {
+    recommendations.push("Área técnica: prever reservatório, filtros e acesso de manutenção para futura captação pluvial.");
+  }
+  if (ctx.evReady && garage) {
+    recommendations.push("Equipamentos: reservar capacidade elétrica e posição protegida para futuro carregador veicular.");
+  }
+
+  const serviceRoutine = ctx.serviceRoutine ?? "compacta";
+  if (serviceRoutine === "intensa") {
+    const serviceArea = laundry ? laundry.width * laundry.depth : 0;
+    if (serviceArea < 5.0) {
+      issues.push("Rotina de serviço intensa sem área técnica/lavanderia suficiente para equipamentos, apoio e manutenção.");
+      score -= 18;
+    }
+    recommendations.push("Serviço intenso: prever local para secagem, armazenamento de limpeza e descarte sem interferir na área social.");
+  }
+
+  if (rooms.length >= 8) {
+    recommendations.push("Infraestrutura: reservar posição discreta e acessível para condensadoras de ar-condicionado, medidores e manutenção.");
+  }
+
+  recommendations.push("Compatibilizar gás, lixo, medidores, reservação de água e equipamentos técnicos antes do projeto executivo; estes itens não devem ocupar áreas residuais improvisadas.");
+
+  return {
+    score: Math.max(0, Math.round(score)),
+    status: score < 58 ? "blocked" as const : score < 78 ? "warning" as const : "approved" as const,
+    issues,
+    recommendations: [...new Set(recommendations)].slice(0, 10),
+  };
+}
+
 function evaluateRoofVolumetryFit(
   rooms: SpecialistPlanRoom[],
   input: z.infer<typeof specialistHousePlanSchema>,
@@ -1313,6 +1400,7 @@ function buildArchitecturalQualityGateV2(issues: string[]) {
     "costValue",
     "brazilianFit",
     "codeCompliance",
+    "technicalSystems",
     "architecturalCoherence",
   ];
   const dimensionIssues = Object.fromEntries(keys.map((key) => [key, [] as string[]])) as Record<QualityDimensionKey, string[]>;
@@ -1365,7 +1453,8 @@ function buildArchitecturalQualityGateV2(issues: string[]) {
     roofVolumetry: 0.07,
     costValue: 0.06,
     brazilianFit: 0.04,
-    codeCompliance: 0.05,
+    codeCompliance: 0.04,
+    technicalSystems: 0.05,
     architecturalCoherence: 0.01,
   };
 
@@ -1663,7 +1752,8 @@ function evaluateSpecialistPlan(
   const costValue = evaluateCostValueFit(rooms, input);
   const brazilianFit = evaluateBrazilianResidentialFit(rooms, input);
   const regulatoryFit = evaluateRegulatoryFit(rooms, input);
-  issues.push(...furnitureFit.issues, ...siteClimate.issues, ...roofVolumetry.issues, ...costValue.issues, ...brazilianFit.issues, ...regulatoryFit.issues);
+  const technicalSystems = evaluateTechnicalSystemsFit(rooms, input);
+  issues.push(...furnitureFit.issues, ...siteClimate.issues, ...roofVolumetry.issues, ...costValue.issues, ...brazilianFit.issues, ...regulatoryFit.issues, ...technicalSystems.issues);
 
   const uniqueIssues = [...new Set(issues)];
   const gate = buildArchitecturalQualityGateV2(uniqueIssues);
@@ -1697,6 +1787,11 @@ function evaluateSpecialistPlan(
     status: regulatoryFit.status,
     issues: regulatoryFit.issues.slice(0, 8),
   };
+  gate.dimensions.technicalSystems = {
+    score: technicalSystems.score,
+    status: technicalSystems.status,
+    issues: technicalSystems.issues.slice(0, 8),
+  };
   gate.score = Math.round(
     gate.dimensions.program.score * 0.11
     + gate.dimensions.circulation.score * 0.14
@@ -1709,7 +1804,8 @@ function evaluateSpecialistPlan(
     + gate.dimensions.roofVolumetry.score * 0.07
     + gate.dimensions.costValue.score * 0.06
     + gate.dimensions.brazilianFit.score * 0.04
-    + gate.dimensions.codeCompliance.score * 0.05
+    + gate.dimensions.codeCompliance.score * 0.04
+    + gate.dimensions.technicalSystems.score * 0.05
     + gate.dimensions.architecturalCoherence.score * 0.01
   );
   const furnitureBlocked = furnitureFit.status === "blocked";
@@ -1770,6 +1866,7 @@ function evaluateSpecialistPlan(
     costValue,
     brazilianFit,
     regulatoryFit,
+    technicalSystems,
   } as SpecialistPlanQuality & {
     furnitureFit: ReturnType<typeof evaluateFurnitureFit>;
     siteClimate: ReturnType<typeof evaluateSiteClimateFit>;
@@ -1777,6 +1874,7 @@ function evaluateSpecialistPlan(
     costValue: ReturnType<typeof evaluateCostValueFit>;
     brazilianFit: ReturnType<typeof evaluateBrazilianResidentialFit>;
     regulatoryFit: ReturnType<typeof evaluateRegulatoryFit>;
+    technicalSystems: ReturnType<typeof evaluateTechnicalSystemsFit>;
   };
 }
 
@@ -2028,6 +2126,7 @@ function sanitizeSpecialistPlan(
       costValue: (quality as SpecialistPlanQuality & { costValue?: ReturnType<typeof evaluateCostValueFit> }).costValue ?? null,
       brazilianFit: (quality as SpecialistPlanQuality & { brazilianFit?: ReturnType<typeof evaluateBrazilianResidentialFit> }).brazilianFit ?? null,
       regulatoryFit: (quality as SpecialistPlanQuality & { regulatoryFit?: ReturnType<typeof evaluateRegulatoryFit> }).regulatoryFit ?? null,
+      technicalSystems: (quality as SpecialistPlanQuality & { technicalSystems?: ReturnType<typeof evaluateTechnicalSystemsFit> }).technicalSystems ?? null,
     },
   };
 }
@@ -2717,7 +2816,10 @@ INTERPRETAÇÃO OBRIGATÓRIA DO BRIEFING:
 - perfil de veículo deve afetar a dimensão funcional da garagem e manobra;
 - preparações futuras para EV, solar e captação de água devem ser compatíveis com garagem/cobertura/área técnica sem criar equipamentos fictícios;
 - NUNCA invente legislação, recuos ou índices municipais; quando regulatoryContext estiver vazio, trate conformidade legal como pendente;
-- quando regulatoryContext estiver marcado como verificado, respeite seus recuos, pavimentos, taxa de ocupação e coeficiente de aproveitamento como restrições duras.
+- quando regulatoryContext estiver marcado como verificado, respeite seus recuos, pavimentos, taxa de ocupação e coeficiente de aproveitamento como restrições duras;
+- reserve lógica para áreas técnicas e manutenção: condensadoras, medidores, reservação de água, gás, lixo, equipamentos e futuras instalações não podem depender de sobras improvisadas;
+- use banheiros, closets, circulação e serviço como buffers acústicos quando necessário entre dormitórios e garagem/gourmet/lavanderia;
+- trate manutenção e acesso técnico como parte da arquitetura, sem expor equipamentos como elemento visual gratuito.
 
 PROGRAMA FIXO DE AMBIENTES:
 ${JSON.stringify(program)}
