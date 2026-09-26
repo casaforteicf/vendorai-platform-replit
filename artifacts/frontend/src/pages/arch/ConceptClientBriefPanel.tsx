@@ -1246,6 +1246,95 @@ export default function ConceptClientBriefPanel({
         </div>
       </section>
 
+      <section className="rounded-2xl border border-blue-200 bg-blue-50/40 p-4">
+        <div className="flex items-start gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-600 text-white">
+            <Ruler className="h-4 w-4" />
+          </span>
+          <div>
+            <div className="text-xs font-bold text-slate-900">Viabilidade municipal preliminar</div>
+            <p className="mt-1 text-[10px] leading-4 text-slate-600">
+              Cadastre apenas regras conhecidas. O Arqdor nunca inventa índices urbanísticos; quando houver fonte verificada, as regras podem bloquear uma solução incompatível.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <label className="text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">
+            Situação
+            <select value={regulatoryContext.status ?? "nao_informado"}
+              onChange={(event) => setRegulatoryContext((current) => ({ ...current, status: event.target.value as RegulatoryContext["status"] }))}
+              className="mt-1 h-9 w-full rounded-lg border bg-white px-2 text-[10px] font-semibold normal-case tracking-normal text-slate-700">
+              <option value="nao_informado">Não informado</option>
+              <option value="preliminar">Preliminar</option>
+              <option value="verificado">Fonte verificada</option>
+            </select>
+          </label>
+          <input value={regulatoryContext.municipality ?? ""}
+            onChange={(event) => setRegulatoryContext((current) => ({ ...current, municipality: event.target.value.slice(0, 120) }))}
+            placeholder="Município"
+            className="mt-[18px] h-9 rounded-lg border bg-white px-2.5 text-[10px] text-slate-700" />
+          <input value={regulatoryContext.sourceName ?? ""}
+            onChange={(event) => setRegulatoryContext((current) => ({ ...current, sourceName: event.target.value.slice(0, 180) }))}
+            placeholder="Fonte: plano diretor / consulta / certidão"
+            className="col-span-2 h-9 rounded-lg border bg-white px-2.5 text-[10px] text-slate-700" />
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <label className="text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">
+            Máx. pavimentos
+            <input type="number" min={1} max={20} value={regulatoryContext.maxFloors ?? ""}
+              onChange={(event) => setRegulatoryContext((current) => ({ ...current, maxFloors: event.target.value ? Math.max(1, Number(event.target.value)) : undefined }))}
+              className="mt-1 h-9 w-full rounded-lg border bg-white px-2 text-[10px] font-semibold normal-case tracking-normal text-slate-700" />
+          </label>
+          <label className="text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">
+            Ocupação máx. %
+            <input type="number" min={1} max={100} value={regulatoryContext.occupancyRateMax ? Math.round(regulatoryContext.occupancyRateMax * 100) : ""}
+              onChange={(event) => setRegulatoryContext((current) => ({ ...current, occupancyRateMax: event.target.value ? Math.max(0.01, Math.min(1, Number(event.target.value) / 100)) : undefined }))}
+              className="mt-1 h-9 w-full rounded-lg border bg-white px-2 text-[10px] font-semibold normal-case tracking-normal text-slate-700" />
+          </label>
+          <label className="text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">
+            Coef. aproveitamento
+            <input type="number" min={0.1} max={20} step={0.1} value={regulatoryContext.farMax ?? ""}
+              onChange={(event) => setRegulatoryContext((current) => ({ ...current, farMax: event.target.value ? Math.max(0.1, Number(event.target.value)) : undefined }))}
+              className="mt-1 h-9 w-full rounded-lg border bg-white px-2 text-[10px] font-semibold normal-case tracking-normal text-slate-700" />
+          </label>
+          <label className="text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">
+            Permeável mín. %
+            <input type="number" min={0} max={100} value={regulatoryContext.permeabilityMin != null ? Math.round(regulatoryContext.permeabilityMin * 100) : ""}
+              onChange={(event) => setRegulatoryContext((current) => ({ ...current, permeabilityMin: event.target.value ? Math.max(0, Math.min(1, Number(event.target.value) / 100)) : undefined }))}
+              className="mt-1 h-9 w-full rounded-lg border bg-white px-2 text-[10px] font-semibold normal-case tracking-normal text-slate-700" />
+          </label>
+        </div>
+
+        <div className="mt-3 grid grid-cols-4 gap-1.5">
+          {(["top","bottom","left","right"] as const).map((side) => (
+            <label key={side} className="text-[8px] font-bold uppercase text-slate-400">
+              {side === "top" ? "Superior" : side === "bottom" ? "Inferior" : side === "left" ? "Esq." : "Dir."}
+              <input type="number" min={0} max={30} step={0.1}
+                value={regulatoryContext.setbacks?.[side] ?? ""}
+                onChange={(event) => setRegulatoryContext((current) => ({
+                  ...current,
+                  setbacks: {
+                    top: current.setbacks?.top ?? 0,
+                    bottom: current.setbacks?.bottom ?? 0,
+                    left: current.setbacks?.left ?? 0,
+                    right: current.setbacks?.right ?? 0,
+                    [side]: event.target.value ? Math.max(0, Number(event.target.value)) : 0,
+                  },
+                }))}
+                className="mt-1 h-8 w-full rounded-lg border bg-white px-1.5 text-center text-[9px] font-semibold text-slate-700" />
+            </label>
+          ))}
+        </div>
+
+        {regulatoryContext.status !== "verificado" && (
+          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-2 text-[9px] leading-4 text-amber-700">
+            Regras não verificadas servem como alerta preliminar; confirme com prefeitura, condomínio e profissional responsável antes de tratar como requisito legal.
+          </div>
+        )}
+      </section>
+
       <section>
         <div className="mb-2 flex items-center gap-2 text-xs font-bold text-slate-800">
           <BedDouble className="h-4 w-4 text-slate-500" />
