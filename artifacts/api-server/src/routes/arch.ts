@@ -5903,6 +5903,114 @@ router.get("/arch/ai-render/:id", async (req, res) => {
   });
 });
 
+router.post("/arch/ai-render/:id/fidelity-audit", async (req, res) => {
+  const tid = tenantId(req);
+  if (!tid) return res.status(403).json({ error: "Tenant não identificado" });
+
+  const [job] = await db
+    .select()
+    .from(archAiRendersTable)
+    .where(and(eq(archAiRendersTable.id, req.params["id"]!), eq(archAiRendersTable.tenantId, tid)))
+    .limit(1);
+
+  if (!job) return res.status(404).json({ error: "Render não encontrado" });
+  if (!job.resultImageUrl || !job.originalImageUrl) {
+    return res.status(400).json({ error: "Render e imagem de referência são necessários para auditar fidelidade." });
+  }
+
+  const toAnthropicImage = async (source: string) => {
+    const dataMatch = source.match(/^data:(image\/(?:png|jpeg|gif|webp));base64,(.+)$/);
+    if (dataMatch) {
+      return {
+        mediaType: dataMatch[1] as "image/png" | "image/jpeg" | "image/gif" | "image/webp",
+        data: dataMatch[2]!,
+      };
+    }
+    const url = source.startsWith("/")
+      ? `http://localhost:${process.env["PORT"] ?? 8080}${source}`
+      : source;
+    const imageResponse = await fetch(url);
+    if (!imageResponse.ok) throw new Error(`Falha ao carregar imagem para auditoria: ${imageResponse.status}`);
+    const mediaType = (imageResponse.headers.get("content-type") ?? "image/png").split(";")[0]!.trim();
+    return {
+      mediaType: (["image/png","image/jpeg","image/gif","image/webp"].includes(mediaType) ? mediaType : "image/png") as "image/png" | "image/jpeg" | "image/gif" | "image/webp",
+      data: Buffer.from(await imageResponse.arrayBuffer()).toString("base64"),
+    };
+  };
+
+  try {
+    const [reference, rendered] = await Promise.all([
+      toAnthropicImage(job.originalImageUrl),
+      toAnthropicImage(job.resultImageUrl),
+    ]);
+    const modelRevision = typeof req.body?.model_revision === "string" ? req.body.model_revision.slice(0, 80) : null;
+
+    const message = await anthropic.messages.create({
+      model: "claude-opus-4-5",
+      max_tokens: 1600,
+      messages: [{
+        role: "user",
+        content: [
+          {
+            type: "image",
+            source: { type: "base64", media_type: reference.mediaType, data: reference.data },
+          },
+          {
+            type: "image",
+            source: { type: "base64", media_type: rendered.mediaType, data: rendered.data },
+          },
+          {
+            type: "text",
+            text: `Você é o ARQDOR RENDER FIDELITY AGENT.
+A PRIMEIRA imagem é a referência geométrica aprovada; a SEGUNDA é o render fotorealista produzido.
+Revisão do modelo: ${modelRevision ?? "não informada"}.
+
+Compare SOMENTE fidelidade arquitetônica. Não penalize melhoria de materiais, luz, céu, vegetação, reflexos ou pós-produção.
+Bloqueie alterações em:
+- volumetria/proporções da edificação;
+- número ou posição relativa dos pavimentos;
+- paredes/limites principais;
+- cobertura e linhas de coroamento;
+- posição, quantidade ou proporção de portas e janelas;
+- garagem/entrada;
+- câmera/perspectiva quando mudar a leitura geométrica;
+- elementos estruturais fixos.
+
+Classifique diferenças pequenas de textura/luz como aceitáveis.
+Prioridade: FIDELIDADE ARQUITETÔNICA > FOTOREALISMO > ESTÉTICA.
+
+Responda SOMENTE JSON:
+{"approved":true,"score":0,"violations":[],"warnings":[],"summary":"..."}`
+          }
+        ]
+      }]
+    });
+
+    const raw = message.content.filter((item: any) => item.type === "text").map((item: any) => item.text).join("");
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (!match) return res.status(422).json({ error: "Auditoria de fidelidade não retornou JSON válido." });
+    const parsed = JSON.parse(match[0]);
+    const violations = Array.isArray(parsed.violations) ? parsed.violations.map(String).slice(0, 10) : [];
+    const warnings = Array.isArray(parsed.warnings) ? parsed.warnings.map(String).slice(0, 10) : [];
+    const score = Math.max(0, Math.min(100, Number(parsed.score) || 0));
+    const approved = Boolean(parsed.approved) && violations.length === 0 && score >= 82;
+
+    return res.json({
+      approved,
+      score,
+      violations,
+      warnings,
+      summary: String(parsed.summary ?? "").slice(0, 800),
+      modelRevision,
+      renderId: job.id,
+      priority: "architectural_fidelity>photorealism>aesthetics",
+    });
+  } catch (error) {
+    const safe = sanitizeAIError(error);
+    return res.status(safe.status).json({ error: safe.message });
+  }
+});
+
 // ── POST /arch/ai-render/:id/adjust — create adjusted version ─────────────────
 router.post("/arch/ai-render/:id/adjust", async (req, res) => {
   const tid = tenantId(req);
