@@ -156,6 +156,9 @@ export function buildConceptRenderBrief(input: ConceptRenderBriefInput) {
       ? `GEOMETRY FRONT LOCK: the official project front side is ${geometryLock.frontSide}. Never rotate or mirror the building relative to this front.`
       : "",
     siteExterior ? `EXTERIOR SITE LOGIC: ${siteExterior.leisureSummary}. Do not move pool or gourmet to the street frontage if they are modeled at the rear/side.` : "",
+    siteExterior?.zones?.length
+      ? `SITE EXTERIOR GEOMETRY LOCK: preserve these lot zones and their relationship to the house: ${siteExterior.zones.map((zone) => `${zone.label} [${zone.kind}] at (${zone.x.toFixed(2)},${zone.y.toFixed(2)}) size ${zone.width.toFixed(2)}x${zone.depth.toFixed(2)} m`).join("; ")}. Keep vehicle access, pedestrian access, deck/patio, garden and pool safety/circulation bands in their modeled positions.`
+      : "",
     `Architectural direction: ${styleLabel[facade.style]}.`,
     `Roof: ${roofLabel[facade.roof]}.`,
     design?.roofConfig
