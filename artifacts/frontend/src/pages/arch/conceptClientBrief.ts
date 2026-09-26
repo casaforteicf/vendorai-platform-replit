@@ -114,6 +114,20 @@ export type BrazilianResidentialContext = {
   rainwaterReady?: boolean;
 };
 
+export type RegulatoryContext = {
+  status?: "nao_informado" | "preliminar" | "verificado";
+  municipality?: string;
+  sourceName?: string;
+  sourceUrl?: string;
+  verifiedAt?: string;
+  setbacks?: { top: number; bottom: number; left: number; right: number };
+  maxFloors?: number;
+  occupancyRateMax?: number;
+  farMax?: number;
+  permeabilityMin?: number;
+  notes?: string;
+};
+
 export type ProjectSiteContext = {
   frontSide?: "top" | "bottom" | "left" | "right";
   northSide?: "top" | "bottom" | "left" | "right" | "nao_informado";
@@ -338,6 +352,7 @@ export type ProjectBriefSnapshot = {
   household?: HouseholdContext;
   siteContext?: ProjectSiteContext;
   brazilianContext?: BrazilianResidentialContext;
+  regulatoryContext?: RegulatoryContext;
   selectedAlternativeId?: ClientBriefAlternativeId;
   selectedAlternativeTitle?: string;
   clientFitSummary?: string;
@@ -385,6 +400,7 @@ export function buildProjectBriefSnapshot(input: {
   household?: HouseholdContext;
   siteContext?: ProjectSiteContext;
   brazilianContext?: BrazilianResidentialContext;
+  regulatoryContext?: RegulatoryContext;
   intervention?: ProjectBriefSnapshot["intervention"];
   previous?: ProjectBriefSnapshot | null;
   patch?: Partial<ProjectBriefSnapshot>;
@@ -397,6 +413,7 @@ export function buildProjectBriefSnapshot(input: {
     household: input.household,
     siteContext: input.siteContext,
     brazilianContext: input.brazilianContext,
+    regulatoryContext: input.regulatoryContext,
     intervention: input.intervention ?? input.previous?.intervention,
     ...(input.patch ?? {}),
   };
