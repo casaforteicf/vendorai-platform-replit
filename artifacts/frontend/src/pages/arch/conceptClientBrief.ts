@@ -431,7 +431,7 @@ export type ClientBriefAlternative = ClientBriefPlan & {
   architectureScore?: number;
   qualityGateVersion?: 2;
   qualityDimensions?: Partial<Record<
-    "program" | "circulation" | "privacy" | "ergonomics" | "geometry" | "constructability" | "furnitureFit" | "siteClimate" | "roofVolumetry" | "costValue" | "brazilianFit" | "architecturalCoherence",
+    "program" | "circulation" | "privacy" | "ergonomics" | "geometry" | "constructability" | "furnitureFit" | "siteClimate" | "roofVolumetry" | "costValue" | "brazilianFit" | "codeCompliance" | "architecturalCoherence",
     { score: number; status: "approved" | "warning" | "blocked"; issues: string[] }
   >>;
   hardBlockers?: string[];
@@ -533,6 +533,28 @@ export type ClientBriefAlternative = ClientBriefPlan & {
       connected: boolean;
       unreachableRooms: string[];
     };
+    regulatoryFit?: {
+      score: number;
+      status: "approved" | "warning" | "blocked";
+      blocking: boolean;
+      issues: string[];
+      recommendations: string[];
+      checks: Array<{
+        id: string;
+        label: string;
+        status: "pass" | "fail" | "pending";
+        value?: number;
+        limit?: number;
+      }>;
+      source: {
+        municipality: string | null;
+        sourceName: string | null;
+        sourceUrl: string | null;
+        verifiedAt: string | null;
+        status?: string;
+      } | null;
+      verified: boolean;
+    } | null;
     brazilianFit?: {
       score: number;
       status: "approved" | "warning" | "blocked";
