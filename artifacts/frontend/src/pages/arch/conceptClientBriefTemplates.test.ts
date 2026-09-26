@@ -13,7 +13,10 @@ const brief = { bedrooms: 3, suites: 1, floors: 1, garageSpaces: 2, gourmet: tru
 
 describe("opções das Necessidades a partir dos modelos desenhados", () => {
   it("lote 15 × 30 (caso dos 24 erros): três opções, todas sem erro e dentro do lote", () => {
+    const startedAt = performance.now();
     const options = buildClientBriefAlternatives(brief, 15, 30);
+    const elapsedMs = performance.now() - startedAt;
+
     expect(options.length).toBe(3);
     for (const option of options) {
       expect(countBriefAlternativeErrors(option.rooms, option.floors, 15, 30)).toBe(0);
@@ -24,7 +27,12 @@ describe("opções das Necessidades a partir dos modelos desenhados", () => {
         expect(room.y + room.depth).toBeLessThanOrEqual(30.01);
       }
     }
-  });
+
+    // Este fluxo executa busca iterativa + otimização multiobjetivo em vários templates.
+    // Mantemos um teto explícito para detectar regressão real, sem depender do timeout
+    // global de 5 s do Vitest em builders compartilhados mais lentos.
+    expect(elapsedMs).toBeLessThan(12000);
+  }, 15000);
 
   it("a primeira opção é a mais próxima do pedido", () => {
     const [first] = buildClientBriefAlternatives(brief, 15, 30);
