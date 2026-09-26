@@ -89,6 +89,45 @@ describe("Arqdor photoreal render brief", () => {
     expect(brief).toContain("CROP LOCK");
   });
 
+  it("locks parametric roof settings into the photoreal render brief", () => {
+    const brief = buildConceptRenderBrief({
+      lotWidth: 14,
+      lotDepth: 28,
+      floors: 2,
+      desiredArea: 220,
+      facade: { ...facade, roof: "aparente" },
+      facadeDesign: {
+        surfaceMaterials: {
+          main: "paint-offwhite",
+          accent: "wood-natural",
+          garage: "metal-black",
+          entrance: "wood-natural",
+          paving: "concrete-light",
+          frames: "metal-black",
+        },
+        volumes: [],
+        lighting: "day",
+        showLandscaping: true,
+        roofConfig: {
+          waters: 4,
+          pitchDegrees: 27,
+          overhang: 0.65,
+          ridgeDirection: "x",
+          parapetHeight: 0.9,
+          gutter: true,
+        },
+      },
+      renderView: "exterior",
+      rooms: [],
+    });
+
+    expect(brief).toContain("PARAMETRIC ROOF LOCK");
+    expect(brief).toContain("4 water plane(s)");
+    expect(brief).toContain("pitch 27 degrees");
+    expect(brief).toContain("overhang 0.65 m");
+    expect(brief).toContain("gutters enabled");
+  });
+
   it("does not invent a pool when the project has none", () => {
     const brief = buildConceptRenderBrief({
       lotWidth: 10,
