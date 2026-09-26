@@ -68,6 +68,9 @@ import { buildOrthogonalWallTopology, detectClosedSpaces, type ClosedSpace, type
 import { conceptStepCta, nextConceptStep, normalizeConceptStep, previousConceptStep } from "./conceptNavigation";
 import { CONCEPT_OPENING_FAMILIES } from "./catalogs/conceptOpeningCatalog";
 import { blockingConceptIssues, canAdvanceConceptLayout } from "./conceptWorkflow";
+import { evaluateConceptAcceptance } from "./conceptAcceptance";
+import { autoRepairConceptLayout } from "./conceptAutoRepair";
+import { buildExplainableFindings } from "./conceptExplainableEvaluation";
 import { clampObjectToLot, clampRoomToLot, clampWallToLot, normalizeOpeningDimensions } from "./conceptParametricEditing";
 
 type RoomKind =
@@ -2858,23 +2861,40 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   }), [safeRooms, modelLevels, lotWidth, lotDepth, safeWallFirstFloors, safeObjects, facadeDesign, sitePlacement]);
   const blockingLayoutIssues = blockingConceptIssues(layoutIssues);
 
+  const architecturalAcceptance = useMemo(() => evaluateConceptAcceptance({
+    rooms: safeRooms,
+    lotWidth,
+    lotDepth,
+    floors,
+    site: {
+      frontSide: normalizeSitePlacement(sitePlacement).frontSide,
+      setbackFront: normalizeSitePlacement(sitePlacement).setbackFront,
+      northSide: normalizeSitePlacement(sitePlacement).northSide,
+    },
+  }), [safeRooms, lotWidth, lotDepth, floors, sitePlacement]);
+
+  const architecturalRepair = useMemo(() => autoRepairConceptLayout({
+    rooms: safeRooms,
+    lotWidth,
+    lotDepth,
+    floors,
+    site: {
+      frontSide: normalizeSitePlacement(sitePlacement).frontSide,
+      setbackFront: normalizeSitePlacement(sitePlacement).setbackFront,
+      northSide: normalizeSitePlacement(sitePlacement).northSide,
+    },
+    maxPasses: 3,
+  }), [safeRooms, lotWidth, lotDepth, floors, sitePlacement]);
+
+  const explainableFindings = useMemo(
+    () => buildExplainableFindings(architecturalAcceptance, architecturalRepair),
+    [architecturalAcceptance, architecturalRepair],
+  );
+
   const repairArchitecturalLayout = () => {
-    if (!safeRooms.length) return;
+    if (!safeRooms.length || !architecturalRepair.improved) return;
     const before = snapshotEditor();
-    let nextRooms = safeRooms;
-    const nextVariant = (layoutVariant + 1) % 3;
-    for (let floor = 0; floor < floors; floor += 1) {
-      nextRooms = generateLayoutVariant(
-        nextRooms,
-        lotWidth,
-        lotDepth,
-        floor,
-        nextVariant,
-        layoutPreferences,
-      );
-    }
-    setRooms(nextRooms);
-    setLayoutVariant(nextVariant);
+    setRooms(architecturalRepair.rooms as Room[]);
     pushRoomHistory(before);
     setSelectedId(null);
     setSelectedOpeningId(null);
