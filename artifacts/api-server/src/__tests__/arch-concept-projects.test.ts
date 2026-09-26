@@ -481,6 +481,7 @@ describe("Arqdor Concept — handoff idempotente para Projeto Arqdor", () => {
           objects: [],
           spaceProfiles: [],
           wallMaterials: {},
+          links: { archProjetoId: "arch-project-1", obraId: "obra-1", budgetId: "budget-1", leadId: null, dealId: null },
         },
       },
     };
@@ -495,7 +496,7 @@ describe("Arqdor Concept — handoff idempotente para Projeto Arqdor", () => {
     expect(res.status).toBe(201);
     expect(res.body.revisionNumber).toBe(2);
     expect(values).toHaveBeenCalledWith(expect.objectContaining({
-      archProjetoId: null,
+      archProjetoId: promotedConcept.configuration.projectMaster.links?.archProjetoId ?? null,
       status: "draft",
       title: expect.stringContaining("Revisão 2"),
       configuration: expect.objectContaining({
