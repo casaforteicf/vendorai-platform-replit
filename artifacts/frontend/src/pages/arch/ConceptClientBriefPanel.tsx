@@ -791,6 +791,7 @@ export default function ConceptClientBriefPanel({
                         ["brazilianFit", "Contexto BR"],
                         ["codeCompliance", "Viabilidade"],
                         ["technicalSystems", "Sistemas técnicos"],
+                        ["structuralModulation", "Estrutura/modulação"],
                         ["architecturalCoherence", "Coerência"],
                       ] as const).map(([key, label]) => {
                         const dimension = alternative.qualityDimensions?.[key];
@@ -913,6 +914,38 @@ export default function ConceptClientBriefPanel({
                         </div>
                       ))}
                     </div>
+                  </div>
+                ) : null}
+
+                {alternative.programCompliance?.structuralModulation ? (
+                  <div className="mt-2 rounded-lg border border-violet-100 bg-violet-50 px-2.5 py-2">
+                    <div className="flex items-center justify-between gap-2 text-[10px]">
+                      <span className="font-bold text-violet-900">Estrutura preliminar + modulação</span>
+                      <span className={alternative.programCompliance.structuralModulation.status === "blocked"
+                        ? "font-bold text-red-600"
+                        : alternative.programCompliance.structuralModulation.status === "warning"
+                          ? "font-bold text-amber-600"
+                          : "font-bold text-emerald-700"}
+                      >
+                        {alternative.programCompliance.structuralModulation.score}/100
+                      </span>
+                    </div>
+                    <div className="mt-1 text-[9px] leading-4 text-violet-900">
+                      {alternative.programCompliance.structuralModulation.label}
+                      {alternative.programCompliance.structuralModulation.profile.planningModuleM
+                        ? ` · módulo ${alternative.programCompliance.structuralModulation.profile.planningModuleM.toFixed(2)} m`
+                        : ""}
+                      {alternative.programCompliance.structuralModulation.profile.preferredSpanM
+                        ? ` · vão preferencial até ${alternative.programCompliance.structuralModulation.profile.preferredSpanM.toFixed(1)} m`
+                        : ""}
+                    </div>
+                    {alternative.programCompliance.structuralModulation.recommendations?.length ? (
+                      <div className="mt-2 space-y-1 text-[9px] leading-4 text-slate-600">
+                        {alternative.programCompliance.structuralModulation.recommendations.slice(0, 4).map((item, index) => (
+                          <div key={index}>• {item}</div>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
 
