@@ -37,6 +37,7 @@ import {
   type HouseholdContext,
   type ProjectBriefSnapshot,
   type ProjectSiteContext,
+  type RegulatoryContext,
 } from "./conceptClientBrief";
 
 type Props = {
@@ -114,6 +115,10 @@ const DEFAULT_BRAZILIAN_CONTEXT: BrazilianResidentialContext = {
   evReady: false,
   solarReady: false,
   rainwaterReady: false,
+};
+
+const DEFAULT_REGULATORY_CONTEXT: RegulatoryContext = {
+  status: "nao_informado",
 };
 
 const DEFAULT_SITE_CONTEXT: ProjectSiteContext = {
@@ -347,6 +352,11 @@ export default function ConceptClientBriefPanel({
     ...DEFAULT_BRAZILIAN_CONTEXT,
     ...(initialProjectBrief?.brazilianContext ?? {}),
   }));
+  const [regulatoryContext, setRegulatoryContext] = useState<RegulatoryContext>(() => ({
+    ...DEFAULT_REGULATORY_CONTEXT,
+    setbacks: placement?.setbacks,
+    ...(initialProjectBrief?.regulatoryContext ?? {}),
+  }));
   const [dreamStep, setDreamStep] = useState(0);
   const [showAlternatives, setShowAlternatives] = useState(false);
   const [alternatives, setAlternatives] = useState<ClientBriefAlternative[]>([]);
@@ -498,6 +508,7 @@ export default function ConceptClientBriefPanel({
         household,
         siteContext: { ...siteContext, frontSide: placement?.frontSide ?? siteContext.frontSide },
         brazilianContext,
+        regulatoryContext,
         intervention,
         previous: initialProjectBrief,
       }));
@@ -536,6 +547,7 @@ export default function ConceptClientBriefPanel({
           household,
           siteContext: { ...siteContext, frontSide: placement?.frontSide ?? siteContext.frontSide },
           brazilianContext,
+          regulatoryContext,
           intervention,
           rooms: base.rooms,
         }),
@@ -577,6 +589,7 @@ export default function ConceptClientBriefPanel({
           household,
           siteContext: { ...siteContext, frontSide: placement?.frontSide ?? siteContext.frontSide },
           brazilianContext,
+          regulatoryContext,
           intervention,
           patch: {
             selectedAlternativeId: "primary" as const,
