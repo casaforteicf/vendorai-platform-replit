@@ -119,28 +119,49 @@ export function PortalDocumentLibrary({ title, items }: { title: string; items: 
 export function PortalSupportChat({ token, sessionToken, tickets, messages, onRefresh, mode = "both" }: { token: string; sessionToken: string; tickets: any[]; messages: any[]; onRefresh: () => void; mode?: "support" | "chat" | "both" }) {
   const [support, setSupport] = useState({ assunto: "", descricao: "", prioridade: "normal" });
   const [message, setMessage] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [sending, setSending] = useState(false);
   const auth = { Authorization: `Bearer ${sessionToken}`, "Content-Type": "application/json" };
 
   async function createTicket() {
-    if (!support.assunto.trim() || !support.descricao.trim()) return;
-    const r = await fetch(`/api/portal/obra/${token}/support`, { method: "POST", headers: auth, body: JSON.stringify(support) });
-    if (r.ok) { setSupport({ assunto: "", descricao: "", prioridade: "normal" }); onRefresh(); }
+    if (!support.assunto.trim() || !support.descricao.trim() || sending) return;
+    setActionError(""); setSending(true);
+    try {
+      const r = await fetch(`/api/portal/obra/${token}/support`, { method: "POST", headers: auth, body: JSON.stringify(support) });
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}));
+        throw new Error(body.error ?? "Não foi possível abrir o ticket.");
+      }
+      setSupport({ assunto: "", descricao: "", prioridade: "normal" }); onRefresh();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Não foi possível abrir o ticket.");
+    } finally { setSending(false); }
   }
   async function sendMessage() {
-    if (!message.trim()) return;
-    const r = await fetch(`/api/portal/obra/${token}/messages`, { method: "POST", headers: auth, body: JSON.stringify({ mensagem: message }) });
-    if (r.ok) { setMessage(""); onRefresh(); }
+    if (!message.trim() || sending) return;
+    setActionError(""); setSending(true);
+    try {
+      const r = await fetch(`/api/portal/obra/${token}/messages`, { method: "POST", headers: auth, body: JSON.stringify({ mensagem: message }) });
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}));
+        throw new Error(body.error ?? "Não foi possível enviar a mensagem.");
+      }
+      setMessage(""); onRefresh();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Não foi possível enviar a mensagem.");
+    } finally { setSending(false); }
   }
 
   return (
     <div className={`grid gap-6 ${mode === "both" ? "lg:grid-cols-2" : ""}`}>
+      {actionError ? <div role="alert" className="lg:col-span-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{actionError}</div> : null}
       {mode !== "chat" ? <Card icon={<Headphones className="h-5 w-5" />} title="Solicitações de suporte">
-        <div className="space-y-2"><input className="w-full rounded-xl border px-3 py-2 text-sm" placeholder="Assunto" value={support.assunto} onChange={(e) => setSupport({ ...support, assunto: e.target.value })} /><textarea className="min-h-24 w-full rounded-xl border px-3 py-2 text-sm" placeholder="Descreva sua solicitação" value={support.descricao} onChange={(e) => setSupport({ ...support, descricao: e.target.value })} /><div className="flex gap-2"><select className="rounded-xl border px-3 py-2 text-sm" value={support.prioridade} onChange={(e) => setSupport({ ...support, prioridade: e.target.value })}><option value="baixa">Baixa</option><option value="normal">Normal</option><option value="alta">Alta</option><option value="urgente">Urgente</option></select><button onClick={createTicket} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white">Abrir ticket</button></div></div>
+        <div className="space-y-2"><input className="w-full rounded-xl border px-3 py-2 text-sm" placeholder="Assunto" value={support.assunto} onChange={(e) => setSupport({ ...support, assunto: e.target.value })} /><textarea className="min-h-24 w-full rounded-xl border px-3 py-2 text-sm" placeholder="Descreva sua solicitação" value={support.descricao} onChange={(e) => setSupport({ ...support, descricao: e.target.value })} /><div className="flex gap-2"><select className="rounded-xl border px-3 py-2 text-sm" value={support.prioridade} onChange={(e) => setSupport({ ...support, prioridade: e.target.value })}><option value="baixa">Baixa</option><option value="normal">Normal</option><option value="alta">Alta</option><option value="urgente">Urgente</option></select><button type="button" onClick={createTicket} disabled={sending} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Abrir ticket</button></div></div>
         <div className="mt-4 space-y-2">{tickets?.map((ticket: any) => <div key={ticket.id} className="rounded-xl bg-gray-50 p-3"><div className="flex justify-between"><p className="text-sm font-semibold">{ticket.assunto}</p><span className="text-xs text-gray-500">{ticket.status}</span></div><p className="mt-1 text-xs text-gray-500">{ticket.prioridade} · {date(ticket.created_at)}</p></div>)}</div>
       </Card> : null}
       {mode !== "support" ? <Card icon={<MessageCircle className="h-5 w-5" />} title="Chat com a equipe">
         <div className="max-h-80 space-y-2 overflow-y-auto rounded-xl bg-gray-50 p-3">{messages?.length ? messages.map((item: any) => <div key={item.id} className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${item.autor_tipo === "cliente" ? "ml-auto bg-indigo-600 text-white" : "bg-white text-gray-700 shadow-sm"}`}><p>{item.mensagem}</p><p className={`mt-1 text-[10px] ${item.autor_tipo === "cliente" ? "text-indigo-200" : "text-gray-400"}`}>{item.autor_nome ?? (item.autor_tipo === "cliente" ? "Você" : "Equipe")} · {date(item.created_at)}</p></div>) : <p className="py-8 text-center text-sm text-gray-400">Nenhuma mensagem ainda.</p>}</div>
-        <div className="mt-3 flex gap-2"><input className="flex-1 rounded-xl border px-3 py-2 text-sm" placeholder="Escreva uma mensagem..." value={message} onChange={(e) => setMessage(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") sendMessage(); }} /><button onClick={sendMessage} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white">Enviar</button></div>
+        <div className="mt-3 flex gap-2"><input className="flex-1 rounded-xl border px-3 py-2 text-sm" placeholder="Escreva uma mensagem..." value={message} onChange={(e) => setMessage(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") sendMessage(); }} /><button type="button" onClick={sendMessage} disabled={sending} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Enviar</button></div>
       </Card> : null}
     </div>
   );
