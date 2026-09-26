@@ -5030,7 +5030,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
               </div>
             </div>
 
-            {layoutIssues.length > 0 && (
+            {(layoutIssues.length > 0 || explainableFindings.length > 0) && (
               <>
                 {mobileValidationOpen && (
                   <div className="fixed inset-0 z-[80]">
@@ -5043,9 +5043,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     <div className="absolute inset-x-0 bottom-0 max-h-[68vh] overflow-hidden rounded-t-3xl border-t bg-white shadow-2xl md:bottom-auto md:left-1/2 md:top-24 md:max-h-[70vh] md:w-[520px] md:-translate-x-1/2 md:rounded-3xl md:border">
                       <div className="flex items-center justify-between border-b px-4 py-4">
                         <div>
-                          <div className="text-sm font-bold text-slate-950">Validação do projeto</div>
-                          <div className={blockingLayoutIssues.length > 0 ? "mt-0.5 text-xs font-bold text-red-600" : "mt-0.5 text-xs font-bold text-amber-600"}>
-                            {blockingLayoutIssues.length > 0 ? `${blockingLayoutIssues.length} erro(s)` : `${layoutIssues.length} aviso(s)`}
+                          <div className="text-sm font-bold text-slate-950">Avaliação arquitetônica</div>
+                          <div className="mt-0.5 text-xs font-semibold text-slate-500">
+                            Score {architecturalAcceptance.score}/100 · {architecturalAcceptance.status === "approved" ? "aprovado" : architecturalAcceptance.status === "review" ? "revisão recomendada" : "correção necessária"}
                           </div>
                         </div>
                         <button
@@ -5056,35 +5056,79 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           <X className="h-4 w-4" />
                         </button>
                       </div>
-                      <div className="max-h-[calc(68vh-74px)] space-y-2 overflow-y-auto px-4 py-4">
-                        {[...blockingLayoutIssues, ...layoutIssues.filter((issue) => issue.severity !== "error")].map((issue) => (
+                      <div className="max-h-[calc(68vh-74px)] space-y-3 overflow-y-auto px-4 py-4">
+                        {architecturalRepair.improved && (
+                          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3">
+                            <div className="text-xs font-bold text-emerald-900">
+                              Melhoria segura encontrada · {architecturalAcceptance.score}/100 → {architecturalRepair.after.score}/100
+                            </div>
+                            <div className="mt-1 text-[11px] leading-4 text-emerald-800">
+                              A correção foi testada pelos mesmos validadores e só é oferecida quando não aumenta erros arquitetônicos.
+                            </div>
+                            <div className="mt-2 space-y-1">
+                              {architecturalRepair.actions.slice(0, 6).map((action, index) => (
+                                <div key={`${action.type}-${index}`} className="text-[10px] leading-4 text-emerald-900">• {action.description}</div>
+                              ))}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={repairArchitecturalLayout}
+                              className="mt-3 w-full rounded-xl bg-emerald-700 px-3 py-2.5 text-xs font-bold text-white"
+                            >
+                              Aplicar melhoria
+                            </button>
+                          </div>
+                        )}
+
+                        {explainableFindings.map((finding) => (
+                          <div
+                            key={finding.id}
+                            className={finding.severity === "error"
+                              ? "rounded-xl border border-red-200 bg-red-50 px-3 py-3"
+                              : "rounded-xl border border-amber-200 bg-amber-50 px-3 py-3"}
+                          >
+                            <div className={finding.severity === "error" ? "text-xs font-bold text-red-800" : "text-xs font-bold text-amber-900"}>
+                              {finding.title}
+                            </div>
+                            <div className="mt-2 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">Problema</div>
+                            <div className="mt-0.5 text-xs leading-5 text-slate-800">{finding.problem}</div>
+                            <div className="mt-2 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">Impacto</div>
+                            <div className="mt-0.5 text-xs leading-5 text-slate-700">{finding.impact}</div>
+                            <div className="mt-2 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">Proposta</div>
+                            <div className="mt-0.5 text-xs leading-5 text-slate-700">{finding.proposal}</div>
+                            {finding.exactChanges.length > 0 && (
+                              <>
+                                <div className="mt-2 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">O que será alterado</div>
+                                <div className="mt-1 space-y-1">
+                                  {finding.exactChanges.map((change, index) => (
+                                    <div key={index} className="text-[11px] leading-4 text-slate-700">• {change}</div>
+                                  ))}
+                                </div>
+                              </>
+                            )}
+                            <button type="button" className="mt-2 text-xs font-semibold text-slate-700 underline" onClick={() => {
+                              setSelectedId(finding.roomId ?? null);
+                              setSelectedObjectId(null);
+                              setSelectedOpeningId(null);
+                              setEditorLibraryTab("build");
+                              setLibraryOpen(false);
+                              setEditorView("plan");
+                              setMobileValidationOpen(false);
+                            }}>
+                              Ver no projeto
+                            </button>
+                          </div>
+                        ))}
+
+                        {layoutIssues.filter((issue) => !architecturalAcceptance.issues.some((item) => item.id === issue.id)).map((issue) => (
                           <div
                             key={issue.id}
                             className={issue.severity === "error"
                               ? "rounded-xl bg-red-50 px-3 py-3 text-sm text-red-700"
                               : "rounded-xl bg-amber-50 px-3 py-3 text-sm text-amber-900"}
                           >
-                            <div className="mb-1 text-xs font-bold">{issue.severity === "error" ? "Impede a geração" : "Recomendação"}</div>
+                            <div className="mb-1 text-xs font-bold">{issue.severity === "error" ? "Geometria / visualização" : "Revisão visual"}</div>
                             {issue.message}
-                            <button type="button" className="mt-2 block text-xs font-semibold underline" onClick={() => {
-                              const floor = /^floor-(\d+)-|^opening-(\d+)-/.exec(issue.id);
-                              if (floor) setActiveFloor(Number(floor[1] ?? floor[2]));
-                              setSelectedId(issue.roomId ?? null);
-                              setSelectedObjectId(null);
-                              setSelectedOpeningId(null);
-                              if (issue.id.startsWith("opening-")) setSelectedOpeningId(issue.id.replace(/^opening-\d+-/, ""));
-                              if (issue.id.startsWith("object-")) {
-                                const objectId = issue.id.slice("object-".length);
-                                const object = safeObjects.find((item) => item.id === objectId);
-                                if (object) { setActiveFloor(object.floor); setSelectedObjectId(objectId); }
-                              }
-                              setEditorLibraryTab("build");
-                              setLibraryOpen(false);
-                              setEditorView(issue.id.startsWith("volume-") ? "facade" : "plan");
-                              setMobileValidationOpen(false);
-                            }}>
-                              {issue.id.startsWith("volume-") ? "Ajustar na fachada" : "Ajustar na planta"}
-                            </button>
                           </div>
                         ))}
                       </div>
