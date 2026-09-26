@@ -124,6 +124,41 @@ const facadeStudySchema = z.object({
     lighting: z.enum(["day", "sunset", "night"]).optional(),
     showLandscaping: z.boolean().optional(),
   }).optional(),
+  geometryContract: z.object({
+    version: z.literal("master_facade_v1"),
+    frontSide: z.enum(["top", "bottom", "left", "right"]),
+    roof: z.enum(["platibanda", "aparente", "misto"]),
+    derivedFacade: z.record(z.string(), z.unknown()),
+    walls: z.array(z.object({
+      id: z.string(),
+      floor: z.number().int().min(0).max(5),
+      x1: z.number(),
+      y1: z.number(),
+      x2: z.number(),
+      y2: z.number(),
+      thickness: z.number().optional(),
+    })).max(300),
+    openings: z.array(z.object({
+      id: z.string(),
+      floor: z.number().int().min(0).max(5),
+      type: z.enum(["door", "window"]),
+      orientation: z.enum(["horizontal", "vertical"]),
+      x: z.number(),
+      y: z.number(),
+      width: z.number().positive(),
+      height: z.number().positive(),
+      sillHeight: z.number().min(0),
+    })).max(200),
+    roomFootprints: z.array(z.object({
+      id: z.string(),
+      kind: z.string(),
+      floor: z.number().int().min(0).max(5),
+      x: z.number(),
+      y: z.number(),
+      width: z.number().positive(),
+      depth: z.number().positive(),
+    })).max(120),
+  }).optional(),
 });
 
 const specialistHousePlanSchema = z.object({
@@ -1491,6 +1526,12 @@ router.post("/arch/concept-projects/:id/facade-study", authenticate, async (req,
   const action = parsed.data.action;
   const intervention = parsed.data.intervention;
   const projectBrief = (config.projectBrief ?? null) as Record<string, any> | null;
+  const geometryContract = parsed.data.geometryContract ?? null;
+  if (action === "develop" && !geometryContract) {
+    return res.status(422).json({
+      error: "A fachada só pode ser desenvolvida a partir da geometria canônica do Projeto Mestre. Reabra o editor e tente novamente.",
+    });
+  }
   const facadeIntervention = intervention === "marcante" ? "assinatura" : intervention === "moderada" ? "valorizar" : "preservar";
   const facadeRepertoire = buildArchitecturalStrategyRepertoire({
     intervention: facadeIntervention,
@@ -1523,15 +1564,23 @@ ${JSON.stringify(currentFacade)}
 DESIGN DE FACHADA ATUAL:
 ${JSON.stringify(currentDesign)}
 
+CONTRATO GEOMÉTRICO CANÔNICO DA FACHADA / PROJETO MESTRE:
+${JSON.stringify(geometryContract)}
+
 REGRAS INEGOCIÁVEIS:
+- o CONTRATO GEOMÉTRICO CANÔNICO é a fonte de verdade quando presente;
+- preserve exatamente número de pavimentos, frente oficial, perímetro, largura dos pavimentos, posição da garagem, paredes, aberturas e cobertura descritos no contrato;
+- não espelhe, rotacione, alargue, estreite, aumente ou reduza a edificação para melhorar estética;
 - preserve a casa existente: número de pavimentos, implantação, posição geral da garagem, estrutura espacial e geometria principal;
 - não mova ambientes internos para "melhorar" estética;
 - não remova portas/janelas existentes;
 - se recomendar ajuste de abertura, trate como recomendação e explique o motivo, nunca como alteração silenciosa;
 - a solução deve nascer do DNA do cliente e da arquitetura atual;
 - "leve" = materiais, cores, paisagismo e detalhes;
-- "moderada" = pode propor pórtico, marquise, painel, ripado, moldura, jardineira, pergolado e ajustes de cobertura compatíveis;
-- "marcante" = composição mais autoral, porém sem transformar o projeto em outra casa;
+- "moderada" = pode propor painel, ripado, moldura, jardineira, marquise leve e pergolado APENAS como camadas não estruturais sobre a geometria existente;
+- "marcante" = composição material mais autoral, porém sem transformar o projeto em outra casa nem criar novo volume estrutural;
+- a IA automática NÃO pode criar box, wall, garage, balcony, gate ou portal que altere silhueta/perímetro. Esses elementos só podem existir se já estiverem no projeto/editor ou mediante edição explícita do usuário;
+- não altere o tipo de cobertura automaticamente; mudanças de cobertura devem ser recomendação separada para aprovação;
 - cobertura deve continuar tecnicamente compatível com a volumetria;
 - evite excesso de elementos decorativos e fachadas genéricas;
 - priorize hierarquia de entrada, proporção, ritmo, cheios/vazios, materialidade, proteção solar e coerência com a planta;
@@ -1628,7 +1677,7 @@ Retorne SOMENTE JSON válido:
     } catch {
       return res.status(422).json({ error: "A IA devolveu um estudo de fachada incompleto. Tente novamente." });
     }
-    const allowedKinds = new Set(["box","portal","canopy","panel","slats","pergola","planter","frame","garage","balcony","wall","gate"]);
+    const allowedKinds = new Set(["canopy","panel","slats","pergola","planter","frame"]);
     const allowedMaterials = new Set(["paint-offwhite","paint-greige","concrete-light","concrete-dark","wood-natural","wood-dark","stone-sand","stone-graphite","brick-light","metal-black"]);
 
     const rawVolumes = Array.isArray(ai.designSuggestion?.volumes) ? ai.designSuggestion.volumes : [];
@@ -1661,16 +1710,33 @@ Retorne SOMENTE JSON válido:
         )
       : {};
 
+    const facadeSuggestion = action === "develop" && ai.facadeSuggestion && typeof ai.facadeSuggestion === "object"
+      ? {
+          ...ai.facadeSuggestion,
+          roof: geometryContract?.roof ?? String(currentFacade.roof ?? "platibanda"),
+        }
+      : null;
+
     return res.json({
       mode: action,
       intervention,
       diagnosis: ai.diagnosis ?? null,
       concept: ai.concept ?? null,
-      facadeSuggestion: action === "develop" ? (ai.facadeSuggestion ?? null) : null,
+      facadeSuggestion,
       designSuggestion: action === "develop" ? { surfaceMaterials, volumes } : null,
       openingRecommendations: Array.isArray(ai.openingRecommendations) ? ai.openingRecommendations.slice(0, 8) : [],
       warnings: Array.isArray(ai.warnings) ? ai.warnings.slice(0, 10) : [],
-      geometryLocked: true,
+      geometryLocked: Boolean(geometryContract),
+      geometryContractVersion: geometryContract?.version ?? null,
+      geometryContract: geometryContract ? {
+        version: geometryContract.version,
+        frontSide: geometryContract.frontSide,
+        roof: geometryContract.roof,
+        wallCount: geometryContract.walls.length,
+        openingCount: geometryContract.openings.length,
+        roomFootprintCount: geometryContract.roomFootprints.length,
+        derivedFacade: geometryContract.derivedFacade,
+      } : null,
     });
   } catch (error) {
     const safe = sanitizeAIError(error);
