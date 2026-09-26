@@ -30,6 +30,37 @@ function routePatternToRegex(route) {
   return new RegExp("^/" + body + "/?$");
 }
 
+function fetchCalls(source) {
+  const calls = [];
+  const re = /\bfetch\s*\(/g;
+  for (const match of source.matchAll(re)) {
+    const start = match.index;
+    const open = source.indexOf("(", start);
+    if (open < 0) continue;
+    let depth = 0;
+    let quote = null;
+    let escaped = false;
+    let end = -1;
+    for (let i = open; i < source.length; i++) {
+      const ch = source[i];
+      if (quote) {
+        if (escaped) { escaped = false; continue; }
+        if (ch === "\\") { escaped = true; continue; }
+        if (ch === quote) quote = null;
+        continue;
+      }
+      if (ch === "'" || ch === '"' || ch === "`") { quote = ch; continue; }
+      if (ch === "(") depth++;
+      else if (ch === ")") {
+        depth--;
+        if (depth === 0) { end = i + 1; break; }
+      }
+    }
+    if (end > open) calls.push({ start, end, text: source.slice(start, end) });
+  }
+  return calls;
+}
+
 const files = walk(root);
 const appRoutesSource = fs.readFileSync(appRoutesPath, "utf8");
 const routeLiterals = [...appRoutesSource.matchAll(/<Route\s+path=["\']([^"\']+)["\']/g)].map((m) => normalizeRoute(m[1])).filter(Boolean);
@@ -62,11 +93,13 @@ for (const file of files) {
     for (const m of formSource.matchAll(/<Button\b(?![^>]*\btype\s*=)(?=[^>]*\bonClick\s*=)[^>]*>/g)) add("HIGH", "ui-button-no-type-in-form", file, base + m.index, source, "Button com onClick dentro de form sem type pode executar ação e submit ao mesmo tempo.");
   }
 
-  const mutationRegex = /fetch\s*\(\s*([\s\S]{0,280}?)\s*,\s*\{([\s\S]{0,900}?)method\s*:\s*["\'](POST|PUT|PATCH|DELETE)["\']([\s\S]{0,700}?)\}\s*\)/g;
-  for (const m of source.matchAll(mutationRegex)) {
+  for (const call of fetchCalls(source)) {
+    const method = call.text.match(/method\s*:\s*["'](POST|PUT|PATCH|DELETE)["']/i)?.[1]?.toUpperCase();
+    if (!method) continue;
     metrics.mutationFetches++;
-    const window = source.slice(m.index, Math.min(source.length, m.index + 1600));
-    if (!/(?:response|res|result)\.ok\b|\.status\b|throw\s+new\s+Error|toast\s*\(|catch\s*\(|parseResponse\s*\(|readJson\s*\(|apiJson\s*\(|apiFetch\s*\(/.test(window)) add("HIGH", "mutation-without-visible-error-check", file, m.index, source, m[3] + " fetch sem tratamento de erro visível próximo.");
+    const follow = source.slice(call.end, Math.min(source.length, call.end + 1400));
+    const handled = /(?:response|res|result|r)\.ok\b|\.status\b|throw\s+new\s+Error|toast\s*\(|catch\s*\(|parseResponse\s*\(|readJson\s*\(|apiJson\s*\(|apiFetch\s*\(/.test(call.text + follow);
+    if (!handled) add("HIGH", "mutation-without-visible-error-check", file, call.start, source, method + " fetch sem tratamento de erro visível próximo.");
   }
 
   const navPatterns = [
