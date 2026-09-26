@@ -1025,6 +1025,24 @@ router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
   const id = String(req.params.id);
   if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
 
+  const [currentConcept] = await db
+    .select({ status: archConceptProjectsTable.status, configuration: archConceptProjectsTable.configuration })
+    .from(archConceptProjectsTable)
+    .where(and(
+      eq(archConceptProjectsTable.id, id),
+      eq(archConceptProjectsTable.tenantId, tid),
+      eq(archConceptProjectsTable.ownerUserId, userId),
+    ))
+    .limit(1);
+
+  if (!currentConcept) return res.status(404).json({ error: "Pré-projeto não encontrado." });
+  if (currentConcept.status === "submitted" && (currentConcept.configuration as any)?.projectMaster) {
+    return res.status(409).json({
+      error: "Este Projeto Mestre está congelado. Crie uma nova revisão do pré-projeto para alterar a geometria aprovada.",
+      code: "PROJECT_MASTER_FROZEN",
+    });
+  }
+
   const parsed = updateArchConceptProjectSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: "Dados do pré-projeto inválidos.", details: parsed.error.flatten() });
@@ -2073,6 +2091,7 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
         project: existingProject,
         leadId: existingProject.leadId,
         dealId: existingProject.dealId,
+        projectMaster: ((concept.configuration ?? {}) as any).projectMaster ?? null,
       });
     }
   }
@@ -2574,11 +2593,48 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
 
   (project as any).obraId = obra.id;
 
+  const frozenAt = new Date().toISOString();
+  const existingMaster = (conceptConfiguration.projectMaster ?? null) as { version?: number } | null;
+  const projectMaster = {
+    version: Math.max(1, Number(existingMaster?.version ?? 0) + 1),
+    frozenAt,
+    sourceConceptId: concept.id,
+    sourceUpdatedAt: concept.updatedAt instanceof Date ? concept.updatedAt.toISOString() : String(concept.updatedAt ?? frozenAt),
+    geometryVersion: "master_facade_v1" as const,
+    lot: concept.lot,
+    floors,
+    desiredArea,
+    sitePlacement: conceptConfiguration.sitePlacement ?? undefined,
+    rooms,
+    customWalls,
+    customOpenings,
+    openingOverrides: concept.openingOverrides ?? {},
+    facadePreferences: concept.facadePreferences,
+    facadeDesign: (concept as any).facadeDesign ?? conceptConfiguration.facadeDesign ?? undefined,
+    projectBrief: conceptConfiguration.projectBrief ?? null,
+    conceptRender: concept.conceptRender ?? {},
+    quantities: quantityItems.map((item) => ({
+      ...item,
+      quantity: Number(Math.max(0, item.quantity).toFixed(4)),
+    })),
+    links: {
+      archProjetoId: project.id,
+      obraId: obra.id,
+      budgetId: preBudgetId,
+      leadId,
+      dealId,
+    },
+  };
+
   await tx
     .update(archConceptProjectsTable)
     .set({
       archProjetoId: project.id,
       status: "submitted",
+      configuration: {
+        ...conceptConfiguration,
+        projectMaster,
+      },
       updatedAt: new Date(),
     })
     .where(
@@ -2605,6 +2661,9 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     project,
     leadId,
     dealId,
+    obraId: obra.id,
+    budgetId: preBudgetId,
+    projectMaster,
   });
   });
 });
