@@ -2772,6 +2772,14 @@ CRITÉRIOS DE QUALIDADE:
 - identidade não genérica;
 - coerência futura entre planta, fachada e cobertura.
 
+OTIMIZAÇÃO MULTIOBJETIVO:
+- não maximize um critério destruindo outro;
+- procure uma solução de compromisso forte entre função, circulação, privacidade, ergonomia, clima, construção, custo, futuro e identidade;
+- prioridades declaradas no briefing devem alterar esse equilíbrio;
+- uma solução muito boa em estética mas fraca em função/clima/custo não é aceitável;
+- uma solução apenas eficiente mas sem partido arquitetônico claro também não é a meta;
+- mantenha UM projeto principal e refine-o; diversidade é explorada internamente no raciocínio, não exibida como três plantas aleatórias.
+
 Responda SOMENTE JSON válido:
 {
   "solution": {
