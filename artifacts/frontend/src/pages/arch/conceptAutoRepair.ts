@@ -32,19 +32,23 @@ type RepairInput = {
 const EPS = 0.05;
 
 const MIN_SIDE: Partial<Record<string, number>> = {
-  quarto: 2.4,
-  suite: 2.4,
-  cozinha: 1.8,
-  banheiro: 1.2,
-  lavanderia: 1.5,
-  garagem: 2.5,
+  quarto: 2.70,
+  suite: 3.00,
+  cozinha: 2.20,
+  banheiro: 1.40,
+  lavanderia: 1.70,
+  garagem: 2.70,
+  sala: 3.20,
+  gourmet: 3.20,
+  outro: 2.70,
 };
 
 function score(result: ConceptAcceptanceResult, intent: ConceptIntentResult) {
   const statusWeight = result.status === "approved" ? 200 : result.status === "review" ? 100 : 0;
   return statusWeight
-    + result.score * 0.7
-    + intent.score * 0.3
+    + result.score * 0.55
+    + result.ergonomics.score * 0.15
+    + intent.score * 0.30
     - result.errors.length * 100
     - result.majorWarnings.length * 10
     - intent.issues.filter((issue) => issue.severity === "error").length * 35;
@@ -203,7 +207,7 @@ function acceptIfBetter(
  *
  * O motor nunca aceita uma correção que piore o gate atual.
  * Estratégia:
- * 1. normalizar dimensões/limites;
+ * 1. normalizar dimensões/limites e envelopes ergonômicos;
  * 2. aproximar banheiros privativos das respectivas suítes;
  * 3. testar relayouts determinísticos existentes;
  * 4. revalidar a cada tentativa e preservar somente a melhor solução.
