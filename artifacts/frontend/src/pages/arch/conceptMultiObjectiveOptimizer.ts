@@ -1,6 +1,7 @@
 import { evaluateConceptAcceptance, type ConceptAcceptanceResult } from "./conceptAcceptance";
 import { evaluateConceptIntent, type ConceptIntentInput } from "./conceptIntent";
 import { generateLayoutVariant, type ConceptRoomShape } from "./conceptGeometry";
+import { generateArchitecturalSearchNeighborhood } from "./conceptArchitecturalSearch";
 
 export type ArchitecturalObjectiveVector = {
   technical: number;
@@ -38,6 +39,7 @@ type OptimizerInput = {
   };
   intent?: ConceptIntentInput;
   variantsPerFloor?: number;
+  searchCandidates?: number;
 };
 
 function clampScore(value: number) {
@@ -155,6 +157,17 @@ export function optimizeArchitecturalCandidates(input: OptimizerInput): {
       );
     }
     generated.push(candidate);
+  }
+
+  const searchSeeds = [...generated];
+  for (const seed of searchSeeds) {
+    const neighborhood = generateArchitecturalSearchNeighborhood({
+      rooms: seed,
+      lotWidth: input.lotWidth,
+      lotDepth: input.lotDepth,
+      maxCandidates: input.searchCandidates ?? 18,
+    });
+    for (const candidate of neighborhood) generated.push(candidate.rooms);
   }
 
   const unique = [...new Map(generated.map((rooms) => [signature(rooms), rooms])).values()];
