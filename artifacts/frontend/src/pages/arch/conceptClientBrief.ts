@@ -293,6 +293,29 @@ export type ArchitectureDNA = {
   materialIntent?: string;
 };
 
+export type ArchitecturalProjectStrategy = {
+  party?: "linear_spine" | "social_core" | "paired_wings" | "l_courtyard" | "central_patio" | string;
+  zoning?: {
+    social?: string;
+    private?: string;
+    service?: string;
+  };
+  arrivalSequence?: string;
+  circulationLogic?: string;
+  indoorOutdoorLogic?: string;
+  solarLogic?: string;
+  facadeLogic?: string;
+  volumeLogic?: string;
+  constructionLogic?: string;
+  nonNegotiables?: string[];
+  applied?: {
+    party?: string;
+    zoningSummary?: string;
+    circulationSummary?: string;
+    siteResponse?: string;
+  };
+};
+
 export type ProjectBriefSnapshot = {
   brief: ClientBrief;
   vision: ClientVision;
@@ -302,6 +325,7 @@ export type ProjectBriefSnapshot = {
   designRationale?: string;
   intervention?: "preservar" | "otimizar" | "valorizar" | "assinatura";
   architectureDNA?: ArchitectureDNA;
+  architectureStrategy?: ArchitecturalProjectStrategy;
   experienceStrategy?: string[];
   daylightStrategy?: string[];
   facadeDirection?: string[];
@@ -320,6 +344,7 @@ export type ClientBriefAlternative = ClientBriefPlan & {
   clientFitSummary?: string;
   intervention?: "preservar" | "otimizar" | "valorizar" | "assinatura";
   architectureDNA?: ArchitectureDNA;
+  architectureStrategy?: ArchitecturalProjectStrategy;
   experienceStrategy?: string[];
   daylightStrategy?: string[];
   facadeDirection?: string[];
