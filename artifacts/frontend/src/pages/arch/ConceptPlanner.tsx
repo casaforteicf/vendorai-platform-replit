@@ -7133,6 +7133,41 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                               alt="Render conceitual"
                               className="max-h-[calc(100dvh-260px)] w-full object-contain"
                             />
+                            {conceptRender?.fidelity?.renderId === displayedRender.renderId && (
+                              <div className={conceptRender.fidelity.approved
+                                ? "border-t border-emerald-200 bg-emerald-50 px-4 py-3"
+                                : "border-t border-red-200 bg-red-50 px-4 py-3"}
+                              >
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div className={conceptRender.fidelity.approved
+                                    ? "text-xs font-bold text-emerald-800"
+                                    : "text-xs font-bold text-red-800"}
+                                  >
+                                    Render Fidelity Gate · {conceptRender.fidelity.score}/100
+                                  </div>
+                                  <span className={conceptRender.fidelity.approved
+                                    ? "rounded-full bg-white px-2.5 py-1 text-[9px] font-bold uppercase text-emerald-700"
+                                    : "rounded-full bg-white px-2.5 py-1 text-[9px] font-bold uppercase text-red-700"}
+                                  >
+                                    {conceptRender.fidelity.approved ? "Fiel ao projeto" : "Reprovado por fidelidade"}
+                                  </span>
+                                </div>
+                                {conceptRender.fidelity.summary && (
+                                  <p className="mt-1 text-[10px] leading-4 text-slate-700">{conceptRender.fidelity.summary}</p>
+                                )}
+                                {!conceptRender.fidelity.approved && conceptRender.fidelity.violations.length > 0 && (
+                                  <div className="mt-2 space-y-1 text-[10px] leading-4 text-red-800">
+                                    {conceptRender.fidelity.violations.slice(0, 4).map((item, index) => (
+                                      <div key={index}>• {item}</div>
+                                    ))}
+                                  </div>
+                                )}
+                                <div className="mt-2 text-[9px] font-semibold text-slate-500">
+                                  Prioridade: fidelidade arquitetônica &gt; fotorealismo &gt; estética
+                                  {conceptRender.fidelity.modelRevision ? ` · modelo ${conceptRender.fidelity.modelRevision.slice(-4)}` : ""}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         ) : conceptRender?.status === "processing" ? (
                           <div className="grid min-h-[420px] place-items-center rounded-2xl border border-orange-200 bg-gradient-to-br from-white to-orange-50 text-center shadow-sm">
