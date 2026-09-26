@@ -83,6 +83,40 @@ export type ArchConceptConfiguration = {
   publicTourToken?: string;
   publicTourEnabled?: boolean;
   publicTourUpdatedAt?: string;
+  projectMaster?: {
+    version: number;
+    frozenAt: string;
+    sourceConceptId: string;
+    sourceUpdatedAt: string;
+    geometryVersion: "master_facade_v1";
+    lot: ArchConceptLot;
+    floors: number;
+    desiredArea: number;
+    sitePlacement?: Record<string, unknown>;
+    rooms: ArchConceptRoom[];
+    customWalls: Array<Record<string, unknown>>;
+    customOpenings: Array<Record<string, unknown>>;
+    openingOverrides: ArchConceptOpeningOverride;
+    facadePreferences: ArchConceptFacadePreferences;
+    facadeDesign?: Record<string, unknown>;
+    projectBrief?: Record<string, unknown> | null;
+    conceptRender?: Record<string, unknown>;
+    quantities: Array<{
+      stage: string;
+      item: string;
+      unit: string;
+      quantity: number;
+      basis: "geometry" | "concept";
+      compositionCode?: string;
+    }>;
+    links: {
+      archProjetoId: string;
+      obraId: string;
+      budgetId: string;
+      leadId: string | null;
+      dealId: string | null;
+    };
+  };
 };
 
 export type ArchConceptRoom = {
