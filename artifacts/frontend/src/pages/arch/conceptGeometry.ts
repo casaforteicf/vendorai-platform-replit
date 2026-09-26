@@ -773,6 +773,89 @@ export function validateConceptLayout(
     }
   }
 
+
+  // Etapa 76 — critérios mínimos de aceite arquitetônico.
+  // Estes checks não substituem norma local; eles bloqueiam/avisam sobre incoerências
+  // funcionais básicas antes de uma alternativa ser apresentada como proposta principal.
+  const sharesEdge = (a: ConceptRoomShape, b: ConceptRoomShape) => {
+    const verticalTouch =
+      (nearly(a.x + a.width, b.x) || nearly(a.x, b.x + b.width)) &&
+      overlap(a.y, a.y + a.depth, b.y, b.y + b.depth) >= 0.8;
+    const horizontalTouch =
+      (nearly(a.y + a.depth, b.y) || nearly(a.y, b.y + b.depth)) &&
+      overlap(a.x, a.x + a.width, b.x, b.x + b.width) >= 0.8;
+    return verticalTouch || horizontalTouch;
+  };
+
+  const minSideByKind: Partial<Record<string, number>> = {
+    quarto: 2.4,
+    suite: 2.4,
+    cozinha: 1.8,
+    banheiro: 1.2,
+    lavanderia: 1.5,
+    garagem: 2.5,
+  };
+
+  for (const room of current) {
+    const minSide = minSideByKind[room.kind];
+    if (minSide && Math.min(room.width, room.depth) + EPS < minSide) {
+      issues.push({
+        id: `functional-width-${room.id}`,
+        severity: "warning",
+        roomId: room.id,
+        message: `${room.label} possui lado útil abaixo do mínimo funcional configurado (${minSide.toFixed(1)} m).`,
+      });
+    }
+  }
+
+  const suites = current.filter((room) => room.kind === "suite");
+  const privateBaths = current.filter((room) => isPrivateBath(room));
+  for (const bath of privateBaths) {
+    const matchingSuite = suites.find((suite) => {
+      const suiteLabel = lower(suite.label).replace(/su[ií]te|master|casal/g, "").trim();
+      const bathLabel = lower(bath.label);
+      return suiteLabel && bathLabel.includes(suiteLabel);
+    });
+    const owner = matchingSuite ?? (suites.length === 1 ? suites[0] : undefined);
+    if (owner && !sharesEdge(owner, bath)) {
+      issues.push({
+        id: `suite-bath-adjacency-${owner.id}-${bath.id}`,
+        severity: "error",
+        roomId: bath.id,
+        message: `${bath.label} precisa estar conectado diretamente à ${owner.label}; banheiro de suíte não pode ficar separado do dormitório.`,
+      });
+    }
+  }
+
+  for (const serviceRoom of current.filter((room) => room.kind === "lavanderia")) {
+    for (const privateRoom of privateRooms) {
+      if (sharesEdge(serviceRoom, privateRoom)) {
+        issues.push({
+          id: `service-private-adjacency-${serviceRoom.id}-${privateRoom.id}`,
+          severity: "warning",
+          roomId: serviceRoom.id,
+          message: `${serviceRoom.label} está diretamente encostada em ${privateRoom.label}; prefira separar serviço e área íntima quando houver alternativa.`,
+        });
+      }
+    }
+  }
+
+  const geometry = buildConceptGeometry(rooms, lotWidth, lotDepth, floor, site?.frontSide ?? "top");
+  const roomsThatNeedNaturalOpening = current.filter((room) =>
+    ["sala", "quarto", "suite", "cozinha"].includes(room.kind),
+  );
+  for (const room of roomsThatNeedNaturalOpening) {
+    const hasWindow = geometry.openings.some((opening) => opening.type === "window" && opening.roomId === room.id);
+    if (!hasWindow) {
+      issues.push({
+        id: `natural-opening-${room.id}`,
+        severity: "warning",
+        roomId: room.id,
+        message: `${room.label} não possui abertura externa válida no modelo; revise iluminação e ventilação natural.`,
+      });
+    }
+  }
+
   const gourmet = current.find((room) => room.kind === "gourmet");
   const pool = current.find((room) => room.kind === "piscina");
   if (gourmet && pool) {
