@@ -1,5 +1,6 @@
 import { validateConceptLayout, type ConceptRoomShape, type LayoutIssue } from "./conceptGeometry";
 import { evaluateConceptErgonomics, type ErgonomicResult } from "./conceptErgonomics";
+import { evaluateFurniturePlacement, type FurniturePlacementResult } from "./conceptFurniturePlacement";
 
 export type ConceptAcceptanceStatus = "approved" | "review" | "blocked";
 
@@ -12,6 +13,7 @@ export type ConceptAcceptanceResult = {
   majorWarnings: LayoutIssue[];
   blockingIssueIds: string[];
   ergonomics: ErgonomicResult;
+  furniture: FurniturePlacementResult;
 };
 
 const MAJOR_WARNING_PREFIXES = [
@@ -66,6 +68,16 @@ export function evaluateConceptAcceptance(input: {
     });
   }
 
+  const furniture = evaluateFurniturePlacement(input.rooms, input.lotWidth, input.lotDepth);
+  for (const furnitureIssue of furniture.issues) {
+    issues.push({
+      id: furnitureIssue.id,
+      severity: furnitureIssue.severity,
+      roomId: furnitureIssue.roomId,
+      message: furnitureIssue.message,
+    });
+  }
+
   const errors = issues.filter((issue) => issue.severity === "error");
   const warnings = issues.filter((issue) => issue.severity === "warning");
   const majorWarnings = warnings.filter(isMajorWarning);
@@ -93,5 +105,6 @@ export function evaluateConceptAcceptance(input: {
     majorWarnings,
     blockingIssueIds: errors.map((issue) => issue.id),
     ergonomics,
+    furniture,
   };
 }
