@@ -372,6 +372,15 @@ type ConceptDraftResponse = {
       source: "facade" | "model3d";
       renderView: "exterior" | "interior";
     }>;
+    fidelity?: {
+      renderId: string;
+      approved: boolean;
+      score: number;
+      violations: string[];
+      warnings: string[];
+      summary: string;
+      modelRevision?: string | null;
+    };
     error?: string;
   };
   selectedVariant: number;
@@ -906,6 +915,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [selectedRenderVersionId, setSelectedRenderVersionId] = useState<string | null>(null);
   const [renderQueued, setRenderQueued] = useState(false);
   const renderSubmittingRef = useRef(false);
+  const fidelityAuditedRenderIdsRef = useRef(new Set<string>());
   const [renderHistoryLoading, setRenderHistoryLoading] = useState(false);
   const [renderError, setRenderError] = useState<string | null>(null);
   const [archProjetoId, setArchProjetoId] = useState<string | null>(null);
@@ -3967,6 +3977,40 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
           source: item.source ?? (item.ambiente === "interior" ? "model3d" as const : "facade" as const),
           renderView: item.render_view ?? (item.ambiente === "interior" ? "interior" as const : "exterior" as const),
         }));
+        let fidelity = conceptRender?.fidelity;
+        const lastCompleted = completed[completed.length - 1];
+        if (lastCompleted && !fidelityAuditedRenderIdsRef.current.has(lastCompleted.renderId)) {
+          fidelityAuditedRenderIdsRef.current.add(lastCompleted.renderId);
+          try {
+            const auditResponse = await fetch(`/api/arch/ai-render/${lastCompleted.renderId}/fidelity-audit`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ model_revision: unifiedModelMeta.revision }),
+            });
+            if (auditResponse.ok) {
+              const audit = await auditResponse.json() as {
+                renderId: string;
+                approved: boolean;
+                score: number;
+                violations: string[];
+                warnings: string[];
+                summary: string;
+                modelRevision?: string | null;
+              };
+              fidelity = {
+                renderId: audit.renderId,
+                approved: audit.approved,
+                score: audit.score,
+                violations: audit.violations ?? [],
+                warnings: audit.warnings ?? [],
+                summary: audit.summary ?? "",
+                modelRevision: audit.modelRevision,
+              };
+            }
+          } catch {
+            // Fidelity audit is an additional gate; failure to audit does not erase a completed render.
+          }
+        }
         setPrimaryRenderId(versions.find((item) => item.is_primary)?.id ?? null);
         const newest = versions[versions.length - 1];
         const active = [...versions].reverse().find((item) => ["processando", "queued", "processing"].includes(item.status ?? ""));
@@ -3982,6 +4026,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
             status: active ? "processing" : failed ? "error" : last ? "completed" : "error",
             error: failure,
             history: completed,
+            fidelity: fidelity?.renderId === last?.renderId ? fidelity : prev.fidelity,
           };
         });
         setRenderQueued(active?.status === "queued");
@@ -4002,7 +4047,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       controller.abort();
       if (timer) clearTimeout(timer);
     };
-  }, [conceptId, conceptRender?.renderId, editorView, renderHistoryRevision]);
+  }, [conceptId, conceptRender?.renderId, conceptRender?.fidelity, editorView, renderHistoryRevision, unifiedModelMeta.revision]);
 
   const galleryVersions = conceptRender?.history ?? [];
   const primaryRender = galleryVersions.find((item) => item.renderId === primaryRenderId);
