@@ -8,6 +8,7 @@ export type ConceptDeliverable = {
     | "dimensions"
     | "areas"
     | "solar"
+    | "diagrams"
     | "roof"
     | "facades"
     | "sections"
@@ -100,6 +101,13 @@ export function buildConceptReadiness(input: {
       status: input.hasNorth ? "ready" : "pending",
       helper: "Orientação, fachadas expostas, oportunidades de insolação e ventilação.",
       reason: !input.hasNorth ? "Informe o norte do lote para liberar a leitura climática completa." : undefined,
+    },
+    {
+      id: "diagrams",
+      title: "Diagramas explicativos",
+      audience: "both",
+      status: input.hasBrief && input.hasWallModel ? "ready" : input.hasBrief ? "partial" : "pending",
+      helper: "Zonas, fluxos, clima, expansão futura e lógica estrutural sobre a própria planta.",
     },
     {
       id: "roof",
