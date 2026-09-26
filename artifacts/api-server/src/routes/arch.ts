@@ -1550,20 +1550,20 @@ function buildArchitecturalQualityGateV2(issues: string[]) {
   })) as Record<QualityDimensionKey, QualityDimension>;
 
   const weights: Record<QualityDimensionKey, number> = {
-    program: 0.10,
-    circulation: 0.13,
+    program: 0.09,
+    circulation: 0.12,
     privacy: 0.08,
     ergonomics: 0.09,
     geometry: 0.08,
-    constructability: 0.08,
-    furnitureFit: 0.09,
+    constructability: 0.07,
+    furnitureFit: 0.08,
     siteClimate: 0.08,
     roofVolumetry: 0.07,
     costValue: 0.06,
     brazilianFit: 0.04,
     codeCompliance: 0.04,
     technicalSystems: 0.04,
-    structuralModulation: 0.06,
+    structuralModulation: 0.05,
     architecturalCoherence: 0.01,
   };
 
@@ -1908,20 +1908,20 @@ function evaluateSpecialistPlan(
     issues: structuralModulation.issues.slice(0, 8),
   };
   gate.score = Math.round(
-    gate.dimensions.program.score * 0.10
-    + gate.dimensions.circulation.score * 0.13
+    gate.dimensions.program.score * 0.09
+    + gate.dimensions.circulation.score * 0.12
     + gate.dimensions.privacy.score * 0.08
     + gate.dimensions.ergonomics.score * 0.09
     + gate.dimensions.geometry.score * 0.08
-    + gate.dimensions.constructability.score * 0.08
-    + gate.dimensions.furnitureFit.score * 0.09
+    + gate.dimensions.constructability.score * 0.07
+    + gate.dimensions.furnitureFit.score * 0.08
     + gate.dimensions.siteClimate.score * 0.08
     + gate.dimensions.roofVolumetry.score * 0.07
     + gate.dimensions.costValue.score * 0.06
     + gate.dimensions.brazilianFit.score * 0.04
     + gate.dimensions.codeCompliance.score * 0.04
     + gate.dimensions.technicalSystems.score * 0.04
-    + gate.dimensions.structuralModulation.score * 0.06
+    + gate.dimensions.structuralModulation.score * 0.05
     + gate.dimensions.architecturalCoherence.score * 0.01
   );
   const furnitureBlocked = furnitureFit.status === "blocked";
@@ -2075,7 +2075,12 @@ function evaluateMultiObjectiveCandidate(candidate: any, input: z.infer<typeof s
     privacy: Number(dimensions.privacy?.score ?? 75),
     ergonomics: Number(dimensions.ergonomics?.score ?? 75),
     climate: Number(dimensions.siteClimate?.score ?? 75),
-    constructability: Math.round((Number(dimensions.constructability?.score ?? 75) + Number(dimensions.roofVolumetry?.score ?? 75)) / 2),
+    constructability: Math.round((
+      Number(dimensions.constructability?.score ?? 75)
+      + Number(dimensions.roofVolumetry?.score ?? 75)
+      + Number(dimensions.technicalSystems?.score ?? 75)
+      + Number(dimensions.structuralModulation?.score ?? 75)
+    ) / 4),
     cost: Number(dimensions.costValue?.score ?? 75),
     futureFit: Math.round((Number(dimensions.brazilianFit?.score ?? 75) + Number(dimensions.codeCompliance?.score ?? 75)) / 2),
     identity: identityBase,
