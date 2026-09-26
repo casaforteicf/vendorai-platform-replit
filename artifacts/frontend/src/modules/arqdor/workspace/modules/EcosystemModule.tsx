@@ -277,25 +277,38 @@ function PartnerDetail({
 }) {
   const [solicitando, setSolicitando] = useState<string|null>(null)
   const [sent, setSent] = useState<string|null>(null)
+  const [actionError, setActionError] = useState<string|null>(null)
   const color = tipoColor(partner.tipo)
 
   async function handleSolicitar(tipo: string, mensagem: string, canal: string) {
-    await fetch(`${BASE}/arch/partners/${partner.id}/solicitar`, {
+    setActionError(null)
+    const response = await fetch(`${BASE}/arch/partners/${partner.id}/solicitar`, {
       method:'POST',
       headers: authHeaders(),
       body: JSON.stringify({ tipo, mensagem, canal, projetoId, projetoTitulo }),
     })
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      setActionError(body.error ?? 'Não foi possível enviar a solicitação.')
+      return
+    }
     setSolicitando(null)
     setSent(tipo)
     setTimeout(() => setSent(null), 3000)
   }
 
   async function handleCompartilhar(mensagem: string, canal: string) {
-    await fetch(`${BASE}/arch/partners/compartilhar`, {
+    setActionError(null)
+    const response = await fetch(`${BASE}/arch/partners/compartilhar`, {
       method:'POST',
       headers: authHeaders(),
       body: JSON.stringify({ partnerId: partner.id, mensagem, canal, projetoId, projetoTitulo }),
     })
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      setActionError(body.error ?? 'Não foi possível compartilhar com o parceiro.')
+      return
+    }
     setSolicitando(null)
     setSent('compartilhar')
     setTimeout(() => setSent(null), 3000)
@@ -303,6 +316,7 @@ function PartnerDetail({
 
   return (
     <div style={{ flex:1, background:T.surface, borderRadius:12, border:`1px solid ${T.border}`, overflow:'hidden', display:'flex', flexDirection:'column', animation:'eco-slideIn 0.2s ease' }}>
+      {actionError && <div role="alert" style={{ padding:'8px 12px', background:'rgba(248,113,113,0.12)', color:T.red, fontSize:10, fontWeight:700 }}>{actionError}</div>}
       {/* Header */}
       <div style={{ padding:'14px 16px', borderBottom:`1px solid ${T.border}`, background:`${color}08`, flexShrink:0 }}>
         <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between' }}>
@@ -442,6 +456,7 @@ export function EcosystemModule() {
   const [creating,   setCreating]   = useState(false)
   const [editing,    setEditing]    = useState<Partner|null>(null)
   const [saving,     setSaving]     = useState(false)
+  const [error,      setError]      = useState<string|null>(null)
 
   const fetchPartners = useCallback(async () => {
     setLoading(true)
@@ -472,21 +487,32 @@ export function EcosystemModule() {
 
   async function handleSave(data: Record<string, unknown>) {
     setSaving(true)
+    setError(null)
     try {
       if (editing) {
         const res = await fetch(`${BASE}/arch/partners/${editing.id}`, { method:'PATCH', headers:authHeaders(), body:JSON.stringify(data) })
-        if (res.ok) { setEditing(null); setSelected(await res.json()) }
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Não foi possível atualizar o parceiro.')
+        setEditing(null); setSelected(await res.json())
       } else {
         const res = await fetch(`${BASE}/arch/partners`, { method:'POST', headers:authHeaders(), body:JSON.stringify(data) })
-        if (res.ok) { setCreating(false); setSelected(await res.json()) }
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Não foi possível criar o parceiro.')
+        setCreating(false); setSelected(await res.json())
       }
       await fetchPartners()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao salvar parceiro.')
     } finally { setSaving(false) }
   }
 
   async function handleDelete(p: Partner) {
     if (!confirm(`Remover ${p.nome}?`)) return
-    await fetch(`${BASE}/arch/partners/${p.id}`, { method:'DELETE', headers:authHeaders() })
+    setError(null)
+    const response = await fetch(`${BASE}/arch/partners/${p.id}`, { method:'DELETE', headers:authHeaders() })
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      setError(body.error ?? 'Não foi possível remover o parceiro.')
+      return
+    }
     setSelected(null)
     await fetchPartners()
   }
@@ -502,6 +528,7 @@ export function EcosystemModule() {
   return (
     <div style={{ height:'100%', display:'flex', flexDirection:'column', overflow:'hidden', background:T.bg }}>
       <style>{CSS}</style>
+      {error && <div role="alert" style={{ padding:'8px 14px', background:'rgba(248,113,113,0.12)', color:T.red, fontSize:10, fontWeight:700 }}>{error}</div>}
 
       {/* ── TOP BAR ── */}
       <div style={{ padding:'10px 16px', borderBottom:`1px solid ${T.border}`, flexShrink:0, background:T.sidebar }}>
