@@ -158,6 +158,9 @@ export function buildConceptRenderBrief(input: ConceptRenderBriefInput) {
     siteExterior ? `EXTERIOR SITE LOGIC: ${siteExterior.leisureSummary}. Do not move pool or gourmet to the street frontage if they are modeled at the rear/side.` : "",
     `Architectural direction: ${styleLabel[facade.style]}.`,
     `Roof: ${roofLabel[facade.roof]}.`,
+    design?.roofConfig
+      ? `PARAMETRIC ROOF LOCK: ${design.roofConfig.waters} water plane(s), pitch ${design.roofConfig.pitchDegrees} degrees, overhang ${design.roofConfig.overhang.toFixed(2)} m, ridge direction ${design.roofConfig.ridgeDirection}, parapet height ${design.roofConfig.parapetHeight.toFixed(2)} m, gutters ${design.roofConfig.gutter ? "enabled" : "disabled"}. Preserve these roof parameters exactly; do not invent another roof geometry.`
+      : "",
     surfaceSummary
       ? `Exact facade material schedule selected by the user: ${surfaceSummary}. Preserve these assignments.`
       : `Main facade material: ${materialLabel[facade.primaryMaterial]}. Secondary accent: ${accentLabel[facade.accentMaterial]}.`,
