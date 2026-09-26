@@ -516,6 +516,44 @@ function finiteNumber(value: unknown, fallback: number, min?: number, max?: numb
   return Math.max(min ?? -Infinity, Math.min(max ?? Infinity, parsed));
 }
 
+function unifiedModelFingerprint(value: unknown) {
+  const textValue = JSON.stringify(value);
+  let hash = 2166136261;
+  for (let index = 0; index < textValue.length; index += 1) {
+    hash ^= textValue.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `um-${(hash >>> 0).toString(16).padStart(8, "0")}`;
+}
+
+function buildUnifiedModelMeta(input: {
+  rooms: Room[];
+  customWalls: CustomWall[];
+  customOpenings: CustomOpening[];
+  openingOverrides: Record<string, OpeningOverride>;
+  floors: number;
+}) {
+  const source = {
+    rooms: input.rooms.map(({ id, kind, floor, x, y, width, depth, locked }) => ({ id, kind, floor, x, y, width, depth, locked })),
+    walls: input.customWalls.map(({ id, floor, x1, y1, x2, y2, thickness }) => ({ id, floor, x1, y1, x2, y2, thickness })),
+    openings: input.customOpenings.map(({ id, wallId, floor, type, offset, width, height, sillHeight }) => ({ id, wallId, floor, type, offset, width, height, sillHeight })),
+    overrides: input.openingOverrides,
+    floors: input.floors,
+  };
+  return {
+    version: 1,
+    revision: unifiedModelFingerprint(source),
+    sourceOfTruth: "rooms-walls-openings",
+    counts: {
+      rooms: input.rooms.length,
+      walls: input.customWalls.length,
+      openings: input.customOpenings.length + Object.keys(input.openingOverrides).length,
+      floors: input.floors,
+    },
+    derivedViews: ["plan2d", "closed-spaces", "model3d", "roof", "facade"],
+  };
+}
+
 function normalizeLoadedRooms(input: unknown, floorCount: number): Room[] {
   if (!Array.isArray(input)) return [];
   const validKinds = new Set<RoomKind>([
@@ -1280,6 +1318,13 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     const nextFacadePreferences = overrides?.facadePreferences ?? facadePreferences;
     const nextFacadeDesign = overrides?.facadeDesign ?? facadeDesign;
     const nextProjectBrief = overrides?.projectBrief ?? projectBrief;
+    const unifiedModel = buildUnifiedModelMeta({
+      rooms: nextRooms,
+      customWalls: nextCustomWalls,
+      customOpenings: nextCustomOpenings,
+      openingOverrides,
+      floors,
+    });
     const payload = {
       title: customerProfile.name?.trim() ? `Pré-projeto — ${customerProfile.name.trim()}` : "Meu pré-projeto",
       currentStep: stepOverride ?? step,
@@ -1299,6 +1344,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         savedTourPoints: savedTourPointsOverride ?? savedTourPoints,
         sitePlacement,
         projectBrief: nextProjectBrief ?? undefined,
+        unifiedModel,
       },
       rooms: nextRooms,
       openingOverrides,
