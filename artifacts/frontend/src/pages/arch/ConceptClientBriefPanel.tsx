@@ -32,6 +32,7 @@ import {
   type ClientAdjacencyRule,
   type ClientBrief,
   type ClientRoomRequest,
+  type ClientTasteDNA,
   type ClientBriefAlternative,
   type ClientVision,
   type HouseholdContext,
@@ -89,6 +90,21 @@ const DEFAULT_VISION: ClientVision = {
   preferredMaterials: "",
   maintenancePreference: "equilibrada",
   constructionMethod: "nao_definido",
+  tasteDNA: {
+    massing: "neutro",
+    roofExpression: "neutro",
+    openness: "equilibrada",
+    symmetry: "equilibrada",
+    warmth: "neutra",
+    materialDensity: "equilibrada",
+    landscaping: "medio",
+    streetExpression: "equilibrada",
+    preferredMoves: [],
+    dislikedMoves: [],
+    likedReferences: [],
+    dislikedReferences: [],
+    learnedSignals: [],
+  },
 };
 
 const DEFAULT_HOUSEHOLD: HouseholdContext = {
@@ -1152,6 +1168,90 @@ export default function ConceptClientBriefPanel({
           </div>
         </div>
       </div>
+
+      <section className="rounded-2xl border border-violet-200 bg-violet-50/40 p-4">
+        <div className="flex items-start gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-violet-600 text-white">
+            <Sparkles className="h-4 w-4" />
+          </span>
+          <div>
+            <div className="text-xs font-bold text-slate-900">Taste DNA — como vocês querem sentir a arquitetura</div>
+            <p className="mt-1 text-[10px] leading-4 text-slate-600">
+              Em vez de depender apenas de “minimalista” ou “contemporâneo”, o Arqdor aprende composição, cobertura, abertura, materialidade e relação com a rua.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          {([
+            ["massing","Volumetria",[
+              ["neutro","IA decide"],["horizontal","Horizontal"],["vertical","Vertical"],["pavilhoes","Pavilhões"],["volumes_deslocados","Volumes deslocados"],
+            ]],
+            ["roofExpression","Cobertura",[
+              ["neutro","IA decide"],["platibanda","Platibanda"],["aparente","Aparente"],["misto","Mista"],
+            ]],
+            ["openness","Abertura",[
+              ["protegida","Mais protegida"],["equilibrada","Equilibrada"],["aberta","Mais aberta"],
+            ]],
+            ["symmetry","Composição",[
+              ["assimetrica","Assimétrica"],["equilibrada","Equilibrada"],["simetrica","Simétrica"],
+            ]],
+            ["warmth","Sensação",[
+              ["fria","Mais sóbria"],["neutra","Neutra"],["acolhedora","Acolhedora"],
+            ]],
+            ["materialDensity","Materiais",[
+              ["minimal","Poucos"],["equilibrada","Equilibrados"],["rica","Mais ricos"],
+            ]],
+            ["landscaping","Paisagismo",[
+              ["leve","Leve"],["medio","Médio"],["intenso","Intenso"],
+            ]],
+            ["streetExpression","Expressão para rua",[
+              ["discreta","Discreta"],["equilibrada","Equilibrada"],["marcante","Marcante"],
+            ]],
+          ] as const).map(([key,label,options]) => (
+            <label key={key} className="text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">
+              {label}
+              <select
+                value={String(vision.tasteDNA?.[key as keyof ClientTasteDNA] ?? options[0][0])}
+                onChange={(event) => setVision((current) => ({
+                  ...current,
+                  tasteDNA: { ...(current.tasteDNA ?? {}), [key]: event.target.value },
+                }))}
+                className="mt-1 h-9 w-full rounded-lg border bg-white px-2 text-[10px] font-semibold normal-case tracking-normal text-slate-700"
+              >
+                {options.map(([value,optionLabel]) => <option key={value} value={value}>{optionLabel}</option>)}
+              </select>
+            </label>
+          ))}
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <textarea
+            value={(vision.tasteDNA?.preferredMoves ?? []).join("\n")}
+            onChange={(event) => setVision((current) => ({
+              ...current,
+              tasteDNA: {
+                ...(current.tasteDNA ?? {}),
+                preferredMoves: event.target.value.split("\n").map((item) => item.trim()).filter(Boolean).slice(0, 12),
+              },
+            }))}
+            placeholder={"O que gosta\nEx.: entrada marcada\nmadeira pontual\nlinhas horizontais"}
+            className="min-h-24 rounded-xl border bg-white px-3 py-2 text-[10px] leading-4 text-slate-700"
+          />
+          <textarea
+            value={(vision.tasteDNA?.dislikedMoves ?? []).join("\n")}
+            onChange={(event) => setVision((current) => ({
+              ...current,
+              tasteDNA: {
+                ...(current.tasteDNA ?? {}),
+                dislikedMoves: event.target.value.split("\n").map((item) => item.trim()).filter(Boolean).slice(0, 12),
+              },
+            }))}
+            placeholder={"O que não gosta\nEx.: muita pedra\nfachada simétrica\nvidro excessivo"}
+            className="min-h-24 rounded-xl border bg-white px-3 py-2 text-[10px] leading-4 text-slate-700"
+          />
+        </div>
+      </section>
 
       <section className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-4">
         <div className="flex items-start gap-3">
