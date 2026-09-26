@@ -144,8 +144,9 @@ export default function VeiculosTestDrives() {
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       fetch(`/api/tenants/${tenantId}/veiculos/test-drives/${id}`, {
         method: "PATCH", headers: authHeaders(), body: JSON.stringify({ status }),
-      }).then((r) => r.json()),
+      }).then(async (r) => { if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Falha ao atualizar test-drive"); return r.json(); }),
     onSuccess: () => qc.invalidateQueries({ queryKey: QK }),
+    onError: (e: Error) => toast({ title: "Erro ao atualizar test-drive", description: e.message, variant: "destructive" }),
   });
 
   return (
