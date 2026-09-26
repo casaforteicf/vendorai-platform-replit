@@ -158,6 +158,7 @@ export function useArqProject(): ArqProjectState {
   async function saveObjects(objs: ProjectObject[]) {
     if (!projectId) return
     setSaving(true)
+    setError(null)
     try {
       const response = await fetch(`${BASE}/arq/projects/${projectId}/objects`, {
         method: 'PUT',
