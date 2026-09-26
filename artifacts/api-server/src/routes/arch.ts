@@ -111,6 +111,7 @@ const developConceptWithAiSchema = z.object({
   style: z.enum([
     "contemporaneo", "minimalista", "classico_contemporaneo", "tropical", "industrial", "rustico_contemporaneo",
   ]).optional(),
+  instruction: z.string().min(3).max(1200).optional(),
 });
 
 const facadeStudySchema = z.object({
@@ -2840,6 +2841,7 @@ NUNCA invente outro projeto, nunca troque o número de pavimentos, nunca mova a 
 Modo: ${parsed.data.mode}
 Preservar layout: ${parsed.data.preserveLayout ? "sim" : "não"}
 Estilo desejado: ${requestedStyle}
+COMANDO EXPLÍCITO DO USUÁRIO: ${parsed.data.instruction ? JSON.stringify(parsed.data.instruction) : "nenhum — faça apenas desenvolvimento geral"}
 Lote: ${JSON.stringify(concept.lot)}
 Configuração: ${JSON.stringify(config)}
 BRIEFING MESTRE / DNA DO PROJETO: ${JSON.stringify(config.projectBrief ?? null)}
@@ -2848,6 +2850,14 @@ Ambientes: ${JSON.stringify(rooms)}
 O BRIEFING MESTRE é a intenção principal do cliente e deve continuar orientando qualquer desenvolvimento posterior.
 O usuário pode editar medidas, paredes, portas, janelas, implantação, fachada, materiais e telhado; essas edições refinam o projeto, mas não devem apagar silenciosamente desejos, prioridades, restrições e necessidades futuras registradas no briefing.
 Se uma alteração entrar em conflito com o briefing, preserve a alteração explícita do usuário e sinalize o conflito em geometryWarnings/notes em vez de reinterpretar o projeto inteiro.
+Se houver COMANDO EXPLÍCITO DO USUÁRIO, ele é a intenção prioritária desta rodada. Interprete impacto global antes de editar.
+Exemplos de raciocínio obrigatório:
+- "aumente a suíte sem aumentar a área total": redistribua área de ambientes adjacentes/menos prioritários e mantenha a soma construída aproximadamente constante;
+- "reduza o corredor": recupere área para ambientes úteis sem quebrar acessos;
+- "mais integração com piscina": melhore relação espacial e aberturas sem mover a piscina arbitrariamente;
+- "mais privacidade": revise acessos, exposição e separação entre social/íntimo;
+- "cozinha maior": compense a expansão de forma coerente e preserve Furniture Fit dos ambientes afetados.
+Nunca responda ao comando apenas com texto: quando for viável, traduza em roomPatches/wallSuggestions/openingSuggestions concretos.
 Preferências atuais de fachada: ${JSON.stringify(facade)}
 Saúde geométrica preliminar: ${JSON.stringify(geometryHealth)}
 
@@ -2921,6 +2931,7 @@ Não substitua esse DNA por uma solução aleatória. Evolua o mesmo projeto e s
 
     return res.json({
       geometryHealth,
+      instructionApplied: parsed.data.instruction ?? null,
       layoutSuggestion,
       facadeSuggestion: ai.facadeSuggestion ?? null,
       notes: Array.isArray(ai.notes) ? ai.notes : [],
