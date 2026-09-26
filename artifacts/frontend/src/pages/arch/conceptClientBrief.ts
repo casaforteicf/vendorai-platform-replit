@@ -71,6 +71,26 @@ export type ClientBrief = {
   accessRules?: ClientAccessRule[];
 };
 
+export type ClientTasteDNA = {
+  massing?: "horizontal" | "vertical" | "pavilhoes" | "volumes_deslocados" | "neutro";
+  roofExpression?: "platibanda" | "aparente" | "misto" | "neutro";
+  openness?: "protegida" | "equilibrada" | "aberta";
+  symmetry?: "assimetrica" | "equilibrada" | "simetrica";
+  warmth?: "fria" | "neutra" | "acolhedora";
+  materialDensity?: "minimal" | "equilibrada" | "rica";
+  landscaping?: "leve" | "medio" | "intenso";
+  streetExpression?: "discreta" | "equilibrada" | "marcante";
+  preferredMoves?: string[];
+  dislikedMoves?: string[];
+  likedReferences?: string[];
+  dislikedReferences?: string[];
+  learnedSignals?: Array<{
+    source: "briefing" | "facade_option" | "manual_edit";
+    signal: string;
+    weight: number;
+  }>;
+};
+
 export type ClientVision = {
   lifestyle: "familia" | "receber" | "tranquilidade" | "praticidade" | "misto";
   protagonist: "social" | "cozinha" | "gourmet" | "suite" | "jardim";
@@ -84,6 +104,7 @@ export type ClientVision = {
   maintenancePreference?: "baixa" | "equilibrada" | "aceita_maior";
   constructionMethod?: "nao_definido" | "icf" | "alvenaria" | "alvenaria_estrutural" | "steel_frame" | "wood_frame" | "concreto" | "pre_fabricado" | "hibrido";
   budgetTarget?: number;
+  tasteDNA?: ClientTasteDNA;
 };
 
 export type HouseholdContext = {
@@ -343,6 +364,7 @@ export type ArchitectureDNA = {
   siteIntent?: string;
   costIntent?: string;
   futureFlexibilityIntent?: string;
+  tasteIntent?: string;
 };
 
 export type ProjectBriefSnapshot = {
