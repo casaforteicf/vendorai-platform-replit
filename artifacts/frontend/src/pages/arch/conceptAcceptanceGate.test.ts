@@ -36,6 +36,7 @@ describe("Etapa 77 — quality gate do pré-projeto", () => {
       floors: 1,
       rooms: [
         room({ id: "bed", kind: "quarto", label: "Quarto", x: 0, y: 0, width: 2.1, depth: 3.2 }),
+        room({ id: "living", kind: "sala", label: "Sala", x: 2.1, y: 0, width: 4, depth: 3.2 }),
       ],
     });
 
