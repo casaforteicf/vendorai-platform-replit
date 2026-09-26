@@ -30,7 +30,6 @@ const MAJOR_WARNING_PREFIXES = [
   "private-access-",
   "natural-opening-",
   "functional-width-",
-  "furniture-placement-",
   "circulation-missing-",
   "service-private-adjacency-",
   "garage-access-",
