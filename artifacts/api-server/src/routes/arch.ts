@@ -238,6 +238,7 @@ type QualityDimensionKey =
   | "furnitureFit"
   | "siteClimate"
   | "roofVolumetry"
+  | "costValue"
   | "architecturalCoherence";
 
 type QualityDimension = {
@@ -400,6 +401,8 @@ function qualityDimensionForIssue(issue: string): QualityDimensionKey {
     || low.includes("ventilação") || low.includes("implantação climática")) return "siteClimate";
   if (low.includes("cobertura") || low.includes("pavimento superior") || low.includes("áreas molhadas") || low.includes("prumada")
     || low.includes("balanço") || low.includes("volumetria")) return "roofVolumetry";
+  if (low.includes("custo") || low.includes("complexidade construtiva") || low.includes("value engineering")
+    || low.includes("perímetro por área") || low.includes("orçamento-alvo")) return "costValue";
   if (low.includes("lavanderia") || low.includes("compacta") || low.includes("perímetro")) return "constructability";
   return "architecturalCoherence";
 }
@@ -574,6 +577,113 @@ function overlapArea(a: SpecialistPlanRoom, b: SpecialistPlanRoom) {
   const ox = Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x));
   const oy = Math.max(0, Math.min(a.y + a.depth, b.y + b.depth) - Math.max(a.y, b.y));
   return ox * oy;
+}
+
+function evaluateCostValueFit(
+  rooms: SpecialistPlanRoom[],
+  input: z.infer<typeof specialistHousePlanSchema>,
+) {
+  const buildingRooms = rooms.filter((room) => room.kind !== "piscina");
+  const totalArea = buildingRooms.reduce((sum, room) => sum + room.width * room.depth, 0);
+  const wallFirst = buildWallFirstModel(rooms, input);
+  const exteriorPerimeter = wallFirst.walls
+    .filter((wall) => wall.exterior)
+    .reduce((sum, wall) => sum + Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1), 0);
+  const perimeterAreaRatio = totalArea > 0 ? exteriorPerimeter / totalArea : 0;
+
+  const wetRooms = buildingRooms.filter((room) => ["banheiro","cozinha","lavanderia"].includes(room.kind));
+  let wetClusterPenalty = 0;
+  for (let i = 0; i < wetRooms.length; i += 1) {
+    const a = wetRooms[i];
+    const nearest = wetRooms
+      .filter((room) => room.id !== a.id && room.floor === a.floor)
+      .map((b) => Math.hypot(
+        (a.x + a.width / 2) - (b.x + b.width / 2),
+        (a.y + a.depth / 2) - (b.y + b.depth / 2),
+      ))
+      .sort((x,y) => x-y)[0];
+    if (Number.isFinite(nearest) && nearest > 8) wetClusterPenalty += 1;
+  }
+
+  const upperRooms = buildingRooms.filter((room) => room.floor > 0);
+  let cantileverRisk = 0;
+  for (const room of upperRooms) {
+    const below = buildingRooms.filter((base) => base.floor === room.floor - 1);
+    const support = below.reduce((sum, base) => sum + overlapArea(room, base), 0) / Math.max(0.1, room.width * room.depth);
+    if (support < 0.7) cantileverRisk += support < 0.45 ? 2 : 1;
+  }
+
+  const complexityIndexRaw =
+    perimeterAreaRatio * 45
+    + Math.max(0, wallFirst.metrics.wallCount - buildingRooms.length * 4) * 0.9
+    + wetClusterPenalty * 3
+    + cantileverRisk * 4;
+  const complexityIndex = Math.max(0, Math.min(100, Math.round(complexityIndexRaw)));
+
+  const budgetTarget = Number(input.vision?.budgetTarget);
+  const hasBudgetTarget = Number.isFinite(budgetTarget) && budgetTarget > 0;
+  const budgetPerSqmTarget = hasBudgetTarget && totalArea > 0 ? budgetTarget / totalArea : null;
+  const strategy = input.vision?.budgetStrategy ?? "equilibrar";
+
+  const issues: string[] = [];
+  const recommendations: string[] = [];
+  let score = 100;
+
+  if (perimeterAreaRatio > 0.38) {
+    issues.push(`Complexidade construtiva alta: perímetro por área = ${perimeterAreaRatio.toFixed(2)} m/m².`);
+    score -= 18;
+  } else if (perimeterAreaRatio > 0.30) {
+    recommendations.push("Revisar recortes de fachada e perímetro: há oportunidade de simplificar sem reduzir área útil.");
+    score -= 8;
+  }
+
+  if (wetClusterPenalty >= 2) {
+    recommendations.push("Value Engineering: aproximar áreas molhadas para reduzir tubulações, shafts e manutenção.");
+    score -= 7;
+  }
+
+  if (cantileverRisk >= 2) {
+    recommendations.push("Value Engineering: revisar balanços/apoios dos pavimentos superiores antes de investir em expressão volumétrica.");
+    score -= 8;
+  }
+
+  if (strategy === "otimizar" && complexityIndex > 45) {
+    issues.push("Estratégia de custo é 'otimizar', mas o projeto mantém complexidade construtiva acima do desejável.");
+    score -= 15;
+  } else if (strategy === "equilibrar" && complexityIndex > 60) {
+    recommendations.push("A complexidade está alta para uma estratégia equilibrada; preserve apenas os gestos arquitetônicos que agregam experiência real.");
+    score -= 8;
+  }
+
+  if (hasBudgetTarget && budgetPerSqmTarget && budgetPerSqmTarget < 2500 && complexityIndex > 35) {
+    recommendations.push("Orçamento-alvo por m² está apertado para o nível atual de complexidade; priorizar massa compacta, cobertura simples e menos recortes.");
+    score -= 10;
+  }
+
+  const valueEngineering = [
+    ...(perimeterAreaRatio > 0.30 ? ["Simplificar recortes e alinhar paredes externas onde não houver ganho espacial/climático."] : []),
+    ...(wetClusterPenalty ? ["Agrupar cozinha, lavanderia e banheiros para racionalizar instalações."] : []),
+    ...(cantileverRisk ? ["Reduzir balanços ou concentrá-los em um único gesto arquitetônico de maior valor."] : []),
+    ...(wallFirst.metrics.wallCount > buildingRooms.length * 5 ? ["Reduzir quebras internas e alinhar divisórias para facilitar estrutura e execução."] : []),
+  ];
+
+  return {
+    score: Math.max(0, Math.round(score)),
+    status: score < 58 ? "blocked" as const : score < 78 ? "warning" as const : "approved" as const,
+    issues,
+    recommendations,
+    valueEngineering: [...new Set(valueEngineering)],
+    metrics: {
+      totalArea: Math.round(totalArea * 10) / 10,
+      exteriorPerimeter: Math.round(exteriorPerimeter * 10) / 10,
+      perimeterAreaRatio: Math.round(perimeterAreaRatio * 100) / 100,
+      complexityIndex,
+      wetClusterPenalty,
+      cantileverRisk,
+      budgetTarget: hasBudgetTarget ? budgetTarget : null,
+      budgetPerSqmTarget: budgetPerSqmTarget ? Math.round(budgetPerSqmTarget) : null,
+    },
+  };
 }
 
 function evaluateRoofVolumetryFit(
@@ -902,6 +1012,7 @@ function buildArchitecturalQualityGateV2(issues: string[]) {
     "furnitureFit",
     "siteClimate",
     "roofVolumetry",
+    "costValue",
     "architecturalCoherence",
   ];
   const dimensionIssues = Object.fromEntries(keys.map((key) => [key, [] as string[]])) as Record<QualityDimensionKey, string[]>;
@@ -951,7 +1062,8 @@ function buildArchitecturalQualityGateV2(issues: string[]) {
     constructability: 0.08,
     furnitureFit: 0.12,
     siteClimate: 0.08,
-    roofVolumetry: 0.08,
+    roofVolumetry: 0.07,
+    costValue: 0.08,
     architecturalCoherence: 0.01,
   };
 
@@ -1246,7 +1358,8 @@ function evaluateSpecialistPlan(
   const furnitureFit = evaluateFurnitureFit(rooms);
   const siteClimate = evaluateSiteClimateFit(rooms, input);
   const roofVolumetry = evaluateRoofVolumetryFit(rooms, input);
-  issues.push(...furnitureFit.issues, ...siteClimate.issues, ...roofVolumetry.issues);
+  const costValue = evaluateCostValueFit(rooms, input);
+  issues.push(...furnitureFit.issues, ...siteClimate.issues, ...roofVolumetry.issues, ...costValue.issues);
 
   const uniqueIssues = [...new Set(issues)];
   const gate = buildArchitecturalQualityGateV2(uniqueIssues);
@@ -1265,6 +1378,11 @@ function evaluateSpecialistPlan(
     status: roofVolumetry.status,
     issues: roofVolumetry.issues.slice(0, 8),
   };
+  gate.dimensions.costValue = {
+    score: costValue.score,
+    status: costValue.status,
+    issues: costValue.issues.slice(0, 8),
+  };
   gate.score = Math.round(
     gate.dimensions.program.score * 0.14
     + gate.dimensions.circulation.score * 0.17
@@ -1274,7 +1392,8 @@ function evaluateSpecialistPlan(
     + gate.dimensions.constructability.score * 0.08
     + gate.dimensions.furnitureFit.score * 0.12
     + gate.dimensions.siteClimate.score * 0.08
-    + gate.dimensions.roofVolumetry.score * 0.08
+    + gate.dimensions.roofVolumetry.score * 0.07
+    + gate.dimensions.costValue.score * 0.08
     + gate.dimensions.architecturalCoherence.score * 0.01
   );
   const furnitureBlocked = furnitureFit.status === "blocked";
@@ -1316,10 +1435,12 @@ function evaluateSpecialistPlan(
     furnitureFit,
     siteClimate,
     roofVolumetry,
+    costValue,
   } as SpecialistPlanQuality & {
     furnitureFit: ReturnType<typeof evaluateFurnitureFit>;
     siteClimate: ReturnType<typeof evaluateSiteClimateFit>;
     roofVolumetry: ReturnType<typeof evaluateRoofVolumetryFit>;
+    costValue: ReturnType<typeof evaluateCostValueFit>;
   };
 }
 
@@ -1459,6 +1580,7 @@ function sanitizeSpecialistPlan(
       furnitureFit: (quality as SpecialistPlanQuality & { furnitureFit?: ReturnType<typeof evaluateFurnitureFit> }).furnitureFit ?? null,
       siteClimate: (quality as SpecialistPlanQuality & { siteClimate?: ReturnType<typeof evaluateSiteClimateFit> }).siteClimate ?? null,
       roofVolumetry: (quality as SpecialistPlanQuality & { roofVolumetry?: ReturnType<typeof evaluateRoofVolumetryFit> }).roofVolumetry ?? null,
+      costValue: (quality as SpecialistPlanQuality & { costValue?: ReturnType<typeof evaluateCostValueFit> }).costValue ?? null,
     },
   };
 }
@@ -2130,6 +2252,8 @@ INTERPRETAÇÃO OBRIGATÓRIA DO BRIEFING:
 - referências estéticas e materiais orientam linguagem e DNA, mas nunca podem quebrar funcionalidade;
 - método construtivo deve orientar racionalidade geométrica e repetição/modulação quando aplicável;
 - orçamento-alvo e estratégia de custo devem limitar complexidade gratuita de perímetro, vãos, recortes e cobertura;
+- aplique VALUE ENGINEERING: preserve decisões que aumentam qualidade espacial, clima, privacidade ou identidade e simplifique decisões caras que não entregam benefício proporcional;
+- prefira concentrar investimento em poucos gestos arquitetônicos relevantes em vez de espalhar complexidade por toda a casa;
 - necessidades futuras devem gerar flexibilidade real sempre que possível, sem criar cômodos não solicitados.
 
 PROGRAMA FIXO DE AMBIENTES:
