@@ -469,6 +469,31 @@ export default function ConceptFacadeEditor({
     });
   };
 
+  const sendTasteFeedback = async (input: {
+    signal: string;
+    weight: number;
+    preferredMove?: string;
+    dislikedMove?: string;
+  }) => {
+    if (!resolvedConceptProjectId) return;
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("vendorai_token") : null;
+      await fetch(`/api/arch/concept-projects/${resolvedConceptProjectId}/taste-feedback`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          source: "facade_option",
+          ...input,
+        }),
+      });
+    } catch {
+      // Taste learning must never block facade editing.
+    }
+  };
+
   const runFacadeStudy = async (action: "diagnose" | "develop") => {
     if (!resolvedConceptProjectId || aiBusy) return;
     setAiBusy(true);
@@ -527,6 +552,13 @@ export default function ConceptFacadeEditor({
       });
     }
     setFacadeStudyApplied(true);
+    if (selectedDirection) {
+      void sendTasteFeedback({
+        signal: `Selecionou direção de fachada: ${selectedDirection.title} | ${selectedDirection.primaryMove}`,
+        weight: 0.85,
+        preferredMove: selectedDirection.primaryMove,
+      });
+    }
   };
 
   return (
@@ -784,6 +816,37 @@ export default function ConceptFacadeEditor({
                           Compromissos: {option.tradeoffs.slice(0,2).join(" · ")}
                         </div>
                       )}
+                      <div className="mt-2 flex items-center justify-between gap-2 border-t border-indigo-100 pt-2">
+                        <span className="text-[8px] text-slate-400">
+                          {selectedDirectionId === option.id ? "Selecionada" : "Toque para selecionar"}
+                        </span>
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void sendTasteFeedback({
+                              signal: `Rejeitou direção de fachada: ${option.title} | ${option.primaryMove}`,
+                              weight: -0.8,
+                              dislikedMove: option.primaryMove,
+                            });
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              void sendTasteFeedback({
+                                signal: `Rejeitou direção de fachada: ${option.title} | ${option.primaryMove}`,
+                                weight: -0.8,
+                                dislikedMove: option.primaryMove,
+                              });
+                            }
+                          }}
+                          className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[8px] font-bold text-slate-500 hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+                        >
+                          Não combina comigo
+                        </span>
+                      </div>
                     </button>
                   ))}
                 </div>
