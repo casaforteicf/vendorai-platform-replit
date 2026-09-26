@@ -731,6 +731,7 @@ export default function ConceptClientBriefPanel({
                         ["siteClimate", "Terreno/clima"],
                         ["roofVolumetry", "Cobertura/volume"],
                         ["costValue", "Custo/valor"],
+                        ["brazilianFit", "Contexto BR"],
                         ["architecturalCoherence", "Coerência"],
                       ] as const).map(([key, label]) => {
                         const dimension = alternative.qualityDimensions?.[key];
@@ -853,6 +854,36 @@ export default function ConceptClientBriefPanel({
                         </div>
                       ))}
                     </div>
+                  </div>
+                ) : null}
+
+                {alternative.programCompliance?.brazilianFit ? (
+                  <div className="mt-2 rounded-lg border border-teal-100 bg-teal-50 px-2.5 py-2">
+                    <div className="flex items-center justify-between gap-2 text-[10px]">
+                      <span className="font-bold text-teal-900">Brazilian Residential Fit</span>
+                      <span className={alternative.programCompliance.brazilianFit.status === "blocked"
+                        ? "font-bold text-red-600"
+                        : alternative.programCompliance.brazilianFit.status === "warning"
+                          ? "font-bold text-amber-600"
+                          : "font-bold text-emerald-700"}
+                      >
+                        {alternative.programCompliance.brazilianFit.score}/100
+                      </span>
+                    </div>
+                    <div className="mt-1 text-[9px] leading-4 text-teal-900">
+                      {alternative.programCompliance.brazilianFit.context.region && alternative.programCompliance.brazilianFit.context.region !== "nao_informada"
+                        ? `Região: ${alternative.programCompliance.brazilianFit.context.region} · `
+                        : ""}
+                      ciclo: {alternative.programCompliance.brazilianFit.context.lifeCycle ?? "atual"} ·
+                      privacidade: {alternative.programCompliance.brazilianFit.context.privacySecurity ?? "equilibrada"}
+                    </div>
+                    {alternative.programCompliance.brazilianFit.recommendations?.length ? (
+                      <div className="mt-2 space-y-1 text-[9px] leading-4 text-slate-600">
+                        {alternative.programCompliance.brazilianFit.recommendations.slice(0, 4).map((item, index) => (
+                          <div key={index}>• {item}</div>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
 
