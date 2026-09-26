@@ -95,8 +95,11 @@ const Onboarding         = lazy(() => import("@/pages/Onboarding"));
 const OnboardingIntegracoes = lazy(() => import("@/pages/OnboardingIntegracoes"));
 const Content            = lazy(() => import("@/pages/ContentHub"));
 const MarketingInstagram = lazy(() => import("@/pages/MarketingInstagram"));
+const MediaCenter        = lazy(() => import("@/pages/MediaCenter"));
+const GrowthLabConnected = lazy(() => import("@/pages/GrowthLabConnected"));
 
 const VideoAvatarPage    = lazy(() => import("@/pages/video/VideoAvatarPage"));
+const VideoAvatarCaptureRoute = lazy(() => import("@/pages/video/VideoAvatarCaptureRoute"));
 const VideoProdutoPage   = lazy(() => import("@/pages/video/VideoProdutoPage"));
 const VideoEdicaoPage    = lazy(() => import("@/pages/video/VideoEdicaoPage"));
 const VideoLegendaPage   = lazy(() => import("@/pages/video/VideoLegendaPage"));
@@ -649,6 +652,7 @@ function AppRoutes() {
         <Route path="/leads"><ProtectedRoute component={Leads} /></Route>
         <Route path="/leads/:id"><ProtectedRoute component={LeadWorkspace} /></Route>
         <Route path="/app/prospector"><ProtectedRoute component={Prospector} /></Route>
+        <Route path="/prospector"><ProtectedRoute component={Prospector} /></Route>
         <Route path="/prospector/flows"><ProtectedRoute component={FlowBuilder} /></Route>
         <Route path="/prospector/flows/:id/executions"><ProtectedRoute component={FlowExecutions} /></Route>
         <Route path="/deals"><ProtectedRoute component={Deals} /></Route>
@@ -659,6 +663,7 @@ function AppRoutes() {
         <Route path="/pipeline-relacionamento"><ProtectedRoute component={PipelineRelacionamento} /></Route>
         <Route path="/comissoes"><ProtectedRoute component={ComissoesVendedor} /></Route>
         <Route path="/conversations"><ProtectedRoute component={Conversations} /></Route>
+        <Route path="/conversas"><ProtectedRoute component={Conversations} /></Route>
         <Route path="/agenda"><ProtectedRoute component={Agenda} /></Route>
         <Route path="/entregas"><ProtectedRoute component={MinhasEntregas} /></Route>
         <Route path="/praca-executivo"><ProtectedRoute component={DashboardExecutivoPraca} /></Route>
@@ -713,6 +718,7 @@ function AppRoutes() {
         <Route path="/content-studio/video">{() => <ProtectedRoute component={VideoHome} />}</Route>
         <Route path="/content-studio/video/projeto">{() => <ProtectedRoute component={VideoProjectDirectPage} />}</Route>
         <Route path="/content-studio/video/avatar">{() => <ProtectedRoute component={VideoAvatarPage} />}</Route>
+        <Route path="/content-studio/video/avatar/captura">{() => <FullscreenProtectedRoute component={VideoAvatarCaptureRoute} />}</Route>
         <Route path="/content-studio/video/produto">{() => <ProtectedRoute component={VideoProdutoPage} />}</Route>
         <Route path="/content-studio/video/edicao">{() => <ProtectedRoute component={VideoEdicaoPage} />}</Route>
         <Route path="/content-studio/video/legenda">{() => <ProtectedRoute component={VideoLegendaPage} />}</Route>
@@ -721,7 +727,9 @@ function AppRoutes() {
         <Route path="/faq">{() => <ProtectedRoute component={FAQ} />}</Route>
         <Route path="/guia-implantacao">{() => <ProtectedRoute component={GuiaImplantacao} />}</Route>
         <Route path="/agents/config">{() => <ProtectedRoute component={AgentConfig} />}</Route>
+        <Route path="/agentes">{() => <ProtectedRoute component={AgentConfig} />}</Route>
         <Route path="/analytics">{() => <ProtectedRoute component={Analytics} />}</Route>
+        <Route path="/metricas-ia">{() => <ProtectedRoute component={Analytics} />}</Route>
         <Route path="/relatorios">{() => <ProtectedRoute component={RelatoriosVisaoGeral} />}</Route>
         <Route path="/relatorios/ganhos-mes">{() => <ProtectedRoute component={RelatorioGanhosMes} />}</Route>
         <Route path="/relatorios/tipo-cliente">{() => <ProtectedRoute component={RelatorioTipoCliente} />}</Route>
