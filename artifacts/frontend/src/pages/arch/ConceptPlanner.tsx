@@ -3754,6 +3754,11 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   };
 
   const promoteToProject = async () => {
+    if (blockingLayoutIssues.length > 0 || architecturalAcceptance.status === "blocked") {
+      setMobileValidationOpen(true);
+      setHandoffError("Corrija os erros arquitetônicos bloqueantes antes de aprovar o Projeto Mestre.");
+      return null;
+    }
     const projectConceptId = await saveConcept(6);
     if (!projectConceptId) return;
 
@@ -7845,8 +7850,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   </div>
                   <h2 className="mt-2 text-2xl font-bold">Sua ideia organizada para seguir com o profissional</h2>
                   <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-                    Este material reúne programa de necessidades, dimensões, implantação conceitual, fachada e render.
-                    É um pré-projeto conceitual e precisa de validação técnica antes de qualquer execução.
+                    Este material reúne programa de necessidades, dimensões, implantação, fachada, cobertura e render.
+                    Quando aprovado, ele é congelado como Projeto Mestre e passa a ser a fonte de partida do fluxo profissional e de Obras.
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2 print:hidden">
@@ -8110,6 +8115,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           onClick={() => void promoteToProject()}
                           disabled={
                           handoffState === "sending" ||
+                          blockingLayoutIssues.length > 0 ||
+                          architecturalAcceptance.status === "blocked" ||
                           !customerProfile.name?.trim() ||
                           !(customerProfile.phone?.trim() || customerProfile.email?.trim())
                         }
