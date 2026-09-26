@@ -84,6 +84,8 @@ export type ArchConceptConfiguration = {
   publicTourEnabled?: boolean;
   publicTourUpdatedAt?: string;
   facadeDesign?: Record<string, unknown>;
+  revisionOfConceptId?: string;
+  revisionNumber?: number;
   projectMaster?: {
     version: number;
     frozenAt: string;
@@ -101,6 +103,17 @@ export type ArchConceptConfiguration = {
     facadePreferences: ArchConceptFacadePreferences;
     facadeDesign?: Record<string, unknown>;
     projectBrief?: Record<string, unknown> | null;
+    objects: Array<Record<string, unknown>>;
+    spaceProfiles: Array<Record<string, unknown>>;
+    wallMaterials: Record<string, string>;
+    acceptanceProof: {
+      validatorVersion: string;
+      status: "approved" | "review";
+      score: number;
+      issues: Array<{ id: string; severity: "error" | "warning"; roomId?: string; message: string }>;
+      acceptedWarningIds: string[];
+      evaluatedAt: string;
+    };
     conceptRender?: Record<string, unknown>;
     quantities: Array<{
       stage: string;
