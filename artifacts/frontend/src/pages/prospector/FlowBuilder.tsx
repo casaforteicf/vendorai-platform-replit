@@ -139,11 +139,9 @@ interface StepCardProps {
   step: Step;
   steps: Step[];
   flowId: string;
-  onSaved: () => void;
-  onDeleted: () => void;
 }
 
-function StepCard({ step, steps, flowId, onSaved, onDeleted }: StepCardProps) {
+function StepCard({ step, steps, flowId }: StepCardProps) {
   const { toast } = useToast();
   const qc = useQueryClient();
 
@@ -229,7 +227,6 @@ function StepCard({ step, steps, flowId, onSaved, onDeleted }: StepCardProps) {
       qc.invalidateQueries({ queryKey: ["prospector-steps", flowId] });
       qc.invalidateQueries({ queryKey: ["prospector-flows"] });
       toast({ title: "Step salvo" });
-      onSaved();
     },
     onError: (err: Error) => toast({ title: err.message, variant: "destructive" }),
   });
@@ -244,7 +241,6 @@ function StepCard({ step, steps, flowId, onSaved, onDeleted }: StepCardProps) {
       qc.invalidateQueries({ queryKey: ["prospector-steps", flowId] });
       qc.invalidateQueries({ queryKey: ["prospector-flows"] });
       toast({ title: "Step removido" });
-      onDeleted();
     },
     onError: (err: Error) => toast({ title: err.message, variant: "destructive" }),
   });
@@ -872,8 +868,6 @@ export default function FlowBuilder() {
                     step={step}
                     steps={steps}
                     flowId={selectedFlow.id}
-                    onSaved={() => {}}
-                    onDeleted={() => {}}
                   />
                 ))}
 
