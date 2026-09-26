@@ -144,7 +144,7 @@ export default function VariedadesLojista() {
   });
 
   const remover = useMutation({
-    mutationFn: (id: string) => fetch(`/api/tenants/${tenantId}/variedades-dia/${id}`, { method: "DELETE", headers: authHeaders() }),
+    mutationFn: (id: string) => fetch(`/api/tenants/${tenantId}/variedades-dia/${id}`, { method: "DELETE", headers: authHeaders() }).then(async (r) => { if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Falha ao remover"); return r; }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["variedades-dia", tenantId] });
       qc.invalidateQueries({ queryKey: ["variedades-vagas-hoje"] });
