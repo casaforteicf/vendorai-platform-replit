@@ -165,17 +165,36 @@ export function evaluateConceptAcceptance(input: {
   const warnings = issues.filter((issue) => issue.severity === "warning");
   const majorWarnings = warnings.filter(isMajorWarning);
 
+  const advisoryPrefixes = [
+    "ventilation-",
+    "solar-",
+    "privacy-",
+    "acoustic-",
+    "constructability-",
+    "buildability-",
+    "furniture-circulation-",
+  ];
+  const advisoryWarnings = warnings.filter((issue) =>
+    advisoryPrefixes.some((prefix) => issue.id.includes(prefix)),
+  );
+  const coreWarnings = warnings.filter((issue) => !advisoryWarnings.includes(issue));
+  const nonMajorCoreWarnings = coreWarnings.filter((issue) => !majorWarnings.includes(issue));
+
+  // O aceite não pode degradar artificialmente só porque adicionamos novos gates consultivos.
+  // Erros continuam bloqueando; avisos funcionais pesam mais; clima/custo/acústica são sinais
+  // de otimização e têm penalidade menor.
   const rawScore =
     100
     - errors.length * 30
-    - majorWarnings.length * 12
-    - (warnings.length - majorWarnings.length) * 5;
+    - majorWarnings.length * 10
+    - nonMajorCoreWarnings.length * 3
+    - advisoryWarnings.length * 1;
   const score = Math.max(0, Math.min(100, Math.round(rawScore)));
 
   let status: ConceptAcceptanceStatus = "approved";
   if (errors.length > 0 || score < 60) {
     status = "blocked";
-  } else if (majorWarnings.length > 0 || warnings.length >= 3 || score < 85) {
+  } else if (majorWarnings.length > 0 || coreWarnings.length >= 3 || score < 80) {
     status = "review";
   }
 
