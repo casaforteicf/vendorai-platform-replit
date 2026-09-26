@@ -69,6 +69,7 @@ import { buildOrthogonalWallTopology, detectClosedSpaces, type ClosedSpace, type
 import { conceptStepCta, nextConceptStep, normalizeConceptStep, previousConceptStep } from "./conceptNavigation";
 import { CONCEPT_OPENING_FAMILIES } from "./catalogs/conceptOpeningCatalog";
 import { blockingConceptIssues, canAdvanceConceptLayout } from "./conceptWorkflow";
+import { buildConceptReadiness, deliverableStatusLabel } from "./conceptDeliverables";
 
 type RoomKind =
   | "sala"
@@ -843,6 +844,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [activeFloor, setActiveFloor] = useState(0);
   const [editorView, setEditorView] = useState<"plan" | "model3d" | "facade" | "render">("plan");
   const [editorExperienceMode, setEditorExperienceMode] = useState<EditorExperienceMode>("guided");
+  const [presentationMode, setPresentationMode] = useState<"client" | "architect">("client");
 
   useEffect(() => {
     // O pré-projeto tem só duas telas: o workspace (2D/3D/Fachada/Render) e o Resultado,
@@ -4055,6 +4057,40 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     ?? primaryRender ?? galleryVersions[galleryVersions.length - 1];
   const displayedRender = selectedGalleryRender ?? conceptRender;
   const presentationRender = primaryRender ?? conceptRender;
+  const conceptReadiness = useMemo(() => buildConceptReadiness({
+    roomCount: safeRooms.length,
+    floors,
+    hasBrief: Boolean(projectBrief),
+    hasSitePlacement: Boolean(sitePlacement),
+    hasNorth: Boolean(projectBrief?.siteContext?.northSide && projectBrief.siteContext.northSide !== "nao_informado"),
+    hasWallModel: safeWallFirstFloors.length >= Math.min(floors, 1),
+    hasDimensions: showDimensions,
+    hasFacade: Boolean(facadePreferences?.style && modelLevels.length),
+    has3d: modelLevels.length === floors && modelLevels.some((level) => level.walls.length > 0 || level.customWalls?.length),
+    hasRender: Boolean(presentationRender?.resultImageUrl),
+    renderFidelityApproved: conceptRender?.fidelity?.approved ?? null,
+    regulatoryStatus: projectBrief?.regulatoryContext?.status,
+    hasRegulatoryChecks: Boolean(projectBrief?.regulatoryContext && (
+      projectBrief.regulatoryContext.setbacks
+      || projectBrief.regulatoryContext.maxFloors
+      || projectBrief.regulatoryContext.occupancyRateMax
+      || projectBrief.regulatoryContext.farMax
+    )),
+    hasArchitectureDNA: Boolean(projectBrief?.architectureDNA),
+    roofConfigured: Boolean(facadePreferences?.roof),
+  }), [
+    safeRooms.length,
+    floors,
+    projectBrief,
+    sitePlacement,
+    safeWallFirstFloors.length,
+    showDimensions,
+    facadePreferences?.style,
+    facadePreferences?.roof,
+    modelLevels,
+    presentationRender?.resultImageUrl,
+    conceptRender?.fidelity?.approved,
+  ]);
 
   const latestFacadeRenderUrl = useMemo(() => {
     if (conceptRender?.renderView === "exterior" && conceptRender.resultImageUrl) return conceptRender.resultImageUrl;
@@ -5025,7 +5061,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       ? "rounded-lg bg-white px-3 py-2 text-[11px] font-bold text-slate-950 shadow-sm"
                       : "rounded-lg px-3 py-2 text-[11px] font-semibold text-slate-300 hover:bg-white/10"}
                   >
-                    Guiado
+                    Cliente
                   </button>
                   <button
                     type="button"
@@ -5034,7 +5070,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       ? "rounded-lg bg-white px-3 py-2 text-[11px] font-bold text-slate-950 shadow-sm"
                       : "rounded-lg px-3 py-2 text-[11px] font-semibold text-slate-300 hover:bg-white/10"}
                   >
-                    <span className="sm:hidden">Pro</span><span className="hidden sm:inline">Profissional</span>
+                    <span className="sm:hidden">Arq.</span><span className="hidden sm:inline">Arquiteto</span>
                   </button>
                 </div>
               </div>
@@ -7892,9 +7928,29 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2 print:hidden">
+                  <div className="flex rounded-xl border bg-muted/30 p-1">
+                    <button
+                      type="button"
+                      onClick={() => setPresentationMode("client")}
+                      className={presentationMode === "client"
+                        ? "rounded-lg bg-white px-3 py-2 text-xs font-bold shadow-sm"
+                        : "rounded-lg px-3 py-2 text-xs font-semibold text-muted-foreground"}
+                    >
+                      Cliente
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPresentationMode("architect")}
+                      className={presentationMode === "architect"
+                        ? "rounded-lg bg-white px-3 py-2 text-xs font-bold shadow-sm"
+                        : "rounded-lg px-3 py-2 text-xs font-semibold text-muted-foreground"}
+                    >
+                      Arquiteto
+                    </button>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => window.print()}
+                    onClick={() => window.print()
                     className="inline-flex items-center gap-2 rounded-xl border bg-background px-4 py-2.5 text-sm font-semibold"
                   >
                     <Printer className="h-4 w-4" /> Imprimir / PDF
@@ -7909,6 +7965,71 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     </button>
                   )}
                 </div>
+              </div>
+            </div>
+
+            <div className="rounded-3xl border bg-card p-5 shadow-sm">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    Readiness do pré-projeto
+                  </div>
+                  <h3 className="mt-1 text-lg font-bold">
+                    {presentationMode === "client" ? "Pronto para apresentar ao cliente" : "Pronto para revisão profissional"}
+                  </h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {presentationMode === "client"
+                      ? "Mostra somente o que ajuda o cliente a entender, comparar e decidir."
+                      : "Inclui também entregáveis técnicos preliminares e pendências para desenvolvimento profissional."}
+                  </p>
+                </div>
+                {(() => {
+                  const readiness = presentationMode === "client" ? conceptReadiness.presentation : conceptReadiness.professional;
+                  return (
+                    <div className={readiness.status === "ready"
+                      ? "rounded-2xl bg-emerald-50 px-4 py-3 text-right"
+                      : readiness.status === "blocked"
+                        ? "rounded-2xl bg-red-50 px-4 py-3 text-right"
+                        : "rounded-2xl bg-amber-50 px-4 py-3 text-right"}
+                    >
+                      <div className={readiness.status === "ready"
+                        ? "text-2xl font-black text-emerald-700"
+                        : readiness.status === "blocked"
+                          ? "text-2xl font-black text-red-700"
+                          : "text-2xl font-black text-amber-700"}
+                      >
+                        {readiness.score}%
+                      </div>
+                      <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                        {readiness.status === "ready" ? "Pronto" : readiness.status === "blocked" ? "Bloqueado" : "Com pendências"}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {conceptReadiness.deliverables
+                  .filter((item) => item.audience === "both" || item.audience === presentationMode)
+                  .map((item) => (
+                    <div key={item.id} className="rounded-2xl border bg-background p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="text-xs font-bold">{item.title}</div>
+                        <span className={item.status === "ready"
+                          ? "rounded-full bg-emerald-100 px-2 py-1 text-[8px] font-bold uppercase text-emerald-700"
+                          : item.status === "blocked"
+                            ? "rounded-full bg-red-100 px-2 py-1 text-[8px] font-bold uppercase text-red-700"
+                            : item.status === "partial"
+                              ? "rounded-full bg-amber-100 px-2 py-1 text-[8px] font-bold uppercase text-amber-700"
+                              : "rounded-full bg-slate-100 px-2 py-1 text-[8px] font-bold uppercase text-slate-500"}
+                        >
+                          {deliverableStatusLabel(item.status)}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[10px] leading-4 text-muted-foreground">{item.helper}</p>
+                      {item.reason && <p className="mt-1 text-[9px] leading-4 text-amber-700">{item.reason}</p>}
+                    </div>
+                  ))}
               </div>
             </div>
 
@@ -7994,6 +8115,42 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     ))}
                   </div>
                 </div>
+
+                {presentationMode === "architect" && (
+                  <>
+                    <div className="rounded-3xl border bg-card p-5 shadow-sm">
+                      <h3 className="font-semibold">Resumo técnico preliminar</h3>
+                      <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
+                        {[
+                          ["Revisão do modelo", unifiedModelMeta.revision],
+                          ["Paredes modeladas", String(unifiedModelMeta.counts.walls)],
+                          ["Aberturas", String(unifiedModelMeta.counts.openings)],
+                          ["Pavimentos", String(unifiedModelMeta.counts.floors)],
+                          ["Norte", projectBrief?.siteContext?.northSide ?? "não informado"],
+                          ["Viabilidade", projectBrief?.regulatoryContext?.status ?? "não informada"],
+                        ].map(([label,value]) => (
+                          <div key={label} className="rounded-xl bg-muted/50 p-3">
+                            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+                            <div className="mt-1 font-semibold">{value}</div>
+                          </div>
+                        ))}
+                      </div>
+                      {projectBrief?.architectureDNA && (
+                        <div className="mt-4 rounded-2xl border bg-background p-4">
+                          <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">DNA arquitetônico</div>
+                          <div className="mt-2 space-y-1 text-xs leading-5">
+                            {projectBrief.architectureDNA.concept && <div><b>Conceito:</b> {projectBrief.architectureDNA.concept}</div>}
+                            {projectBrief.architectureDNA.spatialStrategy && <div><b>Estratégia espacial:</b> {projectBrief.architectureDNA.spatialStrategy}</div>}
+                            {projectBrief.architectureDNA.volumeStrategy && <div><b>Volumetria:</b> {projectBrief.architectureDNA.volumeStrategy}</div>}
+                            {projectBrief.architectureDNA.roofStrategy && <div><b>Cobertura:</b> {projectBrief.architectureDNA.roofStrategy}</div>}
+                            {projectBrief.architectureDNA.costIntent && <div><b>Custo:</b> {projectBrief.architectureDNA.costIntent}</div>}
+                            {projectBrief.architectureDNA.futureFlexibilityIntent && <div><b>Flexibilidade:</b> {projectBrief.architectureDNA.futureFlexibilityIntent}</div>}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
 
                 <div className="rounded-3xl border bg-card p-5 shadow-sm">
                   <h3 className="font-semibold">Preferências de fachada</h3>
