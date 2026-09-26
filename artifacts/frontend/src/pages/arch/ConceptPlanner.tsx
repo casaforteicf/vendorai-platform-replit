@@ -348,6 +348,18 @@ type ConceptDraftResponse = {
     savedTourPoints?: SavedTourPoint[];
     sitePlacement?: SitePlacement;
     projectBrief?: ProjectBriefSnapshot;
+    facadeDesign?: FacadeDesignState;
+    projectMaster?: {
+      version: number;
+      frozenAt: string;
+      links: {
+        archProjetoId: string;
+        obraId: string;
+        budgetId: string;
+        leadId: string | null;
+        dealId: string | null;
+      };
+    };
   };
   rooms: Room[];
   openingOverrides: Record<string, OpeningOverride>;
@@ -870,6 +882,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [renderHistoryLoading, setRenderHistoryLoading] = useState(false);
   const [renderError, setRenderError] = useState<string | null>(null);
   const [archProjetoId, setArchProjetoId] = useState<string | null>(null);
+  const [projectMaster, setProjectMaster] = useState<ConceptDraftResponse["configuration"]["projectMaster"] | null>(null);
   const [handoffState, setHandoffState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [handoffError, setHandoffError] = useState<string | null>(null);
   const wallFirstActive = (Array.isArray(wallFirstFloors) ? wallFirstFloors : []).includes(activeFloor);
@@ -1240,6 +1253,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         conceptIdRef.current = draft.id;
         setConceptId(draft.id);
         setArchProjetoId(draft.archProjetoId ?? null);
+        setProjectMaster(draft.configuration?.projectMaster ?? null);
         if (draft.archProjetoId) setHandoffState("sent");
         // /arch/concept is now a single workspace: always reopen inside the editor.
         // Legacy wizard steps remain only for migration compatibility and are not restored.
@@ -1282,7 +1296,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         setCustomerProfile(draft.customerProfile ?? {});
         // Rascunhos antigos podem ter só parte dos campos; completar evita quebrar a tela de Resultado.
         setFacadePreferences({ ...DEFAULT_FACADE, ...(draft.facadePreferences ?? {}) });
-        setFacadeDesign(normalizeFacadeDesign(draft.facadeDesign));
+        setFacadeDesign(normalizeFacadeDesign(draft.configuration?.facadeDesign ?? draft.facadeDesign));
         setConceptRender(draft.conceptRender ?? { status: "idle" });
         setLayoutVariant(draft.selectedVariant ?? 0);
         setSaveState("saved");
@@ -1304,6 +1318,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     savedTourPointsOverride?: SavedTourPoint[],
     overrides?: ConceptSaveOverrides,
   ) => {
+    if (projectMaster) {
+      setSaveState("saved");
+      return conceptIdRef.current ?? conceptId;
+    }
     setSaveState("saving");
     const nextRooms = overrides?.rooms ?? rooms;
     const nextCustomWalls = overrides?.customWalls ?? customWalls;
@@ -1331,6 +1349,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         savedTourPoints: savedTourPointsOverride ?? savedTourPoints,
         sitePlacement,
         projectBrief: nextProjectBrief ?? undefined,
+        facadeDesign: nextFacadeDesign,
       },
       rooms: nextRooms,
       openingOverrides,
@@ -1396,7 +1415,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const hasUnsavedChanges = lastSavedKey !== null && lastSavedKey !== autosaveKey;
 
   useEffect(() => {
-    if (saveState === "loading") return;
+    if (saveState === "loading" || projectMaster) return;
     if (lastSavedKey === null) {
       setLastSavedKey(autosaveKey);
       return;
@@ -3735,6 +3754,11 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   };
 
   const promoteToProject = async () => {
+    if (blockingLayoutIssues.length > 0 || architecturalAcceptance.status === "blocked") {
+      setMobileValidationOpen(true);
+      setHandoffError("Corrija os erros arquitetônicos bloqueantes antes de aprovar o Projeto Mestre.");
+      return null;
+    }
     const projectConceptId = await saveConcept(6);
     if (!projectConceptId) return;
 
@@ -3752,11 +3776,19 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         throw new Error((body as { error?: string }).error ?? "Não foi possível enviar ao profissional.");
       }
 
-      const data = (await response.json()) as { project?: { id?: string }; leadId?: string | null; dealId?: string | null };
+      const data = (await response.json()) as {
+        project?: { id?: string };
+        leadId?: string | null;
+        dealId?: string | null;
+        obraId?: string;
+        budgetId?: string;
+        projectMaster?: ConceptDraftResponse["configuration"]["projectMaster"];
+      };
       const projectId = data.project?.id;
       if (!projectId) throw new Error("Projeto criado sem identificador.");
 
       setArchProjetoId(projectId);
+      if (data.projectMaster) setProjectMaster(data.projectMaster);
       setHandoffState("sent");
       return projectId;
     } catch (error) {
@@ -7818,8 +7850,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   </div>
                   <h2 className="mt-2 text-2xl font-bold">Sua ideia organizada para seguir com o profissional</h2>
                   <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-                    Este material reúne programa de necessidades, dimensões, implantação conceitual, fachada e render.
-                    É um pré-projeto conceitual e precisa de validação técnica antes de qualquer execução.
+                    Este material reúne programa de necessidades, dimensões, implantação, fachada, cobertura e render.
+                    Quando aprovado, ele é congelado como Projeto Mestre e passa a ser a fonte de partida do fluxo profissional e de Obras.
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2 print:hidden">
@@ -8062,8 +8094,13 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       {handoffState === "sent" && archProjetoId ? (
                         <div className="mt-4 space-y-3">
                           <div className="rounded-xl bg-emerald-100 px-3 py-2 text-sm font-semibold text-emerald-800">
-                            Pré-projeto enviado e vinculado ao Projeto Arqdor.
+                            Projeto Mestre aprovado e congelado.
                           </div>
+                          {projectMaster && (
+                            <div className="rounded-xl border border-emerald-200 bg-white/70 px-3 py-2 text-xs text-emerald-950">
+                              Versão {projectMaster.version} · Obra, orçamento e projeto profissional vinculados ao mesmo snapshot.
+                            </div>
+                          )}
                           <button
                             type="button"
                             onClick={() => { window.location.href = `/arch/projetos/${archProjetoId}`; }}
@@ -8078,13 +8115,15 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           onClick={() => void promoteToProject()}
                           disabled={
                           handoffState === "sending" ||
+                          blockingLayoutIssues.length > 0 ||
+                          architecturalAcceptance.status === "blocked" ||
                           !customerProfile.name?.trim() ||
                           !(customerProfile.phone?.trim() || customerProfile.email?.trim())
                         }
                           className="mt-4 inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
                         >
                           <Send className="h-4 w-4" />
-                          {handoffState === "sending" ? "Enviando..." : "Enviar ao profissional"}
+                          {handoffState === "sending" ? "Aprovando..." : "Aprovar Projeto Mestre"}
                         </button>
                       )}
                     </div>
