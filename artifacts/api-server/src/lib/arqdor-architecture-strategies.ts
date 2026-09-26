@@ -10,6 +10,7 @@ type StrategyContext = {
     futureNeeds?: string;
     mustHave?: string;
     avoid?: string;
+    constructionMethod?: string;
     tasteDNA?: {
       massing?: string;
       roofExpression?: string;
@@ -92,6 +93,27 @@ export function buildArchitecturalStrategyRepertoire(ctx: StrategyContext): stri
   const protagonist = vision.protagonist ?? "social";
   const lifestyle = vision.lifestyle ?? "misto";
   const budget = vision.budgetStrategy ?? "equilibrar";
+  const constructionMethod = vision.constructionMethod ?? "nao_definido";
+  const constructionGuidance: string[] = [];
+  if (constructionMethod === "icf") {
+    constructionGuidance.push("ICF: prioritize continuous/aligned wall logic, repetitive openings, grouped wet zones and low fragmentation.");
+  } else if (constructionMethod === "alvenaria_estrutural") {
+    constructionGuidance.push("Structural masonry: prioritize modular dimensions, vertical wall alignment, restrained openings and minimal cantilevers.");
+  } else if (constructionMethod === "steel_frame") {
+    constructionGuidance.push("Light Steel Frame: prioritize panel/grid repetition, aligned walls, coordinated openings and low geometric fragmentation.");
+  } else if (constructionMethod === "wood_frame") {
+    constructionGuidance.push("Wood Frame: prioritize panel/grid repetition, protected wet interfaces and compact installation paths.");
+  } else if (constructionMethod === "concreto") {
+    constructionGuidance.push("Reinforced concrete: organize a plausible column/beam grid, concentrate large spans and align vertical cores.");
+  } else if (constructionMethod === "pre_fabricado") {
+    constructionGuidance.push("Prefabricated: prioritize repeated bays/components, simple transportable geometry and few exceptional interfaces.");
+  } else if (constructionMethod === "hibrido") {
+    constructionGuidance.push("Hybrid: make system transitions explicit and concentrated instead of scattering interfaces throughout the plan.");
+  } else if (constructionMethod === "alvenaria") {
+    constructionGuidance.push("Conventional masonry: keep spans and wall geometry rational while preserving flexibility for an independent structural frame.");
+  } else {
+    constructionGuidance.push("Construction system undefined: keep geometry structurally conservative and avoid decisions that force one expensive system.");
+  }
   const taste = vision.tasteDNA ?? {};
   const tasteGuidance: string[] = [];
   if (taste.massing && taste.massing !== "neutro") tasteGuidance.push(`Massing preference: ${taste.massing}.`);
@@ -200,6 +222,9 @@ export function buildArchitecturalStrategyRepertoire(ctx: StrategyContext): stri
     "",
     "FACADE LOGIC:",
     ...FACADE_STRATEGIES.map((item) => `- ${item}`),
+    "",
+    "CONSTRUCTION SYSTEM:",
+    ...constructionGuidance.map((item) => `- ${item}`),
     "",
     "CONSTRUCTABILITY:",
     ...CONSTRUCTABILITY_STRATEGIES.map((item) => `- ${item}`),
