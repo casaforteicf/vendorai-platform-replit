@@ -28,6 +28,7 @@ import {
   countBriefAlternativeErrors,
   rebalanceClientRoomProgramToDesiredArea,
   validateClientRoomProgram,
+  type BrazilianResidentialContext,
   type ClientAdjacencyRule,
   type ClientBrief,
   type ClientRoomRequest,
@@ -99,6 +100,20 @@ const DEFAULT_HOUSEHOLD: HouseholdContext = {
   hostingFrequency: "media",
   cookingProfile: "cotidiano",
   routineNotes: "",
+};
+
+const DEFAULT_BRAZILIAN_CONTEXT: BrazilianResidentialContext = {
+  region: "nao_informada",
+  lotContext: "nao_informado",
+  lifeCycle: "atual",
+  expansionPriority: "prever",
+  outdoorLiving: "medio",
+  serviceRoutine: "tradicional",
+  privacySecurity: "equilibrada",
+  vehicleProfile: "misto",
+  evReady: false,
+  solarReady: false,
+  rainwaterReady: false,
 };
 
 const DEFAULT_SITE_CONTEXT: ProjectSiteContext = {
@@ -328,6 +343,10 @@ export default function ConceptClientBriefPanel({
     ...(initialProjectBrief?.siteContext ?? {}),
     frontSide: initialProjectBrief?.siteContext?.frontSide ?? placement?.frontSide,
   }));
+  const [brazilianContext, setBrazilianContext] = useState<BrazilianResidentialContext>(() => ({
+    ...DEFAULT_BRAZILIAN_CONTEXT,
+    ...(initialProjectBrief?.brazilianContext ?? {}),
+  }));
   const [dreamStep, setDreamStep] = useState(0);
   const [showAlternatives, setShowAlternatives] = useState(false);
   const [alternatives, setAlternatives] = useState<ClientBriefAlternative[]>([]);
@@ -478,6 +497,7 @@ export default function ConceptClientBriefPanel({
         vision,
         household,
         siteContext: { ...siteContext, frontSide: placement?.frontSide ?? siteContext.frontSide },
+        brazilianContext,
         intervention,
         previous: initialProjectBrief,
       }));
@@ -515,6 +535,7 @@ export default function ConceptClientBriefPanel({
           vision,
           household,
           siteContext: { ...siteContext, frontSide: placement?.frontSide ?? siteContext.frontSide },
+          brazilianContext,
           intervention,
           rooms: base.rooms,
         }),
@@ -555,6 +576,7 @@ export default function ConceptClientBriefPanel({
           vision,
           household,
           siteContext: { ...siteContext, frontSide: placement?.frontSide ?? siteContext.frontSide },
+          brazilianContext,
           intervention,
           patch: {
             selectedAlternativeId: "primary" as const,
@@ -1888,6 +1910,7 @@ export default function ConceptClientBriefPanel({
             vision,
             household,
             siteContext: { ...siteContext, frontSide: placement?.frontSide ?? siteContext.frontSide },
+            brazilianContext,
           })}% completo
         </div>
       </div>
