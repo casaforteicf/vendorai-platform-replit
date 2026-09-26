@@ -145,7 +145,7 @@ export function evaluateBuildabilityCost(
     });
   }
 
-  if (upperFloorMisalignment>1.2) {
+  if (upperFloorMisalignment>0.35) {
     score-=Math.min(18,Math.round(upperFloorMisalignment*6));
     issues.push({
       id:"buildability-upper-misalignment",
