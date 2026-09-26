@@ -9,6 +9,7 @@ import {
 import { validateConceptLayout } from "./conceptGeometry";
 import { evaluateConceptAcceptance } from "./conceptAcceptance";
 import { autoRepairConceptLayout } from "./conceptAutoRepair";
+import { evaluateConceptIntent, type ConceptIntentInput } from "./conceptIntent";
 import { generateTypologyLayout } from "./conceptTypologyLayout";
 
 export type ClientRoomRequestKind =
@@ -832,6 +833,16 @@ function templateFeatures(template: (typeof CONCEPT_TYPOLOGIES)[number]) {
   };
 }
 
+function conceptIntentFromBrief(brief: ClientBrief): ConceptIntentInput {
+  return {
+    livingIntegratedKitchen: brief.integratedKitchen,
+    kitchenNearGourmet: brief.gourmet,
+    gourmetNearPool: brief.gourmet && brief.pool,
+    privateAwaySocial: brief.privateAwaySocial,
+    desiredAreaTotal: Number.isFinite(Number(brief.desiredAreaTotal)) ? Number(brief.desiredAreaTotal) : null,
+  };
+}
+
 function briefDifferences(brief: ClientBrief, features: ReturnType<typeof templateFeatures>) {
   const notes: string[] = [];
   if (features.bedrooms !== brief.bedrooms) notes.push(`${features.bedrooms} dormitórios (pedido: ${brief.bedrooms})`);
@@ -855,12 +866,14 @@ export function buildClientBriefAlternatives(
     const rooms = buildTypologyPlan(template.id, lotWidth, lotDepth, placement.frontSide, placement.setbacks);
     if (!rooms || template.minLotWidth > lotWidth + 0.01) return [];
 
+    const intent = conceptIntentFromBrief(brief);
     const repair = autoRepairConceptLayout({
       rooms: rooms as never,
       lotWidth,
       lotDepth,
       floors: template.floors,
       site: { frontSide: placement.frontSide, setbackFront: 0 },
+      intent,
     });
     const repairedRooms = repair.rooms as ClientBriefPlan["rooms"];
     const acceptance = repair.after;
@@ -873,7 +886,8 @@ export function buildClientBriefAlternatives(
       + (features.garage ? Math.abs(features.garage - brief.garageSpaces) : brief.garageSpaces) * 1.5
       + (brief.gourmet !== features.gourmet ? 2 : 0)
       + (brief.pool !== features.pool ? 3 : 0)
-      + (brief.office !== features.office ? 1 : 0);
+      + (brief.office !== features.office ? 1 : 0)
+      + (100 - repair.afterIntent.score) / 8;
     return [{ template, rooms: repairedRooms, features, score, repair }];
   }).sort((a, b) => a.score - b.score).slice(0, 3);
 
@@ -886,6 +900,8 @@ export function buildClientBriefAlternatives(
       floors: template.floors,
       site: { frontSide: placement.frontSide, setbackFront: 0 },
     });
+    const intent = evaluateConceptIntent(rooms as never, conceptIntentFromBrief(brief));
+    const architectureScore = Math.round(acceptance.score * 0.7 + intent.score * 0.3);
     return {
       id: ids[index],
       title: `Opção ${letters[index]} · ${template.title}`,
@@ -898,14 +914,18 @@ export function buildClientBriefAlternatives(
       suggestedArea: template.suggestedArea,
       layoutPreferences: { ...DEFAULT_LAYOUT_PREFERENCES },
       rooms: rooms as ClientBriefPlan["rooms"],
-      architectureScore: acceptance.score,
-      qualityIssues: acceptance.issues.map((issue) => issue.message),
+      architectureScore,
+      qualityIssues: [
+        ...acceptance.issues.map((issue) => issue.message),
+        ...intent.issues.map((issue) => issue.message),
+      ],
       qualityStrengths: [
         ...(acceptance.status === "approved"
           ? ["Planta passou no gate automático de coerência arquitetônica."]
           : ["Planta utilizável, mas requer revisão dos avisos arquitetônicos antes da aprovação final."]),
+        ...intent.strengths,
         ...(repair.improved
-          ? [`Auto-Repair melhorou a solução de ${repair.before.score} para ${repair.after.score} pontos após ${repair.attempts} ciclo(s).`]
+          ? [`Auto-Repair melhorou a solução técnica de ${repair.before.score} para ${repair.after.score} e a aderência ao briefing de ${repair.beforeIntent.score} para ${repair.afterIntent.score} após ${repair.attempts} ciclo(s).`]
           : []),
       ],
     };
