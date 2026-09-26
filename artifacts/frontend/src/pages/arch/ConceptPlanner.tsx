@@ -40,6 +40,7 @@ import {
   DoorOpen,
   Sofa,
   Paintbrush,
+  WandSparkles,
 } from "lucide-react";
 import { buildConceptGeometry, generateLayoutVariant, nudgeOpening } from "./conceptGeometry";
 import { type ConceptFacadePreferences } from "./ConceptVolumetry";
@@ -848,6 +849,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const creatingConceptRef = useRef<Promise<string | null> | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "loading" | "saving" | "saved" | "error">("loading");
   const [aiDevelopmentState, setAiDevelopmentState] = useState<"idle" | "running" | "error">("idle");
+  const [aiEditCommand, setAiEditCommand] = useState("");
+  const [aiEditPanelOpen, setAiEditPanelOpen] = useState(false);
+  const [lastAiEditSummary, setLastAiEditSummary] = useState<string | null>(null);
   const [customerProfile, setCustomerProfile] = useState<CustomerProfile>({});
   const [facadePreferences, setFacadePreferences] = useState<ConceptFacadePreferences>(DEFAULT_FACADE);
   const [facadeDesign, setFacadeDesign] = useState<FacadeDesignState>(DEFAULT_FACADE_DESIGN);
@@ -1629,7 +1633,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     });
   };
 
-  const runAiDevelopment = async (projectBriefOverride?: ProjectBriefSnapshot) => {
+  const runAiDevelopment = async (projectBriefOverride?: ProjectBriefSnapshot, instruction?: string) => {
     if (aiDevelopmentState === "running") return;
     setAiDevelopmentState("running");
     try {
@@ -1647,11 +1651,20 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
           mode: "assistido",
           preserveLayout: true,
           style: facadePreferences.style,
+          instruction: instruction?.trim() || undefined,
         }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error((payload as { error?: string }).error ?? "Falha ao desenvolver com IA.");
       await applyAiDevelopment(payload as AIDevelopmentResponse);
+      if (instruction?.trim()) {
+        const notes = Array.isArray((payload as AIDevelopmentResponse).notes)
+          ? (payload as AIDevelopmentResponse).notes!.slice(0, 2).join(" ")
+          : "";
+        setLastAiEditSummary(notes || `Comando aplicado: ${instruction.trim()}`);
+        setAiEditCommand("");
+        setAiEditPanelOpen(false);
+      }
       setEditorView("plan");
       setEditorLibraryTab("build");
       setAiDevelopmentState("idle");
@@ -4025,6 +4038,55 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
   return (
     <div className="arqdor-reference-ui min-h-screen bg-muted/30">
+      {aiEditPanelOpen && (
+        <div className="fixed inset-x-3 top-[76px] z-[90] mx-auto max-w-xl rounded-2xl border border-cyan-200 bg-white p-4 shadow-2xl md:top-20">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-sm font-bold text-slate-900">Editar o projeto conversando com o Arqdor</div>
+              <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                O comando altera o projeto atual. 2D, paredes, aberturas, 3D, cobertura e fachada continuam derivados do mesmo modelo.
+              </p>
+            </div>
+            <button type="button" onClick={() => setAiEditPanelOpen(false)}
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-slate-100">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <textarea
+            value={aiEditCommand}
+            onChange={(event) => setAiEditCommand(event.target.value.slice(0, 1200))}
+            placeholder="Ex.: aumente a suíte em 2 m² sem aumentar a área total e reduza o corredor."
+            className="mt-3 min-h-24 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm outline-none focus:border-cyan-400"
+          />
+          <div className="mt-2 flex flex-wrap gap-2">
+            {[
+              "Aumente a suíte sem aumentar a área total.",
+              "Reduza corredores e melhore a circulação.",
+              "Melhore a integração da sala com gourmet e piscina.",
+              "Dê mais privacidade para os dormitórios.",
+            ].map((suggestion) => (
+              <button key={suggestion} type="button" onClick={() => setAiEditCommand(suggestion)}
+                className="rounded-full border bg-slate-50 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:border-cyan-300 hover:bg-cyan-50">
+                {suggestion}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            disabled={aiDevelopmentState === "running" || aiEditCommand.trim().length < 3}
+            onClick={() => void runAiDevelopment(undefined, aiEditCommand)}
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-600 px-3 py-3 text-xs font-bold text-white disabled:opacity-50"
+          >
+            <Sparkles className={aiDevelopmentState === "running" ? "h-4 w-4 animate-pulse" : "h-4 w-4"} />
+            {aiDevelopmentState === "running" ? "Recalculando o projeto..." : "Aplicar alteração inteligente"}
+          </button>
+          {lastAiEditSummary && (
+            <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-[10px] leading-4 text-emerald-800">
+              {lastAiEditSummary}
+            </div>
+          )}
+        </div>
+      )}
       {false && (
         <div className="border-b bg-background">
           <div className="mx-auto max-w-[1500px] px-4 py-4 sm:px-6">
@@ -4821,6 +4883,17 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                 >
                   <Sparkles className={aiDevelopmentState === "running" ? "h-4 w-4 animate-pulse" : "h-4 w-4"} />
                   <span className="hidden md:inline">{aiDevelopmentState === "running" ? "IA analisando..." : aiDevelopmentState === "error" ? "Tentar IA novamente" : "Desenvolver com IA"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setAiEditPanelOpen((open) => !open)}
+                  disabled={aiDevelopmentState === "running" || saveState === "loading"}
+                  className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-3 text-xs font-bold text-cyan-100 transition hover:bg-cyan-500/20 disabled:opacity-50"
+                  title="Editar o projeto conversando com o Arqdor"
+                >
+                  <WandSparkles className="h-4 w-4" />
+                  <span className="hidden lg:inline">Editar com Arqdor</span>
                 </button>
 
                 <button
