@@ -885,6 +885,7 @@ export function buildClientBriefAlternatives(
       site: { frontSide: placement.frontSide, setbackFront: 0 },
       intent,
       variantsPerFloor: 3,
+      searchCandidates: 18,
     });
     const selected = optimized.recommended;
     const repairedRooms = (selected?.rooms ?? repair.rooms) as ClientBriefPlan["rooms"];
