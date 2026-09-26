@@ -78,6 +78,7 @@ import { ensureArqdorStarterLibrary } from "../lib/arqdor/starter-library.js";
 import { searchPolyHavenModels, resolvePolyHavenModel } from "../lib/arqdor/polyhaven.js";
 import { buildArchitecturalStrategyRepertoire } from "../lib/arqdor-architecture-strategies.js";
 import { buildArchitecturalProjectStrategy } from "../lib/arqdor-project-strategy.js";
+import { evaluateProjectMasterAcceptance } from "../lib/arqdor-project-master-validation.js";
 
 function sanitizeAIError(err: any): { status: number; message: string } {
   const raw: string = err?.message ?? String(err ?? "");
@@ -100,6 +101,43 @@ function sanitizeAIError(err: any): { status: number; message: string } {
   }
   const safeStatus = httpStatus >= 400 && httpStatus < 600 ? httpStatus : 500;
   return { status: safeStatus, message: raw || "Erro ao processar com IA." };
+}
+
+async function createArchitectJsonCompletion(input: {
+  tenantId: string;
+  system: string;
+  user: string;
+  maxTokens?: number;
+}) {
+  try {
+    const message = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: input.maxTokens ?? 7000,
+      system: input.system,
+      messages: [{ role: "user", content: input.user }],
+    });
+    return {
+      raw: message.content.filter((item: any) => item.type === "text").map((item: any) => item.text).join(""),
+      stopReason: (message as any).stop_reason ?? null,
+      engine: "claude-sonnet-4-6",
+    };
+  } catch (anthropicError) {
+    const openai = await getOpenAIForTenant(input.tenantId);
+    const completion = await openai.chat.completions.create({
+      model: process.env["ARQDOR_ARCHITECT_FALLBACK_MODEL"]?.trim() || "gpt-5.6-luna",
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: input.system },
+        { role: "user", content: input.user },
+      ],
+    });
+    return {
+      raw: completion.choices[0]?.message?.content ?? "{}",
+      stopReason: null,
+      engine: process.env["ARQDOR_ARCHITECT_FALLBACK_MODEL"]?.trim() || "gpt-5.6-luna",
+      fallbackReason: anthropicError instanceof Error ? anthropicError.message.slice(0, 300) : "anthropic_unavailable",
+    };
+  }
 }
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
@@ -1368,9 +1406,9 @@ NÃO aceite a primeira solução mental: critique e refine antes de responder.`;
         ? "\n\nREGRA EVOLUTIVA: trate esta rodada como uma revisão do mesmo projeto. Compare mentalmente com a base, mantenha relações, setores e ambientes já corretos e faça mudanças localizadas."
         : "";
 
-      const message = await anthropic.messages.create({
-        model: "claude-sonnet-4-6",
-        max_tokens: 7000,
+      const architectCompletion = await createArchitectJsonCompletion({
+        tenantId: tid,
+        maxTokens: 7000,
         system: [
           "Você é o Arqdor Architect AI, arquiteto residencial sênior.",
           "Seu trabalho é desenvolver e refinar um único projeto principal.",
@@ -1378,15 +1416,12 @@ NÃO aceite a primeira solução mental: critique e refine antes de responder.`;
           "Priorize arquitetura funcional e interessante, nunca estética desconectada da planta.",
           "Responda somente JSON válido e compacto.",
         ].join(" "),
-        messages: [{ role: "user", content: basePrompt + seedContext + retryContext + evolutionaryInstruction }],
+        user: basePrompt + seedContext + retryContext + evolutionaryInstruction,
       });
 
-      const raw = message.content
-        .filter((item: any) => item.type === "text")
-        .map((item: any) => item.text)
-        .join("");
+      const raw = architectCompletion.raw;
 
-      if ((message as any).stop_reason === "max_tokens") {
+      if (architectCompletion.stopReason === "max_tokens") {
         rejectedFeedback.push("A resposta foi truncada; mantenha o JSON mais compacto.");
         continue;
       }
@@ -1490,7 +1525,7 @@ NÃO aceite a primeira solução mental: critique e refine antes de responder.`;
       solution: bestApproved,
       alternatives: [bestApproved],
       architectAgent: {
-        model: "claude-sonnet-4-6",
+        model: "provider-fallback-enabled",
         reasoning: "intent-party-adjacency-daylight-volume-critique-refine-v2",
         validation: "functional-adjacency-v2",
         targetScore: 82,
@@ -1672,18 +1707,15 @@ Retorne SOMENTE JSON válido:
 }`;
 
   try {
-    const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 3200,
+    const architectCompletion = await createArchitectJsonCompletion({
+      tenantId: tid,
+      maxTokens: 3200,
       system: "Você é um arquiteto de fachadas. Responda somente JSON válido, sem markdown.",
-      messages: [{ role: "user", content: prompt }],
+      user: prompt,
     });
-    const raw = message.content
-      .filter((item: any) => item.type === "text")
-      .map((item: any) => item.text)
-      .join("");
+    const raw = architectCompletion.raw;
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if ((message as any).stop_reason === "max_tokens") {
+    if (architectCompletion.stopReason === "max_tokens") {
       return res.status(422).json({ error: "O estudo de fachada ficou longo demais e veio incompleto. Tente novamente." });
     }
     if (!jsonMatch) return res.status(422).json({ error: "A IA não retornou um estudo de fachada válido." });
@@ -1864,16 +1896,13 @@ ${JSON.stringify(projectBrief?.facadeDirection ?? null)}
 Não substitua esse DNA por uma solução aleatória. Evolua o mesmo projeto e sinalize conflitos.`;
 
   try {
-    const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 1500,
+    const architectCompletion = await createArchitectJsonCompletion({
+      tenantId: tid,
+      maxTokens: 1500,
       system: "Responda somente com JSON válido, sem markdown e sem texto fora do JSON.",
-      messages: [{ role: "user", content: prompt }],
+      user: prompt,
     });
-    const raw = message.content
-      .filter((item: any) => item.type === "text")
-      .map((item: any) => item.text)
-      .join("");
+    const raw = architectCompletion.raw;
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return res.status(422).json({ error: "IA não retornou JSON válido." });
     const ai = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
@@ -2096,17 +2125,26 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     }
   }
 
-  const masterHealth = conceptGeometryHealth(concept);
-  if (masterHealth.status === "error") {
+  const config = (concept.configuration ?? {}) as any;
+  const lot = (concept.lot ?? {}) as { width?: number; depth?: number };
+  const sitePlacement = (config.sitePlacement ?? {}) as any;
+  const masterAcceptance = evaluateProjectMasterAcceptance({
+    rooms: Array.isArray(concept.rooms) ? concept.rooms : [],
+    lotWidth: Math.max(1, Number(lot.width ?? 0)),
+    lotDepth: Math.max(1, Number(lot.depth ?? 0)),
+    floors: Math.max(1, Number(config.floors ?? 1)),
+    site: {
+      frontSide: sitePlacement.frontSide,
+      setbackFront: sitePlacement.setbackFront,
+    },
+  });
+  if (masterAcceptance.status === "blocked") {
     return res.status(422).json({
-      error: "O pré-projeto ainda possui inconsistências bloqueantes e não pode ser congelado como Projeto Mestre.",
+      error: "O pré-projeto ainda possui inconsistências arquitetônicas bloqueantes e não pode ser congelado como Projeto Mestre.",
       code: "PROJECT_MASTER_NOT_READY",
-      health: masterHealth,
+      acceptance: masterAcceptance,
     });
   }
-
-  const config = (concept.configuration ?? {}) as { floors?: number; desiredArea?: number };
-  const lot = (concept.lot ?? {}) as { width?: number; depth?: number };
   const facade = (concept.facadePreferences ?? {}) as Record<string, string>;
   const customer = (concept.customerProfile ?? {}) as {
     instagram?: string;
@@ -2621,6 +2659,17 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     facadePreferences: concept.facadePreferences,
     facadeDesign: (concept as any).facadeDesign ?? conceptConfiguration.facadeDesign ?? undefined,
     projectBrief: conceptConfiguration.projectBrief ?? null,
+    objects: Array.isArray(conceptConfiguration.objects) ? conceptConfiguration.objects : [],
+    spaceProfiles: Array.isArray(conceptConfiguration.spaceProfiles) ? conceptConfiguration.spaceProfiles : [],
+    wallMaterials: conceptConfiguration.wallMaterials && typeof conceptConfiguration.wallMaterials === "object" ? conceptConfiguration.wallMaterials : {},
+    acceptanceProof: {
+      validatorVersion: masterAcceptance.validatorVersion,
+      status: masterAcceptance.status,
+      score: masterAcceptance.score,
+      issues: masterAcceptance.issues,
+      acceptedWarningIds: masterAcceptance.warnings.map((issue) => issue.id),
+      evaluatedAt: frozenAt,
+    },
     conceptRender: concept.conceptRender ?? {},
     quantities: quantityItems.map((item) => ({
       ...item,
