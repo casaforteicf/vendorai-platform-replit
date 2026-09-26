@@ -199,7 +199,7 @@ function acceptIfBetter(
 }
 
 /**
- * Etapa 78 — Auto-Repair arquitetônico.
+ * Etapa 79 — Auto-Repair orientado por intenção arquitetônica.
  *
  * O motor nunca aceita uma correção que piore o gate atual.
  * Estratégia:
@@ -262,7 +262,8 @@ export function autoRepairConceptLayout(input: RepairInput): ConceptAutoRepairRe
       }
     }
 
-    if (best.status === "approved") break;
+    const intentErrors = bestIntent.issues.filter((issue) => issue.severity === "error").length;
+    if (best.status === "approved" && bestIntent.score >= 90 && intentErrors === 0) break;
   }
 
   return {
