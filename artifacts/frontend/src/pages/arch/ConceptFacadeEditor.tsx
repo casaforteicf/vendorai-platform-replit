@@ -1092,6 +1092,146 @@ export default function ConceptFacadeEditor({
                   </button>
                 ))}
               </div>
+
+              {facade.roof !== "platibanda" && (
+                <div className="mt-3 rounded-xl border bg-slate-50 p-3">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">Cobertura paramétrica</div>
+                  <div className="mt-3">
+                    <div className="mb-1 text-[9px] font-semibold text-slate-500">Número de águas</div>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {([1, 2, 4] as const).map((waters) => (
+                        <button
+                          key={waters}
+                          type="button"
+                          onClick={() => updateDesign({
+                            roofConfig: {
+                              ...(DEFAULT_FACADE_DESIGN.roofConfig!),
+                              ...(design.roofConfig ?? {}),
+                              waters,
+                            },
+                          })}
+                          className={(design.roofConfig?.waters ?? DEFAULT_FACADE_DESIGN.roofConfig!.waters) === waters
+                            ? "rounded-lg bg-slate-950 px-2 py-2 text-[10px] font-bold text-white"
+                            : "rounded-lg border bg-white px-2 py-2 text-[10px] font-bold text-slate-600"}
+                        >
+                          {waters} água{waters > 1 ? "s" : ""}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <label className="mt-3 block">
+                    <span className="flex items-center justify-between text-[9px] font-semibold text-slate-500">
+                      <span>Inclinação</span>
+                      <strong>{Math.round(design.roofConfig?.pitchDegrees ?? DEFAULT_FACADE_DESIGN.roofConfig!.pitchDegrees)}°</strong>
+                    </span>
+                    <input
+                      type="range"
+                      min={3}
+                      max={55}
+                      step={1}
+                      value={design.roofConfig?.pitchDegrees ?? DEFAULT_FACADE_DESIGN.roofConfig!.pitchDegrees}
+                      onChange={(event) => updateDesign({
+                        roofConfig: {
+                          ...(DEFAULT_FACADE_DESIGN.roofConfig!),
+                          ...(design.roofConfig ?? {}),
+                          pitchDegrees: Number(event.target.value),
+                        },
+                      })}
+                      className="mt-1 w-full"
+                    />
+                  </label>
+
+                  <label className="mt-3 block">
+                    <span className="flex items-center justify-between text-[9px] font-semibold text-slate-500">
+                      <span>Beiral</span>
+                      <strong>{(design.roofConfig?.overhang ?? DEFAULT_FACADE_DESIGN.roofConfig!.overhang).toFixed(2)} m</strong>
+                    </span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={1.5}
+                      step={0.05}
+                      value={design.roofConfig?.overhang ?? DEFAULT_FACADE_DESIGN.roofConfig!.overhang}
+                      onChange={(event) => updateDesign({
+                        roofConfig: {
+                          ...(DEFAULT_FACADE_DESIGN.roofConfig!),
+                          ...(design.roofConfig ?? {}),
+                          overhang: Number(event.target.value),
+                        },
+                      })}
+                      className="mt-1 w-full"
+                    />
+                  </label>
+
+                  <div className="mt-3">
+                    <div className="mb-1 text-[9px] font-semibold text-slate-500">Direção da cumeeira</div>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {([
+                        ["auto", "Automática"],
+                        ["x", "Horizontal"],
+                        ["y", "Vertical"],
+                      ] as const).map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => updateDesign({
+                            roofConfig: {
+                              ...(DEFAULT_FACADE_DESIGN.roofConfig!),
+                              ...(design.roofConfig ?? {}),
+                              ridgeDirection: value,
+                            },
+                          })}
+                          className={(design.roofConfig?.ridgeDirection ?? DEFAULT_FACADE_DESIGN.roofConfig!.ridgeDirection) === value
+                            ? "rounded-lg bg-slate-950 px-1.5 py-2 text-[9px] font-bold text-white"
+                            : "rounded-lg border bg-white px-1.5 py-2 text-[9px] font-bold text-slate-600"}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <label className="mt-3 flex items-center justify-between rounded-lg border bg-white px-2.5 py-2">
+                    <span className="text-[10px] font-semibold text-slate-600">Calhas automáticas</span>
+                    <input
+                      type="checkbox"
+                      checked={design.roofConfig?.gutter ?? DEFAULT_FACADE_DESIGN.roofConfig!.gutter}
+                      onChange={(event) => updateDesign({
+                        roofConfig: {
+                          ...(DEFAULT_FACADE_DESIGN.roofConfig!),
+                          ...(design.roofConfig ?? {}),
+                          gutter: event.target.checked,
+                        },
+                      })}
+                    />
+                  </label>
+                </div>
+              )}
+
+              {facade.roof === "platibanda" && (
+                <label className="mt-3 block rounded-xl border bg-slate-50 p-3">
+                  <span className="flex items-center justify-between text-[9px] font-semibold text-slate-500">
+                    <span>Altura da platibanda</span>
+                    <strong>{(design.roofConfig?.parapetHeight ?? DEFAULT_FACADE_DESIGN.roofConfig!.parapetHeight).toFixed(2)} m</strong>
+                  </span>
+                  <input
+                    type="range"
+                    min={0.2}
+                    max={1.6}
+                    step={0.05}
+                    value={design.roofConfig?.parapetHeight ?? DEFAULT_FACADE_DESIGN.roofConfig!.parapetHeight}
+                    onChange={(event) => updateDesign({
+                      roofConfig: {
+                        ...(DEFAULT_FACADE_DESIGN.roofConfig!),
+                        ...(design.roofConfig ?? {}),
+                        parapetHeight: Number(event.target.value),
+                      },
+                    })}
+                    className="mt-2 w-full"
+                  />
+                </label>
+              )}
             </div>
 
             <button
