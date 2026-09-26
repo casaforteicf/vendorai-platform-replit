@@ -10,6 +10,7 @@ import { validateConceptLayout } from "./conceptGeometry";
 import { evaluateConceptAcceptance } from "./conceptAcceptance";
 import { autoRepairConceptLayout } from "./conceptAutoRepair";
 import { evaluateConceptIntent, type ConceptIntentInput } from "./conceptIntent";
+import { optimizeArchitecturalCandidates } from "./conceptMultiObjectiveOptimizer";
 import { generateTypologyLayout } from "./conceptTypologyLayout";
 
 export type ClientRoomRequestKind =
@@ -875,8 +876,19 @@ export function buildClientBriefAlternatives(
       site: { frontSide: placement.frontSide, setbackFront: 0 },
       intent,
     });
-    const repairedRooms = repair.rooms as ClientBriefPlan["rooms"];
-    const acceptance = repair.after;
+
+    const optimized = optimizeArchitecturalCandidates({
+      rooms: repair.rooms as never,
+      lotWidth,
+      lotDepth,
+      floors: template.floors,
+      site: { frontSide: placement.frontSide, setbackFront: 0 },
+      intent,
+      variantsPerFloor: 3,
+    });
+    const selected = optimized.recommended;
+    const repairedRooms = (selected?.rooms ?? repair.rooms) as ClientBriefPlan["rooms"];
+    const acceptance = selected?.acceptance ?? repair.after;
     if (acceptance.status === "blocked") return [];
     const features = templateFeatures(template);
     const score =
@@ -888,10 +900,18 @@ export function buildClientBriefAlternatives(
       + (brief.pool !== features.pool ? 3 : 0)
       + (brief.office !== features.office ? 1 : 0)
       + (100 - repair.afterIntent.score) / 8;
-    return [{ template, rooms: repairedRooms, features, score, repair }];
+    return [{
+      template,
+      rooms: repairedRooms,
+      features,
+      score,
+      repair,
+      optimizer: optimized,
+      selectedCandidate: selected,
+    }];
   }).sort((a, b) => a.score - b.score).slice(0, 3);
 
-  return scored.map(({ template, rooms, features, repair }, index) => {
+  return scored.map(({ template, rooms, features, repair, optimizer, selectedCandidate }, index) => {
     const differences = briefDifferences(brief, features);
     const acceptance = evaluateConceptAcceptance({
       rooms: rooms as never,
@@ -914,7 +934,7 @@ export function buildClientBriefAlternatives(
       suggestedArea: template.suggestedArea,
       layoutPreferences: { ...DEFAULT_LAYOUT_PREFERENCES },
       rooms: rooms as ClientBriefPlan["rooms"],
-      architectureScore,
+      architectureScore: selectedCandidate?.balanceScore ?? architectureScore,
       qualityIssues: [
         ...acceptance.issues.map((issue) => issue.message),
         ...intent.issues.map((issue) => issue.message),
@@ -924,6 +944,12 @@ export function buildClientBriefAlternatives(
           ? ["Planta passou no gate automático de coerência arquitetônica."]
           : ["Planta utilizável, mas requer revisão dos avisos arquitetônicos antes da aprovação final."]),
         ...intent.strengths,
+        ...(selectedCandidate?.paretoEfficient
+          ? [`Solução selecionada no Pareto front entre ${optimizer.candidates.length} candidato(s) internos, equilibrando múltiplos objetivos arquitetônicos.`]
+          : []),
+        ...(selectedCandidate?.tradeoffs?.length
+          ? [`Trade-offs principais: ${selectedCandidate.tradeoffs.join(", ")}.`]
+          : []),
         ...(repair.improved
           ? [`Auto-Repair melhorou a solução técnica de ${repair.before.score} para ${repair.after.score} e a aderência ao briefing de ${repair.beforeIntent.score} para ${repair.afterIntent.score} após ${repair.attempts} ciclo(s).`]
           : []),
