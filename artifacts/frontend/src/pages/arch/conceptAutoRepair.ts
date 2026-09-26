@@ -17,6 +17,7 @@ export type ConceptAutoRepairResult = {
   attempts: number;
   beforeIntent: ConceptIntentResult;
   afterIntent: ConceptIntentResult;
+  unresolvedIssueIds: string[];
 };
 
 type RepairInput = {
@@ -109,6 +110,8 @@ function clampAndResize(
 ): { rooms: ConceptRoomShape[]; actions: ConceptRepairAction[] } {
   const actions: ConceptRepairAction[] = [];
   const next = rooms.map((room) => {
+    if (room.locked) return { ...room };
+
     if (room.kind === "piscina") {
       const x = Math.max(0, Math.min(room.x, Math.max(0, lotWidth - room.width)));
       const y = Math.max(0, Math.min(room.y, Math.max(0, lotDepth - room.depth)));
@@ -156,6 +159,7 @@ function snapSuiteBaths(
   );
 
   for (const bath of baths) {
+    if (bath.locked) continue;
     const suite = findSuiteOwner(bath, next);
     if (!suite) continue;
 
@@ -280,6 +284,11 @@ export function autoRepairConceptLayout(input: RepairInput): ConceptAutoRepairRe
     if (best.status === "approved" && bestIntent.score >= 90 && intentErrors === 0) break;
   }
 
+  const unresolvedIssueIds = [
+    ...best.issues.map((issue) => issue.id),
+    ...bestIntent.issues.map((issue) => issue.id),
+  ];
+
   return {
     rooms: bestRooms,
     before,
@@ -289,5 +298,6 @@ export function autoRepairConceptLayout(input: RepairInput): ConceptAutoRepairRe
     attempts,
     beforeIntent,
     afterIntent: bestIntent,
+    unresolvedIssueIds: [...new Set(unresolvedIssueIds)],
   };
 }
