@@ -194,6 +194,21 @@ const specialistHousePlanSchema = z.object({
     cookingProfile: z.enum(["pratico","cotidiano","intenso"]).optional(),
     routineNotes: z.string().max(700).optional(),
   }).optional(),
+  brazilianContext: z.object({
+    region: z.enum(["norte","nordeste","centro_oeste","sudeste","sul","nao_informada"]).optional(),
+    state: z.string().max(40).optional(),
+    city: z.string().max(120).optional(),
+    lotContext: z.enum(["urbano","condominio","rural","litoral","serra","nao_informado"]).optional(),
+    lifeCycle: z.enum(["atual","familia_crescendo","multigeracional","envelhecer_na_casa","investimento"]).optional(),
+    expansionPriority: z.enum(["nao","prever","alta"]).optional(),
+    outdoorLiving: z.enum(["baixo","medio","alto"]).optional(),
+    serviceRoutine: z.enum(["compacta","tradicional","intensa"]).optional(),
+    privacySecurity: z.enum(["aberta","equilibrada","protegida"]).optional(),
+    vehicleProfile: z.enum(["compacto","sedan","suv","pickup","misto"]).optional(),
+    evReady: z.boolean().optional(),
+    solarReady: z.boolean().optional(),
+    rainwaterReady: z.boolean().optional(),
+  }).optional(),
   siteContext: z.object({
     frontSide: z.enum(["top","bottom","left","right"]).optional(),
     northSide: z.enum(["top","bottom","left","right","nao_informado"]).optional(),
@@ -1965,6 +1980,7 @@ ${JSON.stringify({
   brief: input.brief,
   vision: input.vision ?? {},
   household: input.household ?? {},
+  brazilianContext: input.brazilianContext ?? {},
   siteContext: input.siteContext ?? {},
 })}
 
@@ -2208,6 +2224,7 @@ router.post("/arch/concept-plan-specialist", authenticate, async (req, res) => {
   const strategyRepertoire = buildArchitecturalStrategyRepertoire({
     intervention: input.intervention,
     vision: input.vision ?? null,
+    brazilianContext: input.brazilianContext ?? null,
   });
 
   const basePrompt = `Você é o ARQDOR ARCHITECT AI, arquiteto residencial sênior especializado em casas brasileiras.
@@ -2239,6 +2256,7 @@ GRAFO DE RELAÇÕES ENTRE AMBIENTES: ${JSON.stringify(input.brief.adjacencyRules
 GRAFO DE ACESSOS E PORTAS: ${JSON.stringify(input.brief.accessRules ?? [])}
 VISÃO / DNA DO CLIENTE: ${JSON.stringify(input.vision ?? {})}
 CONTEXTO FAMILIAR E ROTINA: ${JSON.stringify(input.household ?? {})}
+CONTEXTO RESIDENCIAL BRASILEIRO: ${JSON.stringify(input.brazilianContext ?? {})}
 CONTEXTO DO TERRENO: ${JSON.stringify(input.siteContext ?? {})}
 
 INTERPRETAÇÃO OBRIGATÓRIA DO BRIEFING:
@@ -2255,7 +2273,13 @@ INTERPRETAÇÃO OBRIGATÓRIA DO BRIEFING:
 - orçamento-alvo e estratégia de custo devem limitar complexidade gratuita de perímetro, vãos, recortes e cobertura;
 - aplique VALUE ENGINEERING: preserve decisões que aumentam qualidade espacial, clima, privacidade ou identidade e simplifique decisões caras que não entregam benefício proporcional;
 - prefira concentrar investimento em poucos gestos arquitetônicos relevantes em vez de espalhar complexidade por toda a casa;
-- necessidades futuras devem gerar flexibilidade real sempre que possível, sem criar cômodos não solicitados.
+- necessidades futuras devem gerar flexibilidade real sempre que possível, sem criar cômodos não solicitados;
+- contexto regional brasileiro deve orientar clima, transições, proteção solar, relação com área externa e manutenção, mas NUNCA virar estereótipo formal;
+- contexto de lote urbano/condomínio/rural/litoral/serra deve afetar privacidade, acesso e implantação sem inventar legislação;
+- ciclo de vida deve orientar adaptabilidade: família crescendo, multigeracional, envelhecimento na casa ou investimento exigem estratégias diferentes;
+- rotina de serviço deve considerar lavanderia, secagem, despensa/apoio e acesso de serviço quando isso for relevante;
+- perfil de veículo deve afetar a dimensão funcional da garagem e manobra;
+- preparações futuras para EV, solar e captação de água devem ser compatíveis com garagem/cobertura/área técnica sem criar equipamentos fictícios.
 
 PROGRAMA FIXO DE AMBIENTES:
 ${JSON.stringify(program)}
@@ -2518,6 +2542,7 @@ router.post("/arch/concept-projects/:id/facade-study", authenticate, async (req,
   const facadeRepertoire = buildArchitecturalStrategyRepertoire({
     intervention: facadeIntervention,
     vision: projectBrief?.vision ?? null,
+    brazilianContext: projectBrief?.brazilianContext ?? null,
   });
 
   const prompt = `Você é o Arqdor Facade Architect AI, arquiteto especialista em composição de fachadas residenciais brasileiras.
@@ -2832,6 +2857,7 @@ router.post("/arch/concept-projects/:id/develop-with-ai", authenticate, async (r
   const developmentRepertoire = buildArchitecturalStrategyRepertoire({
     intervention: parsed.data.mode === "preservacao_maxima" ? "preservar" : parsed.data.mode === "automatico" ? "valorizar" : "otimizar",
     vision: projectBrief?.vision ?? null,
+    brazilianContext: projectBrief?.brazilianContext ?? null,
   });
 
   const prompt = `Você é o Copiloto de Desenvolvimento Arquitetônico do Arqdor.
