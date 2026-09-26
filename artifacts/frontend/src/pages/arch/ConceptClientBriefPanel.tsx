@@ -1061,6 +1061,147 @@ export default function ConceptClientBriefPanel({
         </div>
       </div>
 
+      <section className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-4">
+        <div className="flex items-start gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-emerald-600 text-white">
+            <Home className="h-4 w-4" />
+          </span>
+          <div>
+            <div className="text-xs font-bold text-slate-900">Contexto residencial brasileiro</div>
+            <p className="mt-1 text-[10px] leading-4 text-slate-600">
+              O Arqdor usa região, ciclo de vida e rotina para adaptar implantação, privacidade, serviço, expansão futura e relação com áreas externas. Isso orienta o projeto sem impor um “estilo brasileiro” genérico.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <label className="text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">
+            Região
+            <select
+              value={brazilianContext.region ?? "nao_informada"}
+              onChange={(event) => setBrazilianContext((current) => ({ ...current, region: event.target.value as BrazilianResidentialContext["region"] }))}
+              className="mt-1 h-9 w-full rounded-lg border bg-white px-2 text-[10px] font-semibold normal-case tracking-normal text-slate-700"
+            >
+              <option value="nao_informada">Não informada</option>
+              <option value="norte">Norte</option>
+              <option value="nordeste">Nordeste</option>
+              <option value="centro_oeste">Centro-Oeste</option>
+              <option value="sudeste">Sudeste</option>
+              <option value="sul">Sul</option>
+            </select>
+          </label>
+          <label className="text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">
+            Contexto do lote
+            <select
+              value={brazilianContext.lotContext ?? "nao_informado"}
+              onChange={(event) => setBrazilianContext((current) => ({ ...current, lotContext: event.target.value as BrazilianResidentialContext["lotContext"] }))}
+              className="mt-1 h-9 w-full rounded-lg border bg-white px-2 text-[10px] font-semibold normal-case tracking-normal text-slate-700"
+            >
+              <option value="nao_informado">Não informado</option>
+              <option value="urbano">Urbano</option>
+              <option value="condominio">Condomínio</option>
+              <option value="rural">Rural</option>
+              <option value="litoral">Litoral</option>
+              <option value="serra">Serra</option>
+            </select>
+          </label>
+          <input
+            value={brazilianContext.state ?? ""}
+            onChange={(event) => setBrazilianContext((current) => ({ ...current, state: event.target.value.slice(0, 40) }))}
+            placeholder="Estado (ex.: SC)"
+            className="h-9 rounded-lg border bg-white px-2.5 text-[10px] text-slate-700"
+          />
+          <input
+            value={brazilianContext.city ?? ""}
+            onChange={(event) => setBrazilianContext((current) => ({ ...current, city: event.target.value.slice(0, 120) }))}
+            placeholder="Cidade"
+            className="h-9 rounded-lg border bg-white px-2.5 text-[10px] text-slate-700"
+          />
+        </div>
+
+        <div className="mt-3">
+          <div className="mb-1.5 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">Ciclo de vida da casa</div>
+          <div className="grid grid-cols-2 gap-1.5">
+            {([
+              ["atual","Atender o momento atual"],
+              ["familia_crescendo","Família crescendo"],
+              ["multigeracional","Multigeracional"],
+              ["envelhecer_na_casa","Envelhecer na casa"],
+              ["investimento","Investimento / flexível"],
+            ] as const).map(([value,label]) => (
+              <ChoiceButton key={value} active={brazilianContext.lifeCycle === value}
+                onClick={() => setBrazilianContext((current) => ({ ...current, lifeCycle: value }))}>{label}</ChoiceButton>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <label className="text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">
+            Expansão futura
+            <select value={brazilianContext.expansionPriority ?? "prever"}
+              onChange={(event) => setBrazilianContext((current) => ({ ...current, expansionPriority: event.target.value as BrazilianResidentialContext["expansionPriority"] }))}
+              className="mt-1 h-9 w-full rounded-lg border bg-white px-2 text-[10px] font-semibold normal-case tracking-normal text-slate-700">
+              <option value="nao">Não é prioridade</option>
+              <option value="prever">Deixar preparada</option>
+              <option value="alta">É prioridade alta</option>
+            </select>
+          </label>
+          <label className="text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">
+            Privacidade / rua
+            <select value={brazilianContext.privacySecurity ?? "equilibrada"}
+              onChange={(event) => setBrazilianContext((current) => ({ ...current, privacySecurity: event.target.value as BrazilianResidentialContext["privacySecurity"] }))}
+              className="mt-1 h-9 w-full rounded-lg border bg-white px-2 text-[10px] font-semibold normal-case tracking-normal text-slate-700">
+              <option value="aberta">Mais aberta</option>
+              <option value="equilibrada">Equilibrada</option>
+              <option value="protegida">Mais protegida</option>
+            </select>
+          </label>
+          <label className="text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">
+            Vida externa
+            <select value={brazilianContext.outdoorLiving ?? "medio"}
+              onChange={(event) => setBrazilianContext((current) => ({ ...current, outdoorLiving: event.target.value as BrazilianResidentialContext["outdoorLiving"] }))}
+              className="mt-1 h-9 w-full rounded-lg border bg-white px-2 text-[10px] font-semibold normal-case tracking-normal text-slate-700">
+              <option value="baixo">Baixa</option>
+              <option value="medio">Média</option>
+              <option value="alto">Alta</option>
+            </select>
+          </label>
+          <label className="text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">
+            Rotina de serviço
+            <select value={brazilianContext.serviceRoutine ?? "tradicional"}
+              onChange={(event) => setBrazilianContext((current) => ({ ...current, serviceRoutine: event.target.value as BrazilianResidentialContext["serviceRoutine"] }))}
+              className="mt-1 h-9 w-full rounded-lg border bg-white px-2 text-[10px] font-semibold normal-case tracking-normal text-slate-700">
+              <option value="compacta">Compacta</option>
+              <option value="tradicional">Tradicional</option>
+              <option value="intensa">Intensa</option>
+            </select>
+          </label>
+          <label className="col-span-2 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">
+            Perfil de veículo
+            <select value={brazilianContext.vehicleProfile ?? "misto"}
+              onChange={(event) => setBrazilianContext((current) => ({ ...current, vehicleProfile: event.target.value as BrazilianResidentialContext["vehicleProfile"] }))}
+              className="mt-1 h-9 w-full rounded-lg border bg-white px-2 text-[10px] font-semibold normal-case tracking-normal text-slate-700">
+              <option value="compacto">Compacto</option>
+              <option value="sedan">Sedan</option>
+              <option value="suv">SUV</option>
+              <option value="pickup">Pickup</option>
+              <option value="misto">Misto / não definido</option>
+            </select>
+          </label>
+        </div>
+
+        <div className="mt-3 grid grid-cols-3 gap-1.5">
+          {([
+            ["evReady","Preparar EV"],
+            ["solarReady","Preparar solar"],
+            ["rainwaterReady","Água de chuva"],
+          ] as const).map(([key,label]) => (
+            <ChoiceButton key={key} active={Boolean(brazilianContext[key])}
+              onClick={() => setBrazilianContext((current) => ({ ...current, [key]: !current[key] }))}>{label}</ChoiceButton>
+          ))}
+        </div>
+      </section>
+
       <section>
         <div className="mb-2 flex items-center gap-2 text-xs font-bold text-slate-800">
           <BedDouble className="h-4 w-4 text-slate-500" />
