@@ -533,6 +533,7 @@ export default function ConceptClientBriefPanel({
           daylightStrategy: Array.isArray(item.daylightStrategy) ? item.daylightStrategy.map(String) : undefined,
           facadeDirection: Array.isArray(item.facadeDirection) ? item.facadeDirection.map(String) : undefined,
           selfCritique: Array.isArray(item.selfCritique) ? item.selfCritique.map(String) : undefined,
+          evolution: item.evolution && typeof item.evolution === "object" ? item.evolution : undefined,
         },
       } satisfies ClientBriefAlternative;
 
