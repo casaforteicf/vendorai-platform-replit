@@ -83,6 +83,7 @@ export type ArchConceptConfiguration = {
   publicTourToken?: string;
   publicTourEnabled?: boolean;
   publicTourUpdatedAt?: string;
+  facadeDesign?: Record<string, unknown>;
   projectMaster?: {
     version: number;
     frozenAt: string;
