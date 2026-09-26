@@ -128,6 +128,35 @@ describe("Arqdor photoreal render brief", () => {
     expect(brief).toContain("gutters enabled");
   });
 
+  it("locks vehicle, pedestrian and leisure zones into exterior render", () => {
+    const brief = buildConceptRenderBrief({
+      lotWidth: 15,
+      lotDepth: 25,
+      floors: 1,
+      desiredArea: 160,
+      facade,
+      renderView: "exterior",
+      sitePlacement: {
+        frontSide: "top",
+        setbackFront: 4,
+        setbackRear: 2,
+        setbackLeft: 1.5,
+        setbackRight: 1.5,
+      },
+      rooms: [
+        { id: "sala", kind: "sala", label: "Sala", floor: 0, x: 2, y: 5, width: 5, depth: 4 },
+        { id: "garagem", kind: "garagem", label: "Garagem", floor: 0, x: 8, y: 4, width: 4, depth: 5 },
+        { id: "piscina", kind: "piscina", label: "Piscina", floor: 0, x: 7, y: 14, width: 5, depth: 3 },
+      ],
+    });
+
+    expect(brief).toContain("SITE EXTERIOR GEOMETRY LOCK");
+    expect(brief).toContain("Acesso de veículos");
+    expect(brief).toContain("Acesso de pedestres");
+    expect(brief).toContain("Deck da área de lazer");
+    expect(brief).toContain("Faixa de segurança da piscina");
+  });
+
   it("does not invent a pool when the project has none", () => {
     const brief = buildConceptRenderBrief({
       lotWidth: 10,
