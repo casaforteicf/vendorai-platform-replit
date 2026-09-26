@@ -50,11 +50,12 @@ const MIN_SIDE: Partial<Record<string, number>> = {
 function score(result: ConceptAcceptanceResult, intent: ConceptIntentResult) {
   const statusWeight = result.status === "approved" ? 200 : result.status === "review" ? 100 : 0;
   return statusWeight
-    + result.score * 0.34
+    + result.score * 0.30
     + result.ergonomics.score * 0.13
     + result.furniture.score * 0.10
     + result.circulation.score * 0.08
     + result.climate.score * 0.05
+    + result.privacyAcoustic.score * 0.04
     + intent.score * 0.30
     - result.errors.length * 100
     - result.majorWarnings.length * 10
@@ -214,7 +215,7 @@ function acceptIfBetter(
  *
  * O motor nunca aceita uma correção que piore o gate atual.
  * Estratégia:
- * 1. normalizar dimensões/limites, ergonomia, mobiliário, circulação e desempenho passivo preliminar;
+ * 1. normalizar dimensões/limites, ergonomia, mobiliário, circulação, desempenho passivo e zoneamento de privacidade/acústica;
  * 2. aproximar banheiros privativos das respectivas suítes;
  * 3. testar relayouts determinísticos existentes;
  * 4. revalidar a cada tentativa e preservar somente a melhor solução.
