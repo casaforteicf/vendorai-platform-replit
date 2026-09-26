@@ -209,6 +209,24 @@ const specialistHousePlanSchema = z.object({
     solarReady: z.boolean().optional(),
     rainwaterReady: z.boolean().optional(),
   }).optional(),
+  regulatoryContext: z.object({
+    status: z.enum(["nao_informado","preliminar","verificado"]).optional(),
+    municipality: z.string().max(120).optional(),
+    sourceName: z.string().max(180).optional(),
+    sourceUrl: z.string().max(500).optional(),
+    verifiedAt: z.string().max(40).optional(),
+    setbacks: z.object({
+      top: z.number().min(0).max(30),
+      bottom: z.number().min(0).max(30),
+      left: z.number().min(0).max(30),
+      right: z.number().min(0).max(30),
+    }).optional(),
+    maxFloors: z.number().int().min(1).max(20).optional(),
+    occupancyRateMax: z.number().min(0.01).max(1).optional(),
+    farMax: z.number().min(0.1).max(20).optional(),
+    permeabilityMin: z.number().min(0).max(1).optional(),
+    notes: z.string().max(700).optional(),
+  }).optional(),
   siteContext: z.object({
     frontSide: z.enum(["top","bottom","left","right"]).optional(),
     northSide: z.enum(["top","bottom","left","right","nao_informado"]).optional(),
@@ -256,6 +274,7 @@ type QualityDimensionKey =
   | "roofVolumetry"
   | "costValue"
   | "brazilianFit"
+  | "codeCompliance"
   | "architecturalCoherence";
 
 type QualityDimension = {
@@ -423,6 +442,8 @@ function qualityDimensionForIssue(issue: string): QualityDimensionKey {
   if (low.includes("ciclo de vida") || low.includes("multigeracional") || low.includes("envelhecer")
     || low.includes("rotina de serviço") || low.includes("perfil de veículo") || low.includes("expansão futura")
     || low.includes("contexto residencial brasileiro")) return "brazilianFit";
+  if (low.includes("recuo") || low.includes("taxa de ocupação") || low.includes("coeficiente de aproveitamento")
+    || low.includes("regra municipal") || low.includes("pavimentos permitidos") || low.includes("viabilidade municipal")) return "codeCompliance";
   if (low.includes("lavanderia") || low.includes("compacta") || low.includes("perímetro")) return "constructability";
   return "architecturalCoherence";
 }
@@ -703,6 +724,124 @@ function evaluateCostValueFit(
       budgetTarget: hasBudgetTarget ? budgetTarget : null,
       budgetPerSqmTarget: budgetPerSqmTarget ? Math.round(budgetPerSqmTarget) : null,
     },
+  };
+}
+
+function evaluateRegulatoryFit(
+  rooms: SpecialistPlanRoom[],
+  input: z.infer<typeof specialistHousePlanSchema>,
+) {
+  const ctx = input.regulatoryContext ?? {};
+  const issues: string[] = [];
+  const recommendations: string[] = [];
+  const checks: Array<{ id: string; label: string; status: "pass" | "fail" | "pending"; value?: number; limit?: number }> = [];
+  let score = 100;
+
+  if (!ctx.status || ctx.status === "nao_informado") {
+    return {
+      score: 100,
+      status: "approved" as const,
+      blocking: false,
+      issues,
+      recommendations: ["Sem parâmetros municipais informados: viabilidade legal permanece pendente e não é inferida pela IA."],
+      checks,
+      source: null,
+      verified: false,
+    };
+  }
+
+  const verified = ctx.status === "verificado";
+  if (verified && (!ctx.municipality?.trim() || !ctx.sourceName?.trim())) {
+    recommendations.push("Regra municipal marcada como verificada sem município e fonte completos; tratar como preliminar até documentar a origem.");
+    score -= 12;
+  }
+
+  if (Number.isFinite(Number(ctx.maxFloors))) {
+    const limit = Number(ctx.maxFloors);
+    const pass = input.brief.floors <= limit;
+    checks.push({ id: "floors", label: "Pavimentos permitidos", status: pass ? "pass" : "fail", value: input.brief.floors, limit });
+    if (!pass) {
+      issues.push(`Viabilidade municipal: projeto possui ${input.brief.floors} pavimentos, acima dos ${limit} pavimentos permitidos informados.`);
+      score -= 45;
+    }
+  }
+
+  const buildingRooms = rooms.filter((room) => room.kind !== "piscina");
+  const ground = buildingRooms.filter((room) => room.floor === 0);
+  if (ctx.setbacks && ground.length) {
+    const minX = Math.min(...ground.map((room) => room.x));
+    const minY = Math.min(...ground.map((room) => room.y));
+    const maxX = Math.max(...ground.map((room) => room.x + room.width));
+    const maxY = Math.max(...ground.map((room) => room.y + room.depth));
+    const actual = {
+      left: minX,
+      right: input.lotWidth - maxX,
+      top: minY,
+      bottom: input.lotDepth - maxY,
+    };
+    for (const side of ["top","bottom","left","right"] as const) {
+      const required = Number(ctx.setbacks[side] ?? 0);
+      const pass = actual[side] + 0.02 >= required;
+      checks.push({ id: `setback-${side}`, label: `Recuo ${side}`, status: pass ? "pass" : "fail", value: Math.round(actual[side] * 100) / 100, limit: required });
+      if (!pass) {
+        issues.push(`Recuo municipal: lado ${side} possui ${actual[side].toFixed(2)} m e exige ${required.toFixed(2)} m conforme parâmetro informado.`);
+        score -= 30;
+      }
+    }
+  }
+
+  const lotArea = Math.max(1, input.lotWidth * input.lotDepth);
+  const groundArea = ground.reduce((sum, room) => sum + room.width * room.depth, 0);
+  const totalArea = buildingRooms.reduce((sum, room) => sum + room.width * room.depth, 0);
+  const occupancy = groundArea / lotArea;
+  const far = totalArea / lotArea;
+
+  if (Number.isFinite(Number(ctx.occupancyRateMax))) {
+    const limit = Number(ctx.occupancyRateMax);
+    const pass = occupancy <= limit + 0.005;
+    checks.push({ id: "occupancy", label: "Taxa de ocupação", status: pass ? "pass" : "fail", value: occupancy, limit });
+    if (!pass) {
+      issues.push(`Taxa de ocupação: estimada em ${Math.round(occupancy * 100)}%, acima do limite informado de ${Math.round(limit * 100)}%.`);
+      score -= 35;
+    }
+  }
+
+  if (Number.isFinite(Number(ctx.farMax))) {
+    const limit = Number(ctx.farMax);
+    const pass = far <= limit + 0.01;
+    checks.push({ id: "far", label: "Coeficiente de aproveitamento", status: pass ? "pass" : "fail", value: far, limit });
+    if (!pass) {
+      issues.push(`Coeficiente de aproveitamento: estimado em ${far.toFixed(2)}, acima do limite informado de ${limit.toFixed(2)}.`);
+      score -= 35;
+    }
+  }
+
+  if (Number.isFinite(Number(ctx.permeabilityMin))) {
+    checks.push({ id: "permeability", label: "Área permeável mínima", status: "pending", limit: Number(ctx.permeabilityMin) });
+    recommendations.push("Área permeável ainda precisa ser calculada com pisos externos, piscina, acessos e paisagismo completos; não é inferida apenas pela planta da casa.");
+  }
+
+  const failed = checks.filter((check) => check.status === "fail");
+  const blocking = verified && failed.length > 0;
+  if (!verified && failed.length) {
+    recommendations.push("Existem conflitos com parâmetros preliminares; confirmar a fonte antes de tratar como bloqueio legal.");
+  }
+
+  return {
+    score: Math.max(0, Math.round(score)),
+    status: blocking ? "blocked" as const : failed.length || score < 78 ? "warning" as const : "approved" as const,
+    blocking,
+    issues,
+    recommendations,
+    checks,
+    source: {
+      municipality: ctx.municipality ?? null,
+      sourceName: ctx.sourceName ?? null,
+      sourceUrl: ctx.sourceUrl ?? null,
+      verifiedAt: ctx.verifiedAt ?? null,
+      status: ctx.status,
+    },
+    verified,
   };
 }
 
@@ -1154,6 +1293,7 @@ function buildArchitecturalQualityGateV2(issues: string[]) {
     "roofVolumetry",
     "costValue",
     "brazilianFit",
+    "codeCompliance",
     "architecturalCoherence",
   ];
   const dimensionIssues = Object.fromEntries(keys.map((key) => [key, [] as string[]])) as Record<QualityDimensionKey, string[]>;
@@ -1195,17 +1335,18 @@ function buildArchitecturalQualityGateV2(issues: string[]) {
   })) as Record<QualityDimensionKey, QualityDimension>;
 
   const weights: Record<QualityDimensionKey, number> = {
-    program: 0.12,
-    circulation: 0.15,
+    program: 0.11,
+    circulation: 0.14,
     privacy: 0.08,
-    ergonomics: 0.10,
-    geometry: 0.10,
+    ergonomics: 0.09,
+    geometry: 0.09,
     constructability: 0.08,
     furnitureFit: 0.10,
     siteClimate: 0.08,
     roofVolumetry: 0.07,
     costValue: 0.06,
-    brazilianFit: 0.05,
+    brazilianFit: 0.04,
+    codeCompliance: 0.05,
     architecturalCoherence: 0.01,
   };
 
@@ -1502,7 +1643,8 @@ function evaluateSpecialistPlan(
   const roofVolumetry = evaluateRoofVolumetryFit(rooms, input);
   const costValue = evaluateCostValueFit(rooms, input);
   const brazilianFit = evaluateBrazilianResidentialFit(rooms, input);
-  issues.push(...furnitureFit.issues, ...siteClimate.issues, ...roofVolumetry.issues, ...costValue.issues, ...brazilianFit.issues);
+  const regulatoryFit = evaluateRegulatoryFit(rooms, input);
+  issues.push(...furnitureFit.issues, ...siteClimate.issues, ...roofVolumetry.issues, ...costValue.issues, ...brazilianFit.issues, ...regulatoryFit.issues);
 
   const uniqueIssues = [...new Set(issues)];
   const gate = buildArchitecturalQualityGateV2(uniqueIssues);
@@ -1531,21 +1673,35 @@ function evaluateSpecialistPlan(
     status: brazilianFit.status,
     issues: brazilianFit.issues.slice(0, 8),
   };
+  gate.dimensions.codeCompliance = {
+    score: regulatoryFit.score,
+    status: regulatoryFit.status,
+    issues: regulatoryFit.issues.slice(0, 8),
+  };
   gate.score = Math.round(
-    gate.dimensions.program.score * 0.12
-    + gate.dimensions.circulation.score * 0.15
+    gate.dimensions.program.score * 0.11
+    + gate.dimensions.circulation.score * 0.14
     + gate.dimensions.privacy.score * 0.08
-    + gate.dimensions.ergonomics.score * 0.10
-    + gate.dimensions.geometry.score * 0.10
+    + gate.dimensions.ergonomics.score * 0.09
+    + gate.dimensions.geometry.score * 0.09
     + gate.dimensions.constructability.score * 0.08
     + gate.dimensions.furnitureFit.score * 0.10
     + gate.dimensions.siteClimate.score * 0.08
     + gate.dimensions.roofVolumetry.score * 0.07
     + gate.dimensions.costValue.score * 0.06
-    + gate.dimensions.brazilianFit.score * 0.05
+    + gate.dimensions.brazilianFit.score * 0.04
+    + gate.dimensions.codeCompliance.score * 0.05
     + gate.dimensions.architecturalCoherence.score * 0.01
   );
   const furnitureBlocked = furnitureFit.status === "blocked";
+  const regulatoryBlocked = regulatoryFit.blocking;
+  if (regulatoryBlocked) {
+    gate.approved = false;
+    gate.hardBlockers = [...new Set([
+      ...gate.hardBlockers,
+      ...regulatoryFit.issues.slice(0, 4).map((item) => `Code Compliance: ${item}`),
+    ])].slice(0, 12);
+  }
   const brazilianFitBlocked = brazilianFit.status === "blocked";
   const siteClimateBlocked = siteClimate.status === "blocked";
   if (brazilianFitBlocked) {
@@ -1594,12 +1750,14 @@ function evaluateSpecialistPlan(
     roofVolumetry,
     costValue,
     brazilianFit,
+    regulatoryFit,
   } as SpecialistPlanQuality & {
     furnitureFit: ReturnType<typeof evaluateFurnitureFit>;
     siteClimate: ReturnType<typeof evaluateSiteClimateFit>;
     roofVolumetry: ReturnType<typeof evaluateRoofVolumetryFit>;
     costValue: ReturnType<typeof evaluateCostValueFit>;
     brazilianFit: ReturnType<typeof evaluateBrazilianResidentialFit>;
+    regulatoryFit: ReturnType<typeof evaluateRegulatoryFit>;
   };
 }
 
@@ -1741,6 +1899,7 @@ function sanitizeSpecialistPlan(
       roofVolumetry: (quality as SpecialistPlanQuality & { roofVolumetry?: ReturnType<typeof evaluateRoofVolumetryFit> }).roofVolumetry ?? null,
       costValue: (quality as SpecialistPlanQuality & { costValue?: ReturnType<typeof evaluateCostValueFit> }).costValue ?? null,
       brazilianFit: (quality as SpecialistPlanQuality & { brazilianFit?: ReturnType<typeof evaluateBrazilianResidentialFit> }).brazilianFit ?? null,
+      regulatoryFit: (quality as SpecialistPlanQuality & { regulatoryFit?: ReturnType<typeof evaluateRegulatoryFit> }).regulatoryFit ?? null,
     },
   };
 }
@@ -2401,6 +2560,7 @@ GRAFO DE ACESSOS E PORTAS: ${JSON.stringify(input.brief.accessRules ?? [])}
 VISÃO / DNA DO CLIENTE: ${JSON.stringify(input.vision ?? {})}
 CONTEXTO FAMILIAR E ROTINA: ${JSON.stringify(input.household ?? {})}
 CONTEXTO RESIDENCIAL BRASILEIRO: ${JSON.stringify(input.brazilianContext ?? {})}
+REGRAS MUNICIPAIS / VIABILIDADE INFORMADAS: ${JSON.stringify(input.regulatoryContext ?? {})}
 CONTEXTO DO TERRENO: ${JSON.stringify(input.siteContext ?? {})}
 
 INTERPRETAÇÃO OBRIGATÓRIA DO BRIEFING:
@@ -2423,7 +2583,9 @@ INTERPRETAÇÃO OBRIGATÓRIA DO BRIEFING:
 - ciclo de vida deve orientar adaptabilidade: família crescendo, multigeracional, envelhecimento na casa ou investimento exigem estratégias diferentes;
 - rotina de serviço deve considerar lavanderia, secagem, despensa/apoio e acesso de serviço quando isso for relevante;
 - perfil de veículo deve afetar a dimensão funcional da garagem e manobra;
-- preparações futuras para EV, solar e captação de água devem ser compatíveis com garagem/cobertura/área técnica sem criar equipamentos fictícios.
+- preparações futuras para EV, solar e captação de água devem ser compatíveis com garagem/cobertura/área técnica sem criar equipamentos fictícios;
+- NUNCA invente legislação, recuos ou índices municipais; quando regulatoryContext estiver vazio, trate conformidade legal como pendente;
+- quando regulatoryContext estiver marcado como verificado, respeite seus recuos, pavimentos, taxa de ocupação e coeficiente de aproveitamento como restrições duras.
 
 PROGRAMA FIXO DE AMBIENTES:
 ${JSON.stringify(program)}
