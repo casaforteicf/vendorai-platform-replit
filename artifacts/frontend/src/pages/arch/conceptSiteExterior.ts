@@ -285,5 +285,10 @@ export function applySiteExteriorToFacade(
     ...design,
     showLandscaping: true,
     volumes: [...kept, ...generated],
+    siteExterior: {
+      zones: plan.zones,
+      pedestrianEntry: plan.pedestrianEntry,
+      vehicleEntry: plan.vehicleEntry,
+    },
   };
 }
