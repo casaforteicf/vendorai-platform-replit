@@ -445,6 +445,18 @@ describe("Arqdor Concept — handoff idempotente para Projeto Arqdor", () => {
     expect(mockDbInsert).not.toHaveBeenCalled();
   });
 
+  it("bloqueia congelamento quando a geometria ainda não está apta", async () => {
+    mockDbSelect.mockReturnValue(selectLimitReturning([conceptA]));
+
+    const res = await request(app)
+      .post("/api/arch/concept-projects/concept-a/promote")
+      .set("Authorization", `Bearer ${tokenA}`);
+
+    expect(res.status).toBe(422);
+    expect(res.body.code).toBe("PROJECT_MASTER_NOT_READY");
+    expect(mockDbInsert).not.toHaveBeenCalled();
+  });
+
   it("bloqueia promote quando o Concept não pertence ao tenant/owner", async () => {
     mockDbSelect.mockReturnValue(selectLimitReturning([]));
 
