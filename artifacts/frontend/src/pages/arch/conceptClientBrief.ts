@@ -917,7 +917,23 @@ export function buildClientBriefAlternatives(
         : initialSelected;
     const repairedRooms = (selected?.rooms ?? repair.rooms) as ClientBriefPlan["rooms"];
     const acceptance = selected?.acceptance ?? repair.after;
-    if (acceptance.status === "blocked") return [];
+
+    // Gates avançados (clima, acústica, custo, ergonomia etc.) orientam ranking,
+    // auto-reparo e revisão, mas não podem zerar a lista inteira de alternativas.
+    // Só descartamos aqui quando a geometria-base continua inválida: sobreposição,
+    // ambiente fora do lote, escada obrigatória desalinhada ou vínculo de suíte quebrado.
+    let blockingGeometryErrors = 0;
+    for (let floor = 0; floor < Math.max(1, template.floors); floor += 1) {
+      blockingGeometryErrors += validateConceptLayout(
+        repairedRooms as never,
+        lotWidth,
+        lotDepth,
+        floor,
+        { frontSide: placement.frontSide, setbackFront: 0 },
+      ).filter((issue) => issue.severity === "error").length;
+    }
+    if (blockingGeometryErrors > 0) return [];
+
     const features = templateFeatures(template);
     const patternAffinity = typologyPatternAffinity(template.id, patternRecommendations);
     const score =
