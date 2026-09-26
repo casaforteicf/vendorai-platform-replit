@@ -113,8 +113,9 @@ export default function StoriesLojista() {
   });
 
   const remover = useMutation({
-    mutationFn: (id: string) => fetch(`/api/tenants/${tenantId}/stories/${id}`, { method: "DELETE", headers: authHeaders() }),
+    mutationFn: (id: string) => fetch(`/api/tenants/${tenantId}/stories/${id}`, { method: "DELETE", headers: authHeaders() }).then(async (r) => { if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Falha ao remover"); return r; }),
     onSuccess: () => qc.invalidateQueries({ queryKey: QK }),
+    onError: (err: Error) => toast({ title: "Não foi possível remover", description: err.message, variant: "destructive" }),
   });
 
   return (

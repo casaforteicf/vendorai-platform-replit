@@ -895,6 +895,14 @@ function WorkspaceInner() {
         overflow:'hidden', color:PHX.text,
       }}>
         <style>{CSS}</style>
+        {arqState.error && (
+          <div role="alert" style={{
+            flexShrink:0, padding:'8px 14px', background:'#7f1d1d', color:'#fee2e2',
+            fontSize:12, fontWeight:700, borderBottom:'1px solid #991b1b'
+          }}>
+            Falha de sincronização: {arqState.error}. As alterações locais só devem ser consideradas salvas após a sincronização voltar ao normal.
+          </div>
+        )}
 
         {/* ════════════════════════════════════════════════════════════
             TOP BAR — Chrome Premium
