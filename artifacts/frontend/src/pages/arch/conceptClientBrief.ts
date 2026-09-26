@@ -8,6 +8,7 @@ import {
 } from "./conceptTemplates";
 import { validateConceptLayout } from "./conceptGeometry";
 import { evaluateConceptAcceptance } from "./conceptAcceptance";
+import { autoRepairConceptLayout } from "./conceptAutoRepair";
 import { generateTypologyLayout } from "./conceptTypologyLayout";
 
 export type ClientRoomRequestKind =
@@ -853,13 +854,16 @@ export function buildClientBriefAlternatives(
   const scored = CONCEPT_TYPOLOGIES.flatMap((template) => {
     const rooms = buildTypologyPlan(template.id, lotWidth, lotDepth, placement.frontSide, placement.setbacks);
     if (!rooms || template.minLotWidth > lotWidth + 0.01) return [];
-    const acceptance = evaluateConceptAcceptance({
+
+    const repair = autoRepairConceptLayout({
       rooms: rooms as never,
       lotWidth,
       lotDepth,
       floors: template.floors,
       site: { frontSide: placement.frontSide, setbackFront: 0 },
     });
+    const repairedRooms = repair.rooms as ClientBriefPlan["rooms"];
+    const acceptance = repair.after;
     if (acceptance.status === "blocked") return [];
     const features = templateFeatures(template);
     const score =
@@ -870,10 +874,10 @@ export function buildClientBriefAlternatives(
       + (brief.gourmet !== features.gourmet ? 2 : 0)
       + (brief.pool !== features.pool ? 3 : 0)
       + (brief.office !== features.office ? 1 : 0);
-    return [{ template, rooms, features, score }];
+    return [{ template, rooms: repairedRooms, features, score, repair }];
   }).sort((a, b) => a.score - b.score).slice(0, 3);
 
-  return scored.map(({ template, rooms, features }, index) => {
+  return scored.map(({ template, rooms, features, repair }, index) => {
     const differences = briefDifferences(brief, features);
     const acceptance = evaluateConceptAcceptance({
       rooms: rooms as never,
@@ -896,9 +900,14 @@ export function buildClientBriefAlternatives(
       rooms: rooms as ClientBriefPlan["rooms"],
       architectureScore: acceptance.score,
       qualityIssues: acceptance.issues.map((issue) => issue.message),
-      qualityStrengths: acceptance.status === "approved"
-        ? ["Planta passou no gate automático de coerência arquitetônica."]
-        : ["Planta utilizável, mas requer revisão dos avisos arquitetônicos antes da aprovação final."],
+      qualityStrengths: [
+        ...(acceptance.status === "approved"
+          ? ["Planta passou no gate automático de coerência arquitetônica."]
+          : ["Planta utilizável, mas requer revisão dos avisos arquitetônicos antes da aprovação final."]),
+        ...(repair.improved
+          ? [`Auto-Repair melhorou a solução de ${repair.before.score} para ${repair.after.score} pontos após ${repair.attempts} ciclo(s).`]
+          : []),
+      ],
     };
   });
 }
