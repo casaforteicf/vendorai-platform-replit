@@ -1577,8 +1577,27 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   };
 
   const handleFacadeDesignChange = (next: FacadeDesignState) => {
+    const before = snapshotEditor();
+    facadeDesignRef.current = next;
     setFacadeDesign(next);
+    pushRoomHistory(before);
     void saveConcept(4, undefined, { facadeDesign: next });
+  };
+
+  const handleFacadePreferencesChange = (next: ConceptFacadePreferences) => {
+    const before = snapshotEditor();
+    facadePreferencesRef.current = next;
+    setFacadePreferences(next);
+    pushRoomHistory(before);
+    void saveConcept(4, undefined, { facadePreferences: next });
+  };
+
+  const handleSitePlacementChange = (next: SitePlacement) => {
+    const normalized = normalizeSitePlacement(next);
+    const before = snapshotEditor();
+    sitePlacementRef.current = normalized;
+    setSitePlacement(normalized);
+    pushRoomHistory(before);
   };
 
   const applyAiDevelopment = async (result: AIDevelopmentResponse) => {
@@ -5782,7 +5801,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       lotDepth={lotDepth}
                       rooms={safeRooms}
                       placement={sitePlacement}
-                      onPlacementChange={setSitePlacement}
+                      onPlacementChange={handleSitePlacementChange}
                       onMoveBuilding={moveWholeProjectTo}
                       onContinue={() => {
                         setEditorLibraryTab("rooms");
@@ -6915,7 +6934,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       rooms={safeRooms}
                       facade={facadePreferences}
                       design={facadeDesign}
-                      onFacadeChange={setFacadePreferences}
+                      onFacadeChange={handleFacadePreferencesChange}
                       onDesignChange={handleFacadeDesignChange}
                       realisticPreviewUrl={latestFacadeRenderUrl}
                       realisticPreviewLoading={conceptRender?.status === "processing"}
