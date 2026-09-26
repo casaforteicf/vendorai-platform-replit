@@ -7,6 +7,7 @@ import {
   type LayoutPreferences,
 } from "./conceptTemplates";
 import { validateConceptLayout } from "./conceptGeometry";
+import { evaluateConceptAcceptance } from "./conceptAcceptance";
 import { generateTypologyLayout } from "./conceptTypologyLayout";
 
 export type ClientRoomRequestKind =
@@ -852,11 +853,14 @@ export function buildClientBriefAlternatives(
   const scored = CONCEPT_TYPOLOGIES.flatMap((template) => {
     const rooms = buildTypologyPlan(template.id, lotWidth, lotDepth, placement.frontSide, placement.setbacks);
     if (!rooms || template.minLotWidth > lotWidth + 0.01) return [];
-    const errors = Array.from({ length: template.floors }, (_, floor) =>
-      validateConceptLayout(rooms as never, lotWidth, lotDepth, floor, { frontSide: placement.frontSide, setbackFront: 0 })
-        .filter((issue) => issue.severity === "error").length,
-    ).reduce((sum, count) => sum + count, 0);
-    if (errors > 0) return [];
+    const acceptance = evaluateConceptAcceptance({
+      rooms: rooms as never,
+      lotWidth,
+      lotDepth,
+      floors: template.floors,
+      site: { frontSide: placement.frontSide, setbackFront: 0 },
+    });
+    if (acceptance.status === "blocked") return [];
     const features = templateFeatures(template);
     const score =
       Math.abs(features.floors - brief.floors) * 12
@@ -871,6 +875,13 @@ export function buildClientBriefAlternatives(
 
   return scored.map(({ template, rooms, features }, index) => {
     const differences = briefDifferences(brief, features);
+    const acceptance = evaluateConceptAcceptance({
+      rooms: rooms as never,
+      lotWidth,
+      lotDepth,
+      floors: template.floors,
+      site: { frontSide: placement.frontSide, setbackFront: 0 },
+    });
     return {
       id: ids[index],
       title: `Opção ${letters[index]} · ${template.title}`,
@@ -883,6 +894,11 @@ export function buildClientBriefAlternatives(
       suggestedArea: template.suggestedArea,
       layoutPreferences: { ...DEFAULT_LAYOUT_PREFERENCES },
       rooms: rooms as ClientBriefPlan["rooms"],
+      architectureScore: acceptance.score,
+      qualityIssues: acceptance.issues.map((issue) => issue.message),
+      qualityStrengths: acceptance.status === "approved"
+        ? ["Planta passou no gate automático de coerência arquitetônica."]
+        : ["Planta utilizável, mas requer revisão dos avisos arquitetônicos antes da aprovação final."],
     };
   });
 }
