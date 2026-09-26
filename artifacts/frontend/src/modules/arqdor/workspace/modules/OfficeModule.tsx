@@ -551,6 +551,7 @@ export function OfficeModule() {
   const [agenda,     setAgenda]     = useState<AgendaData|null>(null)
   const [indicators, setIndicators] = useState<Indicators|null>(null)
   const [loading,    setLoading]    = useState(true)
+  const [error,      setError]      = useState<string|null>(null)
 
   const fetchPipeline   = useCallback(async () => { const r = await fetch(`${BASE}/arch/office/pipeline`, {headers:hdr()}); if(r.ok) setPipeline(await r.json()) }, [])
   const fetchDashboard  = useCallback(async () => { const r = await fetch(`${BASE}/arch/office/dashboard`, {headers:hdr()}); if(r.ok) setDashboard(await r.json()) }, [])
@@ -568,19 +569,37 @@ export function OfficeModule() {
   useEffect(() => { fetchAll() }, [fetchAll])
 
   async function handleMove(projectId: string, stage: string) {
-    await fetch(`${BASE}/arch/office/pipeline/${projectId}/stage`, { method:'PATCH', headers:hdr(), body: JSON.stringify({ stage }) })
+    setError(null)
+    const response = await fetch(`${BASE}/arch/office/pipeline/${projectId}/stage`, { method:'PATCH', headers:hdr(), body: JSON.stringify({ stage }) })
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      setError(body.error ?? 'Não foi possível mover o projeto no pipeline.')
+      return
+    }
     await fetchPipeline()
     await fetchDashboard()
   }
 
   async function handleSaveTemplate(tmpl: Partial<Template>) {
-    await fetch(`${BASE}/arch/office/templates`, { method:'POST', headers:hdr(), body: JSON.stringify(tmpl) })
+    setError(null)
+    const response = await fetch(`${BASE}/arch/office/templates`, { method:'POST', headers:hdr(), body: JSON.stringify(tmpl) })
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      setError(body.error ?? 'Não foi possível salvar o template.')
+      return
+    }
     await fetchTemplates()
     await fetchDashboard()
   }
 
   async function handleDeleteTemplate(id: string) {
-    await fetch(`${BASE}/arch/office/templates/${id}`, { method:'DELETE', headers:hdr() })
+    setError(null)
+    const response = await fetch(`${BASE}/arch/office/templates/${id}`, { method:'DELETE', headers:hdr() })
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      setError(body.error ?? 'Não foi possível remover o template.')
+      return
+    }
     await fetchTemplates()
   }
 
@@ -596,6 +615,7 @@ export function OfficeModule() {
   return (
     <div style={{ height:'100%', display:'flex', flexDirection:'column', overflow:'hidden', background:T.bg }}>
       <style>{CSS}</style>
+      {error && <div role="alert" style={{ padding:'8px 14px', background:'rgba(248,113,113,.12)', color:T.red, fontSize:10, fontWeight:700 }}>{error}</div>}
 
       {/* ── TOP BAR ── */}
       <div style={{ padding:'10px 16px', borderBottom:`1px solid ${T.border}`, flexShrink:0, background:T.sidebar }}>
