@@ -190,8 +190,9 @@ export function OportunidadesPrevistasCard({ leadId, summaryOnly = false }: { le
   });
 
   const remover = useMutation({
-    mutationFn: (id: string) => fetch(`/api/oportunidades-previstas/${id}`, { method: "DELETE", headers: authHeaders() }),
+    mutationFn: (id: string) => fetch(`/api/oportunidades-previstas/${id}`, { method: "DELETE", headers: authHeaders() }).then(async (r) => { if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Falha ao remover"); return r; }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["oportunidades-previstas", leadId] }),
+    onError: (err: Error) => toast({ title: "Erro ao remover", description: err.message, variant: "destructive" }),
   });
 
   return (
