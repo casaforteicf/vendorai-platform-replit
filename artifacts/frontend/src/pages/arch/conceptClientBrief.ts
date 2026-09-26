@@ -11,6 +11,7 @@ import { evaluateConceptAcceptance } from "./conceptAcceptance";
 import { autoRepairConceptLayout } from "./conceptAutoRepair";
 import { evaluateConceptIntent, type ConceptIntentInput } from "./conceptIntent";
 import { optimizeArchitecturalCandidates } from "./conceptMultiObjectiveOptimizer";
+import { runIterativeArchitecturalSearch } from "./conceptIterativeSearch";
 import { generateTypologyLayout } from "./conceptTypologyLayout";
 
 export type ClientRoomRequestKind =
@@ -887,7 +888,26 @@ export function buildClientBriefAlternatives(
       variantsPerFloor: 3,
       searchCandidates: 18,
     });
-    const selected = optimized.recommended;
+    const initialSelected = optimized.recommended;
+    const iterative = runIterativeArchitecturalSearch({
+      rooms: (initialSelected?.rooms ?? repair.rooms) as never,
+      lotWidth,
+      lotDepth,
+      floors: template.floors,
+      site: { frontSide: placement.frontSide, setbackFront: 0 },
+      intent,
+      maxGenerations: 4,
+      seedsPerGeneration: 3,
+      neighborhoodSize: 10,
+      minImprovement: 1,
+    });
+    const iterativeSelected = iterative.recommended;
+    const selected =
+      iterativeSelected
+      && iterativeSelected.acceptance.status !== "blocked"
+      && (!initialSelected || iterativeSelected.balanceScore >= initialSelected.balanceScore)
+        ? iterativeSelected
+        : initialSelected;
     const repairedRooms = (selected?.rooms ?? repair.rooms) as ClientBriefPlan["rooms"];
     const acceptance = selected?.acceptance ?? repair.after;
     if (acceptance.status === "blocked") return [];
@@ -908,11 +928,12 @@ export function buildClientBriefAlternatives(
       score,
       repair,
       optimizer: optimized,
+      iterative,
       selectedCandidate: selected,
     }];
   }).sort((a, b) => a.score - b.score).slice(0, 3);
 
-  return scored.map(({ template, rooms, features, repair, optimizer, selectedCandidate }, index) => {
+  return scored.map(({ template, rooms, features, repair, optimizer, iterative, selectedCandidate }, index) => {
     const differences = briefDifferences(brief, features);
     const acceptance = evaluateConceptAcceptance({
       rooms: rooms as never,
@@ -947,6 +968,9 @@ export function buildClientBriefAlternatives(
         ...intent.strengths,
         ...(selectedCandidate?.paretoEfficient
           ? [`Solução selecionada no Pareto front entre ${optimizer.candidates.length} candidato(s) internos, equilibrando múltiplos objetivos arquitetônicos.`]
+          : []),
+        ...(iterative.generations.length
+          ? [`Busca iterativa executou ${iterative.generations.length} geração(ões) e encerrou por ${iterative.stoppedReason === "converged" ? "convergência" : iterative.stoppedReason === "max_generations" ? "limite de gerações" : "ausência de novos candidatos"}.`]
           : []),
         ...(selectedCandidate?.tradeoffs?.length
           ? [`Trade-offs principais: ${selectedCandidate.tradeoffs.join(", ")}.`]
