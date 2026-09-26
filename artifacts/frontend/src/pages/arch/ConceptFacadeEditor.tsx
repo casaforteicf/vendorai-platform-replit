@@ -373,8 +373,7 @@ export default function ConceptFacadeEditor({
   const siteGeneratedItems = [
     "Muro frontal",
     "Portão da garagem",
-    "Jardim frontal",
-    ...(siteExteriorPlan.hasGourmet ? ["Pergolado do lazer"] : []),
+    ...siteExteriorPlan.zones.map((zone) => zone.label),
   ];
 
   useEffect(() => {
@@ -919,7 +918,7 @@ export default function ConceptFacadeEditor({
                   {siteSynced ? "Reaplicar implantação" : "Aplicar implantação ao exterior"}
                 </button>
                 <div className="mt-2 text-center text-[9px] leading-4 text-slate-400">
-                  Mantém frente, garagem e lazer coerentes com a planta.
+                  Mantém casa, acessos, circulação, jardim e lazer coerentes com a planta e o terreno.
                 </div>
               </div>
             </div>
