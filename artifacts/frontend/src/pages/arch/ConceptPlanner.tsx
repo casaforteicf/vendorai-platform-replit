@@ -44,7 +44,7 @@ import {
 } from "lucide-react";
 import { buildConceptGeometry, generateLayoutVariant, nudgeOpening } from "./conceptGeometry";
 import { type ConceptFacadePreferences } from "./ConceptVolumetry";
-import ConceptPlan2D, { type ConceptPlanObject } from "./ConceptPlan2D";
+import ConceptPlan2D, { type ConceptExplainabilityMode, type ConceptPlanObject } from "./ConceptPlan2D";
 import ConceptTypologyPreview from "./ConceptTypologyPreview";
 import ConceptDerivedFacade from "./ConceptDerivedFacade";
 import ConceptFacadeEditor, { type AIDevelopmentResponse } from "./ConceptFacadeEditor";
@@ -866,6 +866,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [editorView, setEditorView] = useState<"plan" | "model3d" | "facade" | "render">("plan");
   const [editorExperienceMode, setEditorExperienceMode] = useState<EditorExperienceMode>("guided");
   const [presentationMode, setPresentationMode] = useState<"client" | "architect">("client");
+  const [explainabilityMode, setExplainabilityMode] = useState<ConceptExplainabilityMode>("none");
   const [decisionHistory, setDecisionHistory] = useState<DecisionCheckpoint[]>([]);
   const [decisionLabel, setDecisionLabel] = useState("");
   const [decisionReason, setDecisionReason] = useState("");
@@ -6813,6 +6814,21 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         >
                           Cotas {showDimensions ? "✓" : ""}
                         </button>
+                        <select
+                          value={explainabilityMode}
+                          onChange={(event) => setExplainabilityMode(event.target.value as ConceptExplainabilityMode)}
+                          className={explainabilityMode === "none"
+                            ? "h-9 shrink-0 rounded-xl border bg-background px-2 text-xs font-semibold text-muted-foreground"
+                            : "h-9 shrink-0 rounded-xl border border-violet-300 bg-violet-50 px-2 text-xs font-semibold text-violet-800"}
+                          title="Camadas de explicação arquitetônica"
+                        >
+                          <option value="none">Explicar: desligado</option>
+                          <option value="zones">Explicar: zonas</option>
+                          <option value="flow">Explicar: fluxos</option>
+                          <option value="climate">Explicar: clima</option>
+                          <option value="future">Explicar: expansão</option>
+                          <option value="structure">Explicar: estrutura</option>
+                        </select>
                       </div>
                     )}
 
@@ -7000,6 +7016,14 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         onRoomDuplicate={duplicateRoomById}
                         onRoomDelete={deleteRoomById}
                         paintTarget={paintTool?.target ?? null}
+                        explainability={{
+                          mode: explainabilityMode,
+                          northSide: projectBrief?.siteContext?.northSide,
+                          desiredViews: projectBrief?.siteContext?.desiredViews,
+                          avoidViews: projectBrief?.siteContext?.avoidViews,
+                          expansionPriority: projectBrief?.brazilianContext?.expansionPriority,
+                          constructionMethod: projectBrief?.vision?.constructionMethod,
+                        }}
                       />
                       </div>
                       <div className="absolute bottom-[calc(5rem+env(safe-area-inset-bottom))] left-3 z-20 flex items-center gap-2 md:bottom-4 md:left-20">
