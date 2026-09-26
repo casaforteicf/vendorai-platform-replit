@@ -164,6 +164,25 @@ type EditorSnapshot = {
   wallMaterials: Record<string, string>;
 };
 
+type DecisionCheckpoint = {
+  id: string;
+  label: string;
+  reason?: string;
+  createdAt: string;
+  modelRevision: string;
+  metrics: {
+    totalArea: number;
+    roomCount: number;
+    wallCount: number;
+    openingCount: number;
+    floors: number;
+  };
+  snapshot: EditorSnapshot;
+  facadePreferences: ConceptFacadePreferences;
+  facadeDesign: FacadeDesignState;
+  projectBrief?: ProjectBriefSnapshot | null;
+};
+
 type ConceptSaveOverrides = {
   rooms?: Room[];
   customWalls?: CustomWall[];
@@ -343,6 +362,7 @@ type ConceptDraftResponse = {
     savedTourPoints?: SavedTourPoint[];
     sitePlacement?: SitePlacement;
     projectBrief?: ProjectBriefSnapshot;
+    decisionHistory?: DecisionCheckpoint[];
     unifiedModel?: {
       version: 1;
       revision: string;
@@ -845,6 +865,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [editorView, setEditorView] = useState<"plan" | "model3d" | "facade" | "render">("plan");
   const [editorExperienceMode, setEditorExperienceMode] = useState<EditorExperienceMode>("guided");
   const [presentationMode, setPresentationMode] = useState<"client" | "architect">("client");
+  const [decisionHistory, setDecisionHistory] = useState<DecisionCheckpoint[]>([]);
+  const [decisionLabel, setDecisionLabel] = useState("");
+  const [decisionReason, setDecisionReason] = useState("");
 
   useEffect(() => {
     // O pré-projeto tem só duas telas: o workspace (2D/3D/Fachada/Render) e o Resultado,
@@ -1302,6 +1325,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         setSavedTourPoints(Array.isArray(draft.configuration?.savedTourPoints) ? draft.configuration.savedTourPoints : []);
         setSitePlacement(migrateLegacySitePlacement(draft.configuration?.sitePlacement));
         setProjectBrief(draft.configuration?.projectBrief ?? null);
+        setDecisionHistory(Array.isArray(draft.configuration?.decisionHistory) ? draft.configuration.decisionHistory.slice(-12) : []);
         setRooms(loadedRooms);
         setOpeningOverrides(draft.openingOverrides && typeof draft.openingOverrides === "object" ? draft.openingOverrides : {});
         setCustomerProfile(draft.customerProfile ?? {});
@@ -1363,6 +1387,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         savedTourPoints: savedTourPointsOverride ?? savedTourPoints,
         sitePlacement,
         projectBrief: nextProjectBrief ?? undefined,
+        decisionHistory,
         unifiedModel,
       },
       rooms: nextRooms,
@@ -1948,6 +1973,51 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     spaceProfiles: (Array.isArray(spaceProfiles) ? spaceProfiles : []).map((profile) => ({ ...profile, centroid: { ...profile.centroid } })),
     wallMaterials: { ...wallMaterialsRef.current },
   });
+
+  const createDecisionCheckpoint = (labelOverride?: string, reasonOverride?: string) => {
+    const label = (labelOverride ?? decisionLabel).trim() || `Marco ${decisionHistory.length + 1}`;
+    const reason = (reasonOverride ?? decisionReason).trim();
+    const snapshot = cloneSnapshot(snapshotEditor());
+    const modelMeta = buildUnifiedModelMeta({
+      rooms: snapshot.rooms,
+      customWalls: snapshot.customWalls,
+      customOpenings: snapshot.customOpenings,
+      openingOverrides: snapshot.openingOverrides,
+      floors,
+    });
+    const checkpoint: DecisionCheckpoint = {
+      id: `decision-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      label: label.slice(0, 120),
+      reason: reason ? reason.slice(0, 500) : undefined,
+      createdAt: new Date().toISOString(),
+      modelRevision: modelMeta.revision,
+      metrics: {
+        totalArea: Math.round(snapshot.rooms.filter((room) => room.kind !== "piscina").reduce((sum, room) => sum + room.width * room.depth, 0) * 10) / 10,
+        roomCount: snapshot.rooms.length,
+        wallCount: snapshot.customWalls.length,
+        openingCount: snapshot.customOpenings.length + Object.keys(snapshot.openingOverrides).length,
+        floors,
+      },
+      snapshot,
+      facadePreferences: { ...facadePreferences },
+      facadeDesign: normalizeFacadeDesign(facadeDesign),
+      projectBrief,
+    };
+    setDecisionHistory((history) => [...history, checkpoint].slice(-12));
+    setDecisionLabel("");
+    setDecisionReason("");
+    return checkpoint;
+  };
+
+  const restoreDecisionCheckpoint = (checkpoint: DecisionCheckpoint) => {
+    pushRoomHistory(snapshotEditor());
+    restoreSnapshot(checkpoint.snapshot);
+    setFacadePreferences({ ...DEFAULT_FACADE, ...checkpoint.facadePreferences });
+    setFacadeDesign(normalizeFacadeDesign(checkpoint.facadeDesign));
+    if (checkpoint.projectBrief) setProjectBrief(checkpoint.projectBrief);
+    setStep(WORKSPACE_STEP);
+    setEditorView("plan");
+  };
 
   const cloneSnapshot = (snapshot: EditorSnapshot): EditorSnapshot => ({
     rooms: snapshot.rooms.map((room) => ({ ...room })),
