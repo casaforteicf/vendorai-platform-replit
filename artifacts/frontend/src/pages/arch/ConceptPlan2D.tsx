@@ -25,6 +25,17 @@ export type ConceptPlanObject = {
   model3dUrl?: string;
 };
 
+export type ConceptExplainabilityMode = "none" | "zones" | "flow" | "climate" | "future" | "structure";
+
+type ExplainabilityInput = {
+  mode: ConceptExplainabilityMode;
+  northSide?: "top" | "bottom" | "left" | "right" | "nao_informado";
+  desiredViews?: string;
+  avoidViews?: string;
+  expansionPriority?: "nao" | "prever" | "alta";
+  constructionMethod?: "nao_definido" | "icf" | "alvenaria" | "alvenaria_estrutural" | "steel_frame" | "wood_frame" | "concreto" | "pre_fabricado" | "hibrido";
+};
+
 type Props = {
   rooms: ConceptRoomShape[];
   lotWidth: number;
@@ -84,7 +95,204 @@ type Props = {
   onRoomDuplicate?: (roomId: string) => void;
   onRoomDelete?: (roomId: string) => void;
   paintTarget?: "object" | "wall" | "floor" | null;
+  explainability?: ExplainabilityInput;
 };
+
+function explainabilityZone(kind: string) {
+  if (["suite","quarto"].includes(kind)) return { label: "Íntimo", fill: "#8b5cf6" };
+  if (["cozinha","lavanderia","garagem"].includes(kind)) return { label: "Serviço", fill: "#64748b" };
+  if (["sala","gourmet"].includes(kind)) return { label: "Social", fill: "#f97316" };
+  if (["banheiro"].includes(kind)) return { label: "Apoio", fill: "#0ea5e9" };
+  if (["circulacao","escada"].includes(kind)) return { label: "Circulação", fill: "#eab308" };
+  if (kind === "piscina") return { label: "Lazer", fill: "#06b6d4" };
+  return { label: "Flexível", fill: "#10b981" };
+}
+
+function cardinalSideMap(northSide?: ExplainabilityInput["northSide"]) {
+  const north = northSide && northSide !== "nao_informado" ? northSide : null;
+  if (!north) return null;
+  const order = ["top","right","bottom","left"] as const;
+  const start = order.indexOf(north);
+  return {
+    north: order[start],
+    east: order[(start + 1) % 4],
+    south: order[(start + 2) % 4],
+    west: order[(start + 3) % 4],
+  };
+}
+
+function sideLabelPoint(side: "top" | "bottom" | "left" | "right", lotWidth: number, lotDepth: number) {
+  if (side === "top") return { x: lotWidth / 2, y: 0.45 };
+  if (side === "bottom") return { x: lotWidth / 2, y: lotDepth - 0.45 };
+  if (side === "left") return { x: 0.45, y: lotDepth / 2 };
+  return { x: lotWidth - 0.45, y: lotDepth / 2 };
+}
+
+function explainabilityGridProfile(method?: ExplainabilityInput["constructionMethod"]) {
+  if (method === "pre_fabricado") return { step: 1.5, caution: 8.0, label: "Pré-fabricado" };
+  if (method === "concreto") return { step: 2.5, caution: 7.5, label: "Concreto" };
+  if (method === "steel_frame" || method === "wood_frame") return { step: 1.2, caution: method === "steel_frame" ? 6.0 : 5.5, label: method === "steel_frame" ? "Steel Frame" : "Wood Frame" };
+  if (method === "alvenaria_estrutural") return { step: 1.0, caution: 5.5, label: "Alvenaria estrutural" };
+  if (method === "icf") return { step: 1.0, caution: 6.0, label: "ICF" };
+  if (method === "alvenaria") return { step: 1.0, caution: 6.5, label: "Alvenaria" };
+  if (method === "hibrido") return { step: 1.5, caution: 7.0, label: "Híbrido" };
+  return { step: 1.5, caution: 6.0, label: "Sistema a definir" };
+}
+
+function ConceptExplainabilityOverlay({
+  rooms,
+  lotWidth,
+  lotDepth,
+  input,
+}: {
+  rooms: ConceptRoomShape[];
+  lotWidth: number;
+  lotDepth: number;
+  input?: ExplainabilityInput;
+}) {
+  const mode = input?.mode ?? "none";
+  if (mode === "none") return null;
+
+  const center = (room: ConceptRoomShape) => ({ x: room.x + room.width / 2, y: room.y + room.depth / 2 });
+  const roomByKind = (kind: string) => rooms.find((room) => room.kind === kind);
+  const flowPairs: Array<[ConceptRoomShape | undefined, ConceptRoomShape | undefined, string]> = [
+    [roomByKind("garagem"), roomByKind("cozinha") ?? roomByKind("sala"), "chegada"],
+    [roomByKind("sala"), roomByKind("cozinha"), "social"],
+    [roomByKind("cozinha"), roomByKind("gourmet"), "serviço/lazer"],
+    [roomByKind("gourmet"), roomByKind("piscina"), "lazer"],
+  ];
+  const privateRooms = rooms.filter((room) => room.kind === "suite" || room.kind === "quarto");
+  const social = roomByKind("sala");
+
+  if (mode === "zones") {
+    return (
+      <g pointerEvents="none">
+        {rooms.map((room) => {
+          const zone = explainabilityZone(room.kind);
+          return (
+            <g key={`zone-${room.id}`}>
+              <rect x={room.x} y={room.y} width={room.width} height={room.depth} fill={zone.fill} opacity="0.16" stroke={zone.fill} strokeWidth="0.06" strokeDasharray="0.18 0.1" />
+              <text x={room.x + room.width / 2} y={room.y + 0.35} textAnchor="middle" fontSize="0.24" fontWeight="800" fill={zone.fill}>{zone.label}</text>
+            </g>
+          );
+        })}
+      </g>
+    );
+  }
+
+  if (mode === "flow") {
+    return (
+      <g pointerEvents="none">
+        <defs>
+          <marker id="arqdor-flow-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#f97316" />
+          </marker>
+          <marker id="arqdor-private-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#7c3aed" />
+          </marker>
+        </defs>
+        {flowPairs.flatMap(([from,to,label], index) => {
+          if (!from || !to || from.id === to.id) return [];
+          const a = center(from); const b = center(to);
+          return [<g key={`flow-${index}`}>
+            <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#f97316" strokeWidth="0.10" strokeDasharray="0.24 0.12" markerEnd="url(#arqdor-flow-arrow)" />
+            <text x={(a.x+b.x)/2} y={(a.y+b.y)/2 - 0.18} textAnchor="middle" fontSize="0.22" fontWeight="800" fill="#c2410c">{label}</text>
+          </g>];
+        })}
+        {social && privateRooms.slice(0,4).map((room) => {
+          const a=center(social), b=center(room);
+          return <line key={`private-${room.id}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#7c3aed" strokeWidth="0.07" strokeDasharray="0.16 0.13" markerEnd="url(#arqdor-private-arrow)" opacity="0.8" />;
+        })}
+      </g>
+    );
+  }
+
+  if (mode === "climate") {
+    const map = cardinalSideMap(input?.northSide);
+    return (
+      <g pointerEvents="none">
+        {map ? (
+          <>
+            {(["north","east","south","west"] as const).map((cardinal) => {
+              const point = sideLabelPoint(map[cardinal], lotWidth, lotDepth);
+              const label = cardinal === "north" ? "N" : cardinal === "east" ? "L" : cardinal === "south" ? "S" : "O";
+              return <g key={cardinal}>
+                <circle cx={point.x} cy={point.y} r="0.28" fill={cardinal === "north" ? "#dc2626" : "#ffffff"} stroke={cardinal === "north" ? "#dc2626" : "#94a3b8"} strokeWidth="0.05" />
+                <text x={point.x} y={point.y + 0.08} textAnchor="middle" fontSize="0.24" fontWeight="900" fill={cardinal === "north" ? "#ffffff" : "#475569"}>{label}</text>
+              </g>;
+            })}
+            {(() => {
+              const east = sideLabelPoint(map.east, lotWidth, lotDepth);
+              const west = sideLabelPoint(map.west, lotWidth, lotDepth);
+              return <>
+                <text x={east.x} y={east.y + 0.55} textAnchor="middle" fontSize="0.22" fontWeight="700" fill="#f59e0b">sol manhã</text>
+                <text x={west.x} y={west.y + 0.55} textAnchor="middle" fontSize="0.22" fontWeight="700" fill="#ea580c">sol tarde</text>
+              </>;
+            })()}
+          </>
+        ) : (
+          <g>
+            <rect x={0.6} y={0.6} width={Math.min(5.5, lotWidth-1.2)} height={0.8} rx="0.18" fill="#fff7ed" stroke="#fdba74" strokeWidth="0.04" />
+            <text x={0.85} y={1.1} fontSize="0.26" fontWeight="800" fill="#c2410c">Informe o norte para ativar a leitura solar.</text>
+          </g>
+        )}
+        {(input?.desiredViews || input?.avoidViews) && (
+          <g>
+            <rect x={0.6} y={Math.max(1.7, lotDepth-1.7)} width={Math.min(7.2, lotWidth-1.2)} height="1.05" rx="0.18" fill="#ecfeff" stroke="#67e8f9" strokeWidth="0.04" />
+            {input?.desiredViews && <text x={0.85} y={Math.max(2.15, lotDepth-1.25)} fontSize="0.22" fontWeight="700" fill="#0e7490">Vista desejada: {input.desiredViews.slice(0,42)}</text>}
+            {input?.avoidViews && <text x={0.85} y={Math.max(2.55, lotDepth-0.85)} fontSize="0.22" fontWeight="700" fill="#9f1239">Evitar: {input.avoidViews.slice(0,42)}</text>}
+          </g>
+        )}
+      </g>
+    );
+  }
+
+  if (mode === "future") {
+    const building = rooms.filter((room) => room.kind !== "piscina");
+    if (!building.length) return null;
+    const minX=Math.min(...building.map(r=>r.x)), maxX=Math.max(...building.map(r=>r.x+r.width));
+    const minY=Math.min(...building.map(r=>r.y)), maxY=Math.max(...building.map(r=>r.y+r.depth));
+    const margins = [
+      { side:"left", value:minX, x:0, y:minY, w:minX, h:maxY-minY },
+      { side:"right", value:lotWidth-maxX, x:maxX, y:minY, w:lotWidth-maxX, h:maxY-minY },
+      { side:"top", value:minY, x:minX, y:0, w:maxX-minX, h:minY },
+      { side:"bottom", value:lotDepth-maxY, x:minX, y:maxY, w:maxX-minX, h:lotDepth-maxY },
+    ].sort((a,b)=>b.value-a.value);
+    const best=margins[0];
+    return (
+      <g pointerEvents="none">
+        {best && best.value > 1.2 && input?.expansionPriority !== "nao" ? (
+          <>
+            <rect x={best.x} y={best.y} width={Math.max(0,best.w)} height={Math.max(0,best.h)} fill="#10b981" opacity="0.12" stroke="#059669" strokeWidth="0.07" strokeDasharray="0.22 0.14" />
+            <text x={best.x + Math.max(0,best.w)/2} y={best.y + Math.max(0,best.h)/2} textAnchor="middle" fontSize="0.27" fontWeight="900" fill="#047857">faixa potencial de expansão</text>
+          </>
+        ) : (
+          <text x={lotWidth/2} y={0.8} textAnchor="middle" fontSize="0.26" fontWeight="800" fill="#b45309">Expansão futura sem faixa livre evidente — revisar estratégia.</text>
+        )}
+      </g>
+    );
+  }
+
+  const grid = explainabilityGridProfile(input?.constructionMethod);
+  return (
+    <g pointerEvents="none">
+      {Array.from({length:Math.floor(lotWidth/grid.step)+1},(_,i)=>i*grid.step).map((x)=>(
+        <line key={`gx-${x}`} x1={x} y1={0} x2={x} y2={lotDepth} stroke="#7c3aed" strokeWidth="0.025" strokeDasharray="0.12 0.14" opacity="0.35" />
+      ))}
+      {Array.from({length:Math.floor(lotDepth/grid.step)+1},(_,i)=>i*grid.step).map((y)=>(
+        <line key={`gy-${y}`} x1={0} y1={y} x2={lotWidth} y2={y} stroke="#7c3aed" strokeWidth="0.025" strokeDasharray="0.12 0.14" opacity="0.35" />
+      ))}
+      {rooms.filter((room)=>room.kind!=="piscina" && Math.max(room.width,room.depth)>grid.caution).map((room)=>(
+        <rect key={`span-${room.id}`} x={room.x} y={room.y} width={room.width} height={room.depth} fill="#ef4444" opacity="0.10" stroke="#dc2626" strokeWidth="0.08" strokeDasharray="0.2 0.12" />
+      ))}
+      <g transform="translate(0.6 0.6)">
+        <rect width={Math.min(6.5,lotWidth-1.2)} height="0.85" rx="0.18" fill="#f5f3ff" stroke="#c4b5fd" strokeWidth="0.04" />
+        <text x="0.25" y="0.35" fontSize="0.22" fontWeight="800" fill="#6d28d9">{grid.label} · malha visual {grid.step.toFixed(1)} m</text>
+        <text x="0.25" y="0.65" fontSize="0.20" fill="#6d28d9">vermelho = vão acima da faixa conceitual de cautela</text>
+      </g>
+    </g>
+  );
+}
 
 function formatMeters(value: number) {
   return value.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -1286,6 +1494,13 @@ export default function ConceptPlan2D({
           strokeWidth="0.08"
           strokeDasharray="0.22 0.14"
           pointerEvents="none"
+        />
+
+        <ConceptExplainabilityOverlay
+          rooms={rooms}
+          lotWidth={lotWidth}
+          lotDepth={lotDepth}
+          input={explainability}
         />
 
         {snapGuides.x != null && (
