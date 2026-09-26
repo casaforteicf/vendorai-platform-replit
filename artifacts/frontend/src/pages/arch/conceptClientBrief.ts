@@ -77,6 +77,19 @@ export type ClientVision = {
   futureNeeds: string;
   mustHave: string;
   avoid: string;
+  household?: {
+    adults: number;
+    children: number;
+    elderly: number;
+    pets: boolean;
+  };
+  routine?: {
+    homeOffice: "never" | "sometimes" | "daily";
+    receivesGuests: "rarely" | "sometimes" | "often";
+    cooking: "little" | "daily" | "enthusiast";
+    laundry: "basic" | "intensive";
+    accessibility: "none" | "future" | "required";
+  };
 };
 
 const MIN_ROOM_AREAS: Record<ClientRoomRequestKind, number> = {
@@ -381,6 +394,91 @@ export function buildDefaultRoomProgram(brief: Pick<ClientBrief,
       { id: roomProgramId("pool"), kind: "piscina" as const, label: "Piscina", quantity: 1, targetArea: 18, floorPreference: "terreo" as const, required: true },
     ] : []),
   ];
+}
+
+export function enrichBriefWithClientVision(brief: ClientBrief, vision?: ClientVision): ClientBrief {
+  if (!vision) return brief;
+  const program = Array.isArray(brief.roomProgram) && brief.roomProgram.length
+    ? brief.roomProgram
+    : buildDefaultRoomProgram(brief);
+  const byKind = (kind: ClientRoomRequestKind) => program.find((item) => item.kind === kind);
+  const byLabel = (pattern: RegExp) => program.find((item) => pattern.test(item.label));
+  const rules = [...(brief.adjacencyRules ?? buildRecommendedAdjacencyRules({ ...brief, roomProgram: program }))];
+  const pairKey = (a: string, b: string) => [a, b].sort().join("::");
+  const seen = new Set(rules.map((rule) => pairKey(rule.fromRequestId, rule.toRequestId)));
+  const add = (
+    from: ClientRoomRequest | undefined,
+    to: ClientRoomRequest | undefined,
+    relation: ClientAdjacencyRelation,
+    required: boolean,
+  ) => {
+    if (!from || !to || from.id === to.id) return;
+    const key = pairKey(from.id, to.id);
+    if (seen.has(key)) return;
+    seen.add(key);
+    rules.push({
+      id: roomProgramId("vision-adj"),
+      fromRequestId: from.id,
+      toRequestId: to.id,
+      relation,
+      required,
+    });
+  };
+
+  const living = byKind("sala");
+  const kitchen = byKind("cozinha");
+  const gourmet = byKind("gourmet");
+  const laundry = byKind("lavanderia");
+  const garage = byKind("garagem");
+  const suite = byKind("suite");
+  const office = byLabel(/escrit|office/i);
+
+  const household = vision.household ?? { adults: 2, children: 0, elderly: 0, pets: false };
+  const routine = vision.routine ?? {
+    homeOffice: "never" as const,
+    receivesGuests: "sometimes" as const,
+    cooking: "daily" as const,
+    laundry: "basic" as const,
+    accessibility: "none" as const,
+  };
+
+  if (vision.lifestyle === "receber" || routine.receivesGuests === "often") {
+    add(living, gourmet ?? kitchen, "direct", true);
+    if (suite) add(suite, living, "away", true);
+  }
+  if (vision.protagonist === "cozinha" || routine.cooking === "enthusiast") {
+    add(kitchen, living, "direct", true);
+    add(kitchen, gourmet, "near", true);
+    add(kitchen, laundry, "away", false);
+  }
+  if (routine.homeOffice === "daily") {
+    add(office, living, "away", true);
+    add(office, gourmet, "away", true);
+  }
+  if (household.children > 0) {
+    const bedroom = byKind("quarto");
+    add(bedroom, suite, "near", false);
+    add(bedroom, living, "near", false);
+  }
+  if (routine.accessibility === "required" || household.elderly > 0) {
+    const socialBath = byLabel(/banheiro social|lavabo/i);
+    add(socialBath, living, "near", true);
+  }
+  if (routine.laundry === "intensive") {
+    add(laundry, garage, "near", false);
+  }
+
+  return {
+    ...brief,
+    roomProgram: program,
+    adjacencyRules: rules,
+    privateAwaySocial: brief.privateAwaySocial
+      || vision.priorities.includes("privacidade")
+      || vision.lifestyle === "tranquilidade",
+    integratedKitchen: brief.integratedKitchen
+      || vision.priorities.includes("integracao")
+      || vision.protagonist === "cozinha",
+  };
 }
 
 export function buildRecommendedAdjacencyRules(brief: ClientBrief): ClientAdjacencyRule[] {
