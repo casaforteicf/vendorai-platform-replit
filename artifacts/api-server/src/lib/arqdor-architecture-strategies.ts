@@ -10,6 +10,19 @@ type StrategyContext = {
     futureNeeds?: string;
     mustHave?: string;
     avoid?: string;
+    tasteDNA?: {
+      massing?: string;
+      roofExpression?: string;
+      openness?: string;
+      symmetry?: string;
+      warmth?: string;
+      materialDensity?: string;
+      landscaping?: string;
+      streetExpression?: string;
+      preferredMoves?: string[];
+      dislikedMoves?: string[];
+      learnedSignals?: Array<{ signal?: string; weight?: number }>;
+    };
   } | null;
   brazilianContext?: {
     region?: string;
@@ -79,6 +92,22 @@ export function buildArchitecturalStrategyRepertoire(ctx: StrategyContext): stri
   const protagonist = vision.protagonist ?? "social";
   const lifestyle = vision.lifestyle ?? "misto";
   const budget = vision.budgetStrategy ?? "equilibrar";
+  const taste = vision.tasteDNA ?? {};
+  const tasteGuidance: string[] = [];
+  if (taste.massing && taste.massing !== "neutro") tasteGuidance.push(`Massing preference: ${taste.massing}.`);
+  if (taste.roofExpression && taste.roofExpression !== "neutro") tasteGuidance.push(`Roof expression preference: ${taste.roofExpression}.`);
+  if (taste.openness) tasteGuidance.push(`Openness preference: ${taste.openness}.`);
+  if (taste.symmetry) tasteGuidance.push(`Composition preference: ${taste.symmetry}.`);
+  if (taste.warmth) tasteGuidance.push(`Visual warmth: ${taste.warmth}.`);
+  if (taste.materialDensity) tasteGuidance.push(`Material density: ${taste.materialDensity}.`);
+  if (taste.landscaping) tasteGuidance.push(`Landscaping intensity: ${taste.landscaping}.`);
+  if (taste.streetExpression) tasteGuidance.push(`Street expression: ${taste.streetExpression}.`);
+  for (const move of taste.preferredMoves ?? []) tasteGuidance.push(`Prefer when justified: ${move}`);
+  for (const move of taste.dislikedMoves ?? []) tasteGuidance.push(`Avoid unless functionally necessary: ${move}`);
+  const positiveSignals = (taste.learnedSignals ?? []).filter((item) => Number(item.weight) > 0.35).slice(-5);
+  const negativeSignals = (taste.learnedSignals ?? []).filter((item) => Number(item.weight) < -0.35).slice(-5);
+  for (const item of positiveSignals) if (item.signal) tasteGuidance.push(`Learned positive signal: ${item.signal}`);
+  for (const item of negativeSignals) if (item.signal) tasteGuidance.push(`Learned negative signal: ${item.signal}`);
   const brazil = ctx.brazilianContext ?? {};
   const regional: string[] = [];
   if (brazil.region && brazil.region !== "nao_informada") {
@@ -153,6 +182,9 @@ export function buildArchitecturalStrategyRepertoire(ctx: StrategyContext): stri
     "ARQDOR ARCHITECTURAL REPERTOIRE — use as strategies, NEVER as templates to copy:",
     freedom,
     cost,
+    "",
+    "CLIENT TASTE DNA (preference layer; never override function/site/cost):",
+    ...(tasteGuidance.length ? tasteGuidance.map((item) => `- ${item}`) : ["- No detailed Taste DNA supplied; infer cautiously from explicit references only."]),
     "",
     "BRAZILIAN RESIDENTIAL CONTEXT (principles, never stereotypes):",
     ...(regional.length ? regional.map((item) => `- ${item}`) : ["- No regional/life-cycle context supplied; do not invent one."]),
