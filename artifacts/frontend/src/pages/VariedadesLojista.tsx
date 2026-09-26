@@ -149,6 +149,7 @@ export default function VariedadesLojista() {
       qc.invalidateQueries({ queryKey: ["variedades-dia", tenantId] });
       qc.invalidateQueries({ queryKey: ["variedades-vagas-hoje"] });
     },
+    onError: (err: Error) => toast({ title: "Não foi possível remover", description: err.message, variant: "destructive" }),
   });
 
   const podePublicar = !!categoriaFinal && !!titulo.trim() && (!!conteudoTexto.trim() || !!videoPath) && !publicar.isPending;
