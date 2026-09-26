@@ -1780,6 +1780,115 @@ function evaluateSpecialistPlan(
   };
 }
 
+type MultiObjectiveKey =
+  | "function"
+  | "circulation"
+  | "privacy"
+  | "ergonomics"
+  | "climate"
+  | "constructability"
+  | "cost"
+  | "futureFit"
+  | "identity";
+
+function buildMultiObjectiveWeights(input: z.infer<typeof specialistHousePlanSchema>) {
+  const weights: Record<MultiObjectiveKey, number> = {
+    function: 0.18,
+    circulation: 0.15,
+    privacy: 0.08,
+    ergonomics: 0.12,
+    climate: 0.10,
+    constructability: 0.10,
+    cost: 0.09,
+    futureFit: 0.08,
+    identity: 0.10,
+  };
+
+  const priorities = new Set(input.vision?.priorities ?? []);
+  if (priorities.has("privacidade")) weights.privacy += 0.07;
+  if (priorities.has("luz_natural")) weights.climate += 0.06;
+  if (priorities.has("integracao")) {
+    weights.circulation += 0.04;
+    weights.function += 0.02;
+  }
+  if (priorities.has("flexibilidade")) weights.futureFit += 0.06;
+  if (priorities.has("armazenamento")) weights.ergonomics += 0.03;
+  if (priorities.has("natureza")) {
+    weights.climate += 0.03;
+    weights.identity += 0.02;
+  }
+
+  if (input.vision?.budgetStrategy === "otimizar") {
+    weights.cost += 0.08;
+    weights.constructability += 0.05;
+  } else if (input.vision?.budgetStrategy === "priorizar_experiencia") {
+    weights.identity += 0.07;
+    weights.function += 0.02;
+  }
+
+  if (input.intervention === "assinatura") weights.identity += 0.08;
+  if (input.intervention === "preservar") weights.function += 0.03;
+
+  if (input.brazilianContext?.lifeCycle && input.brazilianContext.lifeCycle !== "atual") {
+    weights.futureFit += 0.05;
+  }
+
+  const total = Object.values(weights).reduce((sum, value) => sum + value, 0);
+  return Object.fromEntries(
+    Object.entries(weights).map(([key, value]) => [key, value / total])
+  ) as Record<MultiObjectiveKey, number>;
+}
+
+function evaluateMultiObjectiveCandidate(candidate: any, input: z.infer<typeof specialistHousePlanSchema>) {
+  const dimensions = candidate?.quality?.dimensions ?? {};
+  const critic = Number(candidate?.criticReview?.score ?? 75);
+  const tasteSignals = input.vision?.tasteDNA?.learnedSignals ?? [];
+  const positiveTaste = tasteSignals.filter((item) => Number(item.weight) > 0.35).length;
+  const negativeTaste = tasteSignals.filter((item) => Number(item.weight) < -0.35).length;
+  const identityBase = Math.max(0, Math.min(100,
+    Math.round(
+      critic * 0.45
+      + Number(dimensions.architecturalCoherence?.score ?? candidate.architectureScore ?? 75) * 0.35
+      + Math.min(100, 75 + positiveTaste * 3 - negativeTaste * 1) * 0.20
+    )
+  ));
+
+  const vector: Record<MultiObjectiveKey, number> = {
+    function: Math.round((Number(dimensions.program?.score ?? 75) + Number(dimensions.furnitureFit?.score ?? 75)) / 2),
+    circulation: Number(dimensions.circulation?.score ?? 75),
+    privacy: Number(dimensions.privacy?.score ?? 75),
+    ergonomics: Number(dimensions.ergonomics?.score ?? 75),
+    climate: Number(dimensions.siteClimate?.score ?? 75),
+    constructability: Math.round((Number(dimensions.constructability?.score ?? 75) + Number(dimensions.roofVolumetry?.score ?? 75)) / 2),
+    cost: Number(dimensions.costValue?.score ?? 75),
+    futureFit: Math.round((Number(dimensions.brazilianFit?.score ?? 75) + Number(dimensions.codeCompliance?.score ?? 75)) / 2),
+    identity: identityBase,
+  };
+
+  const weights = buildMultiObjectiveWeights(input);
+  const utilityScore = Math.round(
+    (Object.keys(vector) as MultiObjectiveKey[])
+      .reduce((sum, key) => sum + vector[key] * weights[key], 0)
+  );
+
+  return { version: 1, utilityScore, vector, weights };
+}
+
+function candidateGeometrySignature(candidate: any) {
+  const rooms = Array.isArray(candidate?.rooms) ? candidate.rooms : [];
+  const parts = rooms
+    .map((room: any) => [
+      String(room.id ?? ""),
+      Number(room.floor ?? 0),
+      Math.round(Number(room.x ?? 0) * 2) / 2,
+      Math.round(Number(room.y ?? 0) * 2) / 2,
+      Math.round(Number(room.width ?? 0) * 2) / 2,
+      Math.round(Number(room.depth ?? 0) * 2) / 2,
+    ].join(":"))
+    .sort();
+  return parts.join("|");
+}
+
 function sanitizeSpecialistPlan(
   plan: any,
   input: z.infer<typeof specialistHousePlanSchema>,
@@ -2700,6 +2809,7 @@ NÃO aceite a primeira solução mental: critique e refine antes de responder.`;
 
   try {
     const rejectedFeedback: string[] = [];
+    const seenGeometrySignatures = new Set<string>();
     let bestApproved: any = null;
 
     for (let attempt = 1; attempt <= 4; attempt += 1) {
@@ -2776,10 +2886,22 @@ NÃO aceite a primeira solução mental: critique e refine antes de responder.`;
       };
 
       const criticReview = await runIndependentArchitecturalCritic(candidate, input);
+      const multiObjective = evaluateMultiObjectiveCandidate({ ...candidate, criticReview }, input);
       const reviewedCandidate = {
         ...candidate,
         criticReview,
+        multiObjective,
       };
+
+      const geometrySignature = candidateGeometrySignature(reviewedCandidate);
+      const repeatedGeometry = seenGeometrySignatures.has(geometrySignature);
+      seenGeometrySignatures.add(geometrySignature);
+
+      if (repeatedGeometry && attempt > 1) {
+        rejectedFeedback.push(
+          "A iteração repetiu praticamente a mesma geometria da rodada anterior. Preserve o partido, mas faça uma correção espacial material nos pontos criticados em vez de apenas reescrever a justificativa."
+        );
+      }
 
       if (!criticReview.approved) {
         rejectedFeedback.push(
@@ -2789,14 +2911,20 @@ NÃO aceite a primeira solução mental: critique e refine antes de responder.`;
         continue;
       }
 
-      if (!bestApproved || Number(reviewedCandidate.architectureScore ?? 0) > Number(bestApproved.architectureScore ?? 0)) {
+      if (!bestApproved || Number(reviewedCandidate.multiObjective?.utilityScore ?? 0) > Number(bestApproved.multiObjective?.utilityScore ?? 0)) {
         bestApproved = reviewedCandidate;
       }
 
-      if (Number(reviewedCandidate.architectureScore ?? 0) >= 78 && Number(criticReview.score ?? 0) >= 82) break;
+      const objectiveFloor = Math.min(...Object.values(reviewedCandidate.multiObjective.vector).map(Number));
+      if (
+        Number(reviewedCandidate.architectureScore ?? 0) >= 78
+        && Number(criticReview.score ?? 0) >= 82
+        && Number(reviewedCandidate.multiObjective.utilityScore ?? 0) >= 80
+        && objectiveFloor >= 62
+      ) break;
 
       rejectedFeedback.push(
-        `Pontuação arquitetônica ${reviewedCandidate.architectureScore}/100 e crítico independente ${criticReview.score}/100: refine o mesmo partido antes de apresentar.`,
+        `Pontuação arquitetônica ${reviewedCandidate.architectureScore}/100, crítico ${criticReview.score}/100 e utilidade multiobjetivo ${reviewedCandidate.multiObjective.utilityScore}/100: refine o mesmo partido antes de apresentar.`,
         ...(reviewedCandidate.quality?.issues ?? []),
         ...(criticReview.improvements ?? []).map((item: string) => `Crítico independente: ${item}`),
         ...(reviewedCandidate.selfCritique ?? []).map((item: string) => `Autocrítica do autor: ${item}`),
@@ -2815,7 +2943,7 @@ NÃO aceite a primeira solução mental: critique e refine antes de responder.`;
       alternatives: [bestApproved],
       architectAgent: {
         model: "claude-sonnet-4-6",
-        reasoning: "architect-propose-validator-independent-critic-refine-v3",
+        reasoning: "architect-propose-validator-independent-critic-multiobjective-refine-v4",
         validation: "architectural-quality-gate-v2",
         targetScore: 78,
         qualityGate: bestApproved.quality?.dimensions ?? null,
@@ -2823,6 +2951,7 @@ NÃO aceite a primeira solução mental: critique e refine antes de responder.`;
         intervention: input.intervention,
         refinementPasses: bestApproved.refinementPass,
         critic: bestApproved.criticReview ?? null,
+        multiObjective: bestApproved.multiObjective ?? null,
       },
       programCompliance: bestApproved.programCompliance ?? null,
       programValidation: {
