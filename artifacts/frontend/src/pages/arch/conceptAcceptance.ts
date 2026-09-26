@@ -2,6 +2,7 @@ import { validateConceptLayout, type ConceptRoomShape, type LayoutIssue } from "
 import { evaluateConceptErgonomics, type ErgonomicResult } from "./conceptErgonomics";
 import { evaluateFurniturePlacement, type FurniturePlacementResult } from "./conceptFurniturePlacement";
 import { evaluateCirculationAndDoorSwing, type CirculationResult } from "./conceptCirculation";
+import { evaluateDaylightVentilationSolar, type DaylightVentilationResult } from "./conceptClimatePerformance";
 
 export type ConceptAcceptanceStatus = "approved" | "review" | "blocked";
 
@@ -16,6 +17,7 @@ export type ConceptAcceptanceResult = {
   ergonomics: ErgonomicResult;
   furniture: FurniturePlacementResult;
   circulation: CirculationResult;
+  climate: DaylightVentilationResult;
 };
 
 const MAJOR_WARNING_PREFIXES = [
@@ -45,7 +47,11 @@ export function evaluateConceptAcceptance(input: {
   lotWidth: number;
   lotDepth: number;
   floors: number;
-  site?: { frontSide?: "top" | "bottom" | "left" | "right"; setbackFront?: number };
+  site?: {
+    frontSide?: "top" | "bottom" | "left" | "right";
+    setbackFront?: number;
+    northSide?: "top" | "bottom" | "left" | "right" | null;
+  };
 }): ConceptAcceptanceResult {
   const issues: LayoutIssue[] = [];
 
@@ -95,6 +101,25 @@ export function evaluateConceptAcceptance(input: {
     });
   }
 
+  const climate = evaluateDaylightVentilationSolar(
+    input.rooms,
+    input.lotWidth,
+    input.lotDepth,
+    {
+      frontSide: input.site?.frontSide,
+      northSide: input.site?.northSide,
+    },
+  );
+  for (const climateIssue of climate.issues) {
+    if (climateIssue.id === "solar-insufficient-orientation") continue;
+    issues.push({
+      id: climateIssue.id,
+      severity: climateIssue.severity,
+      roomId: climateIssue.roomId,
+      message: climateIssue.message,
+    });
+  }
+
   const errors = issues.filter((issue) => issue.severity === "error");
   const warnings = issues.filter((issue) => issue.severity === "warning");
   const majorWarnings = warnings.filter(isMajorWarning);
@@ -124,5 +149,6 @@ export function evaluateConceptAcceptance(input: {
     ergonomics,
     furniture,
     circulation,
+    climate,
   };
 }
