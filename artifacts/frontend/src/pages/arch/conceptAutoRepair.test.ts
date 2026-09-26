@@ -72,4 +72,48 @@ describe("Etapa 78 — Auto-Repair arquitetônico", () => {
     expect(Math.min(bed.width, bed.depth)).toBeGreaterThanOrEqual(2.4);
     expect(result.after.score).toBeGreaterThan(result.before.score);
   });
+  it("prefere relayout que melhora aderência ao briefing sem piorar o gate técnico", () => {
+    const result = autoRepairConceptLayout({
+      lotWidth: 14,
+      lotDepth: 20,
+      floors: 1,
+      intent: { livingIntegratedKitchen: true },
+      rooms: [
+        room({ id: "living", kind: "sala", label: "Sala", x: 0, y: 0, width: 4, depth: 4 }),
+        room({ id: "kitchen", kind: "cozinha", label: "Cozinha", x: 8, y: 0, width: 3, depth: 4 }),
+      ],
+    });
+
+    expect(result.after.errors.length).toBeLessThanOrEqual(result.before.errors.length);
+    expect(result.afterIntent.score).toBeGreaterThanOrEqual(result.beforeIntent.score);
+  });
+
+  it("preserva completamente um ambiente locked e reporta o problema não resolvido", () => {
+    const original = room({
+      id: "locked-bed",
+      kind: "quarto",
+      label: "Quarto travado",
+      x: 9,
+      y: 9,
+      width: 2.1,
+      depth: 3.2,
+      locked: true,
+    });
+
+    const result = autoRepairConceptLayout({
+      lotWidth: 10,
+      lotDepth: 10,
+      floors: 1,
+      rooms: [original],
+    });
+
+    const locked = result.rooms.find((item) => item.id === original.id)!;
+    expect(locked.x).toBe(original.x);
+    expect(locked.y).toBe(original.y);
+    expect(locked.width).toBe(original.width);
+    expect(locked.depth).toBe(original.depth);
+    expect(locked.locked).toBe(true);
+    expect(result.unresolvedIssueIds.length).toBeGreaterThan(0);
+  });
+
 });

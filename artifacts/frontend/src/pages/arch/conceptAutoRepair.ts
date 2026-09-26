@@ -1,5 +1,6 @@
 import { evaluateConceptAcceptance, type ConceptAcceptanceResult } from "./conceptAcceptance";
 import { generateLayoutVariant, type ConceptRoomShape } from "./conceptGeometry";
+import { evaluateConceptIntent, type ConceptIntentInput, type ConceptIntentResult } from "./conceptIntent";
 
 export type ConceptRepairAction = {
   type: "clamp" | "resize" | "suite_bath" | "relayout";
@@ -14,6 +15,9 @@ export type ConceptAutoRepairResult = {
   improved: boolean;
   actions: ConceptRepairAction[];
   attempts: number;
+  beforeIntent: ConceptIntentResult;
+  afterIntent: ConceptIntentResult;
+  unresolvedIssueIds: string[];
 };
 
 type RepairInput = {
@@ -21,24 +25,44 @@ type RepairInput = {
   lotWidth: number;
   lotDepth: number;
   floors: number;
-  site?: { frontSide?: "top" | "bottom" | "left" | "right"; setbackFront?: number };
+  site?: {
+    frontSide?: "top" | "bottom" | "left" | "right";
+    setbackFront?: number;
+    northSide?: "top" | "bottom" | "left" | "right" | null;
+  };
   maxPasses?: number;
+  intent?: ConceptIntentInput;
 };
 
 const EPS = 0.05;
 
 const MIN_SIDE: Partial<Record<string, number>> = {
-  quarto: 2.4,
-  suite: 2.4,
-  cozinha: 1.8,
-  banheiro: 1.2,
-  lavanderia: 1.5,
-  garagem: 2.5,
+  quarto: 2.70,
+  suite: 3.00,
+  cozinha: 2.20,
+  banheiro: 1.40,
+  lavanderia: 1.70,
+  garagem: 2.70,
+  sala: 3.20,
+  gourmet: 3.20,
+  outro: 2.70,
 };
 
-function score(result: ConceptAcceptanceResult) {
+function score(result: ConceptAcceptanceResult, intent: ConceptIntentResult) {
   const statusWeight = result.status === "approved" ? 200 : result.status === "review" ? 100 : 0;
-  return statusWeight + result.score - result.errors.length * 100 - result.majorWarnings.length * 10;
+  return statusWeight
+    + result.score * 0.24
+    + result.ergonomics.score * 0.13
+    + result.furniture.score * 0.10
+    + result.circulation.score * 0.08
+    + result.climate.score * 0.05
+    + result.privacyAcoustic.score * 0.04
+    + result.constructability.score * 0.03
+    + result.buildability.score * 0.03
+    + intent.score * 0.30
+    - result.errors.length * 100
+    - result.majorWarnings.length * 10
+    - intent.issues.filter((issue) => issue.severity === "error").length * 35;
 }
 
 function overlaps(a: ConceptRoomShape, b: ConceptRoomShape) {
@@ -86,6 +110,8 @@ function clampAndResize(
 ): { rooms: ConceptRoomShape[]; actions: ConceptRepairAction[] } {
   const actions: ConceptRepairAction[] = [];
   const next = rooms.map((room) => {
+    if (room.locked) return { ...room };
+
     if (room.kind === "piscina") {
       const x = Math.max(0, Math.min(room.x, Math.max(0, lotWidth - room.width)));
       const y = Math.max(0, Math.min(room.y, Math.max(0, lotDepth - room.depth)));
@@ -133,6 +159,7 @@ function snapSuiteBaths(
   );
 
   for (const bath of baths) {
+    if (bath.locked) continue;
     const suite = findSuiteOwner(bath, next);
     if (!suite) continue;
 
@@ -176,21 +203,25 @@ function acceptance(input: RepairInput, rooms: ConceptRoomShape[]) {
 }
 
 function acceptIfBetter(
-  currentRooms: ConceptRoomShape[],
   current: ConceptAcceptanceResult,
-  candidateRooms: ConceptRoomShape[],
+  currentIntent: ConceptIntentResult,
   candidate: ConceptAcceptanceResult,
+  candidateIntent: ConceptIntentResult,
 ) {
   if (candidate.errors.length > current.errors.length) return false;
-  return score(candidate) > score(current);
+  if (
+    candidateIntent.issues.filter((issue) => issue.severity === "error").length
+    > currentIntent.issues.filter((issue) => issue.severity === "error").length
+  ) return false;
+  return score(candidate, candidateIntent) > score(current, currentIntent);
 }
 
 /**
- * Etapa 78 — Auto-Repair arquitetônico.
+ * Etapa 79 — Auto-Repair orientado por intenção arquitetônica.
  *
  * O motor nunca aceita uma correção que piore o gate atual.
  * Estratégia:
- * 1. normalizar dimensões/limites;
+ * 1. normalizar dimensões/limites, ergonomia, mobiliário, circulação, desempenho passivo, privacidade/acústica, construtibilidade e eficiência relativa de custo;
  * 2. aproximar banheiros privativos das respectivas suítes;
  * 3. testar relayouts determinísticos existentes;
  * 4. revalidar a cada tentativa e preservar somente a melhor solução.
@@ -198,8 +229,10 @@ function acceptIfBetter(
 export function autoRepairConceptLayout(input: RepairInput): ConceptAutoRepairResult {
   const originalRooms = input.rooms.map((room) => ({ ...room }));
   const before = acceptance(input, originalRooms);
+  const beforeIntent = evaluateConceptIntent(originalRooms, input.intent);
   let bestRooms = originalRooms;
   let best = before;
+  let bestIntent = beforeIntent;
   const actions: ConceptRepairAction[] = [];
   let attempts = 0;
 
@@ -210,17 +243,21 @@ export function autoRepairConceptLayout(input: RepairInput): ConceptAutoRepairRe
 
     const normalized = clampAndResize(bestRooms, input.lotWidth, input.lotDepth);
     const normalizedAcceptance = acceptance(input, normalized.rooms);
-    if (acceptIfBetter(bestRooms, best, normalized.rooms, normalizedAcceptance)) {
+    const normalizedIntent = evaluateConceptIntent(normalized.rooms, input.intent);
+    if (acceptIfBetter(best, bestIntent, normalizedAcceptance, normalizedIntent)) {
       bestRooms = normalized.rooms;
       best = normalizedAcceptance;
+      bestIntent = normalizedIntent;
       actions.push(...normalized.actions);
     }
 
     const snapped = snapSuiteBaths(bestRooms, input.lotWidth, input.lotDepth);
     const snappedAcceptance = acceptance(input, snapped.rooms);
-    if (acceptIfBetter(bestRooms, best, snapped.rooms, snappedAcceptance)) {
+    const snappedIntent = evaluateConceptIntent(snapped.rooms, input.intent);
+    if (acceptIfBetter(best, bestIntent, snappedAcceptance, snappedIntent)) {
       bestRooms = snapped.rooms;
       best = snappedAcceptance;
+      bestIntent = snappedIntent;
       actions.push(...snapped.actions);
     }
 
@@ -230,9 +267,11 @@ export function autoRepairConceptLayout(input: RepairInput): ConceptAutoRepairRe
         candidate = generateLayoutVariant(candidate, input.lotWidth, input.lotDepth, floor, variant);
       }
       const candidateAcceptance = acceptance(input, candidate);
-      if (acceptIfBetter(bestRooms, best, candidate, candidateAcceptance)) {
+      const candidateIntent = evaluateConceptIntent(candidate, input.intent);
+      if (acceptIfBetter(best, bestIntent, candidateAcceptance, candidateIntent)) {
         bestRooms = candidate;
         best = candidateAcceptance;
+        bestIntent = candidateIntent;
         actions.push({
           type: "relayout",
           roomIds: candidate.map((room) => room.id),
@@ -241,15 +280,24 @@ export function autoRepairConceptLayout(input: RepairInput): ConceptAutoRepairRe
       }
     }
 
-    if (best.status === "approved") break;
+    const intentErrors = bestIntent.issues.filter((issue) => issue.severity === "error").length;
+    if (best.status === "approved" && bestIntent.score >= 90 && intentErrors === 0) break;
   }
+
+  const unresolvedIssueIds = [
+    ...best.issues.map((issue) => issue.id),
+    ...bestIntent.issues.map((issue) => issue.id),
+  ];
 
   return {
     rooms: bestRooms,
     before,
     after: best,
-    improved: score(best) > score(before),
+    improved: score(best, bestIntent) > score(before, beforeIntent),
     actions,
     attempts,
+    beforeIntent,
+    afterIntent: bestIntent,
+    unresolvedIssueIds: [...new Set(unresolvedIssueIds)],
   };
 }
