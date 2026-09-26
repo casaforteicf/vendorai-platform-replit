@@ -330,6 +330,18 @@ export type ProjectBriefSnapshot = {
   daylightStrategy?: string[];
   facadeDirection?: string[];
   selfCritique?: string[];
+  evolution?: {
+    mode?: "progressive_same_project" | string;
+    basedOnPass?: number | null;
+    history?: Array<{
+      pass: number;
+      score: number;
+      status: "approved" | "rejected";
+      issues: string[];
+      strengths: string[];
+      basedOnPass: number | null;
+    }>;
+  };
 };
 
 export type ClientBriefAlternative = ClientBriefPlan & {
@@ -338,6 +350,18 @@ export type ClientBriefAlternative = ClientBriefPlan & {
   description: string;
   variant: 0 | 1 | 2;
   architectureScore?: number;
+  evolution?: {
+    mode?: "progressive_same_project" | string;
+    basedOnPass?: number | null;
+    history?: Array<{
+      pass: number;
+      score: number;
+      status: "approved" | "rejected";
+      issues: string[];
+      strengths: string[];
+      basedOnPass: number | null;
+    }>;
+  };
   designRationale?: string;
   qualityIssues?: string[];
   qualityStrengths?: string[];

@@ -506,6 +506,7 @@ export default function ConceptClientBriefPanel({
         suggestedArea: Number(item.suggestedArea ?? base.suggestedArea),
         rooms: item.rooms,
         architectureScore: Number.isFinite(Number(item.architectureScore)) ? Number(item.architectureScore) : undefined,
+        evolution: item.evolution && typeof item.evolution === "object" ? item.evolution : undefined,
         designRationale: typeof item.designRationale === "string" ? item.designRationale : undefined,
         qualityIssues: Array.isArray(item.quality?.issues) ? item.quality.issues.map(String) : undefined,
         qualityStrengths: Array.isArray(item.quality?.strengths) ? item.quality.strengths.map(String) : undefined,
@@ -532,6 +533,7 @@ export default function ConceptClientBriefPanel({
           daylightStrategy: Array.isArray(item.daylightStrategy) ? item.daylightStrategy.map(String) : undefined,
           facadeDirection: Array.isArray(item.facadeDirection) ? item.facadeDirection.map(String) : undefined,
           selfCritique: Array.isArray(item.selfCritique) ? item.selfCritique.map(String) : undefined,
+          evolution: item.evolution && typeof item.evolution === "object" ? item.evolution : undefined,
         },
       } satisfies ClientBriefAlternative;
 
@@ -648,6 +650,24 @@ export default function ConceptClientBriefPanel({
                     )}
                   </div>
                 )}
+
+                {alternative.evolution?.history?.length ? (
+                  <div className="mt-2 rounded-lg border bg-white px-2.5 py-2">
+                    <div className="text-[10px] font-bold text-slate-700">Evolução automática da planta</div>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {alternative.evolution.history.map((step) => (
+                        <span
+                          key={step.pass}
+                          className={step.status === "approved"
+                            ? "rounded-full bg-emerald-100 px-2 py-1 text-[9px] font-bold text-emerald-700"
+                            : "rounded-full bg-amber-100 px-2 py-1 text-[9px] font-bold text-amber-700"}
+                        >
+                          Passe {step.pass}: {step.score}/100
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
 
                 {alternative.designRationale && (
                   <div className="mt-2 rounded-lg bg-emerald-50 px-2.5 py-2 text-[10px] leading-4 text-emerald-900">
