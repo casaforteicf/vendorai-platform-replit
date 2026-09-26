@@ -191,6 +191,7 @@ type ConceptSaveOverrides = {
   facadePreferences?: ConceptFacadePreferences;
   facadeDesign?: FacadeDesignState;
   projectBrief?: ProjectBriefSnapshot;
+  decisionHistory?: DecisionCheckpoint[];
 };
 
 type CustomerProfile = {
@@ -1361,6 +1362,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     const nextFacadePreferences = overrides?.facadePreferences ?? facadePreferences;
     const nextFacadeDesign = overrides?.facadeDesign ?? facadeDesign;
     const nextProjectBrief = overrides?.projectBrief ?? projectBrief;
+    const nextDecisionHistory = overrides?.decisionHistory ?? decisionHistory;
     const unifiedModel = buildUnifiedModelMeta({
       rooms: nextRooms,
       customWalls: nextCustomWalls,
@@ -1387,7 +1389,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         savedTourPoints: savedTourPointsOverride ?? savedTourPoints,
         sitePlacement,
         projectBrief: nextProjectBrief ?? undefined,
-        decisionHistory,
+        decisionHistory: nextDecisionHistory,
         unifiedModel,
       },
       rooms: nextRooms,
@@ -2003,7 +2005,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       facadeDesign: normalizeFacadeDesign(facadeDesign),
       projectBrief,
     };
-    setDecisionHistory((history) => [...history, checkpoint].slice(-12));
+    const nextHistory = [...decisionHistory, checkpoint].slice(-12);
+    setDecisionHistory(nextHistory);
+    void saveConcept(undefined, undefined, { decisionHistory: nextHistory });
     setDecisionLabel("");
     setDecisionReason("");
     return checkpoint;
@@ -8188,6 +8192,82 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
                 {presentationMode === "architect" && (
                   <>
+                    <div className="rounded-3xl border bg-card p-5 shadow-sm print:hidden">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h3 className="font-semibold">Histórico de decisões</h3>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Salve marcos persistentes antes de mudanças importantes. Eles não substituem undo/redo; registram decisões de projeto.
+                          </p>
+                        </div>
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[9px] font-bold text-slate-600">
+                          {decisionHistory.length}/12
+                        </span>
+                      </div>
+                      <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_1.4fr_auto]">
+                        <input
+                          value={decisionLabel}
+                          onChange={(event) => setDecisionLabel(event.target.value.slice(0, 120))}
+                          placeholder="Ex.: Planta aprovada pelo cliente"
+                          className="h-10 rounded-xl border bg-background px-3 text-xs outline-none"
+                        />
+                        <input
+                          value={decisionReason}
+                          onChange={(event) => setDecisionReason(event.target.value.slice(0, 500))}
+                          placeholder="Por que este marco é importante?"
+                          className="h-10 rounded-xl border bg-background px-3 text-xs outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => createDecisionCheckpoint()}
+                          className="rounded-xl bg-slate-950 px-4 py-2 text-xs font-bold text-white"
+                        >
+                          Salvar marco
+                        </button>
+                      </div>
+
+                      {decisionHistory.length > 0 && (
+                        <div className="mt-4 space-y-2">
+                          {[...decisionHistory].reverse().slice(0, 6).map((checkpoint) => {
+                            const areaDelta = Math.round((currentArea - checkpoint.metrics.totalArea) * 10) / 10;
+                            const wallDelta = unifiedModelMeta.counts.walls - checkpoint.metrics.wallCount;
+                            const openingDelta = unifiedModelMeta.counts.openings - checkpoint.metrics.openingCount;
+                            return (
+                              <div key={checkpoint.id} className="rounded-2xl border bg-background p-3">
+                                <div className="flex flex-wrap items-start justify-between gap-2">
+                                  <div>
+                                    <div className="text-xs font-bold">{checkpoint.label}</div>
+                                    <div className="mt-0.5 text-[9px] text-muted-foreground">
+                                      {new Date(checkpoint.createdAt).toLocaleString("pt-BR")} · revisão {checkpoint.modelRevision.slice(-4)}
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => restoreDecisionCheckpoint(checkpoint)}
+                                    className="rounded-lg border px-2.5 py-1.5 text-[9px] font-bold hover:bg-muted"
+                                  >
+                                    Restaurar
+                                  </button>
+                                </div>
+                                {checkpoint.reason && <p className="mt-2 text-[10px] leading-4 text-slate-600">{checkpoint.reason}</p>}
+                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                  <span className="rounded-full bg-slate-100 px-2 py-1 text-[8px] font-semibold">
+                                    Área {areaDelta === 0 ? "igual" : `${areaDelta > 0 ? "+" : ""}${areaDelta} m²`}
+                                  </span>
+                                  <span className="rounded-full bg-slate-100 px-2 py-1 text-[8px] font-semibold">
+                                    Paredes {wallDelta === 0 ? "iguais" : wallDelta > 0 ? `+${wallDelta}` : wallDelta}
+                                  </span>
+                                  <span className="rounded-full bg-slate-100 px-2 py-1 text-[8px] font-semibold">
+                                    Aberturas {openingDelta === 0 ? "iguais" : openingDelta > 0 ? `+${openingDelta}` : openingDelta}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
                     <div className="rounded-3xl border bg-card p-5 shadow-sm">
                       <h3 className="font-semibold">Resumo técnico preliminar</h3>
                       <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
