@@ -448,6 +448,7 @@ export default function ConceptClientBriefPanel({
         clientFitSummary: initialProjectBrief.clientFitSummary,
         designRationale: initialProjectBrief.designRationale,
         architectureDNA: initialProjectBrief.architectureDNA,
+        architectureStrategy: initialProjectBrief.architectureStrategy,
         experienceStrategy: initialProjectBrief.experienceStrategy,
         daylightStrategy: initialProjectBrief.daylightStrategy,
         facadeDirection: initialProjectBrief.facadeDirection,
@@ -511,6 +512,7 @@ export default function ConceptClientBriefPanel({
         clientFitSummary: typeof item.clientFitSummary === "string" ? item.clientFitSummary : undefined,
         intervention,
         architectureDNA: item.architectureDNA && typeof item.architectureDNA === "object" ? item.architectureDNA : undefined,
+        architectureStrategy: item.architectureStrategy && typeof item.architectureStrategy === "object" ? item.architectureStrategy : undefined,
         experienceStrategy: Array.isArray(item.experienceStrategy) ? item.experienceStrategy.map(String) : undefined,
         daylightStrategy: Array.isArray(item.daylightStrategy) ? item.daylightStrategy.map(String) : undefined,
         facadeDirection: Array.isArray(item.facadeDirection) ? item.facadeDirection.map(String) : undefined,
@@ -525,6 +527,7 @@ export default function ConceptClientBriefPanel({
           clientFitSummary: typeof item.clientFitSummary === "string" ? item.clientFitSummary : undefined,
           designRationale: typeof item.designRationale === "string" ? item.designRationale : undefined,
           architectureDNA: item.architectureDNA && typeof item.architectureDNA === "object" ? item.architectureDNA : undefined,
+          architectureStrategy: item.architectureStrategy && typeof item.architectureStrategy === "object" ? item.architectureStrategy : undefined,
           experienceStrategy: Array.isArray(item.experienceStrategy) ? item.experienceStrategy.map(String) : undefined,
           daylightStrategy: Array.isArray(item.daylightStrategy) ? item.daylightStrategy.map(String) : undefined,
           facadeDirection: Array.isArray(item.facadeDirection) ? item.facadeDirection.map(String) : undefined,
@@ -624,6 +627,25 @@ export default function ConceptClientBriefPanel({
                 {alternative.floors > 1 && (
                   <div className="mt-2 text-[10px] font-semibold text-slate-500">
                     Prévia mostra o térreo · projeto com {alternative.floors} pavimentos
+                  </div>
+                )}
+
+                {alternative.architectureStrategy && (
+                  <div className="mt-2 rounded-xl border border-indigo-100 bg-indigo-50/60 p-2.5">
+                    <div className="text-[10px] font-bold text-indigo-900">Estratégia definida antes da planta</div>
+                    <div className="mt-1 text-[9px] leading-4 text-indigo-800">
+                      Partido: <strong>{String(alternative.architectureStrategy.party ?? "definido pela IA")}</strong>
+                    </div>
+                    {alternative.architectureStrategy.applied?.zoningSummary && (
+                      <div className="mt-1 text-[9px] leading-4 text-indigo-700">
+                        {alternative.architectureStrategy.applied.zoningSummary}
+                      </div>
+                    )}
+                    {alternative.architectureStrategy.applied?.circulationSummary && (
+                      <div className="mt-1 text-[9px] leading-4 text-indigo-700">
+                        Circulação: {alternative.architectureStrategy.applied.circulationSummary}
+                      </div>
+                    )}
                   </div>
                 )}
 
