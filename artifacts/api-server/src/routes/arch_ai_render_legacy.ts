@@ -172,11 +172,22 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
     return res.status(400).json({ success: false, error: "Informe project_id ou concept_project_id, não ambos." });
   }
   if (concept_project_id) {
-    const [concept] = await db.select({ id: archConceptProjectsTable.id })
+    const [concept] = await db.select({
+      id: archConceptProjectsTable.id,
+      status: archConceptProjectsTable.status,
+      configuration: archConceptProjectsTable.configuration,
+    })
       .from(archConceptProjectsTable)
       .where(and(eq(archConceptProjectsTable.id, concept_project_id), eq(archConceptProjectsTable.tenantId, tid)))
       .limit(1);
     if (!concept) return res.status(404).json({ success: false, error: "Pré-projeto não encontrado." });
+    if (concept.status === "submitted" && (concept.configuration as any)?.projectMaster) {
+      return res.status(409).json({
+        success: false,
+        error: "O Projeto Mestre está congelado. Gere novos renders pela revisão do projeto ou pelo Projeto Arqdor aprovado.",
+        code: "PROJECT_MASTER_FROZEN",
+      });
+    }
   }
   if (project_id) {
     const [project] = await db.select({ id: archProjetosTable.id })

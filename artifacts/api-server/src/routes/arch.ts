@@ -78,6 +78,7 @@ import { ensureArqdorStarterLibrary } from "../lib/arqdor/starter-library.js";
 import { searchPolyHavenModels, resolvePolyHavenModel } from "../lib/arqdor/polyhaven.js";
 import { buildArchitecturalStrategyRepertoire } from "../lib/arqdor-architecture-strategies.js";
 import { buildArchitecturalProjectStrategy } from "../lib/arqdor-project-strategy.js";
+import { evaluateProjectMasterAcceptance } from "../lib/arqdor-project-master-validation.js";
 
 function sanitizeAIError(err: any): { status: number; message: string } {
   const raw: string = err?.message ?? String(err ?? "");
@@ -100,6 +101,43 @@ function sanitizeAIError(err: any): { status: number; message: string } {
   }
   const safeStatus = httpStatus >= 400 && httpStatus < 600 ? httpStatus : 500;
   return { status: safeStatus, message: raw || "Erro ao processar com IA." };
+}
+
+async function createArchitectJsonCompletion(input: {
+  tenantId: string;
+  system: string;
+  user: string;
+  maxTokens?: number;
+}) {
+  try {
+    const message = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: input.maxTokens ?? 7000,
+      system: input.system,
+      messages: [{ role: "user", content: input.user }],
+    });
+    return {
+      raw: message.content.filter((item: any) => item.type === "text").map((item: any) => item.text).join(""),
+      stopReason: (message as any).stop_reason ?? null,
+      engine: "claude-sonnet-4-6",
+    };
+  } catch (anthropicError) {
+    const openai = await getOpenAIForTenant(input.tenantId);
+    const completion = await openai.chat.completions.create({
+      model: process.env["ARQDOR_ARCHITECT_FALLBACK_MODEL"]?.trim() || "gpt-5.6-luna",
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: input.system },
+        { role: "user", content: input.user },
+      ],
+    });
+    return {
+      raw: completion.choices[0]?.message?.content ?? "{}",
+      stopReason: null,
+      engine: process.env["ARQDOR_ARCHITECT_FALLBACK_MODEL"]?.trim() || "gpt-5.6-luna",
+      fallbackReason: anthropicError instanceof Error ? anthropicError.message.slice(0, 300) : "anthropic_unavailable",
+    };
+  }
 }
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
@@ -1368,9 +1406,9 @@ NÃO aceite a primeira solução mental: critique e refine antes de responder.`;
         ? "\n\nREGRA EVOLUTIVA: trate esta rodada como uma revisão do mesmo projeto. Compare mentalmente com a base, mantenha relações, setores e ambientes já corretos e faça mudanças localizadas."
         : "";
 
-      const message = await anthropic.messages.create({
-        model: "claude-sonnet-4-6",
-        max_tokens: 7000,
+      const architectCompletion = await createArchitectJsonCompletion({
+        tenantId: tid,
+        maxTokens: 7000,
         system: [
           "Você é o Arqdor Architect AI, arquiteto residencial sênior.",
           "Seu trabalho é desenvolver e refinar um único projeto principal.",
@@ -1378,15 +1416,12 @@ NÃO aceite a primeira solução mental: critique e refine antes de responder.`;
           "Priorize arquitetura funcional e interessante, nunca estética desconectada da planta.",
           "Responda somente JSON válido e compacto.",
         ].join(" "),
-        messages: [{ role: "user", content: basePrompt + seedContext + retryContext + evolutionaryInstruction }],
+        user: basePrompt + seedContext + retryContext + evolutionaryInstruction,
       });
 
-      const raw = message.content
-        .filter((item: any) => item.type === "text")
-        .map((item: any) => item.text)
-        .join("");
+      const raw = architectCompletion.raw;
 
-      if ((message as any).stop_reason === "max_tokens") {
+      if (architectCompletion.stopReason === "max_tokens") {
         rejectedFeedback.push("A resposta foi truncada; mantenha o JSON mais compacto.");
         continue;
       }
@@ -1490,7 +1525,7 @@ NÃO aceite a primeira solução mental: critique e refine antes de responder.`;
       solution: bestApproved,
       alternatives: [bestApproved],
       architectAgent: {
-        model: "claude-sonnet-4-6",
+        model: "provider-fallback-enabled",
         reasoning: "intent-party-adjacency-daylight-volume-critique-refine-v2",
         validation: "functional-adjacency-v2",
         targetScore: 82,
@@ -1535,6 +1570,12 @@ router.post("/arch/concept-projects/:id/facade-study", authenticate, async (req,
     .limit(1);
 
   if (!concept) return res.status(404).json({ error: "Pré-projeto não encontrado." });
+  if (concept.status === "submitted" && (concept.configuration as any)?.projectMaster && parsed.data.action === "develop") {
+    return res.status(409).json({
+      error: "O Projeto Mestre está congelado. Crie uma revisão antes de alterar a fachada.",
+      code: "PROJECT_MASTER_FROZEN",
+    });
+  }
 
   const config = (concept.configuration ?? {}) as Record<string, unknown>;
   const rooms = Array.isArray(concept.rooms) ? concept.rooms : [];
@@ -1672,18 +1713,15 @@ Retorne SOMENTE JSON válido:
 }`;
 
   try {
-    const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 3200,
+    const architectCompletion = await createArchitectJsonCompletion({
+      tenantId: tid,
+      maxTokens: 3200,
       system: "Você é um arquiteto de fachadas. Responda somente JSON válido, sem markdown.",
-      messages: [{ role: "user", content: prompt }],
+      user: prompt,
     });
-    const raw = message.content
-      .filter((item: any) => item.type === "text")
-      .map((item: any) => item.text)
-      .join("");
+    const raw = architectCompletion.raw;
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if ((message as any).stop_reason === "max_tokens") {
+    if (architectCompletion.stopReason === "max_tokens") {
       return res.status(422).json({ error: "O estudo de fachada ficou longo demais e veio incompleto. Tente novamente." });
     }
     if (!jsonMatch) return res.status(422).json({ error: "A IA não retornou um estudo de fachada válido." });
@@ -1864,16 +1902,13 @@ ${JSON.stringify(projectBrief?.facadeDirection ?? null)}
 Não substitua esse DNA por uma solução aleatória. Evolua o mesmo projeto e sinalize conflitos.`;
 
   try {
-    const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 1500,
+    const architectCompletion = await createArchitectJsonCompletion({
+      tenantId: tid,
+      maxTokens: 1500,
       system: "Responda somente com JSON válido, sem markdown e sem texto fora do JSON.",
-      messages: [{ role: "user", content: prompt }],
+      user: prompt,
     });
-    const raw = message.content
-      .filter((item: any) => item.type === "text")
-      .map((item: any) => item.text)
-      .join("");
+    const raw = architectCompletion.raw;
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return res.status(422).json({ error: "IA não retornou JSON válido." });
     const ai = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
@@ -2072,6 +2107,10 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
 
   if (!concept) return res.status(404).json({ error: "Pré-projeto não encontrado." });
 
+  const config = (concept.configuration ?? {}) as any;
+  const isRevision = Boolean(config.revisionOfConceptId);
+  let linkedProject: any = null;
+
   if (concept.archProjetoId) {
     const [existingProject] = await tx
       .select()
@@ -2084,7 +2123,7 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
       )
       .limit(1);
 
-    if (existingProject) {
+    if (existingProject && (!isRevision || config.projectMaster)) {
       return res.json({
         ok: true,
         alreadyPromoted: true,
@@ -2094,19 +2133,27 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
         projectMaster: ((concept.configuration ?? {}) as any).projectMaster ?? null,
       });
     }
+    if (existingProject) linkedProject = existingProject;
   }
-
-  const masterHealth = conceptGeometryHealth(concept);
-  if (masterHealth.status === "error") {
+  const lot = (concept.lot ?? {}) as { width?: number; depth?: number };
+  const sitePlacement = (config.sitePlacement ?? {}) as any;
+  const masterAcceptance = evaluateProjectMasterAcceptance({
+    rooms: Array.isArray(concept.rooms) ? concept.rooms : [],
+    lotWidth: Math.max(1, Number(lot.width ?? 0)),
+    lotDepth: Math.max(1, Number(lot.depth ?? 0)),
+    floors: Math.max(1, Number(config.floors ?? 1)),
+    site: {
+      frontSide: sitePlacement.frontSide,
+      setbackFront: sitePlacement.setbackFront,
+    },
+  });
+  if (masterAcceptance.status === "blocked") {
     return res.status(422).json({
-      error: "O pré-projeto ainda possui inconsistências bloqueantes e não pode ser congelado como Projeto Mestre.",
+      error: "O pré-projeto ainda possui inconsistências arquitetônicas bloqueantes e não pode ser congelado como Projeto Mestre.",
       code: "PROJECT_MASTER_NOT_READY",
-      health: masterHealth,
+      acceptance: masterAcceptance,
     });
   }
-
-  const config = (concept.configuration ?? {}) as { floors?: number; desiredArea?: number };
-  const lot = (concept.lot ?? {}) as { width?: number; depth?: number };
   const facade = (concept.facadePreferences ?? {}) as Record<string, string>;
   const customer = (concept.customerProfile ?? {}) as {
     instagram?: string;
@@ -2125,8 +2172,8 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     })
     .join(", ");
 
-  let leadId: string | null = null;
-  let dealId: string | null = null;
+  let leadId: string | null = linkedProject?.leadId ?? null;
+  let dealId: string | null = linkedProject?.dealId ?? null;
 
   const hasCustomerName = Boolean(customer.name?.trim());
   const hasCustomerContact = Boolean(customer.phone?.trim() || customer.email?.trim());
@@ -2240,25 +2287,46 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     customer.notes ? `Observações do cliente: ${customer.notes}.` : null,
   ].filter(Boolean).join("\n");
 
-  const [project] = await tx
-    .insert(archProjetosTable)
-    .values({
-      tenantId: tid,
-      leadId,
-      dealId,
-      clienteNome: customer.name?.trim() || null,
-      clienteEmail: customer.email?.trim() || null,
-      clienteTelefone: customer.phone?.trim() || null,
-      titulo: concept.title || "Projeto originado do Arqdor Concept",
-      descricao: description,
-      status: "briefing",
-      pipelineStage: "briefing",
-      tipoObra: "Residencial",
-      areaM2: config.desiredArea != null ? String(config.desiredArea) : null,
-      portalToken: crypto.randomUUID(),
-      portalAtivo: false,
-    })
-    .returning();
+  let project: any = linkedProject;
+  if (project) {
+    const [updatedProject] = await tx
+      .update(archProjetosTable)
+      .set({
+        leadId,
+        dealId,
+        clienteNome: customer.name?.trim() || null,
+        clienteEmail: customer.email?.trim() || null,
+        clienteTelefone: customer.phone?.trim() || null,
+        titulo: concept.title || project.titulo,
+        descricao: description,
+        areaM2: config.desiredArea != null ? String(config.desiredArea) : null,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(archProjetosTable.id, project.id), eq(archProjetosTable.tenantId, tid)))
+      .returning();
+    project = updatedProject ?? project;
+  } else {
+    const [createdProject] = await tx
+      .insert(archProjetosTable)
+      .values({
+        tenantId: tid,
+        leadId,
+        dealId,
+        clienteNome: customer.name?.trim() || null,
+        clienteEmail: customer.email?.trim() || null,
+        clienteTelefone: customer.phone?.trim() || null,
+        titulo: concept.title || "Projeto originado do Arqdor Concept",
+        descricao: description,
+        status: "briefing",
+        pipelineStage: "briefing",
+        tipoObra: "Residencial",
+        areaM2: config.desiredArea != null ? String(config.desiredArea) : null,
+        portalToken: crypto.randomUUID(),
+        portalAtivo: false,
+      })
+      .returning();
+    project = createdProject;
+  }
 
   // O Concept passa a alimentar a mesma Obra/Orçamento/Cronograma usada pelo
   // restante do Vendor.ai. Os preços ficam zerados nesta fase: o pré-projeto
@@ -2335,7 +2403,8 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     else exteriorWallLength += wall.length;
   }
   for (const wall of customWalls) {
-    internalWallLength += segmentLength(wall.x1, wall.y1, wall.x2, wall.y2);
+    const key = edgeKey(wall.x1, wall.y1, wall.x2, wall.y2, wall.floor ?? 0);
+    if (!wallMap.has(key)) internalWallLength += segmentLength(wall.x1, wall.y1, wall.x2, wall.y2);
   }
   const totalWallLength = exteriorWallLength + internalWallLength;
 
@@ -2363,8 +2432,8 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
   const derivedWindows = indoorRooms.filter((room: any) => windowKinds.has(String(room.kind ?? "").toLowerCase())).length;
   const customDoorCount = customOpenings.filter((opening: any) => opening?.type === "door").length;
   const customWindowCount = customOpenings.filter((opening: any) => opening?.type === "window").length;
-  const doorCount = derivedDoors + customDoorCount;
-  const windowCount = derivedWindows + customWindowCount;
+  const doorCount = customDoorCount > 0 ? customDoorCount : derivedDoors;
+  const windowCount = customWindowCount > 0 ? customWindowCount : derivedWindows;
   const openingCount = Math.max(1, doorCount + windowCount);
 
   const customOpeningArea = customOpenings.reduce((sum: number, opening: any) => {
@@ -2372,7 +2441,9 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     const height = Math.max(0.4, Number(opening?.height ?? (opening?.type === "door" ? 2.1 : 1.2)));
     return sum + width * height;
   }, 0);
-  const defaultOpeningArea = derivedDoors * 0.9 * 2.1 + derivedWindows * 1.2 * 1.2;
+  const defaultOpeningArea =
+    (customDoorCount > 0 ? 0 : derivedDoors * 0.9 * 2.1)
+    + (customWindowCount > 0 ? 0 : derivedWindows * 1.2 * 1.2);
   const openingArea = customOpeningArea + defaultOpeningArea;
   const exteriorWallAreaGross = exteriorWallLength * WALL_HEIGHT_M;
   const internalWallFaceArea = internalWallLength * WALL_HEIGHT_M * 2;
@@ -2434,22 +2505,40 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     });
   }
 
-  const obraId = crypto.randomUUID();
-  const [obra] = await tx
-    .insert(obrasTable)
-    .values({
-      id: obraId,
-      tenantId: tid,
-      nome: project.titulo,
-      descricao: `[ARQDOR:${project.id}] Obra criada automaticamente a partir do pré-projeto ${concept.id}.`,
-      clienteNome: customer.name?.trim() || null,
-      clienteContato: customer.phone?.trim() || customer.email?.trim() || null,
-      status: "planejamento",
-      orcamentoTotal: "0",
-      custoRealizado: "0",
-    })
-    .returning();
+  let obra: any = null;
+  let obraId = String(project?.obraId ?? "");
+  let createdNewObra = false;
 
+  if (obraId) {
+    const [existingObra] = await tx
+      .select()
+      .from(obrasTable)
+      .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)))
+      .limit(1);
+    obra = existingObra ?? null;
+  }
+
+  if (!obra) {
+    obraId = crypto.randomUUID();
+    const [createdObra] = await tx
+      .insert(obrasTable)
+      .values({
+        id: obraId,
+        tenantId: tid,
+        nome: project.titulo,
+        descricao: `[ARQDOR:${project.id}] Obra criada automaticamente a partir do pré-projeto ${concept.id}.`,
+        clienteNome: customer.name?.trim() || null,
+        clienteContato: customer.phone?.trim() || customer.email?.trim() || null,
+        status: "planejamento",
+        orcamentoTotal: "0",
+        custoRealizado: "0",
+      })
+      .returning();
+    obra = createdObra;
+    createdNewObra = true;
+  }
+
+  if (createdNewObra) {
   const executionStages = [
     { nome: "Projeto", days: 10 },
     { nome: "Serviços preliminares", days: 5 },
@@ -2514,16 +2603,18 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
       defasagemDias: 0,
     });
   }
+  }
 
   const preBudgetId = crypto.randomUUID();
+  const budgetVersion = Math.max(1, Number(config.revisionNumber ?? 1));
   await tx.execute(sql`
     INSERT INTO arch_budgets (
       id, tenant_id, project_id, title, client_name, status, version,
       subtotal_material, subtotal_labor, subtotal, discount_type,
       discount_value, discount_total, grand_total, notes, created_at, updated_at
     ) VALUES (
-      ${preBudgetId}, ${tid}, ${project.id}, 'Orçamento preliminar — Arqdor Concept',
-      ${customer.name?.trim() || null}, 'draft', 1,
+      ${preBudgetId}, ${tid}, ${project.id}, ${`Orçamento preliminar — Arqdor Concept v${budgetVersion}`},
+      ${customer.name?.trim() || null}, 'draft', ${budgetVersion},
       0, 0, 0, 'fixed', 0, 0, 0,
       'Quantitativos preliminares gerados automaticamente do pré-projeto. Preços devem ser resolvidos pelas composições/tabela de preços.',
       now(), now()
@@ -2605,7 +2696,7 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
   const frozenAt = new Date().toISOString();
   const existingMaster = (conceptConfiguration.projectMaster ?? null) as { version?: number } | null;
   const projectMaster = {
-    version: Math.max(1, Number(existingMaster?.version ?? 0) + 1),
+    version: Math.max(1, Number(conceptConfiguration.revisionNumber ?? existingMaster?.version ?? 1)),
     frozenAt,
     sourceConceptId: concept.id,
     sourceUpdatedAt: concept.updatedAt instanceof Date ? concept.updatedAt.toISOString() : String(concept.updatedAt ?? frozenAt),
@@ -2621,6 +2712,17 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     facadePreferences: concept.facadePreferences,
     facadeDesign: (concept as any).facadeDesign ?? conceptConfiguration.facadeDesign ?? undefined,
     projectBrief: conceptConfiguration.projectBrief ?? null,
+    objects: Array.isArray(conceptConfiguration.objects) ? conceptConfiguration.objects : [],
+    spaceProfiles: Array.isArray(conceptConfiguration.spaceProfiles) ? conceptConfiguration.spaceProfiles : [],
+    wallMaterials: conceptConfiguration.wallMaterials && typeof conceptConfiguration.wallMaterials === "object" ? conceptConfiguration.wallMaterials : {},
+    acceptanceProof: {
+      validatorVersion: masterAcceptance.validatorVersion,
+      status: masterAcceptance.status,
+      score: masterAcceptance.score,
+      issues: masterAcceptance.issues,
+      acceptedWarningIds: masterAcceptance.warnings.map((issue) => issue.id),
+      evaluatedAt: frozenAt,
+    },
     conceptRender: concept.conceptRender ?? {},
     quantities: quantityItems.map((item) => ({
       ...item,
@@ -2674,6 +2776,72 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     budgetId: preBudgetId,
     projectMaster,
   });
+  });
+});
+
+router.post("/arch/concept-projects/:id/revise", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const userId = req.user?.sub;
+  const id = String(req.params.id);
+  if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
+
+  const [concept] = await db
+    .select()
+    .from(archConceptProjectsTable)
+    .where(and(
+      eq(archConceptProjectsTable.id, id),
+      eq(archConceptProjectsTable.tenantId, tid),
+      eq(archConceptProjectsTable.ownerUserId, userId),
+    ))
+    .limit(1);
+
+  if (!concept) return res.status(404).json({ error: "Pré-projeto não encontrado." });
+  const configuration = (concept.configuration ?? {}) as any;
+  const master = configuration.projectMaster;
+  if (concept.status !== "submitted" || !master) {
+    return res.status(409).json({ error: "A revisão só pode ser criada a partir de um Projeto Mestre aprovado." });
+  }
+
+  const nextRevision = Math.max(2, Number(configuration.revisionNumber ?? master.version ?? 1) + 1);
+  const nextConfiguration = {
+    ...configuration,
+    projectMaster: undefined,
+    revisionOfConceptId: concept.id,
+    revisionNumber: nextRevision,
+    publicTourToken: undefined,
+    publicTourEnabled: false,
+    publicTourUpdatedAt: undefined,
+    facadeDesign: master.facadeDesign ?? configuration.facadeDesign,
+    objects: Array.isArray(master.objects) ? master.objects : (Array.isArray(configuration.objects) ? configuration.objects : []),
+    spaceProfiles: Array.isArray(master.spaceProfiles) ? master.spaceProfiles : (Array.isArray(configuration.spaceProfiles) ? configuration.spaceProfiles : []),
+    wallMaterials: master.wallMaterials ?? configuration.wallMaterials ?? {},
+  };
+
+  const [revision] = await db
+    .insert(archConceptProjectsTable)
+    .values({
+      tenantId: tid,
+      ownerUserId: userId,
+      archProjetoId: master.links?.archProjetoId ?? concept.archProjetoId ?? null,
+      title: `${String(concept.title ?? "Pré-projeto").replace(/\s+—\s+Revisão\s+\d+$/i, "")} — Revisão ${nextRevision}`,
+      status: "draft",
+      currentStep: Math.max(4, Number(concept.currentStep ?? 4)),
+      lot: master.lot ?? concept.lot,
+      configuration: nextConfiguration,
+      rooms: Array.isArray(master.rooms) ? master.rooms : concept.rooms,
+      openingOverrides: master.openingOverrides ?? concept.openingOverrides ?? {},
+      customerProfile: concept.customerProfile ?? {},
+      facadePreferences: master.facadePreferences ?? concept.facadePreferences,
+      conceptRender: {},
+      selectedVariant: concept.selectedVariant ?? 0,
+    })
+    .returning();
+
+  return res.status(201).json({
+    ok: true,
+    revision,
+    revisionOfConceptId: concept.id,
+    revisionNumber: nextRevision,
   });
 });
 function getPortalBaseUrl(req: Request): string {

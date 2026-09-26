@@ -1455,8 +1455,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
   const startContactValid =
     (customerProfile.name ?? "").trim().length >= 2 &&
-    (customerProfile.phone ?? "").replace(/\D/g, "").length >= 10 &&
-    (customerProfile.instagram ?? "").trim().replace(/^@+/, "").length >= 2;
+    (
+      (customerProfile.phone ?? "").replace(/\D/g, "").length >= 10 ||
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((customerProfile.email ?? "").trim())
+    );
 
   const journeyIndex = conceptJourneyIndex({ step, editorView, libraryTab: editorLibraryTab });
 
@@ -3799,7 +3801,27 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     }
   };
 
+  const createProjectRevision = async () => {
+    const id = conceptIdRef.current ?? conceptId;
+    if (!id || !projectMaster) return null;
+    setHandoffError(null);
+    try {
+      const response = await fetch(`/api/arch/concept-projects/${id}/revise`, { method: "POST" });
+      const data = await response.json().catch(() => ({})) as { revision?: { id?: string }; error?: string };
+      if (!response.ok || !data.revision?.id) throw new Error(data.error ?? "Não foi possível criar a revisão.");
+      window.location.assign(`/arch/concept?id=${encodeURIComponent(data.revision.id)}`);
+      return data.revision.id;
+    } catch (error) {
+      setHandoffError(error instanceof Error ? error.message : "Não foi possível criar a revisão.");
+      return null;
+    }
+  };
+
   const generateConceptRender = async (options?: { source?: "facade" | "model3d"; renderView?: "exterior" | "interior"; lightingMode?: "day" | "sunset" | "night" }) => {
+    if (projectMaster) {
+      setRenderError("Este Projeto Mestre está congelado. Crie uma revisão para gerar um novo render com alterações.");
+      return;
+    }
     if (renderSubmittingRef.current || conceptRender?.status === "processing") return;
     if (blockingLayoutIssues.length > 0) {
       setRenderError("Corrija os erros da composição antes de gerar o render.");
@@ -4099,6 +4121,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     if (step !== WORKSPACE_STEP) return;
 
     const onKeyDown = (event: KeyboardEvent) => {
+      if (projectMaster) return;
       const target = event.target as HTMLElement | null;
       const tag = target?.tagName?.toLowerCase();
       const editingText =
@@ -4159,10 +4182,40 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     selected,
     roomHistory.length,
     roomFuture.length,
+    projectMaster,
   ]);
 
   return (
     <div className="arqdor-reference-ui min-h-screen bg-muted/30">
+      {projectMaster && step !== RESULT_STEP && (
+        <div className="fixed inset-0 z-[250] grid place-items-center bg-slate-950/55 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-3xl border border-emerald-200 bg-white p-6 shadow-2xl">
+            <div className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">Projeto Mestre congelado</div>
+            <h2 className="mt-2 text-xl font-bold text-slate-950">Versão {projectMaster.version} está somente leitura</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Planta, fachada, cobertura, implantação e renders desta versão não podem ser alterados silenciosamente.
+              Para modificar o projeto, crie uma revisão formal.
+            </p>
+            <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                onClick={() => { setStep(RESULT_STEP); window.scrollTo({ top: 0 }); }}
+                className="flex-1 rounded-xl border px-4 py-3 text-sm font-bold text-slate-700"
+              >
+                Ver Projeto Mestre
+              </button>
+              <button
+                type="button"
+                onClick={() => void createProjectRevision()}
+                className="flex-1 rounded-xl bg-emerald-700 px-4 py-3 text-sm font-bold text-white"
+              >
+                Criar revisão V{projectMaster.version + 1}
+              </button>
+            </div>
+            {handoffError && <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{handoffError}</div>}
+          </div>
+        </div>
+      )}
       {false && (
         <div className="border-b bg-background">
           <div className="mx-auto max-w-[1500px] px-4 py-4 sm:px-6">

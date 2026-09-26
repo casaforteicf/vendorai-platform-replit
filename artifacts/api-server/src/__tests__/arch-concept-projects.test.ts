@@ -457,6 +457,56 @@ describe("Arqdor Concept — handoff idempotente para Projeto Arqdor", () => {
     expect(mockDbInsert).not.toHaveBeenCalled();
   });
 
+  it("cria revisão formal a partir do Projeto Mestre congelado", async () => {
+    const promotedConcept = {
+      ...conceptA,
+      status: "submitted",
+      configuration: {
+        ...conceptA.configuration,
+        revisionNumber: 1,
+        projectMaster: {
+          version: 1,
+          lot: { width: 12, depth: 30 },
+          rooms: [{ id: "sala", kind: "sala", label: "Sala", floor: 0, x: 1, y: 1, width: 5, depth: 4 }],
+          openingOverrides: {},
+          facadePreferences: {
+            style: "contemporaneo",
+            roof: "platibanda",
+            primaryMaterial: "pintura",
+            accentMaterial: "madeira",
+            facadeTone: "claro",
+            frameTone: "preto",
+            landscaping: "medio",
+          },
+          objects: [],
+          spaceProfiles: [],
+          wallMaterials: {},
+          links: { archProjetoId: "arch-project-1", obraId: "obra-1", budgetId: "budget-1", leadId: null, dealId: null },
+        },
+      },
+    };
+    const revision = { ...conceptA, id: "concept-rev-2", status: "draft" };
+    mockDbSelect.mockReturnValue(selectLimitReturning([promotedConcept]));
+    const { values } = insertReturning([revision]);
+
+    const res = await request(app)
+      .post("/api/arch/concept-projects/concept-a/revise")
+      .set("Authorization", `Bearer ${tokenA}`);
+
+    expect(res.status).toBe(201);
+    expect(res.body.revisionNumber).toBe(2);
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({
+      archProjetoId: promotedConcept.configuration.projectMaster.links?.archProjetoId ?? null,
+      status: "draft",
+      title: expect.stringContaining("Revisão 2"),
+      configuration: expect.objectContaining({
+        revisionOfConceptId: "concept-a",
+        revisionNumber: 2,
+        projectMaster: undefined,
+      }),
+    }));
+  });
+
   it("bloqueia promote quando o Concept não pertence ao tenant/owner", async () => {
     mockDbSelect.mockReturnValue(selectLimitReturning([]));
 
