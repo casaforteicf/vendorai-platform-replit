@@ -38,7 +38,7 @@ describe("Etapa 77 — quality gate do pré-projeto", () => {
         // Usa uma lavanderia estreita para isolar o warning de largura funcional.
         // Diferente de dormitórios, cozinha ou garagem, ela não introduz aqui
         // um erro adicional de acesso, abertura natural ou manobra de veículo.
-        room({ id: "laundry", kind: "lavanderia", label: "Lavanderia", x: 0, y: 0, width: 1.2, depth: 3 }),
+        room({ id: "laundry", kind: "lavanderia", label: "Lavanderia", x: 0, y: 0, width: 1.45, depth: 3 }),
       ],
     });
 
