@@ -242,7 +242,13 @@ export default function ConceptSitePlacementPanel({
             <button
               key={value}
               type="button"
-              onClick={() => onPlacementChange({ ...placement, frontSide: value })}
+              onClick={() => onPlacementChange({
+                ...placement,
+                frontSide: value,
+                vehicleAccessSide: !placement.vehicleAccessSide || placement.vehicleAccessSide === placement.frontSide
+                  ? value
+                  : placement.vehicleAccessSide,
+              })}
               className={placement.frontSide === value
                 ? "rounded-xl border-2 border-orange-500 bg-orange-50 p-2 text-orange-700"
                 : "rounded-xl border bg-white p-2 text-slate-600"}
@@ -271,6 +277,19 @@ export default function ConceptSitePlacementPanel({
               className="mt-1 w-full bg-transparent text-[11px] font-bold text-slate-800 outline-none"
             >
               <option value="">Não informado</option>
+              <option value="top">Cima</option>
+              <option value="bottom">Baixo</option>
+              <option value="left">Esquerda</option>
+              <option value="right">Direita</option>
+            </select>
+          </label>
+          <label className="rounded-xl border bg-white p-2.5 text-[10px] font-semibold text-slate-500">
+            Acesso de veículos
+            <select
+              value={placement.vehicleAccessSide ?? placement.frontSide}
+              onChange={(event) => onPlacementChange({ ...placement, vehicleAccessSide: event.target.value as SitePlacement["vehicleAccessSide"] })}
+              className="mt-1 w-full bg-transparent text-[11px] font-bold text-slate-800 outline-none"
+            >
               <option value="top">Cima</option>
               <option value="bottom">Baixo</option>
               <option value="left">Esquerda</option>
