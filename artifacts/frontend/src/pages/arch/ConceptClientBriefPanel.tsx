@@ -22,6 +22,7 @@ import {
   buildClientBriefPlan,
   buildDefaultRoomProgram,
   buildRecommendedAdjacencyRules,
+  enrichBriefWithClientVision,
   countBriefAlternativeErrors,
   rebalanceClientRoomProgramToDesiredArea,
   validateClientRoomProgram,
@@ -72,6 +73,19 @@ const DEFAULT_VISION: ClientVision = {
   futureNeeds: "",
   mustHave: "",
   avoid: "",
+  household: {
+    adults: 2,
+    children: 0,
+    elderly: 0,
+    pets: false,
+  },
+  routine: {
+    homeOffice: "never",
+    receivesGuests: "sometimes",
+    cooking: "daily",
+    laundry: "basic",
+    accessibility: "none",
+  },
 };
 const STANDARD_PROGRAM_KEYS = new Set([
   "sala","cozinha","suite","quarto","suite-bath","social-bath","lavabo","lavanderia","garagem","gourmet","office","pool",
@@ -274,7 +288,18 @@ export default function ConceptClientBriefPanel({
         : buildDefaultRoomProgram(initial),
     };
   });
-  const [vision, setVision] = useState<ClientVision>(() => initialProjectBrief?.vision ?? DEFAULT_VISION);
+  const [vision, setVision] = useState<ClientVision>(() => ({
+    ...DEFAULT_VISION,
+    ...(initialProjectBrief?.vision ?? {}),
+    household: {
+      ...DEFAULT_VISION.household,
+      ...(initialProjectBrief?.vision?.household ?? {}),
+    },
+    routine: {
+      ...DEFAULT_VISION.routine,
+      ...(initialProjectBrief?.vision?.routine ?? {}),
+    },
+  }));
   const [dreamStep, setDreamStep] = useState(0);
   const [showAlternatives, setShowAlternatives] = useState(false);
   const [alternatives, setAlternatives] = useState<ClientBriefAlternative[]>([]);
@@ -413,8 +438,9 @@ export default function ConceptClientBriefPanel({
     setGenerating(true);
     setGenerationError(null);
     try {
+      const intelligentBrief = enrichBriefWithClientVision(brief, vision);
       await onImproveCurrent({
-        brief,
+        brief: intelligentBrief,
         vision,
         intervention,
         selectedAlternativeId: initialProjectBrief.selectedAlternativeId,
@@ -446,7 +472,8 @@ export default function ConceptClientBriefPanel({
     setGenerating(true);
     setGenerationError(null);
     try {
-      const base = buildClientBriefPlan(brief);
+      const intelligentBrief = enrichBriefWithClientVision(brief, vision);
+      const base = buildClientBriefPlan(intelligentBrief);
       const token = typeof window !== "undefined" ? localStorage.getItem("vendorai_token") : null;
       const response = await fetch("/api/arch/concept-plan-specialist", {
         method: "POST",
@@ -457,7 +484,7 @@ export default function ConceptClientBriefPanel({
         body: JSON.stringify({
           lotWidth,
           lotDepth,
-          brief,
+          brief: intelligentBrief,
           vision,
           intervention,
           rooms: base.rooms,
@@ -490,7 +517,7 @@ export default function ConceptClientBriefPanel({
         selfCritique: Array.isArray(item.selfCritique) ? item.selfCritique.map(String) : undefined,
         programCompliance: item.programCompliance && typeof item.programCompliance === "object" ? item.programCompliance : undefined,
         projectBrief: {
-          brief,
+          brief: intelligentBrief,
           vision,
           intervention,
           selectedAlternativeId: "primary" as const,
@@ -518,7 +545,8 @@ export default function ConceptClientBriefPanel({
       setAlternatives([primary]);
       setShowAlternatives(true);
     } catch (error) {
-      const fallback = buildClientBriefAlternatives(brief, lotWidth, lotDepth, placement)[0];
+      const fallbackBrief = enrichBriefWithClientVision(brief, vision);
+      const fallback = buildClientBriefAlternatives(fallbackBrief, lotWidth, lotDepth, placement)[0];
       setAlternatives(fallback ? [fallback] : []);
       setGenerationError(
         error instanceof Error
@@ -1260,7 +1288,7 @@ export default function ConceptClientBriefPanel({
         <div className="mt-4 rounded-xl bg-slate-50 p-3">
           <div className="mb-3 flex items-center justify-between">
             <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
-              Pergunta {dreamStep + 1} de 4
+              Pergunta {dreamStep + 1} de 5
             </span>
             <span className="text-[10px] font-semibold text-slate-500">IA arquiteta</span>
           </div>
@@ -1337,6 +1365,121 @@ export default function ConceptClientBriefPanel({
           )}
 
           {dreamStep === 3 && (
+            <div>
+              <div className="text-xs font-bold text-slate-900">Quem vai viver esta casa e como é a rotina?</div>
+              <p className="mt-1 text-[10px] text-slate-500">Essas respostas viram regras de projeto, não apenas texto de referência.</p>
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                {([
+                  ["adults", "Adultos"],
+                  ["children", "Crianças"],
+                  ["elderly", "Idosos"],
+                ] as const).map(([key, label]) => (
+                  <label key={key} className="rounded-xl border bg-white p-2.5 text-[10px] font-semibold text-slate-500">
+                    {label}
+                    <input
+                      type="number"
+                      min={0}
+                      max={8}
+                      value={vision.household?.[key] ?? 0}
+                      onChange={(event) => setVision((current) => ({
+                        ...current,
+                        household: {
+                          adults: current.household?.adults ?? 2,
+                          children: current.household?.children ?? 0,
+                          elderly: current.household?.elderly ?? 0,
+                          pets: current.household?.pets ?? false,
+                          [key]: Math.max(0, Math.min(8, Number(event.target.value) || 0)),
+                        },
+                      }))}
+                      className="mt-1 w-full bg-transparent text-center text-sm font-bold text-slate-800 outline-none"
+                    />
+                  </label>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => setVision((current) => ({
+                  ...current,
+                  household: {
+                    adults: current.household?.adults ?? 2,
+                    children: current.household?.children ?? 0,
+                    elderly: current.household?.elderly ?? 0,
+                    pets: !(current.household?.pets ?? false),
+                  },
+                }))}
+                className={vision.household?.pets
+                  ? "mt-2 w-full rounded-xl border-2 border-orange-500 bg-orange-50 px-3 py-2 text-[10px] font-bold text-orange-700"
+                  : "mt-2 w-full rounded-xl border bg-white px-3 py-2 text-[10px] font-semibold text-slate-600"}
+              >
+                {vision.household?.pets ? "✓ Temos pet(s)" : "Temos pet(s)"}
+              </button>
+
+              <div className="mt-4 space-y-2">
+                <label className="block rounded-xl border bg-white p-2.5 text-[10px] font-semibold text-slate-500">
+                  Trabalho em casa
+                  <select
+                    value={vision.routine?.homeOffice ?? "never"}
+                    onChange={(event) => setVision((current) => ({
+                      ...current,
+                      routine: { ...DEFAULT_VISION.routine!, ...current.routine, homeOffice: event.target.value as NonNullable<ClientVision["routine"]>["homeOffice"] },
+                    }))}
+                    className="mt-1 w-full bg-transparent text-[11px] font-bold text-slate-800"
+                  >
+                    <option value="never">Não / raramente</option>
+                    <option value="sometimes">Alguns dias</option>
+                    <option value="daily">Todos os dias</option>
+                  </select>
+                </label>
+                <label className="block rounded-xl border bg-white p-2.5 text-[10px] font-semibold text-slate-500">
+                  Recebemos visitas
+                  <select
+                    value={vision.routine?.receivesGuests ?? "sometimes"}
+                    onChange={(event) => setVision((current) => ({
+                      ...current,
+                      routine: { ...DEFAULT_VISION.routine!, ...current.routine, receivesGuests: event.target.value as NonNullable<ClientVision["routine"]>["receivesGuests"] },
+                    }))}
+                    className="mt-1 w-full bg-transparent text-[11px] font-bold text-slate-800"
+                  >
+                    <option value="rarely">Raramente</option>
+                    <option value="sometimes">Às vezes</option>
+                    <option value="often">Com frequência</option>
+                  </select>
+                </label>
+                <label className="block rounded-xl border bg-white p-2.5 text-[10px] font-semibold text-slate-500">
+                  Uso da cozinha
+                  <select
+                    value={vision.routine?.cooking ?? "daily"}
+                    onChange={(event) => setVision((current) => ({
+                      ...current,
+                      routine: { ...DEFAULT_VISION.routine!, ...current.routine, cooking: event.target.value as NonNullable<ClientVision["routine"]>["cooking"] },
+                    }))}
+                    className="mt-1 w-full bg-transparent text-[11px] font-bold text-slate-800"
+                  >
+                    <option value="little">Cozinhamos pouco</option>
+                    <option value="daily">Uso diário</option>
+                    <option value="enthusiast">Cozinha é protagonista</option>
+                  </select>
+                </label>
+                <label className="block rounded-xl border bg-white p-2.5 text-[10px] font-semibold text-slate-500">
+                  Acessibilidade
+                  <select
+                    value={vision.routine?.accessibility ?? "none"}
+                    onChange={(event) => setVision((current) => ({
+                      ...current,
+                      routine: { ...DEFAULT_VISION.routine!, ...current.routine, accessibility: event.target.value as NonNullable<ClientVision["routine"]>["accessibility"] },
+                    }))}
+                    className="mt-1 w-full bg-transparent text-[11px] font-bold text-slate-800"
+                  >
+                    <option value="none">Sem necessidade específica</option>
+                    <option value="future">Preparar para o futuro</option>
+                    <option value="required">Necessária agora</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+          )}
+
+          {dreamStep === 4 && (
             <div className="space-y-3">
               <div>
                 <div className="text-xs font-bold text-slate-900">Agora me conte o que faria essa casa ser realmente de vocês.</div>
@@ -1390,8 +1533,8 @@ export default function ConceptClientBriefPanel({
             </button>
             <button
               type="button"
-              onClick={() => setDreamStep((current) => Math.min(3, current + 1))}
-              disabled={dreamStep === 3}
+              onClick={() => setDreamStep((current) => Math.min(4, current + 1))}
+              disabled={dreamStep === 4}
               className="rounded-lg bg-slate-950 px-3 py-2 text-[10px] font-bold text-white disabled:opacity-35"
             >
               Próxima pergunta
@@ -1404,7 +1547,7 @@ export default function ConceptClientBriefPanel({
         <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Resumo</div>
         <div className="mt-1 text-[11px] font-semibold leading-5 text-slate-700">{summary}</div>
         <div className="mt-2 text-[10px] leading-4 text-slate-500">
-          Estilo de vida: {vision.lifestyle} · coração da casa: {vision.protagonist} · prioridades: {vision.priorities.length}
+          Estilo de vida: {vision.lifestyle} · coração da casa: {vision.protagonist} · prioridades: {vision.priorities.length} · moradores: {(vision.household?.adults ?? 0) + (vision.household?.children ?? 0) + (vision.household?.elderly ?? 0)}
         </div>
       </div>
 

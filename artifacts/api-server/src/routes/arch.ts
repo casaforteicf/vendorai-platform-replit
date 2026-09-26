@@ -168,6 +168,19 @@ const specialistHousePlanSchema = z.object({
     futureNeeds: z.string().max(500).default(""),
     mustHave: z.string().max(700).default(""),
     avoid: z.string().max(500).default(""),
+    household: z.object({
+      adults: z.number().int().min(0).max(8).default(2),
+      children: z.number().int().min(0).max(8).default(0),
+      elderly: z.number().int().min(0).max(8).default(0),
+      pets: z.boolean().default(false),
+    }).optional(),
+    routine: z.object({
+      homeOffice: z.enum(["never", "sometimes", "daily"]).default("never"),
+      receivesGuests: z.enum(["rarely", "sometimes", "often"]).default("sometimes"),
+      cooking: z.enum(["little", "daily", "enthusiast"]).default("daily"),
+      laundry: z.enum(["basic", "intensive"]).default("basic"),
+      accessibility: z.enum(["none", "future", "required"]).default("none"),
+    }).optional(),
   }).optional(),
   rooms: z.array(z.object({
     id: z.string().min(1),
@@ -202,6 +215,59 @@ type SpecialistPlanQuality = {
 };
 
 const PLAN_EPS = 0.06;
+
+function specialistLifestyleDirectives(input: z.infer<typeof specialistHousePlanSchema>) {
+  const vision = input.vision;
+  if (!vision) return [];
+  const household = vision.household ?? { adults: 2, children: 0, elderly: 0, pets: false };
+  const routine = vision.routine ?? {
+    homeOffice: "never" as const,
+    receivesGuests: "sometimes" as const,
+    cooking: "daily" as const,
+    laundry: "basic" as const,
+    accessibility: "none" as const,
+  };
+  const directives: string[] = [];
+
+  if (household.children > 0) {
+    directives.push("Crianças na casa: reduzir conflitos de circulação, manter dormitórios infantis com acesso simples ao setor social e preservar supervisão sem sacrificar privacidade.");
+  }
+  if (household.elderly > 0 || routine.accessibility === "required") {
+    directives.push("Acessibilidade é requisito: priorizar rotas sem degraus, circulação generosa, banheiro social acessível e evitar dependência exclusiva de escada para uso cotidiano.");
+  } else if (routine.accessibility === "future") {
+    directives.push("Preparar envelhecimento no lugar: prever adaptação futura simples, rota principal ampla e pelo menos um ambiente flexível no térreo quando possível.");
+  }
+  if (routine.homeOffice === "daily") {
+    directives.push("Home office diário: escritório deve ter privacidade acústica e ficar afastado de gourmet, TV e circulação social intensa.");
+  } else if (routine.homeOffice === "sometimes") {
+    directives.push("Home office eventual: permitir ambiente flexível ou escritório compacto sem desperdiçar área.");
+  }
+  if (routine.receivesGuests === "often" || vision.lifestyle === "receber") {
+    directives.push("Recebem com frequência: fortalecer sequência cozinha–jantar–estar–gourmet/lazer, com lavabo acessível sem invadir área íntima.");
+  }
+  if (routine.cooking === "enthusiast" || vision.protagonist === "cozinha") {
+    directives.push("Cozinha protagonista: garantir bancada funcional, armazenamento, relação direta com jantar e boa conexão com gourmet sem conflito com lavanderia.");
+  }
+  if (routine.laundry === "intensive") {
+    directives.push("Lavanderia de uso intenso: reservar área funcional real, armazenamento e acesso de serviço eficiente, preferencialmente próximo à garagem/saída de serviço.");
+  }
+  if (household.pets) {
+    directives.push("Há pets: considerar acesso fácil ao exterior, área de apoio/limpeza e materiais/circulações compatíveis com uso cotidiano.");
+  }
+  if (vision.priorities.includes("privacidade") || vision.lifestyle === "tranquilidade") {
+    directives.push("Privacidade é prioridade: proteger dormitórios e suíte das visadas da entrada e do ruído da área social.");
+  }
+  if (vision.priorities.includes("flexibilidade")) {
+    directives.push("Flexibilidade é prioridade: ao menos um ambiente deve aceitar mudança de uso sem reforma estrutural relevante.");
+  }
+  if (vision.priorities.includes("armazenamento")) {
+    directives.push("Armazenamento é prioridade: prever rouparia, despensa/apoio e armários sem comprometer circulação mínima.");
+  }
+  if (vision.priorities.includes("natureza") || vision.protagonist === "jardim") {
+    directives.push("Relação com natureza é prioridade: orientar áreas sociais para jardim/lazer e criar continuidade interior–exterior.");
+  }
+  return directives;
+}
 
 function specialistOverlap(a: SpecialistPlanRoom, b: SpecialistPlanRoom) {
   const overlapX = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
@@ -1116,6 +1182,7 @@ BRIEFING OBJETIVO: ${JSON.stringify(input.brief)}
 PROGRAMA DE NECESSIDADES DECLARADO PELO CLIENTE: ${JSON.stringify(input.brief.roomProgram ?? [])}
 GRAFO DE RELAÇÕES ENTRE AMBIENTES: ${JSON.stringify(input.brief.adjacencyRules ?? [])}
 VISÃO / DNA DO CLIENTE: ${JSON.stringify(input.vision ?? {})}
+DIRETRIZES ESPACIAIS DERIVADAS DA ROTINA: ${JSON.stringify(specialistLifestyleDirectives(input))}
 
 PROGRAMA FIXO DE AMBIENTES:
 ${JSON.stringify(program)}
