@@ -65,12 +65,27 @@ export type ParametricRoofConfig = {
   gutter: boolean;
 };
 
+export type SiteExteriorDesignState = {
+  zones: Array<{
+    id: string;
+    kind: "driveway" | "pedestrian" | "deck" | "garden" | "service" | "pool_buffer";
+    label: string;
+    x: number;
+    y: number;
+    width: number;
+    depth: number;
+  }>;
+  pedestrianEntry: { x: number; y: number } | null;
+  vehicleEntry: { x: number; y: number } | null;
+};
+
 export type FacadeDesignState = {
   surfaceMaterials: Record<FacadeSurfaceKey, FacadeMaterialId>;
   volumes: FacadeVolume[];
   lighting: "day" | "sunset" | "night";
   showLandscaping: boolean;
   roofConfig?: ParametricRoofConfig;
+  siteExterior?: SiteExteriorDesignState;
 };
 
 export const FACADE_MATERIALS: FacadeMaterialDefinition[] = [
@@ -232,6 +247,21 @@ export function normalizeFacadeDesign(value?: Partial<FacadeDesignState> | null)
       : [],
     lighting: value?.lighting ?? DEFAULT_FACADE_DESIGN.lighting,
     showLandscaping: value?.showLandscaping ?? DEFAULT_FACADE_DESIGN.showLandscaping,
+    siteExterior: value?.siteExterior && Array.isArray(value.siteExterior.zones)
+      ? {
+          zones: value.siteExterior.zones
+            .filter((zone) => zone && Number(zone.width) > 0 && Number(zone.depth) > 0)
+            .map((zone) => ({
+              ...zone,
+              x: Math.max(0, Number(zone.x) || 0),
+              y: Math.max(0, Number(zone.y) || 0),
+              width: Math.max(0.1, Number(zone.width) || 0.1),
+              depth: Math.max(0.1, Number(zone.depth) || 0.1),
+            })),
+          pedestrianEntry: value.siteExterior.pedestrianEntry ?? null,
+          vehicleEntry: value.siteExterior.vehicleEntry ?? null,
+        }
+      : undefined,
     roofConfig: {
       waters: [1, 2, 4].includes(Number(value?.roofConfig?.waters))
         ? Number(value?.roofConfig?.waters) as 1 | 2 | 4
