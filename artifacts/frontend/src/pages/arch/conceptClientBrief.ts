@@ -98,6 +98,22 @@ export type HouseholdContext = {
   routineNotes?: string;
 };
 
+export type BrazilianResidentialContext = {
+  region?: "norte" | "nordeste" | "centro_oeste" | "sudeste" | "sul" | "nao_informada";
+  state?: string;
+  city?: string;
+  lotContext?: "urbano" | "condominio" | "rural" | "litoral" | "serra" | "nao_informado";
+  lifeCycle?: "atual" | "familia_crescendo" | "multigeracional" | "envelhecer_na_casa" | "investimento";
+  expansionPriority?: "nao" | "prever" | "alta";
+  outdoorLiving?: "baixo" | "medio" | "alto";
+  serviceRoutine?: "compacta" | "tradicional" | "intensa";
+  privacySecurity?: "aberta" | "equilibrada" | "protegida";
+  vehicleProfile?: "compacto" | "sedan" | "suv" | "pickup" | "misto";
+  evReady?: boolean;
+  solarReady?: boolean;
+  rainwaterReady?: boolean;
+};
+
 export type ProjectSiteContext = {
   frontSide?: "top" | "bottom" | "left" | "right";
   northSide?: "top" | "bottom" | "left" | "right" | "nao_informado";
@@ -321,6 +337,7 @@ export type ProjectBriefSnapshot = {
   vision: ClientVision;
   household?: HouseholdContext;
   siteContext?: ProjectSiteContext;
+  brazilianContext?: BrazilianResidentialContext;
   selectedAlternativeId?: ClientBriefAlternativeId;
   selectedAlternativeTitle?: string;
   clientFitSummary?: string;
@@ -334,8 +351,8 @@ export type ProjectBriefSnapshot = {
   briefingCompleteness?: number;
 };
 
-export function assessProjectBriefCompleteness(snapshot: Pick<ProjectBriefSnapshot, "brief" | "vision" | "household" | "siteContext">) {
-  const { brief, vision, household, siteContext } = snapshot;
+export function assessProjectBriefCompleteness(snapshot: Pick<ProjectBriefSnapshot, "brief" | "vision" | "household" | "siteContext" | "brazilianContext">) {
+  const { brief, vision, household, siteContext, brazilianContext } = snapshot;
   const checks = [
     Boolean(brief.roomProgram?.length),
     Number(brief.desiredAreaTotal) >= 40,
@@ -353,6 +370,10 @@ export function assessProjectBriefCompleteness(snapshot: Pick<ProjectBriefSnapsh
     Boolean(vision.constructionMethod && vision.constructionMethod !== "nao_definido"),
     Boolean(Number(vision.budgetTarget) > 0 || vision.budgetStrategy),
     Boolean(vision.aestheticReferences?.trim() || vision.preferredMaterials?.trim()),
+    Boolean(brazilianContext?.region && brazilianContext.region !== "nao_informada"),
+    Boolean(brazilianContext?.lifeCycle),
+    Boolean(brazilianContext?.privacySecurity),
+    Boolean(brazilianContext?.outdoorLiving),
   ];
   const completed = checks.filter(Boolean).length;
   return Math.round((completed / checks.length) * 100);
@@ -363,6 +384,7 @@ export function buildProjectBriefSnapshot(input: {
   vision: ClientVision;
   household?: HouseholdContext;
   siteContext?: ProjectSiteContext;
+  brazilianContext?: BrazilianResidentialContext;
   intervention?: ProjectBriefSnapshot["intervention"];
   previous?: ProjectBriefSnapshot | null;
   patch?: Partial<ProjectBriefSnapshot>;
@@ -374,6 +396,7 @@ export function buildProjectBriefSnapshot(input: {
     vision: input.vision,
     household: input.household,
     siteContext: input.siteContext,
+    brazilianContext: input.brazilianContext,
     intervention: input.intervention ?? input.previous?.intervention,
     ...(input.patch ?? {}),
   };
