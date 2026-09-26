@@ -70,7 +70,7 @@ export type FacadeDesignState = {
   volumes: FacadeVolume[];
   lighting: "day" | "sunset" | "night";
   showLandscaping: boolean;
-  roofConfig: ParametricRoofConfig;
+  roofConfig?: ParametricRoofConfig;
 };
 
 export const FACADE_MATERIALS: FacadeMaterialDefinition[] = [
