@@ -453,7 +453,7 @@ export type ClientBriefAlternative = ClientBriefPlan & {
   architectureScore?: number;
   qualityGateVersion?: 2;
   qualityDimensions?: Partial<Record<
-    "program" | "circulation" | "privacy" | "ergonomics" | "geometry" | "constructability" | "furnitureFit" | "siteClimate" | "roofVolumetry" | "costValue" | "brazilianFit" | "codeCompliance" | "technicalSystems" | "architecturalCoherence",
+    "program" | "circulation" | "privacy" | "ergonomics" | "geometry" | "constructability" | "furnitureFit" | "siteClimate" | "roofVolumetry" | "costValue" | "brazilianFit" | "codeCompliance" | "technicalSystems" | "structuralModulation" | "architecturalCoherence",
     { score: number; status: "approved" | "warning" | "blocked"; issues: string[] }
   >>;
   hardBlockers?: string[];
@@ -571,6 +571,22 @@ export type ClientBriefAlternative = ClientBriefPlan & {
       connected: boolean;
       unreachableRooms: string[];
     };
+    structuralModulation?: {
+      method: ClientVision["constructionMethod"];
+      label: string;
+      score: number;
+      status: "approved" | "warning" | "blocked";
+      issues: string[];
+      recommendations: string[];
+      profile: {
+        planningModuleM: number | null;
+        openingModuleM: number | null;
+        preferredSpanM: number;
+        cautionSpanM: number;
+        maxConceptualCantileverM: number;
+        wallAlignmentImportance: "low" | "medium" | "high";
+      };
+    } | null;
     technicalSystems?: {
       score: number;
       status: "approved" | "warning" | "blocked";
