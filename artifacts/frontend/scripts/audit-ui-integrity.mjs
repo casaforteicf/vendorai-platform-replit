@@ -66,7 +66,7 @@ for (const file of files) {
   for (const m of source.matchAll(mutationRegex)) {
     metrics.mutationFetches++;
     const window = source.slice(m.index, Math.min(source.length, m.index + 1600));
-    if (!/(?:response|res|result)\.ok\b|\.status\b|throw\s+new\s+Error|toast\s*\(|catch\s*\(|parseResponse\s*\(|apiJson\s*\(|apiFetch\s*\(/.test(window)) add("HIGH", "mutation-without-visible-error-check", file, m.index, source, m[3] + " fetch sem tratamento de erro visível próximo.");
+    if (!/(?:response|res|result)\.ok\b|\.status\b|throw\s+new\s+Error|toast\s*\(|catch\s*\(|parseResponse\s*\(|readJson\s*\(|apiJson\s*\(|apiFetch\s*\(/.test(window)) add("HIGH", "mutation-without-visible-error-check", file, m.index, source, m[3] + " fetch sem tratamento de erro visível próximo.");
   }
 
   const navPatterns = [
