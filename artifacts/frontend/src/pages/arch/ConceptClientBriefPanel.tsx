@@ -587,6 +587,7 @@ export default function ConceptClientBriefPanel({
         qualityDimensions: item.quality?.dimensions && typeof item.quality.dimensions === "object" ? item.quality.dimensions : undefined,
         hardBlockers: Array.isArray(item.quality?.hardBlockers) ? item.quality.hardBlockers.map(String) : undefined,
         wallFirstModel: item.wallFirstModel && typeof item.wallFirstModel === "object" ? item.wallFirstModel : undefined,
+        multiObjective: item.multiObjective && typeof item.multiObjective === "object" ? item.multiObjective : undefined,
         criticReview: item.criticReview && typeof item.criticReview === "object" ? item.criticReview : undefined,
         designRationale: typeof item.designRationale === "string" ? item.designRationale : undefined,
         qualityIssues: Array.isArray(item.quality?.issues) ? item.quality.issues.map(String) : undefined,
@@ -736,6 +737,33 @@ export default function ConceptClientBriefPanel({
                     </div>
                     <div className="mt-2 text-[9px] leading-4 text-indigo-800">
                       O Arqdor registrou setorização, limites e conexões como modelo arquitetônico próprio; os ambientes continuam em formato compatível com o editor atual.
+                    </div>
+                  </div>
+                )}
+
+                {alternative.multiObjective && (
+                  <div className="mt-2 rounded-lg border border-fuchsia-100 bg-fuchsia-50 px-2.5 py-2">
+                    <div className="flex items-center justify-between gap-2 text-[10px]">
+                      <span className="font-bold text-fuchsia-900">Multi-Objective Design Engine</span>
+                      <span className="font-bold text-fuchsia-700">{alternative.multiObjective.utilityScore}/100</span>
+                    </div>
+                    <div className="mt-2 grid grid-cols-3 gap-1.5">
+                      {([
+                        ["function","Função"],
+                        ["circulation","Circulação"],
+                        ["privacy","Privacidade"],
+                        ["ergonomics","Ergonomia"],
+                        ["climate","Clima"],
+                        ["constructability","Construção"],
+                        ["cost","Custo"],
+                        ["futureFit","Futuro"],
+                        ["identity","Identidade"],
+                      ] as const).map(([key,label]) => (
+                        <div key={key} className="rounded-md bg-white/80 px-2 py-1.5 text-center">
+                          <div className="text-[8px] font-semibold text-slate-500">{label}</div>
+                          <div className="mt-0.5 text-[10px] font-bold text-slate-800">{alternative.multiObjective!.vector[key]}</div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}
