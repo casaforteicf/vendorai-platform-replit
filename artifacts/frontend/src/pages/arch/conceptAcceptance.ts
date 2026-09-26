@@ -30,6 +30,7 @@ const MAJOR_WARNING_PREFIXES = [
   "private-access-",
   "natural-opening-",
   "functional-width-",
+  "furniture-placement-",
   "circulation-missing-",
   "service-private-adjacency-",
   "garage-access-",
@@ -86,7 +87,10 @@ export function evaluateConceptAcceptance(input: {
   for (const furnitureIssue of furniture.issues) {
     issues.push({
       id: furnitureIssue.id,
-      severity: furnitureIssue.severity,
+      // Falha de encaixe de mobiliário é um sinal forte de revisão do pré-projeto,
+      // mas não equivale a erro geométrico estrutural. O motor preserva a severidade
+      // original em furniture.issues e o gate consolidado a trata como major warning.
+      severity: furnitureIssue.severity === "error" ? "warning" : furnitureIssue.severity,
       roomId: furnitureIssue.roomId,
       message: furnitureIssue.message,
     });
@@ -172,6 +176,8 @@ export function evaluateConceptAcceptance(input: {
     "acoustic-",
     "constructability-",
     "buildability-",
+    "ergonomics-",
+    "furniture-placement-",
     "furniture-circulation-",
   ];
   const advisoryWarnings = warnings.filter((issue) =>
