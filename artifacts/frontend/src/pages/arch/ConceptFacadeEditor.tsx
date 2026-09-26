@@ -660,7 +660,7 @@ export default function ConceptFacadeEditor({
                         <span className="block text-[10px] text-slate-400">{getFacadeMaterial(volume.materialId).name}</span>
                       </span>
                       {volume.locked && <Lock className="h-3.5 w-3.5 text-slate-400" />}
-                    </button>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -788,16 +788,24 @@ export default function ConceptFacadeEditor({
                 </p>
                 <div className="mt-2 space-y-2">
                   {aiResult.directionOptions.map((option) => (
-                    <button
+                    <div
                       key={option.id}
-                      type="button"
+                      role="button"
+                      tabIndex={0}
                       onClick={() => {
                         setSelectedDirectionId(option.id);
                         setFacadeStudyApplied(false);
                       }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedDirectionId(option.id);
+                          setFacadeStudyApplied(false);
+                        }
+                      }}
                       className={selectedDirectionId === option.id
-                        ? "w-full rounded-xl border border-indigo-500 bg-white p-3 text-left shadow-sm"
-                        : "w-full rounded-xl border border-indigo-100 bg-white/70 p-3 text-left hover:border-indigo-300"}
+                        ? "w-full cursor-pointer rounded-xl border border-indigo-500 bg-white p-3 text-left shadow-sm"
+                        : "w-full cursor-pointer rounded-xl border border-indigo-100 bg-white/70 p-3 text-left hover:border-indigo-300"}
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-[11px] font-bold text-slate-900">{option.title}</span>
