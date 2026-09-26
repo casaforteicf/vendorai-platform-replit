@@ -183,8 +183,8 @@ export function buildSiteExteriorPlan(
       label: "Faixa de segurança da piscina",
       x: Math.max(0, pool.x - buffer),
       y: Math.max(0, pool.y - buffer),
-      width: Math.min(lotWidth, pool.width + buffer * 2),
-      depth: Math.min(lotDepth, pool.depth + buffer * 2),
+      width: Math.min(lotWidth - Math.max(0, pool.x - buffer), pool.width + buffer * 2),
+      depth: Math.min(lotDepth - Math.max(0, pool.y - buffer), pool.depth + buffer * 2),
     });
     const deckDepth = Math.max(1.2, Math.min(3, pool.depth * 0.45));
     zones.push({
