@@ -342,6 +342,13 @@ type ConceptDraftResponse = {
     savedTourPoints?: SavedTourPoint[];
     sitePlacement?: SitePlacement;
     projectBrief?: ProjectBriefSnapshot;
+    unifiedModel?: {
+      version: 1;
+      revision: string;
+      sourceOfTruth: "rooms-walls-openings";
+      counts: { rooms: number; walls: number; openings: number; floors: number };
+      derivedViews: string[];
+    };
   };
   rooms: Room[];
   openingOverrides: Record<string, OpeningOverride>;
@@ -1750,6 +1757,13 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const safeRooms = Array.isArray(rooms) ? rooms : [];
   const safeCustomWalls = Array.isArray(customWalls) ? customWalls : [];
   const safeCustomOpenings = Array.isArray(customOpenings) ? customOpenings : [];
+  const unifiedModelMeta = useMemo(() => buildUnifiedModelMeta({
+    rooms: safeRooms,
+    customWalls: safeCustomWalls,
+    customOpenings: safeCustomOpenings,
+    openingOverrides,
+    floors,
+  }), [safeRooms, safeCustomWalls, safeCustomOpenings, openingOverrides, floors]);
   const safeWallFirstFloors = Array.isArray(wallFirstFloors) ? wallFirstFloors : [];
   const safeSpaceProfiles = Array.isArray(spaceProfiles) ? spaceProfiles : [];
   const safeObjects = Array.isArray(objects) ? objects : [];
@@ -4900,6 +4914,12 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     {saveStatusLabel}
                   </span>
                 )}
+                <span
+                  className="hidden shrink-0 rounded-full border border-cyan-400/20 bg-cyan-500/10 px-2 py-1 text-[9px] font-bold text-cyan-100 xl:inline"
+                  title={`Revisão ${unifiedModelMeta.revision}: planta, 3D, cobertura e fachada derivados da mesma fonte`}
+                >
+                  Modelo único · {unifiedModelMeta.revision.slice(-4)}
+                </span>
 
                 {projectBrief && (
                   <button
