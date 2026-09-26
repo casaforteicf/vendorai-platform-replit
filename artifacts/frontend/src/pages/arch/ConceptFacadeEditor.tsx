@@ -18,6 +18,7 @@ import type { ConceptFacadePreferences } from "./ConceptVolumetry";
 import type { ConceptModelLevel } from "./ConceptModel3D";
 import type { ConceptRoomShape } from "./conceptGeometry";
 import { normalizeSitePlacement, type SitePlacement } from "./conceptSitePlacement";
+import { buildFacadeGeometryContract } from "./conceptFacadeContract";
 import { applySiteExteriorToFacade, buildSiteExteriorPlan } from "./conceptSiteExterior";
 import {
   DEFAULT_FACADE_DESIGN,
@@ -53,6 +54,7 @@ export type FacadeStudyResponse = {
   mode: "diagnose" | "develop";
   intervention: "leve" | "moderada" | "marcante";
   geometryLocked?: boolean;
+  geometryContractVersion?: "master_facade_v1" | string;
   diagnosis?: {
     score?: number;
     summary?: string;
@@ -472,6 +474,12 @@ export default function ConceptFacadeEditor({
           intervention: facadeIntervention,
           facade,
           facadeDesign: design,
+          geometryContract: buildFacadeGeometryContract({
+            levels,
+            rooms,
+            placement: sitePlacement,
+            roof: facade.roof,
+          }),
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -619,8 +627,11 @@ export default function ConceptFacadeEditor({
           <div className="p-4 pt-11">
             <div className="text-sm font-semibold">Estudo de Fachada com IA</div>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
-              Primeiro a IA analisa a fachada do projeto. Depois desenvolve uma proposta sobre a mesma casa. O render vem por último.
+              Primeiro a IA analisa a fachada derivada da planta. Depois desenvolve materiais e elementos compatíveis sem alterar paredes, pavimentos, aberturas ou cobertura do Projeto Mestre.
             </p>
+            <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-[10px] font-semibold text-emerald-800">
+              Fidelidade arquitetônica bloqueada · fachada vinculada à geometria aprovada
+            </div>
 
             <div className="mt-4 rounded-xl border bg-slate-50 p-3">
               <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Nível de intervenção</div>
