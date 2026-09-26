@@ -1285,11 +1285,34 @@ NÃO aceite a primeira solução mental: critique e refine antes de responder.`;
 
   try {
     const rejectedFeedback: string[] = [];
+    const evolutionHistory: Array<{
+      pass: number;
+      score: number;
+      status: "approved" | "rejected";
+      issues: string[];
+      strengths: string[];
+      basedOnPass: number | null;
+    }> = [];
     let bestApproved: any = null;
+    let evolutionarySeed: { pass: number; score: number; rooms: SpecialistPlanRoom[] } | null = null;
 
     for (let attempt = 1; attempt <= 4; attempt += 1) {
+      const seedContext = evolutionarySeed
+        ? `\n\nBASE GEOMÉTRICA DA MELHOR ITERAÇÃO ATÉ AGORA (PASSE ${evolutionarySeed.pass}, SCORE ${evolutionarySeed.score}/100):\n${JSON.stringify(evolutionarySeed.rooms.map((room) => ({
+            id: room.id,
+            floor: room.floor,
+            x: room.x,
+            y: room.y,
+            width: room.width,
+            depth: room.depth,
+          })))}\nEVOLUA ESTA GEOMETRIA. Preserve o que funciona e altere somente o necessário para corrigir os problemas. NÃO recomece do zero e NÃO troque o partido arquitetônico.`
+        : "";
       const retryContext = rejectedFeedback.length
-        ? `\n\nCRÍTICA / VALIDAÇÃO DA ITERAÇÃO ANTERIOR — REFAÇA O MESMO PROJETO CORRIGINDO ESTES PONTOS, SEM TROCAR ALEATORIAMENTE O PARTIDO:\n- ${rejectedFeedback.slice(-16).join("\n- ")}`
+        ? `\n\nCRÍTICA / VALIDAÇÃO DA ITERAÇÃO ANTERIOR — CORRIJA ESTES PONTOS SOBRE A BASE ACIMA:\n- ${rejectedFeedback.slice(-16).join("\n- ")}`
+        : "";
+
+      const evolutionaryInstruction = attempt > 1
+        ? "\n\nREGRA EVOLUTIVA: trate esta rodada como uma revisão do mesmo projeto. Compare mentalmente com a base, mantenha relações, setores e ambientes já corretos e faça mudanças localizadas."
         : "";
 
       const message = await anthropic.messages.create({
@@ -1302,7 +1325,7 @@ NÃO aceite a primeira solução mental: critique e refine antes de responder.`;
           "Priorize arquitetura funcional e interessante, nunca estética desconectada da planta.",
           "Responda somente JSON válido e compacto.",
         ].join(" "),
-        messages: [{ role: "user", content: basePrompt + retryContext }],
+        messages: [{ role: "user", content: basePrompt + seedContext + retryContext + evolutionaryInstruction }],
       });
 
       const raw = message.content
@@ -1340,6 +1363,25 @@ NÃO aceite a primeira solução mental: critique e refine antes de responder.`;
         rejectedFeedback.push("Programa incompleto: faltam ambientes, há IDs duplicados ou o programa não foi respeitado.");
         continue;
       }
+
+      const candidateScore = Number(sanitized.quality?.score ?? 0);
+      evolutionHistory.push({
+        pass: attempt,
+        score: candidateScore,
+        status: sanitized.rejected ? "rejected" : "approved",
+        issues: [...(sanitized.quality?.issues ?? [])].slice(0, 8),
+        strengths: [...(sanitized.quality?.strengths ?? [])].slice(0, 6),
+        basedOnPass: evolutionarySeed?.pass ?? null,
+      });
+
+      if (!evolutionarySeed || candidateScore > evolutionarySeed.score) {
+        evolutionarySeed = {
+          pass: attempt,
+          score: candidateScore,
+          rooms: sanitized.rooms,
+        };
+      }
+
       if (sanitized.rejected) {
         rejectedFeedback.push(...sanitized.quality.issues);
         continue;
@@ -1363,6 +1405,11 @@ NÃO aceite a primeira solução mental: critique e refine antes de responder.`;
         selfCritique: Array.isArray(plan.selfCritique) ? plan.selfCritique.map(String).slice(0, 8) : [],
         intervention: input.intervention,
         refinementPass: attempt,
+        evolution: {
+          mode: "progressive_same_project",
+          basedOnPass: evolutionHistory.find((entry) => entry.pass === attempt)?.basedOnPass ?? null,
+          history: evolutionHistory,
+        },
         ...sanitized,
       };
 
@@ -1397,6 +1444,8 @@ NÃO aceite a primeira solução mental: critique e refine antes de responder.`;
         intervention: input.intervention,
         refinementPasses: bestApproved.refinementPass,
         strategy: architecturalStrategy,
+        evolutionMode: "progressive_same_project",
+        evolutionHistory,
       },
       programCompliance: bestApproved.programCompliance ?? null,
       programValidation: {
