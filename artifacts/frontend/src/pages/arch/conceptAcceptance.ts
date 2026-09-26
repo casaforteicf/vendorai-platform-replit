@@ -3,6 +3,7 @@ import { evaluateConceptErgonomics, type ErgonomicResult } from "./conceptErgono
 import { evaluateFurniturePlacement, type FurniturePlacementResult } from "./conceptFurniturePlacement";
 import { evaluateCirculationAndDoorSwing, type CirculationResult } from "./conceptCirculation";
 import { evaluateDaylightVentilationSolar, type DaylightVentilationResult } from "./conceptClimatePerformance";
+import { evaluatePrivacyAcousticZoning, type PrivacyAcousticResult } from "./conceptPrivacyAcoustic";
 
 export type ConceptAcceptanceStatus = "approved" | "review" | "blocked";
 
@@ -18,6 +19,7 @@ export type ConceptAcceptanceResult = {
   furniture: FurniturePlacementResult;
   circulation: CirculationResult;
   climate: DaylightVentilationResult;
+  privacyAcoustic: PrivacyAcousticResult;
 };
 
 const MAJOR_WARNING_PREFIXES = [
@@ -120,6 +122,21 @@ export function evaluateConceptAcceptance(input: {
     });
   }
 
+  const privacyAcoustic = evaluatePrivacyAcousticZoning(
+    input.rooms,
+    input.lotWidth,
+    input.lotDepth,
+    { frontSide: input.site?.frontSide },
+  );
+  for (const paIssue of privacyAcoustic.issues) {
+    issues.push({
+      id: paIssue.id,
+      severity: paIssue.severity,
+      roomId: paIssue.roomIds[0],
+      message: paIssue.message,
+    });
+  }
+
   const errors = issues.filter((issue) => issue.severity === "error");
   const warnings = issues.filter((issue) => issue.severity === "warning");
   const majorWarnings = warnings.filter(isMajorWarning);
@@ -150,5 +167,6 @@ export function evaluateConceptAcceptance(input: {
     furniture,
     circulation,
     climate,
+    privacyAcoustic,
   };
 }
