@@ -2123,7 +2123,7 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
       )
       .limit(1);
 
-    if (existingProject && !isRevision) {
+    if (existingProject && (!isRevision || config.projectMaster)) {
       return res.json({
         ok: true,
         alreadyPromoted: true,
