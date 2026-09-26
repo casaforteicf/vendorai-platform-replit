@@ -1527,6 +1527,11 @@ router.post("/arch/concept-projects/:id/facade-study", authenticate, async (req,
   const intervention = parsed.data.intervention;
   const projectBrief = (config.projectBrief ?? null) as Record<string, any> | null;
   const geometryContract = parsed.data.geometryContract ?? null;
+  if (action === "develop" && !geometryContract) {
+    return res.status(422).json({
+      error: "A fachada só pode ser desenvolvida a partir da geometria canônica do Projeto Mestre. Reabra o editor e tente novamente.",
+    });
+  }
   const facadeIntervention = intervention === "marcante" ? "assinatura" : intervention === "moderada" ? "valorizar" : "preservar";
   const facadeRepertoire = buildArchitecturalStrategyRepertoire({
     intervention: facadeIntervention,
@@ -1705,12 +1710,19 @@ Retorne SOMENTE JSON válido:
         )
       : {};
 
+    const facadeSuggestion = action === "develop" && ai.facadeSuggestion && typeof ai.facadeSuggestion === "object"
+      ? {
+          ...ai.facadeSuggestion,
+          roof: geometryContract?.roof ?? String(currentFacade.roof ?? "platibanda"),
+        }
+      : null;
+
     return res.json({
       mode: action,
       intervention,
       diagnosis: ai.diagnosis ?? null,
       concept: ai.concept ?? null,
-      facadeSuggestion: action === "develop" ? (ai.facadeSuggestion ?? null) : null,
+      facadeSuggestion,
       designSuggestion: action === "develop" ? { surfaceMaterials, volumes } : null,
       openingRecommendations: Array.isArray(ai.openingRecommendations) ? ai.openingRecommendations.slice(0, 8) : [],
       warnings: Array.isArray(ai.warnings) ? ai.warnings.slice(0, 10) : [],
