@@ -1573,6 +1573,14 @@ export default function ConceptWebGLScene({
       const toScene = (x: number, y: number) => ({ x: x - lotWidth / 2, z: y - lotDepth / 2 });
       const slabTop = (floor: number) => floor * 2.96 + 3.02;
       const pitched = roof === "aparente" || roof === "misto";
+      const roofConfig = {
+        waters: facadeDesign?.roofConfig?.waters ?? 2,
+        pitchDegrees: facadeDesign?.roofConfig?.pitchDegrees ?? 20,
+        overhang: facadeDesign?.roofConfig?.overhang ?? 0.45,
+        ridgeDirection: facadeDesign?.roofConfig?.ridgeDirection ?? "auto",
+        parapetHeight: facadeDesign?.roofConfig?.parapetHeight ?? 0.9,
+        gutter: facadeDesign?.roofConfig?.gutter ?? true,
+      };
 
       // Lajes: cada trecho na altura do próprio pavimento (no telhado aparente, o último pavimento
       // recebe o telhado inclinado abaixo; aqui ficam só as lajes dos pavimentos inferiores).
@@ -1592,9 +1600,9 @@ export default function ConceptWebGLScene({
         const baseY = slabTop(edge.floor);
         const w = horizontal ? length + 0.15 : 0.15;
         const d = horizontal ? 0.15 : length + 0.15;
-        const parapet = makeBox(modelRoot, w, 0.9, d, center.x, baseY + 0.45, center.z, wallColor);
+        const parapet = makeBox(modelRoot, w, roofConfig.parapetHeight, d, center.x, baseY + roofConfig.parapetHeight / 2, center.z, wallColor);
         parapet.castShadow = true;
-        makeBox(modelRoot, w + 0.04, 0.05, d + 0.04, center.x, baseY + 0.925, center.z, 0x52525b);
+        makeBox(modelRoot, w + 0.04, 0.05, d + 0.04, center.x, baseY + roofConfig.parapetHeight + 0.025, center.z, 0x52525b);
       }
 
       if (pitched) {
@@ -1607,33 +1615,88 @@ export default function ConceptWebGLScene({
           ? { width: maxX - minX, depth: maxY - minY, ...(() => { const c = toScene((minX + maxX) / 2, (minY + maxY) / 2); return { centerX: c.x, centerZ: c.z }; })() }
           : shellBounds;
         const roofY = highestFloor * 2.96 + 3.02;
-        const roofOverhang = 0.45;
+        const roofOverhang = roofConfig.overhang;
         const roofWidth = Math.max(2, bounds.width + roofOverhang * 2);
         const roofDepth = Math.max(2, bounds.depth + roofOverhang * 2);
-        const pitch = 0.36;
-        const halfDepth = roofDepth / 2;
-        const slopeLength = Math.sqrt(halfDepth * halfDepth + (halfDepth * pitch) * (halfDepth * pitch));
+        const pitch = Math.tan((roofConfig.pitchDegrees * Math.PI) / 180);
         const roofMaterial = 0x7a4a33;
-        const left = makeBox(modelRoot, roofWidth, 0.12, slopeLength, bounds.centerX, roofY + halfDepth * pitch / 2, bounds.centerZ - halfDepth / 2, roofMaterial);
-        left.rotation.x = -Math.atan(pitch);
-        left.castShadow = true;
-        const right = makeBox(modelRoot, roofWidth, 0.12, slopeLength, bounds.centerX, roofY + halfDepth * pitch / 2, bounds.centerZ + halfDepth / 2, roofMaterial);
-        right.rotation.x = Math.atan(pitch);
-        right.castShadow = true;
-        // Oitões (empenas) fechando as laterais do telhado na cor da parede.
-        for (const side of [-1, 1]) {
-          const gable = new THREE.Mesh(
-            new THREE.ExtrudeGeometry(new THREE.Shape([
-              new THREE.Vector2(-bounds.depth / 2, 0),
-              new THREE.Vector2(bounds.depth / 2, 0),
-              new THREE.Vector2(0, (bounds.depth / 2) * pitch),
-            ]), { depth: 0.14, bevelEnabled: false }),
-            makeMat(wallColor),
-          );
-          gable.rotation.y = Math.PI / 2;
-          gable.position.set(bounds.centerX + side * (bounds.width / 2) - (side > 0 ? 0.14 : 0), roofY - 0.06, bounds.centerZ);
-          gable.castShadow = true;
-          modelRoot.add(gable);
+        const ridgeAlongX = roofConfig.ridgeDirection === "x"
+          || (roofConfig.ridgeDirection === "auto" && roofWidth >= roofDepth);
+
+        const addPlane = (points: Array<[number, number, number]>) => {
+          const geometry = new THREE.BufferGeometry();
+          geometry.setAttribute("position", new THREE.Float32BufferAttribute(points.flat(), 3));
+          geometry.setIndex(points.length === 3 ? [0, 1, 2] : [0, 1, 2, 0, 2, 3]);
+          geometry.computeVertexNormals();
+          const mesh = new THREE.Mesh(geometry, makeMat(roofMaterial));
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          modelRoot.add(mesh);
+          return mesh;
+        };
+
+        const x0 = bounds.centerX - roofWidth / 2;
+        const x1 = bounds.centerX + roofWidth / 2;
+        const z0 = bounds.centerZ - roofDepth / 2;
+        const z1 = bounds.centerZ + roofDepth / 2;
+
+        if (roofConfig.waters === 1) {
+          if (ridgeAlongX) {
+            const h = roofDepth * pitch;
+            addPlane([[x0, roofY, z0], [x1, roofY, z0], [x1, roofY + h, z1], [x0, roofY + h, z1]]);
+          } else {
+            const h = roofWidth * pitch;
+            addPlane([[x0, roofY, z0], [x1, roofY + h, z0], [x1, roofY + h, z1], [x0, roofY, z1]]);
+          }
+        } else if (roofConfig.waters === 4) {
+          if (ridgeAlongX) {
+            const h = (roofDepth / 2) * pitch;
+            const ridgeHalf = Math.max(0, (roofWidth - roofDepth) / 2);
+            const rx0 = bounds.centerX - ridgeHalf;
+            const rx1 = bounds.centerX + ridgeHalf;
+            addPlane([[x0, roofY, z0], [x1, roofY, z0], [rx1, roofY + h, bounds.centerZ], [rx0, roofY + h, bounds.centerZ]]);
+            addPlane([[x1, roofY, z1], [x0, roofY, z1], [rx0, roofY + h, bounds.centerZ], [rx1, roofY + h, bounds.centerZ]]);
+            addPlane([[x0, roofY, z1], [x0, roofY, z0], [rx0, roofY + h, bounds.centerZ]]);
+            addPlane([[x1, roofY, z0], [x1, roofY, z1], [rx1, roofY + h, bounds.centerZ]]);
+          } else {
+            const h = (roofWidth / 2) * pitch;
+            const ridgeHalf = Math.max(0, (roofDepth - roofWidth) / 2);
+            const rz0 = bounds.centerZ - ridgeHalf;
+            const rz1 = bounds.centerZ + ridgeHalf;
+            addPlane([[x0, roofY, z1], [x0, roofY, z0], [bounds.centerX, roofY + h, rz0], [bounds.centerX, roofY + h, rz1]]);
+            addPlane([[x1, roofY, z0], [x1, roofY, z1], [bounds.centerX, roofY + h, rz1], [bounds.centerX, roofY + h, rz0]]);
+            addPlane([[x0, roofY, z0], [x1, roofY, z0], [bounds.centerX, roofY + h, rz0]]);
+            addPlane([[x1, roofY, z1], [x0, roofY, z1], [bounds.centerX, roofY + h, rz1]]);
+          }
+        } else if (ridgeAlongX) {
+          const halfDepth = roofDepth / 2;
+          const slopeLength = Math.sqrt(halfDepth * halfDepth + (halfDepth * pitch) * (halfDepth * pitch));
+          const left = makeBox(modelRoot, roofWidth, 0.12, slopeLength, bounds.centerX, roofY + halfDepth * pitch / 2, bounds.centerZ - halfDepth / 2, roofMaterial);
+          left.rotation.x = -Math.atan(pitch);
+          left.castShadow = true;
+          const right = makeBox(modelRoot, roofWidth, 0.12, slopeLength, bounds.centerX, roofY + halfDepth * pitch / 2, bounds.centerZ + halfDepth / 2, roofMaterial);
+          right.rotation.x = Math.atan(pitch);
+          right.castShadow = true;
+        } else {
+          const halfWidth = roofWidth / 2;
+          const slopeLength = Math.sqrt(halfWidth * halfWidth + (halfWidth * pitch) * (halfWidth * pitch));
+          const left = makeBox(modelRoot, slopeLength, 0.12, roofDepth, bounds.centerX - halfWidth / 2, roofY + halfWidth * pitch / 2, bounds.centerZ, roofMaterial);
+          left.rotation.z = Math.atan(pitch);
+          left.castShadow = true;
+          const right = makeBox(modelRoot, slopeLength, 0.12, roofDepth, bounds.centerX + halfWidth / 2, roofY + halfWidth * pitch / 2, bounds.centerZ, roofMaterial);
+          right.rotation.z = -Math.atan(pitch);
+          right.castShadow = true;
+        }
+
+        if (roofConfig.gutter) {
+          const gutterColor = 0x475569;
+          if (ridgeAlongX) {
+            makeBox(modelRoot, roofWidth, 0.08, 0.10, bounds.centerX, roofY + 0.02, z0, gutterColor);
+            makeBox(modelRoot, roofWidth, 0.08, 0.10, bounds.centerX, roofY + 0.02, z1, gutterColor);
+          } else {
+            makeBox(modelRoot, 0.10, 0.08, roofDepth, x0, roofY + 0.02, bounds.centerZ, gutterColor);
+            makeBox(modelRoot, 0.10, 0.08, roofDepth, x1, roofY + 0.02, bounds.centerZ, gutterColor);
+          }
         }
       }
     }
