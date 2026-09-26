@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { AlignCenter, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, CheckCircle2, Home, Move, Ruler, Sparkles } from "lucide-react";
+import { AlignCenter, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, CheckCircle2, Compass, Eye, Home, Mountain, Move, Ruler, ShieldAlert, Sparkles, Sun } from "lucide-react";
 import {
   buildSitePlacementSuggestions,
   clampBuildingOrigin,
@@ -242,7 +242,13 @@ export default function ConceptSitePlacementPanel({
             <button
               key={value}
               type="button"
-              onClick={() => onPlacementChange({ ...placement, frontSide: value })}
+              onClick={() => onPlacementChange({
+                ...placement,
+                frontSide: value,
+                vehicleAccessSide: !placement.vehicleAccessSide || placement.vehicleAccessSide === placement.frontSide
+                  ? value
+                  : placement.vehicleAccessSide,
+              })}
               className={placement.frontSide === value
                 ? "rounded-xl border-2 border-orange-500 bg-orange-50 p-2 text-orange-700"
                 : "rounded-xl border bg-white p-2 text-slate-600"}
@@ -252,6 +258,100 @@ export default function ConceptSitePlacementPanel({
             </button>
           ))}
         </div>
+      </section>
+
+      <section className="space-y-2">
+        <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+          <Compass className="h-4 w-4 text-orange-500" />
+          Contexto real do terreno
+        </div>
+        <p className="text-[10px] leading-4 text-slate-500">
+          Estes dados orientam a IA na implantação. Se ainda não souber algum item, deixe como “Não informado”.
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="rounded-xl border bg-white p-2.5 text-[10px] font-semibold text-slate-500">
+            <span className="flex items-center gap-1"><Sun className="h-3 w-3" /> Norte geográfico</span>
+            <select
+              value={placement.northSide ?? ""}
+              onChange={(event) => onPlacementChange({ ...placement, northSide: (event.target.value || null) as SitePlacement["northSide"] })}
+              className="mt-1 w-full bg-transparent text-[11px] font-bold text-slate-800 outline-none"
+            >
+              <option value="">Não informado</option>
+              <option value="top">Cima</option>
+              <option value="bottom">Baixo</option>
+              <option value="left">Esquerda</option>
+              <option value="right">Direita</option>
+            </select>
+          </label>
+          <label className="rounded-xl border bg-white p-2.5 text-[10px] font-semibold text-slate-500">
+            Acesso de veículos
+            <select
+              value={placement.vehicleAccessSide ?? placement.frontSide}
+              onChange={(event) => onPlacementChange({ ...placement, vehicleAccessSide: event.target.value as SitePlacement["vehicleAccessSide"] })}
+              className="mt-1 w-full bg-transparent text-[11px] font-bold text-slate-800 outline-none"
+            >
+              <option value="top">Cima</option>
+              <option value="bottom">Baixo</option>
+              <option value="left">Esquerda</option>
+              <option value="right">Direita</option>
+            </select>
+          </label>
+          <label className="rounded-xl border bg-white p-2.5 text-[10px] font-semibold text-slate-500">
+            <span className="flex items-center gap-1"><Mountain className="h-3 w-3" /> Declive</span>
+            <select
+              value={placement.slope ?? "flat"}
+              onChange={(event) => onPlacementChange({ ...placement, slope: event.target.value as SitePlacement["slope"] })}
+              className="mt-1 w-full bg-transparent text-[11px] font-bold text-slate-800 outline-none"
+            >
+              <option value="flat">Plano / pouco declive</option>
+              <option value="to_front">Cai para a frente</option>
+              <option value="to_rear">Cai para os fundos</option>
+              <option value="to_left">Cai para a esquerda</option>
+              <option value="to_right">Cai para a direita</option>
+            </select>
+          </label>
+          <label className="rounded-xl border bg-white p-2.5 text-[10px] font-semibold text-slate-500">
+            <span className="flex items-center gap-1"><Eye className="h-3 w-3" /> Melhor vista / lazer</span>
+            <select
+              value={placement.preferredViewSide ?? ""}
+              onChange={(event) => onPlacementChange({ ...placement, preferredViewSide: (event.target.value || null) as SitePlacement["preferredViewSide"] })}
+              className="mt-1 w-full bg-transparent text-[11px] font-bold text-slate-800 outline-none"
+            >
+              <option value="">Não informado</option>
+              <option value="top">Cima</option>
+              <option value="bottom">Baixo</option>
+              <option value="left">Esquerda</option>
+              <option value="right">Direita</option>
+            </select>
+          </label>
+          <label className="rounded-xl border bg-white p-2.5 text-[10px] font-semibold text-slate-500">
+            <span className="flex items-center gap-1"><ShieldAlert className="h-3 w-3" /> Lado crítico</span>
+            <select
+              value={placement.avoidSide ?? ""}
+              onChange={(event) => onPlacementChange({ ...placement, avoidSide: (event.target.value || null) as SitePlacement["avoidSide"] })}
+              className="mt-1 w-full bg-transparent text-[11px] font-bold text-slate-800 outline-none"
+            >
+              <option value="">Nenhum / não informado</option>
+              <option value="top">Cima</option>
+              <option value="bottom">Baixo</option>
+              <option value="left">Esquerda</option>
+              <option value="right">Direita</option>
+            </select>
+          </label>
+        </div>
+        <label className="block rounded-xl border bg-white p-2.5 text-[10px] font-semibold text-slate-500">
+          Prioridade da implantação
+          <select
+            value={placement.strategy ?? "balanced"}
+            onChange={(event) => onPlacementChange({ ...placement, strategy: event.target.value as SitePlacement["strategy"] })}
+            className="mt-1 w-full bg-transparent text-[11px] font-bold text-slate-800 outline-none"
+          >
+            <option value="balanced">Equilibrar tudo</option>
+            <option value="access">Acesso e garagem</option>
+            <option value="solar">Sol e iluminação natural</option>
+            <option value="leisure">Jardim, piscina e lazer</option>
+          </select>
+        </label>
       </section>
 
       {bounds && suggestions.length > 0 && (
@@ -272,9 +372,14 @@ export default function ConceptSitePlacementPanel({
                   </div>
                   <span className={activeSuggestionId === suggestion.id ? "flex shrink-0 items-center gap-1 rounded-lg bg-orange-500 px-2 py-1 text-[9px] font-bold text-white" : "shrink-0 rounded-lg bg-slate-100 px-2 py-1 text-[9px] font-bold text-slate-600"}>
                     {activeSuggestionId === suggestion.id && <CheckCircle2 className="h-3 w-3" />}
-                    {activeSuggestionId === suggestion.id ? "Aplicada" : "Aplicar"}
+                    {activeSuggestionId === suggestion.id ? "Aplicada" : suggestion.score ? `${suggestion.score} pts` : "Aplicar"}
                   </span>
                 </div>
+                {suggestion.reasons && suggestion.reasons.length > 0 && (
+                  <div className="mt-2 rounded-lg bg-emerald-50 px-2 py-1.5 text-[9px] font-semibold leading-4 text-emerald-700">
+                    {suggestion.reasons.slice(0, 3).join(" · ")}
+                  </div>
+                )}
                 <div className="mt-2 grid grid-cols-2 gap-1 text-[9px] font-semibold text-slate-500">
                   <span>Fundo livre: {suggestion.metrics.rearFree.toFixed(1)} m</span>
                   <span>Maior lateral: {Math.max(suggestion.metrics.leftFree, suggestion.metrics.rightFree).toFixed(1)} m</span>
