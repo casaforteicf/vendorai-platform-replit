@@ -72,4 +72,20 @@ describe("Etapa 78 — Auto-Repair arquitetônico", () => {
     expect(Math.min(bed.width, bed.depth)).toBeGreaterThanOrEqual(2.4);
     expect(result.after.score).toBeGreaterThan(result.before.score);
   });
+  it("prefere relayout que melhora aderência ao briefing sem piorar o gate técnico", () => {
+    const result = autoRepairConceptLayout({
+      lotWidth: 14,
+      lotDepth: 20,
+      floors: 1,
+      intent: { livingIntegratedKitchen: true },
+      rooms: [
+        room({ id: "living", kind: "sala", label: "Sala", x: 0, y: 0, width: 4, depth: 4 }),
+        room({ id: "kitchen", kind: "cozinha", label: "Cozinha", x: 8, y: 0, width: 3, depth: 4 }),
+      ],
+    });
+
+    expect(result.after.errors.length).toBeLessThanOrEqual(result.before.errors.length);
+    expect(result.afterIntent.score).toBeGreaterThanOrEqual(result.beforeIntent.score);
+  });
+
 });
