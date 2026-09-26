@@ -1442,13 +1442,13 @@ function buildArchitecturalQualityGateV2(issues: string[]) {
   })) as Record<QualityDimensionKey, QualityDimension>;
 
   const weights: Record<QualityDimensionKey, number> = {
-    program: 0.11,
-    circulation: 0.14,
+    program: 0.10,
+    circulation: 0.13,
     privacy: 0.08,
     ergonomics: 0.09,
-    geometry: 0.09,
+    geometry: 0.08,
     constructability: 0.08,
-    furnitureFit: 0.10,
+    furnitureFit: 0.09,
     siteClimate: 0.08,
     roofVolumetry: 0.07,
     costValue: 0.06,
@@ -1793,13 +1793,13 @@ function evaluateSpecialistPlan(
     issues: technicalSystems.issues.slice(0, 8),
   };
   gate.score = Math.round(
-    gate.dimensions.program.score * 0.11
-    + gate.dimensions.circulation.score * 0.14
+    gate.dimensions.program.score * 0.10
+    + gate.dimensions.circulation.score * 0.13
     + gate.dimensions.privacy.score * 0.08
     + gate.dimensions.ergonomics.score * 0.09
-    + gate.dimensions.geometry.score * 0.09
+    + gate.dimensions.geometry.score * 0.08
     + gate.dimensions.constructability.score * 0.08
-    + gate.dimensions.furnitureFit.score * 0.10
+    + gate.dimensions.furnitureFit.score * 0.09
     + gate.dimensions.siteClimate.score * 0.08
     + gate.dimensions.roofVolumetry.score * 0.07
     + gate.dimensions.costValue.score * 0.06
