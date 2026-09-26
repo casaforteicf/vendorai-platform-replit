@@ -181,14 +181,14 @@ export function evaluateConceptAcceptance(input: {
   const nonMajorCoreWarnings = coreWarnings.filter((issue) => !majorWarnings.includes(issue));
 
   // O aceite não pode degradar artificialmente só porque adicionamos novos gates consultivos.
-  // Erros continuam bloqueando; avisos funcionais pesam mais; clima/custo/acústica são sinais
-  // de otimização e têm penalidade menor.
+  // Erros continuam bloqueando e avisos funcionais pesam no score. Os avisos de clima,
+  // custo, acústica e construtibilidade continuam visíveis e entram nos otimizadores,
+  // mas não reduzem o score-base do gate técnico por si só.
   const rawScore =
     100
     - errors.length * 30
     - majorWarnings.length * 10
-    - nonMajorCoreWarnings.length * 3
-    - advisoryWarnings.length * 1;
+    - nonMajorCoreWarnings.length * 3;
   const score = Math.max(0, Math.min(100, Math.round(rawScore)));
 
   let status: ConceptAcceptanceStatus = "approved";
