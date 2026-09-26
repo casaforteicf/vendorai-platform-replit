@@ -11,6 +11,19 @@ type StrategyContext = {
     mustHave?: string;
     avoid?: string;
   } | null;
+  brazilianContext?: {
+    region?: string;
+    lotContext?: string;
+    lifeCycle?: string;
+    expansionPriority?: string;
+    outdoorLiving?: string;
+    serviceRoutine?: string;
+    privacySecurity?: string;
+    vehicleProfile?: string;
+    evReady?: boolean;
+    solarReady?: boolean;
+    rainwaterReady?: boolean;
+  } | null;
 };
 
 const PARTY_STRATEGIES = [
@@ -66,6 +79,41 @@ export function buildArchitecturalStrategyRepertoire(ctx: StrategyContext): stri
   const protagonist = vision.protagonist ?? "social";
   const lifestyle = vision.lifestyle ?? "misto";
   const budget = vision.budgetStrategy ?? "equilibrar";
+  const brazil = ctx.brazilianContext ?? {};
+  const regional: string[] = [];
+  if (brazil.region && brazil.region !== "nao_informada") {
+    regional.push(`Regional context: ${brazil.region}. Use this only as climate/culture context; never stereotype the house.`);
+  }
+  if (brazil.lotContext && brazil.lotContext !== "nao_informado") {
+    regional.push(`Lot context: ${brazil.lotContext}. Adapt street relationship, privacy, outdoor space and access accordingly.`);
+  }
+  if (brazil.lifeCycle === "familia_crescendo") {
+    regional.push("Life-cycle: growing family — favor adaptable rooms, expansion logic and durable circulation.");
+  } else if (brazil.lifeCycle === "multigeracional") {
+    regional.push("Life-cycle: multigenerational — provide autonomy, privacy and preferably a ground-floor sleeping/bathroom strategy when compatible with the brief.");
+  } else if (brazil.lifeCycle === "envelhecer_na_casa") {
+    regional.push("Life-cycle: ageing in place — reduce level changes, anticipate accessible circulation and make a future ground-floor full bathroom/sleeping option possible.");
+  } else if (brazil.lifeCycle === "investimento") {
+    regional.push("Life-cycle: investment — prioritize rational construction, flexible rooms, robust maintenance and broad future usability.");
+  }
+  if (brazil.expansionPriority === "alta" || brazil.expansionPriority === "prever") {
+    regional.push("Evolution strategy: reserve a plausible future expansion path without damaging current daylight, circulation or leisure space.");
+  }
+  if (brazil.outdoorLiving === "alto") {
+    regional.push("Outdoor living is important: strengthen shaded transition spaces and real social connection to yard/gourmet/pool.");
+  }
+  if (brazil.serviceRoutine === "tradicional" || brazil.serviceRoutine === "intensa") {
+    regional.push("Service routine matters: treat laundry, drying, pantry/utility and discreet service access as real program, not residual space.");
+  }
+  if (brazil.privacySecurity === "protegida") {
+    regional.push("Street privacy/security priority: control direct views into private/social interiors, distinguish pedestrian/vehicle access and avoid exposed bedroom openings.");
+  }
+  if (brazil.vehicleProfile === "suv" || brazil.vehicleProfile === "pickup" || brazil.vehicleProfile === "misto") {
+    regional.push(`Vehicle profile: ${brazil.vehicleProfile}. Check realistic parking envelope, door opening and maneuvering rather than generic parking dimensions.`);
+  }
+  if (brazil.evReady) regional.push("Prepare garage/electrical strategy for future EV charging without making it a decorative feature.");
+  if (brazil.solarReady) regional.push("Keep roof orientation/obstructions compatible with future photovoltaic installation where site geometry allows.");
+  if (brazil.rainwaterReady) regional.push("Keep roof drainage and technical area compatible with future rainwater harvesting where appropriate.");
 
   let party = [...PARTY_STRATEGIES];
   if (protagonist === "jardim") {
@@ -105,6 +153,9 @@ export function buildArchitecturalStrategyRepertoire(ctx: StrategyContext): stri
     "ARQDOR ARCHITECTURAL REPERTOIRE — use as strategies, NEVER as templates to copy:",
     freedom,
     cost,
+    "",
+    "BRAZILIAN RESIDENTIAL CONTEXT (principles, never stereotypes):",
+    ...(regional.length ? regional.map((item) => `- ${item}`) : ["- No regional/life-cycle context supplied; do not invent one."]),
     "",
     "PARTY / MASSING OPTIONS (select only what truly fits the brief):",
     ...party.slice(0, ctx.intervention === "assinatura" ? 7 : 5).map((item) => `- ${item}`),
