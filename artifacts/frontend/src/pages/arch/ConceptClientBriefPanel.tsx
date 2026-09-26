@@ -708,6 +708,7 @@ export default function ConceptClientBriefPanel({
                         ["furnitureFit", "Mobiliário"],
                         ["siteClimate", "Terreno/clima"],
                         ["roofVolumetry", "Cobertura/volume"],
+                        ["costValue", "Custo/valor"],
                         ["architecturalCoherence", "Coerência"],
                       ] as const).map(([key, label]) => {
                         const dimension = alternative.qualityDimensions?.[key];
@@ -830,6 +831,36 @@ export default function ConceptClientBriefPanel({
                         </div>
                       ))}
                     </div>
+                  </div>
+                ) : null}
+
+                {alternative.programCompliance?.costValue ? (
+                  <div className="mt-2 rounded-lg border border-emerald-100 bg-emerald-50 px-2.5 py-2">
+                    <div className="flex items-center justify-between gap-2 text-[10px]">
+                      <span className="font-bold text-emerald-900">Cost & Value Engineering</span>
+                      <span className={alternative.programCompliance.costValue.status === "blocked"
+                        ? "font-bold text-red-600"
+                        : alternative.programCompliance.costValue.status === "warning"
+                          ? "font-bold text-amber-600"
+                          : "font-bold text-emerald-700"}
+                      >
+                        {alternative.programCompliance.costValue.score}/100
+                      </span>
+                    </div>
+                    <div className="mt-1 text-[9px] leading-4 text-emerald-900">
+                      Complexidade: {alternative.programCompliance.costValue.metrics.complexityIndex}/100 ·
+                      perímetro/área: {alternative.programCompliance.costValue.metrics.perimeterAreaRatio}
+                      {alternative.programCompliance.costValue.metrics.budgetPerSqmTarget
+                        ? ` · orçamento-alvo ≈ R$ ${alternative.programCompliance.costValue.metrics.budgetPerSqmTarget.toLocaleString("pt-BR")}/m²`
+                        : ""}
+                    </div>
+                    {alternative.programCompliance.costValue.valueEngineering?.length ? (
+                      <div className="mt-2 space-y-1 text-[9px] leading-4 text-slate-600">
+                        {alternative.programCompliance.costValue.valueEngineering.slice(0, 4).map((item, index) => (
+                          <div key={index}>• {item}</div>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
 
