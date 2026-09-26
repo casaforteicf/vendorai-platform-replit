@@ -50,10 +50,22 @@ function first(rooms: ConceptRoomShape[], kind: string) {
   return rooms.find((room) => room.kind === kind);
 }
 
+function edgeDistance(a: ConceptRoomShape, b: ConceptRoomShape) {
+  const dx = Math.max(
+    0,
+    Math.max(a.x, b.x) - Math.min(a.x + a.width, b.x + b.width),
+  );
+  const dy = Math.max(
+    0,
+    Math.max(a.y, b.y) - Math.min(a.y + a.depth, b.y + b.depth),
+  );
+  return Math.hypot(dx, dy);
+}
+
 function nearestDistance(roomsA: ConceptRoomShape[], roomsB: ConceptRoomShape[]) {
   let best = Number.POSITIVE_INFINITY;
   for (const a of roomsA) {
-    for (const b of roomsB) best = Math.min(best, distance(a, b));
+    for (const b of roomsB) best = Math.min(best, edgeDistance(a, b));
   }
   return best;
 }
