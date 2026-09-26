@@ -5,6 +5,7 @@ import { evaluateCirculationAndDoorSwing, type CirculationResult } from "./conce
 import { evaluateDaylightVentilationSolar, type DaylightVentilationResult } from "./conceptClimatePerformance";
 import { evaluatePrivacyAcousticZoning, type PrivacyAcousticResult } from "./conceptPrivacyAcoustic";
 import { evaluateConstructability, type ConstructabilityResult } from "./conceptConstructability";
+import { evaluateBuildabilityCost, type BuildabilityResult } from "./conceptBuildabilityCost";
 
 export type ConceptAcceptanceStatus = "approved" | "review" | "blocked";
 
@@ -22,6 +23,7 @@ export type ConceptAcceptanceResult = {
   climate: DaylightVentilationResult;
   privacyAcoustic: PrivacyAcousticResult;
   constructability: ConstructabilityResult;
+  buildability: BuildabilityResult;
 };
 
 const MAJOR_WARNING_PREFIXES = [
@@ -149,6 +151,16 @@ export function evaluateConceptAcceptance(input: {
     });
   }
 
+  const buildability = evaluateBuildabilityCost(input.rooms);
+  for (const buildIssue of buildability.issues) {
+    issues.push({
+      id: buildIssue.id,
+      severity: buildIssue.severity,
+      roomId: buildIssue.roomIds[0],
+      message: buildIssue.message,
+    });
+  }
+
   const errors = issues.filter((issue) => issue.severity === "error");
   const warnings = issues.filter((issue) => issue.severity === "warning");
   const majorWarnings = warnings.filter(isMajorWarning);
@@ -181,5 +193,6 @@ export function evaluateConceptAcceptance(input: {
     climate,
     privacyAcoustic,
     constructability,
+    buildability,
   };
 }
