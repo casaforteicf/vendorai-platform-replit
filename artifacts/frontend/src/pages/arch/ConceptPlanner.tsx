@@ -68,6 +68,7 @@ import { buildOrthogonalWallTopology, detectClosedSpaces, type ClosedSpace, type
 import { conceptStepCta, nextConceptStep, normalizeConceptStep, previousConceptStep } from "./conceptNavigation";
 import { CONCEPT_OPENING_FAMILIES } from "./catalogs/conceptOpeningCatalog";
 import { blockingConceptIssues, canAdvanceConceptLayout } from "./conceptWorkflow";
+import { clampObjectToLot, clampRoomToLot, clampWallToLot, normalizeOpeningDimensions } from "./conceptParametricEditing";
 
 type RoomKind =
   | "sala"
@@ -160,6 +161,9 @@ type EditorSnapshot = {
   objects: ConceptPlanObject[];
   spaceProfiles: SpaceProfile[];
   wallMaterials: Record<string, string>;
+  facadePreferences: ConceptFacadePreferences;
+  facadeDesign: FacadeDesignState;
+  sitePlacement: SitePlacement;
 };
 
 type ConceptSaveOverrides = {
@@ -808,6 +812,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const openingOverridesRef = useRef<Record<string, OpeningOverride>>({});
   const objectsRef = useRef<ConceptPlanObject[]>([]);
   const wallMaterialsRef = useRef<Record<string, string>>({});
+  const facadePreferencesRef = useRef<ConceptFacadePreferences>(DEFAULT_FACADE);
+  const facadeDesignRef = useRef<FacadeDesignState>(DEFAULT_FACADE_DESIGN);
+  const sitePlacementRef = useRef<SitePlacement>(DEFAULT_SITE_PLACEMENT);
   const editStartRef = useRef<EditorSnapshot | null>(null);
   const [roomHistory, setRoomHistory] = useState<EditorSnapshot[]>([]);
   const [roomFuture, setRoomFuture] = useState<EditorSnapshot[]>([]);
@@ -1180,6 +1187,32 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   }, [openingOverrides]);
 
   useEffect(() => {
+    facadePreferencesRef.current = facadePreferences;
+  }, [facadePreferences]);
+
+  useEffect(() => {
+    facadeDesignRef.current = facadeDesign;
+  }, [facadeDesign]);
+
+  useEffect(() => {
+    sitePlacementRef.current = sitePlacement;
+  }, [sitePlacement]);
+
+  // Etapa 98: qualquer redução do lote mantém toda geometria editável dentro dos limites,
+  // sem trocar IDs, relações ou reiniciar o projeto.
+  useEffect(() => {
+    setRooms((current) => (Array.isArray(current) ? current : []).map((room) =>
+      clampRoomToLot(room, lotWidth, lotDepth)
+    ));
+    setCustomWalls((current) => (Array.isArray(current) ? current : []).map((wall) =>
+      clampWallToLot(wall, lotWidth, lotDepth)
+    ));
+    setObjects((current) => (Array.isArray(current) ? current : []).map((object) =>
+      clampObjectToLot(object, lotWidth, lotDepth)
+    ));
+  }, [lotWidth, lotDepth]);
+
+  useEffect(() => {
     let cancelled = false;
 
     const loadLatest = async () => {
@@ -1544,8 +1577,27 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   };
 
   const handleFacadeDesignChange = (next: FacadeDesignState) => {
+    const before = snapshotEditor();
+    facadeDesignRef.current = next;
     setFacadeDesign(next);
+    pushRoomHistory(before);
     void saveConcept(4, undefined, { facadeDesign: next });
+  };
+
+  const handleFacadePreferencesChange = (next: ConceptFacadePreferences) => {
+    const before = snapshotEditor();
+    facadePreferencesRef.current = next;
+    setFacadePreferences(next);
+    pushRoomHistory(before);
+    void saveConcept(4, undefined, { facadePreferences: next });
+  };
+
+  const handleSitePlacementChange = (next: SitePlacement) => {
+    const normalized = normalizeSitePlacement(next);
+    const before = snapshotEditor();
+    sitePlacementRef.current = normalized;
+    setSitePlacement(normalized);
+    pushRoomHistory(before);
   };
 
   const applyAiDevelopment = async (result: AIDevelopmentResponse) => {
@@ -1862,6 +1914,21 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     objects: objectsRef.current.map((object) => ({ ...object })),
     spaceProfiles: (Array.isArray(spaceProfiles) ? spaceProfiles : []).map((profile) => ({ ...profile, centroid: { ...profile.centroid } })),
     wallMaterials: { ...wallMaterialsRef.current },
+    facadePreferences: { ...facadePreferencesRef.current },
+    facadeDesign: {
+      ...facadeDesignRef.current,
+      surfaceMaterials: { ...facadeDesignRef.current.surfaceMaterials },
+      volumes: (facadeDesignRef.current.volumes ?? []).map((volume) => ({ ...volume })),
+      roofConfig: facadeDesignRef.current.roofConfig ? { ...facadeDesignRef.current.roofConfig } : undefined,
+      siteExterior: facadeDesignRef.current.siteExterior
+        ? {
+            zones: facadeDesignRef.current.siteExterior.zones.map((zone) => ({ ...zone })),
+            pedestrianEntry: facadeDesignRef.current.siteExterior.pedestrianEntry ? { ...facadeDesignRef.current.siteExterior.pedestrianEntry } : null,
+            vehicleEntry: facadeDesignRef.current.siteExterior.vehicleEntry ? { ...facadeDesignRef.current.siteExterior.vehicleEntry } : null,
+          }
+        : undefined,
+    },
+    sitePlacement: { ...sitePlacementRef.current },
   });
 
   const cloneSnapshot = (snapshot: EditorSnapshot): EditorSnapshot => ({
@@ -1875,6 +1942,21 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     objects: snapshot.objects.map((object) => ({ ...object })),
     spaceProfiles: snapshot.spaceProfiles.map((profile) => ({ ...profile, centroid: { ...profile.centroid } })),
     wallMaterials: { ...snapshot.wallMaterials },
+    facadePreferences: { ...snapshot.facadePreferences },
+    facadeDesign: {
+      ...snapshot.facadeDesign,
+      surfaceMaterials: { ...snapshot.facadeDesign.surfaceMaterials },
+      volumes: (snapshot.facadeDesign.volumes ?? []).map((volume) => ({ ...volume })),
+      roofConfig: snapshot.facadeDesign.roofConfig ? { ...snapshot.facadeDesign.roofConfig } : undefined,
+      siteExterior: snapshot.facadeDesign.siteExterior
+        ? {
+            zones: snapshot.facadeDesign.siteExterior.zones.map((zone) => ({ ...zone })),
+            pedestrianEntry: snapshot.facadeDesign.siteExterior.pedestrianEntry ? { ...snapshot.facadeDesign.siteExterior.pedestrianEntry } : null,
+            vehicleEntry: snapshot.facadeDesign.siteExterior.vehicleEntry ? { ...snapshot.facadeDesign.siteExterior.vehicleEntry } : null,
+          }
+        : undefined,
+    },
+    sitePlacement: { ...snapshot.sitePlacement },
   });
 
   const restoreSnapshot = (snapshot: EditorSnapshot) => {
@@ -1887,6 +1969,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     setObjects(cloned.objects);
     setSpaceProfiles(cloned.spaceProfiles);
     setWallMaterials(cloned.wallMaterials);
+    setFacadePreferences(cloned.facadePreferences);
+    setFacadeDesign(cloned.facadeDesign);
+    setSitePlacement(cloned.sitePlacement);
     setSelectedId(null);
     setSelectedWallId(null);
     setSelectedCustomWallId(null);
@@ -2010,7 +2095,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   };
 
   const updateRoomById = (roomId: string, patch: Partial<Room>) => {
-    setRooms((prev) => (Array.isArray(prev) ? prev : []).map((room) => (room.id === roomId ? { ...room, ...patch } : room)));
+    setRooms((prev) => (Array.isArray(prev) ? prev : []).map((room) =>
+      room.id === roomId ? clampRoomToLot({ ...room, ...patch }, lotWidth, lotDepth) : room
+    ));
   };
 
   const updateOpeningById = (openingId: string, patch: OpeningOverride) => {
@@ -3512,12 +3599,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((opening) => {
       if (opening.id !== openingId) return opening;
       const next = { ...opening, ...patch };
-      const isDoor = next.type === "door";
       return {
         ...next,
-        width: Math.max(0.5, Math.min(4, next.width ?? (isDoor ? 0.9 : 1.2))),
-        height: Math.max(0.5, Math.min(2.8, next.height ?? (isDoor ? 2.1 : 1.2))),
-        sillHeight: isDoor ? 0 : Math.max(0, Math.min(2.2, next.sillHeight ?? 0.9)),
+        ...normalizeOpeningDimensions(next),
       };
     }));
     pushRoomHistory(before);
@@ -3581,7 +3665,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
   const nudgeSelectedWall = (delta: number) => {
     if (!selectedWall) return;
+    const before = snapshotEditor();
     moveWallById(selectedWall.id, delta);
+    pushRoomHistory(before);
   };
 
   const moveOpening = (amount: number) => {
@@ -5715,7 +5801,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       lotDepth={lotDepth}
                       rooms={safeRooms}
                       placement={sitePlacement}
-                      onPlacementChange={setSitePlacement}
+                      onPlacementChange={handleSitePlacementChange}
                       onMoveBuilding={moveWholeProjectTo}
                       onContinue={() => {
                         setEditorLibraryTab("rooms");
@@ -6848,7 +6934,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       rooms={safeRooms}
                       facade={facadePreferences}
                       design={facadeDesign}
-                      onFacadeChange={setFacadePreferences}
+                      onFacadeChange={handleFacadePreferencesChange}
                       onDesignChange={handleFacadeDesignChange}
                       realisticPreviewUrl={latestFacadeRenderUrl}
                       realisticPreviewLoading={conceptRender?.status === "processing"}
