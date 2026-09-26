@@ -235,14 +235,14 @@ export function normalizeFacadeDesign(value?: Partial<FacadeDesignState> | null)
     roofConfig: {
       waters: [1, 2, 4].includes(Number(value?.roofConfig?.waters))
         ? Number(value?.roofConfig?.waters) as 1 | 2 | 4
-        : DEFAULT_FACADE_DESIGN.roofConfig.waters,
-      pitchDegrees: Math.max(3, Math.min(55, Number(value?.roofConfig?.pitchDegrees) || DEFAULT_FACADE_DESIGN.roofConfig.pitchDegrees)),
-      overhang: Math.max(0, Math.min(1.5, Number(value?.roofConfig?.overhang) || DEFAULT_FACADE_DESIGN.roofConfig.overhang)),
+        : DEFAULT_FACADE_DESIGN.roofConfig!.waters,
+      pitchDegrees: Math.max(3, Math.min(55, Number(value?.roofConfig?.pitchDegrees) || DEFAULT_FACADE_DESIGN.roofConfig!.pitchDegrees)),
+      overhang: Math.max(0, Math.min(1.5, Number(value?.roofConfig?.overhang) || DEFAULT_FACADE_DESIGN.roofConfig!.overhang)),
       ridgeDirection: ["auto", "x", "y"].includes(String(value?.roofConfig?.ridgeDirection))
         ? value!.roofConfig!.ridgeDirection
-        : DEFAULT_FACADE_DESIGN.roofConfig.ridgeDirection,
-      parapetHeight: Math.max(0.2, Math.min(1.6, Number(value?.roofConfig?.parapetHeight) || DEFAULT_FACADE_DESIGN.roofConfig.parapetHeight)),
-      gutter: value?.roofConfig?.gutter ?? DEFAULT_FACADE_DESIGN.roofConfig.gutter,
+        : DEFAULT_FACADE_DESIGN.roofConfig!.ridgeDirection,
+      parapetHeight: Math.max(0.2, Math.min(1.6, Number(value?.roofConfig?.parapetHeight) || DEFAULT_FACADE_DESIGN.roofConfig!.parapetHeight)),
+      gutter: value?.roofConfig?.gutter ?? DEFAULT_FACADE_DESIGN.roofConfig!.gutter,
     },
   };
 }
