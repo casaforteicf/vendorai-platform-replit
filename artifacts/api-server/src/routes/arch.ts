@@ -2837,6 +2837,74 @@ NÃO aceite a primeira solução mental: critique e refine antes de responder.`;
   }
 });
 
+router.post("/arch/concept-projects/:id/taste-feedback", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const userId = req.user?.sub;
+  const id = String(req.params.id);
+  if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
+
+  const schema = z.object({
+    source: z.enum(["briefing","facade_option","manual_edit"]).default("facade_option"),
+    signal: z.string().min(2).max(220),
+    weight: z.number().min(-1).max(1),
+    preferredMove: z.string().max(180).optional(),
+    dislikedMove: z.string().max(180).optional(),
+  });
+  const parsed = schema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Feedback de gosto inválido.", details: parsed.error.flatten() });
+  }
+
+  const [current] = await db
+    .select({ configuration: archConceptProjectsTable.configuration })
+    .from(archConceptProjectsTable)
+    .where(and(
+      eq(archConceptProjectsTable.id, id),
+      eq(archConceptProjectsTable.tenantId, tid),
+      eq(archConceptProjectsTable.ownerUserId, userId),
+    ))
+    .limit(1);
+
+  if (!current) return res.status(404).json({ error: "Pré-projeto não encontrado." });
+
+  const configuration = { ...((current.configuration ?? {}) as Record<string, any>) };
+  const projectBrief = { ...((configuration.projectBrief ?? {}) as Record<string, any>) };
+  const vision = { ...((projectBrief.vision ?? {}) as Record<string, any>) };
+  const tasteDNA = { ...((vision.tasteDNA ?? {}) as Record<string, any>) };
+
+  const learnedSignals = Array.isArray(tasteDNA.learnedSignals) ? [...tasteDNA.learnedSignals] : [];
+  learnedSignals.push(parsed.data);
+  tasteDNA.learnedSignals = learnedSignals.slice(-40);
+
+  if (parsed.data.preferredMove) {
+    tasteDNA.preferredMoves = [...new Set([
+      ...(Array.isArray(tasteDNA.preferredMoves) ? tasteDNA.preferredMoves.map(String) : []),
+      parsed.data.preferredMove,
+    ])].slice(-12);
+  }
+  if (parsed.data.dislikedMove) {
+    tasteDNA.dislikedMoves = [...new Set([
+      ...(Array.isArray(tasteDNA.dislikedMoves) ? tasteDNA.dislikedMoves.map(String) : []),
+      parsed.data.dislikedMove,
+    ])].slice(-12);
+  }
+
+  vision.tasteDNA = tasteDNA;
+  projectBrief.vision = vision;
+  configuration.projectBrief = projectBrief;
+
+  await db
+    .update(archConceptProjectsTable)
+    .set({ configuration, updatedAt: new Date() })
+    .where(and(
+      eq(archConceptProjectsTable.id, id),
+      eq(archConceptProjectsTable.tenantId, tid),
+      eq(archConceptProjectsTable.ownerUserId, userId),
+    ));
+
+  return res.json({ ok: true, tasteDNA });
+});
+
 router.post("/arch/concept-projects/:id/facade-study", authenticate, async (req, res) => {
   const tid = tenantId(req);
   const userId = req.user?.sub;
@@ -2922,7 +2990,11 @@ DIREÇÃO JÁ DEFINIDA NO DNA DO PROJETO:
 ${JSON.stringify(projectBrief?.architectureDNA ?? null)}
 ${JSON.stringify(projectBrief?.facadeDirection ?? null)}
 
+CLIENT TASTE DNA / PREFERÊNCIAS APRENDIDAS:
+${JSON.stringify(projectBrief?.vision?.tasteDNA ?? null)}
+
 A fachada deve dar continuidade ao DNA acima sempre que ele existir.
+O Taste DNA deve influenciar composição e seleção das três direções. Evite movimentos já rejeitados e varie as opções dentro do gosto do cliente, não fora dele.
 
 Se ACTION=diagnose, foque no diagnóstico e deixe as sugestões estruturadas.
 Se ACTION=develop, entregue também uma proposta aplicável ao editor.
