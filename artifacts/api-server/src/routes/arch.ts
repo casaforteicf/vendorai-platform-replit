@@ -255,6 +255,7 @@ type QualityDimensionKey =
   | "siteClimate"
   | "roofVolumetry"
   | "costValue"
+  | "brazilianFit"
   | "architecturalCoherence";
 
 type QualityDimension = {
@@ -419,6 +420,9 @@ function qualityDimensionForIssue(issue: string): QualityDimensionKey {
     || low.includes("balanço") || low.includes("volumetria")) return "roofVolumetry";
   if (low.includes("custo") || low.includes("complexidade construtiva") || low.includes("value engineering")
     || low.includes("perímetro por área") || low.includes("orçamento-alvo")) return "costValue";
+  if (low.includes("ciclo de vida") || low.includes("multigeracional") || low.includes("envelhecer")
+    || low.includes("rotina de serviço") || low.includes("perfil de veículo") || low.includes("expansão futura")
+    || low.includes("contexto residencial brasileiro")) return "brazilianFit";
   if (low.includes("lavanderia") || low.includes("compacta") || low.includes("perímetro")) return "constructability";
   return "architecturalCoherence";
 }
@@ -699,6 +703,126 @@ function evaluateCostValueFit(
       budgetTarget: hasBudgetTarget ? budgetTarget : null,
       budgetPerSqmTarget: budgetPerSqmTarget ? Math.round(budgetPerSqmTarget) : null,
     },
+  };
+}
+
+function evaluateBrazilianResidentialFit(
+  rooms: SpecialistPlanRoom[],
+  input: z.infer<typeof specialistHousePlanSchema>,
+) {
+  const ctx = input.brazilianContext ?? {};
+  const issues: string[] = [];
+  const recommendations: string[] = [];
+  let score = 100;
+
+  const groundSleeping = rooms.filter((room) => room.floor === 0 && (room.kind === "suite" || room.kind === "quarto"));
+  const groundBaths = rooms.filter((room) =>
+    room.floor === 0
+    && room.kind === "banheiro"
+    && !/lavabo/i.test(room.label ?? "")
+  );
+
+  if (ctx.lifeCycle === "multigeracional") {
+    if (!groundSleeping.length || !groundBaths.length) {
+      issues.push("Contexto residencial brasileiro: programa multigeracional sem dormitório e banheiro completo no térreo.");
+      score -= 38;
+    } else {
+      recommendations.push("Manter autonomia e privacidade do dormitório térreo sem isolá-lo da vida da casa.");
+    }
+  }
+
+  if (ctx.lifeCycle === "envelhecer_na_casa") {
+    if (input.brief.floors > 1 && (!groundSleeping.length || !groundBaths.length)) {
+      issues.push("Ciclo de vida: envelhecer na casa exige opção funcional de dormir e usar banheiro completo no térreo.");
+      score -= 38;
+    }
+    if (input.household?.accessibilityNeeds) {
+      recommendations.push("Evitar degraus desnecessários, prever portas/circulações compatíveis e banheiro térreo adaptável.");
+    }
+  }
+
+  const laundry = rooms.find((room) => room.kind === "lavanderia");
+  if ((ctx.serviceRoutine === "tradicional" || ctx.serviceRoutine === "intensa") && !laundry) {
+    issues.push("Rotina de serviço: lavanderia obrigatória ausente do projeto.");
+    score -= 30;
+  } else if (laundry && ctx.serviceRoutine === "intensa" && laundry.width * laundry.depth < 4.5) {
+    issues.push("Rotina de serviço intensa com lavanderia pequena para máquina, tanque, bancada e circulação.");
+    score -= 16;
+  }
+
+  if (ctx.expansionPriority === "alta" || ctx.expansionPriority === "prever") {
+    const ground = rooms.filter((room) => room.floor === 0 && room.kind !== "piscina");
+    if (ground.length) {
+      const minX = Math.min(...ground.map((room) => room.x));
+      const minY = Math.min(...ground.map((room) => room.y));
+      const maxX = Math.max(...ground.map((room) => room.x + room.width));
+      const maxY = Math.max(...ground.map((room) => room.y + room.depth));
+      const footprintRatio = ((maxX - minX) * (maxY - minY)) / Math.max(1, input.lotWidth * input.lotDepth);
+      if (footprintRatio > 0.72) {
+        recommendations.push("Expansão futura: implantação ocupa grande parte do lote; reservar faixa/eixo de crescimento sem sacrificar iluminação e lazer.");
+        score -= ctx.expansionPriority === "alta" ? 14 : 7;
+      }
+    }
+  }
+
+  const garage = rooms.find((room) => room.kind === "garagem");
+  if (garage && ["suv","pickup","misto"].includes(String(ctx.vehicleProfile ?? ""))) {
+    const spaces = Math.max(1, input.brief.garageSpaces);
+    const minWidth = spaces === 1 ? 3.1 : spaces === 2 ? 5.9 : 8.6;
+    const minDepth = ctx.vehicleProfile === "pickup" ? 6.0 : 5.7;
+    if (garage.width < minWidth || garage.depth < minDepth) {
+      issues.push(`Perfil de veículo ${ctx.vehicleProfile}: garagem precisa de envelope mais realista para estacionamento, abertura de portas e passagem.`);
+      score -= 22;
+    }
+  }
+
+  if (ctx.evReady && !garage) {
+    recommendations.push("Preparação EV solicitada, mas o projeto não possui garagem definida.");
+    score -= 6;
+  } else if (ctx.evReady) {
+    recommendations.push("Reservar rota elétrica e ponto técnico para futuro carregador veicular.");
+  }
+
+  if (ctx.privacySecurity === "protegida") {
+    const frontSide = (input.siteContext?.frontSide ?? "top") as ModelSide;
+    const exposedPrivate = rooms.filter((room) =>
+      (room.kind === "suite" || room.kind === "quarto")
+      && exposedModelSides(room, rooms).includes(frontSide)
+    );
+    if (exposedPrivate.length) {
+      recommendations.push(`Privacidade protegida: revisar exposição direta à frente em ${exposedPrivate.map((room) => room.label).join(", ")}.`);
+      score -= Math.min(18, exposedPrivate.length * 7);
+    }
+  }
+
+  if (ctx.outdoorLiving === "alto") {
+    const social = rooms.find((room) => room.kind === "sala");
+    const gourmet = rooms.find((room) => room.kind === "gourmet");
+    const pool = rooms.find((room) => room.kind === "piscina");
+    if (social && gourmet) {
+      const dist = Math.hypot(
+        (social.x + social.width / 2) - (gourmet.x + gourmet.width / 2),
+        (social.y + social.depth / 2) - (gourmet.y + gourmet.depth / 2),
+      );
+      if (dist > 8) {
+        recommendations.push("Vida externa alta: aproximar ou conectar melhor sala e gourmet para uso cotidiano.");
+        score -= 8;
+      }
+    }
+    if (!gourmet && !pool) {
+      recommendations.push("Vida externa alta: garantir ao menos varanda/deck/jardim utilizável mesmo sem gourmet ou piscina.");
+    }
+  }
+
+  if (ctx.solarReady) recommendations.push("Cobertura deve preservar área contínua e pouco sombreada para futura geração fotovoltaica.");
+  if (ctx.rainwaterReady) recommendations.push("Compatibilizar calhas, descidas e área técnica com futura captação de água de chuva.");
+
+  return {
+    score: Math.max(0, Math.round(score)),
+    status: score < 58 ? "blocked" as const : score < 78 ? "warning" as const : "approved" as const,
+    issues,
+    recommendations,
+    context: ctx,
   };
 }
 
@@ -1029,6 +1153,7 @@ function buildArchitecturalQualityGateV2(issues: string[]) {
     "siteClimate",
     "roofVolumetry",
     "costValue",
+    "brazilianFit",
     "architecturalCoherence",
   ];
   const dimensionIssues = Object.fromEntries(keys.map((key) => [key, [] as string[]])) as Record<QualityDimensionKey, string[]>;
@@ -1070,16 +1195,17 @@ function buildArchitecturalQualityGateV2(issues: string[]) {
   })) as Record<QualityDimensionKey, QualityDimension>;
 
   const weights: Record<QualityDimensionKey, number> = {
-    program: 0.13,
-    circulation: 0.16,
+    program: 0.12,
+    circulation: 0.15,
     privacy: 0.08,
-    ergonomics: 0.11,
-    geometry: 0.11,
+    ergonomics: 0.10,
+    geometry: 0.10,
     constructability: 0.08,
-    furnitureFit: 0.11,
+    furnitureFit: 0.10,
     siteClimate: 0.08,
     roofVolumetry: 0.07,
     costValue: 0.06,
+    brazilianFit: 0.05,
     architecturalCoherence: 0.01,
   };
 
@@ -1375,7 +1501,8 @@ function evaluateSpecialistPlan(
   const siteClimate = evaluateSiteClimateFit(rooms, input);
   const roofVolumetry = evaluateRoofVolumetryFit(rooms, input);
   const costValue = evaluateCostValueFit(rooms, input);
-  issues.push(...furnitureFit.issues, ...siteClimate.issues, ...roofVolumetry.issues, ...costValue.issues);
+  const brazilianFit = evaluateBrazilianResidentialFit(rooms, input);
+  issues.push(...furnitureFit.issues, ...siteClimate.issues, ...roofVolumetry.issues, ...costValue.issues, ...brazilianFit.issues);
 
   const uniqueIssues = [...new Set(issues)];
   const gate = buildArchitecturalQualityGateV2(uniqueIssues);
@@ -1399,21 +1526,35 @@ function evaluateSpecialistPlan(
     status: costValue.status,
     issues: costValue.issues.slice(0, 8),
   };
+  gate.dimensions.brazilianFit = {
+    score: brazilianFit.score,
+    status: brazilianFit.status,
+    issues: brazilianFit.issues.slice(0, 8),
+  };
   gate.score = Math.round(
-    gate.dimensions.program.score * 0.13
-    + gate.dimensions.circulation.score * 0.16
+    gate.dimensions.program.score * 0.12
+    + gate.dimensions.circulation.score * 0.15
     + gate.dimensions.privacy.score * 0.08
-    + gate.dimensions.ergonomics.score * 0.11
-    + gate.dimensions.geometry.score * 0.11
+    + gate.dimensions.ergonomics.score * 0.10
+    + gate.dimensions.geometry.score * 0.10
     + gate.dimensions.constructability.score * 0.08
-    + gate.dimensions.furnitureFit.score * 0.11
+    + gate.dimensions.furnitureFit.score * 0.10
     + gate.dimensions.siteClimate.score * 0.08
     + gate.dimensions.roofVolumetry.score * 0.07
     + gate.dimensions.costValue.score * 0.06
+    + gate.dimensions.brazilianFit.score * 0.05
     + gate.dimensions.architecturalCoherence.score * 0.01
   );
   const furnitureBlocked = furnitureFit.status === "blocked";
+  const brazilianFitBlocked = brazilianFit.status === "blocked";
   const siteClimateBlocked = siteClimate.status === "blocked";
+  if (brazilianFitBlocked) {
+    gate.approved = false;
+    gate.hardBlockers = [...new Set([
+      ...gate.hardBlockers,
+      ...brazilianFit.issues.slice(0, 3).map((item) => `Brazilian Residential Fit: ${item}`),
+    ])].slice(0, 12);
+  }
   const roofVolumetryBlocked = roofVolumetry.status === "blocked";
   if (roofVolumetryBlocked) {
     gate.approved = false;
@@ -1452,11 +1593,13 @@ function evaluateSpecialistPlan(
     siteClimate,
     roofVolumetry,
     costValue,
+    brazilianFit,
   } as SpecialistPlanQuality & {
     furnitureFit: ReturnType<typeof evaluateFurnitureFit>;
     siteClimate: ReturnType<typeof evaluateSiteClimateFit>;
     roofVolumetry: ReturnType<typeof evaluateRoofVolumetryFit>;
     costValue: ReturnType<typeof evaluateCostValueFit>;
+    brazilianFit: ReturnType<typeof evaluateBrazilianResidentialFit>;
   };
 }
 
@@ -1597,6 +1740,7 @@ function sanitizeSpecialistPlan(
       siteClimate: (quality as SpecialistPlanQuality & { siteClimate?: ReturnType<typeof evaluateSiteClimateFit> }).siteClimate ?? null,
       roofVolumetry: (quality as SpecialistPlanQuality & { roofVolumetry?: ReturnType<typeof evaluateRoofVolumetryFit> }).roofVolumetry ?? null,
       costValue: (quality as SpecialistPlanQuality & { costValue?: ReturnType<typeof evaluateCostValueFit> }).costValue ?? null,
+      brazilianFit: (quality as SpecialistPlanQuality & { brazilianFit?: ReturnType<typeof evaluateBrazilianResidentialFit> }).brazilianFit ?? null,
     },
   };
 }
