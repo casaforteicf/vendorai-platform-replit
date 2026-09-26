@@ -2620,6 +2620,30 @@ Retorne SOMENTE JSON válido:
       }
     ]
   },
+  "directionOptions": [
+    {
+      "id": "rational|balanced|signature",
+      "title": "...",
+      "positioning": "racional|equilibrada|autoral",
+      "primaryMove": "...",
+      "secondaryMoves": ["..."],
+      "whyItFitsClient": "...",
+      "tradeoffs": ["..."],
+      "facadeSuggestion": {
+        "style": "contemporaneo|minimalista|classico_contemporaneo|tropical|industrial|rustico_contemporaneo",
+        "roof": "platibanda|aparente|misto",
+        "primaryMaterial": "pintura|madeira|pedra|concreto",
+        "accentMaterial": "nenhum|madeira|pedra|concreto",
+        "facadeTone": "claro|medio|escuro",
+        "frameTone": "preto|branco|bronze",
+        "landscaping": "leve|medio|intenso"
+      },
+      "designSuggestion": {
+        "surfaceMaterials": {},
+        "volumes": []
+      }
+    }
+  ],
   "openingRecommendations": [
     { "type": "window|door", "recommendation": "...", "reason": "...", "requiresClientApproval": true }
   ],
@@ -2683,13 +2707,85 @@ Retorne SOMENTE JSON válido:
         )
       : {};
 
+    const sanitizeVolumes = (inputVolumes: unknown[], prefix: string) => inputVolumes.slice(0, 10).flatMap((volume: any, index: number) => {
+      if (!allowedKinds.has(String(volume?.kind)) || !allowedMaterials.has(String(volume?.materialId))) return [];
+      const clampNumber = (value: unknown, min: number, max: number, fallback: number) => {
+        const parsed = Number(value);
+        if (!Number.isFinite(parsed)) return fallback;
+        return Math.max(min, Math.min(max, parsed));
+      };
+      return [{
+        id: `ai-facade-${id.slice(0, 8)}-${prefix}-${index + 1}`,
+        kind: String(volume.kind),
+        label: String(volume.label ?? "Elemento de fachada").slice(0, 80),
+        x: clampNumber(volume.x, 0, 96, 36),
+        y: clampNumber(volume.y, 0, 96, 28),
+        width: clampNumber(volume.width, 4, 100, 20),
+        height: clampNumber(volume.height, 4, 100, 30),
+        depth: clampNumber(volume.depth, 0, 3, 0.5),
+        materialId: String(volume.materialId),
+        opacity: 1,
+      }];
+    });
+
+    const sanitizeSurfaceMaterials = (value: any) => value && typeof value === "object"
+      ? Object.fromEntries(
+          Object.entries(value)
+            .filter(([, material]) => allowedMaterials.has(String(material)))
+            .map(([key, material]) => [key, String(material)])
+        )
+      : {};
+
+    const allowedStyles = new Set(["contemporaneo","minimalista","classico_contemporaneo","tropical","industrial","rustico_contemporaneo"]);
+    const allowedRoofs = new Set(["platibanda","aparente","misto"]);
+    const allowedPrimaryMaterials = new Set(["pintura","madeira","pedra","concreto"]);
+    const allowedAccentMaterials = new Set(["nenhum","madeira","pedra","concreto"]);
+    const allowedTones = new Set(["claro","medio","escuro"]);
+    const allowedFrames = new Set(["preto","branco","bronze"]);
+    const allowedLandscape = new Set(["leve","medio","intenso"]);
+    const sanitizeFacadeSuggestion = (value: any) => value && typeof value === "object" ? {
+      ...(allowedStyles.has(String(value.style)) ? { style: String(value.style) } : {}),
+      ...(allowedRoofs.has(String(value.roof)) ? { roof: String(value.roof) } : {}),
+      ...(allowedPrimaryMaterials.has(String(value.primaryMaterial)) ? { primaryMaterial: String(value.primaryMaterial) } : {}),
+      ...(allowedAccentMaterials.has(String(value.accentMaterial)) ? { accentMaterial: String(value.accentMaterial) } : {}),
+      ...(allowedTones.has(String(value.facadeTone)) ? { facadeTone: String(value.facadeTone) } : {}),
+      ...(allowedFrames.has(String(value.frameTone)) ? { frameTone: String(value.frameTone) } : {}),
+      ...(allowedLandscape.has(String(value.landscaping)) ? { landscaping: String(value.landscaping) } : {}),
+    } : {};
+
+    const rawDirections = action === "develop" && Array.isArray(ai.directionOptions) ? ai.directionOptions : [];
+    const seenPrimaryMoves = new Set<string>();
+    const directionOptions = rawDirections.slice(0, 5).flatMap((option: any, index: number) => {
+      const primaryMove = String(option?.primaryMove ?? "").trim().slice(0, 240);
+      if (!primaryMove) return [];
+      const signature = primaryMove.toLocaleLowerCase("pt-BR").replace(/[^a-z0-9á-ú]+/g, " ").trim().split(" ").slice(0, 5).join(" ");
+      if (seenPrimaryMoves.has(signature)) return [];
+      seenPrimaryMoves.add(signature);
+      const rawDesign = option?.designSuggestion ?? {};
+      return [{
+        id: ["rational","balanced","signature"].includes(String(option?.id)) ? String(option.id) : `direction-${index + 1}`,
+        title: String(option?.title ?? `Direção ${index + 1}`).slice(0, 100),
+        positioning: ["racional","equilibrada","autoral"].includes(String(option?.positioning)) ? String(option.positioning) : "equilibrada",
+        primaryMove,
+        secondaryMoves: Array.isArray(option?.secondaryMoves) ? option.secondaryMoves.map(String).slice(0, 2) : [],
+        whyItFitsClient: String(option?.whyItFitsClient ?? "").slice(0, 500),
+        tradeoffs: Array.isArray(option?.tradeoffs) ? option.tradeoffs.map(String).slice(0, 4) : [],
+        facadeSuggestion: sanitizeFacadeSuggestion(option?.facadeSuggestion),
+        designSuggestion: {
+          surfaceMaterials: sanitizeSurfaceMaterials(rawDesign?.surfaceMaterials),
+          volumes: sanitizeVolumes(Array.isArray(rawDesign?.volumes) ? rawDesign.volumes : [], `direction-${index + 1}`),
+        },
+      }];
+    }).slice(0, 3);
+
     return res.json({
       mode: action,
       intervention,
       diagnosis: ai.diagnosis ?? null,
       concept: ai.concept ?? null,
-      facadeSuggestion: action === "develop" ? (ai.facadeSuggestion ?? null) : null,
+      facadeSuggestion: action === "develop" ? sanitizeFacadeSuggestion(ai.facadeSuggestion) : null,
       designSuggestion: action === "develop" ? { surfaceMaterials, volumes } : null,
+      directionOptions,
       openingRecommendations: Array.isArray(ai.openingRecommendations) ? ai.openingRecommendations.slice(0, 8) : [],
       warnings: Array.isArray(ai.warnings) ? ai.warnings.slice(0, 10) : [],
       geometryLocked: true,
