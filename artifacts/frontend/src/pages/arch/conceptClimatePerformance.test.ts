@@ -16,7 +16,9 @@ describe("Etapa 83 — Daylight, Ventilation & Solar Orientation Gate", () => {
   it("marca ambiente habitável sem janela externa", () => {
     const rooms = [
       room({ id: "outer", kind: "sala", label: "Sala", x: 0, y: 0, width: 8, depth: 3 }),
+      room({ id: "left", kind: "circulacao", label: "Circulação esquerda", x: 0, y: 3, width: 2.5, depth: 3 }),
       room({ id: "inner", kind: "quarto", label: "Quarto interno", x: 2.5, y: 3, width: 3, depth: 3 }),
+      room({ id: "right", kind: "circulacao", label: "Circulação direita", x: 5.5, y: 3, width: 2.5, depth: 3 }),
       room({ id: "bottom", kind: "sala", label: "Sala fundos", x: 0, y: 6, width: 8, depth: 3 }),
     ];
 

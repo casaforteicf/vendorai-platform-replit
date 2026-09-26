@@ -165,6 +165,9 @@ export function recommendArchitecturalPatterns(
       if (pattern.minLotWidth && lotWidth >= pattern.minLotWidth) score += 8;
       if (pattern.maxLotWidth && lotWidth <= pattern.maxLotWidth) {
         score += 22;
+        if (pattern.id === "br_narrow_lot") {
+          score += Math.max(8, Math.min(18, (pattern.maxLotWidth - lotWidth) * 6));
+        }
         reasons.push(`largura do lote (${lotWidth.toFixed(1)} m)`);
       }
       if (pattern.floors === brief.floors) {
