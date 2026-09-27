@@ -1,11 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useLocation, useParams } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCreateDeal, useGetLead, useListActivities, useListDeals, useListPipelineStages, useListTenantUsers, useUpdatePipelineStage, getGetLeadQueryKey, getListActivitiesQueryKey, getListDealsQueryKey, getListPipelineStagesQueryKey, getListTenantUsersQueryKey } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import LeadDetail from "@/pages/LeadDetail";
-import { StageQuestionsPanel } from "@/components/StageQuestionsPanel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -16,6 +14,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ArrowLeft, ArrowRight, AlertTriangle, Clock3, Loader2, Pencil, Settings2, UserRound } from "lucide-react";
+
+const LeadDetail = lazy(() => import("@/pages/LeadDetail"));
+const StageQuestionsPanel = lazy(() => import("@/components/StageQuestionsPanel").then((m) => ({ default: m.StageQuestionsPanel })));
 
 const fallbackStages = [
   { key: "em_aquecimento", label: "Em aquecimento", ordem: 0 },
@@ -407,16 +408,20 @@ export default function LeadWorkspace() {
       </Card>
     )}
 
-    <StageQuestionsPanel
-      tenantId={tenantId}
-      stage={currentStage}
-      answers={(deal?.respostasEtapas as Record<string, Record<string, string>> | undefined)?.[currentStage?.key ?? ""] ?? {}}
-      onSaveAnswers={saveStageAnswers}
-      saving={savingAnswers}
-    />
+    <Suspense fallback={null}>
+      <StageQuestionsPanel
+        tenantId={tenantId}
+        stage={currentStage}
+        answers={(deal?.respostasEtapas as Record<string, Record<string, string>> | undefined)?.[currentStage?.key ?? ""] ?? {}}
+        onSaveAnswers={saveStageAnswers}
+        saving={savingAnswers}
+      />
+    </Suspense>
 
     <div className="[&>div>div:first-child]:hidden [&_[data-testid=section-journey-stage]]:hidden">
-      <LeadDetail />
+      <Suspense fallback={<div className="min-h-[220px]" aria-hidden="true" />}>
+        <LeadDetail />
+      </Suspense>
     </div>
 
     <Dialog open={open} onOpenChange={setOpen}>
