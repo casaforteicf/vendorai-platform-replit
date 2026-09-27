@@ -31,8 +31,13 @@ export function PhotoProofDialog({
     mutationFn: () =>
       fetch(`/api/tenants/${tenantId}/fretes/cargas/${cargaId}`, {
         method: "PATCH", headers: authHeaders(), body: JSON.stringify({ [field]: urls }),
-      }).then((r) => r.json()),
+      }).then(async (r) => {
+        const body = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(body.error ?? "Não foi possível salvar a prova fotográfica.");
+        return body;
+      }),
     onSuccess: () => { onDone(); onOpenChange(false); setUrls([]); },
+    onError: (error: Error) => toast({ title: "Erro ao salvar prova", description: error.message, variant: "destructive" }),
   });
 
   async function handleFiles(files: FileList | null) {
