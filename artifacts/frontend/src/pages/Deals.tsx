@@ -1949,6 +1949,8 @@ export default function Deals() {
     query: {
       enabled: !!tenantId,
       queryKey: getListDealsQueryKey(tenantId),
+      staleTime: 20_000,
+      refetchOnWindowFocus: false,
     },
   });
 
@@ -1957,7 +1959,7 @@ export default function Deals() {
   // estáticas (que definem a estrutura/ordem/splits virtuais) e adiciona
   // etapas customizadas (is_system=false) como colunas extras no fim.
   const { data: pipelineStages = [] } = useListPipelineStages(tenantId, {
-    query: { enabled: !!tenantId, queryKey: getListPipelineStagesQueryKey(tenantId) },
+    query: { enabled: !!tenantId, queryKey: getListPipelineStagesQueryKey(tenantId), staleTime: 60_000, refetchOnWindowFocus: false },
   });
   const stagesByKey = useMemo(
     () => Object.fromEntries(pipelineStages.map((s) => [s.key, s])) as Record<string, PipelineStage>,
@@ -2054,6 +2056,8 @@ export default function Deals() {
     query: {
       enabled: !!tenantId,
       queryKey: getListTenantLeadsQueryKey(tenantId),
+      staleTime: 30_000,
+      refetchOnWindowFocus: false,
     },
   });
 
@@ -2061,6 +2065,8 @@ export default function Deals() {
     query: {
       enabled: !!tenantId,
       queryKey: getListTenantBriefingsQueryKey(tenantId),
+      staleTime: 30_000,
+      refetchOnWindowFocus: false,
     },
   });
 
@@ -2072,7 +2078,7 @@ export default function Deals() {
     rawTenantDefault === "pedido_e_contrato" ? null : rawTenantDefault;
 
   const { data: tenantUsers = [] } = useListTenantUsers(tenantId, {
-    query: { enabled: !!tenantId, queryKey: getListTenantUsersQueryKey(tenantId) },
+    query: { enabled: !!tenantId, queryKey: getListTenantUsersQueryKey(tenantId), staleTime: 60_000, refetchOnWindowFocus: false },
   });
 
   const userMap = new Map(tenantUsers.map((u) => [u.id, u.name || u.email || u.id]));

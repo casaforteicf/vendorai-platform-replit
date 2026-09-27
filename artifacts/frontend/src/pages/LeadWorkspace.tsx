@@ -102,11 +102,11 @@ export default function LeadWorkspace() {
   const requestedStage = search.get("targetStage");
   const request = { headers: { Authorization: "Bearer " + token } };
   const enabled = Boolean(tenantId && token && id);
-  const { data: lead, isLoading: leadLoading } = useGetLead(id, { query: { enabled: Boolean(id), queryKey: getGetLeadQueryKey(id) } });
-  const { data: deals = [], isLoading: dealsLoading } = useListDeals(tenantId, { leadId: id }, { request, query: { enabled, queryKey: getListDealsQueryKey(tenantId, { leadId: id }) } });
-  const { data: activities = [] } = useListActivities(tenantId, { leadId: id }, { request, query: { enabled, queryKey: getListActivitiesQueryKey(tenantId, { leadId: id }) } });
-  const { data: users = [] } = useListTenantUsers(tenantId, { request, query: { enabled, queryKey: getListTenantUsersQueryKey(tenantId) } });
-  const { data: configuredStages = [] } = useListPipelineStages(tenantId, { request, query: { enabled, queryKey: getListPipelineStagesQueryKey(tenantId) } });
+  const { data: lead, isLoading: leadLoading } = useGetLead(id, { query: { enabled: Boolean(id), queryKey: getGetLeadQueryKey(id), staleTime: 20_000, refetchOnWindowFocus: false } });
+  const { data: deals = [], isLoading: dealsLoading } = useListDeals(tenantId, { leadId: id }, { request, query: { enabled, queryKey: getListDealsQueryKey(tenantId, { leadId: id }), staleTime: 20_000, refetchOnWindowFocus: false } });
+  const { data: activities = [] } = useListActivities(tenantId, { leadId: id }, { request, query: { enabled, queryKey: getListActivitiesQueryKey(tenantId, { leadId: id }), staleTime: 15_000, refetchOnWindowFocus: false } });
+  const { data: users = [] } = useListTenantUsers(tenantId, { request, query: { enabled, queryKey: getListTenantUsersQueryKey(tenantId), staleTime: 60_000, refetchOnWindowFocus: false } });
+  const { data: configuredStages = [] } = useListPipelineStages(tenantId, { request, query: { enabled, queryKey: getListPipelineStagesQueryKey(tenantId), staleTime: 60_000, refetchOnWindowFocus: false } });
   const createDeal = useCreateDeal({ request });
   const updateStage = useUpdatePipelineStage();
   const deal = useMemo(() => {

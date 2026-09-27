@@ -437,6 +437,8 @@ export default function Leads() {
     query: {
       enabled: !!tenantId && viewMode === "ativos",
       queryKey: getListTenantLeadsQueryKey(tenantId),
+      staleTime: 30_000,
+      refetchOnWindowFocus: false,
     },
   });
 
@@ -447,12 +449,14 @@ export default function Leads() {
       query: {
         enabled: !!tenantId && viewMode === "excluidos",
         queryKey: getListTenantLeadsQueryKey(tenantId, { incluirExcluidos: "apenas" }),
+        staleTime: 30_000,
+        refetchOnWindowFocus: false,
       },
     },
   );
 
   const { data: ciList } = useListCustomerIntelligence(tenantId, {
-    query: { enabled: !!tenantId, queryKey: getListCustomerIntelligenceQueryKey(tenantId) },
+    query: { enabled: !!tenantId, queryKey: getListCustomerIntelligenceQueryKey(tenantId), staleTime: 30_000, refetchOnWindowFocus: false },
   });
 
   const { data: overview } = useQuery<LeadsOverviewContext>({
@@ -484,7 +488,7 @@ export default function Leads() {
   });
 
   const { data: briefings = [] } = useListTenantBriefings(tenantId, {
-    query: { enabled: !!tenantId, queryKey: getListTenantBriefingsQueryKey(tenantId) },
+    query: { enabled: !!tenantId, queryKey: getListTenantBriefingsQueryKey(tenantId), staleTime: 30_000, refetchOnWindowFocus: false },
   });
 
   const { data: tenantUsers = [] } = useListTenantUsers(tenantId, {
