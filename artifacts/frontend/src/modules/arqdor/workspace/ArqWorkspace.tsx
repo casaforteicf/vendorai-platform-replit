@@ -10,79 +10,72 @@
 // • ✨ Gerar Render sempre visível — CTA principal nunca some
 // • Linguagem humana — sem termos técnicos no UI
 
-import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
+import { useState, useEffect, useRef, useCallback, Suspense, lazy } from 'react'
 import { createContext, useContext, useMemo } from 'react'
 import { ArqCopilot }            from '../copilot/ui/ArqCopilot'
 import { WorkspaceProvider, useWorkspaceProject } from './WorkspaceContext'
-import { IntegrationModule }     from './modules/IntegrationModule'
-import { EcosystemModule }       from './modules/EcosystemModule'
-import { KnowledgeModule }       from './modules/KnowledgeModule'
-import { OfficeModule }          from './modules/OfficeModule'
-import { LibraryModule }         from './modules/LibraryModule'
-import { SmartSpecModule }       from './modules/SmartSpecModule'
-import { PromptPlaygroundModule } from './modules/PromptPlaygroundModule'
-import { RenderHistoryModule }   from './modules/RenderHistoryModule'
-import { AIReviewModule }        from './modules/AIReviewModule'
-import { AICorrectionsModule }   from './modules/AICorrectionsModule'
-import { AIMemoryModule }        from './modules/AIMemoryModule'
-import { SettingsModule }        from './modules/SettingsModule'
-import { ProjectModule }         from './modules/ProjectModule'
-import { ArqHubView }            from '../arqhub/ArqHubView'
-import { AIEDashboard }          from '../engines/aie/dashboard/AIEDashboard'
-import AIEnterpriseCore from './ai-enterprise/AIEnterpriseCore'
 import { useArqProject, type ArqProjectState } from '../hooks/useArqProject'
 import { RenderProgressModal } from './project-experience/ProjectHomePhoenix'
-import { InstantRenderZone } from './project-experience/InstantRenderZone'
-import ProjectHomeV2 from './project-experience/ProjectHomeV2'
-import SmartProjectModule from './modules/SmartProjectModule'
-import DesignStudio from './design-studio/DesignStudio'
-import SmartRenderEngine from './smart-render-engine/SmartRenderEngine'
-import DocumentationStudio from './documentation-studio/DocumentationStudio'
-import SpecificationStudio from './specification-studio/SpecificationStudio'
-import ProductionStudio from './production-studio/ProductionStudio'
-import BudgetEngine from './executive-budget/BudgetEngine'
-import ExecutiveBudgetStudio from './executive-budget-studio/ExecutiveBudgetStudio'
-import ProcurementStudio from './procurement-studio/ProcurementStudio'
-import MarketplaceEnterprise from './marketplace-enterprise/MarketplaceEnterprise'
-import ClientExperience from './client-experience/ClientExperience'
-import OperationsCenter from './operations-center/OperationsCenter'
-import AutomationAuditCenter from './operations-center/automation-audit/AutomationAuditCenter'
-import AICommandIntelligence from './operations-center/ai-command-intelligence/AICommandIntelligence'
-import ExecutiveCockpit from './operations-center/executive-command/ExecutiveCockpit'
-import DigitalTwinCenter from './bim-digital-twin/DigitalTwinCenter'
-import ConstructionHub from './construction-hub/ConstructionHub'
-import SmartBuildingCenter from './iot-smart-building/SmartBuildingCenter'
-import FacilityManagementCenter from './facility-management/FacilityManagementCenter'
-import IntegrationHub from './integration-hub/IntegrationHub'
-import DataSyncCenter from './integration-hub/data-sync/DataSyncCenter'
-import UnifiedCopilotCenter from './integration-hub/unified-copilot/UnifiedCopilotCenter'
-import MigrationAuditCenter from './integration-hub/migration-audit/MigrationAuditCenter'
-import MockApiInventoryCenter from './integration-hub/mock-api-inventory/MockApiInventoryCenter'
-import BudgetDisciplinesProposal from './executive-budget/disciplines/BudgetDisciplinesProposal'
-import AlignedStudioShell from './ux-alignment/AlignedStudioShell'
 import { computeNextAction }     from './project-experience/ProjectHome'
 import { ArqCommandPalette }     from './ArqCommandPalette'
 import { runAIE }                from '../engines/aie/aie-engine'
 import { PHX, T }                from '../shared/arqdor-theme'
 import type { ProjectContext }   from '../engines/aie/aie-types'
-import ReleaseCandidateCenter   from './release-candidate/ReleaseCandidateCenter'
-import LaunchStudio             from './launch-studio/LaunchStudio'
-import PilotOperationsStudio   from './pilot-operations-studio/PilotOperationsStudio'
-import RevenueOperationsStudio from './revenue-operations-studio/RevenueOperationsStudio'
-import BillingSubscriptionStudio from './billing-subscription-studio/BillingSubscriptionStudio'
-import TenantAdminProvisioningStudio from './tenant-admin-provisioning-studio/TenantAdminProvisioningStudio'
-import IntegrationAutomationStudio from './integration-automation-studio/IntegrationAutomationStudio'
-import SystemConsolidationStudio from './system-consolidation-studio/SystemConsolidationStudio'
-import ThemeSystemStudio from './theme-system/ThemeSystemStudio'
 import { ArqdorThemeProvider } from '../theme/ArqdorThemeProvider'
 import { ArqdorThemeToggle } from '../theme/ArqdorThemeToggle'
-import RealRenderGalleryStudio from './real-render-gallery/RealRenderGalleryStudio'
-import RealSpecificationCatalogStudio from './real-specification-catalog/RealSpecificationCatalogStudio'
-import RealBudgetEngineStudio from './real-budget-engine/RealBudgetEngineStudio'
-import ClientPortalApprovalStudio from './client-portal-approval/ClientPortalApprovalStudio'
-import ProductionProcurementExecutionStudio from './production-procurement-execution/ProductionProcurementExecutionStudio'
-import PostSaleDeliverySuccessStudio from './post-sale-delivery-success/PostSaleDeliverySuccessStudio'
-import SystemConsolidationQAStudio from './system-consolidation-qa/SystemConsolidationQAStudio'
+
+const IntegrationModule = lazy(() => import('./modules/IntegrationModule').then((m) => ({ default: m.IntegrationModule })))
+const EcosystemModule = lazy(() => import('./modules/EcosystemModule').then((m) => ({ default: m.EcosystemModule })))
+const KnowledgeModule = lazy(() => import('./modules/KnowledgeModule').then((m) => ({ default: m.KnowledgeModule })))
+const OfficeModule = lazy(() => import('./modules/OfficeModule').then((m) => ({ default: m.OfficeModule })))
+const LibraryModule = lazy(() => import('./modules/LibraryModule').then((m) => ({ default: m.LibraryModule })))
+const PromptPlaygroundModule = lazy(() => import('./modules/PromptPlaygroundModule').then((m) => ({ default: m.PromptPlaygroundModule })))
+const AIReviewModule = lazy(() => import('./modules/AIReviewModule').then((m) => ({ default: m.AIReviewModule })))
+const AICorrectionsModule = lazy(() => import('./modules/AICorrectionsModule').then((m) => ({ default: m.AICorrectionsModule })))
+const AIMemoryModule = lazy(() => import('./modules/AIMemoryModule').then((m) => ({ default: m.AIMemoryModule })))
+const SettingsModule = lazy(() => import('./modules/SettingsModule').then((m) => ({ default: m.SettingsModule })))
+const ArqHubView = lazy(() => import('../arqhub/ArqHubView').then((m) => ({ default: m.ArqHubView })))
+const AIEnterpriseCore = lazy(() => import('./ai-enterprise/AIEnterpriseCore'))
+const ProjectHomeV2 = lazy(() => import('./project-experience/ProjectHomeV2'))
+const SmartProjectModule = lazy(() => import('./modules/SmartProjectModule'))
+const SmartRenderEngine = lazy(() => import('./smart-render-engine/SmartRenderEngine'))
+const SpecificationStudio = lazy(() => import('./specification-studio/SpecificationStudio'))
+const ProductionStudio = lazy(() => import('./production-studio/ProductionStudio'))
+const ExecutiveBudgetStudio = lazy(() => import('./executive-budget-studio/ExecutiveBudgetStudio'))
+const ProcurementStudio = lazy(() => import('./procurement-studio/ProcurementStudio'))
+const MarketplaceEnterprise = lazy(() => import('./marketplace-enterprise/MarketplaceEnterprise'))
+const ClientExperience = lazy(() => import('./client-experience/ClientExperience'))
+const OperationsCenter = lazy(() => import('./operations-center/OperationsCenter'))
+const AutomationAuditCenter = lazy(() => import('./operations-center/automation-audit/AutomationAuditCenter'))
+const AICommandIntelligence = lazy(() => import('./operations-center/ai-command-intelligence/AICommandIntelligence'))
+const ExecutiveCockpit = lazy(() => import('./operations-center/executive-command/ExecutiveCockpit'))
+const DigitalTwinCenter = lazy(() => import('./bim-digital-twin/DigitalTwinCenter'))
+const ConstructionHub = lazy(() => import('./construction-hub/ConstructionHub'))
+const SmartBuildingCenter = lazy(() => import('./iot-smart-building/SmartBuildingCenter'))
+const FacilityManagementCenter = lazy(() => import('./facility-management/FacilityManagementCenter'))
+const IntegrationHub = lazy(() => import('./integration-hub/IntegrationHub'))
+const DataSyncCenter = lazy(() => import('./integration-hub/data-sync/DataSyncCenter'))
+const UnifiedCopilotCenter = lazy(() => import('./integration-hub/unified-copilot/UnifiedCopilotCenter'))
+const MigrationAuditCenter = lazy(() => import('./integration-hub/migration-audit/MigrationAuditCenter'))
+const MockApiInventoryCenter = lazy(() => import('./integration-hub/mock-api-inventory/MockApiInventoryCenter'))
+const BudgetDisciplinesProposal = lazy(() => import('./executive-budget/disciplines/BudgetDisciplinesProposal'))
+const AlignedStudioShell = lazy(() => import('./ux-alignment/AlignedStudioShell'))
+const ReleaseCandidateCenter = lazy(() => import('./release-candidate/ReleaseCandidateCenter'))
+const LaunchStudio = lazy(() => import('./launch-studio/LaunchStudio'))
+const PilotOperationsStudio = lazy(() => import('./pilot-operations-studio/PilotOperationsStudio'))
+const RevenueOperationsStudio = lazy(() => import('./revenue-operations-studio/RevenueOperationsStudio'))
+const BillingSubscriptionStudio = lazy(() => import('./billing-subscription-studio/BillingSubscriptionStudio'))
+const TenantAdminProvisioningStudio = lazy(() => import('./tenant-admin-provisioning-studio/TenantAdminProvisioningStudio'))
+const IntegrationAutomationStudio = lazy(() => import('./integration-automation-studio/IntegrationAutomationStudio'))
+const SystemConsolidationStudio = lazy(() => import('./system-consolidation-studio/SystemConsolidationStudio'))
+const ThemeSystemStudio = lazy(() => import('./theme-system/ThemeSystemStudio'))
+const RealRenderGalleryStudio = lazy(() => import('./real-render-gallery/RealRenderGalleryStudio'))
+const RealSpecificationCatalogStudio = lazy(() => import('./real-specification-catalog/RealSpecificationCatalogStudio'))
+const RealBudgetEngineStudio = lazy(() => import('./real-budget-engine/RealBudgetEngineStudio'))
+const ClientPortalApprovalStudio = lazy(() => import('./client-portal-approval/ClientPortalApprovalStudio'))
+const ProductionProcurementExecutionStudio = lazy(() => import('./production-procurement-execution/ProductionProcurementExecutionStudio'))
+const PostSaleDeliverySuccessStudio = lazy(() => import('./post-sale-delivery-success/PostSaleDeliverySuccessStudio'))
+const SystemConsolidationQAStudio = lazy(() => import('./system-consolidation-qa/SystemConsolidationQAStudio'))
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type ModuleId =
