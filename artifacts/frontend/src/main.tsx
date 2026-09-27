@@ -1,8 +1,6 @@
 import { createRoot } from "react-dom/client";
 import { lazy, Suspense, useLayoutEffect } from "react";
 import { useLocation } from "wouter";
-import App from "./App";
-import SubdomainSite from "./SubdomainSite";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { FrontendRecoveryGuard } from "./components/FrontendRecoveryGuard";
 import { BudgetImportAutofill } from "./components/BudgetImportAutofill";
@@ -46,6 +44,8 @@ import "./modules/arqdor/theme/arqdor-theme.css";
 import { setupApiClient } from "./lib/api";
 import { installVisitorTelemetry } from "./lib/visitorIntelligence";
 
+const App = lazy(() => import("./App"));
+const SubdomainSite = lazy(() => import("./SubdomainSite"));
 const WorkspaceEnhancements = lazy(() => import("./components/runtime/WorkspaceEnhancements"));
 
 setupApiClient();
@@ -229,24 +229,26 @@ function WorkspaceEnhancementsGate() {
 createRoot(document.getElementById("root")!).render(
   <ErrorBoundary>
     <I18nProvider>
-      {tenantSlugForSite ? (
-        <SubdomainSite slug={tenantSlugForSite} />
-      ) : (
-        <>
-          <FrontendRecoveryGuard />
-          <VideoRouteThemeSync />
-          <CanonicalMarketingRouteBridge />
-          <App />
-          <AiBudgetUsageIndicator />
-          <GrowthLabMenuInjector />
-          <UnifiedAssistantLauncher />
-          <JarvisVoiceReplayControl />
-          <JarvisResponseHealthNotice />
-          <BudgetImportAutofill />
-          <MediaMenuInjector />
-          <WorkspaceEnhancementsGate />
-        </>
-      )}
+      <Suspense fallback={null}>
+        {tenantSlugForSite ? (
+          <SubdomainSite slug={tenantSlugForSite} />
+        ) : (
+          <>
+            <FrontendRecoveryGuard />
+            <VideoRouteThemeSync />
+            <CanonicalMarketingRouteBridge />
+            <App />
+            <AiBudgetUsageIndicator />
+            <GrowthLabMenuInjector />
+            <UnifiedAssistantLauncher />
+            <JarvisVoiceReplayControl />
+            <JarvisResponseHealthNotice />
+            <BudgetImportAutofill />
+            <MediaMenuInjector />
+            <WorkspaceEnhancementsGate />
+          </>
+        )}
+      </Suspense>
     </I18nProvider>
   </ErrorBoundary>,
 );
