@@ -495,6 +495,7 @@ function GeneratorWorkspace() {
       toast({ title: "Não foi possível visualizar o site", description: e instanceof Error ? e.message : undefined, variant: "destructive" });
     }
   }
+  // ui-integrity: error-propagates-to-caller — todos os fluxos de upload exibem a falha no caller.
   async function upload(file: File) { const x = await uploadHook.mutateAsync({ data: { name: file.name, size: file.size, contentType: file.type || "application/octet-stream" } }) as { uploadURL: string; objectPath: string }; const r = await fetch(x.uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } }); if (!r.ok) throw new Error(`Falha ao enviar ${file.name}`); return { url: `${window.location.origin}/api/storage${x.objectPath}`, objectPath: x.objectPath }; }
   async function registerMotionAsset(file: File, kind: AssetKind, objectPath: string, url: string) {
     try {
