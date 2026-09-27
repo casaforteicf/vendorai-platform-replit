@@ -507,6 +507,7 @@ export function CatalogoModal({
   const [showOnlyPending, setShowOnlyPending] = useState(false);
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [csvPreview, setCsvPreview] = useState<CsvPreviewRow[]>([]);
   const [csvTotalRows, setCsvTotalRows] = useState(0);
   const [csvRaw, setCsvRaw] = useState("");
@@ -1787,14 +1788,30 @@ export function CatalogoModal({
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
                                           <AlertDialogAction
                   onClick={async () => {
-                    for (const id of Array.from(selectedIds)) {
-                      await deleteMut.mutateAsync({ id });
+                    if (bulkDeleting) return;
+                    setBulkDeleting(true);
+                    try {
+                      for (const id of Array.from(selectedIds)) {
+                        await deleteMut.mutateAsync({ id });
+                      }
+                      toast({ title: "Produtos excluídos", description: `${selectedIds.size} item(ns) removido(s) com sucesso.` });
+                      setSelectedIds(new Set());
+                      setBulkDeleteOpen(false);
+                      invalidate();
+                    } catch (error) {
+                      toast({
+                        title: "Não foi possível concluir a exclusão em lote",
+                        description: error instanceof Error ? error.message : "Tente novamente.",
+                        variant: "destructive",
+                      });
+                    } finally {
+                      setBulkDeleting(false);
                     }
-                    setBulkDeleteOpen(false);
                   }}
+                  disabled={bulkDeleting}
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                 >
-                  Excluir
+                  {bulkDeleting ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Excluindo...</> : "Excluir"}
                 </AlertDialogAction>
               </AlertDialogFooter>
         </AlertDialogContent>
