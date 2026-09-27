@@ -30,8 +30,15 @@ export default function FarmaciaBulas() {
     queryFn: () => fetch(`/api/tenants/${tenantId}/farmacia/bulas${status === "todos" ? "" : `?status=${status}`}`, { headers: headers() }).then((r) => r.json()),
   });
   const importBase = useMutation({
-    mutationFn: () => fetch(`/api/tenants/${tenantId}/farmacia/bulas/importar-base`, { method: "POST", headers: headers() }).then((r) => r.json()),
+    mutationFn: () =>
+      fetch(`/api/tenants/${tenantId}/farmacia/bulas/importar-base`, { method: "POST", headers: headers() })
+        .then(async (r) => {
+          const body = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(body.error ?? "Não foi possível importar a base de bulas.");
+          return body;
+        }),
     onSuccess: (data) => { qc.invalidateQueries({ queryKey: ["farmacia-bulas"] }); toast({ title: `${data.imported} bulas disponíveis para revisão.` }); },
+    onError: (error: Error) => toast({ title: "Erro ao importar bulas", description: error.message, variant: "destructive" }),
   });
   const save = useMutation({
     mutationFn: ({ approve }: { approve: boolean }) => fetch(`/api/tenants/${tenantId}/farmacia/bulas/${editing.id}${approve ? "/aprovar" : ""}`, { method: approve ? "POST" : "PUT", headers: headers(), body: JSON.stringify(form) }).then(async (r) => { const data = await r.json(); if (!r.ok) throw new Error(data.error); return data; }),

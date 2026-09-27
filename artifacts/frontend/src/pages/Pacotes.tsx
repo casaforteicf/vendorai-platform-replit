@@ -93,8 +93,16 @@ export default function Pacotes() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => fetch(`/api/pacotes/${id}`, { method: "DELETE", headers: authHeaders() }),
+    mutationFn: async (id: string) => {
+      const response = await fetch(`/api/pacotes/${id}`, { method: "DELETE", headers: authHeaders() });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error ?? "Não foi possível remover o pacote.");
+      }
+      return response;
+    },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["pacotes", tenantId] }); toast({ title: "Pacote removido" }); },
+    onError: (error: Error) => toast({ title: "Erro ao remover pacote", description: error.message, variant: "destructive" }),
   });
 
   function openEdit(p: Pacote) {

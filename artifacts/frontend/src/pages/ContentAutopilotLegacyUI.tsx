@@ -210,9 +210,14 @@ export default function ContentAutopilot() {
   });
 
   const patchKeywordMutation = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) =>
-      fetch(`/api/tenants/${tenantId}/content-autopilot/keywords/${id}`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify({ status }) }),
+    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+      const response = await fetch(`/api/tenants/${tenantId}/content-autopilot/keywords/${id}`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify({ status }) });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error((body as { error?: string }).error ?? "Não foi possível atualizar a keyword.");
+      return body;
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["content-autopilot-keywords", tenantId] }),
+    onError: (error: Error) => toast({ title: "Erro ao atualizar keyword", description: error.message, variant: "destructive" }),
   });
 
   const generateArticleMutation = useMutation({
