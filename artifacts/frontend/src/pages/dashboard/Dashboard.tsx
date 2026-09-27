@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import OfficialCommandCenter from "@/components/dashboard/OfficialCommandCenter";
-import BusinessGoalsDialog from "@/components/dashboard/BusinessGoalsDialog";
-import StrategicObserver from "@/components/dashboard/StrategicObserver";
-import JarvisHistory from "@/components/dashboard/JarvisHistory";
-import JarvisObserverCaseSync from "@/components/dashboard/JarvisObserverCaseSync";
-import JarvisNewsMarket from "@/components/dashboard/JarvisNewsMarket";
+
+const BusinessGoalsDialog = lazy(() => import("@/components/dashboard/BusinessGoalsDialog"));
+const StrategicObserver = lazy(() => import("@/components/dashboard/StrategicObserver"));
+const JarvisHistory = lazy(() => import("@/components/dashboard/JarvisHistory"));
+const JarvisObserverCaseSync = lazy(() => import("@/components/dashboard/JarvisObserverCaseSync"));
+const JarvisNewsMarket = lazy(() => import("@/components/dashboard/JarvisNewsMarket"));
 
 type CommandCenterProps = Parameters<typeof OfficialCommandCenter>[0];
 type OfficialMetrics = CommandCenterProps["data"];
@@ -121,20 +122,28 @@ export default function Dashboard() {
           loading={loading}
           userName={user?.name ?? ""}
           onRefresh={refresh}
-          goalsAction={<BusinessGoalsDialog onChanged={refresh} />}
+          goalsAction={
+            <Suspense fallback={null}>
+              <BusinessGoalsDialog onChanged={refresh} />
+            </Suspense>
+          }
         />
-        <StrategicObserver
-          tenantId={tenantId}
-          token={token}
-          official={official}
-          refreshKey={refreshKey}
-        />
-        <JarvisObserverCaseSync token={token} />
-        <JarvisHistory token={token} refreshKey={refreshKey} />
+        <Suspense fallback={null}>
+          <StrategicObserver
+            tenantId={tenantId}
+            token={token}
+            official={official}
+            refreshKey={refreshKey}
+          />
+          <JarvisObserverCaseSync token={token} />
+          <JarvisHistory token={token} refreshKey={refreshKey} />
+        </Suspense>
       </TabsContent>
 
       <TabsContent value="news" className="mt-4">
-        <JarvisNewsMarket token={token} />
+        <Suspense fallback={null}>
+          <JarvisNewsMarket token={token} />
+        </Suspense>
       </TabsContent>
     </Tabs>
   );
