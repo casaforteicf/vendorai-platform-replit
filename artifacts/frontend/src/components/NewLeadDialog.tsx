@@ -339,6 +339,7 @@ export function NewLeadDialog({
     const autoDeal = await findAutoCreatedDeal(leadId);
     if (!autoDeal) {
       if (!values.createInitialDeal) return null;
+      // ui-integrity: error-propagates-to-caller — handleSubmit captura e exibe a falha.
       return createDeal.mutateAsync({
         data: {
           tenantId,

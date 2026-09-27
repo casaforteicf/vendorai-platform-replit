@@ -55,16 +55,28 @@ function balancedCall(source, start) {
 }
 
 function generatedMutateAsyncCalls(source) {
+  const hooks = new Map();
+
+  const destructured = /\bconst\s*\{[^}]*\bmutateAsync(?:\s*:\s*([A-Za-z_$][\w$]*))?[^}]*\}\s*=\s*(use[A-Z][A-Za-z0-9_$]*)\s*\(/g;
+  for (const match of source.matchAll(destructured)) {
+    if (match[2] === "useMutation") continue;
+    hooks.set(match[1] || "mutateAsync", { hook: match[2], mode: "function" });
+  }
+
+  const objectDeclaration = /\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*(use[A-Z][A-Za-z0-9_$]*)\s*\(/g;
+  for (const match of source.matchAll(objectDeclaration)) {
+    if (match[2] === "useMutation") continue;
+    hooks.set(match[1], { hook: match[2], mode: "object" });
+  }
+
   const calls = [];
-  const declaration = /\bconst\s*\{[^}]*\bmutateAsync(?:\s*:\s*([A-Za-z_$][\w$]*))?[^}]*\}\s*=\s*(use(?:Create|Update|Delete|Upsert|Patch|Post|Put)[A-Za-z0-9_$]*)\s*\(/g;
-  for (const match of source.matchAll(declaration)) {
-    const variable = match[1] || "mutateAsync";
-    const hook = match[2];
-    const re = new RegExp("\\b" + escRegex(variable) + "\\s*\\(", "g");
+  for (const [variable, metadata] of hooks) {
+    const re = metadata.mode === "function"
+      ? new RegExp("\\b" + escRegex(variable) + "\\s*\\(", "g")
+      : new RegExp("\\b" + escRegex(variable) + "\\.mutateAsync\\s*\\(", "g");
     for (const callMatch of source.matchAll(re)) {
-      if (callMatch.index <= match.index) continue;
       const call = balancedCall(source, callMatch.index);
-      if (call) calls.push({ ...call, variable, hook });
+      if (call) calls.push({ ...call, variable, hook: metadata.hook });
     }
   }
   return calls;
@@ -189,8 +201,9 @@ for (const file of files) {
     const after = source.slice(call.end, Math.min(source.length, call.end + 1600));
     const guardedByTry = /\btry\s*\{[\s\S]*$/.test(before);
     const handledCatch = /\bcatch\s*\([^)]*\)\s*\{[\s\S]{0,1000}?(?:toast\s*\(|setError|set[A-Z][A-Za-z0-9_]*Error)/.test(after);
-    if (!(guardedByTry && handledCatch)) {
-      add("HIGH", "generated-mutate-async-without-visible-error", file, call.start, source, call.hook + " executa mutateAsync sem try/catch com feedback visível.");
+    const explicitlyPropagated = /ui-integrity:\s*error-propagates-to-caller/.test(before.slice(-260));
+    if (!(guardedByTry && handledCatch) && !explicitlyPropagated) {
+      add("HIGH", "generated-mutate-async-without-visible-error", file, call.start, source, call.hook + " executa mutateAsync sem try/catch com feedback visível nem propagação explícita para caller protegido.");
     }
   }
 
