@@ -1,6 +1,6 @@
 import { flushSync } from "react-dom";
 import { conceptReferenceSize } from "./conceptReferenceImage";
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, useEffect, useMemo, useRef, useState } from "react";
 import "./planner5d-reference.css";
 import {
   ArrowLeft,
