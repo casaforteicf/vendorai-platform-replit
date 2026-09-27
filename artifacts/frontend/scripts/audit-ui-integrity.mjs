@@ -153,13 +153,15 @@ if (important.length) {
 const blockerCount = findings.filter((item) => item.severity === "BLOCKER").length;
 const httpContractHighs = findings.filter((item) => item.rule === "mutation-without-http-status-check").length;
 const unknownRouteHighs = findings.filter((item) => item.rule === "navigation-to-unknown-route").length;
-if (blockerCount > 0 || httpContractHighs > 0 || unknownRouteHighs > 0) {
+const hardDisabledHighs = findings.filter((item) => item.rule === "hard-disabled").length;
+if (blockerCount > 0 || httpContractHighs > 0 || unknownRouteHighs > 0 || hardDisabledHighs > 0) {
   console.error("\n[ui-integrity] GATE BLOQUEADO.");
   if (blockerCount > 0) console.error("[ui-integrity] " + blockerCount + " BLOCKER(s) funcional(is) encontrado(s).");
   if (httpContractHighs > 0) console.error("[ui-integrity] " + httpContractHighs + " mutation(s) sem validação de response.ok/status.");
   if (unknownRouteHighs > 0) console.error("[ui-integrity] " + unknownRouteHighs + " navegação(ões) para rota não declarada.");
-  console.error("[ui-integrity] Corrija falhas críticas, contratos HTTP e rotas inválidas antes de integrar esta mudança.");
+  if (hardDisabledHighs > 0) console.error("[ui-integrity] " + hardDisabledHighs + " controle(s) permanentemente desabilitado(s).");
+  console.error("[ui-integrity] Corrija falhas críticas, contratos HTTP, rotas inválidas e controles permanentemente desabilitados antes de integrar esta mudança.");
   process.exitCode = 1;
 } else {
-  console.log("\n[ui-integrity] Gate aprovado: BLOCKER, contratos HTTP e navegações estáticas estão limpos. Demais HIGHs seguem em relatório progressivo.");
+  console.log("\n[ui-integrity] Gate aprovado: BLOCKER, contratos HTTP, navegações estáticas e controles permanentemente desabilitados estão limpos. Demais HIGHs seguem em relatório progressivo.");
 }
