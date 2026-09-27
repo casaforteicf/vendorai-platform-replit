@@ -355,6 +355,81 @@ function installVisitorOnlineAlerts() {
   };
 }
 
+function installPerformanceTelemetry() {
+  if (typeof window === "undefined" || typeof PerformanceObserver === "undefined") return () => {};
+
+  let lcp = 0;
+  let cls = 0;
+  let maxInteraction = 0;
+  let fcp = 0;
+  let ttfb = 0;
+  let reported = false;
+  const observers: PerformanceObserver[] = [];
+
+  try {
+    const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+    if (navigation) ttfb = Math.max(0, navigation.responseStart - navigation.requestStart);
+  } catch {
+    // Métricas opcionais nunca podem afetar o app.
+  }
+
+  const observe = (type: string, handler: (entry: PerformanceEntry) => void) => {
+    try {
+      const observer = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) handler(entry);
+      });
+      observer.observe({ type, buffered: true } as PerformanceObserverInit);
+      observers.push(observer);
+    } catch {
+      // Browser sem suporte a este tipo de entry.
+    }
+  };
+
+  observe("paint", (entry) => {
+    if (entry.name === "first-contentful-paint") fcp = entry.startTime;
+  });
+
+  observe("largest-contentful-paint", (entry) => {
+    lcp = Math.max(lcp, entry.startTime);
+  });
+
+  observe("layout-shift", (entry) => {
+    const shift = entry as PerformanceEntry & { value?: number; hadRecentInput?: boolean };
+    if (!shift.hadRecentInput) cls += shift.value ?? 0;
+  });
+
+  observe("event", (entry) => {
+    maxInteraction = Math.max(maxInteraction, entry.duration || 0);
+  });
+
+  const report = () => {
+    if (reported) return;
+    reported = true;
+    void sendVisitorTelemetry("engagement", {
+      metric: "web_vitals",
+      lcpMs: Math.round(lcp),
+      cls: Number(cls.toFixed(4)),
+      fcpMs: Math.round(fcp),
+      ttfbMs: Math.round(ttfb),
+      maxInteractionMs: Math.round(maxInteraction),
+    });
+  };
+
+  const onVisibility = () => {
+    if (document.visibilityState === "hidden") report();
+  };
+
+  window.addEventListener("pagehide", report, { once: true });
+  document.addEventListener("visibilitychange", onVisibility);
+
+  return () => {
+    report();
+    for (const observer of observers) observer.disconnect();
+    window.removeEventListener("pagehide", report);
+    document.removeEventListener("visibilitychange", onVisibility);
+  };
+}
+
 export function installVisitorTelemetry() {
   if (typeof window === "undefined") return () => {};
   let lastPath = `${window.location.pathname}${window.location.search}`;
@@ -363,6 +438,7 @@ export function installVisitorTelemetry() {
   void sendVisitorTelemetry("session_start");
   void sendVisitorTelemetry("screen_view");
   const stopAlerts = installVisitorOnlineAlerts();
+  const stopPerformance = installPerformanceTelemetry();
 
   const interval = window.setInterval(() => {
     if (stopped || document.visibilityState !== "visible") return;
@@ -382,6 +458,7 @@ export function installVisitorTelemetry() {
   return () => {
     stopped = true;
     stopAlerts();
+    stopPerformance();
     window.clearInterval(interval);
     document.removeEventListener("visibilitychange", visibility);
   };
