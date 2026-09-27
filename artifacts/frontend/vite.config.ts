@@ -296,7 +296,9 @@ export default defineConfig({
         manualChunks(id) {
           const normalized = id.replace(/\\/g, "/");
           if (!normalized.includes("/node_modules/")) return undefined;
-          if (normalized.includes("/html2pdf.js/") || normalized.includes("/jspdf/") || normalized.includes("/html2canvas/")) return "vendor-pdf";
+          if (normalized.includes("/html2pdf.js/")) return "vendor-html2pdf";
+          if (normalized.includes("/jspdf/")) return "vendor-jspdf";
+          if (normalized.includes("/html2canvas/")) return "vendor-html2canvas";
           if (normalized.includes("/xlsx/")) return "vendor-xlsx";
           if (normalized.includes("/recharts/") || normalized.includes("/d3-")) return "vendor-charts";
           if (normalized.includes("/leaflet/") || normalized.includes("/react-leaflet/")) return "vendor-maps";
