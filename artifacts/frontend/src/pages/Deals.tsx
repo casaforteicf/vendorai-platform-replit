@@ -2569,7 +2569,7 @@ export default function Deals() {
                     className="flex-1"
                     onBlur={(event) => {
                       const label = event.target.value.trim();
-                      if (label && label !== stage.label) updateStage.mutate({ tenantId, id: stage.id, data: { label } }, { onSuccess: invalidateStages });
+                      if (label && label !== stage.label) updateStage.mutate({ tenantId, id: stage.id, data: { label } }, { onSuccess: invalidateStages, onError: () => toast({ title: "Erro ao renomear etapa", variant: "destructive" }) });
                     }}
                   />
                   <Input
