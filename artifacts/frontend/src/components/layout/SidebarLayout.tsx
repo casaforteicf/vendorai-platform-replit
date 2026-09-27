@@ -1,18 +1,21 @@
-import React, { useEffect } from "react";
+import React, { lazy, Suspense, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { SidebarLayout as SidebarLayoutLegacy } from "./SidebarLayoutLegacy";
 import { SuperAdminSidebarLayout } from "./SuperAdminSidebarLayout";
-import { MarketingAgentDock } from "@/components/marketing/MarketingAgentDock";
-import { AdsMediaPlanContextBanner } from "@/components/marketing/AdsMediaPlanContextBanner";
-import { MessagingMediaPlanBridge } from "@/components/marketing/MessagingMediaPlanBridge";
 import {
   getGetBusinessProfileByTenantQueryKey,
   getGetTenantQueryKey,
   useGetBusinessProfileByTenant,
   useGetTenant,
 } from "@workspace/api-client-react";
+
+const MarketingAgentDock = lazy(() => import("@/components/marketing/MarketingAgentDock").then((m) => ({ default: m.MarketingAgentDock })));
+const AdsMediaPlanContextBanner = lazy(() => import("@/components/marketing/AdsMediaPlanContextBanner").then((m) => ({ default: m.AdsMediaPlanContextBanner })));
+const MessagingMediaPlanBridge = lazy(() => import("@/components/marketing/MessagingMediaPlanBridge").then((m) => ({ default: m.MessagingMediaPlanBridge })));
+
+const MARKETING_ROUTE_HINTS = ["marketing", "campanh", "content", "conteudo", "media", "midia", "ads", "anuncio", "analytics", "site", "landing", "video", "planej"];
 
 type TenantNavModule = {
   moduleKey: string;
@@ -584,12 +587,28 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     };
   }, [companyLogoUrl, companyName, tenantOverride, user]);
 
+  const lowerLocation = location.toLowerCase();
+  const pathname = location.split("?")[0] || "/";
+  const marketingContext =
+    MARKETING_ROUTE_HINTS.some((hint) => lowerLocation.includes(hint));
+  const messagingContext =
+    pathname === "/content" ||
+    pathname === "/ads" ||
+    pathname === "/content-autopilot";
+  const adsContext = pathname === "/ads";
+
   const shellContent = (
     <>
-      <AdsMediaPlanContextBanner pathname={location} />
-      <MessagingMediaPlanBridge pathname={location} />
+      <Suspense fallback={null}>
+        {adsContext ? <AdsMediaPlanContextBanner pathname={location} /> : null}
+        {messagingContext ? <MessagingMediaPlanBridge pathname={location} /> : null}
+      </Suspense>
       {children}
-      <MarketingAgentDock pathname={location} />
+      {marketingContext ? (
+        <Suspense fallback={null}>
+          <MarketingAgentDock pathname={location} />
+        </Suspense>
+      ) : null}
     </>
   );
 
