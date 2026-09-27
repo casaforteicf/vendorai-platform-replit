@@ -384,6 +384,7 @@ export default function Usuarios() {
   const [dialogTab, setDialogTab] = useState("dados");
   const [editingUser, setEditingUser] = useState<any>(null);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
+  const [statusUpdatingUserId, setStatusUpdatingUserId] = useState<string | null>(null);
   const [functionDialogOpen, setFunctionDialogOpen] = useState(false);
   const [newFunctionName, setNewFunctionName] = useState("");
   const [newFunctionPermissions, setNewFunctionPermissions] = useState<UserModuleKey[]>([]);
@@ -678,17 +679,21 @@ export default function Usuarios() {
   }
 
   async function toggleUserStatus(targetUser: any) {
+    if (statusUpdatingUserId) return;
     const nextActive = !targetUser.active;
     if (!nextActive && targetUser.id === user?.id) {
       toast({ title: copy.saveError, description: copy.selfDeactivateBlocked, variant: "destructive" });
       return;
     }
+    setStatusUpdatingUserId(targetUser.id);
     try {
       await updateUser.mutateAsync({ id: targetUser.id, data: { active: nextActive } as any });
       await queryClient.invalidateQueries({ queryKey: getListTenantUsersQueryKey(tenantId) });
       toast({ title: copy.statusUpdated, description: copy.statusUpdatedDescription(nextActive) });
     } catch (err: any) {
       toast({ title: copy.saveError, description: err?.message || copy.tryAgain, variant: "destructive" });
+    } finally {
+      setStatusUpdatingUserId(null);
     }
   }
 
@@ -732,9 +737,20 @@ export default function Usuarios() {
             <KeyRound className="h-4 w-4 mr-2" />
             {copy.passwordAction}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => toggleUserStatus(targetUser)}>
-            {targetUser.active ? <UserX className="h-4 w-4 mr-2" /> : <UserCheck className="h-4 w-4 mr-2" />}
-            {targetUser.active ? copy.deactivateAction : copy.activateAction}
+          <DropdownMenuItem
+            onClick={() => toggleUserStatus(targetUser)}
+            disabled={statusUpdatingUserId !== null}
+          >
+            {statusUpdatingUserId === targetUser.id
+              ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              : targetUser.active
+                ? <UserX className="h-4 w-4 mr-2" />
+                : <UserCheck className="h-4 w-4 mr-2" />}
+            {statusUpdatingUserId === targetUser.id
+              ? copy.loading
+              : targetUser.active
+                ? copy.deactivateAction
+                : copy.activateAction}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
