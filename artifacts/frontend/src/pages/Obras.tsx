@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { useToast } from "@/hooks/use-toast";
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
   planejamento:  { label: "Planejamento",  color: "bg-slate-100 text-slate-700" },
@@ -48,6 +49,7 @@ function fmtBRL(v?: string | null) {
 
 function NovaObraDialog({ tenantId }: { tenantId: string }) {
   const qc = useQueryClient();
+  const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
     nome: "",
@@ -65,10 +67,15 @@ function NovaObraDialog({ tenantId }: { tenantId: string }) {
     e.preventDefault();
     const payload: Record<string, unknown> = { ...form };
     Object.keys(payload).forEach((k) => { if (payload[k] === "") delete payload[k]; });
-    await mutateAsync({ tenantId, data: payload as any });
-    await qc.invalidateQueries({ queryKey: getListObrasQueryKey(tenantId) });
-    setOpen(false);
-    setForm({ nome: "", clienteNome: "", endereco: "", dataInicio: "", dataFimPrevista: "", orcamentoTotal: "", descricao: "" });
+    try {
+      await mutateAsync({ tenantId, data: payload as any });
+      await qc.invalidateQueries({ queryKey: getListObrasQueryKey(tenantId) });
+      setOpen(false);
+      setForm({ nome: "", clienteNome: "", endereco: "", dataInicio: "", dataFimPrevista: "", orcamentoTotal: "", descricao: "" });
+      toast({ title: "Obra criada com sucesso." });
+    } catch (error) {
+      toast({ title: "Não foi possível criar a obra", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+    }
   }
 
   return (

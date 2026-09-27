@@ -54,6 +54,22 @@ function balancedCall(source, start) {
   return null;
 }
 
+function generatedMutateAsyncCalls(source) {
+  const calls = [];
+  const declaration = /\bconst\s*\{[^}]*\bmutateAsync(?:\s*:\s*([A-Za-z_$][\w$]*))?[^}]*\}\s*=\s*(use(?:Create|Update|Delete|Upsert|Patch|Post|Put)[A-Za-z0-9_$]*)\s*\(/g;
+  for (const match of source.matchAll(declaration)) {
+    const variable = match[1] || "mutateAsync";
+    const hook = match[2];
+    const re = new RegExp("\\b" + escRegex(variable) + "\\s*\\(", "g");
+    for (const callMatch of source.matchAll(re)) {
+      if (callMatch.index <= match.index) continue;
+      const call = balancedCall(source, callMatch.index);
+      if (call) calls.push({ ...call, variable, hook });
+    }
+  }
+  return calls;
+}
+
 function generatedMutationCalls(source) {
   const hooks = new Map();
   const declaration = /\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*(use(?:Create|Update|Delete|Upsert|Patch|Post|Put)[A-Za-z0-9_$]*)\s*\(/g;
@@ -121,7 +137,7 @@ function matchesDeclaredRoute(target) {
 }
 
 const findings = [];
-const metrics = { filesScanned: files.length, pageFiles: 0, componentFiles: 0, moduleFiles: 0, nativeButtons: 0, uiButtons: 0, mutationFetches: 0, generatedMutationCalls: 0, staticNavigations: 0 };
+const metrics = { filesScanned: files.length, pageFiles: 0, componentFiles: 0, moduleFiles: 0, nativeButtons: 0, uiButtons: 0, mutationFetches: 0, generatedMutationCalls: 0, generatedMutateAsyncCalls: 0, staticNavigations: 0 };
 
 function add(severity, rule, file, index, source, message) {
   findings.push({ severity, rule, file: path.relative(process.cwd(), file), line: lineOf(source, index), message, snippet: compact(source.slice(Math.max(0, index - 120), Math.min(source.length, index + 360))) });
@@ -147,6 +163,17 @@ for (const file of files) {
     const base = formMatch.index;
     for (const m of formSource.matchAll(/<button\b(?![^>]*\btype\s*=)[^>]*>/g)) add("HIGH", "native-button-no-type-in-form", file, base + m.index, source, "Button nativo dentro de form sem type pode disparar submit acidental.");
     for (const m of formSource.matchAll(/<Button\b(?![^>]*\btype\s*=)(?=[^>]*\bonClick\s*=)[^>]*>/g)) add("HIGH", "ui-button-no-type-in-form", file, base + m.index, source, "Button com onClick dentro de form sem type pode executar ação e submit ao mesmo tempo.");
+  }
+
+  for (const call of generatedMutateAsyncCalls(source)) {
+    metrics.generatedMutateAsyncCalls++;
+    const before = source.slice(Math.max(0, call.start - 700), call.start);
+    const after = source.slice(call.end, Math.min(source.length, call.end + 1600));
+    const guardedByTry = /\btry\s*\{[\s\S]*$/.test(before);
+    const handledCatch = /\bcatch\s*\([^)]*\)\s*\{[\s\S]{0,1000}?(?:toast\s*\(|setError|set[A-Z][A-Za-z0-9_]*Error)/.test(after);
+    if (!(guardedByTry && handledCatch)) {
+      add("HIGH", "generated-mutate-async-without-visible-error", file, call.start, source, call.hook + " executa mutateAsync sem try/catch com feedback visível.");
+    }
   }
 
   for (const call of generatedMutationCalls(source)) {
