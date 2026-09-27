@@ -16,10 +16,10 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import logoFull from "/logo-full-light.svg";
-import { StoreSwitcher } from "@/components/StoreSwitcher";
-import { NovidadesBell } from "@/components/NovidadesBell";
 import { applyTenantTheme, resetTenantTheme } from "@/lib/tenantTheme";
 
+const StoreSwitcher = lazy(() => import("@/components/StoreSwitcher").then((m) => ({ default: m.StoreSwitcher })));
+const NovidadesBell = lazy(() => import("@/components/NovidadesBell").then((m) => ({ default: m.NovidadesBell })));
 const SupportChatWidget = lazy(() => import("@/components/support/SupportChatWidget").then((m) => ({ default: m.SupportChatWidget })));
 const AccessLicenseBanner = lazy(() => import("@/components/billing/AccessLicenseBanner").then((m) => ({ default: m.AccessLicenseBanner })));
 
@@ -1253,7 +1253,7 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
                   <HelpCircle className="h-4 w-4" />
                   Central de Ajuda
                 </Link>
-                <NovidadesBell />
+                <Suspense fallback={null}><NovidadesBell /></Suspense>
                 <div
                   data-ai-budget-sidebar-slot
                   className="flex min-h-7 items-center justify-end px-2 pt-1"
@@ -1301,7 +1301,7 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
             )}
           </div>
           <div className="px-3 py-2 border-b">
-            <StoreSwitcher />
+            <Suspense fallback={null}><StoreSwitcher /></Suspense>
           </div>
           <div className="vendor-scrollbar flex-1 py-4 flex flex-col gap-1 px-3 overflow-y-auto">
             <NavLinks />
@@ -1330,7 +1330,7 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
               </Button>
             </div>
             <div className="px-3 py-2 border-b">
-              <StoreSwitcher />
+              <Suspense fallback={null}><StoreSwitcher /></Suspense>
             </div>
             <div className="flex-1 py-3 flex flex-col gap-1 px-3 overflow-y-auto">
               <NavLinks onNavigate={() => setMobileOpen(false)} />
