@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Plus, Pencil, Trash2, Truck, Search, Phone, Mail } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 function FornecedorForm({
   initial,
@@ -98,6 +99,7 @@ function FornecedorForm({
 
 export default function VarejoFornecedores() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const tenantId = user?.tenantId ?? "";
   const qc = useQueryClient();
 
@@ -118,10 +120,12 @@ export default function VarejoFornecedores() {
     if (editing) {
       updateMut.mutate({ tenantId, fornecedorId: editing.id, data: data as any }, {
         onSuccess: () => { setEditing(null); invalidate(); },
+        onError: (error: unknown) => toast({ title: "Não foi possível atualizar o fornecedor", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" }),
       });
     } else {
       createMut.mutate({ tenantId, data: { ...data, tenantId } as any }, {
         onSuccess: () => { setOpen(false); invalidate(); },
+        onError: (error: unknown) => toast({ title: "Não foi possível criar o fornecedor", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" }),
       });
     }
   }
@@ -201,7 +205,7 @@ export default function VarejoFornecedores() {
                           <AlertDialogCancel>Cancelar</AlertDialogCancel>
                           <AlertDialogAction
                             className="bg-destructive text-destructive-foreground"
-                            onClick={() => deleteMut.mutate({ tenantId, fornecedorId: f.id }, { onSuccess: invalidate })}
+                            onClick={() => deleteMut.mutate({ tenantId, fornecedorId: f.id }, { onSuccess: invalidate, onError: (error: unknown) => toast({ title: "Não foi possível excluir o fornecedor", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" }) })}
                           >
                             Excluir
                           </AlertDialogAction>
