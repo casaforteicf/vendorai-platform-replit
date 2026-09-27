@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Plus, Pencil, Trash2, Layers } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 const TEMPORADAS = ["verao", "inverno", "outono", "primavera", "especial"] as const;
 const TEMPORADA_LABELS: Record<string, string> = {
@@ -103,6 +104,7 @@ function ColecaoForm({
 
 export default function VarejoColecoes() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const tenantId = user?.tenantId ?? "";
   const qc = useQueryClient();
 
@@ -122,10 +124,12 @@ export default function VarejoColecoes() {
     if (editing) {
       updateMut.mutate({ tenantId, colecaoId: editing.id, data: data as any }, {
         onSuccess: () => { setEditing(null); invalidate(); },
+        onError: (error: unknown) => toast({ title: "Não foi possível atualizar a coleção", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" }),
       });
     } else {
       createMut.mutate({ tenantId, data: { ...data, tenantId } as any }, {
         onSuccess: () => { setOpen(false); invalidate(); },
+        onError: (error: unknown) => toast({ title: "Não foi possível criar a coleção", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" }),
       });
     }
   }
@@ -218,7 +222,7 @@ export default function VarejoColecoes() {
                         <AlertDialogCancel>Cancelar</AlertDialogCancel>
                         <AlertDialogAction
                           className="bg-destructive text-destructive-foreground"
-                          onClick={() => deleteMut.mutate({ tenantId, colecaoId: c.id }, { onSuccess: invalidate })}
+                          onClick={() => deleteMut.mutate({ tenantId, colecaoId: c.id }, { onSuccess: invalidate, onError: (error: unknown) => toast({ title: "Não foi possível excluir a coleção", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" }) })}
                         >
                           Excluir
                         </AlertDialogAction>

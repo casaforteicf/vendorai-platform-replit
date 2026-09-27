@@ -23,6 +23,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Plus, ShoppingCart, Pencil, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 const STATUS_LABELS: Record<string,string> = {
   rascunho:"Rascunho", enviado:"Enviado", confirmado:"Confirmado", entregue:"Entregue", cancelado:"Cancelado",
@@ -118,6 +119,7 @@ function PedidoForm({
 
 function PedidoItens({ pedidoId, tenantId }: { pedidoId: string; tenantId: string }) {
   const qc = useQueryClient();
+  const { toast } = useToast();
   const { data: itens = [] } = useListVarejoPedidoCompraItens(tenantId, pedidoId);
   const { data: produtos = [] } = useListVarejoProdutos(tenantId);
   const createItem = useCreateVarejoPedidoCompraItem();
@@ -136,6 +138,7 @@ function PedidoItens({ pedidoId, tenantId }: { pedidoId: string; tenantId: strin
     if (!data.produtoId) delete data.produtoId;
     createItem.mutate({ tenantId, pedidoId, data: data as any }, {
       onSuccess: () => { setAdding(false); setForm({ produtoId: "", tamanho: "", cor: "", quantidade: "1", precoUnitario: "" }); invalidate(); },
+      onError: (error: unknown) => toast({ title: "Não foi possível adicionar o item", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" }),
     });
   }
 
@@ -173,7 +176,7 @@ function PedidoItens({ pedidoId, tenantId }: { pedidoId: string; tenantId: strin
                 <span className="text-muted-foreground"> · {i.tamanho} / {i.cor} · {i.quantidade} un. · R$ {Number(i.precoUnitario).toFixed(2)}</span>
               </div>
               <Button size="icon" variant="ghost" className="h-6 w-6 text-destructive hover:text-destructive"
-                onClick={() => deleteItem.mutate({ tenantId, pedidoId, itemId: i.id }, { onSuccess: invalidate })}>
+                onClick={() => deleteItem.mutate({ tenantId, pedidoId, itemId: i.id }, { onSuccess: invalidate, onError: (error: unknown) => toast({ title: "Não foi possível remover o item", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" }) })}>
                 <Trash2 className="h-3 w-3" />
               </Button>
             </div>
@@ -186,6 +189,7 @@ function PedidoItens({ pedidoId, tenantId }: { pedidoId: string; tenantId: strin
 
 export default function VarejoCompras() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const tenantId = user?.tenantId ?? "";
   const qc = useQueryClient();
 
@@ -208,10 +212,12 @@ export default function VarejoCompras() {
     if (editing) {
       updateMut.mutate({ tenantId, pedidoId: editing.id, data: data as any }, {
         onSuccess: () => { setEditing(null); invalidate(); },
+        onError: (error: unknown) => toast({ title: "Não foi possível atualizar o pedido", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" }),
       });
     } else {
       createMut.mutate({ tenantId, data: { ...data, tenantId } as any }, {
         onSuccess: () => { setOpen(false); invalidate(); },
+        onError: (error: unknown) => toast({ title: "Não foi possível criar o pedido", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" }),
       });
     }
   }
@@ -297,7 +303,7 @@ export default function VarejoCompras() {
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancelar</AlertDialogCancel>
                           <AlertDialogAction className="bg-destructive text-destructive-foreground"
-                            onClick={() => deleteMut.mutate({ tenantId, pedidoId: p.id }, { onSuccess: invalidate })}>
+                            onClick={() => deleteMut.mutate({ tenantId, pedidoId: p.id }, { onSuccess: invalidate, onError: (error: unknown) => toast({ title: "Não foi possível excluir o pedido", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" }) })}>
                             Excluir
                           </AlertDialogAction>
                         </AlertDialogFooter>
