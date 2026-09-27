@@ -1,5 +1,5 @@
 import { createRoot } from "react-dom/client";
-import { lazy, Suspense, useLayoutEffect } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { FrontendRecoveryGuard } from "./components/FrontendRecoveryGuard";
@@ -196,6 +196,54 @@ function CanonicalMarketingRouteBridge() {
   return null;
 }
 
+function DeferredGlobalAuxiliaries() {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    let timeoutId: number | undefined;
+    let idleId: number | undefined;
+    const win = window as typeof window & {
+      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+
+    if (typeof win.requestIdleCallback === "function") {
+      idleId = win.requestIdleCallback(() => setReady(true), { timeout: 1200 });
+    } else {
+      timeoutId = window.setTimeout(() => setReady(true), 350);
+    }
+
+    return () => {
+      if (idleId !== undefined && typeof win.cancelIdleCallback === "function") win.cancelIdleCallback(idleId);
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+    };
+  }, []);
+
+  if (!ready) return null;
+
+  return (
+    <Suspense fallback={null}>
+      <AiBudgetUsageIndicator />
+      <GrowthLabMenuInjector />
+      <UnifiedAssistantLauncher />
+      <JarvisVoiceReplayControl />
+      <JarvisResponseHealthNotice />
+      <BudgetImportAutofill />
+      <MediaMenuInjector />
+    </Suspense>
+  );
+}
+
+function VideoRouteThemeGate() {
+  const [location] = useLocation();
+  if (!location.startsWith("/content-studio/video")) return null;
+  return (
+    <Suspense fallback={null}>
+      <VideoRouteThemeSync />
+    </Suspense>
+  );
+}
+
 function WorkspaceEnhancementsGate() {
   const [location] = useLocation();
   const pathname = location.split("?")[0] || "/";
@@ -235,16 +283,10 @@ createRoot(document.getElementById("root")!).render(
         ) : (
           <>
             <FrontendRecoveryGuard />
-            <VideoRouteThemeSync />
+            <VideoRouteThemeGate />
             <CanonicalMarketingRouteBridge />
             <App />
-            <AiBudgetUsageIndicator />
-            <GrowthLabMenuInjector />
-            <UnifiedAssistantLauncher />
-            <JarvisVoiceReplayControl />
-            <JarvisResponseHealthNotice />
-            <BudgetImportAutofill />
-            <MediaMenuInjector />
+            <DeferredGlobalAuxiliaries />
             <WorkspaceEnhancementsGate />
           </>
         )}
