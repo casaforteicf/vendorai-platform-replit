@@ -154,14 +154,16 @@ const blockerCount = findings.filter((item) => item.severity === "BLOCKER").leng
 const httpContractHighs = findings.filter((item) => item.rule === "mutation-without-http-status-check").length;
 const unknownRouteHighs = findings.filter((item) => item.rule === "navigation-to-unknown-route").length;
 const hardDisabledHighs = findings.filter((item) => item.rule === "hard-disabled").length;
-if (blockerCount > 0 || httpContractHighs > 0 || unknownRouteHighs > 0 || hardDisabledHighs > 0) {
+const noopCallbackHighs = findings.filter((item) => item.rule === "noop-callback-prop").length;
+if (blockerCount > 0 || httpContractHighs > 0 || unknownRouteHighs > 0 || hardDisabledHighs > 0 || noopCallbackHighs > 0) {
   console.error("\n[ui-integrity] GATE BLOQUEADO.");
   if (blockerCount > 0) console.error("[ui-integrity] " + blockerCount + " BLOCKER(s) funcional(is) encontrado(s).");
   if (httpContractHighs > 0) console.error("[ui-integrity] " + httpContractHighs + " mutation(s) sem validação de response.ok/status.");
   if (unknownRouteHighs > 0) console.error("[ui-integrity] " + unknownRouteHighs + " navegação(ões) para rota não declarada.");
   if (hardDisabledHighs > 0) console.error("[ui-integrity] " + hardDisabledHighs + " controle(s) permanentemente desabilitado(s).");
-  console.error("[ui-integrity] Corrija falhas críticas, contratos HTTP, rotas inválidas e controles permanentemente desabilitados antes de integrar esta mudança.");
+  if (noopCallbackHighs > 0) console.error("[ui-integrity] " + noopCallbackHighs + " callback(s) de interação conectado(s) a função vazia.");
+  console.error("[ui-integrity] Corrija falhas críticas, contratos HTTP, rotas inválidas, controles desabilitados e callbacks vazios antes de integrar esta mudança.");
   process.exitCode = 1;
 } else {
-  console.log("\n[ui-integrity] Gate aprovado: BLOCKER, contratos HTTP, navegações estáticas e controles permanentemente desabilitados estão limpos. Demais HIGHs seguem em relatório progressivo.");
+  console.log("\n[ui-integrity] Gate aprovado: BLOCKER, contratos HTTP, navegações estáticas, controles desabilitados e callbacks vazios estão limpos. Demais HIGHs seguem em relatório progressivo.");
 }
