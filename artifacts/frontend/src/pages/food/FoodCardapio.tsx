@@ -86,8 +86,13 @@ export default function FoodCardapio() {
         method: "PATCH",
         headers: authHeaders(),
         body: JSON.stringify({ disponivel }),
-      }).then((r) => r.json()),
+      }).then(async (r) => {
+        const body = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(body.error ?? "Não foi possível alterar a disponibilidade.");
+        return body;
+      }),
     onSuccess: () => qc.invalidateQueries({ queryKey: QK }),
+    onError: (error: Error) => toast({ title: "Erro ao alterar disponibilidade", description: error.message, variant: "destructive" }),
   });
 
   function openCreate() {
