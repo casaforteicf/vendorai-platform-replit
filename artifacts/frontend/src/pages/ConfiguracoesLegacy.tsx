@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { lazy, Suspense, useState, useRef, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useForm } from "react-hook-form";
 
@@ -8,7 +8,6 @@ import * as z from "zod";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
-import { SocialIntegrationsPanel } from "@/components/SocialIntegrationsPanel";
 
 function getToken(): string | null {
   return localStorage.getItem("vendorai_token");
@@ -66,7 +65,6 @@ import {
   useRemoveAnthropicAIKey,
 } from "@workspace/api-client-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DistribuicaoConfigCard } from "@/components/DistribuicaoConfigCard";
 import {
   Form,
   FormControl,
@@ -155,14 +153,17 @@ import {
   TrendingUp,
   Megaphone,
 } from "lucide-react";
-import { SiteGeneratorTab } from "./SiteGenerator";
 import { SdrTemplatesSection } from "@/components/SdrTemplatesSection";
-import { FaturamentoTab } from "./FaturamentoTab";
-import { ContractTemplateTab } from "@/components/ContractTemplateTab";
-import { BrandKitSettings } from "@/components/BrandKitSettings";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+
+const SocialIntegrationsPanel = lazy(() => import("@/components/SocialIntegrationsPanel").then((m) => ({ default: m.SocialIntegrationsPanel })));
+const DistribuicaoConfigCard = lazy(() => import("@/components/DistribuicaoConfigCard").then((m) => ({ default: m.DistribuicaoConfigCard })));
+const SiteGeneratorTab = lazy(() => import("./SiteGenerator").then((m) => ({ default: m.SiteGeneratorTab })));
+const FaturamentoTab = lazy(() => import("./FaturamentoTab").then((m) => ({ default: m.FaturamentoTab })));
+const ContractTemplateTab = lazy(() => import("@/components/ContractTemplateTab").then((m) => ({ default: m.ContractTemplateTab })));
+const BrandKitSettings = lazy(() => import("@/components/BrandKitSettings").then((m) => ({ default: m.BrandKitSettings })));
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -2388,7 +2389,7 @@ export default function Configuracoes() {
 
         {/* ── Tab: Marketing / Kit da Marca ─────────────────────────────── */}
         <TabsContent value="marketing">
-          <BrandKitSettings />
+          <Suspense fallback={null}><BrandKitSettings /></Suspense>
         </TabsContent>
 
         {/* ── Tab: Perfil da Empresa ──────────────────────────────────────── */}
@@ -3405,7 +3406,7 @@ export default function Configuracoes() {
 
         {/* ── Tab: Site ───────────────────────────────────────────────────── */}
         <TabsContent value="site" className="space-y-5">
-          <SiteGeneratorTab />
+          <Suspense fallback={null}><SiteGeneratorTab /></Suspense>
 
           {/* ── Domain Card ─────────────────────────────────────────────── */}
           <div className="rounded-xl border bg-card p-6 space-y-5">
@@ -3978,7 +3979,7 @@ export default function Configuracoes() {
               )}
             </div>
 
-              <SocialIntegrationsPanel providers={["youtube"]} mode="connect" />
+              <Suspense fallback={null}><SocialIntegrationsPanel providers={["youtube"]} mode="connect" /></Suspense>
 
               </div>
             </section>
@@ -4888,7 +4889,7 @@ Body:
               </p>
             </div>
 
-            <SocialIntegrationsPanel providers={["linkedin", "tiktok"]} mode="connect" />
+            <Suspense fallback={null}><SocialIntegrationsPanel providers={["linkedin", "tiktok"]} mode="connect" /></Suspense>
 
             {/* Evolution API — WhatsApp via QR Code (self-hosted, sem custo por cliente) */}
             <EvolutionWhatsAppCard tenantId={tenantId ?? ""} toast={toast} />
@@ -5213,7 +5214,7 @@ Body:
         {/* ── Tab: Template de Contrato ───────────────────────────────────── */}
         {isTenantAdmin && (
           <TabsContent value="contrato">
-            <ContractTemplateTab tenantId={tenantId} />
+            <Suspense fallback={null}><ContractTemplateTab tenantId={tenantId} /></Suspense>
           </TabsContent>
         )}
 
@@ -5222,7 +5223,7 @@ Body:
           <TabsContent value="equipe">
             <div className="space-y-6">
 
-              <DistribuicaoConfigCard tenantId={tenantId} />
+              <Suspense fallback={null}><DistribuicaoConfigCard tenantId={tenantId} /></Suspense>
 
               {/* Invite form */}
               <div className="rounded-xl border bg-card p-6 space-y-4">
@@ -5453,7 +5454,7 @@ Body:
         {/* ── Tab: Faturamento ──────────────────────────────────────────────── */}
         {showFaturamento && (
           <TabsContent value="faturamento">
-            <FaturamentoTab />
+            <Suspense fallback={null}><FaturamentoTab /></Suspense>
           </TabsContent>
         )}
 
