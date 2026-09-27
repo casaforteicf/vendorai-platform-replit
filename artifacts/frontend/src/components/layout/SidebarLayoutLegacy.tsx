@@ -2,10 +2,8 @@ type UserFunction = "vendedor" | "financeiro" | "suporte" | "entrega" | "adminis
 
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
-import React, { useState } from "react";
+import React, { lazy, Suspense, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { SupportChatWidget } from "@/components/support/SupportChatWidget";
-import { AccessLicenseBanner } from "@/components/billing/AccessLicenseBanner";
 import {
   LayoutDashboard, Users, Briefcase, MessageSquare, Calendar,
   Settings, LogOut, Megaphone, FileText, Receipt, BrainCircuit, Bell,
@@ -21,6 +19,9 @@ import logoFull from "/logo-full-light.svg";
 import { StoreSwitcher } from "@/components/StoreSwitcher";
 import { NovidadesBell } from "@/components/NovidadesBell";
 import { applyTenantTheme, resetTenantTheme } from "@/lib/tenantTheme";
+
+const SupportChatWidget = lazy(() => import("@/components/support/SupportChatWidget").then((m) => ({ default: m.SupportChatWidget })));
+const AccessLicenseBanner = lazy(() => import("@/components/billing/AccessLicenseBanner").then((m) => ({ default: m.AccessLicenseBanner })));
 
 function GroupedNavSection({
   label,
@@ -116,6 +117,27 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
   }
 
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [supportReady, setSupportReady] = useState(false);
+
+  useEffect(() => {
+    let timeoutId: number | undefined;
+    let idleId: number | undefined;
+    const win = window as typeof window & {
+      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+
+    if (typeof win.requestIdleCallback === "function") {
+      idleId = win.requestIdleCallback(() => setSupportReady(true), { timeout: 1500 });
+    } else {
+      timeoutId = window.setTimeout(() => setSupportReady(true), 600);
+    }
+
+    return () => {
+      if (idleId !== undefined && typeof win.cancelIdleCallback === "function") win.cancelIdleCallback(idleId);
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+    };
+  }, []);
   const isSuperAdmin = user?.platformRole === "super_admin";
 
   const { data: tenantData } = useQuery<{ planSlug: string | null; corPrimaria?: string | null; vertical?: string | null; verticalSecundaria?: string | null }>({
@@ -1362,7 +1384,7 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
             </Button>
           </div>
         )}
-        <AccessLicenseBanner />
+        <Suspense fallback={null}><AccessLicenseBanner /></Suspense>
         {/* Achado real: /conversas (painel duplo tipo WhatsApp Business) e
             /deals /negocios (kanban horizontal) têm SUAS PRÓPRIAS áreas de
             rolagem internas -- mas o <main> aqui tinha overflow-y-auto
@@ -1383,7 +1405,11 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
       </div>
     </div>
     {/* Hide global support widget on /arch/* routes (ARQDOR has its own shell) */}
-    {!location.startsWith("/arch") && <SupportChatWidget />}
+    {!location.startsWith("/arch") && supportReady ? (
+      <Suspense fallback={null}>
+        <SupportChatWidget />
+      </Suspense>
+    ) : null}
     </>
   );
 }
