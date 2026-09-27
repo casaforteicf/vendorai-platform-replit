@@ -73,14 +73,17 @@ function generatedMutateAsyncCalls(source) {
 function generatedMutationCalls(source) {
   const hooks = new Map();
   const declaration = /\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*(use(?:Create|Update|Delete|Upsert|Patch|Post|Put)[A-Za-z0-9_$]*)\s*\(/g;
-  for (const match of source.matchAll(declaration)) hooks.set(match[1], match[2]);
+  for (const match of source.matchAll(declaration)) {
+    const declarationCall = balancedCall(source, source.indexOf(match[2], match.index));
+    hooks.set(match[1], { hook: match[2], hasConfiguredError: Boolean(declarationCall && /\bonError\s*:/.test(declarationCall.text)) });
+  }
 
   const calls = [];
-  for (const [variable, hook] of hooks) {
+  for (const [variable, metadata] of hooks) {
     const re = new RegExp("\\b" + escRegex(variable) + "\\.mutate\\s*\\(", "g");
     for (const match of source.matchAll(re)) {
       const call = balancedCall(source, match.index);
-      if (call) calls.push({ ...call, variable, hook });
+      if (call) calls.push({ ...call, variable, hook: metadata.hook, hasConfiguredError: metadata.hasConfiguredError });
     }
   }
   return calls;
@@ -182,7 +185,7 @@ for (const file of files) {
     const nearby = call.text + follow;
     const callbackHasError = /\bonError\s*:/.test(call.text);
     const renderedError = new RegExp("\\b" + escRegex(call.variable) + "\\.(?:error|isError)\\b").test(nearby);
-    if (!callbackHasError && !renderedError) {
+    if (!call.hasConfiguredError && !callbackHasError && !renderedError) {
       add("HIGH", "generated-mutation-without-visible-error", file, call.start, source, call.hook + " executa .mutate(...) sem onError nem erro renderizado próximo.");
     }
   }

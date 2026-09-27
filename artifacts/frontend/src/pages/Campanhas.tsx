@@ -737,7 +737,10 @@ function CampaignModal({
   // ── Preview: go back to form (delete the rascunho) ───────────────────────
   function onVoltarParaForm() {
     if (previewCampaignId) {
-      deleteMutation.mutate({ id: previewCampaignId });
+      deleteMutation.mutate(
+        { id: previewCampaignId },
+        { onError: () => toast({ title: "Não foi possível remover o rascunho da campanha", variant: "destructive" }) },
+      );
     }
     setPreviewCampaignId(null);
     setStep("form");
@@ -746,7 +749,10 @@ function CampaignModal({
   // ── Preview: discard completely ───────────────────────────────────────────
   function onDescartar() {
     if (previewCampaignId) {
-      deleteMutation.mutate({ id: previewCampaignId });
+      deleteMutation.mutate(
+        { id: previewCampaignId },
+        { onError: () => toast({ title: "Não foi possível descartar o rascunho da campanha", variant: "destructive" }) },
+      );
     }
     handleClose();
   }
