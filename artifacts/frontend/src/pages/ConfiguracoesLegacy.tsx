@@ -2504,6 +2504,7 @@ export default function Configuracoes() {
                           queryClient.invalidateQueries({ queryKey: getGetTenantQueryKey(tenantId) });
                           toast({ title: checked ? "Rede de Parceiros ativada." : "Rede de Parceiros desativada." });
                         },
+                        onError: () => toast({ title: "Erro ao atualizar a Rede de Parceiros.", variant: "destructive" }),
                       }
                     );
                   }}
@@ -2523,7 +2524,7 @@ export default function Configuracoes() {
                       const categorias = e.target.value.split(",").map((c) => c.trim()).filter(Boolean);
                       updateTenant.mutate(
                         { id: tenantId, data: { parceiroCategorias: categorias } },
-                        { onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetTenantQueryKey(tenantId) }) }
+                        { onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetTenantQueryKey(tenantId) }), onError: () => toast({ title: "Erro ao salvar categorias da Rede de Parceiros.", variant: "destructive" }) }
                       );
                     }}
                   />
