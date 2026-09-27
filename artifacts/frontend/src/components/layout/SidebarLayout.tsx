@@ -2,8 +2,6 @@ import React, { lazy, Suspense, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
-import { SidebarLayout as SidebarLayoutLegacy } from "./SidebarLayoutLegacy";
-import { SuperAdminSidebarLayout } from "./SuperAdminSidebarLayout";
 import {
   getGetBusinessProfileByTenantQueryKey,
   getGetTenantQueryKey,
@@ -11,6 +9,8 @@ import {
   useGetTenant,
 } from "@workspace/api-client-react";
 
+const SidebarLayoutLegacy = lazy(() => import("./SidebarLayoutLegacy").then((m) => ({ default: m.SidebarLayout })));
+const SuperAdminSidebarLayout = lazy(() => import("./SuperAdminSidebarLayout").then((m) => ({ default: m.SuperAdminSidebarLayout })));
 const MarketingAgentDock = lazy(() => import("@/components/marketing/MarketingAgentDock").then((m) => ({ default: m.MarketingAgentDock })));
 const AdsMediaPlanContextBanner = lazy(() => import("@/components/marketing/AdsMediaPlanContextBanner").then((m) => ({ default: m.AdsMediaPlanContextBanner })));
 const MessagingMediaPlanBridge = lazy(() => import("@/components/marketing/MessagingMediaPlanBridge").then((m) => ({ default: m.MessagingMediaPlanBridge })));
@@ -613,8 +613,16 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   );
 
   if (isPureSuperAdmin) {
-    return <SuperAdminSidebarLayout>{shellContent}</SuperAdminSidebarLayout>;
+    return (
+      <Suspense fallback={null}>
+        <SuperAdminSidebarLayout>{shellContent}</SuperAdminSidebarLayout>
+      </Suspense>
+    );
   }
 
-  return <SidebarLayoutLegacy arqdorVisible={arqdorVisible}>{shellContent}</SidebarLayoutLegacy>;
+  return (
+    <Suspense fallback={null}>
+      <SidebarLayoutLegacy arqdorVisible={arqdorVisible}>{shellContent}</SidebarLayoutLegacy>
+    </Suspense>
+  );
 }
