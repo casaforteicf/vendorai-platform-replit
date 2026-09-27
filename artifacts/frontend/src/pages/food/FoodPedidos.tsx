@@ -229,8 +229,13 @@ export default function FoodPedidos() {
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       fetch(`/api/tenants/${tenantId}/food/pedidos/${id}/status`, {
         method: "PATCH", headers: authHeaders(), body: JSON.stringify({ status }),
-      }).then((r) => r.json()),
+      }).then(async (r) => {
+        const body = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(body.error ?? "Não foi possível atualizar o pedido.");
+        return body;
+      }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["food-pedidos", tenantId] }),
+    onError: (error: Error) => toast({ title: "Erro ao atualizar pedido", description: error.message, variant: "destructive" }),
   });
 
   const ativos = pedidos.filter((p) => p.status !== "entregue" && p.status !== "cancelado");
