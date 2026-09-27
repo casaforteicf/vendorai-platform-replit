@@ -125,6 +125,7 @@ const VendorBrainDash = lazy(() => import("@/modules/vendor-brain/VendorBrainDas
 const PartnerHub = lazy(() => import("@/pages/partner-hub/PartnerHubPage").then(m => ({ default: m.PartnerHubPage })));
 const PartnerDetail = lazy(() => import("@/pages/partner-hub/PartnerDetailPage").then(m => ({ default: m.PartnerDetailPage })));
 const EcosystemHub = lazy(() => import("@/pages/ecosystem-hub/EcosystemHubPage").then(m => ({ default: m.EcosystemHubPage })));
+const EcosystemCompanyCreate = lazy(() => import("@/pages/ecosystem-hub/EcosystemCompanyCreatePage"));
 const CompanyDetail = lazy(() => import("@/pages/ecosystem-hub/CompanyDetailPage").then(m => ({ default: m.CompanyDetailPage })));
 const VCNHub = lazy(() => import("@/pages/vcn/VCNPage").then(m => ({ default: m.VCNPage })));
 const VCNCompanyDetail = lazy(() => import("@/pages/vcn/VCNCompanyDetailPage").then(m => ({ default: m.VCNCompanyDetailPage })));
@@ -803,6 +804,7 @@ function AppRoutes() {
         <Route path="/partner-hub">{() => <ProtectedRoute component={PartnerHub} />}</Route>
         <Route path="/partner-hub/:id">{() => <ProtectedRoute component={PartnerDetail} />}</Route>
         <Route path="/ecosystem-hub">{() => <ProtectedRoute component={EcosystemHub} />}</Route>
+        <Route path="/ecosystem-hub/new">{() => <ProtectedRoute component={EcosystemCompanyCreate} />}</Route>
         <Route path="/ecosystem-hub/:id">{() => <ProtectedRoute component={CompanyDetail} />}</Route>
         <Route path="/vendor-certified-network">{() => <ProtectedRoute component={VCNHub} />}</Route>
         <Route path="/vendor-certified-network/:id">{() => <ProtectedRoute component={VCNCompanyDetail} />}</Route>
