@@ -3011,7 +3011,7 @@ function newFreeItem(): FreeItem {
             }
             if (!activeDealId) createDeal(
               { data: { tenantId, titulo: vals.titulo, leadId: vals.leadId, etapa: "proposta", valor: importValorTotal } },
-              { onSuccess: () => qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }) }
+              { onSuccess: () => qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }), onError: (error: unknown) => toast({ title: "Orçamento salvo, mas o negócio não foi criado", description: error instanceof Error ? error.message : "Tente criar o negócio manualmente.", variant: "destructive" }) }
             );
             onSuccess?.();
             clearBudgetDraft();
@@ -3138,7 +3138,7 @@ function newFreeItem(): FreeItem {
             const dealValor = vals.recorrente && totalContrato > 0 ? totalContrato : catTotal || undefined;
             if (!activeDealId) createDeal(
               { data: { tenantId, titulo: vals.titulo, leadId: vals.leadId, etapa: "proposta", valor: dealValor, skipAsaasBilling: skipAsaas } },
-              { onSuccess: () => qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }) }
+              { onSuccess: () => qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }), onError: (error: unknown) => toast({ title: "Orçamento salvo, mas o negócio não foi criado", description: error instanceof Error ? error.message : "Tente criar o negócio manualmente.", variant: "destructive" }) }
             );
             onSuccess?.();
             clearBudgetDraft();
@@ -3216,7 +3216,7 @@ function newFreeItem(): FreeItem {
             const dealValor = vals.recorrente && totalContrato > 0 ? totalContrato : freeTotal || undefined;
             if (!activeDealId) createDeal(
               { data: { tenantId, titulo: vals.titulo, leadId: vals.leadId, etapa: "proposta", valor: dealValor, skipAsaasBilling: skipAsaas2 } },
-              { onSuccess: () => qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }) }
+              { onSuccess: () => qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }), onError: (error: unknown) => toast({ title: "Orçamento salvo, mas o negócio não foi criado", description: error instanceof Error ? error.message : "Tente criar o negócio manualmente.", variant: "destructive" }) }
             );
             onSuccess?.();
             clearBudgetDraft();
@@ -3269,7 +3269,7 @@ function newFreeItem(): FreeItem {
           }
           if (!activeDealId) createDeal(
             { data: { tenantId, titulo: (proposta as { titulo?: string }).titulo ?? vals.titulo, leadId, etapa: "proposta" } },
-            { onSuccess: () => qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }) }
+            { onSuccess: () => qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }), onError: (error: unknown) => toast({ title: "Orçamento salvo, mas o negócio não foi criado", description: error instanceof Error ? error.message : "Tente criar o negócio manualmente.", variant: "destructive" }) }
           );
           onSuccess?.();
           clearBudgetDraft();
