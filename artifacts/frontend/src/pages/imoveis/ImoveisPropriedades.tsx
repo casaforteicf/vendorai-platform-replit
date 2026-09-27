@@ -100,8 +100,13 @@ export default function ImoveisPropriedades() {
         method: "PUT",
         headers: authHeaders(),
         body: JSON.stringify({ status }),
-      }).then((r) => r.json()),
+      }).then(async (r) => {
+        const body = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(body.error ?? "Não foi possível alterar o status do imóvel.");
+        return body;
+      }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["imoveis-propriedades", tenantId] }),
+    onError: (error: Error) => toast({ title: "Erro ao alterar imóvel", description: error.message, variant: "destructive" }),
   });
 
   function openCreate() {
