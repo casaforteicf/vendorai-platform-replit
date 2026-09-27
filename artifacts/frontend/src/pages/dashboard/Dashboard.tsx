@@ -1,7 +1,9 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import OfficialCommandCenter from "@/components/dashboard/OfficialCommandCenter";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { dashboardSnapshotQueryKey, fetchDashboardSnapshot } from "@/lib/dashboardSnapshot";
 
 const BusinessGoalsDialog = lazy(() => import("@/components/dashboard/BusinessGoalsDialog"));
 const StrategicObserver = lazy(() => import("@/components/dashboard/StrategicObserver"));
@@ -24,23 +26,44 @@ export default function Dashboard() {
   const { user, token } = useAuth();
   const tenantId = user?.tenantId ?? "";
   const [official, setOfficial] = useState<OfficialMetrics>(null);
-  const [executive, setExecutive] = useState<ExecutiveSnapshot>(null);
-  const [loading, setLoading] = useState(false);
+  const [activeAgents, setActiveAgents] = useState<number | undefined>(undefined);
+  const [loadingOfficial, setLoadingOfficial] = useState(false);
+  const queryClient = useQueryClient();
+  const dashboardQuery = useQuery<NonNullable<ExecutiveSnapshot>>({
+    queryKey: dashboardSnapshotQueryKey(tenantId),
+    enabled: Boolean(tenantId && token),
+    queryFn: () => fetchDashboardSnapshot(token!) as Promise<NonNullable<ExecutiveSnapshot>>,
+    staleTime: 30_000,
+  });
+  const executive = useMemo<ExecutiveSnapshot>(() => {
+    if (!dashboardQuery.data) return null;
+    return {
+      ...dashboardQuery.data,
+      ia: {
+        ...dashboardQuery.data.ia,
+        agentesAtivos: activeAgents ?? dashboardQuery.data.ia?.agentesAtivos,
+      },
+    };
+  }, [dashboardQuery.data, activeAgents]);
+  const loading = loadingOfficial || dashboardQuery.isLoading;
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const refresh = useCallback(() => setRefreshKey((value) => value + 1), []);
+  const refresh = useCallback(() => {
+    setRefreshKey((value) => value + 1);
+    void queryClient.invalidateQueries({ queryKey: dashboardSnapshotQueryKey(tenantId) });
+  }, [queryClient, tenantId]);
 
   useEffect(() => {
     if (!tenantId || !token) {
       setOfficial(null);
-      setExecutive(null);
-      setLoading(false);
+      setActiveAgents(undefined);
+      setLoadingOfficial(false);
       return;
     }
 
     let cancelled = false;
     const headers = { Authorization: `Bearer ${token}` };
-    setLoading(true);
+    setLoadingOfficial(true);
 
     Promise.allSettled([
       fetch(`/api/tenants/${tenantId}/dashboard/command-center`, {
@@ -50,13 +73,6 @@ export default function Dashboard() {
         if (!response.ok) throw new Error("Falha ao carregar métricas oficiais");
         return response.json();
       }),
-      fetch("/api/dashboard", {
-        headers,
-        cache: "no-store",
-      }).then(async (response) => {
-        if (!response.ok) throw new Error("Falha ao carregar visão executiva");
-        return response.json();
-      }),
       fetch("/api/agent-configs", {
         headers,
         cache: "no-store",
@@ -64,7 +80,7 @@ export default function Dashboard() {
         if (!response.ok) throw new Error("Falha ao carregar agentes ativos");
         return response.json() as Promise<AgentConfigItem[]>;
       }),
-    ]).then(([officialResult, executiveResult, agentsResult]) => {
+]).then(([officialResult, agentsResult]) => {
       if (cancelled) return;
 
       if (officialResult.status === "fulfilled") {
@@ -81,24 +97,13 @@ export default function Dashboard() {
         setOfficial(null);
       }
 
-      if (executiveResult.status === "fulfilled") {
-        const snapshot = executiveResult.value as NonNullable<ExecutiveSnapshot>;
-        const activeAgents = agentsResult.status === "fulfilled"
-          ? agentsResult.value.filter((agent) => agent.ativo === true).length
-          : snapshot.ia?.agentesAtivos;
-
-        setExecutive({
-          ...snapshot,
-          ia: {
-            ...snapshot.ia,
-            agentesAtivos: activeAgents,
-          },
-        });
+      if (agentsResult.status === "fulfilled") {
+        setActiveAgents(agentsResult.value.filter((agent) => agent.ativo === true).length);
       } else {
-        setExecutive(null);
+        setActiveAgents(undefined);
       }
 
-      setLoading(false);
+      setLoadingOfficial(false);
     });
 
     return () => {
