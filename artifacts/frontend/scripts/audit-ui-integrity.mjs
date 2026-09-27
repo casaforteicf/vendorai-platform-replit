@@ -78,9 +78,17 @@ function generatedMutationCalls(source) {
     hooks.set(match[1], { hook: match[2], hasConfiguredError: Boolean(declarationCall && /\bonError\s*:/.test(declarationCall.text)) });
   }
 
+  const destructured = /\bconst\s*\{\s*mutate\s*:\s*([A-Za-z_$][\w$]*)[^}]*\}\s*=\s*(use(?:Create|Update|Delete|Upsert|Patch|Post|Put)[A-Za-z0-9_$]*)\s*\(/g;
+  for (const match of source.matchAll(destructured)) {
+    const declarationCall = balancedCall(source, source.indexOf(match[2], match.index));
+    hooks.set(match[1], { hook: match[2], mode: "function", hasConfiguredError: Boolean(declarationCall && /\bonError\s*:/.test(declarationCall.text)) });
+  }
+
   const calls = [];
   for (const [variable, metadata] of hooks) {
-    const re = new RegExp("\\b" + escRegex(variable) + "\\.mutate\\s*\\(", "g");
+    const re = metadata.mode === "function"
+      ? new RegExp("\\b" + escRegex(variable) + "\\s*\\(", "g")
+      : new RegExp("\\b" + escRegex(variable) + "\\.mutate\\s*\\(", "g");
     for (const match of source.matchAll(re)) {
       const call = balancedCall(source, match.index);
       if (call) calls.push({ ...call, variable, hook: metadata.hook, hasConfiguredError: metadata.hasConfiguredError });
