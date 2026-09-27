@@ -1,5 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import { AgendarReuniaoModal } from "@/components/AgendarReuniaoModal";
+import React, { lazy, Suspense, useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -67,7 +66,6 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Plus, GripVertical, DollarSign, User, UserRound, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles, BarChart3, RefreshCw, Users, Package, AlertTriangle, Paperclip, FileCheck, CreditCard, HandCoins, Flame, Cloud, Snowflake, FileText, Clock, CalendarDays, Pen, Settings2, Trash2, RotateCcw, KanbanSquare } from "lucide-react";
-import { ContractGeneratorModal } from "@/components/ContractGeneratorModal";
 import { PipelineNav } from "@/components/PipelineNav";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
@@ -86,6 +84,9 @@ import {
   DragEndEvent,
   DragOverEvent,
 } from "@dnd-kit/core";
+
+const AgendarReuniaoModal = lazy(() => import("@/components/AgendarReuniaoModal").then((m) => ({ default: m.AgendarReuniaoModal })));
+const ContractGeneratorModal = lazy(() => import("@/components/ContractGeneratorModal").then((m) => ({ default: m.ContractGeneratorModal })));
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -540,12 +541,16 @@ function ContractCardButton({ deal }: { deal: Deal }) {
           {alreadySent ? "Reenviar contrato" : "Gerar contrato"}
         </button>
       </div>
-      <ContractGeneratorModal
-        open={open}
-        onClose={() => setOpen(false)}
-        dealId={deal.id}
-        tenantId={deal.tenantId}
-      />
+      {open ? (
+        <Suspense fallback={null}>
+          <ContractGeneratorModal
+            open={open}
+            onClose={() => setOpen(false)}
+            dealId={deal.id}
+            tenantId={deal.tenantId}
+          />
+        </Suspense>
+      ) : null}
     </>
   );
 }
@@ -1678,17 +1683,19 @@ function EditDealSheet({
           </div>
         )}
 
-        {deal && (
-          <AgendarReuniaoModal
-            open={agendarOpen}
-            onClose={() => setAgendarOpen(false)}
-            tenantId={tenantId}
-            dealId={deal.id}
-            leadId={deal.leadId ?? ""}
-            leadNome={leadMap.get(deal.leadId ?? "") ?? "Lead"}
-            responsavelId={(deal as any).responsavelId ?? null}
-          />
-        )}
+        {deal && agendarOpen ? (
+          <Suspense fallback={null}>
+            <AgendarReuniaoModal
+              open={agendarOpen}
+              onClose={() => setAgendarOpen(false)}
+              tenantId={tenantId}
+              dealId={deal.id}
+              leadId={deal.leadId ?? ""}
+              leadNome={leadMap.get(deal.leadId ?? "") ?? "Lead"}
+              responsavelId={(deal as any).responsavelId ?? null}
+            />
+          </Suspense>
+        ) : null}
 
         {/* ── Quote attachment ──────────────────────────────────── */}
         {quoteFileUrl && (
@@ -3088,18 +3095,20 @@ export default function Deals() {
       </Dialog>
 
       {/* ── Agendar Reunião (ação rápida da pipeline) ─────────────────────── */}
-      {agendarDeal && (
-        <AgendarReuniaoModal
-          open={!!agendarDeal}
-          onClose={() => setAgendarDeal(null)}
-          tenantId={tenantId}
-          dealId={agendarDeal.id}
-          leadId={agendarDeal.leadId ?? ""}
-          leadNome={leadMap.get(agendarDeal.leadId ?? "") ?? "Lead"}
-          leadEmail={leads.find((l) => l.id === agendarDeal.leadId)?.email ?? null}
-          responsavelId={(agendarDeal as any).responsavelId ?? null}
-        />
-      )}
+      {agendarDeal ? (
+        <Suspense fallback={null}>
+          <AgendarReuniaoModal
+            open={true}
+            onClose={() => setAgendarDeal(null)}
+            tenantId={tenantId}
+            dealId={agendarDeal.id}
+            leadId={agendarDeal.leadId ?? ""}
+            leadNome={leadMap.get(agendarDeal.leadId ?? "") ?? "Lead"}
+            leadEmail={leads.find((l) => l.id === agendarDeal.leadId)?.email ?? null}
+            responsavelId={(agendarDeal as any).responsavelId ?? null}
+          />
+        </Suspense>
+      ) : null}
 
     </div>
   );
