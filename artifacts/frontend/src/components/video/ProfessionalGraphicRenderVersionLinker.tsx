@@ -54,11 +54,15 @@ export default function ProfessionalGraphicRenderVersionLinker() {
         const versionsData = await versionsResponse.json().catch(() => ({})) as { versions?: Version[] };
         const alreadyLinked = (versionsData.versions ?? []).some((version) => (version.assetId ?? version.asset_id) === assetId);
 
-        await fetch(`/api/tenants/${tenantId}/media/assets/${assetId}`, {
+        const assetLinkResponse = await fetch(`/api/tenants/${tenantId}/media/assets/${assetId}`, {
           method: "PATCH",
           headers: headers(true),
           body: JSON.stringify({ projectId, role: "output" }),
-        }).catch(() => undefined);
+        });
+        if (!assetLinkResponse.ok) {
+          console.error("Falha ao vincular render gráfico ao projeto", { projectId, assetId, status: assetLinkResponse.status });
+          return;
+        }
 
         if (!alreadyLinked) {
           const response = await fetch(`/api/tenants/${tenantId}/media/projects/${projectId}/versions`, {
@@ -78,7 +82,10 @@ export default function ProfessionalGraphicRenderVersionLinker() {
               },
             }),
           });
-          if (!response.ok) return;
+          if (!response.ok) {
+            console.error("Falha ao registrar versão do render gráfico", { projectId, assetId, status: response.status });
+            return;
+          }
         }
         linkedAsset.current = assetId;
       } finally {
