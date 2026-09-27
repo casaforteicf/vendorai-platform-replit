@@ -11,7 +11,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  Building2, Plus, Store, TrendingUp, Users, ShoppingCart,
+  Building2, Plus, Store, Users, ShoppingCart,
   MessageSquare, RefreshCw, Loader2, Settings, Unlink, Link,
   ChevronDown, ChevronRight, DollarSign, AlertTriangle,
 } from "lucide-react";
@@ -303,34 +303,6 @@ export default function OrganizacaoPainel() {
                 </div>
               )}
 
-              {/* Custo IA + margem total */}
-              {totais && (
-                <div className="grid grid-cols-2 gap-3">
-                  <Card className="border-orange-200">
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-2 mb-1">
-                        <TrendingUp className="h-4 w-4 text-orange-500" />
-                        <span className="text-xs text-muted-foreground">Custo IA (mês atual)</span>
-                      </div>
-                      <p className="text-xl font-bold text-orange-600">
-                        $ {(totais.custoIaTotalMes ?? 0).toFixed(4)} USD
-                      </p>
-                    </CardContent>
-                  </Card>
-                  <Card className={totais.margemTotalMes >= 0 ? "border-emerald-200" : "border-red-200"}>
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-2 mb-1">
-                        <DollarSign className="h-4 w-4 text-emerald-500" />
-                        <span className="text-xs text-muted-foreground">Margem MRR − IA</span>
-                      </div>
-                      <p className={`text-xl font-bold ${totais.margemTotalMes >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                        {fmt(totais.margemTotalMes)}
-                      </p>
-                    </CardContent>
-                  </Card>
-                </div>
-              )}
-
               {/* Tabela comparativa por loja */}
               {lojas.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground border-2 border-dashed rounded-xl">
@@ -355,7 +327,6 @@ export default function OrganizacaoPainel() {
                           <TableHead className="text-right">Fechados</TableHead>
                           <TableHead className="text-right">Receita</TableHead>
                           <TableHead className="text-right">Msgs 30d</TableHead>
-                          <TableHead className="text-right">Margem IA</TableHead>
                           <TableHead />
                         </TableRow>
                       </TableHeader>
@@ -382,11 +353,6 @@ export default function OrganizacaoPainel() {
                               {loja.receitaGanha > 0 ? fmt(loja.receitaGanha) : "—"}
                             </TableCell>
                             <TableCell className="text-right">{fmtN(loja.mensagens30d)}</TableCell>
-                            <TableCell className="text-right">
-                              <span className={loja.margemMes >= 0 ? "text-emerald-600" : "text-red-500"}>
-                                {fmt(loja.margemMes)}
-                              </span>
-                            </TableCell>
                             <TableCell>
                               <Button
                                 variant="ghost"

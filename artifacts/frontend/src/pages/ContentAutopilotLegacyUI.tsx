@@ -203,7 +203,7 @@ export default function ContentAutopilot() {
         .then((r) => { if (!r.ok) throw new Error("Erro na pesquisa"); return r.json(); }),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["content-autopilot-keywords", tenantId] });
-      toast({ title: `${res.inseridas} keywords novas encontradas`, description: `Custo: US$ ${res.custoUsd?.toFixed(4)}` });
+      toast({ title: `${res.inseridas} keywords novas encontradas`, description: "Pesquisa concluída com sucesso." });
       setSeedInput("");
     },
     onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
@@ -387,12 +387,12 @@ export default function ContentAutopilot() {
 
               <div className="grid grid-cols-2 gap-3 pt-2 border-t">
                 <div>
-                  <p className="text-xs text-muted-foreground">Gasto acumulado</p>
-                  <p className="text-sm font-semibold">US$ {Number(config?.gastoAcumulado ?? 0).toFixed(4)}</p>
+                  <p className="text-xs text-muted-foreground">Automação</p>
+                  <p className="text-sm font-semibold">{config?.ativo ? "Ativa" : "Pausada"}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">Teto mensal</p>
-                  <p className="text-sm font-semibold">{config?.tetoGastoMensal ? `US$ ${config.tetoGastoMensal}` : "Sem teto definido"}</p>
+                  <p className="text-xs text-muted-foreground">Pesquisa externa</p>
+                  <p className="text-sm font-semibold">{dataForSeoConfigured ? "Disponível" : "Não configurada"}</p>
                 </div>
               </div>
             </CardContent>
@@ -403,7 +403,7 @@ export default function ContentAutopilot() {
         <TabsContent value="keywords" className="space-y-4 mt-4">
           <Card>
             <CardContent className="p-4 space-y-2">
-              <Label className="text-sm">Pesquisar novas keywords (Pesquisador — custo real via DataForSEO)</Label>
+              <Label className="text-sm">Pesquisar novas keywords (Pesquisador via DataForSEO)</Label>
               <div className="flex gap-2">
                 <Input placeholder="Termos separados por vírgula" value={seedInput} onChange={(e) => setSeedInput(e.target.value)} />
                 <Button
