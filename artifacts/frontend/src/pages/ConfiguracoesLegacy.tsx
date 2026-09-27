@@ -5739,14 +5739,14 @@ function AIUsageTab({ tenantId }: { tenantId: string }) {
                       ? "bg-green-100 text-green-700"
                       : "bg-zinc-100 text-zinc-600"
                   )}>
-                    {usage?.byok?.openai ? "Ativo" : "Em breve"}
+                    {usage?.byok?.openai ? "Chave própria" : "Chave da plataforma"}
                   </span>
                 </p>
               </div>
             </div>
             {!usage?.byok?.openai && (
               <p className="text-xs text-muted-foreground">
-                Configuração de chave OpenAI estará disponível em breve.
+                Este tenant está usando a chave gerenciada da plataforma quando não há uma chave própria ativa.
               </p>
             )}
           </div>
