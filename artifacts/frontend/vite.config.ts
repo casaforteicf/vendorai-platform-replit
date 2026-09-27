@@ -293,6 +293,20 @@ export default defineConfig({
         entryFileNames: `assets/[name]-${buildId}-[hash].js`,
         chunkFileNames: `assets/[name]-${buildId}-[hash].js`,
         assetFileNames: `assets/[name]-${buildId}-[hash][extname]`,
+        manualChunks(id) {
+          const normalized = id.replace(/\\/g, "/");
+          if (!normalized.includes("/node_modules/")) return undefined;
+          if (normalized.includes("/html2pdf.js/") || normalized.includes("/jspdf/") || normalized.includes("/html2canvas/")) return "vendor-pdf";
+          if (normalized.includes("/xlsx/")) return "vendor-xlsx";
+          if (normalized.includes("/recharts/") || normalized.includes("/d3-")) return "vendor-charts";
+          if (normalized.includes("/leaflet/") || normalized.includes("/react-leaflet/")) return "vendor-maps";
+          if (normalized.includes("/three/")) return "vendor-three";
+          if (normalized.includes("/framer-motion/")) return "vendor-motion";
+          if (normalized.includes("/react/") || normalized.includes("/react-dom/") || normalized.includes("/scheduler/")) return "vendor-react";
+          if (normalized.includes("/@tanstack/")) return "vendor-query";
+          if (normalized.includes("/@radix-ui/") || normalized.includes("/lucide-react/")) return "vendor-ui";
+          return undefined;
+        },
       },
     },
   },
