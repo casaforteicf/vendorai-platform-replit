@@ -30,6 +30,46 @@ function routePatternToRegex(route) {
   return new RegExp("^/" + body + "/?$");
 }
 
+function balancedCall(source, start) {
+  const open = source.indexOf("(", start);
+  if (open < 0) return null;
+  let depth = 0;
+  let quote = null;
+  let escaped = false;
+  for (let i = open; i < source.length; i++) {
+    const ch = source[i];
+    if (quote) {
+      if (escaped) { escaped = false; continue; }
+      if (ch === "\\") { escaped = true; continue; }
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === "`") { quote = ch; continue; }
+    if (ch === "(") depth++;
+    else if (ch === ")") {
+      depth--;
+      if (depth === 0) return { start, end: i + 1, text: source.slice(start, i + 1) };
+    }
+  }
+  return null;
+}
+
+function generatedMutationCalls(source) {
+  const hooks = new Map();
+  const declaration = /\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*(use(?:Create|Update|Delete|Upsert|Patch|Post|Put)[A-Za-z0-9_$]*)\s*\(/g;
+  for (const match of source.matchAll(declaration)) hooks.set(match[1], match[2]);
+
+  const calls = [];
+  for (const [variable, hook] of hooks) {
+    const re = new RegExp("\\b" + escRegex(variable) + "\\.mutate\\s*\\(", "g");
+    for (const match of source.matchAll(re)) {
+      const call = balancedCall(source, match.index);
+      if (call) calls.push({ ...call, variable, hook });
+    }
+  }
+  return calls;
+}
+
 function fetchCalls(source) {
   const calls = [];
   const re = /\bfetch\s*\(/g;
@@ -81,7 +121,7 @@ function matchesDeclaredRoute(target) {
 }
 
 const findings = [];
-const metrics = { filesScanned: files.length, pageFiles: 0, componentFiles: 0, moduleFiles: 0, nativeButtons: 0, uiButtons: 0, mutationFetches: 0, staticNavigations: 0 };
+const metrics = { filesScanned: files.length, pageFiles: 0, componentFiles: 0, moduleFiles: 0, nativeButtons: 0, uiButtons: 0, mutationFetches: 0, generatedMutationCalls: 0, staticNavigations: 0 };
 
 function add(severity, rule, file, index, source, message) {
   findings.push({ severity, rule, file: path.relative(process.cwd(), file), line: lineOf(source, index), message, snippet: compact(source.slice(Math.max(0, index - 120), Math.min(source.length, index + 360))) });
@@ -107,6 +147,17 @@ for (const file of files) {
     const base = formMatch.index;
     for (const m of formSource.matchAll(/<button\b(?![^>]*\btype\s*=)[^>]*>/g)) add("HIGH", "native-button-no-type-in-form", file, base + m.index, source, "Button nativo dentro de form sem type pode disparar submit acidental.");
     for (const m of formSource.matchAll(/<Button\b(?![^>]*\btype\s*=)(?=[^>]*\bonClick\s*=)[^>]*>/g)) add("HIGH", "ui-button-no-type-in-form", file, base + m.index, source, "Button com onClick dentro de form sem type pode executar ação e submit ao mesmo tempo.");
+  }
+
+  for (const call of generatedMutationCalls(source)) {
+    metrics.generatedMutationCalls++;
+    const follow = source.slice(call.end, Math.min(source.length, call.end + 900));
+    const nearby = call.text + follow;
+    const callbackHasError = /\bonError\s*:/.test(call.text);
+    const renderedError = new RegExp("\\b" + escRegex(call.variable) + "\\.(?:error|isError)\\b").test(nearby);
+    if (!callbackHasError && !renderedError) {
+      add("HIGH", "generated-mutation-without-visible-error", file, call.start, source, call.hook + " executa .mutate(...) sem onError nem erro renderizado próximo.");
+    }
   }
 
   for (const call of fetchCalls(source)) {
