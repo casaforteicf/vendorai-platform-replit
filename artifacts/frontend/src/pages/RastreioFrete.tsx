@@ -141,10 +141,10 @@ export default function RastreioFrete() {
                   ))}
                 </div>
                 <Textarea placeholder="Comentário (opcional)" rows={2} value={comentario} onChange={(e) => setComentario(e.target.value)} />
-                <Button className="w-full" disabled={nota === 0 || avaliarMutation.isPending} onClick={() => avaliarMutation.mutate()}>
+                {avaliacaoError && <p className="text-sm text-red-600">{avaliacaoError}</p>}
+                <Button type="button" className="w-full" disabled={nota === 0 || avaliarMutation.isPending} onClick={() => avaliarMutation.mutate()}>
                   {avaliarMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                  {avaliacaoError && <p className="text-sm text-red-600">{avaliacaoError}</p>}
-              Enviar avaliação
+                  Enviar avaliação
                 </Button>
               </div>
             )}
