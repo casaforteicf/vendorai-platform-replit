@@ -65,6 +65,21 @@ const files = walk(root);
 const appRoutesSource = fs.readFileSync(appRoutesPath, "utf8");
 const routeLiterals = [...appRoutesSource.matchAll(/<Route\s+path=["\']([^"\']+)["\']/g)].map((m) => normalizeRoute(m[1])).filter(Boolean);
 const routeRegexes = routeLiterals.map(routePatternToRegex);
+const dynamicRoutePrefixes = routeLiterals
+  .filter((route) => route.includes("/:"))
+  .map((route) => normalizeRoute(route.slice(0, route.indexOf("/:"))))
+  .filter(Boolean);
+
+function isDomSelectorLiteral(source, index) {
+  const before = source.slice(Math.max(0, index - 160), index);
+  return /(?:querySelector(?:All)?|closest|matches)\s*\(\s*["'][^"']*$/.test(before);
+}
+
+function matchesDeclaredRoute(target) {
+  if (routeRegexes.some((rx) => rx.test(target))) return true;
+  return dynamicRoutePrefixes.includes(target);
+}
+
 const findings = [];
 const metrics = { filesScanned: files.length, pageFiles: 0, componentFiles: 0, moduleFiles: 0, nativeButtons: 0, uiButtons: 0, mutationFetches: 0, staticNavigations: 0 };
 
@@ -114,10 +129,11 @@ for (const file of files) {
   ];
   for (const re of navPatterns) {
     for (const m of source.matchAll(re)) {
+      if (isDomSelectorLiteral(source, m.index)) continue;
       const target = normalizeRoute(m[1]);
       if (!target || target.startsWith("/api/")) continue;
       metrics.staticNavigations++;
-      if (!routeRegexes.some((rx) => rx.test(target))) add("HIGH", "navigation-to-unknown-route", file, m.index, source, "Navegação estática para rota não declarada: " + target);
+      if (!matchesDeclaredRoute(target)) add("HIGH", "navigation-to-unknown-route", file, m.index, source, "Navegação estática para rota não declarada: " + target);
     }
   }
 }
