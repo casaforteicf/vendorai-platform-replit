@@ -208,8 +208,13 @@ export default function ServicosOrdens() {
         method: "PATCH",
         headers: authHeaders(),
         body: JSON.stringify({ status: "cancelado" }),
-      }).then((r) => r.json()),
+      }).then(async (r) => {
+        const body = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(body.error ?? "Não foi possível cancelar a ordem.");
+        return body;
+      }),
     onSuccess: () => qc.invalidateQueries({ queryKey: QK }),
+    onError: (error: Error) => toast({ title: "Erro ao cancelar ordem", description: error.message, variant: "destructive" }),
   });
 
   const filtered = Array.isArray(ordens)
