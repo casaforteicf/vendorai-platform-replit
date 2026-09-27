@@ -84,9 +84,13 @@ export default function Medicos() {
     mutationFn: ({ id, ativo }: { id: string; ativo: boolean }) =>
       fetch(`/api/tenants/${tenantId}/clinic/medicos/${id}`, {
         method: "PATCH", headers: authHeaders(), body: JSON.stringify({ ativo }),
-      }).then((r) => r.json()),
+      }).then(async (r) => {
+        const body = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(body.error ?? "Não foi possível alterar o status do médico.");
+        return body;
+      }),
     onSuccess: () => qc.invalidateQueries({ queryKey: QK_MEDICOS }),
-    onError: () => toast({ title: "Erro", variant: "destructive" }),
+    onError: (error: Error) => toast({ title: "Erro ao alterar médico", description: error.message, variant: "destructive" }),
   });
 
   const addEspecialidade = useMutation({
