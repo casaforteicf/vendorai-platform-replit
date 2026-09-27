@@ -195,8 +195,8 @@ export const manufacturers: Manufacturer[] = [
   { id: "estofados-casa", name: "Estofados Casa", category: "Mobiliário", score: 82, products: 26, status: "ativo" },
   { id: "duratex", name: "Duratex", category: "MDF", score: 91, products: 140, status: "ativo" },
   { id: "led-line", name: "LED Line", category: "Iluminação", score: 94, products: 72, status: "ativo" },
-  { id: "todeschini", name: "Todeschini", category: "Planejados", score: 90, products: 0, status: "em_breve" },
-  { id: "sca", name: "SCA", category: "Planejados", score: 89, products: 0, status: "em_breve" },
+  { id: "todeschini", name: "Todeschini", category: "Planejados", score: 90, products: 0, status: "pendente" },
+  { id: "sca", name: "SCA", category: "Planejados", score: 89, products: 0, status: "pendente" },
 ];
 
 export const suppliers: Supplier[] = [

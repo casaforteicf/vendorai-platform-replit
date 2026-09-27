@@ -4,7 +4,7 @@ import { manufacturers } from "./specificationData";
 export function ManufacturerLibrary() {
   const statusClass = {
     ativo: "bg-emerald-50 text-emerald-700",
-    em_breve: "bg-amber-50 text-amber-700",
+    pendente: "bg-amber-50 text-amber-700",
     revisar: "bg-violet-50 text-violet-700",
   } as const;
 
@@ -22,7 +22,7 @@ export function ManufacturerLibrary() {
                 <p className="mt-1 text-sm text-slate-500">{manufacturer.category}</p>
               </div>
               <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusClass[manufacturer.status]}`}>
-                {manufacturer.status === "em_breve" ? "Em breve" : manufacturer.status}
+                {manufacturer.status === "pendente" ? "Pendente" : manufacturer.status}
               </span>
             </div>
 

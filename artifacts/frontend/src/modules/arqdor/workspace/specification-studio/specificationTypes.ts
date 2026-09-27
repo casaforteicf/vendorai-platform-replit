@@ -82,7 +82,7 @@ export type Manufacturer = {
   category: string;
   score: number;
   products: number;
-  status: "ativo" | "em_breve" | "revisar";
+  status: "ativo" | "pendente" | "revisar";
 };
 
 export type Supplier = {

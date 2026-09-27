@@ -87,10 +87,8 @@ const STYLES = [
 const UPLOAD_OPTS = [
   { id:'foto',      icon:'📷', label:'Tirar foto',    accept:'image/*',                  hint:'câmera' },
   { id:'arquivo',   icon:'📁', label:'Arquivo',       accept:'image/*,.pdf,.webp,.png',  hint:'PNG, JPG, WEBP' },
-  { id:'pinterest', icon:'🔗', label:'Pinterest',     accept:'',                         hint:'Em breve' },
-  { id:'instagram', icon:'📸', label:'Instagram',     accept:'',                         hint:'Em breve' },
   { id:'pdf',       icon:'📄', label:'PDF',           accept:'application/pdf',          hint:'PDF' },
-  { id:'planta',    icon:'🏠', label:'Planta',        accept:'image/*,.pdf,.dwg',        hint:'DWG, PDF, IMG' },
+  { id:'planta',    icon:'🏠', label:'Planta',        accept:'image/*,.pdf',             hint:'PDF, IMG' },
 ]
 
 // ─── Micro components ──────────────────────────────────────────────────────────
@@ -140,10 +138,6 @@ function UploadZone({ onNavigate, onFile }: { onNavigate: NavFn; onFile: (file: 
   }
 
   function handleUploadClick(opt: typeof UPLOAD_OPTS[0]) {
-    if (opt.id === 'pinterest' || opt.id === 'instagram') {
-      alert(`${opt.label} — integração chegando em breve!`)
-      return
-    }
     setAcceptStr(opt.accept)
     setTimeout(() => fileInputRef.current?.click(), 50)
   }
@@ -198,15 +192,12 @@ function UploadZone({ onNavigate, onFile }: { onNavigate: NavFn; onFile: (file: 
               >
                 <span style={{ fontSize:15 }}>{opt.icon}</span>
                 {opt.label}
-                {(opt.id === 'pinterest' || opt.id === 'instagram') && (
-                  <span style={{ fontSize:9, padding:'1px 5px', borderRadius:4, background:'rgba(251,146,60,0.1)', color:PHX.amber, fontWeight:700 }}>em breve</span>
-                )}
               </button>
             ))}
           </div>
 
           <p style={{ margin:0, fontSize:10, color:PHX.dim }}>
-            PNG · JPG · WEBP · PDF · DWG (em breve)
+            PNG · JPG · WEBP · PDF
           </p>
         </>
       )}

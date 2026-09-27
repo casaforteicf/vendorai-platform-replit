@@ -792,9 +792,6 @@ function Topbar({ step, projectTitle, ambiente, onNextStep, userName, onHelp, on
         <span style={{ fontSize: 12, fontWeight: 800, color: D.text, letterSpacing: "0.08em" }}>ARQDOR<span style={{ color: D.purpleMid, fontSize: 10 }}>.ai</span></span>
       </div>
       <div style={{ width: 1, height: 20, background: D.border, marginRight: 16 }} />
-      <div title="Busca disponível em breve" aria-disabled="true" style={{ display: "flex", alignItems: "center", gap: 6, background: D.inputBg, border: `1px solid ${D.border}`, borderRadius: 7, padding: "5px 10px", marginRight: 16, minWidth: 160, opacity: 0.4, cursor: "default" }}>
-        <span style={{ fontSize: 11, color: D.dim }}>⌕</span><span style={{ fontSize: 11, color: D.dim }}>Buscar…</span>
-      </div>
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginRight: 16 }}>
         {projectTitle && <span style={{ fontSize: 11, fontWeight: 600, color: D.muted }}>{projectTitle}</span>}
         {breadcrumbs.map((b, i) => (<span key={b} style={{ display: "flex", alignItems: "center", gap: 6 }}>
