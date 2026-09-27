@@ -226,7 +226,7 @@ export default function PipelineOperacional() {
   }
 
   async function uploadFilesToCard(cardId: string, files: File[], origem = "app") {
-    if (!files.length) return;
+    if (!files.length || uploading) return;
     setUploading(true);
     try {
       for (const file of files) {
@@ -253,6 +253,8 @@ export default function PipelineOperacional() {
       }
       await queryClient.invalidateQueries({ queryKey: ["work-card-attachments", cardId] });
       toast({ title: files.length === 1 ? "Anexo registrado" : `${files.length} anexos registrados` });
+    } catch (error) {
+      toast({ title: "Não foi possível anexar os arquivos", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
     } finally {
       setUploading(false);
     }
@@ -288,7 +290,7 @@ export default function PipelineOperacional() {
                 const dragged = cards.find((card) => card.id === draggedId);
                 if (dragged && !canMoveForward(dragged, key)) {
                   toast({ title: "Movimento não permitido", description: "O card só pode avançar. Etapas já concluídas ficam no histórico.", variant: "destructive" });
-                } else if (draggedId) {
+                } else if (draggedId && !patchCard.isPending) {
                   patchCard.mutate({ id: draggedId, data: { etapa: key } });
                 }
                 setDraggedId(null);
@@ -364,14 +366,14 @@ export default function PipelineOperacional() {
 
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Etapa</label>
-                  <Select value={selectedCard.etapa} onValueChange={(etapa) => patchCard.mutate({ id: selectedCard.id, data: { etapa } })}>
+                  <Select value={selectedCard.etapa} disabled={patchCard.isPending} onValueChange={(etapa) => { if (!patchCard.isPending) patchCard.mutate({ id: selectedCard.id, data: { etapa } }); }}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>{stages.filter(([key]) => stageIndex(key) >= stageIndex(selectedCard.etapa)).map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Responsável</label>
-                  <Select value={selectedCard.responsavelId || "__none__"} onValueChange={(responsavelId) => patchCard.mutate({ id: selectedCard.id, data: { responsavelId: responsavelId === "__none__" ? null : responsavelId } })}>
+                  <Select value={selectedCard.responsavelId || "__none__"} disabled={patchCard.isPending} onValueChange={(responsavelId) => { if (!patchCard.isPending) patchCard.mutate({ id: selectedCard.id, data: { responsavelId: responsavelId === "__none__" ? null : responsavelId } }); }}>
                     <SelectTrigger><SelectValue placeholder="Selecionar responsável" /></SelectTrigger>
                     <SelectContent>
                       {pipeline !== "suporte" && <SelectItem value="__none__">Sem responsável</SelectItem>}
@@ -534,11 +536,15 @@ function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, prop
         const meta = await metaRes.json();
         const put = await fetch(meta.uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } });
         if (!put.ok) throw new Error(`Falha ao enviar ${file.name}`);
-        await fetch(`/api/work-cards/${cardId}/attachments`, {
+        const attachmentRes = await fetch(`/api/work-cards/${cardId}/attachments`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify({ nome: file.name, url: `/api/storage${meta.objectPath}`, mimeType: file.type, tamanho: file.size, origem: "abertura_chamado" }),
         });
+        if (!attachmentRes.ok) {
+          const attachmentError = await attachmentRes.json().catch(() => ({}));
+          throw new Error(attachmentError.error || `Falha ao registrar ${file.name}`);
+        }
       }
       toast({ title: `Assistência ${body.card.codigo} aberta`, description: "O responsável recebeu o card para acompanhamento." });
       setLeadId(""); setDealId(""); setTitulo(""); setRelato(""); setProdutos(""); setResponsavelId(""); setFiles([]); setData("");
@@ -662,10 +668,14 @@ function DeliveryDialog({ open, onOpenChange, tenantId, token, deals, leads, use
           const meta = await metaRes.json();
           const put = await fetch(meta.uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } });
           if (!put.ok) throw new Error(`Falha ao enviar ${file.name}`);
-          await fetch(`/api/work-cards/${cardId}/attachments`, {
+          const attachmentRes = await fetch(`/api/work-cards/${cardId}/attachments`, {
             method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
             body: JSON.stringify({ nome: file.name, url: `/api/storage${meta.objectPath}`, mimeType: file.type, tamanho: file.size, origem: "programacao_entrega" }),
           });
+          if (!attachmentRes.ok) {
+            const attachmentError = await attachmentRes.json().catch(() => ({}));
+            throw new Error(attachmentError.error || `Falha ao registrar ${file.name}`);
+          }
         }
       }
       setDealId(""); setResponsavelId(""); setReleaseDate(""); setDeliveryDate(""); setAddress(""); setNotes(""); setQuantities({}); setFiles([]);

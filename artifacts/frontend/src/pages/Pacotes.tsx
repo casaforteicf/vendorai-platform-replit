@@ -152,8 +152,8 @@ export default function Pacotes() {
                 </div>
                 <div className="flex gap-1.5 shrink-0">
                   <Button size="sm" variant="ghost" onClick={() => openEdit(p)}><Pencil className="h-3.5 w-3.5" /></Button>
-                  <Button size="sm" variant="ghost" className="text-destructive" onClick={() => deleteMutation.mutate(p.id)}>
-                    <Trash2 className="h-3.5 w-3.5" />
+                  <Button size="sm" variant="ghost" className="text-destructive" disabled={deleteMutation.isPending} onClick={() => { if (!deleteMutation.isPending) deleteMutation.mutate(p.id); }}>
+                    {deleteMutation.isPending && deleteMutation.variables === p.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                   </Button>
                 </div>
               </CardContent>
