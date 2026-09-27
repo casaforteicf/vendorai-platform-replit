@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Heart, Search, Star, Pencil, Crown } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 const NIVEIS = ["bronze", "prata", "ouro", "diamante"] as const;
 const NIVEL_LABELS: Record<string,string> = { bronze:"Bronze", prata:"Prata", ouro:"Ouro", diamante:"Diamante" };
@@ -91,6 +92,7 @@ function FidelidadeForm({
 
 export default function VarejoFidelidadePage() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const tenantId = user?.tenantId ?? "";
   const qc = useQueryClient();
 
@@ -111,6 +113,7 @@ export default function VarejoFidelidadePage() {
     if (!editing) return;
     upsertMut.mutate({ tenantId, leadId: editing.leadId, data: data as any }, {
       onSuccess: () => { setEditing(null); invalidate(); },
+      onError: (error: unknown) => toast({ title: "Não foi possível atualizar a fidelidade", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" }),
     });
   }
 
