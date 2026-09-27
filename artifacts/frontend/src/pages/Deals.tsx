@@ -2119,6 +2119,7 @@ export default function Deals() {
   const [newStageLabel, setNewStageLabel] = useState("");
   const [newStageSla, setNewStageSla] = useState("");
   const [creatingStage, setCreatingStage] = useState(false);
+  const [deletingStageId, setDeletingStageId] = useState<string | null>(null);
 
   function invalidateStages() {
     queryClient.invalidateQueries({ queryKey: getListPipelineStagesQueryKey(tenantId) });
@@ -2165,12 +2166,19 @@ export default function Deals() {
   }
 
   function handleDeleteStage(stage: PipelineStage) {
+    if (deletingStageId) return;
     if (!window.confirm(`Excluir a etapa "${stage.label}"? Negócios nela precisam ser movidos antes.`)) return;
+    setDeletingStageId(stage.id);
     deleteStage.mutate(
       { tenantId, id: stage.id },
       {
         onSuccess: invalidateStages,
-        onError: (err: any) => toast({ title: err?.error ?? "Erro ao excluir etapa", variant: "destructive" }),
+        onError: (err: any) => toast({
+          title: "Erro ao excluir etapa",
+          description: err?.error ?? err?.message ?? "Tente novamente.",
+          variant: "destructive",
+        }),
+        onSettled: () => setDeletingStageId(null),
       },
     );
   }
@@ -2583,8 +2591,15 @@ export default function Deals() {
                     onBlur={(event) => saveStageSla(stage.id, event.target.value)}
                   />
                   <Badge variant="secondary" className="shrink-0">{count}</Badge>
-                  <Button size="icon" variant="ghost" className="text-destructive" title={count ? "Mova os negócios antes de excluir" : "Excluir etapa"} disabled={count > 0} onClick={() => handleDeleteStage(stage)}>
-                    <Trash2 className="h-4 w-4" />
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="text-destructive"
+                    title={count ? "Mova os negócios antes de excluir" : "Excluir etapa"}
+                    disabled={count > 0 || deletingStageId !== null}
+                    onClick={() => handleDeleteStage(stage)}
+                  >
+                    {deletingStageId === stage.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                   </Button>
                 </div>;
               })}
