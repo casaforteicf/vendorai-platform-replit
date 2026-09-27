@@ -181,10 +181,12 @@ export default function LeadWorkspace() {
     setSavingAnswers(true);
     try {
       const merged = { ...(deal.respostasEtapas as Record<string, Record<string, string>> | undefined), [currentStage.key]: next };
-      await fetch("/api/deals/" + deal.id, { method: "PATCH", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token }, body: JSON.stringify({ respostasEtapas: merged }) });
+      const response = await fetch("/api/deals/" + deal.id, { method: "PATCH", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token }, body: JSON.stringify({ respostasEtapas: merged }) });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error ?? result.message ?? "Não foi possível salvar as respostas da etapa.");
       await qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId, { leadId: id }) });
-    } catch {
-      toast({ title: "Erro ao salvar respostas", variant: "destructive" });
+    } catch (error) {
+      toast({ title: "Erro ao salvar respostas", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
     } finally {
       setSavingAnswers(false);
     }
