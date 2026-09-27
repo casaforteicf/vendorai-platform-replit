@@ -10,7 +10,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "audit:ui": "node ./scripts/audit-ui-integrity.mjs",
     "pretest": "pnpm run audit:ui",
-    "test": "vitest run --config vitest.config.ts"
+    "test": "vitest run --config vitest.config.ts",
+    "audit:bundle": "node ./scripts/audit-bundle-budget.mjs",
+    "postbuild": "pnpm run audit:bundle"
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",
