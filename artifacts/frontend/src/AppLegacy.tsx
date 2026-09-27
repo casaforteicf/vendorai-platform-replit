@@ -3,8 +3,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
-import { DemoBanner } from "@/components/DemoBanner";
-import { SidebarLayout } from "@/components/layout/SidebarLayout";
 import { lazy, Suspense, useEffect, useState } from "react";
 import {
   useGetTenant,
@@ -12,6 +10,10 @@ import {
   useListInvoices,
   getListInvoicesQueryKey,
 } from "@workspace/api-client-react";
+
+// ── Lazy authenticated shell imports ──
+const SidebarLayout      = lazy(() => import("@/components/layout/SidebarLayout").then((m) => ({ default: m.SidebarLayout })));
+const DemoBanner         = lazy(() => import("@/components/DemoBanner").then((m) => ({ default: m.DemoBanner })));
 
 // ── Lazy page imports (code splitting — each page loads only when navigated to) ──
 const VideoHome          = lazy(() => import("@/pages/video/VideoHome"));
