@@ -34,6 +34,7 @@ export default function AcompanharEntrega() {
     mutationFn:async()=>{const r=await fetch(`/api/public/praca-delivery/${token}/messages`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mensagem:text})});const d=await r.json();if(!r.ok)throw new Error(d.error);return d;},
     onSuccess:()=>{setText("");qc.invalidateQueries({queryKey:["public-delivery",token]});},
   });
+  const sendError=send.error instanceof Error?send.error.message:null;
   function submit(e:FormEvent){e.preventDefault();if(text.trim())send.mutate();}
   if(query.isLoading)return <div className="min-h-screen grid place-items-center"><Loader2 className="animate-spin"/></div>;
   if(query.error||!query.data)return <div className="min-h-screen grid place-items-center p-6"><Card><CardContent className="p-8 text-center"><AlertTriangle className="mx-auto text-amber-600"/><p className="mt-3">Não foi possível abrir este rastreamento.</p></CardContent></Card></div>;
@@ -65,7 +66,7 @@ export default function AcompanharEntrega() {
       </CardContent></Card>}
       <Card><CardHeader><CardTitle className="text-base flex items-center gap-2"><MessageCircle className="h-5 w-5"/>Falar sobre a entrega</CardTitle></CardHeader><CardContent className="space-y-4">
         <div className="max-h-72 overflow-y-auto space-y-2">{interactions.map((item,index)=><div key={index} className={`rounded-lg p-3 text-sm ${item.remetente_tipo==="cliente"?"ml-8 bg-primary text-primary-foreground":"mr-8 bg-slate-100"}`}><p>{item.mensagem}</p><p className="text-[10px] opacity-70 mt-1">{new Date(item.created_at).toLocaleString("pt-BR")}</p></div>)}{!interactions.length&&<p className="text-sm text-muted-foreground text-center py-5">Nenhuma mensagem ainda.</p>}</div>
-        <form onSubmit={submit} className="space-y-2"><Textarea value={text} onChange={e=>setText(e.target.value)} maxLength={4000} placeholder="Escreva sua mensagem para a equipe de entrega…"/><Button className="w-full" disabled={send.isPending||!text.trim()}>{send.isPending?<Loader2 className="animate-spin h-4 w-4 mr-2"/>:<Send className="h-4 w-4 mr-2"/>}Enviar mensagem</Button>{send.error&&<p className="text-sm text-red-600">{(send.error as Error).message}</p>}</form>
+        <form onSubmit={submit} className="space-y-2"><Textarea value={text} onChange={e=>setText(e.target.value)} maxLength={4000} placeholder="Escreva sua mensagem para a equipe de entrega…"/>{sendError&&<p className="text-sm text-red-600">{sendError}</p>}<Button type="submit" className="w-full" disabled={send.isPending||!text.trim()}>{send.isPending?<Loader2 className="animate-spin h-4 w-4 mr-2"/>:<Send className="h-4 w-4 mr-2"/>}Enviar mensagem</Button></form>
       </CardContent></Card>
     </div>
   </main>;
