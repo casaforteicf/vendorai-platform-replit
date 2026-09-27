@@ -106,7 +106,7 @@ function HBar({ label, value, max, color=T.purple, suffix='' }: { label:string;v
 }
 
 // ─── Pipeline Tab ──────────────────────────────────────────────────────────────
-function PipelineTab({ data, onMove }: { data:PipelineData|null; onMove:(pid:string,stage:string)=>void }) {
+function PipelineTab({ data, onMove, movingProjectId }: { data:PipelineData|null; onMove:(pid:string,stage:string)=>void; movingProjectId:string|null }) {
   const [expanded, setExpanded] = useState<string|null>(null)
 
   if (!data) return <Loader />
@@ -147,11 +147,18 @@ function PipelineTab({ data, onMove }: { data:PipelineData|null; onMove:(pid:str
                         <p style={{ margin:'0 0 4px', fontSize:8, color:T.dim, fontWeight:700 }}>MOVER PARA:</p>
                         <div style={{ display:'flex', flexWrap:'wrap' as const, gap:3 }}>
                           {data.stages.filter(s => s !== stage).map(s => (
-                            <button key={s} className="os-stage-btn" onClick={e => { e.stopPropagation(); onMove(p.id, s) }} style={{
-                              padding:'2px 6px', borderRadius:5, border:`1px solid ${STAGE_COLORS[s]}30`,
-                              background:`${STAGE_COLORS[s]}10`, color:STAGE_COLORS[s], fontSize:7, fontWeight:700, cursor:'pointer',
-                            }}>
-                              {STAGE_ICONS[s]} {STAGE_LABELS[s]}
+                            <button
+                              key={s}
+                              className="os-stage-btn"
+                              disabled={movingProjectId !== null}
+                              onClick={e => { e.stopPropagation(); onMove(p.id, s) }}
+                              style={{
+                                padding:'2px 6px', borderRadius:5, border:`1px solid ${STAGE_COLORS[s]}30`,
+                                background:`${STAGE_COLORS[s]}10`, color:STAGE_COLORS[s], fontSize:7, fontWeight:700,
+                                cursor:movingProjectId ? 'wait' : 'pointer', opacity:movingProjectId ? .45 : 1,
+                              }}
+                            >
+                              {movingProjectId === p.id ? '⏳' : STAGE_ICONS[s]} {STAGE_LABELS[s]}
                             </button>
                           ))}
                         </div>
@@ -569,15 +576,21 @@ export function OfficeModule() {
   useEffect(() => { fetchAll() }, [fetchAll])
 
   async function handleMove(projectId: string, stage: string) {
+    if (movingProjectId) return
+    setMovingProjectId(projectId)
     setError(null)
-    const response = await fetch(`${BASE}/arch/office/pipeline/${projectId}/stage`, { method:'PATCH', headers:hdr(), body: JSON.stringify({ stage }) })
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}))
-      setError(body.error ?? 'Não foi possível mover o projeto no pipeline.')
-      return
+    try {
+      const response = await fetch(`${BASE}/arch/office/pipeline/${projectId}/stage`, { method:'PATCH', headers:hdr(), body: JSON.stringify({ stage }) })
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}))
+        setError(body.error ?? 'Não foi possível mover o projeto no pipeline.')
+        return
+      }
+      await fetchPipeline()
+      await fetchDashboard()
+    } finally {
+      setMovingProjectId(null)
     }
-    await fetchPipeline()
-    await fetchDashboard()
   }
 
   async function handleSaveTemplate(tmpl: Partial<Template>) {
@@ -649,7 +662,7 @@ export function OfficeModule() {
         </div>
       ) : (
         <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
-          {tab === 'pipeline'   && <PipelineTab   data={pipeline}  onMove={handleMove} />}
+          {tab === 'pipeline'   && <PipelineTab   data={pipeline}  onMove={handleMove} movingProjectId={movingProjectId} />}
           {tab === 'dashboard'  && <DashboardTab  data={dashboard} />}
           {tab === 'dna'        && <DNATab        dna={dna} />}
           {tab === 'templates'  && <TemplatesTab  templates={templates} onSave={handleSaveTemplate} onDelete={handleDeleteTemplate} />}
