@@ -22,6 +22,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { ArrowLeft, Plus, Pencil, Trash2, Grid3X3, Package, AlertTriangle } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 const CATEGORIAS = ["camiseta","calca","vestido","short","jaqueta","blazer","saia","acessorio","calcado","bolsa","outro"] as const;
 const CATEGORIA_LABELS: Record<string,string> = {
@@ -85,6 +86,7 @@ function GradeForm({
 
 export default function VarejoProdutoDetalhe() {
   const [, params] = useRoute("/varejo/produtos/:produtoId");
+  const { toast } = useToast();
   const produtoId = params?.produtoId ?? "";
   const { user } = useAuth();
   const tenantId = user?.tenantId ?? "";
@@ -115,10 +117,12 @@ export default function VarejoProdutoDetalhe() {
     if (editingGrade) {
       updateGrade.mutate({ tenantId, produtoId, gradeId: editingGrade.id, data: data as any }, {
         onSuccess: () => { setEditingGrade(null); invalidateGrades(); },
+        onError: (error: unknown) => toast({ title: "Não foi possível atualizar a grade", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" }),
       });
     } else {
       createGrade.mutate({ tenantId, produtoId, data: { ...data, tenantId, produtoId } as any }, {
         onSuccess: () => { setGradeOpen(false); invalidateGrades(); },
+        onError: (error: unknown) => toast({ title: "Não foi possível criar a grade", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" }),
       });
     }
   }
@@ -148,6 +152,7 @@ export default function VarejoProdutoDetalhe() {
         setEditProduto(false);
         qc.invalidateQueries({ queryKey: getGetVarejoProdutoQueryKey(tenantId, produtoId) });
       },
+      onError: (error: unknown) => toast({ title: "Não foi possível atualizar o produto", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" }),
     });
   }
 
@@ -259,7 +264,7 @@ export default function VarejoProdutoDetalhe() {
                                 <Button size="icon" variant="secondary" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); setEditingGrade(g); }}>
                                   <Pencil className="h-3 w-3" />
                                 </Button>
-                                <Button size="icon" variant="secondary" className="h-6 w-6 text-destructive" onClick={(e) => { e.stopPropagation(); deleteGrade.mutate({ tenantId, produtoId, gradeId: g.id }, { onSuccess: invalidateGrades }); }}>
+                                <Button size="icon" variant="secondary" className="h-6 w-6 text-destructive" onClick={(e) => { e.stopPropagation(); deleteGrade.mutate({ tenantId, produtoId, gradeId: g.id }, { onSuccess: invalidateGrades, onError: (error: unknown) => toast({ title: "Não foi possível excluir a grade", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" }) }); }}>
                                   <Trash2 className="h-3 w-3" />
                                 </Button>
                               </div>
@@ -311,7 +316,7 @@ export default function VarejoProdutoDetalhe() {
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancelar</AlertDialogCancel>
                           <AlertDialogAction className="bg-destructive text-destructive-foreground"
-                            onClick={() => deleteGrade.mutate({ tenantId, produtoId, gradeId: g.id }, { onSuccess: invalidateGrades })}>
+                            onClick={() => deleteGrade.mutate({ tenantId, produtoId, gradeId: g.id }, { onSuccess: invalidateGrades, onError: (error: unknown) => toast({ title: "Não foi possível excluir a grade", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" }) })}>
                             Remover
                           </AlertDialogAction>
                         </AlertDialogFooter>
