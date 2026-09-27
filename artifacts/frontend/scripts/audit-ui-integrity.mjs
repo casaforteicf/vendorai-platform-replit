@@ -152,20 +152,22 @@ if (important.length) {
 }
 const blockerCount = findings.filter((item) => item.severity === "BLOCKER").length;
 const httpContractHighs = findings.filter((item) => item.rule === "mutation-without-http-status-check").length;
+const visibleErrorHighs = findings.filter((item) => item.rule === "mutation-without-visible-error-check").length;
 const unknownRouteHighs = findings.filter((item) => item.rule === "navigation-to-unknown-route").length;
 const hardDisabledHighs = findings.filter((item) => item.rule === "hard-disabled").length;
 const noopCallbackHighs = findings.filter((item) => item.rule === "noop-callback-prop").length;
 const formButtonHighs = findings.filter((item) => item.rule === "native-button-no-type-in-form" || item.rule === "ui-button-no-type-in-form").length;
-if (blockerCount > 0 || httpContractHighs > 0 || unknownRouteHighs > 0 || hardDisabledHighs > 0 || noopCallbackHighs > 0 || formButtonHighs > 0) {
+if (blockerCount > 0 || httpContractHighs > 0 || visibleErrorHighs > 0 || unknownRouteHighs > 0 || hardDisabledHighs > 0 || noopCallbackHighs > 0 || formButtonHighs > 0) {
   console.error("\n[ui-integrity] GATE BLOQUEADO.");
   if (blockerCount > 0) console.error("[ui-integrity] " + blockerCount + " BLOCKER(s) funcional(is) encontrado(s).");
   if (httpContractHighs > 0) console.error("[ui-integrity] " + httpContractHighs + " mutation(s) sem validação de response.ok/status.");
+  if (visibleErrorHighs > 0) console.error("[ui-integrity] " + visibleErrorHighs + " mutation(s) sem feedback de erro visível.");
   if (unknownRouteHighs > 0) console.error("[ui-integrity] " + unknownRouteHighs + " navegação(ões) para rota não declarada.");
   if (hardDisabledHighs > 0) console.error("[ui-integrity] " + hardDisabledHighs + " controle(s) permanentemente desabilitado(s).");
   if (noopCallbackHighs > 0) console.error("[ui-integrity] " + noopCallbackHighs + " callback(s) de interação conectado(s) a função vazia.");
   if (formButtonHighs > 0) console.error("[ui-integrity] " + formButtonHighs + " botão(ões) dentro de formulário sem type explícito.");
-  console.error("[ui-integrity] Corrija falhas críticas, contratos HTTP, rotas inválidas, controles desabilitados, callbacks vazios e botões de formulário antes de integrar esta mudança.");
+  console.error("[ui-integrity] Corrija falhas críticas, contratos HTTP, feedback de erro, rotas inválidas, controles desabilitados, callbacks vazios e botões de formulário antes de integrar esta mudança.");
   process.exitCode = 1;
 } else {
-  console.log("\n[ui-integrity] Gate aprovado: BLOCKER, contratos HTTP, navegações, controles desabilitados, callbacks vazios e botões de formulário estão limpos. Demais HIGHs seguem em relatório progressivo.");
+  console.log("\n[ui-integrity] Gate aprovado: BLOCKER, contratos HTTP, feedback de erro, navegações, controles desabilitados, callbacks vazios e botões de formulário estão limpos. Demais HIGHs seguem em relatório progressivo.");
 }
