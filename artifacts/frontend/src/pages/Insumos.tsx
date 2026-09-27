@@ -245,12 +245,22 @@ function InsumoForm({
 function EditDialog({ tenantId, insumo, categorias }: { tenantId: string; insumo: Insumo; categorias: string[] }) {
   const [open, setOpen] = useState(false);
   const qc = useQueryClient();
+  const { toast } = useToast();
   const { mutateAsync, isPending } = useUpdateInsumo();
 
   async function handleSave(data: Record<string, unknown>) {
-    await mutateAsync({ tenantId, insumoId: insumo.id, data: data as any });
-    await qc.invalidateQueries({ queryKey: getListInsumosQueryKey(tenantId) });
-    setOpen(false);
+    try {
+      await mutateAsync({ tenantId, insumoId: insumo.id, data: data as any });
+      await qc.invalidateQueries({ queryKey: getListInsumosQueryKey(tenantId) });
+      setOpen(false);
+      toast({ title: "Insumo atualizado." });
+    } catch (error) {
+      toast({
+        title: "Não foi possível atualizar o insumo",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    }
   }
 
   return (
