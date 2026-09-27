@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, Clock, Coins, Loader2, Plus, RefreshCw, RotateCcw, Settings2, Users } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 type Trigger = "sale_created" | "proposal_approved" | "contract_signed" | "payment_received" | "payment_reconciled" | "target_reached";
 type ActorType = "seller" | "manager" | "representative" | "partner" | "affiliate" | "influencer" | "distributor";
@@ -34,6 +35,7 @@ export default function ComissoesVendedor({ embedded=false }:{embedded?:boolean}
   const tenantId = user?.tenantId ?? "";
   const isAdmin = user?.platformRole === "super_admin" || user?.platformRole === "tenant_admin" || user?.userFunction === "administrador";
   const qc = useQueryClient();
+  const { toast } = useToast();
   const headers = { Authorization:`Bearer ${token}`, "Content-Type":"application/json" };
   const [ruleOpen,setRuleOpen] = useState(false);
   const [form,setForm] = useState<FormState>(emptyForm);
@@ -52,9 +54,9 @@ export default function ComissoesVendedor({ embedded=false }:{embedded?:boolean}
     for(const key of ["productId","category","channel","region"] as const) payload[key]=form[key].trim()||null;
     for(const key of ["capPercent","minMarginPercent","maxDiscountPercent"] as const) payload[key]=form[key]!==""?Number(form[key]):null;
     return form.id ? send(`/api/tenants/${tenantId}/commission-engine/rules/${form.id}`,"PATCH",payload) : send(`/api/tenants/${tenantId}/commission-engine/rules`,"POST",payload);
-  },onSuccess:()=>{qc.invalidateQueries({queryKey:["commission-engine",tenantId]});setRuleOpen(false);setForm(emptyForm);}});
+  },onSuccess:()=>{qc.invalidateQueries({queryKey:["commission-engine",tenantId]});setRuleOpen(false);setForm(emptyForm);toast({title:"Regra de comissão salva"});},onError:(error:Error)=>toast({title:"Não foi possível salvar a regra",description:error.message,variant:"destructive"})});
 
-  const reverseEvent=useMutation({mutationFn:(id:string)=>send(`/api/tenants/${tenantId}/commission-engine/events/${id}/reverse`,"POST",{reason:"Estorno administrativo pela tela de Comissões"}),onSuccess:()=>{qc.invalidateQueries({queryKey:["commission-engine",tenantId]});qc.invalidateQueries({queryKey:["seller-commissions-by-seller",tenantId]});}});
+  const reverseEvent=useMutation({mutationFn:(id:string)=>send(`/api/tenants/${tenantId}/commission-engine/events/${id}/reverse`,"POST",{reason:"Estorno administrativo pela tela de Comissões"}),onSuccess:()=>{qc.invalidateQueries({queryKey:["commission-engine",tenantId]});qc.invalidateQueries({queryKey:["seller-commissions-by-seller",tenantId]});toast({title:"Comissão estornada"});},onError:(error:Error)=>toast({title:"Não foi possível estornar a comissão",description:error.message,variant:"destructive"})});
 
   const filteredEvents=useMemo(()=>eventStatus==="all"?events:events.filter(e=>e.status===eventStatus),[events,eventStatus]);
   const legacyTotals=useMemo(()=> (legacy?.sellers??[]).reduce((a,s)=>({sales:a.sales+s.salesCount,commission:a.commission+s.commissionTotalCents,paid:a.paid+s.paidCents}),{sales:0,commission:0,paid:0}),[legacy]);
