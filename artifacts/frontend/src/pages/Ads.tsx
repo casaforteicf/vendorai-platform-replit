@@ -710,6 +710,7 @@ export default function Ads() {
       setExpandedCreative((prev) => ({ ...prev, [creative.campaignId]: creative }));
       toast({ title: "Criativo aprovado" });
     },
+    onError: (error: Error) => toast({ title: "Não foi possível aprovar o criativo", description: error.message, variant: "destructive" }),
   });
 
   const publicarCampanha = useMutation({
