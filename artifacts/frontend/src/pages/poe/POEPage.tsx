@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, ChevronDown, ChevronRight, Lightbulb, RefreshCw, XCircle } from "lucide-react";
 import type { PoeOpportunity, PoeRecommendation } from "./poe-types";
+import { useToast } from "@/hooks/use-toast";
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
@@ -14,6 +15,7 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 
 function RecommendationList({ opportunityId }: { opportunityId: string }) {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const recommendations = useQuery<PoeRecommendation[]>({
     queryKey: ["poe-recommendations", opportunityId],
     queryFn: () => fetchJson(`/api/poe/opportunities/${encodeURIComponent(opportunityId)}/recommendations`),
@@ -26,6 +28,7 @@ function RecommendationList({ opportunityId }: { opportunityId: string }) {
       queryClient.invalidateQueries({ queryKey: ["poe-recommendations", opportunityId] });
       queryClient.invalidateQueries({ queryKey: ["poe-opportunities"] });
     },
+    onError: (error: Error) => toast({ title: "Não foi possível selecionar a recomendação", description: error.message, variant: "destructive" }),
   });
 
   if (recommendations.isLoading) {
@@ -97,6 +100,7 @@ function RecommendationList({ opportunityId }: { opportunityId: string }) {
 
 export function POEPage() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState("all");
 
@@ -108,6 +112,7 @@ export function POEPage() {
   const dismissOpportunity = useMutation({
     mutationFn: (id: string) => fetchJson(`/api/poe/opportunities/${encodeURIComponent(id)}/dismiss`, { method: "POST" }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["poe-opportunities"] }),
+    onError: (error: Error) => toast({ title: "Não foi possível dispensar a oportunidade", description: error.message, variant: "destructive" }),
   });
 
   const filtered = useMemo(() => {
