@@ -1719,6 +1719,7 @@ export default function Campanhas() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Campaign | null>(null);
+  const [statusUpdatingCampaignId, setStatusUpdatingCampaignId] = useState<string | null>(null);
 
   const { data: campaigns = [], isLoading } = useListCampaigns(tenantId, {
     query: {
@@ -1752,8 +1753,10 @@ export default function Campanhas() {
   }, [campaigns, deepLinkHandled]);
 
   function handlePauseResume(c: Campaign) {
+    if (statusUpdatingCampaignId) return;
     const canPause = c.status === "agendada" || c.status === "enviando";
     const newStatus: CampaignStatus = canPause ? "pausada" : "agendada";
+    setStatusUpdatingCampaignId(c.id);
     updateMutation.mutate(
       { id: c.id, data: { status: newStatus } },
       {
@@ -1761,13 +1764,18 @@ export default function Campanhas() {
           queryClient.invalidateQueries({ queryKey: getListCampaignsQueryKey(tenantId) });
           toast({ title: canPause ? "Campanha pausada" : "Campanha retomada" });
         },
-        onError: () => toast({ title: "Erro ao atualizar campanha", variant: "destructive" }),
+        onError: (error: unknown) => toast({
+          title: "Erro ao atualizar campanha",
+          description: error instanceof Error ? error.message : undefined,
+          variant: "destructive",
+        }),
+        onSettled: () => setStatusUpdatingCampaignId(null),
       }
     );
   }
 
   function handleDelete() {
-    if (!deleteTarget) return;
+    if (!deleteTarget || deleteMutation.isPending) return;
     deleteMutation.mutate(
       { id: deleteTarget.id },
       {
@@ -1776,7 +1784,11 @@ export default function Campanhas() {
           toast({ title: "Campanha excluída" });
           setDeleteTarget(null);
         },
-        onError: () => toast({ title: "Erro ao excluir campanha", variant: "destructive" }),
+        onError: (error: unknown) => toast({
+          title: "Erro ao excluir campanha",
+          description: error instanceof Error ? error.message : undefined,
+          variant: "destructive",
+        }),
       }
     );
   }
@@ -1860,8 +1872,12 @@ export default function Campanhas() {
                             <Pencil className="h-4 w-4 mr-2" />Editar
                           </DropdownMenuItem>
                           {(canPause || canResume) && (
-                            <DropdownMenuItem onClick={() => handlePauseResume(c)}>
-                              {canPause ? <><Pause className="h-4 w-4 mr-2" />Pausar</> : <><Play className="h-4 w-4 mr-2" />Retomar</>}
+                            <DropdownMenuItem onClick={() => handlePauseResume(c)} disabled={statusUpdatingCampaignId !== null}>
+                              {statusUpdatingCampaignId === c.id
+                                ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Atualizando...</>
+                                : canPause
+                                  ? <><Pause className="h-4 w-4 mr-2" />Pausar</>
+                                  : <><Play className="h-4 w-4 mr-2" />Retomar</>}
                             </DropdownMenuItem>
                           )}
                           {canDelete && (
@@ -1972,8 +1988,13 @@ export default function Campanhas() {
                               Editar
                             </DropdownMenuItem>
                             {(canPause || canResume) && (
-                              <DropdownMenuItem onClick={() => handlePauseResume(c)}>
-                                {canPause ? (
+                              <DropdownMenuItem onClick={() => handlePauseResume(c)} disabled={statusUpdatingCampaignId !== null}>
+                                {statusUpdatingCampaignId === c.id ? (
+                                  <>
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                    Atualizando...
+                                  </>
+                                ) : canPause ? (
                                   <>
                                     <Pause className="h-4 w-4 mr-2" />
                                     Pausar
@@ -2038,9 +2059,10 @@ export default function Campanhas() {
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
+              disabled={deleteMutation.isPending}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Excluir
+              {deleteMutation.isPending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Excluindo...</> : "Excluir"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
