@@ -157,6 +157,7 @@ import { SdrTemplatesSection } from "@/components/SdrTemplatesSection";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import { dashboardSnapshotQueryKey, fetchDashboardSnapshot } from "@/lib/dashboardSnapshot";
 
 const SocialIntegrationsPanel = lazy(() => import("@/components/SocialIntegrationsPanel").then((m) => ({ default: m.SocialIntegrationsPanel })));
 const DistribuicaoConfigCard = lazy(() => import("@/components/DistribuicaoConfigCard").then((m) => ({ default: m.DistribuicaoConfigCard })));
@@ -5474,18 +5475,13 @@ function AIUsageTab({ tenantId }: { tenantId: string }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: usage, isLoading: usageDetailsLoading } = useGetTenantAIUsage(tenantId);
+  const dashboardToken = getToken();
   const { data: dashboardUsage, isLoading: dashboardUsageLoading } = useQuery<{
     ia: { quotaUsada: number; tokensMes: number };
   }>({
-    queryKey: ["dashboard-ai-usage", tenantId],
-    enabled: !!tenantId,
-    queryFn: async () => {
-      const res = await fetch("/api/dashboard", {
-        headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json();
-    },
+    queryKey: dashboardSnapshotQueryKey(tenantId),
+    enabled: Boolean(tenantId && dashboardToken),
+    queryFn: () => fetchDashboardSnapshot(dashboardToken!),
     staleTime: 30_000,
   });
   const isLoading = usageDetailsLoading || dashboardUsageLoading;
