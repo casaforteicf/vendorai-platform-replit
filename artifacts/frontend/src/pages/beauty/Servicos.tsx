@@ -104,9 +104,13 @@ export default function Servicos() {
         method: "PATCH",
         headers: authHeaders(),
         body: JSON.stringify({ ativo }),
-      }).then((r) => r.json()),
+      }).then(async (r) => {
+        const body = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(body.error ?? "Não foi possível alterar o status do serviço.");
+        return body;
+      }),
     onSuccess: () => qc.invalidateQueries({ queryKey: QK }),
-    onError: () => toast({ title: "Erro ao atualizar", variant: "destructive" }),
+    onError: (error: Error) => toast({ title: "Erro ao atualizar", description: error.message, variant: "destructive" }),
   });
 
   function openCreate() {

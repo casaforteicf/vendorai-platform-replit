@@ -335,8 +335,13 @@ export default function FretesCargas() {
     mutationFn: (id: string) =>
       fetch(`/api/tenants/${tenantId}/fretes/cargas/${id}/status`, {
         method: "PATCH", headers: authHeaders(), body: JSON.stringify({ status: "cancelado" }),
-      }).then((r) => r.json()),
+      }).then(async (r) => {
+        const body = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(body.error ?? "Não foi possível cancelar a carga.");
+        return body;
+      }),
     onSuccess: () => qc.invalidateQueries({ queryKey: QK }),
+    onError: (error: Error) => toast({ title: "Erro ao cancelar carga", description: error.message, variant: "destructive" }),
   });
 
   function handleAdvance(cargaId: string, next: string) {

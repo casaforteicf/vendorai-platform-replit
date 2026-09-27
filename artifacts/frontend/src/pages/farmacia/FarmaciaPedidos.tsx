@@ -189,12 +189,16 @@ export default function FarmaciaPedidos() {
         method: "PUT",
         headers: authHeaders(),
         body: JSON.stringify({ status }),
-      }).then((r) => r.json()),
+      }).then(async (r) => {
+        const body = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(body.error ?? "Não foi possível atualizar o status do pedido.");
+        return body;
+      }),
     onSuccess: () => {
       toast({ title: "Status atualizado." });
       qc.invalidateQueries({ queryKey: ["farmacia-pedidos"] });
     },
-    onError: () => toast({ title: "Erro ao atualizar status", variant: "destructive" }),
+    onError: (error: Error) => toast({ title: "Erro ao atualizar status", description: error.message, variant: "destructive" }),
   });
 
   return (
