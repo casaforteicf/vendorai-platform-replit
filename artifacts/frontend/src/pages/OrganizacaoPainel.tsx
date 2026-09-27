@@ -11,7 +11,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  Building2, Plus, Store, TrendingUp, Users, ShoppingCart,
+  Building2, Plus, Store, Users, ShoppingCart,
   MessageSquare, RefreshCw, Loader2, Settings, Unlink, Link,
   ChevronDown, ChevronRight, DollarSign, AlertTriangle,
 } from "lucide-react";
