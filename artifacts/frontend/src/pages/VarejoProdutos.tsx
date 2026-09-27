@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Plus, Shirt, Pencil, Trash2, Search, ExternalLink } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 const CATEGORIAS = ["camiseta", "calca", "vestido", "short", "jaqueta", "blazer", "saia", "acessorio", "calcado", "bolsa", "outro"] as const;
 const CATEGORIA_LABELS: Record<string, string> = {
@@ -128,6 +129,7 @@ function ProdutoForm({
 
 export default function VarejoProdutos() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const tenantId = user?.tenantId ?? "";
   const qc = useQueryClient();
   const [, navigate] = useLocation();
@@ -158,6 +160,7 @@ export default function VarejoProdutos() {
         invalidate();
         navigate(`/varejo/produtos/${p.id}`);
       },
+      onError: (error: unknown) => toast({ title: "Não foi possível criar o produto", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" }),
     });
   }
 
@@ -268,7 +271,7 @@ export default function VarejoProdutos() {
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancelar</AlertDialogCancel>
                           <AlertDialogAction className="bg-destructive text-destructive-foreground"
-                            onClick={() => deleteMut.mutate({ tenantId, produtoId: p.id }, { onSuccess: invalidate })}>
+                            onClick={() => deleteMut.mutate({ tenantId, produtoId: p.id }, { onSuccess: invalidate, onError: (error: unknown) => toast({ title: "Não foi possível excluir o produto", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" }) })}>
                             Excluir
                           </AlertDialogAction>
                         </AlertDialogFooter>
