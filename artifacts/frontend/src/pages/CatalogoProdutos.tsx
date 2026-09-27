@@ -398,7 +398,13 @@ function CommercialDeliveryPanel({
       window.setTimeout(() => {
         void persistCommercialSnapshot(product.id, savedSnapshot)
           .then(() => onSaved())
-          .catch(() => undefined);
+          .catch((error) => {
+            toast({
+              title: "Produto salvo, mas a configuração comercial não sincronizou",
+              description: error instanceof Error ? error.message : "Tente salvar novamente para sincronizar preços, entrega e regras comerciais.",
+              variant: "destructive",
+            });
+          });
       }, 900);
     };
 
