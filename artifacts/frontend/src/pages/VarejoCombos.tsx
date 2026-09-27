@@ -21,6 +21,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Plus, Gift, Pencil, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 function ComboForm({
   initial,
@@ -76,6 +77,7 @@ function ComboForm({
 
 function ComboItens({ comboId, tenantId }: { comboId: string; tenantId: string }) {
   const qc = useQueryClient();
+  const { toast } = useToast();
   const { data: itens = [] } = useListVarejoComboItens(tenantId, comboId);
   const { data: produtos = [] } = useListVarejoProdutos(tenantId);
   const createItem = useCreateVarejoComboItem();
@@ -96,6 +98,7 @@ function ComboItens({ comboId, tenantId }: { comboId: string; tenantId: string }
     if (!data.cor) delete data.cor;
     createItem.mutate({ tenantId, comboId, data: data as any }, {
       onSuccess: () => { setAdding(false); setForm({ produtoId: "", tamanho: "", cor: "", quantidade: "1" }); invalidate(); },
+      onError: (error: unknown) => toast({ title: "Não foi possível adicionar a peça", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" }),
     });
   }
 
@@ -134,7 +137,7 @@ function ComboItens({ comboId, tenantId }: { comboId: string; tenantId: string }
                 <span className="text-muted-foreground"> · {i.quantidade} un.</span>
               </p>
               <Button size="icon" variant="ghost" className="h-6 w-6 text-destructive hover:text-destructive"
-                onClick={() => deleteItem.mutate({ tenantId, comboId, itemId: i.id }, { onSuccess: invalidate })}>
+                onClick={() => deleteItem.mutate({ tenantId, comboId, itemId: i.id }, { onSuccess: invalidate, onError: (error: unknown) => toast({ title: "Não foi possível remover a peça", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" }) })}>
                 <Trash2 className="h-3 w-3" />
               </Button>
             </div>
@@ -147,6 +150,7 @@ function ComboItens({ comboId, tenantId }: { comboId: string; tenantId: string }
 
 export default function VarejoCombos() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const tenantId = user?.tenantId ?? "";
   const qc = useQueryClient();
 
@@ -167,10 +171,12 @@ export default function VarejoCombos() {
     if (editing) {
       updateMut.mutate({ tenantId, comboId: editing.id, data: data as any }, {
         onSuccess: () => { setEditing(null); invalidate(); },
+        onError: (error: unknown) => toast({ title: "Não foi possível atualizar o combo", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" }),
       });
     } else {
       createMut.mutate({ tenantId, data: { ...data, tenantId } as any }, {
         onSuccess: () => { setOpen(false); invalidate(); },
+        onError: (error: unknown) => toast({ title: "Não foi possível criar o combo", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" }),
       });
     }
   }
@@ -249,7 +255,7 @@ export default function VarejoCombos() {
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancelar</AlertDialogCancel>
                           <AlertDialogAction className="bg-destructive text-destructive-foreground"
-                            onClick={() => deleteMut.mutate({ tenantId, comboId: c.id }, { onSuccess: invalidate })}>
+                            onClick={() => deleteMut.mutate({ tenantId, comboId: c.id }, { onSuccess: invalidate, onError: (error: unknown) => toast({ title: "Não foi possível excluir o combo", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" }) })}>
                             Excluir
                           </AlertDialogAction>
                         </AlertDialogFooter>
