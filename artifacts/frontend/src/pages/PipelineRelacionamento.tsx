@@ -42,6 +42,7 @@ export default function PipelineRelacionamento() {
   const pathTab = window.location.pathname.split("/").filter(Boolean).at(-1);
   const tab = pathTab === "parceiros" || params.get("tab") === "parceiros" ? "parceiros" : "aquecimento";
   const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [resumingDealId, setResumingDealId] = useState<string | null>(null);
 
   const headers = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token]);
   const jsonHeaders = useMemo(() => ({ ...headers, "Content-Type": "application/json" }), [headers]);
@@ -85,6 +86,7 @@ export default function PipelineRelacionamento() {
       navigate("/deals");
     },
     onError: (error) => toast({ title: "Não foi possível retomar o comercial", description: String(error), variant: "destructive" }),
+    onSettled: () => setResumingDealId(null),
   });
 
   const deals = dealsQuery.data ?? [];
@@ -126,9 +128,9 @@ export default function PipelineRelacionamento() {
           ] as const).map(([kind, label]) => {
             const columnDeals = warmingDeals.filter((d) => (d.aquecimentoTipo === "cliente" ? "cliente" : "nao_cliente") === kind);
             return (
-              <section key={kind} className={`${PIPELINE_COLUMN_CLASS} min-h-[420px] w-full`} onDragOver={(e) => e.preventDefault()} onDrop={() => { if (draggedId) patchDeal.mutate({ id: draggedId, data: { etapa: "em_aquecimento", aquecimentoTipo: kind, relationshipStage: kind === "cliente" ? "aquecimento_cliente" : "aquecimento_lead" } }); setDraggedId(null); }}>
+              <section key={kind} className={`${PIPELINE_COLUMN_CLASS} min-h-[420px] w-full`} onDragOver={(e) => e.preventDefault()} onDrop={() => { if (draggedId && !patchDeal.isPending) patchDeal.mutate({ id: draggedId, data: { etapa: "em_aquecimento", aquecimentoTipo: kind, relationshipStage: kind === "cliente" ? "aquecimento_cliente" : "aquecimento_lead" } }); setDraggedId(null); }}>
                 <div className={PIPELINE_COLUMN_HEADER_CLASS}><h2 className="text-sm font-semibold">{label}</h2><Badge variant="secondary">{columnDeals.length}</Badge></div>
-                <div className="space-y-2 p-2">{columnDeals.map((deal) => <div key={deal.id}><Card deal={deal} /><Button size="sm" variant="ghost" className="mt-1 w-full gap-1 text-xs" onClick={() => resumeCommercial.mutate(deal)}>Retomar comercial <ArrowRight className="h-3 w-3" /></Button></div>)}</div>
+                <div className="space-y-2 p-2">{columnDeals.map((deal) => <div key={deal.id}><Card deal={deal} /><Button size="sm" variant="ghost" className="mt-1 w-full gap-1 text-xs" disabled={resumingDealId !== null || resumeCommercial.isPending} onClick={() => { if (resumingDealId || resumeCommercial.isPending) return; setResumingDealId(deal.id); resumeCommercial.mutate(deal); }}>{resumingDealId === deal.id ? "Retomando..." : "Retomar comercial"} <ArrowRight className="h-3 w-3" /></Button></div>)}</div>
               </section>
             );
           })}
@@ -144,7 +146,7 @@ export default function PipelineRelacionamento() {
                 const targetIndex = PARTNER_STAGES.findIndex(([stage]) => stage === key);
                 if (dragged && targetIndex < currentIndex) {
                   toast({ title: "Movimento não permitido", description: "O card de parceiro só pode avançar. Etapas anteriores ficam no histórico.", variant: "destructive" });
-                } else if (draggedId) {
+                } else if (draggedId && !patchDeal.isPending) {
                   patchDeal.mutate({ id: draggedId, data: { etapa: "parceiro", relationshipStage: key } });
                 }
                 setDraggedId(null);
