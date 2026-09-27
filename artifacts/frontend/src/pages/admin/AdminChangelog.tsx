@@ -66,16 +66,26 @@ export default function AdminChangelog() {
   });
 
   const publicarMutation = useMutation({
-    mutationFn: (id: string) => fetch(`/api/admin/changelog/${id}/publicar`, { method: "POST", headers: authHeaders() }),
+    mutationFn: async (id: string) => {
+      const response = await fetch(`/api/admin/changelog/${id}/publicar`, { method: "POST", headers: authHeaders() });
+      if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.error ?? "Não foi possível publicar a novidade."); }
+      return response;
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin-changelog"] });
       toast({ title: "Publicado! Já aparece pros tenants." });
     },
+    onError: (error: Error) => toast({ title: "Erro ao publicar", description: error.message, variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => fetch(`/api/admin/changelog/${id}`, { method: "DELETE", headers: authHeaders() }),
+    mutationFn: async (id: string) => {
+      const response = await fetch(`/api/admin/changelog/${id}`, { method: "DELETE", headers: authHeaders() });
+      if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.error ?? "Não foi possível remover a novidade."); }
+      return response;
+    },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin-changelog"] }); toast({ title: "Removido" }); },
+    onError: (error: Error) => toast({ title: "Erro ao remover", description: error.message, variant: "destructive" }),
   });
 
   return (
@@ -133,7 +143,7 @@ export default function AdminChangelog() {
                           <Button size="sm" variant="ghost" className="h-9 w-9 p-0" onClick={() => { setForm({ id: e.id, titulo: e.titulo, descricao: e.descricao, tipo: e.tipo }); setOpen(true); }}>
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
-                          <Button size="sm" variant="ghost" className="h-9 w-9 p-0 text-destructive" onClick={() => deleteMutation.mutate(e.id)}>
+                          <Button size="sm" variant="ghost" className="h-9 w-9 p-0 text-destructive" disabled={deleteMutation.isPending || publicarMutation.isPending} onClick={() => { if (!deleteMutation.isPending) deleteMutation.mutate(e.id); }}>
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </>
