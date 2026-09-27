@@ -803,10 +803,6 @@ function Topbar({ step, projectTitle, ambiente, onNextStep, userName, onHelp, on
       <button onClick={onNextStep} aria-label={nextLabels[step] ?? "Próxima Etapa"} style={{ background: `linear-gradient(135deg, ${D.purple}, #6D28D9)`, color: "#fff", border: "none", borderRadius: 8, padding: "7px 18px", fontSize: 12, fontWeight: 700, cursor: "pointer", letterSpacing: "0.02em", boxShadow: `0 0 16px ${D.purpleGlow}`, marginRight: 12 }}>
         {nextLabels[step] ?? "Próxima Etapa"}
       </button>
-      <div title="Copilot — disponível em breve" aria-disabled="true" style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 7, padding: "6px 12px", fontSize: 11, fontWeight: 700, color: D.dim, marginRight: 8, display: "flex", alignItems: "center", gap: 5, opacity: 0.4 }}>
-        <span>✦</span> Copilot
-      </div>
-      <div title="Notificações — disponível em breve" aria-disabled="true" style={{ padding: "6px 8px", color: D.dim, fontSize: 16, borderRadius: 6, marginRight: 4, opacity: 0.35 }}>🔔</div>
       <div aria-label={`Usuário: ${userName}`} style={{ width: 28, height: 28, borderRadius: "50%", background: D.purple, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "#fff", flexShrink: 0 }}>
         {(userName?.[0] ?? "U").toUpperCase()}
       </div>
@@ -1484,9 +1480,6 @@ function BottomPanel({ versions, projectId, isOpen, onToggle, eventLog, userName
         {tab === "versoes" && (
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Filtrar versões…"
             aria-label="Filtrar versões" style={{ ...inputStyle, width: 130, fontSize: 10, padding: "3px 8px", marginRight: 8 }} />
-        )}
-        {tab === "storyboard" && storyboard.length > 0 && (
-          <button title="Export PDF — em breve" disabled style={{ padding: "3px 10px", borderRadius: 6, fontSize: 10, background: D.card, color: D.dim, border: `1px solid ${D.border}`, marginRight: 8, opacity: 0.4, cursor: "default" }}>⬇ PDF</button>
         )}
         <button onClick={onToggle} aria-label={isOpen ? "Recolher" : "Expandir"} style={{ padding: "2px 8px", borderRadius: 5, fontSize: 11, background: "none", border: "none", color: D.dim, cursor: "pointer" }}>{isOpen ? "▼" : "▲"}</button>
       </div>
