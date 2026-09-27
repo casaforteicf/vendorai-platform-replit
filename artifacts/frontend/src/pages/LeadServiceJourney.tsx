@@ -147,6 +147,7 @@ function LeadServiceJourneyContent({ leadId, tenantId, lead, dealId }: LeadServi
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: getListActivitiesQueryKey(tenantId, { leadId }) });
     },
+    onError: (error: Error) => toast({ title: "Jornada salva, mas a atividade não foi registrada", description: error.message, variant: "destructive" }),
   });
 
   const stageIndex = Math.max(0, STAGES.findIndex(stage => stage.id === stageId));
