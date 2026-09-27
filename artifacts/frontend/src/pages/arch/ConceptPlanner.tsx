@@ -1,6 +1,6 @@
 import { flushSync } from "react-dom";
 import { conceptReferenceSize } from "./conceptReferenceImage";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import "./planner5d-reference.css";
 import {
   ArrowLeft,
@@ -43,16 +43,16 @@ import {
 } from "lucide-react";
 import { buildConceptGeometry, generateLayoutVariant, nudgeOpening } from "./conceptGeometry";
 import { type ConceptFacadePreferences } from "./ConceptVolumetry";
-import ConceptPlan2D, { type ConceptPlanObject } from "./ConceptPlan2D";
-import ConceptTypologyPreview from "./ConceptTypologyPreview";
-import ConceptDerivedFacade from "./ConceptDerivedFacade";
-import ConceptFacadeEditor, { type AIDevelopmentResponse } from "./ConceptFacadeEditor";
-import ConceptClientBriefPanel from "./ConceptClientBriefPanel";
+import type { ConceptPlanObject } from "./ConceptPlan2D";
+
+
+import type { AIDevelopmentResponse } from "./ConceptFacadeEditor";
+
 import { CONCEPT_JOURNEY, conceptJourneyContinueLabel, conceptJourneyIndex } from "./conceptJourney";
-import ConceptSitePlacementPanel from "./ConceptSitePlacementPanel";
+
 import { DEFAULT_SITE_PLACEMENT, getBuildingBounds, migrateLegacySitePlacement, normalizeSitePlacement, resolveSiteSetbacks, type SitePlacement } from "./conceptSitePlacement";
 import { type ClientBriefAlternative, type ProjectBriefSnapshot } from "./conceptClientBrief";
-import ConceptModel3D, { type ConceptModelLevel } from "./ConceptModel3D";
+import type { ConceptModelLevel } from "./ConceptModel3D";
 import {
   DEFAULT_FACADE_DESIGN,
   normalizeFacadeDesign,
@@ -60,7 +60,7 @@ import {
 } from "./conceptFacadeDesign";
 import { buildTypologyPlan, buildTypologyRooms, CONCEPT_TYPOLOGIES, DEFAULT_LAYOUT_PREFERENCES, type ConceptTypology, type LayoutPreferences, type LayoutPreferenceKey } from "./conceptTemplates";
 import { generateTypologyLayout } from "./conceptTypologyLayout";
-import { ConceptRenderGalleryActions } from "./ConceptRenderGalleryActions";
+
 import { inspectConceptVisualQuality } from "./conceptVisualQuality";
 import { buildConceptKontextSummary, buildConceptRenderBrief, svgElementToPngDataUrl } from "./conceptRender";
 import { buildDerivedFacadeModel } from "./conceptFacadeGeometry";
@@ -72,6 +72,16 @@ import { evaluateConceptAcceptance } from "./conceptAcceptance";
 import { autoRepairConceptLayout } from "./conceptAutoRepair";
 import { buildExplainableFindings } from "./conceptExplainableEvaluation";
 import { clampObjectToLot, clampRoomToLot, clampWallToLot, normalizeOpeningDimensions } from "./conceptParametricEditing";
+
+const ConceptPlan2D = lazy(() => import("./ConceptPlan2D"));
+const ConceptTypologyPreview = lazy(() => import("./ConceptTypologyPreview"));
+const ConceptDerivedFacade = lazy(() => import("./ConceptDerivedFacade"));
+const ConceptFacadeEditor = lazy(() => import("./ConceptFacadeEditor"));
+const ConceptClientBriefPanel = lazy(() => import("./ConceptClientBriefPanel"));
+const ConceptSitePlacementPanel = lazy(() => import("./ConceptSitePlacementPanel"));
+const ConceptModel3D = lazy(() => import("./ConceptModel3D"));
+const ConceptRenderGalleryActions = lazy(() => import("./ConceptRenderGalleryActions").then((m) => ({ default: m.ConceptRenderGalleryActions })));
+
 
 type RoomKind =
   | "sala"
