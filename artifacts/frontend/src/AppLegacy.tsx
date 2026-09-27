@@ -6,8 +6,6 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { DemoBanner } from "@/components/DemoBanner";
 import { SidebarLayout } from "@/components/layout/SidebarLayout";
 import { lazy, Suspense, useEffect, useState } from "react";
-import VideoHome from "@/pages/video/VideoHome";
-import VideoProjectDirectPage from "@/pages/video/VideoProjectDirectPage";
 import {
   useGetTenant,
   getGetTenantQueryKey,
@@ -16,6 +14,8 @@ import {
 } from "@workspace/api-client-react";
 
 // ── Lazy page imports (code splitting — each page loads only when navigated to) ──
+const VideoHome          = lazy(() => import("@/pages/video/VideoHome"));
+const VideoProjectDirectPage = lazy(() => import("@/pages/video/VideoProjectDirectPage"));
 const Login              = lazy(() => import("@/pages/Login"));
 const Register           = lazy(() => import("@/pages/Register"));
 const ForgotPassword     = lazy(() => import("@/pages/ForgotPassword"));
