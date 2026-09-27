@@ -80,8 +80,13 @@ export default function FretesVeiculos() {
     mutationFn: ({ id, ativo }: { id: string; ativo: boolean }) =>
       fetch(`/api/tenants/${tenantId}/fretes/veiculos/${id}`, {
         method: "PATCH", headers: authHeaders(), body: JSON.stringify({ ativo }),
-      }).then((r) => r.json()),
+      }).then(async (r) => {
+        const body = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(body.error ?? "Não foi possível alterar o status do veículo.");
+        return body;
+      }),
     onSuccess: () => qc.invalidateQueries({ queryKey: QK }),
+    onError: (error: Error) => toast({ title: "Erro ao alterar veículo", description: error.message, variant: "destructive" }),
   });
 
   function openCreate() { setEditing(null); setForm({ ...EMPTY_FORM }); setDialogOpen(true); }
