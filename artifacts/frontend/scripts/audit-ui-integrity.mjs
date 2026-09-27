@@ -116,7 +116,7 @@ for (const file of files) {
     const follow = source.slice(call.end, Math.min(source.length, call.end + 1400));
     const nearby = call.text + follow;
     const hasHttpStatusCheck = /(?:response|res|result|r)\.ok\b|(?:response|res|result|r)\.status\b|parseResponse\s*\(|readJson\s*\(|apiJson\s*\(|apiFetch\s*\(/.test(nearby);
-    const hasVisibleErrorHandling = /throw\s+new\s+Error|toast\s*\(|catch\s*\(|\.(?:error|isError)\b/.test(nearby);
+    const hasVisibleErrorHandling = /toast\s*\(|catch\s*\([^)]*\)\s*=>\s*\{[\s\S]{0,700}?(?:toast|setError|set[A-Z][A-Za-z0-9_]*Error)|\.(?:error|isError)\b/.test(nearby);
     if (!hasHttpStatusCheck) add("HIGH", "mutation-without-http-status-check", file, call.start, source, method + " fetch não valida response.ok/status antes de considerar sucesso.");
     else if (!hasVisibleErrorHandling) add("HIGH", "mutation-without-visible-error-check", file, call.start, source, method + " fetch valida HTTP, mas não possui tratamento de erro visível próximo.");
   }
