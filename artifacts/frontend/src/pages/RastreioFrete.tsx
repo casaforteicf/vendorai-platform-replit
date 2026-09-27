@@ -63,6 +63,8 @@ export default function RastreioFrete() {
     },
   });
 
+  const avaliacaoError = avaliarMutation.error instanceof Error ? avaliarMutation.error.message : null;
+
   if (isLoading) {
     return <div className="min-h-screen flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
   }
@@ -141,7 +143,8 @@ export default function RastreioFrete() {
                 <Textarea placeholder="Comentário (opcional)" rows={2} value={comentario} onChange={(e) => setComentario(e.target.value)} />
                 <Button className="w-full" disabled={nota === 0 || avaliarMutation.isPending} onClick={() => avaliarMutation.mutate()}>
                   {avaliarMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                  Enviar avaliação
+                  {avaliacaoError && <p className="text-sm text-red-600">{avaliacaoError}</p>}
+              Enviar avaliação
                 </Button>
               </div>
             )}
