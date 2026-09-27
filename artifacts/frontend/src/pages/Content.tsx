@@ -1967,9 +1967,11 @@ function VariationCard({
 function HistoryItem({
   item,
   onDelete,
+  deleting,
 }: {
   item: ContentGeneration;
   onDelete: (id: string) => void;
+  deleting: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const cfg = TYPE_CONFIG[item.type];
@@ -2005,9 +2007,10 @@ function HistoryItem({
             variant="ghost"
             size="icon"
             className="h-7 w-7 text-muted-foreground hover:text-destructive"
-            onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}
+            disabled={deleting}
+            onClick={(e) => { e.stopPropagation(); if (!deleting) onDelete(item.id); }}
           >
-            <Trash2 className="h-3.5 w-3.5" />
+            {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
           </Button>
           {expanded
             ? <ChevronUp className="h-4 w-4 text-muted-foreground" />
@@ -3127,7 +3130,8 @@ export default function Content() {
                   <HistoryItem
                     key={item.id}
                     item={item}
-                    onDelete={(id) => deleteMutation.mutate(id)}
+                    deleting={deleteMutation.isPending && deleteMutation.variables === item.id}
+                    onDelete={(id) => { if (!deleteMutation.isPending) deleteMutation.mutate(id); }}
                   />
                 ))}
               </div>
