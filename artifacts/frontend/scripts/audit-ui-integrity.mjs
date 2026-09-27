@@ -135,10 +135,13 @@ if (important.length) {
   }
 }
 const blockerCount = findings.filter((item) => item.severity === "BLOCKER").length;
-if (blockerCount > 0) {
-  console.error("\n[ui-integrity] GATE BLOQUEADO: " + blockerCount + " BLOCKER(s) funcional(is) encontrado(s).");
-  console.error("[ui-integrity] Corrija handlers vazios/links inválidos antes de integrar esta mudança.");
+const httpContractHighs = findings.filter((item) => item.rule === "mutation-without-http-status-check").length;
+if (blockerCount > 0 || httpContractHighs > 0) {
+  console.error("\n[ui-integrity] GATE BLOQUEADO.");
+  if (blockerCount > 0) console.error("[ui-integrity] " + blockerCount + " BLOCKER(s) funcional(is) encontrado(s).");
+  if (httpContractHighs > 0) console.error("[ui-integrity] " + httpContractHighs + " mutation(s) sem validação de response.ok/status.");
+  console.error("[ui-integrity] Corrija falhas críticas e contratos HTTP antes de integrar esta mudança.");
   process.exitCode = 1;
 } else {
-  console.log("\n[ui-integrity] Gate BLOCKER aprovado. Achados HIGH permanecem em modo relatório para limpeza progressiva.");
+  console.log("\n[ui-integrity] Gate aprovado: BLOCKER e contratos HTTP de mutations estão limpos. Demais HIGHs seguem em relatório progressivo.");
 }
