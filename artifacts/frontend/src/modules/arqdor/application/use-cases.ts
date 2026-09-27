@@ -164,7 +164,33 @@ export function ExportProjectUseCase(
       const s = generateFullPromptStructure(project)
       return success(JSON.stringify(s, null, 2))
     }
-    default: return failure(`Export format ${format} not yet implemented`)
+    case 'WORKSPACE': {
+      const workspace = {
+        projectId: project.id,
+        name: project.name,
+        version: project.version,
+        updatedAt: project.updatedAt,
+        environments: project.environments,
+        versions: project.versions,
+      }
+      return success(JSON.stringify(workspace, null, 2))
+    }
+    case 'MATERIAL_LIBRARY': {
+      const materials = project.environments
+        .flatMap(env => env.architecturalObjects)
+        .map(object => object.material)
+        .filter((material): material is NonNullable<ArchitecturalObject['material']> => Boolean(material))
+
+      const unique = Array.from(
+        new Map(
+          materials.map((material, index) => [
+            JSON.stringify(material),
+            { id: `material-${index + 1}`, ...material },
+          ]),
+        ).values(),
+      )
+      return success(JSON.stringify(unique, null, 2))
+    }
   }
 }
 
