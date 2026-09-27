@@ -1770,8 +1770,8 @@ export function CatalogoModal({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={doDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Excluir
+            <AlertDialogAction onClick={doDelete} disabled={deleteMut.isPending} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {deleteMut.isPending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Excluindo...</> : "Excluir"}
             </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
@@ -5071,6 +5071,7 @@ export default function Propostas() {
   const [modalOpen, setModalOpen] = useState(openNewFromUrl || !!urlEditId);
   const [detailProposta, setDetailProposta] = useState<Proposta | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Proposta | null>(null);
+  const [statusUpdatingPropostaId, setStatusUpdatingPropostaId] = useState<string | null>(null);
   const [viewProposta, setViewProposta] = useState<Proposta | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>(defaultStatus ?? "all");
 
@@ -5127,6 +5128,8 @@ export default function Propostas() {
   const leadMap = Object.fromEntries(leads.map((l) => [l.id, l.nome]));
 
   function changeStatus(p: Proposta, status: PropostaStatus) {
+    if (statusUpdatingPropostaId) return;
+    setStatusUpdatingPropostaId(p.id);
     statusMut.mutate(
       { id: p.id, data: { status } },
       {
@@ -5134,13 +5137,18 @@ export default function Propostas() {
           qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId) });
           toast({ title: `Orçamento marcado como "${STATUS_CONFIG[status]?.label ?? status}"` });
         },
-        onError: () => toast({ title: "Erro ao alterar status", variant: "destructive" }),
+        onError: (error: unknown) => toast({
+          title: "Erro ao alterar status",
+          description: error instanceof Error ? error.message : undefined,
+          variant: "destructive",
+        }),
+        onSettled: () => setStatusUpdatingPropostaId(null),
       }
     );
   }
 
   function doDelete() {
-    if (!deleteTarget) return;
+    if (!deleteTarget || deleteMut.isPending) return;
     deleteMut.mutate(
       { id: deleteTarget.id },
       {
@@ -5149,7 +5157,11 @@ export default function Propostas() {
           toast({ title: "Orçamento excluído" });
           setDeleteTarget(null);
         },
-        onError: () => toast({ title: "Erro ao excluir", variant: "destructive" }),
+        onError: (error: unknown) => toast({
+          title: "Erro ao excluir",
+          description: error instanceof Error ? error.message : undefined,
+          variant: "destructive",
+        }),
       }
     );
   }
@@ -5242,10 +5254,10 @@ export default function Propostas() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => setDetailProposta(p)}><Eye className="h-4 w-4 mr-2" />Ver detalhes</DropdownMenuItem>
                             <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setViewProposta(p); }}><Printer className="h-4 w-4 mr-2" />Visualizar modelo</DropdownMenuItem>
-                            {canSend && <DropdownMenuItem onClick={() => changeStatus(p, "enviada")}><Send className="h-4 w-4 mr-2" />Enviar proposta</DropdownMenuItem>}
-                            {canPendente && <DropdownMenuItem onClick={() => changeStatus(p, "pendente")}><Clock className="h-4 w-4 mr-2 text-violet-600" />Marcar pendente</DropdownMenuItem>}
-                            {canAccept && <DropdownMenuItem onClick={() => changeStatus(p, "aceita")}><CheckCircle2 className="h-4 w-4 mr-2 text-emerald-600" />Marcar aceita</DropdownMenuItem>}
-                            {canReject && <DropdownMenuItem onClick={() => changeStatus(p, "rejeitada")}><XCircle className="h-4 w-4 mr-2 text-red-500" />Marcar rejeitada</DropdownMenuItem>}
+                            {canSend && <DropdownMenuItem onClick={() => changeStatus(p, "enviada")} disabled={statusUpdatingPropostaId !== null}>{statusUpdatingPropostaId === p.id ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}{statusUpdatingPropostaId === p.id ? "Atualizando..." : "Enviar proposta"}</DropdownMenuItem>}
+                            {canPendente && <DropdownMenuItem onClick={() => changeStatus(p, "pendente")} disabled={statusUpdatingPropostaId !== null}>{statusUpdatingPropostaId === p.id ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Clock className="h-4 w-4 mr-2 text-violet-600" />}{statusUpdatingPropostaId === p.id ? "Atualizando..." : "Marcar pendente"}</DropdownMenuItem>}
+                            {canAccept && <DropdownMenuItem onClick={() => changeStatus(p, "aceita")} disabled={statusUpdatingPropostaId !== null}>{statusUpdatingPropostaId === p.id ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-2 text-emerald-600" />}{statusUpdatingPropostaId === p.id ? "Atualizando..." : "Marcar aceita"}</DropdownMenuItem>}
+                            {canReject && <DropdownMenuItem onClick={() => changeStatus(p, "rejeitada")} disabled={statusUpdatingPropostaId !== null}>{statusUpdatingPropostaId === p.id ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <XCircle className="h-4 w-4 mr-2 text-red-500" />}{statusUpdatingPropostaId === p.id ? "Atualizando..." : "Marcar rejeitada"}</DropdownMenuItem>}
                             {canDelete && (<><DropdownMenuSeparator /><DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDeleteTarget(p)}><Trash2 className="h-4 w-4 mr-2" />Excluir</DropdownMenuItem></>)}
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -5323,23 +5335,27 @@ export default function Propostas() {
                               <Printer className="h-4 w-4 mr-2" /> Visualizar modelo
                             </DropdownMenuItem>
                             {canSend && (
-                              <DropdownMenuItem onClick={() => changeStatus(p, "enviada")}>
-                                <Send className="h-4 w-4 mr-2" /> Enviar orçamento
+                              <DropdownMenuItem onClick={() => changeStatus(p, "enviada")} disabled={statusUpdatingPropostaId !== null}>
+                                {statusUpdatingPropostaId === p.id ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+                                {statusUpdatingPropostaId === p.id ? "Atualizando..." : "Enviar orçamento"}
                               </DropdownMenuItem>
                             )}
                             {canPendente && (
-                              <DropdownMenuItem onClick={() => changeStatus(p, "pendente")}>
-                                <Clock className="h-4 w-4 mr-2 text-violet-600" /> Marcar pendente
+                              <DropdownMenuItem onClick={() => changeStatus(p, "pendente")} disabled={statusUpdatingPropostaId !== null}>
+                                {statusUpdatingPropostaId === p.id ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Clock className="h-4 w-4 mr-2 text-violet-600" />}
+                                {statusUpdatingPropostaId === p.id ? "Atualizando..." : "Marcar pendente"}
                               </DropdownMenuItem>
                             )}
                             {canAccept && (
-                              <DropdownMenuItem onClick={() => changeStatus(p, "aceita")}>
-                                <CheckCircle2 className="h-4 w-4 mr-2 text-emerald-600" /> Marcar aceita
+                              <DropdownMenuItem onClick={() => changeStatus(p, "aceita")} disabled={statusUpdatingPropostaId !== null}>
+                                {statusUpdatingPropostaId === p.id ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-2 text-emerald-600" />}
+                                {statusUpdatingPropostaId === p.id ? "Atualizando..." : "Marcar aceita"}
                               </DropdownMenuItem>
                             )}
                             {canReject && (
-                              <DropdownMenuItem onClick={() => changeStatus(p, "rejeitada")}>
-                                <XCircle className="h-4 w-4 mr-2 text-red-500" /> Marcar rejeitada
+                              <DropdownMenuItem onClick={() => changeStatus(p, "rejeitada")} disabled={statusUpdatingPropostaId !== null}>
+                                {statusUpdatingPropostaId === p.id ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <XCircle className="h-4 w-4 mr-2 text-red-500" />}
+                                {statusUpdatingPropostaId === p.id ? "Atualizando..." : "Marcar rejeitada"}
                               </DropdownMenuItem>
                             )}
                             {canDelete && (
