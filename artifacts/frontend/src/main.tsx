@@ -6,19 +6,6 @@ import { FrontendRecoveryGuard } from "./components/FrontendRecoveryGuard";
 import "./components/admin/devAgentRuntimeJsBridge";
 import "./components/admin/devAgentRuntimeHttpBridge";
 import "./components/admin/devAgentVisualContextBridge";
-import "./lib/jarvisArtifactFetchBridge";
-import "./lib/jarvisExecutiveContextBridge";
-import "./lib/jarvisVoiceResponseBridge";
-import "./lib/jarvisVoiceDictationBridge";
-import "./lib/jarvisUndoBridge";
-import "./lib/jarvisBargeInBridge";
-import "./lib/jarvisPageContextBridge";
-import "./lib/jarvisAutonomyContextBridge";
-import "./lib/jarvisProactiveVoiceBridge";
-import "./lib/jarvisCapabilityRuntimeBridge";
-import "./lib/jarvisResponseHealthBridge";
-import "./lib/jarvisMobileExperienceBridge";
-import "./lib/jarvisLauncherVoiceBridge";
 import "./lib/partnerAttributionBridge";
 import { I18nProvider } from "./i18n";
 import "./index.css";
@@ -47,6 +34,38 @@ const WorkspaceEnhancements = lazy(() => import("./components/runtime/WorkspaceE
 
 setupApiClient();
 installVisitorTelemetry();
+
+function scheduleJarvisRuntimeBridges() {
+  const load = () => {
+    void Promise.all([
+      import("./lib/jarvisArtifactFetchBridge"),
+      import("./lib/jarvisExecutiveContextBridge"),
+      import("./lib/jarvisVoiceResponseBridge"),
+      import("./lib/jarvisVoiceDictationBridge"),
+      import("./lib/jarvisUndoBridge"),
+      import("./lib/jarvisBargeInBridge"),
+      import("./lib/jarvisPageContextBridge"),
+      import("./lib/jarvisAutonomyContextBridge"),
+      import("./lib/jarvisProactiveVoiceBridge"),
+      import("./lib/jarvisCapabilityRuntimeBridge"),
+      import("./lib/jarvisResponseHealthBridge"),
+      import("./lib/jarvisMobileExperienceBridge"),
+      import("./lib/jarvisLauncherVoiceBridge"),
+    ]);
+  };
+
+  const win = window as typeof window & {
+    requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+  };
+
+  if (typeof win.requestIdleCallback === "function") {
+    win.requestIdleCallback(load, { timeout: 900 });
+  } else {
+    window.setTimeout(load, 350);
+  }
+}
+
+scheduleJarvisRuntimeBridges();
 
 document.documentElement.dataset.vendoraiBuild = "sa-vertical-nav-fix-20260916a";
 
