@@ -3,9 +3,6 @@ import { lazy, Suspense, useEffect, useLayoutEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { FrontendRecoveryGuard } from "./components/FrontendRecoveryGuard";
-import "./components/admin/devAgentRuntimeJsBridge";
-import "./components/admin/devAgentRuntimeHttpBridge";
-import "./components/admin/devAgentVisualContextBridge";
 import "./lib/partnerAttributionBridge";
 import { I18nProvider } from "./i18n";
 import "./index.css";
@@ -66,6 +63,28 @@ function scheduleJarvisRuntimeBridges() {
 }
 
 scheduleJarvisRuntimeBridges();
+
+function scheduleDevAgentRuntimeBridges() {
+  const load = () => {
+    void Promise.all([
+      import("./components/admin/devAgentRuntimeJsBridge"),
+      import("./components/admin/devAgentRuntimeHttpBridge"),
+      import("./components/admin/devAgentVisualContextBridge"),
+    ]);
+  };
+
+  const win = window as typeof window & {
+    requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+  };
+
+  if (typeof win.requestIdleCallback === "function") {
+    win.requestIdleCallback(load, { timeout: 1400 });
+  } else {
+    window.setTimeout(load, 700);
+  }
+}
+
+scheduleDevAgentRuntimeBridges();
 
 document.documentElement.dataset.vendoraiBuild = "sa-vertical-nav-fix-20260916a";
 
