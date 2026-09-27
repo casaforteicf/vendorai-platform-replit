@@ -221,6 +221,7 @@ export default function ProjetoDetalhe() {
   const [editingItem, setEditingItem] = useState<OrcamentoItem | null>(null);
   const [itemForm, setItemForm]       = useState({ ...EMPTY_ITEM });
   const [savingItem, setSavingItem]   = useState(false);
+  const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
 
   // ── Vincular dialog state
   const [vinculandoItem, setVinculandoItem]     = useState<OrcamentoItem | null>(null);
@@ -234,6 +235,7 @@ export default function ProjetoDetalhe() {
   const [editingAmbiente, setEditingAmbiente]     = useState<Ambiente | null>(null);
   const [ambienteForm, setAmbienteForm]           = useState({ ...EMPTY_AMB });
   const [savingAmbiente, setSavingAmbiente]       = useState(false);
+  const [deletingAmbienteId, setDeletingAmbienteId] = useState<string | null>(null);
 
   // ── Cenas state
   const [cenas, setCenas]                   = useState<Cena[]>([]);
@@ -242,6 +244,8 @@ export default function ProjetoDetalhe() {
   const [addCenaOpen, setAddCenaOpen]       = useState(false);
   const [cenaForm, setCenaForm]             = useState({ ...EMPTY_CENA });
   const [savingCena, setSavingCena]         = useState(false);
+  const [renderingCenaId, setRenderingCenaId] = useState<string | null>(null);
+  const [deletingCenaId, setDeletingCenaId] = useState<string | null>(null);
   const [viewingCena, setViewingCena]       = useState<Cena | null>(null);
   const [catalogBusca, setCatalogBusca]     = useState("");
   const [catalogCenas, setCatalogCenas]     = useState<CatalogoProduto[]>([]);
@@ -393,13 +397,23 @@ export default function ProjetoDetalhe() {
   }
 
   async function deleteItem(id: string) {
-    const res = await fetch(`/api/arch/orcamento/${id}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${getToken()}` },
-    });
-    if (res.ok || res.status === 204) {
+    if (deletingItemId) return;
+    setDeletingItemId(id);
+    try {
+      const res = await fetch(`/api/arch/orcamento/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok && res.status !== 204) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error ?? "Falha ao remover item.");
+      }
       await Promise.all([loadOrcamento(), loadProjeto()]);
       toast({ title: "Item removido." });
+    } catch (error) {
+      toast({ title: "Não foi possível remover o item", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+    } finally {
+      setDeletingItemId(null);
     }
   }
 
@@ -484,13 +498,23 @@ export default function ProjetoDetalhe() {
   }
 
   async function deleteAmbiente(id: string) {
-    const res = await fetch(
-      `/api/arch/projetos/${projetoId}/ambientes/${id}`,
-      { method: "DELETE", headers: { Authorization: `Bearer ${getToken()}` } },
-    );
-    if (res.ok || res.status === 204) {
+    if (deletingAmbienteId) return;
+    setDeletingAmbienteId(id);
+    try {
+      const res = await fetch(
+        `/api/arch/projetos/${projetoId}/ambientes/${id}`,
+        { method: "DELETE", headers: { Authorization: `Bearer ${getToken()}` } },
+      );
+      if (!res.ok && res.status !== 204) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error ?? "Falha ao remover ambiente.");
+      }
       await loadProjeto();
       toast({ title: "Ambiente removido." });
+    } catch (error) {
+      toast({ title: "Não foi possível remover o ambiente", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+    } finally {
+      setDeletingAmbienteId(null);
     }
   }
 
@@ -612,29 +636,46 @@ export default function ProjetoDetalhe() {
   }
 
   async function renderizarCena(cenaId: string) {
+    if (renderingCenaId) return;
+    setRenderingCenaId(cenaId);
     setCenas(prev => prev.map(c => c.id === cenaId ? { ...c, status: "renderizando" } : c));
-    const res = await fetch(`/api/arch/cenas/${cenaId}/renderizar`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${getToken()}` },
-    });
-    if (res.ok) {
+    try {
+      const res = await fetch(`/api/arch/cenas/${cenaId}/renderizar`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error ?? "Falha ao iniciar render.");
+      }
       startPolling(cenaId);
-    } else {
-      const err = await res.json().catch(() => ({}));
+    } catch (error) {
       setCenas(prev => prev.map(c => c.id === cenaId ? { ...c, status: "rascunho" } : c));
-      toast({ title: "Erro ao iniciar render", description: err?.error, variant: "destructive" });
+      toast({ title: "Erro ao iniciar render", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+    } finally {
+      setRenderingCenaId(null);
     }
   }
 
   async function deleteCena(cenaId: string) {
-    stopPolling(cenaId);
-    const res = await fetch(`/api/arch/cenas/${cenaId}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${getToken()}` },
-    });
-    if (res.ok || res.status === 204) {
+    if (deletingCenaId) return;
+    setDeletingCenaId(cenaId);
+    try {
+      stopPolling(cenaId);
+      const res = await fetch(`/api/arch/cenas/${cenaId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok && res.status !== 204) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error ?? "Falha ao remover cena.");
+      }
       setCenas(prev => prev.filter(c => c.id !== cenaId));
       toast({ title: "Cena removida." });
+    } catch (error) {
+      toast({ title: "Não foi possível remover a cena", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+    } finally {
+      setDeletingCenaId(null);
     }
   }
 
@@ -940,7 +981,9 @@ export default function ProjetoDetalhe() {
                                           </AlertDialogHeader>
                                           <AlertDialogFooter>
                                             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                            <AlertDialogAction onClick={() => deleteItem(item.id)}>Excluir</AlertDialogAction>
+                                            <AlertDialogAction onClick={() => deleteItem(item.id)} disabled={deletingItemId !== null}>
+                                              {deletingItemId === item.id ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Excluindo...</> : "Excluir"}
+                                            </AlertDialogAction>
                                           </AlertDialogFooter>
                                         </AlertDialogContent>
                                       </AlertDialog>
@@ -1012,7 +1055,9 @@ export default function ProjetoDetalhe() {
                               </AlertDialogHeader>
                               <AlertDialogFooter>
                                 <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => deleteAmbiente(amb.id)}>Excluir</AlertDialogAction>
+                                <AlertDialogAction onClick={() => deleteAmbiente(amb.id)} disabled={deletingAmbienteId !== null}>
+                                  {deletingAmbienteId === amb.id ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Excluindo...</> : "Excluir"}
+                                </AlertDialogAction>
                               </AlertDialogFooter>
                             </AlertDialogContent>
                           </AlertDialog>
@@ -1113,8 +1158,9 @@ export default function ProjetoDetalhe() {
 
                       <div className="flex gap-1.5 flex-wrap">
                         {(st === "rascunho" || st === "erro") && (
-                          <Button size="sm" variant="default" className="h-7 text-xs" onClick={() => renderizarCena(cena.id)}>
-                            <RefreshCw className="h-3 w-3 mr-1" /> Renderizar
+                          <Button size="sm" variant="default" className="h-7 text-xs" onClick={() => renderizarCena(cena.id)} disabled={renderingCenaId !== null}>
+                            {renderingCenaId === cena.id ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <RefreshCw className="h-3 w-3 mr-1" />}
+                            {renderingCenaId === cena.id ? "Iniciando..." : "Renderizar"}
                           </Button>
                         )}
                         {st === "concluido" && cena.renderUrl && (
@@ -1137,8 +1183,8 @@ export default function ProjetoDetalhe() {
                             </AlertDialogHeader>
                             <AlertDialogFooter>
                               <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => deleteCena(cena.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                                Excluir
+                              <AlertDialogAction onClick={() => deleteCena(cena.id)} disabled={deletingCenaId !== null} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                {deletingCenaId === cena.id ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Excluindo...</> : "Excluir"}
                               </AlertDialogAction>
                             </AlertDialogFooter>
                           </AlertDialogContent>
