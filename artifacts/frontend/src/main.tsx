@@ -27,12 +27,9 @@ import "./sidebar-utilities.css";
 import "./compact-page-titles.css";
 import "./logo-top-right.css";
 import "./site-generator-fix.css";
-import "./video-route-theme.css";
 import "./budget-dialog-policy.css";
-import "./leads-table-fix.css";
 import "./mobile-floating-controls.css";
 import "./jarvis-mobile.css";
-import "./modules/arqdor/theme/arqdor-theme.css";
 import { setupApiClient } from "./lib/api";
 import { installVisitorTelemetry } from "./lib/visitorIntelligence";
 
@@ -180,6 +177,32 @@ const tenantSiteMatch = hostname.match(/^([a-z0-9-]+)\.appvendorai\.com$/);
 const isAppHost = hostname === "app.appvendorai.com" || /^[a-z0-9-]+\.app\.appvendorai\.com$/.test(hostname);
 const tenantSlugForSite = isAppHost ? null : (tenantSiteMatch?.[1] ?? null);
 
+function RouteScopedStyles() {
+  const [location] = useLocation();
+
+  useEffect(() => {
+    const pathname = location.split("?")[0] || "/";
+
+    if (pathname.startsWith("/content-studio/video")) {
+      void import("./video-route-theme.css");
+    }
+
+    if (pathname.startsWith("/leads") || pathname.startsWith("/trabalho")) {
+      void import("./leads-table-fix.css");
+    }
+
+    if (
+      pathname.startsWith("/arch") ||
+      pathname.startsWith("/tour/arqdor") ||
+      pathname.startsWith("/projeto/")
+    ) {
+      void import("./modules/arqdor/theme/arqdor-theme.css");
+    }
+  }, [location]);
+
+  return null;
+}
+
 function CanonicalMarketingRouteBridge() {
   const [location] = useLocation();
 
@@ -283,6 +306,7 @@ createRoot(document.getElementById("root")!).render(
         ) : (
           <>
             <FrontendRecoveryGuard />
+            <RouteScopedStyles />
             <VideoRouteThemeGate />
             <CanonicalMarketingRouteBridge />
             <App />
