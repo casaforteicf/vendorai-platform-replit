@@ -167,7 +167,14 @@ for (const file of files) {
   for (const m of source.matchAll(/\bon[A-Z][A-Za-z0-9_]*\s*=\s*\{\s*\([^)]*\)\s*=>\s*\{\s*\}\s*\}/g)) add("HIGH", "noop-callback-prop", file, m.index, source, "Callback de interação foi conectado a uma função vazia.");
   for (const m of source.matchAll(/href\s*=\s*["\']#["\']/g)) add("BLOCKER", "hash-link", file, m.index, source, "Link aponta para # e não executa navegação real.");
   for (const m of source.matchAll(/disabled\s*=\s*\{\s*true\s*\}/g)) add("HIGH", "hard-disabled", file, m.index, source, "Controle está permanentemente desabilitado.");
-  for (const m of source.matchAll(/(?:em breve|coming soon|not implemented|não implementad[oa]|funcionalidade indisponível)/gi)) add("MEDIUM", "unfinished-copy", file, m.index, source, "Texto sugere função/tela incompleta.");
+  const unfinishedPatterns = [
+    /(?:coming soon|not (?:yet )?implemented|não implementad[oa]|funcionalidade indisponível)/gi,
+    /(?:disponível|integração|recurso|função|funcionalidade|suporte|export(?:ação)?|import(?:ação)?)\s+(?:em breve|brevemente)/gi,
+    /(?:em breve|brevemente)\s+(?:disponível|integrado|implementado|suportado)/gi,
+  ];
+  for (const re of unfinishedPatterns) {
+    for (const m of source.matchAll(re)) add("MEDIUM", "unfinished-copy", file, m.index, source, "Texto sugere função/tela incompleta.");
+  }
 
   for (const formMatch of source.matchAll(/<form\b[\s\S]*?<\/form>/gi)) {
     const formSource = formMatch[0];
