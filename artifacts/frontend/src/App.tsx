@@ -1,9 +1,9 @@
 import * as React from "react";
-import AppLegacy from "./AppLegacy";
-import AppRuntimeShell from "@/pages/app-runtime/AppRuntimeShell";
 import "./dev-agent-mobile.css";
 import "./video-studio-modern.css";
 
+const AppLegacy = React.lazy(() => import("./AppLegacy"));
+const AppRuntimeShell = React.lazy(() => import("@/pages/app-runtime/AppRuntimeShell"));
 const DevAgentOverlay = React.lazy(() => import("@/components/admin/DevAgentOverlay"));
 
 const GET_FETCH_TIMEOUT_MS = 15_000;
@@ -364,7 +364,13 @@ export default function App() {
     return () => window.clearInterval(timer);
   }, [devRequested, devFailed]);
 
-  if (appId) return <AppRuntimeShell appId={appId} />;
+  if (appId) {
+    return (
+      <React.Suspense fallback={null}>
+        <AppRuntimeShell appId={appId} />
+      </React.Suspense>
+    );
+  }
 
   const openDevAgent = async () => {
     if (devLoading) return;
@@ -379,7 +385,9 @@ export default function App() {
 
   return (
     <>
-      <AppLegacy />
+      <React.Suspense fallback={null}>
+        <AppLegacy />
+      </React.Suspense>
 
       {catalogPreviewEnabled && (
         <style>{`[role="dialog"] img:not([data-no-preview="true"]) { cursor: zoom-in; }`}</style>
