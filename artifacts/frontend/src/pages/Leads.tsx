@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { lazy, Suspense, useCallback, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { getSegmentHints } from "@/lib/segmentHints";
@@ -18,9 +18,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ActiveLeadProcesses, type ActiveWorkCard } from "@/components/ActiveLeadProcesses";
-import { NewLeadDialog } from "@/components/NewLeadDialog";
-import { LeadQuickEditButton } from "@/components/LeadQuickEditButton";
+import type { ActiveWorkCard } from "@/components/ActiveLeadProcesses";
 import {
   Search,
   ChevronRight,
@@ -72,6 +70,10 @@ import {
 } from "@/components/ui/tooltip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+
+const ActiveLeadProcesses = lazy(() => import("@/components/ActiveLeadProcesses").then((m) => ({ default: m.ActiveLeadProcesses })));
+const NewLeadDialog = lazy(() => import("@/components/NewLeadDialog").then((m) => ({ default: m.NewLeadDialog })));
+const LeadQuickEditButton = lazy(() => import("@/components/LeadQuickEditButton").then((m) => ({ default: m.LeadQuickEditButton })));
 
 const LEAD_STATUSES = [
   { value: "novo", label: "Novo" },
@@ -812,15 +814,17 @@ export default function Leads() {
             </DialogContent>
           </Dialog>
 
-          <NewLeadDialog
-            tenantId={tenantId}
-            token={token}
-            isAdmin={isAdmin}
-            leads={leads ?? []}
-            companyPlaceholder={hints.leadEmpresaPlaceholder}
-            objectivePlaceholder={hints.leadObjetivoPlaceholder}
-            onNavigate={setLocation}
-          />
+          <Suspense fallback={null}>
+            <NewLeadDialog
+              tenantId={tenantId}
+              token={token}
+              isAdmin={isAdmin}
+              leads={leads ?? []}
+              companyPlaceholder={hints.leadEmpresaPlaceholder}
+              objectivePlaceholder={hints.leadObjetivoPlaceholder}
+              onNavigate={setLocation}
+            />
+          </Suspense>
         </div>
       </div>
 
@@ -966,18 +970,20 @@ export default function Leads() {
                           </Badge>
                           <BriefingBadge briefing={briefingMap.get(lead.id)} />
                           {churnBadge(ci?.churnRisk, ci?.churnReasons)}
-                          <ActiveLeadProcesses
-                            processes={overview?.activeProcessesByLeadId?.[lead.id]}
-                            workCards={activeWorkCards}
-                            onOpenDeal={(dealId) => setLocation(`/trabalho/${lead.id}?dealId=${encodeURIComponent(dealId)}`)}
-                          />
+                          <Suspense fallback={null}>
+                            <ActiveLeadProcesses
+                              processes={overview?.activeProcessesByLeadId?.[lead.id]}
+                              workCards={activeWorkCards}
+                              onOpenDeal={(dealId) => setLocation(`/trabalho/${lead.id}?dealId=${encodeURIComponent(dealId)}`)}
+                            />
+                          </Suspense>
                           {leadValorMap.get(lead.id) && (
                             <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-xs font-mono">{formatCurrency(leadValorMap.get(lead.id))}</Badge>
                           )}
                         </div>
                       </div>
 
-                      <LeadQuickEditButton lead={lead} isAdmin={isAdmin} compact />
+                      <Suspense fallback={null}><LeadQuickEditButton lead={lead} isAdmin={isAdmin} compact /></Suspense>
                       {isAdmin && (
                         <button
                           type="button"
@@ -1106,7 +1112,7 @@ export default function Leads() {
                             </TableCell>
                             <TableCell>
                               <span className="flex items-center justify-end gap-1">
-                                <LeadQuickEditButton lead={lead} isAdmin={isAdmin} compact />
+                                <Suspense fallback={null}><LeadQuickEditButton lead={lead} isAdmin={isAdmin} compact /></Suspense>
                                 {isAdmin && (
                                   <button
                                     type="button"
