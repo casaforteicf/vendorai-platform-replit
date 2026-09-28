@@ -361,17 +361,37 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     }
   }
 
-  function copyPublicLink(publicToken: string | null | undefined) {
-    if (!publicToken) {
-      toast({ title: "Link público não disponível para esta proposta", variant: "destructive" });
-      return;
+  async function copyPublicLink(propostaId: string, currentPublicToken: string | null | undefined) {
+    try {
+      let publicToken = currentPublicToken;
+
+      // Propostas legadas podem ainda não ter token. Nesse caso o backend cria
+      // e persiste um token exclusivo para ESTA proposta, sem reutilizar o link
+      // de qualquer outra versão ou revisão.
+      if (!publicToken) {
+        const res = await fetch(api(`/api/propostas/${propostaId}/public-link`), {
+          method: "POST",
+          headers,
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok || !body.publicToken) {
+          throw new Error(body.error ?? "Não foi possível gerar o link público desta proposta.");
+        }
+        publicToken = body.publicToken as string;
+        queryClient.invalidateQueries({ queryKey: ["listLeadProposals", leadId] });
+        queryClient.invalidateQueries({ queryKey: ["listPropostas", tenantId] });
+      }
+
+      const url = `${window.location.origin}/p/${publicToken}`;
+      await navigator.clipboard.writeText(url).catch(() => undefined);
+      toast({ title: "Link público exclusivo copiado!", description: url });
+    } catch (e: any) {
+      toast({
+        title: "Não foi possível gerar o link público",
+        description: e?.message,
+        variant: "destructive",
+      });
     }
-    const url = `${window.location.origin}/p/${publicToken}`;
-    navigator.clipboard.writeText(url).then(() => {
-      toast({ title: "Link copiado para a área de transferência!" });
-    }).catch(() => {
-      toast({ title: `Link: ${url}` });
-    });
   }
 
   const ORCAMENTO_LABELS = [
@@ -2324,7 +2344,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                         variant="ghost"
                         className="h-7 w-7 text-blue-500 hover:text-blue-700 hover:bg-blue-50"
                         title="Copiar link público"
-                        onClick={() => copyPublicLink((p as any).publicToken)}
+                        onClick={() => copyPublicLink(p.id, (p as any).publicToken)}
                       >
                         <Link2 className="h-3.5 w-3.5" />
                       </Button>
