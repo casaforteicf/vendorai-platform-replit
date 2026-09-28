@@ -173,6 +173,9 @@ type ProposalBudgetRevision = {
 
 type ProposalPresentationMode = "completo" | "resumo_etapa" | "preco_medio";
 type ProposalPresentationFormat = "site_interativo" | "documento" | "hibrido";
+type ProposalHouseStyle = "moderna" | "contemporanea" | "minimalista" | "classica" | "industrial";
+type ProposalHouseStandard = "medio" | "alto_padrao" | "luxo";
+type ProposalHouseType = "terrea" | "sobrado";
 
 const PROPOSAL_PRESENTATION_OPTIONS: Array<{
   value: ProposalPresentationMode;
@@ -223,6 +226,10 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const [selectedOrcamentoId, setSelectedOrcamentoId] = useState<string>("__none__");
   const [proposalPresentationFormat, setProposalPresentationFormat] =
     useState<ProposalPresentationFormat>("site_interativo");
+  const [proposalHouseStyle, setProposalHouseStyle] = useState<ProposalHouseStyle>("contemporanea");
+  const [proposalHouseStandard, setProposalHouseStandard] = useState<ProposalHouseStandard>("alto_padrao");
+  const [proposalHouseType, setProposalHouseType] = useState<ProposalHouseType>("sobrado");
+  const [proposalVisualElements, setProposalVisualElements] = useState<string[]>(["piscina", "paisagismo", "pedra natural", "madeira", "esquadrias amplas"]);
   const [proposalPresentationDefaultMode, setProposalPresentationDefaultMode] =
     useState<ProposalPresentationMode>("completo");
   const [proposalPresentationStageModes, setProposalPresentationStageModes] =
@@ -617,6 +624,10 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
           userActionId,
           regenerate,
           confirmRegenerate: regenerate,
+          estiloCasa: proposalHouseStyle,
+          padraoCasa: proposalHouseStandard,
+          tipoCasa: proposalHouseType,
+          elementosVisuais: proposalVisualElements,
         }),
       });
       const body = await response.json().catch(() => ({}));
@@ -657,6 +668,10 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
 
     if (value === "__none__") {
       setProposalPresentationFormat("site_interativo");
+      setProposalHouseStyle("contemporanea");
+      setProposalHouseStandard("alto_padrao");
+      setProposalHouseType("sobrado");
+      setProposalVisualElements(["piscina", "paisagismo", "pedra natural", "madeira", "esquadrias amplas"]);
       setProposalPresentationDefaultMode("completo");
       setProposalShowTechnicalDetails(true);
       setProposalShowGrandTotal(true);
@@ -670,6 +685,25 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
       presentation?.formato === "documento" || presentation?.formato === "hibrido"
         ? presentation.formato
         : "site_interativo",
+    );
+    setProposalHouseStyle(
+      presentation?.estiloCasa === "moderna"
+      || presentation?.estiloCasa === "minimalista"
+      || presentation?.estiloCasa === "classica"
+      || presentation?.estiloCasa === "industrial"
+        ? presentation.estiloCasa
+        : "contemporanea",
+    );
+    setProposalHouseStandard(
+      presentation?.padraoCasa === "medio" || presentation?.padraoCasa === "luxo"
+        ? presentation.padraoCasa
+        : "alto_padrao",
+    );
+    setProposalHouseType(presentation?.tipoCasa === "terrea" ? "terrea" : "sobrado");
+    setProposalVisualElements(
+      Array.isArray(presentation?.elementosVisuais)
+        ? presentation.elementosVisuais.filter((item: unknown): item is string => typeof item === "string" && item.trim().length > 0)
+        : ["piscina", "paisagismo", "pedra natural", "madeira", "esquadrias amplas"],
     );
     setProposalPresentationDefaultMode(normalizeProposalPresentationMode(presentation?.modoPadrao));
     setProposalPresentationStageModes(
@@ -713,6 +747,10 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   function currentProposalPresentation() {
     return {
       formato: proposalPresentationFormat,
+      estiloCasa: proposalHouseStyle,
+      padraoCasa: proposalHouseStandard,
+      tipoCasa: proposalHouseType,
+      elementosVisuais: proposalVisualElements,
       modoPadrao: proposalPresentationDefaultMode,
       etapas: proposalPresentationStageModes,
       mostrarDetalhamentoTecnico: proposalShowTechnicalDetails,
@@ -2125,6 +2163,64 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                             ? "Portal do Cliente interativo com opção de impressão/PDF."
                             : "Modelo tradicional em páginas, otimizado para impressão e PDF."}
                       </p>
+                    </div>
+                    <div className="space-y-2 lg:col-span-3 rounded-xl border bg-background p-3">
+                      <div>
+                        <p className="text-xs font-semibold">Estilo visual da casa</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          Essas escolhas orientam a capa e todas as imagens das etapas. Para CasaForteICF, o padrão recomendado é alto padrão.
+                        </p>
+                      </div>
+                      <div className="grid gap-2 md:grid-cols-3">
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-medium text-muted-foreground">Estilo</label>
+                          <Select value={proposalHouseStyle} onValueChange={(value) => setProposalHouseStyle(value as ProposalHouseStyle)}>
+                            <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="contemporanea">Contemporânea</SelectItem>
+                              <SelectItem value="moderna">Moderna</SelectItem>
+                              <SelectItem value="minimalista">Minimalista</SelectItem>
+                              <SelectItem value="classica">Clássica</SelectItem>
+                              <SelectItem value="industrial">Industrial</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-medium text-muted-foreground">Padrão</label>
+                          <Select value={proposalHouseStandard} onValueChange={(value) => setProposalHouseStandard(value as ProposalHouseStandard)}>
+                            <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="medio">Médio</SelectItem>
+                              <SelectItem value="alto_padrao">Alto padrão</SelectItem>
+                              <SelectItem value="luxo">Luxo</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-medium text-muted-foreground">Tipologia</label>
+                          <Select value={proposalHouseType} onValueChange={(value) => setProposalHouseType(value as ProposalHouseType)}>
+                            <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="terrea">Casa térrea</SelectItem>
+                              <SelectItem value="sobrado">Sobrado</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-medium text-muted-foreground">Elementos desejados</label>
+                        <Input
+                          value={proposalVisualElements.join(", ")}
+                          onChange={(e) => setProposalVisualElements(
+                            e.target.value.split(",").map((item) => item.trim()).filter(Boolean).slice(0, 12),
+                          )}
+                          placeholder="Ex.: piscina, paisagismo, pedra natural, madeira, esquadrias amplas"
+                          className="h-9"
+                        />
+                        <p className="text-[10px] text-muted-foreground">
+                          Separe por vírgulas. A IA deve manter essa linguagem visual em todas as imagens, sem trocar o assunto técnico da etapa.
+                        </p>
+                      </div>
                     </div>
                     <div className="space-y-1.5 lg:col-span-3">
                       <label className="text-xs font-medium text-muted-foreground">Área total construída</label>
