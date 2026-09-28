@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, desc, sql } from "drizzle-orm";
+import { and, eq, desc, like, or, sql } from "drizzle-orm";
 import {
   db,
   orcamentoRevisoesTable,
@@ -72,7 +72,11 @@ router.post("/tenants/:tenantId/leads/:leadId/orcamento-revisoes", async (req, r
     .where(and(
       eq(orcamentoRevisoesTable.tenantId, tenantId),
       eq(orcamentoRevisoesTable.leadId, leadId),
-      eq(orcamentoRevisoesTable.basePropostaId, baseProposta.id),
+      or(
+        eq(orcamentoRevisoesTable.basePropostaId, baseProposta.id),
+        eq(orcamentoRevisoesTable.numeroOrcamento, baseNumero),
+        like(orcamentoRevisoesTable.numeroOrcamento, `${baseNumero}-R%`),
+      ),
     ));
 
   const revisionNumber = (revisionCount[0]?.count ?? 0) + 1;
@@ -140,7 +144,9 @@ router.patch("/tenants/:tenantId/leads/:leadId/orcamento-revisoes/:id", async (r
   const leadId = String(req.params.leadId);
   if (!hasAccess(req, tenantId)) return res.status(403).json({ error: "Acesso negado" });
 
-  const parsed = updateOrcamentoRevisaoSchema.safeParse(req.body);
+  const parsed = updateOrcamentoRevisaoSchema
+    .omit({ basePropostaId: true, propostaRevisaoId: true, revisaoNumero: true })
+    .safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
 
   const [updated] = await db
@@ -178,6 +184,14 @@ router.delete("/tenants/:tenantId/leads/:leadId/orcamento-revisoes/:id", async (
   if (!row) return res.status(404).json({ error: "Revisão não encontrada." });
 
   await db.delete(orcamentoRevisoesTable).where(eq(orcamentoRevisoesTable.id, row.id));
+  if (row.propostaRevisaoId) {
+    await db
+      .delete(propostasTable)
+      .where(and(
+        eq(propostasTable.id, row.propostaRevisaoId),
+        eq(propostasTable.tenantId, tenantId),
+      ));
+  }
   return res.json({ success: true });
 });
 
