@@ -127,6 +127,7 @@ export const propostaApresentacaoSchema = z.object({
   amortizacaoEntradaPercentual: z.number().min(0).max(100).default(0),
   mostrarAmortizacaoEntrada: z.boolean().default(true),
   mostrarPortalCliente: z.boolean().default(true),
+  areaTotalConstruida: z.number().positive().optional(),
 });
 
 export type PropostaApresentacao = z.infer<typeof propostaApresentacaoSchema>;
