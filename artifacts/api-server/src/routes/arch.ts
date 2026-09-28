@@ -79,6 +79,7 @@ import { searchPolyHavenModels, resolvePolyHavenModel } from "../lib/arqdor/poly
 import { buildArchitecturalStrategyRepertoire } from "../lib/arqdor-architecture-strategies.js";
 import { buildArchitecturalProjectStrategy } from "../lib/arqdor-project-strategy.js";
 import { evaluateProjectMasterAcceptance } from "../lib/arqdor-project-master-validation.js";
+import { buildConceptDxf, conceptDxfFilename } from "../lib/arqdor-concept-dxf.js";
 
 function sanitizeAIError(err: any): { status: number; message: string } {
   const raw: string = err?.message ?? String(err ?? "");
@@ -1008,6 +1009,40 @@ router.delete("/arch/concept-projects/:id", authenticate, async (req, res) => {
     );
 
   return res.json({ ok: true });
+});
+
+router.get("/arch/concept-projects/:id/export/dxf", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const userId = req.user?.sub;
+  const id = String(req.params.id);
+  if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
+
+  const [concept] = await db
+    .select()
+    .from(archConceptProjectsTable)
+    .where(
+      and(
+        eq(archConceptProjectsTable.id, id),
+        eq(archConceptProjectsTable.tenantId, tid),
+        eq(archConceptProjectsTable.ownerUserId, userId),
+      ),
+    )
+    .limit(1);
+
+  if (!concept) return res.status(404).json({ error: "Pré-projeto não encontrado." });
+
+  const config = (concept.configuration ?? {}) as Record<string, unknown>;
+  const dxf = buildConceptDxf({
+    title: concept.title,
+    rooms: Array.isArray(concept.rooms) ? concept.rooms as any[] : [],
+    customWalls: Array.isArray(config.customWalls) ? config.customWalls as any[] : [],
+    customOpenings: Array.isArray(config.customOpenings) ? config.customOpenings as any[] : [],
+  });
+
+  res.setHeader("Content-Type", "application/dxf; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${conceptDxfFilename(concept.title)}"`);
+  res.setHeader("Cache-Control", "private, no-store");
+  return res.status(200).send(dxf);
 });
 
 router.get("/arch/concept-projects/:id", authenticate, async (req, res) => {
