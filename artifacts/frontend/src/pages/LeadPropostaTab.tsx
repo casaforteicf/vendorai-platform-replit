@@ -172,6 +172,7 @@ type ProposalBudgetRevision = {
 };
 
 type ProposalPresentationMode = "completo" | "resumo_etapa" | "preco_medio";
+type ProposalPresentationFormat = "site_interativo" | "documento" | "hibrido";
 
 const PROPOSAL_PRESENTATION_OPTIONS: Array<{
   value: ProposalPresentationMode;
@@ -220,6 +221,8 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const [activeVersion, setActiveVersion] = useState<number | null>(null);
   const [showProducts, setShowProducts] = useState(false);
   const [selectedOrcamentoId, setSelectedOrcamentoId] = useState<string>("__none__");
+  const [proposalPresentationFormat, setProposalPresentationFormat] =
+    useState<ProposalPresentationFormat>("site_interativo");
   const [proposalPresentationDefaultMode, setProposalPresentationDefaultMode] =
     useState<ProposalPresentationMode>("completo");
   const [proposalPresentationStageModes, setProposalPresentationStageModes] =
@@ -653,6 +656,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     setSelectedStageImageIds([]);
 
     if (value === "__none__") {
+      setProposalPresentationFormat("site_interativo");
       setProposalPresentationDefaultMode("completo");
       setProposalShowTechnicalDetails(true);
       setProposalShowGrandTotal(true);
@@ -662,6 +666,11 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
 
     const budget = proposalBudgetOptions.find((orc) => orc.id === value);
     const presentation = budget?.apresentacao;
+    setProposalPresentationFormat(
+      presentation?.formato === "documento" || presentation?.formato === "hibrido"
+        ? presentation.formato
+        : "site_interativo",
+    );
     setProposalPresentationDefaultMode(normalizeProposalPresentationMode(presentation?.modoPadrao));
     setProposalPresentationStageModes(
       presentation?.etapas && typeof presentation.etapas === "object"
@@ -703,6 +712,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
 
   function currentProposalPresentation() {
     return {
+      formato: proposalPresentationFormat,
       modoPadrao: proposalPresentationDefaultMode,
       etapas: proposalPresentationStageModes,
       mostrarDetalhamentoTecnico: proposalShowTechnicalDetails,
@@ -2089,6 +2099,29 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                   </div>
 
                   <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-end">
+                    <div className="space-y-1.5 lg:col-span-3">
+                      <label className="text-xs font-medium text-muted-foreground">Formato da proposta</label>
+                      <Select
+                        value={proposalPresentationFormat}
+                        onValueChange={(value) => setProposalPresentationFormat(value as ProposalPresentationFormat)}
+                      >
+                        <SelectTrigger className="h-9 w-full max-w-[360px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="site_interativo">Site interativo</SelectItem>
+                          <SelectItem value="documento">Documento / PDF</SelectItem>
+                          <SelectItem value="hibrido">Híbrido — site + PDF</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-[11px] text-muted-foreground">
+                        {proposalPresentationFormat === "site_interativo"
+                          ? "Link público em formato de microsite responsivo e interativo."
+                          : proposalPresentationFormat === "hibrido"
+                            ? "Link público interativo com opção de impressão/PDF."
+                            : "Modelo tradicional em páginas, otimizado para impressão e PDF."}
+                      </p>
+                    </div>
                     <div className="space-y-1.5 lg:col-span-3">
                       <label className="text-xs font-medium text-muted-foreground">Área total construída</label>
                       <div className="relative max-w-[240px]">
