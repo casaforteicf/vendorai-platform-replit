@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -107,21 +108,35 @@ export function InstagramGrowthPanel() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadedFor, setLoadedFor] = useState("");
+  const [instagramConnectionId, setInstagramConnectionId] = useState("");
+  const [instagramAccounts, setInstagramAccounts] = useState<Array<{ id: string; username?: string | null }>>([]);
 
   async function load() {
     if (!tenantId || !token) return;
     setLoading(true);
     try {
       const headers = { Authorization: `Bearer ${token}` };
-      const [overviewResponse, postsResponse, learningResponse] = await Promise.all([
+      const [overviewResponse, postsResponse, learningResponse, connectionsResponse] = await Promise.all([
         fetch(`/api/tenants/${tenantId}/meta-growth/overview`, { headers }),
         fetch(`/api/tenants/${tenantId}/content-performance/posts`, { headers }),
         fetch(`/api/tenants/${tenantId}/content-performance/insights`, { headers }),
+        fetch(`/api/tenants/${tenantId}/instagram-connection`, { headers, cache: "no-store" }),
       ]);
       if (!overviewResponse.ok || !postsResponse.ok || !learningResponse.ok) throw new Error("Não foi possível carregar o Instagram Growth.");
       setOverview(await overviewResponse.json() as GrowthOverview);
       setPosts(await postsResponse.json() as PublishedPost[]);
       setLearning(await learningResponse.json() as Learning | null);
+      if (connectionsResponse.ok) {
+        const payload = await connectionsResponse.json() as {
+          id?: string;
+          connections?: Array<{ id: string; username?: string | null }>;
+        };
+        const accounts = payload.connections ?? [];
+        setInstagramAccounts(accounts);
+        if (!instagramConnectionId && (payload.id || accounts[0]?.id)) {
+          setInstagramConnectionId(payload.id || accounts[0]!.id);
+        }
+      }
     } catch (cause) {
       toast({ title: "Instagram Growth indisponível", description: cause instanceof Error ? cause.message : "Falha ao carregar dados.", variant: "destructive" });
     } finally {
@@ -191,7 +206,7 @@ export function InstagramGrowthPanel() {
     setRefreshing(true);
     try {
       const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
-      const metricsResponse = await fetch(`/api/tenants/${tenantId}/content-performance/posts/atualizar-metricas`, { method: "POST", headers });
+      const metricsResponse = await fetch(`/api/tenants/${tenantId}/content-performance/posts/atualizar-metricas`, { method: "POST", headers, body: JSON.stringify(instagramConnectionId ? { instagramConnectionId } : {}) });
       const payload = await metricsResponse.json().catch(() => ({})) as { error?: string; atualizados?: number; erros?: number };
       if (!metricsResponse.ok) throw new Error(payload.error || "Não foi possível atualizar as métricas.");
       await fetch(`/api/tenants/${tenantId}/content-performance/insights/atualizar`, { method: "POST", headers }).catch(() => null);
@@ -215,9 +230,25 @@ export function InstagramGrowthPanel() {
             <div className="flex items-center gap-2"><Sparkles className="h-4 w-4" /><CardTitle className="text-base">Instagram Growth</CardTitle></div>
             <p className="mt-1 text-xs text-muted-foreground">Transforma Insights, conteúdo e CRM em próximas ações para crescer audiência e gerar conversas.</p>
           </div>
-          <Button size="sm" variant="outline" onClick={() => void refreshMetrics()} disabled={refreshing}>
-            {refreshing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}Atualizar métricas
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {instagramAccounts.length > 1 ? (
+              <Select value={instagramConnectionId} onValueChange={setInstagramConnectionId}>
+                <SelectTrigger className="h-9 min-w-[170px]">
+                  <SelectValue placeholder="Conta do Instagram" />
+                </SelectTrigger>
+                <SelectContent>
+                  {instagramAccounts.map((account, index) => (
+                    <SelectItem key={account.id} value={account.id}>
+                      @{account.username || "instagram"}{index === 0 ? " · principal" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : null}
+            <Button size="sm" variant="outline" onClick={() => void refreshMetrics()} disabled={refreshing}>
+              {refreshing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}Atualizar métricas
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
