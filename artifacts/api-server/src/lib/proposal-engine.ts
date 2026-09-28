@@ -1030,6 +1030,8 @@ function renderConstructionProposalLayout(args: {
   const hero = json.hero || {};
   const meta = json.meta || {};
   const presentation = normalizeProposalPresentation(orcamento.apresentacao);
+  const interactive = presentation.formato === "site_interativo" || presentation.formato === "hibrido";
+  const hybrid = presentation.formato === "hibrido";
   const groupedItems = groupProposalPresentationItems(orcamento.itens);
   const calculatedTotal = orcamento.itens.reduce((sum, item) => sum + item.quantidade * item.valorUnitario, 0);
   const total = orcamento.valorTotal ? Number(orcamento.valorTotal) : calculatedTotal;
@@ -1200,6 +1202,7 @@ function renderConstructionProposalLayout(args: {
         <div><span>DURAÇÃO</span><strong>${row?.duration ? `${row.duration} dias` : "A definir"}</strong></div>
         <div><span>PESO FÍSICO</span><strong>${weight.toFixed(0)}%</strong></div>
       </div>
+      ${interactive ? `<button type="button" class="web-stage-toggle" onclick="this.closest('.stage-page').classList.toggle('web-open');this.textContent=this.closest('.stage-page').classList.contains('web-open')?'Ocultar detalhes':'Ver detalhes';">Ver detalhes</button>` : ""}
       ${builderModuleEnabled("escopo") && showTechnicalDetail ? `
         <h2 class="scope-title">O que está contemplado nesta etapa</h2>
         <table class="scope-table-demo">
@@ -1809,8 +1812,18 @@ function renderConstructionProposalLayout(args: {
   }
 </style>
 </head>
-<body>
-<section class="page cover">
+<body class="${interactive ? "web-interactive" : "document-layout"}">
+${interactive ? `
+<nav class="proposal-web-nav">
+  <div class="proposal-web-nav-inner">
+    <a class="proposal-web-brand" href="#inicio">${tenantLogoUrl ? `<img src="${escapeProposalText(tenantLogoUrl)}" alt="${escapeProposalText(company)}" />` : `<strong>${escapeProposalText(company)}</strong>`}</a>
+    <div class="proposal-web-links">
+      <a href="#visao-geral">Visão geral</a><a href="#etapas-obra">Etapas</a><a href="#cronograma-obra">Cronograma</a><a href="#condicoes-comerciais">Condições</a>
+    </div>
+    <div class="proposal-web-actions">${hybrid ? `<button type="button" onclick="window.print()">PDF / imprimir</button>` : ""}<a class="approve-link" href="#aceite-proposta">Aprovar proposta</a></div>
+  </div>
+</nav>` : ""}
+<section id="inicio" class="page cover">
   ${coverImage ? `<img class="cover-bg" src="${escapeProposalText(coverImage)}" alt="Projeto" onerror="this.style.display='none'" />` : ""}
   <div class="cover-shade"></div>
   <div class="cover-content">
@@ -1834,7 +1847,7 @@ function renderConstructionProposalLayout(args: {
   </div>
 </section>
 
-<section class="page">
+<section id="visao-geral" class="page">
   ${header("RESUMO EXECUTIVO", "Proposta integrada ao orçamento")}
   <h1 class="summary-heading">Visão geral da proposta</h1>
   <p class="summary-lead">Esta proposta reúne o investimento, o escopo contratado, o planejamento executivo e as condições comerciais em uma apresentação objetiva. O orçamento selecionado permanece como fonte de verdade para valores e serviços.</p>
@@ -1844,10 +1857,11 @@ function renderConstructionProposalLayout(args: {
   ${footer()}
 </section>
 
+${interactive ? `<div id="etapas-obra" class="web-section-anchor"></div>` : ""}
 ${stagePages}
 
 ${(builderModuleEnabled("cronograma") || builderModuleEnabled("fisico_financeiro")) ? `
-<section class="page">
+<section id="cronograma-obra" class="page">
   ${header("CRONOGRAMA", "Execução e físico-financeiro")}
   <h1 class="schedule-title">Cronograma de execução</h1>
   <p class="schedule-sub">Modelo com etapas independentes, dependências configuráveis e possibilidade de execução simultânea.</p>
@@ -1864,7 +1878,7 @@ ${(builderModuleEnabled("cronograma") || builderModuleEnabled("fisico_financeiro
   ${footer()}
 </section>` : ""}
 
-<section class="page">
+<section id="condicoes-comerciais" class="page">
   ${header("CONDIÇÕES COMERCIAIS", "Modelo final")}
   <h1 class="conditions-title">Condições comerciais</h1>
   ${exclusionsHtml}
