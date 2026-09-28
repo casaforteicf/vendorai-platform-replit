@@ -1001,10 +1001,17 @@ function renderConstructionProposalLayout(args: {
       <span>${orcamento.numero ? escapeProposalText(orcamento.numero) : escapeProposalText(company)}</span>
     </div>`;
 
+  const totalPhases = scheduleRows.reduce((sum, row) => sum + (row.phases?.length ?? 0), 0);
+  const entryValue = total * (presentation.entradaPercentual / 100);
+  const contractBalanceAfterEntry = Math.max(0, total - entryValue);
+
   const summaryCards = [
     { label: "Valor global", value: fmtBRL(total) },
     ...(estimatedDays > 0 ? [{ label: "Prazo estimado", value: `${estimatedDays} dias` }] : []),
-    { label: "Etapas", value: String(groupedItems.length) },
+    { label: "Etapas / fases", value: totalPhases > 0 ? `${groupedItems.length} / ${totalPhases}` : String(groupedItems.length) },
+    ...(presentation.entradaPercentual > 0 ? [{ label: "Entrada / adiantamento", value: `${presentation.entradaPercentual.toFixed(2)}% · ${fmtBRL(entryValue)}` }] : []),
+    ...(presentation.entradaPercentual > 0 ? [{ label: "Saldo contratual após entrada", value: fmtBRL(contractBalanceAfterEntry) }] : []),
+    ...(presentation.previsaoInicio ? [{ label: "Início previsto", value: proposalFormatDate(presentation.previsaoInicio) }] : []),
   ];
 
   const summaryCardsHtml = summaryCards.map((item) => `
@@ -1025,6 +1032,24 @@ function renderConstructionProposalLayout(args: {
         <td class="scope-name">${escapeProposalText(item.nome)}</td>
         <td>${proposalScopeDescription(item)}</td>
       </tr>`).join("");
+
+    const phaseTable = row?.phases?.length
+      ? `
+        <div class="phase-block">
+          <h2 class="scope-title">Fases de execução e medição</h2>
+          <table class="phase-table">
+            <thead><tr><th>Fase</th><th>Início</th><th>Término</th><th class="r">Peso físico</th><th class="r">Valor</th></tr></thead>
+            <tbody>${row.phases.map((phase) => `
+              <tr>
+                <td><strong>${escapeProposalText(phase.nome.replace(`${row.nome} · `, ""))}</strong></td>
+                <td>${phase.start ? proposalFormatDate(phase.start) : "A definir"}</td>
+                <td>${phase.end ? proposalFormatDate(phase.end) : "A definir"}</td>
+                <td class="r">${phase.physicalPercent.toFixed(1)}%</td>
+                <td class="r">${fmtBRL(phase.value)}</td>
+              </tr>`).join("")}</tbody>
+          </table>
+        </div>`
+      : "";
 
     const detailTable = builderModuleEnabled("tabela_itens", false) && financialMode !== "resumo_etapa"
       ? financialMode === "preco_medio"
@@ -1062,12 +1087,19 @@ function renderConstructionProposalLayout(args: {
         <div><span>DURAÇÃO</span><strong>${row?.duration ? `${row.duration} dias` : "A definir"}</strong></div>
         <div><span>PESO FÍSICO</span><strong>${weight.toFixed(0)}%</strong></div>
       </div>
+      ${row?.start || row?.end ? `
+        <div class="stage-period">
+          <div><span>INÍCIO PREVISTO</span><strong>${row?.start ? proposalFormatDate(row.start) : "A definir"}</strong></div>
+          <div><span>TÉRMINO PREVISTO</span><strong>${row?.end ? proposalFormatDate(row.end) : "A definir"}</strong></div>
+          <div><span>FASES</span><strong>${row?.phases?.length ?? 0}</strong></div>
+        </div>` : ""}
       ${builderModuleEnabled("escopo") && showTechnicalDetail ? `
         <h2 class="scope-title">O que está contemplado nesta etapa</h2>
         <table class="scope-table-demo">
           <thead><tr><th>Previsto</th><th>Breve descrição da atividade</th></tr></thead>
           <tbody>${scopeRows}</tbody>
         </table>` : ""}
+      ${phaseTable}
       ${detailTable}
       ${footer()}
     </section>`;
@@ -1105,6 +1137,8 @@ function renderConstructionProposalLayout(args: {
 
   const conditions = [
     ["VALOR GLOBAL", fmtBRL(total)],
+    ...(presentation.entradaPercentual > 0 ? [["ENTRADA / ADIANTAMENTO", `${presentation.entradaPercentual.toFixed(2)}% · ${fmtBRL(entryValue)}`]] : []),
+    ...(presentation.entradaPercentual > 0 ? [["AMORTIZAÇÃO DA ENTRADA", `${presentation.amortizacaoEntradaPercentual.toFixed(2)}% sobre cada medição bruta até quitação do saldo`]] : []),
     ["FORMA DE PAGAMENTO", orcamento.condPagamento || orcamento.formaPagamento || "Conforme cronograma físico-financeiro"],
     ...(orcamento.validadeAte ? [["VALIDADE DA PROPOSTA", proposalFormatDate(orcamento.validadeAte)]] : []),
     ...(presentation.previsaoInicio ? [["PREVISÃO DE INÍCIO", proposalFormatDate(presentation.previsaoInicio)]] : []),
@@ -1168,6 +1202,13 @@ function renderConstructionProposalLayout(args: {
   .stage-metrics > div { padding:6mm 6mm; }
   .stage-metrics span { display:block; color:${muted}; font-size:6pt; letter-spacing:.04em; margin-bottom:2mm; }
   .stage-metrics strong { display:block; font-size:12pt; }
+  .stage-period { display:grid; grid-template-columns:1fr 1fr 1fr; gap:3mm; margin:-4mm 0 7mm; padding:3.5mm 5mm; border-radius:2.5mm; background:${soft}; }
+  .stage-period span { display:block; color:${muted}; font-size:5.7pt; letter-spacing:.04em; margin-bottom:1mm; }
+  .stage-period strong { font-size:8pt; }
+  .phase-block { margin:6mm 0 2mm; }
+  .phase-table { width:100%; border-collapse:collapse; font-size:7pt; margin-bottom:5mm; }
+  .phase-table th { background:#f3f4f6; color:#6b7280; text-align:left; font-weight:600; padding:2.5mm; border:1px solid ${line}; }
+  .phase-table td { padding:3mm 2.5mm; border:1px solid ${line}; vertical-align:top; }
   .scope-title { font-size:12pt; margin-bottom:2.5mm; }
   .scope-table-demo, .detail-table, .schedule-demo, .payment-demo { width:100%; border-collapse:collapse; font-size:7.3pt; }
   .scope-table-demo th, .detail-table th, .schedule-demo th, .payment-demo th { background:#f3f4f6; color:#6b7280; text-align:left; font-weight:600; padding:3mm 2.5mm; border:1px solid ${line}; }
@@ -1234,14 +1275,16 @@ function renderConstructionProposalLayout(args: {
 <section class="page">
   ${header("RESUMO EXECUTIVO", "Proposta integrada ao orçamento")}
   <h1 class="summary-heading">Visão geral da proposta</h1>
-  <p class="summary-lead">Este documento parte do orçamento e organiza o escopo por etapas, os valores contratados, o cronograma de execução e o cronograma físico-financeiro em uma única apresentação comercial.</p>
+  <p class="summary-lead">Este documento parte do orçamento oficial da obra e organiza escopo técnico, etapas, fases de execução e medição, valores contratados, cronograma executivo e fluxo físico-financeiro em uma única apresentação comercial. Após o aceite, estas informações formam a linha-base da obra.</p>
   <div class="metrics">${summaryCardsHtml}</div>
   <h2 class="organize-title">Como o documento está organizado</h2>
   <div class="organize-grid">
     <div class="organize-item"><b>01 · Escopo por etapa</b><p>Cada etapa reúne os itens e uma descrição objetiva do que está contemplado.</p></div>
     <div class="organize-item"><b>02 · Imagem representativa</b><p>Uma imagem visual acompanha cada etapa quando esse módulo estiver ativo.</p></div>
     <div class="organize-item"><b>03 · Cronograma integrado</b><p>As etapas podem ser sequenciais, defasadas ou executadas em paralelo conforme o planejamento.</p></div>
-    <div class="organize-item"><b>04 · Físico-financeiro</b><p>Os valores são distribuídos pelos períodos planejados de execução, preservando a linha de base contratada.</p></div>
+    <div class="organize-item"><b>04 · Físico-financeiro</b><p>Os valores são distribuídos pelos períodos planejados, separando valor bruto, amortização da entrada e líquido previsto.</p></div>
+    <div class="organize-item"><b>05 · Fases e medições</b><p>Quando uma etapa possuir fases, elas aparecem com datas, peso físico e valor para orientar a medição real da execução.</p></div>
+    <div class="organize-item"><b>06 · Portal do Cliente</b><p>Após o aceite, a mesma linha-base alimenta o acompanhamento de previsto × executado × medido × financeiro.</p></div>
   </div>
   ${footer()}
 </section>
