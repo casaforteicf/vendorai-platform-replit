@@ -1326,19 +1326,23 @@ export default function ConceptPlan2D({
           <g pointerEvents="none" aria-label="Prévia do traçado sugerido pela IA">
             {previewWalls
               .filter((wall) => wall.floor === activeFloor)
-              .map((wall) => (
-                <line
-                  key={wall.id}
-                  x1={wall.x1}
-                  y1={wall.y1}
-                  x2={wall.x2}
-                  y2={wall.y2}
-                  stroke="#0284c7"
-                  strokeWidth={Math.max(0.07, Math.min(0.18, wall.thickness ?? 0.12))}
-                  strokeDasharray="0.22 0.12"
-                  opacity={0.45 + Math.max(0, Math.min(1, wall.confidence ?? 0.5)) * 0.45}
-                />
-              ))}
+              .map((wall) => {
+                const confidence = Math.max(0, Math.min(1, wall.confidence ?? 0.5));
+                const needsReview = confidence < 0.65;
+                return (
+                  <line
+                    key={wall.id}
+                    x1={wall.x1}
+                    y1={wall.y1}
+                    x2={wall.x2}
+                    y2={wall.y2}
+                    stroke={needsReview ? "#f97316" : "#0284c7"}
+                    strokeWidth={Math.max(0.07, Math.min(0.18, wall.thickness ?? 0.12))}
+                    strokeDasharray={needsReview ? "0.12 0.09" : "0.22 0.12"}
+                    opacity={needsReview ? 0.92 : 0.55 + confidence * 0.35}
+                  />
+                );
+              })}
             {previewOpenings
               .filter((opening) => opening.floor === activeFloor)
               .map((opening) => {
@@ -1348,16 +1352,18 @@ export default function ConceptPlan2D({
                 const x = wall.x1 + (wall.x2 - wall.x1) * offset;
                 const y = wall.y1 + (wall.y2 - wall.y1) * offset;
                 const radius = opening.type === "door" ? 0.18 : 0.14;
+                const confidence = Math.max(0, Math.min(1, opening.confidence ?? 0.5));
+                const needsReview = confidence < 0.65;
                 return (
                   <g key={opening.id}>
                     <circle
                       cx={x}
                       cy={y}
                       r={radius}
-                      fill={opening.type === "door" ? "#16a34a" : "#7c3aed"}
-                      fillOpacity={0.85}
-                      stroke="#ffffff"
-                      strokeWidth="0.045"
+                      fill={needsReview ? "#f97316" : opening.type === "door" ? "#16a34a" : "#7c3aed"}
+                      fillOpacity={needsReview ? 0.95 : 0.85}
+                      stroke={needsReview ? "#7c2d12" : "#ffffff"}
+                      strokeWidth={needsReview ? "0.06" : "0.045"}
                     />
                     <text
                       x={x}
@@ -1365,7 +1371,7 @@ export default function ConceptPlan2D({
                       textAnchor="middle"
                       fontSize="0.18"
                       fontWeight="800"
-                      fill={opening.type === "door" ? "#166534" : "#6d28d9"}
+                      fill={needsReview ? "#9a3412" : opening.type === "door" ? "#166534" : "#6d28d9"}
                     >
                       {opening.type === "door" ? "P" : "J"}
                     </text>
