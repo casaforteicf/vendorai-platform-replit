@@ -976,6 +976,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [referencePlanMessage, setReferencePlanMessage] = useState<string | null>(null);
   const [referenceTraceState, setReferenceTraceState] = useState<"idle" | "loading" | "error" | "ready" | "applied">("idle");
   const [referenceTracePreview, setReferenceTracePreview] = useState<ReferenceTracePreview | null>(null);
+  const [selectedTraceElement, setSelectedTraceElement] = useState<{ kind: "wall" | "opening"; id: string } | null>(null);
   const [sourceFiles, setSourceFiles] = useState<ProjectSourceFile[]>([]);
   const [sourceFileState, setSourceFileState] = useState<"idle" | "uploading" | "error" | "success">("idle");
   const [sourceFileMessage, setSourceFileMessage] = useState<string | null>(null);
@@ -4105,6 +4106,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
     setReferencePlan(next);
     setReferenceTracePreview(null);
+    setSelectedTraceElement(null);
     setReferenceTraceState("idle");
     const saved = await saveConcept(4, undefined, { referencePlan: next });
     setReferencePlanMessage(saved ? "Calibração da referência salva." : "Não foi possível salvar a calibração.");
@@ -4130,6 +4132,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       const payload = await response.json().catch(() => ({})) as ReferenceTracePreview & { error?: string };
       if (!response.ok) throw new Error(payload.error ?? "Não foi possível interpretar a planta com IA.");
       setReferenceTracePreview(payload);
+      setSelectedTraceElement(null);
       setReferenceTraceState("ready");
       setReferencePlanMessage(
         `Leitura concluída: ${payload.walls.length} paredes e ${payload.openings.length} aberturas sugeridas · confiança ${Math.round(payload.confidence * 100)}%.`,
@@ -4138,6 +4141,43 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       setReferenceTraceState("error");
       setReferencePlanMessage(error instanceof Error ? error.message : "Falha ao interpretar a planta com IA.");
     }
+  };
+
+  const updateReferenceTraceWall = (wallId: string, patch: Partial<CustomWall>) => {
+    setReferenceTracePreview((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        walls: current.walls.map((wall) => wall.id === wallId ? { ...wall, ...patch } : wall),
+      };
+    });
+  };
+
+  const updateReferenceTraceOpening = (openingId: string, patch: Partial<CustomOpening>) => {
+    setReferenceTracePreview((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        openings: current.openings.map((opening) => opening.id === openingId ? { ...opening, ...patch } : opening),
+      };
+    });
+  };
+
+  const removeReferenceTraceWall = (wallId: string) => {
+    setReferenceTracePreview((current) => {
+      if (!current) return current;
+      const walls = current.walls.filter((wall) => wall.id !== wallId);
+      const openings = current.openings.filter((opening) => opening.wallId !== wallId);
+      return { ...current, walls, openings, canApply: walls.length > 0 };
+    });
+    setSelectedTraceElement((current) => current?.kind === "wall" && current.id === wallId ? null : current);
+  };
+
+  const removeReferenceTraceOpening = (openingId: string) => {
+    setReferenceTracePreview((current) => current
+      ? { ...current, openings: current.openings.filter((opening) => opening.id !== openingId) }
+      : current);
+    setSelectedTraceElement((current) => current?.kind === "opening" && current.id === openingId ? null : current);
   };
 
   const applyReferenceTrace = async () => {
@@ -8667,6 +8707,160 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         })()}
                         <div className="text-[10px] text-blue-800/75">
                           Azul = parede sugerida · verde/roxo = porta/janela · laranja = elemento que merece revisão antes de aplicar.
+                        </div>
+                        <div className="mt-2 rounded-lg border border-blue-200 bg-white/80 p-2">
+                          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <div className="font-semibold text-blue-950">Revisar traçado antes de aplicar</div>
+                              <div className="text-[10px] text-blue-800/75">Edite coordenadas, espessuras e aberturas. Excluir uma parede também remove suas portas e janelas sugeridas.</div>
+                            </div>
+                            {selectedTraceElement ? (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedTraceElement(null)}
+                                className="rounded-md border px-2 py-1 text-[10px] font-semibold"
+                              >
+                                Fechar edição
+                              </button>
+                            ) : null}
+                          </div>
+
+                          <div className="grid gap-2 lg:grid-cols-2">
+                            <details className="rounded-md border bg-background p-2" open>
+                              <summary className="cursor-pointer font-semibold text-slate-800">Paredes ({referenceTracePreview.walls.length})</summary>
+                              <div className="mt-2 max-h-56 space-y-2 overflow-auto pr-1">
+                                {referenceTracePreview.walls.map((wall, index) => {
+                                  const selected = selectedTraceElement?.kind === "wall" && selectedTraceElement.id === wall.id;
+                                  return (
+                                    <div key={wall.id} className={`rounded-md border p-2 ${selected ? "border-orange-300 bg-orange-50" : "bg-white"}`}>
+                                      <div className="flex items-center justify-between gap-2">
+                                        <button
+                                          type="button"
+                                          onClick={() => setSelectedTraceElement({ kind: "wall", id: wall.id })}
+                                          className="text-left font-semibold"
+                                        >
+                                          Parede {index + 1} · {Math.round((wall.confidence ?? 0.5) * 100)}%
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => removeReferenceTraceWall(wall.id)}
+                                          className="rounded border border-red-200 px-2 py-1 text-[10px] font-semibold text-red-700"
+                                        >
+                                          Excluir
+                                        </button>
+                                      </div>
+                                      {selected ? (
+                                        <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                                          {([
+                                            ["x1", wall.x1],
+                                            ["y1", wall.y1],
+                                            ["x2", wall.x2],
+                                            ["y2", wall.y2],
+                                            ["thickness", wall.thickness ?? 0.12],
+                                          ] as const).map(([key, value]) => (
+                                            <label key={key} className="text-[9px] font-semibold text-muted-foreground">
+                                              {key === "thickness" ? "Espessura" : key.toUpperCase()}
+                                              <input
+                                                type="number"
+                                                step="0.05"
+                                                min={key === "thickness" ? 0.05 : 0}
+                                                max={key === "x1" || key === "x2" ? lotWidth : key === "y1" || key === "y2" ? lotDepth : 1}
+                                                value={Number(value).toFixed(2)}
+                                                onChange={(event) => {
+                                                  const next = Number(event.currentTarget.value);
+                                                  if (Number.isFinite(next)) updateReferenceTraceWall(wall.id, { [key]: next });
+                                                }}
+                                                className="mt-1 h-7 w-full rounded border bg-background px-1.5 text-[10px]"
+                                              />
+                                            </label>
+                                          ))}
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </details>
+
+                            <details className="rounded-md border bg-background p-2" open>
+                              <summary className="cursor-pointer font-semibold text-slate-800">Portas e janelas ({referenceTracePreview.openings.length})</summary>
+                              <div className="mt-2 max-h-56 space-y-2 overflow-auto pr-1">
+                                {referenceTracePreview.openings.map((opening, index) => {
+                                  const selected = selectedTraceElement?.kind === "opening" && selectedTraceElement.id === opening.id;
+                                  return (
+                                    <div key={opening.id} className={`rounded-md border p-2 ${selected ? "border-orange-300 bg-orange-50" : "bg-white"}`}>
+                                      <div className="flex items-center justify-between gap-2">
+                                        <button
+                                          type="button"
+                                          onClick={() => setSelectedTraceElement({ kind: "opening", id: opening.id })}
+                                          className="text-left font-semibold"
+                                        >
+                                          {opening.type === "door" ? "Porta" : "Janela"} {index + 1} · {Math.round((opening.confidence ?? 0.5) * 100)}%
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => removeReferenceTraceOpening(opening.id)}
+                                          className="rounded border border-red-200 px-2 py-1 text-[10px] font-semibold text-red-700"
+                                        >
+                                          Excluir
+                                        </button>
+                                      </div>
+                                      {selected ? (
+                                        <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                                          <label className="text-[9px] font-semibold text-muted-foreground">
+                                            Tipo
+                                            <select
+                                              value={opening.type}
+                                              onChange={(event) => updateReferenceTraceOpening(opening.id, { type: event.currentTarget.value as "door" | "window" })}
+                                              className="mt-1 h-7 w-full rounded border bg-background px-1 text-[10px]"
+                                            >
+                                              <option value="door">Porta</option>
+                                              <option value="window">Janela</option>
+                                            </select>
+                                          </label>
+                                          <label className="text-[9px] font-semibold text-muted-foreground">
+                                            Posição %
+                                            <input
+                                              type="number"
+                                              min="0"
+                                              max="100"
+                                              step="1"
+                                              value={Math.round(opening.offset * 100)}
+                                              onChange={(event) => {
+                                                const next = Number(event.currentTarget.value);
+                                                if (Number.isFinite(next)) updateReferenceTraceOpening(opening.id, { offset: Math.max(0, Math.min(1, next / 100)) });
+                                              }}
+                                              className="mt-1 h-7 w-full rounded border bg-background px-1.5 text-[10px]"
+                                            />
+                                          </label>
+                                          {([
+                                            ["width", opening.width ?? 0.9, "Largura"],
+                                            ["height", opening.height ?? (opening.type === "door" ? 2.1 : 1.2), "Altura"],
+                                            ["sillHeight", opening.sillHeight ?? (opening.type === "window" ? 1 : 0), "Peitoril"],
+                                          ] as const).map(([key, value, label]) => (
+                                            <label key={key} className="text-[9px] font-semibold text-muted-foreground">
+                                              {label}
+                                              <input
+                                                type="number"
+                                                min="0"
+                                                step="0.05"
+                                                value={Number(value).toFixed(2)}
+                                                onChange={(event) => {
+                                                  const next = Number(event.currentTarget.value);
+                                                  if (Number.isFinite(next)) updateReferenceTraceOpening(opening.id, { [key]: next });
+                                                }}
+                                                className="mt-1 h-7 w-full rounded border bg-background px-1.5 text-[10px]"
+                                              />
+                                            </label>
+                                          ))}
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </details>
+                          </div>
                         </div>
                         {referenceTracePreview.warnings?.length ? (
                           <div className="text-amber-800">{referenceTracePreview.warnings.join(" ")}</div>
