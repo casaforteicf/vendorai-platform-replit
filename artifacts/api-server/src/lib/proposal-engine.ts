@@ -50,7 +50,7 @@ export async function callProposalAI(
         tenantId,
         "proposal_generator",
         userMessages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
-        { model: "claude-opus-4-8", maxTokens: 32000, system: PROPOSAL_SYSTEM_PROMPT },
+        { model: "claude-opus-4-8", maxTokens: 8000, system: PROPOSAL_SYSTEM_PROMPT },
       );
       return { content: result.content, provider: "anthropic", model: "claude-opus-4-8" };
     } catch (anthropicErr: any) {
@@ -68,7 +68,7 @@ export async function callProposalAI(
     tenantId,
     "proposal_generator",
     messages as Array<{ role: "user" | "assistant"; content: string }>,
-    { model: "gpt-4o", maxTokens: 16000 },
+    { model: "gpt-4o", maxTokens: 6000 },
   );
   return { content: result.content, provider: "openai", model: "gpt-4o" };
 }
@@ -243,7 +243,22 @@ export function buildProposalPrompt(ctx: {
     : "\nNenhum produto cadastrado.";
 
   const propostasBlock = ctx.propostas.length
-    ? `\n[CONTEXTO INTERNO — NÃO referencie estes valores no JSON gerado. Os orçamentos serão exibidos em seção separada.]\nOrçamentos vinculados ao lead:\n${ctx.propostas.map((p) => `- ${p.titulo}: R$ ${p.valorTotal || "?"}`).join("\n")}`
+    ? (() => {
+        const selected = ctx.propostas[0];
+        const rawItems = Array.isArray(selected.itens) ? selected.itens : [];
+        const scope = rawItems
+          .map((item: any) => {
+            const stage = item?.etapaNome ? String(item.etapaNome).trim() : "";
+            const name = item?.nome ? String(item.nome).trim() : "";
+            return [stage, name].filter(Boolean).join(" — ");
+          })
+          .filter(Boolean)
+          .slice(0, 40);
+        return `\n━━━ ORÇAMENTO SELECIONADO — FONTE DE VERDADE COMERCIAL ━━━
+Orçamento: ${selected.titulo}
+${scope.length ? `Escopo cadastrado no sistema:\n${scope.map((item) => `- ${item}`).join("\n")}` : "Use somente o escopo disponível no orçamento selecionado."}
+REGRA CRÍTICA: não invente, substitua, amplie ou remova serviços do orçamento. Não calcule preços, quantidades, cronograma ou condições comerciais. Esses dados serão inseridos diretamente pelo sistema a partir do orçamento, sem intervenção da IA.`;
+      })()
     : "";
 
   const briefingBlock = ctx.briefing
@@ -382,7 +397,7 @@ Retorne APENAS JSON válido — sem markdown, sem \`\`\`json, sem texto antes ou
 8. Se briefing existir, os problemas e implicações DEVEM refletir as respostas do briefing — não invente problemas que o cliente não mencionou.
 9. Cada campo de texto: máximo 2 frases curtas e diretas. Sem padding. Seja objetivo.
 10. Retorne APENAS JSON válido. Nada antes ou depois.
-11. NUNCA mencione valores monetários (R$, preços, custos, investimento, orçamento, "a partir de", "mensalidade") em NENHUM campo do JSON — nem no hero, nem no subheadline, nem em modules, nem em cta. Os valores financeiros serão exibidos exclusivamente na seção de orçamento, que é gerada separadamente.`;
+11. NUNCA mencione valores monetários (R$, preços, custos, investimento, orçamento, "a partir de", "mensalidade") em NENHUM campo do JSON — nem no hero, nem no subheadline, nem em modules, nem em cta. Os valores financeiros serão exibidos exclusivamente na seção de orçamento, que é gerada separadamente.\n12. O orçamento selecionado é a FONTE DE VERDADE para escopo e dados comerciais. A IA pode melhorar apenas a narrativa comercial; nunca pode alterar itens, etapas, quantidades, valores, condições, cronograma, total ou especificações cadastradas no sistema.`;
 }
 
 // ── HTML renderer from JSON + theme ─────────────────────────────────────────
