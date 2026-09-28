@@ -370,13 +370,18 @@ export default function VisitorIntelligence() {
       const routeApis = (vitalsQuery.data?.apiRouteTimings ?? [])
         .filter((api) => api.path === route.path)
         .sort((a, b) => (b.p75 ?? 0) - (a.p75 ?? 0));
+      const routeErrors = (vitalsQuery.data?.runtimeErrors ?? [])
+        .filter((error) => error.path === route.path)
+        .sort((a, b) => b.count - a.count);
       return {
         ...route,
         bottleneck: routeBottleneck(route),
         slowestApi: routeApis[0] ?? null,
+        runtimeErrorCount: routeErrors.reduce((sum, error) => sum + error.count, 0),
+        topRuntimeError: routeErrors[0] ?? null,
       };
     })
-    .slice(0, 5), [rankedVitalRoutes, vitalsQuery.data?.apiRouteTimings]);
+    .slice(0, 5), [rankedVitalRoutes, vitalsQuery.data?.apiRouteTimings, vitalsQuery.data?.runtimeErrors]);
   const slowServerOrNetwork = (vitalsQuery.data?.metrics.TTFB.p75 ?? 0) > 800;
 
   const selectSession = (sessionId: string) => {
@@ -487,6 +492,11 @@ export default function VisitorIntelligence() {
                         <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
                           API mais lenta nesta rota: {route.slowestApi.endpoint} · p75 {route.slowestApi.p75 == null ? "—" : `${Math.round(route.slowestApi.p75)}ms`}
                           {route.slowestApi.transferP75 ? ` · ${Math.round(route.slowestApi.transferP75 / 1024)} KB transferidos` : ""}
+                        </div>
+                      ) : null}
+                      {route.runtimeErrorCount > 0 ? (
+                        <div className="mt-0.5 truncate text-[11px] text-red-700">
+                          {route.runtimeErrorCount} erros observados nesta rota{route.topRuntimeError ? ` · ${route.topRuntimeError.message}` : ""}
                         </div>
                       ) : null}
                     </div>
