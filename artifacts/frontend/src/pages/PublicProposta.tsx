@@ -86,6 +86,7 @@ export default function PublicProposta() {
     },
     onSuccess: () => {
       setAccepted(true);
+      setPortalOpen(true);
     },
   });
 
@@ -222,6 +223,7 @@ export default function PublicProposta() {
   if (accepted) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-violet-50 to-blue-50 flex items-center justify-center p-6">
+        {portalAccessUi()}
         <Card className="max-w-md w-full shadow-lg">
           <CardContent className="pt-10 pb-10 text-center">
             <CheckCircle className="h-14 w-14 text-green-500 mx-auto mb-4" />
@@ -238,6 +240,7 @@ export default function PublicProposta() {
   if (alreadyAccepted || proposta.status === "aceita") {
     return (
       <div className="min-h-screen bg-gradient-to-br from-violet-50 to-blue-50 flex items-center justify-center p-6">
+        {portalAccessUi()}
         <Card className="max-w-md w-full shadow-lg">
           <CardContent className="pt-10 pb-10 text-center">
             <CheckCircle className="h-14 w-14 text-green-400 mx-auto mb-4" />
