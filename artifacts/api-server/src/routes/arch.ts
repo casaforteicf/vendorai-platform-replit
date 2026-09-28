@@ -1046,6 +1046,92 @@ router.get("/arch/concept-projects/:id/export/dxf", authenticate, async (req, re
   return res.status(200).send(dxf);
 });
 
+router.post("/arch/concept-projects/:id/source-file", authenticate, upload.single("file"), async (req, res) => {
+  const tid = tenantId(req);
+  const userId = req.user?.sub;
+  const id = String(req.params.id);
+  if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
+  if (!req.file?.buffer?.length) return res.status(400).json({ error: "Selecione um arquivo BIM/CAD." });
+
+  const originalName = req.file.originalname || "arquivo-projeto";
+  const extension = originalName.split(".").pop()?.toLowerCase() ?? "";
+  const allowedExtensions = new Set(["ifc", "dwg", "rvt", "skp"]);
+  if (!allowedExtensions.has(extension)) {
+    return res.status(415).json({ error: "Formato não suportado neste upload. Use IFC, DWG, RVT ou SKP." });
+  }
+
+  const [concept] = await db
+    .select({
+      id: archConceptProjectsTable.id,
+      status: archConceptProjectsTable.status,
+      configuration: archConceptProjectsTable.configuration,
+    })
+    .from(archConceptProjectsTable)
+    .where(and(
+      eq(archConceptProjectsTable.id, id),
+      eq(archConceptProjectsTable.tenantId, tid),
+      eq(archConceptProjectsTable.ownerUserId, userId),
+    ))
+    .limit(1);
+
+  if (!concept) return res.status(404).json({ error: "Pré-projeto não encontrado." });
+  if (concept.status === "submitted" && (concept.configuration as any)?.projectMaster) {
+    return res.status(409).json({
+      error: "O Projeto Mestre está congelado. Crie uma revisão antes de anexar nova fonte BIM/CAD.",
+      code: "PROJECT_MASTER_FROZEN",
+    });
+  }
+
+  try {
+    const storage = new ObjectStorageService();
+    const storagePath = await storage.savePrivateBuffer(
+      req.file.buffer,
+      req.file.mimetype || "application/octet-stream",
+      originalName,
+    );
+    const url = `/api/storage/objects${storagePath.replace(/^\/objects/, "")}`;
+    const kind = extension === "ifc" || extension === "rvt" ? "bim" : "cad";
+    const sourceFile = {
+      id: crypto.randomUUID(),
+      storagePath,
+      url,
+      originalName,
+      mimeType: req.file.mimetype || "application/octet-stream",
+      extension,
+      kind,
+      uploadedAt: new Date().toISOString(),
+      status: "stored_only",
+      parserStatus: extension === "ifc" ? "pending_ifc_parser" : "conversion_required",
+    };
+
+    const currentConfig = (concept.configuration ?? {}) as Record<string, unknown>;
+    const currentSources = Array.isArray(currentConfig.sourceFiles)
+      ? currentConfig.sourceFiles.filter((item) => item && typeof item === "object").slice(-9)
+      : [];
+
+    await db
+      .update(archConceptProjectsTable)
+      .set({
+        configuration: {
+          ...currentConfig,
+          sourceFiles: [...currentSources, sourceFile],
+        } as any,
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(archConceptProjectsTable.id, id),
+        eq(archConceptProjectsTable.tenantId, tid),
+        eq(archConceptProjectsTable.ownerUserId, userId),
+      ));
+
+    return res.status(201).json(sourceFile);
+  } catch (error) {
+    return res.status(500).json({
+      error: error instanceof Error ? error.message : "Não foi possível salvar o arquivo BIM/CAD.",
+    });
+  }
+});
+
 router.post("/arch/concept-projects/:id/reference-plan", authenticate, upload.single("file"), async (req, res) => {
   const tid = tenantId(req);
   const userId = req.user?.sub;
