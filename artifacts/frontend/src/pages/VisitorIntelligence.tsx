@@ -269,6 +269,16 @@ function formatVital(name: VitalMetricSummary["name"], value: number | null) {
   return `${Math.round(value)} ms`;
 }
 
+function routePerformancePriority(route: WebVitalsResponse["routes"][number]) {
+  const lcpPenalty = route.lcp == null ? 0 : Math.max(0, route.lcp / 2500 - 1);
+  const inpPenalty = route.inp == null ? 0 : Math.max(0, route.inp / 200 - 1) * 1.25;
+  const clsPenalty = route.cls == null ? 0 : Math.max(0, route.cls / 0.1 - 1) * 2;
+  const confidenceWeight = Math.min(1, Math.log2(route.samples + 1) / 4);
+  const score = Math.round((lcpPenalty + inpPenalty + clsPenalty) * 100 * confidenceWeight);
+  const status = score >= 180 ? "crítica" : score >= 60 ? "atenção" : "estável";
+  return { score, status };
+}
+
 function duration(ms: number) {
   const seconds = Math.max(0, Math.round(ms / 1000));
   if (seconds < 60) return `${seconds}s`;
@@ -328,6 +338,9 @@ export default function VisitorIntelligence() {
   }), [query.data, surfaceFilter, status, normalizedSearch]);
   const selected = useMemo(() => query.data?.sessions.find((session) => session.sessionId === selectedSessionId) ?? null, [query.data, selectedSessionId]);
   const totals = query.data?.totals;
+  const rankedVitalRoutes = useMemo(() => (vitalsQuery.data?.routes ?? [])
+    .map((route) => ({ ...route, ...routePerformancePriority(route) }))
+    .sort((a, b) => b.score - a.score || b.samples - a.samples), [vitalsQuery.data?.routes]);
 
   const selectSession = (sessionId: string) => {
     setSelectedSessionId(sessionId);
@@ -407,16 +420,29 @@ export default function VisitorIntelligence() {
               </div>
 
               <div className="rounded-lg border p-3">
-                <div className="text-xs font-medium text-muted-foreground">Rotas com dados recentes</div>
+                <div className="text-xs font-medium text-muted-foreground">Prioridade de otimização por rota</div>
                 <div className="mt-2 space-y-2">
-                  {vitalsQuery.data.routes.length ? vitalsQuery.data.routes.slice(0, 8).map((route) => (
-                    <div key={route.path} className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-3 rounded-md border px-2.5 py-2 text-xs">
-                      <div className="truncate font-medium">{route.path}</div>
-                      <div className="text-muted-foreground">LCP {route.lcp == null ? "—" : `${Math.round(route.lcp)}ms`}</div>
-                      <div className="text-muted-foreground">INP {route.inp == null ? "—" : `${Math.round(route.inp)}ms`}</div>
-                      <div className="text-muted-foreground">CLS {route.cls == null ? "—" : route.cls.toFixed(3)}</div>
+                  {rankedVitalRoutes.length ? rankedVitalRoutes.slice(0, 8).map((route, index) => (
+                    <div key={route.path} className="rounded-md border px-2.5 py-2 text-xs">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0 truncate font-medium">{index + 1}. {route.path}</div>
+                        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                          route.status === "crítica"
+                            ? "border-red-500/30 bg-red-500/10 text-red-700"
+                            : route.status === "atenção"
+                              ? "border-amber-500/30 bg-amber-500/10 text-amber-700"
+                              : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700"
+                        }`}>{route.status}</span>
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-muted-foreground">
+                        <span>LCP {route.lcp == null ? "—" : `${Math.round(route.lcp)}ms`}</span>
+                        <span>INP {route.inp == null ? "—" : `${Math.round(route.inp)}ms`}</span>
+                        <span>CLS {route.cls == null ? "—" : route.cls.toFixed(3)}</span>
+                        <span>{route.samples} amostras</span>
+                        <span>prioridade {route.score}</span>
+                      </div>
                     </div>
-                  )) : <div className="text-xs text-muted-foreground">Ainda não há amostras suficientes para comparar rotas.</div>}
+                  )) : <div className="text-xs text-muted-foreground">Ainda não há amostras suficientes para priorizar rotas.</div>}
                 </div>
               </div>
             </div>
