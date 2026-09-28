@@ -39,7 +39,6 @@ type PropostaPublic =
       id: string;
       version: number;
       status: string;
-      htmlContent: string;
       createdAt: string;
     };
 
@@ -110,7 +109,7 @@ export default function PublicProposta() {
       <div className="min-h-screen bg-white">
         <iframe
           title={`Proposta v${proposta.version}`}
-          srcDoc={proposta.htmlContent}
+          src={api(`/api/public/generated-proposals/${proposta.id}/html`)}
           className="w-full min-h-screen border-0"
           style={{ height: "100vh" }}
           sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
