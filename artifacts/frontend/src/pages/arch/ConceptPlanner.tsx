@@ -5884,7 +5884,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
             {saveState !== "loading" && journeyIndex === 1 && !startChooserDismissed && !modelGalleryOpen && !projectMaster && (
               <div className="fixed inset-0 z-[110] flex items-end justify-center bg-slate-950/55 sm:items-center sm:p-6">
                 <div className="max-h-[92dvh] w-full max-w-3xl overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-7" role="dialog" aria-label="Escolher como criar o projeto">
-                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-500">Etapa 2 · Casa</div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-500">Etapa 2 · Projeto</div>
                   <h2 className="mt-1 text-2xl font-bold text-slate-950">Como você quer criar este projeto?</h2>
                   <p className="mt-1 text-sm leading-6 text-slate-500">
                     Terreno definido em <strong className="font-semibold text-slate-700">{lotWidth.toFixed(1)} × {lotDepth.toFixed(1)} m</strong>.
