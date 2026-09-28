@@ -110,7 +110,11 @@ export const propostaCronogramaEtapaSchema = z.object({
 
 export type PropostaCronogramaEtapa = z.infer<typeof propostaCronogramaEtapaSchema>;
 
+export const propostaApresentacaoFormatoSchema = z.enum(["site_interativo", "documento", "hibrido"]);
+export type PropostaApresentacaoFormato = z.infer<typeof propostaApresentacaoFormatoSchema>;
+
 export const propostaApresentacaoSchema = z.object({
+  formato: propostaApresentacaoFormatoSchema.default("site_interativo"),
   modoPadrao: propostaApresentacaoModoSchema.default("completo"),
   etapas: z.record(z.string(), propostaApresentacaoModoSchema).default({}),
   mostrarTotalGeral: z.boolean().default(true),
@@ -136,6 +140,7 @@ export const propostaApresentacaoSchema = z.object({
 export type PropostaApresentacao = z.infer<typeof propostaApresentacaoSchema>;
 
 const DEFAULT_PROPOSTA_APRESENTACAO: PropostaApresentacao = {
+  formato: "site_interativo",
   modoPadrao: "completo",
   etapas: {},
   mostrarTotalGeral: true,
