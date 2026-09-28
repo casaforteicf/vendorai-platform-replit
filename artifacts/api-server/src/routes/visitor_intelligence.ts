@@ -74,6 +74,14 @@ type ApiTimingSample = {
   createdAt: Date;
 };
 
+type RuntimeErrorSample = {
+  path: string;
+  message: string;
+  source: string | null;
+  deviceCategory: string | null;
+  createdAt: Date;
+};
+
 function tenantFromRequest(req: Request): string | null {
   const user = (req as Request & { user?: { tenantId?: string; platformRole?: string } }).user;
   if (user?.tenantId) return String(user.tenantId);
@@ -106,6 +114,22 @@ function vitalSummary(samples: VitalSample[], name: VitalName) {
     median: percentile(values, 0.5),
     goodPercent: values.length ? Math.round((good / values.length) * 100) : null,
     distribution: { good, needsImprovement, poor },
+  };
+}
+
+function parseRuntimeErrorSample(row: { path: string | null; metadata: Record<string, unknown>; createdAt: Date }): RuntimeErrorSample | null {
+  const metadata = row.metadata ?? {};
+  if (metadata["kind"] !== "runtime_error") return null;
+  const message = typeof metadata["message"] === "string" ? metadata["message"].trim().slice(0, 300) : "";
+  if (!message) return null;
+  const rawPath = row.path || "/";
+  const pathname = rawPath.split("?")[0]?.replace(/\/$/, "") || "/";
+  return {
+    path: pathname,
+    message,
+    source: typeof metadata["source"] === "string" ? metadata["source"] : null,
+    deviceCategory: typeof metadata["deviceCategory"] === "string" ? metadata["deviceCategory"] : null,
+    createdAt: row.createdAt,
   };
 }
 
@@ -262,6 +286,32 @@ router.get("/visitor-intelligence/web-vitals", async (req, res) => {
       .filter((sample): sample is ApiTimingSample => sample !== null)
       .filter((sample) => device === "all" || sample.deviceCategory === device);
 
+    const runtimeErrors = rows
+      .map((row) => parseRuntimeErrorSample({ path: row.path, metadata: row.metadata ?? {}, createdAt: row.createdAt }))
+      .filter((sample): sample is RuntimeErrorSample => sample !== null)
+      .filter((sample) => device === "all" || sample.deviceCategory === device);
+
+    const errorMap = new Map<string, RuntimeErrorSample[]>();
+    for (const sample of runtimeErrors) {
+      const key = `${sample.path}::${sample.message}`;
+      const list = errorMap.get(key) ?? [];
+      list.push(sample);
+      errorMap.set(key, list);
+    }
+    const runtimeErrorSummary = [...errorMap.entries()]
+      .map(([key, samples]) => {
+        const [path, message] = key.split("::");
+        return {
+          path,
+          message,
+          count: samples.length,
+          source: samples[0]?.source ?? null,
+          lastSeenAt: samples[0]?.createdAt?.toISOString?.() ?? null,
+        };
+      })
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 20);
+
     const apiMap = new Map<string, ApiTimingSample[]>();
     for (const sample of apiSamples) {
       const list = apiMap.get(sample.endpoint) ?? [];
@@ -348,6 +398,7 @@ router.get("/visitor-intelligence/web-vitals", async (req, res) => {
       },
       apiTimings,
       apiRouteTimings,
+      runtimeErrors: runtimeErrorSummary,
       routes,
     });
   } catch (error) {

@@ -356,6 +356,42 @@ function installVisitorOnlineAlerts() {
   };
 }
 
+function installRuntimeErrorTelemetry() {
+  if (typeof window === "undefined") return () => {};
+
+  const sendRuntimeError = (message: string, source: string) => {
+    const cleanMessage = message.replace(/\s+/g, " ").trim().slice(0, 300) || "Erro desconhecido";
+    void sendVisitorTelemetry("error", {
+      kind: "runtime_error",
+      message: cleanMessage,
+      source,
+      deviceCategory: window.innerWidth < 768 ? "mobile" : window.innerWidth < 1024 ? "tablet" : "desktop",
+    }, { path: window.location.pathname || "/", pageUrl: window.location.href });
+  };
+
+  const onError = (event: ErrorEvent) => {
+    sendRuntimeError(event.message || event.error?.name || "Erro de execução", "window.error");
+  };
+
+  const onUnhandledRejection = (event: PromiseRejectionEvent) => {
+    const reason = event.reason;
+    const message = reason instanceof Error
+      ? `${reason.name}: ${reason.message}`
+      : typeof reason === "string"
+        ? reason
+        : "Promise rejeitada sem tratamento";
+    sendRuntimeError(message, "unhandledrejection");
+  };
+
+  window.addEventListener("error", onError);
+  window.addEventListener("unhandledrejection", onUnhandledRejection);
+
+  return () => {
+    window.removeEventListener("error", onError);
+    window.removeEventListener("unhandledrejection", onUnhandledRejection);
+  };
+}
+
 function installPerformanceTelemetry() {
   if (typeof window === "undefined" || typeof PerformanceObserver === "undefined") return () => {};
 
@@ -527,6 +563,7 @@ export function installVisitorTelemetry() {
   void sendVisitorTelemetry("screen_view");
   const stopAlerts = installVisitorOnlineAlerts();
   const stopPerformance = installPerformanceTelemetry();
+  const stopRuntimeErrors = installRuntimeErrorTelemetry();
 
   const interval = window.setInterval(() => {
     if (stopped || document.visibilityState !== "visible") return;
@@ -547,6 +584,7 @@ export function installVisitorTelemetry() {
     stopped = true;
     stopAlerts();
     stopPerformance();
+    stopRuntimeErrors();
     window.clearInterval(interval);
     document.removeEventListener("visibilitychange", visibility);
   };
