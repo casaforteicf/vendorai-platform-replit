@@ -165,6 +165,7 @@ export async function getPublishingCredentials(tenantId: string, connectionId?: 
   const [[directConnection], [legacyConfig]] = await Promise.all([
     db
       .select({
+        id: instagramConnectionsTable.id,
         accessToken: instagramConnectionsTable.pageAccessToken,
         accountId: instagramConnectionsTable.accountId,
         disconnectedAt: instagramConnectionsTable.disconnectedAt,
@@ -203,7 +204,7 @@ export async function getPublishingCredentials(tenantId: string, connectionId?: 
     );
   }
 
-  return { accessToken, accountId };
+  return { accessToken, accountId, connectionId: directPublishReady ? directConnection?.id : undefined };
 }
 
 export async function publishContentGenerationToInstagram(params: {
@@ -259,7 +260,7 @@ export async function publishContentGenerationToInstagram(params: {
     throw error;
   }
 
-  const { accessToken, accountId } = await getPublishingCredentials(params.tenantId, params.instagramConnectionId);
+  const { accessToken, accountId, connectionId } = await getPublishingCredentials(params.tenantId, params.instagramConnectionId);
   let postId: string;
   let captionOuTexto = "";
 
@@ -326,6 +327,7 @@ export async function publishContentGenerationToInstagram(params: {
     contentType: gen.type,
     theme: gen.theme,
     captionOuTexto,
+    instagramConnectionId: connectionId,
   });
 
   return { postId, contentType: gen.type as "feed" | "stories" | "reels" };
