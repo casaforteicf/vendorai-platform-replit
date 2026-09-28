@@ -361,7 +361,28 @@ type ProjectSourceFile = {
   kind: "bim" | "cad";
   uploadedAt: string;
   status: "stored_only";
-  parserStatus: "pending_ifc_parser" | "conversion_required";
+  parserStatus: "pending_ifc_parser" | "conversion_required" | "parsed_metadata";
+  parsedAt?: string;
+  ifcMetadata?: {
+    schema: string | null;
+    projectName: string | null;
+    unit: "m" | "mm" | "cm" | "unknown";
+    storeys: Array<{ id: string; name: string | null; elevation: number | null }>;
+    counts: {
+      walls: number;
+      doors: number;
+      windows: number;
+      slabs: number;
+      spaces: number;
+      roofs: number;
+      columns: number;
+      beams: number;
+      stairs: number;
+      furnishings: number;
+      totalEntities: number;
+    };
+    warnings: string[];
+  };
 };
 
 type ConceptDraftResponse = {
@@ -936,6 +957,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [sourceFiles, setSourceFiles] = useState<ProjectSourceFile[]>([]);
   const [sourceFileState, setSourceFileState] = useState<"idle" | "uploading" | "error" | "success">("idle");
   const [sourceFileMessage, setSourceFileMessage] = useState<string | null>(null);
+  const [parsingIfcId, setParsingIfcId] = useState<string | null>(null);
   const wallFirstActive = (Array.isArray(wallFirstFloors) ? wallFirstFloors : []).includes(activeFloor);
   const [modelSearch, setModelSearch] = useState("");
   const [modelCategory, setModelCategory] = useState<"todos" | "terreas" | "sobrados" | "lazer">("todos");
@@ -3855,6 +3877,41 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       setHandoffError(message);
       setHandoffState("error");
       return null;
+    }
+  };
+
+  const parseIfcSourceFile = async (source: ProjectSourceFile) => {
+    if (source.extension.toLowerCase() !== "ifc" || parsingIfcId) return;
+    const id = conceptIdRef.current ?? conceptId;
+    if (!id) {
+      setSourceFileState("error");
+      setSourceFileMessage("Salve o pré-projeto antes de ler o IFC.");
+      return;
+    }
+    setParsingIfcId(source.id);
+    setSourceFileMessage(null);
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("vendorai_token") : null;
+      const response = await fetch(
+        `/api/arch/concept-projects/${encodeURIComponent(id)}/source-file/${encodeURIComponent(source.id)}/parse-ifc`,
+        {
+          method: "POST",
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        },
+      );
+      const payload = await response.json().catch(() => ({})) as ProjectSourceFile & { error?: string };
+      if (!response.ok || !payload.id) throw new Error(payload.error ?? "Não foi possível ler o IFC.");
+      setSourceFiles((current) => current.map((item) => item.id === payload.id ? payload : item));
+      setSourceFileState("success");
+      setSourceFileMessage(
+        `IFC lido: ${payload.ifcMetadata?.storeys.length ?? 0} pavimento(s), ${payload.ifcMetadata?.counts.walls ?? 0} paredes, ${payload.ifcMetadata?.counts.doors ?? 0} portas e ${payload.ifcMetadata?.counts.windows ?? 0} janelas.`,
+      );
+      window.setTimeout(() => setSourceFileState("idle"), 5000);
+    } catch (error) {
+      setSourceFileState("error");
+      setSourceFileMessage(error instanceof Error ? error.message : "Falha ao ler IFC.");
+    } finally {
+      setParsingIfcId(null);
     }
   };
 
@@ -8280,12 +8337,38 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         <div className="min-w-0">
                           <div className="truncate font-semibold">{source.originalName}</div>
                           <div className="text-muted-foreground">
-                            {source.extension.toUpperCase()} · {source.parserStatus === "pending_ifc_parser" ? "aguardando parser BIM" : "aguardando conversão"}
+                            {source.extension.toUpperCase()} · {source.parserStatus === "parsed_metadata"
+                              ? "IFC lido"
+                              : source.parserStatus === "pending_ifc_parser"
+                                ? "aguardando parser BIM"
+                                : "aguardando conversão"}
                           </div>
+                          {source.ifcMetadata && (
+                            <div className="mt-1 text-[11px] text-slate-600">
+                              {source.ifcMetadata.storeys.length} pav. · {source.ifcMetadata.counts.walls} paredes · {source.ifcMetadata.counts.doors} portas · {source.ifcMetadata.counts.windows} janelas · {source.ifcMetadata.counts.spaces} espaços
+                            </div>
+                          )}
+                          {source.ifcMetadata?.storeys.length ? (
+                            <div className="mt-1 text-[10px] text-muted-foreground">
+                              {source.ifcMetadata.storeys.map((storey) => storey.name || `Pavimento #${storey.id}`).join(" · ")}
+                            </div>
+                          ) : null}
                         </div>
-                        <a href={source.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-orange-600 hover:underline">
-                          Abrir
-                        </a>
+                        <div className="flex items-center gap-2">
+                          {source.extension.toLowerCase() === "ifc" && source.parserStatus !== "parsed_metadata" && (
+                            <button
+                              type="button"
+                              onClick={() => void parseIfcSourceFile(source)}
+                              disabled={parsingIfcId === source.id}
+                              className="rounded-lg border px-2.5 py-1.5 font-semibold text-violet-700 disabled:opacity-50"
+                            >
+                              {parsingIfcId === source.id ? "Lendo IFC..." : "Ler IFC"}
+                            </button>
+                          )}
+                          <a href={source.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-orange-600 hover:underline">
+                            Abrir
+                          </a>
+                        </div>
                       </div>
                     ))}
                   </div>
