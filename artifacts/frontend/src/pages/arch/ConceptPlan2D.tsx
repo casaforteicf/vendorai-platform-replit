@@ -84,6 +84,7 @@ type Props = {
   onRoomDuplicate?: (roomId: string) => void;
   onRoomDelete?: (roomId: string) => void;
   paintTarget?: "object" | "wall" | "floor" | null;
+  referenceImage?: { url: string; opacity?: number } | null;
 };
 
 function formatMeters(value: number) {
@@ -367,6 +368,7 @@ export default function ConceptPlan2D({
   onRoomDuplicate,
   onRoomDelete,
   paintTarget = null,
+  referenceImage = null,
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [wallDrawStart, setWallDrawStart] = useState<{ x: number; y: number } | null>(null);
@@ -1275,7 +1277,19 @@ export default function ConceptPlan2D({
         </defs>
 
         <rect x="0" y="0" width={lotWidth} height={lotDepth} fill="#fcfcfd" />
-        <rect x="0" y="0" width={lotWidth} height={lotDepth} fill="url(#concept-grid)" opacity="0.72" />
+        {referenceImage?.url ? (
+          <image
+            href={referenceImage.url}
+            x="0"
+            y="0"
+            width={lotWidth}
+            height={lotDepth}
+            preserveAspectRatio="xMidYMid meet"
+            opacity={Math.max(0.08, Math.min(0.8, referenceImage.opacity ?? 0.35))}
+            pointerEvents="none"
+          />
+        ) : null}
+        <rect x="0" y="0" width={lotWidth} height={lotDepth} fill="url(#concept-grid)" opacity={referenceImage?.url ? 0.34 : 0.72} />
         <rect
           x="0"
           y="0"
