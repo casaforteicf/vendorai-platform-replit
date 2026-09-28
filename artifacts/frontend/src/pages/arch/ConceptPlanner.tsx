@@ -190,6 +190,7 @@ type ConceptSaveOverrides = {
   facadePreferences?: ConceptFacadePreferences;
   facadeDesign?: FacadeDesignState;
   projectBrief?: ProjectBriefSnapshot;
+  referencePlan?: ReferencePlan | null;
 };
 
 type CustomerProfile = {
@@ -1429,6 +1430,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     const nextFacadePreferences = overrides?.facadePreferences ?? facadePreferences;
     const nextFacadeDesign = overrides?.facadeDesign ?? facadeDesign;
     const nextProjectBrief = overrides?.projectBrief ?? projectBrief;
+    const nextReferencePlan = overrides && Object.prototype.hasOwnProperty.call(overrides, "referencePlan")
+      ? overrides.referencePlan
+      : referencePlan;
     const payload = {
       title: customerProfile.name?.trim() ? `Pré-projeto — ${customerProfile.name.trim()}` : "Meu pré-projeto",
       currentStep: stepOverride ?? step,
@@ -1446,7 +1450,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         objects: nextObjects,
         wallMaterials,
         savedTourPoints: savedTourPointsOverride ?? savedTourPoints,
-        referencePlan: referencePlan ?? undefined,
+        referencePlan: nextReferencePlan ?? undefined,
         sourceFiles,
         sitePlacement,
         projectBrief: nextProjectBrief ?? undefined,
@@ -4063,6 +4067,47 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     } finally {
       if (sourceFileInputRef.current) sourceFileInputRef.current.value = "";
     }
+  };
+
+  const saveReferenceCalibration = async (patch: Partial<Pick<ReferencePlan, "widthMeters" | "offsetX" | "offsetY" | "opacity">>) => {
+    if (!referencePlan || referencePlan.kind !== "image" || projectMaster) return;
+
+    const nativeAspect = referencePlan.nativeWidth && referencePlan.nativeHeight
+      ? referencePlan.nativeWidth / referencePlan.nativeHeight
+      : referencePlan.widthMeters && referencePlan.depthMeters
+        ? referencePlan.widthMeters / referencePlan.depthMeters
+        : 1;
+
+    let widthMeters = Number(patch.widthMeters ?? referencePlan.widthMeters ?? lotWidth);
+    widthMeters = Math.max(0.5, Math.min(lotWidth, widthMeters));
+    let depthMeters = widthMeters / Math.max(0.05, nativeAspect);
+    if (depthMeters > lotDepth) {
+      depthMeters = lotDepth;
+      widthMeters = depthMeters * nativeAspect;
+    }
+
+    const maxX = Math.max(0, lotWidth - widthMeters);
+    const maxY = Math.max(0, lotDepth - depthMeters);
+    const offsetX = Math.max(0, Math.min(maxX, Number(patch.offsetX ?? referencePlan.offsetX ?? 0)));
+    const offsetY = Math.max(0, Math.min(maxY, Number(patch.offsetY ?? referencePlan.offsetY ?? 0)));
+    const opacity = Math.max(0.08, Math.min(0.8, Number(patch.opacity ?? referencePlan.opacity ?? 0.35)));
+
+    const next: ReferencePlan = {
+      ...referencePlan,
+      fitMode: "calibrated",
+      widthMeters,
+      depthMeters,
+      offsetX,
+      offsetY,
+      opacity,
+      calibrationSource: "image_aspect_fit",
+    };
+
+    setReferencePlan(next);
+    setReferenceTracePreview(null);
+    setReferenceTraceState("idle");
+    const saved = await saveConcept(4, undefined, { referencePlan: next });
+    setReferencePlanMessage(saved ? "Calibração da referência salva." : "Não foi possível salvar a calibração.");
   };
 
   const traceReferencePlanWithAi = async () => {
@@ -8622,6 +8667,56 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       {referencePlan.kind === "image" && referencePlan.widthMeters && referencePlan.depthMeters ? (
                         <div className="mt-1 text-[11px] text-muted-foreground">
                           Referência calibrada: {referencePlan.widthMeters.toFixed(2)} × {referencePlan.depthMeters.toFixed(2)} m · proporção preservada
+                        </div>
+                      ) : null}
+                      {referencePlan.kind === "image" && !projectMaster ? (
+                        <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4" onClick={(event) => event.stopPropagation()}>
+                          <label className="text-[10px] font-semibold text-muted-foreground">
+                            Largura ref. (m)
+                            <input
+                              type="number"
+                              min="0.5"
+                              max={lotWidth}
+                              step="0.05"
+                              defaultValue={(referencePlan.widthMeters ?? lotWidth).toFixed(2)}
+                              onBlur={(event) => void saveReferenceCalibration({ widthMeters: Number(event.currentTarget.value) })}
+                              className="mt-1 h-8 w-full rounded-lg border bg-background px-2 text-xs text-foreground"
+                            />
+                          </label>
+                          <label className="text-[10px] font-semibold text-muted-foreground">
+                            Posição X (m)
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.05"
+                              defaultValue={(referencePlan.offsetX ?? 0).toFixed(2)}
+                              onBlur={(event) => void saveReferenceCalibration({ offsetX: Number(event.currentTarget.value) })}
+                              className="mt-1 h-8 w-full rounded-lg border bg-background px-2 text-xs text-foreground"
+                            />
+                          </label>
+                          <label className="text-[10px] font-semibold text-muted-foreground">
+                            Posição Y (m)
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.05"
+                              defaultValue={(referencePlan.offsetY ?? 0).toFixed(2)}
+                              onBlur={(event) => void saveReferenceCalibration({ offsetY: Number(event.currentTarget.value) })}
+                              className="mt-1 h-8 w-full rounded-lg border bg-background px-2 text-xs text-foreground"
+                            />
+                          </label>
+                          <label className="text-[10px] font-semibold text-muted-foreground">
+                            Opacidade
+                            <input
+                              type="number"
+                              min="0.08"
+                              max="0.8"
+                              step="0.05"
+                              defaultValue={(referencePlan.opacity ?? 0.35).toFixed(2)}
+                              onBlur={(event) => void saveReferenceCalibration({ opacity: Number(event.currentTarget.value) })}
+                              className="mt-1 h-8 w-full rounded-lg border bg-background px-2 text-xs text-foreground"
+                            />
+                          </label>
                         </div>
                       ) : null}
                     </div>
