@@ -376,6 +376,7 @@ type ReferenceTracePreview = {
     translateX: number;
     translateY: number;
   };
+  topologyRepairs?: number;
 };
 
 type ProjectSourceFile = {
@@ -8763,6 +8764,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           {referenceTracePreview.walls.length} paredes · {referenceTracePreview.openings.length} aberturas · confiança {Math.round(referenceTracePreview.confidence * 100)}%
                           {typeof referenceTracePreview.alignmentScore === "number"
                             ? ` · alinhamento ${Math.round(referenceTracePreview.alignmentScore * 100)}%`
+                            : ""}
+                          {referenceTracePreview.topologyRepairs
+                            ? ` · ${referenceTracePreview.topologyRepairs} junções corrigidas`
                             : ""}
                         </div>
                         {referenceTracePreview.alignmentCorrection && (
