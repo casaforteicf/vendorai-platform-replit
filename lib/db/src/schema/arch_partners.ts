@@ -82,6 +82,7 @@ export const archSolicitacoesTable = pgTable("arch_solicitacoes", {
   saleConfirmedAt: timestamp("sale_confirmed_at", { withTimezone: true }),
   saleAmountCents: integer("sale_amount_cents"),
   participationEventId: text("participation_event_id"),
+  externalAccessToken: text("external_access_token").unique().$defaultFn(() => crypto.randomUUID()),
   enviadoEm:      timestamp("enviado_em"),
   createdAt:      timestamp("created_at").notNull().defaultNow(),
 });
