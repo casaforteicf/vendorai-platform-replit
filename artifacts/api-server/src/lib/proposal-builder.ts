@@ -114,12 +114,12 @@ export function defaultProposalBuilderTemplate(
 
   const keysByKind: Record<NonNullable<ProposalBuilderTemplate["proposalKind"]>, ProposalBuilderModuleKey[]> = {
     construction_project: [
-      "capa", "apresentacao_empresa", "produto_servico", "curiosidades_conteudo", "cases_provas", "faq", "diferenciais", "resumo_executivo, "escopo",
+      "capa", "apresentacao_empresa", "produto_servico", "curiosidades_conteudo", "cases_provas", "faq", "diferenciais", "resumo_executivo", "escopo",
       "etapas_orcamento", "imagem_por_etapa", "cronograma", "fisico_financeiro",
       "condicoes_comerciais", "validade_inicio", "aceite", "portal_cliente",
     ],
     architecture_service: [
-      "capa", "apresentacao_empresa", "produto_servico", "curiosidades_conteudo", "cases_provas", "faq", "diferenciais", "resumo_executivo, "escopo",
+      "capa", "apresentacao_empresa", "produto_servico", "curiosidades_conteudo", "cases_provas", "faq", "diferenciais", "resumo_executivo", "escopo",
       "etapas_orcamento", "imagem_por_etapa", "cronograma",
       "condicoes_comerciais", "validade_inicio", "aceite", "anexos", "portal_cliente",
     ],
@@ -133,7 +133,7 @@ export function defaultProposalBuilderTemplate(
     ],
     vehicle_sale: [
       "capa", "apresentacao_empresa", "produto_servico", "curiosidades_conteudo", "cases_provas", "faq", "diferenciais", "resumo_executivo,
-      "tabela_itens", "condicoes_comerciais", "validade_inicio", "aceite", "anexos",
+      "tabela_itens", "condicoes_comerciais", "validade_inicio", "aceite", "anexos", "portal_cliente",
     ],
     insurance_quote: [
       "capa", "apresentacao_empresa", "produto_servico", "curiosidades_conteudo", "cases_provas", "faq", "diferenciais", "resumo_executivo,
