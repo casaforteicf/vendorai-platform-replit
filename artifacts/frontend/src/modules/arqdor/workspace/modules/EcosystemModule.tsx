@@ -27,6 +27,8 @@ interface Partner {
   especialidades: string[] | null
   observacoes: string | null
   ativo: boolean
+  connectedTenantId?: string | null
+  partnerSource?: string
   createdAt: string
 }
 
@@ -39,6 +41,22 @@ interface Solicitacao {
   itemNome: string | null
   mensagem: string | null
   canalEnvio: string | null
+  recipientTenantId?: string | null
+  direction?: 'inbox' | 'outbox'
+  participationEnabled?: boolean
+  participationPercent?: string | null
+  platformFeePercent?: string | null
+  agreementStatus?: string
+  quoteScope?: string | null
+  quoteAmountCents?: number | null
+  quoteDeliveryDays?: number | null
+  quoteValidUntil?: string | null
+  quoteResponseMessage?: string | null
+  quoteProposalUrl?: string | null
+  selected?: boolean
+  saleConfirmedAt?: string | null
+  saleAmountCents?: number | null
+  participationEventId?: string | null
   enviadoEm: string | null
   createdAt: string
 }
@@ -285,7 +303,12 @@ function PartnerDetail({
     const response = await fetch(`${BASE}/arch/partners/${partner.id}/solicitar`, {
       method:'POST',
       headers: authHeaders(),
-      body: JSON.stringify({ tipo, mensagem, canal, projetoId, projetoTitulo }),
+      body: JSON.stringify({ tipo, mensagem, canal, projetoId, projetoTitulo,
+        participationEnabled: tipo === 'orcamento',
+        participationPercent: tipo === 'orcamento' ? 10 : undefined,
+        platformFeePercent: tipo === 'orcamento' ? 1 : undefined,
+        attributionWindowDays: tipo === 'orcamento' ? 90 : undefined,
+      }),
     })
     if (!response.ok) {
       const body = await response.json().catch(() => ({}))
@@ -440,6 +463,45 @@ function PartnerDetail({
   )
 }
 
+function QuoteResponseForm({ sol, onDone }: { sol: Solicitacao; onDone: () => Promise<void> }) {
+  const [amount, setAmount] = useState(sol.quoteAmountCents != null ? String(sol.quoteAmountCents / 100) : '')
+  const [days, setDays] = useState(sol.quoteDeliveryDays != null ? String(sol.quoteDeliveryDays) : '')
+  const [note, setNote] = useState(sol.quoteResponseMessage ?? '')
+  const [url, setUrl] = useState(sol.quoteProposalUrl ?? '')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState<string|null>(null)
+
+  async function respond(resposta: 'accepted'|'rejected') {
+    setSaving(true); setErr(null)
+    const payload: Record<string, unknown> = { resposta, observacao: note || undefined }
+    if (resposta === 'accepted') {
+      const cents = Math.round(Number(amount || 0) * 100)
+      if (!Number.isFinite(cents) || cents <= 0) { setErr('Informe um valor válido.'); setSaving(false); return }
+      payload.quoteAmountCents = cents
+      payload.quoteDeliveryDays = Number(days || 0)
+      payload.quoteProposalUrl = url || undefined
+    }
+    const r = await fetch(`${BASE}/arch/solicitacoes/${sol.id}/responder`, { method:'PATCH', headers:authHeaders(), body:JSON.stringify(payload) })
+    const body = await r.json().catch(() => ({}))
+    if (!r.ok) { setErr(body.error ?? 'Não foi possível responder.'); setSaving(false); return }
+    await onDone(); setSaving(false)
+  }
+
+  return <div style={{ marginTop:10, padding:10, borderRadius:8, border:`1px solid ${T.border}`, background:'rgba(255,255,255,0.03)' }}>
+    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+      <input value={amount} onChange={e=>setAmount(e.target.value)} type="number" min="0" step="0.01" placeholder="Valor R$" style={{ padding:8, borderRadius:6, border:`1px solid ${T.border}`, background:T.bg, color:'#fff' }}/>
+      <input value={days} onChange={e=>setDays(e.target.value)} type="number" min="0" placeholder="Prazo em dias" style={{ padding:8, borderRadius:6, border:`1px solid ${T.border}`, background:T.bg, color:'#fff' }}/>
+    </div>
+    <input value={url} onChange={e=>setUrl(e.target.value)} placeholder="Link da proposta/PDF (opcional)" style={{ marginTop:8, width:'100%', boxSizing:'border-box', padding:8, borderRadius:6, border:`1px solid ${T.border}`, background:T.bg, color:'#fff' }}/>
+    <textarea value={note} onChange={e=>setNote(e.target.value)} rows={2} placeholder="Observações" style={{ marginTop:8, width:'100%', boxSizing:'border-box', padding:8, borderRadius:6, border:`1px solid ${T.border}`, background:T.bg, color:'#fff' }}/>
+    {err && <p style={{ color:T.red, fontSize:10 }}>{err}</p>}
+    <div style={{ display:'flex', gap:8, marginTop:8 }}>
+      <button disabled={saving} onClick={()=>respond('accepted')} style={{ padding:'7px 12px', border:0, borderRadius:7, background:T.green, color:'#111', fontWeight:800, cursor:'pointer' }}>Enviar proposta</button>
+      <button disabled={saving} onClick={()=>respond('rejected')} style={{ padding:'7px 12px', border:`1px solid ${T.border}`, borderRadius:7, background:'transparent', color:T.red, fontWeight:700, cursor:'pointer' }}>Recusar</button>
+    </div>
+  </div>
+}
+
 // ─── Main Module ──────────────────────────────────────────────────────────────
 export function EcosystemModule() {
   const arqState = useArqProjectContext()
@@ -457,6 +519,9 @@ export function EcosystemModule() {
   const [editing,    setEditing]    = useState<Partner|null>(null)
   const [saving,     setSaving]     = useState(false)
   const [error,      setError]      = useState<string|null>(null)
+  const [bulkSelected, setBulkSelected] = useState<Set<string>>(new Set())
+  const [bulkScope, setBulkScope] = useState('Orçamento geral')
+  const [bulkSending, setBulkSending] = useState(false)
 
   const fetchPartners = useCallback(async () => {
     setLoading(true)
@@ -469,10 +534,11 @@ export function EcosystemModule() {
 
   const fetchSolicitacoes = useCallback(async () => {
     try {
-      const res = await fetch(`${BASE}/arch/solicitacoes`, { headers: authHeaders() })
+      const url = projetoId ? `${BASE}/arch/solicitacoes?projetoId=${encodeURIComponent(projetoId)}` : `${BASE}/arch/solicitacoes`
+      const res = await fetch(url, { headers: authHeaders() })
       if (res.ok) setSolicitacoes(await res.json())
     } catch { /* ignore */ }
-  }, [])
+  }, [projetoId])
 
   useEffect(() => { fetchPartners(); fetchSolicitacoes() }, [fetchPartners, fetchSolicitacoes])
 
@@ -515,6 +581,52 @@ export function EcosystemModule() {
     }
     setSelected(null)
     await fetchPartners()
+  }
+
+  async function handleBulkQuotes() {
+    if (!projetoId || bulkSelected.size === 0) return
+    setBulkSending(true); setError(null)
+    try {
+      const res = await fetch(`${BASE}/arch/projetos/${projetoId}/solicitar-orcamentos`, {
+        method:'POST', headers:authHeaders(), body:JSON.stringify({
+          projetoTitulo: projetoTitle,
+          partnerIds:[...bulkSelected],
+          quoteScope: bulkScope || 'Orçamento geral',
+          participationEnabled:true,
+          participationPercent:10,
+          platformFeePercent:1,
+          attributionWindowDays:90,
+        }),
+      })
+      const body = await res.json().catch(()=>({}))
+      if (!res.ok) throw new Error(body.error ?? 'Não foi possível solicitar os orçamentos.')
+      setBulkSelected(new Set()); setTab('solicitacoes'); await fetchSolicitacoes()
+    } catch (err) { setError(err instanceof Error ? err.message : 'Falha ao solicitar orçamentos.') }
+    finally { setBulkSending(false) }
+  }
+
+  async function handleSelectQuote(sol: Solicitacao) {
+    setError(null)
+    const r = await fetch(`${BASE}/arch/solicitacoes/${sol.id}/selecionar`, { method:'POST', headers:authHeaders() })
+    const body = await r.json().catch(()=>({}))
+    if (!r.ok) { setError(body.error ?? 'Não foi possível selecionar a proposta.'); return }
+    await fetchSolicitacoes()
+  }
+
+  async function handleConfirmSale(sol: Solicitacao) {
+    const defaultValue = sol.quoteAmountCents != null ? (sol.quoteAmountCents / 100).toFixed(2) : ''
+    const raw = window.prompt('Valor efetivamente vendido (R$):', defaultValue)
+    if (!raw) return
+    const paymentId = window.prompt('Referência do pagamento/recebimento:', `obra-${sol.id.slice(0,8)}`)
+    if (!paymentId) return
+    const saleAmountCents = Math.round(Number(raw.replace(',','.')) * 100)
+    if (!Number.isFinite(saleAmountCents) || saleAmountCents <= 0) { setError('Valor de venda inválido.'); return }
+    const r = await fetch(`${BASE}/arch/solicitacoes/${sol.id}/confirmar-venda`, {
+      method:'POST', headers:authHeaders(), body:JSON.stringify({ saleAmountCents, paymentId, receiptPercent:100 }),
+    })
+    const body = await r.json().catch(()=>({}))
+    if (!r.ok) { setError(body.error ?? 'Não foi possível confirmar a venda.'); return }
+    await fetchSolicitacoes()
   }
 
   const tipoChips = [
@@ -585,6 +697,17 @@ export function EcosystemModule() {
               </div>
             </div>
 
+            {projetoId && (
+              <div style={{ padding:'10px 12px', borderBottom:`1px solid ${T.border}`, background:'rgba(124,58,237,0.06)' }}>
+                <p style={{ margin:'0 0 6px', fontSize:10, fontWeight:800, color:'#fff' }}>Cotação em um fluxo</p>
+                <input value={bulkScope} onChange={e=>setBulkScope(e.target.value)} placeholder="Escopo: esquadrias, revestimentos..." style={{ width:'100%', boxSizing:'border-box', padding:'6px 8px', borderRadius:6, border:`1px solid ${T.border}`, background:T.bg, color:'#fff', fontSize:10 }}/>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:7 }}>
+                  <span style={{ fontSize:9, color:T.dim }}>{bulkSelected.size} empresa(s) · Participação 10% · VendorAI 1%</span>
+                  <button disabled={bulkSelected.size===0||bulkSending} onClick={handleBulkQuotes} style={{ padding:'5px 10px', border:0, borderRadius:6, background:T.purple, color:'#fff', fontSize:9, fontWeight:800, opacity:bulkSelected.size===0?0.5:1, cursor:'pointer' }}>{bulkSending?'Enviando…':'Solicitar'}</button>
+                </div>
+              </div>
+            )}
+
             {/* Partner list */}
             <div style={{ flex:1, overflowY:'auto', padding:'8px' }}>
               {loading && (
@@ -611,6 +734,7 @@ export function EcosystemModule() {
                     style={{ padding:'10px 12px', borderRadius:9, border:`1px solid ${T.border}`, background:'rgba(255,255,255,0.03)', marginBottom:5 }}
                   >
                     <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
+                      {projetoId && <input type="checkbox" checked={bulkSelected.has(p.id)} onClick={e=>e.stopPropagation()} onChange={e=>{ const n=new Set(bulkSelected); e.target.checked?n.add(p.id):n.delete(p.id); setBulkSelected(n) }} aria-label={`Selecionar ${p.nome} para cotação`}/>} 
                       <span style={{ fontSize:9, fontWeight:800, padding:'2px 7px', borderRadius:8, background:`${color}18`, color, border:`1px solid ${color}22` }}>
                         {TIPO_LABELS[p.tipo] ?? p.tipo}
                       </span>
@@ -710,6 +834,29 @@ export function EcosystemModule() {
                       <p style={{ margin:'5px 0 0', fontSize:10, color:T.dim, lineHeight:1.5, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' as const }}>
                         {s.mensagem}
                       </p>
+                    )}
+                    {s.tipo === 'orcamento' && (
+                      <div style={{ marginTop:8, paddingTop:8, borderTop:`1px solid ${T.border}` }}>
+                        <div style={{ display:'flex', gap:10, flexWrap:'wrap' as const, fontSize:10 }}>
+                          {s.quoteScope && <span style={{ color:T.textSub }}>Escopo: <b>{s.quoteScope}</b></span>}
+                          {s.participationEnabled && <span style={{ color:T.purpleL }}>Participação: {Number(s.participationPercent||0)}% · VendorAI {Number(s.platformFeePercent||0)}%</span>}
+                          {s.quoteAmountCents != null && <span style={{ color:T.green, fontWeight:800 }}>R$ {(s.quoteAmountCents/100).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span>}
+                          {s.quoteDeliveryDays != null && <span style={{ color:T.textSub }}>Prazo: {s.quoteDeliveryDays} dias</span>}
+                          {s.selected && <span style={{ color:T.green, fontWeight:800 }}>✓ Selecionada</span>}
+                          {s.saleConfirmedAt && <span style={{ color:T.green, fontWeight:800 }}>Venda confirmada</span>}
+                        </div>
+                        {s.quoteResponseMessage && <p style={{ margin:'6px 0 0', fontSize:10, color:T.dim }}>{s.quoteResponseMessage}</p>}
+                        {s.quoteProposalUrl && <a href={s.quoteProposalUrl} target="_blank" rel="noreferrer" style={{ display:'inline-block', marginTop:6, fontSize:10, color:T.blue }}>Abrir proposta ↗</a>}
+                        {s.direction === 'inbox' && ['pending','enviado','visualizado'].includes(s.status) && (
+                          <QuoteResponseForm sol={s} onDone={fetchSolicitacoes}/>
+                        )}
+                        {s.direction === 'outbox' && s.agreementStatus === 'accepted' && s.quoteAmountCents != null && !s.selected && (
+                          <button onClick={()=>handleSelectQuote(s)} style={{ marginTop:8, padding:'6px 10px', border:0, borderRadius:6, background:T.purple, color:'#fff', fontSize:10, fontWeight:800, cursor:'pointer' }}>Selecionar proposta</button>
+                        )}
+                        {s.selected && !s.saleConfirmedAt && (
+                          <button onClick={()=>handleConfirmSale(s)} style={{ marginTop:8, marginLeft:6, padding:'6px 10px', border:0, borderRadius:6, background:T.green, color:'#111', fontSize:10, fontWeight:800, cursor:'pointer' }}>Confirmar venda/pagamento</button>
+                        )}
+                      </div>
                     )}
                   </div>
                 )

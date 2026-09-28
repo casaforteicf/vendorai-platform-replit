@@ -211,6 +211,71 @@ async function createReferralPartnerParticipation(input: CommissionEvaluationInp
   return event ?? null;
 }
 
+
+export async function createSpecificationParticipation(input: {
+  tenantId: string;
+  projectId?: string | null;
+  solicitationId: string;
+  architectActorId: string;
+  baseAmountCents: number;
+  participationPercent: number;
+  platformFeePercent: number;
+  paymentId: string;
+  receiptPercent?: number;
+  metadata?: Record<string, unknown>;
+}) {
+  const eligiblePercent = clampPercent(input.receiptPercent ?? 100);
+  const participationPercent = clampPercent(input.participationPercent);
+  const platformFeePercent = clampPercent(input.platformFeePercent);
+  const correlationId = `specification:payment:${input.paymentId}:${input.solicitationId}`;
+
+  const [existing] = await db.select().from(commissionEventsTable)
+    .where(and(eq(commissionEventsTable.tenantId, input.tenantId), eq(commissionEventsTable.correlationId, correlationId)))
+    .limit(1);
+  if (existing) return { event: existing, idempotent: true };
+
+  const baseAmountCents = Math.max(0, Math.round(input.baseAmountCents));
+  const participationCents = Math.round(baseAmountCents * (participationPercent / 100) * (eligiblePercent / 100));
+  const platformFeeCents = Math.round(baseAmountCents * (platformFeePercent / 100) * (eligiblePercent / 100));
+
+  const [event] = await db.insert(commissionEventsTable).values({
+    tenantId: input.tenantId,
+    ruleId: null,
+    dealId: null,
+    sellerUserId: null,
+    actorType: "architect_creator",
+    actorId: input.architectActorId,
+    participationType: "specification",
+    projectId: input.projectId ?? null,
+    trigger: "payment_reconciled",
+    sourceType: "arch_specification_sale",
+    sourceId: input.solicitationId,
+    baseAmountCents,
+    eligiblePercent: String(eligiblePercent),
+    commissionPercent: String(participationPercent),
+    commissionCents: participationCents,
+    platformFeePercent: String(platformFeePercent),
+    platformFeeCents,
+    status: "released",
+    reason: "Participação de Especificação liberada após confirmação do pagamento da venda.",
+    correlationId,
+    metadata: {
+      ...(input.metadata ?? {}),
+      solicitationId: input.solicitationId,
+      paymentId: input.paymentId,
+      productLanguage: "participacao",
+    },
+    releasedAt: new Date(),
+    updatedAt: new Date(),
+  }).returning();
+
+  return {
+    event,
+    participation: { participationPercent, participationCents, platformFeePercent, platformFeeCents, eligiblePercent },
+    idempotent: false,
+  };
+}
+
 export async function evaluateCommission(input: CommissionEvaluationInput) {
   const [existing] = await db
     .select()
