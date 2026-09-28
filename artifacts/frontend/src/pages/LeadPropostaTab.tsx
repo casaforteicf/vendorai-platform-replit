@@ -215,6 +215,9 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     useState<ProposalPresentationMode>("completo");
   const [proposalPresentationStageModes, setProposalPresentationStageModes] =
     useState<Record<string, ProposalPresentationMode>>({});
+  const [proposalShowTechnicalDetails, setProposalShowTechnicalDetails] = useState(true);
+  const [proposalTechnicalDetailStages, setProposalTechnicalDetailStages] =
+    useState<Record<string, boolean>>({});
   const [proposalShowGrandTotal, setProposalShowGrandTotal] = useState(true);
 
   // Refinement dialog
@@ -534,9 +537,11 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   function handleProposalBudgetChange(value: string) {
     setSelectedOrcamentoId(value);
     setProposalPresentationStageModes({});
+    setProposalTechnicalDetailStages({});
 
     if (value === "__none__") {
       setProposalPresentationDefaultMode("completo");
+      setProposalShowTechnicalDetails(true);
       setProposalShowGrandTotal(true);
       return;
     }
@@ -553,6 +558,20 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
           )
         : {},
     );
+    setProposalShowTechnicalDetails(
+      typeof presentation?.mostrarDetalhamentoTecnico === "boolean"
+        ? presentation.mostrarDetalhamentoTecnico
+        : true,
+    );
+    setProposalTechnicalDetailStages(
+      presentation?.detalhamentoTecnicoEtapas && typeof presentation.detalhamentoTecnicoEtapas === "object"
+        ? Object.fromEntries(
+            Object.entries(presentation.detalhamentoTecnicoEtapas)
+              .filter(([, value]) => typeof value === "boolean")
+              .map(([stageId, value]) => [stageId, Boolean(value)]),
+          )
+        : {},
+    );
     setProposalShowGrandTotal(
       typeof presentation?.mostrarTotalGeral === "boolean" ? presentation.mostrarTotalGeral : true,
     );
@@ -562,6 +581,8 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     return {
       modoPadrao: proposalPresentationDefaultMode,
       etapas: proposalPresentationStageModes,
+      mostrarDetalhamentoTecnico: proposalShowTechnicalDetails,
+      detalhamentoTecnicoEtapas: proposalTechnicalDetailStages,
       mostrarTotalGeral: proposalShowGrandTotal,
     };
   }
@@ -1856,15 +1877,15 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
               {selectedOrcamentoId !== "__none__" && (
                 <div className="mt-3 space-y-3 rounded-xl border bg-muted/20 p-3">
                   <div>
-                    <p className="text-sm font-semibold">Como apresentar os valores ao cliente</p>
+                    <p className="text-sm font-semibold">Como apresentar o orçamento ao cliente</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      Esta escolha altera somente a apresentação desta proposta. O orçamento interno continua completo.
+                      Separe o detalhamento financeiro do técnico. O orçamento interno continua completo, independentemente do que for exibido.
                     </p>
                   </div>
 
-                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+                  <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-end">
                     <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-muted-foreground">Modo padrão</label>
+                      <label className="text-xs font-medium text-muted-foreground">Detalhamento financeiro</label>
                       <Select
                         value={proposalPresentationDefaultMode}
                         onValueChange={(value) =>
@@ -1889,7 +1910,14 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                       </p>
                     </div>
 
-                    <div className="flex items-center justify-between gap-3 rounded-lg border bg-background px-3 py-2 md:min-w-[190px]">
+                    <div className="flex items-center justify-between gap-3 rounded-lg border bg-background px-3 py-2 lg:min-w-[215px]">
+                      <div>
+                        <p className="text-xs font-medium">Detalhamento técnico</p>
+                        <p className="text-[11px] text-muted-foreground">Mostrar itens e escopo contemplado</p>
+                      </div>
+                      <Switch checked={proposalShowTechnicalDetails} onCheckedChange={setProposalShowTechnicalDetails} />
+                    </div>
+                    <div className="flex items-center justify-between gap-3 rounded-lg border bg-background px-3 py-2 lg:min-w-[180px]">
                       <div>
                         <p className="text-xs font-medium">Total geral</p>
                         <p className="text-[11px] text-muted-foreground">Mostrar no final</p>
@@ -1904,7 +1932,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                         <div>
                           <p className="text-xs font-semibold">Configuração por etapa</p>
                           <span className="text-[11px] text-muted-foreground">
-                            Você pode misturar formatos e usar uma foto representativa em cada etapa.
+                            Você pode definir separadamente o financeiro, o detalhamento técnico e a foto de cada etapa.
                           </span>
                         </div>
                         <div className="flex items-center gap-1.5">
@@ -1937,7 +1965,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                         {selectedOrcamentoStages.map((stage) => (
                           <div
                             key={stage.id}
-                            className="grid gap-2 rounded-lg border bg-background p-2.5 sm:grid-cols-[minmax(0,1fr)_220px] sm:items-center"
+                            className="grid gap-2 rounded-lg border bg-background p-2.5 lg:grid-cols-[minmax(0,1fr)_210px_170px] lg:items-center"
                           >
                             <div className="flex min-w-0 items-center gap-2.5">
                               {selectedStageImages[stage.id] ? (
@@ -1964,34 +1992,67 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                                 ) : null}
                               </div>
                             </div>
-                            <Select
-                              value={proposalPresentationStageModes[stage.id] ?? "__default__"}
-                              onValueChange={(value) =>
-                                setProposalPresentationStageModes((current) => {
-                                  const next = { ...current };
-                                  if (value === "__default__") {
-                                    delete next[stage.id];
-                                  } else {
-                                    next[stage.id] = value as ProposalPresentationMode;
-                                  }
-                                  return next;
-                                })
-                              }
-                            >
-                              <SelectTrigger className="h-8 w-full text-xs">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="__default__">
-                                  Usar padrão
-                                </SelectItem>
-                                {PROPOSAL_PRESENTATION_OPTIONS.map((option) => (
-                                  <SelectItem key={option.value} value={option.value}>
-                                    {option.label}
+                            <div className="space-y-1">
+                              <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Financeiro</span>
+                              <Select
+                                value={proposalPresentationStageModes[stage.id] ?? "__default__"}
+                                onValueChange={(value) =>
+                                  setProposalPresentationStageModes((current) => {
+                                    const next = { ...current };
+                                    if (value === "__default__") {
+                                      delete next[stage.id];
+                                    } else {
+                                      next[stage.id] = value as ProposalPresentationMode;
+                                    }
+                                    return next;
+                                  })
+                                }
+                              >
+                                <SelectTrigger className="h-8 w-full text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="__default__">
+                                    Usar padrão
                                   </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                                  {PROPOSAL_PRESENTATION_OPTIONS.map((option) => (
+                                    <SelectItem key={option.value} value={option.value}>
+                                      {option.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-1">
+                              <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Técnico</span>
+                              <Select
+                                value={
+                                  Object.prototype.hasOwnProperty.call(proposalTechnicalDetailStages, stage.id)
+                                    ? (proposalTechnicalDetailStages[stage.id] ? "mostrar" : "ocultar")
+                                    : "__default__"
+                                }
+                                onValueChange={(value) =>
+                                  setProposalTechnicalDetailStages((current) => {
+                                    const next = { ...current };
+                                    if (value === "__default__") {
+                                      delete next[stage.id];
+                                    } else {
+                                      next[stage.id] = value === "mostrar";
+                                    }
+                                    return next;
+                                  })
+                                }
+                              >
+                                <SelectTrigger className="h-8 w-full text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="__default__">Usar padrão</SelectItem>
+                                  <SelectItem value="mostrar">Mostrar escopo</SelectItem>
+                                  <SelectItem value="ocultar">Ocultar escopo</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -1999,7 +2060,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                   )}
 
                   <p className="text-[11px] text-muted-foreground">
-                    Exemplo: Fundação pode mostrar somente o valor da etapa, enquanto Esquadrias pode mostrar valores individuais.
+                    Exemplo: Fundação pode mostrar somente o valor macro no financeiro e, ao mesmo tempo, listar tecnicamente tudo o que está contemplado — sem revelar quantidades nem preços unitários.
                   </p>
                 </div>
               )}
