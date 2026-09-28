@@ -349,6 +349,48 @@ function proposalStageImageRule(normalizedStageContext: string): string {
   return "REGRA TÉCNICA OBRIGATÓRIA: a fotografia deve representar exatamente o serviço e o estado construtivo desta etapa, usando os itens do orçamento como fonte de verdade visual.";
 }
 
+
+function proposalHouseVisualDirection(input: {
+  estiloCasa?: unknown;
+  padraoCasa?: unknown;
+  tipoCasa?: unknown;
+  elementosVisuais?: unknown;
+}): string {
+  const estiloMap: Record<string, string> = {
+    moderna: "arquitetura moderna brasileira de alto nível",
+    contemporanea: "arquitetura contemporânea brasileira sofisticada",
+    minimalista: "arquitetura minimalista refinada, volumes limpos e proporções elegantes",
+    classica: "arquitetura clássica contemporânea, elegante e sóbria",
+    industrial: "arquitetura industrial sofisticada com concreto, metal, vidro e madeira",
+  };
+  const padraoMap: Record<string, string> = {
+    medio: "padrão residencial médio bem executado",
+    alto_padrao: "CASA DE ALTO PADRÃO, materiais premium, paisagismo profissional, proporções arquitetônicas sofisticadas e acabamento impecável",
+    luxo: "RESIDÊNCIA DE LUXO, arquitetura autoral, materiais nobres, paisagismo exuberante e acabamento excepcional",
+  };
+  const tipoMap: Record<string, string> = {
+    terrea: "residência térrea",
+    sobrado: "sobrado residencial",
+  };
+  const estilo = estiloMap[String(input.estiloCasa ?? "")] ?? estiloMap.contemporanea;
+  const padrao = padraoMap[String(input.padraoCasa ?? "")] ?? padraoMap.alto_padrao;
+  const tipo = tipoMap[String(input.tipoCasa ?? "")] ?? tipoMap.sobrado;
+  const elementos = Array.isArray(input.elementosVisuais)
+    ? input.elementosVisuais
+        .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+        .map((item) => item.trim())
+        .slice(0, 12)
+    : [];
+
+  return [
+    "DIREÇÃO VISUAL GLOBAL DA PROPOSTA:",
+    `A linguagem arquitetônica deve remeter a ${tipo}, ${estilo}, ${padrao}.`,
+    elementos.length ? `Elementos visuais desejados quando forem compatíveis com a cena: ${elementos.join(", ")}.` : "",
+    "Mesmo em fotos de obra, o contexto deve parecer uma residência sofisticada, organizada e coerente com uma casa de alto padrão; evitar casas populares, obras precárias, alvenaria genérica mal-acabada e cenários visualmente pobres.",
+    "A prioridade é: COERÊNCIA COM A ETAPA > PADRÃO ARQUITETÔNICO PREMIUM > FOTOREALISMO.",
+  ].filter(Boolean).join("\n");
+}
+
 router.post("/leads/:leadId/proposals/stage-images", async (req, res) => {
   const leadId = String(req.params.leadId);
   const tenantId = req.user?.tenantId ?? "";
@@ -459,6 +501,12 @@ router.post("/leads/:leadId/proposals/stage-images", async (req, res) => {
   }
 
   const presentation = (proposta.apresentacao ?? {}) as Record<string, any>;
+  const visualDirection = proposalHouseVisualDirection({
+    estiloCasa: req.body?.estiloCasa ?? presentation.estiloCasa,
+    padraoCasa: req.body?.padraoCasa ?? presentation.padraoCasa,
+    tipoCasa: req.body?.tipoCasa ?? presentation.tipoCasa,
+    elementosVisuais: Array.isArray(req.body?.elementosVisuais) ? req.body.elementosVisuais : presentation.elementosVisuais,
+  });
   const stageImages: Record<string, string> = {
     ...((presentation.imagensEtapas && typeof presentation.imagensEtapas === "object")
       ? presentation.imagensEtapas
@@ -497,6 +545,7 @@ router.post("/leads/:leadId/proposals/stage-images", async (req, res) => {
       "Trabalhadores com EPI adequado, canteiro organizado, luz natural realista, materiais com escala correta, geometria consistente, sem objetos deformados.",
       scope ? `Escopo contratado desta etapa:\n${scope}` : "",
       technicalImageRule,
+      visualDirection,
       "A imagem precisa representar o conteúdo REAL desta etapa do orçamento. Não introduza método construtivo, material ou serviço incompatível com o escopo informado.",
       "A imagem é apenas representativa da etapa, não deve fingir ser foto do projeto real do cliente.",
       "Sem textos, sem letras, sem placas legíveis, sem logotipos, sem marcas d'água, sem molduras e sem antes/depois.",
@@ -1098,6 +1147,23 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
           rawPresentation.formato === "documento" || rawPresentation.formato === "hibrido"
             ? rawPresentation.formato
             : "site_interativo",
+        estiloCasa:
+          ["moderna","contemporanea","minimalista","classica","industrial"].includes(String(rawPresentation.estiloCasa))
+            ? String(rawPresentation.estiloCasa)
+            : "contemporanea",
+        padraoCasa:
+          ["medio","alto_padrao","luxo"].includes(String(rawPresentation.padraoCasa))
+            ? String(rawPresentation.padraoCasa)
+            : "alto_padrao",
+        tipoCasa:
+          rawPresentation.tipoCasa === "terrea" ? "terrea" : "sobrado",
+        elementosVisuais:
+          Array.isArray(rawPresentation.elementosVisuais)
+            ? rawPresentation.elementosVisuais
+                .filter((item: unknown): item is string => typeof item === "string" && item.trim().length > 0)
+                .map((item: string) => item.trim())
+                .slice(0, 12)
+            : [],
         modoPadrao: presentationModes.has(String(rawPresentation.modoPadrao))
           ? String(rawPresentation.modoPadrao) as "completo" | "resumo_etapa" | "preco_medio"
           : undefined,
@@ -1232,6 +1298,10 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
     paymentCompositions?: Array<{ forma: string; valor: string | number; comprovanteUrl?: string | null }>;
     apresentacao?: {
       formato?: "site_interativo" | "documento" | "hibrido";
+      estiloCasa?: "moderna" | "contemporanea" | "minimalista" | "classica" | "industrial";
+      padraoCasa?: "medio" | "alto_padrao" | "luxo";
+      tipoCasa?: "terrea" | "sobrado";
+      elementosVisuais?: string[];
       modoPadrao?: "completo" | "resumo_etapa" | "preco_medio";
       etapas?: Record<string, "completo" | "resumo_etapa" | "preco_medio">;
       mostrarTotalGeral?: boolean;
@@ -1284,6 +1354,10 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
     if (orc) {
       const storedPresentation = (orc.apresentacao ?? {}) as {
         formato?: "site_interativo" | "documento" | "hibrido";
+        estiloCasa?: "moderna" | "contemporanea" | "minimalista" | "classica" | "industrial";
+        padraoCasa?: "medio" | "alto_padrao" | "luxo";
+        tipoCasa?: "terrea" | "sobrado";
+        elementosVisuais?: string[];
         modoPadrao?: "completo" | "resumo_etapa" | "preco_medio";
         etapas?: Record<string, "completo" | "resumo_etapa" | "preco_medio">;
         mostrarTotalGeral?: boolean;
@@ -1307,6 +1381,10 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
       let mergedPresentation = {
         ...storedPresentation,
         ...(bodyPresentation?.formato ? { formato: bodyPresentation.formato } : {}),
+        ...(bodyPresentation?.estiloCasa ? { estiloCasa: bodyPresentation.estiloCasa } : {}),
+        ...(bodyPresentation?.padraoCasa ? { padraoCasa: bodyPresentation.padraoCasa } : {}),
+        ...(bodyPresentation?.tipoCasa ? { tipoCasa: bodyPresentation.tipoCasa } : {}),
+        ...(Array.isArray(bodyPresentation?.elementosVisuais) ? { elementosVisuais: bodyPresentation.elementosVisuais } : {}),
         ...(bodyPresentation?.modoPadrao ? { modoPadrao: bodyPresentation.modoPadrao } : {}),
         ...(bodyPresentation?.etapas ? {
           etapas: { ...(storedPresentation.etapas ?? {}), ...bodyPresentation.etapas },
@@ -1422,6 +1500,7 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
               .toLowerCase();
 
             const technicalImageRule = proposalStageImageRule(normalizedStageContext);
+            const visualDirection = proposalHouseVisualDirection(mergedPresentation);
 
             const stagePrompt = [
               "Fotografia documental hiper-realista de construção civil no Brasil, composição horizontal 3:2, aparência de fotografia profissional de obra real.",
@@ -1430,6 +1509,7 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
               "Trabalhadores com EPI adequado, canteiro organizado, luz natural realista, materiais com escala correta, geometria consistente, sem objetos deformados.",
               scope ? `Escopo contratado desta etapa:\n${scope}` : "",
               technicalImageRule,
+              visualDirection,
               "A imagem precisa representar o conteúdo REAL desta etapa do orçamento. Não introduza método construtivo, material ou serviço incompatível com o escopo informado.",
               "A imagem é apenas representativa da etapa, não deve fingir ser foto do projeto real do cliente.",
               "Sem textos, sem letras, sem placas legíveis, sem logotipos, sem marcas d'água, sem molduras e sem antes/depois.",
