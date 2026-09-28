@@ -446,6 +446,33 @@ const SHELL_STYLES = `
     pointer-events: none;
   }
 
+  .arqdor-studio-v3 .arqdor-studio-entry-btn {
+    position: fixed;
+    top: 11px;
+    left: 104px;
+    z-index: 1200;
+    height: 36px;
+    padding: 0 14px;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    border-radius: 10px;
+    border: 1px solid #fed7aa;
+    background: #fff7ed;
+    color: #c2410c;
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+    box-shadow: 0 3px 10px rgba(15,23,42,.05);
+    transition: .18s ease;
+  }
+
+  .arqdor-studio-v3 .arqdor-studio-entry-btn:hover {
+    background: #ffedd5;
+    border-color: #fb923c;
+    transform: translateY(-1px);
+  }
+
   @media (max-width: 1220px) {
     .arqdor-studio-v3 .arqdor-legacy-sidebar {
       width: 190px !important;
@@ -834,6 +861,15 @@ export default function RenderStudioPage() {
       <button className="arqdor-back-btn" onClick={handleBack} aria-label="Voltar para a tela anterior" title="Voltar para a tela anterior">
         <span aria-hidden="true">←</span>
         Voltar
+      </button>
+      <button
+        className="arqdor-studio-entry-btn"
+        onClick={() => setLocation("/arch/studio")}
+        aria-label="Abrir Studio IA dentro do fluxo de Render IA"
+        title="Studio IA — editar materiais, iluminação, variações e versões"
+      >
+        <span aria-hidden="true">✦</span>
+        Studio IA
       </button>
 
       <LegacyRenderStudioPage key={`${targetKey}:${approvalRedirectEpoch}`} />
