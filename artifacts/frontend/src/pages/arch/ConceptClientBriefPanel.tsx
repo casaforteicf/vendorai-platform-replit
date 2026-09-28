@@ -550,13 +550,12 @@ export default function ConceptClientBriefPanel({
       setAlternatives([primary]);
       setShowAlternatives(true);
     } catch (error) {
-      const fallbackBrief = enrichBriefWithClientVision(brief, vision);
-      const fallback = buildClientBriefAlternatives(fallbackBrief, lotWidth, lotDepth, placement)[0];
-      setAlternatives(fallback ? [fallback] : []);
+      setAlternatives([]);
+      setShowAlternatives(false);
       setGenerationError(
         error instanceof Error
-          ? `${error.message} Exibindo uma base local de contingência para você continuar.`
-          : "IA especialista indisponível. Exibindo uma base local de contingência.",
+          ? `${error.message} Nenhum projeto genérico foi aplicado. Tente novamente para manter o padrão da IA arquiteta especialista.`
+          : "IA arquiteta especialista indisponível. Nenhum projeto genérico foi aplicado; tente novamente.",
       );
       setShowAlternatives(true);
     } finally {
