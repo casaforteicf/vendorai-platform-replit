@@ -567,9 +567,20 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
               Array.isArray(value)
                 ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
                 : [];
+            const constructionV2Guidance = selectedBuilder["proposalKind"] === "construction_project"
+              ? [
+                  "REGRA CONSTRUÇÃO V2: permitir fases/subfases dentro da mesma etapa executiva sem duplicar custo contratado.",
+                  "REGRA CONSTRUÇÃO V2: cronograma parte da primeira data definida e projeta etapas seguintes por duração/dependência; etapas independentes podem ocorrer simultaneamente.",
+                  "REGRA CONSTRUÇÃO V2: físico-financeiro é mensal e deve mostrar planejamento físico e financeiro por período.",
+                  "REGRA CONSTRUÇÃO V2: entrada/sinal é adiantamento contratual e não aumenta o valor total da obra.",
+                  "REGRA CONSTRUÇÃO V2: quando houver amortização da entrada nas medições, apresentar medição bruta, desconto proporcional da entrada e parcela líquida.",
+                  "REGRA CONSTRUÇÃO V2: não impor sequência rígida quando o planejamento permitir paralelismo.",
+                ]
+              : [];
             return [
               `MODELO MODULAR DO TENANT: ${String(selectedBuilder["name"] ?? "Modelo padrão")}`,
               modules.length ? `ORDEM DOS MÓDULOS: ${modules.join(" > ")}` : "",
+              ...constructionV2Guidance,
               typeof aiRules["tone"] === "string" ? `TOM: ${aiRules["tone"]}` : "",
               typeof aiRules["technicalLevel"] === "string" ? `NÍVEL TÉCNICO: ${aiRules["technicalLevel"]}` : "",
               ...list(aiRules["contentRules"]).map((rule) => `REGRA DE CONTEÚDO: ${rule}`),
