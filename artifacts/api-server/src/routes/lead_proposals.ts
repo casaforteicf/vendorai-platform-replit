@@ -1072,6 +1072,10 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
   const presentationModes = new Set(["completo", "resumo_etapa", "preco_medio"]);
   const bodyPresentation = rawPresentation && typeof rawPresentation === "object"
     ? {
+        formato:
+          rawPresentation.formato === "documento" || rawPresentation.formato === "hibrido"
+            ? rawPresentation.formato
+            : "site_interativo",
         modoPadrao: presentationModes.has(String(rawPresentation.modoPadrao))
           ? String(rawPresentation.modoPadrao) as "completo" | "resumo_etapa" | "preco_medio"
           : undefined,
@@ -1205,6 +1209,7 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
     validadeAte?: Date | string | null;
     paymentCompositions?: Array<{ forma: string; valor: string | number; comprovanteUrl?: string | null }>;
     apresentacao?: {
+      formato?: "site_interativo" | "documento" | "hibrido";
       modoPadrao?: "completo" | "resumo_etapa" | "preco_medio";
       etapas?: Record<string, "completo" | "resumo_etapa" | "preco_medio">;
       mostrarTotalGeral?: boolean;
@@ -1256,6 +1261,7 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
       .where(and(eq(propostasTable.id, bodyPropostaId), eq(propostasTable.tenantId, tenantId)));
     if (orc) {
       const storedPresentation = (orc.apresentacao ?? {}) as {
+        formato?: "site_interativo" | "documento" | "hibrido";
         modoPadrao?: "completo" | "resumo_etapa" | "preco_medio";
         etapas?: Record<string, "completo" | "resumo_etapa" | "preco_medio">;
         mostrarTotalGeral?: boolean;
@@ -1278,6 +1284,7 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
 
       let mergedPresentation = {
         ...storedPresentation,
+        ...(bodyPresentation?.formato ? { formato: bodyPresentation.formato } : {}),
         ...(bodyPresentation?.modoPadrao ? { modoPadrao: bodyPresentation.modoPadrao } : {}),
         ...(bodyPresentation?.etapas ? {
           etapas: { ...(storedPresentation.etapas ?? {}), ...bodyPresentation.etapas },
@@ -1598,7 +1605,14 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
       leadId,
       version: nextVersion,
       htmlContent: html,
-      jsonContent: JSON.stringify({ ...json, anexos: proposalAttachments }),
+      jsonContent: JSON.stringify({
+        ...json,
+        anexos: proposalAttachments,
+        _proposalMeta: {
+          sourcePropostaId: bodyPropostaId || null,
+          presentationFormat: orcamentoEmbed?.apresentacao?.formato || "site_interativo",
+        },
+      }),
       status: "ready",
     })
     .returning();
