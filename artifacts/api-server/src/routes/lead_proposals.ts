@@ -445,6 +445,157 @@ router.post("/leads/:leadId/proposals/stage-images", async (req, res) => {
   });
 });
 
+// ── Async proposal generation ────────────────────────────────────────────────
+// Cloudflare can terminate long-running HTTP requests with 524 before the AI
+// finishes. The browser therefore starts a short job request, while the actual
+// generation runs through an internal loopback request that never crosses
+// Cloudflare. The UI polls the lightweight status endpoint below.
+type ProposalGenerationJob = {
+  tenantId: string;
+  leadId: string;
+  status: "processing" | "success" | "error";
+  version?: number;
+  error?: string;
+  createdAt: number;
+};
+
+const proposalGenerationJobs = new Map<string, ProposalGenerationJob>();
+
+function scheduleProposalGenerationJobCleanup(jobId: string) {
+  const timer = setTimeout(() => proposalGenerationJobs.delete(jobId), 15 * 60 * 1000);
+  timer.unref?.();
+}
+
+router.post("/leads/:leadId/proposals/async", async (req, res) => {
+  const leadId = String(req.params.leadId);
+  const ctx = await loadProposalContext(leadId, req.user?.tenantId ?? "");
+  if (!ctx) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+  if (req.user?.platformRole !== "super_admin" && ctx.lead.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const authorization = typeof req.headers.authorization === "string"
+    ? req.headers.authorization
+    : "";
+  if (!authorization) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const jobId = crypto.randomUUID();
+  proposalGenerationJobs.set(jobId, {
+    tenantId: ctx.lead.tenantId,
+    leadId,
+    status: "processing",
+    createdAt: Date.now(),
+  });
+  scheduleProposalGenerationJobCleanup(jobId);
+
+  // Return immediately so the edge proxy never waits for the AI provider.
+  res.status(202).json({ jobId, status: "processing" });
+
+  const port = process.env.PORT ?? "8080";
+  const basePath = process.env.BASE_PATH ?? "";
+  const internalUrl = `http://127.0.0.1:${port}${basePath}/api/leads/${encodeURIComponent(leadId)}/proposals`;
+  const payload = JSON.stringify(req.body ?? {});
+  const log = req.log;
+
+  setImmediate(() => {
+    void fetch(internalUrl, {
+      method: "POST",
+      headers: {
+        Authorization: authorization,
+        "Content-Type": "application/json",
+      },
+      body: payload,
+    })
+      .then(async (response) => {
+        const raw = await response.text();
+        let body: any = null;
+        try {
+          body = raw ? JSON.parse(raw) : null;
+        } catch {
+          body = null;
+        }
+
+        if (!response.ok) {
+          const message =
+            body?.error
+            || body?.message
+            || (raw && !/^\s*</.test(raw) ? raw.slice(0, 500) : "")
+            || `Falha ao gerar proposta (HTTP ${response.status})`;
+          proposalGenerationJobs.set(jobId, {
+            tenantId: ctx.lead.tenantId,
+            leadId,
+            status: "error",
+            error: String(message),
+            createdAt: Date.now(),
+          });
+          log.warn({ jobId, leadId, status: response.status, error: message }, "async proposal generation failed");
+          return;
+        }
+
+        const version = Number(body?.version);
+        if (!Number.isFinite(version) || version <= 0) {
+          proposalGenerationJobs.set(jobId, {
+            tenantId: ctx.lead.tenantId,
+            leadId,
+            status: "error",
+            error: "A proposta foi processada, mas a versão gerada não foi identificada.",
+            createdAt: Date.now(),
+          });
+          return;
+        }
+
+        proposalGenerationJobs.set(jobId, {
+          tenantId: ctx.lead.tenantId,
+          leadId,
+          status: "success",
+          version,
+          createdAt: Date.now(),
+        });
+        log.info({ jobId, leadId, version }, "async proposal generation completed");
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : "Falha interna ao gerar proposta";
+        proposalGenerationJobs.set(jobId, {
+          tenantId: ctx.lead.tenantId,
+          leadId,
+          status: "error",
+          error: message,
+          createdAt: Date.now(),
+        });
+        log.error({ jobId, leadId, error: message }, "async proposal generation crashed");
+      });
+  });
+});
+
+router.get("/leads/:leadId/proposals/generation/:jobId", async (req, res) => {
+  const leadId = String(req.params.leadId);
+  const jobId = String(req.params.jobId);
+  const job = proposalGenerationJobs.get(jobId);
+
+  if (!job || job.leadId !== leadId) {
+    res.status(404).json({ error: "Geração não encontrada ou expirada." });
+    return;
+  }
+  if (req.user?.platformRole !== "super_admin" && job.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  res.json({
+    jobId,
+    status: job.status,
+    ...(job.version ? { version: job.version } : {}),
+    ...(job.error ? { error: job.error } : {}),
+  });
+});
+
 // ── POST /leads/:leadId/proposals ─────────────────────────────────────────────────
 router.post("/leads/:leadId/proposals", async (req, res) => {
   const leadId = String(req.params.leadId);
