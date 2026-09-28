@@ -1088,6 +1088,8 @@ function renderConstructionProposalLayout(args: {
   const estimatedDays = earliestStart && latestEnd
     ? Math.max(1, Math.ceil((latestEnd.getTime() - earliestStart.getTime()) / 86400000) + 1)
     : scheduleRows.reduce((sum, row) => sum + (row.duration || 0), 0);
+  const commercialDeadline = String(orcamento.prazoEntrega ?? "").trim();
+  const deadlineLabel = commercialDeadline || (estimatedDays > 0 ? `${estimatedDays} dias` : "A definir");
   const company = tenantName || "Construtora";
   const client = clientName || meta.clientName || "Cliente";
   const title = orcamento.titulo || hero.title || "Construção residencial";
@@ -1135,7 +1137,7 @@ function renderConstructionProposalLayout(args: {
 
   const summaryCards = [
     { label: "Valor global", value: fmtBRL(total) },
-    ...(estimatedDays > 0 ? [{ label: "Prazo estimado", value: `${estimatedDays} dias` }] : []),
+    { label: "Prazo estimado", value: deadlineLabel },
     ...(areaTotalConstruida > 0 ? [{ label: "Área total construída", value: `${areaTotalConstruida.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²` }] : []),
     { label: "Etapas / fases", value: totalPhases > 0 ? `${groupedItems.length} / ${totalPhases}` : String(groupedItems.length) },
     ...(presentation.entradaPercentual > 0 ? [{ label: "Entrada / adiantamento", value: `${presentation.entradaPercentual.toFixed(2)}% · ${fmtBRL(entryValue)}` }] : []),
@@ -1201,10 +1203,7 @@ function renderConstructionProposalLayout(args: {
     const row = scheduleRows.find((item) => item.id === group.id);
     const stageTotal = group.itens.reduce((sum, item) => sum + item.quantidade * item.valorUnitario, 0);
     const weight = total > 0 ? (stageTotal / total) * 100 : 0;
-    const imageUrl =
-      presentation.imagensEtapas[group.id]
-      || (visualImages.length ? visualImages[(Math.max(1, group.ordem) - 1) % visualImages.length] : null)
-      || null;
+    const imageUrl = presentation.imagensEtapas[group.id] || null;
     const financialMode = resolveProposalPresentationMode(presentation, group.id);
     const showTechnicalDetail = resolveProposalTechnicalDetail(presentation, group.id);
     const scopeRows = group.itens.map((item) => `
@@ -1260,8 +1259,8 @@ function renderConstructionProposalLayout(args: {
       ${header("ORÇAMENTO POR ETAPAS", `Etapa ${group.ordem} · ${group.nome}`)}
       <h1 class="stage-heading">Etapa ${group.ordem} · ${escapeProposalText(group.nome)}</h1>
       ${imageUrl
-        ? `<div class="stage-image"><img src="${escapeProposalText(imageUrl)}" alt="${escapeProposalText(group.nome)}" onerror="this.parentElement.style.display='none'" /></div>`
-        : ""}
+        ? `<div class="stage-image"><img src="${escapeProposalText(imageUrl)}" alt="${escapeProposalText(group.nome)}" onerror="this.parentElement.innerHTML='<div class=&quot;stage-image-missing&quot;>Imagem desta etapa indisponível</div>'" /></div>`
+        : `<div class="stage-image stage-image-missing">Imagem desta etapa pendente de geração específica</div>`}
       <div class="stage-metrics">
         <div><span>VALOR DA ETAPA</span><strong>${fmtBRL(stageTotal)}</strong></div>
         <div><span>DURAÇÃO</span><strong>${row?.duration ? `${row.duration} dias` : "A definir"}</strong></div>
@@ -1328,7 +1327,7 @@ function renderConstructionProposalLayout(args: {
     ["FORMA DE PAGAMENTO", orcamento.condPagamento || orcamento.formaPagamento || "Conforme cronograma físico-financeiro"],
     ...(orcamento.validadeAte ? [["VALIDADE DA PROPOSTA", proposalFormatDate(orcamento.validadeAte)]] : []),
     ...(presentation.previsaoInicio ? [["PREVISÃO DE INÍCIO", proposalFormatDate(presentation.previsaoInicio)]] : []),
-    ...(estimatedDays > 0 ? [["PRAZO ESTIMADO", `${estimatedDays} dias`]] : []),
+    ["PRAZO ESTIMADO", deadlineLabel],
     ["REFERÊNCIA DE CONTRATO", "Linha de base contratada após aceite"],
   ];
 
@@ -1910,6 +1909,7 @@ function renderConstructionProposalLayout(args: {
   .web-interactive .stage-heading { font-size:clamp(28px,3vw,42px); margin:0 0 24px; }
   .web-interactive .stage-image { height:min(420px,48vw); border-radius:18px 18px 0 0; }
   .web-interactive .stage-image img { height:100%; }
+  .stage-image-missing { display:flex; align-items:center; justify-content:center; min-height:220px; padding:24px; background:#f4f5f7; color:#667085; text-align:center; font-size:14px; border:1px dashed #cfd4dc; }
   .web-interactive .stage-metrics { border-radius:0 0 18px 18px; margin-bottom:18px; }
   .web-interactive .stage-metrics > div { padding:18px 20px; }
   .web-interactive .stage-metrics strong { font-size:20px; }
