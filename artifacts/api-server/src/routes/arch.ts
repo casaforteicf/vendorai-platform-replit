@@ -6494,9 +6494,11 @@ router.delete("/arch/partners/:id", authenticate, async (req, res) => {
 router.post("/arch/partners/:id/solicitar", authenticate, async (req, res) => {
   const tid = tenantId(req);
   const partnerId = (req.params.id as string) as string;
-  const { tipo, mensagem, canal, projetoId, projetoTitulo, catalogoItemId, itemNome } = req.body as {
+  const { tipo, mensagem, canal, projetoId, projetoTitulo, catalogoItemId, itemNome,
+    participationEnabled, participationPercent, platformFeePercent, attributionWindowDays } = req.body as {
     tipo: string; mensagem?: string; canal?: string
     projetoId?: string; projetoTitulo?: string; catalogoItemId?: string; itemNome?: string
+    participationEnabled?: boolean; participationPercent?: number; platformFeePercent?: number; attributionWindowDays?: number
   };
 
   const [partner] = await db
@@ -6511,8 +6513,16 @@ router.post("/arch/partners/:id/solicitar", authenticate, async (req, res) => {
     orcamento: "Orçamento", amostra: "Amostra", visita: "Visita Técnica", compartilhar: "Compartilhamento de Projeto",
   };
 
-  const canalEnvio = canal ?? "manual";
+  const canalEnvio = partner.connectedTenantId ? "app" : (canal ?? "manual");
+  const participacaoAtiva = tipo === "orcamento" && participationEnabled === true;
+  const participacao = participacaoAtiva ? Math.max(0, Math.min(100, Number(participationPercent ?? 10))) : null;
+  const taxaPlataforma = participacaoAtiva ? Math.max(0, Math.min(100, Number(platformFeePercent ?? 1))) : null;
+  const janelaAtribuicao = Math.max(0, Number(attributionWindowDays ?? 90));
   let enviadoEm: Date | undefined;
+
+  if (partner.connectedTenantId) {
+    enviadoEm = new Date();
+  }
 
   // Tentar envio por email se parceiro tiver email e canal = email
   if (canalEnvio === "email" && partner.email) {
@@ -6547,6 +6557,19 @@ router.post("/arch/partners/:id/solicitar", authenticate, async (req, res) => {
       itemNome:       itemNome ?? null,
       mensagem:       mensagem ?? null,
       canalEnvio:     canalEnvio,
+      recipientTenantId: partner.connectedTenantId ?? null,
+      participationEnabled: participacaoAtiva,
+      participationPercent: participacao != null ? String(participacao) : null,
+      platformFeePercent: taxaPlataforma != null ? String(taxaPlataforma) : null,
+      agreementStatus: participacaoAtiva ? "pending" : "not_applicable",
+      attributionWindowDays: janelaAtribuicao,
+      attributionSource: "architect_project",
+      metadata: {
+        source: partner.connectedTenantId ? "vendorai_tenant" : "external_partner",
+        partnerSource: partner.partnerSource,
+        projectId: projetoId ?? null,
+        catalogItemId: catalogoItemId ?? null,
+      },
       enviadoEm:      enviadoEm ?? null,
     })
     .returning();
@@ -6604,6 +6627,71 @@ router.post("/arch/partners/compartilhar", authenticate, async (req, res) => {
     .returning();
 
   return res.status(201).json({ ...sol, emailSent: !!enviadoEm });
+});
+
+// ── POST /arch/projetos/:projetoId/solicitar-orcamentos — fluxo único multifornnecedor ─
+router.post("/arch/projetos/:projetoId/solicitar-orcamentos", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const projetoId = String(req.params.projetoId);
+  const body = z.object({
+    projetoTitulo: z.string().optional(),
+    partnerIds: z.array(z.string().min(1)).min(1).max(50),
+    mensagem: z.string().optional(),
+    participationEnabled: z.boolean().default(true),
+    participationPercent: z.number().min(0).max(100).default(10),
+    platformFeePercent: z.number().min(0).max(100).default(1),
+    attributionWindowDays: z.number().int().min(0).max(3650).default(90),
+  }).safeParse(req.body);
+
+  if (!body.success) return res.status(422).json({ error: "INVALID_REQUEST", issues: body.error.issues });
+
+  const partners = await db
+    .select()
+    .from(archPartnersTable)
+    .where(and(eq(archPartnersTable.tenantId, tid), inArray(archPartnersTable.id, body.data.partnerIds), eq(archPartnersTable.ativo, true)));
+
+  if (partners.length === 0) return res.status(404).json({ error: "Nenhum parceiro válido encontrado." });
+
+  const rows = partners.map((partner) => ({
+    tenantId: tid,
+    recipientTenantId: partner.connectedTenantId ?? null,
+    tipo: "orcamento",
+    status: partner.connectedTenantId ? "enviado" : "pendente",
+    partnerId: partner.id,
+    parceiroNome: partner.nome,
+    projetoId,
+    projetoTitulo: body.data.projetoTitulo ?? null,
+    mensagem: body.data.mensagem ?? null,
+    canalEnvio: partner.connectedTenantId ? "app" : "manual",
+    participationEnabled: body.data.participationEnabled,
+    participationPercent: body.data.participationEnabled ? String(body.data.participationPercent) : null,
+    platformFeePercent: body.data.participationEnabled ? String(body.data.platformFeePercent) : null,
+    agreementStatus: body.data.participationEnabled ? "pending" : "not_applicable",
+    attributionWindowDays: body.data.attributionWindowDays,
+    attributionSource: "architect_project",
+    metadata: {
+      source: partner.connectedTenantId ? "vendorai_tenant" : "external_partner",
+      partnerSource: partner.partnerSource,
+      bulkRequest: true,
+    },
+    enviadoEm: partner.connectedTenantId ? new Date() : null,
+  }));
+
+  const created = await db.insert(archSolicitacoesTable).values(rows).returning();
+
+  return res.status(201).json({
+    projetoId,
+    total: created.length,
+    tenants: created.filter((x) => x.recipientTenantId).length,
+    externos: created.filter((x) => !x.recipientTenantId).length,
+    participation: {
+      enabled: body.data.participationEnabled,
+      percent: body.data.participationEnabled ? body.data.participationPercent : null,
+      platformFeePercent: body.data.participationEnabled ? body.data.platformFeePercent : null,
+      agreementStatus: body.data.participationEnabled ? "pending" : "not_applicable",
+    },
+    solicitacoes: created,
+  });
 });
 
 // ── GET /arch/solicitacoes — histórico de solicitações do tenant ──────────────
