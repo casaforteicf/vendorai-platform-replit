@@ -21,6 +21,7 @@ import { dispatchVendaWebhook } from "../services/erp-webhook.js";
 import { callOpenAI as gatewayCallOpenAI } from "../lib/ai-gateway.js";
 import { proposalAccepted } from "../lib/proposal-accepted.js";
 import { renderOrcamentoPdf, generateProposalPDF } from "../lib/proposal-engine.js";
+import { logger } from "../lib/logger.js";
 import { calcularOrcamentoProdutoArea, ErroCalculoOrcamento, type ProdutoCalculo, type TipoCalculo } from "../lib/calculoOrcamentoM2.js";
 import { resolverECalcularOrcamento, ErroResolucaoOrcamento } from "../lib/calculoOrcamentoM2Resolver.js";
 import { buildProposalProductContext, proposalProductPromptRules } from "../lib/proposal-catalog-context.js";
@@ -510,93 +511,126 @@ router.get("/propostas/:id", async (req, res) => {
 
 // ── GET /propostas/:id/pdf — capa + tabela A4 ─────────────────────────────
 router.get("/propostas/:id/pdf", async (req, res) => {
-  const [proposta] = await db
-    .select()
-    .from(propostasTable)
-    .where(eq(propostasTable.id, String(req.params.id)));
+  const propostaId = String(req.params.id);
 
-  if (!proposta) {
-    res.status(404).json({ error: "Proposta not found" });
-    return;
-  }
+  try {
+    const [proposta] = await db
+      .select()
+      .from(propostasTable)
+      .where(eq(propostasTable.id, propostaId));
 
-  if (req.user?.platformRole !== "super_admin" && proposta.tenantId !== req.user?.tenantId) {
-    res.status(403).json({ error: "Access denied to this tenant" });
-    return;
-  }
+    if (!proposta) {
+      res.status(404).json({ error: "Proposta not found" });
+      return;
+    }
 
-  const [profile] = await db
-    .select()
-    .from(businessProfilesTable)
-    .where(eq(businessProfilesTable.tenantId, proposta.tenantId));
+    if (req.user?.platformRole !== "super_admin" && proposta.tenantId !== req.user?.tenantId) {
+      res.status(403).json({ error: "Access denied to this tenant" });
+      return;
+    }
 
-  const catalogItems = await db
-    .select({
-      nome: produtosCatalogoTable.nome,
-      descricao: produtosCatalogoTable.descricao,
-      categoria: categoriasProdutoTable.nome,
-      precoBase: produtosCatalogoTable.precoBase,
-      unidade: produtosCatalogoTable.unidade,
-      imagemUrl: produtosCatalogoTable.imagemUrl,
-    })
-    .from(produtosCatalogoTable)
-    .leftJoin(categoriasProdutoTable, eq(produtosCatalogoTable.categoriaId, categoriasProdutoTable.id))
-    .where(and(
-      eq(produtosCatalogoTable.tenantId, proposta.tenantId),
-      eq(produtosCatalogoTable.ativo, true),
-    ))
-    .limit(6);
+    let profile: any = null;
+    try {
+      const rows = await db
+        .select()
+        .from(businessProfilesTable)
+        .where(eq(businessProfilesTable.tenantId, proposta.tenantId))
+        .limit(1);
+      profile = rows[0] ?? null;
+    } catch (error) {
+      logger.warn({ err: error, propostaId, tenantId: proposta.tenantId }, "propostas: profile unavailable while generating PDF");
+    }
 
-  const [lead] = proposta.leadId
-    ? await db
-        .select({ nome: leadsTable.nome, empresa: leadsTable.empresa, telefone: leadsTable.telefone, email: leadsTable.email })
-        .from(leadsTable)
-        .where(eq(leadsTable.id, proposta.leadId))
-    : [null];
+    let catalogItems: any[] = [];
+    try {
+      catalogItems = await db
+        .select({
+          nome: produtosCatalogoTable.nome,
+          descricao: produtosCatalogoTable.descricao,
+          categoria: categoriasProdutoTable.nome,
+          precoBase: produtosCatalogoTable.precoBase,
+          unidade: produtosCatalogoTable.unidade,
+          imagemUrl: produtosCatalogoTable.imagemUrl,
+        })
+        .from(produtosCatalogoTable)
+        .leftJoin(categoriasProdutoTable, eq(produtosCatalogoTable.categoriaId, categoriasProdutoTable.id))
+        .where(and(
+          eq(produtosCatalogoTable.tenantId, proposta.tenantId),
+          eq(produtosCatalogoTable.ativo, true),
+        ))
+        .limit(6);
+    } catch (error) {
+      logger.warn({ err: error, propostaId, tenantId: proposta.tenantId }, "propostas: catalog unavailable while generating PDF");
+    }
 
-  const port = process.env.PORT ?? "5000";
-  const basePath = process.env.BASE_PATH ?? "";
-  const resolveUrl = (url: string | null | undefined): string | null => {
-    if (!url) return null;
-    if (url.startsWith("/objects/")) return `http://localhost:${port}${basePath}/api/storage${url}`;
-    if (url.startsWith("/api/storage/")) return `http://localhost:${port}${basePath}${url}`;
-    return url;
-  };
-
-  const profileResolved = profile ? { ...profile, logoUrl: resolveUrl(profile.logoUrl) } : null;
-  const presentationResolved = proposta.apresentacao
-    ? {
-        ...proposta.apresentacao,
-        imagensEtapas: Object.fromEntries(
-          Object.entries(proposta.apresentacao.imagensEtapas ?? {})
-            .map(([stageId, imageUrl]) => [stageId, resolveUrl(imageUrl) ?? imageUrl]),
-        ),
+    let lead: any = null;
+    if (proposta.leadId) {
+      try {
+        const rows = await db
+          .select({ nome: leadsTable.nome, empresa: leadsTable.empresa, telefone: leadsTable.telefone, email: leadsTable.email })
+          .from(leadsTable)
+          .where(eq(leadsTable.id, proposta.leadId))
+          .limit(1);
+        lead = rows[0] ?? null;
+      } catch (error) {
+        logger.warn({ err: error, propostaId, leadId: proposta.leadId }, "propostas: lead unavailable while generating PDF");
       }
-    : proposta.apresentacao;
+    }
 
-  const html = renderOrcamentoPdf({
-    proposta: {
-      ...proposta,
-      apresentacao: presentationResolved,
-      itens: (proposta.itens ?? []) as Array<{ nome: string; quantidade: number; valorUnitario: number; sku?: string | null; descricao?: string | null }>,
-    },
-    profile: profileResolved,
-    catalogItems,
-    lead: lead ?? null,
-  });
+    const port = process.env.PORT ?? "5000";
+    const basePath = process.env.BASE_PATH ?? "";
+    const resolveUrl = (url: string | null | undefined): string | null => {
+      if (!url) return null;
+      if (url.startsWith("/objects/")) return `http://localhost:${port}${basePath}/api/storage${url}`;
+      if (url.startsWith("/api/storage/")) return `http://localhost:${port}${basePath}${url}`;
+      return url;
+    };
 
-  const pdfBuffer = await generateProposalPDF(html);
-  const safe = (proposta.numero ?? proposta.id.slice(-8)).replace(/[^a-zA-Z0-9\-_]/g, "_");
-  const fileName = `Orcamento_${safe}.pdf`;
+    const profileResolved = profile ? { ...profile, logoUrl: resolveUrl(profile.logoUrl) } : null;
+    const presentationResolved = proposta.apresentacao
+      ? {
+          ...proposta.apresentacao,
+          imagensEtapas: Object.fromEntries(
+            Object.entries(proposta.apresentacao.imagensEtapas ?? {})
+              .map(([stageId, imageUrl]) => [
+                stageId,
+                typeof imageUrl === "string" ? resolveUrl(imageUrl) ?? imageUrl : imageUrl,
+              ]),
+          ),
+        }
+      : proposta.apresentacao;
 
-  const isPdf = pdfBuffer.length >= 4 && pdfBuffer[0] === 0x25 && pdfBuffer[1] === 0x50;
-  if (isPdf) {
+    const html = renderOrcamentoPdf({
+      proposta: {
+        ...proposta,
+        apresentacao: presentationResolved,
+        itens: (proposta.itens ?? []) as Array<{ nome: string; quantidade: number; valorUnitario: number; sku?: string | null; descricao?: string | null }>,
+      },
+      profile: profileResolved,
+      catalogItems,
+      lead,
+    });
+
+    const pdfBuffer = await generateProposalPDF(html);
+    const isPdf = pdfBuffer.length >= 4 && pdfBuffer[0] === 0x25 && pdfBuffer[1] === 0x50;
+    if (!isPdf) {
+      logger.error({ propostaId, tenantId: proposta.tenantId }, "propostas: PDF generator returned non-PDF payload");
+      res.status(503).json({
+        error: "O gerador de PDF está temporariamente indisponível. Tente novamente em instantes.",
+        code: "PDF_GENERATION_UNAVAILABLE",
+      });
+      return;
+    }
+
+    const safe = (proposta.numero ?? proposta.id.slice(-8)).replace(/[^a-zA-Z0-9\-_]/g, "_");
+    const fileName = `Orcamento_${safe}.pdf`;
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
-  } else {
-    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    return res.send(pdfBuffer);
+  } catch (error) {
+    logger.error({ err: error, propostaId }, "propostas: failed to generate PDF");
+    res.status(500).json({ error: "Não foi possível gerar o PDF do orçamento." });
   }
-  return res.send(pdfBuffer);
 });
 
 router.patch("/propostas/:id", async (req, res) => {
