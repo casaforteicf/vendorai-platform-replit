@@ -31,6 +31,31 @@ router.get("/tenants/:tenantId/commission-engine/rules", async (req, res) => {
   res.json(rows);
 });
 
+router.get("/tenants/:tenantId/commission-engine/participation-presets", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId)) return void res.status(403).json({ error: "FORBIDDEN" });
+
+  res.json({
+    terminology: {
+      program: "Rede de Parceiros VendorAI",
+      specification: "Participação de Especificação",
+      acquisition: "Participação de Aquisição",
+    },
+    specification: {
+      suggestedParticipationPercent: 10,
+      suggestedPlatformFeePercent: 1,
+      requiresMutualAcceptance: true,
+      attributionWindowDays: 90,
+    },
+    acquisition: {
+      suggestedSetupParticipationPercent: 30,
+      recurringParticipationPercent: null,
+      recurringParticipationConfigurable: true,
+      attributionWindowDays: 90,
+    },
+  });
+});
+
 router.post("/tenants/:tenantId/commission-engine/rules", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   if (!canAccess(req, tenantId) || !isAdmin(req)) return void res.status(403).json({ error: "FORBIDDEN" });
@@ -69,12 +94,14 @@ router.get("/tenants/:tenantId/commission-engine/summary", async (req, res) => {
     released: sql<number>`count(*) filter (where ${commissionEventsTable.status} = 'released')`,
     paid: sql<number>`count(*) filter (where ${commissionEventsTable.status} = 'paid')`,
     reversed: sql<number>`count(*) filter (where ${commissionEventsTable.status} = 'reversed')`,
-    commissionCents: sql<number>`coalesce(sum(${commissionEventsTable.commissionCents}),0)`,
+    participationCents: sql<number>`coalesce(sum(${commissionEventsTable.commissionCents}),0)`,
+    platformFeeCents: sql<number>`coalesce(sum(${commissionEventsTable.platformFeeCents}),0)`,
     baseCents: sql<number>`coalesce(sum(${commissionEventsTable.baseAmountCents}),0)`,
   }).from(commissionEventsTable).where(eq(commissionEventsTable.tenantId, tenantId));
   const total = Number(row?.total ?? 0);
   const pct = (value: number) => total ? Number(((value / total) * 100).toFixed(1)) : 0;
   const base = Number(row?.baseCents ?? 0);
+  const participationCents = Number(row?.participationCents ?? 0);
   res.json({
     total,
     forecastPercent: pct(Number(row?.forecast ?? 0)),
@@ -82,7 +109,11 @@ router.get("/tenants/:tenantId/commission-engine/summary", async (req, res) => {
     releasedPercent: pct(Number(row?.released ?? 0)),
     paidPercent: pct(Number(row?.paid ?? 0)),
     reversedPercent: pct(Number(row?.reversed ?? 0)),
-    commissionToRevenuePercent: base ? Number(((Number(row?.commissionCents ?? 0) / base) * 100).toFixed(2)) : 0,
+    participationCents,
+    platformFeeCents: Number(row?.platformFeeCents ?? 0),
+    participationToRevenuePercent: base ? Number(((participationCents / base) * 100).toFixed(2)) : 0,
+    // Backwards-compatible alias for clients not yet migrated.
+    commissionToRevenuePercent: base ? Number(((participationCents / base) * 100).toFixed(2)) : 0,
   });
 });
 
@@ -90,8 +121,11 @@ const evaluateBody = z.object({
   trigger: z.enum(["sale_created", "proposal_approved", "contract_signed", "payment_received", "payment_reconciled", "target_reached"]),
   dealId: z.string().optional().nullable(),
   sellerUserId: z.string().optional().nullable(),
-  actorType: z.enum(["seller", "manager", "representative", "partner", "affiliate", "influencer", "distributor"]).optional(),
+  actorType: z.enum(["seller", "manager", "representative", "partner", "affiliate", "influencer", "distributor", "architect_creator"]).optional(),
   actorId: z.string().optional().nullable(),
+  participationType: z.enum(["sales", "specification", "acquisition"]).optional(),
+  projectId: z.string().optional().nullable(),
+  agreementAccepted: z.boolean().optional(),
   sourceType: z.string().optional().nullable(),
   sourceId: z.string().optional().nullable(),
   baseAmountCents: z.number().int().min(0).default(0),
