@@ -1023,6 +1023,16 @@ function renderConstructionProposalLayout(args: {
   .schedule-block-title { font-size:12pt; margin:7mm 0 3mm; }
   .schedule-demo td { padding:3mm 2.5mm; }
   .matrix-wrap { margin-top:3mm; }
+  .period-matrix-group { margin-top:3mm; }
+  .period-matrix-caption { font-size:6pt; color:${muted}; text-transform:uppercase; letter-spacing:.05em; margin-bottom:1.5mm; }
+  table.period-matrix { width:100%; border-collapse:collapse; table-layout:fixed; font-size:6.5pt; }
+  table.period-matrix th { background:#f3f4f6; color:${muted}; border:1px solid ${line}; padding:2.2mm 1.8mm; text-align:left; font-weight:600; }
+  table.period-matrix td { border:1px solid ${line}; padding:2.5mm 1.8mm; vertical-align:top; }
+  table.period-matrix .period-stage { width:32mm; }
+  table.period-matrix .period-stage span, table.period-matrix .period-cell span { display:block; color:#7b8190; font-size:5.6pt; margin-top:.7mm; }
+  table.period-matrix .period-cell strong { display:block; font-size:6.6pt; }
+  table.period-matrix .period-empty { color:#c0c4cc; text-align:center; }
+  table.period-matrix tfoot td { background:#fff7ed; font-weight:600; }
 
   .conditions-title { font-size:19pt; margin:1mm 0 8mm; }
   .conditions-list { border-top:1px solid ${line}; }
