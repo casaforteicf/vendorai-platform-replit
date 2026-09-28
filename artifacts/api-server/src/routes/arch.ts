@@ -6800,6 +6800,9 @@ router.post("/arch/partners/:id/solicitar", authenticate, async (req, res) => {
   const participacao = participacaoAtiva ? Math.max(0, Math.min(100, Number(participationPercent ?? 10))) : null;
   const taxaPlataforma = participacaoAtiva ? Math.max(0, Math.min(100, Number(platformFeePercent ?? 1))) : null;
   const janelaAtribuicao = Math.max(0, Number(attributionWindowDays ?? 90));
+  const externalAccessToken = partner.connectedTenantId ? null : crypto.randomUUID();
+  const publicBaseUrl = (process.env["PUBLIC_APP_URL"] ?? process.env["FRONTEND_URL"] ?? "https://app.appvendorai.com").replace(/\/$/, "");
+  const externalQuoteUrl = externalAccessToken ? `${publicBaseUrl}/api/arch/external-quote/${externalAccessToken}` : null;
   let enviadoEm: Date | undefined;
 
   if (partner.connectedTenantId) {
@@ -6818,6 +6821,7 @@ router.post("/arch/partners/:id/solicitar", authenticate, async (req, res) => {
           ${projetoTitulo ? `<p style="color:#444;font-size:14px;margin:0 0 12px;">📁 Projeto: <strong>${projetoTitulo}</strong></p>` : ""}
           ${itemNome ? `<p style="color:#444;font-size:14px;margin:0 0 12px;">📋 Item: <strong>${itemNome}</strong></p>` : ""}
           ${mensagem ? `<div style="background:#f4f4f5;border-radius:8px;padding:16px;margin:16px 0;font-size:14px;color:#374151;line-height:1.6;">${mensagem.replace(/\n/g, "<br>")}</div>` : ""}
+          ${externalQuoteUrl ? `<p style="margin:20px 0;"><a href="${externalQuoteUrl}" style="display:inline-block;padding:10px 16px;border-radius:8px;background:#6d28d9;color:white;text-decoration:none;font-weight:700;">Abrir projeto e responder orçamento</a></p>` : ""}
           <p style="color:#6b7280;font-size:13px;margin-top:24px;">Esta solicitação foi enviada via <strong>arqdor.ai</strong> — Ecosystem Engine.</p>
         </div>
       `,
@@ -6846,6 +6850,7 @@ router.post("/arch/partners/:id/solicitar", authenticate, async (req, res) => {
       agreementStatus: participacaoAtiva ? "pending" : "not_applicable",
       attributionWindowDays: janelaAtribuicao,
       attributionSource: "architect_project",
+      externalAccessToken,
       metadata: {
         source: partner.connectedTenantId ? "vendorai_tenant" : "external_partner",
         partnerSource: partner.partnerSource,
@@ -6963,6 +6968,7 @@ router.post("/arch/projetos/:projetoId/solicitar-orcamentos", authenticate, asyn
     attributionWindowDays: body.data.attributionWindowDays,
     attributionSource: "architect_project",
     quoteScope: body.data.quoteScope ?? null,
+    externalAccessToken: partner.connectedTenantId ? null : crypto.randomUUID(),
     metadata: {
       source: partner.connectedTenantId ? "vendorai_tenant" : "external_partner",
       partnerSource: partner.partnerSource,
@@ -6972,6 +6978,46 @@ router.post("/arch/projetos/:projetoId/solicitar-orcamentos", authenticate, asyn
   }));
 
   const created = await db.insert(archSolicitacoesTable).values(rows).returning();
+
+  const partnerById = new Map(partners.map((p) => [p.id, p]));
+  const publicBaseUrl = (process.env["PUBLIC_APP_URL"] ?? process.env["FRONTEND_URL"] ?? "https://app.appvendorai.com").replace(/\/$/, "");
+
+  for (const sol of created) {
+    if (sol.recipientTenantId) {
+      await db.insert(notificationsTable).values({
+        tenantId: sol.recipientTenantId,
+        title: "Nova solicitação de orçamento",
+        message: `${sol.projetoTitulo ?? "Projeto"} foi enviado para orçamento.`,
+        type: "info",
+        category: "arch_partner_quote",
+      });
+      continue;
+    }
+
+    const partner = sol.partnerId ? partnerById.get(sol.partnerId) : null;
+    if (partner?.email && sol.externalAccessToken) {
+      const link = `${publicBaseUrl}/api/arch/external-quote/${sol.externalAccessToken}`;
+      const sent = await sendPartnerEmail({
+        to: partner.email,
+        subject: `Solicitação de Orçamento — ${sol.projetoTitulo ?? "Projeto"}`,
+        html: `
+          <div style="font-family:sans-serif;max-width:620px;margin:0 auto;padding:24px;">
+            <h2>Solicitação de orçamento</h2>
+            <p>Você recebeu um projeto para orçamento via <strong>arqdor.ai</strong>.</p>
+            ${sol.projetoTitulo ? `<p><strong>Projeto:</strong> ${sol.projetoTitulo}</p>` : ""}
+            ${sol.quoteScope ? `<p><strong>Escopo:</strong> ${sol.quoteScope}</p>` : ""}
+            ${sol.mensagem ? `<p>${sol.mensagem}</p>` : ""}
+            <p><a href="${link}" style="display:inline-block;padding:11px 18px;border-radius:8px;background:#6d28d9;color:#fff;text-decoration:none;font-weight:700;">Visualizar e responder orçamento</a></p>
+            <p style="color:#6b7280;font-size:13px;">Não é necessário ser cliente VendorAI para responder.</p>
+          </div>`,
+      });
+      if (sent) {
+        await db.update(archSolicitacoesTable).set({ status: "enviado", enviadoEm: new Date() }).where(eq(archSolicitacoesTable.id, sol.id));
+        sol.status = "enviado";
+        sol.enviadoEm = new Date();
+      }
+    }
+  }
 
   return res.status(201).json({
     projetoId,
@@ -7071,7 +7117,7 @@ router.get("/arch/solicitacoes", authenticate, async (req, res) => {
     .orderBy(desc(archSolicitacoesTable.createdAt))
     .limit(200);
 
-  return res.json(rows);
+  return res.json(rows.map((row) => ({ ...row, direction: row.recipientTenantId === tid ? "inbox" : "outbox" })));
 });
 
 // ── POST /arch/solicitacoes/:id/selecionar — arquiteto escolhe a proposta ─────
@@ -7173,6 +7219,88 @@ router.post("/arch/solicitacoes/:id/confirmar-venda", authenticate, async (req, 
     .returning();
 
   return res.json({ solicitacao: updated, participation: participationResult });
+});
+
+// ── Portal público leve para fornecedor externo (sem conta VendorAI) ──────────
+archPublicRouter.get("/arch/external-quote/:token", async (req, res) => {
+  const token = String(req.params.token);
+  const [sol] = await db.select().from(archSolicitacoesTable)
+    .where(eq(archSolicitacoesTable.externalAccessToken, token))
+    .limit(1);
+
+  if (!sol) return res.status(404).send("Solicitação não encontrada ou link inválido.");
+
+  if (sol.status === "enviado" || sol.status === "pendente") {
+    await db.update(archSolicitacoesTable).set({ status: "visualizado" }).where(eq(archSolicitacoesTable.id, sol.id));
+  }
+
+  const esc = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, (m) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m] ?? m));
+  const participacao = sol.participationEnabled
+    ? `<div class="notice"><strong>Participação de Especificação:</strong> ${esc(sol.participationPercent)}% · Taxa da plataforma: ${esc(sol.platformFeePercent)}%. Ao aceitar, esta condição fica vinculada a esta oportunidade.</div>`
+    : "";
+
+  return res.type("html").send(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Solicitação de orçamento</title><style>
+    body{font-family:Inter,Arial,sans-serif;background:#f6f7fb;margin:0;color:#18181b}.wrap{max-width:760px;margin:40px auto;padding:0 18px}.card{background:#fff;border:1px solid #e4e4e7;border-radius:16px;padding:24px;box-shadow:0 8px 30px rgba(0,0,0,.05)}h1{font-size:24px;margin:0 0 8px}.muted{color:#71717a;font-size:14px}.notice{margin:18px 0;padding:14px;border-radius:10px;background:#f3e8ff;color:#581c87}label{display:block;font-size:13px;font-weight:700;margin:14px 0 5px}input,textarea{width:100%;box-sizing:border-box;padding:11px;border:1px solid #d4d4d8;border-radius:9px;font-size:14px}button{margin-top:18px;padding:12px 18px;border:0;border-radius:9px;background:#6d28d9;color:#fff;font-weight:800;cursor:pointer}.reject{background:#fff;color:#b91c1c;border:1px solid #fecaca;margin-left:8px}</style></head><body><div class="wrap"><div class="card">
+    <div class="muted">arqdor.ai · Rede de Parceiros VendorAI</div><h1>${esc(sol.projetoTitulo ?? "Projeto para orçamento")}</h1>
+    <p><strong>Escopo:</strong> ${esc(sol.quoteScope ?? sol.itemNome ?? "Orçamento do projeto")}</p>
+    <p class="muted">${esc(sol.mensagem ?? "")}</p>${participacao}
+    <form id="quoteForm">
+      <label>Valor do orçamento (R$)</label><input id="amount" type="number" min="0" step="0.01" required value="${sol.quoteAmountCents != null ? Number(sol.quoteAmountCents)/100 : ""}"/>
+      <label>Prazo de entrega/execução (dias)</label><input id="days" type="number" min="0" step="1" value="${esc(sol.quoteDeliveryDays ?? "")}"/>
+      <label>Validade da proposta</label><input id="valid" type="date"/>
+      <label>Link da proposta/PDF (opcional)</label><input id="url" type="url" value="${esc(sol.quoteProposalUrl ?? "")}"/>
+      <label>Observações</label><textarea id="message" rows="5">${esc(sol.quoteResponseMessage ?? "")}</textarea>
+      <button type="submit">Enviar proposta e aceitar condições</button><button type="button" class="reject" id="reject">Recusar</button>
+    </form><p id="result" class="muted"></p>
+  </div></div><script>
+    const post=async(payload)=>{const r=await fetch(location.pathname,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||"Falha ao responder");return d};
+    document.getElementById("quoteForm").addEventListener("submit",async(e)=>{e.preventDefault();const amount=Math.round(Number(document.getElementById("amount").value||0)*100);const valid=document.getElementById("valid").value;try{await post({resposta:"accepted",quoteAmountCents:amount,quoteDeliveryDays:Number(document.getElementById("days").value||0),quoteValidUntil:valid?new Date(valid+"T23:59:59-03:00").toISOString():undefined,quoteProposalUrl:document.getElementById("url").value||undefined,observacao:document.getElementById("message").value||undefined});document.getElementById("result").textContent="Proposta enviada com sucesso.";document.getElementById("quoteForm").style.display="none"}catch(err){document.getElementById("result").textContent=err.message}});
+    document.getElementById("reject").addEventListener("click",async()=>{try{await post({resposta:"rejected",observacao:document.getElementById("message").value||undefined});document.getElementById("result").textContent="Solicitação recusada.";document.getElementById("quoteForm").style.display="none"}catch(err){document.getElementById("result").textContent=err.message}});
+  </script></body></html>`);
+});
+
+archPublicRouter.post("/arch/external-quote/:token", async (req, res) => {
+  const token = String(req.params.token);
+  const parsed = z.object({
+    resposta: z.enum(["accepted", "rejected"]),
+    observacao: z.string().max(2000).optional(),
+    quoteAmountCents: z.number().int().min(0).optional(),
+    quoteDeliveryDays: z.number().int().min(0).max(3650).optional(),
+    quoteValidUntil: z.string().datetime({ offset: true }).optional(),
+    quoteProposalUrl: z.string().url().max(2000).optional(),
+  }).safeParse(req.body);
+
+  if (!parsed.success) return res.status(422).json({ error: "Resposta inválida", issues: parsed.error.issues });
+
+  const [sol] = await db.select().from(archSolicitacoesTable)
+    .where(eq(archSolicitacoesTable.externalAccessToken, token))
+    .limit(1);
+  if (!sol) return res.status(404).json({ error: "Solicitação não encontrada." });
+
+  const [updated] = await db.update(archSolicitacoesTable).set({
+    agreementStatus: sol.participationEnabled ? parsed.data.resposta : "not_applicable",
+    status: parsed.data.resposta === "accepted" ? "respondido" : "concluido",
+    quoteAmountCents: parsed.data.quoteAmountCents ?? sol.quoteAmountCents,
+    quoteDeliveryDays: parsed.data.quoteDeliveryDays ?? sol.quoteDeliveryDays,
+    quoteValidUntil: parsed.data.quoteValidUntil ? new Date(parsed.data.quoteValidUntil) : sol.quoteValidUntil,
+    quoteProposalUrl: parsed.data.quoteProposalUrl ?? sol.quoteProposalUrl,
+    quoteResponseMessage: parsed.data.observacao ?? sol.quoteResponseMessage,
+    metadata: {
+      ...(sol.metadata ?? {}),
+      externalResponse: true,
+      agreementRespondedAt: new Date().toISOString(),
+    },
+  }).where(eq(archSolicitacoesTable.id, sol.id)).returning();
+
+  await db.insert(notificationsTable).values({
+    tenantId: sol.tenantId,
+    title: parsed.data.resposta === "accepted" ? "Orçamento externo recebido" : "Fornecedor recusou a solicitação",
+    message: `${sol.parceiroNome ?? "Fornecedor"} respondeu ao projeto ${sol.projetoTitulo ?? ""}.`,
+    type: parsed.data.resposta === "accepted" ? "info" : "warning",
+    category: "arch_partner_quote",
+  });
+
+  return res.json(updated);
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
