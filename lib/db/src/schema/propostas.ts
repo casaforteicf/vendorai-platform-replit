@@ -134,6 +134,7 @@ export const propostaApresentacaoSchema = z.object({
   padraoCasa: propostaPadraoCasaSchema.default("alto_padrao"),
   tipoCasa: propostaTipoCasaSchema.default("sobrado"),
   elementosVisuais: z.array(z.string().min(1)).default([]),
+  imagemCapa: z.string().optional(),
   modoPadrao: propostaApresentacaoModoSchema.default("completo"),
   etapas: z.record(z.string(), propostaApresentacaoModoSchema).default({}),
   mostrarTotalGeral: z.boolean().default(true),
