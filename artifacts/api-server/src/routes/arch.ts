@@ -84,6 +84,7 @@ import { buildConceptDxf, conceptDxfFilename } from "../lib/arqdor-concept-dxf.j
 import { parseAsciiDxf } from "../lib/arqdor-dxf-import.js";
 import { parseIfcMetadata } from "../lib/arqdor-ifc-metadata.js";
 import { buildConceptIfc, conceptIfcFilename } from "../lib/arqdor-concept-ifc.js";
+import { parseIfcEditableGeometry } from "../lib/arqdor-ifc-editable.js";
 
 function sanitizeAIError(err: any): { status: number; message: string } {
   const raw: string = err?.message ?? String(err ?? "");
@@ -1085,6 +1086,69 @@ router.get("/arch/concept-projects/:id/export/dxf", authenticate, async (req, re
   res.setHeader("Content-Disposition", `attachment; filename="${conceptDxfFilename(concept.title)}"`);
   res.setHeader("Cache-Control", "private, no-store");
   return res.status(200).send(dxf);
+});
+
+router.post("/arch/concept-projects/:id/source-file/:sourceId/extract-geometry", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const userId = req.user?.sub;
+  const id = String(req.params.id);
+  const sourceId = String(req.params.sourceId);
+  if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
+
+  const [concept] = await db
+    .select({
+      id: archConceptProjectsTable.id,
+      lot: archConceptProjectsTable.lot,
+      configuration: archConceptProjectsTable.configuration,
+    })
+    .from(archConceptProjectsTable)
+    .where(and(
+      eq(archConceptProjectsTable.id, id),
+      eq(archConceptProjectsTable.tenantId, tid),
+      eq(archConceptProjectsTable.ownerUserId, userId),
+    ))
+    .limit(1);
+
+  if (!concept) return res.status(404).json({ error: "Pré-projeto não encontrado." });
+
+  const config = (concept.configuration ?? {}) as Record<string, unknown>;
+  const sourceFiles = Array.isArray(config.sourceFiles)
+    ? config.sourceFiles.filter((item) => item && typeof item === "object") as Array<Record<string, any>>
+    : [];
+  const source = sourceFiles.find((item) => String(item.id) === sourceId);
+  if (!source) return res.status(404).json({ error: "Arquivo-fonte não encontrado." });
+  if (String(source.extension).toLowerCase() !== "ifc") {
+    return res.status(400).json({ error: "Somente arquivos IFC podem ser convertidos para geometria editável por esta rota." });
+  }
+  if (typeof source.storagePath !== "string" || !source.storagePath.startsWith("/objects/")) {
+    return res.status(422).json({ error: "O arquivo IFC não possui caminho de storage válido." });
+  }
+
+  try {
+    const storage = new ObjectStorageService();
+    const file = await storage.getObjectEntityFile(source.storagePath);
+    const [buffer] = await file.download();
+    const geometry = parseIfcEditableGeometry(buffer.toString("utf8"));
+
+    const lot = (concept.lot ?? {}) as { width?: number; depth?: number };
+    const lotWidth = Number(lot.width ?? 0);
+    const lotDepth = Number(lot.depth ?? 0);
+    const fitsLot = Number.isFinite(lotWidth)
+      && Number.isFinite(lotDepth)
+      && geometry.bounds.width <= lotWidth + 0.01
+      && geometry.bounds.depth <= lotDepth + 0.01;
+
+    return res.json({
+      ...geometry,
+      fitsLot,
+      lot: { width: lotWidth, depth: lotDepth },
+      maxFloor: geometry.walls.reduce((max, wall) => Math.max(max, wall.floor), 0),
+    });
+  } catch (error) {
+    return res.status(422).json({
+      error: error instanceof Error ? error.message : "Não foi possível converter o IFC para geometria editável.",
+    });
+  }
 });
 
 router.post("/arch/concept-projects/:id/source-file/:sourceId/parse-ifc", authenticate, async (req, res) => {

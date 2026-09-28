@@ -959,6 +959,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [sourceFileState, setSourceFileState] = useState<"idle" | "uploading" | "error" | "success">("idle");
   const [sourceFileMessage, setSourceFileMessage] = useState<string | null>(null);
   const [parsingIfcId, setParsingIfcId] = useState<string | null>(null);
+  const [convertingIfcId, setConvertingIfcId] = useState<string | null>(null);
   const wallFirstActive = (Array.isArray(wallFirstFloors) ? wallFirstFloors : []).includes(activeFloor);
   const [modelSearch, setModelSearch] = useState("");
   const [modelCategory, setModelCategory] = useState<"todos" | "terreas" | "sobrados" | "lazer">("todos");
@@ -3878,6 +3879,99 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       setHandoffError(message);
       setHandoffState("error");
       return null;
+    }
+  };
+
+  const convertIfcSourceFile = async (source: ProjectSourceFile) => {
+    if (source.extension.toLowerCase() !== "ifc" || convertingIfcId) return;
+    if (projectMaster) {
+      setSourceFileState("error");
+      setSourceFileMessage("Crie uma revisão antes de substituir a geometria do Projeto Mestre.");
+      return;
+    }
+    const id = conceptIdRef.current ?? conceptId;
+    if (!id) {
+      setSourceFileState("error");
+      setSourceFileMessage("Salve o pré-projeto antes de converter o IFC.");
+      return;
+    }
+
+    setConvertingIfcId(source.id);
+    setSourceFileMessage(null);
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("vendorai_token") : null;
+      const response = await fetch(
+        `/api/arch/concept-projects/${encodeURIComponent(id)}/source-file/${encodeURIComponent(source.id)}/extract-geometry`,
+        {
+          method: "POST",
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        },
+      );
+      const payload = await response.json().catch(() => ({})) as {
+        error?: string;
+        walls?: Array<CustomWall & { sourceIfcId?: string }>;
+        bounds?: { width: number; depth: number };
+        fitsLot?: boolean;
+        maxFloor?: number;
+        storeys?: Array<{ name: string | null; floor: number }>;
+        warnings?: string[];
+      };
+      if (!response.ok) throw new Error(payload.error ?? "Não foi possível converter o IFC.");
+      if (!payload.walls?.length) throw new Error("Nenhuma parede editável foi extraída do IFC.");
+      if (!payload.fitsLot) {
+        throw new Error(
+          `A geometria IFC mede aproximadamente ${payload.bounds?.width?.toFixed?.(2) ?? "?"} × ${payload.bounds?.depth?.toFixed?.(2) ?? "?"} m e não cabe no lote atual de ${lotWidth} × ${lotDepth} m.`,
+        );
+      }
+
+      const confirmed = window.confirm(
+        `Converter ${payload.walls.length} paredes do IFC em geometria editável e substituir a planta atual? O briefing e os arquivos BIM/CAD vinculados serão preservados.`,
+      );
+      if (!confirmed) return;
+
+      const importedWalls = payload.walls.map(({ sourceIfcId: _sourceIfcId, ...wall }) => wall);
+      const importedFloors = Math.max(1, Number(payload.maxFloor ?? 0) + 1);
+      const wallFirst = Array.from({ length: importedFloors }, (_, index) => index);
+
+      setFloors(importedFloors);
+      setActiveFloor(0);
+      setRooms([]);
+      setCustomWalls(importedWalls);
+      setCustomOpenings([]);
+      setOpeningOverrides({});
+      setWallFirstFloors(wallFirst);
+      setSpaceProfiles([]);
+      setObjects([]);
+      setSelectedId(null);
+      setSelectedObjectId(null);
+      setSelectedOpeningId(null);
+      setSelectedWallId(null);
+      setSelectedCustomWallId(null);
+      setSelectedClosedSpaceId(null);
+      setInteractionMode("wall");
+      setEditorView("plan");
+      setEditorLibraryTab("build");
+      setStep(4);
+
+      await saveConcept(4, undefined, {
+        rooms: [],
+        customWalls: importedWalls,
+        customOpenings: [],
+        wallFirstFloors: wallFirst,
+        floors: importedFloors,
+      });
+
+      const warningText = payload.warnings?.length ? ` · ${payload.warnings.join(" ")}` : "";
+      setSourceFileState("success");
+      setSourceFileMessage(
+        `IFC convertido: ${importedWalls.length} paredes editáveis em ${importedFloors} pavimento(s).${warningText}`,
+      );
+      window.setTimeout(() => setSourceFileState("idle"), 6000);
+    } catch (error) {
+      setSourceFileState("error");
+      setSourceFileMessage(error instanceof Error ? error.message : "Falha ao converter IFC.");
+    } finally {
+      setConvertingIfcId(null);
     }
   };
 
@@ -8408,6 +8502,17 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                               className="rounded-lg border px-2.5 py-1.5 font-semibold text-violet-700 disabled:opacity-50"
                             >
                               {parsingIfcId === source.id ? "Lendo IFC..." : "Ler IFC"}
+                            </button>
+                          )}
+                          {source.extension.toLowerCase() === "ifc" && (
+                            <button
+                              type="button"
+                              onClick={() => void convertIfcSourceFile(source)}
+                              disabled={convertingIfcId === source.id || Boolean(projectMaster)}
+                              className="rounded-lg border px-2.5 py-1.5 font-semibold text-emerald-700 disabled:opacity-50"
+                              title={projectMaster ? "Crie uma revisão antes de substituir a geometria." : "Extrair paredes IFC compatíveis e tornar editáveis no Arqdor"}
+                            >
+                              {convertingIfcId === source.id ? "Convertendo..." : "Converter IFC"}
                             </button>
                           )}
                           <a href={source.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-orange-600 hover:underline">
