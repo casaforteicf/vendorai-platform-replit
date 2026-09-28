@@ -1058,6 +1058,11 @@ function renderConstructionProposalLayout(args: {
   const { json, tenantName, tenantLogoUrl, clientName, imagens, orcamento, builderModuleEnabled } = args;
   const hero = json.hero || {};
   const meta = json.meta || {};
+  const companyInfo = json.company || {};
+  const offerInfo = json.offer || {};
+  const curiositiesInfo = json.curiosities || {};
+  const proofInfo = json.proof || {};
+  const faqInfo = json.faq || {};
   const presentation = normalizeProposalPresentation(orcamento.apresentacao);
   const interactive = presentation.formato === "site_interativo" || presentation.formato === "hibrido";
   const hybrid = presentation.formato === "hibrido";
@@ -1143,6 +1148,34 @@ function renderConstructionProposalLayout(args: {
       <span>${item.label}</span>
       <strong>${item.value}</strong>
     </div>`).join("");
+
+  const institutionalCards = [
+    ...(builderModuleEnabled("apresentacao_empresa") && (companyInfo.title || companyInfo.text)
+      ? [{ label: "EMPRESA", title: companyInfo.title || company, text: companyInfo.text || "", items: companyInfo.highlights || [] }]
+      : []),
+    ...(builderModuleEnabled("produto_servico") && (offerInfo.title || offerInfo.text)
+      ? [{ label: "PRODUTO / SERVIÇO", title: offerInfo.title || "O que estamos propondo", text: offerInfo.text || "", items: offerInfo.bullets || [] }]
+      : []),
+  ];
+  const institutionalPageHtml =
+    institutionalCards.length
+    || (builderModuleEnabled("curiosidades_conteudo") && Array.isArray(curiositiesInfo.items) && curiositiesInfo.items.length)
+    || (builderModuleEnabled("cases_provas") && Array.isArray(proofInfo.items) && proofInfo.items.length)
+    || (builderModuleEnabled("faq") && Array.isArray(faqInfo.items) && faqInfo.items.length)
+      ? `
+<section class="page">
+  ${header("CONHEÇA A EMPRESA", "Informação institucional e educativa")}
+  <h1 class="summary-heading">Antes do orçamento, conheça melhor a proposta</h1>
+  <p class="summary-lead">Uma visão rápida da empresa, da solução e de informações úteis para apoiar sua decisão.</p>
+  <div class="organize-grid" style="margin-top:7mm;">
+    ${institutionalCards.map((card) => `<div class="organize-item"><span class="value-kicker">${escapeProposalText(String(card.label))}</span><b>${escapeProposalText(String(card.title))}</b><p>${escapeProposalText(String(card.text))}</p>${Array.isArray(card.items) && card.items.length ? `<p style="margin-top:2mm;">${card.items.map((item: unknown) => "• " + escapeProposalText(String(item))).join("<br>")}</p>` : ""}</div>`).join("")}
+    ${builderModuleEnabled("curiosidades_conteudo") ? (curiositiesInfo.items || []).map((item: any) => `<div class="organize-item"><span class="value-kicker">VALE SABER</span><b>${escapeProposalText(String(item?.title || ""))}</b><p>${escapeProposalText(String(item?.text || ""))}</p></div>`).join("") : ""}
+    ${builderModuleEnabled("cases_provas") ? (proofInfo.items || []).map((item: any) => `<div class="organize-item"><span class="value-kicker">EXPERIÊNCIA</span><b>${escapeProposalText(String(item?.title || ""))}</b><p>${escapeProposalText(String(item?.text || ""))}</p></div>`).join("") : ""}
+    ${builderModuleEnabled("faq") ? (faqInfo.items || []).map((item: any) => `<div class="organize-item"><span class="value-kicker">PERGUNTA FREQUENTE</span><b>${escapeProposalText(String(item?.question || ""))}</b><p>${escapeProposalText(String(item?.answer || ""))}</p></div>`).join("") : ""}
+  </div>
+  ${footer()}
+</section>`
+      : "";
 
   const valuePropositionHtml = isIcfProposal
     ? `
@@ -1942,6 +1975,7 @@ ${interactive ? `
   ${footer()}
 </section>
 
+${institutionalPageHtml}
 ${interactive ? `<div id="etapas-obra" class="web-section-anchor"></div>` : ""}
 ${stagePages}
 
