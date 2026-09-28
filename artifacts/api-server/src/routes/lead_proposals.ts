@@ -588,6 +588,18 @@ router.post("/leads/:leadId/proposals/stage-images", async (req, res) => {
     .set({
       apresentacao: {
         ...(proposta.apresentacao ?? {}),
+        estiloCasa:
+          ["moderna","contemporanea","minimalista","classica","industrial"].includes(String(req.body?.estiloCasa))
+            ? req.body.estiloCasa
+            : presentation.estiloCasa ?? "contemporanea",
+        padraoCasa:
+          ["medio","alto_padrao","luxo"].includes(String(req.body?.padraoCasa))
+            ? req.body.padraoCasa
+            : presentation.padraoCasa ?? "alto_padrao",
+        tipoCasa: req.body?.tipoCasa === "terrea" ? "terrea" : (presentation.tipoCasa ?? "sobrado"),
+        elementosVisuais: Array.isArray(req.body?.elementosVisuais)
+          ? req.body.elementosVisuais.filter((item: unknown): item is string => typeof item === "string" && item.trim().length > 0).slice(0, 12)
+          : presentation.elementosVisuais ?? [],
         imagensEtapas: stageImages,
       },
       updatedAt: new Date(),
@@ -615,6 +627,122 @@ router.post("/leads/:leadId/proposals/stage-images", async (req, res) => {
       duplicateActionProtection: true,
     },
   });
+});
+
+
+router.post("/leads/:leadId/proposals/cover-image", async (req, res) => {
+  const leadId = String(req.params.leadId);
+  const tenantId = req.user?.tenantId ?? "";
+  const [lead] = await db
+    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId })
+    .from(leadsTable)
+    .where(eq(leadsTable.id, leadId));
+
+  if (!lead || (req.user?.platformRole !== "super_admin" && lead.tenantId !== tenantId)) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+
+  const propostaId = typeof req.body?.propostaId === "string" ? req.body.propostaId.trim() : "";
+  if (!propostaId) {
+    res.status(400).json({ error: "propostaId é obrigatório" });
+    return;
+  }
+
+  const [proposta] = await db
+    .select()
+    .from(propostasTable)
+    .where(and(
+      eq(propostasTable.id, propostaId),
+      eq(propostasTable.tenantId, lead.tenantId),
+      eq(propostasTable.leadId, leadId),
+    ));
+
+  if (!proposta) {
+    res.status(404).json({ error: "Orçamento não encontrado para este lead" });
+    return;
+  }
+
+  const userActionId = typeof req.body?.userActionId === "string" ? req.body.userActionId.trim() : "";
+  if (userActionId.length < 12) {
+    res.status(422).json({ error: "A geração da capa exige uma ação explícita identificada por userActionId." });
+    return;
+  }
+
+  const actionKey = `${lead.tenantId}:${proposta.id}:cover:${userActionId}`;
+  if (!reservePaidImageAction(actionKey)) {
+    res.status(409).json({ error: "Esta ação já foi processada ou está em andamento." });
+    return;
+  }
+
+  const presentation = (proposta.apresentacao ?? {}) as Record<string, any>;
+  const estiloCasa = req.body?.estiloCasa ?? presentation.estiloCasa ?? "contemporanea";
+  const padraoCasa = req.body?.padraoCasa ?? presentation.padraoCasa ?? "alto_padrao";
+  const tipoCasa = req.body?.tipoCasa ?? presentation.tipoCasa ?? "sobrado";
+  const elementosVisuais = Array.isArray(req.body?.elementosVisuais)
+    ? req.body.elementosVisuais
+    : presentation.elementosVisuais ?? [];
+  const visualDirection = proposalHouseVisualDirection({
+    estiloCasa,
+    padraoCasa,
+    tipoCasa,
+    elementosVisuais,
+  });
+
+  const prompt = [
+    "Fotografia arquitetônica hiper-realista de uma residência brasileira de alto padrão concluída, composição horizontal 16:9, enquadramento editorial premium para capa de proposta comercial de construtora.",
+    visualDirection,
+    "Mostrar a residência completa com fachada sofisticada, paisagismo profissional, materiais nobres e iluminação arquitetônica realista.",
+    "A imagem deve parecer fotografia profissional de arquitetura, não ilustração, não desenho, não maquete 3D artificial.",
+    "Evitar aparência de casa popular, obra inacabada, materiais baratos, proporções estranhas, excesso de elementos, carros deformados, pessoas em destaque, textos, logotipos e marcas d'água.",
+    "Priorizar elegância, proporção, realismo, materiais premium, esquadrias amplas e composição de alto padrão coerente com o estilo selecionado.",
+  ].filter(Boolean).join("\n");
+
+  try {
+    const { urls } = await generateImage(lead.tenantId, "image_generator", prompt, {
+      model: "gpt-image-1",
+      size: "1536x1024",
+      n: 1,
+      log: req.log,
+      requestId: `${userActionId}:cover`,
+    });
+    const providerUrl = urls[0];
+    if (!providerUrl) throw new Error("IA não retornou imagem");
+
+    const imageResponse = await fetch(providerUrl);
+    if (!imageResponse.ok) throw new Error(`Falha ao baixar imagem gerada (${imageResponse.status})`);
+    const buffer = Buffer.from(await imageResponse.arrayBuffer());
+    const contentType = imageResponse.headers.get("content-type") ?? "image/png";
+    const objectPath = await objectStorage.savePrivateBuffer(
+      buffer,
+      contentType,
+      `proposta-capa-${proposta.id}.png`,
+    );
+    const imageUrl = `/api/storage${objectPath}`;
+
+    await db
+      .update(propostasTable)
+      .set({
+        apresentacao: {
+          ...(proposta.apresentacao ?? {}),
+          estiloCasa,
+          padraoCasa,
+          tipoCasa,
+          elementosVisuais: Array.isArray(elementosVisuais)
+            ? elementosVisuais.filter((item: unknown): item is string => typeof item === "string" && item.trim().length > 0).slice(0, 12)
+            : [],
+          imagemCapa: imageUrl,
+        },
+        updatedAt: new Date(),
+      })
+      .where(eq(propostasTable.id, proposta.id));
+
+    res.json({ imageUrl });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Falha ao gerar imagem de capa";
+    req.log.warn({ err, propostaId }, "proposal premium cover generation failed");
+    res.status(502).json({ error: message });
+  }
 });
 
 // ── Async proposal generation ────────────────────────────────────────────────
@@ -1164,6 +1292,10 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
                 .map((item: string) => item.trim())
                 .slice(0, 12)
             : [],
+        imagemCapa:
+          typeof rawPresentation.imagemCapa === "string" && rawPresentation.imagemCapa.trim()
+            ? rawPresentation.imagemCapa.trim()
+            : undefined,
         modoPadrao: presentationModes.has(String(rawPresentation.modoPadrao))
           ? String(rawPresentation.modoPadrao) as "completo" | "resumo_etapa" | "preco_medio"
           : undefined,
@@ -1302,6 +1434,7 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
       padraoCasa?: "medio" | "alto_padrao" | "luxo";
       tipoCasa?: "terrea" | "sobrado";
       elementosVisuais?: string[];
+      imagemCapa?: string;
       modoPadrao?: "completo" | "resumo_etapa" | "preco_medio";
       etapas?: Record<string, "completo" | "resumo_etapa" | "preco_medio">;
       mostrarTotalGeral?: boolean;
@@ -1358,6 +1491,7 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
         padraoCasa?: "medio" | "alto_padrao" | "luxo";
         tipoCasa?: "terrea" | "sobrado";
         elementosVisuais?: string[];
+        imagemCapa?: string;
         modoPadrao?: "completo" | "resumo_etapa" | "preco_medio";
         etapas?: Record<string, "completo" | "resumo_etapa" | "preco_medio">;
         mostrarTotalGeral?: boolean;
@@ -1385,6 +1519,7 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
         ...(bodyPresentation?.padraoCasa ? { padraoCasa: bodyPresentation.padraoCasa } : {}),
         ...(bodyPresentation?.tipoCasa ? { tipoCasa: bodyPresentation.tipoCasa } : {}),
         ...(Array.isArray(bodyPresentation?.elementosVisuais) ? { elementosVisuais: bodyPresentation.elementosVisuais } : {}),
+        ...(bodyPresentation?.imagemCapa ? { imagemCapa: bodyPresentation.imagemCapa } : {}),
         ...(bodyPresentation?.modoPadrao ? { modoPadrao: bodyPresentation.modoPadrao } : {}),
         ...(bodyPresentation?.etapas ? {
           etapas: { ...(storedPresentation.etapas ?? {}), ...bodyPresentation.etapas },
