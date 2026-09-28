@@ -124,27 +124,27 @@ export function defaultProposalBuilderTemplate(
       "condicoes_comerciais", "validade_inicio", "aceite", "anexos", "portal_cliente",
     ],
     retail_quote: [
-      "capa", "apresentacao_empresa", "produto_servico", "curiosidades_conteudo", "cases_provas", "faq", "diferenciais", "resumo_executivo,
+      "capa", "apresentacao_empresa", "produto_servico", "curiosidades_conteudo", "cases_provas", "faq", "diferenciais", "resumo_executivo",
       "tabela_itens", "condicoes_comerciais", "validade_inicio", "aceite", "anexos", "portal_cliente",
     ],
     distribution_b2b: [
-      "capa", "apresentacao_empresa", "produto_servico", "curiosidades_conteudo", "cases_provas", "faq", "diferenciais", "resumo_executivo,
+      "capa", "apresentacao_empresa", "produto_servico", "curiosidades_conteudo", "cases_provas", "faq", "diferenciais", "resumo_executivo",
       "tabela_itens", "condicoes_comerciais", "validade_inicio", "aceite", "anexos", "portal_cliente",
     ],
     vehicle_sale: [
-      "capa", "apresentacao_empresa", "produto_servico", "curiosidades_conteudo", "cases_provas", "faq", "diferenciais", "resumo_executivo,
+      "capa", "apresentacao_empresa", "produto_servico", "curiosidades_conteudo", "cases_provas", "faq", "diferenciais", "resumo_executivo",
       "tabela_itens", "condicoes_comerciais", "validade_inicio", "aceite", "anexos", "portal_cliente",
     ],
     insurance_quote: [
-      "capa", "apresentacao_empresa", "produto_servico", "curiosidades_conteudo", "cases_provas", "faq", "diferenciais", "resumo_executivo,
+      "capa", "apresentacao_empresa", "produto_servico", "curiosidades_conteudo", "cases_provas", "faq", "diferenciais", "resumo_executivo",
       "escopo", "condicoes_comerciais", "validade_inicio", "aceite", "anexos", "portal_cliente",
     ],
     professional_service: [
-      "capa", "apresentacao_empresa", "produto_servico", "curiosidades_conteudo", "cases_provas", "faq", "diferenciais", "resumo_executivo,
+      "capa", "apresentacao_empresa", "produto_servico", "curiosidades_conteudo", "cases_provas", "faq", "diferenciais", "resumo_executivo",
       "escopo", "etapas_orcamento", "condicoes_comerciais", "validade_inicio", "aceite", "portal_cliente",
     ],
     generic: [
-      "capa", "apresentacao_empresa", "produto_servico", "curiosidades_conteudo", "cases_provas", "faq", "diferenciais", "resumo_executivo,
+      "capa", "apresentacao_empresa", "produto_servico", "curiosidades_conteudo", "cases_provas", "faq", "diferenciais", "resumo_executivo",
       "escopo", "tabela_itens", "condicoes_comerciais", "validade_inicio", "aceite", "portal_cliente",
     ],
   };
