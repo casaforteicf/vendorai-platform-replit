@@ -543,12 +543,26 @@ router.post("/leads/:leadId/proposals/async", async (req, res) => {
     return;
   }
 
-  const jobId = crypto.randomUUID();
+  // Encode the current proposal version + start time into the job id.
+  // The status poll can then recover across rolling deploys / multiple replicas,
+  // even when the in-memory Map lives on a different process.
+  const [latestBeforeGeneration] = await db
+    .select({ version: leadProposalsTable.version })
+    .from(leadProposalsTable)
+    .where(and(
+      eq(leadProposalsTable.leadId, leadId),
+      eq(leadProposalsTable.tenantId, ctx.lead.tenantId),
+    ))
+    .orderBy(desc(leadProposalsTable.version))
+    .limit(1);
+  const baselineVersion = Number(latestBeforeGeneration?.version ?? 0);
+  const startedAt = Date.now();
+  const jobId = `${baselineVersion}.${startedAt}.${crypto.randomUUID()}`;
   proposalGenerationJobs.set(jobId, {
     tenantId: ctx.lead.tenantId,
     leadId,
     status: "processing",
-    createdAt: Date.now(),
+    createdAt: startedAt,
   });
   scheduleProposalGenerationJobCleanup(jobId);
 
@@ -637,6 +651,56 @@ router.get("/leads/:leadId/proposals/generation/:jobId", async (req, res) => {
   const job = proposalGenerationJobs.get(jobId);
 
   if (!job || job.leadId !== leadId) {
+    // In-memory jobs are process-local. During a rolling deploy or with more
+    // than one replica, the poll may land on another process. Recover from the
+    // durable proposal table using the baseline encoded in the job id.
+    const [baselineRaw, startedAtRaw] = jobId.split(".");
+    const baselineVersion = Number(baselineRaw);
+    const startedAt = Number(startedAtRaw);
+    const recoverable =
+      Number.isFinite(baselineVersion)
+      && baselineVersion >= 0
+      && Number.isFinite(startedAt)
+      && startedAt > 0;
+
+    const [lead] = await db
+      .select({ tenantId: leadsTable.tenantId })
+      .from(leadsTable)
+      .where(eq(leadsTable.id, leadId))
+      .limit(1);
+
+    if (!lead) {
+      res.status(404).json({ error: "Lead not found" });
+      return;
+    }
+    if (req.user?.platformRole !== "super_admin" && lead.tenantId !== req.user?.tenantId) {
+      res.status(403).json({ error: "Access denied" });
+      return;
+    }
+
+    if (recoverable) {
+      const [latest] = await db
+        .select({ version: leadProposalsTable.version })
+        .from(leadProposalsTable)
+        .where(and(
+          eq(leadProposalsTable.leadId, leadId),
+          eq(leadProposalsTable.tenantId, lead.tenantId),
+        ))
+        .orderBy(desc(leadProposalsTable.version))
+        .limit(1);
+
+      const latestVersion = Number(latest?.version ?? 0);
+      if (latestVersion > baselineVersion) {
+        res.json({ jobId, status: "success", version: latestVersion, recovered: true });
+        return;
+      }
+
+      if (Date.now() - startedAt < 15 * 60 * 1000) {
+        res.json({ jobId, status: "processing", recovered: true });
+        return;
+      }
+    }
+
     res.status(404).json({ error: "Geração não encontrada ou expirada." });
     return;
   }
