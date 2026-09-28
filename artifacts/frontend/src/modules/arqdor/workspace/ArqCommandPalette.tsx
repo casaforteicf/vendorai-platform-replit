@@ -36,16 +36,12 @@ const STATIC_COMMANDS: Command[] = [
   { id:'go-renders', icon:'🎬', label:'Ir para Renders',       desc:'Histórico e galeria de renders', module:'renders',      shortcut:'G R', category:'action' },
   { id:'go-spec',    icon:'✨', label:'Smart Especificação',    desc:'Especificar render com IA',      module:'especificacao', shortcut:'G S', category:'action' },
   { id:'go-lib',     icon:'📚', label:'Biblioteca',             desc:'Materiais e objetos',            module:'biblioteca',   shortcut:'G B', category:'action' },
-  { id:'go-prompt',  icon:'⚡', label:'Prompt Playground',     desc:'Testar e criar prompts de IA',   module:'prompt',       shortcut:'G P', category:'action' },
   { id:'go-portal',  icon:'👤', label:'Portal do Cliente',      desc:'Enviar e compartilhar projeto',  module:'cliente',      shortcut:'G D', category:'action' },
   { id:'go-projeto', icon:'🏗️', label:'Modelagem do Projeto',  desc:'Ambientes, objetos, materiais',  module:'projeto',      shortcut:'G C', category:'action' },
   // Modules
   { id:'mod-aireview',icon:'🔍', label:'AI Review',            desc:'Análise comparativa de renders', module:'ai-review',    category:'module' },
   { id:'mod-corr',   icon:'🔄', label:'Correções IA',          desc:'Prompts de ajuste',              module:'correcoes',    category:'module' },
   { id:'mod-mem',    icon:'🧠', label:'Memória IA',             desc:'Preferências aprendidas',        module:'memoria',      category:'module' },
-  { id:'mod-hub',    icon:'🏛️', label:'ARQ HUB',               desc:'Ecosystem inteligente',          module:'arqhub',       category:'module' },
-  { id:'mod-intel',  icon:'🧠', label:'AI Intelligence',        desc:'Motor de análise AIE',           module:'ai-intel',     category:'module' },
-  { id:'mod-cfg',    icon:'⚙️', label:'Configurações',          desc:'Providers e plugins',            module:'config',       category:'module' },
 ]
 
 interface Project { id: string; titulo: string; status?: string | null; tipoObra?: string | null }
