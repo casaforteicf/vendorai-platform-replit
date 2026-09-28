@@ -691,6 +691,18 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
           typeof rawPresentation.mostrarTotalGeral === "boolean"
             ? rawPresentation.mostrarTotalGeral
             : undefined,
+        mostrarDetalhamentoTecnico:
+          typeof rawPresentation.mostrarDetalhamentoTecnico === "boolean"
+            ? rawPresentation.mostrarDetalhamentoTecnico
+            : undefined,
+        detalhamentoTecnicoEtapas:
+          rawPresentation.detalhamentoTecnicoEtapas && typeof rawPresentation.detalhamentoTecnicoEtapas === "object"
+            ? Object.fromEntries(
+                Object.entries(rawPresentation.detalhamentoTecnicoEtapas)
+                  .filter(([, value]) => typeof value === "boolean")
+                  .map(([stageId, value]) => [String(stageId), Boolean(value)]),
+              )
+            : undefined,
         previsaoInicio:
           typeof rawPresentation.previsaoInicio === "string" && rawPresentation.previsaoInicio.trim()
             ? rawPresentation.previsaoInicio.trim()
@@ -786,6 +798,8 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
       modoPadrao?: "completo" | "resumo_etapa" | "preco_medio";
       etapas?: Record<string, "completo" | "resumo_etapa" | "preco_medio">;
       mostrarTotalGeral?: boolean;
+      mostrarDetalhamentoTecnico?: boolean;
+      detalhamentoTecnicoEtapas?: Record<string, boolean>;
       previsaoInicio?: string;
       cronogramaEtapas?: Record<string, {
         duracaoDias?: number;
@@ -833,6 +847,8 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
         modoPadrao?: "completo" | "resumo_etapa" | "preco_medio";
         etapas?: Record<string, "completo" | "resumo_etapa" | "preco_medio">;
         mostrarTotalGeral?: boolean;
+        mostrarDetalhamentoTecnico?: boolean;
+        detalhamentoTecnicoEtapas?: Record<string, boolean>;
         previsaoInicio?: string;
         cronogramaEtapas?: Record<string, {
           duracaoDias?: number;
@@ -856,6 +872,15 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
         ...(typeof bodyPresentation?.mostrarTotalGeral === "boolean"
           ? { mostrarTotalGeral: bodyPresentation.mostrarTotalGeral }
           : {}),
+        ...(typeof bodyPresentation?.mostrarDetalhamentoTecnico === "boolean"
+          ? { mostrarDetalhamentoTecnico: bodyPresentation.mostrarDetalhamentoTecnico }
+          : {}),
+        ...(bodyPresentation?.detalhamentoTecnicoEtapas ? {
+          detalhamentoTecnicoEtapas: {
+            ...(storedPresentation.detalhamentoTecnicoEtapas ?? {}),
+            ...bodyPresentation.detalhamentoTecnicoEtapas,
+          },
+        } : {}),
         ...(bodyPresentation?.previsaoInicio ? { previsaoInicio: bodyPresentation.previsaoInicio } : {}),
         ...(bodyPresentation?.cronogramaEtapas ? {
           cronogramaEtapas: {
