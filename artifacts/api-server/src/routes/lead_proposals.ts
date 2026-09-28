@@ -23,6 +23,20 @@ import mammoth from "mammoth";
 const router: IRouter = Router();
 const objectStorage = new ObjectStorageService();
 
+const recentPaidImageActions = new Map<string, number>();
+const PAID_IMAGE_ACTION_TTL_MS = 15 * 60 * 1000;
+
+function reservePaidImageAction(key: string): boolean {
+  const now = Date.now();
+  for (const [existingKey, expiresAt] of recentPaidImageActions) {
+    if (expiresAt <= now) recentPaidImageActions.delete(existingKey);
+  }
+  if (recentPaidImageActions.has(key)) return false;
+  recentPaidImageActions.set(key, now + PAID_IMAGE_ACTION_TTL_MS);
+  return true;
+}
+
+
 // ── Helper: load proposal context ──────────────────────────────────────────────
 async function loadProposalContext(leadId: string, tenantId: string) {
   const [lead] = await db.select().from(leadsTable).where(eq(leadsTable.id, leadId));
@@ -323,12 +337,49 @@ router.post("/leads/:leadId/proposals/stage-images", async (req, res) => {
     .sort((a, b) => a.ordem - b.ordem);
 
   const requestedStageIds = Array.isArray(req.body?.stageIds)
-    ? new Set(req.body.stageIds.filter((value: unknown): value is string => typeof value === "string"))
-    : null;
+    ? req.body.stageIds.filter((value: unknown): value is string => typeof value === "string" && value.trim().length > 0)
+    : [];
+  const uniqueStageIds = Array.from(new Set(requestedStageIds));
+
+  if (uniqueStageIds.length === 0) {
+    res.status(422).json({
+      error: "Selecione explicitamente pelo menos uma etapa. Geração automática de imagens foi desativada por segurança.",
+    });
+    return;
+  }
+  if (uniqueStageIds.length > 3) {
+    res.status(422).json({
+      error: "Por segurança de custos, é permitido gerar no máximo 3 imagens por ação.",
+    });
+    return;
+  }
+
+  const userActionId = typeof req.body?.userActionId === "string" ? req.body.userActionId.trim() : "";
+  if (userActionId.length < 12) {
+    res.status(422).json({
+      error: "A geração de imagem precisa de uma ação explícita do usuário identificada por userActionId.",
+    });
+    return;
+  }
+
   const regenerate = req.body?.regenerate === true;
-  const targetGroups = groups
-    .filter((group) => !requestedStageIds || requestedStageIds.has(group.id))
-    .slice(0, 20);
+  if (regenerate && req.body?.confirmRegenerate !== true) {
+    res.status(422).json({
+      error: "Para regenerar imagens existentes, confirme explicitamente a regeneração.",
+    });
+    return;
+  }
+
+  const actionKey = `${lead.tenantId}:${proposta.id}:${userActionId}`;
+  if (!reservePaidImageAction(actionKey)) {
+    res.status(409).json({
+      error: "Esta ação de geração já foi processada ou está em andamento. Evitamos cobrança duplicada.",
+    });
+    return;
+  }
+
+  const requestedSet = new Set(uniqueStageIds);
+  const targetGroups = groups.filter((group) => requestedSet.has(group.id));
 
   if (!targetGroups.length) {
     res.status(422).json({ error: "Nenhuma etapa válida foi selecionada." });
@@ -391,6 +442,7 @@ router.post("/leads/:leadId/proposals/stage-images", async (req, res) => {
         size: "1536x1024",
         n: 1,
         log: req.log,
+        requestId: `${userActionId}:${group.id}`,
       });
       const providerUrl = urls[0];
       if (!providerUrl) throw new Error("IA não retornou imagem");
@@ -441,7 +493,12 @@ router.post("/leads/:leadId/proposals/stage-images", async (req, res) => {
     reused: skipped.length,
     errors,
     totalStages: groups.length,
-    limitedTo: targetGroups.length,
+    selectedStages: targetGroups.length,
+    safety: {
+      maxImagesPerAction: 3,
+      explicitUserActionRequired: true,
+      duplicateActionProtection: true,
+    },
   });
 });
 
