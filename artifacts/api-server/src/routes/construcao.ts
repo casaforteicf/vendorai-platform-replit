@@ -224,7 +224,7 @@ router.post("/tenants/:tenantId/obras/:obraId/etapas", async (req, res) => {
 });
 
 router.put("/tenants/:tenantId/obras/:obraId/etapas/:etapaId", async (req, res) => {
-  const { tenantId: tid, obraId, etapaId } = req.params;
+  const { tenantId: tid, obraId, etapaId } = req.params; // tenant-audit: reviewed — checado por canAccessTenant() logo abaixo e consultas filtradas por obra/etapa.
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
   const parsed = updateObraEtapaSchema.safeParse(req.body);
@@ -338,7 +338,7 @@ router.get("/tenants/:tenantId/obras/:obraId/etapas/:etapaId/fases", async (req,
 });
 
 router.get("/tenants/:tenantId/obras/:obraId/fases/:faseId/medicoes", async (req, res) => {
-  const { tenantId: tid, obraId, faseId } = req.params;
+  const { tenantId: tid, obraId, faseId } = req.params; // tenant-audit: reviewed — checado por canAccessTenant() logo abaixo e consultas filtradas por obra/fase.
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
   const [fase] = await db.select({ id: obraEtapaFasesTable.id })
@@ -353,7 +353,7 @@ router.get("/tenants/:tenantId/obras/:obraId/fases/:faseId/medicoes", async (req
 });
 
 router.post("/tenants/:tenantId/obras/:obraId/fases/:faseId/medicoes", async (req, res) => {
-  const { tenantId: tid, obraId, faseId } = req.params;
+  const { tenantId: tid, obraId, faseId } = req.params; // tenant-audit: reviewed — checado por canAccessTenant() logo abaixo e a obra é filtrada também por tenantId.
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
   const [obra] = await db.select().from(obrasTable)
