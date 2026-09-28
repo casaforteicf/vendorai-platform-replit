@@ -1046,6 +1046,83 @@ router.get("/arch/concept-projects/:id/export/dxf", authenticate, async (req, re
   return res.status(200).send(dxf);
 });
 
+router.post("/arch/concept-projects/:id/reference-plan", authenticate, upload.single("file"), async (req, res) => {
+  const tid = tenantId(req);
+  const userId = req.user?.sub;
+  const id = String(req.params.id);
+  if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
+  if (!req.file?.buffer?.length) return res.status(400).json({ error: "Selecione uma imagem ou PDF da planta." });
+
+  const allowedTypes = new Set(["image/png", "image/jpeg", "image/webp", "application/pdf"]);
+  if (!allowedTypes.has(req.file.mimetype)) {
+    return res.status(415).json({ error: "Formato não suportado. Use PNG, JPG, WebP ou PDF." });
+  }
+
+  const [concept] = await db
+    .select({
+      id: archConceptProjectsTable.id,
+      status: archConceptProjectsTable.status,
+      configuration: archConceptProjectsTable.configuration,
+    })
+    .from(archConceptProjectsTable)
+    .where(and(
+      eq(archConceptProjectsTable.id, id),
+      eq(archConceptProjectsTable.tenantId, tid),
+      eq(archConceptProjectsTable.ownerUserId, userId),
+    ))
+    .limit(1);
+
+  if (!concept) return res.status(404).json({ error: "Pré-projeto não encontrado." });
+  if (concept.status === "submitted" && (concept.configuration as any)?.projectMaster) {
+    return res.status(409).json({
+      error: "O Projeto Mestre está congelado. Crie uma revisão antes de trocar a planta de referência.",
+      code: "PROJECT_MASTER_FROZEN",
+    });
+  }
+
+  try {
+    const storage = new ObjectStorageService();
+    const storagePath = await storage.savePrivateBuffer(
+      req.file.buffer,
+      req.file.mimetype,
+      req.file.originalname || "planta-referencia",
+    );
+    const url = `/api/storage/objects${storagePath.replace(/^\/objects/, "")}`;
+    const referencePlan = {
+      storagePath,
+      url,
+      mimeType: req.file.mimetype,
+      originalName: req.file.originalname || "planta-referencia",
+      uploadedAt: new Date().toISOString(),
+      kind: req.file.mimetype === "application/pdf" ? "pdf" : "image",
+      opacity: 0.35,
+      fitMode: "lot",
+    };
+
+    const currentConfig = (concept.configuration ?? {}) as Record<string, unknown>;
+    await db
+      .update(archConceptProjectsTable)
+      .set({
+        configuration: {
+          ...currentConfig,
+          referencePlan,
+        } as any,
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(archConceptProjectsTable.id, id),
+        eq(archConceptProjectsTable.tenantId, tid),
+        eq(archConceptProjectsTable.ownerUserId, userId),
+      ));
+
+    return res.status(201).json(referencePlan);
+  } catch (error) {
+    return res.status(500).json({
+      error: error instanceof Error ? error.message : "Não foi possível salvar a planta de referência.",
+    });
+  }
+});
+
 router.post("/arch/concept-projects/:id/import/dxf", authenticate, upload.single("file"), async (req, res) => {
   const tid = tenantId(req);
   const userId = req.user?.sub;
