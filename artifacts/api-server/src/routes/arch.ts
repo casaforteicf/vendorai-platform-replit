@@ -85,6 +85,7 @@ import { parseAsciiDxf } from "../lib/arqdor-dxf-import.js";
 import { parseIfcMetadata } from "../lib/arqdor-ifc-metadata.js";
 import { buildConceptIfc, conceptIfcFilename } from "../lib/arqdor-concept-ifc.js";
 import { parseIfcEditableGeometry } from "../lib/arqdor-ifc-editable.js";
+import { fitReferenceImageToLot } from "../lib/arqdor-reference-calibration.js";
 
 function sanitizeAIError(err: any): { status: number; message: string } {
   const raw: string = err?.message ?? String(err ?? "");
@@ -1370,11 +1371,11 @@ router.post("/arch/concept-projects/:id/reference-plan", authenticate, upload.si
       nativeWidth = Number(metadata.width ?? 0) || null;
       nativeHeight = Number(metadata.height ?? 0) || null;
       if (nativeWidth && nativeHeight) {
-        const scale = Math.min(lotWidth / nativeWidth, lotDepth / nativeHeight);
-        widthMeters = nativeWidth * scale;
-        depthMeters = nativeHeight * scale;
-        offsetX = (lotWidth - widthMeters) / 2;
-        offsetY = (lotDepth - depthMeters) / 2;
+        const fitted = fitReferenceImageToLot(nativeWidth, nativeHeight, lotWidth, lotDepth);
+        widthMeters = fitted.widthMeters;
+        depthMeters = fitted.depthMeters;
+        offsetX = fitted.offsetX;
+        offsetY = fitted.offsetY;
       }
     }
 
