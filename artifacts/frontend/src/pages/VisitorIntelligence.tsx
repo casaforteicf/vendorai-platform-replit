@@ -131,6 +131,7 @@ type WebVitalsResponse = {
   device?: "all" | "mobile" | "tablet" | "desktop";
   since: string;
   previousSince?: string;
+  previous2Since?: string;
   generatedAt: string;
   sampleCount: number;
   metrics: Record<"LCP" | "INP" | "CLS" | "FCP" | "TTFB", VitalMetricSummary>;
@@ -145,6 +146,7 @@ type WebVitalsResponse = {
     inp: number | null;
     cls: number | null;
     previous?: { samples: number; lcp: number | null; inp: number | null; cls: number | null };
+    previous2?: { samples: number; lcp: number | null; inp: number | null; cls: number | null };
   }>;
 };
 type UnknownRecord = Record<string, unknown>;
@@ -334,6 +336,29 @@ function routeTrend(route: WebVitalsResponse["routes"][number]) {
   return { label: "estável", direction: "neutral" as const };
 }
 
+function routePersistentRegression(route: WebVitalsResponse["routes"][number]) {
+  const previous = route.previous;
+  const previous2 = route.previous2;
+  if (!previous || !previous2 || previous.samples < 4 || previous2.samples < 4) return false;
+
+  const ratio = (current: number | null, base: number | null, floor: number) =>
+    current != null && base != null ? (current - base) / Math.max(base, floor) : 0;
+
+  const currentVsPrevious = [
+    ratio(route.lcp, previous.lcp, 1),
+    ratio(route.inp, previous.inp, 1),
+    ratio(route.cls, previous.cls, 0.001),
+  ].reduce((sum, value) => sum + value, 0) / 3;
+
+  const previousVsPrevious2 = [
+    ratio(previous.lcp, previous2.lcp, 1),
+    ratio(previous.inp, previous2.inp, 1),
+    ratio(previous.cls, previous2.cls, 0.001),
+  ].reduce((sum, value) => sum + value, 0) / 3;
+
+  return currentVsPrevious >= 0.1 && previousVsPrevious2 >= 0.1;
+}
+
 function routePerformancePriority(route: WebVitalsResponse["routes"][number]) {
   const lcpPenalty = route.lcp == null ? 0 : Math.max(0, route.lcp / 2500 - 1);
   const inpPenalty = route.inp == null ? 0 : Math.max(0, route.inp / 200 - 1) * 1.25;
@@ -434,11 +459,15 @@ export default function VisitorIntelligence() {
         topRuntimeError: routeErrors[0] ?? null,
         recommendation: routeRecommendation({ bottleneck, slowestApi, runtimeErrorCount }),
         trend: routeTrend(route),
+        persistentRegression: routePersistentRegression(route),
       };
     })
     .slice(0, 5), [rankedVitalRoutes, vitalsQuery.data?.apiRouteTimings, vitalsQuery.data?.runtimeErrors]);
   const regressionRoutes = useMemo(() => actionableVitalRoutes
     .filter((route) => route.trend.direction === "down")
+    .slice(0, 3), [actionableVitalRoutes]);
+  const persistentRegressionRoutes = useMemo(() => actionableVitalRoutes
+    .filter((route) => route.persistentRegression)
     .slice(0, 3), [actionableVitalRoutes]);
   const slowServerOrNetwork = (vitalsQuery.data?.metrics.TTFB.p75 ?? 0) > 800;
 
@@ -521,6 +550,21 @@ export default function VisitorIntelligence() {
                 );
               })}
             </div>
+
+            {persistentRegressionRoutes.length ? (
+              <div className="mt-4 rounded-lg border border-red-600/40 bg-red-600/[0.06] p-3">
+                <div className="text-xs font-semibold text-red-800">Regressões persistentes</div>
+                <div className="mt-0.5 text-[11px] text-muted-foreground">Piora confirmada em duas comparações consecutivas com amostra mínima.</div>
+                <div className="mt-2 space-y-2">
+                  {persistentRegressionRoutes.map((route) => (
+                    <div key={route.path} className="rounded-md border bg-background px-2.5 py-2 text-xs">
+                      <div className="font-medium">{route.path}</div>
+                      <div className="mt-1 text-[11px] text-red-700">Intervenção recomendada: {route.recommendation}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             {regressionRoutes.length ? (
               <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/[0.04] p-3">
