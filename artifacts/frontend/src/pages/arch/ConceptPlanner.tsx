@@ -8653,6 +8653,21 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         <div>
                           {referenceTracePreview.walls.length} paredes · {referenceTracePreview.openings.length} aberturas · confiança {Math.round(referenceTracePreview.confidence * 100)}%
                         </div>
+                        {(() => {
+                          const lowConfidenceWalls = referenceTracePreview.walls.filter((wall) => (wall.confidence ?? 0.5) < 0.65).length;
+                          const lowConfidenceOpenings = referenceTracePreview.openings.filter((opening) => (opening.confidence ?? 0.5) < 0.65).length;
+                          const reviewCount = lowConfidenceWalls + lowConfidenceOpenings;
+                          return reviewCount > 0 ? (
+                            <div className="rounded-md border border-orange-200 bg-orange-50 px-2 py-1 text-orange-800">
+                              Revisar em laranja: {lowConfidenceWalls} parede(s) e {lowConfidenceOpenings} abertura(s) com confiança abaixo de 65%.
+                            </div>
+                          ) : (
+                            <div className="text-emerald-700">Prévia sem elementos abaixo de 65% de confiança.</div>
+                          );
+                        })()}
+                        <div className="text-[10px] text-blue-800/75">
+                          Azul = parede sugerida · verde/roxo = porta/janela · laranja = elemento que merece revisão antes de aplicar.
+                        </div>
                         {referenceTracePreview.warnings?.length ? (
                           <div className="text-amber-800">{referenceTracePreview.warnings.join(" ")}</div>
                         ) : null}
