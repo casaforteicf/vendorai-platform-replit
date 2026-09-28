@@ -340,6 +340,17 @@ type SavedTourPoint = {
   target: { x: number; y: number; z: number };
 };
 
+type ReferencePlan = {
+  storagePath: string;
+  url: string;
+  mimeType: string;
+  originalName: string;
+  uploadedAt: string;
+  kind: "image" | "pdf";
+  opacity?: number;
+  fitMode?: "lot";
+};
+
 type ConceptDraftResponse = {
   id: string;
   status?: string;
@@ -359,6 +370,7 @@ type ConceptDraftResponse = {
     objects?: ConceptPlanObject[];
     wallMaterials?: Record<string, string>;
     savedTourPoints?: SavedTourPoint[];
+    referencePlan?: ReferencePlan;
     sitePlacement?: SitePlacement;
     projectBrief?: ProjectBriefSnapshot;
     facadeDesign?: FacadeDesignState;
@@ -880,6 +892,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [conceptId, setConceptId] = useState<string | null>(null);
   const conceptIdRef = useRef<string | null>(null);
   const dxfImportInputRef = useRef<HTMLInputElement | null>(null);
+  const referencePlanInputRef = useRef<HTMLInputElement | null>(null);
   const navigatingAwayRef = useRef(false);
   const creatingConceptRef = useRef<Promise<string | null> | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "loading" | "saving" | "saved" | "error">("loading");
@@ -902,6 +915,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [dxfExportState, setDxfExportState] = useState<"idle" | "exporting" | "error">("idle");
   const [dxfImportState, setDxfImportState] = useState<"idle" | "importing" | "error" | "success">("idle");
   const [dxfImportMessage, setDxfImportMessage] = useState<string | null>(null);
+  const [referencePlan, setReferencePlan] = useState<ReferencePlan | null>(null);
+  const [referencePlanState, setReferencePlanState] = useState<"idle" | "uploading" | "error" | "success">("idle");
+  const [referencePlanMessage, setReferencePlanMessage] = useState<string | null>(null);
   const wallFirstActive = (Array.isArray(wallFirstFloors) ? wallFirstFloors : []).includes(activeFloor);
   const [modelSearch, setModelSearch] = useState("");
   const [modelCategory, setModelCategory] = useState<"todos" | "terreas" | "sobrados" | "lazer">("todos");
@@ -1306,6 +1322,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         setObjects(normalizeLoadedObjects(draft.configuration?.objects, loadedFloors));
         setWallMaterials(draft.configuration?.wallMaterials && typeof draft.configuration.wallMaterials === "object" ? draft.configuration.wallMaterials : {});
         setSavedTourPoints(Array.isArray(draft.configuration?.savedTourPoints) ? draft.configuration.savedTourPoints : []);
+        setReferencePlan(draft.configuration?.referencePlan ?? null);
         setSitePlacement(migrateLegacySitePlacement(draft.configuration?.sitePlacement));
         setProjectBrief(draft.configuration?.projectBrief ?? null);
         setRooms(loadedRooms);
@@ -1366,6 +1383,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         objects: nextObjects,
         wallMaterials,
         savedTourPoints: savedTourPointsOverride ?? savedTourPoints,
+        referencePlan: referencePlan ?? undefined,
         sitePlacement,
         projectBrief: nextProjectBrief ?? undefined,
         facadeDesign: nextFacadeDesign,
@@ -3817,6 +3835,39 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       setHandoffError(message);
       setHandoffState("error");
       return null;
+    }
+  };
+
+  const uploadReferencePlan = async (file: File) => {
+    if (referencePlanState === "uploading") return;
+    setReferencePlanState("uploading");
+    setReferencePlanMessage(null);
+    try {
+      const id = await saveConcept(4);
+      if (!id) throw new Error("Não foi possível salvar o pré-projeto antes do upload.");
+      const form = new FormData();
+      form.append("file", file);
+      const token = typeof window !== "undefined" ? localStorage.getItem("vendorai_token") : null;
+      const response = await fetch(`/api/arch/concept-projects/${encodeURIComponent(id)}/reference-plan`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: form,
+      });
+      const payload = await response.json().catch(() => ({})) as ReferencePlan & { error?: string };
+      if (!response.ok || !payload.url) throw new Error(payload.error ?? "Não foi possível salvar a planta de referência.");
+      setReferencePlan(payload);
+      setReferencePlanState("success");
+      setReferencePlanMessage(
+        payload.kind === "image"
+          ? "Imagem vinculada ao pré-projeto e exibida como referência no editor 2D."
+          : "PDF vinculado ao pré-projeto. A conversão automática da página para geometria será a próxima etapa.",
+      );
+      window.setTimeout(() => setReferencePlanState("idle"), 5000);
+    } catch (error) {
+      setReferencePlanState("error");
+      setReferencePlanMessage(error instanceof Error ? error.message : "Falha ao enviar a planta de referência.");
+    } finally {
+      if (referencePlanInputRef.current) referencePlanInputRef.current.value = "";
     }
   };
 
@@ -6932,6 +6983,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         lotDepth={lotDepth}
                         activeFloor={activeFloor}
                         geometry={geometry}
+                        referenceImage={referencePlan?.kind === "image" ? { url: referencePlan.url, opacity: referencePlan.opacity } : null}
                         closedSpaces={closedSpaces}
                         selectedClosedSpaceId={selectedClosedSpaceId}
                         onSelectClosedSpace={(spaceId) => {
@@ -8082,6 +8134,26 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     <FolderOpen className="h-4 w-4" />
                     {dxfImportState === "importing" ? "Lendo DXF..." : "Importar DXF"}
                   </button>
+                  <input
+                    ref={referencePlanInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,application/pdf,.pdf"
+                    className="hidden"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) void uploadReferencePlan(file);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => referencePlanInputRef.current?.click()}
+                    disabled={referencePlanState === "uploading" || Boolean(projectMaster)}
+                    className="inline-flex items-center gap-2 rounded-xl border bg-background px-4 py-2.5 text-sm font-semibold disabled:opacity-50"
+                    title={projectMaster ? "Crie uma revisão antes de trocar a planta de referência." : "Anexar imagem ou PDF como planta de referência"}
+                  >
+                    <Camera className="h-4 w-4" />
+                    {referencePlanState === "uploading" ? "Enviando referência..." : referencePlan ? "Trocar referência" : "Imagem / PDF"}
+                  </button>
                   {archProjetoId && (
                     <button
                       type="button"
@@ -8098,6 +8170,25 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     : "mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800"}
                   >
                     {dxfImportMessage}
+                  </div>
+                )}
+                {referencePlanMessage && (
+                  <div className={referencePlanState === "error"
+                    ? "mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"
+                    : "mt-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800"}
+                  >
+                    {referencePlanMessage}
+                  </div>
+                )}
+                {referencePlan && (
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-muted/30 px-3 py-2 text-xs">
+                    <div className="min-w-0">
+                      <div className="truncate font-semibold">{referencePlan.originalName}</div>
+                      <div className="text-muted-foreground">{referencePlan.kind === "image" ? "Imagem de referência no editor 2D" : "PDF de referência vinculado"}</div>
+                    </div>
+                    <a href={referencePlan.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-orange-600 hover:underline">
+                      Abrir arquivo
+                    </a>
                   </div>
                 )}
               </div>
