@@ -515,6 +515,11 @@ type ProposalStageSchedule = {
 
 type ProposalPresentationConfig = {
   formato?: "site_interativo" | "documento" | "hibrido";
+  estiloCasa?: "moderna" | "contemporanea" | "minimalista" | "classica" | "industrial";
+  padraoCasa?: "medio" | "alto_padrao" | "luxo";
+  tipoCasa?: "terrea" | "sobrado";
+  elementosVisuais?: string[];
+  imagemCapa?: string;
   modoPadrao?: ProposalPresentationMode;
   etapas?: Record<string, ProposalPresentationMode>;
   mostrarTotalGeral?: boolean;
@@ -550,6 +555,15 @@ function normalizeProposalPresentation(
 ): Required<ProposalPresentationConfig> {
   return {
     formato: value?.formato === "documento" || value?.formato === "hibrido" ? value.formato : "site_interativo",
+    estiloCasa: value?.estiloCasa === "moderna" || value?.estiloCasa === "minimalista" || value?.estiloCasa === "classica" || value?.estiloCasa === "industrial"
+      ? value.estiloCasa
+      : "contemporanea",
+    padraoCasa: value?.padraoCasa === "medio" || value?.padraoCasa === "luxo" ? value.padraoCasa : "alto_padrao",
+    tipoCasa: value?.tipoCasa === "terrea" ? "terrea" : "sobrado",
+    elementosVisuais: Array.isArray(value?.elementosVisuais)
+      ? value.elementosVisuais.filter((item): item is string => typeof item === "string" && item.trim().length > 0).slice(0, 12)
+      : [],
+    imagemCapa: typeof value?.imagemCapa === "string" ? value.imagemCapa : "",
     modoPadrao: value?.modoPadrao ?? "completo",
     etapas: value?.etapas ?? {},
     mostrarTotalGeral: value?.mostrarTotalGeral ?? true,
@@ -1075,7 +1089,7 @@ function renderConstructionProposalLayout(args: {
     minimumFractionDigits: 2,
   }).format(v || 0);
   const visualImages = (imagens || []).filter((value): value is string => typeof value === "string" && value.trim().length > 0);
-  const coverImage = visualImages[0] || Object.values(presentation.imagensEtapas).find(Boolean) || null;
+  const coverImage = presentation.imagemCapa || visualImages[0] || Object.values(presentation.imagensEtapas).find(Boolean) || null;
   const scheduleRows = buildProposalScheduleRows(groupedItems, presentation, total);
   const latestEnd = scheduleRows
     .map((row) => row.end)
