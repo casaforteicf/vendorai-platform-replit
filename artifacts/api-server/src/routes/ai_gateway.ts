@@ -100,8 +100,6 @@ router.get("/tenants/:tenantId/ai-usage", authenticate, async (req, res) => {
   const [tenant] = await db.select({
     planId: tenantsTable.planId,
     aiCreditsUsd: tenantsTable.aiCreditsUsd,
-    aiDailySpendUsd: tenantsTable.aiDailySpendUsd,
-    aiDailySpendResetAt: tenantsTable.aiDailySpendResetAt,
     openaiKeyStatus: tenantsTable.openaiKeyStatus,
     anthropicKeyStatus: tenantsTable.anthropicKeyStatus,
   }).from(tenantsTable).where(eq(tenantsTable.id, tenantId as string)).limit(1);
@@ -122,6 +120,7 @@ router.get("/tenants/:tenantId/ai-usage", authenticate, async (req, res) => {
     .from(aiUsageLogsTable).where(and(eq(aiUsageLogsTable.tenantId, tenantId as string), gte(aiUsageLogsTable.createdAt, startOfMonth)));
   const spentThisMonthUsd = Number(monthlyRow?.totalCost ?? 0);
   const tokensUsed = Number(monthlyRow?.totalTokens ?? 0);
+  const monthlySpendCeilingUsd = Number(process.env["AI_MONTHLY_SPEND_CEILING_USD"] ?? 100);
   const totalCycleBudgetUsd = Math.max(0, (quotaUsd ?? 0) + Number(tenant.aiCreditsUsd ?? 0));
   const usagePercent = totalCycleBudgetUsd > 0
     ? Math.max(0, Math.min(100, (spentThisMonthUsd / totalCycleBudgetUsd) * 100))
@@ -167,8 +166,8 @@ router.get("/tenants/:tenantId/ai-usage", authenticate, async (req, res) => {
       creditsUsd: Number(tenant.aiCreditsUsd ?? 0),
       spentThisMonthUsd,
       remainingUsd: totalCycleBudgetUsd - spentThisMonthUsd,
-      dailySpendUsd: Number(tenant.aiDailySpendUsd ?? 0),
-      dailySpendResetAt: tenant.aiDailySpendResetAt,
+      monthlySpendCeilingUsd,
+      monthlySpendRemainingUsd: Math.max(0, monthlySpendCeilingUsd - spentThisMonthUsd),
     },
   });
 });
