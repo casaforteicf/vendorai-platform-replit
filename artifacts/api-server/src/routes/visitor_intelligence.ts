@@ -103,11 +103,13 @@ function parseVitalSample(row: { path: string | null; metadata: Record<string, u
   if (!Number.isFinite(value) || value < 0) return null;
   const rawRating = metadata["rating"];
   const rating = rawRating === "good" || rawRating === "needs-improvement" || rawRating === "poor" ? rawRating : "unknown";
+  const rawPath = row.path || "/";
+  const pathname = rawPath.split("?")[0]?.replace(/\/$/, "") || "/";
   return {
     name: metric,
     value,
     rating,
-    path: row.path || "/",
+    path: pathname,
     deviceCategory: typeof metadata["deviceCategory"] === "string" ? metadata["deviceCategory"] : null,
     createdAt: row.createdAt,
   };
