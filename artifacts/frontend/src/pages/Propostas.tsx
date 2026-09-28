@@ -2192,6 +2192,8 @@ function newFreeItem(): FreeItem {
     const [showAllByStage, setShowAllByStage] = useState<Record<string, boolean>>({});
     const [presentationDefaultMode, setPresentationDefaultMode] = useState<ProposalPresentationMode>("completo");
     const [presentationStageModes, setPresentationStageModes] = useState<Record<string, ProposalPresentationMode>>({});
+    const [showTechnicalDetails, setShowTechnicalDetails] = useState(true);
+    const [technicalDetailStages, setTechnicalDetailStages] = useState<Record<string, boolean>>({});
     const [showProposalGrandTotal, setShowProposalGrandTotal] = useState(true);
     const [proposalStartDate, setProposalStartDate] = useState("");
     const [proposalStageSchedule, setProposalStageSchedule] = useState<Record<string, ProposalStageSchedule>>({});
@@ -2249,6 +2251,8 @@ function newFreeItem(): FreeItem {
         freeItems,
         presentationDefaultMode,
         presentationStageModes,
+        showTechnicalDetails,
+        technicalDetailStages,
         showProposalGrandTotal,
         proposalStartDate,
         proposalStageSchedule,
@@ -2295,6 +2299,8 @@ function newFreeItem(): FreeItem {
             freeItems?: FreeItem[];
             presentationDefaultMode?: ProposalPresentationMode;
             presentationStageModes?: Record<string, ProposalPresentationMode>;
+            showTechnicalDetails?: boolean;
+            technicalDetailStages?: Record<string, boolean>;
             showProposalGrandTotal?: boolean;
             proposalStartDate?: string;
             proposalStageSchedule?: Record<string, ProposalStageSchedule>;
@@ -2310,6 +2316,8 @@ function newFreeItem(): FreeItem {
           if (draft.freeItems?.length) setFreeItems(draft.freeItems);
           if (draft.presentationDefaultMode) setPresentationDefaultMode(draft.presentationDefaultMode);
           if (draft.presentationStageModes) setPresentationStageModes(draft.presentationStageModes);
+          if (draft.showTechnicalDetails !== undefined) setShowTechnicalDetails(draft.showTechnicalDetails);
+          if (draft.technicalDetailStages) setTechnicalDetailStages(draft.technicalDetailStages);
           if (draft.showProposalGrandTotal !== undefined) setShowProposalGrandTotal(draft.showProposalGrandTotal);
           if (draft.proposalStartDate !== undefined) setProposalStartDate(draft.proposalStartDate);
           if (draft.proposalStageSchedule) setProposalStageSchedule(draft.proposalStageSchedule);
@@ -2343,6 +2351,8 @@ function newFreeItem(): FreeItem {
       freeItems,
       presentationDefaultMode,
       presentationStageModes,
+      showTechnicalDetails,
+      technicalDetailStages,
       showProposalGrandTotal,
       proposalStartDate,
       proposalStageSchedule,
@@ -2423,6 +2433,8 @@ function newFreeItem(): FreeItem {
         modoPadrao?: ProposalPresentationMode;
         etapas?: Record<string, ProposalPresentationMode>;
         mostrarTotalGeral?: boolean;
+        mostrarDetalhamentoTecnico?: boolean;
+        detalhamentoTecnicoEtapas?: Record<string, boolean>;
         previsaoInicio?: string;
         cronogramaEtapas?: Record<string, ProposalStageSchedule>;
         mostrarCronogramaExecucao?: boolean;
@@ -2430,6 +2442,8 @@ function newFreeItem(): FreeItem {
       } | null | undefined;
       setPresentationDefaultMode(currentPresentation?.modoPadrao ?? "completo");
       setPresentationStageModes(currentPresentation?.etapas ?? {});
+      setShowTechnicalDetails(currentPresentation?.mostrarDetalhamentoTecnico ?? true);
+      setTechnicalDetailStages(currentPresentation?.detalhamentoTecnicoEtapas ?? {});
       setShowProposalGrandTotal(currentPresentation?.mostrarTotalGeral ?? true);
       setProposalStartDate(currentPresentation?.previsaoInicio ?? "");
       setProposalStageSchedule(currentPresentation?.cronogramaEtapas ?? {});
@@ -2638,6 +2652,8 @@ function newFreeItem(): FreeItem {
       setShowAllByStage({});
       setPresentationDefaultMode("completo");
       setPresentationStageModes({});
+      setShowTechnicalDetails(true);
+      setTechnicalDetailStages({});
       setShowProposalGrandTotal(true);
       setProposalStartDate("");
       setProposalStageSchedule({});
@@ -2961,6 +2977,8 @@ function newFreeItem(): FreeItem {
         ])
       ),
       mostrarTotalGeral: showProposalGrandTotal,
+      mostrarDetalhamentoTecnico: showTechnicalDetails,
+      detalhamentoTecnicoEtapas: technicalDetailStages,
       previsaoInicio: proposalStartDate || undefined,
       cronogramaEtapas: Object.fromEntries(
         orcamentoEtapas
@@ -3860,13 +3878,13 @@ function newFreeItem(): FreeItem {
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base">Apresentação da proposta</CardTitle>
                   <p className="text-xs text-muted-foreground">
-                    Escolha o que o cliente verá em cada etapa. Quantidades, custos e cálculos continuam completos internamente.
+                    Configure separadamente o detalhamento financeiro e o técnico. Quantidades, custos e cálculos continuam completos internamente.
                   </p>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid gap-3 md:grid-cols-[minmax(240px,1fr)_auto] md:items-end">
+                  <div className="grid gap-3 lg:grid-cols-[minmax(240px,1fr)_auto_auto] lg:items-end">
                     <div className="space-y-1.5">
-                      <Label>Modo padrão</Label>
+                      <Label>Detalhamento financeiro</Label>
                       <Select
                         value={presentationDefaultMode}
                         onValueChange={(value) => setPresentationDefaultMode(value as ProposalPresentationMode)}
@@ -3878,6 +3896,16 @@ function newFreeItem(): FreeItem {
                           ))}
                         </SelectContent>
                       </Select>
+                    </div>
+                    <div className="flex items-center gap-3 rounded-md border bg-background px-3 py-2.5">
+                      <Switch
+                        checked={showTechnicalDetails}
+                        onCheckedChange={setShowTechnicalDetails}
+                      />
+                      <div>
+                        <p className="text-sm font-medium">Detalhamento técnico</p>
+                        <p className="text-[11px] text-muted-foreground">Lista o que está contemplado sem depender da exibição dos preços.</p>
+                      </div>
                     </div>
                     <div className="flex items-center gap-3 rounded-md border bg-background px-3 py-2.5">
                       <Switch
@@ -3896,32 +3924,63 @@ function newFreeItem(): FreeItem {
                       const selectedMode = presentationStageModes[etapa.id] ?? presentationDefaultMode;
                       const selectedInfo = PROPOSAL_PRESENTATION_OPTIONS.find((option) => option.value === selectedMode);
                       return (
-                        <div key={etapa.id} className="grid gap-2 rounded-lg border bg-background p-3 md:grid-cols-[1fr_260px] md:items-center">
+                        <div key={etapa.id} className="grid gap-2 rounded-lg border bg-background p-3 lg:grid-cols-[1fr_240px_180px] lg:items-center">
                           <div>
                             <p className="text-sm font-medium">Etapa {index + 1} · {etapa.nome || `Etapa ${index + 1}`}</p>
                             <p className="text-xs text-muted-foreground">{selectedInfo?.description}</p>
                           </div>
-                          <Select
-                            value={selectedMode}
-                            onValueChange={(value) => setPresentationStageModes((prev) => ({
-                              ...prev,
-                              [etapa.id]: value as ProposalPresentationMode,
-                            }))}
-                          >
-                            <SelectTrigger><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              {PROPOSAL_PRESENTATION_OPTIONS.map((option) => (
-                                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <div className="space-y-1">
+                            <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">Financeiro</Label>
+                            <Select
+                              value={selectedMode}
+                              onValueChange={(value) => setPresentationStageModes((prev) => ({
+                                ...prev,
+                                [etapa.id]: value as ProposalPresentationMode,
+                              }))}
+                            >
+                              <SelectTrigger><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                {PROPOSAL_PRESENTATION_OPTIONS.map((option) => (
+                                  <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">Técnico</Label>
+                            <Select
+                              value={
+                                Object.prototype.hasOwnProperty.call(technicalDetailStages, etapa.id)
+                                  ? (technicalDetailStages[etapa.id] ? "mostrar" : "ocultar")
+                                  : "__default__"
+                              }
+                              onValueChange={(value) =>
+                                setTechnicalDetailStages((prev) => {
+                                  const next = { ...prev };
+                                  if (value === "__default__") {
+                                    delete next[etapa.id];
+                                  } else {
+                                    next[etapa.id] = value === "mostrar";
+                                  }
+                                  return next;
+                                })
+                              }
+                            >
+                              <SelectTrigger><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__default__">Usar padrão</SelectItem>
+                                <SelectItem value="mostrar">Mostrar escopo</SelectItem>
+                                <SelectItem value="ocultar">Ocultar escopo</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
                         </div>
                       );
                     })}
                   </div>
 
                   <div className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-                    Exemplo: Fundação em <strong>Resumo da etapa</strong> mostra apenas o valor macro; Esquadrias em <strong>Preço por item</strong> mostra cada item e seu valor unitário na mesma proposta.
+                    Exemplo: Fundação pode usar <strong>Resumo da etapa</strong> no financeiro e <strong>Mostrar escopo</strong> no técnico. Assim o cliente vê o valor macro e tudo o que está contemplado, sem quantidade nem preço unitário.
                   </div>
 
                   <Separator />
