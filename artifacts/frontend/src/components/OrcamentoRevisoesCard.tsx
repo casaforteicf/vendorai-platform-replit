@@ -538,12 +538,20 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
                         <p className="text-xs text-muted-foreground">
                           {revisions.length} rodada{revisions.length === 1 ? "" : "s"} de negociação/revisão
                         </p>
-                        {revisions.map((revisao, index) => (
+                        {revisions.map((revisao, index) => {
+                          const revisionProposal = revisao.propostaRevisaoId
+                            ? orcamentos.find((item) => item.id === revisao.propostaRevisaoId)
+                            : null;
+                          return (
                           <div key={revisao.id} className="flex items-center justify-between gap-2 rounded-lg border bg-muted/20 px-2.5 py-2">
                             <div className="min-w-0">
-                              <p className="text-xs font-medium">{revisao.revisaoNumero ?? `Revisão ${index + 1}`}</p>
+                              <p className="text-xs font-medium">
+                                {revisao.revisaoNumero ?? `Revisão ${index + 1}`}
+                                {revisionProposal?.numero ? ` · ${revisionProposal.numero}` : ""}
+                              </p>
                               <p className="truncate text-[11px] text-muted-foreground">
                                 {revisao.observacao || "Sem alteração descrita."}
+                                {revisionProposal ? ` · ${formatMoney(revisionProposal.valorTotal)}` : ""}
                               </p>
                             </div>
                             <a
@@ -556,7 +564,8 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
                               </Button>
                             </a>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
 
@@ -652,7 +661,11 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
                           </TableCell>
                         </TableRow>
 
-                        {revisions.map((revisao, index) => (
+                        {revisions.map((revisao, index) => {
+                          const revisionProposal = revisao.propostaRevisaoId
+                            ? orcamentos.find((item) => item.id === revisao.propostaRevisaoId)
+                            : null;
+                          return (
                           <TableRow key={revisao.id} className="bg-background/70 hover:bg-muted/30">
                             <TableCell>
                               <div className="pl-6 flex items-start gap-2">
@@ -664,7 +677,9 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
                               </div>
                             </TableCell>
                             <TableCell className="text-sm whitespace-nowrap">{formatDate(revisao.dataOrcamento)}</TableCell>
-                            <TableCell className="text-xs text-muted-foreground">—</TableCell>
+                            <TableCell className="text-sm font-medium whitespace-nowrap">
+                              {revisionProposal ? formatMoney(revisionProposal.valorTotal) : "—"}
+                            </TableCell>
                             <TableCell><Badge variant="secondary" className="text-[10px]">Negociação</Badge></TableCell>
                             <TableCell>
                               <p className="text-xs line-clamp-2">{revisao.observacao || "Sem alteração descrita."}</p>
@@ -684,7 +699,7 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
                                   </Button>
                                 ) : null}
                                 <a
-                                  href={`${import.meta.env.BASE_URL}propostas?edit=${encodeURIComponent(orc.id)}&returnTo=${encodeURIComponent(`/leads/${leadId}`)}`}
+                                  href={`${import.meta.env.BASE_URL}propostas?edit=${encodeURIComponent(revisao.propostaRevisaoId || orc.id)}&returnTo=${encodeURIComponent(`/leads/${leadId}`)}`}
                                 >
                                   <Button
                                     size="sm"
@@ -705,7 +720,8 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
                               </div>
                             </TableCell>
                           </TableRow>
-                        ))}
+                          );
+                        })}
                       </Fragment>
                     );
                   })}
