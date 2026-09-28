@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq, inArray, like, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, like, or, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
@@ -1202,6 +1202,62 @@ router.delete("/propostas/:id", async (req, res) => {
   await db.delete(propostasTable).where(eq(propostasTable.id, existing.id));
 
   res.status(204).send();
+});
+
+// Each proposal owns exactly one public token. Legacy proposals that predate
+// automatic token generation are backfilled lazily the first time the seller
+// asks to share them. The conditional update avoids token replacement on races.
+router.post("/propostas/:id/public-link", async (req, res) => {
+  const propostaId = String(req.params.id);
+  const [existing] = await db
+    .select({
+      id: propostasTable.id,
+      tenantId: propostasTable.tenantId,
+      publicToken: propostasTable.publicToken,
+    })
+    .from(propostasTable)
+    .where(eq(propostasTable.id, propostaId))
+    .limit(1);
+
+  if (!existing) {
+    res.status(404).json({ error: "Proposta not found" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  if (existing.publicToken) {
+    res.json({ propostaId, publicToken: existing.publicToken });
+    return;
+  }
+
+  const generatedToken = crypto.randomUUID().replace(/-/g, "");
+  const [updated] = await db
+    .update(propostasTable)
+    .set({ publicToken: generatedToken, updatedAt: new Date() })
+    .where(and(eq(propostasTable.id, propostaId), isNull(propostasTable.publicToken)))
+    .returning({ publicToken: propostasTable.publicToken });
+
+  if (updated?.publicToken) {
+    res.json({ propostaId, publicToken: updated.publicToken });
+    return;
+  }
+
+  const [current] = await db
+    .select({ publicToken: propostasTable.publicToken })
+    .from(propostasTable)
+    .where(eq(propostasTable.id, propostaId))
+    .limit(1);
+
+  if (!current?.publicToken) {
+    res.status(500).json({ error: "Não foi possível gerar o link público desta proposta." });
+    return;
+  }
+
+  res.json({ propostaId, publicToken: current.publicToken });
 });
 
 // ── Canal A: Link público de aceite ───────────────────────────────────────────
