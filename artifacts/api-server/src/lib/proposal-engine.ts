@@ -1300,6 +1300,399 @@ function renderConstructionProposalLayout(args: {
   .accept-title { font-size:12pt; margin:10mm 0 5mm; }
   .signature { display:grid; grid-template-columns:1fr 55mm; gap:12mm; margin-top:11mm; }
   .signature div { border-top:1px solid #9ca3af; padding-top:2mm; font-size:7pt; color:${muted}; }
+
+  /* ── CasaForte premium editorial layer ───────────────────────────── */
+  :root {
+    --cf-orange: ${accent};
+    --cf-dark: #121212;
+    --cf-dark-2: #1c1c1c;
+    --cf-soft: #f7f6f3;
+    --cf-soft-2: #fbfaf8;
+    --cf-border: #e7e3df;
+    --cf-muted: #6f6f6f;
+  }
+  body {
+    color: var(--cf-dark);
+    font-family: Inter, "Aptos", "Segoe UI", Arial, Helvetica, sans-serif;
+    letter-spacing: -.005em;
+  }
+  .page {
+    padding: 13mm 15mm 12mm;
+  }
+  .topbar {
+    min-height: 15mm;
+    border-bottom: 2px solid var(--cf-dark);
+    padding-bottom: 4.5mm;
+    margin-bottom: 9mm;
+  }
+  .brand-line {
+    width: 42mm;
+    height: 1.5mm;
+    background: var(--cf-orange);
+  }
+  .topbar-right {
+    color: var(--cf-dark);
+    font-weight: 700;
+    letter-spacing: .085em;
+  }
+  .topbar-right span {
+    color: var(--cf-muted);
+    font-weight: 400;
+  }
+  .footer {
+    border-top: 1px solid var(--cf-border);
+    color: #8b8b8b;
+  }
+
+  /* Cover: architectural editorial, image-led */
+  .cover {
+    background: #111;
+  }
+  .cover-bg {
+    object-position: center;
+    filter: brightness(.62) saturate(.88) contrast(1.04);
+  }
+  .cover-shade {
+    background:
+      linear-gradient(110deg, rgba(0,0,0,.84) 0%, rgba(0,0,0,.64) 45%, rgba(0,0,0,.18) 78%, rgba(242,107,33,.14) 100%);
+  }
+  .cover-content {
+    padding: 17mm 16mm 15mm;
+  }
+  .cover-top {
+    padding-bottom: 5mm;
+    border-bottom: 1px solid rgba(255,255,255,.42);
+    font-weight: 700;
+    letter-spacing: .1em;
+  }
+  .cover-brand {
+    background: rgba(255,255,255,.96);
+    color: #111;
+    padding: 3mm 4mm;
+    border-radius: 2.5mm;
+    box-shadow: 0 4mm 10mm rgba(0,0,0,.18);
+  }
+  .cover-brand img {
+    max-height: 12mm;
+    max-width: 60mm;
+    filter: none;
+  }
+  .cover-main {
+    margin-top: 38mm;
+    max-width: 150mm;
+  }
+  .cover-title {
+    font-size: 32pt;
+    line-height: 1.01;
+    letter-spacing: -.035em;
+    max-width: 142mm;
+  }
+  .cover-subtitle {
+    margin-top: 4mm;
+    max-width: 118mm;
+    font-size: 10.5pt;
+    line-height: 1.5;
+    color: rgba(255,255,255,.88);
+  }
+  .cover-info {
+    width: min(160mm, 100%);
+    margin-top: auto;
+    border: 0;
+    border-left: 2.4mm solid var(--cf-orange);
+    border-radius: 0;
+    padding: 6mm 7mm;
+    background: rgba(12,12,12,.58);
+    backdrop-filter: blur(5px);
+  }
+  .cover-info strong {
+    font-size: 9.2pt;
+    letter-spacing: .01em;
+  }
+  .cover-info-grid {
+    row-gap: 2.7mm;
+    color: rgba(255,255,255,.86);
+  }
+
+  /* Summary: quiet white space + strong numbers */
+  .summary-heading,
+  .stage-heading,
+  .schedule-title,
+  .conditions-title {
+    letter-spacing: -.03em;
+    color: var(--cf-dark);
+  }
+  .summary-heading:after,
+  .stage-heading:after,
+  .schedule-title:after,
+  .conditions-title:after {
+    content: "";
+    display: block;
+    width: 18mm;
+    height: 1.25mm;
+    background: var(--cf-orange);
+    margin-top: 3mm;
+  }
+  .summary-lead {
+    font-size: 9.8pt;
+    line-height: 1.68;
+    color: #4d4d4d;
+    max-width: 170mm;
+  }
+  .metrics {
+    grid-template-columns: repeat(4, minmax(0,1fr));
+    gap: 4mm;
+    margin-top: 4mm;
+  }
+  .metric {
+    border: 0;
+    border-left: 1.35mm solid var(--cf-orange);
+    background: var(--cf-soft);
+    padding: 5mm;
+    min-height: 25mm;
+  }
+  .metric span {
+    color: var(--cf-muted);
+    font-size: 6pt;
+    letter-spacing: .08em;
+  }
+  .metric strong {
+    font-size: 14.2pt;
+    letter-spacing: -.025em;
+  }
+  .organize-title {
+    margin-top: 8mm;
+    font-size: 12.5pt;
+  }
+  .organize-grid {
+    gap: 4.5mm;
+  }
+  .organize-item {
+    border: 1px solid var(--cf-border);
+    border-radius: 2mm;
+    padding: 5mm;
+    background: #fff;
+    box-shadow: 0 2mm 6mm rgba(0,0,0,.025);
+  }
+  .organize-item b {
+    font-size: 8.5pt;
+  }
+  .organize-item p {
+    color: #656565;
+    line-height: 1.55;
+  }
+
+  /* Stage pages: image first, investment band second, detail third */
+  .stage-heading {
+    margin-bottom: 7mm;
+    font-size: 20pt;
+  }
+  .stage-image {
+    height: 61mm;
+    margin-bottom: 0;
+    border-radius: 3mm 3mm 0 0;
+    overflow: hidden;
+    background: #efefed;
+    box-shadow: 0 3mm 8mm rgba(0,0,0,.07);
+  }
+  .stage-image img {
+    height: 61mm;
+    object-fit: cover;
+    object-position: center;
+  }
+  .stage-metrics {
+    grid-template-columns: repeat(3, 1fr);
+    border: 0;
+    border-radius: 0 0 3mm 3mm;
+    overflow: hidden;
+    margin-bottom: 8mm;
+    background: var(--cf-dark);
+    color: #fff;
+    box-shadow: 0 3mm 8mm rgba(0,0,0,.07);
+  }
+  .stage-metrics > div {
+    padding: 5mm 5.5mm;
+    border-right: 1px solid rgba(255,255,255,.10);
+  }
+  .stage-metrics > div:last-child {
+    border-right: 0;
+  }
+  .stage-metrics span {
+    color: #efad84;
+    font-size: 6pt;
+    letter-spacing: .1em;
+  }
+  .stage-metrics strong {
+    color: #fff;
+    font-size: 13pt;
+  }
+  .stage-period {
+    margin: -2mm 0 7mm;
+    padding: 3.6mm 5mm;
+    border: 1px solid var(--cf-border);
+    background: var(--cf-soft-2);
+  }
+  .scope-title {
+    font-size: 11.8pt;
+    margin-bottom: 3mm;
+  }
+  .scope-table-demo,
+  .detail-table,
+  .phase-table,
+  .schedule-demo,
+  .payment-demo {
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+  .scope-table-demo th,
+  .detail-table th,
+  .phase-table th,
+  .schedule-demo th,
+  .payment-demo th {
+    background: var(--cf-dark);
+    color: #fff;
+    border-color: var(--cf-dark);
+    padding: 3.1mm 2.8mm;
+  }
+  .scope-table-demo td,
+  .detail-table td,
+  .phase-table td,
+  .schedule-demo td,
+  .payment-demo td {
+    border-color: var(--cf-border);
+    line-height: 1.45;
+  }
+  .scope-table-demo tbody tr:nth-child(even) td,
+  .detail-table tbody tr:nth-child(even) td,
+  .phase-table tbody tr:nth-child(even) td {
+    background: #faf9f7;
+  }
+
+  /* Schedule: executive / architectural tone */
+  .schedule-sub {
+    font-size: 8.2pt;
+    line-height: 1.6;
+    max-width: 165mm;
+  }
+  .schedule-demo {
+    border: 1px solid var(--cf-border);
+    border-radius: 2mm;
+    overflow: hidden;
+  }
+  .schedule-demo th {
+    font-size: 6.2pt;
+    letter-spacing: .04em;
+  }
+  .schedule-demo td {
+    padding: 3mm 2.5mm;
+  }
+  .schedule-block-title {
+    margin-top: 8mm;
+  }
+  .advance-summary {
+    padding: 4mm 4.5mm;
+    border: 0;
+    border-left: 2mm solid var(--cf-orange);
+    background: var(--cf-soft);
+    line-height: 1.55;
+  }
+  table.period-matrix {
+    border: 1px solid var(--cf-border);
+  }
+  table.period-matrix th {
+    background: var(--cf-dark);
+    color: #fff;
+    border-color: #2a2a2a;
+  }
+  table.period-matrix tfoot td {
+    background: #fff3e9;
+    color: #2a2a2a;
+  }
+
+  /* Conditions: restrained, premium document */
+  .conditions-list {
+    border-top: 2px solid var(--cf-dark);
+  }
+  .condition-row {
+    grid-template-columns: 52mm 1fr;
+    padding: 4.7mm 0;
+    border-bottom: 1px solid var(--cf-border);
+  }
+  .condition-row span {
+    color: var(--cf-muted);
+    font-size: 6.3pt;
+    letter-spacing: .09em;
+  }
+  .condition-row strong {
+    font-size: 9.3pt;
+    line-height: 1.4;
+  }
+  .next-title {
+    margin-top: 10mm;
+  }
+  .next-copy {
+    max-width: 168mm;
+    line-height: 1.65;
+  }
+  .signature {
+    margin-top: 14mm;
+  }
+
+  /* Web presentation mode: same proposal, better viewing outside PDF */
+  @media screen {
+    html { background: #ecebe8; }
+    body {
+      background: #ecebe8;
+      padding: 22px 0 40px;
+    }
+    .page {
+      margin: 0 auto 22px;
+      box-shadow: 0 16px 50px rgba(0,0,0,.10);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .cover {
+      box-shadow: 0 20px 60px rgba(0,0,0,.17);
+    }
+  }
+  @media screen and (max-width: 860px) {
+    body { padding: 0; }
+    .page {
+      width: 100%;
+      min-height: auto;
+      margin: 0;
+      padding: 26px 22px;
+      box-shadow: none;
+      page-break-after: auto;
+    }
+    .cover {
+      min-height: 100vh;
+      padding: 0;
+    }
+    .cover-content {
+      min-height: 100vh;
+      padding: 26px 22px;
+    }
+    .cover-main { margin-top: 22vh; }
+    .cover-title { font-size: clamp(34px, 10vw, 54px); }
+    .cover-info { width: 100%; }
+    .metrics { grid-template-columns: 1fr 1fr; }
+    .organize-grid { grid-template-columns: 1fr; }
+    .stage-metrics { grid-template-columns: 1fr; }
+    .stage-metrics > div { border-right: 0; border-bottom: 1px solid rgba(255,255,255,.1); }
+    .stage-period { grid-template-columns: 1fr; }
+    .scope-table-demo,
+    .detail-table,
+    .phase-table,
+    .schedule-demo,
+    .payment-demo,
+    table.period-matrix {
+      display: block;
+      width: 100%;
+      overflow-x: auto;
+      white-space: nowrap;
+    }
+    .condition-row { grid-template-columns: 1fr; gap: 7px; }
+  }
 </style>
 </head>
 <body>
