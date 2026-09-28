@@ -21,17 +21,27 @@ function formatCurrency(value: string | number | null | undefined): string {
   return num.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-type PropostaPublic = {
-  id: string;
-  titulo: string;
-  itens: Array<{ nome: string; quantidade: number; valorUnitario: number; descricao?: string }>;
-  valorTotal: string | null;
-  status: string;
-  validadeAte: string | null;
-  numero: string | null;
-  observacoes: string | null;
-  condPagamento: string | null;
-};
+type PropostaPublic =
+  | {
+      kind: "budget";
+      id: string;
+      titulo: string;
+      itens: Array<{ nome: string; quantidade: number; valorUnitario: number; descricao?: string }>;
+      valorTotal: string | null;
+      status: string;
+      validadeAte: string | null;
+      numero: string | null;
+      observacoes: string | null;
+      condPagamento: string | null;
+    }
+  | {
+      kind: "generated";
+      id: string;
+      version: number;
+      status: string;
+      htmlContent: string;
+      createdAt: string;
+    };
 
 export default function PublicProposta() {
   const { token } = useParams<{ token: string }>();
@@ -91,6 +101,20 @@ export default function PublicProposta() {
             </p>
           </CardContent>
         </Card>
+      </div>
+    );
+  }
+
+  if (proposta.kind === "generated") {
+    return (
+      <div className="min-h-screen bg-white">
+        <iframe
+          title={`Proposta v${proposta.version}`}
+          srcDoc={proposta.htmlContent}
+          className="w-full min-h-screen border-0"
+          style={{ height: "100vh" }}
+          sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+        />
       </div>
     );
   }
