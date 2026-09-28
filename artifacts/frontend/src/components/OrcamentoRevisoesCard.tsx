@@ -34,6 +34,9 @@ import {
 type Anexo = { nome: string; url: string; mimeType?: string; tamanho?: number };
 type Revisao = {
   id: string;
+  basePropostaId?: string | null;
+  propostaRevisaoId?: string | null;
+  revisaoNumero?: string | null;
   numeroOrcamento: string;
   dataOrcamento: string;
   apresentacao: string | null;
@@ -108,8 +111,11 @@ function budgetReference(orc: Orcamento) {
 }
 
 function revisionMatchesBudget(revisao: Revisao, orc: Orcamento) {
+  if (revisao.basePropostaId) return revisao.basePropostaId === orc.id;
   const refs = [orc.numero, orc.id, orc.titulo].filter(Boolean).map(String);
-  return refs.includes(String(revisao.numeroOrcamento));
+  const revisionRef = String(revisao.numeroOrcamento);
+  return refs.includes(revisionRef)
+    || (!!orc.numero && revisionRef.startsWith(`${orc.numero}-R`));
 }
 
 export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: string; tenantId: string; dealId?: string }) {
@@ -146,8 +152,12 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
       ].map((orc) => [orc.id, orc] as const),
     ).values(),
   );
+  const revisionProposalIds = new Set(
+    revisoes.map((revisao) => revisao.propostaRevisaoId).filter((id): id is string => Boolean(id)),
+  );
+  const baseOrcamentos = orcamentos.filter((orc) => !revisionProposalIds.has(orc.id));
   const loadingOrcamentos = loadingOrcamentosLead || (!!dealId && loadingOrcamentosDeal);
-  const hasOrcamento = orcamentos.length > 0;
+  const hasOrcamento = baseOrcamentos.length > 0;
 
   const updatePropostaStatus = useUpdatePropostaStatus({
     request: { headers: { Authorization: `Bearer ${token}` } },
@@ -273,7 +283,7 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
       openBudgetCreation();
       return;
     }
-    const selected = orc ?? orcamentos[0];
+    const selected = orc ?? baseOrcamentos[0];
     setEditingId(null);
     setNumero(selected ? budgetReference(selected) : "");
     setData(todayISO());
@@ -378,6 +388,9 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
       const payload = {
         numeroOrcamento: numero.trim(),
         dataOrcamento: data,
+        ...(editingId ? {} : {
+          basePropostaId: baseOrcamentos.find((orc) => budgetReference(orc) === numero)?.id,
+        }),
         apresentacao: apresentacao.trim() || null,
         observacao: observacao.trim() || null,
         anexos,
@@ -386,14 +399,23 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
       const url = editingId
         ? `/api/tenants/${tenantId}/leads/${leadId}/orcamento-revisoes/${editingId}`
         : `/api/tenants/${tenantId}/leads/${leadId}/orcamento-revisoes`;
-      await fetch(url, {
+      const saved = await fetch(url, {
         method: editingId ? "PATCH" : "POST",
         headers: authHeadersJson(),
         body: JSON.stringify(payload),
       }).then(readJson);
       await qc.invalidateQueries({ queryKey });
-      toast({ title: editingId ? "Revisão atualizada." : "Nova rodada de negociação registrada." });
+      await qc.invalidateQueries();
+      toast({
+        title: editingId ? "Revisão atualizada." : `${saved.revisaoNumero ?? "Nova revisão"} criada`,
+        description: !editingId && saved.propostaRevisaoId
+          ? "Uma nova versão editável do orçamento foi criada a partir da versão anterior."
+          : undefined,
+      });
       setFormOpen(false);
+      if (!editingId && saved.propostaRevisaoId) {
+        window.location.href = `${import.meta.env.BASE_URL}propostas?edit=${encodeURIComponent(saved.propostaRevisaoId)}&returnTo=${encodeURIComponent(`/leads/${leadId}`)}`;
+      }
     } catch (error) {
       toast({
         title: "Erro ao salvar",
@@ -420,11 +442,11 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
 
   const matchedRevisionIds = new Set(
     revisoes
-      .filter((revisao) => orcamentos.some((orc) => revisionMatchesBudget(revisao, orc)))
+      .filter((revisao) => baseOrcamentos.some((orc) => revisionMatchesBudget(revisao, orc)))
       .map((revisao) => revisao.id),
   );
   const orphanRevisions = revisoes.filter((revisao) => !matchedRevisionIds.has(revisao.id));
-  const currentBudgetRefs = new Set(orcamentos.map(budgetReference));
+  const currentBudgetRefs = new Set(baseOrcamentos.map(budgetReference));
   const selectedReferenceIsLegacy = !!numero && !currentBudgetRefs.has(numero);
 
   return (
@@ -435,7 +457,7 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
             <span className="flex items-center gap-2 min-w-0">
               <Receipt className="h-4 w-4 shrink-0" />
               Orçamentos, negociações e revisões
-              {orcamentos.length > 0 && <Badge variant="outline" className="text-xs">{orcamentos.length}</Badge>}
+              {baseOrcamentos.length > 0 && <Badge variant="outline" className="text-xs">{baseOrcamentos.length}</Badge>}
             </span>
             <Button size="sm" variant="outline" className="h-9 w-full text-xs gap-1 sm:h-7 sm:w-auto" onClick={openBudgetCreation}>
               <Plus className="h-3 w-3" />
@@ -465,7 +487,7 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
           ) : (
             <>
             <div className="space-y-3 md:hidden">
-              {orcamentos.map((orc) => {
+              {baseOrcamentos.map((orc) => {
                 const labelValue = getOrcLabel(orc.status);
                 const labelConfig = ORCAMENTO_LABELS.find((item) => item.value === labelValue)!;
                 const terminal = isTerminalStatus(orc.status);
@@ -516,17 +538,25 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
                         <p className="text-xs text-muted-foreground">
                           {revisions.length} rodada{revisions.length === 1 ? "" : "s"} de negociação/revisão
                         </p>
-                        {revisions.map((revisao, index) => (
+                        {revisions.map((revisao, index) => {
+                          const revisionProposal = revisao.propostaRevisaoId
+                            ? orcamentos.find((item) => item.id === revisao.propostaRevisaoId)
+                            : null;
+                          return (
                           <div key={revisao.id} className="flex items-center justify-between gap-2 rounded-lg border bg-muted/20 px-2.5 py-2">
                             <div className="min-w-0">
-                              <p className="text-xs font-medium">Revisão {index + 1}</p>
+                              <p className="text-xs font-medium">
+                                {revisao.revisaoNumero ?? `Revisão ${index + 1}`}
+                                {revisionProposal?.numero ? ` · ${revisionProposal.numero}` : ""}
+                              </p>
                               <p className="truncate text-[11px] text-muted-foreground">
                                 {revisao.observacao || "Sem alteração descrita."}
+                                {revisionProposal ? ` · ${formatMoney(revisionProposal.valorTotal)}` : ""}
                               </p>
                             </div>
                             <a
                               className="shrink-0"
-                              href={`${import.meta.env.BASE_URL}propostas?edit=${encodeURIComponent(orc.id)}&returnTo=${encodeURIComponent(`/leads/${leadId}`)}`}
+                              href={`${import.meta.env.BASE_URL}propostas?edit=${encodeURIComponent(revisao.propostaRevisaoId || orc.id)}&returnTo=${encodeURIComponent(`/leads/${leadId}`)}`}
                             >
                               <Button size="sm" variant="outline" className="h-7 gap-1 text-xs">
                                 <ExternalLink className="h-3.5 w-3.5" />
@@ -534,7 +564,8 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
                               </Button>
                             </a>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
 
@@ -568,7 +599,7 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {orcamentos.map((orc) => {
+                  {baseOrcamentos.map((orc) => {
                     const revisions = revisoes.filter((revisao) => revisionMatchesBudget(revisao, orc));
                     const labelValue = getOrcLabel(orc.status);
                     const labelConfig = ORCAMENTO_LABELS.find((item) => item.value === labelValue)!;
@@ -630,19 +661,25 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
                           </TableCell>
                         </TableRow>
 
-                        {revisions.map((revisao, index) => (
+                        {revisions.map((revisao, index) => {
+                          const revisionProposal = revisao.propostaRevisaoId
+                            ? orcamentos.find((item) => item.id === revisao.propostaRevisaoId)
+                            : null;
+                          return (
                           <TableRow key={revisao.id} className="bg-background/70 hover:bg-muted/30">
                             <TableCell>
                               <div className="pl-6 flex items-start gap-2">
                                 <History className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                                 <div>
-                                  <p className="text-sm font-medium">Revisão {index + 1}</p>
+                                  <p className="text-sm font-medium">{revisao.revisaoNumero ?? `Revisão ${index + 1}`}</p>
                                   <p className="text-[11px] text-muted-foreground">do orçamento {orc.numero || orc.titulo}</p>
                                 </div>
                               </div>
                             </TableCell>
                             <TableCell className="text-sm whitespace-nowrap">{formatDate(revisao.dataOrcamento)}</TableCell>
-                            <TableCell className="text-xs text-muted-foreground">—</TableCell>
+                            <TableCell className="text-sm font-medium whitespace-nowrap">
+                              {revisionProposal ? formatMoney(revisionProposal.valorTotal) : "—"}
+                            </TableCell>
                             <TableCell><Badge variant="secondary" className="text-[10px]">Negociação</Badge></TableCell>
                             <TableCell>
                               <p className="text-xs line-clamp-2">{revisao.observacao || "Sem alteração descrita."}</p>
@@ -662,16 +699,16 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
                                   </Button>
                                 ) : null}
                                 <a
-                                  href={`${import.meta.env.BASE_URL}propostas?edit=${encodeURIComponent(orc.id)}&returnTo=${encodeURIComponent(`/leads/${leadId}`)}`}
+                                  href={`${import.meta.env.BASE_URL}propostas?edit=${encodeURIComponent(revisao.propostaRevisaoId || orc.id)}&returnTo=${encodeURIComponent(`/leads/${leadId}`)}`}
                                 >
                                   <Button
                                     size="sm"
                                     variant="outline"
                                     className="h-7 text-xs gap-1"
-                                    title={`Abrir orçamento vinculado à revisão ${index + 1}`}
+                                    title={`Abrir ${revisao.revisaoNumero ?? `revisão ${index + 1}`}`}
                                   >
                                     <ExternalLink className="h-3.5 w-3.5" />
-                                    Abrir revisão
+                                    Abrir {revisao.revisaoNumero ?? `R${index + 1}`}
                                   </Button>
                                 </a>
                                 <Button size="icon" variant="ghost" className="h-7 w-7" title="Editar revisão" onClick={() => openEdit(revisao)}>
@@ -683,7 +720,8 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
                               </div>
                             </TableCell>
                           </TableRow>
-                        ))}
+                          );
+                        })}
                       </Fragment>
                     );
                   })}
@@ -746,7 +784,7 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
                 <Select value={numero} onValueChange={setNumero}>
                   <SelectTrigger><SelectValue placeholder="Selecione o orçamento" /></SelectTrigger>
                   <SelectContent>
-                    {orcamentos.map((orc) => (
+                    {baseOrcamentos.map((orc) => (
                       <SelectItem key={orc.id} value={budgetReference(orc)}>
                         {orc.numero ? `${orc.numero} — ` : ""}{orc.titulo}
                       </SelectItem>

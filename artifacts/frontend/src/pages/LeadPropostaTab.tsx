@@ -571,7 +571,8 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     if (loadingOrcamentos || budgets.length === 0) return;
     const selectionIsValid = budgets.some((orc) => orc.id === selectedOrcamentoId);
     if (!selectionIsValid) {
-      handleProposalBudgetChange(budgets[0].id);
+      const latestBudget = budgets[budgets.length - 1];
+      if (latestBudget?.id) handleProposalBudgetChange(latestBudget.id);
     }
   }, [loadingOrcamentos, orcamentos, selectedOrcamentoId]);
 
