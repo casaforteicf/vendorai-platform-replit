@@ -31,4 +31,18 @@ describe("Arqdor reference AI trace normalization", () => {
     expect(result.walls).toHaveLength(0);
     expect(result.skippedWalls).toBe(1);
   });
+  it("encaixa extremidade próxima em uma parede perpendicular sem redesenhar a planta", () => {
+    const result = normalizeReferenceTrace({
+      walls: [
+        { x1: 0.1, y1: 0.2, x2: 0.5, y2: 0.2, confidence: 0.9 },
+        { x1: 0.505, y1: 0.19, x2: 0.505, y2: 0.8, confidence: 0.9 },
+      ],
+      openings: [],
+    }, { x: 0, y: 0, width: 10, depth: 10 }, "test-model");
+
+    expect(result.walls).toHaveLength(2);
+    expect(result.topologyRepairs).toBeGreaterThan(0);
+    expect(result.walls[0]?.x2).toBeCloseTo(result.walls[1]?.x1 ?? 0, 3);
+    expect(result.walls[0]?.y2).toBeCloseTo(2, 3);
+  });
 });
