@@ -443,7 +443,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     ...proposalImages,
     ...productProposalImages,
   ]));
-  const proposalHasMinimumImages = effectiveProposalImages.length >= 2;
+  const proposalHasMinimumImages = effectiveProposalImages.length >= 2; // recomendado, não bloqueante
   const proposalPrimaryPageCount = selectedOrcamentoId !== "__none__" ? 5 : 4;
 
   const generateMutation = useGenerateLeadProposal({
@@ -928,15 +928,11 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     if (!leadId || !token) return;
 
     const imagesForProposal = effectiveProposalImages.slice(0, 12);
-    if (imagesForProposal.length < 2) {
-      toast({
-        title: "Adicione pelo menos 2 imagens",
-        description: "Para uma apresentação completa, importe imagens, selecione renders ou vincule produtos com imagem. O ideal é cobrir todas as páginas principais.",
-        variant: "destructive",
-      });
-      return;
-    }
 
+    // Imagens melhoram a apresentação, mas não podem bloquear a geração.
+    // Quando não houver imagens manuais, o backend ainda pode completar com
+    // imagens automáticas de etapas/contexto; caso não seja possível, gera a
+    // proposta normalmente em layout textual.
     setRefineOpen(false);
     setGenerating(true);
     try {
@@ -1275,12 +1271,12 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                 variant="outline"
                 className={proposalHasMinimumImages ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}
               >
-                {effectiveProposalImages.length}/2 mínimo
+                {effectiveProposalImages.length} selecionada(s)
               </Badge>
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Ideal: {proposalPrimaryPageCount} imagens diferentes, uma para cada página principal. O sistema exige no mínimo 2 e usa imagens de produtos vinculados como complemento quando necessário.
+              Recomendado: {proposalPrimaryPageCount} imagens diferentes, uma para cada página principal. Imagens não são obrigatórias; o sistema usa as disponíveis e pode completar automaticamente quando houver contexto suficiente.
             </p>
 
             {productProposalImages.filter((url) => !proposalImages.includes(url)).length > 0 && (
