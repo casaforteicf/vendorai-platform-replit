@@ -1250,6 +1250,20 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
           : {}),
       };
 
+      // Persist presentation choices made in the proposal screen, including
+      // the manually informed total built area. This keeps the orçamento as the
+      // single source of truth for future proposal versions.
+      await db
+        .update(propostasTable)
+        .set({
+          apresentacao: {
+            ...(orc.apresentacao ?? {}),
+            ...mergedPresentation,
+          },
+          updatedAt: new Date(),
+        })
+        .where(eq(propostasTable.id, orc.id));
+
       if (builderWantsStageImages) {
         const itensOrcamento = orc.itens ?? [];
         const hasStructuredStages = itensOrcamento.some(
