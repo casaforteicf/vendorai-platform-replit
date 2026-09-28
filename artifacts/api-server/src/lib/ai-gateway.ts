@@ -698,14 +698,34 @@ export async function generateImage(
   let urls: string[] = [];
 
   try {
-    const response = await openai.images.generate({
+    // gpt-image-1 não aceita response_format. Quando esse modelo é usado, a
+    // API retorna a imagem em base64 (b64_json). DALL-E continua podendo
+    // retornar URL. Normalizamos ambos para uma lista de fontes consumíveis
+    // pelos chamadores existentes.
+    const imageRequest: Record<string, unknown> = {
       model,
       prompt,
       n,
       size: options.size ?? "1024x1024",
-      response_format: "url",
-    });
-    urls = (response.data ?? []).map((d) => d.url ?? "").filter(Boolean);
+    };
+    if (model.startsWith("dall-e")) {
+      imageRequest.response_format = "url";
+    }
+
+    const response = await openai.images.generate(imageRequest as any);
+    urls = (response.data ?? [])
+      .map((d: any) => {
+        if (typeof d?.url === "string" && d.url) return d.url;
+        if (typeof d?.b64_json === "string" && d.b64_json) {
+          return `data:image/png;base64,${d.b64_json}`;
+        }
+        return "";
+      })
+      .filter(Boolean);
+
+    if (urls.length === 0) {
+      throw new Error("Image provider returned no image data");
+    }
     success = true;
   } catch (err: any) {
     errorMessage = err.message ?? "Image generation failed";
