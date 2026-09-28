@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request } from "express";
 import { z } from "zod/v4";
 import { db, webBehaviorEventsTable } from "@workspace/db";
-import { and, desc, eq, gte } from "drizzle-orm";
+import { and, desc, eq, gte, lt } from "drizzle-orm";
 import { getVisitorIntelligence } from "../services/visitorIntelligence.js";
 import { resolveRequestGeo } from "../lib/requestGeo.js";
 import {
@@ -258,7 +258,9 @@ router.get("/visitor-intelligence/web-vitals", async (req, res) => {
 
   const minutes = parsed.data.minutes ?? 10_080;
   const device = parsed.data.device ?? "all";
-  const since = new Date(Date.now() - minutes * 60_000);
+  const now = Date.now();
+  const since = new Date(now - minutes * 60_000);
+  const previousSince = new Date(now - minutes * 2 * 60_000);
 
   try {
     const rows = await db
@@ -276,7 +278,28 @@ router.get("/visitor-intelligence/web-vitals", async (req, res) => {
       .orderBy(desc(webBehaviorEventsTable.createdAt))
       .limit(10_000);
 
+    const previousRows = await db
+      .select({
+        path: webBehaviorEventsTable.path,
+        metadata: webBehaviorEventsTable.metadata,
+        createdAt: webBehaviorEventsTable.createdAt,
+      })
+      .from(webBehaviorEventsTable)
+      .where(and(
+        eq(webBehaviorEventsTable.tenantId, tenantId),
+        eq(webBehaviorEventsTable.eventType, "engagement"),
+        gte(webBehaviorEventsTable.createdAt, previousSince),
+        lt(webBehaviorEventsTable.createdAt, since),
+      ))
+      .orderBy(desc(webBehaviorEventsTable.createdAt))
+      .limit(10_000);
+
     const samples = rows
+      .map((row) => parseVitalSample({ path: row.path, metadata: row.metadata ?? {}, createdAt: row.createdAt }))
+      .filter((sample): sample is VitalSample => sample !== null)
+      .filter((sample) => device === "all" || sample.deviceCategory === device);
+
+    const previousSamples = previousRows
       .map((row) => parseVitalSample({ path: row.path, metadata: row.metadata ?? {}, createdAt: row.createdAt }))
       .filter((sample): sample is VitalSample => sample !== null)
       .filter((sample) => device === "all" || sample.deviceCategory === device);
@@ -367,14 +390,30 @@ router.get("/visitor-intelligence/web-vitals", async (req, res) => {
       routeMap.set(sample.path, list);
     }
 
+    const previousRouteMap = new Map<string, VitalSample[]>();
+    for (const sample of previousSamples) {
+      const list = previousRouteMap.get(sample.path) ?? [];
+      list.push(sample);
+      previousRouteMap.set(sample.path, list);
+    }
+
     const routes = [...routeMap.entries()]
-      .map(([path, routeSamples]) => ({
-        path,
-        samples: routeSamples.length,
-        lcp: vitalSummary(routeSamples, "LCP").p75,
-        inp: vitalSummary(routeSamples, "INP").p75,
-        cls: vitalSummary(routeSamples, "CLS").p75,
-      }))
+      .map(([path, routeSamples]) => {
+        const previous = previousRouteMap.get(path) ?? [];
+        return {
+          path,
+          samples: routeSamples.length,
+          lcp: vitalSummary(routeSamples, "LCP").p75,
+          inp: vitalSummary(routeSamples, "INP").p75,
+          cls: vitalSummary(routeSamples, "CLS").p75,
+          previous: {
+            samples: previous.length,
+            lcp: vitalSummary(previous, "LCP").p75,
+            inp: vitalSummary(previous, "INP").p75,
+            cls: vitalSummary(previous, "CLS").p75,
+          },
+        };
+      })
       .sort((a, b) => b.samples - a.samples)
       .slice(0, 20);
 
@@ -382,6 +421,7 @@ router.get("/visitor-intelligence/web-vitals", async (req, res) => {
       minutes,
       device,
       since: since.toISOString(),
+      previousSince: previousSince.toISOString(),
       generatedAt: new Date().toISOString(),
       sampleCount: samples.length,
       metrics: {
