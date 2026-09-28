@@ -64,6 +64,14 @@ type VitalSample = {
   createdAt: Date;
 };
 
+type ApiTimingSample = {
+  endpoint: string;
+  durationMs: number;
+  path: string;
+  deviceCategory: string | null;
+  createdAt: Date;
+};
+
 function tenantFromRequest(req: Request): string | null {
   const user = (req as Request & { user?: { tenantId?: string; platformRole?: string } }).user;
   if (user?.tenantId) return String(user.tenantId);
@@ -96,6 +104,23 @@ function vitalSummary(samples: VitalSample[], name: VitalName) {
     median: percentile(values, 0.5),
     goodPercent: values.length ? Math.round((good / values.length) * 100) : null,
     distribution: { good, needsImprovement, poor },
+  };
+}
+
+function parseApiTimingSample(row: { path: string | null; metadata: Record<string, unknown>; createdAt: Date }): ApiTimingSample | null {
+  const metadata = row.metadata ?? {};
+  if (metadata["kind"] !== "api_timing") return null;
+  const endpoint = typeof metadata["endpoint"] === "string" ? metadata["endpoint"] : null;
+  const durationMs = Number(metadata["durationMs"]);
+  if (!endpoint || !endpoint.startsWith("/api/") || !Number.isFinite(durationMs) || durationMs < 0) return null;
+  const rawPath = row.path || "/";
+  const pathname = rawPath.split("?")[0]?.replace(/\/$/, "") || "/";
+  return {
+    endpoint,
+    durationMs,
+    path: pathname,
+    deviceCategory: typeof metadata["deviceCategory"] === "string" ? metadata["deviceCategory"] : null,
+    createdAt: row.createdAt,
   };
 }
 
@@ -226,6 +251,31 @@ router.get("/visitor-intelligence/web-vitals", async (req, res) => {
       .filter((sample): sample is VitalSample => sample !== null)
       .filter((sample) => device === "all" || sample.deviceCategory === device);
 
+    const apiSamples = rows
+      .map((row) => parseApiTimingSample({ path: row.path, metadata: row.metadata ?? {}, createdAt: row.createdAt }))
+      .filter((sample): sample is ApiTimingSample => sample !== null)
+      .filter((sample) => device === "all" || sample.deviceCategory === device);
+
+    const apiMap = new Map<string, ApiTimingSample[]>();
+    for (const sample of apiSamples) {
+      const list = apiMap.get(sample.endpoint) ?? [];
+      list.push(sample);
+      apiMap.set(sample.endpoint, list);
+    }
+    const apiTimings = [...apiMap.entries()]
+      .map(([endpoint, endpointSamples]) => {
+        const values = endpointSamples.map((sample) => sample.durationMs);
+        return {
+          endpoint,
+          samples: values.length,
+          p75: percentile(values, 0.75),
+          median: percentile(values, 0.5),
+          max: values.length ? Math.round(Math.max(...values)) : null,
+        };
+      })
+      .sort((a, b) => (b.p75 ?? 0) - (a.p75 ?? 0))
+      .slice(0, 12);
+
     const routeMap = new Map<string, VitalSample[]>();
     for (const sample of samples) {
       const list = routeMap.get(sample.path) ?? [];
@@ -262,6 +312,7 @@ router.get("/visitor-intelligence/web-vitals", async (req, res) => {
         tablet: samples.filter((sample) => sample.deviceCategory === "tablet").length,
         desktop: samples.filter((sample) => sample.deviceCategory === "desktop").length,
       },
+      apiTimings,
       routes,
     });
   } catch (error) {
