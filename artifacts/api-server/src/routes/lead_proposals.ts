@@ -278,6 +278,55 @@ router.get("/leads/:leadId/proposals/:version/pdf", async (req, res) => {
 // As imagens ficam salvas na própria apresentação do orçamento, então são
 // reutilizadas na proposta, no PDF e em futuras reaberturas sem depender da URL
 // temporária retornada pelo provedor de IA.
+function proposalStageImageRule(normalizedStageContext: string): string {
+  if (/esquadria|porta pvc|janela pvc/.test(normalizedStageContext)) {
+    return "REGRA TÉCNICA OBRIGATÓRIA: para a etapa de esquadrias, usar como assunto principal UMA ÚNICA PORTA MODERNA DE PVC instalada ou em instalação, mostrando claramente perfil, marco, ferragens e vedação. Não usar fachada completa como assunto principal e não trocar PVC por alumínio ou madeira.";
+  }
+  if (/(forro.*pintura|pintura.*forro)/.test(normalizedStageContext)) {
+    return "REGRA TÉCNICA OBRIGATÓRIA: mostrar claramente um FORRO DE GESSO acabado e uma PAREDE PINTADA no mesmo ambiente, com acabamento residencial realista. O teto de gesso e a pintura devem ser os assuntos principais; não usar fachada externa ou imagem genérica de casa pronta.";
+  }
+  if (/porcelanato|revestimento/.test(normalizedStageContext)) {
+    return "REGRA TÉCNICA OBRIGATÓRIA: mostrar PORCELANATO como assunto principal, preferencialmente piso residencial assentado e acabado, com paginação, juntas e superfície visíveis. Não usar fachada ou tijolos como representação de revestimentos.";
+  }
+  if (/forro|gesso/.test(normalizedStageContext)) {
+    return "REGRA TÉCNICA OBRIGATÓRIA: mostrar FORRO DE GESSO residencial como assunto principal, com planos, recortes ou sancas e acabamento coerente. Não usar cobertura/telhado como substituto de forro.";
+  }
+  if (/massa corrida|pintura/.test(normalizedStageContext)) {
+    return "REGRA TÉCNICA OBRIGATÓRIA: mostrar PAREDE PINTADA com acabamento uniforme como assunto principal, podendo evidenciar preparação e acabamento final. Não usar fachada completa ou revestimento cerâmico como substituto.";
+  }
+  if (/terraplen|movimentacao de terra/.test(normalizedStageContext)) {
+    return "REGRA TÉCNICA OBRIGATÓRIA: representar TERRAPLENAGEM, com terreno sendo escavado, nivelado ou compactado por equipamento adequado. Não mostrar pilares, fundações ou estrutura pronta como assunto principal.";
+  }
+  if (/servicos preliminares|limpeza do terreno|preparacao do canteiro|canteiro|sondagem|spt/.test(normalizedStageContext)) {
+    return "REGRA TÉCNICA OBRIGATÓRIA: representar SERVIÇOS PRELIMINARES, com terreno limpo, locação/canteiro organizado, tapume, apoio provisório ou sondagem quando prevista. Não mostrar alvenaria ou estrutura avançada.";
+  }
+  if (/radier|fundac/.test(normalizedStageContext)) {
+    return "REGRA TÉCNICA OBRIGATÓRIA: representar fundação em RADIER/laje de fundação, com base preparada, malhas/armaduras e passagens. NÃO mostrar baldrame, paredes de tijolo, pilares isolados ou solução diferente do radier quando o escopo indicar radier.";
+  }
+  if (/laje/.test(normalizedStageContext)) {
+    return "REGRA TÉCNICA OBRIGATÓRIA: mostrar execução de LAJE como assunto principal, com escoramento, vigotas/EPS ou armações e concretagem conforme o escopo. Não usar telhado ou fachada acabada.";
+  }
+  if (/cobertura|telha|rufo|calha/.test(normalizedStageContext)) {
+    return "REGRA TÉCNICA OBRIGATÓRIA: mostrar COBERTURA em execução, com estrutura, telhas, rufos ou calhas compatíveis com o escopo. Não usar imagem de instalações ou acabamento interno.";
+  }
+  if (/hidraul|tubo|esgoto|pex|cisterna|boiler|pressur|vaso|chuveiro|registro/.test(normalizedStageContext)) {
+    return "REGRA TÉCNICA OBRIGATÓRIA: destacar as INSTALAÇÕES HIDRÁULICAS/HIDROSSANITÁRIAS em execução, com tubulações de água e esgoto, conexões, caixas, shafts e equipamentos previstos. Não usar instalação elétrica como assunto principal.";
+  }
+  if (/eletric|quadro|cabo|eletroduto|corrugad|carro eletrico|frigorigena/.test(normalizedStageContext)) {
+    return "REGRA TÉCNICA OBRIGATÓRIA: destacar as INSTALAÇÕES ELÉTRICAS em execução, com eletrodutos, conduítes corrugados, caixas, cabeamento, quadro e pontos previstos. Não usar tubulação hidráulica como assunto principal.";
+  }
+  if (/icf|estrutura/.test(normalizedStageContext)) {
+    return "REGRA TÉCNICA OBRIGATÓRIA: mostrar claramente a ESTRUTURA EM ICF correspondente ao escopo, incluindo blocos/painéis brancos de ICF, armações e concretagem quando previstos. Não representar alvenaria cerâmica convencional como sistema principal.";
+  }
+  if (/projeto|legaliza|arquitet/.test(normalizedStageContext)) {
+    return "REGRA TÉCNICA OBRIGATÓRIA: representar PROJETOS E LEGALIZAÇÃO com plantas arquitetônicas, desenhos técnicos, documentos de aprovação e material de projeto. Não usar apenas uma casa pronta ou obra em execução.";
+  }
+  if (/limpeza final|entrega/.test(normalizedStageContext)) {
+    return "REGRA TÉCNICA OBRIGATÓRIA: representar LIMPEZA FINAL E ENTREGA, com residência concluída, ambiente limpo, revisado e pronto para uso. Não mostrar obra bruta.";
+  }
+  return "REGRA TÉCNICA OBRIGATÓRIA: a fotografia deve representar exatamente o serviço e o estado construtivo desta etapa, usando os itens do orçamento como fonte de verdade visual.";
+}
+
 router.post("/leads/:leadId/proposals/stage-images", async (req, res) => {
   const leadId = String(req.params.leadId);
   const tenantId = req.user?.tenantId ?? "";
@@ -417,13 +466,7 @@ router.post("/leads/:leadId/proposals/stage-images", async (req, res) => {
       .replace(/[\u0300-\u036f]/g, "")
       .toLowerCase();
 
-    const technicalImageRule = /radier/.test(normalizedStageContext)
-      ? "REGRA TÉCNICA OBRIGATÓRIA: representar fundação em RADIER/laje de fundação, com base preparada, malhas/armaduras e passagens. NÃO mostrar baldrame, vigas elevadas de fundação ou solução diferente do radier."
-      : /(instalac|hidraul|eletric|pex|conduite|corrugad)/.test(normalizedStageContext)
-        ? "REGRA TÉCNICA OBRIGATÓRIA: destacar as instalações em execução, com tubos PEX quando previstos, mangueiras/conduítes corrugados, tubulações hidráulicas, caixas, shafts e passagens elétricas/hidrossanitárias visíveis. A instalação deve ser o assunto principal da foto, não uma fachada praticamente pronta."
-        : /icf|estrutura/.test(normalizedStageContext)
-          ? "REGRA TÉCNICA OBRIGATÓRIA: mostrar claramente a estrutura correspondente ao escopo, incluindo painéis/blocos ICF, armações e concretagem quando estes itens estiverem previstos."
-          : "";
+    const technicalImageRule = proposalStageImageRule(normalizedStageContext);
 
     const prompt = [
       "Fotografia documental hiper-realista de construção civil no Brasil, composição horizontal 3:2, aparência de fotografia profissional de obra real.",
@@ -1349,13 +1392,7 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
               .replace(/[\u0300-\u036f]/g, "")
               .toLowerCase();
 
-            const technicalImageRule = /radier/.test(normalizedStageContext)
-              ? "REGRA TÉCNICA OBRIGATÓRIA: representar fundação em RADIER/laje de fundação, com base preparada, malhas/armaduras e passagens. NÃO mostrar baldrame, vigas elevadas de fundação ou solução diferente do radier."
-              : /(instalac|hidraul|eletric|pex|conduite|corrugad)/.test(normalizedStageContext)
-                ? "REGRA TÉCNICA OBRIGATÓRIA: destacar as instalações em execução, com tubos PEX quando previstos, mangueiras/conduítes corrugados, tubulações hidráulicas, caixas, shafts e passagens elétricas/hidrossanitárias visíveis. A instalação deve ser o assunto principal da foto, não uma fachada praticamente pronta."
-                : /icf|estrutura/.test(normalizedStageContext)
-                  ? "REGRA TÉCNICA OBRIGATÓRIA: mostrar claramente a estrutura correspondente ao escopo, incluindo painéis/blocos ICF, armações e concretagem quando estes itens estiverem previstos."
-                  : "";
+            const technicalImageRule = proposalStageImageRule(normalizedStageContext);
 
             const stagePrompt = [
               "Fotografia documental hiper-realista de construção civil no Brasil, composição horizontal 3:2, aparência de fotografia profissional de obra real.",
