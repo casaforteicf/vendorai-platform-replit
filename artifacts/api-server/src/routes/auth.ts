@@ -3,7 +3,7 @@ import { eq, and, desc, isNull } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { createHash, randomBytes } from "crypto";
 import { z } from "zod/v4";
-import { db, usersTable, tenantsTable, partnersTable, passwordResetTokensTable, leadsTable, dealsTable, funisTable, plansTable, leadEventsTable } from "@workspace/db";
+import { db, pool, usersTable, tenantsTable, partnersTable, passwordResetTokensTable, leadsTable, dealsTable, funisTable, plansTable, leadEventsTable } from "@workspace/db";
 import { signToken } from "../lib/jwt.js";
 import { authenticate, requireRole } from "../middlewares/auth.js";
 import { sendPasswordResetEmail } from "../lib/email.js";
@@ -13,6 +13,68 @@ import { resolveSessionTenantContext } from "../lib/session-tenant-context.js";
 
 const router: IRouter = Router();
 const protectedRouter: IRouter = Router();
+type AuthLookupUser = {
+  id: string;
+  tenantId: string;
+  name: string;
+  email: string;
+  password: string;
+  role: "admin" | "member";
+  platformRole: "super_admin" | "tenant_admin" | "tenant_seller" | "partner" | "member";
+  active: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  userFunction: "vendedor" | "financeiro" | "suporte" | "entrega" | "administrador" | "outro" | null;
+  telefone: string | null;
+  forcePasswordReset: boolean;
+  lastAssignedAt: Date | null;
+  limiteEntregasPorTurno: string | null;
+  changelogLidoEm: Date | null;
+  permissions: string[] | null;
+  customFunctionId: string | null;
+  leadAssignmentEnabled: boolean | null;
+  leadAssignmentCities: unknown;
+  leadAssignmentRegions: unknown;
+  leadAssignmentSegments: unknown;
+  leadAssignmentLat: number | null;
+  leadAssignmentLng: number | null;
+  leadAssignmentRaioKm: number | null;
+};
+
+async function findUserForAuth(email: string): Promise<AuthLookupUser | undefined> {
+  const result = await pool.query<AuthLookupUser>(
+    `select
+       id,
+       tenant_id as "tenantId",
+       name,
+       email,
+       password,
+       role,
+       platform_role as "platformRole",
+       active,
+       created_at as "createdAt",
+       updated_at as "updatedAt",
+       user_function as "userFunction",
+       telefone,
+       force_password_reset as "forcePasswordReset",
+       last_assigned_at as "lastAssignedAt",
+       limite_entregas_por_turno as "limiteEntregasPorTurno",
+       changelog_lido_em as "changelogLidoEm",
+       permissions,
+       custom_function_id as "customFunctionId",
+       lead_assignment_enabled as "leadAssignmentEnabled",
+       lead_assignment_cities as "leadAssignmentCities",
+       lead_assignment_regions as "leadAssignmentRegions",
+       lead_assignment_segments as "leadAssignmentSegments",
+       lead_assignment_lat as "leadAssignmentLat",
+       lead_assignment_lng as "leadAssignmentLng",
+       lead_assignment_raio_km as "leadAssignmentRaioKm"
+     from app_security.lookup_user_for_auth($1)`,
+    [email],
+  );
+  return result.rows[0];
+}
+
 
 async function markTenantFirstLogin(tenantId: string): Promise<void> {
   const now = new Date();
@@ -200,11 +262,7 @@ router.post("/auth/demo-signup", async (req, res) => {
   const countryProfile = getTenantCountryProfile(countryCode);
 
   // Evita criar um tenant que depois ficaria órfão quando o e-mail já existe.
-  const [existingUser] = await db
-    .select({ id: usersTable.id })
-    .from(usersTable)
-    .where(eq(usersTable.email, email))
-    .limit(1);
+  const existingUser = await findUserForAuth(email);
   if (existingUser) {
     accountExistsResponse(res);
     return;
@@ -449,11 +507,7 @@ router.post("/auth/demo-signup", async (req, res) => {
     });
   } catch (err: unknown) {
     if (isUniqueViolation(err)) {
-      const [existingUserAfterRace] = await db
-        .select({ id: usersTable.id })
-        .from(usersTable)
-        .where(eq(usersTable.email, email))
-        .limit(1);
+      const existingUserAfterRace = await findUserForAuth(email);
       if (existingUserAfterRace) {
         accountExistsResponse(res);
         return;
@@ -691,10 +745,7 @@ router.post("/auth/login", async (req, res) => {
 
   const { email, password } = parsed.data;
 
-  const [user] = await db
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.email, email));
+  const user = await findUserForAuth(email);
 
   if (!user || !user.active) {
     req.log?.warn(
@@ -894,10 +945,7 @@ router.post("/auth/forgot-password", async (req, res) => {
 
   const { email } = parsed.data;
 
-  const [user] = await db
-    .select({ id: usersTable.id, email: usersTable.email, active: usersTable.active })
-    .from(usersTable)
-    .where(eq(usersTable.email, email));
+  const user = await findUserForAuth(email);
 
   // Always respond 200 to avoid user enumeration
   if (!user || !user.active) {
