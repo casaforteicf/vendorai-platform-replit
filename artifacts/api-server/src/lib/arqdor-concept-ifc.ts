@@ -1,10 +1,13 @@
 type IfcRoom = {
+  id?: string;
   label?: string;
+  kind?: string;
   floor?: number;
   x?: number;
   y?: number;
   width?: number;
   depth?: number;
+  floorMaterialId?: string;
 };
 
 type IfcWallInput = {
@@ -15,6 +18,8 @@ type IfcWallInput = {
   x2: number;
   y2: number;
   thickness?: number;
+  materialId?: string;
+  wallType?: string;
 };
 
 type IfcOpeningInput = {
@@ -35,6 +40,7 @@ export type ConceptIfcInput = {
   customWalls?: IfcWallInput[] | null;
   customOpenings?: IfcOpeningInput[] | null;
   wallHeight?: number;
+  wallMaterials?: Record<string, string> | null;
 };
 
 const IFC64 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$";
@@ -134,7 +140,7 @@ export function buildConceptIfc(input: ConceptIfcInput) {
   add(`IFCRELAGGREGATES('${ifcGuid(4)}',$,$,$,${ref(project)},(${ref(site)}))`);
   add(`IFCRELAGGREGATES('${ifcGuid(5)}',$,$,$,${ref(site)},(${ref(building)}))`);
 
-  const storeys: Array<{ entity: number; placement: number; walls: number[]; openings: number[] }> = [];
+  const storeys: Array<{ entity: number; placement: number; walls: number[]; openings: number[]; spaces: number[] }> = [];
   for (let floor = 0; floor < floorCount; floor += 1) {
     const elevation = floor * 3;
     const point = add(`IFCCARTESIANPOINT((0.,0.,${number(elevation)}))`);
@@ -142,7 +148,7 @@ export function buildConceptIfc(input: ConceptIfcInput) {
     const placement = add(`IFCLOCALPLACEMENT(${ref(buildingPlacement)},${ref(axis)})`);
     const name = floor === 0 ? "Térreo" : `Pavimento ${floor + 1}`;
     const storey = add(`IFCBUILDINGSTOREY('${ifcGuid(10 + floor)}',$,'${esc(name)}',$,$,${ref(placement)},$,$,.ELEMENT.,${number(elevation)})`);
-    storeys.push({ entity: storey, placement, walls: [], openings: [] });
+    storeys.push({ entity: storey, placement, walls: [], openings: [], spaces: [] });
   }
   add(`IFCRELAGGREGATES('${ifcGuid(30)}',$,$,$,${ref(building)},(${storeys.map((item) => ref(item.entity)).join(",")}))`);
 
@@ -170,8 +176,23 @@ export function buildConceptIfc(input: ConceptIfcInput) {
     const solid = add(`IFCEXTRUDEDAREASOLID(${ref(profile)},${ref(worldAxis)},${ref(extrudeDirection)},${number(wallHeight)})`);
     const shapeRep = add(`IFCSHAPEREPRESENTATION(${ref(context)},'Body','SweptSolid',(${ref(solid)}))`);
     const productShape = add(`IFCPRODUCTDEFINITIONSHAPE($,$,(${ref(shapeRep)}))`);
-    const wallEntity = add(`IFCWALL('${ifcGuid(1000 + index)}',$,'Parede ${index + 1}',$,$,${ref(wallPlacement)},${ref(productShape)},$,.NOTDEFINED.)`);
+    const wallLabel = wall.wallType?.trim() || `Parede ${index + 1}`;
+    const wallEntity = add(`IFCWALL('${ifcGuid(1000 + index)}',$,'${esc(wallLabel)}',$,$,${ref(wallPlacement)},${ref(productShape)},$,.NOTDEFINED.)`);
     storeys[floor]!.walls.push(wallEntity);
+
+    const sourceWallId = String(wall.id ?? `wall-${index + 1}`);
+    const materialId = String(wall.materialId ?? input.wallMaterials?.[sourceWallId] ?? "").trim();
+    const pWallId = add(`IFCPROPERTYSINGLEVALUE('ArqdorWallId',$,IFCLABEL('${esc(sourceWallId)}'),$)`);
+    const pWallThickness = add(`IFCPROPERTYSINGLEVALUE('ArqdorThickness',$,IFCLENGTHMEASURE(${number(thickness)}),$)`);
+    const wallProps = [pWallId, pWallThickness];
+    if (materialId) {
+      const pMaterial = add(`IFCPROPERTYSINGLEVALUE('ArqdorMaterialId',$,IFCLABEL('${esc(materialId)}'),$)`);
+      wallProps.push(pMaterial);
+      const material = add(`IFCMATERIAL('${esc(materialId)}',$,$)`);
+      add(`IFCRELASSOCIATESMATERIAL('${ifcGuid(9000 + index)}',$,$,$,(${ref(wallEntity)}),${ref(material)})`);
+    }
+    const pset = add(`IFCPROPERTYSET('${ifcGuid(10000 + index)}',$,'Pset_ArqdorWall',$,(${wallProps.map(ref).join(",")}))`);
+    add(`IFCRELDEFINESBYPROPERTIES('${ifcGuid(11000 + index)}',$,$,$,(${ref(wallEntity)}),${ref(pset)})`);
   });
 
   const wallById = new Map(walls.map((wall, index) => [String(wall.id ?? `wall-${index + 1}`), wall]));
@@ -202,10 +223,44 @@ export function buildConceptIfc(input: ConceptIfcInput) {
     storeys[floor]!.openings.push(entity);
   });
 
+  rooms.slice(0, 1000).forEach((room, index) => {
+    const floor = Math.max(0, Math.min(storeys.length - 1, Math.round(Number(room.floor ?? 0))));
+    const label = esc(room.label || `Ambiente ${index + 1}`);
+    const kind = esc(room.kind || "outro");
+    const x = Number(room.x ?? 0);
+    const y = Number(room.y ?? 0);
+    const width = Math.max(0, Number(room.width ?? 0));
+    const depth = Math.max(0, Number(room.depth ?? 0));
+    const cx = Number.isFinite(x + width / 2) ? x + width / 2 : 0;
+    const cy = Number.isFinite(y + depth / 2) ? y + depth / 2 : 0;
+    const point = add(`IFCCARTESIANPOINT((${number(cx)},${number(cy)},0.))`);
+    const axis = add(`IFCAXIS2PLACEMENT3D(${ref(point)},$,$)`);
+    const placement = add(`IFCLOCALPLACEMENT(${ref(storeys[floor]!.placement)},${ref(axis)})`);
+    const space = add(`IFCSPACE('${ifcGuid(12000 + index)}',$,'${label}','Arqdor room','${kind}',${ref(placement)},$,'${label}',.ELEMENT.,.INTERNAL.,$)`);
+    storeys[floor]!.spaces.push(space);
+
+    const sourceRoomId = esc(String(room.id ?? `room-${index + 1}`));
+    const area = width > 0 && depth > 0 ? width * depth : 0;
+    const roomProps = [
+      add(`IFCPROPERTYSINGLEVALUE('ArqdorRoomId',$,IFCLABEL('${sourceRoomId}'),$)`),
+      add(`IFCPROPERTYSINGLEVALUE('ArqdorRoomKind',$,IFCLABEL('${kind}'),$)`),
+      add(`IFCPROPERTYSINGLEVALUE('ArqdorArea',$,IFCAREAMEASURE(${number(area)}),$)`),
+    ];
+    if (room.floorMaterialId) {
+      roomProps.push(add(`IFCPROPERTYSINGLEVALUE('ArqdorFloorMaterialId',$,IFCLABEL('${esc(room.floorMaterialId)}'),$)`));
+    }
+    const pset = add(`IFCPROPERTYSET('${ifcGuid(13000 + index)}',$,'Pset_ArqdorSpace',$,(${roomProps.map(ref).join(",")}))`);
+    add(`IFCRELDEFINESBYPROPERTIES('${ifcGuid(14000 + index)}',$,$,$,(${ref(space)}),${ref(pset)})`);
+  });
+
   storeys.forEach((storey, floor) => {
-    if (!storey.walls.length) return;
+    if (storey.spaces.length) {
+      add(`IFCRELAGGREGATES('${ifcGuid(15000 + floor)}',$,$,$,${ref(storey.entity)},(${storey.spaces.map(ref).join(",")}))`);
+    }
     const contained = [...storey.walls, ...storey.openings];
-    add(`IFCRELCONTAINEDINSPATIALSTRUCTURE('${ifcGuid(5000 + floor)}',$,$,$,(${contained.map(ref).join(",")}),${ref(storey.entity)})`);
+    if (contained.length) {
+      add(`IFCRELCONTAINEDINSPATIALSTRUCTURE('${ifcGuid(5000 + floor)}',$,$,$,(${contained.map(ref).join(",")}),${ref(storey.entity)})`);
+    }
   });
 
   const header = `ISO-10303-21;

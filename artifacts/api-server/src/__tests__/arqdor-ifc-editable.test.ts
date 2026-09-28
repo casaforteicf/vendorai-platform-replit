@@ -11,6 +11,10 @@ describe("Arqdor IFC editable geometry", () => {
         { id: "w1", floor: 0, x1: 1, y1: 2, x2: 5, y2: 2, thickness: 0.14 },
         { id: "w2", floor: 1, x1: 0, y1: 0, x2: 0, y2: 4, thickness: 0.18 },
       ],
+      wallMaterials: { w1: "cimento-aparente", w2: "pintura-branca" },
+      rooms: [
+        { id: "room-1", label: "Sala", kind: "sala", floor: 0, x: 1, y: 2, width: 4, depth: 3, floorMaterialId: "porcelanato-claro" },
+      ],
       customOpenings: [
         { id: "d1", wallId: "w1", floor: 0, type: "door", offset: 0.5, width: 0.9, height: 2.1 },
         { id: "j1", wallId: "w2", floor: 1, type: "window", offset: 0.25, width: 1.2, height: 1.1, sillHeight: 1.0 },
@@ -27,6 +31,12 @@ describe("Arqdor IFC editable geometry", () => {
     expect(geometry.openings).toHaveLength(2);
     expect(geometry.openings.map((opening) => opening.type).sort()).toEqual(["door", "window"]);
     expect(geometry.openings.every((opening) => opening.offset >= 0 && opening.offset <= 1)).toBe(true);
+    expect(geometry.wallMaterials["ifc-wall-"]).toBeUndefined();
+    expect(Object.values(geometry.wallMaterials)).toContain("cimento-aparente");
+    expect(geometry.spaces).toHaveLength(1);
+    expect(geometry.spaces[0]?.label).toBe("Sala");
+    expect(geometry.spaces[0]?.kind).toBe("sala");
+    expect(geometry.spaces[0]?.floorMaterialId).toBe("porcelanato-claro");
   });
 
   it("recusa IFC sem paredes compatíveis", () => {

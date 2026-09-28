@@ -1044,6 +1044,9 @@ router.get("/arch/concept-projects/:id/export/ifc", authenticate, async (req, re
       rooms: Array.isArray(concept.rooms) ? concept.rooms as any[] : [],
       customWalls: Array.isArray(config.customWalls) ? config.customWalls as any[] : [],
       customOpenings: Array.isArray(config.customOpenings) ? config.customOpenings as any[] : [],
+      wallMaterials: config.wallMaterials && typeof config.wallMaterials === "object"
+        ? config.wallMaterials as Record<string, string>
+        : {},
     });
 
     res.setHeader("Content-Type", "application/x-step; charset=utf-8");

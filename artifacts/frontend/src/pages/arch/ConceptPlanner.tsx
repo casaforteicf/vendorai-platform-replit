@@ -187,6 +187,8 @@ type ConceptSaveOverrides = {
   wallFirstFloors?: number[];
   floors?: number;
   objects?: ConceptPlanObject[];
+  spaceProfiles?: SpaceProfile[];
+  wallMaterials?: Record<string, string>;
   facadePreferences?: ConceptFacadePreferences;
   facadeDesign?: FacadeDesignState;
   projectBrief?: ProjectBriefSnapshot;
@@ -1428,6 +1430,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     const nextWallFirstFloors = overrides?.wallFirstFloors ?? wallFirstFloors;
     const nextFloors = overrides?.floors ?? floors;
     const nextObjects = overrides?.objects ?? objects;
+    const nextSpaceProfiles = overrides?.spaceProfiles ?? spaceProfiles;
+    const nextWallMaterials = overrides?.wallMaterials ?? wallMaterials;
     const nextFacadePreferences = overrides?.facadePreferences ?? facadePreferences;
     const nextFacadeDesign = overrides?.facadeDesign ?? facadeDesign;
     const nextProjectBrief = overrides?.projectBrief ?? projectBrief;
@@ -1447,9 +1451,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         showDimensions,
         customWalls: nextCustomWalls,
         customOpenings: nextCustomOpenings,
-        spaceProfiles,
+        spaceProfiles: nextSpaceProfiles,
         objects: nextObjects,
-        wallMaterials,
+        wallMaterials: nextWallMaterials,
         savedTourPoints: savedTourPointsOverride ?? savedTourPoints,
         referencePlan: nextReferencePlan ?? undefined,
         sourceFiles,
@@ -3934,8 +3938,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       );
       const payload = await response.json().catch(() => ({})) as {
         error?: string;
-        walls?: Array<CustomWall & { sourceIfcId?: string }>;
+        walls?: Array<CustomWall & { sourceIfcId?: string; materialId?: string; wallType?: string }>;
         openings?: Array<CustomOpening & { sourceIfcId?: string }>;
+        spaces?: Array<{ id: string; floor: number; label: string; kind: string; area: number; floorMaterialId?: string; sourceIfcId?: string }>;
+        wallMaterials?: Record<string, string>;
         bounds?: { width: number; depth: number };
         fitsLot?: boolean;
         maxFloor?: number;
@@ -3955,9 +3961,16 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       );
       if (!confirmed) return;
 
-      const importedWalls = payload.walls.map(({ sourceIfcId: _sourceIfcId, ...wall }) => wall);
+      const importedWalls = payload.walls.map(({ sourceIfcId: _sourceIfcId, materialId: _materialId, wallType: _wallType, ...wall }) => wall);
       const importedOpenings = (payload.openings ?? []).map(({ sourceIfcId: _sourceIfcId, ...opening }) => opening);
       const importedFloors = Math.max(1, Number(payload.maxFloor ?? 0) + 1);
+      const importedWallMaterials = Object.fromEntries(
+        payload.walls.flatMap((wall) => wall.materialId ? [[wall.id, wall.materialId] as const] : []),
+      );
+      const importedSpaces = (payload.spaces ?? []).map(({ sourceIfcId: _sourceIfcId, ...space }) => ({
+        ...space,
+        centroid: { x: 0, y: 0 },
+      })) as SpaceProfile[];
       const wallFirst = Array.from({ length: importedFloors }, (_, index) => index);
 
       setFloors(importedFloors);
@@ -3967,7 +3980,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       setCustomOpenings(importedOpenings);
       setOpeningOverrides({});
       setWallFirstFloors(wallFirst);
-      setSpaceProfiles([]);
+      setSpaceProfiles(importedSpaces);
+      setWallMaterials(importedWallMaterials);
       setObjects([]);
       setSelectedId(null);
       setSelectedObjectId(null);
@@ -3986,7 +4000,14 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         customOpenings: importedOpenings,
         wallFirstFloors: wallFirst,
         floors: importedFloors,
+        spaceProfiles: importedSpaces,
+        wallMaterials: importedWallMaterials,
       });
+      if (Object.keys(importedWallMaterials).length || importedSpaces.length) {
+        setSourceFileMessage(
+          `Metadados BIM recuperados: ${Object.keys(importedWallMaterials).length} material(is) de parede e ${importedSpaces.length} ambiente(s).`,
+        );
+      }
 
       const warningText = payload.warnings?.length ? ` · ${payload.warnings.join(" ")}` : "";
       setSourceFileState("success");

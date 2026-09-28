@@ -11,7 +11,10 @@ describe("Arqdor Concept IFC", () => {
         { id: "w1", floor: 0, x1: 0, y1: 0, x2: 5, y2: 0, thickness: 0.14 },
         { id: "w2", floor: 1, x1: 0, y1: 0, x2: 4, y2: 0, thickness: 0.14 },
       ],
-      rooms: [],
+      wallMaterials: { w1: "cimento-aparente", w2: "pintura-branca" },
+      rooms: [
+        { id: "r1", label: "Sala", kind: "sala", floor: 0, x: 0, y: 0, width: 5, depth: 4, floorMaterialId: "porcelanato-claro" },
+      ],
       customOpenings: [
         { id: "d1", wallId: "w1", floor: 0, type: "door", offset: 0.4, width: 0.9, height: 2.1 },
         { id: "j1", wallId: "w2", floor: 1, type: "window", offset: 0.5, width: 1.2, height: 1.1, sillHeight: 1.0 },
@@ -21,6 +24,10 @@ describe("Arqdor Concept IFC", () => {
     expect(ifc).toContain("FILE_SCHEMA(('IFC4'))");
     expect(ifc).toContain("IFCWALL");
     expect(ifc).toContain("IFCBUILDINGSTOREY");
+    expect(ifc).toContain("IFCSPACE");
+    expect(ifc).toContain("IFCMATERIAL('cimento-aparente'");
+    expect(ifc).toContain("Pset_ArqdorWall");
+    expect(ifc).toContain("Pset_ArqdorSpace");
 
     const parsed = parseIfcMetadata(ifc);
     expect(parsed.schema).toBe("IFC4");
