@@ -1839,14 +1839,72 @@ interface FreeItem  { id: string; nome: string; quantidade: number; valorUnitari
 
 type ProposalPresentationMode = "completo" | "resumo_etapa" | "preco_medio";
 
+type ProposalDependencyType = "FS" | "SS" | "FF" | "SF";
+
+type ProposalStagePhase = {
+  id: string;
+  nome: string;
+  ordem: number;
+  duracaoDias?: number;
+  percentualEtapa?: number;
+  percentualFisico?: number;
+  inicioPrevisto?: string;
+  fimPrevisto?: string;
+  dependeDeFaseId?: string;
+  tipoDependencia?: ProposalDependencyType;
+  defasagemDias?: number;
+  observacao?: string;
+};
+
 type ProposalStageSchedule = {
   duracaoDias?: number;
   percentualFisico?: number;
   inicioPrevisto?: string;
   fimPrevisto?: string;
+  dependeDeEtapaId?: string;
+  tipoDependencia?: ProposalDependencyType;
+  defasagemDias?: number;
+  inicioAutomatico?: boolean;
+  fases?: ProposalStagePhase[];
   observacao?: string;
   marcoPagamento?: string;
 };
+
+function proposalDate(value?: string) {
+  if (!value) return null;
+  const date = new Date(`${value}T12:00:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function proposalDateIso(date: Date | null) {
+  if (!date) return undefined;
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function addProposalDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function resolveDependentStart(
+  predecessor: { inicioPrevisto?: string; fimPrevisto?: string } | undefined,
+  tipo: ProposalDependencyType,
+  lagDays: number,
+  durationDays: number,
+) {
+  if (!predecessor) return null;
+  const predStart = proposalDate(predecessor.inicioPrevisto);
+  const predEnd = proposalDate(predecessor.fimPrevisto);
+  if (tipo === "SS" && predStart) return addProposalDays(predStart, lagDays);
+  if (tipo === "FS" && predEnd) return addProposalDays(predEnd, 1 + lagDays);
+  if (tipo === "FF" && predEnd) return addProposalDays(predEnd, lagDays - Math.max(0, durationDays - 1));
+  if (tipo === "SF" && predStart) return addProposalDays(predStart, lagDays - Math.max(0, durationDays - 1));
+  return null;
+}
 
 const PROPOSAL_PRESENTATION_OPTIONS: Array<{
   value: ProposalPresentationMode;
@@ -2197,6 +2255,10 @@ function newFreeItem(): FreeItem {
     const [proposalStageSchedule, setProposalStageSchedule] = useState<Record<string, ProposalStageSchedule>>({});
     const [showExecutionSchedule, setShowExecutionSchedule] = useState(true);
     const [showPhysicalFinancial, setShowPhysicalFinancial] = useState(true);
+    const [entryPercent, setEntryPercent] = useState(0);
+    const [entryAmortizationPercent, setEntryAmortizationPercent] = useState(0);
+    const [showEntryAmortization, setShowEntryAmortization] = useState(true);
+    const [showClientPortalPlan, setShowClientPortalPlan] = useState(true);
     const standardBudgetAppliedRef = useRef(false);
     // livre mode
     const [freeItems, setFreeItems] = useState<FreeItem[]>([newFreeItem()]);
@@ -2254,6 +2316,10 @@ function newFreeItem(): FreeItem {
         proposalStageSchedule,
         showExecutionSchedule,
         showPhysicalFinancial,
+        entryPercent,
+        entryAmortizationPercent,
+        showEntryAmortization,
+        showClientPortalPlan,
       }));
     }
 
@@ -2300,6 +2366,10 @@ function newFreeItem(): FreeItem {
             proposalStageSchedule?: Record<string, ProposalStageSchedule>;
             showExecutionSchedule?: boolean;
             showPhysicalFinancial?: boolean;
+            entryPercent?: number;
+            entryAmortizationPercent?: number;
+            showEntryAmortization?: boolean;
+            showClientPortalPlan?: boolean;
           };
           if (draft.form) form.reset({ ...form.getValues(), ...draft.form });
           if (draft.mode) setMode(draft.mode);
@@ -2315,6 +2385,10 @@ function newFreeItem(): FreeItem {
           if (draft.proposalStageSchedule) setProposalStageSchedule(draft.proposalStageSchedule);
           if (draft.showExecutionSchedule !== undefined) setShowExecutionSchedule(draft.showExecutionSchedule);
           if (draft.showPhysicalFinancial !== undefined) setShowPhysicalFinancial(draft.showPhysicalFinancial);
+          if (draft.entryPercent !== undefined) setEntryPercent(draft.entryPercent);
+          if (draft.entryAmortizationPercent !== undefined) setEntryAmortizationPercent(draft.entryAmortizationPercent);
+          if (draft.showEntryAmortization !== undefined) setShowEntryAmortization(draft.showEntryAmortization);
+          if (draft.showClientPortalPlan !== undefined) setShowClientPortalPlan(draft.showClientPortalPlan);
           standardBudgetAppliedRef.current = true;
         }
       } catch {
@@ -2348,6 +2422,10 @@ function newFreeItem(): FreeItem {
       proposalStageSchedule,
       showExecutionSchedule,
       showPhysicalFinancial,
+      entryPercent,
+      entryAmortizationPercent,
+      showEntryAmortization,
+      showClientPortalPlan,
       form,
     ]);
 
@@ -2427,6 +2505,10 @@ function newFreeItem(): FreeItem {
         cronogramaEtapas?: Record<string, ProposalStageSchedule>;
         mostrarCronogramaExecucao?: boolean;
         mostrarFisicoFinanceiro?: boolean;
+        entradaPercentual?: number;
+        amortizacaoEntradaPercentual?: number;
+        mostrarAmortizacaoEntrada?: boolean;
+        mostrarPortalCliente?: boolean;
       } | null | undefined;
       setPresentationDefaultMode(currentPresentation?.modoPadrao ?? "completo");
       setPresentationStageModes(currentPresentation?.etapas ?? {});
@@ -2435,6 +2517,10 @@ function newFreeItem(): FreeItem {
       setProposalStageSchedule(currentPresentation?.cronogramaEtapas ?? {});
       setShowExecutionSchedule(currentPresentation?.mostrarCronogramaExecucao ?? true);
       setShowPhysicalFinancial(currentPresentation?.mostrarFisicoFinanceiro ?? true);
+      setEntryPercent(Number(currentPresentation?.entradaPercentual ?? 0));
+      setEntryAmortizationPercent(Number(currentPresentation?.amortizacaoEntradaPercentual ?? currentPresentation?.entradaPercentual ?? 0));
+      setShowEntryAmortization(currentPresentation?.mostrarAmortizacaoEntrada ?? true);
+      setShowClientPortalPlan(currentPresentation?.mostrarPortalCliente ?? true);
 
       form.reset({
         leadId: editingProposta.leadId,
@@ -2951,6 +3037,253 @@ function newFreeItem(): FreeItem {
       }, 0);
   }
 
+  function recalculateProposalSchedule() {
+    const next: Record<string, ProposalStageSchedule> = {};
+    const byId = new Map(orcamentoEtapas.map((stage) => [stage.id, stage]));
+    const globalStart = proposalDate(proposalStartDate);
+
+    orcamentoEtapas.forEach((etapa, index) => {
+      const current = proposalStageSchedule[etapa.id] ?? {};
+      const duration = Math.max(1, Number(current.duracaoDias ?? 1));
+      const dependencyId = current.dependeDeEtapaId ?? (index > 0 ? orcamentoEtapas[index - 1]?.id : undefined);
+      const dependency = dependencyId ? next[dependencyId] ?? proposalStageSchedule[dependencyId] : undefined;
+      const dependencyType = current.tipoDependencia ?? "FS";
+      const lag = Number(current.defasagemDias ?? 0);
+      const explicitStart = current.inicioAutomatico === false ? proposalDate(current.inicioPrevisto) : null;
+      const start = explicitStart
+        ?? (index === 0 ? proposalDate(current.inicioPrevisto) ?? globalStart : null)
+        ?? resolveDependentStart(dependency, dependencyType, lag, duration)
+        ?? globalStart;
+      const end = start ? addProposalDays(start, duration - 1) : null;
+
+      const phases = (current.fases ?? []).map((phase, phaseIndex, all) => {
+        const phaseDuration = Math.max(1, Number(phase.duracaoDias ?? 1));
+        const previousPhase = phaseIndex > 0 ? all[phaseIndex - 1] : undefined;
+        const phaseDependencyId = phase.dependeDeFaseId ?? previousPhase?.id;
+        const resolvedPredecessor = phaseDependencyId
+          ? (current.fases ?? []).find((item) => item.id === phaseDependencyId)
+          : undefined;
+        const calculatedPrevious = phaseDependencyId
+          ? (current.fases ?? []).slice(0, phaseIndex).find((item) => item.id === phaseDependencyId)
+          : undefined;
+        const predecessor = calculatedPrevious ?? resolvedPredecessor;
+        const predWithDates = predecessor
+          ? {
+              inicioPrevisto: predecessor.inicioPrevisto,
+              fimPrevisto: predecessor.fimPrevisto,
+            }
+          : undefined;
+        const phaseStart = phaseIndex === 0
+          ? proposalDate(phase.inicioPrevisto) ?? start
+          : proposalDate(phase.inicioPrevisto)
+            ?? resolveDependentStart(predWithDates, phase.tipoDependencia ?? "FS", Number(phase.defasagemDias ?? 0), phaseDuration)
+            ?? start;
+        const phaseEnd = phaseStart ? addProposalDays(phaseStart, phaseDuration - 1) : null;
+        return {
+          ...phase,
+          ordem: phase.ordem || phaseIndex + 1,
+          duracaoDias: phaseDuration,
+          inicioPrevisto: proposalDateIso(phaseStart),
+          fimPrevisto: proposalDateIso(phaseEnd),
+        };
+      });
+
+      // segunda passagem das fases para que dependências usem datas recalculadas
+      const calculatedPhases = phases.map((phase, phaseIndex, all) => {
+        if (phaseIndex === 0 || !phase.dependeDeFaseId) return phase;
+        const predecessor = all.find((item) => item.id === phase.dependeDeFaseId);
+        const phaseDuration = Math.max(1, Number(phase.duracaoDias ?? 1));
+        const phaseStart = resolveDependentStart(predecessor, phase.tipoDependencia ?? "FS", Number(phase.defasagemDias ?? 0), phaseDuration);
+        return phaseStart
+          ? { ...phase, inicioPrevisto: proposalDateIso(phaseStart), fimPrevisto: proposalDateIso(addProposalDays(phaseStart, phaseDuration - 1)) }
+          : phase;
+      });
+
+      next[etapa.id] = {
+        ...current,
+        dependeDeEtapaId: dependencyId,
+        tipoDependencia: dependencyType,
+        defasagemDias: lag,
+        duracaoDias: duration,
+        inicioPrevisto: proposalDateIso(start),
+        fimPrevisto: proposalDateIso(end),
+        inicioAutomatico: current.inicioAutomatico ?? index !== 0,
+        fases: calculatedPhases,
+      };
+    });
+
+    setProposalStageSchedule(next);
+  }
+
+  function addProposalPhase(stageId: string) {
+    setProposalStageSchedule((prev) => {
+      const current = prev[stageId] ?? {};
+      const phases = current.fases ?? [];
+      const newId = typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `fase-${Date.now()}-${phases.length + 1}`;
+      const previous = phases[phases.length - 1];
+      return {
+        ...prev,
+        [stageId]: {
+          ...current,
+          fases: [
+            ...phases,
+            {
+              id: newId,
+              nome: `Fase ${phases.length + 1}`,
+              ordem: phases.length + 1,
+              duracaoDias: 1,
+              percentualEtapa: phases.length === 0 ? 100 : 0,
+              dependeDeFaseId: previous?.id,
+              tipoDependencia: "FS",
+              defasagemDias: 0,
+            },
+          ],
+        },
+      };
+    });
+  }
+
+  function updateProposalPhase(stageId: string, phaseId: string, patch: Partial<ProposalStagePhase>) {
+    setProposalStageSchedule((prev) => ({
+      ...prev,
+      [stageId]: {
+        ...(prev[stageId] ?? {}),
+        fases: (prev[stageId]?.fases ?? []).map((phase) =>
+          phase.id === phaseId ? { ...phase, ...patch } : phase
+        ),
+      },
+    }));
+  }
+
+  function removeProposalPhase(stageId: string, phaseId: string) {
+    setProposalStageSchedule((prev) => ({
+      ...prev,
+      [stageId]: {
+        ...(prev[stageId] ?? {}),
+        fases: (prev[stageId]?.fases ?? [])
+          .filter((phase) => phase.id !== phaseId)
+          .map((phase, index) => ({ ...phase, ordem: index + 1 })),
+      },
+    }));
+  }
+
+  function buildMonthlyFinancialPreview() {
+    const total = mode === "catalogo" ? catTotal : mode === "livre" ? freeTotal : importValorTotal;
+    if (!total || total <= 0) return [];
+
+    type MonthRow = {
+      key: string;
+      label: string;
+      bruto: number;
+      amortizacao: number;
+      liquido: number;
+      fisico: number;
+      fisicoAcumulado: number;
+      atividades: string[];
+      saldoEntrada: number;
+    };
+
+    const buckets = new Map<string, MonthRow>();
+    const stageTotalMap = new Map(orcamentoEtapas.map((stage) => [stage.id, proposalStageBudgetTotal(stage.id)]));
+    const physicalTotalConfigured = orcamentoEtapas.reduce(
+      (sum, stage) => sum + Number(proposalStageSchedule[stage.id]?.percentualFisico ?? 0),
+      0,
+    );
+
+    const addSegment = (
+      label: string,
+      startText: string | undefined,
+      endText: string | undefined,
+      value: number,
+      physicalWeight: number,
+    ) => {
+      const start = proposalDate(startText);
+      const end = proposalDate(endText);
+      if (!start || !end || end < start || value <= 0) return;
+      const totalDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1);
+      let cursor = new Date(start);
+      while (cursor <= end) {
+        const monthStart = new Date(cursor.getFullYear(), cursor.getMonth(), 1, 12);
+        const monthEnd = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0, 12);
+        const segmentStart = cursor > monthStart ? cursor : monthStart;
+        const segmentEnd = end < monthEnd ? end : monthEnd;
+        const days = Math.max(1, Math.round((segmentEnd.getTime() - segmentStart.getTime()) / 86_400_000) + 1);
+        const ratio = days / totalDays;
+        const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`;
+        const labelMonth = cursor.toLocaleDateString("pt-BR", { month: "short", year: "numeric" }).replace(".", "");
+        const row = buckets.get(key) ?? {
+          key,
+          label: labelMonth,
+          bruto: 0,
+          amortizacao: 0,
+          liquido: 0,
+          fisico: 0,
+          fisicoAcumulado: 0,
+          atividades: [],
+          saldoEntrada: 0,
+        };
+        row.bruto += value * ratio;
+        row.fisico += physicalWeight * ratio;
+        if (!row.atividades.includes(label)) row.atividades.push(label);
+        buckets.set(key, row);
+        cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1, 12);
+      }
+    };
+
+    orcamentoEtapas.forEach((stage) => {
+      const schedule = proposalStageSchedule[stage.id] ?? {};
+      const stageValue = stageTotalMap.get(stage.id) ?? 0;
+      const stagePhysical = Number(schedule.percentualFisico ?? 0) > 0
+        ? Number(schedule.percentualFisico)
+        : physicalTotalConfigured > 0
+          ? 0
+          : total > 0 ? (stageValue / total) * 100 : 0;
+      const phases = schedule.fases ?? [];
+      if (phases.length) {
+        const assigned = phases.reduce((sum, phase) => sum + Number(phase.percentualEtapa ?? 0), 0);
+        phases.forEach((phase) => {
+          const phaseShare = Number(phase.percentualEtapa ?? 0) > 0
+            ? Number(phase.percentualEtapa) / 100
+            : 1 / phases.length;
+          const normalizedShare = assigned > 100 && assigned > 0
+            ? Number(phase.percentualEtapa ?? 0) / assigned
+            : phaseShare;
+          addSegment(
+            `${stage.nome} · ${phase.nome}`,
+            phase.inicioPrevisto,
+            phase.fimPrevisto,
+            stageValue * normalizedShare,
+            Number(phase.percentualFisico ?? stagePhysical * normalizedShare),
+          );
+        });
+      } else {
+        addSegment(stage.nome, schedule.inicioPrevisto, schedule.fimPrevisto, stageValue, stagePhysical);
+      }
+    });
+
+    let remainingEntry = total * (Math.min(100, Math.max(0, entryPercent)) / 100);
+    let accumulatedPhysical = 0;
+    return Array.from(buckets.values())
+      .sort((a, b) => a.key.localeCompare(b.key))
+      .map((row) => {
+        const amortizationRate = Math.min(100, Math.max(0, entryAmortizationPercent)) / 100;
+        const amortizacao = showEntryAmortization
+          ? Math.min(remainingEntry, row.bruto * amortizationRate)
+          : 0;
+        remainingEntry = Math.max(0, remainingEntry - amortizacao);
+        accumulatedPhysical = Math.min(100, accumulatedPhysical + row.fisico);
+        return {
+          ...row,
+          amortizacao,
+          liquido: Math.max(0, row.bruto - amortizacao),
+          fisicoAcumulado: accumulatedPhysical,
+          saldoEntrada: remainingEntry,
+        };
+      });
+  }
+
   function proposalPresentationConfig() {
     return {
       modoPadrao: presentationDefaultMode,
@@ -2977,6 +3310,10 @@ function newFreeItem(): FreeItem {
           : {},
       mostrarCronogramaExecucao: showExecutionSchedule,
       mostrarFisicoFinanceiro: showPhysicalFinancial,
+      entradaPercentual: Math.min(100, Math.max(0, Number(entryPercent) || 0)),
+      amortizacaoEntradaPercentual: Math.min(100, Math.max(0, Number(entryAmortizationPercent) || 0)),
+      mostrarAmortizacaoEntrada: showEntryAmortization,
+      mostrarPortalCliente: showClientPortalPlan,
     };
   }
 
