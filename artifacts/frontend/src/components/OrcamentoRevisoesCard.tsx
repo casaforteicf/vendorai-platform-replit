@@ -245,7 +245,16 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
   async function downloadOrcamentoPdf(orc: Orcamento) {
     try {
       const response = await fetch(`/api/propostas/${orc.id}/pdf`, { headers: authHeaders() });
-      if (!response.ok) throw new Error("Não foi possível gerar o PDF.");
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error ?? "Não foi possível gerar o PDF.");
+      }
+
+      const contentType = response.headers.get("content-type") ?? "";
+      if (!contentType.toLowerCase().includes("application/pdf")) {
+        throw new Error("O servidor não retornou um PDF válido.");
+      }
+
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
@@ -258,7 +267,7 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
     } catch (error) {
       toast({
         title: "Erro ao baixar orçamento",
-        description: error instanceof Error ? error.message : undefined,
+        description: error instanceof Error ? error.message : "Não foi possível gerar o PDF.",
         variant: "destructive",
       });
     }
