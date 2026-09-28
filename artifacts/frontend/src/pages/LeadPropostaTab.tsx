@@ -297,6 +297,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const [proposalImages, setProposalImages] = useState<string[]>([]);
   const [imageUploading, setImageUploading] = useState(false);
   const [generatingStageImages, setGeneratingStageImages] = useState(false);
+  const [selectedStageImageIds, setSelectedStageImageIds] = useState<string[]>([]);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   type ProposalAttachment = { nome: string; url: string; mimeType?: string; tamanho?: number };
@@ -485,11 +486,69 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     return Array.from(groups.values()).sort((a, b) => a.ordem - b.ordem);
   })();
 
+  function toggleStageImageSelection(stageId: string) {
+    setSelectedStageImageIds((current) => {
+      if (current.includes(stageId)) return current.filter((id) => id !== stageId);
+      if (current.length >= 3) {
+        toast({
+          title: "Máximo de 3 imagens por ação",
+          description: "Para proteger o consumo de IA, gere no máximo 3 etapas por vez.",
+          variant: "destructive",
+        });
+        return current;
+      }
+      return [...current, stageId];
+    });
+  }
+
   async function generateRepresentativeStageImages(regenerate = false) {
     if (!selectedOrcamento?.id || selectedOrcamentoStages.length === 0) {
       toast({ title: "Selecione um orçamento com etapas.", variant: "destructive" });
       return;
     }
+
+    if (selectedStageImageIds.length === 0) {
+      toast({
+        title: "Selecione as etapas",
+        description: "Escolha de 1 a 3 etapas para gerar imagens. A geração automática foi desativada.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (selectedStageImageIds.length > 3) {
+      toast({
+        title: "Máximo de 3 imagens por ação",
+        description: "Reduza a seleção antes de continuar.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const selectedNames = selectedOrcamentoStages
+      .filter((stage) => selectedStageImageIds.includes(stage.id))
+      .map((stage) => stage.nome);
+    const existingSelected = selectedStageImageIds.filter((id) => Boolean(selectedStageImages[id]));
+
+    const confirmationText = regenerate
+      ? `Regenerar ${selectedStageImageIds.length} imagem(ns)? Isso fará uma nova chamada paga de IA para: ${selectedNames.join(", ")}.`
+      : `Gerar ${selectedStageImageIds.length} imagem(ns) com IA para: ${selectedNames.join(", ")}? Somente estas etapas serão processadas.`;
+
+    if (regenerate && existingSelected.length === 0) {
+      toast({
+        title: "Nenhuma imagem existente selecionada",
+        description: "Use Gerar fotos para etapas ainda sem imagem.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!window.confirm(confirmationText)) return;
+
+    const userActionId =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `stage-image-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
     setGeneratingStageImages(true);
     try {
@@ -498,7 +557,10 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
         headers,
         body: JSON.stringify({
           propostaId: selectedOrcamento.id,
+          stageIds: selectedStageImageIds,
+          userActionId,
           regenerate,
+          confirmRegenerate: regenerate,
         }),
       });
       const body = await response.json().catch(() => ({}));
@@ -510,6 +572,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
       const generatedCount = Number(body.generated ?? 0);
       const reusedCount = Number(body.reused ?? 0);
       const errorCount = Array.isArray(body.errors) ? body.errors.length : 0;
+      setSelectedStageImageIds([]);
       toast({
         title: generatedCount > 0
           ? `${generatedCount} imagem(ns) de etapa gerada(s)`
@@ -534,6 +597,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     setSelectedOrcamentoId(value);
     setProposalPresentationStageModes({});
     setProposalTechnicalDetailStages({});
+    setSelectedStageImageIds([]);
 
     if (value === "__none__") {
       setProposalPresentationDefaultMode("completo");
@@ -2002,16 +2066,21 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                           </span>
                         </div>
                         <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] text-muted-foreground">
+                            Selecione até 3 etapas · {selectedStageImageIds.length}/3
+                          </span>
                           <Button
                             type="button"
                             variant="outline"
                             size="sm"
                             className="h-8 gap-1.5 text-xs"
-                            disabled={generatingStageImages}
+                            disabled={generatingStageImages || selectedStageImageIds.length === 0}
                             onClick={() => void generateRepresentativeStageImages(false)}
                           >
                             {generatingStageImages ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                            {generatingStageImages ? "Gerando..." : "Gerar fotos das etapas"}
+                            {generatingStageImages
+                              ? "Gerando..."
+                              : `Gerar ${selectedStageImageIds.length || ""} foto${selectedStageImageIds.length === 1 ? "" : "s"}`}
                           </Button>
                           {Object.keys(selectedStageImages).length > 0 && (
                             <Button
@@ -2019,10 +2088,10 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                               variant="ghost"
                               size="sm"
                               className="h-8 text-[11px]"
-                              disabled={generatingStageImages}
+                              disabled={generatingStageImages || selectedStageImageIds.length === 0}
                               onClick={() => void generateRepresentativeStageImages(true)}
                             >
-                              Regenerar
+                              Regenerar selecionadas
                             </Button>
                           )}
                         </div>
@@ -2034,6 +2103,14 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                             className="grid gap-2 rounded-lg border bg-background p-2.5 lg:grid-cols-[minmax(0,1fr)_210px_170px] lg:items-center"
                           >
                             <div className="flex min-w-0 items-center gap-2.5">
+                              <input
+                                type="checkbox"
+                                aria-label={`Selecionar etapa ${stage.nome} para geração de imagem`}
+                                checked={selectedStageImageIds.includes(stage.id)}
+                                disabled={generatingStageImages}
+                                onChange={() => toggleStageImageSelection(stage.id)}
+                                className="h-4 w-4 shrink-0"
+                              />
                               {selectedStageImages[stage.id] ? (
                                 <img
                                   src={selectedStageImages[stage.id]}
