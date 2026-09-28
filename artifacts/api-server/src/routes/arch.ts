@@ -6574,7 +6574,17 @@ router.post("/arch/partners/:id/solicitar", authenticate, async (req, res) => {
     })
     .returning();
 
-  return res.status(201).json({ ...sol, emailSent: !!enviadoEm });
+  if (sol?.recipientTenantId) {
+    await db.insert(notificationsTable).values({
+      tenantId: sol.recipientTenantId,
+      title: "Nova solicitação de orçamento",
+      message: `${projetoTitulo ?? "Projeto"} foi enviado por um parceiro para orçamento.`,
+      type: "info",
+      category: "arch_partner_quote",
+    });
+  }
+
+  return res.status(201).json({ ...sol, emailSent: canalEnvio === "email" && !!enviadoEm });
 });
 
 // ── POST /arch/partners/compartilhar — compartilhar projeto com parceiro ───────
@@ -6692,6 +6702,57 @@ router.post("/arch/projetos/:projetoId/solicitar-orcamentos", authenticate, asyn
     },
     solicitacoes: created,
   });
+});
+
+// ── PATCH /arch/solicitacoes/:id/responder — aceite comercial do fornecedor ────
+router.patch("/arch/solicitacoes/:id/responder", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const solicitacaoId = String(req.params.id);
+  const parsed = z.object({
+    resposta: z.enum(["accepted", "rejected"]),
+    observacao: z.string().max(2000).optional(),
+  }).safeParse(req.body);
+
+  if (!parsed.success) return res.status(422).json({ error: "INVALID_RESPONSE", issues: parsed.error.issues });
+
+  const [sol] = await db
+    .select()
+    .from(archSolicitacoesTable)
+    .where(eq(archSolicitacoesTable.id, solicitacaoId))
+    .limit(1);
+
+  if (!sol) return res.status(404).json({ error: "Solicitação não encontrada." });
+
+  const canRespond = sol.recipientTenantId === tid || sol.tenantId === tid;
+  if (!canRespond) return res.status(403).json({ error: "FORBIDDEN" });
+
+  const [updated] = await db
+    .update(archSolicitacoesTable)
+    .set({
+      agreementStatus: sol.participationEnabled ? parsed.data.resposta : "not_applicable",
+      status: parsed.data.resposta === "accepted" ? "respondido" : "concluido",
+      metadata: {
+        ...(sol.metadata ?? {}),
+        agreementResponse: parsed.data.resposta,
+        agreementRespondedByTenantId: tid,
+        agreementRespondedAt: new Date().toISOString(),
+        agreementObservation: parsed.data.observacao ?? null,
+      },
+    })
+    .where(eq(archSolicitacoesTable.id, solicitacaoId))
+    .returning();
+
+  if (sol.tenantId !== tid) {
+    await db.insert(notificationsTable).values({
+      tenantId: sol.tenantId,
+      title: parsed.data.resposta === "accepted" ? "Fornecedor aceitou a participação" : "Fornecedor recusou a participação",
+      message: `${sol.parceiroNome ?? "Fornecedor"} respondeu à solicitação do projeto ${sol.projetoTitulo ?? sol.projetoId ?? ""}.`,
+      type: parsed.data.resposta === "accepted" ? "info" : "warning",
+      category: "arch_partner_quote",
+    });
+  }
+
+  return res.json(updated);
 });
 
 // ── GET /arch/solicitacoes — histórico de solicitações do tenant ──────────────
