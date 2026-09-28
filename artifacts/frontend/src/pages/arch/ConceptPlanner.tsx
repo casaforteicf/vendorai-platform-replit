@@ -184,6 +184,8 @@ type ConceptSaveOverrides = {
   rooms?: Room[];
   customWalls?: CustomWall[];
   customOpenings?: CustomOpening[];
+  wallFirstFloors?: number[];
+  floors?: number;
   objects?: ConceptPlanObject[];
   facadePreferences?: ConceptFacadePreferences;
   facadeDesign?: FacadeDesignState;
@@ -877,6 +879,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [openingOverrides, setOpeningOverrides] = useState<Record<string, OpeningOverride>>({});
   const [conceptId, setConceptId] = useState<string | null>(null);
   const conceptIdRef = useRef<string | null>(null);
+  const dxfImportInputRef = useRef<HTMLInputElement | null>(null);
   const navigatingAwayRef = useRef(false);
   const creatingConceptRef = useRef<Promise<string | null> | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "loading" | "saving" | "saved" | "error">("loading");
@@ -897,6 +900,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [handoffState, setHandoffState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [handoffError, setHandoffError] = useState<string | null>(null);
   const [dxfExportState, setDxfExportState] = useState<"idle" | "exporting" | "error">("idle");
+  const [dxfImportState, setDxfImportState] = useState<"idle" | "importing" | "error" | "success">("idle");
+  const [dxfImportMessage, setDxfImportMessage] = useState<string | null>(null);
   const wallFirstActive = (Array.isArray(wallFirstFloors) ? wallFirstFloors : []).includes(activeFloor);
   const [modelSearch, setModelSearch] = useState("");
   const [modelCategory, setModelCategory] = useState<"todos" | "terreas" | "sobrados" | "lazer">("todos");
@@ -1338,6 +1343,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     const nextRooms = overrides?.rooms ?? rooms;
     const nextCustomWalls = overrides?.customWalls ?? customWalls;
     const nextCustomOpenings = overrides?.customOpenings ?? customOpenings;
+    const nextWallFirstFloors = overrides?.wallFirstFloors ?? wallFirstFloors;
+    const nextFloors = overrides?.floors ?? floors;
     const nextObjects = overrides?.objects ?? objects;
     const nextFacadePreferences = overrides?.facadePreferences ?? facadePreferences;
     const nextFacadeDesign = overrides?.facadeDesign ?? facadeDesign;
@@ -1347,11 +1354,11 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       currentStep: stepOverride ?? step,
       lot: { width: lotWidth, depth: lotDepth },
       configuration: {
-        floors,
+        floors: nextFloors,
         desiredArea,
         typology,
         layoutPreferences,
-        wallFirstFloors,
+        wallFirstFloors: nextWallFirstFloors,
         showDimensions,
         customWalls: nextCustomWalls,
         customOpenings: nextCustomOpenings,
@@ -3810,6 +3817,91 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       setHandoffError(message);
       setHandoffState("error");
       return null;
+    }
+  };
+
+  const importConceptDxf = async (file: File) => {
+    if (dxfImportState === "importing") return;
+    setDxfImportState("importing");
+    setDxfImportMessage(null);
+    try {
+      const id = await saveConcept(4);
+      if (!id) throw new Error("Não foi possível salvar o pré-projeto antes da importação.");
+
+      const form = new FormData();
+      form.append("file", file);
+      const token = typeof window !== "undefined" ? localStorage.getItem("vendorai_token") : null;
+      const response = await fetch(`/api/arch/concept-projects/${encodeURIComponent(id)}/import/dxf`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: form,
+      });
+      const payload = await response.json().catch(() => ({})) as {
+        error?: string;
+        walls?: Array<CustomWall & { sourceLayer?: string }>;
+        bounds?: { width: number; depth: number };
+        unit?: string;
+        warnings?: string[];
+        fitsLot?: boolean;
+        maxFloor?: number;
+      };
+      if (!response.ok) throw new Error(payload.error ?? "Não foi possível interpretar o DXF.");
+      if (!payload.walls?.length) throw new Error("O DXF não contém paredes compatíveis com o editor.");
+      if (!payload.fitsLot) {
+        throw new Error(
+          `O desenho importado mede aproximadamente ${payload.bounds?.width?.toFixed?.(2) ?? "?"} × ${payload.bounds?.depth?.toFixed?.(2) ?? "?"} m e não cabe no lote atual de ${lotWidth} × ${lotDepth} m. Ajuste o terreno antes de aplicar.`,
+        );
+      }
+
+      const confirmed = window.confirm(
+        `Importar ${payload.walls.length} segmentos do DXF e substituir a geometria atual da planta? Esta ação mantém o briefing, mas remove paredes/aberturas/ambientes editáveis atuais.`,
+      );
+      if (!confirmed) {
+        setDxfImportState("idle");
+        return;
+      }
+
+      const importedWalls = payload.walls.map(({ sourceLayer: _sourceLayer, ...wall }) => wall);
+      const importedFloors = Math.max(1, Number(payload.maxFloor ?? 0) + 1);
+      const wallFirst = Array.from({ length: importedFloors }, (_, index) => index);
+
+      setFloors(importedFloors);
+      setActiveFloor(0);
+      setRooms([]);
+      setCustomWalls(importedWalls);
+      setCustomOpenings([]);
+      setOpeningOverrides({});
+      setWallFirstFloors(wallFirst);
+      setSpaceProfiles([]);
+      setObjects([]);
+      setSelectedId(null);
+      setSelectedObjectId(null);
+      setSelectedOpeningId(null);
+      setSelectedWallId(null);
+      setSelectedCustomWallId(null);
+      setSelectedClosedSpaceId(null);
+      setInteractionMode("wall");
+      setEditorView("plan");
+      setEditorLibraryTab("build");
+      setStep(4);
+
+      await saveConcept(4, undefined, {
+        rooms: [],
+        customWalls: importedWalls,
+        customOpenings: [],
+        wallFirstFloors: wallFirst,
+        floors: importedFloors,
+      });
+
+      const warningText = payload.warnings?.length ? ` · ${payload.warnings.join(" ")}` : "";
+      setDxfImportMessage(`DXF importado: ${importedWalls.length} segmentos, ${importedFloors} pavimento(s), unidade ${payload.unit ?? "detectada"}.${warningText}`);
+      setDxfImportState("success");
+      window.setTimeout(() => setDxfImportState("idle"), 5000);
+    } catch (error) {
+      setDxfImportMessage(error instanceof Error ? error.message : "Falha ao importar DXF.");
+      setDxfImportState("error");
+    } finally {
+      if (dxfImportInputRef.current) dxfImportInputRef.current.value = "";
     }
   };
 
@@ -7970,6 +8062,26 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     <Download className="h-4 w-4" />
                     {dxfExportState === "exporting" ? "Gerando DXF..." : dxfExportState === "error" ? "Tentar DXF novamente" : "Exportar DXF"}
                   </button>
+                  <input
+                    ref={dxfImportInputRef}
+                    type="file"
+                    accept=".dxf,application/dxf"
+                    className="hidden"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) void importConceptDxf(file);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => dxfImportInputRef.current?.click()}
+                    disabled={dxfImportState === "importing" || Boolean(projectMaster)}
+                    className="inline-flex items-center gap-2 rounded-xl border bg-background px-4 py-2.5 text-sm font-semibold disabled:opacity-50"
+                    title={projectMaster ? "Crie uma revisão antes de importar nova geometria." : "Importar DXF ASCII como paredes editáveis"}
+                  >
+                    <FolderOpen className="h-4 w-4" />
+                    {dxfImportState === "importing" ? "Lendo DXF..." : "Importar DXF"}
+                  </button>
                   {archProjetoId && (
                     <button
                       type="button"
@@ -7980,6 +8092,14 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     </button>
                   )}
                 </div>
+                {dxfImportMessage && (
+                  <div className={dxfImportState === "error"
+                    ? "mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"
+                    : "mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800"}
+                  >
+                    {dxfImportMessage}
+                  </div>
+                )}
               </div>
             </div>
 

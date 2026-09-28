@@ -80,6 +80,7 @@ import { buildArchitecturalStrategyRepertoire } from "../lib/arqdor-architecture
 import { buildArchitecturalProjectStrategy } from "../lib/arqdor-project-strategy.js";
 import { evaluateProjectMasterAcceptance } from "../lib/arqdor-project-master-validation.js";
 import { buildConceptDxf, conceptDxfFilename } from "../lib/arqdor-concept-dxf.js";
+import { parseAsciiDxf } from "../lib/arqdor-dxf-import.js";
 
 function sanitizeAIError(err: any): { status: number; message: string } {
   const raw: string = err?.message ?? String(err ?? "");
@@ -1043,6 +1044,50 @@ router.get("/arch/concept-projects/:id/export/dxf", authenticate, async (req, re
   res.setHeader("Content-Disposition", `attachment; filename="${conceptDxfFilename(concept.title)}"`);
   res.setHeader("Cache-Control", "private, no-store");
   return res.status(200).send(dxf);
+});
+
+router.post("/arch/concept-projects/:id/import/dxf", authenticate, upload.single("file"), async (req, res) => {
+  const tid = tenantId(req);
+  const userId = req.user?.sub;
+  const id = String(req.params.id);
+  if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
+  if (!req.file?.buffer?.length) return res.status(400).json({ error: "Selecione um arquivo DXF ASCII." });
+
+  const [concept] = await db
+    .select({ id: archConceptProjectsTable.id, lot: archConceptProjectsTable.lot })
+    .from(archConceptProjectsTable)
+    .where(
+      and(
+        eq(archConceptProjectsTable.id, id),
+        eq(archConceptProjectsTable.tenantId, tid),
+        eq(archConceptProjectsTable.ownerUserId, userId),
+      ),
+    )
+    .limit(1);
+
+  if (!concept) return res.status(404).json({ error: "Pré-projeto não encontrado." });
+
+  try {
+    const parsed = parseAsciiDxf(req.file.buffer.toString("utf8"));
+    const lot = (concept.lot ?? {}) as { width?: number; depth?: number };
+    const lotWidth = Number(lot.width ?? 0);
+    const lotDepth = Number(lot.depth ?? 0);
+    const fitsLot = Number.isFinite(lotWidth)
+      && Number.isFinite(lotDepth)
+      && parsed.bounds.width <= lotWidth + 0.01
+      && parsed.bounds.depth <= lotDepth + 0.01;
+
+    return res.json({
+      ...parsed,
+      fitsLot,
+      lot: { width: lotWidth, depth: lotDepth },
+      maxFloor: parsed.walls.reduce((max, wall) => Math.max(max, wall.floor), 0),
+    });
+  } catch (error) {
+    return res.status(422).json({
+      error: error instanceof Error ? error.message : "Não foi possível interpretar o DXF.",
+    });
+  }
 });
 
 router.get("/arch/concept-projects/:id", authenticate, async (req, res) => {
