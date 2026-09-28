@@ -1068,8 +1068,9 @@ function renderConstructionProposalLayout(args: {
     apresentacao?: ProposalPresentationConfig | null;
   };
   builderModuleEnabled: (key: string, fallback?: boolean) => boolean;
+  builderVisualStyle?: Record<string, unknown> | null;
 }): string {
-  const { json, tenantName, tenantLogoUrl, clientName, imagens, orcamento, builderModuleEnabled } = args;
+  const { json, tenantName, tenantLogoUrl, clientName, imagens, orcamento, builderModuleEnabled, builderVisualStyle } = args;
   const hero = json.hero || {};
   const meta = json.meta || {};
   const companyInfo = json.company || {};
@@ -1078,6 +1079,12 @@ function renderConstructionProposalLayout(args: {
   const proofInfo = json.proof || {};
   const faqInfo = json.faq || {};
   const presentation = normalizeProposalPresentation(orcamento.apresentacao);
+  const visualPreset = String(builderVisualStyle?.preset ?? "premium_arquitetonico");
+  const heroVariant = String(builderVisualStyle?.heroVariant ?? "fotografico");
+  const stageVariant = String(builderVisualStyle?.stageVariant ?? "cards");
+  const investmentVariant = String(builderVisualStyle?.investmentVariant ?? "por_etapa");
+  const density = String(builderVisualStyle?.density ?? "arejado");
+  const imageEmphasis = String(builderVisualStyle?.imageEmphasis ?? "alta");
   const interactive = presentation.formato === "site_interativo" || presentation.formato === "hibrido";
   const hybrid = presentation.formato === "hibrido";
   const groupedItems = groupProposalPresentationItems(orcamento.itens);
@@ -1949,11 +1956,37 @@ function renderConstructionProposalLayout(args: {
   #web-accept-message { min-height:20px; margin-top:10px; font-size:13px; }
   @media(max-width:860px){ .proposal-web-links{display:none}.proposal-web-nav-inner{padding:0 18px;height:62px}.proposal-web-brand img{height:31px}.proposal-web-actions button{display:none}.web-interactive .page{padding:60px 20px}.web-interactive .cover-content{padding:60px 20px 42px;min-height:76vh}.web-interactive .metrics,.web-interactive .value-grid{grid-template-columns:1fr 1fr}.web-interactive .stage-image{height:260px}.web-accept{padding:60px 20px}.web-accept-grid,.web-signature-row{grid-template-columns:1fr} }
   @media(max-width:560px){ .web-interactive .metrics,.web-interactive .value-grid{grid-template-columns:1fr}.web-interactive .stage-metrics{grid-template-columns:1fr}.web-interactive .stage-metrics>div{border-right:0!important;border-bottom:1px solid #ece8e3}.web-interactive .cover-title{font-size:42px} }
+
+  .proposal-preset-minimalista.web-interactive .value-proposition,
+  .proposal-preset-minimalista.web-interactive .metric { box-shadow:none; background:#fff; }
+  .proposal-preset-minimalista.web-interactive .page { border-top:0; }
+  .proposal-preset-corporativo.web-interactive .cover:after { background:linear-gradient(90deg,rgba(6,23,48,.86),rgba(6,23,48,.45)); }
+  .proposal-preset-corporativo.web-interactive .metric { border-radius:8px; }
+  .proposal-preset-tecnico.web-interactive .stage-image { height:280px; }
+  .proposal-preset-tecnico.web-interactive .scope-title,
+  .proposal-preset-tecnico.web-interactive .scope-table-demo,
+  .proposal-preset-tecnico.web-interactive .phase-block,
+  .proposal-preset-tecnico.web-interactive .detail-table { display:table; }
+  .proposal-preset-tecnico.web-interactive .scope-title,
+  .proposal-preset-tecnico.web-interactive .phase-block { display:block; }
+  .proposal-density-compacto.web-interactive .page { padding-top:48px; padding-bottom:48px; }
+  .proposal-density-equilibrado.web-interactive .page { padding-top:64px; padding-bottom:64px; }
+  .proposal-images-baixa.web-interactive .stage-image { height:220px; }
+  .proposal-images-media.web-interactive .stage-image { height:min(340px,42vw); }
+  .proposal-stage-accordion.web-interactive .stage-page { padding-top:42px; padding-bottom:42px; }
+  .proposal-stage-lista_tecnica.web-interactive .stage-image { display:none; }
+  .proposal-stage-lista_tecnica.web-interactive .scope-title,
+  .proposal-stage-lista_tecnica.web-interactive .scope-table-demo,
+  .proposal-stage-lista_tecnica.web-interactive .detail-table { display:table; }
+  .proposal-stage-lista_tecnica.web-interactive .scope-title { display:block; }
+  .proposal-investment-valor_global.web-interactive .stage-metrics > div:first-child { opacity:.7; }
+  .proposal-hero-minimalista.web-interactive .cover-bg { filter:saturate(.25) brightness(.45); }
+  .proposal-hero-institucional.web-interactive .cover-bg { filter:saturate(.6) brightness(.5); }
   @media print { .proposal-web-nav,.web-stage-toggle,.web-accept { display:none!important; } .web-interactive .page{width:210mm;min-height:297mm;padding:13mm 15mm 12mm;page-break-after:always}.web-interactive .topbar,.web-interactive .footer{display:flex}.web-interactive .scope-title,.web-interactive .scope-table-demo,.web-interactive .phase-block,.web-interactive .detail-table{display:table}.web-interactive .scope-title,.web-interactive .phase-block{display:block} }
   ` : ""}
 </style>
 </head>
-<body class="${interactive ? "web-interactive" : "document-layout"}">
+<body class="${interactive ? "web-interactive" : "document-layout"} proposal-preset-${escapeProposalText(visualPreset)} proposal-hero-${escapeProposalText(heroVariant)} proposal-stage-${escapeProposalText(stageVariant)} proposal-investment-${escapeProposalText(investmentVariant)} proposal-density-${escapeProposalText(density)} proposal-images-${escapeProposalText(imageEmphasis)}">
 ${interactive ? `
 <nav class="proposal-web-nav">
   <div class="proposal-web-nav-inner">
@@ -2122,6 +2155,7 @@ export function renderProposalHtml(json: unknown, theme: {
   enabledModules?: string[] | null;
   moduleOrder?: string[] | null;
   proposalKind?: string | null;
+  visualStyle?: Record<string, unknown> | null;
 } | null): string {
   const d = json as Record<string, any>;
   const hero = d.hero || {};
@@ -2160,6 +2194,7 @@ export function renderProposalHtml(json: unknown, theme: {
       imagens: visualImages,
       orcamento,
       builderModuleEnabled,
+      builderVisualStyle: builder?.visualStyle ?? null,
     });
   }
   const pageImage = (index: number) => {

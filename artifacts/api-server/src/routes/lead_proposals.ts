@@ -1162,6 +1162,9 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
             const aiRules = selectedBuilder["aiRules"] && typeof selectedBuilder["aiRules"] === "object"
               ? selectedBuilder["aiRules"] as Record<string, unknown>
               : {};
+            const visualStyle = selectedBuilder["visualStyle"] && typeof selectedBuilder["visualStyle"] === "object"
+              ? selectedBuilder["visualStyle"] as Record<string, unknown>
+              : {};
             const list = (value: unknown) =>
               Array.isArray(value)
                 ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
@@ -1179,6 +1182,12 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
             return [
               `MODELO MODULAR DO TENANT: ${String(selectedBuilder["name"] ?? "Modelo padrão")}`,
               modules.length ? `ORDEM DOS MÓDULOS: ${modules.join(" > ")}` : "",
+              visualStyle["preset"] ? `PRESET VISUAL: ${String(visualStyle["preset"])}` : "",
+              visualStyle["heroVariant"] ? `CAPA: ${String(visualStyle["heroVariant"])}` : "",
+              visualStyle["stageVariant"] ? `APRESENTAÇÃO DAS ETAPAS: ${String(visualStyle["stageVariant"])}` : "",
+              visualStyle["investmentVariant"] ? `APRESENTAÇÃO DO INVESTIMENTO: ${String(visualStyle["investmentVariant"])}` : "",
+              visualStyle["density"] ? `DENSIDADE VISUAL: ${String(visualStyle["density"])}` : "",
+              visualStyle["imageEmphasis"] ? `ÊNFASE EM IMAGENS: ${String(visualStyle["imageEmphasis"])}` : "",
               ...constructionV2Guidance,
               typeof aiRules["tone"] === "string" ? `TOM: ${aiRules["tone"]}` : "",
               typeof aiRules["technicalLevel"] === "string" ? `NÍVEL TÉCNICO: ${aiRules["technicalLevel"]}` : "",
@@ -1820,6 +1829,10 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
         proposalKind:
           typeof selectedBuilderTemplate.proposalKind === "string"
             ? String(selectedBuilderTemplate.proposalKind)
+            : null,
+        visualStyle:
+          selectedBuilderTemplate.visualStyle && typeof selectedBuilderTemplate.visualStyle === "object"
+            ? selectedBuilderTemplate.visualStyle as Record<string, unknown>
             : null,
       }
     : null;
