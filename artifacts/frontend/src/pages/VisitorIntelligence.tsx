@@ -128,6 +128,7 @@ type VitalMetricSummary = {
 };
 type WebVitalsResponse = {
   minutes: number;
+  device?: "all" | "mobile" | "tablet" | "desktop";
   since: string;
   generatedAt: string;
   sampleCount: number;
@@ -252,10 +253,10 @@ async function loadVisitors(minutes: number): Promise<VisitorResponse> {
   return normalizeResponse(await response.json());
 }
 
-async function loadWebVitals(minutes: number): Promise<WebVitalsResponse> {
+async function loadWebVitals(minutes: number, device: "all" | "mobile" | "tablet" | "desktop"): Promise<WebVitalsResponse> {
   const token = window.localStorage.getItem("vendorai_token");
   if (!token) throw new Error("Sessão não autenticada");
-  const response = await fetch(`${API_BASE}/visitor-intelligence/web-vitals?minutes=${minutes}`, {
+  const response = await fetch(`${API_BASE}/visitor-intelligence/web-vitals?minutes=${minutes}&device=${device}`, {
     credentials: "include",
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -322,11 +323,12 @@ export default function VisitorIntelligence() {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(() => new URLSearchParams(window.location.search).get("session"));
   const [alertsEnabled, setAlertsEnabledState] = useState(() => getVisitorAlertsEnabled());
   const [browserPermission, setBrowserPermission] = useState(() => getVisitorBrowserNotificationState());
+  const [vitalsDevice, setVitalsDevice] = useState<"all" | "mobile" | "tablet" | "desktop">("all");
 
   const query = useQuery({ queryKey: ["visitor-intelligence", minutes], queryFn: () => loadVisitors(minutes), refetchInterval: mode === "realtime" ? 15_000 : 60_000 });
   const vitalsQuery = useQuery({
-    queryKey: ["visitor-intelligence", "web-vitals", minutes],
-    queryFn: () => loadWebVitals(minutes),
+    queryKey: ["visitor-intelligence", "web-vitals", minutes, vitalsDevice],
+    queryFn: () => loadWebVitals(minutes, vitalsDevice),
     staleTime: 60_000,
     refetchInterval: mode === "realtime" ? 60_000 : 5 * 60_000,
     refetchOnWindowFocus: false,
@@ -384,10 +386,23 @@ export default function VisitorIntelligence() {
             <h2 className="font-semibold">Performance real do app</h2>
             <p className="text-xs text-muted-foreground">Core Web Vitals coletados dos usuários reais no período selecionado.</p>
           </div>
-          <button type="button" onClick={() => vitalsQuery.refetch()} className="inline-flex h-9 items-center gap-2 rounded-md border px-3 text-xs">
-            <RefreshCw className={`h-3.5 w-3.5 ${vitalsQuery.isFetching ? "animate-spin" : ""}`} />
-            Atualizar performance
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={vitalsDevice}
+              onChange={(event) => setVitalsDevice(event.target.value as typeof vitalsDevice)}
+              className="h-9 rounded-md border bg-background px-2.5 text-xs"
+              aria-label="Filtrar Web Vitals por dispositivo"
+            >
+              <option value="all">Todos dispositivos</option>
+              <option value="mobile">Mobile</option>
+              <option value="tablet">Tablet</option>
+              <option value="desktop">Desktop</option>
+            </select>
+            <button type="button" onClick={() => vitalsQuery.refetch()} className="inline-flex h-9 items-center gap-2 rounded-md border px-3 text-xs">
+              <RefreshCw className={`h-3.5 w-3.5 ${vitalsQuery.isFetching ? "animate-spin" : ""}`} />
+              Atualizar performance
+            </button>
+          </div>
         </div>
 
         {vitalsQuery.isLoading ? <div className="mt-4 text-sm text-muted-foreground">Carregando Web Vitals…</div> : null}
