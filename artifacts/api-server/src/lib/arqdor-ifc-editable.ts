@@ -7,6 +7,8 @@ export type IfcEditableWall = {
   y2: number;
   thickness: number;
   sourceIfcId: string;
+  materialId?: string;
+  wallType?: string;
 };
 
 export type IfcEditableOpening = {
@@ -21,9 +23,21 @@ export type IfcEditableOpening = {
   sourceIfcId: string;
 };
 
+export type IfcEditableSpace = {
+  id: string;
+  floor: number;
+  label: string;
+  kind: string;
+  area: number;
+  floorMaterialId?: string;
+  sourceIfcId: string;
+};
+
 export type IfcEditableGeometry = {
   walls: IfcEditableWall[];
   openings: IfcEditableOpening[];
+  spaces: IfcEditableSpace[];
+  wallMaterials: Record<string, string>;
   storeys: Array<{ ifcId: string; name: string | null; elevation: number | null; floor: number }>;
   bounds: { width: number; depth: number };
   unit: "m" | "mm" | "cm" | "unknown";
@@ -52,6 +66,49 @@ function nums(body: string) {
 
 function strings(body: string) {
   return [...body.matchAll(/'((?:''|[^'])*)'/g)].map((m) => (m[1] ?? "").replace(/''/g, "'"));
+}
+function propertyValue(body: string) {
+  const match = body.match(/IFC(?:LABEL|TEXT|IDENTIFIER)\s*\(\s*'((?:''|[^'])*)'\s*\)/i);
+  if (match) return (match[1] ?? "").replace(/''/g, "'");
+  const numberMatch = body.match(/IFC(?:LENGTHMEASURE|AREAMEASURE|REAL)\s*\(\s*([-+0-9.Ee]+)\s*\)/i);
+  return numberMatch ? Number(numberMatch[1]) : null;
+}
+
+function propertySets(map: Map<string, Entity>) {
+  const propsByObject = new Map<string, Record<string, string | number>>();
+  for (const rel of [...map.values()].filter((e) => e.type === "IFCRELDEFINESBYPROPERTIES")) {
+    const r = refs(rel.body);
+    const psetId = r.find((id) => map.get(id)?.type === "IFCPROPERTYSET");
+    if (!psetId) continue;
+    const pset = map.get(psetId);
+    if (!pset) continue;
+    const props: Record<string, string | number> = {};
+    for (const propId of refs(pset.body)) {
+      const prop = map.get(propId);
+      if (!prop || prop.type !== "IFCPROPERTYSINGLEVALUE") continue;
+      const name = strings(prop.body)[0];
+      const value = propertyValue(prop.body);
+      if (name && value != null) props[name] = value;
+    }
+    for (const objectId of r.filter((id) => id !== psetId)) {
+      propsByObject.set(objectId, { ...(propsByObject.get(objectId) ?? {}), ...props });
+    }
+  }
+  return propsByObject;
+}
+
+function materialByObject(map: Map<string, Entity>) {
+  const result = new Map<string, string>();
+  for (const rel of [...map.values()].filter((e) => e.type === "IFCRELASSOCIATESMATERIAL")) {
+    const r = refs(rel.body);
+    const materialId = r.find((id) => map.get(id)?.type === "IFCMATERIAL");
+    if (!materialId) continue;
+    const material = map.get(materialId);
+    const name = material ? strings(material.body)[0] : undefined;
+    if (!name) continue;
+    for (const objectId of r.filter((id) => id !== materialId)) result.set(objectId, name);
+  }
+  return result;
 }
 
 function unitInfo(input: string) {
@@ -133,6 +190,8 @@ export function parseIfcEditableGeometry(input: string): IfcEditableGeometry {
 
   const map = entities(input);
   const unit = unitInfo(input);
+  const propsByObject = propertySets(map);
+  const materialsByObject = materialByObject(map);
   const storeyEntities = [...map.values()].filter((e) => e.type === "IFCBUILDINGSTOREY");
   const storeys = storeyEntities
     .map((e, index) => {
@@ -191,6 +250,8 @@ export function parseIfcEditableGeometry(input: string): IfcEditableGeometry {
       y2: cy + dir.y * half,
       thickness: Math.max(0.08, Math.min(0.5, thickness || 0.14)),
       sourceIfcId: wall.id,
+      materialId: materialsByObject.get(wall.id) ?? (typeof propsByObject.get(wall.id)?.ArqdorMaterialId === "string" ? String(propsByObject.get(wall.id)?.ArqdorMaterialId) : undefined),
+      wallType: strings(wall.body)[1] || strings(wall.body)[0] || undefined,
     });
   }
 
@@ -274,6 +335,35 @@ export function parseIfcEditableGeometry(input: string): IfcEditableGeometry {
     });
   }
 
+  const floorBySpaceId = new Map<string, number>();
+  for (const rel of [...map.values()].filter((e) => e.type === "IFCRELAGGREGATES")) {
+    const r = refs(rel.body);
+    const storeyId = r.find((id) => floorByStoreyId.has(id));
+    if (!storeyId) continue;
+    const floor = floorByStoreyId.get(storeyId)!;
+    for (const id of r) if (map.get(id)?.type === "IFCSPACE") floorBySpaceId.set(id, floor);
+  }
+
+  const spaces: IfcEditableSpace[] = [...map.values()]
+    .filter((e) => e.type === "IFCSPACE")
+    .map((space, index) => {
+      const values = strings(space.body);
+      const props = propsByObject.get(space.id) ?? {};
+      return {
+        id: typeof props.ArqdorRoomId === "string" ? String(props.ArqdorRoomId) : `ifc-space-${space.id}`,
+        floor: floorBySpaceId.get(space.id) ?? 0,
+        label: values[1] || values[0] || `Ambiente ${index + 1}`,
+        kind: typeof props.ArqdorRoomKind === "string" ? String(props.ArqdorRoomKind) : (values[3] || "outro"),
+        area: typeof props.ArqdorArea === "number" ? Number(props.ArqdorArea) * unit.scale * unit.scale : 0,
+        floorMaterialId: typeof props.ArqdorFloorMaterialId === "string" ? String(props.ArqdorFloorMaterialId) : undefined,
+        sourceIfcId: space.id,
+      };
+    });
+
+  const wallMaterials = Object.fromEntries(
+    walls.flatMap((wall) => wall.materialId ? [[wall.id, wall.materialId] as const] : []),
+  );
+
   const totalIfcWalls = [...map.values()].filter((e) => e.type === "IFCWALL" || e.type === "IFCWALLSTANDARDCASE").length;
   if (walls.length < totalIfcWalls) {
     warnings.push(`${totalIfcWalls - walls.length} parede(s) IFC usam uma representação geométrica ainda não suportada para edição.`);
@@ -288,6 +378,8 @@ export function parseIfcEditableGeometry(input: string): IfcEditableGeometry {
   return {
     walls,
     openings,
+    spaces,
+    wallMaterials,
     storeys,
     bounds: {
       width: Math.round((maxX - minX) * 1000) / 1000,
