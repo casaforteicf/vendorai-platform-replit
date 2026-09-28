@@ -118,13 +118,15 @@ export default function PublicProposta() {
     }
   }
 
-  function portalAccessUi() {
+  function portalAccessUi(embedded = false) {
     return (
       <>
         <button
           type="button"
           onClick={() => setPortalOpen(true)}
-          className="fixed right-4 top-4 z-[100] rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-xl hover:bg-slate-800"
+          className={embedded
+            ? "rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-800"
+            : "fixed bottom-4 right-4 z-[100] rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-xl hover:bg-slate-800"}
         >
           {portalUserName ? `Portal · ${portalUserName}` : "Portal do Cliente"}
         </button>
@@ -204,12 +206,14 @@ export default function PublicProposta() {
   if (proposta.kind === "generated") {
     return (
       <div className="min-h-screen bg-white">
-        {portalAccessUi()}
+        <div className="sticky top-0 z-[105] flex h-16 items-center justify-end border-b border-slate-200 bg-white/95 px-4 backdrop-blur">
+          {portalAccessUi(true)}
+        </div>
         <iframe
           title={`Proposta v${proposta.version}`}
           src={api(`/api/public/generated-proposals/${proposta.id}/html`)}
           className="w-full min-h-screen border-0"
-          style={{ height: "100vh" }}
+          style={{ height: "calc(100vh - 4rem)" }}
           sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
         />
       </div>
