@@ -118,6 +118,23 @@ type VisitorTotals = {
 };
 
 type VisitorResponse = { truncated: boolean; totals: VisitorTotals; sessions: VisitorSession[] };
+type VitalMetricSummary = {
+  name: "LCP" | "INP" | "CLS" | "FCP" | "TTFB";
+  samples: number;
+  p75: number | null;
+  median: number | null;
+  goodPercent: number | null;
+  distribution: { good: number; needsImprovement: number; poor: number };
+};
+type WebVitalsResponse = {
+  minutes: number;
+  since: string;
+  generatedAt: string;
+  sampleCount: number;
+  metrics: Record<"LCP" | "INP" | "CLS" | "FCP" | "TTFB", VitalMetricSummary>;
+  devices: { mobile: number; tablet: number; desktop: number };
+  routes: Array<{ path: string; samples: number; lcp: number | null; inp: number | null; cls: number | null }>;
+};
 type UnknownRecord = Record<string, unknown>;
 
 function record(value: unknown): UnknownRecord {
@@ -235,6 +252,23 @@ async function loadVisitors(minutes: number): Promise<VisitorResponse> {
   return normalizeResponse(await response.json());
 }
 
+async function loadWebVitals(minutes: number): Promise<WebVitalsResponse> {
+  const token = window.localStorage.getItem("vendorai_token");
+  if (!token) throw new Error("Sessão não autenticada");
+  const response = await fetch(`${API_BASE}/visitor-intelligence/web-vitals?minutes=${minutes}`, {
+    credentials: "include",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error("Falha ao carregar Web Vitals");
+  return response.json() as Promise<WebVitalsResponse>;
+}
+
+function formatVital(name: VitalMetricSummary["name"], value: number | null) {
+  if (value == null) return "—";
+  if (name === "CLS") return value.toFixed(3);
+  return `${Math.round(value)} ms`;
+}
+
 function duration(ms: number) {
   const seconds = Math.max(0, Math.round(ms / 1000));
   if (seconds < 60) return `${seconds}s`;
@@ -280,6 +314,13 @@ export default function VisitorIntelligence() {
   const [browserPermission, setBrowserPermission] = useState(() => getVisitorBrowserNotificationState());
 
   const query = useQuery({ queryKey: ["visitor-intelligence", minutes], queryFn: () => loadVisitors(minutes), refetchInterval: mode === "realtime" ? 15_000 : 60_000 });
+  const vitalsQuery = useQuery({
+    queryKey: ["visitor-intelligence", "web-vitals", minutes],
+    queryFn: () => loadWebVitals(minutes),
+    staleTime: 60_000,
+    refetchInterval: mode === "realtime" ? 60_000 : 5 * 60_000,
+    refetchOnWindowFocus: false,
+  });
   const normalizedSearch = search.trim().toLocaleLowerCase("pt-BR");
   const filteredSessions = useMemo(() => (query.data?.sessions ?? []).filter((session) => {
     const surfaceMatch = surfaceFilter === "all" ? true : surfaceFilter === "commercial" ? session.surface === "site" : session.surface === surfaceFilter;
@@ -322,6 +363,65 @@ export default function VisitorIntelligence() {
           { label: "Viram preços", value: totals?.pricingVisitors ?? 0, icon: Target, hint: "Visitantes com sinal de decisão" },
           { label: "Prontos p/ remarketing", value: totals?.remarketingReady ?? 0, icon: Users, hint: "Audiência comportamental do site" },
         ].map(({ label, value, icon: Icon, hint }) => <div key={label} className="rounded-xl border bg-card p-4 shadow-sm"><div className="flex items-center justify-between text-muted-foreground"><span className="text-xs">{label}</span><Icon className="h-4 w-4" /></div><div className="mt-2 text-2xl font-semibold">{value}</div><div className="mt-1 text-[11px] text-muted-foreground">{hint}</div></div>)}
+      </div>
+
+      <div className="rounded-xl border bg-card p-4">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="font-semibold">Performance real do app</h2>
+            <p className="text-xs text-muted-foreground">Core Web Vitals coletados dos usuários reais no período selecionado.</p>
+          </div>
+          <button type="button" onClick={() => vitalsQuery.refetch()} className="inline-flex h-9 items-center gap-2 rounded-md border px-3 text-xs">
+            <RefreshCw className={`h-3.5 w-3.5 ${vitalsQuery.isFetching ? "animate-spin" : ""}`} />
+            Atualizar performance
+          </button>
+        </div>
+
+        {vitalsQuery.isLoading ? <div className="mt-4 text-sm text-muted-foreground">Carregando Web Vitals…</div> : null}
+        {vitalsQuery.isError ? <div className="mt-4 text-sm text-destructive">Não foi possível carregar os Web Vitals.</div> : null}
+        {vitalsQuery.data ? (
+          <>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+              {(["LCP", "INP", "CLS", "FCP", "TTFB"] as const).map((name) => {
+                const metric = vitalsQuery.data!.metrics[name];
+                return (
+                  <div key={name} className="rounded-lg border bg-background p-3">
+                    <div className="text-xs font-medium text-muted-foreground">{name} p75</div>
+                    <div className="mt-1 text-xl font-semibold">{formatVital(name, metric.p75)}</div>
+                    <div className="mt-1 text-[11px] text-muted-foreground">
+                      {metric.samples} amostras · {metric.goodPercent == null ? "—" : `${metric.goodPercent}% boas`}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_1.2fr]">
+              <div className="rounded-lg border p-3">
+                <div className="text-xs font-medium text-muted-foreground">Amostras por dispositivo</div>
+                <div className="mt-2 grid grid-cols-3 gap-2 text-sm">
+                  <div><div className="font-semibold">{vitalsQuery.data.devices.mobile}</div><div className="text-xs text-muted-foreground">Mobile</div></div>
+                  <div><div className="font-semibold">{vitalsQuery.data.devices.tablet}</div><div className="text-xs text-muted-foreground">Tablet</div></div>
+                  <div><div className="font-semibold">{vitalsQuery.data.devices.desktop}</div><div className="text-xs text-muted-foreground">Desktop</div></div>
+                </div>
+              </div>
+
+              <div className="rounded-lg border p-3">
+                <div className="text-xs font-medium text-muted-foreground">Rotas com dados recentes</div>
+                <div className="mt-2 space-y-2">
+                  {vitalsQuery.data.routes.length ? vitalsQuery.data.routes.slice(0, 8).map((route) => (
+                    <div key={route.path} className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-3 rounded-md border px-2.5 py-2 text-xs">
+                      <div className="truncate font-medium">{route.path}</div>
+                      <div className="text-muted-foreground">LCP {route.lcp == null ? "—" : `${Math.round(route.lcp)}ms`}</div>
+                      <div className="text-muted-foreground">INP {route.inp == null ? "—" : `${Math.round(route.inp)}ms`}</div>
+                      <div className="text-muted-foreground">CLS {route.cls == null ? "—" : route.cls.toFixed(3)}</div>
+                    </div>
+                  )) : <div className="text-xs text-muted-foreground">Ainda não há amostras suficientes para comparar rotas.</div>}
+                </div>
+              </div>
+            </div>
+          </>
+        ) : null}
       </div>
 
       <div className="flex flex-col gap-3 rounded-xl border bg-card p-3 lg:flex-row lg:items-center lg:justify-between">
