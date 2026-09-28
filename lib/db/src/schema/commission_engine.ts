@@ -4,9 +4,10 @@ import { tenantsTable } from "./tenants";
 import { dealsTable } from "./deals";
 import { usersTable } from "./users";
 
-export type CommissionActorType = "seller" | "manager" | "representative" | "partner" | "affiliate" | "influencer" | "distributor";
+export type CommissionActorType = "seller" | "manager" | "representative" | "partner" | "affiliate" | "influencer" | "distributor" | "architect_creator";
 export type CommissionTrigger = "sale_created" | "proposal_approved" | "contract_signed" | "payment_received" | "payment_reconciled" | "target_reached";
 export type CommissionEventStatus = "forecast" | "validation" | "released" | "paid" | "reversed";
+export type ParticipationType = "sales" | "specification" | "acquisition";
 
 export const commissionRulesTable = pgTable("commission_rules", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -16,15 +17,21 @@ export const commissionRulesTable = pgTable("commission_rules", {
   priority: integer("priority").notNull().default(100),
   actorType: text("actor_type").$type<CommissionActorType>().notNull().default("seller"),
   trigger: text("trigger").$type<CommissionTrigger>().notNull().default("payment_reconciled"),
+  participationType: text("participation_type").$type<ParticipationType>().notNull().default("sales"),
   productId: text("product_id"),
   category: text("category"),
   channel: text("channel"),
   region: text("region"),
   minMarginPercent: numeric("min_margin_percent", { precision: 7, scale: 4 }),
   maxDiscountPercent: numeric("max_discount_percent", { precision: 7, scale: 4 }),
+  // Legacy DB name retained for backwards compatibility. Product/API language is "participação".
   commissionPercent: numeric("commission_percent", { precision: 7, scale: 4 }).notNull().default("0"),
   capPercent: numeric("cap_percent", { precision: 7, scale: 4 }),
+  platformFeePercent: numeric("platform_fee_percent", { precision: 7, scale: 4 }).notNull().default("0"),
+  attributionWindowDays: integer("attribution_window_days").notNull().default(90),
+  requiresMutualAcceptance: boolean("requires_mutual_acceptance").notNull().default(false),
   recurring: boolean("recurring").notNull().default(false),
+  recurringMonths: integer("recurring_months"),
   proportionalByReceipt: boolean("proportional_by_receipt").notNull().default(true),
   splitConfig: jsonb("split_config").$type<Array<{ actorType: CommissionActorType; actorId?: string | null; percent: number }>>().notNull().default([]),
   metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
@@ -33,6 +40,7 @@ export const commissionRulesTable = pgTable("commission_rules", {
 }, (table) => [
   index("commission_rules_tenant_idx").on(table.tenantId),
   index("commission_rules_active_priority_idx").on(table.tenantId, table.active, table.priority),
+  index("commission_rules_participation_idx").on(table.tenantId, table.participationType, table.active),
 ]);
 
 export const commissionEventsTable = pgTable("commission_events", {
@@ -43,13 +51,18 @@ export const commissionEventsTable = pgTable("commission_events", {
   sellerUserId: text("seller_user_id").references(() => usersTable.id, { onDelete: "set null" }),
   actorType: text("actor_type").$type<CommissionActorType>().notNull(),
   actorId: text("actor_id"),
+  participationType: text("participation_type").$type<ParticipationType>().notNull().default("sales"),
+  projectId: text("project_id"),
   trigger: text("trigger").$type<CommissionTrigger>().notNull(),
   sourceType: text("source_type"),
   sourceId: text("source_id"),
   baseAmountCents: integer("base_amount_cents").notNull().default(0),
   eligiblePercent: numeric("eligible_percent", { precision: 7, scale: 4 }).notNull().default("0"),
+  // Legacy DB names retained to avoid a destructive migration.
   commissionPercent: numeric("commission_percent", { precision: 7, scale: 4 }).notNull().default("0"),
   commissionCents: integer("commission_cents").notNull().default(0),
+  platformFeePercent: numeric("platform_fee_percent", { precision: 7, scale: 4 }).notNull().default("0"),
+  platformFeeCents: integer("platform_fee_cents").notNull().default(0),
   status: text("status").$type<CommissionEventStatus>().notNull().default("forecast"),
   reason: text("reason"),
   correlationId: text("correlation_id").notNull(),
@@ -63,6 +76,8 @@ export const commissionEventsTable = pgTable("commission_events", {
   uniqueIndex("commission_events_tenant_correlation_unique").on(table.tenantId, table.correlationId),
   index("commission_events_tenant_status_idx").on(table.tenantId, table.status),
   index("commission_events_deal_idx").on(table.dealId),
+  index("commission_events_participation_idx").on(table.tenantId, table.participationType, table.status),
+  index("commission_events_project_idx").on(table.projectId),
 ]);
 
 export const insertCommissionRuleSchema = createInsertSchema(commissionRulesTable).omit({ id: true, createdAt: true, updatedAt: true });
