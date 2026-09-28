@@ -120,7 +120,7 @@ router.get("/tenants/:tenantId/ai-usage", authenticate, async (req, res) => {
     .from(aiUsageLogsTable).where(and(eq(aiUsageLogsTable.tenantId, tenantId as string), gte(aiUsageLogsTable.createdAt, startOfMonth)));
   const spentThisMonthUsd = Number(monthlyRow?.totalCost ?? 0);
   const tokensUsed = Number(monthlyRow?.totalTokens ?? 0);
-  const monthlySpendCeilingUsd = Number(process.env["AI_MONTHLY_SPEND_CEILING_USD"] ?? 100);
+  const monthlySpendCeilingUsd = Number(process.env["AI_MONTHLY_SPEND_CEILING_USD"] ?? 30);
   const totalCycleBudgetUsd = Math.max(0, (quotaUsd ?? 0) + Number(tenant.aiCreditsUsd ?? 0));
   const usagePercent = totalCycleBudgetUsd > 0
     ? Math.max(0, Math.min(100, (spentThisMonthUsd / totalCycleBudgetUsd) * 100))
