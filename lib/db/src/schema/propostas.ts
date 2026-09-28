@@ -113,8 +113,28 @@ export type PropostaCronogramaEtapa = z.infer<typeof propostaCronogramaEtapaSche
 export const propostaApresentacaoFormatoSchema = z.enum(["site_interativo", "documento", "hibrido"]);
 export type PropostaApresentacaoFormato = z.infer<typeof propostaApresentacaoFormatoSchema>;
 
+export const propostaEstiloCasaSchema = z.enum([
+  "moderna",
+  "contemporanea",
+  "minimalista",
+  "classica",
+  "industrial",
+]);
+export type PropostaEstiloCasa = z.infer<typeof propostaEstiloCasaSchema>;
+
+export const propostaPadraoCasaSchema = z.enum(["medio", "alto_padrao", "luxo"]);
+export type PropostaPadraoCasa = z.infer<typeof propostaPadraoCasaSchema>;
+
+export const propostaTipoCasaSchema = z.enum(["terrea", "sobrado"]);
+export type PropostaTipoCasa = z.infer<typeof propostaTipoCasaSchema>;
+
 export const propostaApresentacaoSchema = z.object({
   formato: propostaApresentacaoFormatoSchema.default("site_interativo"),
+  estiloCasa: propostaEstiloCasaSchema.default("contemporanea"),
+  padraoCasa: propostaPadraoCasaSchema.default("alto_padrao"),
+  tipoCasa: propostaTipoCasaSchema.default("sobrado"),
+  elementosVisuais: z.array(z.string().min(1)).default([]),
+  imagemCapa: z.string().optional(),
   modoPadrao: propostaApresentacaoModoSchema.default("completo"),
   etapas: z.record(z.string(), propostaApresentacaoModoSchema).default({}),
   mostrarTotalGeral: z.boolean().default(true),
@@ -141,6 +161,10 @@ export type PropostaApresentacao = z.infer<typeof propostaApresentacaoSchema>;
 
 const DEFAULT_PROPOSTA_APRESENTACAO: PropostaApresentacao = {
   formato: "site_interativo",
+  estiloCasa: "contemporanea",
+  padraoCasa: "alto_padrao",
+  tipoCasa: "sobrado",
+  elementosVisuais: [],
   modoPadrao: "completo",
   etapas: {},
   mostrarTotalGeral: true,
