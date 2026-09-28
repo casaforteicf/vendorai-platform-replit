@@ -966,15 +966,9 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
     }
   }
 
-  if (bodyImagens.length < 2) {
-    res.status(400).json({
-      error: builderWantsStageImages && bodyPropostaId
-        ? "A IA tentou criar automaticamente as imagens das etapas, mas ainda não há imagens suficientes. Adicione uma imagem de capa ou tente gerar novamente."
-        : "A apresentação precisa de pelo menos 2 imagens. Importe imagens, selecione renders ou vincule produtos com imagem.",
-    });
-    return;
-  }
-
+  // Imagens são recomendadas, mas nunca bloqueiam a geração da proposta.
+  // Se a automação de etapas conseguir criar imagens, elas entram acima;
+  // caso contrário, o renderer produz uma proposta textual válida.
   const builderDiscovery = (ctx.discoveryData ?? {}) as Record<string, unknown>;
   const builderTemplates = Array.isArray(builderDiscovery.proposalBuilderTemplates)
     ? builderDiscovery.proposalBuilderTemplates as Array<Record<string, unknown>>
