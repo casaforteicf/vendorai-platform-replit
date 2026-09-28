@@ -517,15 +517,43 @@ async function syncAcceptedProposalToWorkBaseline(
 
     const phases = stage.config.fases ?? [];
     const configuredShare = phases.reduce((sum, phase) => sum + Number(phase.percentualEtapa ?? 0), 0);
+    const phaseDates = new Map<string, { start: Date | null; end: Date | null }>();
     for (const [phaseIndex, phase] of phases.entries()) {
       const phaseSourceId = phase.id || `${stage.sourceId}:fase:${phaseIndex + 1}`;
       const share = Number(phase.percentualEtapa ?? 0) > 0
         ? Number(phase.percentualEtapa)
         : phases.length ? 100 / phases.length : 100;
-      const normalizedShare = configuredShare > 100 && configuredShare > 0
+      // Se foram cadastradas fases, elas representam a decomposição completa da etapa.
+      // Normalizamos a distribuição configurada para 100% para não deixar valor da etapa
+      // sem fase (e, portanto, impossível de medir/cobrar).
+      const normalizedShare = configuredShare > 0
         ? (share / configuredShare) * 100
-        : share;
+        : phases.length ? 100 / phases.length : 100;
       const phaseValue = stage.stageValue * (normalizedShare / 100);
+
+      const explicitPhaseStart = parseContractDate(phase.inicioPrevisto ?? null);
+      const explicitPhaseEnd = parseContractDate(phase.fimPrevisto ?? null);
+      const phaseDuration = Number(phase.duracaoDias ?? 0) > 0
+        ? Math.round(Number(phase.duracaoDias))
+        : explicitPhaseStart && explicitPhaseEnd
+          ? Math.max(1, Math.round((explicitPhaseEnd.getTime() - explicitPhaseStart.getTime()) / 86_400_000) + 1)
+          : Math.max(1, Math.round(stage.duration * (normalizedShare / 100)));
+      const defaultPhaseDependency = phaseIndex > 0 ? phases[phaseIndex - 1]?.id : undefined;
+      const phaseDependencyId = phase.dependeDeFaseId ?? defaultPhaseDependency;
+      const phasePredecessor = phaseDependencyId ? phaseDates.get(phaseDependencyId) : undefined;
+      const phaseStart = phaseIndex === 0
+        ? explicitPhaseStart ?? stage.start
+        : resolveContractDependencyStart(
+            phasePredecessor,
+            phase.tipoDependencia ?? "FS",
+            Number(phase.defasagemDias ?? 0),
+            phaseDuration,
+          ) ?? explicitPhaseStart ?? stage.start;
+      const phaseEnd = explicitPhaseEnd ?? (phaseStart ? addContractDays(phaseStart, phaseDuration - 1) : stage.end);
+      phaseDates.set(phaseSourceId, { start: phaseStart, end: phaseEnd });
+      if (phase.id && phase.id !== phaseSourceId) {
+        phaseDates.set(phase.id, { start: phaseStart, end: phaseEnd });
+      }
 
       let [dbPhase] = await db
         .select()
@@ -539,8 +567,8 @@ async function syncAcceptedProposalToWorkBaseline(
       const phaseValues = {
         nome: phase.nome || `Fase ${phaseIndex + 1}`,
         ordem: Number(phase.ordem ?? phaseIndex + 1),
-        dataInicioPrevista: phase.inicioPrevisto ?? null,
-        dataFimPrevista: phase.fimPrevisto ?? null,
+        dataInicioPrevista: contractDateOnly(phaseStart),
+        dataFimPrevista: contractDateOnly(phaseEnd),
         percentualEtapa: normalizedShare.toFixed(4),
         custoPrevisto: phaseValue.toFixed(2),
       };
