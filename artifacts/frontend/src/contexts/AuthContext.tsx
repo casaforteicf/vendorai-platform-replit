@@ -142,6 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(readInitialToken);
   const [rawUser, setRawUser] = useState<User | null>(() => readCachedUser(readInitialToken()));
   const [tenantOverride, setTenantOverrideState] = useState<TenantOverride | null>(readInitialOverride);
+  const [sessionRecoveryError, setSessionRecoveryError] = useState<string | null>(null);
   const [location, setLocation] = useLocation();
   const passwordRedirectedUserRef = useRef<string | null>(null);
   const { locale, syncLocale } = useI18n();
@@ -225,6 +226,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     let cancelled = false;
 
+    setSessionRecoveryError(null);
     void fetch("/api/auth/refresh", {
       method: "POST",
       headers: {
@@ -316,8 +318,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       })
       .catch(() => {
-        // Falha de rede/proxy nunca deve apagar uma sessão local aparentemente
-        // válida. O React Query tentará novamente no próximo carregamento.
+        // Preserva a sessão local, mas informa o usuário que a confirmação
+        // automática falhou em vez de esconder o erro de recuperação.
+        setSessionRecoveryError("Não foi possível confirmar sua sessão agora. Você pode continuar usando o sistema; tentaremos novamente automaticamente.");
       });
 
     return () => {
@@ -478,6 +481,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearTenantOverride,
       isEffectiveAdmin,
     }}>
+      {sessionRecoveryError ? (
+        <div
+          role="status"
+          className="fixed left-1/2 top-3 z-[100] w-[min(92vw,720px)] -translate-x-1/2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900 shadow"
+        >
+          {sessionRecoveryError}
+        </div>
+      ) : null}
       {children}
     </AuthContext.Provider>
   );

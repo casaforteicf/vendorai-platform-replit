@@ -50,8 +50,16 @@ export function NovidadesBell() {
   });
 
   const marcarLido = useMutation({
-    mutationFn: () => fetch("/api/changelog/marcar-lido", { method: "POST", headers: authHeaders() }),
+    mutationFn: async () => {
+      const response = await fetch("/api/changelog/marcar-lido", { method: "POST", headers: authHeaders() });
+      if (!response.ok) throw new Error(`Falha ao marcar novidades como lidas (HTTP ${response.status})`);
+      return response;
+    },
     onSuccess: () => qc.setQueryData(["changelog-unread"], { count: 0 }),
+    onError: () => {
+      // Mantém o contador visível se o servidor não confirmar a leitura.
+      qc.invalidateQueries({ queryKey: ["changelog-unread"] });
+    },
   });
 
   function handleOpen(v: boolean) {
