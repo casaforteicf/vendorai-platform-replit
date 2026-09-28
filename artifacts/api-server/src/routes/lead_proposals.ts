@@ -442,6 +442,7 @@ router.post("/leads/:leadId/proposals/stage-images", async (req, res) => {
         size: "1536x1024",
         n: 1,
         log: req.log,
+        requestId: `${userActionId}:${group.id}`,
       });
       const providerUrl = urls[0];
       if (!providerUrl) throw new Error("IA não retornou imagem");
