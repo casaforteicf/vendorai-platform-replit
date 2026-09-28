@@ -72,7 +72,7 @@ const PUBLIC_FIELDS = {
 } as const;
 
 const loginSchema = z.object({
-  email: z.email(),
+  email: z.string().trim().toLowerCase().pipe(z.email()),
   password: z.string().min(1),
 });
 
@@ -873,7 +873,9 @@ protectedRouter.post("/auth/refresh", async (req, res) => {
 
 // ── Forgot password ───────────────────────────────────────────────────────
 
-const forgotPasswordSchema = z.object({ email: z.email() });
+const forgotPasswordSchema = z.object({
+  email: z.string().trim().toLowerCase().pipe(z.email()),
+});
 
 router.post("/auth/forgot-password", async (req, res) => {
   const parsed = forgotPasswordSchema.safeParse(req.body);
