@@ -121,7 +121,7 @@ export interface QuotaBlocked {
 
 export type QuotaResult = QuotaCheck | QuotaBlocked;
 
-const MONTHLY_SPEND_CEILING_USD = Number(process.env["AI_MONTHLY_SPEND_CEILING_USD"] ?? 100);
+const MONTHLY_SPEND_CEILING_USD = Number(process.env["AI_MONTHLY_SPEND_CEILING_USD"] ?? 30);
 
 export async function checkQuota(tenantId: string, estimatedCost: number, log?: Logger): Promise<QuotaResult> {
   const [tenant] = await db.select({
