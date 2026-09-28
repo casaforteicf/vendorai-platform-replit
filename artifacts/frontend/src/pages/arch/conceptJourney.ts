@@ -17,8 +17,8 @@ export const CONCEPT_JOURNEY: ConceptJourneyStage[] = [
   { id: "enviar", label: "Enviar", helper: "Revise o resumo, informe o contato e envie ao profissional." },
 ];
 
-const SITE_TABS = new Set(["site", "placement"]);
-const HOUSE_TABS = new Set(["brief", "models", "rooms"]);
+const SITE_TABS = new Set(["site"]);
+const HOUSE_TABS = new Set(["brief", "models"]);
 
 export function conceptJourneyIndex(input: {
   step: number;
