@@ -1,6 +1,6 @@
 name: Cloudflare Pages
 # Production deploy: Pages frontend; Railway backend remains unchanged.
-# Redeploy marker: Motion AI site generator 2026-09-22.
+# Redeploy marker: Cloudflare production fallback 2026-09-28.
 
 on:
   push:
