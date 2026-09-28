@@ -366,7 +366,7 @@ function installPerformanceTelemetry() {
   let ttfb = 0;
   let reported = false;
   const observers: PerformanceObserver[] = [];
-  const apiTimings: Array<{ endpoint: string; durationMs: number; routePath: string; pageUrl: string; initiatorType: string }> = [];
+  const apiTimings: Array<{ endpoint: string; durationMs: number; transferSize: number; encodedBodySize: number; routePath: string; pageUrl: string; initiatorType: string }> = [];
   const initialPath = window.location.pathname || "/";
   const initialPageUrl = window.location.href;
   let lcpPath = initialPath;
@@ -435,6 +435,8 @@ function installPerformanceTelemetry() {
       apiTimings.push({
         endpoint: url.pathname,
         durationMs: resource.duration,
+        transferSize: Math.max(0, resource.transferSize || 0),
+        encodedBodySize: Math.max(0, resource.encodedBodySize || 0),
         routePath: window.location.pathname || "/",
         pageUrl: window.location.href,
         initiatorType: resource.initiatorType || "fetch",
@@ -493,6 +495,8 @@ function installPerformanceTelemetry() {
         kind: "api_timing",
         endpoint: timing.endpoint,
         durationMs: Math.round(timing.durationMs),
+        transferSize: Math.round(timing.transferSize),
+        encodedBodySize: Math.round(timing.encodedBodySize),
         initiatorType: timing.initiatorType,
         deviceCategory,
       }, { path: timing.routePath, pageUrl: timing.pageUrl });
