@@ -4213,9 +4213,14 @@ function newFreeItem(): FreeItem {
             {mode === "catalogo" && (
               <Card className="border-primary/20 bg-primary/[0.02]">
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Apresentação da proposta</CardTitle>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <CardTitle className="text-base">Apresentação da proposta</CardTitle>
+                    <Badge variant="outline" className="border-primary/30 bg-primary/5 text-primary">
+                      Modelo oficial · Construção
+                    </Badge>
+                  </div>
                   <p className="text-xs text-muted-foreground">
-                    Configure separadamente o detalhamento financeiro e o técnico. Quantidades, custos e cálculos continuam completos internamente.
+                    O orçamento é a fonte única da proposta. O modelo oficial organiza capa, resumo executivo, etapas, fases, escopo técnico, cronograma, físico-financeiro, condições comerciais e Portal do Cliente sem alterar os cálculos internos.
                   </p>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -4317,7 +4322,7 @@ function newFreeItem(): FreeItem {
                   </div>
 
                   <div className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-                    Exemplo: Fundação pode usar <strong>Resumo da etapa</strong> no financeiro e <strong>Mostrar escopo</strong> no técnico. Assim o cliente vê o valor macro e tudo o que está contemplado, sem quantidade nem preço unitário.
+                    <strong>Padrão recomendado:</strong> apresentar o valor macro por etapa, manter o escopo técnico visível e ocultar quantidade/preço unitário quando não forem necessários. As fases continuam completas para cronograma e medição, mesmo quando o cliente vê apenas o resumo comercial.
                   </div>
 
                   <Separator />
