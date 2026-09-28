@@ -639,16 +639,38 @@ router.post("/leads/:leadId/proposals/async", async (req, res) => {
           return;
         }
 
-        const version = Number(body?.version);
+        let version = Number(body?.version);
         if (!Number.isFinite(version) || version <= 0) {
-          proposalGenerationJobs.set(jobId, {
-            tenantId: ctx.lead.tenantId,
-            leadId,
-            status: "error",
-            error: "A proposta foi processada, mas a versão gerada não foi identificada.",
-            createdAt: Date.now(),
-          });
-          return;
+          // The proposal may have been committed successfully even when the
+          // loopback response body is incomplete. Recover the durable version
+          // from the database before reporting a false failure to the UI.
+          const [latestAfterGeneration] = await db
+            .select({ version: leadProposalsTable.version })
+            .from(leadProposalsTable)
+            .where(and(
+              eq(leadProposalsTable.leadId, leadId),
+              eq(leadProposalsTable.tenantId, ctx.lead.tenantId),
+            ))
+            .orderBy(desc(leadProposalsTable.version))
+            .limit(1);
+
+          const recoveredVersion = Number(latestAfterGeneration?.version ?? 0);
+          if (Number.isFinite(recoveredVersion) && recoveredVersion > baselineVersion) {
+            version = recoveredVersion;
+            log.warn(
+              { jobId, leadId, baselineVersion, recoveredVersion },
+              "async proposal generation recovered version from database",
+            );
+          } else {
+            proposalGenerationJobs.set(jobId, {
+              tenantId: ctx.lead.tenantId,
+              leadId,
+              status: "error",
+              error: "A proposta foi processada, mas a versão gerada não foi identificada.",
+              createdAt: Date.now(),
+            });
+            return;
+          }
         }
 
         proposalGenerationJobs.set(jobId, {
