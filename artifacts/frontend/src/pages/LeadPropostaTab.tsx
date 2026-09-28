@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -160,6 +160,16 @@ interface LeadPropostaTabProps {
   tenantId: string;
   lead: any;
 }
+
+type ProposalBudgetRevision = {
+  id: string;
+  basePropostaId?: string | null;
+  propostaRevisaoId?: string | null;
+  revisaoNumero?: string | null;
+  numeroOrcamento: string;
+  dataOrcamento: string;
+  propostaRevisao?: any | null;
+};
 
 type ProposalPresentationMode = "completo" | "resumo_etapa" | "preco_medio";
 
@@ -437,6 +447,50 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   } = useListPropostas(tenantId, { leadId }, { request: { headers: { Authorization: `Bearer ${token}` } } });
 
   const {
+    data: budgetRevisions = [],
+    isLoading: loadingBudgetRevisions,
+  } = useQuery<ProposalBudgetRevision[]>({
+    queryKey: ["orcamento-revisoes", leadId],
+    queryFn: async () => {
+      const response = await fetch(`/api/tenants/${tenantId}/leads/${leadId}/orcamento-revisoes`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const body = await response.json().catch(() => []);
+      if (!response.ok) {
+        throw new Error(body?.error ?? "Não foi possível carregar as revisões do orçamento.");
+      }
+      return Array.isArray(body) ? body : [];
+    },
+    enabled: !!leadId && !!tenantId && !!token,
+  });
+
+  const proposalBudgetOptions = (() => {
+    const revisionByProposalId = new Map(
+      budgetRevisions
+        .filter((revision) => revision.propostaRevisaoId)
+        .map((revision) => [revision.propostaRevisaoId as string, revision] as const),
+    );
+    const merged = new Map<string, any>();
+
+    (orcamentos as any[]).forEach((budget) => {
+      const revision = revisionByProposalId.get(String(budget.id));
+      merged.set(String(budget.id), revision ? { ...budget, __revision: revision } : budget);
+    });
+
+    budgetRevisions.forEach((revision) => {
+      const revisionBudget = revision.propostaRevisao;
+      if (!revision.propostaRevisaoId || !revisionBudget) return;
+      const existing = merged.get(revision.propostaRevisaoId);
+      merged.set(revision.propostaRevisaoId, {
+        ...(existing ?? revisionBudget),
+        __revision: revision,
+      });
+    });
+
+    return Array.from(merged.values());
+  })();
+
+  const {
     data: products = [],
     isLoading: loadingProducts,
   } = useListLeadProducts(leadId, { request: { headers: { Authorization: `Bearer ${token}` } } });
@@ -460,7 +514,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     request: { headers: { Authorization: `Bearer ${token}` } },
   });
 
-  const selectedOrcamento = (orcamentos as any[]).find((orc) => orc.id === selectedOrcamentoId) ?? null;
+  const selectedOrcamento = proposalBudgetOptions.find((orc) => orc.id === selectedOrcamentoId) ?? null;
   const selectedStageImages: Record<string, string> =
     selectedOrcamento?.apresentacao?.imagensEtapas && typeof selectedOrcamento.apresentacao.imagensEtapas === "object"
       ? selectedOrcamento.apresentacao.imagensEtapas
@@ -604,7 +658,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
       return;
     }
 
-    const budget = (orcamentos as any[]).find((orc) => orc.id === value);
+    const budget = proposalBudgetOptions.find((orc) => orc.id === value);
     const presentation = budget?.apresentacao;
     setProposalPresentationDefaultMode(normalizeProposalPresentationMode(presentation?.modoPadrao));
     setProposalPresentationStageModes(
@@ -655,14 +709,14 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   }
 
   useEffect(() => {
-    const budgets = orcamentos as any[];
-    if (loadingOrcamentos || budgets.length === 0) return;
+    const budgets = proposalBudgetOptions;
+    if (loadingOrcamentos || loadingBudgetRevisions || budgets.length === 0) return;
     const selectionIsValid = budgets.some((orc) => orc.id === selectedOrcamentoId);
     if (!selectionIsValid) {
       const latestBudget = budgets[budgets.length - 1];
       if (latestBudget?.id) handleProposalBudgetChange(latestBudget.id);
     }
-  }, [loadingOrcamentos, orcamentos, selectedOrcamentoId]);
+  }, [loadingOrcamentos, loadingBudgetRevisions, orcamentos, budgetRevisions, selectedOrcamentoId]);
 
   useEffect(() => {
     // Sync lead fields when lead prop changes
@@ -1819,7 +1873,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
               size="sm"
               className="h-7 text-xs gap-1"
               onClick={() => openRefineDialog()}
-              disabled={generating || loadingOrcamentos || orcamentos.length === 0 || selectedOrcamentoId === "__none__"}
+              disabled={generating || loadingOrcamentos || loadingBudgetRevisions || proposalBudgetOptions.length === 0 || selectedOrcamentoId === "__none__"}
             >
               {generating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
               {generating ? "Gerando..." : "Gerar Proposta"}
@@ -1921,15 +1975,15 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
         </CardHeader>
         <CardContent>
           {/* Seletor de orçamento a incluir */}
-          {orcamentos.length > 0 && (
+          {proposalBudgetOptions.length > 0 && (
             <div className="mb-4 min-w-0 space-y-1 overflow-hidden border-b pb-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <label className="text-xs text-muted-foreground font-medium">
-                  Orçamento usado nesta proposta *
+                  Orçamento ou revisão usada nesta proposta *
                 </label>
                 {selectedOrcamentoId !== "__none__" && (
                   <span className="text-[11px] text-emerald-600">
-                    Selecionado · você pode trocar no campo abaixo
+                    Selecionado · a proposta usará exatamente esta versão
                   </span>
                 )}
               </div>
@@ -1938,16 +1992,20 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                 onValueChange={handleProposalBudgetChange}
               >
                 <SelectTrigger className="h-10 min-w-0 w-full max-w-full text-sm [&>span]:truncate">
-                  <SelectValue placeholder="Nenhum orçamento" />
+                  <SelectValue placeholder="Selecione o orçamento ou revisão" />
                 </SelectTrigger>
                 <SelectContent>
-                  {orcamentos.map((orc) => {
+                  {proposalBudgetOptions.map((orc) => {
                     const total = orc.valorTotal
-                      ? parseFloat(orc.valorTotal as string).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+                      ? Number(orc.valorTotal).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
                       : null;
+                    const revision = orc.__revision as ProposalBudgetRevision | undefined;
+                    const versionLabel = revision
+                      ? `Revisão ${revision.revisaoNumero || revision.numeroOrcamento}`
+                      : "Orçamento base";
                     return (
                       <SelectItem key={orc.id} value={orc.id}>
-                        {orc.titulo}{total ? ` — ${total}` : ""}
+                        {versionLabel} — {orc.titulo}{total ? ` — ${total}` : ""}
                         {orc.numero ? ` (Nº ${orc.numero})` : ""}
                       </SelectItem>
                     );
