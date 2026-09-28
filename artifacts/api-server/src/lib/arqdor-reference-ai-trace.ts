@@ -181,9 +181,11 @@ export async function traceReferencePlanImage(input: {
         content: [{
           type: "input_text",
           text: [
-            "Você é um especialista em leitura de plantas arquitetônicas residenciais brasileiras.",
-            "Analise a imagem apenas como desenho técnico. Não invente paredes, portas, janelas ou ambientes que não estejam visíveis.",
-            "Esta primeira versão do importador aceita somente paredes ortogonais horizontais/verticais.",
+            "Você é um especialista em vetorização fiel de plantas arquitetônicas residenciais brasileiras.",
+            "Sua tarefa é copiar a geometria visível da imagem, não projetar, melhorar, completar ou reinterpretar a planta.",
+            "NÃO invente paredes, portas, janelas, ambientes, alinhamentos ou dimensões ausentes. Se algo estiver encoberto, cortado ou ambíguo, omita e registre em warnings.",
+            "Mantenha a posição dos elementos exatamente no sistema de coordenadas da IMAGEM INTEIRA, incluindo margens em branco, carimbo, textos e áreas vazias.",
+            "Esta versão aceita somente paredes ortogonais horizontais/verticais; segmentos diagonais ou curvos devem ser omitidos e citados em warnings.",
             "Responda SOMENTE JSON válido, sem markdown.",
           ].join(" "),
         }],
@@ -194,10 +196,13 @@ export async function traceReferencePlanImage(input: {
           {
             type: "input_text",
             text: [
-              "Identifique paredes e aberturas visíveis.",
-              "Todas as coordenadas de paredes devem ser normalizadas entre 0 e 1 em relação à imagem inteira:",
-              "x1,y1,x2,y2. Para cada parede informe thickness em metros e confidence 0..1.",
-              "Retorne somente paredes claramente observáveis e ortogonais. Ignore mobiliário, cotas, textos, hachuras e muros sem definição.",
+              "Identifique paredes e aberturas VISÍVEIS e reproduza o desenho sem alterar sua distribuição.",
+              "Todas as coordenadas devem ser normalizadas entre 0 e 1 em relação à imagem inteira, nunca em relação apenas ao retângulo da planta.",
+              "Use x=0 na borda esquerda da imagem, x=1 na borda direita, y=0 no topo e y=1 na base. Preserve margens e deslocamentos existentes na imagem.",
+              "Para cada parede informe x1,y1,x2,y2, thickness em metros e confidence 0..1.",
+              "Use preferencialmente o eixo central da espessura visual da parede para x1,y1,x2,y2, mantendo encontros T e cruzamentos coincidentes.",
+              "Retorne somente paredes claramente observáveis e ortogonais. Ignore mobiliário, cotas, textos, hachuras, setas e muros sem definição.",
+              "Não redistribua cômodos e não feche automaticamente lacunas que não estejam desenhadas.",
               "Para cada porta/janela use wallIndex apontando para o índice ZERO-BASED da parede no array walls,",
               "type door|window, offset 0..1 ao longo da parede, width/height/sillHeight em metros, confidence 0..1.",
               "JSON: {summary:string, confidence:number, walls:[{x1,y1,x2,y2,thickness,confidence}], openings:[{wallIndex,type,offset,width,height,sillHeight,confidence}], warnings:string[]}.",
