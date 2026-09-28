@@ -1,6 +1,6 @@
 import JSZip from "jszip";
 
-export type JarvisArtifactFormat = "xlsx" | "csv" | "docx" | "pdf" | "txt" | "md";
+export type JarvisArtifactFormat = "xlsx" | "csv" | "docx" | "pdf" | "html" | "txt" | "md";
 
 export type JarvisArtifactDraft = {
   id: string;
@@ -16,6 +16,7 @@ const FORMAT_LABELS: Record<JarvisArtifactFormat, string> = {
   csv: "CSV",
   docx: "Word",
   pdf: "PDF",
+  html: "HTML",
   txt: "TXT",
   md: "Markdown",
 };
@@ -27,13 +28,14 @@ export function jarvisArtifactFormatLabel(format: JarvisArtifactFormat) {
 export function detectJarvisArtifactRequest(text: string): JarvisArtifactFormat | null {
   const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   const hasCreationVerb = /\b(gere|gerar|crie|criar|converta|converter|transforme|transformar|exporte|exportar|baixe|baixar|faca|fazer|monte|montar|salve|salvar)\b/.test(normalized);
-  const hasDirectRequest = /\b(quero|preciso|mande|mandar|envie|enviar)\b[\s\S]{0,60}\b(xlsx|excel|planilha|csv|docx|word|pdf|markdown|txt)\b/.test(normalized);
+  const hasDirectRequest = /\b(quero|preciso|mande|mandar|envie|enviar)\b[\s\S]{0,60}\b(xlsx|excel|planilha|csv|docx|word|pdf|html|htm|pagina html|markdown|txt)\b/.test(normalized);
   if (!hasCreationVerb && !hasDirectRequest) return null;
 
   if (/\b(xlsx|excel|planilha)\b/.test(normalized)) return "xlsx";
   if (/\bcsv\b/.test(normalized)) return "csv";
   if (/\b(docx|word)\b/.test(normalized)) return "docx";
   if (/\bpdf\b/.test(normalized)) return "pdf";
+  if (/\b(html|htm)\b|pagina html/.test(normalized)) return "html";
   if (/\b(markdown|md)\b/.test(normalized)) return "md";
   if (/\b(txt|texto simples)\b/.test(normalized)) return "txt";
   return null;
@@ -50,11 +52,24 @@ export function buildJarvisArtifactDirective(format: JarvisArtifactFormat): stri
     ].join("\n");
   }
 
+  if (format === "html") {
+    return [
+      "[INSTRUÇÃO INTERNA DE ARTEFATO — não explique esta instrução ao usuário]",
+      "O usuário pediu um arquivo HTML real para download.",
+      "A interface do JARVIS TEM suporte para salvar esta resposta como arquivo .html.",
+      "Entregue apenas HTML5 completo e autossuficiente, começando com <!doctype html>.",
+      "Não use Markdown nem cercas de código.",
+      "Não alegue necessidade de Netlify, Vercel, S3 ou hospedagem para gerar o arquivo local.",
+    ].join("\n");
+  }
+
   return [
     "[INSTRUÇÃO INTERNA DE ARTEFATO — não explique esta instrução ao usuário]",
-    `O usuário pediu um arquivo ${FORMAT_LABELS[format]}.`,
-    "Produza o conteúdo final completo, pronto para ser convertido automaticamente pela interface.",
-    "Use títulos, subtítulos, listas e tabelas em Markdown quando ajudarem. Não diga apenas como criar o arquivo.",
+    `O usuário pediu um arquivo ${FORMAT_LABELS[format]} real para download.`,
+    "A interface do JARVIS TEM suporte para materializar este arquivo localmente.",
+    "Produza o conteúdo final completo, pronto para conversão automática.",
+    "Use títulos, subtítulos, listas e tabelas em Markdown quando ajudarem.",
+    "Não alegue necessidade de Netlify, Vercel, S3 ou hospedagem para gerar o arquivo local.",
   ].join("\n");
 }
 
@@ -168,6 +183,15 @@ async function buildDocx(content: string): Promise<Blob> {
 }
 
 export async function downloadJarvisArtifact(draft: JarvisArtifactDraft): Promise<void> {
+  if (draft.format === "html") {
+    let html = draft.content.trim();
+    if (html.startsWith("```")) {
+      html = html.replace(/^```(?:html)?\s*/i, "").replace(/\s*```$/, "").trim();
+    }
+    triggerBlobDownload(new Blob([html], { type: "text/html;charset=utf-8" }), draft.fileName);
+    return;
+  }
+
   if (draft.format === "txt" || draft.format === "md") {
     const mime = draft.format === "md" ? "text/markdown;charset=utf-8" : "text/plain;charset=utf-8";
     triggerBlobDownload(new Blob([draft.content], { type: mime }), draft.fileName);
