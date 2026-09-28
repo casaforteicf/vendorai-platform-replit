@@ -1201,7 +1201,10 @@ function renderConstructionProposalLayout(args: {
     const row = scheduleRows.find((item) => item.id === group.id);
     const stageTotal = group.itens.reduce((sum, item) => sum + item.quantidade * item.valorUnitario, 0);
     const weight = total > 0 ? (stageTotal / total) * 100 : 0;
-    const imageUrl = presentation.imagensEtapas[group.id] || null;
+    const imageUrl =
+      presentation.imagensEtapas[group.id]
+      || (visualImages.length ? visualImages[(Math.max(1, group.ordem) - 1) % visualImages.length] : null)
+      || null;
     const financialMode = resolveProposalPresentationMode(presentation, group.id);
     const showTechnicalDetail = resolveProposalTechnicalDetail(presentation, group.id);
     const scopeRows = group.itens.map((item) => `
