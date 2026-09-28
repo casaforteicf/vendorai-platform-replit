@@ -7392,6 +7392,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           width: referencePlan.widthMeters,
                           height: referencePlan.depthMeters,
                         } : null}
+                        previewWalls={referenceTraceState === "ready" ? referenceTracePreview?.walls ?? [] : []}
+                        previewOpenings={referenceTraceState === "ready" ? referenceTracePreview?.openings ?? [] : []}
                         closedSpaces={closedSpaces}
                         selectedClosedSpaceId={selectedClosedSpaceId}
                         onSelectClosedSpace={(spaceId) => {
