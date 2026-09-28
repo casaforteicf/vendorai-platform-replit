@@ -1109,6 +1109,10 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
           typeof rawPresentation.mostrarFisicoFinanceiro === "boolean"
             ? rawPresentation.mostrarFisicoFinanceiro
             : undefined,
+        areaTotalConstruida:
+          Number.isFinite(Number(rawPresentation.areaTotalConstruida)) && Number(rawPresentation.areaTotalConstruida) > 0
+            ? Number(rawPresentation.areaTotalConstruida)
+            : undefined,
       }
     : null;
 
@@ -1164,6 +1168,7 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
       imagensEtapas?: Record<string, string>;
       mostrarCronogramaExecucao?: boolean;
       mostrarFisicoFinanceiro?: boolean;
+      areaTotalConstruida?: number;
       entradaPercentual?: number;
       amortizacaoEntradaPercentual?: number;
       mostrarAmortizacaoEntrada?: boolean;
@@ -1227,6 +1232,9 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
           : {}),
         ...(typeof bodyPresentation?.mostrarFisicoFinanceiro === "boolean"
           ? { mostrarFisicoFinanceiro: bodyPresentation.mostrarFisicoFinanceiro }
+          : {}),
+        ...(Number.isFinite(Number(bodyPresentation?.areaTotalConstruida)) && Number(bodyPresentation?.areaTotalConstruida) > 0
+          ? { areaTotalConstruida: Number(bodyPresentation.areaTotalConstruida) }
           : {}),
         ...(Number.isFinite(Number(bodyPresentation?.entradaPercentual))
           ? { entradaPercentual: Math.min(100, Math.max(0, Number(bodyPresentation.entradaPercentual))) }
