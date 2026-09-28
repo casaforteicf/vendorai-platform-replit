@@ -38,7 +38,6 @@ const ArqHubView = lazy(() => import('../arqhub/ArqHubView').then((m) => ({ defa
 const AIEnterpriseCore = lazy(() => import('./ai-enterprise/AIEnterpriseCore'))
 const ProjectHomeV2 = lazy(() => import('./project-experience/ProjectHomeV2').then((m) => ({ default: m.ProjectHomeV2 })))
 const SmartProjectModule = lazy(() => import('./modules/SmartProjectModule').then((m) => ({ default: m.SmartProjectModule })))
-const SmartRenderEngine = lazy(() => import('./smart-render-engine/SmartRenderEngine').then((m) => ({ default: m.SmartRenderEngine })))
 const SpecificationStudio = lazy(() => import('./specification-studio/SpecificationStudio').then((m) => ({ default: m.SpecificationStudio })))
 const ProductionStudio = lazy(() => import('./production-studio/ProductionStudio'))
 const ExecutiveBudgetStudio = lazy(() => import('./executive-budget-studio/ExecutiveBudgetStudio'))
@@ -80,7 +79,7 @@ const SystemConsolidationQAStudio = lazy(() => import('./system-consolidation-qa
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type ModuleId =
   | 'home'
-  | 'projeto' | 'biblioteca' | 'prompt' | 'renders' | 'cliente'
+  | 'projeto' | 'biblioteca' | 'prompt' | 'render' | 'renders' | 'cliente'
   | 'especificacao'
   | 'ai-review' | 'correcoes' | 'memoria' | 'config'
   | 'arqhub' | 'ai-intel' | 'ai-enterprise' | 'ai' | 'integracao-legado' | 'ecosystem' | 'knowledge' | 'office'
@@ -409,6 +408,22 @@ const CSS = `
   }
 `
 
+// ─── Real render route bridge ─────────────────────────────────────────────────
+// The experimental SmartRenderEngine still exists in the codebase, but it only
+// creates local UI versions. Tenant-facing render actions must use the real
+// RenderStudio route until the new Studio is wired to the production engine.
+function RenderStudioRouteBridge() {
+  useEffect(() => {
+    window.location.assign('/arch/render')
+  }, [])
+
+  return (
+    <div style={{ minHeight: 360, display: 'grid', placeItems: 'center', color: PHX.textSub }}>
+      Abrindo o Studio de Render…
+    </div>
+  )
+}
+
 // ─── Module renderer ──────────────────────────────────────────────────────────
 function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: ModuleId) => void) {
   switch (id) {
@@ -419,7 +434,8 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'specification':
     case 'especificacao-produto': return <SpecificationStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'prompt':        return <PromptPlaygroundModule/>
-    case 'renders':       return <SmartRenderEngine arqState={arqState} />
+    case 'render':
+    case 'renders':       return <RenderStudioRouteBridge />
     case 'ai-review':     return <AIReviewModule/>
     case 'correcoes':     return <AICorrectionsModule/>
     case 'memoria':       return <AIMemoryModule/>
