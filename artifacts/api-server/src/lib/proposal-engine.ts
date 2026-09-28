@@ -499,6 +499,7 @@ type ProposalPresentationConfig = {
   amortizacaoEntradaPercentual?: number;
   mostrarAmortizacaoEntrada?: boolean;
   mostrarPortalCliente?: boolean;
+  areaTotalConstruida?: number;
 };
 
 type PresentableProposalItem = {
@@ -510,6 +511,7 @@ type PresentableProposalItem = {
   etapaId?: string | null;
   etapaNome?: string | null;
   etapaOrdem?: number | null;
+  unidade?: string | null;
 };
 
 function normalizeProposalPresentation(
@@ -530,6 +532,9 @@ function normalizeProposalPresentation(
     amortizacaoEntradaPercentual: Math.max(0, Math.min(100, Number(value?.amortizacaoEntradaPercentual ?? value?.entradaPercentual ?? 0))),
     mostrarAmortizacaoEntrada: value?.mostrarAmortizacaoEntrada ?? true,
     mostrarPortalCliente: value?.mostrarPortalCliente ?? true,
+    areaTotalConstruida: Number.isFinite(Number(value?.areaTotalConstruida)) && Number(value?.areaTotalConstruida) > 0
+      ? Number(value?.areaTotalConstruida)
+      : 0,
   };
 }
 
@@ -636,12 +641,13 @@ function buildProposalScheduleRows<T extends PresentableProposalItem>(
     const predecessor = dependencyId ? dateByStage.get(dependencyId) : undefined;
     const type = config.tipoDependencia ?? "FS";
     const lagDays = Number(config.defasagemDias ?? 0);
-    const start = config.inicioAutomatico === false && explicitStart
-      ? explicitStart
-      : (index === 0 ? explicitStart ?? globalStart : null)
-        ?? proposalResolveDependencyStart(predecessor, type, lagDays, duration)
-        ?? explicitStart
-        ?? globalStart;
+    // A data explicitamente cadastrada no orçamento é soberana.
+    // Isso preserva etapas paralelas; dependências só calculam a data quando
+    // não existe início definido pelo usuário.
+    const start = explicitStart
+      ?? (index === 0 ? globalStart : null)
+      ?? proposalResolveDependencyStart(predecessor, type, lagDays, duration)
+      ?? globalStart;
     const end = config.inicioAutomatico === false && explicitEnd
       ? explicitEnd
       : start ? proposalAddDays(start, duration - 1) : explicitEnd;
@@ -701,11 +707,10 @@ function buildProposalScheduleRows<T extends PresentableProposalItem>(
       const defaultDependency = index > 0 ? all[index - 1]?.id : undefined;
       const dependencyId = phase.dependeDeFaseId ?? defaultDependency;
       const predecessor = dependencyId ? phaseDateMap.get(dependencyId) : undefined;
-      const start = index === 0
-        ? explicitStart ?? row.start
-        : proposalResolveDependencyStart(predecessor, phase.tipoDependencia ?? "FS", Number(phase.defasagemDias ?? 0), duration)
-          ?? explicitStart
-          ?? row.start;
+      const start = explicitStart
+        ?? (index === 0 ? row.start : null)
+        ?? proposalResolveDependencyStart(predecessor, phase.tipoDependencia ?? "FS", Number(phase.defasagemDias ?? 0), duration)
+        ?? row.start;
       const end = explicitEnd ?? (start ? proposalAddDays(start, duration - 1) : row.end);
       phaseDateMap.set(phase.id, { start, end });
       return {
@@ -1041,12 +1046,23 @@ function renderConstructionProposalLayout(args: {
     </div>`;
 
   const totalPhases = scheduleRows.reduce((sum, row) => sum + (row.phases?.length ?? 0), 0);
+  const inferredBuiltArea = groupedItems
+    .flatMap((group) => group.itens)
+    .find((item) => {
+      const name = String(item.nome ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+      const unit = String(item.unidade ?? "").toLowerCase().replace("²", "2");
+      return unit === "m2" && /(limpeza final|limpeza.*pos.?obra|area total construida)/.test(name);
+    });
+  const areaTotalConstruida = presentation.areaTotalConstruida > 0
+    ? presentation.areaTotalConstruida
+    : Number(inferredBuiltArea?.quantidade ?? 0);
   const entryValue = total * (presentation.entradaPercentual / 100);
   const contractBalanceAfterEntry = Math.max(0, total - entryValue);
 
   const summaryCards = [
     { label: "Valor global", value: fmtBRL(total) },
     ...(estimatedDays > 0 ? [{ label: "Prazo estimado", value: `${estimatedDays} dias` }] : []),
+    ...(areaTotalConstruida > 0 ? [{ label: "Área total construída", value: `${areaTotalConstruida.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²` }] : []),
     { label: "Etapas / fases", value: totalPhases > 0 ? `${groupedItems.length} / ${totalPhases}` : String(groupedItems.length) },
     ...(presentation.entradaPercentual > 0 ? [{ label: "Entrada / adiantamento", value: `${presentation.entradaPercentual.toFixed(2)}% · ${fmtBRL(entryValue)}` }] : []),
     ...(presentation.entradaPercentual > 0 ? [{ label: "Saldo contratual após entrada", value: fmtBRL(contractBalanceAfterEntry) }] : []),
@@ -1118,7 +1134,7 @@ function renderConstructionProposalLayout(args: {
     <section class="page stage-page">
       ${header("ORÇAMENTO POR ETAPAS", `Etapa ${group.ordem} · ${group.nome}`)}
       <h1 class="stage-heading">Etapa ${group.ordem} · ${escapeProposalText(group.nome)}</h1>
-      ${imageUrl && builderModuleEnabled("imagem_por_etapa")
+      ${imageUrl
         ? `<div class="stage-image"><img src="${escapeProposalText(imageUrl)}" alt="${escapeProposalText(group.nome)}" onerror="this.parentElement.style.display='none'" /></div>`
         : ""}
       <div class="stage-metrics">
@@ -2084,7 +2100,6 @@ ${orcamento && (builderModuleEnabled("etapas_orcamento") || builderModuleEnabled
   </tr>`).join("");
   const physicalFinancialRows = scheduleRows.map((row) => `<tr>
     <td><strong>Etapa ${row.ordem}</strong> · ${escapeProposalText(row.nome || "Execução")}</td>
-    <td>${row.start && row.end ? `${proposalFormatDate(row.start)} a ${proposalFormatDate(row.end)}` : row.duration ? `${row.duration} dias` : "A definir"}</td>
     <td class="r">${row.physicalPercent.toFixed(2)}%</td>
     <td class="r">${row.financialPercent.toFixed(2)}%</td>
     <td class="r">${fmtBRL(row.value)}</td>
@@ -2098,7 +2113,7 @@ ${orcamento && (builderModuleEnabled("etapas_orcamento") || builderModuleEnabled
 <div class="page">
   ${docHdr(`Cronograma · ${clientName || meta.clientName || "Cliente"}`)}
   <div class="sec-label">Planejamento da execução</div>
-  <h2>Cronograma e físico-financeiro</h2>
+  <h2>Planejamento da obra</h2>
   <div class="schedule-intro">
     ${presentation.previsaoInicio ? `<strong>Previsão de início:</strong> ${proposalFormatDate(presentation.previsaoInicio)}.` : "<strong>Previsão de início:</strong> a definir."}
     Cada etapa possui sua própria data de início e duração. Etapas podem ocorrer em paralelo e as cobranças do mesmo mês são somadas automaticamente.
