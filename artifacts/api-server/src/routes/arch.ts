@@ -6722,9 +6722,31 @@ router.post("/arch/partners", authenticate, async (req, res) => {
   const parsed = insertArchPartnerSchema.safeParse({ ...req.body, tenantId: tid });
   if (!parsed.success) return res.status(400).json({ error: String(parsed.error) });
 
+  let connectedTenantId = parsed.data.connectedTenantId ?? null;
+
+  if (connectedTenantId) {
+    const [target] = await db.select({ id: tenantsTable.id }).from(tenantsTable)
+      .where(and(eq(tenantsTable.id, connectedTenantId), eq(tenantsTable.status, "active"), ne(tenantsTable.id, tid)))
+      .limit(1);
+    if (!target) return res.status(422).json({ error: "Tenant VendorAI informado não está disponível para conexão." });
+  } else {
+    const [matched] = await db.select({ id: tenantsTable.id }).from(tenantsTable)
+      .where(and(
+        eq(tenantsTable.status, "active"),
+        ne(tenantsTable.id, tid),
+        sql`lower(trim(${tenantsTable.name})) = lower(trim(${parsed.data.nome}))`,
+      ))
+      .limit(1);
+    connectedTenantId = matched?.id ?? null;
+  }
+
   const [created] = await db
     .insert(archPartnersTable)
-    .values(parsed.data)
+    .values({
+      ...parsed.data,
+      connectedTenantId,
+      partnerSource: connectedTenantId ? "tenant" : "external",
+    })
     .returning();
 
   return res.status(201).json(created);
