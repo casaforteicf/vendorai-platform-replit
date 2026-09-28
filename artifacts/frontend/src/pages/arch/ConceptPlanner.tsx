@@ -1880,6 +1880,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const safeWallFirstFloors = Array.isArray(wallFirstFloors) ? wallFirstFloors : [];
   const safeSpaceProfiles = Array.isArray(spaceProfiles) ? spaceProfiles : [];
   const safeObjects = Array.isArray(objects) ? objects : [];
+  // Etapa 1 é exclusivamente o terreno. Mesmo que um rascunho antigo já tenha
+  // planta salva, ela fica oculta até o usuário avançar para Casa/Ajustes.
+  const terrainOnly = editorView === "plan" && editorLibraryTab === "site";
 
   const selected = safeRooms.find((r) => r.id === selectedId) ?? null;
   const selectedObject = safeObjects.find((object) => object.id === selectedObjectId) ?? null;
@@ -7440,11 +7443,11 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         `}
                       >
                       <ConceptPlan2D
-                        rooms={visibleRooms}
+                        rooms={terrainOnly ? [] : visibleRooms}
                         lotWidth={lotWidth}
                         lotDepth={lotDepth}
                         activeFloor={activeFloor}
-                        geometry={geometry}
+                        geometry={terrainOnly ? { ...geometry, walls: [], openings: [] } : geometry}
                         referenceImage={referencePlan?.kind === "image" ? {
                           url: referencePlan.url,
                           opacity: referencePlan.opacity,
@@ -7455,7 +7458,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         } : null}
                         previewWalls={referenceTraceState === "ready" ? referenceTracePreview?.walls ?? [] : []}
                         previewOpenings={referenceTraceState === "ready" ? referenceTracePreview?.openings ?? [] : []}
-                        closedSpaces={closedSpaces}
+                        closedSpaces={terrainOnly ? [] : closedSpaces}
                         selectedClosedSpaceId={selectedClosedSpaceId}
                         onSelectClosedSpace={(spaceId) => {
                           if (spaceId && paintTool?.target === "floor") {
@@ -7515,7 +7518,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           closeLibraryOnMobile();
                         }}
                         onWallMove={moveWallById}
-                        customWalls={safeCustomWalls.filter((wall) => wall.floor === activeFloor)}
+                        customWalls={terrainOnly ? [] : safeCustomWalls.filter((wall) => wall.floor === activeFloor)}
                         selectedCustomWallId={selectedCustomWallId}
                         onCreateCustomWall={addCustomWall}
                         onSelectCustomWall={(wallId) => {
@@ -7539,7 +7542,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         onEditStart={beginRoomEdit}
                         onEditEnd={endRoomEdit}
                         interactionMode={interactionMode}
-                        objects={safeObjects}
+                        objects={terrainOnly ? [] : safeObjects}
                         previewObjects={
                           furnishLayoutSpaceId === selectedClosedSpaceId
                             ? (furnishLayoutOptions.find((item) => item.id === previewFurnishLayoutId)?.objects ?? [])
