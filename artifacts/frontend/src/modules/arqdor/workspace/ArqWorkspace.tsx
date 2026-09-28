@@ -143,7 +143,7 @@ const FLOW_STEPS: FlowStep[] = [
   { id:'especificar', icon:'📋', label:'Especificar', sublabel:'Memorial',        primary:'especificacao', extras:[],                                   color: '#16a34a'  },
   { id:'apresentar',  icon:'👤', label:'Apresentar',  sublabel:'Portal cliente',  primary:'cliente',       extras:[],                                   color: PHX.cyan   },
   { id:'orcamento',   icon:'💰', label:'Orçamento',   sublabel:'Budget executivo',primary:'orcamento',     extras:['orcamento-pro'],                    color: '#0369a1'  },
-  { id:'entregar',    icon:'📦', label:'Entregar',    sublabel:'Finalizar',       primary:'office',        extras:['ecosystem','knowledge','arqhub'],    color: '#0d9488'  },
+  { id:'entregar',    icon:'📦', label:'Entregar',    sublabel:'Finalizar',       primary:'office',        extras:[],                                   color: '#0d9488'  },
 ]
 
 // Legado — mantido para keyboard shortcuts e command palette
