@@ -7,6 +7,8 @@ describe("JARVIS artifact request detection", () => {
     expect(detectJarvisArtifactRequest("Converta o anexo para Word")).toBe("docx");
     expect(detectJarvisArtifactRequest("Gere um PDF com esse relatório")).toBe("pdf");
     expect(detectJarvisArtifactRequest("Exporte isso em CSV")).toBe("csv");
+    expect(detectJarvisArtifactRequest("Gere um HTML completo desta proposta")).toBe("html");
+    expect(detectJarvisArtifactRequest("Quero um arquivo HTML para baixar")).toBe("html");
   });
 
   it("não dispara download para menções sem intenção de gerar arquivo", () => {
