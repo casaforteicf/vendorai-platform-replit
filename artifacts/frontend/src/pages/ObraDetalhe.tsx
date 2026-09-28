@@ -1161,23 +1161,130 @@ function Cronograma({ tenantId, obraId, etapas, portalToken }: { tenantId: strin
 function Medicoes({ tenantId, obraId, etapas }: { tenantId: string; obraId: string; etapas: ObraEtapa[] }) {
   const qc = useQueryClient();
   const [selectedEtapa, setSelectedEtapa] = useState(etapas[0]?.id ?? "");
+  const [selectedFase, setSelectedFase] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [form, setForm] = useState({ data: format(new Date(), "yyyy-MM-dd"), percentualNovo: "", observacao: "" });
+  const [phaseSubmitting, setPhaseSubmitting] = useState(false);
+  const [lastFinancialResult, setLastFinancialResult] = useState<null | {
+    valorBruto: number;
+    amortizacaoEntrada: number;
+    valorLiquido: number;
+    saldoEntradaApos: number;
+  }>(null);
 
-  const { data: medicoes = [] } = useListObraEtapaMedicoes(tenantId, obraId, selectedEtapa, {
-    query: { enabled: !!selectedEtapa, queryKey: getListObraEtapaMedicoesQueryKey(tenantId, obraId, selectedEtapa) },
+  const authHeaders = () => {
+    const token = localStorage.getItem("vendorai_token");
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
+
+  const { data: fases = [], isLoading: loadingFases } = useQuery({
+    queryKey: ["obra-etapa-fases", tenantId, obraId, selectedEtapa],
+    enabled: !!selectedEtapa,
+    queryFn: async () => {
+      const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/etapas/${selectedEtapa}/fases`, {
+        headers: authHeaders(),
+      });
+      if (!res.ok) throw new Error("Erro ao carregar fases da etapa.");
+      return await res.json() as Array<{
+        id: string;
+        nome: string;
+        ordem: number;
+        status: string;
+        percentualEtapa: string | number;
+        percentualExecutado: string | number;
+        custoPrevisto: string | number;
+        dataInicioPrevista?: string | null;
+        dataFimPrevista?: string | null;
+      }>;
+    },
+  });
+
+  useEffect(() => {
+    if (fases.length === 0) {
+      setSelectedFase("");
+      return;
+    }
+    if (!fases.some((fase) => fase.id === selectedFase)) {
+      setSelectedFase(fases[0].id);
+    }
+  }, [fases, selectedFase]);
+
+  const { data: medicoesEtapa = [] } = useListObraEtapaMedicoes(tenantId, obraId, selectedEtapa, {
+    query: {
+      enabled: !!selectedEtapa && fases.length === 0,
+      queryKey: getListObraEtapaMedicoesQueryKey(tenantId, obraId, selectedEtapa),
+    },
   });
   const { mutateAsync: createMedicao, isPending } = useCreateObraEtapaMedicao();
 
+  const { data: medicoesFase = [] } = useQuery({
+    queryKey: ["obra-fase-medicoes", tenantId, obraId, selectedFase],
+    enabled: !!selectedFase,
+    queryFn: async () => {
+      const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/fases/${selectedFase}/medicoes`, {
+        headers: authHeaders(),
+      });
+      if (!res.ok) throw new Error("Erro ao carregar medições da fase.");
+      return await res.json() as Array<{
+        id: string;
+        data: string;
+        percentualAnterior: string | number;
+        percentualNovo: string | number;
+        valorBruto: string | number;
+        amortizacaoEntrada: string | number;
+        valorLiquido: string | number;
+        saldoEntradaApos: string | number;
+        observacao?: string | null;
+      }>;
+    },
+  });
+
+  const currentEtapa = etapas.find((e) => e.id === selectedEtapa);
+  const currentFase = fases.find((fase) => fase.id === selectedFase);
+  const usaFases = fases.length > 0;
+  const progressoAtual = usaFases
+    ? Number(currentFase?.percentualExecutado ?? 0)
+    : parseFloat(currentEtapa?.percentualExecutado ?? "0");
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
+    setLastFinancialResult(null);
+
+    if (usaFases && selectedFase) {
+      setPhaseSubmitting(true);
+      try {
+        const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/fases/${selectedFase}/medicoes`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify({
+            data: form.data,
+            percentualNovo: Number(form.percentualNovo),
+            observacao: form.observacao || undefined,
+          }),
+        });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body?.error ?? "Erro ao registrar medição da fase.");
+        setLastFinancialResult(body.resumo ?? null);
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: ["obra-fase-medicoes", tenantId, obraId, selectedFase] }),
+          qc.invalidateQueries({ queryKey: ["obra-etapa-fases", tenantId, obraId, selectedEtapa] }),
+          qc.invalidateQueries({ queryKey: getListObraEtapasQueryKey(tenantId, obraId) }),
+        ]);
+        setForm({ data: format(new Date(), "yyyy-MM-dd"), percentualNovo: "", observacao: "" });
+      } finally {
+        setPhaseSubmitting(false);
+      }
+      return;
+    }
+
     await createMedicao({ tenantId, obraId, etapaId: selectedEtapa, data: form as any });
     await qc.invalidateQueries({ queryKey: getListObraEtapasQueryKey(tenantId, obraId) });
+    await qc.invalidateQueries({ queryKey: getListObraEtapaMedicoesQueryKey(tenantId, obraId, selectedEtapa) });
     setAddOpen(false);
     setForm({ data: format(new Date(), "yyyy-MM-dd"), percentualNovo: "", observacao: "" });
   }
 
-  const currentEtapa = etapas.find((e) => e.id === selectedEtapa);
+  const medicoes = usaFases ? medicoesFase : medicoesEtapa;
 
   return (
     <div className="space-y-4">
@@ -1188,69 +1295,174 @@ function Medicoes({ tenantId, obraId, etapas }: { tenantId: string; obraId: stri
         </div>
       ) : (
         <>
-          <div className="flex items-center gap-3 flex-wrap">
-            <select className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm min-w-48" value={selectedEtapa} onChange={(e) => setSelectedEtapa(e.target.value)}>
-              {etapas.map((e) => <option key={e.id} value={e.id}>{e.nome} — {parseFloat(e.percentualExecutado).toFixed(1)}%</option>)}
-            </select>
-            <Dialog open={addOpen} onOpenChange={setAddOpen}>
+          <div className="flex items-end gap-3 flex-wrap">
+            <div className="space-y-1">
+              <Label className="text-xs">Etapa</Label>
+              <select
+                className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm min-w-56"
+                value={selectedEtapa}
+                onChange={(e) => {
+                  setSelectedEtapa(e.target.value);
+                  setSelectedFase("");
+                  setLastFinancialResult(null);
+                }}
+              >
+                {etapas.map((e) => <option key={e.id} value={e.id}>{e.nome} — {parseFloat(e.percentualExecutado).toFixed(1)}%</option>)}
+              </select>
+            </div>
+
+            {loadingFases ? (
+              <div className="flex h-9 items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Carregando fases…</div>
+            ) : usaFases ? (
+              <div className="space-y-1">
+                <Label className="text-xs">Fase a medir</Label>
+                <select
+                  className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm min-w-64"
+                  value={selectedFase}
+                  onChange={(e) => {
+                    setSelectedFase(e.target.value);
+                    setLastFinancialResult(null);
+                  }}
+                >
+                  {fases.map((fase) => (
+                    <option key={fase.id} value={fase.id}>
+                      {fase.nome} — {Number(fase.percentualExecutado ?? 0).toFixed(1)}%
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+
+            <Dialog open={addOpen} onOpenChange={(open) => {
+              setAddOpen(open);
+              if (!open) setLastFinancialResult(null);
+            }}>
               <DialogTrigger asChild>
-                <Button size="sm" className="gap-2" disabled={!selectedEtapa}><Plus className="h-4 w-4" />Registrar medição</Button>
+                <Button size="sm" className="gap-2" disabled={!selectedEtapa || (usaFases && !selectedFase)}>
+                  <Plus className="h-4 w-4" />Registrar medição
+                </Button>
               </DialogTrigger>
               <DialogContent className="w-full max-w-lg max-h-[90vh] overflow-y-auto">
-                <DialogHeader><DialogTitle>Nova medição — {currentEtapa?.nome}</DialogTitle></DialogHeader>
+                <DialogHeader>
+                  <DialogTitle>
+                    Nova medição — {currentEtapa?.nome}{currentFase ? ` · ${currentFase.nome}` : ""}
+                  </DialogTitle>
+                </DialogHeader>
                 <form onSubmit={handleCreate} className="space-y-4">
                   <div className="p-3 rounded-lg bg-muted/50 text-sm">
-                    Progresso atual: <strong>{parseFloat(currentEtapa?.percentualExecutado ?? "0").toFixed(1)}%</strong>
+                    <div>Progresso já medido: <strong>{progressoAtual.toFixed(1)}%</strong></div>
+                    {currentFase ? (
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        Valor contratado da fase: <strong>{Number(currentFase.custoPrevisto ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</strong>
+                        {" · "}{Number(currentFase.percentualEtapa ?? 0).toFixed(2)}% da etapa
+                      </div>
+                    ) : null}
                   </div>
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="space-y-2">
                       <Label>Data *</Label>
                       <Input type="date" required value={form.data} onChange={(e) => setForm((f) => ({ ...f, data: e.target.value }))} />
                     </div>
                     <div className="space-y-2">
-                      <Label>Novo % executado *</Label>
-                      <Input type="number" required min="0" max="100" step="0.1" value={form.percentualNovo} onChange={(e) => setForm((f) => ({ ...f, percentualNovo: e.target.value }))} />
+                      <Label>Novo % acumulado *</Label>
+                      <Input
+                        type="number"
+                        required
+                        min={progressoAtual}
+                        max="100"
+                        step="0.1"
+                        value={form.percentualNovo}
+                        onChange={(e) => setForm((f) => ({ ...f, percentualNovo: e.target.value }))}
+                      />
+                      <p className="text-[11px] text-muted-foreground">O sistema cobra somente o avanço adicional desde a última medição.</p>
                     </div>
                   </div>
+
                   <div className="space-y-2">
                     <Label>Observações</Label>
                     <Textarea rows={3} value={form.observacao} onChange={(e) => setForm((f) => ({ ...f, observacao: e.target.value }))} />
                   </div>
+
+                  {lastFinancialResult ? (
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                      <p className="mb-2 text-sm font-semibold text-emerald-800">Medição registrada</p>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div><span className="text-muted-foreground">Valor bruto</span><p className="font-semibold">{lastFinancialResult.valorBruto.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p></div>
+                        <div><span className="text-muted-foreground">Amortização entrada</span><p className="font-semibold text-amber-700">-{lastFinancialResult.amortizacaoEntrada.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p></div>
+                        <div><span className="text-muted-foreground">Valor líquido</span><p className="font-semibold text-indigo-700">{lastFinancialResult.valorLiquido.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p></div>
+                        <div><span className="text-muted-foreground">Saldo da entrada</span><p className="font-semibold">{lastFinancialResult.saldoEntradaApos.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p></div>
+                      </div>
+                    </div>
+                  ) : null}
+
                   <div className="flex justify-end gap-2">
-                    <Button type="button" variant="outline" onClick={() => setAddOpen(false)}>Cancelar</Button>
-                    <Button type="submit" disabled={isPending}>{isPending ? "Salvando..." : "Registrar"}</Button>
+                    <Button type="button" variant="outline" onClick={() => setAddOpen(false)}>Fechar</Button>
+                    <Button type="submit" disabled={isPending || phaseSubmitting || !form.percentualNovo}>
+                      {(isPending || phaseSubmitting) ? "Salvando..." : "Registrar"}
+                    </Button>
                   </div>
                 </form>
               </DialogContent>
             </Dialog>
           </div>
 
+          {usaFases ? (
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {fases.map((fase) => (
+                <button
+                  key={fase.id}
+                  type="button"
+                  onClick={() => setSelectedFase(fase.id)}
+                  className={`rounded-lg border p-3 text-left transition-colors ${selectedFase === fase.id ? "border-indigo-300 bg-indigo-50" : "bg-background hover:bg-muted/30"}`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold">{fase.nome}</p>
+                    <Badge variant="outline">{Number(fase.percentualExecutado ?? 0).toFixed(0)}%</Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {Number(fase.percentualEtapa ?? 0).toFixed(2)}% da etapa · {Number(fase.custoPrevisto ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                  </p>
+                  <Progress value={Number(fase.percentualExecutado ?? 0)} className="mt-2 h-1.5" />
+                </button>
+              ))}
+            </div>
+          ) : null}
+
           {medicoes.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground text-sm">Nenhuma medição registrada para esta etapa</div>
+            <div className="text-center py-8 text-muted-foreground text-sm">
+              Nenhuma medição registrada para {usaFases ? "esta fase" : "esta etapa"}
+            </div>
           ) : (
             <Card>
-              <CardContent className="p-0">
-                <table className="w-full text-sm">
+              <CardContent className="p-0 overflow-x-auto">
+                <table className="w-full min-w-[760px] text-sm">
                   <thead>
                     <tr className="border-b bg-muted/30">
                       <th className="text-left px-4 py-3 font-medium text-muted-foreground">Data</th>
                       <th className="text-right px-4 py-3 font-medium text-muted-foreground">Anterior</th>
                       <th className="text-right px-4 py-3 font-medium text-muted-foreground">Novo</th>
                       <th className="text-right px-4 py-3 font-medium text-muted-foreground">Variação</th>
+                      {usaFases ? <th className="text-right px-4 py-3 font-medium text-muted-foreground">Bruto</th> : null}
+                      {usaFases ? <th className="text-right px-4 py-3 font-medium text-muted-foreground">Amortização</th> : null}
+                      {usaFases ? <th className="text-right px-4 py-3 font-medium text-muted-foreground">Líquido</th> : null}
                       <th className="text-left px-4 py-3 font-medium text-muted-foreground">Observações</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {medicoes.map((m) => {
-                      const delta = parseFloat(m.percentualNovo) - parseFloat(m.percentualAnterior);
+                    {medicoes.map((m: any) => {
+                      const anterior = parseFloat(String(m.percentualNovo != null && m.percentualAnterior != null ? m.percentualAnterior : 0));
+                      const novo = parseFloat(String(m.percentualNovo ?? 0));
+                      const delta = novo - anterior;
                       return (
                         <tr key={m.id} className="border-b hover:bg-muted/20">
                           <td className="px-4 py-3">{fmt(m.data)}</td>
-                          <td className="px-4 py-3 text-right font-mono text-muted-foreground">{parseFloat(m.percentualAnterior).toFixed(1)}%</td>
-                          <td className="px-4 py-3 text-right font-mono font-semibold">{parseFloat(m.percentualNovo).toFixed(1)}%</td>
-                          <td className={`px-4 py-3 text-right font-mono text-xs ${delta >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                            {delta >= 0 ? "+" : ""}{delta.toFixed(1)}%
-                          </td>
+                          <td className="px-4 py-3 text-right font-mono text-muted-foreground">{anterior.toFixed(1)}%</td>
+                          <td className="px-4 py-3 text-right font-mono font-semibold">{novo.toFixed(1)}%</td>
+                          <td className="px-4 py-3 text-right font-mono text-xs text-emerald-600">+{delta.toFixed(1)}%</td>
+                          {usaFases ? <td className="px-4 py-3 text-right">{Number(m.valorBruto ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td> : null}
+                          {usaFases ? <td className="px-4 py-3 text-right text-amber-700">-{Number(m.amortizacaoEntrada ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td> : null}
+                          {usaFases ? <td className="px-4 py-3 text-right font-semibold">{Number(m.valorLiquido ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td> : null}
                           <td className="px-4 py-3 text-muted-foreground">{m.observacao ?? "—"}</td>
                         </tr>
                       );
