@@ -351,6 +351,19 @@ type ReferencePlan = {
   fitMode?: "lot";
 };
 
+type ProjectSourceFile = {
+  id: string;
+  storagePath: string;
+  url: string;
+  originalName: string;
+  mimeType: string;
+  extension: string;
+  kind: "bim" | "cad";
+  uploadedAt: string;
+  status: "stored_only";
+  parserStatus: "pending_ifc_parser" | "conversion_required";
+};
+
 type ConceptDraftResponse = {
   id: string;
   status?: string;
@@ -371,6 +384,7 @@ type ConceptDraftResponse = {
     wallMaterials?: Record<string, string>;
     savedTourPoints?: SavedTourPoint[];
     referencePlan?: ReferencePlan;
+    sourceFiles?: ProjectSourceFile[];
     sitePlacement?: SitePlacement;
     projectBrief?: ProjectBriefSnapshot;
     facadeDesign?: FacadeDesignState;
@@ -893,6 +907,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const conceptIdRef = useRef<string | null>(null);
   const dxfImportInputRef = useRef<HTMLInputElement | null>(null);
   const referencePlanInputRef = useRef<HTMLInputElement | null>(null);
+  const sourceFileInputRef = useRef<HTMLInputElement | null>(null);
   const navigatingAwayRef = useRef(false);
   const creatingConceptRef = useRef<Promise<string | null> | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "loading" | "saving" | "saved" | "error">("loading");
@@ -918,6 +933,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [referencePlan, setReferencePlan] = useState<ReferencePlan | null>(null);
   const [referencePlanState, setReferencePlanState] = useState<"idle" | "uploading" | "error" | "success">("idle");
   const [referencePlanMessage, setReferencePlanMessage] = useState<string | null>(null);
+  const [sourceFiles, setSourceFiles] = useState<ProjectSourceFile[]>([]);
+  const [sourceFileState, setSourceFileState] = useState<"idle" | "uploading" | "error" | "success">("idle");
+  const [sourceFileMessage, setSourceFileMessage] = useState<string | null>(null);
   const wallFirstActive = (Array.isArray(wallFirstFloors) ? wallFirstFloors : []).includes(activeFloor);
   const [modelSearch, setModelSearch] = useState("");
   const [modelCategory, setModelCategory] = useState<"todos" | "terreas" | "sobrados" | "lazer">("todos");
@@ -1323,6 +1341,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         setWallMaterials(draft.configuration?.wallMaterials && typeof draft.configuration.wallMaterials === "object" ? draft.configuration.wallMaterials : {});
         setSavedTourPoints(Array.isArray(draft.configuration?.savedTourPoints) ? draft.configuration.savedTourPoints : []);
         setReferencePlan(draft.configuration?.referencePlan ?? null);
+        setSourceFiles(Array.isArray(draft.configuration?.sourceFiles) ? draft.configuration.sourceFiles : []);
         setSitePlacement(migrateLegacySitePlacement(draft.configuration?.sitePlacement));
         setProjectBrief(draft.configuration?.projectBrief ?? null);
         setRooms(loadedRooms);
@@ -1384,6 +1403,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         wallMaterials,
         savedTourPoints: savedTourPointsOverride ?? savedTourPoints,
         referencePlan: referencePlan ?? undefined,
+        sourceFiles,
         sitePlacement,
         projectBrief: nextProjectBrief ?? undefined,
         facadeDesign: nextFacadeDesign,
@@ -3835,6 +3855,39 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       setHandoffError(message);
       setHandoffState("error");
       return null;
+    }
+  };
+
+  const uploadProjectSourceFile = async (file: File) => {
+    if (sourceFileState === "uploading") return;
+    setSourceFileState("uploading");
+    setSourceFileMessage(null);
+    try {
+      const id = await saveConcept(4);
+      if (!id) throw new Error("Não foi possível salvar o pré-projeto antes do upload.");
+      const form = new FormData();
+      form.append("file", file);
+      const token = typeof window !== "undefined" ? localStorage.getItem("vendorai_token") : null;
+      const response = await fetch(`/api/arch/concept-projects/${encodeURIComponent(id)}/source-file`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: form,
+      });
+      const payload = await response.json().catch(() => ({})) as ProjectSourceFile & { error?: string };
+      if (!response.ok || !payload.id) throw new Error(payload.error ?? "Não foi possível salvar o arquivo BIM/CAD.");
+      setSourceFiles((current) => [...current.filter((item) => item.id !== payload.id), payload].slice(-10));
+      setSourceFileState("success");
+      setSourceFileMessage(
+        payload.extension === "ifc"
+          ? "IFC vinculado ao projeto. O arquivo está preservado e aguarda conexão com o parser/viewer BIM."
+          : `${payload.extension.toUpperCase()} vinculado ao projeto. A conversão para geometria editável será feita pela camada de interoperabilidade.`,
+      );
+      window.setTimeout(() => setSourceFileState("idle"), 5000);
+    } catch (error) {
+      setSourceFileState("error");
+      setSourceFileMessage(error instanceof Error ? error.message : "Falha ao enviar arquivo BIM/CAD.");
+    } finally {
+      if (sourceFileInputRef.current) sourceFileInputRef.current.value = "";
     }
   };
 
@@ -8154,6 +8207,26 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     <Camera className="h-4 w-4" />
                     {referencePlanState === "uploading" ? "Enviando referência..." : referencePlan ? "Trocar referência" : "Imagem / PDF"}
                   </button>
+                  <input
+                    ref={sourceFileInputRef}
+                    type="file"
+                    accept=".ifc,.dwg,.rvt,.skp"
+                    className="hidden"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) void uploadProjectSourceFile(file);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => sourceFileInputRef.current?.click()}
+                    disabled={sourceFileState === "uploading" || Boolean(projectMaster)}
+                    className="inline-flex items-center gap-2 rounded-xl border bg-background px-4 py-2.5 text-sm font-semibold disabled:opacity-50"
+                    title={projectMaster ? "Crie uma revisão antes de anexar nova fonte BIM/CAD." : "Anexar IFC, DWG, RVT ou SKP ao projeto"}
+                  >
+                    <Box className="h-4 w-4" />
+                    {sourceFileState === "uploading" ? "Enviando BIM/CAD..." : "BIM / CAD"}
+                  </button>
                   {archProjetoId && (
                     <button
                       type="button"
@@ -8189,6 +8262,32 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     <a href={referencePlan.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-orange-600 hover:underline">
                       Abrir arquivo
                     </a>
+                  </div>
+                )}
+                {sourceFileMessage && (
+                  <div className={sourceFileState === "error"
+                    ? "mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"
+                    : "mt-3 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-800"}
+                  >
+                    {sourceFileMessage}
+                  </div>
+                )}
+                {sourceFiles.length > 0 && (
+                  <div className="mt-3 space-y-2 rounded-xl border bg-muted/20 p-3 text-xs">
+                    <div className="font-semibold">Arquivos BIM/CAD vinculados</div>
+                    {sourceFiles.slice().reverse().map((source) => (
+                      <div key={source.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-background px-3 py-2">
+                        <div className="min-w-0">
+                          <div className="truncate font-semibold">{source.originalName}</div>
+                          <div className="text-muted-foreground">
+                            {source.extension.toUpperCase()} · {source.parserStatus === "pending_ifc_parser" ? "aguardando parser BIM" : "aguardando conversão"}
+                          </div>
+                        </div>
+                        <a href={source.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-orange-600 hover:underline">
+                          Abrir
+                        </a>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
