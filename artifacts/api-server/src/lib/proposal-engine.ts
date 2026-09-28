@@ -1910,7 +1910,6 @@ ${interactive ? `
   <p class="summary-lead">Esta proposta reúne o investimento, o escopo contratado, o planejamento executivo e as condições comerciais em uma apresentação objetiva. O orçamento selecionado permanece como fonte de verdade para valores e serviços.</p>
   <div class="metrics">${summaryCardsHtml}</div>
   ${valuePropositionHtml}
-  </div>
   ${footer()}
 </section>
 
@@ -1956,6 +1955,44 @@ ${(builderModuleEnabled("cronograma") || builderModuleEnabled("fisico_financeiro
   ` : ""}
   ${footer()}
 </section>
+${interactive ? `
+<section id="aceite-proposta" class="web-accept">
+  <h2>Aprovar esta proposta</h2>
+  <p>O aceite registra esta versão como referência comercial. Qualquer alteração posterior deve ocorrer em uma nova revisão.</p>
+  <div class="web-accept-card">
+    <div class="web-accept-grid">
+      <input id="web-accept-name" placeholder="Nome completo" autocomplete="name" />
+      <input id="web-accept-doc" placeholder="CPF / CNPJ" />
+    </div>
+    <button id="web-accept-btn" type="button">Aprovar proposta</button>
+    <div id="web-accept-message"></div>
+  </div>
+</section>
+<script>
+(function(){
+  var btn=document.getElementById("web-accept-btn");
+  if(!btn)return;
+  btn.addEventListener("click",async function(){
+    var match=window.location.pathname.match(/\\/public\\/generated-proposals\\/([^/]+)\\/html/);
+    if(!match){document.getElementById("web-accept-message").textContent="Abra pelo link público exclusivo para registrar o aceite.";return;}
+    var id=decodeURIComponent(match[1]);
+    var nome=document.getElementById("web-accept-name").value.trim();
+    var documento=document.getElementById("web-accept-doc").value.trim();
+    btn.disabled=true;btn.textContent="Processando...";
+    try{
+      var response=await fetch("/api/public/proposals/"+encodeURIComponent(id)+"/accept",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({nome:nome||undefined,documento:documento||undefined})});
+      var data=await response.json().catch(function(){return {}});
+      if(response.status===409){document.getElementById("web-accept-message").textContent="Esta proposta já foi aceita.";btn.textContent="Proposta já aceita";return;}
+      if(!response.ok)throw new Error(data.error||"Não foi possível registrar o aceite.");
+      document.getElementById("web-accept-message").textContent="Proposta aprovada com sucesso.";
+      btn.textContent="✓ Proposta aprovada";
+    }catch(error){
+      document.getElementById("web-accept-message").textContent=error&&error.message?error.message:"Não foi possível registrar o aceite.";
+      btn.disabled=false;btn.textContent="Aprovar proposta";
+    }
+  });
+})();
+</script>` : ""}
 </body>
 </html>`;
 }
