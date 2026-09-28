@@ -545,35 +545,62 @@ function proposalFormatDate(value?: string | Date | null): string {
   return date ? date.toLocaleDateString("pt-BR") : "A definir";
 }
 
+function proposalResolveDependencyStart(
+  predecessor: { start: Date | null; end: Date | null } | undefined,
+  type: "FS" | "SS" | "FF" | "SF",
+  lagDays: number,
+  durationDays: number,
+): Date | null {
+  if (!predecessor) return null;
+  if (type === "SS" && predecessor.start) return proposalAddDays(predecessor.start, lagDays);
+  if (type === "FS" && predecessor.end) return proposalAddDays(predecessor.end, 1 + lagDays);
+  if (type === "FF" && predecessor.end) return proposalAddDays(predecessor.end, lagDays - Math.max(0, durationDays - 1));
+  if (type === "SF" && predecessor.start) return proposalAddDays(predecessor.start, lagDays - Math.max(0, durationDays - 1));
+  return null;
+}
+
 function buildProposalScheduleRows<T extends PresentableProposalItem>(
   groups: Array<{ id: string; ordem: number; nome: string; hasStageHeader: boolean; itens: T[] }>,
   presentation: Required<ProposalPresentationConfig>,
   total: number,
 ) {
   const globalStart = proposalDate(presentation.previsaoInicio);
-  const rows = groups.map((group) => {
+  const dateByStage = new Map<string, { start: Date | null; end: Date | null }>();
+  const rawRows: Array<any> = [];
+
+  groups.forEach((group, index) => {
     const config = presentation.cronogramaEtapas[group.id] ?? {};
     const value = group.itens.reduce(
       (sum, item) => sum + Number(item.quantidade || 0) * Number(item.valorUnitario || 0),
       0,
     );
     const financialPercent = total > 0 ? (value / total) * 100 : 0;
-
-    // Cada etapa possui sua própria janela. Isso permite que várias etapas
-    // aconteçam ao mesmo tempo e gerem cobrança no mesmo período.
-    const start = proposalDate(config.inicioPrevisto) ?? globalStart;
+    const explicitStart = proposalDate(config.inicioPrevisto);
     const explicitEnd = proposalDate(config.fimPrevisto);
     const configuredDuration = Number(config.duracaoDias ?? 0);
     const duration = configuredDuration > 0
       ? Math.round(configuredDuration)
-      : start && explicitEnd
-        ? proposalDiffDays(start, explicitEnd)
-        : undefined;
-    const end = explicitEnd ?? (start && duration ? proposalAddDays(start, duration - 1) : null);
+      : explicitStart && explicitEnd ? proposalDiffDays(explicitStart, explicitEnd) : 1;
+    const defaultDependency = index > 0 ? groups[index - 1]?.id : undefined;
+    const dependencyId = config.dependeDeEtapaId ?? defaultDependency;
+    const predecessor = dependencyId ? dateByStage.get(dependencyId) : undefined;
+    const type = config.tipoDependencia ?? "FS";
+    const lagDays = Number(config.defasagemDias ?? 0);
+    const start = config.inicioAutomatico === false && explicitStart
+      ? explicitStart
+      : (index === 0 ? explicitStart ?? globalStart : null)
+        ?? proposalResolveDependencyStart(predecessor, type, lagDays, duration)
+        ?? explicitStart
+        ?? globalStart;
+    const end = config.inicioAutomatico === false && explicitEnd
+      ? explicitEnd
+      : start ? proposalAddDays(start, duration - 1) : explicitEnd;
 
+    dateByStage.set(group.id, { start, end });
     const configuredPhysical = Number(config.percentualFisico);
-    return {
+    rawRows.push({
       ...group,
+      config,
       value,
       financialPercent,
       configuredPhysicalPercent: Number.isFinite(configuredPhysical) ? configuredPhysical : null,
@@ -582,12 +609,12 @@ function buildProposalScheduleRows<T extends PresentableProposalItem>(
       duration,
       observacao: config.observacao?.trim() || "",
       marcoPagamento: config.marcoPagamento?.trim() || "",
-    };
+    });
   });
 
-  const totalDuration = rows.reduce((sum, row) => sum + Number(row.duration ?? 0), 0);
-  const missingPhysical = rows.filter((row) => row.configuredPhysicalPercent === null);
-  const configuredPhysicalTotal = rows.reduce(
+  const totalDuration = rawRows.reduce((sum, row) => sum + Number(row.duration ?? 0), 0);
+  const missingPhysical = rawRows.filter((row) => row.configuredPhysicalPercent === null);
+  const configuredPhysicalTotal = rawRows.reduce(
     (sum, row) => sum + Number(row.configuredPhysicalPercent ?? 0),
     0,
   );
@@ -597,7 +624,7 @@ function buildProposalScheduleRows<T extends PresentableProposalItem>(
     0,
   );
 
-  return rows.map((row) => {
+  return rawRows.map((row) => {
     const automaticPhysical = row.configuredPhysicalPercent !== null
       ? row.configuredPhysicalPercent
       : missingPhysical.length === 0
@@ -607,21 +634,30 @@ function buildProposalScheduleRows<T extends PresentableProposalItem>(
           : totalDuration > 0 && row.duration
             ? (Number(row.duration) / totalDuration) * 100
             : remainingPhysical / missingPhysical.length;
-
     const physicalPercent = Math.max(0, Math.min(100, automaticPhysical));
-    const config = presentation.cronogramaEtapas[row.id] ?? {};
-    const phases = (config.fases ?? []).map((phase, index, all) => {
+
+    const phaseDateMap = new Map<string, { start: Date | null; end: Date | null }>();
+    const phases = (row.config.fases ?? []).map((phase: ProposalStagePhase, index: number, all: ProposalStagePhase[]) => {
       const configuredShare = Number(phase.percentualEtapa ?? 0);
       const totalConfiguredShare = all.reduce((sum, item) => sum + Number(item.percentualEtapa ?? 0), 0);
       const share = configuredShare > 0
         ? (totalConfiguredShare > 100 ? configuredShare / totalConfiguredShare : configuredShare / 100)
         : all.length ? 1 / all.length : 1;
-      const start = proposalDate(phase.inicioPrevisto) ?? row.start;
+      const explicitStart = proposalDate(phase.inicioPrevisto);
       const explicitEnd = proposalDate(phase.fimPrevisto);
       const duration = Number(phase.duracaoDias ?? 0) > 0
         ? Math.round(Number(phase.duracaoDias))
-        : start && explicitEnd ? proposalDiffDays(start, explicitEnd) : row.duration;
-      const end = explicitEnd ?? (start && duration ? proposalAddDays(start, duration - 1) : row.end);
+        : explicitStart && explicitEnd ? proposalDiffDays(explicitStart, explicitEnd) : Math.max(1, Math.round((row.duration ?? 1) * share));
+      const defaultDependency = index > 0 ? all[index - 1]?.id : undefined;
+      const dependencyId = phase.dependeDeFaseId ?? defaultDependency;
+      const predecessor = dependencyId ? phaseDateMap.get(dependencyId) : undefined;
+      const start = index === 0
+        ? explicitStart ?? row.start
+        : proposalResolveDependencyStart(predecessor, phase.tipoDependencia ?? "FS", Number(phase.defasagemDias ?? 0), duration)
+          ?? explicitStart
+          ?? row.start;
+      const end = explicitEnd ?? (start ? proposalAddDays(start, duration - 1) : row.end);
+      phaseDateMap.set(phase.id, { start, end });
       return {
         id: `${row.id}::${phase.id}`,
         ordem: phase.ordem ?? index + 1,
