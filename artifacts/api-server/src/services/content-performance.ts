@@ -32,6 +32,7 @@ export async function registerPublishedPost(params: {
   contentType: string;
   theme?: string;
   captionOuTexto?: string;
+  instagramConnectionId?: string;
 }) {
   await db.insert(contentPublishedPostsTable).values({
     tenantId: params.tenantId,
@@ -41,6 +42,7 @@ export async function registerPublishedPost(params: {
     contentType: params.contentType,
     theme: params.theme ?? null,
     captionOuTexto: params.captionOuTexto ?? null,
+    instagramConnectionId: params.instagramConnectionId ?? null,
   });
 }
 
@@ -52,7 +54,7 @@ export async function listPublishedPosts(tenantId: string) {
     .orderBy(contentPublishedPostsTable.publishedAt);
 }
 
-export async function refreshPendingMetrics(tenantId: string): Promise<{ atualizados: number; erros: number }> {
+export async function refreshPendingMetrics(tenantId: string, instagramConnectionId?: string): Promise<{ atualizados: number; erros: number }> {
   const [[directConnection], [legacyConfig]] = await Promise.all([
     db
       .select({
@@ -61,7 +63,9 @@ export async function refreshPendingMetrics(tenantId: string): Promise<{ atualiz
         tokenExpiresAt: instagramConnectionsTable.tokenExpiresAt,
       })
       .from(instagramConnectionsTable)
-      .where(eq(instagramConnectionsTable.tenantId, tenantId))
+      .where(instagramConnectionId
+        ? and(eq(instagramConnectionsTable.tenantId, tenantId), eq(instagramConnectionsTable.id, instagramConnectionId))
+        : eq(instagramConnectionsTable.tenantId, tenantId))
       .limit(1),
     db
       .select({ token: agentConfigsTable.instagramPageAccessToken })
@@ -89,6 +93,7 @@ export async function refreshPendingMetrics(tenantId: string): Promise<{ atualiz
         eq(contentPublishedPostsTable.tenantId, tenantId),
         lt(contentPublishedPostsTable.publishedAt, cutoff),
         or(isNull(contentPublishedPostsTable.ultimaColetaEm), lt(contentPublishedPostsTable.ultimaColetaEm, cutoff)),
+        ...(instagramConnectionId ? [eq(contentPublishedPostsTable.instagramConnectionId, instagramConnectionId)] : []),
       ),
     );
 
