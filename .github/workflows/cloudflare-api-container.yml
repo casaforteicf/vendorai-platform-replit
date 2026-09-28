@@ -1,8 +1,22 @@
 name: Cloudflare API Container
 
-# Production backend remains on Railway while Cloudflare Containers deployment is blocked.
-# Pull requests still validate the container build. Cloudflare deploy is manual only.
+# Production API is deployed on Cloudflare Containers from main.
+# Pull requests validate the container build; pushes to main deploy automatically.
 on:
+  push:
+    branches: [main]
+    paths:
+      - "artifacts/api-server/**"
+      - "lib/db/**"
+      - "lib/api-zod/**"
+      - "lib/vendor-brain/**"
+      - "lib/integrations-anthropic-ai/**"
+      - "cloudflare/api-worker/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+      - ".node-version"
+      - ".github/workflows/cloudflare-api-container.yml"
   pull_request:
     paths:
       - "artifacts/api-server/**"
@@ -39,7 +53,7 @@ jobs:
 
   deploy:
     name: Deploy VendorAI API on Cloudflare
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 30
