@@ -86,6 +86,7 @@ import { parseIfcMetadata } from "../lib/arqdor-ifc-metadata.js";
 import { buildConceptIfc, conceptIfcFilename } from "../lib/arqdor-concept-ifc.js";
 import { parseIfcEditableGeometry } from "../lib/arqdor-ifc-editable.js";
 import { fitReferenceImageToLot } from "../lib/arqdor-reference-calibration.js";
+import { traceReferencePlanImage } from "../lib/arqdor-reference-ai-trace.js";
 
 function sanitizeAIError(err: any): { status: number; message: string } {
   const raw: string = err?.message ?? String(err ?? "");
@@ -1309,6 +1310,73 @@ router.post("/arch/concept-projects/:id/source-file", authenticate, upload.singl
     return res.status(500).json({
       error: error instanceof Error ? error.message : "Não foi possível salvar o arquivo BIM/CAD.",
     });
+  }
+});
+
+router.post("/arch/concept-projects/:id/reference-plan/trace", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const userId = req.user?.sub;
+  const id = String(req.params.id);
+  if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
+
+  const [concept] = await db
+    .select({
+      id: archConceptProjectsTable.id,
+      lot: archConceptProjectsTable.lot,
+      configuration: archConceptProjectsTable.configuration,
+    })
+    .from(archConceptProjectsTable)
+    .where(and(
+      eq(archConceptProjectsTable.id, id),
+      eq(archConceptProjectsTable.tenantId, tid),
+      eq(archConceptProjectsTable.ownerUserId, userId),
+    ))
+    .limit(1);
+
+  if (!concept) return res.status(404).json({ error: "Pré-projeto não encontrado." });
+
+  const config = (concept.configuration ?? {}) as Record<string, unknown>;
+  const referencePlan = config.referencePlan && typeof config.referencePlan === "object"
+    ? config.referencePlan as Record<string, unknown>
+    : null;
+  if (!referencePlan || referencePlan.kind !== "image") {
+    return res.status(422).json({ error: "Anexe uma imagem PNG/JPG/WebP como planta de referência antes de usar a leitura por IA." });
+  }
+  const storagePath = typeof referencePlan.storagePath === "string" ? referencePlan.storagePath : "";
+  if (!storagePath.startsWith("/objects/")) {
+    return res.status(422).json({ error: "A planta de referência não possui arquivo persistido válido." });
+  }
+
+  try {
+    const lot = (concept.lot ?? {}) as { width?: number; depth?: number };
+    const bounds = {
+      x: Number(referencePlan.offsetX ?? 0),
+      y: Number(referencePlan.offsetY ?? 0),
+      width: Number(referencePlan.widthMeters ?? lot.width ?? 0),
+      depth: Number(referencePlan.depthMeters ?? lot.depth ?? 0),
+    };
+    if (![bounds.x, bounds.y, bounds.width, bounds.depth].every(Number.isFinite) || bounds.width <= 0 || bounds.depth <= 0) {
+      return res.status(422).json({ error: "A planta de referência precisa de calibração válida antes da leitura por IA." });
+    }
+
+    const storage = new ObjectStorageService();
+    const file = await storage.getObjectEntityFile(storagePath);
+    const [buffer] = await file.download();
+    const result = await traceReferencePlanImage({
+      tenantId: tid,
+      buffer,
+      mimeType: typeof referencePlan.mimeType === "string" ? referencePlan.mimeType : "image/jpeg",
+      bounds,
+    });
+
+    return res.json({
+      ...result,
+      bounds,
+      canApply: result.walls.length > 0 && result.confidence >= 0.45,
+    });
+  } catch (error) {
+    const safe = sanitizeAIError(error);
+    return res.status(safe.status).json({ error: safe.message });
   }
 });
 

@@ -358,6 +358,17 @@ type ReferencePlan = {
   calibrationSource?: "image_aspect_fit" | "lot";
 };
 
+type ReferenceTracePreview = {
+  summary: string;
+  confidence: number;
+  canApply: boolean;
+  walls: Array<CustomWall & { confidence?: number }>;
+  openings: Array<CustomOpening & { confidence?: number }>;
+  warnings: string[];
+  skippedWalls: number;
+  sourceModel: string;
+};
+
 type ProjectSourceFile = {
   id: string;
   storagePath: string;
@@ -962,6 +973,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [referencePlan, setReferencePlan] = useState<ReferencePlan | null>(null);
   const [referencePlanState, setReferencePlanState] = useState<"idle" | "uploading" | "error" | "success">("idle");
   const [referencePlanMessage, setReferencePlanMessage] = useState<string | null>(null);
+  const [referenceTraceState, setReferenceTraceState] = useState<"idle" | "loading" | "error" | "ready" | "applied">("idle");
+  const [referenceTracePreview, setReferenceTracePreview] = useState<ReferenceTracePreview | null>(null);
   const [sourceFiles, setSourceFiles] = useState<ProjectSourceFile[]>([]);
   const [sourceFileState, setSourceFileState] = useState<"idle" | "uploading" | "error" | "success">("idle");
   const [sourceFileMessage, setSourceFileMessage] = useState<string | null>(null);
@@ -4050,6 +4063,101 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     } finally {
       if (sourceFileInputRef.current) sourceFileInputRef.current.value = "";
     }
+  };
+
+  const traceReferencePlanWithAi = async () => {
+    if (referenceTraceState === "loading") return;
+    const id = conceptIdRef.current ?? conceptId;
+    if (!id || referencePlan?.kind !== "image") {
+      setReferenceTraceState("error");
+      setReferencePlanMessage("Anexe uma imagem de planta antes de usar a leitura por IA.");
+      return;
+    }
+    setReferenceTraceState("loading");
+    setReferenceTracePreview(null);
+    setReferencePlanMessage(null);
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("vendorai_token") : null;
+      const response = await fetch(`/api/arch/concept-projects/${encodeURIComponent(id)}/reference-plan/trace`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      const payload = await response.json().catch(() => ({})) as ReferenceTracePreview & { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "Não foi possível interpretar a planta com IA.");
+      setReferenceTracePreview(payload);
+      setReferenceTraceState("ready");
+      setReferencePlanMessage(
+        `Leitura concluída: ${payload.walls.length} paredes e ${payload.openings.length} aberturas sugeridas · confiança ${Math.round(payload.confidence * 100)}%.`,
+      );
+    } catch (error) {
+      setReferenceTraceState("error");
+      setReferencePlanMessage(error instanceof Error ? error.message : "Falha ao interpretar a planta com IA.");
+    }
+  };
+
+  const applyReferenceTrace = async () => {
+    const preview = referenceTracePreview;
+    if (!preview?.canApply || !preview.walls.length || projectMaster) return;
+    const confirmed = window.confirm(
+      `Aplicar ${preview.walls.length} paredes e ${preview.openings.length} aberturas sugeridas pela IA e substituir a geometria atual? A imagem de referência e o briefing serão preservados.`,
+    );
+    if (!confirmed) return;
+
+    const importedWalls = preview.walls.map((wall, index) => ({
+      id: wall.id || `trace-wall-${index + 1}`,
+      floor: 0,
+      x1: wall.x1,
+      y1: wall.y1,
+      x2: wall.x2,
+      y2: wall.y2,
+      thickness: wall.thickness,
+    }));
+    const validWallIds = new Set(importedWalls.map((wall) => wall.id));
+    const importedOpenings = preview.openings
+      .filter((opening) => validWallIds.has(opening.wallId))
+      .map((opening, index) => ({
+        id: opening.id || `trace-opening-${index + 1}`,
+        wallId: opening.wallId,
+        floor: 0,
+        type: opening.type,
+        offset: opening.offset,
+        width: opening.width,
+        height: opening.height,
+        sillHeight: opening.sillHeight,
+      }));
+
+    setFloors(1);
+    setActiveFloor(0);
+    setRooms([]);
+    setCustomWalls(importedWalls);
+    setCustomOpenings(importedOpenings);
+    setOpeningOverrides({});
+    setWallFirstFloors([0]);
+    setSpaceProfiles([]);
+    setObjects([]);
+    setSelectedId(null);
+    setSelectedObjectId(null);
+    setSelectedOpeningId(null);
+    setSelectedWallId(null);
+    setSelectedCustomWallId(null);
+    setSelectedClosedSpaceId(null);
+    setInteractionMode("wall");
+    setEditorView("plan");
+    setEditorLibraryTab("build");
+    setStep(4);
+
+    await saveConcept(4, undefined, {
+      rooms: [],
+      customWalls: importedWalls,
+      customOpenings: importedOpenings,
+      wallFirstFloors: [0],
+      floors: 1,
+    });
+
+    setReferenceTraceState("applied");
+    setReferencePlanMessage(
+      `Traçado aplicado: ${importedWalls.length} paredes e ${importedOpenings.length} aberturas. Revise medidas e conexões antes de seguir.`,
+    );
   };
 
   const uploadReferencePlan = async (file: File) => {
@@ -8465,6 +8573,47 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     {referencePlanMessage}
                   </div>
                 )}
+                {referencePlan?.kind === "image" && (
+                  <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50/60 p-3 text-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <div className="font-semibold text-blue-950">Leitura da planta com IA</div>
+                        <div className="mt-0.5 text-blue-800/80">Gera somente um preview; nada é aplicado sem confirmação.</div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void traceReferencePlanWithAi()}
+                          disabled={referenceTraceState === "loading"}
+                          className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 font-semibold text-blue-800 disabled:opacity-50"
+                        >
+                          {referenceTraceState === "loading" ? "Lendo planta..." : "Ler planta com IA"}
+                        </button>
+                        {referenceTracePreview?.canApply && (
+                          <button
+                            type="button"
+                            onClick={() => void applyReferenceTrace()}
+                            disabled={Boolean(projectMaster)}
+                            className="rounded-lg bg-emerald-600 px-3 py-1.5 font-semibold text-white disabled:opacity-50"
+                          >
+                            Aplicar traçado
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {referenceTracePreview && (
+                      <div className="mt-2 space-y-1 text-[11px] text-blue-900">
+                        <div>
+                          {referenceTracePreview.walls.length} paredes · {referenceTracePreview.openings.length} aberturas · confiança {Math.round(referenceTracePreview.confidence * 100)}%
+                        </div>
+                        {referenceTracePreview.warnings?.length ? (
+                          <div className="text-amber-800">{referenceTracePreview.warnings.join(" ")}</div>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {referencePlan && (
                   <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-muted/30 px-3 py-2 text-xs">
                     <div className="min-w-0">
