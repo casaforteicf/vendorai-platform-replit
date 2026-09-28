@@ -112,7 +112,7 @@ export default function PublicProposta() {
           src={api(`/api/public/generated-proposals/${proposta.id}/html`)}
           className="w-full min-h-screen border-0"
           style={{ height: "100vh" }}
-          sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+          sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
         />
       </div>
     );
