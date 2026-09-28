@@ -17,11 +17,23 @@ type IfcWallInput = {
   thickness?: number;
 };
 
+type IfcOpeningInput = {
+  id?: string;
+  wallId: string;
+  floor?: number;
+  type: "door" | "window";
+  offset: number;
+  width?: number;
+  height?: number;
+  sillHeight?: number;
+};
+
 export type ConceptIfcInput = {
   title?: string | null;
   floors?: number;
   rooms?: IfcRoom[] | null;
   customWalls?: IfcWallInput[] | null;
+  customOpenings?: IfcOpeningInput[] | null;
   wallHeight?: number;
 };
 
@@ -89,6 +101,7 @@ export function buildConceptIfc(input: ConceptIfcInput) {
   const walls = (customWalls.length ? customWalls : deriveRoomWalls(rooms))
     .filter((wall) => [wall.x1, wall.y1, wall.x2, wall.y2].every(Number.isFinite))
     .slice(0, 2000);
+  const openings = Array.isArray(input.customOpenings) ? input.customOpenings.slice(0, 2000) : [];
 
   if (!walls.length) throw new Error("O projeto não possui paredes suficientes para exportação IFC.");
 
@@ -121,7 +134,7 @@ export function buildConceptIfc(input: ConceptIfcInput) {
   add(`IFCRELAGGREGATES('${ifcGuid(4)}',$,$,$,${ref(project)},(${ref(site)}))`);
   add(`IFCRELAGGREGATES('${ifcGuid(5)}',$,$,$,${ref(site)},(${ref(building)}))`);
 
-  const storeys: Array<{ entity: number; placement: number; walls: number[] }> = [];
+  const storeys: Array<{ entity: number; placement: number; walls: number[]; openings: number[] }> = [];
   for (let floor = 0; floor < floorCount; floor += 1) {
     const elevation = floor * 3;
     const point = add(`IFCCARTESIANPOINT((0.,0.,${number(elevation)}))`);
@@ -129,7 +142,7 @@ export function buildConceptIfc(input: ConceptIfcInput) {
     const placement = add(`IFCLOCALPLACEMENT(${ref(buildingPlacement)},${ref(axis)})`);
     const name = floor === 0 ? "Térreo" : `Pavimento ${floor + 1}`;
     const storey = add(`IFCBUILDINGSTOREY('${ifcGuid(10 + floor)}',$,'${esc(name)}',$,$,${ref(placement)},$,$,.ELEMENT.,${number(elevation)})`);
-    storeys.push({ entity: storey, placement, walls: [] });
+    storeys.push({ entity: storey, placement, walls: [], openings: [] });
   }
   add(`IFCRELAGGREGATES('${ifcGuid(30)}',$,$,$,${ref(building)},(${storeys.map((item) => ref(item.entity)).join(",")}))`);
 
@@ -161,9 +174,38 @@ export function buildConceptIfc(input: ConceptIfcInput) {
     storeys[floor]!.walls.push(wallEntity);
   });
 
+  const wallById = new Map(walls.map((wall, index) => [String(wall.id ?? `wall-${index + 1}`), wall]));
+  openings.forEach((opening, index) => {
+    const wall = wallById.get(String(opening.wallId));
+    if (!wall) return;
+    const floor = Math.max(0, Math.min(storeys.length - 1, Math.round(Number(opening.floor ?? wall.floor ?? 0))));
+    const dx = Number(wall.x2) - Number(wall.x1);
+    const dy = Number(wall.y2) - Number(wall.y1);
+    const length = Math.hypot(dx, dy);
+    if (length < 0.02) return;
+    const ux = dx / length;
+    const uy = dy / length;
+    const offset = Math.max(0, Math.min(1, Number(opening.offset ?? 0.5)));
+    const cx = Number(wall.x1) + dx * offset;
+    const cy = Number(wall.y1) + dy * offset;
+    const width = Math.max(0.3, Number(opening.width ?? (opening.type === "door" ? 0.9 : 1.2)));
+    const height = Math.max(0.5, Number(opening.height ?? (opening.type === "door" ? 2.1 : 1.2)));
+    const z = Math.max(0, Number(opening.sillHeight ?? (opening.type === "window" ? 1.0 : 0)));
+
+    const p = add(`IFCCARTESIANPOINT((${number(cx)},${number(cy)},${number(z)}))`);
+    const d = add(`IFCDIRECTION((${number(ux)},${number(uy)},0.))`);
+    const a = add(`IFCAXIS2PLACEMENT3D(${ref(p)},${ref(zDirection)},${ref(d)})`);
+    const placement = add(`IFCLOCALPLACEMENT(${ref(storeys[floor]!.placement)},${ref(a)})`);
+    const entity = opening.type === "door"
+      ? add(`IFCDOOR('${ifcGuid(7000 + index)}',$,'Porta ${index + 1}',$,$,${ref(placement)},$,$,${number(height)},${number(width)},.DOOR.,.NOTDEFINED.,$)`)
+      : add(`IFCWINDOW('${ifcGuid(8000 + index)}',$,'Janela ${index + 1}',$,$,${ref(placement)},$,$,${number(height)},${number(width)},.WINDOW.,.NOTDEFINED.,$)`);
+    storeys[floor]!.openings.push(entity);
+  });
+
   storeys.forEach((storey, floor) => {
     if (!storey.walls.length) return;
-    add(`IFCRELCONTAINEDINSPATIALSTRUCTURE('${ifcGuid(5000 + floor)}',$,$,$,(${storey.walls.map(ref).join(",")}),${ref(storey.entity)})`);
+    const contained = [...storey.walls, ...storey.openings];
+    add(`IFCRELCONTAINEDINSPATIALSTRUCTURE('${ifcGuid(5000 + floor)}',$,$,$,(${contained.map(ref).join(",")}),${ref(storey.entity)})`);
   });
 
   const header = `ISO-10303-21;
