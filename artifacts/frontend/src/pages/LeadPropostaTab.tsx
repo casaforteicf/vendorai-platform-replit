@@ -319,6 +319,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const [proposalImages, setProposalImages] = useState<string[]>([]);
   const [imageUploading, setImageUploading] = useState(false);
   const [generatingStageImages, setGeneratingStageImages] = useState(false);
+  const [generatingCoverImage, setGeneratingCoverImage] = useState(false);
   const [selectedStageImageIds, setSelectedStageImageIds] = useState<string[]>([]);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
@@ -657,6 +658,51 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
       });
     } finally {
       setGeneratingStageImages(false);
+    }
+  }
+
+  async function generatePremiumCoverImage() {
+    if (!selectedOrcamento?.id) {
+      toast({ title: "Selecione um orçamento.", variant: "destructive" });
+      return;
+    }
+    if (!window.confirm("Gerar uma nova capa premium com IA usando o estilo selecionado? Esta ação consome 1 geração de imagem.")) return;
+
+    const userActionId =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `cover-image-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+    setGeneratingCoverImage(true);
+    try {
+      const response = await fetch(api(`/api/leads/${leadId}/proposals/cover-image`), {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          propostaId: selectedOrcamento.id,
+          userActionId,
+          estiloCasa: proposalHouseStyle,
+          padraoCasa: proposalHouseStandard,
+          tipoCasa: proposalHouseType,
+          elementosVisuais: proposalVisualElements,
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? "Não foi possível gerar a capa premium.");
+
+      await queryClient.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId, { leadId }) });
+      toast({
+        title: "Capa premium gerada",
+        description: "A imagem ficou vinculada ao orçamento e será usada como capa da próxima proposta.",
+      });
+    } catch (error) {
+      toast({
+        title: "Erro ao gerar capa",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingCoverImage(false);
     }
   }
 
@@ -2220,6 +2266,28 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                         <p className="text-[10px] text-muted-foreground">
                           Separe por vírgulas. A IA deve manter essa linguagem visual em todas as imagens, sem trocar o assunto técnico da etapa.
                         </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-8 gap-1.5 text-xs"
+                          disabled={generatingCoverImage}
+                          onClick={() => void generatePremiumCoverImage()}
+                        >
+                          {generatingCoverImage ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                          {generatingCoverImage ? "Gerando capa..." : "Gerar capa premium"}
+                        </Button>
+                        {selectedOrcamento?.apresentacao?.imagemCapa ? (
+                          <img
+                            src={selectedOrcamento.apresentacao.imagemCapa}
+                            alt="Capa premium da proposta"
+                            className="h-14 w-24 rounded-md border object-cover"
+                          />
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground">Nenhuma capa premium gerada ainda.</span>
+                        )}
                       </div>
                     </div>
                     <div className="space-y-1.5 lg:col-span-3">
