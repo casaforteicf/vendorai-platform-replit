@@ -62,7 +62,8 @@ export const adCampaignsTable = pgTable("ad_campaigns", {
     demografia?: { idades: string[]; generos: string[]; statusParental: string[]; rendas: string[] };
     audiencias?: { afinidade: string[]; noMercado: string[]; termosPesquisa: string[]; sites: string[]; aplicativos: string[] };
     dadosProprios?: { remarketing: string[]; customerMatch: string[]; semelhantes: string[] };
-    origemInstagram?: { mediaId: string; variationIndex: number; contentGenerationId: string };
+    origemInstagram?: { mediaId: string; variationIndex: number; contentGenerationId: string; instagramConnectionId?: string };
+    instagramConnectionId?: string;
     marketingContext?: {
       nicheId: string;
       nicheName: string;
