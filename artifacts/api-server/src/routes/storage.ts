@@ -79,7 +79,13 @@ router.get("/storage/public-objects/*filePath", async (req: Request, res: Respon
 /**
  * GET /storage/objects/*
  *
- * Serve object entities. Redirects to the public Supabase Storage URL.
+ * Serve object entities by streaming the bytes through the API.
+ *
+ * Important: the production Cloudflare Pages worker proxies /api/* with
+ * redirect=manual. Returning a 302 to Supabase here made image loads depend on
+ * a second cross-origin redirect, which caused broken Render Studio previews in
+ * production. Streaming the object returns a stable 200 image response from the
+ * same application origin.
  */
 router.get("/storage/objects/*path", async (req: Request, res: Response) => {
   try {
@@ -87,7 +93,13 @@ router.get("/storage/objects/*path", async (req: Request, res: Response) => {
     const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
     const objectPath = `/objects/${wildcardPath}`;
     const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
-    res.redirect(302, objectFile.getPublicUrl());
+    const objectResponse = await objectStorageService.downloadObject(objectFile, 3600);
+
+    objectResponse.headers.forEach((value, key) => {
+      res.setHeader(key, value);
+    });
+    res.status(objectResponse.status);
+    res.send(Buffer.from(await objectResponse.arrayBuffer()));
   } catch (error) {
     if (error instanceof ObjectNotFoundError) {
       req.log.warn({ err: error }, "Object not found");
