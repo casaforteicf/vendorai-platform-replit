@@ -18,7 +18,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import {
-  buildClientBriefAlternatives,
   buildClientBriefPlan,
   buildDefaultRoomProgram,
   buildRecommendedAdjacencyRules,
