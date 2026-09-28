@@ -294,6 +294,22 @@ function routeBottleneck(route: WebVitalsResponse["routes"][number]) {
   return normalized[0].key;
 }
 
+function compositePriorityScore(input: {
+  vitalScore: number;
+  runtimeErrorCount: number;
+  persistentRegression: boolean;
+  slowestApi: { p75: number | null; transferP75?: number | null } | null;
+}) {
+  let score = input.vitalScore;
+  score += Math.min(120, input.runtimeErrorCount * 20);
+  if (input.persistentRegression) score += 120;
+  if ((input.slowestApi?.p75 ?? 0) > 1200) score += 80;
+  else if ((input.slowestApi?.p75 ?? 0) > 800) score += 40;
+  if ((input.slowestApi?.transferP75 ?? 0) > 500_000) score += 70;
+  else if ((input.slowestApi?.transferP75 ?? 0) > 250_000) score += 35;
+  return Math.round(score);
+}
+
 function routeRecommendation(input: {
   bottleneck: string;
   slowestApi: { p75: number | null; transferP75?: number | null } | null;
@@ -451,6 +467,13 @@ export default function VisitorIntelligence() {
       const bottleneck = routeBottleneck(route);
       const slowestApi = routeApis[0] ?? null;
       const runtimeErrorCount = routeErrors.reduce((sum, error) => sum + error.count, 0);
+      const persistentRegression = routePersistentRegression(route);
+      const compositeScore = compositePriorityScore({
+        vitalScore: route.score,
+        runtimeErrorCount,
+        persistentRegression,
+        slowestApi,
+      });
       return {
         ...route,
         bottleneck,
@@ -459,9 +482,11 @@ export default function VisitorIntelligence() {
         topRuntimeError: routeErrors[0] ?? null,
         recommendation: routeRecommendation({ bottleneck, slowestApi, runtimeErrorCount }),
         trend: routeTrend(route),
-        persistentRegression: routePersistentRegression(route),
+        persistentRegression,
+        compositeScore,
       };
     })
+    .sort((a, b) => b.compositeScore - a.compositeScore || b.score - a.score)
     .slice(0, 5), [rankedVitalRoutes, vitalsQuery.data?.apiRouteTimings, vitalsQuery.data?.runtimeErrors]);
   const regressionRoutes = useMemo(() => actionableVitalRoutes
     .filter((route) => route.trend.direction === "down")
@@ -609,7 +634,7 @@ export default function VisitorIntelligence() {
                     <div className="min-w-0">
                       <div className="truncate font-medium">{index + 1}. {route.path}</div>
                       <div className="mt-0.5 text-[11px] text-muted-foreground">
-                        {route.samples} amostras · confiança {route.confidence} · prioridade {route.score}
+                        {route.samples} amostras · confiança {route.confidence} · prioridade composta {route.compositeScore} · Web Vitals {route.score}
                       </div>
                       <div className="mt-0.5 text-[11px] font-medium text-foreground/80">
                         Gargalo dominante: {route.bottleneck}
