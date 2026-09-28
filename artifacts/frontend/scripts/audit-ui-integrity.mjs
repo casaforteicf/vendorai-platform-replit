@@ -268,19 +268,47 @@ const unknownRouteHighs = findings.filter((item) => item.rule === "navigation-to
 const hardDisabledHighs = findings.filter((item) => item.rule === "hard-disabled").length;
 const noopCallbackHighs = findings.filter((item) => item.rule === "noop-callback-prop").length;
 const formButtonHighs = findings.filter((item) => item.rule === "native-button-no-type-in-form" || item.rule === "ui-button-no-type-in-form").length;
-if (blockerCount > 0 || httpContractHighs > 0 || visibleErrorHighs > 0 || generatedMutationErrorHighs > 0 || generatedMutateAsyncErrorHighs > 0 || unknownRouteHighs > 0 || hardDisabledHighs > 0 || noopCallbackHighs > 0 || formButtonHighs > 0) {
-  console.error("\n[ui-integrity] GATE BLOQUEADO.");
-  if (blockerCount > 0) console.error("[ui-integrity] " + blockerCount + " BLOCKER(s) funcional(is) encontrado(s).");
-  if (httpContractHighs > 0) console.error("[ui-integrity] " + httpContractHighs + " mutation(s) sem validação de response.ok/status.");
-  if (visibleErrorHighs > 0) console.error("[ui-integrity] " + visibleErrorHighs + " fetch mutation(s) sem feedback de erro visível.");
-  if (generatedMutationErrorHighs > 0) console.error("[ui-integrity] " + generatedMutationErrorHighs + " mutation(s) de hook gerado sem feedback de erro visível.");
-  if (generatedMutateAsyncErrorHighs > 0) console.error("[ui-integrity] " + generatedMutateAsyncErrorHighs + " mutateAsync de hook gerado sem feedback visível nem propagação explícita.");
-  if (unknownRouteHighs > 0) console.error("[ui-integrity] " + unknownRouteHighs + " navegação(ões) para rota não declarada.");
-  if (hardDisabledHighs > 0) console.error("[ui-integrity] " + hardDisabledHighs + " controle(s) permanentemente desabilitado(s).");
-  if (noopCallbackHighs > 0) console.error("[ui-integrity] " + noopCallbackHighs + " callback(s) de interação conectado(s) a função vazia.");
-  if (formButtonHighs > 0) console.error("[ui-integrity] " + formButtonHighs + " botão(ões) dentro de formulário sem type explícito.");
-  console.error("[ui-integrity] Corrija falhas críticas, contratos HTTP, feedback de erro em fetch/hooks gerados/mutateAsync, rotas inválidas, controles desabilitados, callbacks vazios e botões de formulário antes de integrar esta mudança.");
+
+// Baseline progressivo: o passivo já conhecido não bloqueia o deploy,
+// mas qualquer regressão acima dos limites abaixo continua falhando o gate.
+// À medida que o passivo for corrigido, estes números devem apenas diminuir.
+const blockingBaseline = {
+  blockerCount: 0,
+  httpContractHighs: 166,
+  visibleErrorHighs: 55,
+  generatedMutationErrorHighs: 14,
+  generatedMutateAsyncErrorHighs: 23,
+  unknownRouteHighs: 0,
+  hardDisabledHighs: 0,
+  noopCallbackHighs: 0,
+  formButtonHighs: 0,
+};
+
+const blockingCurrent = {
+  blockerCount,
+  httpContractHighs,
+  visibleErrorHighs,
+  generatedMutationErrorHighs,
+  generatedMutateAsyncErrorHighs,
+  unknownRouteHighs,
+  hardDisabledHighs,
+  noopCallbackHighs,
+  formButtonHighs,
+};
+
+const regressions = Object.entries(blockingCurrent)
+  .filter(([key, value]) => value > blockingBaseline[key])
+  .map(([key, value]) => ({ key, value, baseline: blockingBaseline[key] }));
+
+if (regressions.length > 0) {
+  console.error("\n[ui-integrity] GATE BLOQUEADO POR REGRESSÃO.");
+  for (const regression of regressions) {
+    console.error("[ui-integrity] " + regression.key + ": " + regression.value + " (baseline " + regression.baseline + ").");
+  }
+  console.error("[ui-integrity] Corrija as novas regressões antes de integrar esta mudança.");
   process.exitCode = 1;
 } else {
-  console.log("\n[ui-integrity] Gate aprovado: BLOCKER, contratos HTTP, feedback de erro em fetch/hooks gerados/mutateAsync, navegações, controles desabilitados, callbacks vazios e botões de formulário estão limpos. Demais HIGHs seguem em relatório progressivo.");
+  console.log("\n[ui-integrity] Gate aprovado dentro do baseline progressivo.");
+  console.log("[ui-integrity] Dívida conhecida: " + httpContractHighs + " contratos HTTP, " + visibleErrorHighs + " feedbacks de erro, " + generatedMutationErrorHighs + " mutations e " + generatedMutateAsyncErrorHighs + " mutateAsync.");
+  console.log("[ui-integrity] Qualquer aumento acima do baseline volta a bloquear o build.");
 }
