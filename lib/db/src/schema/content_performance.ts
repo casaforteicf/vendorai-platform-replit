@@ -25,6 +25,7 @@ export const contentPublishedPostsTable = pgTable("content_published_posts", {
   contentGenerationId: text("content_generation_id").references(() => contentGenerationsTable.id, { onDelete: "set null" }),
   variationIndex: integer("variation_index").notNull().default(0),
   instagramMediaId: text("instagram_media_id").notNull(),
+  instagramConnectionId: text("instagram_connection_id"),
   contentType: text("content_type").notNull(),
   theme: text("theme"),
   captionOuTexto: text("caption_ou_texto"),

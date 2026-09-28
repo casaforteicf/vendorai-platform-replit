@@ -382,7 +382,7 @@ router.post("/tenants/:tenantId/ads/campaigns", async (req, res) => {
   const sourceVariationIndex = Number(req.body?.sourceVariationIndex);
   if (parsed.data.contentGenerationId && Number.isInteger(sourceVariationIndex) && sourceVariationIndex >= 0) {
     const [publishedPost] = await db
-      .select({ instagramMediaId: contentPublishedPostsTable.instagramMediaId })
+      .select({ instagramMediaId: contentPublishedPostsTable.instagramMediaId, instagramConnectionId: contentPublishedPostsTable.instagramConnectionId })
       .from(contentPublishedPostsTable)
       .where(and(
         eq(contentPublishedPostsTable.tenantId, tenantId),
@@ -392,7 +392,7 @@ router.post("/tenants/:tenantId/ads/campaigns", async (req, res) => {
       .orderBy(desc(contentPublishedPostsTable.publishedAt))
       .limit(1);
     if (publishedPost?.instagramMediaId) {
-      segmentacao = { ...segmentacao, origemInstagram: { mediaId: publishedPost.instagramMediaId, variationIndex: sourceVariationIndex, contentGenerationId: parsed.data.contentGenerationId } };
+      segmentacao = { ...segmentacao, origemInstagram: { mediaId: publishedPost.instagramMediaId, variationIndex: sourceVariationIndex, contentGenerationId: parsed.data.contentGenerationId, instagramConnectionId: publishedPost.instagramConnectionId ?? undefined }, instagramConnectionId: publishedPost.instagramConnectionId ?? segmentacao.instagramConnectionId };
     }
   }
 

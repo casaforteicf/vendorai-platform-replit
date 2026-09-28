@@ -25,6 +25,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   MessageSquare,
@@ -383,6 +384,7 @@ function ChatPanel({
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [sendingLibraryAsset, setSendingLibraryAsset] = useState(false);
   const [togglingAgentDisabled, setTogglingAgentDisabled] = useState(false);
+  const [instagramConnectionId, setInstagramConnectionId] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -391,6 +393,26 @@ function ChatPanel({
   const requestUploadUrl = useRequestUploadUrl();
   const updateLead = useUpdateLead();
   const createMessage = useCreateMessage();
+  const { data: instagramConnectionStatus } = useQuery<{
+    id?: string;
+    connections?: Array<{ id: string; username?: string | null }>;
+  }>({
+    queryKey: ["conversation-instagram-accounts", tenantId],
+    queryFn: async () => {
+      const token = localStorage.getItem("vendorai_token");
+      const response = await fetch(`/api/tenants/${tenantId}/instagram-connection`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error("Falha ao carregar contas do Instagram.");
+      return response.json();
+    },
+    enabled: Boolean(tenantId && conv.channel === "instagram"),
+    staleTime: 30_000,
+  });
+  const instagramAccounts = instagramConnectionStatus?.connections ?? [];
+  const selectedInstagramConnectionId =
+    instagramConnectionId || instagramConnectionStatus?.id || instagramAccounts[0]?.id || "";
 
   const isHumanLocked = lead?.activeAgentLock === "human";
   const isAgentDisabled = !!lead?.agenteDesativado;
@@ -614,6 +636,7 @@ function ChatPanel({
           conteudo: text || libraryAsset.originalFilename || "Mídia",
           enviadoPor: MessageEnviadoPor.humano,
           midia: { mediaAssetId: libraryAsset.id },
+          ...(conv.channel === "instagram" && selectedInstagramConnectionId ? { instagramConnectionId: selectedInstagramConnectionId } : {}),
         }),
       });
 
@@ -726,6 +749,7 @@ function ChatPanel({
           conteudo: text || pendingAttachment?.file.name || "Anexo",
           enviadoPor: MessageEnviadoPor.humano,
           ...(midia ? { midia } : {}),
+          ...(conv.channel === "instagram" && selectedInstagramConnectionId ? { instagramConnectionId: selectedInstagramConnectionId } : {}),
         },
       },
       {
@@ -1154,6 +1178,24 @@ function ChatPanel({
                 >
                   <X className="h-4 w-4" />
                 </button>
+              </div>
+            )}
+
+            {conv.channel === "instagram" && instagramAccounts.length > 1 && (
+              <div className="mb-2 flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Responder por</span>
+                <Select value={selectedInstagramConnectionId} onValueChange={setInstagramConnectionId}>
+                  <SelectTrigger className="h-8 w-[190px] text-xs">
+                    <SelectValue placeholder="Conta do Instagram" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {instagramAccounts.map((account, index) => (
+                      <SelectItem key={account.id} value={account.id}>
+                        @{account.username || "instagram"}{index === 0 ? " · principal" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             )}
 

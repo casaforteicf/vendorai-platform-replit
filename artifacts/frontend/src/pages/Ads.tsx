@@ -145,7 +145,8 @@ interface AdCampaign {
   slaNegociacaoHoras: number;
   latestCreative: AdCreative | null;
   segmentacao?: {
-    origemInstagram?: { mediaId: string; variationIndex: number; contentGenerationId: string };
+    origemInstagram?: { mediaId: string; variationIndex: number; contentGenerationId: string; instagramConnectionId?: string };
+    instagramConnectionId?: string;
     audiencePlan?: {
       summary: string;
       google: { keywords: string[] };
@@ -266,6 +267,7 @@ const EMPTY_FORM = {
   pausarAoInteresse: true, slaNegociacaoHoras: "48",
   imagemEscolhidaUrl: "" as string,
   contentGenerationId: "" as string,
+  instagramConnectionId: "" as string,
 };
 
 const OPCOES_IDADE = ["18-24", "25-34", "35-44", "45-54", "55-64", "65+", "Desconhecida"];
@@ -299,6 +301,26 @@ export default function Ads() {
   const [autoGenerateAfterCreate, setAutoGenerateAfterCreate] = useState(false);
   const [marketingContext, setMarketingContext] = useState<MarketingContextValue>({ nicheId: "", nicheName: "", productIds: [], productNames: [] });
   const [historyCampaignId, setHistoryCampaignId] = useState<string | null>(null);
+
+  const { data: instagramConnectionStatus } = useQuery<{
+    id?: string;
+    connections?: Array<{ id: string; username?: string | null }>;
+  }>({
+    queryKey: ["ads-instagram-accounts", tenantId],
+    queryFn: async () => {
+      const response = await fetch(`/api/tenants/${tenantId}/instagram-connection`, {
+        headers: authHeaders(),
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error("Não foi possível carregar as contas do Instagram.");
+      return response.json();
+    },
+    enabled: Boolean(tenantId),
+    staleTime: 30_000,
+  });
+  const instagramAccounts = instagramConnectionStatus?.connections ?? [];
+  const defaultInstagramConnectionId =
+    instagramConnectionStatus?.id || instagramAccounts[0]?.id || "";
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -571,6 +593,7 @@ export default function Ads() {
           audiencias: { afinidade: form.afinidade, noMercado: form.noMercado, termosPesquisa: form.termosPesquisa, sites: form.sites, aplicativos: form.aplicativos },
           dadosProprios: { remarketing: form.remarketing, customerMatch: form.customerMatch, semelhantes: form.semelhantes },
           marketingContext: { ...marketingContext },
+          ...(form.plataforma === "meta" && (form.instagramConnectionId || defaultInstagramConnectionId) ? { instagramConnectionId: form.instagramConnectionId || defaultInstagramConnectionId } : {}),
           campaignControl: {
             objective: form.objective,
             startDate: form.startDate,
@@ -1104,6 +1127,7 @@ export default function Ads() {
                 ...f,
                 plataforma: v as "google" | "meta",
                 tipoAnuncio: v === "meta" ? "imagem" : "rsa_pmax",
+                instagramConnectionId: v === "meta" ? (f.instagramConnectionId || defaultInstagramConnectionId) : "",
               }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -1112,6 +1136,30 @@ export default function Ads() {
                 </SelectContent>
               </Select>
             </div>
+
+            {form.plataforma === "meta" && instagramAccounts.length > 0 && (
+              <div>
+                <LabelTip tip="Define qual conta profissional do Instagram será usada como identidade do anúncio e para localizar publicações que serão patrocinadas.">
+                  Instagram da campanha
+                </LabelTip>
+                <Select
+                  value={form.instagramConnectionId || defaultInstagramConnectionId}
+                  onValueChange={(value) => setForm((current) => ({ ...current, instagramConnectionId: value }))}
+                >
+                  <SelectTrigger><SelectValue placeholder="Escolha a conta do Instagram" /></SelectTrigger>
+                  <SelectContent>
+                    {instagramAccounts.map((account, index) => (
+                      <SelectItem key={account.id} value={account.id}>
+                        @{account.username || "instagram"}{index === 0 ? " · principal" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  O anúncio será vinculado à Página/identidade Meta correspondente a esta conta.
+                </p>
+              </div>
+            )}
 
             <div>
               <LabelTip tip="Sobre o que é o anúncio: veículo do estoque, imóvel, produto do catálogo, uma landing page gerada, ou livre (sem vínculo com item específico — institucional, campanha de marca).">Tipo de item</LabelTip>
@@ -1414,7 +1462,7 @@ export default function Ads() {
               )}
             </div>
 
-            <Button className="w-full" disabled={criarCampanha.isPending || !form.orcamentoDiario || campaignDays(form.startDate, form.endDate) < 1 || (form.conversionMode === "platform" && !form.conversionConfirmed) || !form.locais.trim() || !marketingContext.nicheId || marketingContext.productIds.length === 0 || (form.modo === "unico" && form.itemTipo !== "livre" && !form.itemId)}
+            <Button className="w-full" disabled={criarCampanha.isPending || !form.orcamentoDiario || campaignDays(form.startDate, form.endDate) < 1 || (form.conversionMode === "platform" && !form.conversionConfirmed) || !form.locais.trim() || !marketingContext.nicheId || marketingContext.productIds.length === 0 || (form.plataforma === "meta" && instagramAccounts.length > 1 && !(form.instagramConnectionId || defaultInstagramConnectionId)) || (form.modo === "unico" && form.itemTipo !== "livre" && !form.itemId)}
               onClick={() => criarCampanha.mutate()}>
               {criarCampanha.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
               Criar campanha (rascunho)

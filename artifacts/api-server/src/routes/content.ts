@@ -340,6 +340,7 @@ router.get("/tenants/:tenantId/content", async (req, res) => {
 const publishBodySchema = z.object({
   variationIndex: z.number().int().min(0),
   captionOverride: z.string().optional(),
+  instagramConnectionId: z.string().min(1).optional(),
 });
 const patchMediaBodySchema = z.object({
   objectPath: z.string().min(1),
@@ -964,6 +965,7 @@ router.post("/tenants/:tenantId/content/:contentId/publish-instagram", async (re
       contentId,
       variationIndex: body.data.variationIndex,
       captionOverride: body.data.captionOverride,
+      instagramConnectionId: body.data.instagramConnectionId,
       log: req.log,
     });
     res.json({ success: true, postId: published.postId, contentType: published.contentType });

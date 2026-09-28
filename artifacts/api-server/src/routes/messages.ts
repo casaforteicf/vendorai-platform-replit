@@ -120,7 +120,7 @@ router.post("/messages", async (req, res): Promise<void> => {
   if (direcao === "saida" && (canal === "whatsapp" || canal === "instagram") && leadId) {
     try {
       const { message } = await sendOutgoingMessage(
-        { tenantId, leadId, conteudo, canal, midia },
+        { tenantId, leadId, conteudo, canal, midia, instagramConnectionId: typeof req.body?.instagramConnectionId === "string" ? req.body.instagramConnectionId : undefined },
         req.log
       );
       res.status(201).json(message);

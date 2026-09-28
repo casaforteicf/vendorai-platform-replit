@@ -9,6 +9,7 @@ import {
   refreshInstagramToken,
   disconnectInstagram,
   getInstagramConnectionByTenantId,
+  getInstagramConnectionsByTenantId,
 } from "../services/instagram-oauth.js";
 import { authenticate } from "../middlewares/auth.js";
 import { createOAuthState, consumeOAuthState } from "../lib/oauth-state.js";
@@ -162,7 +163,9 @@ router.get("/tenants/:tenantId/instagram-connection", authenticate, async (req, 
       return res.status(403).json({ error: "Forbidden" });
     }
 
-    const conn = await getInstagramConnectionByTenantId(tenantId);
+    const connections = await getInstagramConnectionsByTenantId(tenantId);
+    const activeConnections = connections.filter((item) => !item.disconnectedAt);
+    const conn = activeConnections[0] ?? connections[0] ?? null;
     const tokenExpired = Boolean(conn?.tokenExpiresAt && conn.tokenExpiresAt <= new Date());
     const publishReady = Boolean(conn?.pageAccessToken && conn.accountId);
     if (!conn || conn.disconnectedAt || !publishReady || tokenExpired) {
@@ -170,6 +173,15 @@ router.get("/tenants/:tenantId/instagram-connection", authenticate, async (req, 
         connected: false,
         needsReconnect: Boolean(conn && !conn.disconnectedAt),
         reason: tokenExpired ? "token_expired" : conn && !publishReady ? "missing_publish_credentials" : "not_connected",
+        connections: activeConnections.map((item) => ({
+          id: item.id,
+          username: item.username,
+          accountId: item.accountId,
+          pageId: item.pageId,
+          tokenExpiresAt: item.tokenExpiresAt?.toISOString() ?? null,
+          connectedAt: item.connectedAt?.toISOString() ?? null,
+          updatedAt: item.updatedAt?.toISOString() ?? null,
+        })),
       });
     }
 
@@ -193,6 +205,16 @@ router.get("/tenants/:tenantId/instagram-connection", authenticate, async (req, 
       pageId: conn.pageId,
       tokenExpiresAt: conn.tokenExpiresAt?.toISOString() ?? null,
       connectedAt: conn.connectedAt?.toISOString() ?? null,
+      connectionCount: activeConnections.length,
+      connections: activeConnections.map((item) => ({
+        id: item.id,
+        username: item.username,
+        accountId: item.accountId,
+        pageId: item.pageId,
+        tokenExpiresAt: item.tokenExpiresAt?.toISOString() ?? null,
+        connectedAt: item.connectedAt?.toISOString() ?? null,
+        updatedAt: item.updatedAt?.toISOString() ?? null,
+      })),
     });
   } catch (err) {
     logger.error({ err, tenantId: String(req.params.tenantId) }, "Erro ao buscar status da conexão Instagram");
@@ -208,7 +230,11 @@ router.post("/tenants/:tenantId/instagram-connection/refresh", authenticate, asy
       return res.status(403).json({ error: "Forbidden" });
     }
 
-    const conn = await getInstagramConnectionByTenantId(tenantId);
+    const requestedConnectionId = typeof req.body?.connectionId === "string" ? req.body.connectionId : undefined;
+    const connections = await getInstagramConnectionsByTenantId(tenantId);
+    const conn = requestedConnectionId
+      ? connections.find((item) => item.id === requestedConnectionId && !item.disconnectedAt)
+      : connections.find((item) => !item.disconnectedAt);
     if (!conn) {
       return res.status(404).json({ error: "Connection not found" });
     }
@@ -235,8 +261,12 @@ router.delete("/tenants/:tenantId/instagram-connection", authenticate, async (re
       return res.status(403).json({ error: "Forbidden" });
     }
 
-    const before = await getInstagramConnectionByTenantId(tenantId);
-    await disconnectInstagram(tenantId);
+    const connectionId = typeof req.query.connectionId === "string" ? req.query.connectionId : undefined;
+    const beforeConnections = await getInstagramConnectionsByTenantId(tenantId);
+    const before = connectionId
+      ? beforeConnections.find((item) => item.id === connectionId) ?? null
+      : beforeConnections;
+    await disconnectInstagram(tenantId, connectionId);
     await auditIntegrationChange({ tenantId, provider: "instagram", action: "excluir", before, actor: auditActor(req) });
     return res.json({ success: true });
   } catch (err) {

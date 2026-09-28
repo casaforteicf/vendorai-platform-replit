@@ -161,17 +161,20 @@ async function resolveInstagramMediaUrl(rawUrl: string): Promise<string> {
   return new URL(rawUrl, `${publicBase}/`).toString();
 }
 
-export async function getPublishingCredentials(tenantId: string) {
+export async function getPublishingCredentials(tenantId: string, connectionId?: string) {
   const [[directConnection], [legacyConfig]] = await Promise.all([
     db
       .select({
+        id: instagramConnectionsTable.id,
         accessToken: instagramConnectionsTable.pageAccessToken,
         accountId: instagramConnectionsTable.accountId,
         disconnectedAt: instagramConnectionsTable.disconnectedAt,
         tokenExpiresAt: instagramConnectionsTable.tokenExpiresAt,
       })
       .from(instagramConnectionsTable)
-      .where(eq(instagramConnectionsTable.tenantId, tenantId))
+      .where(connectionId
+        ? and(eq(instagramConnectionsTable.tenantId, tenantId), eq(instagramConnectionsTable.id, connectionId))
+        : eq(instagramConnectionsTable.tenantId, tenantId))
       .limit(1),
     db
       .select({
@@ -201,7 +204,7 @@ export async function getPublishingCredentials(tenantId: string) {
     );
   }
 
-  return { accessToken, accountId };
+  return { accessToken, accountId, connectionId: directPublishReady ? directConnection?.id : undefined };
 }
 
 export async function publishContentGenerationToInstagram(params: {
@@ -209,6 +212,7 @@ export async function publishContentGenerationToInstagram(params: {
   contentId: string;
   variationIndex: number;
   captionOverride?: string;
+  instagramConnectionId?: string;
   log: Logger;
 }): Promise<{ postId: string; contentType: "feed" | "stories" | "reels" }> {
   const [gen] = await db
@@ -256,7 +260,7 @@ export async function publishContentGenerationToInstagram(params: {
     throw error;
   }
 
-  const { accessToken, accountId } = await getPublishingCredentials(params.tenantId);
+  const { accessToken, accountId, connectionId } = await getPublishingCredentials(params.tenantId, params.instagramConnectionId);
   let postId: string;
   let captionOuTexto = "";
 
@@ -323,6 +327,7 @@ export async function publishContentGenerationToInstagram(params: {
     contentType: gen.type,
     theme: gen.theme,
     captionOuTexto,
+    instagramConnectionId: connectionId,
   });
 
   return { postId, contentType: gen.type as "feed" | "stories" | "reels" };

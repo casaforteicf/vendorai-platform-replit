@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import {
   db,
   leadsTable,
@@ -9,6 +9,7 @@ import {
   notificationsTable,
   tenantsTable,
   whatsappConnectionsTable,
+  instagramConnectionsTable,
 } from "@workspace/db";
 import type { Message, Conversation } from "@workspace/db";
 import type { Logger } from "pino";
@@ -48,6 +49,7 @@ export interface SendOutgoingMessageInput {
   conteudo: string;
   canal: "whatsapp" | "instagram" | "messenger" | "email" | "chat";
   agentName?: string | null;
+  instagramConnectionId?: string;
   // Anexo do chat interno (botão de anexar) — quando presente, a
   // mensagem é enviada como mídia em vez de texto no canal escolhido.
   midia?: {
@@ -923,29 +925,71 @@ export async function sendOutgoingMessage(
 
   // ── 3. Instagram: validate credentials + actually send
   if (canal === "instagram") {
-    const [config] = await db
+    const [latestInstagramConversation] = await db
+      .select({ metadata: conversationsTable.metadata })
+      .from(conversationsTable)
+      .where(and(
+        eq(conversationsTable.tenantId, tenantId),
+        eq(conversationsTable.leadId, leadId),
+        eq(conversationsTable.channel, "instagram"),
+      ))
+      .orderBy(desc(conversationsTable.ultimaMensagemEm))
+      .limit(1);
+
+    const instagramMetadata = latestInstagramConversation?.metadata && typeof latestInstagramConversation.metadata === "object"
+      ? latestInstagramConversation.metadata as Record<string, unknown>
+      : {};
+    const routedConnectionId =
+      input.instagramConnectionId ||
+      (typeof instagramMetadata["instagramConnectionId"] === "string"
+        ? instagramMetadata["instagramConnectionId"] as string
+        : undefined);
+    const routedScopedId =
+      typeof instagramMetadata["instagramScopedId"] === "string"
+        ? instagramMetadata["instagramScopedId"] as string
+        : lead.instagramScopedId;
+
+    const [selectedConnection] = await db
+      .select({
+        id: instagramConnectionsTable.id,
+        accessToken: instagramConnectionsTable.pageAccessToken,
+      })
+      .from(instagramConnectionsTable)
+      .where(routedConnectionId
+        ? and(
+            eq(instagramConnectionsTable.tenantId, tenantId),
+            eq(instagramConnectionsTable.id, routedConnectionId),
+            isNull(instagramConnectionsTable.disconnectedAt),
+          )
+        : and(
+            eq(instagramConnectionsTable.tenantId, tenantId),
+            isNull(instagramConnectionsTable.disconnectedAt),
+          ))
+      .limit(1);
+
+    const [legacyConfig] = await db
       .select({
         instagramPageAccessToken: agentConfigsTable.instagramPageAccessToken,
-        instagramPageId: agentConfigsTable.instagramPageId,
       })
       .from(agentConfigsTable)
       .where(eq(agentConfigsTable.tenantId, tenantId))
       .limit(1);
 
-    if (!config?.instagramPageAccessToken) {
+    const instagramAccessToken = selectedConnection?.accessToken ?? legacyConfig?.instagramPageAccessToken;
+    if (!instagramAccessToken) {
       throw new InstagramNotConnectedError();
     }
 
-    if (!lead.instagramScopedId) {
+    if (!routedScopedId) {
       throw new InstagramScopedIdMissingError(leadId);
     }
 
     if (input.midia) {
-      await sendMetaGraphMedia(config.instagramPageAccessToken, lead.instagramScopedId, input.midia.url, input.midia.mimeType, log, "instagram");
+      await sendMetaGraphMedia(instagramAccessToken, routedScopedId, input.midia.url, input.midia.mimeType, log, "instagram");
     } else {
       await sendInstagramMessage(
-        config.instagramPageAccessToken,
-        lead.instagramScopedId,
+        instagramAccessToken,
+        routedScopedId,
         conteudo,
         log
       );

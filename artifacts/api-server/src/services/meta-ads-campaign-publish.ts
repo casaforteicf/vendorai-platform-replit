@@ -259,11 +259,21 @@ async function getValidAccessToken(tenantId: string): Promise<{ accessToken: str
 async function getInstagramIdentity(
   tenantId: string,
   accessToken: string,
+  instagramConnectionId?: string,
 ): Promise<{ pageId: string; pageAccessToken: string; instagramUserId: string }> {
   const [directInstagram] = await db
-    .select({ username: instagramConnectionsTable.username })
+    .select({
+      id: instagramConnectionsTable.id,
+      username: instagramConnectionsTable.username,
+      accountId: instagramConnectionsTable.accountId,
+    })
     .from(instagramConnectionsTable)
-    .where(eq(instagramConnectionsTable.tenantId, tenantId));
+    .where(instagramConnectionId
+      ? and(
+          eq(instagramConnectionsTable.tenantId, tenantId),
+          eq(instagramConnectionsTable.id, instagramConnectionId),
+        )
+      : eq(instagramConnectionsTable.tenantId, tenantId));
 
   const identities = await listAccessibleInstagramIdentities(accessToken);
   if (identities.length === 0) {
@@ -273,9 +283,12 @@ async function getInstagramIdentity(
   }
 
   const expectedUsername = directInstagram?.username?.trim().toLowerCase();
-  if (expectedUsername) {
+  const expectedAccountId = directInstagram?.accountId?.trim();
+  if (expectedUsername || expectedAccountId) {
     const matching = identities.find(
-      (identity) => identity.instagramUsername?.trim().toLowerCase() === expectedUsername,
+      (identity) =>
+        (!!expectedAccountId && identity.instagramUserId === expectedAccountId) ||
+        (!!expectedUsername && identity.instagramUsername?.trim().toLowerCase() === expectedUsername),
     );
     if (matching) {
       return {
@@ -300,11 +313,16 @@ async function getInstagramIdentity(
   );
 }
 
-async function fetchDirectInstagramPermalink(tenantId: string, mediaId: string): Promise<string | null> {
+async function fetchDirectInstagramPermalink(tenantId: string, mediaId: string, instagramConnectionId?: string): Promise<string | null> {
   const [direct] = await db
     .select({ token: instagramConnectionsTable.pageAccessToken })
     .from(instagramConnectionsTable)
-    .where(eq(instagramConnectionsTable.tenantId, tenantId));
+    .where(instagramConnectionId
+      ? and(
+          eq(instagramConnectionsTable.tenantId, tenantId),
+          eq(instagramConnectionsTable.id, instagramConnectionId),
+        )
+      : eq(instagramConnectionsTable.tenantId, tenantId));
   if (!direct?.token) return null;
 
   const url = new URL(`https://graph.instagram.com/v26.0/${encodeURIComponent(mediaId)}`);
@@ -325,8 +343,9 @@ async function resolveBoostableInstagramMediaId(
   sourceMediaId: string,
   instagramUserId: string,
   pageAccessToken: string,
+  instagramConnectionId?: string,
 ): Promise<string> {
-  const directPermalink = await fetchDirectInstagramPermalink(tenantId, sourceMediaId);
+  const directPermalink = await fetchDirectInstagramPermalink(tenantId, sourceMediaId, instagramConnectionId);
 
   let nextUrl: string | null = `${META_GRAPH_BASE}/${encodeURIComponent(instagramUserId)}/media`;
   for (let page = 0; page < 5 && nextUrl; page += 1) {
@@ -420,9 +439,21 @@ export async function publishCampaignToMetaAds(tenantId: string, campaignId: str
   const finalUrl = origemInstagram ? null : await resolveFinalUrl(tenantId, campanha);
   const { accessToken, adAccountId } = await getValidAccessToken(tenantId);
   const adAccountPath = normalizeMetaAdAccountId(adAccountId);
-  const { pageId, pageAccessToken, instagramUserId } = await getInstagramIdentity(tenantId, accessToken);
+  const selectedInstagramConnectionId =
+    origemInstagram?.instagramConnectionId ?? campanha.segmentacao?.instagramConnectionId;
+  const { pageId, pageAccessToken, instagramUserId } = await getInstagramIdentity(
+    tenantId,
+    accessToken,
+    selectedInstagramConnectionId,
+  );
   const boostableInstagramMediaId = origemInstagram
-    ? await resolveBoostableInstagramMediaId(tenantId, origemInstagram.mediaId, instagramUserId, pageAccessToken)
+    ? await resolveBoostableInstagramMediaId(
+        tenantId,
+        origemInstagram.mediaId,
+        instagramUserId,
+        pageAccessToken,
+        selectedInstagramConnectionId,
+      )
     : null;
 
   const interestQueries = campanha.segmentacao?.audiencePlan?.meta?.interestQueries ?? [];

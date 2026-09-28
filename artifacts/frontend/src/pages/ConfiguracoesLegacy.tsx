@@ -1574,6 +1574,13 @@ export default function Configuracoes() {
 
   // ── Instagram OAuth connection state ─────────────────────────────────────────────
   const igConnection = useGetInstagramConnectionStatus(tenantId ?? "");
+  const instagramConnections = (((igConnection.data as any)?.connections ?? []) as Array<{
+    id: string;
+    username?: string | null;
+    tokenExpiresAt?: string | null;
+    accountId?: string | null;
+    pageId?: string | null;
+  }>);
   const disconnectIg = useDisconnectInstagram();
   const refreshIg = useRefreshInstagramToken();
 
@@ -4242,7 +4249,9 @@ export default function Configuracoes() {
                   <div className="rounded-xl bg-muted/30 border p-4 space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
-                        <p className="text-xs text-muted-foreground">Conta conectada</p>
+                        <p className="text-xs text-muted-foreground">
+                          {instagramConnections.length > 1 ? `${instagramConnections.length} contas conectadas` : "Conta conectada"}
+                        </p>
                         <p className="text-base font-semibold text-foreground">@{igConnection.data.username}</p>
                       </div>
                       {igConnection.data.tokenExpiresAt && (
@@ -4270,6 +4279,19 @@ export default function Configuracoes() {
                     </div>
                   </div>
 
+                  {instagramConnections.length > 1 && (
+                    <div className="rounded-xl border bg-background p-4">
+                      <p className="mb-2 text-xs font-medium text-muted-foreground">Contas disponíveis neste tenant</p>
+                      <div className="flex flex-wrap gap-2">
+                        {instagramConnections.map((account, index) => (
+                          <Badge key={account.id} variant={index === 0 ? "default" : "secondary"}>
+                            @{account.username || "instagram"}{index === 0 ? " · principal" : ""}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex flex-wrap items-center gap-2">
                     <Button type="button" onClick={() => window.location.assign("/content")} className="gap-2">
                       <Wand2 className="h-4 w-4" /> Criar conteúdo
@@ -4280,8 +4302,11 @@ export default function Configuracoes() {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2 border-t pt-4">
+                    <Button onClick={onConnectInstagram} variant="outline" size="sm" className="gap-2">
+                      <UserPlus className="h-4 w-4" /> Adicionar outra conta
+                    </Button>
                     <Button onClick={onConnectInstagram} variant="ghost" size="sm" className="gap-2">
-                      <RefreshCw className="h-4 w-4" /> Reconectar
+                      <RefreshCw className="h-4 w-4" /> Reconectar principal
                     </Button>
                     <Button
                       onClick={onRefreshInstagram}
