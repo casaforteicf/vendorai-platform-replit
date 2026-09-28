@@ -84,7 +84,14 @@ type Props = {
   onRoomDuplicate?: (roomId: string) => void;
   onRoomDelete?: (roomId: string) => void;
   paintTarget?: "object" | "wall" | "floor" | null;
-  referenceImage?: { url: string; opacity?: number } | null;
+  referenceImage?: {
+    url: string;
+    opacity?: number;
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+  } | null;
 };
 
 function formatMeters(value: number) {
@@ -1280,10 +1287,10 @@ export default function ConceptPlan2D({
         {referenceImage?.url ? (
           <image
             href={referenceImage.url}
-            x="0"
-            y="0"
-            width={lotWidth}
-            height={lotDepth}
+            x={referenceImage.x ?? 0}
+            y={referenceImage.y ?? 0}
+            width={referenceImage.width ?? lotWidth}
+            height={referenceImage.height ?? lotDepth}
             preserveAspectRatio="xMidYMid meet"
             opacity={Math.max(0.08, Math.min(0.8, referenceImage.opacity ?? 0.35))}
             pointerEvents="none"
