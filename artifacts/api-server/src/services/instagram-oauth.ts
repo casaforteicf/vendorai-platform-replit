@@ -117,7 +117,13 @@ export async function saveDirectInstagramConnection(
   if (owner) throw new Error("Esta conta do Instagram ja esta conectada a outro tenant");
 
   const expiresAt = token.expires_in ? new Date(Date.now() + token.expires_in * 1000) : null;
-  const existing = await getInstagramConnectionByTenantId(tenantId);
+  const [existing] = await db.select()
+    .from(instagramConnectionsTable)
+    .where(and(
+      eq(instagramConnectionsTable.tenantId, tenantId),
+      eq(instagramConnectionsTable.accountId, account.id),
+    ))
+    .limit(1);
   const values = {
     accountId: account.id,
     pageId: account.id,
@@ -352,34 +358,57 @@ export async function refreshInstagramToken(connectionId: string): Promise<void>
   logger.info({ connectionId, expiresAt }, "Token renovado com sucesso");
 }
 
-export async function disconnectInstagram(tenantId: string): Promise<void> {
-  logger.info({ tenantId }, "Desconectando Instagram");
+export async function getInstagramConnectionsByTenantId(tenantId: string) {
+  return db
+    .select()
+    .from(instagramConnectionsTable)
+    .where(eq(instagramConnectionsTable.tenantId, tenantId))
+    .orderBy(instagramConnectionsTable.disconnectedAt, instagramConnectionsTable.updatedAt);
+}
+
+export async function getInstagramConnectionByTenantId(tenantId: string) {
+  const connections = await getInstagramConnectionsByTenantId(tenantId);
+  return connections.find((conn) => !conn.disconnectedAt) ?? connections[0] ?? null;
+}
+
+async function syncPrimaryInstagramAgentConfig(tenantId: string): Promise<void> {
+  const connections = await getInstagramConnectionsByTenantId(tenantId);
+  const primary = connections.find((conn) => !conn.disconnectedAt && conn.pageAccessToken && conn.accountId) ?? null;
+
+  await db
+    .insert(agentConfigsTable)
+    .values({
+      tenantId,
+      instagramPageAccessToken: primary?.pageAccessToken ?? null,
+      instagramPageId: primary?.accountId ?? primary?.pageId ?? null,
+      instagramUsername: primary?.username ?? null,
+    })
+    .onConflictDoUpdate({
+      target: agentConfigsTable.tenantId,
+      set: {
+        instagramPageAccessToken: primary?.pageAccessToken ?? null,
+        instagramPageId: primary?.accountId ?? primary?.pageId ?? null,
+        instagramUsername: primary?.username ?? null,
+        updatedAt: new Date(),
+      },
+    });
+}
+
+export async function disconnectInstagram(tenantId: string, connectionId?: string): Promise<void> {
+  logger.info({ tenantId, connectionId }, "Desconectando Instagram");
+
+  const where = connectionId
+    ? and(eq(instagramConnectionsTable.tenantId, tenantId), eq(instagramConnectionsTable.id, connectionId))
+    : eq(instagramConnectionsTable.tenantId, tenantId);
 
   await db
     .update(instagramConnectionsTable)
     .set({ disconnectedAt: new Date(), updatedAt: new Date() })
-    .where(eq(instagramConnectionsTable.tenantId, tenantId));
+    .where(where);
 
-  await db
-    .update(agentConfigsTable)
-    .set({
-      instagramPageAccessToken: null,
-      instagramPageId: null,
-      instagramUsername: null,
-      updatedAt: new Date(),
-    })
-    .where(eq(agentConfigsTable.tenantId, tenantId));
+  await syncPrimaryInstagramAgentConfig(tenantId);
 
-  logger.info({ tenantId }, "Instagram desconectado");
-}
-
-export async function getInstagramConnectionByTenantId(tenantId: string) {
-  const [conn] = await db
-    .select()
-    .from(instagramConnectionsTable)
-    .where(eq(instagramConnectionsTable.tenantId, tenantId))
-    .limit(1);
-  return conn ?? null;
+  logger.info({ tenantId, connectionId }, "Instagram desconectado");
 }
 
 export async function saveInstagramConnection(
@@ -407,7 +436,14 @@ export async function saveInstagramConnection(
     throw new Error("Esta pagina do Instagram ja esta conectada a outro tenant");
   }
 
-  const existing = await getInstagramConnectionByTenantId(tenantId);
+  const [existing] = await db
+    .select()
+    .from(instagramConnectionsTable)
+    .where(and(
+      eq(instagramConnectionsTable.tenantId, tenantId),
+      eq(instagramConnectionsTable.accountId, igInfo.id),
+    ))
+    .limit(1);
 
   if (existing) {
     await db
