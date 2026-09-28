@@ -261,6 +261,7 @@ router.get("/visitor-intelligence/web-vitals", async (req, res) => {
   const now = Date.now();
   const since = new Date(now - minutes * 60_000);
   const previousSince = new Date(now - minutes * 2 * 60_000);
+  const previous2Since = new Date(now - minutes * 3 * 60_000);
 
   try {
     const rows = await db
@@ -294,12 +295,33 @@ router.get("/visitor-intelligence/web-vitals", async (req, res) => {
       .orderBy(desc(webBehaviorEventsTable.createdAt))
       .limit(10_000);
 
+    const previous2Rows = await db
+      .select({
+        path: webBehaviorEventsTable.path,
+        metadata: webBehaviorEventsTable.metadata,
+        createdAt: webBehaviorEventsTable.createdAt,
+      })
+      .from(webBehaviorEventsTable)
+      .where(and(
+        eq(webBehaviorEventsTable.tenantId, tenantId),
+        eq(webBehaviorEventsTable.eventType, "engagement"),
+        gte(webBehaviorEventsTable.createdAt, previous2Since),
+        lt(webBehaviorEventsTable.createdAt, previousSince),
+      ))
+      .orderBy(desc(webBehaviorEventsTable.createdAt))
+      .limit(10_000);
+
     const samples = rows
       .map((row) => parseVitalSample({ path: row.path, metadata: row.metadata ?? {}, createdAt: row.createdAt }))
       .filter((sample): sample is VitalSample => sample !== null)
       .filter((sample) => device === "all" || sample.deviceCategory === device);
 
     const previousSamples = previousRows
+      .map((row) => parseVitalSample({ path: row.path, metadata: row.metadata ?? {}, createdAt: row.createdAt }))
+      .filter((sample): sample is VitalSample => sample !== null)
+      .filter((sample) => device === "all" || sample.deviceCategory === device);
+
+    const previous2Samples = previous2Rows
       .map((row) => parseVitalSample({ path: row.path, metadata: row.metadata ?? {}, createdAt: row.createdAt }))
       .filter((sample): sample is VitalSample => sample !== null)
       .filter((sample) => device === "all" || sample.deviceCategory === device);
@@ -397,9 +419,17 @@ router.get("/visitor-intelligence/web-vitals", async (req, res) => {
       previousRouteMap.set(sample.path, list);
     }
 
+    const previous2RouteMap = new Map<string, VitalSample[]>();
+    for (const sample of previous2Samples) {
+      const list = previous2RouteMap.get(sample.path) ?? [];
+      list.push(sample);
+      previous2RouteMap.set(sample.path, list);
+    }
+
     const routes = [...routeMap.entries()]
       .map(([path, routeSamples]) => {
         const previous = previousRouteMap.get(path) ?? [];
+        const previous2 = previous2RouteMap.get(path) ?? [];
         return {
           path,
           samples: routeSamples.length,
@@ -412,6 +442,12 @@ router.get("/visitor-intelligence/web-vitals", async (req, res) => {
             inp: vitalSummary(previous, "INP").p75,
             cls: vitalSummary(previous, "CLS").p75,
           },
+          previous2: {
+            samples: previous2.length,
+            lcp: vitalSummary(previous2, "LCP").p75,
+            inp: vitalSummary(previous2, "INP").p75,
+            cls: vitalSummary(previous2, "CLS").p75,
+          },
         };
       })
       .sort((a, b) => b.samples - a.samples)
@@ -422,6 +458,7 @@ router.get("/visitor-intelligence/web-vitals", async (req, res) => {
       device,
       since: since.toISOString(),
       previousSince: previousSince.toISOString(),
+      previous2Since: previous2Since.toISOString(),
       generatedAt: new Date().toISOString(),
       sampleCount: samples.length,
       metrics: {
