@@ -1056,6 +1056,25 @@ function PublishInstagramButton({
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const [publishing, setPublishing] = useState(false);
+  const [instagramConnectionId, setInstagramConnectionId] = useState<string>("");
+  const { data: instagramStatus } = useQuery<{
+    id?: string;
+    connections?: Array<{ id: string; username?: string | null }>;
+  }>({
+    queryKey: ["instagram-connections-for-publish", tenantId],
+    queryFn: async () => {
+      const res = await fetch(`/api/tenants/${tenantId}/instagram-connection`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+        cache: "no-store",
+      });
+      if (!res.ok) throw new Error("Não foi possível carregar as contas do Instagram.");
+      return res.json();
+    },
+    enabled: Boolean(tenantId),
+    staleTime: 30_000,
+  });
+  const instagramAccounts = instagramStatus?.connections ?? [];
+  const selectedInstagramConnectionId = instagramConnectionId || instagramStatus?.id || instagramAccounts[0]?.id || "";
 
   async function handlePublish() {
     if (!hasImage) {
@@ -1070,6 +1089,7 @@ function PublishInstagramButton({
     try {
       const body: Record<string, unknown> = { variationIndex };
       if (captionOverride !== undefined) body["captionOverride"] = captionOverride;
+      if (selectedInstagramConnectionId) body["instagramConnectionId"] = selectedInstagramConnectionId;
       const res = await fetch(`/api/tenants/${tenantId}/content/${contentId}/publish-instagram`, {
         method: "POST",
         headers: {
@@ -1112,19 +1132,39 @@ function PublishInstagramButton({
   }
 
   return (
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={handlePublish}
-      disabled={publishing}
-      title={!hasImage ? "Mídia obrigatória ausente" : "Publicar no Instagram"}
-      className={cn("h-7 px-2 text-xs gap-1", !hasImage && "opacity-50")}
-    >
-      {publishing
-        ? <Loader2 className="h-3 w-3 animate-spin" />
-        : <Instagram className="h-3 w-3" />}
-      {publishing ? "Publicando…" : "Publicar"}
-    </Button>
+    <div className="flex items-center gap-1.5">
+      {instagramAccounts.length > 1 && (
+        <Select
+          value={selectedInstagramConnectionId}
+          onValueChange={setInstagramConnectionId}
+          disabled={publishing}
+        >
+          <SelectTrigger className="h-7 min-w-[145px] px-2 text-xs">
+            <SelectValue placeholder="Escolher Instagram" />
+          </SelectTrigger>
+          <SelectContent>
+            {instagramAccounts.map((account, index) => (
+              <SelectItem key={account.id} value={account.id}>
+                @{account.username || "instagram"}{index === 0 ? " · principal" : ""}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={handlePublish}
+        disabled={publishing}
+        title={!hasImage ? "Mídia obrigatória ausente" : "Publicar no Instagram"}
+        className={cn("h-7 px-2 text-xs gap-1", !hasImage && "opacity-50")}
+      >
+        {publishing
+          ? <Loader2 className="h-3 w-3 animate-spin" />
+          : <Instagram className="h-3 w-3" />}
+        {publishing ? "Publicando…" : "Publicar"}
+      </Button>
+    </div>
   );
 }
 
