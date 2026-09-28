@@ -51,6 +51,7 @@ import {
   XCircle,
   GripVertical,
   Settings2,
+  Paperclip,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -295,6 +296,11 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const [imageUploading, setImageUploading] = useState(false);
   const [generatingStageImages, setGeneratingStageImages] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
+
+  type ProposalAttachment = { nome: string; url: string; mimeType?: string; tamanho?: number };
+  const [proposalAttachments, setProposalAttachments] = useState<ProposalAttachment[]>([]);
+  const [attachmentUploading, setAttachmentUploading] = useState(false);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
 
   // Seletor de imagens — aba ativa
   const [imageSourceTab, setImageSourceTab] = useState<"upload" | "renders">("upload");
@@ -561,6 +567,15 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   }
 
   useEffect(() => {
+    const budgets = orcamentos as any[];
+    if (loadingOrcamentos || budgets.length === 0) return;
+    const selectionIsValid = budgets.some((orc) => orc.id === selectedOrcamentoId);
+    if (!selectionIsValid) {
+      handleProposalBudgetChange(budgets[0].id);
+    }
+  }, [loadingOrcamentos, orcamentos, selectedOrcamentoId]);
+
+  useEffect(() => {
     // Sync lead fields when lead prop changes
     setMercadoSegmento(lead?.mercadoSegmento ?? "");
     setLogoUrl(lead?.logoUrl ?? "");
@@ -727,6 +742,49 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
       next[target] = current;
       return next;
     });
+  }
+
+  async function handleProposalAttachmentUpload(files: FileList) {
+    setAttachmentUploading(true);
+    const uploaded: ProposalAttachment[] = [];
+    try {
+      for (const file of Array.from(files)) {
+        if (file.size > 20 * 1024 * 1024) {
+          toast({ title: `${file.name} excede 20MB`, variant: "destructive" });
+          continue;
+        }
+        const result = await new Promise<{ uploadURL: string; objectPath: string }>((resolve, reject) => {
+          requestUploadUrl.mutate(
+            { data: { name: file.name, size: file.size, contentType: file.type || "application/octet-stream" } },
+            { onSuccess: resolve, onError: reject },
+          );
+        });
+        const uploadRes = await fetch(result.uploadURL, {
+          method: "PUT",
+          body: file,
+          headers: { "Content-Type": file.type || "application/octet-stream" },
+        });
+        if (!uploadRes.ok) throw new Error(`Falha ao enviar ${file.name}`);
+        uploaded.push({
+          nome: file.name,
+          url: `/api/storage${result.objectPath}`,
+          mimeType: file.type || undefined,
+          tamanho: file.size,
+        });
+      }
+      if (uploaded.length) {
+        setProposalAttachments((prev) => [...prev, ...uploaded]);
+        toast({ title: `${uploaded.length} anexo(s) adicionado(s) à proposta` });
+      }
+    } catch (error) {
+      toast({
+        title: "Erro no upload de anexo",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setAttachmentUploading(false);
+    }
   }
 
   async function handleProposalImageUpload(files: FileList) {
@@ -945,6 +1003,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
           corDestaque: corDestaque || undefined,
           corSecundaria: corSecundaria || undefined,
           imagens: imagesForProposal,
+          anexos: proposalAttachments,
           objetivo: lead?.objetivo || undefined,
           propostaId: selectedOrcamentoId !== "__none__" ? selectedOrcamentoId : undefined,
           apresentacao: selectedOrcamentoId !== "__none__" ? currentProposalPresentation() : undefined,
@@ -1608,7 +1667,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
               size="sm"
               className="h-7 text-xs gap-1"
               onClick={() => openRefineDialog()}
-              disabled={generating}
+              disabled={generating || loadingOrcamentos || orcamentos.length === 0 || selectedOrcamentoId === "__none__"}
             >
               {generating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
               {generating ? "Gerando..." : "Gerar Proposta"}
@@ -1712,9 +1771,16 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
           {/* Seletor de orçamento a incluir */}
           {orcamentos.length > 0 && (
             <div className="mb-4 min-w-0 space-y-1 overflow-hidden border-b pb-4">
-              <label className="text-xs text-muted-foreground font-medium">
-                Orçamento a incluir na proposta
-              </label>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label className="text-xs text-muted-foreground font-medium">
+                  Orçamento usado nesta proposta *
+                </label>
+                {selectedOrcamentoId !== "__none__" && (
+                  <span className="text-[11px] text-emerald-600">
+                    Selecionado · você pode trocar no campo abaixo
+                  </span>
+                )}
+              </div>
               <Select
                 value={selectedOrcamentoId}
                 onValueChange={handleProposalBudgetChange}
@@ -1723,7 +1789,6 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                   <SelectValue placeholder="Nenhum orçamento" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__none__">Nenhum orçamento</SelectItem>
                   {orcamentos.map((orc) => {
                     const total = orc.valorTotal
                       ? parseFloat(orc.valorTotal as string).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
@@ -1737,6 +1802,61 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                   })}
                 </SelectContent>
               </Select>
+
+              <div className="mt-3 rounded-xl border bg-background p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-semibold">Anexos da proposta</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Anexe memoriais, plantas, especificações, planilhas, PDFs ou outros documentos que devem acompanhar esta versão.
+                    </p>
+                  </div>
+                  <input
+                    ref={attachmentInputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg,.webp"
+                    onChange={(event) => {
+                      if (event.target.files?.length) void handleProposalAttachmentUpload(event.target.files);
+                      event.target.value = "";
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-8 gap-1.5 text-xs"
+                    disabled={attachmentUploading}
+                    onClick={() => attachmentInputRef.current?.click()}
+                  >
+                    {attachmentUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip className="h-3.5 w-3.5" />}
+                    {attachmentUploading ? "Enviando..." : "Anexar arquivos"}
+                  </Button>
+                </div>
+                {proposalAttachments.length > 0 && (
+                  <div className="mt-3 space-y-1.5">
+                    {proposalAttachments.map((anexo, index) => (
+                      <div key={`${anexo.url}-${index}`} className="flex items-center justify-between gap-2 rounded-md border px-2.5 py-2 text-xs">
+                        <a href={anexo.url} target="_blank" rel="noopener noreferrer" className="flex min-w-0 items-center gap-2 hover:underline">
+                          <FileText className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate">{anexo.nome}</span>
+                        </a>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6"
+                          title="Remover anexo"
+                          onClick={() => setProposalAttachments((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               {selectedOrcamentoId !== "__none__" && (
                 <div className="mt-3 space-y-3 rounded-xl border bg-muted/20 p-3">
