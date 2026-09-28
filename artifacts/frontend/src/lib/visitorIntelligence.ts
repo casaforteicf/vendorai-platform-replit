@@ -141,6 +141,7 @@ export async function requestVisitorBrowserNotifications() {
 export async function sendVisitorTelemetry(
   eventType: VisitorTelemetryEventType,
   metadata: Record<string, string | number | boolean | null> = {},
+  locationOverride?: { path?: string; pageUrl?: string },
 ) {
   if (typeof window === "undefined") return;
   const token = authToken();
@@ -151,8 +152,8 @@ export async function sendVisitorTelemetry(
   const body = JSON.stringify({
     anonymousSessionId: sessionId(),
     eventType,
-    pageUrl: window.location.href,
-    path: `${window.location.pathname}${window.location.search}`,
+    pageUrl: locationOverride?.pageUrl ?? window.location.href,
+    path: locationOverride?.path ?? `${window.location.pathname}${window.location.search}`,
     referrer: document.referrer || undefined,
     utmCampaign: attr.utmCampaign || undefined,
     metadata: {
@@ -365,6 +366,14 @@ function installPerformanceTelemetry() {
   let ttfb = 0;
   let reported = false;
   const observers: PerformanceObserver[] = [];
+  const initialPath = `${window.location.pathname}${window.location.search}`;
+  const initialPageUrl = window.location.href;
+  let lcpPath = initialPath;
+  let lcpPageUrl = initialPageUrl;
+  let clsPath = initialPath;
+  let clsPageUrl = initialPageUrl;
+  let inpPath = initialPath;
+  let inpPageUrl = initialPageUrl;
 
   try {
     const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
@@ -390,16 +399,29 @@ function installPerformanceTelemetry() {
   });
 
   observe("largest-contentful-paint", (entry) => {
-    lcp = Math.max(lcp, entry.startTime);
+    if (entry.startTime >= lcp) {
+      lcp = entry.startTime;
+      lcpPath = `${window.location.pathname}${window.location.search}`;
+      lcpPageUrl = window.location.href;
+    }
   });
 
   observe("layout-shift", (entry) => {
     const shift = entry as PerformanceEntry & { value?: number; hadRecentInput?: boolean };
-    if (!shift.hadRecentInput) cls += shift.value ?? 0;
+    if (!shift.hadRecentInput) {
+      cls += shift.value ?? 0;
+      clsPath = `${window.location.pathname}${window.location.search}`;
+      clsPageUrl = window.location.href;
+    }
   });
 
   observe("event", (entry) => {
-    maxInteraction = Math.max(maxInteraction, entry.duration || 0);
+    const duration = entry.duration || 0;
+    if (duration >= maxInteraction) {
+      maxInteraction = duration;
+      inpPath = `${window.location.pathname}${window.location.search}`;
+      inpPageUrl = window.location.href;
+    }
   });
 
   const deviceCategory = window.innerWidth < 768 ? "mobile" : window.innerWidth < 1024 ? "tablet" : "desktop";
@@ -418,7 +440,11 @@ function installPerformanceTelemetry() {
     return "poor";
   };
 
-  const reportVital = (metric: "LCP" | "CLS" | "FCP" | "TTFB" | "INP", value: number) => {
+  const reportVital = (
+    metric: "LCP" | "CLS" | "FCP" | "TTFB" | "INP",
+    value: number,
+    location: { path: string; pageUrl: string },
+  ) => {
     if (!Number.isFinite(value) || value <= 0) return;
     void sendVisitorTelemetry("engagement", {
       kind: "web_vital",
@@ -426,17 +452,17 @@ function installPerformanceTelemetry() {
       value: metric === "CLS" ? Number(value.toFixed(4)) : Math.round(value),
       rating: ratingFor(metric, value),
       deviceCategory,
-    });
+    }, location);
   };
 
   const report = () => {
     if (reported) return;
     reported = true;
-    reportVital("LCP", lcp);
-    reportVital("CLS", cls);
-    reportVital("FCP", fcp);
-    reportVital("TTFB", ttfb);
-    reportVital("INP", maxInteraction);
+    reportVital("LCP", lcp, { path: lcpPath, pageUrl: lcpPageUrl });
+    reportVital("CLS", cls, { path: clsPath, pageUrl: clsPageUrl });
+    reportVital("FCP", fcp, { path: initialPath, pageUrl: initialPageUrl });
+    reportVital("TTFB", ttfb, { path: initialPath, pageUrl: initialPageUrl });
+    reportVital("INP", maxInteraction, { path: inpPath, pageUrl: inpPageUrl });
   };
 
   const onVisibility = () => {
