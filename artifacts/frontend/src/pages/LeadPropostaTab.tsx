@@ -1041,8 +1041,62 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
         await previewProposal(created.version);
       }
     } catch (e: any) {
-      const msg = e?.error || e?.message || "Erro ao gerar proposta";
-      toast({ title: "Erro na geração", description: msg, variant: "destructive" });
+      const msg = String(e?.error || e?.message || "Erro ao gerar proposta");
+      const gatewayTimedOut =
+        /HTTP\s*524/i.test(msg)
+        || /<!DOCTYPE\s+html/i.test(msg)
+        || /cloudflare/i.test(msg);
+
+      if (!gatewayTimedOut) {
+        toast({ title: "Erro na geração", description: msg, variant: "destructive" });
+      } else {
+        // Cloudflare pode encerrar a conexão antes de a IA terminar, mas o
+        // backend continua processando e salva a proposta alguns segundos depois.
+        // Em vez de mostrar o HTML bruto do 524, acompanhamos a criação da nova versão.
+        const previousVersion = (proposals as any[]).reduce(
+          (max, item) => Math.max(max, Number(item?.version || 0)),
+          0,
+        );
+
+        toast({
+          title: "A proposta ainda está sendo finalizada",
+          description: "A geração demorou mais que o limite da conexão. Vou aguardar a nova versão ficar disponível.",
+        });
+
+        let recoveredVersion: number | null = null;
+        for (let attempt = 0; attempt < 24; attempt += 1) {
+          await new Promise((resolve) => window.setTimeout(resolve, 5000));
+          try {
+            const response = await fetch(`/api/leads/${leadId}/proposals`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!response.ok) continue;
+            const rows = await response.json() as Array<{ version?: number }>;
+            const latestVersion = rows.reduce(
+              (max, item) => Math.max(max, Number(item?.version || 0)),
+              0,
+            );
+            if (latestVersion > previousVersion) {
+              recoveredVersion = latestVersion;
+              break;
+            }
+          } catch {
+            // Falha transitória durante o polling: tenta novamente.
+          }
+        }
+
+        if (recoveredVersion) {
+          await queryClient.invalidateQueries({ queryKey: ["listLeadProposals", leadId] });
+          setActiveVersion(recoveredVersion);
+          toast({ title: `Proposta v${recoveredVersion} gerada com sucesso` });
+          await previewProposal(recoveredVersion);
+        } else {
+          toast({
+            title: "A geração continua em processamento",
+            description: "Não recebemos a nova versão dentro do tempo de espera. Atualize a lista de propostas em instantes.",
+          });
+        }
+      }
     } finally {
       setGenerating(false);
     }
