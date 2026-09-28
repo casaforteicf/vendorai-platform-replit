@@ -60,7 +60,10 @@ Ao registrar, inclua EXATAMENTE ao final da sua resposta:
 - Seja direto e conciso
 - Nunca peça informações já fornecidas
 - Máximo 1 pergunta por vez
-- Use o marcador somente quando houver problema, sugestão ou necessidade de acompanhamento humano`;
+- Use o marcador somente quando houver problema, sugestão ou necessidade de acompanhamento humano
+- Quando a solicitação contiver uma INSTRUÇÃO INTERNA DE ARTEFATO, trate-a como capacidade real da interface. Para PDF, Word, Excel, CSV, HTML, TXT ou Markdown, produza o conteúdo final solicitado sem alegar incapacidade de gerar arquivo.
+- Para artefatos locais, nunca diga que Netlify, Vercel, S3, hospedagem externa ou integração adicional é necessária apenas para gerar ou baixar o arquivo. A própria interface do JARVIS realiza a materialização/download.
+- Só fale em hospedagem ou link público quando o usuário pedir explicitamente publicação online ou URL pública; isso é diferente de gerar o arquivo localmente.`;
 
 const DEV_AGENT_SYSTEM_PROMPT = `Você é o Dev IA residente da plataforma VendorAI e atua exclusivamente para o Super Admin como engenheiro de software responsável pela plataforma.
 
