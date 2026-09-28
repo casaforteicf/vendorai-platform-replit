@@ -270,6 +270,17 @@ function formatVital(name: VitalMetricSummary["name"], value: number | null) {
   return `${Math.round(value)} ms`;
 }
 
+function routeBottleneck(route: WebVitalsResponse["routes"][number]) {
+  const normalized = [
+    { key: "carregamento/renderização", value: route.lcp == null ? 0 : route.lcp / 2500 },
+    { key: "interação", value: route.inp == null ? 0 : route.inp / 200 },
+    { key: "estabilidade visual", value: route.cls == null ? 0 : route.cls / 0.1 },
+  ].sort((a, b) => b.value - a.value);
+
+  if (!normalized[0] || normalized[0].value <= 1) return "sem gargalo dominante";
+  return normalized[0].key;
+}
+
 function routePerformancePriority(route: WebVitalsResponse["routes"][number]) {
   const lcpPenalty = route.lcp == null ? 0 : Math.max(0, route.lcp / 2500 - 1);
   const inpPenalty = route.inp == null ? 0 : Math.max(0, route.inp / 200 - 1) * 1.25;
@@ -352,7 +363,9 @@ export default function VisitorIntelligence() {
     .sort((a, b) => b.score - a.score || b.samples - a.samples), [vitalsQuery.data?.routes]);
   const actionableVitalRoutes = useMemo(() => rankedVitalRoutes
     .filter((route) => route.confidence !== "baixa" && (route.status === "crítica" || route.status === "atenção"))
+    .map((route) => ({ ...route, bottleneck: routeBottleneck(route) }))
     .slice(0, 5), [rankedVitalRoutes]);
+  const slowServerOrNetwork = (vitalsQuery.data?.metrics.TTFB.p75 ?? 0) > 800;
 
   const selectSession = (sessionId: string) => {
     setSelectedSessionId(sessionId);
@@ -442,6 +455,11 @@ export default function VisitorIntelligence() {
                 </div>
                 <span className="rounded-full border bg-background px-2 py-0.5 text-[10px] font-semibold">{actionableVitalRoutes.length} prioridades</span>
               </div>
+              {slowServerOrNetwork ? (
+                <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-800">
+                  TTFB p75 acima de 800 ms: há sinal de latência de servidor/rede além dos gargalos específicos das rotas.
+                </div>
+              ) : null}
               <div className="mt-2 space-y-2">
                 {actionableVitalRoutes.length ? actionableVitalRoutes.map((route, index) => (
                   <div key={route.path} className="flex flex-col gap-1 rounded-md border bg-background px-2.5 py-2 text-xs md:flex-row md:items-center md:justify-between">
@@ -449,6 +467,9 @@ export default function VisitorIntelligence() {
                       <div className="truncate font-medium">{index + 1}. {route.path}</div>
                       <div className="mt-0.5 text-[11px] text-muted-foreground">
                         {route.samples} amostras · confiança {route.confidence} · prioridade {route.score}
+                      </div>
+                      <div className="mt-0.5 text-[11px] font-medium text-foreground/80">
+                        Gargalo dominante: {route.bottleneck}
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
