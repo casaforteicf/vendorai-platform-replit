@@ -4,6 +4,7 @@ import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import React, { lazy, Suspense, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { getGetTenantQueryKey } from "@workspace/api-client-react";
 import {
   LayoutDashboard, Users, Briefcase, MessageSquare, Calendar,
   Settings, LogOut, Megaphone, FileText, Receipt, BrainCircuit, Bell,
@@ -141,9 +142,10 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
   const isSuperAdmin = user?.platformRole === "super_admin";
 
   const { data: tenantData } = useQuery<{ planSlug: string | null; corPrimaria?: string | null; vertical?: string | null; verticalSecundaria?: string | null }>({
-    queryKey: ["tenant-plan", user?.tenantId],
+    queryKey: getGetTenantQueryKey(user?.tenantId ?? ""),
     enabled: !!user?.tenantId && !!token,
     staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
     queryFn: async () => {
       const r = await fetch(`/api/tenants/${user!.tenantId}`, { headers: { Authorization: `Bearer ${token}` } });
       if (!r.ok) return { planSlug: null };
