@@ -62,7 +62,6 @@ import {
 import {
   useListLeadProposals,
   useListLeadProducts,
-  useGenerateLeadProposal,
   useCreateLeadProduct,
   useDeleteLeadProduct,
   useRequestUploadUrl,
@@ -455,9 +454,6 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const proposalHasMinimumImages = effectiveProposalImages.length >= 2; // recomendado, não bloqueante
   const proposalPrimaryPageCount = selectedOrcamentoId !== "__none__" ? 5 : 4;
 
-  const generateMutation = useGenerateLeadProposal({
-    request: { headers: { Authorization: `Bearer ${token}` } },
-  });
   const createProductMutation = useCreateLeadProduct({
     request: { headers: { Authorization: `Bearer ${token}` } },
   });
@@ -1000,103 +996,118 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
 
   async function generateProposal(notes?: string) {
     if (!leadId || !token) return;
+    if (selectedOrcamentoId === "__none__") {
+      toast({
+        title: "Selecione o orçamento",
+        description: "A proposta precisa estar vinculada a um orçamento.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     const imagesForProposal = effectiveProposalImages.slice(0, 12);
+    const payload = {
+      segmento: mercadoSegmento || undefined,
+      logoUrl: logoUrl || undefined,
+      websiteUrl: websiteUrl || undefined,
+      corDestaque: corDestaque || undefined,
+      corSecundaria: corSecundaria || undefined,
+      imagens: imagesForProposal,
+      anexos: proposalAttachments,
+      objetivo: lead?.objetivo || undefined,
+      propostaId: selectedOrcamentoId,
+      apresentacao: currentProposalPresentation(),
+      proposalTemplateId: selectedProposalTemplateId !== "__auto__" ? selectedProposalTemplateId : undefined,
+      proposalBuilderTemplateId:
+        selectedProposalBuilderTemplateId !== "__auto__"
+          ? selectedProposalBuilderTemplateId
+          : undefined,
+      refinementNotes: notes?.trim() || undefined,
+    };
 
-    // Imagens melhoram a apresentação, mas não podem bloquear a geração.
-    // Quando não houver imagens manuais, o backend ainda pode completar com
-    // imagens automáticas de etapas/contexto; caso não seja possível, gera a
-    // proposta normalmente em layout textual.
     setRefineOpen(false);
     setGenerating(true);
-    try {
-      const created = await generateMutation.mutateAsync({
-        leadId,
-        data: {
-          segmento: mercadoSegmento || undefined,
-          logoUrl: logoUrl || undefined,
-          websiteUrl: websiteUrl || undefined,
-          corDestaque: corDestaque || undefined,
-          corSecundaria: corSecundaria || undefined,
-          imagens: imagesForProposal,
-          anexos: proposalAttachments,
-          objetivo: lead?.objetivo || undefined,
-          propostaId: selectedOrcamentoId !== "__none__" ? selectedOrcamentoId : undefined,
-          apresentacao: selectedOrcamentoId !== "__none__" ? currentProposalPresentation() : undefined,
-          proposalTemplateId: selectedProposalTemplateId !== "__auto__" ? selectedProposalTemplateId : undefined,
-          proposalBuilderTemplateId:
-            selectedProposalBuilderTemplateId !== "__auto__"
-              ? selectedProposalBuilderTemplateId
-              : undefined,
-          refinementNotes: notes?.trim() || undefined,
-        } as any,
-      });
-      toast({ title: `Proposta v${created.version} gerada com sucesso` });
-      queryClient.invalidateQueries({ queryKey: ["listLeadProposals", leadId] });
-      setActiveVersion(created.version);
-      if (created.htmlContent) {
-        setPreviewHtml(created.htmlContent);
-        setPreviewOpen(true);
-      } else {
-        await previewProposal(created.version);
-      }
-    } catch (e: any) {
-      const msg = String(e?.error || e?.message || "Erro ao gerar proposta");
-      const gatewayTimedOut =
-        /HTTP\s*524/i.test(msg)
-        || /<!DOCTYPE\s+html/i.test(msg)
-        || /cloudflare/i.test(msg);
 
-      if (!gatewayTimedOut) {
-        toast({ title: "Erro na geração", description: msg, variant: "destructive" });
-      } else {
-        // Cloudflare pode encerrar a conexão antes de a IA terminar, mas o
-        // backend continua processando e salva a proposta alguns segundos depois.
-        // Em vez de mostrar o HTML bruto do 524, acompanhamos a criação da nova versão.
-        const previousVersion = (proposals as any[]).reduce(
-          (max, item) => Math.max(max, Number(item?.version || 0)),
-          0,
+    try {
+      const startResponse = await fetch(`/api/leads/${leadId}/proposals/async`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
+      });
+      const startRaw = await startResponse.text();
+      let startBody: any = null;
+      try {
+        startBody = startRaw ? JSON.parse(startRaw) : null;
+      } catch {
+        startBody = null;
+      }
+
+      if (!startResponse.ok || !startBody?.jobId) {
+        const message =
+          startBody?.error
+          || startBody?.message
+          || (startRaw && !/^\s*</.test(startRaw) ? startRaw.slice(0, 400) : "")
+          || `Não foi possível iniciar a geração (HTTP ${startResponse.status})`;
+        throw new Error(String(message));
+      }
+
+      const jobId = String(startBody.jobId);
+      toast({
+        title: "Gerando proposta",
+        description: "A geração foi iniciada e continuará mesmo que leve alguns minutos.",
+      });
+
+      let generatedVersion: number | null = null;
+      let generationError: string | null = null;
+
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        if (attempt > 0) {
+          await new Promise((resolve) => window.setTimeout(resolve, 3000));
+        }
+
+        const statusResponse = await fetch(
+          `/api/leads/${leadId}/proposals/generation/${encodeURIComponent(jobId)}`,
+          { headers: { Authorization: `Bearer ${token}` } },
         );
 
-        toast({
-          title: "A proposta ainda está sendo finalizada",
-          description: "A geração demorou mais que o limite da conexão. Vou aguardar a nova versão ficar disponível.",
-        });
-
-        let recoveredVersion: number | null = null;
-        for (let attempt = 0; attempt < 24; attempt += 1) {
-          await new Promise((resolve) => window.setTimeout(resolve, 5000));
-          try {
-            const response = await fetch(`/api/leads/${leadId}/proposals`, {
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            if (!response.ok) continue;
-            const rows = await response.json() as Array<{ version?: number }>;
-            const latestVersion = rows.reduce(
-              (max, item) => Math.max(max, Number(item?.version || 0)),
-              0,
-            );
-            if (latestVersion > previousVersion) {
-              recoveredVersion = latestVersion;
-              break;
-            }
-          } catch {
-            // Falha transitória durante o polling: tenta novamente.
-          }
+        if (!statusResponse.ok) {
+          if (statusResponse.status === 404 && attempt < 3) continue;
+          const statusBody = await statusResponse.json().catch(() => null);
+          throw new Error(statusBody?.error || `Falha ao consultar geração (HTTP ${statusResponse.status})`);
         }
 
-        if (recoveredVersion) {
-          await queryClient.invalidateQueries({ queryKey: ["listLeadProposals", leadId] });
-          setActiveVersion(recoveredVersion);
-          toast({ title: `Proposta v${recoveredVersion} gerada com sucesso` });
-          await previewProposal(recoveredVersion);
-        } else {
-          toast({
-            title: "A geração continua em processamento",
-            description: "Não recebemos a nova versão dentro do tempo de espera. Atualize a lista de propostas em instantes.",
-          });
+        const statusBody = await statusResponse.json() as {
+          status?: "processing" | "success" | "error";
+          version?: number;
+          error?: string;
+        };
+
+        if (statusBody.status === "success" && Number(statusBody.version) > 0) {
+          generatedVersion = Number(statusBody.version);
+          break;
+        }
+        if (statusBody.status === "error") {
+          generationError = statusBody.error || "A geração da proposta falhou.";
+          break;
         }
       }
+
+      if (generationError) throw new Error(generationError);
+      if (!generatedVersion) {
+        throw new Error("A geração ultrapassou 5 minutos. Tente novamente ou verifique o provedor de IA.");
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ["listLeadProposals", leadId] });
+      setActiveVersion(generatedVersion);
+      toast({ title: `Proposta v${generatedVersion} gerada com sucesso` });
+      await previewProposal(generatedVersion);
+    } catch (e: any) {
+      const msg = String(e?.error || e?.message || "Erro ao gerar proposta");
+      toast({
+        title: "Erro na geração",
+        description: msg.length > 420 ? `${msg.slice(0, 420)}…` : msg,
+        variant: "destructive",
+      });
     } finally {
       setGenerating(false);
     }
