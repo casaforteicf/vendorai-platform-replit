@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import {
   db,
   leadsTable,
@@ -9,6 +9,7 @@ import {
   notificationsTable,
   tenantsTable,
   whatsappConnectionsTable,
+  instagramConnectionsTable,
 } from "@workspace/db";
 import type { Message, Conversation } from "@workspace/db";
 import type { Logger } from "pino";
@@ -48,6 +49,7 @@ export interface SendOutgoingMessageInput {
   conteudo: string;
   canal: "whatsapp" | "instagram" | "messenger" | "email" | "chat";
   agentName?: string | null;
+  instagramConnectionId?: string;
   // Anexo do chat interno (botão de anexar) — quando presente, a
   // mensagem é enviada como mídia em vez de texto no canal escolhido.
   midia?: {
@@ -923,16 +925,34 @@ export async function sendOutgoingMessage(
 
   // ── 3. Instagram: validate credentials + actually send
   if (canal === "instagram") {
-    const [config] = await db
+    const [selectedConnection] = await db
+      .select({
+        id: instagramConnectionsTable.id,
+        accessToken: instagramConnectionsTable.pageAccessToken,
+      })
+      .from(instagramConnectionsTable)
+      .where(input.instagramConnectionId
+        ? and(
+            eq(instagramConnectionsTable.tenantId, tenantId),
+            eq(instagramConnectionsTable.id, input.instagramConnectionId),
+            isNull(instagramConnectionsTable.disconnectedAt),
+          )
+        : and(
+            eq(instagramConnectionsTable.tenantId, tenantId),
+            isNull(instagramConnectionsTable.disconnectedAt),
+          ))
+      .limit(1);
+
+    const [legacyConfig] = await db
       .select({
         instagramPageAccessToken: agentConfigsTable.instagramPageAccessToken,
-        instagramPageId: agentConfigsTable.instagramPageId,
       })
       .from(agentConfigsTable)
       .where(eq(agentConfigsTable.tenantId, tenantId))
       .limit(1);
 
-    if (!config?.instagramPageAccessToken) {
+    const instagramAccessToken = selectedConnection?.accessToken ?? legacyConfig?.instagramPageAccessToken;
+    if (!instagramAccessToken) {
       throw new InstagramNotConnectedError();
     }
 
@@ -941,10 +961,10 @@ export async function sendOutgoingMessage(
     }
 
     if (input.midia) {
-      await sendMetaGraphMedia(config.instagramPageAccessToken, lead.instagramScopedId, input.midia.url, input.midia.mimeType, log, "instagram");
+      await sendMetaGraphMedia(instagramAccessToken, lead.instagramScopedId, input.midia.url, input.midia.mimeType, log, "instagram");
     } else {
       await sendInstagramMessage(
-        config.instagramPageAccessToken,
+        instagramAccessToken,
         lead.instagramScopedId,
         conteudo,
         log
