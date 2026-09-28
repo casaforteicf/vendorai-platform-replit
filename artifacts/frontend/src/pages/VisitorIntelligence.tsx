@@ -437,6 +437,9 @@ export default function VisitorIntelligence() {
       };
     })
     .slice(0, 5), [rankedVitalRoutes, vitalsQuery.data?.apiRouteTimings, vitalsQuery.data?.runtimeErrors]);
+  const regressionRoutes = useMemo(() => actionableVitalRoutes
+    .filter((route) => route.trend.direction === "down")
+    .slice(0, 3), [actionableVitalRoutes]);
   const slowServerOrNetwork = (vitalsQuery.data?.metrics.TTFB.p75 ?? 0) > 800;
 
   const selectSession = (sessionId: string) => {
@@ -518,6 +521,30 @@ export default function VisitorIntelligence() {
                 );
               })}
             </div>
+
+            {regressionRoutes.length ? (
+              <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/[0.04] p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <div className="text-xs font-semibold text-red-700">Regressões detectadas</div>
+                    <div className="mt-0.5 text-[11px] text-muted-foreground">Rotas com confiança suficiente que pioraram versus o período anterior.</div>
+                  </div>
+                  <span className="rounded-full border border-red-500/30 bg-background px-2 py-0.5 text-[10px] font-semibold text-red-700">{regressionRoutes.length}</span>
+                </div>
+                <div className="mt-2 space-y-2">
+                  {regressionRoutes.map((route) => (
+                    <div key={route.path} className="rounded-md border bg-background px-2.5 py-2 text-xs">
+                      <div className="font-medium">{route.path}</div>
+                      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                        <span>LCP {route.previous?.lcp == null || route.lcp == null ? "—" : `${Math.round(route.previous.lcp)} → ${Math.round(route.lcp)}ms`}</span>
+                        <span>INP {route.previous?.inp == null || route.inp == null ? "—" : `${Math.round(route.previous.inp)} → ${Math.round(route.inp)}ms`}</span>
+                        <span>CLS {route.previous?.cls == null || route.cls == null ? "—" : `${route.previous.cls.toFixed(3)} → ${route.cls.toFixed(3)}`}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             <div className="mt-4 rounded-lg border border-primary/20 bg-primary/[0.03] p-3">
               <div className="flex items-center justify-between gap-2">
