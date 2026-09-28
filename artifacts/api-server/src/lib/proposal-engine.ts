@@ -857,8 +857,8 @@ function renderProposalMonthlyMatrix(
   const displayRows = proposalExpandedScheduleRows(rows);
 
   const chunks: typeof periods[] = [];
-  for (let index = 0; index < periods.length; index += 4) {
-    chunks.push(periods.slice(index, index + 4));
+  for (let index = 0; index < periods.length; index += 6) {
+    chunks.push(periods.slice(index, index + 6));
   }
 
   return chunks.map((chunk, chunkIndex) => {
@@ -866,36 +866,36 @@ function renderProposalMonthlyMatrix(
       const cells = chunk.map((period) => {
         const stage = period.stages.find((item) => item.id === row.id);
         if (!stage || stage.share <= 0) return '<td class="period-empty">—</td>';
-        return `<td class="period-cell">
-          <strong>${fmtMoney(stage.amount)}</strong>
-          <span>Físico ${stage.physical.toFixed(1)}%</span>
-        </td>`;
+        return `<td class="period-cell"><strong>${fmtMoney(stage.amount)}</strong></td>`;
       }).join("");
       return `<tr>
-        <td class="period-stage"><span>${escapeProposalText(row.nome || "Execução")}</span></td>
+        <td class="period-stage"><strong>${escapeProposalText(row.nome || "Execução")}</strong></td>
         ${cells}
       </tr>`;
     }).join("");
 
-    const grossFooter = chunk.map((period) => `<td class="r"><strong>${fmtMoney(period.amount)}</strong></td>`).join("");
-    const amortFooter = chunk.map((period) => `<td class="r"><strong>-${fmtMoney(period.amortization)}</strong></td>`).join("");
-    const netFooter = chunk.map((period) => `<td class="r"><strong>${fmtMoney(period.netAmount)}</strong></td>`).join("");
-    const physicalFooter = chunk.map((period) => `<td class="r"><strong>${period.physical.toFixed(1)}%</strong></td>`).join("");
-    const accumulatedFooter = chunk.map((period) => `<td class="r"><strong>${period.accumulatedPhysical.toFixed(1)}%</strong></td>`).join("");
+    const totalFooter = chunk.map((period) => `<td class="r"><strong>${fmtMoney(period.amount)}</strong></td>`).join("");
+    const hasAdvance = presentation.entradaPercentual > 0 && presentation.mostrarAmortizacaoEntrada;
+    const amortFooter = hasAdvance
+      ? chunk.map((period) => `<td class="r"><strong>-${fmtMoney(period.amortization)}</strong></td>`).join("")
+      : "";
+    const netFooter = hasAdvance
+      ? chunk.map((period) => `<td class="r"><strong>${fmtMoney(period.netAmount)}</strong></td>`).join("")
+      : "";
+
+    const firstPeriodNumber = chunkIndex * 6 + 1;
+    const lastPeriodNumber = firstPeriodNumber + chunk.length - 1;
 
     return `<div class="period-matrix-group">
-      <div class="period-matrix-caption">${chunks.length > 1 ? `Períodos ${chunkIndex * 4 + 1}–${chunkIndex * 4 + chunk.length}` : "Fluxo mensal previsto"}</div>
+      <div class="period-matrix-caption">${chunks.length > 1 ? `Períodos ${firstPeriodNumber}–${lastPeriodNumber}` : "Fluxo mensal previsto"}</div>
       <table class="period-matrix">
         <thead>
           <tr><th>Etapa / fase</th>${chunk.map((period) => `<th class="r">${period.label}</th>`).join("")}</tr>
         </thead>
         <tbody>${body}</tbody>
         <tfoot>
-          <tr><td>Valor bruto previsto</td>${grossFooter}</tr>
-          <tr><td>Amortização da entrada</td>${amortFooter}</tr>
-          <tr><td>Valor líquido previsto</td>${netFooter}</tr>
-          <tr><td>Avanço físico do mês</td>${physicalFooter}</tr>
-          <tr><td>Físico acumulado</td>${accumulatedFooter}</tr>
+          <tr><td>Total previsto no período</td>${totalFooter}</tr>
+          ${hasAdvance ? `<tr><td>Amortização da entrada</td>${amortFooter}</tr><tr><td>Total líquido previsto</td>${netFooter}</tr>` : ""}
         </tfoot>
       </table>
     </div>`;
@@ -917,7 +917,8 @@ function proposalScopeDescription(item: PresentableProposalItem): string {
     .replace(/\s+/g, " ")
     .trim();
 
-  if (rawDescription) {
+  const boilerplate = /composi[cç][aã]o detalhada importada|planilha de custos original|refer[eê]ncia \d{2}\/\d{4}|^etapa \d+\s*[•·-]/i;
+  if (rawDescription && !boilerplate.test(rawDescription)) {
     const max = 220;
     const concise = rawDescription.length > max
       ? `${rawDescription.slice(0, max - 1).trimEnd()}…`
@@ -926,8 +927,33 @@ function proposalScopeDescription(item: PresentableProposalItem): string {
   }
 
   const itemName = item.nome.trim() || "esta atividade";
+  const normalized = itemName
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  const descriptions: Array<[RegExp, string]> = [
+    [/projeto|legaliza|arquitet|interiores|instalacoes/, "Desenvolvimento, compatibilização e documentação técnica conforme o escopo contratado e as exigências aplicáveis à obra."],
+    [/sondagem|spt/, "Investigação do solo para apoio às definições de fundação e às decisões técnicas do projeto."],
+    [/limpeza do terreno|preparacao do canteiro|canteiro/, "Preparação inicial do terreno e organização do canteiro para início seguro e ordenado dos serviços."],
+    [/movimentacao de terra|terraplen/, "Movimentação, regularização e conformação do terreno conforme cotas e necessidades do projeto."],
+    [/radier|fundacao/, "Execução da fundação prevista, incluindo preparação, armação, passagens e concretagem conforme projeto estrutural."],
+    [/icf|formas icf|armadura|colunas|vigas|vergas|contravergas/, "Execução da estrutura em sistema ICF, com montagem, armações, alinhamento e concretagem conforme projeto estrutural."],
+    [/laje/, "Execução das lajes previstas, incluindo elementos estruturais, armações, concretagem e acabamentos técnicos da etapa."],
+    [/cobertura|telha|rufo|calha/, "Execução da cobertura e seus arremates, incluindo estrutura, telhamento, rufos, calhas e estanqueidade prevista."],
+    [/hidraul|tubo|esgoto|cisterna|boiler|pressur|vaso|chuveiro|registro/, "Fornecimento e execução dos componentes hidrossanitários previstos, com tubulações, conexões, pontos e equipamentos definidos em projeto."],
+    [/eletric|quadro|cabo|eletroduto|carro eletrico|frigorigena/, "Execução da infraestrutura elétrica prevista, incluindo eletrodutos, cabeamento, quadros, pontos e preparações técnicas."],
+    [/esquadria|porta pvc|janela pvc/, "Fornecimento e instalação das esquadrias previstas, com perfis, ferragens, vidros e vedações conforme especificação."],
+    [/porcelanato|revestimento/, "Fornecimento e assentamento dos revestimentos previstos, com preparação de base, paginação, rejuntamento e acabamento."],
+    [/forro|gesso/, "Execução de forro em gesso conforme projeto, incluindo estrutura, fechamento, tratamento de juntas e preparação para acabamento."],
+    [/massa corrida|pintura/, "Preparação das superfícies e execução do sistema de pintura previsto, com acabamento uniforme e compatível com o padrão definido."],
+    [/plafon|iluminacao|luminaria/, "Instalação dos pontos e elementos de iluminação previstos conforme projeto elétrico e padrão de acabamento."],
+    [/limpeza final|limpeza.*obra|entrega/, "Limpeza final, revisão de arremates, checklist e preparação da obra para entrega ao cliente."],
+  ];
+
+  const matched = descriptions.find(([pattern]) => pattern.test(normalized));
   return escapeProposalText(
-    `Contempla ${itemName}, conforme especificações, quantitativos, padrões e condições definidos para esta etapa.`,
+    matched?.[1] ?? `Contempla ${itemName}, conforme especificações, quantitativos, padrões e condições definidos para esta etapa.`,
   );
 }
 
@@ -1028,6 +1054,12 @@ function renderConstructionProposalLayout(args: {
   const client = clientName || meta.clientName || "Cliente";
   const title = orcamento.titulo || hero.title || "Construção residencial";
   const subtitle = "Orçamento por etapas + cronograma físico-financeiro";
+  const proposalContext = `${company} ${title} ${groupedItems.map((group) => group.nome).join(" ")}`
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  const isIcfProposal = /casaforte|\bicf\b|forma isolante/.test(proposalContext);
+
   const accent = "#f26b21";
   const ink = "#111827";
   const muted = "#6b7280";
@@ -1078,6 +1110,26 @@ function renderConstructionProposalLayout(args: {
       <span>${item.label}</span>
       <strong>${item.value}</strong>
     </div>`).join("");
+
+  const valuePropositionHtml = isIcfProposal
+    ? `
+      <div class="value-proposition">
+        <span class="value-kicker">POR QUE ESCOLHER A ${escapeProposalText(company)}</span>
+        <h2>Construção inteligente com tecnologia ICF</h2>
+        <p>Uma proposta orientada por desempenho, conforto e previsibilidade, com sistema construtivo em ICF e acompanhamento técnico ao longo da execução.</p>
+        <div class="value-grid">
+          <div><strong>Conforto térmico e acústico</strong><span>Paredes de alto desempenho para mais bem-estar e eficiência na residência.</span></div>
+          <div><strong>Rapidez construtiva</strong><span>Processo racionalizado que reduz retrabalho e favorece produtividade em obra.</span></div>
+          <div><strong>Resistência e durabilidade</strong><span>Sistema robusto, com desempenho estrutural e longa vida útil.</span></div>
+          <div><strong>Gestão e transparência</strong><span>Etapas, cronograma e acompanhamento organizados desde a proposta até a execução.</span></div>
+        </div>
+      </div>`
+    : `
+      <div class="value-proposition">
+        <span class="value-kicker">POR QUE ESCOLHER A ${escapeProposalText(company)}</span>
+        <h2>Uma proposta organizada para dar clareza à contratação</h2>
+        <p>Escopo, investimento, prazos e condições apresentados de forma objetiva, preservando o orçamento como fonte de verdade comercial.</p>
+      </div>`;
 
   const stagePages = groupedItems.map((group) => {
     const row = scheduleRows.find((item) => item.id === group.id);
@@ -1146,12 +1198,6 @@ function renderConstructionProposalLayout(args: {
         <div><span>DURAÇÃO</span><strong>${row?.duration ? `${row.duration} dias` : "A definir"}</strong></div>
         <div><span>PESO FÍSICO</span><strong>${weight.toFixed(0)}%</strong></div>
       </div>
-      ${row?.start || row?.end ? `
-        <div class="stage-period">
-          <div><span>INÍCIO PREVISTO</span><strong>${row?.start ? proposalFormatDate(row.start) : "A definir"}</strong></div>
-          <div><span>TÉRMINO PREVISTO</span><strong>${row?.end ? proposalFormatDate(row.end) : "A definir"}</strong></div>
-          <div><span>FASES</span><strong>${row?.phases?.length ?? 0}</strong></div>
-        </div>` : ""}
       ${builderModuleEnabled("escopo") && showTechnicalDetail ? `
         <h2 class="scope-title">O que está contemplado nesta etapa</h2>
         <table class="scope-table-demo">
@@ -1264,6 +1310,15 @@ function renderConstructionProposalLayout(args: {
   .organize-item { border:1px solid ${line}; border-radius:2mm; padding:4mm; }
   .organize-item b { display:block; font-size:8pt; margin-bottom:1.2mm; }
   .organize-item p { color:${muted}; font-size:7.6pt; line-height:1.45; }
+
+  .value-proposition { margin-top:7mm; padding:6mm; border:1px solid ${line}; border-radius:3mm; background:#fff; }
+  .value-kicker { display:block; color:${accent}; font-size:6.2pt; letter-spacing:.10em; font-weight:700; margin-bottom:2mm; }
+  .value-proposition h2 { font-size:14pt; line-height:1.15; margin-bottom:2.5mm; }
+  .value-proposition > p { color:#4b5563; font-size:8pt; line-height:1.55; max-width:160mm; }
+  .value-grid { display:grid; grid-template-columns:1fr 1fr; gap:3mm; margin-top:4.5mm; }
+  .value-grid > div { padding:3.8mm; background:${soft}; border-radius:2mm; }
+  .value-grid strong { display:block; font-size:7.8pt; margin-bottom:1mm; }
+  .value-grid span { display:block; color:${muted}; font-size:6.8pt; line-height:1.45; }
 
   .stage-heading { font-size:19pt; margin:1mm 0 8mm; }
   .stage-image { width:100%; height:50mm; overflow:hidden; border-radius:0; background:${soft}; }
@@ -1780,16 +1835,9 @@ function renderConstructionProposalLayout(args: {
 <section class="page">
   ${header("RESUMO EXECUTIVO", "Proposta integrada ao orçamento")}
   <h1 class="summary-heading">Visão geral da proposta</h1>
-  <p class="summary-lead">Este documento parte do orçamento oficial da obra e organiza escopo técnico, etapas, fases de execução e medição, valores contratados, cronograma executivo e fluxo físico-financeiro em uma única apresentação comercial. Após o aceite, estas informações formam a linha-base da obra.</p>
+  <p class="summary-lead">Esta proposta reúne o investimento, o escopo contratado, o planejamento executivo e as condições comerciais em uma apresentação objetiva. O orçamento selecionado permanece como fonte de verdade para valores e serviços.</p>
   <div class="metrics">${summaryCardsHtml}</div>
-  <h2 class="organize-title">Como o documento está organizado</h2>
-  <div class="organize-grid">
-    <div class="organize-item"><b>01 · Escopo por etapa</b><p>Cada etapa reúne os itens e uma descrição objetiva do que está contemplado.</p></div>
-    <div class="organize-item"><b>02 · Imagem representativa</b><p>Uma imagem visual acompanha cada etapa quando esse módulo estiver ativo.</p></div>
-    <div class="organize-item"><b>03 · Cronograma integrado</b><p>As etapas podem ser sequenciais, defasadas ou executadas em paralelo conforme o planejamento.</p></div>
-    <div class="organize-item"><b>04 · Físico-financeiro</b><p>Os valores são distribuídos pelos períodos planejados, separando valor bruto, amortização da entrada e líquido previsto.</p></div>
-    <div class="organize-item"><b>05 · Fases e medições</b><p>Quando uma etapa possuir fases, elas aparecem com datas, peso físico e valor para orientar a medição real da execução.</p></div>
-    <div class="organize-item"><b>06 · Portal do Cliente</b><p>Após o aceite, a mesma linha-base alimenta o acompanhamento de previsto × executado × medido × financeiro.</p></div>
+  ${valuePropositionHtml}
   </div>
   ${footer()}
 </section>
@@ -1808,7 +1856,7 @@ ${(builderModuleEnabled("cronograma") || builderModuleEnabled("fisico_financeiro
   </table>` : ""}
   ${builderModuleEnabled("fisico_financeiro") ? `
     <h2 class="schedule-block-title">Cronograma físico-financeiro</h2>
-    <div class="advance-summary"><strong>Entrada / adiantamento:</strong> ${presentation.entradaPercentual.toFixed(2)}% (${fmtBRL(total * presentation.entradaPercentual / 100)}) · <strong>Amortização:</strong> ${presentation.amortizacaoEntradaPercentual.toFixed(2)}% sobre cada medição até quitação do adiantamento.</div>
+    ${presentation.entradaPercentual > 0 ? `<div class="advance-summary"><strong>Entrada / adiantamento:</strong> ${presentation.entradaPercentual.toFixed(2)}% (${fmtBRL(total * presentation.entradaPercentual / 100)}) · <strong>Amortização:</strong> ${presentation.amortizacaoEntradaPercentual.toFixed(2)}% sobre cada medição até quitação do adiantamento.</div>` : ""}
     <div class="matrix-wrap">${renderProposalMonthlyMatrix(scheduleRows, presentation, total, fmtBRL)}</div>
   ` : ""}
   ${footer()}
@@ -3073,6 +3121,22 @@ export function renderOrcamentoPdf(args: {
   @media print {
     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   }
+
+  /* Approved CasaForte commercial proposal refinements */
+  .stage-metrics {
+    border:1px solid var(--cf-border) !important;
+    border-top:0 !important;
+    background:#fff !important;
+    color:var(--cf-dark) !important;
+    box-shadow:0 2mm 6mm rgba(0,0,0,.035) !important;
+  }
+  .stage-metrics > div { border-right:1px solid var(--cf-border) !important; }
+  .stage-metrics > div:last-child { border-right:0 !important; }
+  .stage-metrics span { color:var(--cf-muted) !important; letter-spacing:.08em !important; }
+  .stage-metrics strong { color:var(--cf-dark) !important; }
+  table.period-matrix .period-stage { width:36mm; }
+  table.period-matrix .period-stage strong { display:block; font-size:6.2pt; }
+  table.period-matrix .period-cell strong { display:block; font-size:6.2pt; white-space:nowrap; }
 </style>
 </head>
 <body>
