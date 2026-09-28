@@ -19,6 +19,7 @@ import { generateImage } from "../lib/ai-gateway.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import pdfParse from "pdf-parse";
 import mammoth from "mammoth";
+import http from "node:http";
 
 const router: IRouter = Router();
 const objectStorage = new ObjectStorageService();
@@ -518,6 +519,42 @@ type ProposalGenerationJob = {
 
 const proposalGenerationJobs = new Map<string, ProposalGenerationJob>();
 
+function postLoopbackJson(url: string, authorization: string, payload: string): Promise<{ status: number; raw: string }> {
+  return new Promise((resolve, reject) => {
+    const target = new URL(url);
+    const req = http.request(
+      {
+        hostname: target.hostname,
+        port: target.port,
+        path: target.pathname + target.search,
+        method: "POST",
+        headers: {
+          Authorization: authorization,
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(payload),
+        },
+        // Proposal generation can legitimately exceed Node fetch/undici's
+        // ~5 minute headers timeout. Keep the internal loopback request alive;
+        // the browser polls a separate lightweight status endpoint.
+        timeout: 0,
+      },
+      (response) => {
+        const chunks: Buffer[] = [];
+        response.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+        response.on("end", () => {
+          resolve({
+            status: response.statusCode ?? 500,
+            raw: Buffer.concat(chunks).toString("utf8"),
+          });
+        });
+      },
+    );
+    req.on("error", reject);
+    req.write(payload);
+    req.end();
+  });
+}
+
 function scheduleProposalGenerationJobCleanup(jobId: string) {
   const timer = setTimeout(() => proposalGenerationJobs.delete(jobId), 15 * 60 * 1000);
   timer.unref?.();
@@ -576,16 +613,8 @@ router.post("/leads/:leadId/proposals/async", async (req, res) => {
   const log = req.log;
 
   setImmediate(() => {
-    void fetch(internalUrl, {
-      method: "POST",
-      headers: {
-        Authorization: authorization,
-        "Content-Type": "application/json",
-      },
-      body: payload,
-    })
-      .then(async (response) => {
-        const raw = await response.text();
+    void postLoopbackJson(internalUrl, authorization, payload)
+      .then(async ({ status, raw }) => {
         let body: any = null;
         try {
           body = raw ? JSON.parse(raw) : null;
@@ -593,12 +622,12 @@ router.post("/leads/:leadId/proposals/async", async (req, res) => {
           body = null;
         }
 
-        if (!response.ok) {
+        if (status < 200 || status >= 300) {
           const message =
             body?.error
             || body?.message
             || (raw && !/^\s*</.test(raw) ? raw.slice(0, 500) : "")
-            || `Falha ao gerar proposta (HTTP ${response.status})`;
+            || `Falha ao gerar proposta (HTTP ${status})`;
           proposalGenerationJobs.set(jobId, {
             tenantId: ctx.lead.tenantId,
             leadId,
@@ -606,7 +635,7 @@ router.post("/leads/:leadId/proposals/async", async (req, res) => {
             error: String(message),
             createdAt: Date.now(),
           });
-          log.warn({ jobId, leadId, status: response.status, error: message }, "async proposal generation failed");
+          log.warn({ jobId, leadId, status, error: message }, "async proposal generation failed");
           return;
         }
 
