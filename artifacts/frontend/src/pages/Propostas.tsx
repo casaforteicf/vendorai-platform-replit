@@ -4263,128 +4263,342 @@ function newFreeItem(): FreeItem {
 
                   <Separator />
 
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     <div>
-                      <p className="text-sm font-semibold">Cronograma e físico-financeiro</p>
+                      <p className="text-sm font-semibold">Cronograma executivo e fluxo financeiro</p>
                       <p className="text-xs text-muted-foreground">
-                        Cada etapa pode ter sua própria data de início e duração. Etapas podem ocorrer em paralelo; a proposta monta colunas mensais e soma automaticamente as cobranças das etapas ativas no mesmo período.
+                        Defina o início e os prazos. O sistema encadeia automaticamente as etapas, permite sobreposição por dependência e distribui a previsão financeira mês a mês.
                       </p>
                     </div>
 
-                    <div className="grid gap-3 md:grid-cols-[220px_1fr_1fr] md:items-end">
+                    <div className="grid gap-3 md:grid-cols-4 md:items-end">
                       <div className="space-y-1.5">
-                        <Label>Previsão geral de início</Label>
+                        <Label>Início previsto da obra</Label>
                         <Input
                           type="date"
                           value={proposalStartDate}
                           onChange={(event) => setProposalStartDate(event.target.value)}
                         />
                       </div>
+                      <div className="space-y-1.5">
+                        <Label>Entrada / adiantamento (%)</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          value={entryPercent}
+                          onChange={(event) => {
+                            const value = Math.min(100, Math.max(0, Number(event.target.value || 0)));
+                            setEntryPercent(value);
+                            if (entryAmortizationPercent === 0) setEntryAmortizationPercent(value);
+                          }}
+                        />
+                        <p className="text-[11px] text-muted-foreground">
+                          {fmtCurrency((mode === "catalogo" ? catTotal : mode === "livre" ? freeTotal : importValorTotal) * entryPercent / 100)}
+                        </p>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Amortização por medição (%)</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          value={entryAmortizationPercent}
+                          onChange={(event) => setEntryAmortizationPercent(Math.min(100, Math.max(0, Number(event.target.value || 0))))}
+                        />
+                        <p className="text-[11px] text-muted-foreground">Desconto sobre o valor bruto medido até zerar a entrada.</p>
+                      </div>
+                      <Button type="button" variant="outline" onClick={recalculateProposalSchedule}>
+                        Recalcular cronograma
+                      </Button>
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-2">
                       <div className="flex items-center gap-3 rounded-md border bg-background px-3 py-2.5">
                         <Switch checked={showExecutionSchedule} onCheckedChange={setShowExecutionSchedule} />
                         <div>
-                          <p className="text-sm font-medium">Cronograma de execução</p>
-                          <p className="text-[11px] text-muted-foreground">Mostra início, término e duração por etapa.</p>
+                          <p className="text-sm font-medium">Cronograma executivo na proposta</p>
+                          <p className="text-[11px] text-muted-foreground">Etapas, fases, início, término e duração.</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-3 rounded-md border bg-background px-3 py-2.5">
                         <Switch checked={showPhysicalFinancial} onCheckedChange={setShowPhysicalFinancial} />
                         <div>
-                          <p className="text-sm font-medium">Cronograma físico-financeiro</p>
-                          <p className="text-[11px] text-muted-foreground">Mostra peso físico, participação financeira, valor e marco de pagamento.</p>
+                          <p className="text-sm font-medium">Fluxo físico-financeiro na proposta</p>
+                          <p className="text-[11px] text-muted-foreground">Planejamento mensal bruto, amortização e líquido previsto.</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 rounded-md border bg-background px-3 py-2.5">
+                        <Switch checked={showEntryAmortization} onCheckedChange={setShowEntryAmortization} />
+                        <div>
+                          <p className="text-sm font-medium">Amortizar entrada nas medições</p>
+                          <p className="text-[11px] text-muted-foreground">A entrada é adiantamento e não aumenta o valor contratado.</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 rounded-md border bg-background px-3 py-2.5">
+                        <Switch checked={showClientPortalPlan} onCheckedChange={setShowClientPortalPlan} />
+                        <div>
+                          <p className="text-sm font-medium">Disponibilizar no Portal do Cliente</p>
+                          <p className="text-[11px] text-muted-foreground">Publica a linha-base, medições e previsto × realizado.</p>
                         </div>
                       </div>
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="space-y-3">
                       {orcamentoEtapas.map((etapa, index) => {
                         const schedule = proposalStageSchedule[etapa.id] ?? {};
                         const stageBudgetValue = proposalStageBudgetTotal(etapa.id);
+                        const phases = schedule.fases ?? [];
                         return (
-                          <div
-                            key={`schedule-${etapa.id}`}
-                            className="grid gap-2 rounded-lg border bg-background p-3 md:grid-cols-[minmax(180px,1fr)_145px_110px_110px_minmax(220px,1fr)] md:items-end"
-                          >
-                            <div>
-                              <p className="text-sm font-medium">Etapa {index + 1} · {etapa.nome || `Etapa ${index + 1}`}</p>
-                              <p className="text-[11px] font-medium text-foreground/80">Valor da etapa no orçamento: {fmtCurrency(stageBudgetValue)}</p>
-                              <p className="text-[11px] text-muted-foreground">Pode acontecer em paralelo com outras etapas. Se não informar a data, usa a previsão geral.</p>
+                          <div key={`schedule-${etapa.id}`} className="rounded-lg border bg-background p-3 space-y-3">
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div>
+                                <p className="text-sm font-semibold">Etapa {index + 1} · {etapa.nome || `Etapa ${index + 1}`}</p>
+                                <p className="text-[11px] font-medium text-foreground/80">Valor contratado: {fmtCurrency(stageBudgetValue)}</p>
+                              </div>
+                              <Button type="button" variant="outline" size="sm" onClick={() => addProposalPhase(etapa.id)}>
+                                <Plus className="mr-1 h-3.5 w-3.5" /> Adicionar fase
+                              </Button>
                             </div>
-                            <div className="space-y-1">
-                              <Label className="text-xs">Início da etapa</Label>
-                              <Input
-                                type="date"
-                                value={schedule.inicioPrevisto ?? ""}
-                                onChange={(event) => setProposalStageSchedule((prev) => ({
-                                  ...prev,
-                                  [etapa.id]: {
-                                    ...(prev[etapa.id] ?? {}),
-                                    inicioPrevisto: event.target.value || undefined,
-                                  },
-                                }))}
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <Label className="text-xs">Duração (dias)</Label>
-                              <Input
-                                type="number"
-                                min="1"
-                                placeholder="Ex: 15"
-                                value={schedule.duracaoDias ?? ""}
-                                onChange={(event) => {
-                                  const raw = event.target.value;
-                                  setProposalStageSchedule((prev) => ({
+
+                            <div className="grid gap-2 md:grid-cols-6 md:items-end">
+                              <div className="space-y-1">
+                                <Label className="text-xs">Depende de</Label>
+                                <Select
+                                  value={schedule.dependeDeEtapaId ?? (index > 0 ? orcamentoEtapas[index - 1]?.id : "inicio")}
+                                  onValueChange={(value) => setProposalStageSchedule((prev) => ({
+                                    ...prev,
+                                    [etapa.id]: { ...(prev[etapa.id] ?? {}), dependeDeEtapaId: value === "inicio" ? undefined : value },
+                                  }))}
+                                >
+                                  <SelectTrigger><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="inicio">Início da obra</SelectItem>
+                                    {orcamentoEtapas.filter((candidate) => candidate.id !== etapa.id).map((candidate) => (
+                                      <SelectItem key={candidate.id} value={candidate.id}>{candidate.nome}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Relação</Label>
+                                <Select
+                                  value={schedule.tipoDependencia ?? "FS"}
+                                  onValueChange={(value) => setProposalStageSchedule((prev) => ({
+                                    ...prev,
+                                    [etapa.id]: { ...(prev[etapa.id] ?? {}), tipoDependencia: value as ProposalDependencyType },
+                                  }))}
+                                >
+                                  <SelectTrigger><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="FS">Após término</SelectItem>
+                                    <SelectItem value="SS">Junto/apos início</SelectItem>
+                                    <SelectItem value="FF">Terminar junto</SelectItem>
+                                    <SelectItem value="SF">Fim ligado ao início</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Defasagem (dias)</Label>
+                                <Input
+                                  type="number"
+                                  value={schedule.defasagemDias ?? 0}
+                                  onChange={(event) => setProposalStageSchedule((prev) => ({
+                                    ...prev,
+                                    [etapa.id]: { ...(prev[etapa.id] ?? {}), defasagemDias: Number(event.target.value || 0) },
+                                  }))}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Duração (dias)</Label>
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  value={schedule.duracaoDias ?? ""}
+                                  onChange={(event) => setProposalStageSchedule((prev) => ({
                                     ...prev,
                                     [etapa.id]: {
                                       ...(prev[etapa.id] ?? {}),
-                                      duracaoDias: raw === "" ? undefined : Math.max(1, Number(raw)),
+                                      duracaoDias: event.target.value === "" ? undefined : Math.max(1, Number(event.target.value)),
                                     },
-                                  }));
-                                }}
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <Label className="text-xs">Peso físico (%)</Label>
-                              <Input
-                                type="number"
-                                min="0"
-                                max="100"
-                                step="0.01"
-                                placeholder="Auto"
-                                value={schedule.percentualFisico ?? ""}
-                                onChange={(event) => {
-                                  const raw = event.target.value;
-                                  setProposalStageSchedule((prev) => ({
+                                  }))}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Início</Label>
+                                <Input
+                                  type="date"
+                                  value={schedule.inicioPrevisto ?? ""}
+                                  onChange={(event) => setProposalStageSchedule((prev) => ({
                                     ...prev,
                                     [etapa.id]: {
                                       ...(prev[etapa.id] ?? {}),
-                                      percentualFisico: raw === "" ? undefined : Math.min(100, Math.max(0, Number(raw))),
+                                      inicioPrevisto: event.target.value || undefined,
+                                      inicioAutomatico: false,
                                     },
-                                  }));
-                                }}
-                              />
+                                  }))}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Término</Label>
+                                <Input type="date" value={schedule.fimPrevisto ?? ""} readOnly className="bg-muted/40" />
+                              </div>
                             </div>
-                            <div className="space-y-1">
-                              <Label className="text-xs">Marco / condição da etapa</Label>
-                              <Input
-                                placeholder="Ex: pagamento na conclusão da fundação"
-                                value={schedule.marcoPagamento ?? ""}
-                                onChange={(event) => setProposalStageSchedule((prev) => ({
-                                  ...prev,
-                                  [etapa.id]: {
-                                    ...(prev[etapa.id] ?? {}),
-                                    marcoPagamento: event.target.value || undefined,
-                                  },
-                                }))}
-                              />
+
+                            <div className="grid gap-2 md:grid-cols-[140px_1fr] md:items-end">
+                              <div className="space-y-1">
+                                <Label className="text-xs">Peso físico (%)</Label>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  step="0.01"
+                                  placeholder="Auto"
+                                  value={schedule.percentualFisico ?? ""}
+                                  onChange={(event) => setProposalStageSchedule((prev) => ({
+                                    ...prev,
+                                    [etapa.id]: {
+                                      ...(prev[etapa.id] ?? {}),
+                                      percentualFisico: event.target.value === "" ? undefined : Math.min(100, Math.max(0, Number(event.target.value))),
+                                    },
+                                  }))}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Marco / condição</Label>
+                                <Input
+                                  placeholder="Ex: liberação após conclusão da fundação"
+                                  value={schedule.marcoPagamento ?? ""}
+                                  onChange={(event) => setProposalStageSchedule((prev) => ({
+                                    ...prev,
+                                    [etapa.id]: { ...(prev[etapa.id] ?? {}), marcoPagamento: event.target.value || undefined },
+                                  }))}
+                                />
+                              </div>
                             </div>
+
+                            {phases.length > 0 && (
+                              <div className="rounded-md border bg-muted/20 p-2 space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <p className="text-xs font-semibold">Fases para execução e medição</p>
+                                  <p className="text-[11px] text-muted-foreground">
+                                    Distribuição da etapa: {phases.reduce((sum, phase) => sum + Number(phase.percentualEtapa ?? 0), 0).toFixed(2)}%
+                                  </p>
+                                </div>
+                                {phases.map((phase, phaseIndex) => (
+                                  <div key={phase.id} className="grid gap-2 rounded-md border bg-background p-2 md:grid-cols-[minmax(150px,1fr)_100px_100px_150px_125px_125px_32px] md:items-end">
+                                    <div className="space-y-1">
+                                      <Label className="text-xs">Fase</Label>
+                                      <Input value={phase.nome} onChange={(event) => updateProposalPhase(etapa.id, phase.id, { nome: event.target.value })} />
+                                    </div>
+                                    <div className="space-y-1">
+                                      <Label className="text-xs">% da etapa</Label>
+                                      <Input
+                                        type="number" min="0" max="100" step="0.01"
+                                        value={phase.percentualEtapa ?? ""}
+                                        onChange={(event) => updateProposalPhase(etapa.id, phase.id, {
+                                          percentualEtapa: event.target.value === "" ? undefined : Math.min(100, Math.max(0, Number(event.target.value))),
+                                        })}
+                                      />
+                                    </div>
+                                    <div className="space-y-1">
+                                      <Label className="text-xs">Dias</Label>
+                                      <Input
+                                        type="number" min="1"
+                                        value={phase.duracaoDias ?? ""}
+                                        onChange={(event) => updateProposalPhase(etapa.id, phase.id, {
+                                          duracaoDias: event.target.value === "" ? undefined : Math.max(1, Number(event.target.value)),
+                                        })}
+                                      />
+                                    </div>
+                                    <div className="space-y-1">
+                                      <Label className="text-xs">Dependência</Label>
+                                      <Select
+                                        value={phase.dependeDeFaseId ?? (phaseIndex > 0 ? phases[phaseIndex - 1]?.id : "etapa")}
+                                        onValueChange={(value) => updateProposalPhase(etapa.id, phase.id, { dependeDeFaseId: value === "etapa" ? undefined : value })}
+                                      >
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="etapa">Início da etapa</SelectItem>
+                                          {phases.filter((candidate) => candidate.id !== phase.id).map((candidate) => (
+                                            <SelectItem key={candidate.id} value={candidate.id}>{candidate.nome}</SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    <div className="space-y-1">
+                                      <Label className="text-xs">Início</Label>
+                                      <Input type="date" value={phase.inicioPrevisto ?? ""} onChange={(event) => updateProposalPhase(etapa.id, phase.id, { inicioPrevisto: event.target.value || undefined })} />
+                                    </div>
+                                    <div className="space-y-1">
+                                      <Label className="text-xs">Término</Label>
+                                      <Input type="date" value={phase.fimPrevisto ?? ""} readOnly className="bg-muted/40" />
+                                    </div>
+                                    <Button type="button" variant="ghost" size="icon" onClick={() => removeProposalPhase(etapa.id, phase.id)} title="Remover fase">
+                                      <X className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         );
                       })}
                     </div>
 
+                    {showPhysicalFinancial && (() => {
+                      const rows = buildMonthlyFinancialPreview();
+                      const totalValue = mode === "catalogo" ? catTotal : mode === "livre" ? freeTotal : importValorTotal;
+                      const entryValue = totalValue * entryPercent / 100;
+                      return (
+                        <div className="space-y-2">
+                          <div className="rounded-md border bg-muted/20 p-3 text-xs">
+                            <strong>Fluxo contratado:</strong> valor total {fmtCurrency(totalValue)} · entrada {entryPercent.toFixed(2)}% ({fmtCurrency(entryValue)}) · amortização {entryAmortizationPercent.toFixed(2)}% sobre cada medição até quitar o adiantamento.
+                          </div>
+                          {rows.length > 0 ? (
+                            <div className="overflow-x-auto rounded-md border">
+                              <Table>
+                                <TableHeader>
+                                  <TableRow>
+                                    <TableHead>Mês</TableHead>
+                                    <TableHead>Etapas / fases previstas</TableHead>
+                                    <TableHead className="text-right">% físico</TableHead>
+                                    <TableHead className="text-right">% acum.</TableHead>
+                                    <TableHead className="text-right">Bruto previsto</TableHead>
+                                    <TableHead className="text-right">Amortização</TableHead>
+                                    <TableHead className="text-right">Líquido previsto</TableHead>
+                                    <TableHead className="text-right">Saldo entrada</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {rows.map((row) => (
+                                    <TableRow key={row.key}>
+                                      <TableCell className="font-medium whitespace-nowrap">{row.label}</TableCell>
+                                      <TableCell className="min-w-[260px]">{row.atividades.join(" + ")}</TableCell>
+                                      <TableCell className="text-right">{row.fisico.toFixed(2)}%</TableCell>
+                                      <TableCell className="text-right">{row.fisicoAcumulado.toFixed(2)}%</TableCell>
+                                      <TableCell className="text-right">{fmtCurrency(row.bruto)}</TableCell>
+                                      <TableCell className="text-right text-amber-700">-{fmtCurrency(row.amortizacao)}</TableCell>
+                                      <TableCell className="text-right font-semibold">{fmtCurrency(row.liquido)}</TableCell>
+                                      <TableCell className="text-right">{fmtCurrency(row.saldoEntrada)}</TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            </div>
+                          ) : (
+                            <div className="rounded-md border border-dashed bg-muted/30 px-3 py-3 text-xs text-muted-foreground">
+                              Informe a data inicial e a duração das etapas e clique em <strong>Recalcular cronograma</strong> para gerar a previsão mensal.
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
                     <div className="rounded-md border border-dashed bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
-                      <strong>Modelo por colunas:</strong> cada mês vira uma coluna. As linhas são as etapas do orçamento; em cada célula aparecem o valor previsto de cobrança e o avanço físico. Se Fundação, Estrutura, Instalações e Esquadrias estiverem ativas no mesmo mês, as quatro aparecem na mesma coluna e o rodapé soma a cobrança total daquele mês.
+                      A proposta aprovada vira a <strong>linha-base da obra</strong>. O mesmo cronograma será usado na execução e no Portal do Cliente para comparar previsto × executado × medido × financeiro, preservando revisões e aditivos.
                     </div>
                   </div>
                 </CardContent>
