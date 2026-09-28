@@ -18,6 +18,79 @@ import { setupApiClient } from "./lib/api";
 import { installVisitorTelemetry } from "./lib/visitorIntelligence";
 
 const App = lazy(() => import("./App"));
+function BootstrapFallback() {
+  const [stalled, setStalled] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setStalled(true), 8_000);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const reloadLatest = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("__vendorai_refresh", String(Date.now()));
+    window.location.replace(url.toString());
+  };
+
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "#f8fafc",
+        color: "#334155",
+        fontFamily: "Inter, system-ui, sans-serif",
+        padding: 24,
+      }}
+    >
+      <div style={{ width: "100%", maxWidth: 440, textAlign: "center" }}>
+        <div
+          aria-label="Carregando Vendor.ai"
+          style={{
+            width: 34,
+            height: 34,
+            margin: "0 auto 16px",
+            borderRadius: "999px",
+            border: "3px solid #e2e8f0",
+            borderTopColor: "#D9673E",
+            animation: "vendorai-bootstrap-spin 0.8s linear infinite",
+          }}
+        />
+        <style>{`@keyframes vendorai-bootstrap-spin { to { transform: rotate(360deg); } }`}</style>
+        <div style={{ fontSize: 16, fontWeight: 700 }}>Carregando Vendor.ai…</div>
+        <div style={{ marginTop: 6, fontSize: 13, color: "#64748b" }}>
+          Preparando a versão atual do sistema.
+        </div>
+
+        {stalled ? (
+          <div style={{ marginTop: 20 }}>
+            <div style={{ fontSize: 13, color: "#475569", marginBottom: 12 }}>
+              O aplicativo demorou mais que o esperado para iniciar. Vamos buscar a versão mais recente.
+            </div>
+            <button
+              type="button"
+              onClick={reloadLatest}
+              style={{
+                border: 0,
+                borderRadius: 8,
+                background: "#D9673E",
+                color: "#fff",
+                padding: "10px 16px",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              Carregar versão atual
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 const SubdomainSite = lazy(() => import("./SubdomainSite"));
 const BudgetImportAutofill = lazy(() => import("./components/BudgetImportAutofill").then((m) => ({ default: m.BudgetImportAutofill })));
 const AiBudgetUsageIndicator = lazy(() => import("./components/AiBudgetUsageIndicator").then((m) => ({ default: m.AiBudgetUsageIndicator })));
@@ -338,7 +411,7 @@ function WorkspaceEnhancementsGate() {
 createRoot(document.getElementById("root")!).render(
   <ErrorBoundary>
     <I18nProvider>
-      <Suspense fallback={null}>
+      <Suspense fallback={<BootstrapFallback />}>
         {tenantSlugForSite ? (
           <SubdomainSite slug={tenantSlugForSite} />
         ) : (
