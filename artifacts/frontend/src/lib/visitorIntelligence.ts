@@ -366,6 +366,7 @@ function installPerformanceTelemetry() {
   let ttfb = 0;
   let reported = false;
   const observers: PerformanceObserver[] = [];
+  const apiTimings: Array<{ endpoint: string; durationMs: number; routePath: string; pageUrl: string; initiatorType: string }> = [];
   const initialPath = window.location.pathname || "/";
   const initialPageUrl = window.location.href;
   let lcpPath = initialPath;
@@ -424,6 +425,26 @@ function installPerformanceTelemetry() {
     }
   });
 
+  observe("resource", (entry) => {
+    const resource = entry as PerformanceResourceTiming;
+    if (!resource.name || resource.duration <= 0) return;
+    try {
+      const url = new URL(resource.name, window.location.origin);
+      if (url.origin !== window.location.origin || !url.pathname.startsWith("/api/")) return;
+      if (url.pathname.startsWith("/api/visitor-intelligence")) return;
+      apiTimings.push({
+        endpoint: url.pathname,
+        durationMs: resource.duration,
+        routePath: window.location.pathname || "/",
+        pageUrl: window.location.href,
+        initiatorType: resource.initiatorType || "fetch",
+      });
+      if (apiTimings.length > 80) apiTimings.splice(0, apiTimings.length - 80);
+    } catch {
+      // Resource timing inválido não deve afetar a aplicação.
+    }
+  });
+
   const deviceCategory = window.innerWidth < 768 ? "mobile" : window.innerWidth < 1024 ? "tablet" : "desktop";
 
   const ratingFor = (metric: "LCP" | "CLS" | "FCP" | "TTFB" | "INP", value: number) => {
@@ -463,6 +484,19 @@ function installPerformanceTelemetry() {
     reportVital("FCP", fcp, { path: initialPath, pageUrl: initialPageUrl });
     reportVital("TTFB", ttfb, { path: initialPath, pageUrl: initialPageUrl });
     reportVital("INP", maxInteraction, { path: inpPath, pageUrl: inpPageUrl });
+
+    const slowestApiCalls = [...apiTimings]
+      .sort((a, b) => b.durationMs - a.durationMs)
+      .slice(0, 8);
+    for (const timing of slowestApiCalls) {
+      void sendVisitorTelemetry("engagement", {
+        kind: "api_timing",
+        endpoint: timing.endpoint,
+        durationMs: Math.round(timing.durationMs),
+        initiatorType: timing.initiatorType,
+        deviceCategory,
+      }, { path: timing.routePath, pageUrl: timing.pageUrl });
+    }
   };
 
   const onVisibility = () => {
