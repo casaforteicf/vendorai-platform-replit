@@ -11,6 +11,7 @@ type InstagramPublicationInput = {
   mediaUrls?: string[];
   destinationUrl?: string | null;
   contentType?: "post" | "image" | "video" | "short" | "carousel" | "story" | "reel";
+  instagramConnectionId?: string;
 };
 
 type InstagramConnection = typeof instagramConnectionsTable.$inferSelect;
@@ -142,6 +143,7 @@ export async function createInstagramOrganicPublication(tenantId: string, input:
   const [connection] = await db.select().from(instagramConnectionsTable).where(and(
     eq(instagramConnectionsTable.tenantId, tenantId),
     isNull(instagramConnectionsTable.disconnectedAt),
+    ...(input.instagramConnectionId ? [eq(instagramConnectionsTable.id, input.instagramConnectionId)] : []),
   )).limit(1);
   if (!connection?.accountId || !connection.pageAccessToken) throw new Error("connection_not_found");
 
@@ -177,9 +179,14 @@ export async function publishInstagramOrganicPublication(tenantId: string, publi
   if (!publication) throw new InstagramPublishError("publication_not_found");
   if (publication.externalId && publication.status === "published") return publication;
 
+  const metadataForConnection = (publication.metadata || {}) as Record<string, unknown>;
+  const selectedConnectionId = typeof metadataForConnection.instagramConnectionId === "string"
+    ? metadataForConnection.instagramConnectionId
+    : undefined;
   const [connection] = await db.select().from(instagramConnectionsTable).where(and(
     eq(instagramConnectionsTable.tenantId, tenantId),
     isNull(instagramConnectionsTable.disconnectedAt),
+    ...(selectedConnectionId ? [eq(instagramConnectionsTable.id, selectedConnectionId)] : []),
   )).limit(1);
   if (!connection?.accountId || !connection.pageAccessToken) throw new InstagramPublishError("connection_not_found");
 
