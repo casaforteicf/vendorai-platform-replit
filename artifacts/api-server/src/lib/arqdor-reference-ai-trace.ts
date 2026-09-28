@@ -136,8 +136,11 @@ function refineWallTopology(
         for (const otherWhich of ["start", "end"] as const) {
           const candidate = endpoint(other, otherWhich);
           const distance = Math.hypot(candidate.x - point.x, candidate.y - point.y);
-          if (distance <= tolerance && (!best || distance < best.distance || best.priority > 0)) {
-            best = { ...candidate, distance, priority: 0 };
+          if (
+            distance <= tolerance
+            && (!best || best.priority > 1 || (best.priority === 1 && distance < best.distance))
+          ) {
+            best = { ...candidate, distance, priority: 1 };
           }
         }
 
@@ -150,8 +153,11 @@ function refineWallTopology(
             : projected.y >= Math.min(other.y1, other.y2) - 0.01 && projected.y <= Math.max(other.y1, other.y2) + 0.01;
           if (withinOther) {
             const distance = Math.hypot(projected.x - point.x, projected.y - point.y);
-            if (distance <= tolerance && (!best || (best.priority > 1) || (best.priority === 1 && distance < best.distance))) {
-              best = { ...projected, distance, priority: 1 };
+            if (
+              distance <= tolerance
+              && (!best || best.priority > 0 || (best.priority === 0 && distance < best.distance))
+            ) {
+              best = { ...projected, distance, priority: 0 };
             }
           }
         }
