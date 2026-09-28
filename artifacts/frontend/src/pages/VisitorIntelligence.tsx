@@ -130,6 +130,7 @@ type WebVitalsResponse = {
   minutes: number;
   device?: "all" | "mobile" | "tablet" | "desktop";
   since: string;
+  previousSince?: string;
   generatedAt: string;
   sampleCount: number;
   metrics: Record<"LCP" | "INP" | "CLS" | "FCP" | "TTFB", VitalMetricSummary>;
@@ -137,7 +138,14 @@ type WebVitalsResponse = {
   apiTimings?: Array<{ endpoint: string; samples: number; p75: number | null; median: number | null; max: number | null; transferP75?: number | null; bodyP75?: number | null }>;
   apiRouteTimings?: Array<{ path: string; endpoint: string; samples: number; p75: number | null; median: number | null; transferP75?: number | null }>;
   runtimeErrors?: Array<{ path: string; message: string; count: number; source: string | null; lastSeenAt: string | null }>;
-  routes: Array<{ path: string; samples: number; lcp: number | null; inp: number | null; cls: number | null }>;
+  routes: Array<{
+    path: string;
+    samples: number;
+    lcp: number | null;
+    inp: number | null;
+    cls: number | null;
+    previous?: { samples: number; lcp: number | null; inp: number | null; cls: number | null };
+  }>;
 };
 type UnknownRecord = Record<string, unknown>;
 
@@ -311,6 +319,21 @@ function routeRecommendation(input: {
   return "Revisar a rota com profiling antes de alterar arquitetura.";
 }
 
+function routeTrend(route: WebVitalsResponse["routes"][number]) {
+  const previous = route.previous;
+  if (!previous || previous.samples < 4) return { label: "sem histórico", direction: "neutral" as const };
+
+  const deltas = [
+    route.lcp != null && previous.lcp != null ? (route.lcp - previous.lcp) / Math.max(previous.lcp, 1) : 0,
+    route.inp != null && previous.inp != null ? (route.inp - previous.inp) / Math.max(previous.inp, 1) : 0,
+    route.cls != null && previous.cls != null ? (route.cls - previous.cls) / Math.max(previous.cls, 0.001) : 0,
+  ];
+  const avg = deltas.reduce((sum, value) => sum + value, 0) / deltas.length;
+  if (avg <= -0.1) return { label: "melhorando", direction: "up" as const };
+  if (avg >= 0.1) return { label: "piorando", direction: "down" as const };
+  return { label: "estável", direction: "neutral" as const };
+}
+
 function routePerformancePriority(route: WebVitalsResponse["routes"][number]) {
   const lcpPenalty = route.lcp == null ? 0 : Math.max(0, route.lcp / 2500 - 1);
   const inpPenalty = route.inp == null ? 0 : Math.max(0, route.inp / 200 - 1) * 1.25;
@@ -410,6 +433,7 @@ export default function VisitorIntelligence() {
         runtimeErrorCount,
         topRuntimeError: routeErrors[0] ?? null,
         recommendation: routeRecommendation({ bottleneck, slowestApi, runtimeErrorCount }),
+        trend: routeTrend(route),
       };
     })
     .slice(0, 5), [rankedVitalRoutes, vitalsQuery.data?.apiRouteTimings, vitalsQuery.data?.runtimeErrors]);
@@ -518,6 +542,15 @@ export default function VisitorIntelligence() {
                       </div>
                       <div className="mt-0.5 text-[11px] font-medium text-foreground/80">
                         Gargalo dominante: {route.bottleneck}
+                      </div>
+                      <div className={`mt-0.5 text-[11px] font-medium ${
+                        route.trend.direction === "up"
+                          ? "text-emerald-700"
+                          : route.trend.direction === "down"
+                            ? "text-red-700"
+                            : "text-muted-foreground"
+                      }`}>
+                        Tendência versus período anterior: {route.trend.label}
                       </div>
                       {route.slowestApi ? (
                         <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
