@@ -654,20 +654,25 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     }
   }
 
-  async function uploadImageFile(file: File): Promise<string> {
+  async function uploadStorageFile(file: File, fallbackContentType = "application/octet-stream"): Promise<string> {
+    const contentType = file.type || fallbackContentType;
     const result = await new Promise<{ uploadURL: string; objectPath: string }>((resolve, reject) => {
       requestUploadUrl.mutate(
-        { data: { name: file.name, size: file.size, contentType: file.type || "image/jpeg" } },
+        { data: { name: file.name, size: file.size, contentType } },
         { onSuccess: resolve, onError: reject },
       );
     });
     const uploadRes = await fetch(result.uploadURL, {
       method: "PUT",
       body: file,
-      headers: { "Content-Type": file.type || "image/jpeg" },
+      headers: { "Content-Type": contentType },
     });
-    if (!uploadRes.ok) throw new Error("Upload falhou");
+    if (!uploadRes.ok) throw new Error(`Upload falhou (HTTP ${uploadRes.status})`);
     return `/api/storage${result.objectPath}`;
+  }
+
+  async function uploadImageFile(file: File): Promise<string> {
+    return uploadStorageFile(file, "image/jpeg");
   }
 
   async function handleLogoUpload(file: File) {
@@ -753,21 +758,10 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
           toast({ title: `${file.name} excede 20MB`, variant: "destructive" });
           continue;
         }
-        const result = await new Promise<{ uploadURL: string; objectPath: string }>((resolve, reject) => {
-          requestUploadUrl.mutate(
-            { data: { name: file.name, size: file.size, contentType: file.type || "application/octet-stream" } },
-            { onSuccess: resolve, onError: reject },
-          );
-        });
-        const uploadRes = await fetch(result.uploadURL, {
-          method: "PUT",
-          body: file,
-          headers: { "Content-Type": file.type || "application/octet-stream" },
-        });
-        if (!uploadRes.ok) throw new Error(`Falha ao enviar ${file.name}`);
+        const url = await uploadStorageFile(file);
         uploaded.push({
           nome: file.name,
-          url: `/api/storage${result.objectPath}`,
+          url,
           mimeType: file.type || undefined,
           tamanho: file.size,
         });
