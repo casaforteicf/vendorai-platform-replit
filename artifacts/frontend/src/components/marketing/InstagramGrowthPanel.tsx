@@ -206,10 +206,26 @@ export function InstagramGrowthPanel() {
     setRefreshing(true);
     try {
       const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
-      const metricsResponse = await fetch(`/api/tenants/${tenantId}/content-performance/posts/atualizar-metricas`, { method: "POST", headers, body: JSON.stringify(instagramConnectionId ? { instagramConnectionId } : {}) });
-      const payload = await metricsResponse.json().catch(() => ({})) as { error?: string; atualizados?: number; erros?: number };
-      if (!metricsResponse.ok) throw new Error(payload.error || "Não foi possível atualizar as métricas.");
-      await fetch(`/api/tenants/${tenantId}/content-performance/insights/atualizar`, { method: "POST", headers }).catch(() => null);
+      const metricsResponse = await fetch(`/api/tenants/${tenantId}/content-performance/posts/atualizar-metricas`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(instagramConnectionId ? { instagramConnectionId } : {}),
+      });
+      if (!metricsResponse.ok) {
+        const errorPayload = await metricsResponse.json().catch(() => ({})) as { error?: string };
+        throw new Error(errorPayload.error || "Não foi possível atualizar as métricas.");
+      }
+      const payload = await metricsResponse.json() as { atualizados?: number; erros?: number };
+
+      const insightResponse = await fetch(`/api/tenants/${tenantId}/content-performance/insights/atualizar`, {
+        method: "POST",
+        headers,
+        body: "{}",
+      });
+      if (!insightResponse.ok) {
+        const errorPayload = await insightResponse.json().catch(() => ({})) as { error?: string };
+        throw new Error(errorPayload.error || "Métricas atualizadas, mas não foi possível recalcular os insights do Instagram.");
+      }
       await load();
       toast({ title: "Instagram atualizado", description: `${payload.atualizados ?? 0} publicação(ões) atualizadas. ${payload.erros ?? 0} erro(s).` });
     } catch (cause) {
