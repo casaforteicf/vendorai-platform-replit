@@ -56,7 +56,7 @@ jobs:
       - name: Gate frontend on production API
         shell: bash
         env:
-          API_HEALTH_URL: https://workspaceapi-server-production-350d.up.railway.app/api/auth/healthz
+          API_HEALTH_URL: https://vendorai-platform-replit-production.up.railway.app/api/auth/healthz
           BEFORE_SHA: ${{ github.event.before }}
           EXPECTED_REVISION: ${{ github.sha }}
         run: |
