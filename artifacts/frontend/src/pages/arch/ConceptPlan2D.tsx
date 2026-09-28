@@ -92,6 +92,25 @@ type Props = {
     width?: number;
     height?: number;
   } | null;
+  previewWalls?: Array<{
+    id: string;
+    floor: number;
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    thickness?: number;
+    confidence?: number;
+  }>;
+  previewOpenings?: Array<{
+    id: string;
+    wallId: string;
+    floor: number;
+    type: "door" | "window";
+    offset: number;
+    width?: number;
+    confidence?: number;
+  }>;
 };
 
 function formatMeters(value: number) {
@@ -376,8 +395,14 @@ export default function ConceptPlan2D({
   onRoomDelete,
   paintTarget = null,
   referenceImage = null,
+  previewWalls = [],
+  previewOpenings = [],
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const previewWallMap = useMemo(
+    () => new Map(previewWalls.map((wall) => [wall.id, wall])),
+    [previewWalls],
+  );
   const [wallDrawStart, setWallDrawStart] = useState<{ x: number; y: number } | null>(null);
   const [wallChainOrigin, setWallChainOrigin] = useState<{ x: number; y: number } | null>(null);
   const [wallDrawPreview, setWallDrawPreview] = useState<{ x: number; y: number } | null>(null);
@@ -1297,6 +1322,58 @@ export default function ConceptPlan2D({
           />
         ) : null}
         <rect x="0" y="0" width={lotWidth} height={lotDepth} fill="url(#concept-grid)" opacity={referenceImage?.url ? 0.34 : 0.72} />
+        {(previewWalls.length > 0 || previewOpenings.length > 0) && (
+          <g pointerEvents="none" aria-label="Prévia do traçado sugerido pela IA">
+            {previewWalls
+              .filter((wall) => wall.floor === activeFloor)
+              .map((wall) => (
+                <line
+                  key={wall.id}
+                  x1={wall.x1}
+                  y1={wall.y1}
+                  x2={wall.x2}
+                  y2={wall.y2}
+                  stroke="#0284c7"
+                  strokeWidth={Math.max(0.07, Math.min(0.18, wall.thickness ?? 0.12))}
+                  strokeDasharray="0.22 0.12"
+                  opacity={0.45 + Math.max(0, Math.min(1, wall.confidence ?? 0.5)) * 0.45}
+                />
+              ))}
+            {previewOpenings
+              .filter((opening) => opening.floor === activeFloor)
+              .map((opening) => {
+                const wall = previewWallMap.get(opening.wallId);
+                if (!wall) return null;
+                const offset = Math.max(0, Math.min(1, opening.offset));
+                const x = wall.x1 + (wall.x2 - wall.x1) * offset;
+                const y = wall.y1 + (wall.y2 - wall.y1) * offset;
+                const radius = opening.type === "door" ? 0.18 : 0.14;
+                return (
+                  <g key={opening.id}>
+                    <circle
+                      cx={x}
+                      cy={y}
+                      r={radius}
+                      fill={opening.type === "door" ? "#16a34a" : "#7c3aed"}
+                      fillOpacity={0.85}
+                      stroke="#ffffff"
+                      strokeWidth="0.045"
+                    />
+                    <text
+                      x={x}
+                      y={y - 0.28}
+                      textAnchor="middle"
+                      fontSize="0.18"
+                      fontWeight="800"
+                      fill={opening.type === "door" ? "#166534" : "#6d28d9"}
+                    >
+                      {opening.type === "door" ? "P" : "J"}
+                    </text>
+                  </g>
+                );
+              })}
+          </g>
+        )}
         <rect
           x="0"
           y="0"
