@@ -82,6 +82,7 @@ import { evaluateProjectMasterAcceptance } from "../lib/arqdor-project-master-va
 import { buildConceptDxf, conceptDxfFilename } from "../lib/arqdor-concept-dxf.js";
 import { parseAsciiDxf } from "../lib/arqdor-dxf-import.js";
 import { parseIfcMetadata } from "../lib/arqdor-ifc-metadata.js";
+import { buildConceptIfc, conceptIfcFilename } from "../lib/arqdor-concept-ifc.js";
 
 function sanitizeAIError(err: any): { status: number; message: string } {
   const raw: string = err?.message ?? String(err ?? "");
@@ -1011,6 +1012,44 @@ router.delete("/arch/concept-projects/:id", authenticate, async (req, res) => {
     );
 
   return res.json({ ok: true });
+});
+
+router.get("/arch/concept-projects/:id/export/ifc", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const userId = req.user?.sub;
+  const id = String(req.params.id);
+  if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
+
+  const [concept] = await db
+    .select()
+    .from(archConceptProjectsTable)
+    .where(and(
+      eq(archConceptProjectsTable.id, id),
+      eq(archConceptProjectsTable.tenantId, tid),
+      eq(archConceptProjectsTable.ownerUserId, userId),
+    ))
+    .limit(1);
+
+  if (!concept) return res.status(404).json({ error: "Pré-projeto não encontrado." });
+
+  try {
+    const config = (concept.configuration ?? {}) as Record<string, unknown>;
+    const ifc = buildConceptIfc({
+      title: concept.title,
+      floors: Number(config.floors ?? 1),
+      rooms: Array.isArray(concept.rooms) ? concept.rooms as any[] : [],
+      customWalls: Array.isArray(config.customWalls) ? config.customWalls as any[] : [],
+    });
+
+    res.setHeader("Content-Type", "application/x-step; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${conceptIfcFilename(concept.title)}"`);
+    res.setHeader("Cache-Control", "private, no-store");
+    return res.status(200).send(ifc);
+  } catch (error) {
+    return res.status(422).json({
+      error: error instanceof Error ? error.message : "Não foi possível exportar IFC.",
+    });
+  }
 });
 
 router.get("/arch/concept-projects/:id/export/dxf", authenticate, async (req, res) => {
