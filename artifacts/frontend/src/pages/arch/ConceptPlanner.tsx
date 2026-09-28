@@ -3910,6 +3910,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       const payload = await response.json().catch(() => ({})) as {
         error?: string;
         walls?: Array<CustomWall & { sourceIfcId?: string }>;
+        openings?: Array<CustomOpening & { sourceIfcId?: string }>;
         bounds?: { width: number; depth: number };
         fitsLot?: boolean;
         maxFloor?: number;
@@ -3925,11 +3926,12 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       }
 
       const confirmed = window.confirm(
-        `Converter ${payload.walls.length} paredes do IFC em geometria editável e substituir a planta atual? O briefing e os arquivos BIM/CAD vinculados serão preservados.`,
+        `Converter ${payload.walls.length} paredes e ${payload.openings?.length ?? 0} aberturas do IFC em geometria editável e substituir a planta atual? O briefing e os arquivos BIM/CAD vinculados serão preservados.`,
       );
       if (!confirmed) return;
 
       const importedWalls = payload.walls.map(({ sourceIfcId: _sourceIfcId, ...wall }) => wall);
+      const importedOpenings = (payload.openings ?? []).map(({ sourceIfcId: _sourceIfcId, ...opening }) => opening);
       const importedFloors = Math.max(1, Number(payload.maxFloor ?? 0) + 1);
       const wallFirst = Array.from({ length: importedFloors }, (_, index) => index);
 
@@ -3937,7 +3939,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       setActiveFloor(0);
       setRooms([]);
       setCustomWalls(importedWalls);
-      setCustomOpenings([]);
+      setCustomOpenings(importedOpenings);
       setOpeningOverrides({});
       setWallFirstFloors(wallFirst);
       setSpaceProfiles([]);
@@ -3956,7 +3958,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       await saveConcept(4, undefined, {
         rooms: [],
         customWalls: importedWalls,
-        customOpenings: [],
+        customOpenings: importedOpenings,
         wallFirstFloors: wallFirst,
         floors: importedFloors,
       });
@@ -3964,7 +3966,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       const warningText = payload.warnings?.length ? ` · ${payload.warnings.join(" ")}` : "";
       setSourceFileState("success");
       setSourceFileMessage(
-        `IFC convertido: ${importedWalls.length} paredes editáveis em ${importedFloors} pavimento(s).${warningText}`,
+        `IFC convertido: ${importedWalls.length} paredes e ${importedOpenings.length} aberturas editáveis em ${importedFloors} pavimento(s).${warningText}`,
       );
       window.setTimeout(() => setSourceFileState("idle"), 6000);
     } catch (error) {

@@ -9,8 +9,21 @@ export type IfcEditableWall = {
   sourceIfcId: string;
 };
 
+export type IfcEditableOpening = {
+  id: string;
+  wallId: string;
+  floor: number;
+  type: "door" | "window";
+  offset: number;
+  width: number;
+  height: number;
+  sillHeight: number;
+  sourceIfcId: string;
+};
+
 export type IfcEditableGeometry = {
   walls: IfcEditableWall[];
+  openings: IfcEditableOpening[];
   storeys: Array<{ ifcId: string; name: string | null; elevation: number | null; floor: number }>;
   bounds: { width: number; depth: number };
   unit: "m" | "mm" | "cm" | "unknown";
@@ -137,6 +150,7 @@ export function parseIfcEditableGeometry(input: string): IfcEditableGeometry {
 
   const floorByStoreyId = new Map(storeys.map((s) => [s.ifcId, s.floor]));
   const floorByWallId = new Map<string, number>();
+  const floorByElementId = new Map<string, number>();
   for (const rel of [...map.values()].filter((e) => e.type === "IFCRELCONTAINEDINSPATIALSTRUCTURE")) {
     const r = refs(rel.body);
     const storeyId = r[r.length - 1];
@@ -145,6 +159,7 @@ export function parseIfcEditableGeometry(input: string): IfcEditableGeometry {
     for (const wallId of r.slice(0, -1)) {
       const entity = map.get(wallId);
       if (entity?.type.startsWith("IFCWALL")) floorByWallId.set(wallId, floor);
+      if (entity && ["IFCDOOR", "IFCWINDOW"].includes(entity.type)) floorByElementId.set(wallId, floor);
     }
   }
 
@@ -179,6 +194,37 @@ export function parseIfcEditableGeometry(input: string): IfcEditableGeometry {
     });
   }
 
+  const rawOpenings: Array<{
+    sourceIfcId: string;
+    floor: number;
+    type: "door" | "window";
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    sillHeight: number;
+  }> = [];
+
+  for (const opening of [...map.values()].filter((e) => e.type === "IFCDOOR" || e.type === "IFCWINDOW")) {
+    const r = refs(opening.body);
+    const placementId = r.find((id) => map.get(id)?.type === "IFCLOCALPLACEMENT");
+    const placement = localPlacement(map, placementId);
+    if (!placement?.axis?.point) continue;
+    const dimensions = opening.body.match(/,\$\s*,\$\s*,\s*([-+0-9.Ee]+)\s*,\s*([-+0-9.Ee]+)\s*,\s*\./);
+    const height = dimensions ? Number(dimensions[1]) * unit.scale : opening.type === "IFCDOOR" ? 2.1 : 1.2;
+    const width = dimensions ? Number(dimensions[2]) * unit.scale : opening.type === "IFCDOOR" ? 0.9 : 1.2;
+    rawOpenings.push({
+      sourceIfcId: opening.id,
+      floor: floorByElementId.get(opening.id) ?? 0,
+      type: opening.type === "IFCDOOR" ? "door" : "window",
+      x: placement.axis.point.x * unit.scale,
+      y: placement.axis.point.y * unit.scale,
+      width: Number.isFinite(width) && width > 0 ? width : opening.type === "IFCDOOR" ? 0.9 : 1.2,
+      height: Number.isFinite(height) && height > 0 ? height : opening.type === "IFCDOOR" ? 2.1 : 1.2,
+      sillHeight: Math.max(0, placement.axis.point.z * unit.scale),
+    });
+  }
+
   if (!walls.length) {
     throw new Error("O IFC foi lido, mas não encontrei paredes com geometria SweptSolid/RectangleProfile compatível.");
   }
@@ -196,6 +242,38 @@ export function parseIfcEditableGeometry(input: string): IfcEditableGeometry {
     wall.thickness = Math.round(wall.thickness * 1000) / 1000;
   }
 
+  const openings: IfcEditableOpening[] = [];
+  for (const opening of rawOpenings) {
+    const x = opening.x - minX;
+    const y = opening.y - minY;
+    let best: { wall: IfcEditableWall; distance: number; offset: number } | null = null;
+
+    for (const wall of walls.filter((candidate) => candidate.floor === opening.floor)) {
+      const dx = wall.x2 - wall.x1;
+      const dy = wall.y2 - wall.y1;
+      const len2 = dx * dx + dy * dy;
+      if (len2 < 0.0001) continue;
+      const t = Math.max(0, Math.min(1, ((x - wall.x1) * dx + (y - wall.y1) * dy) / len2));
+      const px = wall.x1 + dx * t;
+      const py = wall.y1 + dy * t;
+      const distance = Math.hypot(x - px, y - py);
+      if (!best || distance < best.distance) best = { wall, distance, offset: t };
+    }
+
+    if (!best || best.distance > Math.max(0.6, best.wall.thickness * 3)) continue;
+    openings.push({
+      id: `ifc-opening-${opening.sourceIfcId}`,
+      wallId: best.wall.id,
+      floor: opening.floor,
+      type: opening.type,
+      offset: Math.round(best.offset * 10000) / 10000,
+      width: Math.round(opening.width * 1000) / 1000,
+      height: Math.round(opening.height * 1000) / 1000,
+      sillHeight: Math.round(opening.sillHeight * 1000) / 1000,
+      sourceIfcId: opening.sourceIfcId,
+    });
+  }
+
   const totalIfcWalls = [...map.values()].filter((e) => e.type === "IFCWALL" || e.type === "IFCWALLSTANDARDCASE").length;
   if (walls.length < totalIfcWalls) {
     warnings.push(`${totalIfcWalls - walls.length} parede(s) IFC usam uma representação geométrica ainda não suportada para edição.`);
@@ -203,8 +281,13 @@ export function parseIfcEditableGeometry(input: string): IfcEditableGeometry {
   if (!storeys.length) warnings.push("Nenhum pavimento IFC foi encontrado; as paredes foram associadas ao térreo.");
   if (unit.unit === "unknown") warnings.push("Unidade IFC não identificada; os valores foram tratados como metros.");
 
+  if (rawOpenings.length > openings.length) {
+    warnings.push(`${rawOpenings.length - openings.length} abertura(s) IFC não puderam ser associadas com segurança a uma parede editável.`);
+  }
+
   return {
     walls,
+    openings,
     storeys,
     bounds: {
       width: Math.round((maxX - minX) * 1000) / 1000,
