@@ -512,9 +512,30 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
                     </div>
 
                     {revisions.length > 0 && (
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        {revisions.length} rodada{revisions.length === 1 ? "" : "s"} de negociação/revisão
-                      </p>
+                      <div className="mt-2 space-y-2">
+                        <p className="text-xs text-muted-foreground">
+                          {revisions.length} rodada{revisions.length === 1 ? "" : "s"} de negociação/revisão
+                        </p>
+                        {revisions.map((revisao, index) => (
+                          <div key={revisao.id} className="flex items-center justify-between gap-2 rounded-lg border bg-muted/20 px-2.5 py-2">
+                            <div className="min-w-0">
+                              <p className="text-xs font-medium">Revisão {index + 1}</p>
+                              <p className="truncate text-[11px] text-muted-foreground">
+                                {revisao.observacao || "Sem alteração descrita."}
+                              </p>
+                            </div>
+                            <a
+                              className="shrink-0"
+                              href={`${import.meta.env.BASE_URL}propostas?edit=${encodeURIComponent(orc.id)}&returnTo=${encodeURIComponent(`/leads/${leadId}`)}`}
+                            >
+                              <Button size="sm" variant="outline" className="h-7 gap-1 text-xs">
+                                <ExternalLink className="h-3.5 w-3.5" />
+                                Abrir
+                              </Button>
+                            </a>
+                          </div>
+                        ))}
+                      </div>
                     )}
 
                     <div className="mt-3 grid grid-cols-2 gap-2">
@@ -640,6 +661,19 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
                                     {revisao.anexos.length}
                                   </Button>
                                 ) : null}
+                                <a
+                                  href={`${import.meta.env.BASE_URL}propostas?edit=${encodeURIComponent(orc.id)}&returnTo=${encodeURIComponent(`/leads/${leadId}`)}`}
+                                >
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-xs gap-1"
+                                    title={`Abrir orçamento vinculado à revisão ${index + 1}`}
+                                  >
+                                    <ExternalLink className="h-3.5 w-3.5" />
+                                    Abrir revisão
+                                  </Button>
+                                </a>
                                 <Button size="icon" variant="ghost" className="h-7 w-7" title="Editar revisão" onClick={() => openEdit(revisao)}>
                                   <Pencil className="h-3.5 w-3.5" />
                                 </Button>
