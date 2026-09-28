@@ -284,6 +284,33 @@ function routeBottleneck(route: WebVitalsResponse["routes"][number]) {
   return normalized[0].key;
 }
 
+function routeRecommendation(input: {
+  bottleneck: string;
+  slowestApi: { p75: number | null; transferP75?: number | null } | null;
+  runtimeErrorCount: number;
+}) {
+  if (input.runtimeErrorCount > 0) return "Corrigir o erro recorrente desta rota antes de novas otimizações.";
+  if ((input.slowestApi?.p75 ?? 0) > 1200 && (input.slowestApi?.transferP75 ?? 0) > 250_000) {
+    return "Reduzir o payload e revisar paginação/campos retornados pela API desta tela.";
+  }
+  if ((input.slowestApi?.p75 ?? 0) > 1200) {
+    return "Investigar a API mais lenta: query, cache, chamadas em cascata e processamento no backend.";
+  }
+  if ((input.slowestApi?.transferP75 ?? 0) > 250_000) {
+    return "Diminuir o volume transferido: paginação, seleção de campos e carregamento sob demanda.";
+  }
+  if (input.bottleneck === "carregamento/renderização") {
+    return "Revisar lazy loading, trabalho síncrono e componentes pesados acima da dobra.";
+  }
+  if (input.bottleneck === "interação") {
+    return "Reduzir trabalho no clique/input, renders em cascata e tarefas longas na thread principal.";
+  }
+  if (input.bottleneck === "estabilidade visual") {
+    return "Reservar espaço para conteúdo assíncrono e estabilizar dimensões de imagens, cards e painéis.";
+  }
+  return "Revisar a rota com profiling antes de alterar arquitetura.";
+}
+
 function routePerformancePriority(route: WebVitalsResponse["routes"][number]) {
   const lcpPenalty = route.lcp == null ? 0 : Math.max(0, route.lcp / 2500 - 1);
   const inpPenalty = route.inp == null ? 0 : Math.max(0, route.inp / 200 - 1) * 1.25;
@@ -373,12 +400,16 @@ export default function VisitorIntelligence() {
       const routeErrors = (vitalsQuery.data?.runtimeErrors ?? [])
         .filter((error) => error.path === route.path)
         .sort((a, b) => b.count - a.count);
+      const bottleneck = routeBottleneck(route);
+      const slowestApi = routeApis[0] ?? null;
+      const runtimeErrorCount = routeErrors.reduce((sum, error) => sum + error.count, 0);
       return {
         ...route,
-        bottleneck: routeBottleneck(route),
-        slowestApi: routeApis[0] ?? null,
-        runtimeErrorCount: routeErrors.reduce((sum, error) => sum + error.count, 0),
+        bottleneck,
+        slowestApi,
+        runtimeErrorCount,
         topRuntimeError: routeErrors[0] ?? null,
+        recommendation: routeRecommendation({ bottleneck, slowestApi, runtimeErrorCount }),
       };
     })
     .slice(0, 5), [rankedVitalRoutes, vitalsQuery.data?.apiRouteTimings, vitalsQuery.data?.runtimeErrors]);
@@ -499,6 +530,9 @@ export default function VisitorIntelligence() {
                           {route.runtimeErrorCount} erros observados nesta rota{route.topRuntimeError ? ` · ${route.topRuntimeError.message}` : ""}
                         </div>
                       ) : null}
+                      <div className="mt-1 rounded-md bg-muted/60 px-2 py-1.5 text-[11px] text-foreground/80">
+                        Recomendação: {route.recommendation}
+                      </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
                       <span>LCP {route.lcp == null ? "—" : `${Math.round(route.lcp)}ms`}</span>
