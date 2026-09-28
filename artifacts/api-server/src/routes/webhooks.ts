@@ -1551,6 +1551,8 @@ const instagramWebhookBody = z.object({
   igsid: z.string().min(1),           // Instagram Scoped User ID of the sender
   nome: z.string().optional(),
   mensagem: z.string().min(1),
+  instagramConnectionId: z.string().min(1).optional(),
+  accountId: z.string().min(1).optional(),
 });
 
 router.post("/tenants/:tenantId/webhooks/instagram", async (req, res) => {
@@ -1583,7 +1585,25 @@ router.post("/tenants/:tenantId/webhooks/instagram", async (req, res) => {
     return;
   }
 
-  const { igsid, nome, mensagem } = parsed.data;
+  const { igsid, nome, mensagem, instagramConnectionId, accountId } = parsed.data;
+
+  const [incomingInstagramConnection] = await db
+    .select({
+      id: instagramConnectionsTable.id,
+      accountId: instagramConnectionsTable.accountId,
+      username: instagramConnectionsTable.username,
+    })
+    .from(instagramConnectionsTable)
+    .where(and(
+      eq(instagramConnectionsTable.tenantId, tenantId),
+      isNull(instagramConnectionsTable.disconnectedAt),
+      ...(instagramConnectionId
+        ? [eq(instagramConnectionsTable.id, instagramConnectionId)]
+        : accountId
+          ? [eq(instagramConnectionsTable.accountId, accountId)]
+          : []),
+    ))
+    .limit(1);
 
   // Find or create lead by Instagram Scoped ID (dedup-aware)
   let [lead] = await db
@@ -1653,9 +1673,36 @@ router.post("/tenants/:tenantId/webhooks/instagram", async (req, res) => {
   if (!conversation) {
     [conversation] = await db
       .insert(conversationsTable)
-      .values({ tenantId, leadId: lead.id, channel: "instagram", status: "open", naoLidas: 0 })
+      .values({
+        tenantId,
+        leadId: lead.id,
+        channel: "instagram",
+        status: "open",
+        naoLidas: 0,
+        metadata: {
+          instagramConnectionId: incomingInstagramConnection?.id ?? instagramConnectionId ?? null,
+          instagramAccountId: incomingInstagramConnection?.accountId ?? accountId ?? null,
+          instagramScopedId: igsid,
+        },
+      })
       .returning();
     req.log.info({ conversationId: conversation.id }, "webhook/instagram: new conversation created");
+  }
+
+  if (conversation) {
+    const currentMetadata = conversation.metadata && typeof conversation.metadata === "object"
+      ? conversation.metadata as Record<string, unknown>
+      : {};
+    const nextMetadata = {
+      ...currentMetadata,
+      instagramConnectionId: incomingInstagramConnection?.id ?? instagramConnectionId ?? currentMetadata["instagramConnectionId"] ?? null,
+      instagramAccountId: incomingInstagramConnection?.accountId ?? accountId ?? currentMetadata["instagramAccountId"] ?? null,
+      instagramScopedId: igsid,
+    };
+    await db.update(conversationsTable)
+      .set({ metadata: nextMetadata, updatedAt: new Date() })
+      .where(eq(conversationsTable.id, conversation.id));
+    conversation = { ...conversation, metadata: nextMetadata };
   }
 
   // ── Insert incoming message ──────────────────────────────────────────────
@@ -1696,7 +1743,14 @@ router.post("/tenants/:tenantId/webhooks/instagram", async (req, res) => {
 
     if (generated) {
       await sendOutgoingMessage(
-        { tenantId, leadId: lead.id, conteudo: quoteMessage, canal: "instagram", agentName: "auto-quote" },
+        {
+          tenantId,
+          leadId: lead.id,
+          conteudo: quoteMessage,
+          canal: "instagram",
+          agentName: "auto-quote",
+          instagramConnectionId: incomingInstagramConnection?.id ?? instagramConnectionId,
+        },
         req.log
       );
       req.log.info({ leadId: lead.id }, "webhook/instagram: auto-quote sent");
