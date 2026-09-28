@@ -274,15 +274,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [meData, location, setLocation]);
 
   useEffect(() => {
-    if (!isError) return;
+    if (!isError || !token) return;
 
-    // Only an explicit 401 proves the JWT is no longer valid. Transient
-    // failures (especially 429/5xx from proxy/edge) must never destroy a valid
-    // local session and bounce the user back to /login.
-    if (getErrorStatus(meError) === 401) {
-      logout();
-    }
-  }, [isError, meError]);
+    // Um único 401 no bootstrap de /auth/me não é prova suficiente para apagar
+    // a sessão. Em produção o primeiro request pode atravessar uma troca de
+    // bundle/proxy antes de todos os interceptors estarem estabilizados. Como o
+    // cache local já contém uma identidade assinada pelo JWT, fazemos uma
+    // confirmação explícita no backend e só encerramos a sessão se o próprio
+    // /auth/refresh também confirmar 401.
+    if (getErrorStatus(meError) !== 401) return;
+
+    let cancelled = false;
+
+    void fetch("/api/auth/refresh", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    })
+      .then(async (response) => {
+        if (cancelled) return;
+
+        if (response.ok) {
+          const refreshed = await response.json() as { token?: string; user?: User };
+          if (cancelled) return;
+          if (refreshed.token) {
+            localStorage.setItem(TOKEN_KEY, refreshed.token);
+            setToken(refreshed.token);
+          }
+          if (refreshed.user) {
+            setRawUser(refreshed.user);
+            persistCachedUser(refreshed.user);
+          }
+          return;
+        }
+
+        // Só uma confirmação independente de token inválido encerra a sessão.
+        if (response.status === 401) {
+          logout();
+        }
+      })
+      .catch(() => {
+        // Falha de rede/proxy nunca deve apagar uma sessão local aparentemente
+        // válida. O React Query tentará novamente no próximo carregamento.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isError, meError, token]);
 
   const effectiveUser: User | null = rawUser
     ? rawUser.platformRole === "super_admin" && tenantOverride
