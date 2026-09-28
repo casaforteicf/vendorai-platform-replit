@@ -276,6 +276,28 @@ router.get("/visitor-intelligence/web-vitals", async (req, res) => {
       .sort((a, b) => (b.p75 ?? 0) - (a.p75 ?? 0))
       .slice(0, 12);
 
+    const apiRouteMap = new Map<string, ApiTimingSample[]>();
+    for (const sample of apiSamples) {
+      const key = `${sample.path}::${sample.endpoint}`;
+      const list = apiRouteMap.get(key) ?? [];
+      list.push(sample);
+      apiRouteMap.set(key, list);
+    }
+    const apiRouteTimings = [...apiRouteMap.entries()]
+      .map(([key, routeSamples]) => {
+        const [path, endpoint] = key.split("::");
+        const values = routeSamples.map((sample) => sample.durationMs);
+        return {
+          path,
+          endpoint,
+          samples: values.length,
+          p75: percentile(values, 0.75),
+          median: percentile(values, 0.5),
+        };
+      })
+      .sort((a, b) => (b.p75 ?? 0) - (a.p75 ?? 0))
+      .slice(0, 30);
+
     const routeMap = new Map<string, VitalSample[]>();
     for (const sample of samples) {
       const list = routeMap.get(sample.path) ?? [];
@@ -313,6 +335,7 @@ router.get("/visitor-intelligence/web-vitals", async (req, res) => {
         desktop: samples.filter((sample) => sample.deviceCategory === "desktop").length,
       },
       apiTimings,
+      apiRouteTimings,
       routes,
     });
   } catch (error) {

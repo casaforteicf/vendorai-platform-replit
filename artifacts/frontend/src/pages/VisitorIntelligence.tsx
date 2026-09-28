@@ -135,6 +135,7 @@ type WebVitalsResponse = {
   metrics: Record<"LCP" | "INP" | "CLS" | "FCP" | "TTFB", VitalMetricSummary>;
   devices: { mobile: number; tablet: number; desktop: number };
   apiTimings?: Array<{ endpoint: string; samples: number; p75: number | null; median: number | null; max: number | null }>;
+  apiRouteTimings?: Array<{ path: string; endpoint: string; samples: number; p75: number | null; median: number | null }>;
   routes: Array<{ path: string; samples: number; lcp: number | null; inp: number | null; cls: number | null }>;
 };
 type UnknownRecord = Record<string, unknown>;
@@ -364,8 +365,17 @@ export default function VisitorIntelligence() {
     .sort((a, b) => b.score - a.score || b.samples - a.samples), [vitalsQuery.data?.routes]);
   const actionableVitalRoutes = useMemo(() => rankedVitalRoutes
     .filter((route) => route.confidence !== "baixa" && (route.status === "crítica" || route.status === "atenção"))
-    .map((route) => ({ ...route, bottleneck: routeBottleneck(route) }))
-    .slice(0, 5), [rankedVitalRoutes]);
+    .map((route) => {
+      const routeApis = (vitalsQuery.data?.apiRouteTimings ?? [])
+        .filter((api) => api.path === route.path)
+        .sort((a, b) => (b.p75 ?? 0) - (a.p75 ?? 0));
+      return {
+        ...route,
+        bottleneck: routeBottleneck(route),
+        slowestApi: routeApis[0] ?? null,
+      };
+    })
+    .slice(0, 5), [rankedVitalRoutes, vitalsQuery.data?.apiRouteTimings]);
   const slowServerOrNetwork = (vitalsQuery.data?.metrics.TTFB.p75 ?? 0) > 800;
 
   const selectSession = (sessionId: string) => {
@@ -472,6 +482,11 @@ export default function VisitorIntelligence() {
                       <div className="mt-0.5 text-[11px] font-medium text-foreground/80">
                         Gargalo dominante: {route.bottleneck}
                       </div>
+                      {route.slowestApi ? (
+                        <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                          API mais lenta nesta rota: {route.slowestApi.endpoint} · p75 {route.slowestApi.p75 == null ? "—" : `${Math.round(route.slowestApi.p75)}ms`}
+                        </div>
+                      ) : null}
                     </div>
                     <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
                       <span>LCP {route.lcp == null ? "—" : `${Math.round(route.lcp)}ms`}</span>
