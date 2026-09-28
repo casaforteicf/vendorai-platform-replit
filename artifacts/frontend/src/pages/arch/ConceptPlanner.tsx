@@ -949,6 +949,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [handoffState, setHandoffState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [handoffError, setHandoffError] = useState<string | null>(null);
   const [dxfExportState, setDxfExportState] = useState<"idle" | "exporting" | "error">("idle");
+  const [ifcExportState, setIfcExportState] = useState<"idle" | "exporting" | "error">("idle");
   const [dxfImportState, setDxfImportState] = useState<"idle" | "importing" | "error" | "success">("idle");
   const [dxfImportMessage, setDxfImportMessage] = useState<string | null>(null);
   const [referencePlan, setReferencePlan] = useState<ReferencePlan | null>(null);
@@ -4063,6 +4064,40 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       setDxfImportState("error");
     } finally {
       if (dxfImportInputRef.current) dxfImportInputRef.current.value = "";
+    }
+  };
+
+  const exportConceptIfc = async () => {
+    if (ifcExportState === "exporting") return;
+    setIfcExportState("exporting");
+    try {
+      const id = await saveConcept(6);
+      if (!id) throw new Error("Não foi possível salvar o pré-projeto antes da exportação.");
+      const token = typeof window !== "undefined" ? localStorage.getItem("vendorai_token") : null;
+      const response = await fetch(`/api/arch/concept-projects/${encodeURIComponent(id)}/export/ifc`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({})) as { error?: string };
+        throw new Error(payload.error ?? "Não foi possível exportar o IFC.");
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const disposition = response.headers.get("content-disposition") ?? "";
+      const match = disposition.match(/filename="?([^";]+)"?/i);
+      const filename = match?.[1] || "arqdor-projeto.ifc";
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setIfcExportState("idle");
+    } catch (error) {
+      console.error("[Arqdor] Falha ao exportar IFC", error);
+      setIfcExportState("error");
+      window.setTimeout(() => setIfcExportState("idle"), 3000);
     }
   };
 
@@ -8223,6 +8258,16 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   >
                     <Download className="h-4 w-4" />
                     {dxfExportState === "exporting" ? "Gerando DXF..." : dxfExportState === "error" ? "Tentar DXF novamente" : "Exportar DXF"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void exportConceptIfc()}
+                    disabled={ifcExportState === "exporting"}
+                    className="inline-flex items-center gap-2 rounded-xl border bg-background px-4 py-2.5 text-sm font-semibold disabled:opacity-50"
+                    title="Exportação IFC4 conceitual com pavimentos e paredes do modelo Arqdor"
+                  >
+                    <Box className="h-4 w-4" />
+                    {ifcExportState === "exporting" ? "Gerando IFC..." : ifcExportState === "error" ? "Tentar IFC novamente" : "Exportar IFC (BIM)"}
                   </button>
                   <input
                     ref={dxfImportInputRef}
