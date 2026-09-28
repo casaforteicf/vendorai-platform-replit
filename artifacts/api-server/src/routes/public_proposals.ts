@@ -1,14 +1,227 @@
 import { Router, type IRouter } from "express";
+import bcrypt from "bcryptjs";
+import { createHash, randomBytes, randomUUID } from "crypto";
 import { eq } from "drizzle-orm";
 import { z } from "zod/v4";
-import { db, propostasTable, leadProposalsTable } from "@workspace/db";
+import { db, pool, propostasTable, leadProposalsTable } from "@workspace/db";
 import { proposalAccepted } from "../lib/proposal-accepted.js";
 
 const router: IRouter = Router();
 
+const portalRegisterSchema = z.object({
+  nome: z.string().trim().min(1).max(160),
+  email: z.string().trim().email().max(240),
+  telefone: z.string().trim().max(40).optional(),
+  password: z.string().min(8).max(200),
+});
+
+const portalLoginSchema = z.object({
+  email: z.string().trim().email().max(240),
+  password: z.string().min(1).max(200),
+});
+
+type PublicProposalPortalContext = {
+  tenantId: string;
+  leadId: string | null;
+  sourceKind: "budget_proposal" | "generated_proposal";
+  sourceId: string;
+};
+
+function hashPortalSessionToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+async function createCustomerPortalSession(userId: string) {
+  const raw = randomBytes(32).toString("hex");
+  await pool.query(
+    `INSERT INTO customer_portal_sessions (id, user_id, token_hash, expires_at)
+     VALUES ($1,$2,$3,now() + interval '30 days')`,
+    [randomUUID(), userId, hashPortalSessionToken(raw)],
+  );
+  return raw;
+}
+
+async function resolvePublicProposalPortalContext(token: string): Promise<PublicProposalPortalContext | null> {
+  const [budget] = await db
+    .select({
+      id: propostasTable.id,
+      tenantId: propostasTable.tenantId,
+      leadId: propostasTable.leadId,
+    })
+    .from(propostasTable)
+    .where(eq(propostasTable.publicToken, token))
+    .limit(1);
+
+  if (budget?.tenantId) {
+    return {
+      tenantId: String(budget.tenantId),
+      leadId: budget.leadId ? String(budget.leadId) : null,
+      sourceKind: "budget_proposal",
+      sourceId: String(budget.id),
+    };
+  }
+
+  const [generated] = await db
+    .select({
+      id: leadProposalsTable.id,
+      tenantId: leadProposalsTable.tenantId,
+      leadId: leadProposalsTable.leadId,
+    })
+    .from(leadProposalsTable)
+    .where(eq(leadProposalsTable.id, token))
+    .limit(1);
+
+  if (!generated?.tenantId) return null;
+  return {
+    tenantId: String(generated.tenantId),
+    leadId: generated.leadId ? String(generated.leadId) : null,
+    sourceKind: "generated_proposal",
+    sourceId: String(generated.id),
+  };
+}
+
+async function attachCustomerPortalAccess(userId: string, context: PublicProposalPortalContext) {
+  await pool.query(
+    `INSERT INTO customer_portal_access (id, tenant_id, user_id, lead_id, source_kind, source_id)
+     VALUES ($1,$2,$3,$4,$5,$6)
+     ON CONFLICT (user_id, source_kind, source_id) DO NOTHING`,
+    [randomUUID(), context.tenantId, userId, context.leadId, context.sourceKind, context.sourceId],
+  );
+}
+
+
 const acceptPublicBodySchema = z.object({
   nome: z.string().min(1).optional(),
   documento: z.string().optional(),
+});
+
+
+router.post("/public/proposals/:token/portal/register", async (req, res) => {
+  const token = String(req.params.token ?? "");
+  const context = await resolvePublicProposalPortalContext(token);
+  if (!context) {
+    res.status(404).json({ error: "Proposta não encontrada ou link inválido." });
+    return;
+  }
+
+  const parsed = portalRegisterSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: "Informe nome, e-mail válido e senha com ao menos 8 caracteres." });
+    return;
+  }
+
+  const email = parsed.data.email.toLowerCase();
+  const existing = await pool.query(
+    `SELECT id FROM customer_portal_users
+      WHERE tenant_id=$1 AND lower(email)=lower($2) LIMIT 1`,
+    [context.tenantId, email],
+  );
+  if (existing.rows[0]) {
+    res.status(409).json({ error: "Já existe uma conta para este e-mail nesta empresa. Entre com sua senha." });
+    return;
+  }
+
+  const userId = randomUUID();
+  const passwordHash = await bcrypt.hash(parsed.data.password, 12);
+  await pool.query(
+    `INSERT INTO customer_portal_users
+      (id, tenant_id, nome, email, telefone, password_hash)
+     VALUES ($1,$2,$3,$4,$5,$6)`,
+    [
+      userId,
+      context.tenantId,
+      parsed.data.nome,
+      email,
+      parsed.data.telefone?.trim() || null,
+      passwordHash,
+    ],
+  );
+  await attachCustomerPortalAccess(userId, context);
+  const sessionToken = await createCustomerPortalSession(userId);
+
+  res.status(201).json({
+    sessionToken,
+    user: { id: userId, nome: parsed.data.nome, email, tenantId: context.tenantId },
+    proposal: { sourceKind: context.sourceKind, sourceId: context.sourceId, leadId: context.leadId },
+  });
+});
+
+router.post("/public/proposals/:token/portal/login", async (req, res) => {
+  const token = String(req.params.token ?? "");
+  const context = await resolvePublicProposalPortalContext(token);
+  if (!context) {
+    res.status(404).json({ error: "Proposta não encontrada ou link inválido." });
+    return;
+  }
+
+  const parsed = portalLoginSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: "Informe e-mail e senha." });
+    return;
+  }
+
+  const result = await pool.query(
+    `SELECT id, nome, email, password_hash, status
+       FROM customer_portal_users
+      WHERE tenant_id=$1 AND lower(email)=lower($2)
+      LIMIT 1`,
+    [context.tenantId, parsed.data.email.toLowerCase()],
+  );
+  const user = result.rows[0];
+  if (!user || user.status !== "ativo" || !(await bcrypt.compare(parsed.data.password, user.password_hash))) {
+    res.status(401).json({ error: "E-mail ou senha inválidos." });
+    return;
+  }
+
+  await attachCustomerPortalAccess(String(user.id), context);
+  await pool.query(
+    `UPDATE customer_portal_users SET ultimo_login_em=now(), updated_at=now() WHERE id=$1`,
+    [user.id],
+  );
+  const sessionToken = await createCustomerPortalSession(String(user.id));
+
+  res.json({
+    sessionToken,
+    user: { id: user.id, nome: user.nome, email: user.email, tenantId: context.tenantId },
+    proposal: { sourceKind: context.sourceKind, sourceId: context.sourceId, leadId: context.leadId },
+  });
+});
+
+router.get("/public/proposals/:token/portal/me", async (req, res) => {
+  const token = String(req.params.token ?? "");
+  const context = await resolvePublicProposalPortalContext(token);
+  if (!context) {
+    res.status(404).json({ error: "Proposta não encontrada ou link inválido." });
+    return;
+  }
+
+  const authHeader = String(req.headers.authorization ?? "");
+  const rawSession = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+  if (!rawSession) {
+    res.status(401).json({ error: "Sessão do portal ausente." });
+    return;
+  }
+
+  const result = await pool.query(
+    `SELECT u.id, u.nome, u.email, u.telefone, u.tenant_id
+       FROM customer_portal_sessions s
+       INNER JOIN customer_portal_users u ON u.id=s.user_id
+      WHERE s.token_hash=$1 AND s.expires_at > now()
+        AND u.tenant_id=$2 AND u.status='ativo'
+      LIMIT 1`,
+    [hashPortalSessionToken(rawSession), context.tenantId],
+  );
+  const user = result.rows[0];
+  if (!user) {
+    res.status(401).json({ error: "Sessão inválida ou expirada." });
+    return;
+  }
+
+  await attachCustomerPortalAccess(String(user.id), context);
+  res.json({
+    user: { id: user.id, nome: user.nome, email: user.email, telefone: user.telefone, tenantId: user.tenant_id },
+    proposal: { sourceKind: context.sourceKind, sourceId: context.sourceId, leadId: context.leadId },
+  });
 });
 
 // ── GET /public/proposals/:token — fetch summary for the accept page ───────────

@@ -46,6 +46,15 @@ export default function PublicProposta() {
   const { token } = useParams<{ token: string }>();
   const [accepted, setAccepted] = useState(false);
   const [alreadyAccepted, setAlreadyAccepted] = useState(false);
+  const [portalOpen, setPortalOpen] = useState(false);
+  const [portalMode, setPortalMode] = useState<"register" | "login">("register");
+  const [portalName, setPortalName] = useState("");
+  const [portalEmail, setPortalEmail] = useState("");
+  const [portalPhone, setPortalPhone] = useState("");
+  const [portalPassword, setPortalPassword] = useState("");
+  const [portalBusy, setPortalBusy] = useState(false);
+  const [portalMessage, setPortalMessage] = useState("");
+  const [portalUserName, setPortalUserName] = useState("");
 
   const { data: proposta, isLoading, error } = useQuery<PropostaPublic>({
     queryKey: ["public-proposta", token],
@@ -77,8 +86,96 @@ export default function PublicProposta() {
     },
     onSuccess: () => {
       setAccepted(true);
+      setPortalOpen(true);
     },
   });
+
+  async function submitPortalAccess() {
+    if (!token) return;
+    setPortalBusy(true);
+    setPortalMessage("");
+    try {
+      const endpoint = portalMode === "register" ? "register" : "login";
+      const payload = portalMode === "register"
+        ? { nome: portalName, email: portalEmail, telefone: portalPhone || undefined, password: portalPassword }
+        : { email: portalEmail, password: portalPassword };
+      const res = await fetch(api(`/api/public/proposals/${token}/portal/${endpoint}`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? "Não foi possível acessar o portal.");
+      if (body.sessionToken) {
+        localStorage.setItem(`vendorai_customer_portal_${token}`, body.sessionToken);
+      }
+      setPortalUserName(body.user?.nome || portalName || portalEmail);
+      setPortalMessage("Acesso ao Portal do Cliente criado com sucesso.");
+    } catch (err) {
+      setPortalMessage(err instanceof Error ? err.message : "Não foi possível acessar o portal.");
+    } finally {
+      setPortalBusy(false);
+    }
+  }
+
+  function portalAccessUi() {
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => setPortalOpen(true)}
+          className="fixed right-4 top-4 z-[100] rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-xl hover:bg-slate-800"
+        >
+          {portalUserName ? `Portal · ${portalUserName}` : "Portal do Cliente"}
+        </button>
+        {portalOpen && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/55 p-4">
+            <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Portal do Cliente</p>
+                  <h2 className="mt-1 text-2xl font-bold text-slate-950">
+                    {portalUserName ? "Acesso criado" : portalMode === "register" ? "Criar meu acesso" : "Entrar"}
+                  </h2>
+                  <p className="mt-2 text-sm leading-6 text-slate-500">
+                    Sua conta fica vinculada automaticamente à empresa e a esta proposta.
+                  </p>
+                </div>
+                <button type="button" onClick={() => setPortalOpen(false)} className="text-2xl text-slate-400">×</button>
+              </div>
+
+              {portalUserName ? (
+                <div className="mt-6 rounded-2xl bg-emerald-50 p-4 text-sm text-emerald-800">
+                  Olá, <strong>{portalUserName}</strong>. Esta proposta já está vinculada ao seu Portal do Cliente.
+                </div>
+              ) : (
+                <>
+                  <div className="mt-5 flex rounded-xl bg-slate-100 p-1">
+                    <button type="button" onClick={() => { setPortalMode("register"); setPortalMessage(""); }} className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold ${portalMode === "register" ? "bg-white shadow-sm" : "text-slate-500"}`}>Primeiro acesso</button>
+                    <button type="button" onClick={() => { setPortalMode("login"); setPortalMessage(""); }} className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold ${portalMode === "login" ? "bg-white shadow-sm" : "text-slate-500"}`}>Já tenho conta</button>
+                  </div>
+                  <div className="mt-4 space-y-3">
+                    {portalMode === "register" && (
+                      <>
+                        <input value={portalName} onChange={(e) => setPortalName(e.target.value)} placeholder="Nome completo" className="w-full rounded-xl border px-3 py-3 text-sm" />
+                        <input value={portalPhone} onChange={(e) => setPortalPhone(e.target.value)} placeholder="WhatsApp / telefone" className="w-full rounded-xl border px-3 py-3 text-sm" />
+                      </>
+                    )}
+                    <input type="email" value={portalEmail} onChange={(e) => setPortalEmail(e.target.value)} placeholder="E-mail" className="w-full rounded-xl border px-3 py-3 text-sm" />
+                    <input type="password" value={portalPassword} onChange={(e) => setPortalPassword(e.target.value)} placeholder={portalMode === "register" ? "Senha (mínimo 8 caracteres)" : "Senha"} className="w-full rounded-xl border px-3 py-3 text-sm" />
+                    <Button className="w-full" disabled={portalBusy} onClick={submitPortalAccess}>
+                      {portalBusy ? "Processando..." : portalMode === "register" ? "Criar conta e continuar" : "Entrar no portal"}
+                    </Button>
+                  </div>
+                </>
+              )}
+              {portalMessage && <p className="mt-3 text-sm text-slate-600">{portalMessage}</p>}
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -107,6 +204,7 @@ export default function PublicProposta() {
   if (proposta.kind === "generated") {
     return (
       <div className="min-h-screen bg-white">
+        {portalAccessUi()}
         <iframe
           title={`Proposta v${proposta.version}`}
           src={api(`/api/public/generated-proposals/${proposta.id}/html`)}
@@ -125,6 +223,7 @@ export default function PublicProposta() {
   if (accepted) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-violet-50 to-blue-50 flex items-center justify-center p-6">
+        {portalAccessUi()}
         <Card className="max-w-md w-full shadow-lg">
           <CardContent className="pt-10 pb-10 text-center">
             <CheckCircle className="h-14 w-14 text-green-500 mx-auto mb-4" />
@@ -141,6 +240,7 @@ export default function PublicProposta() {
   if (alreadyAccepted || proposta.status === "aceita") {
     return (
       <div className="min-h-screen bg-gradient-to-br from-violet-50 to-blue-50 flex items-center justify-center p-6">
+        {portalAccessUi()}
         <Card className="max-w-md w-full shadow-lg">
           <CardContent className="pt-10 pb-10 text-center">
             <CheckCircle className="h-14 w-14 text-green-400 mx-auto mb-4" />
@@ -154,6 +254,7 @@ export default function PublicProposta() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-violet-50 to-blue-50 flex items-center justify-center p-6">
+      {portalAccessUi()}
       <div className="w-full max-w-2xl">
         <Card className="shadow-xl border-0">
           <CardHeader className="border-b bg-gradient-to-r from-violet-600 to-blue-600 text-white rounded-t-lg px-6 py-6">

@@ -379,9 +379,9 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     const url = `${window.location.origin}/p/${proposalVersionId}`;
     try {
       await navigator.clipboard.writeText(url);
-      toast({ title: "Link público exclusivo copiado!", description: url });
+      toast({ title: "Link do Portal do Cliente copiado!", description: url });
     } catch {
-      toast({ title: "Link público da proposta", description: url });
+      toast({ title: "Link do Portal do Cliente", description: url });
     }
   }
 
@@ -972,6 +972,10 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const PROPOSAL_MODULE_LABELS: Record<string, string> = {
     capa: "Capa",
     apresentacao_empresa: "Apresentação da empresa",
+    produto_servico: "Produto / serviço",
+    curiosidades_conteudo: "Curiosidades e conteúdo",
+    cases_provas: "Cases e provas",
+    faq: "Perguntas frequentes",
     diferenciais: "Diferenciais",
     resumo_executivo: "Resumo executivo",
     escopo: "Escopo",
@@ -984,7 +988,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     validade_inicio: "Validade e previsão de início",
     aceite: "Aceite",
     anexos: "Anexos",
-    portal_cliente: "Portal do cliente",
+    portal_cliente: "Portal do Cliente",
   };
 
   function resolveProposalBuilderTemplateForEditor() {
@@ -2116,9 +2120,9 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                       </Select>
                       <p className="text-[11px] text-muted-foreground">
                         {proposalPresentationFormat === "site_interativo"
-                          ? "Link público em formato de microsite responsivo e interativo."
+                          ? "Portal do Cliente em formato de microsite responsivo e interativo."
                           : proposalPresentationFormat === "hibrido"
-                            ? "Link público interativo com opção de impressão/PDF."
+                            ? "Portal do Cliente interativo com opção de impressão/PDF."
                             : "Modelo tradicional em páginas, otimizado para impressão e PDF."}
                       </p>
                     </div>
@@ -2438,7 +2442,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                         size="icon"
                         variant="ghost"
                         className="h-7 w-7 text-blue-500 hover:text-blue-700 hover:bg-blue-50"
-                        title="Copiar link público"
+                        title="Copiar link do Portal"
                         onClick={() => copyPublicLink(p.id)}
                       >
                         <Link2 className="h-3.5 w-3.5" />

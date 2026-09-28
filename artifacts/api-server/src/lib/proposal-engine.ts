@@ -27,7 +27,7 @@ const PROPOSAL_SYSTEM_PROMPT = `Você é o melhor redator comercial do Brasil �
 
 Suas regras de ouro:
 - Cada frase deve ganhar seu lugar. Sem enchimento, sem clichê.
-- Use dados e números concretos e plausíveis para o segmento (ex: "lojas que respondem em menos de 5 minutos têm 9x mais chances de fechar"). Invente dados realistas se não houver dados reais — eles precisam soar verdadeiros.
+- Use somente dados concretos fornecidos pelo sistema, tenant, catálogo, briefing ou base de conhecimento. Nunca invente estatísticas, certificações, cases, depoimentos ou números para parecer convincente.
 - Escreva headlines que gerem curiosidade e urgência real, não genérica.
 - Os problemas e implicações devem causar um "é exatamente isso que acontece comigo" no leitor.
 - A solução deve soar inevitável — como se fosse a única escolha racional depois de ler os problemas.
@@ -325,6 +325,34 @@ Retorne APENAS JSON válido — sem markdown, sem \`\`\`json, sem texto antes ou
     "ctaSecondary": "Ação secundária. Ex: 'Tirar dúvidas no WhatsApp'",
     "forTag": "Preparado para [${ctx.empresa || ctx.leadName}] — [segmento específico]"
   },
+  "company": {
+    "title": "Quem somos",
+    "text": "Breve apresentação factual da empresa vendedora/tenant, usando somente dados fornecidos.",
+    "highlights": ["Diferencial factual 1", "Diferencial factual 2", "Diferencial factual 3"]
+  },
+  "offer": {
+    "title": "Produto ou serviço",
+    "text": "Explicação curta do produto/serviço ofertado e de como ele funciona.",
+    "bullets": ["Benefício ou característica factual 1", "Benefício ou característica factual 2", "Benefício ou característica factual 3"]
+  },
+  "curiosities": {
+    "title": "Vale saber",
+    "items": [
+      { "title": "Curiosidade ou orientação", "text": "Informação educativa útil, sem inventar dados." }
+    ]
+  },
+  "proof": {
+    "title": "Experiência e confiança",
+    "items": [
+      { "title": "Case, prova ou diferencial", "text": "Somente quando houver evidência no contexto do tenant." }
+    ]
+  },
+  "faq": {
+    "title": "Perguntas frequentes",
+    "items": [
+      { "question": "Pergunta frequente", "answer": "Resposta curta e objetiva baseada em informação disponível." }
+    ]
+  },
   "situation": {
     "title": "Frase que nomeia a situação atual — o cliente deve se reconhecer.",
     "subtitle": "1 frase contextualizando o cenário com dado real do segmento.",
@@ -388,7 +416,7 @@ Retorne APENAS JSON válido — sem markdown, sem \`\`\`json, sem texto antes ou
 
 ━━━ REGRAS DE QUALIDADE ━━━
 1. NUNCA use clichês como "transforme seu negócio", "leve ao próximo nível", "solução completa", "inovador", "robusto".
-2. situation.facts: exatamente 3 fatos com dados numéricos reais e impactantes do segmento "${ctx.mercadoSegmento || "informado"}".
+2. situation.facts: use até 3 fatos verificáveis a partir do contexto fornecido. Não invente números; quando não houver estatísticas reais, prefira fatos qualitativos e objetivos.
 3. problem.cards: exatamente 2 cards, cada um descrevendo um problema real e distinto com linguagem do dia a dia.
 4. implication.cascade: exatamente 3 passos em cadeia — cada um piora o anterior logicamente.
 5. value.questions: exatamente 2 perguntas retóricas — o cliente deve responder mentalmente "sim" para ambas.
@@ -397,6 +425,7 @@ Retorne APENAS JSON válido — sem markdown, sem \`\`\`json, sem texto antes ou
 8. Se briefing existir, os problemas e implicações DEVEM refletir as respostas do briefing — não invente problemas que o cliente não mencionou.
 9. Cada campo de texto: máximo 2 frases curtas e diretas. Sem padding. Seja objetivo.
 10. Retorne APENAS JSON válido. Nada antes ou depois.
+10.1. company, offer, curiosities, proof e faq formam o "breve site" comercial da proposta. Preencha somente com informações sustentadas pelo contexto fornecido; se um bloco não tiver dados confiáveis, retorne arrays vazios ou texto vazio em vez de inventar conteúdo.
 11. NUNCA mencione valores monetários (R$, preços, custos, investimento, orçamento, "a partir de", "mensalidade") em NENHUM campo do JSON — nem no hero, nem no subheadline, nem em modules, nem em cta. Os valores financeiros serão exibidos exclusivamente na seção de orçamento, que é gerada separadamente.\n12. O orçamento selecionado é a FONTE DE VERDADE para escopo e dados comerciais. A IA pode melhorar apenas a narrativa comercial; nunca pode alterar itens, etapas, quantidades, valores, condições, cronograma, total ou especificações cadastradas no sistema.`;
 }
 
@@ -1029,6 +1058,11 @@ function renderConstructionProposalLayout(args: {
   const { json, tenantName, tenantLogoUrl, clientName, imagens, orcamento, builderModuleEnabled } = args;
   const hero = json.hero || {};
   const meta = json.meta || {};
+  const companyInfo = json.company || {};
+  const offerInfo = json.offer || {};
+  const curiositiesInfo = json.curiosities || {};
+  const proofInfo = json.proof || {};
+  const faqInfo = json.faq || {};
   const presentation = normalizeProposalPresentation(orcamento.apresentacao);
   const interactive = presentation.formato === "site_interativo" || presentation.formato === "hibrido";
   const hybrid = presentation.formato === "hibrido";
@@ -1114,6 +1148,34 @@ function renderConstructionProposalLayout(args: {
       <span>${item.label}</span>
       <strong>${item.value}</strong>
     </div>`).join("");
+
+  const institutionalCards = [
+    ...(builderModuleEnabled("apresentacao_empresa") && (companyInfo.title || companyInfo.text)
+      ? [{ label: "EMPRESA", title: companyInfo.title || company, text: companyInfo.text || "", items: companyInfo.highlights || [] }]
+      : []),
+    ...(builderModuleEnabled("produto_servico") && (offerInfo.title || offerInfo.text)
+      ? [{ label: "PRODUTO / SERVIÇO", title: offerInfo.title || "O que estamos propondo", text: offerInfo.text || "", items: offerInfo.bullets || [] }]
+      : []),
+  ];
+  const institutionalPageHtml =
+    institutionalCards.length
+    || (builderModuleEnabled("curiosidades_conteudo") && Array.isArray(curiositiesInfo.items) && curiositiesInfo.items.length)
+    || (builderModuleEnabled("cases_provas") && Array.isArray(proofInfo.items) && proofInfo.items.length)
+    || (builderModuleEnabled("faq") && Array.isArray(faqInfo.items) && faqInfo.items.length)
+      ? `
+<section class="page">
+  ${header("CONHEÇA A EMPRESA", "Informação institucional e educativa")}
+  <h1 class="summary-heading">Antes do orçamento, conheça melhor a proposta</h1>
+  <p class="summary-lead">Uma visão rápida da empresa, da solução e de informações úteis para apoiar sua decisão.</p>
+  <div class="organize-grid" style="margin-top:7mm;">
+    ${institutionalCards.map((card) => `<div class="organize-item"><span class="value-kicker">${escapeProposalText(String(card.label))}</span><b>${escapeProposalText(String(card.title))}</b><p>${escapeProposalText(String(card.text))}</p>${Array.isArray(card.items) && card.items.length ? `<p style="margin-top:2mm;">${card.items.map((item: unknown) => "• " + escapeProposalText(String(item))).join("<br>")}</p>` : ""}</div>`).join("")}
+    ${builderModuleEnabled("curiosidades_conteudo") ? (curiositiesInfo.items || []).map((item: any) => `<div class="organize-item"><span class="value-kicker">VALE SABER</span><b>${escapeProposalText(String(item?.title || ""))}</b><p>${escapeProposalText(String(item?.text || ""))}</p></div>`).join("") : ""}
+    ${builderModuleEnabled("cases_provas") ? (proofInfo.items || []).map((item: any) => `<div class="organize-item"><span class="value-kicker">EXPERIÊNCIA</span><b>${escapeProposalText(String(item?.title || ""))}</b><p>${escapeProposalText(String(item?.text || ""))}</p></div>`).join("") : ""}
+    ${builderModuleEnabled("faq") ? (faqInfo.items || []).map((item: any) => `<div class="organize-item"><span class="value-kicker">PERGUNTA FREQUENTE</span><b>${escapeProposalText(String(item?.question || ""))}</b><p>${escapeProposalText(String(item?.answer || ""))}</p></div>`).join("") : ""}
+  </div>
+  ${footer()}
+</section>`
+      : "";
 
   const valuePropositionHtml = isIcfProposal
     ? `
@@ -1913,6 +1975,7 @@ ${interactive ? `
   ${footer()}
 </section>
 
+${institutionalPageHtml}
 ${interactive ? `<div id="etapas-obra" class="web-section-anchor"></div>` : ""}
 ${stagePages}
 
@@ -2036,6 +2099,11 @@ export function renderProposalHtml(json: unknown, theme: {
 } | null): string {
   const d = json as Record<string, any>;
   const hero = d.hero || {};
+  const companyInfo = d.company || {};
+  const offerInfo = d.offer || {};
+  const curiositiesInfo = d.curiosities || {};
+  const proofInfo = d.proof || {};
+  const faqInfo = d.faq || {};
   const situation = d.situation || {};
   const problem = d.problem || {};
   const implication = d.implication || {};
@@ -2078,6 +2146,22 @@ export function renderProposalHtml(json: unknown, theme: {
       ? `<div class="page-visual ${className}"><img src="${url}" alt="${alt}" loading="lazy" onerror="this.style.display='none'" /></div>`
       : "";
   };
+
+  const companyHighlights = (companyInfo.highlights || []).filter(Boolean).map((item: string) =>
+    `<li>${escapeProposalText(String(item))}</li>`
+  ).join("");
+  const offerBullets = (offerInfo.bullets || []).filter(Boolean).map((item: string) =>
+    `<li>${escapeProposalText(String(item))}</li>`
+  ).join("");
+  const curiosityCards = (curiositiesInfo.items || []).map((item: any) =>
+    `<div class="site-card"><h3>${escapeProposalText(String(item?.title || ""))}</h3><p>${escapeProposalText(String(item?.text || ""))}</p></div>`
+  ).join("");
+  const proofCards = (proofInfo.items || []).map((item: any) =>
+    `<div class="site-card"><h3>${escapeProposalText(String(item?.title || ""))}</h3><p>${escapeProposalText(String(item?.text || ""))}</p></div>`
+  ).join("");
+  const faqCards = (faqInfo.items || []).map((item: any) =>
+    `<div class="faq-card"><h3>${escapeProposalText(String(item?.question || ""))}</h3><p>${escapeProposalText(String(item?.answer || ""))}</p></div>`
+  ).join("");
 
   const facts = (situation.facts || []).map((f: any) =>
     `<div class="fact"><span class="num">${f.num}</span><span class="lbl">${f.label}</span></div>`
@@ -2238,6 +2322,17 @@ export function renderProposalHtml(json: unknown, theme: {
   .sec-label { font-family: "JetBrains Mono", monospace; font-size: 6.5pt; letter-spacing: .1em; text-transform: uppercase; color: ${theme.accent}; margin-bottom: 2mm; }
   .lead-text { font-size: 9.5pt; color: #3a3358; max-width: 68ch; margin-bottom: 2mm; }
   .sec-divider { border: none; border-top: 1px solid ${theme.concreteLine}; margin: 5.5mm 0; }
+
+  /* ── microsite institucional ── */
+  .site-grid { display:grid; grid-template-columns:1fr 1fr; gap:4mm; margin:3mm 0 5mm; }
+  .site-panel { border:1px solid ${theme.concreteLine}; border-radius:9px; padding:5mm; background:${theme.cream2}; }
+  .site-panel h2 { margin-bottom:2mm; }
+  .site-panel ul { padding-left:5mm; margin-top:3mm; color:#4a4368; }
+  .site-panel li { margin:1.2mm 0; }
+  .site-cards { display:grid; grid-template-columns:repeat(2,1fr); gap:3mm; margin-top:3mm; }
+  .site-card,.faq-card { border:1px solid ${theme.concreteLine}; border-radius:8px; padding:4mm; background:#fff; }
+  .site-card p,.faq-card p { font-size:8pt; color:#4a4368; }
+  .faq-list { display:grid; gap:2.5mm; margin-top:3mm; }
 
   /* ── facts ── */
   .facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm; margin: 3.5mm 0; }
@@ -2515,6 +2610,22 @@ export function renderProposalHtml(json: unknown, theme: {
     <span class="cover-footer-meta">Proposta Comercial · ${clientName || meta.clientName || "Cliente"}${websiteUrl ? ` · ${websiteUrl}` : ""}</span>
   </div>
 </div>
+
+${builderModuleEnabled("apresentacao_empresa") || builderModuleEnabled("produto_servico") || builderModuleEnabled("curiosidades_conteudo") || builderModuleEnabled("cases_provas") || builderModuleEnabled("faq") ? `<!-- ══ MICROSITE INSTITUCIONAL ══ -->
+<div class="page">
+  ${docHdr(`Conheça ${navName}`)}
+  <div class="sec-label">Conheça a empresa e a solução</div>
+  <h2>Uma visão rápida antes da proposta</h2>
+  <p class="lead-text">Informações institucionais e educativas vinculadas à empresa e ao que está sendo oferecido.</p>
+  <div class="site-grid">
+    ${builderModuleEnabled("apresentacao_empresa") && (companyInfo.title || companyInfo.text || companyHighlights) ? `<section class="site-panel"><div class="sec-label">Empresa</div><h2>${escapeProposalText(String(companyInfo.title || navName))}</h2><p>${escapeProposalText(String(companyInfo.text || ""))}</p>${companyHighlights ? `<ul>${companyHighlights}</ul>` : ""}</section>` : ""}
+    ${builderModuleEnabled("produto_servico") && (offerInfo.title || offerInfo.text || offerBullets) ? `<section class="site-panel"><div class="sec-label">Produto / serviço</div><h2>${escapeProposalText(String(offerInfo.title || "O que estamos propondo"))}</h2><p>${escapeProposalText(String(offerInfo.text || ""))}</p>${offerBullets ? `<ul>${offerBullets}</ul>` : ""}</section>` : ""}
+  </div>
+  ${builderModuleEnabled("curiosidades_conteudo") && curiosityCards ? `<div class="sec-label">Curiosidades e conteúdo útil</div><div class="site-cards">${curiosityCards}</div>` : ""}
+  ${builderModuleEnabled("cases_provas") && proofCards ? `<hr class="sec-divider" /><div class="sec-label">Experiência e confiança</div><div class="site-cards">${proofCards}</div>` : ""}
+  ${builderModuleEnabled("faq") && faqCards ? `<hr class="sec-divider" /><div class="sec-label">Perguntas frequentes</div><div class="faq-list">${faqCards}</div>` : ""}
+  ${docFooter()}
+</div>` : ""}
 
 ${builderModuleEnabled("apresentacao_empresa") || builderModuleEnabled("resumo_executivo") ? `<!-- ══ PAGE 2: SITUAÇÃO + PROBLEMA ══ -->
 <div class="page">

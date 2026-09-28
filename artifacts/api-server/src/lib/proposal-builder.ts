@@ -5,6 +5,10 @@ import { callOpenAI as gatewayCallOpenAI } from "./ai-gateway.js";
 export type ProposalBuilderModuleKey =
   | "capa"
   | "apresentacao_empresa"
+  | "produto_servico"
+  | "curiosidades_conteudo"
+  | "cases_provas"
+  | "faq"
   | "diferenciais"
   | "resumo_executivo"
   | "escopo"
@@ -48,6 +52,10 @@ export type ProposalBuilderTemplate = {
 export const ALLOWED_PROPOSAL_MODULES: ProposalBuilderModuleKey[] = [
   "capa",
   "apresentacao_empresa",
+  "produto_servico",
+  "curiosidades_conteudo",
+  "cases_provas",
+  "faq",
   "diferenciais",
   "resumo_executivo",
   "escopo",
@@ -106,38 +114,38 @@ export function defaultProposalBuilderTemplate(
 
   const keysByKind: Record<NonNullable<ProposalBuilderTemplate["proposalKind"]>, ProposalBuilderModuleKey[]> = {
     construction_project: [
-      "capa", "apresentacao_empresa", "diferenciais", "resumo_executivo", "escopo",
+      "capa", "apresentacao_empresa", "produto_servico", "curiosidades_conteudo", "cases_provas", "faq", "diferenciais", "resumo_executivo", "escopo",
       "etapas_orcamento", "imagem_por_etapa", "cronograma", "fisico_financeiro",
       "condicoes_comerciais", "validade_inicio", "aceite", "portal_cliente",
     ],
     architecture_service: [
-      "capa", "apresentacao_empresa", "diferenciais", "resumo_executivo", "escopo",
+      "capa", "apresentacao_empresa", "produto_servico", "curiosidades_conteudo", "cases_provas", "faq", "diferenciais", "resumo_executivo", "escopo",
       "etapas_orcamento", "imagem_por_etapa", "cronograma",
       "condicoes_comerciais", "validade_inicio", "aceite", "anexos", "portal_cliente",
     ],
     retail_quote: [
-      "capa", "apresentacao_empresa", "diferenciais", "resumo_executivo",
-      "tabela_itens", "condicoes_comerciais", "validade_inicio", "aceite", "anexos",
+      "capa", "apresentacao_empresa", "produto_servico", "curiosidades_conteudo", "cases_provas", "faq", "diferenciais", "resumo_executivo",
+      "tabela_itens", "condicoes_comerciais", "validade_inicio", "aceite", "anexos", "portal_cliente",
     ],
     distribution_b2b: [
-      "capa", "apresentacao_empresa", "diferenciais", "resumo_executivo",
-      "tabela_itens", "condicoes_comerciais", "validade_inicio", "aceite", "anexos",
+      "capa", "apresentacao_empresa", "produto_servico", "curiosidades_conteudo", "cases_provas", "faq", "diferenciais", "resumo_executivo",
+      "tabela_itens", "condicoes_comerciais", "validade_inicio", "aceite", "anexos", "portal_cliente",
     ],
     vehicle_sale: [
-      "capa", "apresentacao_empresa", "diferenciais", "resumo_executivo",
-      "tabela_itens", "condicoes_comerciais", "validade_inicio", "aceite", "anexos",
+      "capa", "apresentacao_empresa", "produto_servico", "curiosidades_conteudo", "cases_provas", "faq", "diferenciais", "resumo_executivo",
+      "tabela_itens", "condicoes_comerciais", "validade_inicio", "aceite", "anexos", "portal_cliente",
     ],
     insurance_quote: [
-      "capa", "apresentacao_empresa", "diferenciais", "resumo_executivo",
-      "escopo", "condicoes_comerciais", "validade_inicio", "aceite", "anexos",
+      "capa", "apresentacao_empresa", "produto_servico", "curiosidades_conteudo", "cases_provas", "faq", "diferenciais", "resumo_executivo",
+      "escopo", "condicoes_comerciais", "validade_inicio", "aceite", "anexos", "portal_cliente",
     ],
     professional_service: [
-      "capa", "apresentacao_empresa", "diferenciais", "resumo_executivo",
-      "escopo", "etapas_orcamento", "condicoes_comerciais", "validade_inicio", "aceite",
+      "capa", "apresentacao_empresa", "produto_servico", "curiosidades_conteudo", "cases_provas", "faq", "diferenciais", "resumo_executivo",
+      "escopo", "etapas_orcamento", "condicoes_comerciais", "validade_inicio", "aceite", "portal_cliente",
     ],
     generic: [
-      "capa", "apresentacao_empresa", "diferenciais", "resumo_executivo",
-      "escopo", "tabela_itens", "condicoes_comerciais", "validade_inicio", "aceite",
+      "capa", "apresentacao_empresa", "produto_servico", "curiosidades_conteudo", "cases_provas", "faq", "diferenciais", "resumo_executivo",
+      "escopo", "tabela_itens", "condicoes_comerciais", "validade_inicio", "aceite", "portal_cliente",
     ],
   };
   const keys = keysByKind[proposalKind];
