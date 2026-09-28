@@ -43,7 +43,6 @@ router.get("/public/proposals/:token", async (req, res) => {
       id: leadProposalsTable.id,
       version: leadProposalsTable.version,
       status: leadProposalsTable.status,
-      htmlContent: leadProposalsTable.htmlContent,
       createdAt: leadProposalsTable.createdAt,
     })
     .from(leadProposalsTable)
@@ -60,9 +59,34 @@ router.get("/public/proposals/:token", async (req, res) => {
     id: generatedProposal.id,
     version: generatedProposal.version,
     status: generatedProposal.status,
-    htmlContent: generatedProposal.htmlContent,
     createdAt: generatedProposal.createdAt,
   });
+});
+
+// ── GET /public/generated-proposals/:id/html — stream exact proposal HTML ────
+// Keep the large proposal document out of JSON. Some generated HTML contains
+// characters/embedded data that should be delivered as text/html, not parsed as
+// a JSON property by the browser.
+router.get("/public/generated-proposals/:id/html", async (req, res) => {
+  const id = String(req.params.id);
+  const [proposal] = await db
+    .select({
+      id: leadProposalsTable.id,
+      htmlContent: leadProposalsTable.htmlContent,
+    })
+    .from(leadProposalsTable)
+    .where(eq(leadProposalsTable.id, id))
+    .limit(1);
+
+  if (!proposal) {
+    res.status(404).type("text/plain; charset=utf-8").send("Proposta não encontrada");
+    return;
+  }
+
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.status(200).send(proposal.htmlContent);
 });
 
 // ── POST /public/proposals/:token/accept — public accept (no auth) ─────────────
