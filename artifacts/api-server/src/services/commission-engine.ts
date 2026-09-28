@@ -10,6 +10,7 @@ import {
   sellerCommissionsTable,
   type CommissionActorType,
   type CommissionTrigger,
+  type ParticipationType,
 } from "@workspace/db";
 
 export type CommissionEvaluationInput = {
@@ -19,6 +20,9 @@ export type CommissionEvaluationInput = {
   sellerUserId?: string | null;
   actorType?: CommissionActorType;
   actorId?: string | null;
+  participationType?: ParticipationType;
+  projectId?: string | null;
+  agreementAccepted?: boolean;
   sourceType?: string | null;
   sourceId?: string | null;
   baseAmountCents?: number;
@@ -44,6 +48,7 @@ function matchesOptional(ruleValue: string | null, inputValue: string | null | u
 
 function ruleMatches(rule: typeof commissionRulesTable.$inferSelect, input: CommissionEvaluationInput) {
   if (!rule.active || rule.trigger !== input.trigger) return false;
+  if (input.participationType && rule.participationType !== input.participationType) return false;
   if (!matchesOptional(rule.productId, input.productId)) return false;
   if (!matchesOptional(rule.category, input.category)) return false;
   if (!matchesOptional(rule.channel, input.channel)) return false;
@@ -59,6 +64,10 @@ function partnerActorType(tipoParceiro: string | null | undefined): CommissionAc
     case "influenciador": return "influencer";
     case "afiliado": return "affiliate";
     case "distribuidor": return "distributor";
+    case "arquiteto":
+    case "architect":
+    case "creator":
+      return "architect_creator";
     default: return "partner";
   }
 }
@@ -113,7 +122,7 @@ async function syncLegacySellerCommission(tenantId: string, dealId: string, sell
   ));
 }
 
-async function createReferralPartnerCommission(input: CommissionEvaluationInput, baseAmountCents: number, eligiblePercent: number) {
+async function createReferralPartnerParticipation(input: CommissionEvaluationInput, baseAmountCents: number, eligiblePercent: number) {
   if (!input.dealId || !input.sourceId) return null;
   if (input.trigger !== "payment_received" && input.trigger !== "payment_reconciled") return null;
 
@@ -150,11 +159,9 @@ async function createReferralPartnerCommission(input: CommissionEvaluationInput,
   const configuredPercent = recurring && partner.comissaoRecorrentePercentual != null
     ? Number(partner.comissaoRecorrentePercentual)
     : Number(partner.comissaoPercentual ?? 0);
-  const commissionPercent = clampPercent(configuredPercent);
-  if (commissionPercent <= 0) return null;
+  const participationPercent = clampPercent(configuredPercent);
+  if (participationPercent <= 0) return null;
 
-  // The same financial payment may later be reconciled. Correlating by payment/source
-  // instead of trigger guarantees one partner commission per actual receipt.
   const correlationId = `partner:payment:${input.sourceId}:${partner.id}`;
   const [existing] = await db
     .select()
@@ -163,9 +170,9 @@ async function createReferralPartnerCommission(input: CommissionEvaluationInput,
     .limit(1);
   if (existing) return existing;
 
-  const commissionCents = Math.round(baseAmountCents * (commissionPercent / 100) * (eligiblePercent / 100));
+  const participationCents = Math.round(baseAmountCents * (participationPercent / 100) * (eligiblePercent / 100));
   const actorType = partnerActorType(partner.tipoParceiro);
-  const reason = `${recurring ? "Comissão recorrente" : "Comissão"} de parceiro liberada após recebimento financeiro.`;
+  const reason = `${recurring ? "Participação recorrente de Aquisição" : "Participação de Aquisição"} liberada após recebimento financeiro.`;
 
   const [event] = await db.insert(commissionEventsTable).values({
     tenantId: input.tenantId,
@@ -174,13 +181,17 @@ async function createReferralPartnerCommission(input: CommissionEvaluationInput,
     sellerUserId: null,
     actorType,
     actorId: partner.id,
+    participationType: "acquisition",
+    projectId: input.projectId ?? null,
     trigger: input.trigger,
     sourceType: "partner_referral_payment",
     sourceId: input.sourceId,
     baseAmountCents,
     eligiblePercent: String(eligiblePercent),
-    commissionPercent: String(commissionPercent),
-    commissionCents,
+    commissionPercent: String(participationPercent),
+    commissionCents: participationCents,
+    platformFeePercent: "0",
+    platformFeeCents: 0,
     status: "released",
     reason,
     correlationId,
@@ -191,6 +202,7 @@ async function createReferralPartnerCommission(input: CommissionEvaluationInput,
       couponCode: partner.cupomCodigo,
       recurring,
       attribution: "lead_indicado_por",
+      productLanguage: "participacao",
     },
     releasedAt: new Date(),
     updatedAt: new Date(),
@@ -216,14 +228,20 @@ export async function evaluateCommission(input: CommissionEvaluationInput) {
   const rule = rules.find((candidate) => ruleMatches(candidate, input)) ?? null;
   const baseAmountCents = Math.max(0, Math.round(Number(input.baseAmountCents ?? 0)));
   const receiptPercent = clampPercent(input.receiptPercent ?? (input.trigger === "payment_reconciled" ? 100 : 0));
-  const rawCommissionPercent = clampPercent(rule ? Number(rule.commissionPercent) : 0);
-  const commissionPercent = rule?.capPercent != null ? Math.min(rawCommissionPercent, clampPercent(Number(rule.capPercent))) : rawCommissionPercent;
+  const rawParticipationPercent = clampPercent(rule ? Number(rule.commissionPercent) : 0);
+  const participationPercent = rule?.capPercent != null ? Math.min(rawParticipationPercent, clampPercent(Number(rule.capPercent))) : rawParticipationPercent;
   const eligiblePercent = rule?.proportionalByReceipt === false ? (receiptPercent > 0 ? 100 : 0) : receiptPercent;
-  const commissionCents = Math.round(baseAmountCents * (commissionPercent / 100) * (eligiblePercent / 100));
-  const status = !rule ? "validation" : "released";
+  const participationCents = Math.round(baseAmountCents * (participationPercent / 100) * (eligiblePercent / 100));
+  const platformFeePercent = clampPercent(rule ? Number(rule.platformFeePercent) : 0);
+  const platformFeeCents = Math.round(baseAmountCents * (platformFeePercent / 100) * (eligiblePercent / 100));
+  const agreementPending = Boolean(rule?.requiresMutualAcceptance && input.agreementAccepted !== true);
+  const status = !rule || agreementPending ? "validation" : "released";
+  const participationType = input.participationType ?? rule?.participationType ?? "sales";
   const reason = !rule
-    ? "Nenhuma regra de comissão compatível; revisão necessária."
-    : `Regra ${rule.name} aplicada pelo gatilho ${input.trigger}.`;
+    ? "Nenhuma regra de participação compatível; revisão necessária."
+    : agreementPending
+      ? "Participação aguardando aceite das partes."
+      : `Regra de participação ${rule.name} aplicada pelo gatilho ${input.trigger}.`;
 
   const actorType = input.actorType ?? rule?.actorType ?? "seller";
   const actorId = input.actorId ?? input.sellerUserId ?? null;
@@ -235,17 +253,28 @@ export async function evaluateCommission(input: CommissionEvaluationInput) {
     sellerUserId: input.sellerUserId ?? null,
     actorType,
     actorId,
+    participationType,
+    projectId: input.projectId ?? null,
     trigger: input.trigger,
     sourceType: input.sourceType ?? null,
     sourceId: input.sourceId ?? null,
     baseAmountCents,
     eligiblePercent: String(eligiblePercent),
-    commissionPercent: String(commissionPercent),
-    commissionCents,
+    commissionPercent: String(participationPercent),
+    commissionCents: participationCents,
+    platformFeePercent: String(platformFeePercent),
+    platformFeeCents,
     status,
     reason,
     correlationId: input.correlationId,
-    metadata: input.metadata ?? {},
+    metadata: {
+      ...(input.metadata ?? {}),
+      participationType,
+      agreementAccepted: input.agreementAccepted ?? null,
+      attributionWindowDays: rule?.attributionWindowDays ?? null,
+      recurringMonths: rule?.recurringMonths ?? null,
+      productLanguage: "participacao",
+    },
     releasedAt: status === "released" ? new Date() : null,
     updatedAt: new Date(),
   }).returning();
@@ -254,6 +283,19 @@ export async function evaluateCommission(input: CommissionEvaluationInput) {
     await syncLegacySellerCommission(input.tenantId, event.dealId, event.sellerUserId, reason);
   }
 
-  const partnerEvent = await createReferralPartnerCommission(input, baseAmountCents, eligiblePercent);
-  return { event, rule, partnerEvent, idempotent: false };
+  const partnerEvent = await createReferralPartnerParticipation(input, baseAmountCents, eligiblePercent);
+  return {
+    event,
+    rule,
+    partnerEvent,
+    participation: {
+      type: participationType,
+      percent: participationPercent,
+      amountCents: participationCents,
+      platformFeePercent,
+      platformFeeCents,
+      agreementPending,
+    },
+    idempotent: false,
+  };
 }
