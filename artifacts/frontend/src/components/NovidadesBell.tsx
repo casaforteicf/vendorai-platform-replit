@@ -87,6 +87,11 @@ export function NovidadesBell() {
             <SheetTitle className="flex items-center gap-2"><Bell className="h-4 w-4" /> Novidades do Vendor.ai</SheetTitle>
           </SheetHeader>
           <div className="mt-4 space-y-4">
+            {marcarLido.isError ? (
+              <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                Não foi possível marcar as novidades como lidas. O contador será mantido até o servidor confirmar.
+              </div>
+            ) : null}
             {isLoading ? (
               [1, 2, 3].map((i) => <Skeleton key={i} className="h-24 w-full" />)
             ) : entries.length === 0 ? (
