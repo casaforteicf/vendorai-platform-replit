@@ -187,6 +187,8 @@ type ConceptSaveOverrides = {
   wallFirstFloors?: number[];
   floors?: number;
   objects?: ConceptPlanObject[];
+  spaceProfiles?: SpaceProfile[];
+  wallMaterials?: Record<string, string>;
   facadePreferences?: ConceptFacadePreferences;
   facadeDesign?: FacadeDesignState;
   projectBrief?: ProjectBriefSnapshot;
@@ -1428,6 +1430,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     const nextWallFirstFloors = overrides?.wallFirstFloors ?? wallFirstFloors;
     const nextFloors = overrides?.floors ?? floors;
     const nextObjects = overrides?.objects ?? objects;
+    const nextSpaceProfiles = overrides?.spaceProfiles ?? spaceProfiles;
+    const nextWallMaterials = overrides?.wallMaterials ?? wallMaterials;
     const nextFacadePreferences = overrides?.facadePreferences ?? facadePreferences;
     const nextFacadeDesign = overrides?.facadeDesign ?? facadeDesign;
     const nextProjectBrief = overrides?.projectBrief ?? projectBrief;
@@ -1447,9 +1451,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         showDimensions,
         customWalls: nextCustomWalls,
         customOpenings: nextCustomOpenings,
-        spaceProfiles,
+        spaceProfiles: nextSpaceProfiles,
         objects: nextObjects,
-        wallMaterials,
+        wallMaterials: nextWallMaterials,
         savedTourPoints: savedTourPointsOverride ?? savedTourPoints,
         referencePlan: nextReferencePlan ?? undefined,
         sourceFiles,
@@ -3996,6 +4000,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         customOpenings: importedOpenings,
         wallFirstFloors: wallFirst,
         floors: importedFloors,
+        spaceProfiles: importedSpaces,
+        wallMaterials: importedWallMaterials,
       });
       if (Object.keys(importedWallMaterials).length || importedSpaces.length) {
         setSourceFileMessage(
