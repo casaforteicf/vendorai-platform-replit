@@ -212,7 +212,7 @@ router.get("/tenants/:tenantId/content-performance/posts", authenticate, async (
 router.post("/tenants/:tenantId/content-performance/posts/atualizar-metricas", authenticate, async (req, res) => {
   const tenantId = String(req.params.tenantId);
   if (!assertTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
-  try { return res.json(await refreshPendingMetrics(tenantId)); }
+  try { return res.json(await refreshPendingMetrics(tenantId, typeof req.body?.instagramConnectionId === "string" ? req.body.instagramConnectionId : undefined)); }
   catch (err) {
     if (err instanceof PerformanceError) return res.status(422).json({ error: err.message });
     logger.error({ err, tenantId }, "content-performance: erro ao atualizar métricas");
