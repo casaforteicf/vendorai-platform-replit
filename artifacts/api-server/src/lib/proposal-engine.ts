@@ -485,6 +485,7 @@ type ProposalStageSchedule = {
 };
 
 type ProposalPresentationConfig = {
+  formato?: "site_interativo" | "documento" | "hibrido";
   modoPadrao?: ProposalPresentationMode;
   etapas?: Record<string, ProposalPresentationMode>;
   mostrarTotalGeral?: boolean;
@@ -519,6 +520,7 @@ function normalizeProposalPresentation(
   value?: ProposalPresentationConfig | null,
 ): Required<ProposalPresentationConfig> {
   return {
+    formato: value?.formato === "documento" || value?.formato === "hibrido" ? value.formato : "site_interativo",
     modoPadrao: value?.modoPadrao ?? "completo",
     etapas: value?.etapas ?? {},
     mostrarTotalGeral: value?.mostrarTotalGeral ?? true,
