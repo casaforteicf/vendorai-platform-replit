@@ -218,6 +218,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const [proposalTechnicalDetailStages, setProposalTechnicalDetailStages] =
     useState<Record<string, boolean>>({});
   const [proposalShowGrandTotal, setProposalShowGrandTotal] = useState(true);
+  const [proposalBuiltArea, setProposalBuiltArea] = useState("");
 
   // Refinement dialog
   const [refineOpen, setRefineOpen] = useState(false);
@@ -635,6 +636,11 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     setProposalShowGrandTotal(
       typeof presentation?.mostrarTotalGeral === "boolean" ? presentation.mostrarTotalGeral : true,
     );
+    setProposalBuiltArea(
+      Number.isFinite(Number(presentation?.areaTotalConstruida)) && Number(presentation?.areaTotalConstruida) > 0
+        ? String(presentation.areaTotalConstruida)
+        : "",
+    );
   }
 
   function currentProposalPresentation() {
@@ -644,6 +650,10 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
       mostrarDetalhamentoTecnico: proposalShowTechnicalDetails,
       detalhamentoTecnicoEtapas: proposalTechnicalDetailStages,
       mostrarTotalGeral: proposalShowGrandTotal,
+      areaTotalConstruida:
+        Number.isFinite(Number(proposalBuiltArea.replace(",", "."))) && Number(proposalBuiltArea.replace(",", ".")) > 0
+          ? Number(proposalBuiltArea.replace(",", "."))
+          : undefined,
     };
   }
 
@@ -2013,6 +2023,22 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                   </div>
 
                   <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-end">
+                    <div className="space-y-1.5 lg:col-span-3">
+                      <label className="text-xs font-medium text-muted-foreground">Área total construída</label>
+                      <div className="relative max-w-[240px]">
+                        <Input
+                          inputMode="decimal"
+                          value={proposalBuiltArea}
+                          onChange={(e) => setProposalBuiltArea(e.target.value.replace(/[^0-9.,]/g, ""))}
+                          placeholder="Ex.: 250"
+                          className="h-9 pr-10"
+                        />
+                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">m²</span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Informe a área total real da obra, incluindo anexos como quiosque, garagem ou edícula quando fizerem parte do contrato.
+                      </p>
+                    </div>
                     <div className="space-y-1.5">
                       <label className="text-xs font-medium text-muted-foreground">Detalhamento financeiro</label>
                       <Select
