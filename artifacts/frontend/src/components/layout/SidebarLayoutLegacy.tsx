@@ -234,7 +234,12 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
   };
   const disabledHrefs = new Set(
     (tenantNavModules ?? [])
-      .filter((m) => !m.isEnabled)
+      // A navegação só deve desaparecer por uma decisão persistida do tenant
+      // (ou por um módulo estruturalmente default-off). Uma leitura comercial
+      // transitória/incompleta não pode colapsar o menu inteiro. O bloqueio de
+      // produto não contratado continua autoritativo no backend (403
+      // PRODUCT_NOT_ENABLED), sem destruir a descoberta/navegação do CRM.
+      .filter((m) => m.hasOverride === true && !m.isEnabled && m.accessSource !== "not_purchased")
       .flatMap((m) => MODULE_TO_HREFS[m.moduleKey] ?? [])
   );
 
