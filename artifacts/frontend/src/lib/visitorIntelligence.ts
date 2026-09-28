@@ -366,7 +366,7 @@ function installPerformanceTelemetry() {
   let ttfb = 0;
   let reported = false;
   const observers: PerformanceObserver[] = [];
-  const initialPath = `${window.location.pathname}${window.location.search}`;
+  const initialPath = window.location.pathname || "/";
   const initialPageUrl = window.location.href;
   let lcpPath = initialPath;
   let lcpPageUrl = initialPageUrl;
@@ -401,7 +401,7 @@ function installPerformanceTelemetry() {
   observe("largest-contentful-paint", (entry) => {
     if (entry.startTime >= lcp) {
       lcp = entry.startTime;
-      lcpPath = `${window.location.pathname}${window.location.search}`;
+      lcpPath = window.location.pathname || "/";
       lcpPageUrl = window.location.href;
     }
   });
@@ -410,7 +410,7 @@ function installPerformanceTelemetry() {
     const shift = entry as PerformanceEntry & { value?: number; hadRecentInput?: boolean };
     if (!shift.hadRecentInput) {
       cls += shift.value ?? 0;
-      clsPath = `${window.location.pathname}${window.location.search}`;
+      clsPath = window.location.pathname || "/";
       clsPageUrl = window.location.href;
     }
   });
@@ -419,7 +419,7 @@ function installPerformanceTelemetry() {
     const duration = entry.duration || 0;
     if (duration >= maxInteraction) {
       maxInteraction = duration;
-      inpPath = `${window.location.pathname}${window.location.search}`;
+      inpPath = window.location.pathname || "/";
       inpPageUrl = window.location.href;
     }
   });
