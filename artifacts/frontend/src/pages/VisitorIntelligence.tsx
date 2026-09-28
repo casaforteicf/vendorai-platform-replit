@@ -276,8 +276,15 @@ function routePerformancePriority(route: WebVitalsResponse["routes"][number]) {
   const clsPenalty = route.cls == null ? 0 : Math.max(0, route.cls / 0.1 - 1) * 2;
   const confidenceWeight = Math.min(1, Math.log2(route.samples + 1) / 4);
   const score = Math.round((lcpPenalty + inpPenalty + clsPenalty) * 100 * confidenceWeight);
-  const status = score >= 180 ? "crítica" : score >= 60 ? "atenção" : "estável";
-  return { score, status };
+  const confidence = route.samples >= 10 ? "alta" : route.samples >= 4 ? "média" : "baixa";
+  const status = confidence === "baixa"
+    ? "amostra baixa"
+    : score >= 180
+      ? "crítica"
+      : score >= 60
+        ? "atenção"
+        : "estável";
+  return { score, status, confidence };
 }
 
 function duration(ms: number) {
@@ -446,7 +453,9 @@ export default function VisitorIntelligence() {
                             ? "border-red-500/30 bg-red-500/10 text-red-700"
                             : route.status === "atenção"
                               ? "border-amber-500/30 bg-amber-500/10 text-amber-700"
-                              : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700"
+                              : route.status === "amostra baixa"
+                                ? "border-slate-500/30 bg-slate-500/10 text-slate-700"
+                                : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700"
                         }`}>{route.status}</span>
                       </div>
                       <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-muted-foreground">
@@ -454,6 +463,7 @@ export default function VisitorIntelligence() {
                         <span>INP {route.inp == null ? "—" : `${Math.round(route.inp)}ms`}</span>
                         <span>CLS {route.cls == null ? "—" : route.cls.toFixed(3)}</span>
                         <span>{route.samples} amostras</span>
+                        <span>confiança {route.confidence}</span>
                         <span>prioridade {route.score}</span>
                       </div>
                     </div>
