@@ -451,7 +451,13 @@ export default function SmartProjectModule({ arqState, onNavigate }: SmartProjec
                       </div>
                       <button
                         type="button"
-                        onClick={() => onNavigate?.("render")}
+                        onClick={() => {
+                          try {
+                            sessionStorage.setItem("arq_studio_ambiente", getEnvironmentName(environment));
+                            sessionStorage.setItem("arq_studio_step", "imagem");
+                          } catch {}
+                          onNavigate?.("render");
+                        }}
                         className="rounded-2xl bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:text-violet-700"
                       >
                         Abrir ambiente
