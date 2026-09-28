@@ -101,7 +101,7 @@ export async function resolveAIKey(
   throw new Error(`Unsupported provider: ${provider}`);
 }
 
-// ── Quota / Credit / Daily ceiling check ──────────────────────────────────────
+// ── Quota / Credit / Monthly ceiling check ───────────────────────────────────
 
 export interface QuotaCheck {
   ok: true;
@@ -116,65 +116,77 @@ export interface QuotaBlocked {
   ok: false;
   reason: string;
   httpStatus: 402 | 429;
-  details: {
-    quotaUsd: number | null;
-    creditsUsd: number;
-    spentThisMonthUsd: number;
-    dailySpendUsd: number;
-  };
+  details: { quotaUsd: number | null; creditsUsd: number; spentThisMonthUsd: number; dailySpendUsd: number; };
 }
 
 export type QuotaResult = QuotaCheck | QuotaBlocked;
 
-const DAILY_SPEND_CEILING_USD = Number(process.env["AI_DAILY_SPEND_CEILING_USD"] ?? 100);
+const MONTHLY_SPEND_CEILING_USD = Number(process.env["AI_MONTHLY_SPEND_CEILING_USD"] ?? 100);
 
-export async function checkQuota(
-  tenantId: string,
-  estimatedCost: number,
-  log?: Logger,
-): Promise<QuotaResult> {
-  // 1. Load tenant + plan
-  const [tenant] = await db
-    .select({
-      planId: tenantsTable.planId,
-      aiCreditsUsd: tenantsTable.aiCreditsUsd,
-      aiDailySpendUsd: tenantsTable.aiDailySpendUsd,
-      aiDailySpendResetAt: tenantsTable.aiDailySpendResetAt,
-    })
-    .from(tenantsTable)
-    .where(eq(tenantsTable.id, tenantId as string))
-    .limit(1);
+export async function checkQuota(tenantId: string, estimatedCost: number, log?: Logger): Promise<QuotaResult> {
+  const [tenant] = await db.select({
+    planId: tenantsTable.planId,
+    aiCreditsUsd: tenantsTable.aiCreditsUsd,
+    openaiKeyStatus: tenantsTable.openaiKeyStatus,
+    anthropicKeyStatus: tenantsTable.anthropicKeyStatus,
+  }).from(tenantsTable).where(eq(tenantsTable.id, tenantId as string)).limit(1);
 
-  if (!tenant) {
-    return { ok: false, reason: "Tenant not found", httpStatus: 429, details: { quotaUsd: null, creditsUsd: 0, spentThisMonthUsd: 0, dailySpendUsd: 0 } };
-  }
+  if (!tenant) return { ok: false, reason: "Tenant not found", httpStatus: 429, details: { quotaUsd: null, creditsUsd: 0, spentThisMonthUsd: 0, dailySpendUsd: 0 } };
 
-  // 2. Daily ceiling reset
+  const hasByok = tenant.openaiKeyStatus === "ativo" || tenant.anthropicKeyStatus === "ativo";
+  if (hasByok) return { ok: true, usedByok: true, quotaUsd: null, creditsUsd: Number(tenant.aiCreditsUsd ?? 0), spentThisMonthUsd: 0, remainingUsd: Infinity };
+
   const now = new Date();
-  let dailySpend = Number(tenant.aiDailySpendUsd ?? 0);
-  const resetAt = tenant.aiDailySpendResetAt ? new Date(tenant.aiDailySpendResetAt) : null;
-  const msSinceReset = resetAt ? now.getTime() - resetAt.getTime() : Infinity;
-  const needsDailyReset = msSinceReset >= 24 * 60 * 60 * 1000;
-  if (needsDailyReset) {
-    dailySpend = 0;
-  }
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const [monthlyRow] = await db.select({ total: sql<number>`coalesce(sum(${aiUsageLogsTable.costEstimateUsd}), 0)` })
+    .from(aiUsageLogsTable)
+    .where(and(
+      eq(aiUsageLogsTable.tenantId, tenantId as string),
+      eq(aiUsageLogsTable.success, true),
+      eq(aiUsageLogsTable.usedByok, false),
+      gte(aiUsageLogsTable.createdAt, startOfMonth),
+    ));
+  const spentThisMonthUsd = Number(monthlyRow?.total ?? 0);
 
-  // 3. Check daily ceiling
-  if (dailySpend + estimatedCost > DAILY_SPEND_CEILING_USD) {
+  if (spentThisMonthUsd + estimatedCost > MONTHLY_SPEND_CEILING_USD) {
     return {
       ok: false,
-      reason: `Daily AI spend ceiling reached ($${DAILY_SPEND_CEILING_USD.toFixed(2)}). Contact support to increase.`,
+      reason: `Monthly AI spend ceiling reached ($${MONTHLY_SPEND_CEILING_USD.toFixed(2)}). Contact support to increase.`,
       httpStatus: 429,
-      details: {
-        quotaUsd: null,
-        creditsUsd: Number(tenant.aiCreditsUsd ?? 0),
-        spentThisMonthUsd: 0,
-        dailySpendUsd: dailySpend,
-      },
+      details: { quotaUsd: null, creditsUsd: Number(tenant.aiCreditsUsd ?? 0), spentThisMonthUsd, dailySpendUsd: 0 },
     };
   }
 
-  // 4. If BYOK, skip quota/credit check — cost is on tenant
+  let quotaUsd: number | null = null;
+  if (tenant.planId) {
+    const [plan] = await db.select({ aiQuotaUsd: plansTable.aiQuotaUsd }).from(plansTable).where(eq(plansTable.id, tenant.planId)).limit(1);
+    if (plan?.aiQuotaUsd) quotaUsd = Number(plan.aiQuotaUsd);
+  }
+
+  const creditsUsd = Number(tenant.aiCreditsUsd ?? 0);
+  if (quotaUsd === null && creditsUsd === 0) {
+    const hasPlatformKey = Boolean(process.env["OPENAI_API_KEY"] || process.env["ANTHROPIC_API_KEY"]);
+    if (hasPlatformKey) {
+      log?.debug({ tenantId }, "ai-gateway: platform-subsidized mode (no plan/credits)");
+      return { ok: true, usedByok: false, quotaUsd: null, creditsUsd: 0, spentThisMonthUsd, remainingUsd: Infinity };
+    }
+  }
+
+  const remainingUsd = (quotaUsd ?? 0) + creditsUsd - spentThisMonthUsd;
+  if (quotaUsd && spentThisMonthUsd >= quotaUsd * 0.8 && spentThisMonthUsd < quotaUsd)
+    log?.info({ tenantId, quotaUsd, spentThisMonthUsd }, "ai-gateway: tenant approaching quota limit (80%)");
+
+  if (remainingUsd < estimatedCost) {
+    const reason = creditsUsd > 0
+      ? `AI quota exhausted ($${quotaUsd?.toFixed(2) ?? "0"} plan + $${creditsUsd.toFixed(2)} credits). Purchase more credits.`
+      : `AI quota exhausted ($${quotaUsd?.toFixed(2) ?? "0"} plan). Purchase credits or configure BYOK.`;
+    return { ok: false, reason, httpStatus: 402, details: { quotaUsd, creditsUsd, spentThisMonthUsd, dailySpendUsd: 0 } };
+  }
+
+  return { ok: true, usedByok: false, quotaUsd, creditsUsd, spentThisMonthUsd, remainingUsd };
+}
+
+// 4. If BYOK, skip quota/credit check — cost is on tenant
   // (We don't know this yet — checkQuota is called before resolveAIKey to avoid
   //  decrypting keys if we're just going to block anyway. But we need to know
   //  if BYOK is configured... Actually, let's keep the check simple: checkQuota
@@ -323,31 +335,10 @@ export async function logUsage(params: {
   });
 }
 
-// ── Daily spend updater ───────────────────────────────────────────────────────
-
-export async function incrementDailySpend(
-  tenantId: string,
-  amountUsd: number,
-): Promise<void> {
-  const now = new Date();
-  const [tenant] = await db
-    .select({ aiDailySpendUsd: tenantsTable.aiDailySpendUsd, aiDailySpendResetAt: tenantsTable.aiDailySpendResetAt })
-    .from(tenantsTable)
-    .where(eq(tenantsTable.id, tenantId as string))
-    .limit(1);
-
-  const resetAt = tenant?.aiDailySpendResetAt ? new Date(tenant.aiDailySpendResetAt) : null;
-  const msSinceReset = resetAt ? now.getTime() - resetAt.getTime() : Infinity;
-  const needsReset = msSinceReset >= 24 * 60 * 60 * 1000;
-
-  await db
-    .update(tenantsTable)
-    .set({
-      aiDailySpendUsd: String(needsReset ? amountUsd : Number(tenant?.aiDailySpendUsd ?? 0) + amountUsd),
-      aiDailySpendResetAt: needsReset ? now : (tenant?.aiDailySpendResetAt ?? now),
-      updatedAt: now,
-    })
-    .where(eq(tenantsTable.id, tenantId as string));
+// ── Legacy daily-spend updater ───────────────────────────────────────────────
+// Compatibility no-op. Monthly spend is derived from confirmed usage logs.
+export async function incrementDailySpend(_tenantId: string, _amountUsd: number): Promise<void> {
+  // Intentionally empty.
 }
 
 async function localizeAgentOnboardingMessages(
