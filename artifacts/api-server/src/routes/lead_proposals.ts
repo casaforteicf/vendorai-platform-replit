@@ -147,9 +147,8 @@ async function fetchTemplateGuidance(templateUrl: string | null | undefined): Pr
 /** Resolve object-storage relative paths to absolute URLs for HTML/PDF embedding */
 function resolveStorageUrl(url: string | null | undefined): string | undefined {
   if (!url) return undefined;
-  const port = process.env.PORT ?? "8080";
-  const base = process.env.BASE_PATH ?? "";
-  if (url.startsWith("/objects/")) return `http://localhost:${port}${base}/api/storage${url}`;
+  if (url.startsWith("/objects/")) return `/api/storage${url}`;
+  if (url.startsWith("/api/storage/")) return url;
   return url;
 }
 
