@@ -402,17 +402,41 @@ function installPerformanceTelemetry() {
     maxInteraction = Math.max(maxInteraction, entry.duration || 0);
   });
 
+  const deviceCategory = window.innerWidth < 768 ? "mobile" : window.innerWidth < 1024 ? "tablet" : "desktop";
+
+  const ratingFor = (metric: "LCP" | "CLS" | "FCP" | "TTFB" | "INP", value: number) => {
+    const thresholds = {
+      LCP: [2500, 4000],
+      CLS: [0.1, 0.25],
+      FCP: [1800, 3000],
+      TTFB: [800, 1800],
+      INP: [200, 500],
+    } as const;
+    const [good, poor] = thresholds[metric];
+    if (value <= good) return "good";
+    if (value <= poor) return "needs-improvement";
+    return "poor";
+  };
+
+  const reportVital = (metric: "LCP" | "CLS" | "FCP" | "TTFB" | "INP", value: number) => {
+    if (!Number.isFinite(value) || value <= 0) return;
+    void sendVisitorTelemetry("engagement", {
+      kind: "web_vital",
+      metric,
+      value: metric === "CLS" ? Number(value.toFixed(4)) : Math.round(value),
+      rating: ratingFor(metric, value),
+      deviceCategory,
+    });
+  };
+
   const report = () => {
     if (reported) return;
     reported = true;
-    void sendVisitorTelemetry("engagement", {
-      metric: "web_vitals",
-      lcpMs: Math.round(lcp),
-      cls: Number(cls.toFixed(4)),
-      fcpMs: Math.round(fcp),
-      ttfbMs: Math.round(ttfb),
-      maxInteractionMs: Math.round(maxInteraction),
-    });
+    reportVital("LCP", lcp);
+    reportVital("CLS", cls);
+    reportVital("FCP", fcp);
+    reportVital("TTFB", ttfb);
+    reportVital("INP", maxInteraction);
   };
 
   const onVisibility = () => {
