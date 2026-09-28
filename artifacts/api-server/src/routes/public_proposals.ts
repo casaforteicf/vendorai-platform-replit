@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { z } from "zod/v4";
-import { db, propostasTable } from "@workspace/db";
+import { db, propostasTable, leadProposalsTable } from "@workspace/db";
 import { proposalAccepted } from "../lib/proposal-accepted.js";
 
 const router: IRouter = Router();
@@ -30,12 +30,39 @@ router.get("/public/proposals/:token", async (req, res) => {
     .where(eq(propostasTable.publicToken, token))
     .limit(1);
 
-  if (!proposta) {
+  if (proposta) {
+    res.json({ kind: "budget", ...proposta });
+    return;
+  }
+
+  // Proposal Builder versions (v1, v2, v3...) live in lead_proposals rather
+  // than propostas. Their row id is already an opaque UUID, so it is a stable,
+  // unique public token for exactly one generated proposal version.
+  const [generatedProposal] = await db
+    .select({
+      id: leadProposalsTable.id,
+      version: leadProposalsTable.version,
+      status: leadProposalsTable.status,
+      htmlContent: leadProposalsTable.htmlContent,
+      createdAt: leadProposalsTable.createdAt,
+    })
+    .from(leadProposalsTable)
+    .where(eq(leadProposalsTable.id, token))
+    .limit(1);
+
+  if (!generatedProposal) {
     res.status(404).json({ error: "Proposta não encontrada" });
     return;
   }
 
-  res.json(proposta);
+  res.json({
+    kind: "generated",
+    id: generatedProposal.id,
+    version: generatedProposal.version,
+    status: generatedProposal.status,
+    htmlContent: generatedProposal.htmlContent,
+    createdAt: generatedProposal.createdAt,
+  });
 });
 
 // ── POST /public/proposals/:token/accept — public accept (no auth) ─────────────
