@@ -39,6 +39,12 @@ export type ReferenceTraceResult = {
   warnings: string[];
   skippedWalls: number;
   sourceModel: string;
+  alignmentScore?: number;
+  alignmentCorrection?: {
+    scale: number;
+    translateX: number;
+    translateY: number;
+  };
 };
 
 type JsonRecord = Record<string, unknown>;
@@ -156,6 +162,121 @@ export function normalizeReferenceTrace(raw: unknown, bounds: ReferenceTraceBoun
   };
 }
 
+
+type TraceRegistration = {
+  raw: JsonRecord;
+  score: number;
+  correction: { scale: number; translateX: number; translateY: number };
+};
+
+function wallInkScore(
+  raw: JsonRecord,
+  pixels: Buffer,
+  width: number,
+  height: number,
+  scale: number,
+  translateX: number,
+  translateY: number,
+) {
+  const rawWalls = Array.isArray(raw.walls) ? raw.walls.slice(0, 160) : [];
+  if (!rawWalls.length || width < 2 || height < 2) return 0;
+
+  let total = 0;
+  let samples = 0;
+  for (const value of rawWalls) {
+    const wall = asRecord(value);
+    const x1 = Number(wall.x1);
+    const y1 = Number(wall.y1);
+    const x2 = Number(wall.x2);
+    const y2 = Number(wall.y2);
+    if (![x1, y1, x2, y2].every(Number.isFinite)) continue;
+
+    const tx1 = 0.5 + (x1 - 0.5) * scale + translateX;
+    const ty1 = 0.5 + (y1 - 0.5) * scale + translateY;
+    const tx2 = 0.5 + (x2 - 0.5) * scale + translateX;
+    const ty2 = 0.5 + (y2 - 0.5) * scale + translateY;
+    const lengthPx = Math.hypot((tx2 - tx1) * width, (ty2 - ty1) * height);
+    const steps = Math.max(5, Math.min(28, Math.round(lengthPx / 32)));
+
+    for (let step = 0; step <= steps; step += 1) {
+      const t = step / steps;
+      const nx = tx1 + (tx2 - tx1) * t;
+      const ny = ty1 + (ty2 - ty1) * t;
+      if (nx < 0 || nx > 1 || ny < 0 || ny > 1) continue;
+      const px = Math.max(0, Math.min(width - 1, Math.round(nx * (width - 1))));
+      const py = Math.max(0, Math.min(height - 1, Math.round(ny * (height - 1))));
+      let darkest = 255;
+      for (let oy = -2; oy <= 2; oy += 1) {
+        for (let ox = -2; ox <= 2; ox += 1) {
+          const sx = Math.max(0, Math.min(width - 1, px + ox));
+          const sy = Math.max(0, Math.min(height - 1, py + oy));
+          darkest = Math.min(darkest, pixels[sy * width + sx] ?? 255);
+        }
+      }
+      total += 1 - darkest / 255;
+      samples += 1;
+    }
+  }
+  return samples ? total / samples : 0;
+}
+
+async function registerTraceToImage(raw: JsonRecord, image: Buffer): Promise<TraceRegistration> {
+  const { data, info } = await sharp(image)
+    .greyscale()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const width = info.width;
+  const height = info.height;
+
+  let best = {
+    score: wallInkScore(raw, data, width, height, 1, 0, 0),
+    scale: 1,
+    translateX: 0,
+    translateY: 0,
+  };
+
+  // A leitura visual pode deslocar alguns pontos percentuais. Refinamos somente
+  // uma transformação global pequena, sem mudar a distribuição arquitetônica.
+  const scales = [0.96, 0.98, 1, 1.02, 1.04];
+  const shifts = [-0.04, -0.03, -0.02, -0.01, 0, 0.01, 0.02, 0.03, 0.04];
+  for (const scale of scales) {
+    for (const translateX of shifts) {
+      for (const translateY of shifts) {
+        const score = wallInkScore(raw, data, width, height, scale, translateX, translateY);
+        if (score > best.score + 0.006) {
+          best = { score, scale, translateX, translateY };
+        }
+      }
+    }
+  }
+
+  if (best.scale === 1 && best.translateX === 0 && best.translateY === 0) {
+    return { raw, score: best.score, correction: { scale: 1, translateX: 0, translateY: 0 } };
+  }
+
+  const nextWalls = (Array.isArray(raw.walls) ? raw.walls : []).map((value) => {
+    const wall = asRecord(value);
+    const transform = (v: unknown, shift: number) => {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return v;
+      return Math.max(0, Math.min(1, 0.5 + (n - 0.5) * best.scale + shift));
+    };
+    return {
+      ...wall,
+      x1: transform(wall.x1, best.translateX),
+      y1: transform(wall.y1, best.translateY),
+      x2: transform(wall.x2, best.translateX),
+      y2: transform(wall.y2, best.translateY),
+    };
+  });
+
+  return {
+    raw: { ...raw, walls: nextWalls },
+    score: best.score,
+    correction: { scale: best.scale, translateX: best.translateX, translateY: best.translateY },
+  };
+}
+
 export async function traceReferencePlanImage(input: {
   tenantId: string;
   buffer: Buffer;
@@ -223,5 +344,18 @@ export async function traceReferencePlanImage(input: {
   } catch {
     throw new Error("A IA retornou um formato inválido ao interpretar a planta.");
   }
-  return normalizeReferenceTrace(parsed, input.bounds, model);
+  const registration = await registerTraceToImage(parsed, normalized);
+  const result = normalizeReferenceTrace(registration.raw, input.bounds, model);
+  const correctionMagnitude =
+    Math.abs(registration.correction.scale - 1)
+    + Math.abs(registration.correction.translateX)
+    + Math.abs(registration.correction.translateY);
+  if (correctionMagnitude > 0.001) {
+    result.warnings.push(
+      "O Arqdor refinou automaticamente escala/posição do traçado para coincidir melhor com as linhas da imagem.",
+    );
+  }
+  result.alignmentScore = Math.round(registration.score * 1000) / 1000;
+  result.alignmentCorrection = registration.correction;
+  return result;
 }
