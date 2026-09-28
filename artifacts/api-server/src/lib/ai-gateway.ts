@@ -675,6 +675,7 @@ export async function generateImage(
     size?: "1024x1024" | "1024x1536" | "1536x1024";
     n?: number;
     log?: Logger;
+    requestId?: string;
   } = {},
 ): Promise<{ urls: string[]; costUsd: number; usedByok: boolean }> {
   const model = options.model ?? "gpt-image-1";
@@ -744,9 +745,12 @@ export async function generateImage(
     usedByok: key.usedByok,
     success,
     errorMessage,
+    requestId: options.requestId,
   });
 
-  if (!key.usedByok) {
+  // Não consome a cota interna quando a geração falhou.
+  // Falhas continuam registradas para auditoria técnica.
+  if (success && !key.usedByok) {
     await incrementDailySpend(tenantId, costUsd);
   }
 
