@@ -1201,7 +1201,10 @@ function renderConstructionProposalLayout(args: {
     const row = scheduleRows.find((item) => item.id === group.id);
     const stageTotal = group.itens.reduce((sum, item) => sum + item.quantidade * item.valorUnitario, 0);
     const weight = total > 0 ? (stageTotal / total) * 100 : 0;
-    const imageUrl = presentation.imagensEtapas[group.id] || null;
+    const imageUrl =
+      presentation.imagensEtapas[group.id]
+      || (visualImages.length ? visualImages[(Math.max(1, group.ordem) - 1) % visualImages.length] : null)
+      || null;
     const financialMode = resolveProposalPresentationMode(presentation, group.id);
     const showTechnicalDetail = resolveProposalTechnicalDetail(presentation, group.id);
     const scopeRows = group.itens.map((item) => `
@@ -1878,6 +1881,8 @@ function renderConstructionProposalLayout(args: {
   .proposal-web-nav-inner { max-width:1180px; height:70px; margin:0 auto; padding:0 26px; display:flex; align-items:center; gap:22px; }
   .proposal-web-brand { display:flex; align-items:center; min-width:130px; color:#121212; text-decoration:none; }
   .proposal-web-brand img { height:38px; max-width:170px; object-fit:contain; }
+  .proposal-brand-fallback { display:none; font-size:16px; font-weight:800; color:#121212; white-space:nowrap; }
+  .cover-brand .proposal-brand-fallback { color:#111; }
   .proposal-web-links { display:flex; gap:18px; margin-left:auto; font-size:13px; color:#535862; }
   .proposal-web-links a { color:inherit; text-decoration:none; }
   .proposal-web-actions { display:flex; gap:8px; }
@@ -1920,12 +1925,15 @@ function renderConstructionProposalLayout(args: {
   .web-accept { padding:78px max(24px,calc((100vw - 1120px)/2)); background:#07162d; color:#fff; }
   .web-accept h2 { font-size:clamp(32px,4vw,50px); margin:0 0 12px; }
   .web-accept p { max-width:760px; color:rgba(255,255,255,.72); line-height:1.65; }
-  .web-accept-card { max-width:720px; margin-top:24px; padding:22px; border:1px solid rgba(255,255,255,.14); border-radius:18px; background:rgba(255,255,255,.05); }
+  .web-accept-card { max-width:820px; margin-top:24px; padding:26px; border:1px solid rgba(255,255,255,.14); border-radius:18px; background:rgba(255,255,255,.05); }
+  .web-signature-row { display:grid; grid-template-columns:minmax(0,1fr) 210px; gap:26px; margin-bottom:22px; }
+  .web-signature-field { padding-top:18px; border-bottom:1px solid rgba(255,255,255,.5); min-height:64px; }
+  .web-signature-field span { display:block; margin-top:28px; padding-bottom:7px; font-size:11px; color:rgba(255,255,255,.62); }
   .web-accept-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
   .web-accept input { width:100%; padding:12px 13px; border-radius:11px; border:1px solid rgba(255,255,255,.2); background:rgba(255,255,255,.08); color:#fff; font:inherit; }
-  .web-accept button { margin-top:12px; border:0; border-radius:999px; background:var(--cf-orange); color:#fff; padding:11px 16px; font:inherit; font-weight:750; cursor:pointer; }
+  .web-accept button { display:block; margin-top:16px; border:0; border-radius:999px; background:var(--cf-orange); color:#fff; padding:12px 18px; font:inherit; font-weight:750; cursor:pointer; }
   #web-accept-message { min-height:20px; margin-top:10px; font-size:13px; }
-  @media(max-width:860px){ .proposal-web-links{display:none}.proposal-web-nav-inner{padding:0 18px;height:62px}.proposal-web-brand img{height:31px}.proposal-web-actions button{display:none}.web-interactive .page{padding:60px 20px}.web-interactive .cover-content{padding:60px 20px 42px;min-height:76vh}.web-interactive .metrics,.web-interactive .value-grid{grid-template-columns:1fr 1fr}.web-interactive .stage-image{height:260px}.web-accept{padding:60px 20px}.web-accept-grid{grid-template-columns:1fr} }
+  @media(max-width:860px){ .proposal-web-links{display:none}.proposal-web-nav-inner{padding:0 18px;height:62px}.proposal-web-brand img{height:31px}.proposal-web-actions button{display:none}.web-interactive .page{padding:60px 20px}.web-interactive .cover-content{padding:60px 20px 42px;min-height:76vh}.web-interactive .metrics,.web-interactive .value-grid{grid-template-columns:1fr 1fr}.web-interactive .stage-image{height:260px}.web-accept{padding:60px 20px}.web-accept-grid,.web-signature-row{grid-template-columns:1fr} }
   @media(max-width:560px){ .web-interactive .metrics,.web-interactive .value-grid{grid-template-columns:1fr}.web-interactive .stage-metrics{grid-template-columns:1fr}.web-interactive .stage-metrics>div{border-right:0!important;border-bottom:1px solid #ece8e3}.web-interactive .cover-title{font-size:42px} }
   @media print { .proposal-web-nav,.web-stage-toggle,.web-accept { display:none!important; } .web-interactive .page{width:210mm;min-height:297mm;padding:13mm 15mm 12mm;page-break-after:always}.web-interactive .topbar,.web-interactive .footer{display:flex}.web-interactive .scope-title,.web-interactive .scope-table-demo,.web-interactive .phase-block,.web-interactive .detail-table{display:table}.web-interactive .scope-title,.web-interactive .phase-block{display:block} }
   ` : ""}
@@ -1935,7 +1943,7 @@ function renderConstructionProposalLayout(args: {
 ${interactive ? `
 <nav class="proposal-web-nav">
   <div class="proposal-web-nav-inner">
-    <a class="proposal-web-brand" href="#inicio">${tenantLogoUrl ? `<img src="${escapeProposalText(tenantLogoUrl)}" alt="${escapeProposalText(company)}" />` : `<strong>${escapeProposalText(company)}</strong>`}</a>
+    <a class="proposal-web-brand" href="#inicio">${tenantLogoUrl ? `<img src="${escapeProposalText(tenantLogoUrl)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='inline-block'" /><span class="proposal-brand-fallback">${escapeProposalText(company)}</span>` : `<strong>${escapeProposalText(company)}</strong>`}</a>
     <div class="proposal-web-links">
       <a href="#visao-geral">Visão geral</a><a href="#etapas-obra">Etapas</a><a href="#cronograma-obra">Cronograma</a><a href="#condicoes-comerciais">Condições</a>
     </div>
@@ -1947,7 +1955,7 @@ ${interactive ? `
   <div class="cover-shade"></div>
   <div class="cover-content">
     <div class="cover-top">
-      <div class="cover-brand">${tenantLogoUrl ? `<img src="${escapeProposalText(tenantLogoUrl)}" alt="${escapeProposalText(company)}" onerror="this.style.display='none'" />` : escapeProposalText(company)}</div>
+      <div class="cover-brand">${tenantLogoUrl ? `<img src="${escapeProposalText(tenantLogoUrl)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='inline-block'" /><span class="proposal-brand-fallback">${escapeProposalText(company)}</span>` : escapeProposalText(company)}</div>
       <div>PROPOSTA COMERCIAL</div>
     </div>
     <div class="cover-main">
@@ -2012,7 +2020,7 @@ ${(builderModuleEnabled("cronograma") || builderModuleEnabled("fisico_financeiro
   <p class="next-copy">A proposta aceita torna-se a referência contratada da obra. A execução passa a utilizar as mesmas etapas, fases, valores e cronograma como linha de base. As medições consideram apenas o avanço adicional executado e, quando houver entrada/adiantamento, aplicam a amortização prevista até sua quitação.</p>
   ${presentation.mostrarPortalCliente ? `<p class="next-copy" style="margin-top:4mm;"><strong>Acompanhamento pelo Portal do Cliente:</strong> após a contratação, o cliente poderá acompanhar a linha-base, cronograma executivo, fases, previsto × executado, medições e informações financeiras publicadas pela construtora.</p>` : ""}
   ${orcamento.observacoes ? `<p class="next-copy" style="margin-top:4mm;">${escapeProposalText(orcamento.observacoes)}</p>` : ""}
-  ${builderModuleEnabled("aceite") ? `
+  ${builderModuleEnabled("aceite") && !interactive ? `
     <h2 class="accept-title">Aceite do cliente</h2>
     <div class="signature"><div>Nome / assinatura</div><div>Data</div></div>
   ` : ""}
@@ -2020,11 +2028,15 @@ ${(builderModuleEnabled("cronograma") || builderModuleEnabled("fisico_financeiro
 </section>
 ${interactive ? `
 <section id="aceite-proposta" class="web-accept">
-  <h2>Aprovar esta proposta</h2>
-  <p>O aceite registra esta versão como referência comercial. Qualquer alteração posterior deve ocorrer em uma nova revisão.</p>
+  <h2>Aceite da proposta</h2>
+  <p>Revise as condições acima. A assinatura e a aprovação abaixo registram esta versão como referência comercial da contratação.</p>
   <div class="web-accept-card">
+    <div class="web-signature-row">
+      <div class="web-signature-field"><span>Nome / assinatura</span></div>
+      <div class="web-signature-field"><span>Data</span></div>
+    </div>
     <div class="web-accept-grid">
-      <input id="web-accept-name" placeholder="Nome completo" autocomplete="name" />
+      <input id="web-accept-name" placeholder="Nome completo para aceite digital" autocomplete="name" />
       <input id="web-accept-doc" placeholder="CPF / CNPJ" />
     </div>
     <button id="web-accept-btn" type="button">Aprovar proposta</button>

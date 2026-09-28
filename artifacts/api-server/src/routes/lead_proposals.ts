@@ -165,6 +165,29 @@ function absolutifyStorageUrls(html: string): string {
     .replace(/src="\/objects\//g, abs("/api/storage/objects/"));
 }
 
+/** Make a downloaded HTML proposal portable outside the app.
+ * Relative storage URLs work in the public microsite, but break when the HTML
+ * is opened from file://. Rewrite them to the same public origin that served
+ * the download so logo and proposal images continue to load.
+ */
+function absolutifyStorageUrlsForDownload(html: string, req: any): string {
+  const forwardedProto = String(req.headers["x-forwarded-proto"] ?? "").split(",")[0]?.trim();
+  const forwardedHost = String(req.headers["x-forwarded-host"] ?? "").split(",")[0]?.trim();
+  const protocol = forwardedProto || req.protocol || "https";
+  const host = forwardedHost || req.get?.("host") || req.headers.host || "";
+  if (!host) return html;
+  const origin = `${protocol}://${host}`;
+  const toAbsolute = (path: string) => `${origin}${path}`;
+  return html
+    .replace(/src="\/api\/storage\/public-objects\/objects\//g, toAbsolute("/api/storage/objects/"))
+    .replace(/src="\/api\/storage\/objects\//g, toAbsolute("/api/storage/objects/"))
+    .replace(/src="\/api\/storage\/public-objects\//g, toAbsolute("/api/storage/public-objects/"))
+    .replace(/src="\/objects\//g, toAbsolute("/api/storage/objects/"))
+    .replace(/href="\/api\/storage\/public-objects\/objects\//g, toAbsolute("/api/storage/objects/"))
+    .replace(/href="\/api\/storage\/objects\//g, toAbsolute("/api/storage/objects/"))
+    .replace(/href="\/objects\//g, toAbsolute("/api/storage/objects/"));
+}
+
 // ── GET /leads/:leadId/proposals ─────────────────────────────────────────────────
 router.get("/leads/:leadId/proposals", async (req, res) => {
   const leadId = String(req.params.leadId);
@@ -234,7 +257,7 @@ router.get("/leads/:leadId/proposals/:version/download", async (req, res) => {
   const filename = `Proposta_${clientName.replace(/\s+/g, "_")}_v${version}.html`;
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-  res.send(row.htmlContent);
+  res.send(absolutifyStorageUrlsForDownload(row.htmlContent, req));
 });
 
 // ── GET /leads/:leadId/proposals/:version/pdf
