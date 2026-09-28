@@ -350,6 +350,9 @@ export default function VisitorIntelligence() {
   const rankedVitalRoutes = useMemo(() => (vitalsQuery.data?.routes ?? [])
     .map((route) => ({ ...route, ...routePerformancePriority(route) }))
     .sort((a, b) => b.score - a.score || b.samples - a.samples), [vitalsQuery.data?.routes]);
+  const actionableVitalRoutes = useMemo(() => rankedVitalRoutes
+    .filter((route) => route.confidence !== "baixa" && (route.status === "crítica" || route.status === "atenção"))
+    .slice(0, 5), [rankedVitalRoutes]);
 
   const selectSession = (sessionId: string) => {
     setSelectedSessionId(sessionId);
@@ -429,6 +432,33 @@ export default function VisitorIntelligence() {
                   </div>
                 );
               })}
+            </div>
+
+            <div className="mt-4 rounded-lg border border-primary/20 bg-primary/[0.03] p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <div className="text-xs font-semibold text-primary">Fila objetiva de otimização</div>
+                  <div className="mt-0.5 text-[11px] text-muted-foreground">Somente rotas com confiança suficiente e métricas fora da faixa boa.</div>
+                </div>
+                <span className="rounded-full border bg-background px-2 py-0.5 text-[10px] font-semibold">{actionableVitalRoutes.length} prioridades</span>
+              </div>
+              <div className="mt-2 space-y-2">
+                {actionableVitalRoutes.length ? actionableVitalRoutes.map((route, index) => (
+                  <div key={route.path} className="flex flex-col gap-1 rounded-md border bg-background px-2.5 py-2 text-xs md:flex-row md:items-center md:justify-between">
+                    <div className="min-w-0">
+                      <div className="truncate font-medium">{index + 1}. {route.path}</div>
+                      <div className="mt-0.5 text-[11px] text-muted-foreground">
+                        {route.samples} amostras · confiança {route.confidence} · prioridade {route.score}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                      <span>LCP {route.lcp == null ? "—" : `${Math.round(route.lcp)}ms`}</span>
+                      <span>INP {route.inp == null ? "—" : `${Math.round(route.inp)}ms`}</span>
+                      <span>CLS {route.cls == null ? "—" : route.cls.toFixed(3)}</span>
+                    </div>
+                  </div>
+                )) : <div className="text-xs text-muted-foreground">Nenhuma rota com confiança suficiente exige intervenção neste período.</div>}
+              </div>
             </div>
 
             <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_1.2fr]">
