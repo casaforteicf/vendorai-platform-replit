@@ -451,10 +451,16 @@ export default function VisitorIntelligence() {
                         {route.samples} amostras · confiança {route.confidence} · prioridade {route.score}
                       </div>
                     </div>
-                    <div className="flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
                       <span>LCP {route.lcp == null ? "—" : `${Math.round(route.lcp)}ms`}</span>
                       <span>INP {route.inp == null ? "—" : `${Math.round(route.inp)}ms`}</span>
                       <span>CLS {route.cls == null ? "—" : route.cls.toFixed(3)}</span>
+                      <a
+                        href={route.path}
+                        className="ml-auto inline-flex h-7 items-center rounded-md border bg-background px-2 font-medium text-foreground hover:bg-muted"
+                      >
+                        Abrir rota
+                      </a>
                     </div>
                   </div>
                 )) : <div className="text-xs text-muted-foreground">Nenhuma rota com confiança suficiente exige intervenção neste período.</div>}
