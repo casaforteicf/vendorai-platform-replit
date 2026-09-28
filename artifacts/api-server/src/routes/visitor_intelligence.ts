@@ -67,6 +67,8 @@ type VitalSample = {
 type ApiTimingSample = {
   endpoint: string;
   durationMs: number;
+  transferSize: number;
+  encodedBodySize: number;
   path: string;
   deviceCategory: string | null;
   createdAt: Date;
@@ -112,12 +114,16 @@ function parseApiTimingSample(row: { path: string | null; metadata: Record<strin
   if (metadata["kind"] !== "api_timing") return null;
   const endpoint = typeof metadata["endpoint"] === "string" ? metadata["endpoint"] : null;
   const durationMs = Number(metadata["durationMs"]);
+  const transferSize = Number(metadata["transferSize"] ?? 0);
+  const encodedBodySize = Number(metadata["encodedBodySize"] ?? 0);
   if (!endpoint || !endpoint.startsWith("/api/") || !Number.isFinite(durationMs) || durationMs < 0) return null;
   const rawPath = row.path || "/";
   const pathname = rawPath.split("?")[0]?.replace(/\/$/, "") || "/";
   return {
     endpoint,
     durationMs,
+    transferSize: Number.isFinite(transferSize) && transferSize >= 0 ? transferSize : 0,
+    encodedBodySize: Number.isFinite(encodedBodySize) && encodedBodySize >= 0 ? encodedBodySize : 0,
     path: pathname,
     deviceCategory: typeof metadata["deviceCategory"] === "string" ? metadata["deviceCategory"] : null,
     createdAt: row.createdAt,
@@ -265,12 +271,16 @@ router.get("/visitor-intelligence/web-vitals", async (req, res) => {
     const apiTimings = [...apiMap.entries()]
       .map(([endpoint, endpointSamples]) => {
         const values = endpointSamples.map((sample) => sample.durationMs);
+        const transferValues = endpointSamples.map((sample) => sample.transferSize).filter((value) => value > 0);
+        const bodyValues = endpointSamples.map((sample) => sample.encodedBodySize).filter((value) => value > 0);
         return {
           endpoint,
           samples: values.length,
           p75: percentile(values, 0.75),
           median: percentile(values, 0.5),
           max: values.length ? Math.round(Math.max(...values)) : null,
+          transferP75: percentile(transferValues, 0.75),
+          bodyP75: percentile(bodyValues, 0.75),
         };
       })
       .sort((a, b) => (b.p75 ?? 0) - (a.p75 ?? 0))
@@ -287,12 +297,14 @@ router.get("/visitor-intelligence/web-vitals", async (req, res) => {
       .map(([key, routeSamples]) => {
         const [path, endpoint] = key.split("::");
         const values = routeSamples.map((sample) => sample.durationMs);
+        const transferValues = routeSamples.map((sample) => sample.transferSize).filter((value) => value > 0);
         return {
           path,
           endpoint,
           samples: values.length,
           p75: percentile(values, 0.75),
           median: percentile(values, 0.5),
+          transferP75: percentile(transferValues, 0.75),
         };
       })
       .sort((a, b) => (b.p75 ?? 0) - (a.p75 ?? 0))
