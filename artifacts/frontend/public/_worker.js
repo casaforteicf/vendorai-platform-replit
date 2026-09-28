@@ -1,5 +1,5 @@
 const RAILWAY_ORIGIN = "https://workspaceapi-server-production-350d.up.railway.app";
-const OBRASGOV_ORIGIN = "https://api-publica.obrasgov.gestao.gov.br";\n// Production fallback marker: Cloudflare Pages/Railway deployer 2026-09-28 build-fix.
+const OBRASGOV_ORIGIN = "https://api-publica.obrasgov.gestao.gov.br";\n// Production fallback marker: Cloudflare Pages/Railway deployer 2026-09-28 build-fix-v2.
 
 function pathAfterPrefix(pathname, prefix) {
   return pathname.startsWith(prefix) ? pathname.slice(prefix.length) : "";
