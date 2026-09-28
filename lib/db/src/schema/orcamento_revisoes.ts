@@ -10,6 +10,7 @@ import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 import { leadsTable } from "./leads";
 import { dealsTable } from "./deals";
+import { propostasTable } from "./propostas";
 import { usersTable } from "./users";
 
 export const orcamentoRevisaoAnexoSchema = z.object({
@@ -25,6 +26,9 @@ export const orcamentoRevisoesTable = pgTable("orcamento_revisoes", {
   tenantId: text("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
   leadId: text("lead_id").notNull().references(() => leadsTable.id, { onDelete: "cascade" }),
   dealId: text("deal_id").references(() => dealsTable.id, { onDelete: "set null" }),
+  basePropostaId: text("base_proposta_id").references(() => propostasTable.id, { onDelete: "set null" }),
+  propostaRevisaoId: text("proposta_revisao_id").references(() => propostasTable.id, { onDelete: "set null" }),
+  revisaoNumero: text("revisao_numero"),
   numeroOrcamento: text("numero_orcamento").notNull(),
   dataOrcamento: date("data_orcamento").notNull(),
   apresentacao: text("apresentacao"),
