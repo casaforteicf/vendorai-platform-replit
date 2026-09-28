@@ -134,6 +134,7 @@ type WebVitalsResponse = {
   sampleCount: number;
   metrics: Record<"LCP" | "INP" | "CLS" | "FCP" | "TTFB", VitalMetricSummary>;
   devices: { mobile: number; tablet: number; desktop: number };
+  apiTimings?: Array<{ endpoint: string; samples: number; p75: number | null; median: number | null; max: number | null }>;
   routes: Array<{ path: string; samples: number; lcp: number | null; inp: number | null; cls: number | null }>;
 };
 type UnknownRecord = Record<string, unknown>;
@@ -487,6 +488,22 @@ export default function VisitorIntelligence() {
                 )) : <div className="text-xs text-muted-foreground">Nenhuma rota com confiança suficiente exige intervenção neste período.</div>}
               </div>
             </div>
+
+            {(vitalsQuery.data.apiTimings?.length ?? 0) > 0 ? (
+              <div className="mt-4 rounded-lg border p-3">
+                <div className="text-xs font-medium text-muted-foreground">APIs mais lentas observadas no navegador</div>
+                <div className="mt-2 space-y-2">
+                  {vitalsQuery.data.apiTimings!.slice(0, 8).map((api) => (
+                    <div key={api.endpoint} className="grid gap-1 rounded-md border px-2.5 py-2 text-xs md:grid-cols-[minmax(0,1fr)_auto_auto_auto] md:items-center">
+                      <div className="truncate font-medium">{api.endpoint}</div>
+                      <div className="text-muted-foreground">p75 {api.p75 == null ? "—" : `${Math.round(api.p75)}ms`}</div>
+                      <div className="text-muted-foreground">mediana {api.median == null ? "—" : `${Math.round(api.median)}ms`}</div>
+                      <div className="text-muted-foreground">{api.samples} amostras</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_1.2fr]">
               <div className="rounded-lg border p-3">
