@@ -99,18 +99,48 @@ router.post("/public/proposals/:token/accept", async (req, res) => {
     return;
   }
 
-  const [proposta] = await db
+  let [proposta] = await db
     .select({ id: propostasTable.id, status: propostasTable.status, validadeAte: propostasTable.validadeAte })
     .from(propostasTable)
     .where(eq(propostasTable.publicToken, token))
     .limit(1);
+
+  // Generated proposal versions use lead_proposals.id as their exclusive public
+  // link token. Resolve the source orçamento saved in jsonContent so the
+  // interactive microsite can use the same acceptance pipeline as the budget.
+  if (!proposta) {
+    const [generated] = await db
+      .select({ jsonContent: leadProposalsTable.jsonContent })
+      .from(leadProposalsTable)
+      .where(eq(leadProposalsTable.id, token))
+      .limit(1);
+
+    if (generated?.jsonContent) {
+      try {
+        const parsed = JSON.parse(generated.jsonContent) as {
+          _proposalMeta?: { sourcePropostaId?: string | null };
+        };
+        const sourcePropostaId = parsed?._proposalMeta?.sourcePropostaId;
+        if (sourcePropostaId) {
+          [proposta] = await db
+            .select({ id: propostasTable.id, status: propostasTable.status, validadeAte: propostasTable.validadeAte })
+            .from(propostasTable)
+            .where(eq(propostasTable.id, sourcePropostaId))
+            .limit(1);
+        }
+      } catch {
+        // Invalid legacy jsonContent simply means this old generated proposal
+        // cannot resolve to a source budget for acceptance.
+      }
+    }
+  }
 
   if (!proposta) {
     res.status(400).json({ error: "Proposta não encontrada ou link inválido" });
     return;
   }
 
-  if (proposta.status !== "enviada" && proposta.status !== "pendente" && proposta.status !== "aceita") {
+  if (proposta.status !== "enviada" && proposta.status !== "pendente" && proposta.status !== "aceita" && proposta.status !== "rascunho") {
     res.status(400).json({ error: `Esta proposta não pode mais ser aceita (status: ${proposta.status})` });
     return;
   }
