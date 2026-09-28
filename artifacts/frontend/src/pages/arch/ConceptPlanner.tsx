@@ -370,6 +370,12 @@ type ReferenceTracePreview = {
   warnings: string[];
   skippedWalls: number;
   sourceModel: string;
+  alignmentScore?: number;
+  alignmentCorrection?: {
+    scale: number;
+    translateX: number;
+    translateY: number;
+  };
 };
 
 type ProjectSourceFile = {
@@ -979,6 +985,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [referencePlanState, setReferencePlanState] = useState<"idle" | "uploading" | "error" | "success">("idle");
   const [referencePlanMessage, setReferencePlanMessage] = useState<string | null>(null);
   const [referenceTraceState, setReferenceTraceState] = useState<"idle" | "loading" | "error" | "ready" | "applied">("idle");
+  const [referenceDisplayMode, setReferenceDisplayMode] = useState<"reference" | "vector" | "overlay">("overlay");
   const [referenceTracePreview, setReferenceTracePreview] = useState<ReferenceTracePreview | null>(null);
   const [selectedTraceElement, setSelectedTraceElement] = useState<{ kind: "wall" | "opening"; id: string } | null>(null);
   const [sourceFiles, setSourceFiles] = useState<ProjectSourceFile[]>([]);
@@ -1885,6 +1892,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   // Etapa 1 é exclusivamente o terreno. Mesmo que um rascunho antigo já tenha
   // planta salva, ela fica oculta até o usuário avançar para Casa/Ajustes.
   const terrainOnly = editorView === "plan" && editorLibraryTab === "site";
+  const referenceReviewActive = editorView === "plan" && referencePlan?.kind === "image" && referenceTraceState !== "applied";
+  const hideCurrentGeometryForReferenceReview = referenceReviewActive;
+  const showReferenceImage = referencePlan?.kind === "image" && referenceDisplayMode !== "vector";
+  const showReferenceVector = referenceDisplayMode !== "reference";
 
   const selected = safeRooms.find((r) => r.id === selectedId) ?? null;
   const selectedObject = safeObjects.find((object) => object.id === selectedObjectId) ?? null;
@@ -4160,6 +4171,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       setReferenceTracePreview(payload);
       setSelectedTraceElement(null);
       setReferenceTraceState("ready");
+      setReferenceDisplayMode("overlay");
       setReferencePlanMessage(
         `Leitura concluída: ${payload.walls.length} paredes e ${payload.openings.length} aberturas sugeridas · confiança ${Math.round(payload.confidence * 100)}%.`,
       );
@@ -4266,6 +4278,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     });
 
     setReferenceTraceState("applied");
+    setReferenceDisplayMode("vector");
     setReferencePlanMessage(
       `Traçado aplicado: ${importedWalls.length} paredes e ${importedOpenings.length} aberturas. Revise medidas e conexões antes de seguir.`,
     );
@@ -4289,6 +4302,12 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       const payload = await response.json().catch(() => ({})) as ReferencePlan & { error?: string };
       if (!response.ok || !payload.url) throw new Error(payload.error ?? "Não foi possível salvar a planta de referência.");
       setReferencePlan(payload);
+      setReferenceTracePreview(null);
+      setSelectedTraceElement(null);
+      setReferenceTraceState("idle");
+      setReferenceDisplayMode("reference");
+      setEditorView("plan");
+      setEditorLibraryTab("build");
       setReferencePlanState("success");
       setReferencePlanMessage(
         payload.kind === "image"
@@ -7450,22 +7469,22 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         `}
                       >
                       <ConceptPlan2D
-                        rooms={terrainOnly ? [] : visibleRooms}
+                        rooms={terrainOnly || hideCurrentGeometryForReferenceReview ? [] : visibleRooms}
                         lotWidth={lotWidth}
                         lotDepth={lotDepth}
                         activeFloor={activeFloor}
-                        geometry={terrainOnly ? { ...geometry, walls: [], openings: [] } : geometry}
-                        referenceImage={referencePlan?.kind === "image" ? {
+                        geometry={terrainOnly || hideCurrentGeometryForReferenceReview ? { ...geometry, walls: [], openings: [] } : geometry}
+                        referenceImage={showReferenceImage && referencePlan?.kind === "image" ? {
                           url: referencePlan.url,
-                          opacity: referencePlan.opacity,
+                          opacity: referenceDisplayMode === "reference" ? Math.max(0.72, referencePlan.opacity ?? 0.35) : Math.min(0.34, referencePlan.opacity ?? 0.28),
                           x: referencePlan.offsetX,
                           y: referencePlan.offsetY,
                           width: referencePlan.widthMeters,
                           height: referencePlan.depthMeters,
                         } : null}
-                        previewWalls={referenceTraceState === "ready" ? referenceTracePreview?.walls ?? [] : []}
-                        previewOpenings={referenceTraceState === "ready" ? referenceTracePreview?.openings ?? [] : []}
-                        closedSpaces={terrainOnly ? [] : closedSpaces}
+                        previewWalls={showReferenceVector && referenceTraceState === "ready" ? referenceTracePreview?.walls ?? [] : []}
+                        previewOpenings={showReferenceVector && referenceTraceState === "ready" ? referenceTracePreview?.openings ?? [] : []}
+                        closedSpaces={terrainOnly || hideCurrentGeometryForReferenceReview ? [] : closedSpaces}
                         selectedClosedSpaceId={selectedClosedSpaceId}
                         onSelectClosedSpace={(spaceId) => {
                           if (spaceId && paintTool?.target === "floor") {
@@ -7525,7 +7544,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           closeLibraryOnMobile();
                         }}
                         onWallMove={moveWallById}
-                        customWalls={terrainOnly ? [] : safeCustomWalls.filter((wall) => wall.floor === activeFloor)}
+                        customWalls={terrainOnly || hideCurrentGeometryForReferenceReview ? [] : safeCustomWalls.filter((wall) => wall.floor === activeFloor)}
                         selectedCustomWallId={selectedCustomWallId}
                         onCreateCustomWall={addCustomWall}
                         onSelectCustomWall={(wallId) => {
@@ -7549,7 +7568,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         onEditStart={beginRoomEdit}
                         onEditEnd={endRoomEdit}
                         interactionMode={interactionMode}
-                        objects={terrainOnly ? [] : safeObjects}
+                        objects={terrainOnly || hideCurrentGeometryForReferenceReview ? [] : safeObjects}
                         previewObjects={
                           furnishLayoutSpaceId === selectedClosedSpaceId
                             ? (furnishLayoutOptions.find((item) => item.id === previewFurnishLayoutId)?.objects ?? [])
@@ -8696,7 +8715,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
                         <div className="font-semibold text-blue-950">Leitura da planta com IA</div>
-                        <div className="mt-0.5 text-blue-800/80">Gera somente um preview; nada é aplicado sem confirmação.</div>
+                        <div className="mt-0.5 text-blue-800/80">Importação fiel: a geometria atual fica oculta durante a conferência para não misturar o projeto antigo com a referência.</div>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <button
@@ -8719,11 +8738,38 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         )}
                       </div>
                     </div>
+                    <div className="mt-2 inline-flex rounded-lg border border-blue-200 bg-white p-1" role="group" aria-label="Modo de conferência da planta importada">
+                      {([
+                        ["reference", "Referência"],
+                        ["vector", "Vetorizado"],
+                        ["overlay", "Sobreposição"],
+                      ] as const).map(([mode, label]) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => setReferenceDisplayMode(mode)}
+                          className={`rounded-md px-2.5 py-1 text-[10px] font-semibold transition-colors ${referenceDisplayMode === mode ? "bg-blue-700 text-white" : "text-blue-800 hover:bg-blue-50"}`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="mt-1 text-[10px] text-blue-800/75">
+                      Referência mostra somente a imagem importada; Vetorizado mostra somente o traçado; Sobreposição serve para conferir coincidência antes de aplicar.
+                    </div>
                     {referenceTracePreview && (
                       <div className="mt-2 space-y-1 text-[11px] text-blue-900">
                         <div>
                           {referenceTracePreview.walls.length} paredes · {referenceTracePreview.openings.length} aberturas · confiança {Math.round(referenceTracePreview.confidence * 100)}%
+                          {typeof referenceTracePreview.alignmentScore === "number"
+                            ? ` · alinhamento ${Math.round(referenceTracePreview.alignmentScore * 100)}%`
+                            : ""}
                         </div>
+                        {referenceTracePreview.alignmentCorrection && (
+                          <div className="text-[10px] text-blue-800/75">
+                            Registro automático: escala ×{referenceTracePreview.alignmentCorrection.scale.toFixed(2)} · ΔX {(referenceTracePreview.alignmentCorrection.translateX * 100).toFixed(1)}% · ΔY {(referenceTracePreview.alignmentCorrection.translateY * 100).toFixed(1)}%.
+                          </div>
+                        )}
                         {(() => {
                           const lowConfidenceWalls = referenceTracePreview.walls.filter((wall) => (wall.confidence ?? 0.5) < 0.65).length;
                           const lowConfidenceOpenings = referenceTracePreview.openings.filter((opening) => (opening.confidence ?? 0.5) < 0.65).length;
