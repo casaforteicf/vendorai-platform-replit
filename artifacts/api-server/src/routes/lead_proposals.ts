@@ -1004,7 +1004,7 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
       }
     : null;
 
-  const html = renderProposalHtml(
+  let html = renderProposalHtml(
     json,
     theme,
     resolveStorageUrl(ctx.lead.logoUrl),
@@ -1018,6 +1018,47 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
     proposalBuilderRenderConfig,
   );
 
+  const proposalAttachments = Array.isArray(req.body?.anexos)
+    ? req.body.anexos
+        .filter((item: unknown) => item && typeof item === "object")
+        .map((item: any) => ({
+          nome: String(item.nome ?? "Documento").slice(0, 180),
+          url: String(item.url ?? "").trim(),
+          mimeType: item.mimeType ? String(item.mimeType).slice(0, 120) : undefined,
+          tamanho: Number.isFinite(Number(item.tamanho)) ? Number(item.tamanho) : undefined,
+        }))
+        .filter((item: { url: string }) => item.url.startsWith("/api/storage/") || /^https:\/\//i.test(item.url))
+        .slice(0, 20)
+    : [];
+
+  if (proposalAttachments.length) {
+    const escapeHtml = (value: string) => value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+    const attachmentsHtml = `
+      <section class="page proposal-attachments" style="padding:48px 56px;font-family:inherit;">
+        <div style="max-width:980px;margin:0 auto;">
+          <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.65;margin-bottom:8px;">Documentos</div>
+          <h2 style="margin:0 0 18px;font-size:28px;line-height:1.15;">Anexos da proposta</h2>
+          <div style="display:grid;gap:10px;">
+            ${proposalAttachments.map((item: { nome: string; url: string }) => `
+              <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer"
+                 style="display:flex;align-items:center;gap:10px;padding:12px 14px;border:1px solid rgba(100,116,139,.25);border-radius:10px;text-decoration:none;color:inherit;">
+                <span style="font-size:18px;">📎</span>
+                <span style="font-size:14px;font-weight:600;">${escapeHtml(item.nome)}</span>
+              </a>
+            `).join("")}
+          </div>
+        </div>
+      </section>`;
+    html = html.includes("</body>")
+      ? html.replace("</body>", `${attachmentsHtml}</body>`)
+      : `${html}${attachmentsHtml}`;
+  }
+
   const [proposal] = await db
     .insert(leadProposalsTable)
     .values({
@@ -1026,7 +1067,7 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
       leadId,
       version: nextVersion,
       htmlContent: html,
-      jsonContent: JSON.stringify(json),
+      jsonContent: JSON.stringify({ ...json, anexos: proposalAttachments }),
       status: "ready",
     })
     .returning();
