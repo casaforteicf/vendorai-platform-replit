@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, desc, like, or, sql } from "drizzle-orm";
+import { and, eq, desc, inArray, like, or, sql } from "drizzle-orm";
 import {
   db,
   orcamentoRevisoesTable,
@@ -27,7 +27,28 @@ router.get("/tenants/:tenantId/leads/:leadId/orcamento-revisoes", async (req, re
     .where(and(eq(orcamentoRevisoesTable.tenantId, tenantId), eq(orcamentoRevisoesTable.leadId, leadId)))
     .orderBy(desc(orcamentoRevisoesTable.dataOrcamento), desc(orcamentoRevisoesTable.createdAt));
 
-  return res.json(rows);
+  const revisionProposalIds = rows
+    .map((row) => row.propostaRevisaoId)
+    .filter((id): id is string => Boolean(id));
+
+  if (revisionProposalIds.length === 0) {
+    return res.json(rows);
+  }
+
+  const revisionProposals = await db
+    .select()
+    .from(propostasTable)
+    .where(and(
+      eq(propostasTable.tenantId, tenantId),
+      inArray(propostasTable.id, revisionProposalIds),
+    ));
+
+  const proposalById = new Map(revisionProposals.map((proposal) => [proposal.id, proposal] as const));
+
+  return res.json(rows.map((row) => ({
+    ...row,
+    propostaRevisao: row.propostaRevisaoId ? proposalById.get(row.propostaRevisaoId) ?? null : null,
+  })));
 });
 
 // ─── Create a revision entry ────────────────────────────────────────────────
@@ -66,6 +87,8 @@ router.post("/tenants/:tenantId/leads/:leadId/orcamento-revisoes", async (req, r
     return res.status(404).json({ error: "Orçamento base não encontrado para este cliente." });
   }
 
+  const baseNumero = String(baseProposta.numero || parsed.data.numeroOrcamento || baseProposta.id);
+
   const revisionCount = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(orcamentoRevisoesTable)
@@ -81,7 +104,6 @@ router.post("/tenants/:tenantId/leads/:leadId/orcamento-revisoes", async (req, r
 
   const revisionNumber = (revisionCount[0]?.count ?? 0) + 1;
   const revisionLabel = `R${revisionNumber}`;
-  const baseNumero = String(baseProposta.numero || parsed.data.numeroOrcamento || baseProposta.id);
   const revisionNumero = `${baseNumero}-${revisionLabel}`;
 
   const revisionProposalId = crypto.randomUUID();
