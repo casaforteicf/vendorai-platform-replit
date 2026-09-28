@@ -106,42 +106,6 @@ const aiCostSafetyPlugin = {
         contents = contents.replace(from, to);
       };
 
-      replaceExact(
-        `  const creditsUsd = Number(tenant.aiCreditsUsd ?? 0);\n\n  // 5b. Platform-subsidized mode: tenant has no plan and no credits but the`,
-        `  const creditsUsd = Number(tenant.aiCreditsUsd ?? 0);\n\n  // Segurança financeira: chave compartilhada nunca opera sem uma franquia\n  // mensal do plano ou saldo extra comprado pelo tenant.\n  if (quotaUsd === null && creditsUsd <= 0) {\n    return {\n      ok: false,\n      reason: "Limite mensal de IA não configurado para este tenant. Selecione um plano ou compre créditos antes de usar a IA compartilhada.",\n      httpStatus: 402,\n      details: { quotaUsd: null, creditsUsd: 0, spentThisMonthUsd: 0, dailySpendUsd: dailySpend },\n    };\n  }\n\n  // 5b. Platform-subsidized mode: tenant has no plan and no credits but the`,
-        "block unconfigured tenant",
-      );
-
-      replaceExact(
-        `        eq(aiUsageLogsTable.tenantId, tenantId as string),\n        gte(aiUsageLogsTable.createdAt, startOfMonth),`,
-        `        eq(aiUsageLogsTable.tenantId, tenantId as string),\n        eq(aiUsageLogsTable.success, true),\n        eq(aiUsageLogsTable.usedByok, false),\n        gte(aiUsageLogsTable.createdAt, startOfMonth),`,
-        "monthly successful shared usage only",
-      );
-
-      replaceExact(
-        `    if (quota.ok && !quota.usedByok) await incrementDailySpend(tenantId, costUsdEst);`,
-        `    // Falha do provedor não é gasto confirmado e não entra no teto diário.`,
-        "failed OpenAI daily spend",
-      );
-
-      replaceExact(
-        `    // 429 quota exceeded → attempt Anthropic fallback if key available\n    if (err?.status === 429 && process.env["ANTHROPIC_API_KEY"]) {`,
-        `    // 429 transitório pode usar fallback. Billing/crédito nunca troca de provedor,\n    // evitando drenar o segundo saldo quando o primeiro está esgotado.\n    const billingOrCreditError = /no credits|credit balance|billing|insufficient_quota|credit_balance_exhausted|quota exhausted/i.test(errorMessage ?? "");\n    if (err?.status === 429 && !billingOrCreditError && process.env["ANTHROPIC_API_KEY"]) {`,
-        "no billing fallback",
-      );
-
-      replaceExact(
-        `      if (event.type === "message_delta" && (event.delta as any)?.usage) {\n        outputTokens = (event.delta as any).usage.output_tokens ?? outputTokens;\n      }`,
-        `      if (event.type === "message_delta" && (event as any)?.usage) {\n        outputTokens = (event as any).usage.output_tokens ?? outputTokens;\n      }`,
-        "Anthropic streamed output usage",
-      );
-
-      replaceExact(
-        `  // 7. Update daily spend\n  if (!key.usedByok) {\n    await incrementDailySpend(tenantId, costUsd);\n  }\n\n  if (!success) {`,
-        `  // 7. Update daily spend somente para chamada concluída com a chave compartilhada.\n  if (success && !key.usedByok) {\n    await incrementDailySpend(tenantId, costUsd);\n  }\n\n  if (!success) {`,
-        "Anthropic successful spend only",
-      );
-
       return { contents, loader: "ts" };
     });
   },
