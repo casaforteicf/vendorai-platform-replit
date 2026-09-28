@@ -1012,6 +1012,10 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
     ? {
         enabledModules: selectedBuilderModules.map((item) => String(item.key)),
         moduleOrder: selectedBuilderModules.map((item) => String(item.key)),
+        proposalKind:
+          typeof selectedBuilderTemplate.proposalKind === "string"
+            ? String(selectedBuilderTemplate.proposalKind)
+            : null,
       }
     : null;
 

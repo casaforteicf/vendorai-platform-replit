@@ -785,6 +785,349 @@ function renderProposalStageImage(
     </figure>`;
 }
 
+function renderConstructionProposalLayout(args: {
+  json: Record<string, any>;
+  tenantName?: string;
+  tenantLogoUrl?: string | null;
+  clientName?: string;
+  imagens?: string[] | null;
+  orcamento: {
+    titulo: string;
+    numero?: string | null;
+    itens: Array<{
+      nome: string;
+      quantidade: number;
+      valorUnitario: number;
+      sku?: string | null;
+      descricao?: string | null;
+      etapaId?: string | null;
+      etapaNome?: string | null;
+      etapaOrdem?: number | null;
+    }>;
+    valorTotal?: string | null;
+    observacoes?: string | null;
+    formaPagamento?: string | null;
+    condPagamento?: string | null;
+    prazoEntrega?: string | null;
+    validadeAte?: Date | string | null;
+    paymentCompositions?: Array<{ forma: string; valor: string | number; comprovanteUrl?: string | null }>;
+    apresentacao?: ProposalPresentationConfig | null;
+  };
+  builderModuleEnabled: (key: string, fallback?: boolean) => boolean;
+}): string {
+  const { json, tenantName, tenantLogoUrl, clientName, imagens, orcamento, builderModuleEnabled } = args;
+  const hero = json.hero || {};
+  const meta = json.meta || {};
+  const presentation = normalizeProposalPresentation(orcamento.apresentacao);
+  const groupedItems = groupProposalPresentationItems(orcamento.itens);
+  const calculatedTotal = orcamento.itens.reduce((sum, item) => sum + item.quantidade * item.valorUnitario, 0);
+  const total = orcamento.valorTotal ? Number(orcamento.valorTotal) : calculatedTotal;
+  const fmtBRL = (v: number) => new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    minimumFractionDigits: 2,
+  }).format(v || 0);
+  const visualImages = (imagens || []).filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+  const coverImage = visualImages[0] || Object.values(presentation.imagensEtapas).find(Boolean) || null;
+  const scheduleRows = buildProposalScheduleRows(groupedItems, presentation, total);
+  const latestEnd = scheduleRows
+    .map((row) => row.end)
+    .filter((value): value is Date => Boolean(value))
+    .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
+  const earliestStart = scheduleRows
+    .map((row) => row.start)
+    .filter((value): value is Date => Boolean(value))
+    .sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
+  const estimatedDays = earliestStart && latestEnd
+    ? Math.max(1, Math.ceil((latestEnd.getTime() - earliestStart.getTime()) / 86400000) + 1)
+    : scheduleRows.reduce((sum, row) => sum + (row.duration || 0), 0);
+  const company = tenantName || "Construtora";
+  const client = clientName || meta.clientName || "Cliente";
+  const title = orcamento.titulo || hero.title || "Construção residencial";
+  const subtitle = "Orçamento por etapas + cronograma físico-financeiro";
+  const accent = "#f26b21";
+  const ink = "#111827";
+  const muted = "#6b7280";
+  const line = "#d9dde4";
+  const soft = "#f5f6f8";
+  const logo = tenantLogoUrl
+    ? `<img src="${escapeProposalText(tenantLogoUrl)}" alt="${escapeProposalText(company)}" class="brand-logo" onerror="this.style.display='none'" />`
+    : `<span class="brand-name">${escapeProposalText(company)}</span>`;
+
+  const header = (label: string, sub?: string) => `
+    <div class="topbar">
+      <div class="brand">${logo}<span class="brand-line"></span></div>
+      <div class="topbar-right"><strong>${escapeProposalText(label)}</strong>${sub ? `<span>${escapeProposalText(sub)}</span>` : ""}</div>
+    </div>`;
+
+  const footer = () => `
+    <div class="footer">
+      <span>Proposta comercial</span>
+      <span>${orcamento.numero ? escapeProposalText(orcamento.numero) : escapeProposalText(company)}</span>
+    </div>`;
+
+  const summaryCards = [
+    { label: "Valor global", value: fmtBRL(total) },
+    ...(estimatedDays > 0 ? [{ label: "Prazo estimado", value: `${estimatedDays} dias` }] : []),
+    { label: "Etapas", value: String(groupedItems.length) },
+  ];
+
+  const summaryCardsHtml = summaryCards.map((item) => `
+    <div class="metric">
+      <span>${item.label}</span>
+      <strong>${item.value}</strong>
+    </div>`).join("");
+
+  const stagePages = groupedItems.map((group) => {
+    const row = scheduleRows.find((item) => item.id === group.id);
+    const stageTotal = group.itens.reduce((sum, item) => sum + item.quantidade * item.valorUnitario, 0);
+    const weight = total > 0 ? (stageTotal / total) * 100 : 0;
+    const imageUrl = presentation.imagensEtapas[group.id] || null;
+    const scopeRows = group.itens.map((item) => `
+      <tr>
+        <td class="scope-name">${escapeProposalText(item.nome)}</td>
+        <td>${proposalScopeDescription(item)}</td>
+      </tr>`).join("");
+
+    const detailTable = builderModuleEnabled("tabela_itens", false)
+      ? `
+      <table class="detail-table">
+        <thead><tr><th>Item</th><th class="r">Qtd.</th><th class="r">Valor unit.</th><th class="r">Subtotal</th></tr></thead>
+        <tbody>${group.itens.map((item) => `
+          <tr>
+            <td>${escapeProposalText(item.nome)}</td>
+            <td class="r">${item.quantidade}</td>
+            <td class="r">${fmtBRL(item.valorUnitario)}</td>
+            <td class="r">${fmtBRL(item.quantidade * item.valorUnitario)}</td>
+          </tr>`).join("")}</tbody>
+      </table>`
+      : "";
+
+    return `
+    <section class="page stage-page">
+      ${header("ORÇAMENTO POR ETAPAS", `Etapa ${group.ordem} · ${group.nome}`)}
+      <h1 class="stage-heading">Etapa ${group.ordem} · ${escapeProposalText(group.nome)}</h1>
+      ${imageUrl && builderModuleEnabled("imagem_por_etapa")
+        ? `<div class="stage-image"><img src="${escapeProposalText(imageUrl)}" alt="${escapeProposalText(group.nome)}" onerror="this.parentElement.style.display='none'" /></div>`
+        : ""}
+      <div class="stage-metrics">
+        <div><span>VALOR DA ETAPA</span><strong>${fmtBRL(stageTotal)}</strong></div>
+        <div><span>DURAÇÃO</span><strong>${row?.duration ? `${row.duration} dias` : "A definir"}</strong></div>
+        <div><span>PESO FÍSICO</span><strong>${weight.toFixed(0)}%</strong></div>
+      </div>
+      ${builderModuleEnabled("escopo") ? `
+        <h2 class="scope-title">O que está contemplado nesta etapa</h2>
+        <table class="scope-table-demo">
+          <thead><tr><th>Previsto</th><th>Breve descrição da atividade</th></tr></thead>
+          <tbody>${scopeRows}</tbody>
+        </table>` : ""}
+      ${detailTable}
+      ${footer()}
+    </section>`;
+  }).join("\n");
+
+  const executionRows = scheduleRows.map((row) => `
+    <tr>
+      <td>${escapeProposalText(row.nome)}</td>
+      <td>${row.start ? proposalFormatDate(row.start) : "A definir"}</td>
+      <td>${row.duration ? `${row.duration} dias` : "A definir"}</td>
+      <td>${row.end ? proposalFormatDate(row.end) : "A definir"}</td>
+      <td class="r">${row.physicalPercent.toFixed(0)}%</td>
+      <td class="r">${fmtBRL(row.value)}</td>
+    </tr>`).join("");
+
+  const paymentRows = (orcamento.paymentCompositions ?? [])
+    .filter((item) => item?.forma && Number(item.valor ?? 0) > 0)
+    .map((item) => `
+      <tr>
+        <td>${escapeProposalText(String(item.forma))}</td>
+        <td class="r">${fmtBRL(Number(item.valor))}</td>
+      </tr>`).join("");
+
+  const conditions = [
+    ["VALOR GLOBAL", fmtBRL(total)],
+    ["FORMA DE PAGAMENTO", orcamento.condPagamento || orcamento.formaPagamento || "Conforme cronograma físico-financeiro"],
+    ...(orcamento.validadeAte ? [["VALIDADE DA PROPOSTA", proposalFormatDate(orcamento.validadeAte)]] : []),
+    ...(presentation.previsaoInicio ? [["PREVISÃO DE INÍCIO", proposalFormatDate(presentation.previsaoInicio)]] : []),
+    ...(estimatedDays > 0 ? [["PRAZO ESTIMADO", `${estimatedDays} dias`]] : []),
+    ["REFERÊNCIA DE CONTRATO", "Linha de base contratada após aceite"],
+  ];
+
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Proposta — ${escapeProposalText(client)}</title>
+<style>
+  @page { size: A4; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, Helvetica, sans-serif; color: ${ink}; background:#fff; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .page { width:210mm; min-height:297mm; padding:12mm 15mm 11mm; page-break-after:always; display:flex; flex-direction:column; background:#fff; }
+  .page:last-child { page-break-after:auto; }
+  .topbar { display:flex; justify-content:space-between; align-items:flex-start; min-height:16mm; padding-bottom:5mm; border-bottom:1px solid ${line}; margin-bottom:8mm; }
+  .brand { display:flex; flex-direction:column; align-items:flex-start; gap:2.2mm; }
+  .brand-logo { height:8mm; max-width:52mm; object-fit:contain; object-position:left center; }
+  .brand-name { font-size:11pt; font-weight:800; letter-spacing:.01em; }
+  .brand-line { display:block; width:33mm; height:1.4mm; background:${accent}; }
+  .topbar-right { display:flex; flex-direction:column; text-align:right; color:${muted}; font-size:6.5pt; line-height:1.5; letter-spacing:.04em; text-transform:uppercase; }
+  .topbar-right strong { font-weight:500; }
+  .topbar-right span { font-size:6pt; text-transform:none; letter-spacing:0; margin-top:.8mm; }
+  .footer { margin-top:auto; border-top:1px solid ${line}; padding-top:3mm; display:flex; justify-content:space-between; color:#9ca3af; font-size:6pt; }
+
+  .cover { padding:0; position:relative; overflow:hidden; background:#111; color:#fff; }
+  .cover-bg { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; filter:brightness(.58); }
+  .cover-shade { position:absolute; inset:0; background:linear-gradient(180deg,rgba(0,0,0,.18) 0%,rgba(0,0,0,.12) 45%,rgba(0,0,0,.58) 100%); }
+  .cover-content { position:relative; z-index:2; padding:16mm 15mm 14mm; min-height:297mm; display:flex; flex-direction:column; }
+  .cover-top { display:flex; align-items:center; justify-content:space-between; font-size:7pt; letter-spacing:.04em; text-transform:uppercase; }
+  .cover-brand { font-size:12pt; font-weight:800; }
+  .cover-brand img { max-height:9mm; max-width:55mm; object-fit:contain; filter:brightness(0) invert(1); }
+  .cover-main { margin-top:28mm; }
+  .cover-title { font-size:27pt; line-height:1.04; font-weight:800; max-width:150mm; margin-bottom:4mm; }
+  .cover-subtitle { font-size:12pt; font-weight:400; }
+  .cover-info { margin-top:auto; border:1px solid rgba(255,255,255,.75); border-radius:5mm; padding:7mm 7mm; backdrop-filter:blur(2px); background:rgba(0,0,0,.08); }
+  .cover-info strong { display:block; font-size:8.8pt; margin-bottom:4mm; }
+  .cover-info-grid { display:grid; grid-template-columns:1fr 1fr; gap:2.5mm 8mm; font-size:7.2pt; }
+  .cover-info-grid span:nth-child(even) { text-align:right; }
+
+  .summary-heading { font-size:20pt; margin-bottom:4mm; }
+  .summary-lead { color:#4b5563; font-size:9.5pt; line-height:1.55; max-width:165mm; margin-bottom:7mm; }
+  .metrics { display:grid; grid-template-columns:repeat(3,1fr); gap:4mm; margin:2mm 0 8mm; }
+  .metric { border-top:2px solid ${accent}; padding-top:4mm; }
+  .metric span { display:block; color:${muted}; font-size:6.4pt; letter-spacing:.06em; text-transform:uppercase; margin-bottom:2mm; }
+  .metric strong { font-size:16pt; line-height:1.1; }
+  .organize-title { font-size:12pt; margin:6mm 0 4mm; }
+  .organize-grid { display:grid; grid-template-columns:1fr 1fr; gap:4mm; }
+  .organize-item { border:1px solid ${line}; border-radius:2mm; padding:4mm; }
+  .organize-item b { display:block; font-size:8pt; margin-bottom:1.2mm; }
+  .organize-item p { color:${muted}; font-size:7.6pt; line-height:1.45; }
+
+  .stage-heading { font-size:19pt; margin:1mm 0 8mm; }
+  .stage-image { width:100%; height:50mm; overflow:hidden; border-radius:0; background:${soft}; }
+  .stage-image img { width:100%; height:100%; object-fit:cover; display:block; }
+  .stage-metrics { display:grid; grid-template-columns:repeat(3,1fr); border:1px solid ${line}; border-top:0; border-radius:0 0 4mm 4mm; overflow:hidden; margin-bottom:9mm; }
+  .stage-metrics > div { padding:6mm 6mm; }
+  .stage-metrics span { display:block; color:${muted}; font-size:6pt; letter-spacing:.04em; margin-bottom:2mm; }
+  .stage-metrics strong { display:block; font-size:12pt; }
+  .scope-title { font-size:12pt; margin-bottom:2.5mm; }
+  .scope-table-demo, .detail-table, .schedule-demo, .payment-demo { width:100%; border-collapse:collapse; font-size:7.3pt; }
+  .scope-table-demo th, .detail-table th, .schedule-demo th, .payment-demo th { background:#f3f4f6; color:#6b7280; text-align:left; font-weight:600; padding:3mm 2.5mm; border:1px solid ${line}; }
+  .scope-table-demo td, .detail-table td, .schedule-demo td, .payment-demo td { padding:4mm 2.5mm; border:1px solid ${line}; vertical-align:top; }
+  .scope-table-demo th:first-child { width:30%; }
+  .scope-name { font-weight:600; }
+  .r { text-align:right !important; }
+  .detail-table { margin-top:5mm; }
+
+  .schedule-title { font-size:19pt; margin:1mm 0 2mm; }
+  .schedule-sub { color:${muted}; font-size:8pt; margin-bottom:8mm; }
+  .schedule-block-title { font-size:12pt; margin:7mm 0 3mm; }
+  .schedule-demo td { padding:3mm 2.5mm; }
+  .matrix-wrap { margin-top:3mm; }
+  .period-matrix-group { margin-top:3mm; }
+  .period-matrix-caption { font-size:6pt; color:${muted}; text-transform:uppercase; letter-spacing:.05em; margin-bottom:1.5mm; }
+  table.period-matrix { width:100%; border-collapse:collapse; table-layout:fixed; font-size:6.5pt; }
+  table.period-matrix th { background:#f3f4f6; color:${muted}; border:1px solid ${line}; padding:2.2mm 1.8mm; text-align:left; font-weight:600; }
+  table.period-matrix td { border:1px solid ${line}; padding:2.5mm 1.8mm; vertical-align:top; }
+  table.period-matrix .period-stage { width:32mm; }
+  table.period-matrix .period-stage span, table.period-matrix .period-cell span { display:block; color:#7b8190; font-size:5.6pt; margin-top:.7mm; }
+  table.period-matrix .period-cell strong { display:block; font-size:6.6pt; }
+  table.period-matrix .period-empty { color:#c0c4cc; text-align:center; }
+  table.period-matrix tfoot td { background:#fff7ed; font-weight:600; }
+
+  .conditions-title { font-size:19pt; margin:1mm 0 8mm; }
+  .conditions-list { border-top:1px solid ${line}; }
+  .condition-row { display:grid; grid-template-columns:55mm 1fr; gap:5mm; padding:4mm 0; border-bottom:1px solid ${line}; }
+  .condition-row span { font-size:6.6pt; color:${muted}; letter-spacing:.05em; }
+  .condition-row strong { font-size:9pt; }
+  .next-title { font-size:12pt; margin:10mm 0 3mm; }
+  .next-copy { font-size:8.5pt; line-height:1.55; color:#4b5563; }
+  .accept-title { font-size:12pt; margin:10mm 0 5mm; }
+  .signature { display:grid; grid-template-columns:1fr 55mm; gap:12mm; margin-top:11mm; }
+  .signature div { border-top:1px solid #9ca3af; padding-top:2mm; font-size:7pt; color:${muted}; }
+</style>
+</head>
+<body>
+<section class="page cover">
+  ${coverImage ? `<img class="cover-bg" src="${escapeProposalText(coverImage)}" alt="Projeto" onerror="this.style.display='none'" />` : ""}
+  <div class="cover-shade"></div>
+  <div class="cover-content">
+    <div class="cover-top">
+      <div class="cover-brand">${tenantLogoUrl ? `<img src="${escapeProposalText(tenantLogoUrl)}" alt="${escapeProposalText(company)}" onerror="this.style.display='none'" />` : escapeProposalText(company)}</div>
+      <div>PROPOSTA COMERCIAL</div>
+    </div>
+    <div class="cover-main">
+      <h1 class="cover-title">${escapeProposalText(title)}</h1>
+      <div class="cover-subtitle">${subtitle}</div>
+    </div>
+    <div class="cover-info">
+      <strong>Cliente: ${escapeProposalText(client)}</strong>
+      <div class="cover-info-grid">
+        <span>Obra: ${escapeProposalText(title)}</span>
+        <span>${orcamento.validadeAte ? `Validade: ${proposalFormatDate(orcamento.validadeAte)}` : "Proposta comercial"}</span>
+        <span>${orcamento.numero ? `Proposta: ${escapeProposalText(orcamento.numero)}` : escapeProposalText(company)}</span>
+        <span>${presentation.previsaoInicio ? `Início previsto: ${proposalFormatDate(presentation.previsaoInicio)}` : ""}</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="page">
+  ${header("RESUMO EXECUTIVO", "Proposta integrada ao orçamento")}
+  <h1 class="summary-heading">Visão geral da proposta</h1>
+  <p class="summary-lead">Este documento parte do orçamento e organiza o escopo por etapas, os valores contratados, o cronograma de execução e o cronograma físico-financeiro em uma única apresentação comercial.</p>
+  <div class="metrics">${summaryCardsHtml}</div>
+  <h2 class="organize-title">Como o documento está organizado</h2>
+  <div class="organize-grid">
+    <div class="organize-item"><b>01 · Escopo por etapa</b><p>Cada etapa reúne os itens e uma descrição objetiva do que está contemplado.</p></div>
+    <div class="organize-item"><b>02 · Imagem representativa</b><p>Uma imagem visual acompanha cada etapa quando esse módulo estiver ativo.</p></div>
+    <div class="organize-item"><b>03 · Cronograma integrado</b><p>As etapas podem ser sequenciais, defasadas ou executadas em paralelo conforme o planejamento.</p></div>
+    <div class="organize-item"><b>04 · Físico-financeiro</b><p>Os valores são distribuídos pelos períodos planejados de execução, preservando a linha de base contratada.</p></div>
+  </div>
+  ${footer()}
+</section>
+
+${stagePages}
+
+${(builderModuleEnabled("cronograma") || builderModuleEnabled("fisico_financeiro")) ? `
+<section class="page">
+  ${header("CRONOGRAMA", "Execução e físico-financeiro")}
+  <h1 class="schedule-title">Cronograma de execução</h1>
+  <p class="schedule-sub">Modelo com etapas independentes, dependências configuráveis e possibilidade de execução simultânea.</p>
+  ${builderModuleEnabled("cronograma") ? `
+  <table class="schedule-demo">
+    <thead><tr><th>Etapa</th><th>Início</th><th>Duração</th><th>Término</th><th class="r">Peso físico</th><th class="r">Valor</th></tr></thead>
+    <tbody>${executionRows}</tbody>
+  </table>` : ""}
+  ${builderModuleEnabled("fisico_financeiro") ? `
+    <h2 class="schedule-block-title">Cronograma físico-financeiro</h2>
+    <div class="matrix-wrap">${renderProposalMonthlyMatrix(scheduleRows, fmtBRL)}</div>
+  ` : ""}
+  ${footer()}
+</section>` : ""}
+
+<section class="page">
+  ${header("CONDIÇÕES COMERCIAIS", "Modelo final")}
+  <h1 class="conditions-title">Condições comerciais</h1>
+  <div class="conditions-list">
+    ${conditions.map(([label, value]) => `<div class="condition-row"><span>${escapeProposalText(label)}</span><strong>${escapeProposalText(String(value))}</strong></div>`).join("")}
+  </div>
+  ${paymentRows && builderModuleEnabled("condicoes_comerciais") ? `
+    <h2 class="next-title">Composição de pagamento</h2>
+    <table class="payment-demo"><thead><tr><th>Forma / parcela</th><th class="r">Valor</th></tr></thead><tbody>${paymentRows}</tbody></table>
+  ` : ""}
+  <h2 class="next-title">Próximos passos após o aceite</h2>
+  <p class="next-copy">A proposta aceita torna-se a referência contratada da obra. A execução passa a utilizar as mesmas etapas, valores e cronograma como linha de base. Compras e demais ações operacionais acontecem posteriormente, conforme a necessidade real da obra.</p>
+  ${orcamento.observacoes ? `<p class="next-copy" style="margin-top:4mm;">${escapeProposalText(orcamento.observacoes)}</p>` : ""}
+  ${builderModuleEnabled("aceite") ? `
+    <h2 class="accept-title">Aceite do cliente</h2>
+    <div class="signature"><div>Nome / assinatura</div><div>Data</div></div>
+  ` : ""}
+  ${footer()}
+</section>
+</body>
+</html>`;
+}
+
 export function renderProposalHtml(json: unknown, theme: {
   cream: string; cream2: string; ink: string;
   navyDeep: string; navyMid: string;
@@ -820,6 +1163,7 @@ export function renderProposalHtml(json: unknown, theme: {
 } | null, builder?: {
   enabledModules?: string[] | null;
   moduleOrder?: string[] | null;
+  proposalKind?: string | null;
 } | null): string {
   const d = json as Record<string, any>;
   const hero = d.hero || {};
@@ -844,6 +1188,17 @@ export function renderProposalHtml(json: unknown, theme: {
   const visualImages = (imagens || []).filter(
     (url): url is string => typeof url === "string" && url.trim().length > 0,
   );
+  if (builder?.proposalKind === "construction_project" && orcamento) {
+    return renderConstructionProposalLayout({
+      json: d,
+      tenantName,
+      tenantLogoUrl,
+      clientName,
+      imagens: visualImages,
+      orcamento,
+      builderModuleEnabled,
+    });
+  }
   const pageImage = (index: number) => {
     if (visualImages.length === 0) return null;
     return visualImages[index] || visualImages[index % visualImages.length] || null;
