@@ -1493,6 +1493,51 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
         }
       }
 
+      const presentationFormat =
+        mergedPresentation.formato === "documento"
+          ? "documento"
+          : mergedPresentation.formato === "hibrido"
+            ? "hibrido"
+            : "site_interativo";
+
+      // Interactive proposals are visual by design. Never fill a missing stage
+      // with an unrelated cover/product image. Instead, require the correct
+      // stage-specific visuals before publishing the microsite.
+      if (presentationFormat !== "documento") {
+        const itensOrcamento = orc.itens ?? [];
+        const stageMap = new Map<string, { id: string; nome: string; ordem: number }>();
+        itensOrcamento.forEach((item, index) => {
+          const ordem = Number(item.etapaOrdem ?? index + 1);
+          const nome = String(item.etapaNome ?? `Etapa ${ordem}`);
+          const id = String(item.etapaId ?? `__stage_${ordem}_${nome}`);
+          if (!stageMap.has(id)) stageMap.set(id, { id, nome, ordem });
+        });
+        const stageImages =
+          mergedPresentation.imagensEtapas && typeof mergedPresentation.imagensEtapas === "object"
+            ? mergedPresentation.imagensEtapas
+            : {};
+        const missingStages = Array.from(stageMap.values())
+          .filter((stage) => !stageImages[stage.id])
+          .sort((a, b) => a.ordem - b.ordem);
+
+        if (missingStages.length > 0) {
+          res.status(422).json({
+            error: "A proposta interativa não será publicada com imagens desconexas. Gere e vincule as imagens específicas das etapas antes de gerar a proposta.",
+            code: "PROPOSAL_STAGE_IMAGES_REQUIRED",
+            missingStageImages: missingStages.map((stage) => ({
+              stageId: stage.id,
+              stageName: stage.nome,
+              stageOrder: stage.ordem,
+            })),
+            safety: {
+              maxImagesPerAction: 3,
+              reason: "Mantemos o limite por ação para evitar consumo inesperado de IA.",
+            },
+          });
+          return;
+        }
+      }
+
       orcamentoEmbed = {
         titulo: orc.titulo,
         numero: orc.numero,
