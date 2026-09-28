@@ -45,6 +45,7 @@ export type ReferenceTraceResult = {
     translateX: number;
     translateY: number;
   };
+  topologyRepairs?: number;
 };
 
 type JsonRecord = Record<string, unknown>;
@@ -74,6 +75,104 @@ function responseText(response: any): string {
     }
   }
   return texts.join("\n").trim();
+}
+
+
+function refineWallTopology(
+  walls: ReferenceTraceWall[],
+  tolerance = 0.16,
+): { walls: ReferenceTraceWall[]; repairs: number } {
+  if (walls.length < 2) return { walls, repairs: 0 };
+
+  const next = walls.map((wall) => ({ ...wall }));
+  let repairs = 0;
+
+  const endpoint = (wall: ReferenceTraceWall, which: "start" | "end") =>
+    which === "start" ? { x: wall.x1, y: wall.y1 } : { x: wall.x2, y: wall.y2 };
+
+  const assignEndpoint = (
+    wall: ReferenceTraceWall,
+    which: "start" | "end",
+    point: { x: number; y: number },
+  ) => {
+    const horizontal = Math.abs(wall.y1 - wall.y2) < 0.001;
+    if (horizontal) {
+      if (which === "start") {
+        wall.x1 = point.x;
+        wall.y1 = point.y;
+        wall.y2 = point.y;
+      } else {
+        wall.x2 = point.x;
+        wall.y2 = point.y;
+        wall.y1 = point.y;
+      }
+    } else {
+      if (which === "start") {
+        wall.x1 = point.x;
+        wall.y1 = point.y;
+        wall.x2 = point.x;
+      } else {
+        wall.x2 = point.x;
+        wall.y2 = point.y;
+        wall.x1 = point.x;
+      }
+    }
+  };
+
+  for (let i = 0; i < next.length; i += 1) {
+    const wall = next[i];
+    for (const which of ["start", "end"] as const) {
+      const point = endpoint(wall, which);
+      let best:
+        | { x: number; y: number; distance: number; priority: number }
+        | undefined;
+
+      for (let j = 0; j < next.length; j += 1) {
+        if (i === j) continue;
+        const other = next[j];
+        const wallHorizontal = Math.abs(wall.y1 - wall.y2) < 0.001;
+        const otherHorizontal = Math.abs(other.y1 - other.y2) < 0.001;
+
+        for (const otherWhich of ["start", "end"] as const) {
+          const candidate = endpoint(other, otherWhich);
+          const distance = Math.hypot(candidate.x - point.x, candidate.y - point.y);
+          if (distance <= tolerance && (!best || distance < best.distance || best.priority > 0)) {
+            best = { ...candidate, distance, priority: 0 };
+          }
+        }
+
+        if (wallHorizontal !== otherHorizontal) {
+          const projected = wallHorizontal
+            ? { x: other.x1, y: wall.y1 }
+            : { x: wall.x1, y: other.y1 };
+          const withinOther = otherHorizontal
+            ? projected.x >= Math.min(other.x1, other.x2) - 0.01 && projected.x <= Math.max(other.x1, other.x2) + 0.01
+            : projected.y >= Math.min(other.y1, other.y2) - 0.01 && projected.y <= Math.max(other.y1, other.y2) + 0.01;
+          if (withinOther) {
+            const distance = Math.hypot(projected.x - point.x, projected.y - point.y);
+            if (distance <= tolerance && (!best || (best.priority > 1) || (best.priority === 1 && distance < best.distance))) {
+              best = { ...projected, distance, priority: 1 };
+            }
+          }
+        }
+      }
+
+      if (best && best.distance > 0.003) {
+        assignEndpoint(wall, which, best);
+        repairs += 1;
+      }
+    }
+  }
+
+  // Depois de encaixar junções, arredondamos apenas ruído milimétrico.
+  for (const wall of next) {
+    wall.x1 = Math.round(wall.x1 * 1000) / 1000;
+    wall.y1 = Math.round(wall.y1 * 1000) / 1000;
+    wall.x2 = Math.round(wall.x2 * 1000) / 1000;
+    wall.y2 = Math.round(wall.y2 * 1000) / 1000;
+  }
+
+  return { walls: next, repairs };
 }
 
 export function normalizeReferenceTrace(raw: unknown, bounds: ReferenceTraceBounds, sourceModel = "test"): ReferenceTraceResult {
@@ -124,6 +223,9 @@ export function normalizeReferenceTrace(raw: unknown, bounds: ReferenceTraceBoun
     wallIndexMap.set(index, id);
   });
 
+  const refinedTopology = refineWallTopology(walls);
+  walls.splice(0, walls.length, ...refinedTopology.walls);
+
   const openings: ReferenceTraceOpening[] = [];
   const rawOpenings = Array.isArray(parsed.openings) ? parsed.openings.slice(0, 250) : [];
   rawOpenings.forEach((value) => {
@@ -149,6 +251,7 @@ export function normalizeReferenceTrace(raw: unknown, bounds: ReferenceTraceBoun
     ? parsed.warnings.map(String).map((item) => item.trim()).filter(Boolean).slice(0, 10)
     : [];
   if (skippedWalls) warnings.push(`${skippedWalls} segmento(s) foram descartados por baixa compatibilidade geométrica.`);
+  if (refinedTopology.repairs) warnings.push(`${refinedTopology.repairs} junção(ões) foram encaixadas automaticamente sem alterar a distribuição da planta.`);
   if (!walls.length) warnings.push("Nenhuma parede confiável foi identificada na imagem.");
 
   return {
@@ -159,6 +262,7 @@ export function normalizeReferenceTrace(raw: unknown, bounds: ReferenceTraceBoun
     warnings,
     skippedWalls,
     sourceModel,
+    topologyRepairs: refinedTopology.repairs,
   };
 }
 
@@ -357,5 +461,8 @@ export async function traceReferencePlanImage(input: {
   }
   result.alignmentScore = Math.round(registration.score * 1000) / 1000;
   result.alignmentCorrection = registration.correction;
+  if (result.alignmentScore < 0.22) {
+    result.warnings.push("A coincidência visual ainda está baixa. Confira a calibração e use Sobreposição antes de aplicar.");
+  }
   return result;
 }
