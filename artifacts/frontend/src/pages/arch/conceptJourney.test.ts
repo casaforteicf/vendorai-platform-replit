@@ -3,7 +3,7 @@ import { CONCEPT_JOURNEY, conceptJourneyContinueLabel, conceptJourneyIndex } fro
 
 describe("conceptJourney", () => {
   it("tem 5 etapas na ordem do usuário", () => {
-    expect(CONCEPT_JOURNEY.map((stage) => stage.label)).toEqual(["Terreno", "Casa", "Ajustes", "Fachada", "Enviar"]);
+    expect(CONCEPT_JOURNEY.map((stage) => stage.label)).toEqual(["Terreno", "Projeto", "Ajustes", "Fachada", "Enviar"]);
   });
 
   it("mapeia abas e visões para a etapa certa", () => {
@@ -19,7 +19,7 @@ describe("conceptJourney", () => {
   });
 
   it("não oferece continuar na última etapa", () => {
-    expect(conceptJourneyContinueLabel(0)).toBe("Continuar: Casa");
+    expect(conceptJourneyContinueLabel(0)).toBe("Continuar: Projeto");
     expect(conceptJourneyContinueLabel(3)).toBe("Revisar e enviar");
     expect(conceptJourneyContinueLabel(4)).toBeNull();
   });

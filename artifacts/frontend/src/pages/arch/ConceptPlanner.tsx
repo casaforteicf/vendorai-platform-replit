@@ -950,6 +950,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const dxfImportInputRef = useRef<HTMLInputElement | null>(null);
   const referencePlanInputRef = useRef<HTMLInputElement | null>(null);
   const sourceFileInputRef = useRef<HTMLInputElement | null>(null);
+  const projectStartImportInputRef = useRef<HTMLInputElement | null>(null);
+  const projectStartReferenceInputRef = useRef<HTMLInputElement | null>(null);
   const navigatingAwayRef = useRef(false);
   const creatingConceptRef = useRef<Promise<string | null> | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "loading" | "saving" | "saved" | "error">("loading");
@@ -4758,7 +4760,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     return [...history].reverse().find((item) => item.renderView === "exterior")?.resultImageUrl ?? null;
   }, [conceptRender]);
 
-  const hasEditorSelection = Boolean(
+  const hasEditorSelection = !terrainOnly && Boolean(
     selectedObject || selected || selectedCustomWall || selectedOpening || selectedClosedSpace || selectedWall,
   );
 
@@ -5655,6 +5657,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   </button>
                 )}
 
+                {!terrainOnly && (
                 <button
                   type="button"
                   onClick={() => void runAiDevelopment()}
@@ -5667,6 +5670,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   <Sparkles className={aiDevelopmentState === "running" ? "h-4 w-4 animate-pulse" : "h-4 w-4"} />
                   <span className="hidden md:inline">{aiDevelopmentState === "running" ? "IA analisando..." : aiDevelopmentState === "error" ? "Tentar IA novamente" : "Desenvolver com IA"}</span>
                 </button>
+                )}
 
                 <button
                   type="button"
@@ -5877,97 +5881,50 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
               </>
             )}
 
-            {saveState !== "loading" && !startChooserDismissed && !modelGalleryOpen && safeRooms.length === 0 && customWalls.length === 0 && (
+            {saveState !== "loading" && journeyIndex === 1 && !startChooserDismissed && !modelGalleryOpen && !projectMaster && (
               <div className="fixed inset-0 z-[110] flex items-end justify-center bg-slate-950/55 sm:items-center sm:p-6">
-                <div className="max-h-[92dvh] w-full max-w-2xl overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-7" role="dialog" aria-label="Como quer começar">
-                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-500">Novo pré-projeto</div>
-                  <h2 className="mt-1 text-xl font-bold text-slate-950">Como você quer começar?</h2>
-                  <p className="mt-1 text-sm text-slate-500">Dá pra mudar tudo depois. Leva poucos minutos.</p>
+                <div className="max-h-[92dvh] w-full max-w-3xl overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-7" role="dialog" aria-label="Escolher como criar o projeto">
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-500">Etapa 2 · Projeto</div>
+                  <h2 className="mt-1 text-2xl font-bold text-slate-950">Como você quer criar este projeto?</h2>
+                  <p className="mt-1 text-sm leading-6 text-slate-500">
+                    Terreno definido em <strong className="font-semibold text-slate-700">{lotWidth.toFixed(1)} × {lotDepth.toFixed(1)} m</strong>.
+                    Agora escolha o ponto de partida. O Arqdor mantém o lote e leva você direto ao fluxo correto.
+                  </p>
 
-                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                    <label className="text-xs font-semibold text-slate-700">
-                      Frente do terreno (m)
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        min={5}
-                        value={lotWidth}
-                        onChange={(event) => setLotWidth(Math.max(5, Number(event.target.value) || 5))}
-                        className="mt-1 h-11 w-full rounded-xl border px-3 text-base font-normal outline-none focus:border-orange-400"
-                      />
-                    </label>
-                    <label className="text-xs font-semibold text-slate-700">
-                      Fundo do terreno (m)
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        min={10}
-                        value={lotDepth}
-                        onChange={(event) => setLotDepth(Math.max(10, Number(event.target.value) || 10))}
-                        className="mt-1 h-11 w-full rounded-xl border px-3 text-base font-normal outline-none focus:border-orange-400"
-                      />
-                    </label>
-{!guestMode && <>
-                    <label className="text-xs font-semibold text-slate-700">
-                      Nome do cliente <span className="text-orange-600">*</span>
-                      <input
-                        value={customerProfile.name ?? ""}
-                        onChange={(event) => setCustomerProfile((prev) => ({ ...prev, name: event.target.value }))}
-                        autoComplete="name"
-                        className="mt-1 h-11 w-full rounded-xl border px-3 text-base font-normal outline-none focus:border-orange-400"
-                      />
-                    </label>
-                    <label className="text-xs font-semibold text-slate-700">
-                      WhatsApp <span className="text-orange-600">*</span>
-                      <input
-                        type="tel"
-                        inputMode="tel"
-                        value={customerProfile.phone ?? ""}
-                        onChange={(event) => setCustomerProfile((prev) => ({ ...prev, phone: event.target.value }))}
-                        autoComplete="tel"
-                        placeholder="(49) 99999-9999"
-                        className="mt-1 h-11 w-full rounded-xl border px-3 text-base font-normal outline-none focus:border-orange-400"
-                      />
-                    </label>
-                    <label className="text-xs font-semibold text-slate-700 sm:col-span-2">
-                      Instagram <span className="text-orange-600">*</span>
-                      <div className="mt-1 flex h-11 items-center rounded-xl border px-3 focus-within:border-orange-400">
-                        <span className="text-base font-normal text-slate-400">@</span>
-                        <input
-                          value={(customerProfile.instagram ?? "").replace(/^@+/, "")}
-                          onChange={(event) => setCustomerProfile((prev) => ({ ...prev, instagram: event.target.value.trim().replace(/^@+/, "") }))}
-                          autoCapitalize="none"
-                          autoCorrect="off"
-                          placeholder="perfil do cliente"
-                          className="h-full w-full bg-transparent pl-0.5 text-base font-normal outline-none"
-                        />
-                      </div>
-                    </label>
-</>}
-                  </div>
-                  {!startContactValid && (
-                    <p className="mt-3 rounded-xl bg-orange-50 px-3 py-2 text-xs text-orange-900">
-                      Preencha nome, WhatsApp (com DDD) e Instagram para começar.
-                    </p>
-                  )}
+                  <input
+                    ref={projectStartImportInputRef}
+                    type="file"
+                    accept=".dxf,.ifc,.dwg,.rvt,.skp,application/dxf"
+                    className="hidden"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+                      setStartChooserDismissed(true);
+                      setEditorView("plan");
+                      setEditorLibraryTab("build");
+                      setLibraryOpen(true);
+                      const extension = file.name.split(".").pop()?.toLowerCase();
+                      if (extension === "dxf") void importConceptDxf(file);
+                      else void uploadProjectSourceFile(file);
+                    }}
+                  />
+                  <input
+                    ref={projectStartReferenceInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,application/pdf,.pdf"
+                    className="hidden"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+                      setStartChooserDismissed(true);
+                      setEditorView("plan");
+                      setEditorLibraryTab("build");
+                      setLibraryOpen(true);
+                      void uploadReferencePlan(file);
+                    }}
+                  />
 
-                  <div className="mt-5 grid gap-3">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setStartChooserDismissed(true);
-                        setEditorView("plan");
-                        setModelGalleryOpen(true);
-                      }}
-                      disabled={!startContactValid}
-                      className="flex min-h-16 items-center gap-3 rounded-2xl border-2 border-orange-400 bg-orange-50 p-4 text-left disabled:cursor-not-allowed disabled:opacity-45"
-                    >
-                      <LayoutGrid className="h-6 w-6 shrink-0 text-orange-600" />
-                      <span>
-                        <span className="block text-sm font-bold text-slate-950">Escolher um modelo pronto</span>
-                        <span className="block text-xs text-slate-600">Térreas, sobrados e casas com lazer. O jeito mais rápido.</span>
-                      </span>
-                    </button>
+                  <div className="mt-6 grid gap-3 sm:grid-cols-2">
                     <button
                       type="button"
                       onClick={() => {
@@ -5977,30 +5934,76 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         setEditorLibraryTab("brief");
                         setLibraryOpen(true);
                       }}
-                      disabled={!startContactValid}
-                      className="flex min-h-16 items-center gap-3 rounded-2xl border p-4 text-left hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45"
+                      className="group min-h-32 rounded-2xl border-2 border-orange-400 bg-orange-50 p-5 text-left transition hover:border-orange-500 hover:bg-orange-100/70"
                     >
-                      <Sparkles className="h-6 w-6 shrink-0 text-slate-700" />
-                      <span>
-                        <span className="block text-sm font-bold text-slate-950">Descrever o que a casa precisa</span>
-                        <span className="block text-xs text-slate-600">Quartos, banheiros, garagem… a planta é montada a partir disso.</span>
-                      </span>
+                      <div className="flex items-start gap-4">
+                        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-orange-500 text-white shadow-sm">
+                          <Sparkles className="h-5 w-5" />
+                        </span>
+                        <span>
+                          <span className="block text-base font-bold text-slate-950">Desenvolver com IA</span>
+                          <span className="mt-1 block text-xs leading-5 text-slate-600">Informe ambientes, metragens, estilo e prioridades. A IA arquiteta desenvolve a planta inicial para você revisar.</span>
+                          <span className="mt-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-orange-700">Recomendado</span>
+                        </span>
+                      </div>
                     </button>
+
                     <button
                       type="button"
                       onClick={() => {
+                        if ((safeRooms.length > 0 || safeCustomWalls.length > 0) && !window.confirm("Iniciar um desenho do zero substitui a geometria atual deste rascunho. Continuar?")) return;
                         setStartChooserDismissed(true);
                         startBlankPlan();
+                        setLibraryOpen(true);
                       }}
-                      disabled={!startContactValid}
-                      className="flex min-h-16 items-center gap-3 rounded-2xl border p-4 text-left hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45"
+                      className="group min-h-32 rounded-2xl border bg-white p-5 text-left transition hover:border-slate-400 hover:shadow-sm"
                     >
-                      <Plus className="h-6 w-6 shrink-0 text-slate-700" />
-                      <span>
-                        <span className="block text-sm font-bold text-slate-950">Desenhar do zero</span>
-                        <span className="block text-xs text-slate-600">Para quem já sabe o que quer e prefere traçar as paredes.</span>
-                      </span>
+                      <div className="flex items-start gap-4">
+                        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-950 text-white">
+                          <Plus className="h-5 w-5" />
+                        </span>
+                        <span>
+                          <span className="block text-base font-bold text-slate-950">Construir projeto</span>
+                          <span className="mt-1 block text-xs leading-5 text-slate-600">Comece com o lote vazio e desenhe paredes, ambientes, portas, janelas e escadas manualmente.</span>
+                        </span>
+                      </div>
                     </button>
+
+                    <button
+                      type="button"
+                      onClick={() => projectStartImportInputRef.current?.click()}
+                      className="group min-h-32 rounded-2xl border bg-white p-5 text-left transition hover:border-slate-400 hover:shadow-sm"
+                    >
+                      <div className="flex items-start gap-4">
+                        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-800">
+                          <FolderOpen className="h-5 w-5" />
+                        </span>
+                        <span>
+                          <span className="block text-base font-bold text-slate-950">Importar projeto</span>
+                          <span className="mt-1 block text-xs leading-5 text-slate-600">Traga um arquivo DXF, IFC, DWG, RVT ou SKP. O DXF entra como geometria editável; BIM/CAD fica vinculado ao projeto.</span>
+                        </span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => projectStartReferenceInputRef.current?.click()}
+                      className="group min-h-32 rounded-2xl border bg-white p-5 text-left transition hover:border-slate-400 hover:shadow-sm"
+                    >
+                      <div className="flex items-start gap-4">
+                        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-800">
+                          <Camera className="h-5 w-5" />
+                        </span>
+                        <span>
+                          <span className="block text-base font-bold text-slate-950">Usar imagem ou PDF</span>
+                          <span className="mt-1 block text-xs leading-5 text-slate-600">Envie uma planta como imagem ou PDF para usar como referência e, quando aplicável, interpretar o traçado com IA.</span>
+                        </span>
+                      </div>
+                    </button>
+                  </div>
+
+                  <div className="mt-5 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
+                    Primeiro definimos o terreno. Depois definimos <strong className="font-semibold text-slate-800">como o projeto nasce</strong>. Só então entram edição da planta, implantação, fachada e apresentação.
                   </div>
                 </div>
               </div>
@@ -6230,7 +6233,11 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         ["materials", Paintbrush, editorExperienceMode === "guided" ? "Acabamentos" : "Materiais"],
                         ["outdoor", Trees, "Externo"],
                       ] as Array<[EditorLibraryTab, typeof Ruler, string]>)
-                        .filter(([value]) => editorExperienceMode === "professional" ? value !== "brief" && value !== "placement" : true)
+                        .filter(([value]) => terrainOnly
+                          ? value === "site"
+                          : editorExperienceMode === "professional"
+                            ? value !== "brief" && value !== "placement"
+                            : true)
                         .map(([value, Icon, label]) => (
                         <button
                           key={value}
@@ -7277,7 +7284,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     </>
                   )}
 
-                  {safeObjects.filter((object) => object.floor === activeFloor).length > 0 && (
+                  {!terrainOnly && safeObjects.filter((object) => object.floor === activeFloor).length > 0 && (
                     <div className="mt-5 rounded-xl border bg-slate-50 p-3">
                       <div className="flex items-center justify-between text-xs">
                         <span className="font-semibold text-slate-700">Objetos no pavimento · arraste para editar</span>
@@ -7288,7 +7295,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     </div>
                   )}
 
-                  <div className="mt-6 hidden border-t pt-4 xl:block">
+                  <div className={terrainOnly ? "hidden" : "mt-6 hidden border-t pt-4 xl:block"}>
                     <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">No projeto</div>
                     <div className="mt-3 max-h-64 space-y-1.5 overflow-auto">
                       {wallFirstActive
@@ -7334,7 +7341,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
               </aside>
 
               <div className="arq-workspace-center arq-canvas relative min-h-[calc(100dvh-56px)] overflow-hidden bg-[#f6f7f8]">
-                  {editorView === "plan" && (
+                  {editorView === "plan" && !terrainOnly && (
                       <div className={`absolute top-3 z-30 flex snap-x items-center gap-1.5 overflow-x-auto rounded-2xl border border-slate-200 bg-white/96 p-1.5 shadow-md backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
                         left-16 right-3 md:right-auto
                         ${libraryOpen ? "md:left-[380px]" : "md:left-20"}
