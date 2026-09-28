@@ -449,6 +449,8 @@ type ProposalPresentationConfig = {
   modoPadrao?: ProposalPresentationMode;
   etapas?: Record<string, ProposalPresentationMode>;
   mostrarTotalGeral?: boolean;
+  mostrarDetalhamentoTecnico?: boolean;
+  detalhamentoTecnicoEtapas?: Record<string, boolean>;
   previsaoInicio?: string;
   cronogramaEtapas?: Record<string, ProposalStageSchedule>;
   imagensEtapas?: Record<string, string>;
@@ -478,6 +480,8 @@ function normalizeProposalPresentation(
     modoPadrao: value?.modoPadrao ?? "completo",
     etapas: value?.etapas ?? {},
     mostrarTotalGeral: value?.mostrarTotalGeral ?? true,
+    mostrarDetalhamentoTecnico: value?.mostrarDetalhamentoTecnico ?? true,
+    detalhamentoTecnicoEtapas: value?.detalhamentoTecnicoEtapas ?? {},
     previsaoInicio: value?.previsaoInicio ?? "",
     cronogramaEtapas: value?.cronogramaEtapas ?? {},
     imagensEtapas: value?.imagensEtapas ?? {},
@@ -516,6 +520,13 @@ function resolveProposalPresentationMode(
   stageId: string,
 ): ProposalPresentationMode {
   return presentation.etapas[stageId] ?? presentation.modoPadrao;
+}
+
+function resolveProposalTechnicalDetail(
+  presentation: Required<ProposalPresentationConfig>,
+  stageId: string,
+): boolean {
+  return presentation.detalhamentoTecnicoEtapas[stageId] ?? presentation.mostrarDetalhamentoTecnico;
 }
 
 function proposalDate(value?: string | Date | null): Date | null {
@@ -1007,24 +1018,36 @@ function renderConstructionProposalLayout(args: {
     const stageTotal = group.itens.reduce((sum, item) => sum + item.quantidade * item.valorUnitario, 0);
     const weight = total > 0 ? (stageTotal / total) * 100 : 0;
     const imageUrl = presentation.imagensEtapas[group.id] || null;
+    const financialMode = resolveProposalPresentationMode(presentation, group.id);
+    const showTechnicalDetail = resolveProposalTechnicalDetail(presentation, group.id);
     const scopeRows = group.itens.map((item) => `
       <tr>
         <td class="scope-name">${escapeProposalText(item.nome)}</td>
         <td>${proposalScopeDescription(item)}</td>
       </tr>`).join("");
 
-    const detailTable = builderModuleEnabled("tabela_itens", false)
-      ? `
-      <table class="detail-table">
-        <thead><tr><th>Item</th><th class="r">Qtd.</th><th class="r">Valor unit.</th><th class="r">Subtotal</th></tr></thead>
-        <tbody>${group.itens.map((item) => `
-          <tr>
-            <td>${escapeProposalText(item.nome)}</td>
-            <td class="r">${item.quantidade}</td>
-            <td class="r">${fmtBRL(item.valorUnitario)}</td>
-            <td class="r">${fmtBRL(item.quantidade * item.valorUnitario)}</td>
-          </tr>`).join("")}</tbody>
-      </table>`
+    const detailTable = builderModuleEnabled("tabela_itens", false) && financialMode !== "resumo_etapa"
+      ? financialMode === "preco_medio"
+        ? `
+        <table class="detail-table">
+          <thead><tr><th>Item</th><th class="r">Valor por item</th></tr></thead>
+          <tbody>${group.itens.map((item) => `
+            <tr>
+              <td>${escapeProposalText(item.nome)}</td>
+              <td class="r">${fmtBRL(item.valorUnitario)}</td>
+            </tr>`).join("")}</tbody>
+        </table>`
+        : `
+        <table class="detail-table">
+          <thead><tr><th>Item</th><th class="r">Qtd.</th><th class="r">Valor unit.</th><th class="r">Subtotal</th></tr></thead>
+          <tbody>${group.itens.map((item) => `
+            <tr>
+              <td>${escapeProposalText(item.nome)}</td>
+              <td class="r">${item.quantidade}</td>
+              <td class="r">${fmtBRL(item.valorUnitario)}</td>
+              <td class="r">${fmtBRL(item.quantidade * item.valorUnitario)}</td>
+            </tr>`).join("")}</tbody>
+        </table>`
       : "";
 
     return `
@@ -1039,7 +1062,7 @@ function renderConstructionProposalLayout(args: {
         <div><span>DURAÇÃO</span><strong>${row?.duration ? `${row.duration} dias` : "A definir"}</strong></div>
         <div><span>PESO FÍSICO</span><strong>${weight.toFixed(0)}%</strong></div>
       </div>
-      ${builderModuleEnabled("escopo") ? `
+      ${builderModuleEnabled("escopo") && showTechnicalDetail ? `
         <h2 class="scope-title">O que está contemplado nesta etapa</h2>
         <table class="scope-table-demo">
           <thead><tr><th>Previsto</th><th>Breve descrição da atividade</th></tr></thead>
@@ -1898,7 +1921,7 @@ ${orcamento && (builderModuleEnabled("etapas_orcamento") || builderModuleEnabled
     const stageTitle = group.hasStageHeader
       ? `<div class="orc-stage-title"><span><strong>Etapa ${group.ordem}</strong> · ${group.nome}</span><strong>${fmtBRL(etapaTotal)}</strong></div>`
       : "";
-    const scopeTable = builderModuleEnabled("escopo")
+    const scopeTable = builderModuleEnabled("escopo") && resolveProposalTechnicalDetail(presentation, group.id)
       ? renderProposalScopeTable(group.itens)
       : "";
     const stageVisual = group.hasStageHeader && builderModuleEnabled("imagem_por_etapa")
@@ -2156,7 +2179,9 @@ export function renderOrcamentoPdf(args: {
     const stageTitle = group.hasStageHeader
       ? `<div class="stage-title"><span><strong>Etapa ${group.ordem}</strong> · ${group.nome}</span><strong>${fmtBRL(etapaTotal)}</strong></div>`
       : "";
-    const scopeTable = renderProposalScopeTable(group.itens);
+    const scopeTable = resolveProposalTechnicalDetail(presentation, group.id)
+      ? renderProposalScopeTable(group.itens)
+      : "";
     const stageVisual = group.hasStageHeader
       ? renderProposalStageImage(presentation, group.id, group.nome)
       : "";
