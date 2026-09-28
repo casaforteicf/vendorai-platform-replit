@@ -30,6 +30,15 @@ export type ProposalBuilderModule = {
   required?: boolean;
 };
 
+export type ProposalBuilderVisualStyle = {
+  preset: "premium_arquitetonico" | "corporativo" | "catalogo_comercial" | "minimalista" | "tecnico";
+  heroVariant: "fotografico" | "minimalista" | "institucional" | "produto";
+  stageVariant: "cards" | "timeline" | "accordion" | "lista_tecnica";
+  investmentVariant: "valor_global" | "por_etapa" | "por_item";
+  density: "arejado" | "equilibrado" | "compacto";
+  imageEmphasis: "alta" | "media" | "baixa";
+};
+
 export type ProposalBuilderTemplate = {
   id: string;
   name: string;
@@ -37,6 +46,7 @@ export type ProposalBuilderTemplate = {
   proposalKind?: "construction_project" | "architecture_service" | "retail_quote" | "distribution_b2b" | "vehicle_sale" | "insurance_quote" | "professional_service" | "generic";
   isDefault: boolean;
   modules: ProposalBuilderModule[];
+  visualStyle: ProposalBuilderVisualStyle;
   aiRules: {
     tone?: string;
     technicalLevel?: string;
@@ -191,6 +201,32 @@ export function defaultProposalBuilderTemplate(
       order: index + 1,
       required: key === "capa" || key === "condicoes_comerciais" || key === "aceite",
     })),
+    visualStyle: proposalKind === "construction_project" || proposalKind === "architecture_service"
+      ? {
+          preset: "premium_arquitetonico",
+          heroVariant: "fotografico",
+          stageVariant: "cards",
+          investmentVariant: "por_etapa",
+          density: "arejado",
+          imageEmphasis: "alta",
+        }
+      : proposalKind === "retail_quote" || proposalKind === "distribution_b2b"
+        ? {
+            preset: "catalogo_comercial",
+            heroVariant: "produto",
+            stageVariant: "lista_tecnica",
+            investmentVariant: "por_item",
+            density: "equilibrado",
+            imageEmphasis: "media",
+          }
+        : {
+            preset: "corporativo",
+            heroVariant: "institucional",
+            stageVariant: "accordion",
+            investmentVariant: "valor_global",
+            density: "equilibrado",
+            imageEmphasis: "media",
+          },
     aiRules: nonConstructionRules
       ?? (proposalKind === "construction_project"
         ? {
@@ -259,6 +295,46 @@ export function normalizeProposalBuilderTemplate(
     .filter((item): item is ProposalBuilderModule => Boolean(item))
     .sort((a, b) => a.order - b.order);
 
+  const visualRaw =
+    source.visualStyle && typeof source.visualStyle === "object"
+      ? (source.visualStyle as Record<string, unknown>)
+      : {};
+  const visualFallback = fallback.visualStyle;
+  const visualStyle: ProposalBuilderVisualStyle = {
+    preset:
+      visualRaw.preset === "corporativo"
+      || visualRaw.preset === "catalogo_comercial"
+      || visualRaw.preset === "minimalista"
+      || visualRaw.preset === "tecnico"
+        ? visualRaw.preset
+        : "premium_arquitetonico",
+    heroVariant:
+      visualRaw.heroVariant === "minimalista"
+      || visualRaw.heroVariant === "institucional"
+      || visualRaw.heroVariant === "produto"
+        ? visualRaw.heroVariant
+        : visualFallback.heroVariant,
+    stageVariant:
+      visualRaw.stageVariant === "timeline"
+      || visualRaw.stageVariant === "accordion"
+      || visualRaw.stageVariant === "lista_tecnica"
+        ? visualRaw.stageVariant
+        : visualFallback.stageVariant,
+    investmentVariant:
+      visualRaw.investmentVariant === "valor_global"
+      || visualRaw.investmentVariant === "por_item"
+        ? visualRaw.investmentVariant
+        : visualFallback.investmentVariant,
+    density:
+      visualRaw.density === "compacto" || visualRaw.density === "equilibrado"
+        ? visualRaw.density
+        : visualFallback.density,
+    imageEmphasis:
+      visualRaw.imageEmphasis === "baixa" || visualRaw.imageEmphasis === "media"
+        ? visualRaw.imageEmphasis
+        : visualFallback.imageEmphasis,
+  };
+
   const aiRulesRaw =
     source.aiRules && typeof source.aiRules === "object"
       ? (source.aiRules as Record<string, unknown>)
@@ -292,6 +368,7 @@ export function normalizeProposalBuilderTemplate(
         : fallback.proposalKind,
     isDefault: source.isDefault !== false,
     modules: modules.length ? modules : fallback.modules,
+    visualStyle,
     aiRules: {
       tone:
         typeof aiRulesRaw.tone === "string"
