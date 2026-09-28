@@ -447,30 +447,30 @@ const SHELL_STYLES = `
   }
 
   .arqdor-studio-v3 .arqdor-studio-entry-btn {
-    position: fixed;
-    top: 11px;
-    left: 104px;
-    z-index: 1200;
-    height: 36px;
-    padding: 0 14px;
+    height: 38px;
+    padding: 0 16px;
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 7px;
+    flex: 0 0 auto;
     border-radius: 10px;
-    border: 1px solid #fed7aa;
+    border: 1px solid #fdba74;
     background: #fff7ed;
     color: #c2410c;
     font-size: 12px;
     font-weight: 800;
+    line-height: 1;
+    white-space: nowrap;
     cursor: pointer;
-    box-shadow: 0 3px 10px rgba(15,23,42,.05);
-    transition: .18s ease;
+    box-shadow: none;
+    transition: background .16s ease, border-color .16s ease, color .16s ease;
   }
 
   .arqdor-studio-v3 .arqdor-studio-entry-btn:hover {
     background: #ffedd5;
     border-color: #fb923c;
-    transform: translateY(-1px);
+    color: #9a3412;
   }
 
   @media (max-width: 1220px) {
@@ -794,6 +794,26 @@ export default function RenderStudioPage() {
       applyVendorAiPalette(root);
       tagStudioChrome(root);
 
+      // Studio IA pertence ao fluxo do Render IA. A ação é inserida no
+      // mesmo container do botão "Carregar Imagem", em vez de usar
+      // posicionamento fixo sobre a área de marca/breadcrumb.
+      const topbar = root.querySelector<HTMLElement>(".arqdor-legacy-topbar");
+      const loadImageButton = topbar
+        ? Array.from(topbar.querySelectorAll<HTMLButtonElement>("button"))
+            .find((button) => /Carregar Imagem/i.test(textOf(button)))
+        : undefined;
+      if (loadImageButton && !topbar?.querySelector('[data-arqdor-studio-entry="true"]')) {
+        const studioButton = document.createElement("button");
+        studioButton.type = "button";
+        studioButton.dataset.arqdorStudioEntry = "true";
+        studioButton.className = "arqdor-studio-entry-btn";
+        studioButton.setAttribute("aria-label", "Abrir Studio IA");
+        studioButton.title = "Studio IA — materiais, iluminação, variações e versões";
+        studioButton.innerHTML = '<span aria-hidden="true">✦</span><span>Studio IA</span>';
+        studioButton.addEventListener("click", () => setLocation("/arch/studio"));
+        loadImageButton.insertAdjacentElement("beforebegin", studioButton);
+      }
+
       const activeStep = getActiveStudioStep(root);
       if (activeStep) root.dataset.arqdorStep = activeStep;
 
@@ -862,16 +882,6 @@ export default function RenderStudioPage() {
         <span aria-hidden="true">←</span>
         Voltar
       </button>
-      <button
-        className="arqdor-studio-entry-btn"
-        onClick={() => setLocation("/arch/studio")}
-        aria-label="Abrir Studio IA dentro do fluxo de Render IA"
-        title="Studio IA — editar materiais, iluminação, variações e versões"
-      >
-        <span aria-hidden="true">✦</span>
-        Studio IA
-      </button>
-
       <LegacyRenderStudioPage key={`${targetKey}:${approvalRedirectEpoch}`} />
 
       {approvedVersion && (
