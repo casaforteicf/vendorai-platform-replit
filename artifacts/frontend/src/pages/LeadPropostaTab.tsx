@@ -276,6 +276,14 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     vertical?: string;
     isDefault?: boolean;
     modules?: Array<{ key: string; enabled?: boolean; order?: number; required?: boolean }>;
+    visualStyle?: {
+      preset?: "premium_arquitetonico" | "corporativo" | "catalogo_comercial" | "minimalista" | "tecnico";
+      heroVariant?: "fotografico" | "minimalista" | "institucional" | "produto";
+      stageVariant?: "cards" | "timeline" | "accordion" | "lista_tecnica";
+      investmentVariant?: "valor_global" | "por_etapa" | "por_item";
+      density?: "arejado" | "equilibrado" | "compacto";
+      imageEmphasis?: "alta" | "media" | "baixa";
+    };
     aiRules?: {
       tone?: string;
       technicalLevel?: string;
@@ -298,6 +306,17 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const [proposalBuilderEditorOpen, setProposalBuilderEditorOpen] = useState(false);
   const [proposalBuilderEditorSaving, setProposalBuilderEditorSaving] = useState(false);
   const [proposalBuilderEditorName, setProposalBuilderEditorName] = useState("");
+  const [proposalBuilderEditorPreset, setProposalBuilderEditorPreset] = useState<"premium_arquitetonico" | "corporativo" | "catalogo_comercial" | "minimalista" | "tecnico">("premium_arquitetonico");
+  const [proposalBuilderHeroVariant, setProposalBuilderHeroVariant] = useState<"fotografico" | "minimalista" | "institucional" | "produto">("fotografico");
+  const [proposalBuilderStageVariant, setProposalBuilderStageVariant] = useState<"cards" | "timeline" | "accordion" | "lista_tecnica">("cards");
+  const [proposalBuilderInvestmentVariant, setProposalBuilderInvestmentVariant] = useState<"valor_global" | "por_etapa" | "por_item">("por_etapa");
+  const [proposalBuilderDensity, setProposalBuilderDensity] = useState<"arejado" | "equilibrado" | "compacto">("arejado");
+  const [proposalBuilderImageEmphasis, setProposalBuilderImageEmphasis] = useState<"alta" | "media" | "baixa">("alta");
+  const [proposalBuilderTone, setProposalBuilderTone] = useState("");
+  const [proposalBuilderTechnicalLevel, setProposalBuilderTechnicalLevel] = useState("");
+  const [proposalBuilderImageRules, setProposalBuilderImageRules] = useState("");
+  const [proposalBuilderContentRules, setProposalBuilderContentRules] = useState("");
+  const [proposalBuilderAvoidRules, setProposalBuilderAvoidRules] = useState("");
   const [proposalBuilderEditorModules, setProposalBuilderEditorModules] = useState<
     Array<{ key: string; enabled?: boolean; order?: number; required?: boolean }>
   >([]);
@@ -1100,6 +1119,17 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
       .sort((a, b) => Number(a.order ?? 999) - Number(b.order ?? 999))
       .map((item, index) => ({ ...item, order: index + 1 }));
     setProposalBuilderEditorName(template.name);
+    setProposalBuilderEditorPreset(template.visualStyle?.preset ?? "premium_arquitetonico");
+    setProposalBuilderHeroVariant(template.visualStyle?.heroVariant ?? "fotografico");
+    setProposalBuilderStageVariant(template.visualStyle?.stageVariant ?? "cards");
+    setProposalBuilderInvestmentVariant(template.visualStyle?.investmentVariant ?? "por_etapa");
+    setProposalBuilderDensity(template.visualStyle?.density ?? "arejado");
+    setProposalBuilderImageEmphasis(template.visualStyle?.imageEmphasis ?? "alta");
+    setProposalBuilderTone(template.aiRules?.tone ?? "");
+    setProposalBuilderTechnicalLevel(template.aiRules?.technicalLevel ?? "");
+    setProposalBuilderImageRules((template.aiRules?.imageRules ?? []).join("\n"));
+    setProposalBuilderContentRules((template.aiRules?.contentRules ?? []).join("\n"));
+    setProposalBuilderAvoidRules((template.aiRules?.avoid ?? []).join("\n"));
     setProposalBuilderEditorModules(modules);
     setProposalBuilderDraggedIndex(null);
     setProposalBuilderEditorOpen(true);
@@ -1139,6 +1169,21 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
           body: JSON.stringify({
             name: proposalBuilderEditorName.trim() || template.name,
             isDefault: template.isDefault !== false,
+            visualStyle: {
+              preset: proposalBuilderEditorPreset,
+              heroVariant: proposalBuilderHeroVariant,
+              stageVariant: proposalBuilderStageVariant,
+              investmentVariant: proposalBuilderInvestmentVariant,
+              density: proposalBuilderDensity,
+              imageEmphasis: proposalBuilderImageEmphasis,
+            },
+            aiRules: {
+              tone: proposalBuilderTone.trim(),
+              technicalLevel: proposalBuilderTechnicalLevel.trim(),
+              imageRules: proposalBuilderImageRules.split(/\r?\n/).map((item) => item.trim()).filter(Boolean),
+              contentRules: proposalBuilderContentRules.split(/\r?\n/).map((item) => item.trim()).filter(Boolean),
+              avoid: proposalBuilderAvoidRules.split(/\r?\n/).map((item) => item.trim()).filter(Boolean),
+            },
             modules: proposalBuilderEditorModules.map((item, index) => ({
               ...item,
               order: index + 1,
