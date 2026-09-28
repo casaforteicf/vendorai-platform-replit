@@ -787,6 +787,40 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
     .limit(1);
   const nextVersion = (last?.version ?? 0) + 1;
 
+  // The selected budget is the commercial source of truth.
+  // Load it before calling AI so the narrative is anchored to the same
+  // orçamento that will be rendered deterministically later.
+  const bodyPropostaId: string | null = req.body?.propostaId ? String(req.body.propostaId) : null;
+  let selectedBudgetForAI: {
+    titulo: string;
+    valorTotal?: string | null;
+    itens?: unknown[];
+    observacoes?: string | null;
+  } | null = null;
+
+  if (bodyPropostaId) {
+    const [selectedBudget] = await db
+      .select({
+        titulo: propostasTable.titulo,
+        valorTotal: propostasTable.valorTotal,
+        itens: propostasTable.itens,
+        observacoes: propostasTable.observacoes,
+      })
+      .from(propostasTable)
+      .where(and(
+        eq(propostasTable.id, bodyPropostaId),
+        eq(propostasTable.tenantId, tenantId),
+        eq(propostasTable.leadId, leadId),
+      ))
+      .limit(1);
+
+    if (!selectedBudget) {
+      res.status(404).json({ error: "Orçamento selecionado não encontrado para este lead." });
+      return;
+    }
+    selectedBudgetForAI = selectedBudget;
+  }
+
   const prompt = buildProposalPrompt({
     leadName: ctx.lead.nome,
     empresa: ctx.lead.empresa,
@@ -795,7 +829,7 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
     logoUrl: ctx.lead.logoUrl,
     corDestaque: ctx.lead.corDestaque,
     products: ctx.products,
-    propostas: ctx.propostas,
+    propostas: selectedBudgetForAI ? [selectedBudgetForAI] : [],
     briefing: ctx.briefing
       ? {
           situationAnswers: ctx.briefing.situationAnswers as any,
@@ -922,7 +956,6 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
   const primaryColor = ctx.lead.corDestaque || "#A78BFA";
   const theme = generateTheme(primaryColor);
 
-  const bodyPropostaId: string | null = req.body?.propostaId ? String(req.body.propostaId) : null;
   const requestedImages: string[] = Array.isArray(req.body?.imagens)
     ? req.body.imagens
         .filter((value: unknown): value is string => typeof value === "string" && value.trim().length > 0)
