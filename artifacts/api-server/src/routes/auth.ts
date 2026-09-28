@@ -697,12 +697,20 @@ router.post("/auth/login", async (req, res) => {
     .where(eq(usersTable.email, email));
 
   if (!user || !user.active) {
+    req.log?.warn(
+      { authFailure: "user_missing_or_inactive", emailHash: createHash("sha256").update(email).digest("hex").slice(0, 12) },
+      "auth: login rejected",
+    );
     res.status(401).json({ error: "Invalid credentials" });
     return;
   }
 
   const valid = await bcrypt.compare(password, user.password);
   if (!valid) {
+    req.log?.warn(
+      { authFailure: "password_mismatch", userId: user.id, tenantId: user.tenantId },
+      "auth: login rejected",
+    );
     res.status(401).json({ error: "Invalid credentials" });
     return;
   }
