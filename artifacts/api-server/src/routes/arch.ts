@@ -1,5 +1,5 @@
 import { Router, type Request, type IRouter } from "express";
-import { and, eq, ilike, sql, desc, sum, ne, gte, lte, inArray } from "drizzle-orm";
+import { and, eq, ilike, sql, desc, sum, ne, gte, lte, inArray, or } from "drizzle-orm";
 import multer from "multer";
 import sharp from "sharp";
 import {
@@ -73,6 +73,7 @@ import { arqOrchestrator } from "../lib/arqdor/orchestrator/index.js";
 import { automationLogsTable } from "@workspace/db";
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { pickNextVendedor } from "../lib/round-robin.js";
+import { createSpecificationParticipation } from "../services/commission-engine.js";
 import { ensureStandardConstructionCatalog } from "../lib/ensure-standard-construction-catalog.js";
 import { ensureArqdorStarterLibrary } from "../lib/arqdor/starter-library.js";
 import { searchPolyHavenModels, resolvePolyHavenModel } from "../lib/arqdor/polyhaven.js";
@@ -6932,6 +6933,7 @@ router.post("/arch/projetos/:projetoId/solicitar-orcamentos", authenticate, asyn
     participationPercent: z.number().min(0).max(100).default(10),
     platformFeePercent: z.number().min(0).max(100).default(1),
     attributionWindowDays: z.number().int().min(0).max(3650).default(90),
+    quoteScope: z.string().max(160).optional(),
   }).safeParse(req.body);
 
   if (!body.success) return res.status(422).json({ error: "INVALID_REQUEST", issues: body.error.issues });
@@ -6960,6 +6962,7 @@ router.post("/arch/projetos/:projetoId/solicitar-orcamentos", authenticate, asyn
     agreementStatus: body.data.participationEnabled ? "pending" : "not_applicable",
     attributionWindowDays: body.data.attributionWindowDays,
     attributionSource: "architect_project",
+    quoteScope: body.data.quoteScope ?? null,
     metadata: {
       source: partner.connectedTenantId ? "vendorai_tenant" : "external_partner",
       partnerSource: partner.partnerSource,
@@ -6992,6 +6995,10 @@ router.patch("/arch/solicitacoes/:id/responder", authenticate, async (req, res) 
   const parsed = z.object({
     resposta: z.enum(["accepted", "rejected"]),
     observacao: z.string().max(2000).optional(),
+    quoteAmountCents: z.number().int().min(0).optional(),
+    quoteDeliveryDays: z.number().int().min(0).max(3650).optional(),
+    quoteValidUntil: z.string().datetime({ offset: true }).optional(),
+    quoteProposalUrl: z.string().url().max(2000).optional(),
   }).safeParse(req.body);
 
   if (!parsed.success) return res.status(422).json({ error: "INVALID_RESPONSE", issues: parsed.error.issues });
@@ -7012,6 +7019,11 @@ router.patch("/arch/solicitacoes/:id/responder", authenticate, async (req, res) 
     .set({
       agreementStatus: sol.participationEnabled ? parsed.data.resposta : "not_applicable",
       status: parsed.data.resposta === "accepted" ? "respondido" : "concluido",
+      quoteAmountCents: parsed.data.resposta === "accepted" ? (parsed.data.quoteAmountCents ?? sol.quoteAmountCents) : sol.quoteAmountCents,
+      quoteDeliveryDays: parsed.data.resposta === "accepted" ? (parsed.data.quoteDeliveryDays ?? sol.quoteDeliveryDays) : sol.quoteDeliveryDays,
+      quoteValidUntil: parsed.data.quoteValidUntil ? new Date(parsed.data.quoteValidUntil) : sol.quoteValidUntil,
+      quoteProposalUrl: parsed.data.quoteProposalUrl ?? sol.quoteProposalUrl,
+      quoteResponseMessage: parsed.data.observacao ?? sol.quoteResponseMessage,
       metadata: {
         ...(sol.metadata ?? {}),
         agreementResponse: parsed.data.resposta,
@@ -7036,17 +7048,131 @@ router.patch("/arch/solicitacoes/:id/responder", authenticate, async (req, res) 
   return res.json(updated);
 });
 
-// ── GET /arch/solicitacoes — histórico de solicitações do tenant ──────────────
+// ── GET /arch/solicitacoes — caixa de saída + entrada de parceiros ─────────────
 router.get("/arch/solicitacoes", authenticate, async (req, res) => {
   const tid = tenantId(req);
+  const scope = String(req.query.scope ?? "all");
+  const projetoId = typeof req.query.projetoId === "string" ? req.query.projetoId : null;
+
+  const visibility = scope === "inbox"
+    ? eq(archSolicitacoesTable.recipientTenantId, tid)
+    : scope === "outbox"
+      ? eq(archSolicitacoesTable.tenantId, tid)
+      : or(eq(archSolicitacoesTable.tenantId, tid), eq(archSolicitacoesTable.recipientTenantId, tid));
+
+  const where = projetoId
+    ? and(visibility, eq(archSolicitacoesTable.projetoId, projetoId))
+    : visibility;
+
   const rows = await db
     .select()
     .from(archSolicitacoesTable)
-    .where(eq(archSolicitacoesTable.tenantId, tid))
+    .where(where)
     .orderBy(desc(archSolicitacoesTable.createdAt))
-    .limit(100);
+    .limit(200);
 
   return res.json(rows);
+});
+
+// ── POST /arch/solicitacoes/:id/selecionar — arquiteto escolhe a proposta ─────
+router.post("/arch/solicitacoes/:id/selecionar", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const solicitacaoId = String(req.params.id);
+
+  const [sol] = await db.select().from(archSolicitacoesTable)
+    .where(and(eq(archSolicitacoesTable.id, solicitacaoId), eq(archSolicitacoesTable.tenantId, tid)))
+    .limit(1);
+
+  if (!sol) return res.status(404).json({ error: "Solicitação não encontrada." });
+  if (sol.tipo !== "orcamento" || sol.agreementStatus !== "accepted" || sol.quoteAmountCents == null) {
+    return res.status(422).json({ error: "A proposta precisa estar respondida, aceita e com valor informado." });
+  }
+
+  const groupConditions = [
+    eq(archSolicitacoesTable.tenantId, tid),
+    eq(archSolicitacoesTable.projetoId, sol.projetoId ?? ""),
+    eq(archSolicitacoesTable.tipo, "orcamento"),
+  ];
+  if (sol.quoteScope) groupConditions.push(eq(archSolicitacoesTable.quoteScope, sol.quoteScope));
+
+  await db.update(archSolicitacoesTable)
+    .set({ selected: false, selectedAt: null, selectedByTenantId: null })
+    .where(and(...groupConditions));
+
+  const [selected] = await db.update(archSolicitacoesTable)
+    .set({ selected: true, selectedAt: new Date(), selectedByTenantId: tid, status: "concluido" })
+    .where(eq(archSolicitacoesTable.id, solicitacaoId))
+    .returning();
+
+  if (selected?.recipientTenantId) {
+    await db.insert(notificationsTable).values({
+      tenantId: selected.recipientTenantId,
+      title: "Proposta selecionada",
+      message: `Sua proposta para ${selected.projetoTitulo ?? "o projeto"} foi selecionada.`,
+      type: "info",
+      category: "arch_partner_quote",
+    });
+  }
+
+  return res.json(selected);
+});
+
+// ── POST /arch/solicitacoes/:id/confirmar-venda — libera participação ─────────
+router.post("/arch/solicitacoes/:id/confirmar-venda", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const solicitacaoId = String(req.params.id);
+  const parsed = z.object({
+    saleAmountCents: z.number().int().positive(),
+    paymentId: z.string().min(3).max(180),
+    receiptPercent: z.number().min(0).max(100).default(100),
+  }).safeParse(req.body);
+
+  if (!parsed.success) return res.status(422).json({ error: "INVALID_SALE", issues: parsed.error.issues });
+
+  const [sol] = await db.select().from(archSolicitacoesTable)
+    .where(eq(archSolicitacoesTable.id, solicitacaoId))
+    .limit(1);
+
+  if (!sol) return res.status(404).json({ error: "Solicitação não encontrada." });
+  if (sol.recipientTenantId !== tid && sol.tenantId !== tid) return res.status(403).json({ error: "FORBIDDEN" });
+  if (!sol.selected) return res.status(422).json({ error: "A proposta precisa estar selecionada antes de confirmar a venda." });
+  if (!sol.participationEnabled || sol.agreementStatus !== "accepted") {
+    return res.status(422).json({ error: "Não existe Participação de Especificação aceita para esta venda." });
+  }
+
+  const participationResult = await createSpecificationParticipation({
+    tenantId: sol.tenantId,
+    projectId: sol.projetoId,
+    solicitationId: sol.id,
+    architectActorId: sol.tenantId,
+    baseAmountCents: parsed.data.saleAmountCents,
+    participationPercent: Number(sol.participationPercent ?? 0),
+    platformFeePercent: Number(sol.platformFeePercent ?? 0),
+    paymentId: parsed.data.paymentId,
+    receiptPercent: parsed.data.receiptPercent,
+    metadata: {
+      supplierTenantId: sol.recipientTenantId,
+      partnerId: sol.partnerId,
+      quoteScope: sol.quoteScope,
+      projectTitle: sol.projetoTitulo,
+    },
+  });
+
+  const [updated] = await db.update(archSolicitacoesTable)
+    .set({
+      saleConfirmedAt: new Date(),
+      saleAmountCents: parsed.data.saleAmountCents,
+      participationEventId: participationResult.event?.id ?? sol.participationEventId,
+      metadata: {
+        ...(sol.metadata ?? {}),
+        salePaymentId: parsed.data.paymentId,
+        receiptPercent: parsed.data.receiptPercent,
+      },
+    })
+    .where(eq(archSolicitacoesTable.id, solicitacaoId))
+    .returning();
+
+  return res.json({ solicitacao: updated, participation: participationResult });
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
