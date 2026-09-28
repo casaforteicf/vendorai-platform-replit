@@ -132,6 +132,15 @@ interface PortalData {
       numero?: string | null;
       acceptedAt?: string | null;
       valorTotal?: string | number | null;
+      apresentacao?: {
+        entradaPercentual?: number;
+        amortizacaoEntradaPercentual?: number;
+        mostrarAmortizacaoEntrada?: boolean;
+        mostrarPortalCliente?: boolean;
+        previsaoInicio?: string;
+        mostrarCronogramaExecucao?: boolean;
+        mostrarFisicoFinanceiro?: boolean;
+      } | null;
     } | null;
     bdiGlobal: string;
     etapas: Array<{
@@ -160,6 +169,18 @@ interface PortalData {
     dataFimPrevista?: string | null;
     custoPrevisto?: string | null;
     pesoFisico?: string | null;
+  }>;
+  fases?: Array<{
+    id: string;
+    etapa_id: string;
+    nome: string;
+    ordem: number;
+    status: string;
+    percentual_etapa: string | number;
+    percentual_executado: string | number;
+    custo_previsto: string | number;
+    data_inicio_prevista?: string | null;
+    data_fim_prevista?: string | null;
   }>;
   diario: Array<{
     id: string;
@@ -198,6 +219,12 @@ interface PortalData {
     data: string;
     percentual_anterior: string | number;
     percentual_novo: string | number;
+    fase_id?: string | null;
+    fase_nome?: string | null;
+    valor_bruto?: string | number | null;
+    amortizacao_entrada?: string | number | null;
+    valor_liquido?: string | number | null;
+    saldo_entrada_apos?: string | number | null;
     observacao?: string | null;
   }>;
   documentos?: Array<{ id: string; nome: string; url: string; mimeType?: string | null; data?: string | null; tipo?: string }>;
@@ -423,6 +450,7 @@ export default function PortalObra() {
   if (error || !data) return <div className="flex min-h-screen items-center justify-center bg-gray-50"><div className="max-w-sm text-center"><Building2 className="mx-auto mb-4 h-12 w-12 text-gray-300" /><h1 className="mb-2 text-xl font-semibold text-gray-700">Portal não encontrado</h1><p className="text-sm text-gray-500">{error ?? "Verifique o link enviado pela construtora."}</p></div></div>;
 
   const { obra, tenant, orcamento, etapas, diario, ocorrencias } = data;
+  const fases = data.fases ?? [];
   const decisions = data.decisions ?? [];
   const resumo = data.resumo;
   const marcos = data.marcos ?? [];
@@ -558,9 +586,40 @@ export default function PortalObra() {
 
         {activeTab === "orcamento" && data.publication?.showBudget !== false ? <Section title="Orçamento" icon={<CircleDollarSign className="h-5 w-5" />}>{!orcamento ? <div className="py-8 text-center text-gray-400"><FileText className="mx-auto mb-2 h-8 w-8 opacity-40" /><p className="text-sm">Nenhum orçamento disponível ainda.</p></div> : <><div className="mb-4 flex flex-wrap items-center justify-between gap-2"><span className="text-sm text-gray-500">{orcamento.titulo ?? `Orçamento v${orcamento.versao}`}{orcamento.bdiGlobal !== "0" ? ` · BDI ${orcamento.bdiGlobal}%` : ""}</span><div className="flex items-center gap-2">{orcamento.status === "aprovado" ? <span className="flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />Aprovado pelo cliente</span> : null}{orcamento.status === "enviado" && !approved ? <button onClick={handleAprovar} disabled={approving} className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60">{approving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ThumbsUp className="h-4 w-4" />}Aprovar Orçamento</button> : null}</div></div><div className="space-y-3">{orcamento.etapas.map((etapa) => <div key={etapa.id} className="overflow-hidden rounded-xl border border-gray-200"><div className="flex items-center justify-between bg-gray-50 px-4 py-3"><span className="text-sm font-medium text-gray-800">{etapa.nome}</span><span className="text-sm font-semibold text-gray-900">{fmtMoney(etapaTotal(etapa))}</span></div>{etapa.itens.length > 0 ? <div className="divide-y divide-gray-100">{etapa.itens.map((item) => <div key={item.id} className="flex items-start justify-between gap-4 px-4 py-2.5 text-sm"><div className="min-w-0 flex-1"><p className="text-gray-700">{item.nome}</p><p className="text-xs text-gray-400">{item.quantidade} {item.unidade} × {fmtMoney(item.custoUnitario)}</p></div><span className="whitespace-nowrap font-medium text-gray-900">{fmtMoney(itemTotal(item))}</span></div>)}</div> : null}</div>)}</div><div className="mt-4 flex items-center justify-between rounded-xl bg-indigo-50 px-5 py-4"><span className="font-semibold text-indigo-800">Total do Orçamento</span><span className="text-xl font-bold text-indigo-700">{fmtMoney(orcamentoTotalCalc)}</span></div></>}</Section> : null}
 
-        {activeTab === "cronograma" && data.publication?.showSchedule !== false ? <Section title="Cronograma" icon={<Layers className="h-5 w-5" />}>
+        {activeTab === "cronograma" && data.publication?.showSchedule !== false ? <Section title="Cronograma Executivo e Financeiro" icon={<Layers className="h-5 w-5" />}>
           {orcamento?.propostaOrigemId ? <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-indigo-600">Linha de base contratada</p><p className="text-sm font-medium text-indigo-900">Versão {orcamento.versao}{orcamento.linhaBaseSnapshot?.numero ? ` · Proposta ${orcamento.linhaBaseSnapshot.numero}` : ""}</p></div>{orcamento.linhaBaseSnapshot?.acceptedAt ? <span className="text-xs text-indigo-600">Contratada em {fmt(orcamento.linhaBaseSnapshot.acceptedAt)}</span> : null}</div> : null}
-          {etapas.length === 0 ? <div className="py-8 text-center text-gray-400"><Calendar className="mx-auto mb-2 h-8 w-8 opacity-40" /><p className="text-sm">Nenhuma etapa cadastrada.</p></div> : <div className="space-y-3">{etapas.map((etapa) => { const p = parseFloat(etapa.percentualExecutado ?? "0"); const st = ETAPA_STATUS[etapa.status] ?? { label: etapa.status, color: "bg-gray-100 text-gray-600", bar: "#94a3b8" }; const dias = etapa.dataInicioPrevista && etapa.dataFimPrevista ? Math.max(1, differenceInCalendarDays(parseISO(`${etapa.dataFimPrevista}T12:00:00`), parseISO(`${etapa.dataInicioPrevista}T12:00:00`))) + 1 : null; return <div key={etapa.id} className="rounded-xl border border-gray-200 bg-white p-4"><div className="mb-3 flex items-start justify-between gap-2"><div className="flex-1"><p className="text-sm font-medium text-gray-900">{etapa.nome}</p>{etapa.responsavel ? <p className="mt-0.5 text-xs text-gray-400">{etapa.responsavel}</p> : null}{data.publication?.showBudget !== false && Number(etapa.custoPrevisto ?? 0) > 0 ? <p className="mt-1 text-xs font-medium text-indigo-600">Contratado na etapa: {fmtMoney(etapa.custoPrevisto)}{Number(etapa.pesoFisico ?? 0) > 0 ? ` · peso físico ${Number(etapa.pesoFisico).toFixed(1)}%` : ""}</p> : null}</div><span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${st.color}`}>{st.label}</span></div><div className="mb-2 flex items-center gap-3"><ProgressBar value={p} color={st.bar} /><span className="w-10 text-right text-sm font-bold text-gray-700">{Math.round(p)}%</span></div><div className="mt-1 flex items-center gap-4 text-xs text-gray-400">{etapa.dataInicioPrevista ? <span>{fmt(etapa.dataInicioPrevista)} → {fmt(etapa.dataFimPrevista)}</span> : null}{dias ? <span>{dias} dias</span> : null}</div></div>; })}</div>}
+
+          {orcamento?.linhaBaseSnapshot?.apresentacao?.mostrarPortalCliente !== false ? (
+            <div className="mb-4 grid gap-3 rounded-xl border border-gray-200 bg-white p-4 md:grid-cols-3">
+              <div><p className="text-xs text-gray-500">Valor contratado</p><p className="text-sm font-semibold">{fmtMoney(orcamento?.linhaBaseSnapshot?.valorTotal ?? obra.orcamentoTotal)}</p></div>
+              <div><p className="text-xs text-gray-500">Entrada / adiantamento</p><p className="text-sm font-semibold">{Number(orcamento?.linhaBaseSnapshot?.apresentacao?.entradaPercentual ?? 0).toFixed(2)}% · {fmtMoney(Number(orcamento?.linhaBaseSnapshot?.valorTotal ?? obra.orcamentoTotal ?? 0) * Number(orcamento?.linhaBaseSnapshot?.apresentacao?.entradaPercentual ?? 0) / 100)}</p></div>
+              <div><p className="text-xs text-gray-500">Amortização por medição</p><p className="text-sm font-semibold">{Number(orcamento?.linhaBaseSnapshot?.apresentacao?.amortizacaoEntradaPercentual ?? orcamento?.linhaBaseSnapshot?.apresentacao?.entradaPercentual ?? 0).toFixed(2)}%</p><p className="text-[11px] text-gray-400">Até quitar o saldo do adiantamento</p></div>
+            </div>
+          ) : null}
+
+          {etapas.length === 0 ? <div className="py-8 text-center text-gray-400"><Calendar className="mx-auto mb-2 h-8 w-8 opacity-40" /><p className="text-sm">Nenhuma etapa cadastrada.</p></div> : (
+            <div className="space-y-3">{etapas.map((etapa) => {
+              const p = parseFloat(etapa.percentualExecutado ?? "0");
+              const st = ETAPA_STATUS[etapa.status] ?? { label: etapa.status, color: "bg-gray-100 text-gray-600", bar: "#94a3b8" };
+              const dias = etapa.dataInicioPrevista && etapa.dataFimPrevista ? Math.max(1, differenceInCalendarDays(parseISO(`${etapa.dataFimPrevista}T12:00:00`), parseISO(`${etapa.dataInicioPrevista}T12:00:00`))) + 1 : null;
+              const stagePhases = fases.filter((fase) => fase.etapa_id === etapa.id).sort((a,b) => Number(a.ordem)-Number(b.ordem));
+              return <div key={etapa.id} className="rounded-xl border border-gray-200 bg-white p-4">
+                <div className="mb-3 flex items-start justify-between gap-2"><div className="flex-1"><p className="text-sm font-medium text-gray-900">{etapa.nome}</p>{etapa.responsavel ? <p className="mt-0.5 text-xs text-gray-400">{etapa.responsavel}</p> : null}{data.publication?.showBudget !== false && Number(etapa.custoPrevisto ?? 0) > 0 ? <p className="mt-1 text-xs font-medium text-indigo-600">Contratado na etapa: {fmtMoney(etapa.custoPrevisto)}{Number(etapa.pesoFisico ?? 0) > 0 ? ` · peso físico ${Number(etapa.pesoFisico).toFixed(1)}%` : ""}</p> : null}</div><span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${st.color}`}>{st.label}</span></div>
+                <div className="mb-2 flex items-center gap-3"><ProgressBar value={p} color={st.bar} /><span className="w-10 text-right text-sm font-bold text-gray-700">{Math.round(p)}%</span></div>
+                <div className="mt-1 flex items-center gap-4 text-xs text-gray-400">{etapa.dataInicioPrevista ? <span>{fmt(etapa.dataInicioPrevista)} → {fmt(etapa.dataFimPrevista)}</span> : null}{dias ? <span>{dias} dias</span> : null}</div>
+                {stagePhases.length ? <div className="mt-4 space-y-2 border-t border-gray-100 pt-3">
+                  {stagePhases.map((fase) => {
+                    const fp = Number(fase.percentual_executado ?? 0);
+                    const fst = ETAPA_STATUS[fase.status] ?? { label: fase.status, color: "bg-gray-100 text-gray-600", bar: "#94a3b8" };
+                    return <div key={fase.id} className="rounded-lg bg-gray-50 p-3">
+                      <div className="mb-2 flex items-start justify-between gap-2"><div><p className="text-xs font-semibold text-gray-800">{fase.nome}</p><p className="text-[11px] text-gray-500">{fmt(fase.data_inicio_prevista)} → {fmt(fase.data_fim_prevista)} · {Number(fase.percentual_etapa ?? 0).toFixed(2)}% da etapa · {fmtMoney(fase.custo_previsto)}</p></div><span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${fst.color}`}>{fst.label}</span></div>
+                      <div className="flex items-center gap-3"><ProgressBar value={fp} color={fst.bar} /><span className="w-10 text-right text-xs font-bold">{fp.toFixed(0)}%</span></div>
+                    </div>;
+                  })}
+                </div> : null}
+              </div>;
+            })}</div>
+          )}
         </Section> : null}
 
         {activeTab === "diario" && data.publication?.showDiary !== false ? <Section title="Diário da Obra" icon={<FileText className="h-5 w-5" />}>{diario.length === 0 ? <div className="py-8 text-center text-gray-400"><FileText className="mx-auto mb-2 h-8 w-8 opacity-40" /><p className="text-sm">Nenhuma entrada aprovada no diário ainda.</p></div> : <div className="space-y-3">{diario.map((entry) => { const isOpen = expandedDiario === entry.id; const hasFotos = (entry.fotos?.length ?? 0) > 0; return <div key={entry.id} className="overflow-hidden rounded-xl border border-gray-200 bg-white"><button className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left hover:bg-gray-50" onClick={() => setExpandedDiario(isOpen ? null : entry.id)}><div className="flex items-center gap-3"><span className="text-sm font-semibold text-gray-700">{format(parseISO(`${entry.data}T12:00:00`), "dd 'de' MMMM", { locale: ptBR })}</span>{hasFotos ? <span className="flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-xs text-indigo-600"><Camera className="h-3 w-3" />{entry.fotos!.length} foto{entry.fotos!.length > 1 ? "s" : ""}</span> : null}{entry.responsavelNome ? <span className="text-xs text-gray-400">{entry.responsavelNome}</span> : null}</div>{isOpen ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}</button>{isOpen ? <div className="border-t border-gray-100 px-4 pb-4"><p className="mt-3 text-sm leading-relaxed text-gray-700">{entry.conteudo}</p>{entry.climaTempo || entry.maoDeObra != null ? <div className="mt-3 flex items-center gap-4 text-xs text-gray-500">{entry.climaTempo ? <span>🌤 {entry.climaTempo}</span> : null}{entry.maoDeObra != null ? <span>👷 {entry.maoDeObra} trabalhadores</span> : null}</div> : null}{hasFotos ? <div className="mt-4 grid grid-cols-3 gap-2">{entry.fotos!.map((foto, i) => <button key={i} onClick={() => setLightbox(foto.url)} className="aspect-square overflow-hidden rounded-lg border border-gray-200"><img src={foto.url} alt={foto.caption ?? `Foto ${i + 1}`} className="h-full w-full object-cover" /></button>)}</div> : null}{entry.observacoes ? <div className="mt-3 rounded-lg border border-amber-100 bg-amber-50 p-3"><p className="mb-1 text-xs font-medium text-amber-700">Observações</p><p className="text-sm text-amber-800">{entry.observacoes}</p></div> : null}</div> : null}</div>; })}</div>}</Section> : null}
@@ -574,10 +633,16 @@ export default function PortalObra() {
                   const atual = Number(medicao.percentual_novo ?? 0);
                   return <div key={medicao.id} className="rounded-xl border border-gray-200 bg-white p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div><p className="text-sm font-semibold text-gray-900">{medicao.etapa_nome}</p><p className="text-xs text-gray-400">{fmt(medicao.data)}</p></div>
+                      <div><p className="text-sm font-semibold text-gray-900">{medicao.etapa_nome}{medicao.fase_nome ? ` · ${medicao.fase_nome}` : ""}</p><p className="text-xs text-gray-400">{fmt(medicao.data)}</p></div>
                       <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">{anterior.toFixed(0)}% → {atual.toFixed(0)}%</span>
                     </div>
                     <ProgressBar value={atual} color="#6366f1" />
+                    {medicao.fase_id && medicao.valor_bruto != null ? <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-gray-50 p-3 text-xs md:grid-cols-4">
+                      <div><p className="text-gray-400">Medição bruta</p><p className="font-semibold text-gray-800">{fmtMoney(medicao.valor_bruto)}</p></div>
+                      <div><p className="text-gray-400">Amortização entrada</p><p className="font-semibold text-amber-700">-{fmtMoney(medicao.amortizacao_entrada)}</p></div>
+                      <div><p className="text-gray-400">Valor líquido</p><p className="font-semibold text-indigo-700">{fmtMoney(medicao.valor_liquido)}</p></div>
+                      <div><p className="text-gray-400">Saldo da entrada</p><p className="font-semibold text-gray-800">{fmtMoney(medicao.saldo_entrada_apos)}</p></div>
+                    </div> : null}
                     {medicao.observacao ? <p className="mt-3 text-sm text-gray-600">{medicao.observacao}</p> : null}
                   </div>;
                 })}
