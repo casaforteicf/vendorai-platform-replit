@@ -229,6 +229,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     useState<Record<string, boolean>>({});
   const [proposalShowGrandTotal, setProposalShowGrandTotal] = useState(true);
   const [proposalBuiltArea, setProposalBuiltArea] = useState("");
+  const [proposalExcludedText, setProposalExcludedText] = useState("");
 
   // Refinement dialog
   const [refineOpen, setRefineOpen] = useState(false);
@@ -655,6 +656,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
       setProposalPresentationDefaultMode("completo");
       setProposalShowTechnicalDetails(true);
       setProposalShowGrandTotal(true);
+      setProposalExcludedText("");
       return;
     }
 
@@ -692,6 +694,11 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
         ? String(presentation.areaTotalConstruida)
         : "",
     );
+    setProposalExcludedText(
+      Array.isArray(presentation?.itensNaoInclusos)
+        ? presentation.itensNaoInclusos.filter((item: unknown) => typeof item === "string").join("\n")
+        : "",
+    );
   }
 
   function currentProposalPresentation() {
@@ -705,6 +712,10 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
         Number.isFinite(Number(proposalBuiltArea.replace(",", "."))) && Number(proposalBuiltArea.replace(",", ".")) > 0
           ? Number(proposalBuiltArea.replace(",", "."))
           : undefined,
+      itensNaoInclusos: proposalExcludedText
+        .split(/\r?\n/)
+        .map((item) => item.trim())
+        .filter(Boolean),
     };
   }
 
@@ -2094,6 +2105,19 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                         Informe a área total real da obra, incluindo anexos como quiosque, garagem ou edícula quando fizerem parte do contrato.
                       </p>
                     </div>
+                    <div className="space-y-1.5 lg:col-span-3">
+                      <label className="text-xs font-medium text-muted-foreground">O que não está incluso</label>
+                      <Textarea
+                        value={proposalExcludedText}
+                        onChange={(e) => setProposalExcludedText(e.target.value)}
+                        placeholder={"Ex.:\nPaisagismo\nMóveis planejados\nTaxas e emolumentos"}
+                        className="min-h-[110px] resize-y bg-background"
+                      />
+                      <p className="text-[11px] text-muted-foreground">
+                        Edite livremente. Use uma linha para cada item não contemplado; esta informação será salva no orçamento e exibida na proposta.
+                      </p>
+                    </div>
+
                     <div className="space-y-1.5">
                       <label className="text-xs font-medium text-muted-foreground">Detalhamento financeiro</label>
                       <Select

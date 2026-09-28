@@ -500,6 +500,7 @@ type ProposalPresentationConfig = {
   mostrarAmortizacaoEntrada?: boolean;
   mostrarPortalCliente?: boolean;
   areaTotalConstruida?: number;
+  itensNaoInclusos?: string[];
 };
 
 type PresentableProposalItem = {
@@ -535,6 +536,9 @@ function normalizeProposalPresentation(
     areaTotalConstruida: Number.isFinite(Number(value?.areaTotalConstruida)) && Number(value?.areaTotalConstruida) > 0
       ? Number(value?.areaTotalConstruida)
       : 0,
+    itensNaoInclusos: Array.isArray(value?.itensNaoInclusos)
+      ? value.itensNaoInclusos.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+      : [],
   };
 }
 
@@ -1190,6 +1194,17 @@ function renderConstructionProposalLayout(args: {
         <td class="r">${fmtBRL(Number(item.valor))}</td>
       </tr>`).join("");
 
+  const exclusionsHtml = presentation.itensNaoInclusos.length
+    ? `
+      <div class="exclusions-block">
+        <span class="exclusions-kicker">ESCOPO CONTRATUAL</span>
+        <h2>O que não está incluso nesta proposta</h2>
+        <div class="exclusions-grid">
+          ${presentation.itensNaoInclusos.map((item) => `<div class="exclusion-item"><span>—</span><strong>${escapeProposalText(item)}</strong></div>`).join("")}
+        </div>
+      </div>`
+    : "";
+
   const conditions = [
     ["VALOR GLOBAL", fmtBRL(total)],
     ...(presentation.entradaPercentual > 0 ? [["ENTRADA / ADIANTAMENTO", `${presentation.entradaPercentual.toFixed(2)}% · ${fmtBRL(entryValue)}`]] : []),
@@ -1636,6 +1651,48 @@ function renderConstructionProposalLayout(args: {
   .signature {
     margin-top: 14mm;
   }
+  .exclusions-block {
+    margin: 2mm 0 9mm;
+    padding: 6mm;
+    border: 1px solid var(--cf-border);
+    border-left: 2.2mm solid var(--cf-orange);
+    background: var(--cf-soft-2);
+    border-radius: 2mm;
+  }
+  .exclusions-kicker {
+    display: block;
+    margin-bottom: 2mm;
+    color: var(--cf-orange);
+    font-size: 6.2pt;
+    font-weight: 800;
+    letter-spacing: .11em;
+  }
+  .exclusions-block h2 {
+    margin-bottom: 4mm;
+    font-size: 13pt;
+  }
+  .exclusions-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2.5mm 6mm;
+  }
+  .exclusion-item {
+    display: grid;
+    grid-template-columns: 5mm 1fr;
+    gap: 2mm;
+    align-items: start;
+    padding: 2.2mm 0;
+    border-bottom: 1px solid var(--cf-border);
+  }
+  .exclusion-item span {
+    color: var(--cf-orange);
+    font-weight: 800;
+  }
+  .exclusion-item strong {
+    font-size: 8pt;
+    font-weight: 600;
+    line-height: 1.45;
+  }
 
   /* Web presentation mode: same proposal, better viewing outside PDF */
   @media screen {
@@ -1760,6 +1817,7 @@ ${(builderModuleEnabled("cronograma") || builderModuleEnabled("fisico_financeiro
 <section class="page">
   ${header("CONDIÇÕES COMERCIAIS", "Modelo final")}
   <h1 class="conditions-title">Condições comerciais</h1>
+  ${exclusionsHtml}
   <div class="conditions-list">
     ${conditions.map(([label, value]) => `<div class="condition-row"><span>${escapeProposalText(label)}</span><strong>${escapeProposalText(String(value))}</strong></div>`).join("")}
   </div>

@@ -1135,6 +1135,13 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
           Number.isFinite(Number(rawPresentation.areaTotalConstruida)) && Number(rawPresentation.areaTotalConstruida) > 0
             ? Number(rawPresentation.areaTotalConstruida)
             : undefined,
+        itensNaoInclusos:
+          Array.isArray(rawPresentation.itensNaoInclusos)
+            ? rawPresentation.itensNaoInclusos
+                .filter((item: unknown): item is string => typeof item === "string" && item.trim().length > 0)
+                .map((item: string) => item.trim())
+                .slice(0, 50)
+            : undefined,
       }
     : null;
 
@@ -1195,6 +1202,7 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
       amortizacaoEntradaPercentual?: number;
       mostrarAmortizacaoEntrada?: boolean;
       mostrarPortalCliente?: boolean;
+      itensNaoInclusos?: string[];
     } | null;
   } | null = null;
 
@@ -1222,6 +1230,7 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
         imagensEtapas?: Record<string, string>;
         mostrarCronogramaExecucao?: boolean;
         mostrarFisicoFinanceiro?: boolean;
+        itensNaoInclusos?: string[];
       };
 
       let mergedPresentation = {
@@ -1269,6 +1278,9 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
           : {}),
         ...(typeof bodyPresentation?.mostrarPortalCliente === "boolean"
           ? { mostrarPortalCliente: bodyPresentation.mostrarPortalCliente }
+          : {}),
+        ...(Array.isArray(bodyPresentation?.itensNaoInclusos)
+          ? { itensNaoInclusos: bodyPresentation.itensNaoInclusos }
           : {}),
       };
 
