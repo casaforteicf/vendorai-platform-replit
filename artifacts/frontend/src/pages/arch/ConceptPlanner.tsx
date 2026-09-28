@@ -370,6 +370,12 @@ type ReferenceTracePreview = {
   warnings: string[];
   skippedWalls: number;
   sourceModel: string;
+  alignmentScore?: number;
+  alignmentCorrection?: {
+    scale: number;
+    translateX: number;
+    translateY: number;
+  };
 };
 
 type ProjectSourceFile = {
@@ -8755,7 +8761,15 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       <div className="mt-2 space-y-1 text-[11px] text-blue-900">
                         <div>
                           {referenceTracePreview.walls.length} paredes · {referenceTracePreview.openings.length} aberturas · confiança {Math.round(referenceTracePreview.confidence * 100)}%
+                          {typeof referenceTracePreview.alignmentScore === "number"
+                            ? ` · alinhamento ${Math.round(referenceTracePreview.alignmentScore * 100)}%`
+                            : ""}
                         </div>
+                        {referenceTracePreview.alignmentCorrection && (
+                          <div className="text-[10px] text-blue-800/75">
+                            Registro automático: escala ×{referenceTracePreview.alignmentCorrection.scale.toFixed(2)} · ΔX {(referenceTracePreview.alignmentCorrection.translateX * 100).toFixed(1)}% · ΔY {(referenceTracePreview.alignmentCorrection.translateY * 100).toFixed(1)}%.
+                          </div>
+                        )}
                         {(() => {
                           const lowConfidenceWalls = referenceTracePreview.walls.filter((wall) => (wall.confidence ?? 0.5) < 0.65).length;
                           const lowConfidenceOpenings = referenceTracePreview.openings.filter((opening) => (opening.confidence ?? 0.5) < 0.65).length;
