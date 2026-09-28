@@ -16,6 +16,9 @@ import {
   archProjetosTable,
   obrasTable,
   obraEtapasTable,
+  obraEtapaDependenciasTable,
+  obraEtapaFasesTable,
+  obraEtapaFaseDependenciasTable,
   obraOrcamentosTable,
   obraOrcamentoEtapasTable,
   obraOrcamentoItensTable,
@@ -195,6 +198,24 @@ function addContractDays(date: Date, days: number): Date {
   return next;
 }
 
+function resolveContractDependencyStart(
+  predecessor: { start: Date | null; end: Date | null } | undefined,
+  type: string,
+  lagDays: number,
+  durationDays: number,
+): Date | null {
+  if (!predecessor) return null;
+  if (type === "SS" && predecessor.start) return addContractDays(predecessor.start, lagDays);
+  if (type === "FS" && predecessor.end) return addContractDays(predecessor.end, 1 + lagDays);
+  if (type === "FF" && predecessor.end) {
+    return addContractDays(predecessor.end, lagDays - Math.max(0, durationDays - 1));
+  }
+  if (type === "SF" && predecessor.start) {
+    return addContractDays(predecessor.start, lagDays - Math.max(0, durationDays - 1));
+  }
+  return null;
+}
+
 async function syncAcceptedProposalToWorkBaseline(
   proposta: typeof propostasTable.$inferSelect,
 ): Promise<WorkBaselineProvisioning | null> {
@@ -306,7 +327,9 @@ async function syncAcceptedProposalToWorkBaseline(
     );
 
   const globalStart = parseContractDate(presentation.previsaoInicio ?? null);
-  const plannedStages = groups.map((group) => {
+  const stageDateBySource = new Map<string, { start: Date | null; end: Date | null }>();
+
+  const plannedStages = groups.map((group, index) => {
     const config = presentation.cronogramaEtapas?.[group.sourceId]
       ?? (group.itens[0]?.item.etapaId
         ? presentation.cronogramaEtapas?.[group.itens[0].item.etapaId!]
@@ -316,24 +339,44 @@ async function syncAcceptedProposalToWorkBaseline(
       (sum, entry) => sum + Number(entry.item.quantidade || 0) * Number(entry.item.valorUnitario || 0),
       0,
     );
-    const start = parseContractDate(config.inicioPrevisto ?? null) ?? globalStart;
+    const explicitStart = parseContractDate(config.inicioPrevisto ?? null);
     const explicitEnd = parseContractDate(config.fimPrevisto ?? null);
     const duration = Number(config.duracaoDias ?? 0) > 0
       ? Math.round(Number(config.duracaoDias))
-      : start && explicitEnd
-        ? Math.max(1, Math.round((explicitEnd.getTime() - start.getTime()) / 86_400_000) + 1)
-        : null;
-    const end = explicitEnd ?? (start && duration ? addContractDays(start, duration - 1) : null);
+      : explicitStart && explicitEnd
+        ? Math.max(1, Math.round((explicitEnd.getTime() - explicitStart.getTime()) / 86_400_000) + 1)
+        : 1;
+
+    const defaultDependency = index > 0 ? groups[index - 1]?.sourceId : undefined;
+    const dependencyId = config.dependeDeEtapaId ?? defaultDependency;
+    const predecessor = dependencyId ? stageDateBySource.get(dependencyId) : undefined;
+    const dependencyType = config.tipoDependencia ?? "FS";
+    const lagDays = Number(config.defasagemDias ?? 0);
+    const automaticStart = config.inicioAutomatico !== false;
+    const startDate = (!automaticStart && explicitStart)
+      ? explicitStart
+      : (index === 0 ? explicitStart ?? globalStart : null)
+        ?? resolveContractDependencyStart(predecessor, dependencyType, lagDays, duration)
+        ?? explicitStart
+        ?? globalStart;
+    const endDate = explicitEnd && !automaticStart
+      ? explicitEnd
+      : startDate ? addContractDays(startDate, duration - 1) : explicitEnd;
+
+    stageDateBySource.set(group.sourceId, { start: startDate, end: endDate });
     const configuredPhysical = Number(config.percentualFisico);
 
     return {
       ...group,
       config,
+      dependencyId,
+      dependencyType,
+      lagDays,
       stageValue,
       financialPercent: proposalTotal > 0 ? (stageValue / proposalTotal) * 100 : 0,
       configuredPhysicalPercent: Number.isFinite(configuredPhysical) ? configuredPhysical : null,
-      start,
-      end,
+      start: startDate,
+      end: endDate,
       duration,
     };
   });
@@ -424,6 +467,9 @@ async function syncAcceptedProposalToWorkBaseline(
     if (updated) obra = updated;
   }
 
+  const stageDbBySource = new Map<string, typeof obraEtapasTable.$inferSelect>();
+  const phaseDbBySource = new Map<string, typeof obraEtapaFasesTable.$inferSelect>();
+
   for (const stage of stages) {
     let [existingStage] = await db
       .select()
@@ -466,6 +512,126 @@ async function syncAcceptedProposalToWorkBaseline(
         .returning();
     }
 
+    if (!existingStage) continue;
+    stageDbBySource.set(stage.sourceId, existingStage);
+
+    const phases = stage.config.fases ?? [];
+    const configuredShare = phases.reduce((sum, phase) => sum + Number(phase.percentualEtapa ?? 0), 0);
+    const phaseDates = new Map<string, { start: Date | null; end: Date | null }>();
+    for (const [phaseIndex, phase] of phases.entries()) {
+      const phaseSourceId = phase.id || `${stage.sourceId}:fase:${phaseIndex + 1}`;
+      const share = Number(phase.percentualEtapa ?? 0) > 0
+        ? Number(phase.percentualEtapa)
+        : phases.length ? 100 / phases.length : 100;
+      // Se foram cadastradas fases, elas representam a decomposição completa da etapa.
+      // Normalizamos a distribuição configurada para 100% para não deixar valor da etapa
+      // sem fase (e, portanto, impossível de medir/cobrar).
+      const normalizedShare = configuredShare > 0
+        ? (share / configuredShare) * 100
+        : phases.length ? 100 / phases.length : 100;
+      const phaseValue = stage.stageValue * (normalizedShare / 100);
+
+      const explicitPhaseStart = parseContractDate(phase.inicioPrevisto ?? null);
+      const explicitPhaseEnd = parseContractDate(phase.fimPrevisto ?? null);
+      const phaseDuration = Number(phase.duracaoDias ?? 0) > 0
+        ? Math.round(Number(phase.duracaoDias))
+        : explicitPhaseStart && explicitPhaseEnd
+          ? Math.max(1, Math.round((explicitPhaseEnd.getTime() - explicitPhaseStart.getTime()) / 86_400_000) + 1)
+          : Math.max(1, Math.round(stage.duration * (normalizedShare / 100)));
+      const defaultPhaseDependency = phaseIndex > 0 ? phases[phaseIndex - 1]?.id : undefined;
+      const phaseDependencyId = phase.dependeDeFaseId ?? defaultPhaseDependency;
+      const phasePredecessor = phaseDependencyId ? phaseDates.get(phaseDependencyId) : undefined;
+      const phaseStart = phaseIndex === 0
+        ? explicitPhaseStart ?? stage.start
+        : resolveContractDependencyStart(
+            phasePredecessor,
+            phase.tipoDependencia ?? "FS",
+            Number(phase.defasagemDias ?? 0),
+            phaseDuration,
+          ) ?? explicitPhaseStart ?? stage.start;
+      const phaseEnd = explicitPhaseEnd ?? (phaseStart ? addContractDays(phaseStart, phaseDuration - 1) : stage.end);
+      phaseDates.set(phaseSourceId, { start: phaseStart, end: phaseEnd });
+      if (phase.id && phase.id !== phaseSourceId) {
+        phaseDates.set(phase.id, { start: phaseStart, end: phaseEnd });
+      }
+
+      let [dbPhase] = await db
+        .select()
+        .from(obraEtapaFasesTable)
+        .where(and(
+          eq(obraEtapaFasesTable.etapaId, existingStage.id),
+          eq(obraEtapaFasesTable.origemFaseId, phaseSourceId),
+        ))
+        .limit(1);
+
+      const phaseValues = {
+        nome: phase.nome || `Fase ${phaseIndex + 1}`,
+        ordem: Number(phase.ordem ?? phaseIndex + 1),
+        dataInicioPrevista: contractDateOnly(phaseStart),
+        dataFimPrevista: contractDateOnly(phaseEnd),
+        percentualEtapa: normalizedShare.toFixed(4),
+        custoPrevisto: phaseValue.toFixed(2),
+      };
+
+      if (dbPhase) {
+        const [updatedPhase] = await db
+          .update(obraEtapaFasesTable)
+          .set({ ...phaseValues, updatedAt: new Date() })
+          .where(eq(obraEtapaFasesTable.id, dbPhase.id))
+          .returning();
+        dbPhase = updatedPhase ?? dbPhase;
+      } else {
+        [dbPhase] = await db
+          .insert(obraEtapaFasesTable)
+          .values({
+            obraId: obra.id,
+            etapaId: existingStage.id,
+            origemFaseId: phaseSourceId,
+            ...phaseValues,
+            status: "pendente",
+            percentualExecutado: "0",
+          })
+          .returning();
+      }
+      if (dbPhase) phaseDbBySource.set(phaseSourceId, dbPhase);
+    }
+  }
+
+  // Materializa dependências depois de todas as etapas/fases existirem.
+  for (const stage of stages) {
+    const dbStage = stageDbBySource.get(stage.sourceId);
+    const predecessor = stage.dependencyId ? stageDbBySource.get(stage.dependencyId) : undefined;
+    if (!dbStage) continue;
+    await db.delete(obraEtapaDependenciasTable).where(eq(obraEtapaDependenciasTable.etapaId, dbStage.id));
+    if (predecessor) {
+      await db.insert(obraEtapaDependenciasTable).values({
+        tenantId: proposta.tenantId,
+        obraId: obra.id,
+        etapaId: dbStage.id,
+        dependeDeEtapaId: predecessor.id,
+        tipo: stage.dependencyType,
+        defasagemDias: stage.lagDays,
+      });
+    }
+
+    for (const phase of stage.config.fases ?? []) {
+      const dbPhase = phaseDbBySource.get(phase.id);
+      if (!dbPhase) continue;
+      await db.delete(obraEtapaFaseDependenciasTable).where(eq(obraEtapaFaseDependenciasTable.faseId, dbPhase.id));
+      if (phase.dependeDeFaseId) {
+        const predecessorPhase = phaseDbBySource.get(phase.dependeDeFaseId);
+        if (predecessorPhase) {
+          await db.insert(obraEtapaFaseDependenciasTable).values({
+            tenantId: proposta.tenantId,
+            obraId: obra.id,
+            faseId: dbPhase.id,
+            dependeDeFaseId: predecessorPhase.id,
+            tipo: phase.tipoDependencia ?? "FS",
+            defasagemDias: Number(phase.defasagemDias ?? 0),
+          });
+        }
+      }
+    }
   }
 
   const [existingBaseline] = await db

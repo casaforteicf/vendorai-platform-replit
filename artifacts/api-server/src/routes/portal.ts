@@ -291,6 +291,18 @@ router.get("/portal/obra/:token", async (req, res) => {
     .where(eq(obraEtapasTable.obraId, obra.id))
     .orderBy(asc(obraEtapasTable.ordem));
 
+  const fases = config.showSchedule
+    ? (await pool.query(
+        `SELECT f.id, f.obra_id, f.etapa_id, f.origem_fase_id, f.nome, f.ordem,
+                f.data_inicio_prevista, f.data_fim_prevista, f.data_inicio_real, f.data_fim_real,
+                f.status, f.percentual_etapa, f.percentual_executado, f.custo_previsto
+           FROM obra_etapa_fases f
+          WHERE f.obra_id = $1
+          ORDER BY f.etapa_id, f.ordem`,
+        [obra.id],
+      )).rows
+    : [];
+
   let orcamentoComEtapas: any = null;
   if (config.showBudget) {
     const orcamentos = await db.select().from(obraOrcamentosTable)
@@ -387,9 +399,11 @@ router.get("/portal/obra/:token", async (req, res) => {
 
   let medicoes: any[] = [];
   if (config.showMeasurements && config.showSchedule) {
-    const result = await pool.query(
-      `SELECT m.id, m.etapa_id, e.nome AS etapa_nome, m.data,
-              m.percentual_anterior, m.percentual_novo, m.observacao, m.created_at
+    const stageResult = await pool.query(
+      `SELECT m.id, m.etapa_id, e.nome AS etapa_nome, NULL::text AS fase_id, NULL::text AS fase_nome,
+              m.data, m.percentual_anterior, m.percentual_novo, m.observacao, m.created_at,
+              NULL::numeric AS valor_bruto, NULL::numeric AS amortizacao_entrada,
+              NULL::numeric AS valor_liquido, NULL::numeric AS saldo_entrada_apos
          FROM obra_etapa_medicoes m
          INNER JOIN obra_etapas e ON e.id = m.etapa_id
         WHERE e.obra_id = $1
@@ -397,7 +411,21 @@ router.get("/portal/obra/:token", async (req, res) => {
         LIMIT 80`,
       [obra.id],
     );
-    medicoes = result.rows;
+    const phaseResult = await pool.query(
+      `SELECT m.id, f.etapa_id, e.nome AS etapa_nome, m.fase_id, f.nome AS fase_nome,
+              m.data, m.percentual_anterior, m.percentual_novo, m.observacao, m.created_at,
+              m.valor_bruto, m.amortizacao_entrada, m.valor_liquido, m.saldo_entrada_apos
+         FROM obra_etapa_fase_medicoes m
+         INNER JOIN obra_etapa_fases f ON f.id = m.fase_id
+         INNER JOIN obra_etapas e ON e.id = f.etapa_id
+        WHERE f.obra_id = $1
+        ORDER BY m.data DESC, m.created_at DESC
+        LIMIT 120`,
+      [obra.id],
+    );
+    medicoes = [...stageResult.rows, ...phaseResult.rows]
+      .sort((a, b) => String(b.data ?? b.created_at).localeCompare(String(a.data ?? a.created_at)))
+      .slice(0, 120);
   }
 
   let documentos: any[] = config.showDocuments
@@ -721,6 +749,7 @@ router.get("/portal/obra/:token", async (req, res) => {
     tenant: tenant ?? { id: obra.tenantId, name: "Construtora" },
     orcamento: orcamentoComEtapas,
     etapas: config.showSchedule ? etapas : [],
+    fases,
     diario: config.showDiary ? diario : [],
     ocorrencias,
     decisions,

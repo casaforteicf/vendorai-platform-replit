@@ -718,6 +718,36 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
                       ...(typeof row.observacao === "string" && row.observacao.trim()
                         ? { observacao: row.observacao.trim() }
                         : {}),
+                      ...(typeof row.dependeDeEtapaId === "string" && row.dependeDeEtapaId.trim()
+                        ? { dependeDeEtapaId: row.dependeDeEtapaId.trim() }
+                        : {}),
+                      ...(["FS","SS","FF","SF"].includes(String(row.tipoDependencia))
+                        ? { tipoDependencia: String(row.tipoDependencia) as "FS" | "SS" | "FF" | "SF" }
+                        : {}),
+                      ...(Number.isFinite(Number(row.defasagemDias))
+                        ? { defasagemDias: Math.round(Number(row.defasagemDias)) }
+                        : {}),
+                      ...(typeof row.inicioAutomatico === "boolean"
+                        ? { inicioAutomatico: row.inicioAutomatico }
+                        : {}),
+                      ...(Array.isArray(row.fases)
+                        ? { fases: row.fases
+                            .filter((phase): phase is Record<string, unknown> => Boolean(phase) && typeof phase === "object")
+                            .map((phase, phaseIndex) => ({
+                              id: typeof phase.id === "string" && phase.id.trim() ? phase.id.trim() : `fase-${phaseIndex + 1}`,
+                              nome: typeof phase.nome === "string" && phase.nome.trim() ? phase.nome.trim() : `Fase ${phaseIndex + 1}`,
+                              ordem: Number.isFinite(Number(phase.ordem)) ? Math.max(1, Math.round(Number(phase.ordem))) : phaseIndex + 1,
+                              ...(Number.isFinite(Number(phase.duracaoDias)) && Number(phase.duracaoDias) > 0 ? { duracaoDias: Math.round(Number(phase.duracaoDias)) } : {}),
+                              ...(Number.isFinite(Number(phase.percentualEtapa)) ? { percentualEtapa: Math.min(100, Math.max(0, Number(phase.percentualEtapa))) } : {}),
+                              ...(Number.isFinite(Number(phase.percentualFisico)) ? { percentualFisico: Math.min(100, Math.max(0, Number(phase.percentualFisico))) } : {}),
+                              ...(typeof phase.inicioPrevisto === "string" && phase.inicioPrevisto.trim() ? { inicioPrevisto: phase.inicioPrevisto.trim() } : {}),
+                              ...(typeof phase.fimPrevisto === "string" && phase.fimPrevisto.trim() ? { fimPrevisto: phase.fimPrevisto.trim() } : {}),
+                              ...(typeof phase.dependeDeFaseId === "string" && phase.dependeDeFaseId.trim() ? { dependeDeFaseId: phase.dependeDeFaseId.trim() } : {}),
+                              ...(["FS","SS","FF","SF"].includes(String(phase.tipoDependencia)) ? { tipoDependencia: String(phase.tipoDependencia) as "FS" | "SS" | "FF" | "SF" } : {}),
+                              ...(Number.isFinite(Number(phase.defasagemDias)) ? { defasagemDias: Math.round(Number(phase.defasagemDias)) } : {}),
+                              ...(typeof phase.observacao === "string" && phase.observacao.trim() ? { observacao: phase.observacao.trim() } : {}),
+                            })) }
+                        : {}),
                       ...(typeof row.marcoPagamento === "string" && row.marcoPagamento.trim()
                         ? { marcoPagamento: row.marcoPagamento.trim() }
                         : {}),
@@ -762,12 +792,34 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
         percentualFisico?: number;
         inicioPrevisto?: string;
         fimPrevisto?: string;
+        dependeDeEtapaId?: string;
+        tipoDependencia?: "FS" | "SS" | "FF" | "SF";
+        defasagemDias?: number;
+        inicioAutomatico?: boolean;
+        fases?: Array<{
+          id: string;
+          nome: string;
+          ordem: number;
+          duracaoDias?: number;
+          percentualEtapa?: number;
+          percentualFisico?: number;
+          inicioPrevisto?: string;
+          fimPrevisto?: string;
+          dependeDeFaseId?: string;
+          tipoDependencia?: "FS" | "SS" | "FF" | "SF";
+          defasagemDias?: number;
+          observacao?: string;
+        }>;
         observacao?: string;
         marcoPagamento?: string;
       }>;
       imagensEtapas?: Record<string, string>;
       mostrarCronogramaExecucao?: boolean;
       mostrarFisicoFinanceiro?: boolean;
+      entradaPercentual?: number;
+      amortizacaoEntradaPercentual?: number;
+      mostrarAmortizacaoEntrada?: boolean;
+      mostrarPortalCliente?: boolean;
     } | null;
   } | null = null;
 
@@ -816,6 +868,18 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
           : {}),
         ...(typeof bodyPresentation?.mostrarFisicoFinanceiro === "boolean"
           ? { mostrarFisicoFinanceiro: bodyPresentation.mostrarFisicoFinanceiro }
+          : {}),
+        ...(Number.isFinite(Number(bodyPresentation?.entradaPercentual))
+          ? { entradaPercentual: Math.min(100, Math.max(0, Number(bodyPresentation.entradaPercentual))) }
+          : {}),
+        ...(Number.isFinite(Number(bodyPresentation?.amortizacaoEntradaPercentual))
+          ? { amortizacaoEntradaPercentual: Math.min(100, Math.max(0, Number(bodyPresentation.amortizacaoEntradaPercentual))) }
+          : {}),
+        ...(typeof bodyPresentation?.mostrarAmortizacaoEntrada === "boolean"
+          ? { mostrarAmortizacaoEntrada: bodyPresentation.mostrarAmortizacaoEntrada }
+          : {}),
+        ...(typeof bodyPresentation?.mostrarPortalCliente === "boolean"
+          ? { mostrarPortalCliente: bodyPresentation.mostrarPortalCliente }
           : {}),
       };
 

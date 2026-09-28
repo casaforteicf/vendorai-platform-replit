@@ -51,6 +51,11 @@ export const propostaItemSchema = z.object({
   statusExecucao: propostaItemExecucaoStatusSchema.optional(),
   iniciadoEm: z.string().datetime().optional(),
   executadoEm: z.string().datetime().optional(),
+  // Fase executiva opcional dentro da etapa. Permite medir/cobrar por fase
+  // sem duplicar a etapa comercial (ex.: Estrutura ICF > 1º pavimento).
+  faseId: z.string().optional(),
+  faseNome: z.string().optional(),
+  faseOrdem: z.number().int().positive().optional(),
   // Referência opcional à composição de obra que originou o item.
   // O preço do orçamento é um snapshot e não muda quando a composição muda depois.
   composicaoId: z.string().optional(),
@@ -69,11 +74,36 @@ export const propostaApresentacaoModoSchema = z.enum([
 
 export type PropostaApresentacaoModo = z.infer<typeof propostaApresentacaoModoSchema>;
 
+export const propostaTipoDependenciaSchema = z.enum(["FS", "SS", "FF", "SF"]);
+export type PropostaTipoDependencia = z.infer<typeof propostaTipoDependenciaSchema>;
+
+export const propostaCronogramaFaseSchema = z.object({
+  id: z.string().min(1),
+  nome: z.string().min(1),
+  ordem: z.number().int().positive(),
+  duracaoDias: z.number().int().positive().optional(),
+  percentualEtapa: z.number().min(0).max(100).optional(),
+  percentualFisico: z.number().min(0).max(100).optional(),
+  inicioPrevisto: z.string().optional(),
+  fimPrevisto: z.string().optional(),
+  dependeDeFaseId: z.string().optional(),
+  tipoDependencia: propostaTipoDependenciaSchema.optional(),
+  defasagemDias: z.number().int().optional(),
+  observacao: z.string().optional(),
+});
+
+export type PropostaCronogramaFase = z.infer<typeof propostaCronogramaFaseSchema>;
+
 export const propostaCronogramaEtapaSchema = z.object({
   duracaoDias: z.number().int().positive().optional(),
   percentualFisico: z.number().min(0).max(100).optional(),
   inicioPrevisto: z.string().optional(),
   fimPrevisto: z.string().optional(),
+  dependeDeEtapaId: z.string().optional(),
+  tipoDependencia: propostaTipoDependenciaSchema.optional(),
+  defasagemDias: z.number().int().optional(),
+  inicioAutomatico: z.boolean().optional(),
+  fases: z.array(propostaCronogramaFaseSchema).default([]),
   observacao: z.string().optional(),
   marcoPagamento: z.string().optional(),
 });
@@ -91,6 +121,10 @@ export const propostaApresentacaoSchema = z.object({
   imagensEtapas: z.record(z.string(), z.string()).default({}),
   mostrarCronogramaExecucao: z.boolean().default(true),
   mostrarFisicoFinanceiro: z.boolean().default(true),
+  entradaPercentual: z.number().min(0).max(100).default(0),
+  amortizacaoEntradaPercentual: z.number().min(0).max(100).default(0),
+  mostrarAmortizacaoEntrada: z.boolean().default(true),
+  mostrarPortalCliente: z.boolean().default(true),
 });
 
 export type PropostaApresentacao = z.infer<typeof propostaApresentacaoSchema>;
@@ -103,6 +137,10 @@ const DEFAULT_PROPOSTA_APRESENTACAO: PropostaApresentacao = {
   imagensEtapas: {},
   mostrarCronogramaExecucao: true,
   mostrarFisicoFinanceiro: true,
+  entradaPercentual: 0,
+  amortizacaoEntradaPercentual: 0,
+  mostrarAmortizacaoEntrada: true,
+  mostrarPortalCliente: true,
 };
 
 const valorField = z

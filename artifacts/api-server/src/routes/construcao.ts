@@ -14,6 +14,8 @@ import {
   tenantsTable,
   obraEtapasTable,
   obraEtapaMedicoesTable,
+  obraEtapaFasesTable,
+  obraEtapaFaseMedicoesTable,
   obraDiarioTable,
   insumosTable,
   estoqueCentralObrasTable,
@@ -316,6 +318,153 @@ router.post("/tenants/:tenantId/obras/:obraId/etapas/:etapaId/medicoes", async (
     .where(eq(obraEtapasTable.id, etapaId));
 
   return res.status(201).json(medicao);
+});
+
+// ─── Fases e medições financeiras ─────────────────────────────────────────────
+
+router.get("/tenants/:tenantId/obras/:obraId/etapas/:etapaId/fases", async (req, res) => {
+  const { tenantId: tid, obraId, etapaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [etapa] = await db.select({ id: obraEtapasTable.id })
+    .from(obraEtapasTable)
+    .where(and(eq(obraEtapasTable.id, etapaId), eq(obraEtapasTable.obraId, obraId)));
+  if (!etapa) return res.status(404).json({ error: "Etapa not found" });
+
+  const fases = await db.select().from(obraEtapaFasesTable)
+    .where(and(eq(obraEtapaFasesTable.obraId, obraId), eq(obraEtapaFasesTable.etapaId, etapaId)))
+    .orderBy(asc(obraEtapaFasesTable.ordem));
+  return res.json(fases);
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/fases/:faseId/medicoes", async (req, res) => {
+  const { tenantId: tid, obraId, faseId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [fase] = await db.select({ id: obraEtapaFasesTable.id })
+    .from(obraEtapaFasesTable)
+    .where(and(eq(obraEtapaFasesTable.id, faseId), eq(obraEtapaFasesTable.obraId, obraId)));
+  if (!fase) return res.status(404).json({ error: "Fase not found" });
+
+  const rows = await db.select().from(obraEtapaFaseMedicoesTable)
+    .where(eq(obraEtapaFaseMedicoesTable.faseId, faseId))
+    .orderBy(desc(obraEtapaFaseMedicoesTable.createdAt));
+  return res.json(rows);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/fases/:faseId/medicoes", async (req, res) => {
+  const { tenantId: tid, obraId, faseId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [obra] = await db.select().from(obrasTable)
+    .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)));
+  if (!obra) return res.status(404).json({ error: "Obra not found" });
+
+  const [fase] = await db.select().from(obraEtapaFasesTable)
+    .where(and(eq(obraEtapaFasesTable.id, faseId), eq(obraEtapaFasesTable.obraId, obraId)));
+  if (!fase) return res.status(404).json({ error: "Fase not found" });
+
+  const anterior = Math.max(0, Math.min(100, Number(fase.percentualExecutado ?? 0)));
+  const novo = Math.max(0, Math.min(100, Number(req.body.percentualNovo ?? anterior)));
+  if (novo < anterior) {
+    return res.status(422).json({ error: "A nova medição não pode ser menor que o percentual já medido." });
+  }
+  const delta = novo - anterior;
+  if (delta <= 0) {
+    return res.status(422).json({ error: "Informe avanço superior ao percentual já medido." });
+  }
+
+  const valorFase = Math.max(0, Number(fase.custoPrevisto ?? 0));
+  const valorBruto = valorFase * delta / 100;
+
+  const [baseline] = await db.select().from(obraOrcamentosTable)
+    .where(and(
+      eq(obraOrcamentosTable.obraId, obraId),
+      eq(obraOrcamentosTable.tenantId, tid),
+      eq(obraOrcamentosTable.status, "aprovado"),
+    ))
+    .orderBy(desc(obraOrcamentosTable.versao))
+    .limit(1);
+
+  const snapshot = (baseline?.linhaBaseSnapshot ?? {}) as any;
+  const presentation = snapshot?.apresentacao ?? {};
+  const entradaPercentual = Math.max(0, Math.min(100, Number(presentation.entradaPercentual ?? 0)));
+  const amortizacaoPercentual = Math.max(0, Math.min(100, Number(
+    presentation.amortizacaoEntradaPercentual ?? entradaPercentual,
+  )));
+  const entradaTotal = Math.max(0, Number(snapshot?.valorTotal ?? obra.orcamentoTotal ?? 0)) * entradaPercentual / 100;
+
+  const fasesObra = await db.select({ id: obraEtapaFasesTable.id }).from(obraEtapaFasesTable)
+    .where(eq(obraEtapaFasesTable.obraId, obraId));
+  const faseIds = fasesObra.map((item) => item.id);
+  const medicoesAnteriores = faseIds.length
+    ? await db.select({ amortizacaoEntrada: obraEtapaFaseMedicoesTable.amortizacaoEntrada })
+        .from(obraEtapaFaseMedicoesTable)
+        .where(inArray(obraEtapaFaseMedicoesTable.faseId, faseIds))
+    : [];
+  const amortizadoAteAgora = medicoesAnteriores.reduce(
+    (sum, item) => sum + Number(item.amortizacaoEntrada ?? 0),
+    0,
+  );
+  const saldoEntradaAntes = Math.max(0, entradaTotal - amortizadoAteAgora);
+  const amortizacaoEntrada = presentation.mostrarAmortizacaoEntrada === false
+    ? 0
+    : Math.min(saldoEntradaAntes, valorBruto * amortizacaoPercentual / 100);
+  const valorLiquido = Math.max(0, valorBruto - amortizacaoEntrada);
+  const saldoEntradaApos = Math.max(0, saldoEntradaAntes - amortizacaoEntrada);
+
+  const [medicao] = await db.insert(obraEtapaFaseMedicoesTable).values({
+    faseId,
+    data: req.body.data,
+    percentualAnterior: anterior.toFixed(2),
+    percentualNovo: novo.toFixed(2),
+    valorBruto: valorBruto.toFixed(2),
+    amortizacaoEntrada: amortizacaoEntrada.toFixed(2),
+    valorLiquido: valorLiquido.toFixed(2),
+    saldoEntradaApos: saldoEntradaApos.toFixed(2),
+    observacao: req.body.observacao,
+    responsavelId: (req as any).user?.sub,
+  }).returning();
+
+  await db.update(obraEtapaFasesTable)
+    .set({
+      percentualExecutado: novo.toFixed(2),
+      status: novo >= 100 ? "concluida" : "em_andamento",
+      updatedAt: new Date(),
+    })
+    .where(eq(obraEtapaFasesTable.id, faseId));
+
+  const fasesEtapa = await db.select().from(obraEtapaFasesTable)
+    .where(eq(obraEtapaFasesTable.etapaId, fase.etapaId));
+  const totalPeso = fasesEtapa.reduce((sum, item) => sum + Number(item.percentualEtapa ?? 0), 0);
+  const percentualEtapa = totalPeso > 0
+    ? fasesEtapa.reduce(
+        (sum, item) => sum + Number(item.percentualExecutado ?? 0) * Number(item.percentualEtapa ?? 0),
+        0,
+      ) / totalPeso
+    : fasesEtapa.length
+      ? fasesEtapa.reduce((sum, item) => sum + Number(item.percentualExecutado ?? 0), 0) / fasesEtapa.length
+      : 0;
+
+  await db.update(obraEtapasTable)
+    .set({
+      percentualExecutado: Math.min(100, percentualEtapa).toFixed(2),
+      status: percentualEtapa >= 100 ? "concluida" : percentualEtapa > 0 ? "em_andamento" : "pendente",
+      updatedAt: new Date(),
+    })
+    .where(eq(obraEtapasTable.id, fase.etapaId));
+
+  return res.status(201).json({
+    ...medicao,
+    resumo: {
+      percentualFaseAnterior: anterior,
+      percentualFaseNovo: novo,
+      valorBruto,
+      amortizacaoEntrada,
+      valorLiquido,
+      saldoEntradaApos,
+    },
+  });
 });
 
 // ─── Diário de Obra ───────────────────────────────────────────────────────────

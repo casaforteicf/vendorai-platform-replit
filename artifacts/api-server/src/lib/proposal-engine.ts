@@ -416,11 +416,31 @@ export async function generateProposalPDF(htmlContent: string): Promise<Buffer> 
 
 type ProposalPresentationMode = "completo" | "resumo_etapa" | "preco_medio";
 
+type ProposalStagePhase = {
+  id: string;
+  nome: string;
+  ordem: number;
+  duracaoDias?: number;
+  percentualEtapa?: number;
+  percentualFisico?: number;
+  inicioPrevisto?: string;
+  fimPrevisto?: string;
+  dependeDeFaseId?: string;
+  tipoDependencia?: "FS" | "SS" | "FF" | "SF";
+  defasagemDias?: number;
+  observacao?: string;
+};
+
 type ProposalStageSchedule = {
   duracaoDias?: number;
   percentualFisico?: number;
   inicioPrevisto?: string;
   fimPrevisto?: string;
+  dependeDeEtapaId?: string;
+  tipoDependencia?: "FS" | "SS" | "FF" | "SF";
+  defasagemDias?: number;
+  inicioAutomatico?: boolean;
+  fases?: ProposalStagePhase[];
   observacao?: string;
   marcoPagamento?: string;
 };
@@ -434,6 +454,10 @@ type ProposalPresentationConfig = {
   imagensEtapas?: Record<string, string>;
   mostrarCronogramaExecucao?: boolean;
   mostrarFisicoFinanceiro?: boolean;
+  entradaPercentual?: number;
+  amortizacaoEntradaPercentual?: number;
+  mostrarAmortizacaoEntrada?: boolean;
+  mostrarPortalCliente?: boolean;
 };
 
 type PresentableProposalItem = {
@@ -459,6 +483,10 @@ function normalizeProposalPresentation(
     imagensEtapas: value?.imagensEtapas ?? {},
     mostrarCronogramaExecucao: value?.mostrarCronogramaExecucao ?? true,
     mostrarFisicoFinanceiro: value?.mostrarFisicoFinanceiro ?? true,
+    entradaPercentual: Math.max(0, Math.min(100, Number(value?.entradaPercentual ?? 0))),
+    amortizacaoEntradaPercentual: Math.max(0, Math.min(100, Number(value?.amortizacaoEntradaPercentual ?? value?.entradaPercentual ?? 0))),
+    mostrarAmortizacaoEntrada: value?.mostrarAmortizacaoEntrada ?? true,
+    mostrarPortalCliente: value?.mostrarPortalCliente ?? true,
   };
 }
 
@@ -517,35 +545,62 @@ function proposalFormatDate(value?: string | Date | null): string {
   return date ? date.toLocaleDateString("pt-BR") : "A definir";
 }
 
+function proposalResolveDependencyStart(
+  predecessor: { start: Date | null; end: Date | null } | undefined,
+  type: "FS" | "SS" | "FF" | "SF",
+  lagDays: number,
+  durationDays: number,
+): Date | null {
+  if (!predecessor) return null;
+  if (type === "SS" && predecessor.start) return proposalAddDays(predecessor.start, lagDays);
+  if (type === "FS" && predecessor.end) return proposalAddDays(predecessor.end, 1 + lagDays);
+  if (type === "FF" && predecessor.end) return proposalAddDays(predecessor.end, lagDays - Math.max(0, durationDays - 1));
+  if (type === "SF" && predecessor.start) return proposalAddDays(predecessor.start, lagDays - Math.max(0, durationDays - 1));
+  return null;
+}
+
 function buildProposalScheduleRows<T extends PresentableProposalItem>(
   groups: Array<{ id: string; ordem: number; nome: string; hasStageHeader: boolean; itens: T[] }>,
   presentation: Required<ProposalPresentationConfig>,
   total: number,
 ) {
   const globalStart = proposalDate(presentation.previsaoInicio);
-  const rows = groups.map((group) => {
+  const dateByStage = new Map<string, { start: Date | null; end: Date | null }>();
+  const rawRows: Array<any> = [];
+
+  groups.forEach((group, index) => {
     const config = presentation.cronogramaEtapas[group.id] ?? {};
     const value = group.itens.reduce(
       (sum, item) => sum + Number(item.quantidade || 0) * Number(item.valorUnitario || 0),
       0,
     );
     const financialPercent = total > 0 ? (value / total) * 100 : 0;
-
-    // Cada etapa possui sua própria janela. Isso permite que várias etapas
-    // aconteçam ao mesmo tempo e gerem cobrança no mesmo período.
-    const start = proposalDate(config.inicioPrevisto) ?? globalStart;
+    const explicitStart = proposalDate(config.inicioPrevisto);
     const explicitEnd = proposalDate(config.fimPrevisto);
     const configuredDuration = Number(config.duracaoDias ?? 0);
     const duration = configuredDuration > 0
       ? Math.round(configuredDuration)
-      : start && explicitEnd
-        ? proposalDiffDays(start, explicitEnd)
-        : undefined;
-    const end = explicitEnd ?? (start && duration ? proposalAddDays(start, duration - 1) : null);
+      : explicitStart && explicitEnd ? proposalDiffDays(explicitStart, explicitEnd) : 1;
+    const defaultDependency = index > 0 ? groups[index - 1]?.id : undefined;
+    const dependencyId = config.dependeDeEtapaId ?? defaultDependency;
+    const predecessor = dependencyId ? dateByStage.get(dependencyId) : undefined;
+    const type = config.tipoDependencia ?? "FS";
+    const lagDays = Number(config.defasagemDias ?? 0);
+    const start = config.inicioAutomatico === false && explicitStart
+      ? explicitStart
+      : (index === 0 ? explicitStart ?? globalStart : null)
+        ?? proposalResolveDependencyStart(predecessor, type, lagDays, duration)
+        ?? explicitStart
+        ?? globalStart;
+    const end = config.inicioAutomatico === false && explicitEnd
+      ? explicitEnd
+      : start ? proposalAddDays(start, duration - 1) : explicitEnd;
 
+    dateByStage.set(group.id, { start, end });
     const configuredPhysical = Number(config.percentualFisico);
-    return {
+    rawRows.push({
       ...group,
+      config,
       value,
       financialPercent,
       configuredPhysicalPercent: Number.isFinite(configuredPhysical) ? configuredPhysical : null,
@@ -554,12 +609,12 @@ function buildProposalScheduleRows<T extends PresentableProposalItem>(
       duration,
       observacao: config.observacao?.trim() || "",
       marcoPagamento: config.marcoPagamento?.trim() || "",
-    };
+    });
   });
 
-  const totalDuration = rows.reduce((sum, row) => sum + Number(row.duration ?? 0), 0);
-  const missingPhysical = rows.filter((row) => row.configuredPhysicalPercent === null);
-  const configuredPhysicalTotal = rows.reduce(
+  const totalDuration = rawRows.reduce((sum, row) => sum + Number(row.duration ?? 0), 0);
+  const missingPhysical = rawRows.filter((row) => row.configuredPhysicalPercent === null);
+  const configuredPhysicalTotal = rawRows.reduce(
     (sum, row) => sum + Number(row.configuredPhysicalPercent ?? 0),
     0,
   );
@@ -569,7 +624,7 @@ function buildProposalScheduleRows<T extends PresentableProposalItem>(
     0,
   );
 
-  return rows.map((row) => {
+  return rawRows.map((row) => {
     const automaticPhysical = row.configuredPhysicalPercent !== null
       ? row.configuredPhysicalPercent
       : missingPhysical.length === 0
@@ -579,10 +634,48 @@ function buildProposalScheduleRows<T extends PresentableProposalItem>(
           : totalDuration > 0 && row.duration
             ? (Number(row.duration) / totalDuration) * 100
             : remainingPhysical / missingPhysical.length;
+    const physicalPercent = Math.max(0, Math.min(100, automaticPhysical));
+
+    const phaseDateMap = new Map<string, { start: Date | null; end: Date | null }>();
+    const phases = (row.config.fases ?? []).map((phase: ProposalStagePhase, index: number, all: ProposalStagePhase[]) => {
+      const configuredShare = Number(phase.percentualEtapa ?? 0);
+      const totalConfiguredShare = all.reduce((sum, item) => sum + Number(item.percentualEtapa ?? 0), 0);
+      const share = configuredShare > 0
+        ? (totalConfiguredShare > 100 ? configuredShare / totalConfiguredShare : configuredShare / 100)
+        : all.length ? 1 / all.length : 1;
+      const explicitStart = proposalDate(phase.inicioPrevisto);
+      const explicitEnd = proposalDate(phase.fimPrevisto);
+      const duration = Number(phase.duracaoDias ?? 0) > 0
+        ? Math.round(Number(phase.duracaoDias))
+        : explicitStart && explicitEnd ? proposalDiffDays(explicitStart, explicitEnd) : Math.max(1, Math.round((row.duration ?? 1) * share));
+      const defaultDependency = index > 0 ? all[index - 1]?.id : undefined;
+      const dependencyId = phase.dependeDeFaseId ?? defaultDependency;
+      const predecessor = dependencyId ? phaseDateMap.get(dependencyId) : undefined;
+      const start = index === 0
+        ? explicitStart ?? row.start
+        : proposalResolveDependencyStart(predecessor, phase.tipoDependencia ?? "FS", Number(phase.defasagemDias ?? 0), duration)
+          ?? explicitStart
+          ?? row.start;
+      const end = explicitEnd ?? (start ? proposalAddDays(start, duration - 1) : row.end);
+      phaseDateMap.set(phase.id, { start, end });
+      return {
+        id: `${row.id}::${phase.id}`,
+        ordem: phase.ordem ?? index + 1,
+        nome: `${row.nome} · ${phase.nome}`,
+        value: row.value * share,
+        physicalPercent: Number.isFinite(Number(phase.percentualFisico))
+          ? Math.max(0, Math.min(100, Number(phase.percentualFisico)))
+          : physicalPercent * share,
+        start,
+        end,
+        duration,
+      };
+    });
 
     return {
       ...row,
-      physicalPercent: Math.max(0, Math.min(100, automaticPhysical)),
+      physicalPercent,
+      phases,
     };
   });
 }
@@ -596,6 +689,7 @@ type ProposalScheduleRow = {
   start: Date | null;
   end: Date | null;
   duration?: number;
+  phases?: ProposalScheduleRow[];
 };
 
 function proposalMonthKey(date: Date): string {
@@ -623,8 +717,17 @@ function proposalOverlapDays(start: Date, end: Date, rangeStart: Date, rangeEnd:
   return proposalDiffDays(from, to);
 }
 
-function buildProposalMonthlyMatrix(rows: ProposalScheduleRow[]) {
-  const scheduled = rows.filter(
+function proposalExpandedScheduleRows(rows: ProposalScheduleRow[]) {
+  return rows.flatMap((row) => row.phases?.length ? row.phases : [row]);
+}
+
+function buildProposalMonthlyMatrix(
+  rows: ProposalScheduleRow[],
+  presentation: Required<ProposalPresentationConfig>,
+  total: number,
+) {
+  const expandedRows = proposalExpandedScheduleRows(rows);
+  const scheduled = expandedRows.filter(
     (row) => row.start && row.end && Number(row.duration ?? 0) > 0,
   );
   if (!scheduled.length) return [];
@@ -641,11 +744,13 @@ function buildProposalMonthlyMatrix(rows: ProposalScheduleRow[]) {
   const periods: string[] = [];
   const cursor = new Date(firstStart.getFullYear(), firstStart.getMonth(), 1, 12, 0, 0);
   const limit = new Date(lastEnd.getFullYear(), lastEnd.getMonth(), 1, 12, 0, 0);
-  while (cursor.getTime() <= limit.getTime() && periods.length < 36) {
+  while (cursor.getTime() <= limit.getTime() && periods.length < 48) {
     periods.push(proposalMonthKey(cursor));
     cursor.setMonth(cursor.getMonth() + 1);
   }
 
+  let remainingAdvance = total * presentation.entradaPercentual / 100;
+  let accumulatedPhysical = 0;
   return periods.map((period) => {
     const bounds = proposalMonthBounds(period);
     const stages = scheduled.map((row) => {
@@ -660,59 +765,78 @@ function buildProposalMonthlyMatrix(rows: ProposalScheduleRow[]) {
         share,
       };
     });
+    const amount = stages.reduce((sum, stage) => sum + stage.amount, 0);
+    const physical = stages.reduce((sum, stage) => sum + stage.physical, 0);
+    const amortization = presentation.mostrarAmortizacaoEntrada
+      ? Math.min(remainingAdvance, amount * presentation.amortizacaoEntradaPercentual / 100)
+      : 0;
+    remainingAdvance = Math.max(0, remainingAdvance - amortization);
+    accumulatedPhysical = Math.min(100, accumulatedPhysical + physical);
 
     return {
       key: period,
       label: proposalMonthLabel(period),
       stages,
-      amount: stages.reduce((sum, stage) => sum + stage.amount, 0),
-      physical: stages.reduce((sum, stage) => sum + stage.physical, 0),
+      amount,
+      physical,
+      accumulatedPhysical,
+      amortization,
+      netAmount: Math.max(0, amount - amortization),
+      remainingAdvance,
     };
   });
 }
 
 function renderProposalMonthlyMatrix(
   rows: ProposalScheduleRow[],
+  presentation: Required<ProposalPresentationConfig>,
+  total: number,
   fmtMoney: (value: number) => string,
 ): string {
-  const periods = buildProposalMonthlyMatrix(rows);
+  const periods = buildProposalMonthlyMatrix(rows, presentation, total);
   if (!periods.length) return "";
+  const displayRows = proposalExpandedScheduleRows(rows);
 
   const chunks: typeof periods[] = [];
-  for (let index = 0; index < periods.length; index += 5) {
-    chunks.push(periods.slice(index, index + 5));
+  for (let index = 0; index < periods.length; index += 4) {
+    chunks.push(periods.slice(index, index + 4));
   }
 
   return chunks.map((chunk, chunkIndex) => {
-    const body = rows.map((row) => {
+    const body = displayRows.map((row) => {
       const cells = chunk.map((period) => {
         const stage = period.stages.find((item) => item.id === row.id);
         if (!stage || stage.share <= 0) return '<td class="period-empty">—</td>';
         return `<td class="period-cell">
           <strong>${fmtMoney(stage.amount)}</strong>
-          <span>${(stage.share * 100).toFixed(1)}% da etapa</span>
           <span>Físico ${stage.physical.toFixed(1)}%</span>
         </td>`;
       }).join("");
       return `<tr>
-        <td class="period-stage"><strong>Etapa ${row.ordem}</strong><span>${escapeProposalText(row.nome || "Execução")}</span></td>
+        <td class="period-stage"><span>${escapeProposalText(row.nome || "Execução")}</span></td>
         ${cells}
       </tr>`;
     }).join("");
 
-    const financialFooter = chunk.map((period) => `<td class="r"><strong>${fmtMoney(period.amount)}</strong></td>`).join("");
+    const grossFooter = chunk.map((period) => `<td class="r"><strong>${fmtMoney(period.amount)}</strong></td>`).join("");
+    const amortFooter = chunk.map((period) => `<td class="r"><strong>-${fmtMoney(period.amortization)}</strong></td>`).join("");
+    const netFooter = chunk.map((period) => `<td class="r"><strong>${fmtMoney(period.netAmount)}</strong></td>`).join("");
     const physicalFooter = chunk.map((period) => `<td class="r"><strong>${period.physical.toFixed(1)}%</strong></td>`).join("");
+    const accumulatedFooter = chunk.map((period) => `<td class="r"><strong>${period.accumulatedPhysical.toFixed(1)}%</strong></td>`).join("");
 
     return `<div class="period-matrix-group">
-      <div class="period-matrix-caption">${chunks.length > 1 ? `Períodos ${chunkIndex * 5 + 1}–${chunkIndex * 5 + chunk.length}` : "Cobrança por período"}</div>
+      <div class="period-matrix-caption">${chunks.length > 1 ? `Períodos ${chunkIndex * 4 + 1}–${chunkIndex * 4 + chunk.length}` : "Fluxo mensal previsto"}</div>
       <table class="period-matrix">
         <thead>
-          <tr><th>Etapa do orçamento</th>${chunk.map((period) => `<th class="r">${period.label}</th>`).join("")}</tr>
+          <tr><th>Etapa / fase</th>${chunk.map((period) => `<th class="r">${period.label}</th>`).join("")}</tr>
         </thead>
         <tbody>${body}</tbody>
         <tfoot>
-          <tr><td>Cobrança do período</td>${financialFooter}</tr>
-          <tr><td>Avanço físico do período</td>${physicalFooter}</tr>
+          <tr><td>Valor bruto previsto</td>${grossFooter}</tr>
+          <tr><td>Amortização da entrada</td>${amortFooter}</tr>
+          <tr><td>Valor líquido previsto</td>${netFooter}</tr>
+          <tr><td>Avanço físico do mês</td>${physicalFooter}</tr>
+          <tr><td>Físico acumulado</td>${accumulatedFooter}</tr>
         </tfoot>
       </table>
     </div>`;
@@ -926,15 +1050,27 @@ function renderConstructionProposalLayout(args: {
     </section>`;
   }).join("\n");
 
-  const executionRows = scheduleRows.map((row) => `
-    <tr>
-      <td>${escapeProposalText(row.nome)}</td>
-      <td>${row.start ? proposalFormatDate(row.start) : "A definir"}</td>
-      <td>${row.duration ? `${row.duration} dias` : "A definir"}</td>
-      <td>${row.end ? proposalFormatDate(row.end) : "A definir"}</td>
-      <td class="r">${row.physicalPercent.toFixed(0)}%</td>
-      <td class="r">${fmtBRL(row.value)}</td>
-    </tr>`).join("");
+  const executionRows = scheduleRows.map((row) => {
+    const stage = `
+      <tr>
+        <td><strong>${escapeProposalText(row.nome)}</strong></td>
+        <td>${row.start ? proposalFormatDate(row.start) : "A definir"}</td>
+        <td>${row.duration ? `${row.duration} dias` : "A definir"}</td>
+        <td>${row.end ? proposalFormatDate(row.end) : "A definir"}</td>
+        <td class="r">${row.physicalPercent.toFixed(1)}%</td>
+        <td class="r">${fmtBRL(row.value)}</td>
+      </tr>`;
+    const phases = (row.phases ?? []).map((phase) => `
+      <tr>
+        <td style="padding-left:8mm;">↳ ${escapeProposalText(phase.nome.replace(`${row.nome} · `, ""))}</td>
+        <td>${phase.start ? proposalFormatDate(phase.start) : "A definir"}</td>
+        <td>${phase.duration ? `${phase.duration} dias` : "A definir"}</td>
+        <td>${phase.end ? proposalFormatDate(phase.end) : "A definir"}</td>
+        <td class="r">${phase.physicalPercent.toFixed(1)}%</td>
+        <td class="r">${fmtBRL(phase.value)}</td>
+      </tr>`).join("");
+    return stage + phases;
+  }).join("");
 
   const paymentRows = (orcamento.paymentCompositions ?? [])
     .filter((item) => item?.forma && Number(item.valor ?? 0) > 0)
@@ -1022,6 +1158,7 @@ function renderConstructionProposalLayout(args: {
   .schedule-sub { color:${muted}; font-size:8pt; margin-bottom:8mm; }
   .schedule-block-title { font-size:12pt; margin:7mm 0 3mm; }
   .schedule-demo td { padding:3mm 2.5mm; }
+  .advance-summary { margin:4mm 0 3mm; padding:3mm; border:1px solid ${line}; background:${soft}; font-size:7.5pt; line-height:1.45; }
   .matrix-wrap { margin-top:3mm; }
   .period-matrix-group { margin-top:3mm; }
   .period-matrix-caption { font-size:6pt; color:${muted}; text-transform:uppercase; letter-spacing:.05em; margin-bottom:1.5mm; }
@@ -1100,7 +1237,8 @@ ${(builderModuleEnabled("cronograma") || builderModuleEnabled("fisico_financeiro
   </table>` : ""}
   ${builderModuleEnabled("fisico_financeiro") ? `
     <h2 class="schedule-block-title">Cronograma físico-financeiro</h2>
-    <div class="matrix-wrap">${renderProposalMonthlyMatrix(scheduleRows, fmtBRL)}</div>
+    <div class="advance-summary"><strong>Entrada / adiantamento:</strong> ${presentation.entradaPercentual.toFixed(2)}% (${fmtBRL(total * presentation.entradaPercentual / 100)}) · <strong>Amortização:</strong> ${presentation.amortizacaoEntradaPercentual.toFixed(2)}% sobre cada medição até quitação do adiantamento.</div>
+    <div class="matrix-wrap">${renderProposalMonthlyMatrix(scheduleRows, presentation, total, fmtBRL)}</div>
   ` : ""}
   ${footer()}
 </section>` : ""}
@@ -1116,7 +1254,8 @@ ${(builderModuleEnabled("cronograma") || builderModuleEnabled("fisico_financeiro
     <table class="payment-demo"><thead><tr><th>Forma / parcela</th><th class="r">Valor</th></tr></thead><tbody>${paymentRows}</tbody></table>
   ` : ""}
   <h2 class="next-title">Próximos passos após o aceite</h2>
-  <p class="next-copy">A proposta aceita torna-se a referência contratada da obra. A execução passa a utilizar as mesmas etapas, valores e cronograma como linha de base. Compras e demais ações operacionais acontecem posteriormente, conforme a necessidade real da obra.</p>
+  <p class="next-copy">A proposta aceita torna-se a referência contratada da obra. A execução passa a utilizar as mesmas etapas, fases, valores e cronograma como linha de base. As medições consideram apenas o avanço adicional executado e, quando houver entrada/adiantamento, aplicam a amortização prevista até sua quitação.</p>
+  ${presentation.mostrarPortalCliente ? `<p class="next-copy" style="margin-top:4mm;"><strong>Acompanhamento pelo Portal do Cliente:</strong> após a contratação, o cliente poderá acompanhar a linha-base, cronograma executivo, fases, previsto × executado, medições e informações financeiras publicadas pela construtora.</p>` : ""}
   ${orcamento.observacoes ? `<p class="next-copy" style="margin-top:4mm;">${escapeProposalText(orcamento.observacoes)}</p>` : ""}
   ${builderModuleEnabled("aceite") ? `
     <h2 class="accept-title">Aceite do cliente</h2>
