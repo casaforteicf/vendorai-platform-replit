@@ -2229,8 +2229,11 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                                 </div>
                               )}
                               <div className="min-w-0">
-                                <p className="truncate text-xs font-medium">
-                                  Etapa {stage.ordem} · {stage.nome}
+                                <p
+                                  className="text-xs font-medium leading-snug whitespace-normal break-words"
+                                  title={stage.nome}
+                                >
+                                  {stage.nome}
                                 </p>
                                 <p className="text-[11px] text-muted-foreground">
                                   {stage.total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
