@@ -12,6 +12,7 @@ const SK = {
   renderUrl: "arq_studio_renderUrl",
   versions: "arq_studio_versions",
   approvedVersionId: "arq_studio_approvedVersionId",
+  context: "arq_studio_context",
 } as const;
 
 const ENVIRONMENTS = new Set([
@@ -634,7 +635,9 @@ function reviveDate(value: unknown): Date | undefined {
   return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
-function readCachedVersions(): RenderStudioVersion[] {
+function readCachedVersions(targetKey: string): RenderStudioVersion[] {
+  const cachedContext = sessionStorage.getItem(SK.context);
+  if (cachedContext !== targetKey) return [];
   const raw = sessionStorage.getItem(SK.versions);
   if (!raw) return [];
   try {
@@ -673,8 +676,9 @@ function persistBootstrapState(state: {
   latestRenderId: string | null;
   latestRenderUrl: string | null;
   approvedVersionId: string | null;
-}) {
+}, targetKey: string) {
   try {
+    sessionStorage.setItem(SK.context, targetKey);
     sessionStorage.setItem(SK.versions, JSON.stringify(state.versions));
     if (state.latestRenderId) sessionStorage.setItem(SK.renderId, state.latestRenderId);
     else sessionStorage.removeItem(SK.renderId);
@@ -698,15 +702,21 @@ export default function RenderStudioPage() {
   const [ambiente, setAmbiente] = useState(() => sessionStorage.getItem(SK.ambiente) ?? "");
   const [hydratedKey, setHydratedKey] = useState<string | null>(null);
   const [approvalRedirectEpoch, setApprovalRedirectEpoch] = useState(0);
+  const targetKey = `${projectId ?? "no-project"}:${ambiente}`;
 
-  const recoveryCache = useMemo(() => ({
-    versions: readCachedVersions(),
-    renderId: sessionStorage.getItem(SK.renderId),
-    renderUrl: sessionStorage.getItem(SK.renderUrl),
-  }), [projectId, ambiente]);
+  const recoveryCache = useMemo(() => {
+    const cachedContext = sessionStorage.getItem(SK.context);
+    if (cachedContext !== targetKey) {
+      return { versions: [], renderId: null, renderUrl: null };
+    }
+    return {
+      versions: readCachedVersions(targetKey),
+      renderId: sessionStorage.getItem(SK.renderId),
+      renderUrl: sessionStorage.getItem(SK.renderUrl),
+    };
+  }, [targetKey]);
 
   const bootstrap = useRenderStudioPersistentBootstrap(projectId, ambiente, recoveryCache);
-  const targetKey = `${projectId ?? "no-project"}:${ambiente}`;
   const approvedVersion = useMemo(() => findApprovedVersion(bootstrap.state), [bootstrap.state]);
 
   useEffect(() => {
@@ -739,7 +749,7 @@ export default function RenderStudioPage() {
     const backendLoaded = bootstrap.loadedProjectId === projectId;
     const canUseRecovery = Boolean(bootstrap.error) || bootstrap.hasRecoveryOnly;
     if (!backendLoaded && !canUseRecovery) return;
-    persistBootstrapState(bootstrap.state);
+    persistBootstrapState(bootstrap.state, targetKey);
     setHydratedKey(targetKey);
   }, [projectId, targetKey, bootstrap.loadedProjectId, bootstrap.error, bootstrap.hasRecoveryOnly, bootstrap.state]);
 
