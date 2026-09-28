@@ -1521,6 +1521,21 @@ NÃO aceite a primeira solução mental: critique e refine antes de responder.`;
       });
     }
 
+    const finalArchitectureScore = Number(bestApproved.architectureScore ?? 0);
+    if (finalArchitectureScore < 82) {
+      return res.status(422).json({
+        error: `A solução atingiu ${finalArchitectureScore}/100 e ainda não alcançou o padrão arquitetônico mínimo de 82/100.`,
+        code: "ARQDOR_ARCHITECTURE_QUALITY_GATE",
+        architectureScore: finalArchitectureScore,
+        targetScore: 82,
+        validationIssues: [
+          ...(bestApproved.quality?.issues ?? []),
+          ...(bestApproved.selfCritique ?? []).map((item: string) => `Autocrítica: ${item}`),
+        ].slice(0, 12),
+        evolutionHistory,
+      });
+    }
+
     return res.json({
       solution: bestApproved,
       alternatives: [bestApproved],
