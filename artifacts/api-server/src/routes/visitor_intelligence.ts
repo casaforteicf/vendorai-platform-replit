@@ -17,6 +17,11 @@ const querySchema = z.object({
   onlineWindowSeconds: z.coerce.number().int().min(30).max(300).optional(),
 });
 
+const webVitalsQuerySchema = z.object({
+  minutes: z.coerce.number().int().min(5).max(90 * 24 * 60).optional(),
+  device: z.enum(["all", "mobile", "tablet", "desktop"]).optional(),
+});
+
 const eventSchema = z.object({
   anonymousSessionId: z.string().trim().min(8).max(120).regex(/^[a-zA-Z0-9_-]+$/),
   eventType: z.enum([
@@ -191,12 +196,13 @@ router.get("/visitor-intelligence/web-vitals", async (req, res) => {
   const tenantId = tenantFromRequest(req);
   if (!tenantId) return res.status(401).json({ error: "Tenant não identificado." });
 
-  const parsed = querySchema.safeParse(req.query);
+  const parsed = webVitalsQuerySchema.safeParse(req.query);
   if (!parsed.success) {
     return res.status(400).json({ error: "Filtros inválidos.", details: parsed.error.issues });
   }
 
   const minutes = parsed.data.minutes ?? 10_080;
+  const device = parsed.data.device ?? "all";
   const since = new Date(Date.now() - minutes * 60_000);
 
   try {
@@ -217,7 +223,8 @@ router.get("/visitor-intelligence/web-vitals", async (req, res) => {
 
     const samples = rows
       .map((row) => parseVitalSample({ path: row.path, metadata: row.metadata ?? {}, createdAt: row.createdAt }))
-      .filter((sample): sample is VitalSample => sample !== null);
+      .filter((sample): sample is VitalSample => sample !== null)
+      .filter((sample) => device === "all" || sample.deviceCategory === device);
 
     const routeMap = new Map<string, VitalSample[]>();
     for (const sample of samples) {
@@ -239,6 +246,7 @@ router.get("/visitor-intelligence/web-vitals", async (req, res) => {
 
     return res.json({
       minutes,
+      device,
       since: since.toISOString(),
       generatedAt: new Date().toISOString(),
       sampleCount: samples.length,
