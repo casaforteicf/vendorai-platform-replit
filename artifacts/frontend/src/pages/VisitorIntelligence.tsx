@@ -136,6 +136,7 @@ type WebVitalsResponse = {
   devices: { mobile: number; tablet: number; desktop: number };
   apiTimings?: Array<{ endpoint: string; samples: number; p75: number | null; median: number | null; max: number | null; transferP75?: number | null; bodyP75?: number | null }>;
   apiRouteTimings?: Array<{ path: string; endpoint: string; samples: number; p75: number | null; median: number | null; transferP75?: number | null }>;
+  runtimeErrors?: Array<{ path: string; message: string; count: number; source: string | null; lastSeenAt: string | null }>;
   routes: Array<{ path: string; samples: number; lcp: number | null; inp: number | null; cls: number | null }>;
 };
 type UnknownRecord = Record<string, unknown>;
@@ -504,6 +505,23 @@ export default function VisitorIntelligence() {
                 )) : <div className="text-xs text-muted-foreground">Nenhuma rota com confiança suficiente exige intervenção neste período.</div>}
               </div>
             </div>
+
+            {(vitalsQuery.data.runtimeErrors?.length ?? 0) > 0 ? (
+              <div className="mt-4 rounded-lg border border-red-500/20 bg-red-500/[0.03] p-3">
+                <div className="text-xs font-medium text-red-700">Erros de execução mais frequentes</div>
+                <div className="mt-2 space-y-2">
+                  {vitalsQuery.data.runtimeErrors!.slice(0, 8).map((error, index) => (
+                    <div key={`${error.path}-${error.message}-${index}`} className="rounded-md border bg-background px-2.5 py-2 text-xs">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0 truncate font-medium">{error.path}</div>
+                        <span className="shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold">{error.count} ocorrências</span>
+                      </div>
+                      <div className="mt-1 truncate text-[11px] text-muted-foreground">{error.message}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             {(vitalsQuery.data.apiTimings?.length ?? 0) > 0 ? (
               <div className="mt-4 rounded-lg border p-3">
