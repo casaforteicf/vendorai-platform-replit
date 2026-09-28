@@ -85,6 +85,7 @@ import { parseAsciiDxf } from "../lib/arqdor-dxf-import.js";
 import { parseIfcMetadata } from "../lib/arqdor-ifc-metadata.js";
 import { buildConceptIfc, conceptIfcFilename } from "../lib/arqdor-concept-ifc.js";
 import { parseIfcEditableGeometry } from "../lib/arqdor-ifc-editable.js";
+import { fitReferenceImageToLot } from "../lib/arqdor-reference-calibration.js";
 
 function sanitizeAIError(err: any): { status: number; message: string } {
   const raw: string = err?.message ?? String(err ?? "");
@@ -1242,6 +1243,7 @@ router.post("/arch/concept-projects/:id/source-file", authenticate, upload.singl
     .select({
       id: archConceptProjectsTable.id,
       status: archConceptProjectsTable.status,
+      lot: archConceptProjectsTable.lot,
       configuration: archConceptProjectsTable.configuration,
     })
     .from(archConceptProjectsTable)
@@ -1352,15 +1354,47 @@ router.post("/arch/concept-projects/:id/reference-plan", authenticate, upload.si
       req.file.originalname || "planta-referencia",
     );
     const url = `/api/storage/objects${storagePath.replace(/^\/objects/, "")}`;
+    const kind = req.file.mimetype === "application/pdf" ? "pdf" : "image";
+    const lot = (concept.lot ?? {}) as { width?: number; depth?: number };
+    const lotWidth = Math.max(0.1, Number(lot.width ?? 12));
+    const lotDepth = Math.max(0.1, Number(lot.depth ?? 30));
+
+    let nativeWidth: number | null = null;
+    let nativeHeight: number | null = null;
+    let widthMeters = lotWidth;
+    let depthMeters = lotDepth;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    if (kind === "image") {
+      const metadata = await sharp(req.file.buffer).metadata();
+      nativeWidth = Number(metadata.width ?? 0) || null;
+      nativeHeight = Number(metadata.height ?? 0) || null;
+      if (nativeWidth && nativeHeight) {
+        const fitted = fitReferenceImageToLot(nativeWidth, nativeHeight, lotWidth, lotDepth);
+        widthMeters = fitted.widthMeters;
+        depthMeters = fitted.depthMeters;
+        offsetX = fitted.offsetX;
+        offsetY = fitted.offsetY;
+      }
+    }
+
     const referencePlan = {
       storagePath,
       url,
       mimeType: req.file.mimetype,
       originalName: req.file.originalname || "planta-referencia",
       uploadedAt: new Date().toISOString(),
-      kind: req.file.mimetype === "application/pdf" ? "pdf" : "image",
+      kind,
       opacity: 0.35,
-      fitMode: "lot",
+      fitMode: "calibrated",
+      nativeWidth,
+      nativeHeight,
+      widthMeters,
+      depthMeters,
+      offsetX,
+      offsetY,
+      calibrationSource: kind === "image" ? "image_aspect_fit" : "lot",
     };
 
     const currentConfig = (concept.configuration ?? {}) as Record<string, unknown>;

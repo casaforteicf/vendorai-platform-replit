@@ -348,7 +348,14 @@ type ReferencePlan = {
   uploadedAt: string;
   kind: "image" | "pdf";
   opacity?: number;
-  fitMode?: "lot";
+  fitMode?: "lot" | "calibrated";
+  nativeWidth?: number | null;
+  nativeHeight?: number | null;
+  widthMeters?: number;
+  depthMeters?: number;
+  offsetX?: number;
+  offsetY?: number;
+  calibrationSource?: "image_aspect_fit" | "lot";
 };
 
 type ProjectSourceFile = {
@@ -7224,7 +7231,14 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         lotDepth={lotDepth}
                         activeFloor={activeFloor}
                         geometry={geometry}
-                        referenceImage={referencePlan?.kind === "image" ? { url: referencePlan.url, opacity: referencePlan.opacity } : null}
+                        referenceImage={referencePlan?.kind === "image" ? {
+                          url: referencePlan.url,
+                          opacity: referencePlan.opacity,
+                          x: referencePlan.offsetX,
+                          y: referencePlan.offsetY,
+                          width: referencePlan.widthMeters,
+                          height: referencePlan.depthMeters,
+                        } : null}
                         closedSpaces={closedSpaces}
                         selectedClosedSpaceId={selectedClosedSpaceId}
                         onSelectClosedSpace={(spaceId) => {
@@ -8456,6 +8470,11 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     <div className="min-w-0">
                       <div className="truncate font-semibold">{referencePlan.originalName}</div>
                       <div className="text-muted-foreground">{referencePlan.kind === "image" ? "Imagem de referência no editor 2D" : "PDF de referência vinculado"}</div>
+                      {referencePlan.kind === "image" && referencePlan.widthMeters && referencePlan.depthMeters ? (
+                        <div className="mt-1 text-[11px] text-muted-foreground">
+                          Referência calibrada: {referencePlan.widthMeters.toFixed(2)} × {referencePlan.depthMeters.toFixed(2)} m · proporção preservada
+                        </div>
+                      ) : null}
                     </div>
                     <a href={referencePlan.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-orange-600 hover:underline">
                       Abrir arquivo
