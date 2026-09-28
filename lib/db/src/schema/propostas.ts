@@ -128,6 +128,9 @@ export const propostaApresentacaoSchema = z.object({
   mostrarAmortizacaoEntrada: z.boolean().default(true),
   mostrarPortalCliente: z.boolean().default(true),
   areaTotalConstruida: z.number().positive().optional(),
+  // Exclusões comerciais editáveis pelo tenant. Cada linha representa um item
+  // explicitamente fora do valor global e deve aparecer na proposta.
+  itensNaoInclusos: z.array(z.string().min(1)).default([]),
 });
 
 export type PropostaApresentacao = z.infer<typeof propostaApresentacaoSchema>;
