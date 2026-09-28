@@ -154,6 +154,7 @@ const DEFAULT_PROPOSTA_APRESENTACAO: PropostaApresentacao = {
   amortizacaoEntradaPercentual: 0,
   mostrarAmortizacaoEntrada: true,
   mostrarPortalCliente: true,
+  itensNaoInclusos: [],
 };
 
 const valorField = z
