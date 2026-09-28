@@ -925,16 +925,40 @@ export async function sendOutgoingMessage(
 
   // ── 3. Instagram: validate credentials + actually send
   if (canal === "instagram") {
+    const [latestInstagramConversation] = await db
+      .select({ metadata: conversationsTable.metadata })
+      .from(conversationsTable)
+      .where(and(
+        eq(conversationsTable.tenantId, tenantId),
+        eq(conversationsTable.leadId, leadId),
+        eq(conversationsTable.channel, "instagram"),
+      ))
+      .orderBy(desc(conversationsTable.ultimaMensagemEm))
+      .limit(1);
+
+    const instagramMetadata = latestInstagramConversation?.metadata && typeof latestInstagramConversation.metadata === "object"
+      ? latestInstagramConversation.metadata as Record<string, unknown>
+      : {};
+    const routedConnectionId =
+      input.instagramConnectionId ||
+      (typeof instagramMetadata["instagramConnectionId"] === "string"
+        ? instagramMetadata["instagramConnectionId"] as string
+        : undefined);
+    const routedScopedId =
+      typeof instagramMetadata["instagramScopedId"] === "string"
+        ? instagramMetadata["instagramScopedId"] as string
+        : lead.instagramScopedId;
+
     const [selectedConnection] = await db
       .select({
         id: instagramConnectionsTable.id,
         accessToken: instagramConnectionsTable.pageAccessToken,
       })
       .from(instagramConnectionsTable)
-      .where(input.instagramConnectionId
+      .where(routedConnectionId
         ? and(
             eq(instagramConnectionsTable.tenantId, tenantId),
-            eq(instagramConnectionsTable.id, input.instagramConnectionId),
+            eq(instagramConnectionsTable.id, routedConnectionId),
             isNull(instagramConnectionsTable.disconnectedAt),
           )
         : and(
@@ -956,16 +980,16 @@ export async function sendOutgoingMessage(
       throw new InstagramNotConnectedError();
     }
 
-    if (!lead.instagramScopedId) {
+    if (!routedScopedId) {
       throw new InstagramScopedIdMissingError(leadId);
     }
 
     if (input.midia) {
-      await sendMetaGraphMedia(instagramAccessToken, lead.instagramScopedId, input.midia.url, input.midia.mimeType, log, "instagram");
+      await sendMetaGraphMedia(instagramAccessToken, routedScopedId, input.midia.url, input.midia.mimeType, log, "instagram");
     } else {
       await sendInstagramMessage(
         instagramAccessToken,
-        lead.instagramScopedId,
+        routedScopedId,
         conteudo,
         log
       );
