@@ -453,7 +453,9 @@ export function useRenderStudioController() {
           melhoriaMode === "change-material" ? "Alteração de material." : null,
           melhoriaMode === "change-lighting" ? "Ajuste de iluminação." : null,
           selectedMaterial ? `Material selecionado: ${selectedMaterial.nome} (${selectedMaterial.categoria}${selectedMaterial.fornecedor ? `, ${selectedMaterial.fornecedor}` : ""}).` : null,
-          selections.length > 0 ? `Aplicar somente na região selecionada: ${selections.map(s => s.label || "seleção").join(", ")}.` : null,
+          selections.length > 0
+            ? `A seleção desenhada é uma semente de edição. Reconhecer a superfície/material conectado ao ponto selecionado e aplicar a alteração somente nessa superfície, sem contaminar materiais ou objetos vizinhos: ${selections.map(s => s.label || "seleção").join(", ")}.`
+            : null,
           effectivePrompt,
           melhoriaMode === "improve"
             ? "Executar refino global em alta qualidade sobre a imagem inteira, sem exigir máscara ou seleção."
@@ -474,6 +476,13 @@ export function useRenderStudioController() {
         preservation_policy: preservationLocks,
         parent_render_id: currentRenderId, // P2-18
         material_id:      selectedMaterial?.id,
+        material_name:    selectedMaterial?.nome,
+        operation_type:   melhoriaMode === "change-material" ? "material" : melhoriaMode === "change-lighting" ? "lighting" : "improve",
+        // Genius Render: seleção parcial funciona como semente. O backend
+        // amplia apenas o contexto necessário e recompõe sobre o original,
+        // impedindo deriva fora da região autorizada.
+        expand_selection_to_material: melhoriaMode === "change-material" && selections.length > 0,
+        selection_padding_percent: melhoriaMode === "change-material" ? 12 : 0,
       });
       const data = await waitForRenderCompletion(render_id);
       const newVersion: RenderVersion = {
