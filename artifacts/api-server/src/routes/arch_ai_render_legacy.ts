@@ -804,7 +804,9 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
         generatedByAi: true,
       },
     });
-    const resultUrl = `/api/storage/objects/${captured.storageUrl.replace(/^\/objects\//, "")}`;
+    // Persistimos a referência canônica do objeto. A API converte para display_url
+    // quando o navegador precisa consumir o arquivo.
+    const resultUrl = captured.storageUrl;
 
     // ── 6. Atualizar registro ──────────────────────────────────────────────
     await db.update(archAiRendersTable)
@@ -851,12 +853,18 @@ async function fetchImageAsBuffer(
     return { buf: Buffer.from(match[2]!, "base64"), mime: match[1]! };
   }
 
-  // URL de storage interno (/api/storage/objects/...)
-  if (url.startsWith("/api/storage/")) {
-    const objKey  = url.replace(/^\/api\/storage\/objects\//, "objects/");
-    const rawPath = `/${objKey}`;
-    const fetched = await (storage as any).getPrivateBuffer?.(rawPath).catch(() => null);
-    if (fetched?.buf) return { buf: fetched.buf, mime: fetched.mime ?? "image/png" };
+  // Storage interno: banco guarda /objects/...; registros antigos podem ter
+  // /api/storage/objects/...
+  if (url.startsWith("/objects/") || url.startsWith("/api/storage/objects/")) {
+    const rawPath = url.startsWith("/api/storage/objects/")
+      ? `/objects/${url.slice("/api/storage/objects/".length)}`
+      : url;
+    const file = await storage.getObjectEntityFile(rawPath);
+    const [[buf], metadata] = await Promise.all([
+      file.download(),
+      file.getMetadata(),
+    ]);
+    return { buf, mime: metadata[0].contentType ?? "image/png" };
   }
 
   // URL externa

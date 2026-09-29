@@ -7,6 +7,7 @@ import { pool } from "@workspace/db";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { bufferToDataUrl } from "../lib/arch-render-pipeline.js";
 import { generateVeoVideo } from "./media-provider-execution.js";
+import { captureGeneratedMedia } from "./media-library.js";
 import {
   ARQDOR_NEGATIVE_PROMPTS,
   buildArqdorRenderToVideoPrompt,
@@ -110,11 +111,25 @@ export async function startArqdorRenderVideo(input: {
         logger: input.logger as any,
       });
       const fiveSeconds = await trimToFiveSeconds(generation.buffer);
-      const videoUrl = await storage.savePrivateBuffer(
-        fiveSeconds,
-        "video/mp4",
-        `arqdor-render-${input.renderId}-${jobId}-5s.mp4`,
-      );
+      const captured = await captureGeneratedMedia({
+        tenantId: input.tenantId,
+        title: `Arqdor · vídeo do render ${input.renderId.slice(0, 8)}`,
+        operation: "arqdor_render_video_5s",
+        buffer: fiveSeconds,
+        mimeType: "video/mp4",
+        type: "video",
+        originalFilename: `arqdor-render-${input.renderId}-${jobId}-5s.mp4`,
+        kind: "video",
+        metadata: {
+          module: "arqdor",
+          renderId: input.renderId,
+          videoJobId: jobId,
+          movement: input.movement,
+          aspectRatio: input.aspectRatio,
+          generatedByAi: true,
+        },
+      });
+      const videoUrl = captured.storageUrl;
       await pool.query(
         `UPDATE arch_render_videos
             SET status='done', provider='replicate', model=$1, provider_prediction_id=$2,

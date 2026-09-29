@@ -20,6 +20,7 @@ export type RenderStudioPersistentState = {
   versions: RenderStudioVersion[];
   latestRenderId: string | null;
   latestRenderUrl: string | null;
+  sourceImageUrl: string | null;
   approvedVersionId: string | null;
 };
 
@@ -42,6 +43,13 @@ function versionLabel(version: PersistentRenderVersion, operationType: RenderStu
   if (operationType === "lighting") return `Versão ${n} · Iluminação`;
   if (operationType === "improve") return `Versão ${n} · Melhoria`;
   return `Versão ${n} · Original`;
+}
+
+function normalizeMediaUrl(value: string | null | undefined): string | null {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  if (raw.startsWith("/objects/")) return `/api/storage${raw}`;
+  return raw;
 }
 
 function parseCost(value: PersistentRenderVersion["costEstimateUsd"]): number | undefined {
@@ -88,11 +96,16 @@ export function buildRenderStudioPersistentState(
 
   const latest = chronological.at(-1) ?? null;
   const approved = [...chronological].reverse().find(version => Boolean(version.approvedAt) || version.operationType === "approved") ?? null;
+  const sourceImageUrl = [...persistentVersions]
+    .reverse()
+    .map(version => normalizeMediaUrl(version.originalImageUrl))
+    .find(Boolean) ?? null;
 
   return {
     versions: [...chronological].reverse(),
     latestRenderId: latest?.id ?? null,
     latestRenderUrl: latest?.url ?? null,
+    sourceImageUrl,
     approvedVersionId: approved?.id ?? null,
   };
 }
@@ -105,6 +118,7 @@ export function buildRenderStudioPersistentState(
 export function mergeRecoveryCache(
   persistentState: RenderStudioPersistentState,
   cachedVersions: CachedVersion[],
+  cachedImageUrl?: string | null,
 ): RenderStudioPersistentState {
   if (persistentState.versions.length > 0) return persistentState;
 
@@ -133,6 +147,7 @@ export function mergeRecoveryCache(
     versions: recovered,
     latestRenderId: latest?.id ?? null,
     latestRenderUrl: latest?.url ?? null,
+    sourceImageUrl: persistentState.sourceImageUrl ?? cachedImageUrl ?? null,
     approvedVersionId: approved?.id ?? null,
   };
 }

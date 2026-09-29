@@ -10,6 +10,7 @@ const SK = {
   ambiente: "arq_studio_ambiente",
   renderId: "arq_studio_renderId",
   renderUrl: "arq_studio_renderUrl",
+  imageUrl: "arq_studio_imageDataUrl",
   versions: "arq_studio_versions",
   approvedVersionId: "arq_studio_approvedVersionId",
   context: "arq_studio_context",
@@ -702,6 +703,7 @@ function persistBootstrapState(state: {
   versions: RenderStudioVersion[];
   latestRenderId: string | null;
   latestRenderUrl: string | null;
+  sourceImageUrl: string | null;
   approvedVersionId: string | null;
 }, targetKey: string) {
   try {
@@ -711,10 +713,17 @@ function persistBootstrapState(state: {
     else sessionStorage.removeItem(SK.renderId);
     if (state.latestRenderUrl) sessionStorage.setItem(SK.renderUrl, state.latestRenderUrl);
     else sessionStorage.removeItem(SK.renderUrl);
+    if (state.sourceImageUrl) sessionStorage.setItem(SK.imageUrl, state.sourceImageUrl);
+    else sessionStorage.removeItem(SK.imageUrl);
     if (state.approvedVersionId) sessionStorage.setItem(SK.approvedVersionId, state.approvedVersionId);
     else sessionStorage.removeItem(SK.approvedVersionId);
 
-    if (findApprovedVersion(state) && sessionStorage.getItem(SK.step) === "aprovar") sessionStorage.setItem(SK.step, "especificacao");
+    const currentStep = sessionStorage.getItem(SK.step);
+    if (findApprovedVersion(state) && currentStep === "aprovar") {
+      sessionStorage.setItem(SK.step, "especificacao");
+    } else if (!state.latestRenderUrl && !state.sourceImageUrl && ["render", "melhoria", "versao", "aprovar", "especificacao"].includes(currentStep ?? "")) {
+      sessionStorage.setItem(SK.step, "imagem");
+    }
   } catch {
     // recovery cache is best effort
   }
@@ -734,12 +743,13 @@ export default function RenderStudioPage() {
   const recoveryCache = useMemo(() => {
     const cachedContext = sessionStorage.getItem(SK.context);
     if (cachedContext !== targetKey) {
-      return { versions: [], renderId: null, renderUrl: null };
+      return { versions: [], renderId: null, renderUrl: null, imageUrl: null };
     }
     return {
       versions: readCachedVersions(targetKey),
       renderId: sessionStorage.getItem(SK.renderId),
       renderUrl: sessionStorage.getItem(SK.renderUrl),
+      imageUrl: sessionStorage.getItem(SK.imageUrl),
     };
   }, [targetKey]);
 
