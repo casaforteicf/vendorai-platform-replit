@@ -1,5 +1,6 @@
 import type { Logger } from "pino";
 import { toFile } from "openai";
+import sharp from "sharp";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import { callReplicateVeo31 } from "../lib/arch-render-pipeline.js";
 import { callGoogleVertexVeo } from "../lib/google-veo-direct.js";
@@ -16,6 +17,40 @@ function decodeDataUrl(imageDataUrl: string, label: string): { source: Buffer; m
 
 function arqdorImageModel(): string {
   return process.env["VENDORAI_IMAGE_MODEL_PREMIUM"]?.trim() || "gpt-image-2";
+}
+
+async function normalizeOpenAiMask(maskDataUrl: string): Promise<{ source: Buffer; mime: string }> {
+  const decoded = decodeDataUrl(maskDataUrl, "máscara do Render Premium");
+  const meta = await sharp(decoded.source).metadata();
+  const width = meta.width;
+  const height = meta.height;
+  if (!width || !height) throw new Error("Máscara do Render Premium sem dimensões válidas");
+
+  // A máscara interna do Arqdor usa branco=editar e preto=preservar.
+  // A API de edição de imagens exige PNG com canal alpha, onde
+  // transparente=editar e opaco=preservar. Convertemos sem alterar a
+  // máscara usada depois pelo compositing/QA.
+  const gray = await sharp(decoded.source)
+    .resize(width, height, { fit: "fill" })
+    .greyscale()
+    .raw()
+    .toBuffer();
+
+  const rgba = Buffer.alloc(width * height * 4);
+  for (let i = 0; i < width * height; i += 1) {
+    const value = gray[i] ?? 0;
+    const p = i * 4;
+    rgba[p] = 255;
+    rgba[p + 1] = 255;
+    rgba[p + 2] = 255;
+    rgba[p + 3] = 255 - value;
+  }
+
+  const source = await sharp(rgba, { raw: { width, height, channels: 4 } })
+    .png()
+    .toBuffer();
+
+  return { source, mime: "image/png" };
 }
 
 export async function generateRenderPremiumOpenAI(input: {
@@ -41,7 +76,7 @@ export async function generateRenderPremiumOpenAI(input: {
 
   let mask: any;
   if (input.maskDataUrl) {
-    const decodedMask = decodeDataUrl(input.maskDataUrl, "máscara do Render Premium");
+    const decodedMask = await normalizeOpenAiMask(input.maskDataUrl);
     mask = await toFile(decodedMask.source, "arqdor-mask.png", { type: decodedMask.mime });
   }
 
