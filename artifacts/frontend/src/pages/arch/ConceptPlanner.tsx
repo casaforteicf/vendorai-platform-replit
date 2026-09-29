@@ -1388,15 +1388,25 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
     const loadLatest = async () => {
       try {
-        const { id: requestedId, isNew } = conceptUrlParams();
-        if (isNew && !requestedId) {
-          if (!cancelled) setSaveState("idle");
+        const { id: requestedId } = conceptUrlParams();
+        // A rota principal /arch/concept sempre inicia um novo pré-projeto.
+        // Projetos existentes só são reabertos quando há um id explícito,
+        // normalmente vindo da lista/pasta de projetos.
+        if (!requestedId) {
+          if (!cancelled) {
+            setConceptId(null);
+            conceptIdRef.current = null;
+            setProjectScope(null);
+            setStartWithTerrain(null);
+            setStartSourceChosen(false);
+            setStartWizardStage("kind");
+            setStartChooserDismissed(false);
+            setSaveState("idle");
+          }
           return;
         }
         const response = await fetch(
-          requestedId
-            ? `/api/arch/concept-projects/${encodeURIComponent(requestedId)}`
-            : "/api/arch/concept-projects/latest",
+          `/api/arch/concept-projects/${encodeURIComponent(requestedId)}`,
         );
         if (!response.ok) throw new Error("Falha ao carregar pré-projeto");
         const draft = (await response.json()) as ConceptDraftResponse | null;
