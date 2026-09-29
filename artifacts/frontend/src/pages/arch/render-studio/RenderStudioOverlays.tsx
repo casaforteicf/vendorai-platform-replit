@@ -179,10 +179,6 @@ export function RenderStudioMaterialLibraryModal({ isOpen, onClose, onSelect }: 
     return () => document.removeEventListener("keydown", k);
   }, [isOpen, onClose, showImporter]);
 
-  useEffect(() => {
-    return () => previews.forEach((url) => URL.revokeObjectURL(url));
-  }, [previews]);
-
   function resetImporter() {
     previews.forEach((url) => URL.revokeObjectURL(url));
     setMaterialName("");
@@ -266,6 +262,12 @@ export function RenderStudioMaterialLibraryModal({ isOpen, onClose, onSelect }: 
     } finally {
       setSavingMaterial(false);
     }
+  }
+
+  function imageSrc(url: string) {
+    if (/^(https?:|data:|blob:)/.test(url)) return url;
+    const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+    return `${base}${url.startsWith("/") ? "" : "/"}${url}`;
   }
 
   if (!isOpen) return null;
@@ -391,7 +393,7 @@ export function RenderStudioMaterialLibraryModal({ isOpen, onClose, onSelect }: 
                   style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 10, overflow: "hidden", cursor: "pointer", textAlign: "left", transition: "border-color 0.15s", display: "flex", flexDirection: "column" }}>
                   <div style={{ height: 90, background: D.inputBg, position: "relative", overflow: "hidden" }}>
                     {(item.imagens ?? [])[0] ? (
-                      <img src={(item.imagens ?? [])[0]} alt={item.nome} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      <img src={imageSrc((item.imagens ?? [])[0])} alt={item.nome} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                     ) : (
                       <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, color: D.dim }}>▦</div>
                     )}
