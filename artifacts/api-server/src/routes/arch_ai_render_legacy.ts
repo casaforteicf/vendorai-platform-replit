@@ -716,7 +716,7 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
         .set({ segmentationConfidence: segConf })
         .where(ownedRender);
 
-    } else if (params.userNotes && hasLocalEditMask) {
+    } else if (hasLocalEditMask) {
       // ── 3b. Ajuste pós-geração de elemento pontual (Fill Pro + máscara) ─
       // Chamada separada sobre resultado já convertido — nunca combinada
       // com a geração inicial do Kontext no mesmo fluxo.
