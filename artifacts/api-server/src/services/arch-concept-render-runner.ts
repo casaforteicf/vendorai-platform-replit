@@ -70,7 +70,11 @@ export function startArchConceptRenderRunner(logger: Logger, pollMs = 3000) {
       heartbeat.unref?.();
       deadline = setTimeout(() => controller.abort(), 15 * 60_000);
       deadline.unref?.();
-      const input = render.job_input as { userNotes?: string; materials?: Array<{ zone: string; promptFragment: string }> };
+      const input = render.job_input as {
+        userNotes?: string;
+        materials?: Array<{ zone: string; promptFragment: string }>;
+        renderPresets?: import("../lib/arqdor-render-prompts.js").ArqdorRenderPreset[];
+      };
       await processRenderJob({
         renderId: render.id,
         tenantId: render.tenant_id,
@@ -83,6 +87,8 @@ export function startArchConceptRenderRunner(logger: Logger, pollMs = 3000) {
         angulo: render.angulo,
         materials: input.materials ?? [],
         userNotes: input.userNotes,
+        renderPresets: input.renderPresets ?? [],
+        premiumRefine: false,
         source: render.source,
         renderView: render.render_view,
         retentativas: Number.parseInt(String(render.retentativas ?? "0"), 10) || 0,

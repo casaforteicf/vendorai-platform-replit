@@ -32,6 +32,7 @@ import {
   compositeWithOriginal,
   validateEdgeIntegrity,
   validateArchitecturalStructure,
+  validateColorStability,
   bufferToDataUrl,
 } from "../lib/arch-render-pipeline.js";
 import sharp from "sharp";
@@ -263,6 +264,7 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
     angulo,
     materials,
     userNotes:    user_notes,
+    premiumRefine: mode === "preservar" && !durable,
     renderPresets: render_presets,
     source,
     renderView: render_view,
@@ -488,6 +490,7 @@ archAiRenderRouter.post("/arch/ai-render/:id/adjust", authenticate, async (req: 
     angulo:       parent.angulo,
     materials:    [],
     userNotes:    ajuste_prompt,
+    premiumRefine: false,
     logger:       req.log,
     retentativas: 0,
   }).catch(err => {
@@ -574,6 +577,8 @@ export interface RenderJobParams {
   angulo:       string | null | undefined;
   materials:    { zone: string; promptFragment: string }[];
   userNotes:    string | undefined;
+  renderPresets?: ArqdorRenderPreset[];
+  premiumRefine?: boolean;
   source?: string | null;
   renderView?: string | null;
   logger:       any;
@@ -607,7 +612,7 @@ async function enhanceFinalRender(buffer: Buffer): Promise<Buffer> {
   if (!width || !height) return buffer;
 
   const longest = Math.max(width, height);
-  const targetLongest = 2048;
+  const targetLongest = 2560;
   const scale = targetLongest / longest;
 
   return sharp(buffer)
@@ -760,8 +765,72 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
       motor = `${generated.provider}-${generated.model}`;
     }
 
-    // ── 4. QA estrutural pós-render ─────────────────────────────────────────
-    const resultBuf = Buffer.from(resultB64, "base64");
+    // ── 4. Refino premium em segundo passe ─────────────────────────────────
+    // O primeiro passe resolve fidelidade/layout. O segundo trabalha sobre o
+    // resultado já convertido e pode melhorar microtextura, luz e resposta
+    // física dos materiais sem redesenhar a cena. Se o QA detectar deriva,
+    // descartamos automaticamente o segundo passe e mantemos o primeiro.
+    let resultBuf = Buffer.from(resultB64, "base64");
+    if (mode === "preservar" && params.premiumRefine) {
+      const firstPassBuf = resultBuf;
+      const firstPassMeta = await sharp(firstPassBuf).metadata();
+      const firstPassWidth = firstPassMeta.width ?? width;
+      const firstPassHeight = firstPassMeta.height ?? height;
+      const premiumPrompt = [
+        "PREMIUM PHOTOREALISM REFINEMENT PASS. Treat the supplied image as an immutable composition.",
+        "Do not move, resize, rotate, replace, add or remove furniture, cabinetry, appliances, fixtures, openings, walls or structural elements.",
+        "Preserve exact perceived colors and material identity. Do not recolor wood, stone, paint, metal, glass, textiles or furniture.",
+        "Improve only physically based rendering quality: high-frequency texture detail, realistic micro-roughness, correct specular response, subtle surface variation, realistic glass and mirror reflections, contact shadows, global illumination, bounce light, tonal separation and photographic clarity.",
+        "Keep camera, framing, perspective, focal relationships and all object positions unchanged.",
+        "No new decoration, no new furniture, no crop, no zoom, no mirror, no redesign.",
+        renderPresets?.includes("glass_mirror_fidelity")
+          ? "Glass and mirrors: keep exact panel/frame geometry; use physically plausible Fresnel reflection/transparency and reflections consistent with the existing scene. Never duplicate reflected furniture or invent openings."
+          : "",
+        renderPresets?.includes("pool_water_fidelity")
+          ? "Pool/spa: keep exact coping, waterline, deck and edge geometry; improve only physically plausible water transparency, reflections and caustics."
+          : "",
+        renderPresets?.includes("facade_exterior_preserve")
+          ? "Exterior: keep exact massing, roof/parapet, openings, gates and landscaping positions; improve only material depth, natural light, reflections and atmospheric realism."
+          : "",
+        "Final result must look like a premium architectural photograph of the exact same design.",
+      ].filter(Boolean).join("\n");
+
+      try {
+        const refined = await generateRenderPreserve({
+          imageDataUrl: bufferToDataUrl(firstPassBuf, "image/png"),
+          prompt: premiumPrompt,
+          aspectRatio: nearestRenderAspectRatio(firstPassWidth, firstPassHeight),
+          logger,
+          signal: params.signal,
+        });
+        const refinedBuf = Buffer.from(refined.base64, "base64");
+        const [structureQA, colorQA] = await Promise.all([
+          validateArchitecturalStructure(originalBuf, refinedBuf),
+          validateColorStability(originalBuf, refinedBuf),
+        ]);
+
+        if (structureQA.valid && colorQA.valid) {
+          resultBuf = refinedBuf;
+          resultB64 = refined.base64;
+          motor = `${motor}+premium:${refined.provider}-${refined.model}`;
+          logger?.info({ renderId }, "arch/ai-render: segundo passe premium aprovado");
+        } else {
+          resultBuf = firstPassBuf;
+          resultB64 = firstPassBuf.toString("base64");
+          logger?.warn({
+            renderId,
+            structure: structureQA.details,
+            color: colorQA.details,
+          }, "arch/ai-render: segundo passe premium descartado por QA; mantendo primeiro passe");
+        }
+      } catch (premiumError) {
+        resultBuf = firstPassBuf;
+        resultB64 = firstPassBuf.toString("base64");
+        logger?.warn({ err: premiumError, renderId }, "arch/ai-render: segundo passe premium falhou; mantendo primeiro passe");
+      }
+    }
+
+    // ── 5. QA estrutural pós-render ─────────────────────────────────────────
     const shouldValidateArchitecture =
       mode === "preservar" &&
       ambiente === "fachada" &&
@@ -830,7 +899,7 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
       }
     }
 
-    // ── 5. Refino técnico + salvar resultado em alta resolução ─────────────
+    // ── 6. Refino técnico + salvar resultado em alta resolução ─────────────
     const finalResultBuf = await enhanceFinalRender(resultBuf);
     const finalMeta = await sharp(finalResultBuf).metadata();
     const [renderContext] = await db
@@ -867,14 +936,14 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
         generatedByAi: true,
         finalWidth: finalMeta.width ?? null,
         finalHeight: finalMeta.height ?? null,
-        qualityPipeline: "hq-lanczos-sharpen-v1",
+        qualityPipeline: params.premiumRefine ? "premium-two-pass+qa+2560" : "hq-lanczos-sharpen-2560",
       },
     });
     // Persistimos a referência canônica do objeto. A API converte para display_url
     // quando o navegador precisa consumir o arquivo.
     const resultUrl = captured.storageUrl;
 
-    // ── 6. Atualizar registro ──────────────────────────────────────────────
+    // ── 7. Atualizar registro ──────────────────────────────────────────────
     await db.update(archAiRendersTable)
       .set({
         status:          "concluido",

@@ -311,7 +311,7 @@ export function useRenderStudioController() {
         render_presets: [renderPreset],
         user_notes: "Preservação rígida: manter exatamente cores, materiais, texturas-base, medidas, posição, orientação e proporções de todo mobiliário e marcenaria; manter câmera, perspectiva, layout, circulação e aberturas. Melhorar somente fotorealismo, resolução de textura, iluminação, reflexos, sombras e definição. Não adicionar decoração nem realocar objetos.",
       });
-      setRenderId(render_id); setProcessingStage("Gerando render…");
+      setRenderId(render_id); setProcessingStage("Render Premium · preservando projeto e refinando materiais…");
       const data = await waitForRenderCompletion(render_id);
       setProcessingStage("Finalizando e salvando versão…");
       const v: RenderVersion = {

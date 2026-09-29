@@ -210,8 +210,11 @@ export function RenderStudioRightPanel({
                           <option value="guardrail_glass_precision">Guarda-corpo e vidro · precisão</option>
                           <option value="night_lighting_exterior">Exterior noturno · iluminação realista</option>
                         </select>
-                        <div style={{ fontSize: 11, color: D.muted, lineHeight: 1.5 }}>Tempo estimado: 30–90 segundos</div>
-                        <DkBtn onClick={onStartRender} disabled={loading}>✦ Gerar Render com IA</DkBtn>
+                        <div style={{ padding: "7px 9px", borderRadius: 7, background: `${D.purple}0D`, border: `1px solid ${D.purple}22`, fontSize: 10, lineHeight: 1.45, color: D.muted }}>
+                          ✦ Qualidade Premium em 2 etapas: primeiro preserva projeto e mobiliário; depois refina texturas, iluminação, reflexos e definição. Se o refino alterar a cena, ele é descartado automaticamente.
+                        </div>
+                        <div style={{ fontSize: 11, color: D.muted, lineHeight: 1.5 }}>Tempo estimado: 60–180 segundos</div>
+                        <DkBtn onClick={onStartRender} disabled={loading}>✦ Gerar Render Premium</DkBtn>
                       </>
                     )}
                     {loading && <div style={{ display: "flex", alignItems: "center", gap: 8, color: D.muted, fontSize: 11 }}><DkSpinner size={14} /> Processando…</div>}

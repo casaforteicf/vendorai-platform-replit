@@ -647,6 +647,38 @@ export async function validateArchitecturalStructure(
   }
 }
 
+
+export async function validateColorStability(
+  originalBuf: Buffer,
+  resultBuf: Buffer,
+): Promise<{ valid: boolean; meanDelta: number; details: string }> {
+  try {
+    const [sourceStats, resultStats] = await Promise.all([
+      sharp(originalBuf).removeAlpha().resize(256, 256, { fit: "fill" }).stats(),
+      sharp(resultBuf).removeAlpha().resize(256, 256, { fit: "fill" }).stats(),
+    ]);
+
+    const sourceMeans = sourceStats.channels.slice(0, 3).map((channel) => channel.mean);
+    const resultMeans = resultStats.channels.slice(0, 3).map((channel) => channel.mean);
+    const deltas = sourceMeans.map((value, index) => Math.abs(value - (resultMeans[index] ?? value)));
+    const meanDelta = deltas.reduce((sum, value) => sum + value, 0) / Math.max(1, deltas.length);
+
+    // A iluminação pode mudar highlights e sombras, mas uma deriva média grande
+    // costuma indicar recoloração global do projeto. O limite é intencionalmente
+    // tolerante para não bloquear cenas diurnas/noturnas legítimas.
+    const valid = meanDelta <= 34;
+    return {
+      valid,
+      meanDelta,
+      details: valid
+        ? `OK — deriva média de cor ${meanDelta.toFixed(1)}.`
+        : `REJEIÇÃO — deriva média de cor ${meanDelta.toFixed(1)} (limite: 34).`,
+    };
+  } catch (err: any) {
+    return { valid: true, meanDelta: 0, details: `QA de cor ignorado: ${err?.message ?? "falha desconhecida"}` };
+  }
+}
+
 export async function validateEdgeIntegrity(
   originalBuf: Buffer,
   resultBuf:   Buffer,
