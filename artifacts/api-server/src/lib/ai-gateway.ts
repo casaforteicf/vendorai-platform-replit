@@ -281,7 +281,7 @@ export async function callOpenAI(
   const log = options.log;
   const role = roleForFeature(String(feature));
   const businessContext = role ? await loadApprovedBusinessContext(tenantId, role) : "";
-  const withBusinessContext = businessContext && !JSON.stringify(messages).includes("[VENDORAI_BUSINESS_PLAN]")
+  const withBusinessContext = businessContext && !messages.some(m => m.role === "system" && typeof m.content === "string" && m.content.includes("[VENDORAI_BUSINESS_PLAN]"))
     ? [{ role: "system" as const, content: businessContext }, ...messages]
     : messages;
   const localizedMessages = await localizeAgentOnboardingMessages(tenantId, feature, withBusinessContext);
@@ -404,12 +404,12 @@ export async function callAnthropic(
 ): Promise<{ content: string; inputTokens: number; outputTokens: number; costUsd: number; usedByok: boolean }> {
   const role = roleForFeature(String(feature));
   const businessContext = role ? await loadApprovedBusinessContext(tenantId, role) : "";
-  const system = [businessContext, options.system].filter(Boolean).join("\n\n");
+  const system = options.system?.includes("[VENDORAI_BUSINESS_PLAN]") ? options.system : [businessContext, options.system].filter(Boolean).join("\n\n");
   const model = options.model ?? "claude-sonnet-4-6";
   const log = options.log;
 
   // 1. Estimate cost
-  const estimatedInputTokens = messages.reduce((acc, m) => acc + m.content.length, 0) / 4;
+  const estimatedInputTokens = (system.length + messages.reduce((acc, m) => acc + m.content.length, 0)) / 4;
   const estimatedCost = estimateCost((model ?? "unknown"), Math.ceil(estimatedInputTokens), options.maxTokens ?? 32000);
 
   // 2. Check quota
