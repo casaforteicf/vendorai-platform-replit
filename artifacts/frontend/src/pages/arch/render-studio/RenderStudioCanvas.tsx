@@ -75,19 +75,30 @@ function ProgressOverlay({ stage, elapsedSeconds, isRecovering }: { stage: strin
 
 // ─── P2-13: SelectionCanvas overlay ──────────────────────────────────────────
 
-function SelectionCanvas({ isActive, renderUrl, onSelection, existingSelections, onClearSelection }: {
+function SelectionCanvas({ isActive, renderUrl, onSelection, onUpdateSelection, existingSelections, onClearSelection }: {
   isActive: boolean;
   renderUrl: string;
   onSelection: (sel: Omit<SelectionRect, "id" | "label">) => void;
+  onUpdateSelection: (id: string, patch: Partial<Pick<SelectionRect, "x" | "y" | "w" | "h">>) => void;
   existingSelections: SelectionRect[];
   onClearSelection: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{ active: boolean; startX: number; startY: number }>({ active: false, startX: 0, startY: 0 });
   const [currentRect, setCurrentRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [activeSelectionId, setActiveSelectionId] = useState<string | null>(null);
 
-  // Redraw canvas on changes
+  type DragMode = "create" | "move" | "nw" | "ne" | "sw" | "se";
+  const dragRef = useRef<{
+    active: boolean;
+    mode: DragMode;
+    startX: number;
+    startY: number;
+    selection?: SelectionRect;
+  }>({ active: false, mode: "create", startX: 0, startY: 0 });
+
+  const clamp = (v: number, min = 0, max = 100) => Math.max(min, Math.min(max, v));
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -95,24 +106,38 @@ function SelectionCanvas({ isActive, renderUrl, onSelection, existingSelections,
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Draw existing selections
     existingSelections.forEach((sel) => {
       const x = (sel.x / 100) * canvas.width;
       const y = (sel.y / 100) * canvas.height;
       const w = (sel.w / 100) * canvas.width;
       const h = (sel.h / 100) * canvas.height;
-      ctx.fillStyle = "rgba(124,58,237,0.15)";
+      const active = sel.id === activeSelectionId;
+
+      ctx.fillStyle = active ? "rgba(245,158,11,0.16)" : "rgba(124,58,237,0.15)";
       ctx.fillRect(x, y, w, h);
-      ctx.strokeStyle = "#7C3AED";
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = active ? "#F59E0B" : "#7C3AED";
+      ctx.lineWidth = active ? 2.5 : 2;
       ctx.setLineDash([]);
       ctx.strokeRect(x, y, w, h);
-      ctx.fillStyle = "#A78BFA";
+      ctx.fillStyle = active ? "#F59E0B" : "#A78BFA";
       ctx.font = "bold 11px system-ui";
       ctx.fillText(sel.label || "Seleção", x + 6, y + 16);
+
+      if (isActive && active) {
+        const size = 9;
+        const handles = [
+          [x, y], [x + w, y], [x, y + h], [x + w, y + h],
+        ];
+        ctx.fillStyle = "#FFFFFF";
+        ctx.strokeStyle = "#F59E0B";
+        ctx.lineWidth = 2;
+        handles.forEach(([hx, hy]) => {
+          ctx.fillRect(hx - size / 2, hy - size / 2, size, size);
+          ctx.strokeRect(hx - size / 2, hy - size / 2, size, size);
+        });
+      }
     });
 
-    // Draw current drag rect
     if (currentRect) {
       const x = (currentRect.x / 100) * canvas.width;
       const y = (currentRect.y / 100) * canvas.height;
@@ -125,48 +150,121 @@ function SelectionCanvas({ isActive, renderUrl, onSelection, existingSelections,
       ctx.setLineDash([6, 3]);
       ctx.strokeRect(x, y, w, h);
     }
-  }, [currentRect, existingSelections]);
+  }, [currentRect, existingSelections, activeSelectionId, isActive]);
 
   function getRelativeCoords(e: React.MouseEvent<HTMLCanvasElement>): { x: number; y: number } {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
-    return { x: ((e.clientX - rect.left) / rect.width) * 100, y: ((e.clientY - rect.top) / rect.height) * 100 };
+    return {
+      x: clamp(((e.clientX - rect.left) / rect.width) * 100),
+      y: clamp(((e.clientY - rect.top) / rect.height) * 100),
+    };
+  }
+
+  function hitTest(pos: { x: number; y: number }): { sel: SelectionRect; mode: DragMode } | null {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const toleranceX = (9 / Math.max(canvas.width, 1)) * 100;
+    const toleranceY = (9 / Math.max(canvas.height, 1)) * 100;
+
+    for (let i = existingSelections.length - 1; i >= 0; i--) {
+      const sel = existingSelections[i]!;
+      const corners: Array<[DragMode, number, number]> = [
+        ["nw", sel.x, sel.y],
+        ["ne", sel.x + sel.w, sel.y],
+        ["sw", sel.x, sel.y + sel.h],
+        ["se", sel.x + sel.w, sel.y + sel.h],
+      ];
+      for (const [mode, hx, hy] of corners) {
+        if (Math.abs(pos.x - hx) <= toleranceX && Math.abs(pos.y - hy) <= toleranceY) {
+          return { sel, mode };
+        }
+      }
+      if (pos.x >= sel.x && pos.x <= sel.x + sel.w && pos.y >= sel.y && pos.y <= sel.y + sel.h) {
+        return { sel, mode: "move" };
+      }
+    }
+    return null;
   }
 
   function handleMouseDown(e: React.MouseEvent<HTMLCanvasElement>) {
     if (!isActive) return;
     const pos = getRelativeCoords(e);
-    dragRef.current = { active: true, startX: pos.x, startY: pos.y };
+    const hit = hitTest(pos);
+    if (hit) {
+      setActiveSelectionId(hit.sel.id);
+      dragRef.current = { active: true, mode: hit.mode, startX: pos.x, startY: pos.y, selection: { ...hit.sel } };
+      return;
+    }
+    setActiveSelectionId(null);
+    dragRef.current = { active: true, mode: "create", startX: pos.x, startY: pos.y };
   }
 
   function handleMouseMove(e: React.MouseEvent<HTMLCanvasElement>) {
     if (!isActive || !dragRef.current.active) return;
     const pos = getRelativeCoords(e);
-    const { startX, startY } = dragRef.current;
-    setCurrentRect({ x: Math.min(startX, pos.x), y: Math.min(startY, pos.y), w: Math.abs(pos.x - startX), h: Math.abs(pos.y - startY) });
+    const drag = dragRef.current;
+
+    if (drag.mode === "create") {
+      setCurrentRect({
+        x: Math.min(drag.startX, pos.x),
+        y: Math.min(drag.startY, pos.y),
+        w: Math.abs(pos.x - drag.startX),
+        h: Math.abs(pos.y - drag.startY),
+      });
+      return;
+    }
+
+    const sel = drag.selection;
+    if (!sel) return;
+    const dx = pos.x - drag.startX;
+    const dy = pos.y - drag.startY;
+    const minSize = 2;
+
+    if (drag.mode === "move") {
+      onUpdateSelection(sel.id, {
+        x: clamp(sel.x + dx, 0, 100 - sel.w),
+        y: clamp(sel.y + dy, 0, 100 - sel.h),
+      });
+      return;
+    }
+
+    let x1 = sel.x, y1 = sel.y, x2 = sel.x + sel.w, y2 = sel.y + sel.h;
+    if (drag.mode.includes("n")) y1 = clamp(sel.y + dy, 0, y2 - minSize);
+    if (drag.mode.includes("s")) y2 = clamp(sel.y + sel.h + dy, y1 + minSize, 100);
+    if (drag.mode.includes("w")) x1 = clamp(sel.x + dx, 0, x2 - minSize);
+    if (drag.mode.includes("e")) x2 = clamp(sel.x + sel.w + dx, x1 + minSize, 100);
+    onUpdateSelection(sel.id, { x: x1, y: y1, w: x2 - x1, h: y2 - y1 });
   }
 
   function handleMouseUp(e: React.MouseEvent<HTMLCanvasElement>) {
     if (!isActive || !dragRef.current.active) return;
     const pos = getRelativeCoords(e);
-    const { startX, startY } = dragRef.current;
+    const drag = dragRef.current;
     dragRef.current.active = false;
-    const w = Math.abs(pos.x - startX); const h = Math.abs(pos.y - startY);
-    // Minimum selection size (5% of image)
-    if (w > 2 && h > 2) {
-      onSelection({ x: Math.min(startX, pos.x), y: Math.min(startY, pos.y), w, h });
+
+    if (drag.mode === "create") {
+      const w = Math.abs(pos.x - drag.startX);
+      const h = Math.abs(pos.y - drag.startY);
+      if (w > 2 && h > 2) {
+        onSelection({
+          x: Math.min(drag.startX, pos.x),
+          y: Math.min(drag.startY, pos.y),
+          w,
+          h,
+        });
+      }
+      setCurrentRect(null);
     }
-    setCurrentRect(null);
   }
 
-  // Resize canvas to match container
   useEffect(() => {
     const container = containerRef.current;
     const canvas = canvasRef.current;
     if (!container || !canvas) return;
     const ro = new ResizeObserver(([entry]) => {
-      canvas.width  = entry.contentRect.width;
+      canvas.width = entry.contentRect.width;
       canvas.height = entry.contentRect.height;
     });
     ro.observe(container);
@@ -175,11 +273,16 @@ function SelectionCanvas({ isActive, renderUrl, onSelection, existingSelections,
 
   return (
     <div ref={containerRef} style={{ position: "absolute", inset: 0, pointerEvents: isActive ? "auto" : "none" }}>
-      <canvas ref={canvasRef} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp}
-        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", cursor: isActive ? "crosshair" : "default" }} />
-      {isActive && existingSelections.length === 0 && !currentRect && (
-        <div style={{ position: "absolute", bottom: 16, left: "50%", transform: "translateX(-50%)", padding: "6px 14px", borderRadius: 20, background: `${D.surface}EE`, border: `1px solid ${D.purple}`, fontSize: 11, color: D.purpleText, pointerEvents: "none", whiteSpace: "nowrap" }}>
-          Arraste para selecionar a região a alterar
+      <canvas
+        ref={canvasRef}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", cursor: isActive ? "crosshair" : "default" }}
+      />
+      {isActive && !currentRect && (
+        <div style={{ position: "absolute", bottom: 16, left: "50%", transform: "translateX(-50%)", padding: "6px 14px", borderRadius: 20, background: `${D.surface}EE`, border: `1px solid ${activeSelectionId ? D.amber : D.purple}`, fontSize: 11, color: activeSelectionId ? D.amber : D.purpleText, pointerEvents: "none", whiteSpace: "nowrap" }}>
+          {activeSelectionId ? "Região selecionada — arraste para mover ou use os cantos para redimensionar" : existingSelections.length ? "Clique numa região para editar ou arraste para criar outra" : "Arraste para selecionar a região a alterar"}
         </div>
       )}
     </div>
@@ -235,13 +338,13 @@ function ComparisonView({ versionA, versionB, allVersions, onChangeA, onChangeB 
 
 // ─── Central Canvas (P0-3, P0-6, P1-8, P1-10, P2-13, P2-19) ─────────────────
 
-export function RenderStudioCanvas({ step, imageDataUrl, renderUrl, loading, isDragging, canvasMode, showGrid, processingStage, elapsedSeconds, isRecovering, onUpload, onDragOver, onDragLeave, onDrop, projectTitle, ambiente, selectionMode, selections, onSelection, onClearSelection, compareMode, compareVersionA, compareVersionB, allVersions, onCompareChangeA, onCompareChangeB, onRenderLoadError }: {
+export function RenderStudioCanvas({ step, imageDataUrl, renderUrl, loading, isDragging, canvasMode, showGrid, processingStage, elapsedSeconds, isRecovering, onUpload, onDragOver, onDragLeave, onDrop, projectTitle, ambiente, selectionMode, selections, onSelection, onUpdateSelection, onClearSelection, compareMode, compareVersionA, compareVersionB, allVersions, onCompareChangeA, onCompareChangeB, onRenderLoadError }: {
   step: Step; imageDataUrl: string | null; renderUrl: string | null;
   loading: boolean; isDragging: boolean; canvasMode: CanvasMode; showGrid: boolean;
   processingStage: string | null; elapsedSeconds: number; isRecovering: boolean;
   onUpload: () => void; onDragOver: (e: React.DragEvent) => void; onDragLeave: () => void; onDrop: (e: React.DragEvent) => void;
   projectTitle: string | null; ambiente: string;
-  selectionMode: "off" | "rect"; selections: SelectionRect[]; onSelection: (sel: Omit<SelectionRect, "id" | "label">) => void; onClearSelection: () => void;
+  selectionMode: "off" | "rect"; selections: SelectionRect[]; onSelection: (sel: Omit<SelectionRect, "id" | "label">) => void; onUpdateSelection: (id: string, patch: Partial<Pick<SelectionRect, "x" | "y" | "w" | "h">>) => void; onClearSelection: () => void;
   compareMode: boolean; compareVersionA: RenderVersion | null; compareVersionB: RenderVersion | null;
   allVersions: RenderVersion[]; onCompareChangeA: (id: string) => void; onCompareChangeB: (id: string) => void;
   onRenderLoadError: () => void;
