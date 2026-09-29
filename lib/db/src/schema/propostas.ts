@@ -187,6 +187,12 @@ export const propostaApresentacaoSchema = z.object({
   politicaReajuste: z.string().max(3000).default(""),
   garantiasContratuais: z.string().max(5000).default(""),
   condicoesPagamentoDetalhadas: z.string().max(5000).default(""),
+  // Contexto do validador: define quais regras fazem sentido para este orçamento.
+  // Evita aplicar exigências de obra/ICF em mobiliário, marcenaria, acabamentos etc.
+  validatorContext: z.object({
+    scopeTypes: z.array(z.string().min(1)).default([]),
+    constructionSystem: z.string().optional(),
+  }).optional(),
   // Snapshot estrutural do orçamento. Fica dentro do JSON existente para não
   // depender de uma nova coluna/migração e acompanha naturalmente cada revisão.
   sourceSnapshot: z.object({
