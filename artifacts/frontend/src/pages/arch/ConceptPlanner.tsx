@@ -100,6 +100,8 @@ type RoomKind =
 
 type EditorLibraryTab = "site" | "brief" | "placement" | "models" | "build" | "rooms" | "furniture" | "materials" | "outdoor";
 type EditorExperienceMode = "guided" | "professional";
+type ConceptProjectScope = "house" | "room";
+type ConceptStartWizardStage = "kind" | "terrain" | "source";
 
 const GUIDED_LIBRARY_FLOW: Array<{ id: EditorLibraryTab; label: string; helper: string }> = [
   { id: "site", label: "Terreno", helper: "Defina lote, frente e implantação." },
@@ -471,6 +473,9 @@ type ConceptDraftResponse = {
     sourceFiles?: ProjectSourceFile[];
     sitePlacement?: SitePlacement;
     projectBrief?: ProjectBriefSnapshot;
+    projectScope?: ConceptProjectScope;
+    startWithTerrain?: boolean;
+    startSourceChosen?: boolean;
     facadeDesign?: FacadeDesignState;
     projectMaster?: {
       version: number;
@@ -1044,6 +1049,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [publicLinkState, setPublicLinkState] = useState<"idle" | "loading" | "saving" | "error">("idle");
   const [publicLinkCopied, setPublicLinkCopied] = useState<"link" | "code" | null>(null);
   const [renderLightingOverride, setRenderLightingOverride] = useState<"day" | "sunset" | "night" | null>(null);
+  const [projectScope, setProjectScope] = useState<ConceptProjectScope | null>(null);
+  const [startWithTerrain, setStartWithTerrain] = useState<boolean | null>(null);
+  const [startSourceChosen, setStartSourceChosen] = useState(false);
+  const [startWizardStage, setStartWizardStage] = useState<ConceptStartWizardStage>("kind");
   const [startChooserDismissed, setStartChooserDismissed] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [projectListError, setProjectListError] = useState<string | null>(null);
@@ -1439,6 +1448,14 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         setSourceFiles(Array.isArray(draft.configuration?.sourceFiles) ? draft.configuration.sourceFiles : []);
         setSitePlacement(migrateLegacySitePlacement(draft.configuration?.sitePlacement));
         setProjectBrief(draft.configuration?.projectBrief ?? null);
+        const loadedScope = draft.configuration?.projectScope;
+        if (loadedScope === "house" || loadedScope === "room") {
+          setProjectScope(loadedScope);
+          setStartWithTerrain(typeof draft.configuration?.startWithTerrain === "boolean" ? draft.configuration.startWithTerrain : loadedScope === "house");
+          setStartSourceChosen(Boolean(draft.configuration?.startSourceChosen));
+          setStartWizardStage("source");
+          setStartChooserDismissed(Boolean(draft.configuration?.startSourceChosen));
+        }
         setRooms(loadedRooms);
         setOpeningOverrides(draft.openingOverrides && typeof draft.openingOverrides === "object" ? draft.openingOverrides : {});
         setCustomerProfile(draft.customerProfile ?? {});
@@ -1506,6 +1523,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         sourceFiles,
         sitePlacement,
         projectBrief: nextProjectBrief ?? undefined,
+        projectScope: projectScope ?? undefined,
+        startWithTerrain: startWithTerrain ?? undefined,
+        startSourceChosen,
         facadeDesign: nextFacadeDesign,
       },
       rooms: nextRooms,
@@ -1562,10 +1582,12 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const autosaveKey = useMemo(() => JSON.stringify([
     rooms, customWalls, customOpenings, objects, openingOverrides, wallMaterials,
     lotWidth, lotDepth, floors, desiredArea, typology, layoutPreferences, sitePlacement, projectBrief,
+    projectScope, startWithTerrain, startSourceChosen,
     facadePreferences, spaceProfiles, customerProfile, showDimensions, wallFirstFloors,
   ]), [
     rooms, customWalls, customOpenings, objects, openingOverrides, wallMaterials,
     lotWidth, lotDepth, floors, desiredArea, typology, layoutPreferences, sitePlacement, projectBrief,
+    projectScope, startWithTerrain, startSourceChosen,
     facadePreferences, spaceProfiles, customerProfile, showDimensions, wallFirstFloors,
   ]);
   const [lastSavedKey, setLastSavedKey] = useState<string | null>(null);
@@ -1618,6 +1640,17 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     );
 
   const journeyIndex = conceptJourneyIndex({ step, editorView, libraryTab: editorLibraryTab });
+  const journeyStages = useMemo(() => CONCEPT_JOURNEY.map((stage) => {
+    if (projectScope === "room") {
+      if (stage.id === "terreno") return { ...stage, label: "Ambiente", helper: "Projeto de um espaço isolado, sem exigir terreno." };
+      if (stage.id === "casa") return { ...stage, label: "Briefing", helper: "Defina o ambiente por IA, referência, desenho ou importação." };
+      if (stage.id === "fachada") return { ...stage, label: "Visual", helper: "Revise o 3D e gere a imagem realista do ambiente." };
+    }
+    if (projectScope === "house" && startWithTerrain === false && stage.id === "terreno") {
+      return { ...stage, label: "Início", helper: "Terreno opcional: ele pode ser informado ou ajustado depois." };
+    }
+    return stage;
+  }), [projectScope, startWithTerrain]);
 
   const goToJourneyStage = (index: number) => {
     if (index > journeyIndex && blockingLayoutIssues.length > 0) {
@@ -1640,6 +1673,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       setEditorView("plan");
       setEditorLibraryTab(editorExperienceMode === "professional" ? "models" : "brief");
       setLibraryOpen(true);
+      if (projectScope === "house" && startWithTerrain === true && !startSourceChosen) {
+        setStartWizardStage("source");
+        setStartChooserDismissed(false);
+      }
     } else if (index === 2) {
       setEditorView("plan");
       if (!["build", "furniture", "materials", "outdoor"].includes(editorLibraryTab)) setEditorLibraryTab("build");
@@ -6016,130 +6053,142 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
               </>
             )}
 
-            {saveState !== "loading" && journeyIndex === 1 && !startChooserDismissed && !modelGalleryOpen && !projectMaster && (
+            {saveState !== "loading" && !startChooserDismissed && !modelGalleryOpen && !projectMaster &&
+              !startSourceChosen &&
+              safeRooms.length === 0 && safeCustomWalls.length === 0 && !referencePlan && sourceFiles.length === 0 &&
+              (!conceptId || guestMode || projectScope !== null || journeyIndex === 1) && (
               <div className="fixed inset-0 z-[110] flex items-end justify-center bg-slate-950/55 sm:items-center sm:p-6">
-                <div className="max-h-[92dvh] w-full max-w-3xl overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-7" role="dialog" aria-label="Escolher como criar o projeto">
-                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-500">Etapa 2 · Projeto</div>
-                  <h2 className="mt-1 text-2xl font-bold text-slate-950">Como você quer criar este projeto?</h2>
-                  <p className="mt-1 text-sm leading-6 text-slate-500">
-                    Terreno definido em <strong className="font-semibold text-slate-700">{lotWidth.toFixed(1)} × {lotDepth.toFixed(1)} m</strong>.
-                    Agora escolha o ponto de partida. O Arqdor mantém o lote e leva você direto ao fluxo correto.
-                  </p>
-
-                  <input
-                    ref={projectStartImportInputRef}
-                    type="file"
-                    accept=".dxf,.ifc,.dwg,.rvt,.skp,application/dxf"
-                    className="hidden"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      if (!file) return;
-                      setStartChooserDismissed(true);
-                      setEditorView("plan");
-                      setEditorLibraryTab("build");
-                      setLibraryOpen(true);
-                      const extension = file.name.split(".").pop()?.toLowerCase();
-                      if (extension === "dxf") void importConceptDxf(file);
-                      else void uploadProjectSourceFile(file);
-                    }}
-                  />
-                  <input
-                    ref={projectStartReferenceInputRef}
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp,application/pdf,.pdf"
-                    className="hidden"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      if (!file) return;
-                      setStartChooserDismissed(true);
-                      setEditorView("plan");
-                      setEditorLibraryTab("build");
-                      setLibraryOpen(true);
-                      void uploadReferencePlan(file);
-                    }}
-                  />
-
-                  <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setStartChooserDismissed(true);
-                        setEditorExperienceMode("guided");
-                        setEditorView("plan");
-                        setEditorLibraryTab("brief");
-                        setLibraryOpen(true);
-                      }}
-                      className="group min-h-32 rounded-2xl border-2 border-orange-400 bg-orange-50 p-5 text-left transition hover:border-orange-500 hover:bg-orange-100/70"
-                    >
-                      <div className="flex items-start gap-4">
-                        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-orange-500 text-white shadow-sm">
-                          <Sparkles className="h-5 w-5" />
-                        </span>
-                        <span>
-                          <span className="block text-base font-bold text-slate-950">Desenvolver com IA</span>
-                          <span className="mt-1 block text-xs leading-5 text-slate-600">Informe ambientes, metragens, estilo e prioridades. A IA arquiteta desenvolve a planta inicial para você revisar.</span>
-                          <span className="mt-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-orange-700">Recomendado</span>
-                        </span>
+                <div className="max-h-[92dvh] w-full max-w-3xl overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-7" role="dialog" aria-label="Iniciar pré-projeto">
+                  {startWizardStage === "kind" && (
+                    <>
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-500">Novo pré-projeto</div>
+                      <h2 className="mt-1 text-2xl font-bold text-slate-950">O que você quer projetar?</h2>
+                      <p className="mt-1 text-sm leading-6 text-slate-500">Isso define a jornada correta antes de pedir terreno, planta ou referências.</p>
+                      <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                        <button type="button" onClick={() => { setProjectScope("house"); setStartWizardStage("terrain"); }}
+                          className="group min-h-36 rounded-2xl border-2 border-orange-400 bg-orange-50 p-5 text-left transition hover:border-orange-500 hover:bg-orange-100/70">
+                          <div className="flex items-start gap-4">
+                            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-orange-500 text-white"><Home className="h-5 w-5" /></span>
+                            <span><span className="block text-base font-bold text-slate-950">Casa completa</span>
+                            <span className="mt-1 block text-xs leading-5 text-slate-600">Terreno opcional, planta, ambientes, fachada, 3D e render.</span></span>
+                          </div>
+                        </button>
+                        <button type="button" onClick={() => {
+                          setProjectScope("room");
+                          setStartWithTerrain(false);
+                          setLotWidth(8); setLotDepth(8); setDesiredArea(25); setFloors(1);
+                          setStartWizardStage("source");
+                          setEditorView("plan"); setEditorLibraryTab("brief");
+                        }}
+                          className="group min-h-36 rounded-2xl border bg-white p-5 text-left transition hover:border-slate-400 hover:shadow-sm">
+                          <div className="flex items-start gap-4">
+                            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-950 text-white"><Sofa className="h-5 w-5" /></span>
+                            <span><span className="block text-base font-bold text-slate-950">Um ambiente</span>
+                            <span className="mt-1 block text-xs leading-5 text-slate-600">Sala, cozinha, suíte, banheiro, gourmet ou outro espaço isolado. Não exige terreno.</span></span>
+                          </div>
+                        </button>
                       </div>
-                    </button>
+                    </>
+                  )}
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if ((safeRooms.length > 0 || safeCustomWalls.length > 0) && !window.confirm("Iniciar um desenho do zero substitui a geometria atual deste rascunho. Continuar?")) return;
-                        setStartChooserDismissed(true);
-                        startBlankPlan();
-                        setLibraryOpen(true);
-                      }}
-                      className="group min-h-32 rounded-2xl border bg-white p-5 text-left transition hover:border-slate-400 hover:shadow-sm"
-                    >
-                      <div className="flex items-start gap-4">
-                        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-950 text-white">
-                          <Plus className="h-5 w-5" />
-                        </span>
-                        <span>
-                          <span className="block text-base font-bold text-slate-950">Construir projeto</span>
-                          <span className="mt-1 block text-xs leading-5 text-slate-600">Comece com o lote vazio e desenhe paredes, ambientes, portas, janelas e escadas manualmente.</span>
-                        </span>
+                  {startWizardStage === "terrain" && (
+                    <>
+                      <button type="button" onClick={() => setStartWizardStage("kind")} className="mb-3 text-xs font-semibold text-slate-500 hover:text-slate-900">← Voltar</button>
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-500">Casa completa</div>
+                      <h2 className="mt-1 text-2xl font-bold text-slate-950">Quer começar pelo terreno?</h2>
+                      <p className="mt-1 text-sm leading-6 text-slate-500">Se você já conhece o lote, o Arqdor usa medidas, frente e recuos desde a primeira proposta. Se não conhece, pode começar pela casa e informar o terreno depois.</p>
+                      <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                        <button type="button" onClick={() => {
+                          setStartWithTerrain(true);
+                          setStartChooserDismissed(true);
+                          setEditorView("plan"); setEditorLibraryTab("site"); setLibraryOpen(true);
+                        }} className="min-h-32 rounded-2xl border-2 border-orange-400 bg-orange-50 p-5 text-left hover:bg-orange-100/70">
+                          <MapPin className="mb-3 h-6 w-6 text-orange-600" />
+                          <span className="block text-base font-bold text-slate-950">Sim, começar pelo terreno</span>
+                          <span className="mt-1 block text-xs leading-5 text-slate-600">Informar largura, profundidade, frente e implantação antes da planta.</span>
+                        </button>
+                        <button type="button" onClick={() => {
+                          setStartWithTerrain(false);
+                          setStartWizardStage("source");
+                          setEditorView("plan"); setEditorLibraryTab("brief");
+                        }} className="min-h-32 rounded-2xl border bg-white p-5 text-left hover:border-slate-400 hover:shadow-sm">
+                          <ArrowRight className="mb-3 h-6 w-6 text-slate-700" />
+                          <span className="block text-base font-bold text-slate-950">Não, começar pela casa</span>
+                          <span className="mt-1 block text-xs leading-5 text-slate-600">Criar a proposta agora e definir ou ajustar o terreno mais tarde.</span>
+                        </button>
                       </div>
-                    </button>
+                    </>
+                  )}
 
-                    <button
-                      type="button"
-                      onClick={() => projectStartImportInputRef.current?.click()}
-                      className="group min-h-32 rounded-2xl border bg-white p-5 text-left transition hover:border-slate-400 hover:shadow-sm"
-                    >
-                      <div className="flex items-start gap-4">
-                        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-800">
-                          <FolderOpen className="h-5 w-5" />
-                        </span>
-                        <span>
-                          <span className="block text-base font-bold text-slate-950">Importar projeto</span>
-                          <span className="mt-1 block text-xs leading-5 text-slate-600">Traga um arquivo DXF, IFC, DWG, RVT ou SKP. O DXF entra como geometria editável; BIM/CAD fica vinculado ao projeto.</span>
-                        </span>
+                  {startWizardStage === "source" && (
+                    <>
+                      <button type="button" onClick={() => setStartWizardStage(projectScope === "house" ? "terrain" : "kind")} className="mb-3 text-xs font-semibold text-slate-500 hover:text-slate-900">← Voltar</button>
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-500">{projectScope === "room" ? "Ambiente" : "Projeto"}</div>
+                      <h2 className="mt-1 text-2xl font-bold text-slate-950">Como você quer começar?</h2>
+                      <p className="mt-1 text-sm leading-6 text-slate-500">
+                        {projectScope === "room"
+                          ? "Você pode descrever o ambiente, enviar uma foto/croqui, desenhar ou importar uma base."
+                          : startWithTerrain
+                            ? <>Terreno definido em <strong className="font-semibold text-slate-700">{lotWidth.toFixed(1)} × {lotDepth.toFixed(1)} m</strong>. Agora escolha a origem da planta.</>
+                            : "O terreno fica opcional por enquanto. Você pode criar a casa primeiro e posicioná-la no lote depois."}
+                      </p>
+
+                      <input ref={projectStartImportInputRef} type="file" accept=".dxf,.ifc,.dwg,.rvt,.skp,application/dxf" className="hidden"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0]; if (!file) return;
+                          setStartSourceChosen(true); setStartChooserDismissed(true);
+                          setEditorView("plan"); setEditorLibraryTab("build"); setLibraryOpen(true);
+                          const extension = file.name.split(".").pop()?.toLowerCase();
+                          if (extension === "dxf") void importConceptDxf(file); else void uploadProjectSourceFile(file);
+                        }} />
+                      <input ref={projectStartReferenceInputRef} type="file" accept="image/png,image/jpeg,image/webp,application/pdf,.pdf" className="hidden"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0]; if (!file) return;
+                          setStartSourceChosen(true); setStartChooserDismissed(true);
+                          setEditorView("plan"); setEditorLibraryTab("build"); setLibraryOpen(true);
+                          void uploadReferencePlan(file);
+                        }} />
+
+                      <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                        <button type="button" onClick={() => {
+                          setStartSourceChosen(true); setStartChooserDismissed(true); setEditorExperienceMode("guided");
+                          setEditorView("plan"); setEditorLibraryTab("brief"); setLibraryOpen(true);
+                        }} className="group min-h-32 rounded-2xl border-2 border-orange-400 bg-orange-50 p-5 text-left transition hover:border-orange-500 hover:bg-orange-100/70">
+                          <div className="flex items-start gap-4"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-orange-500 text-white"><Sparkles className="h-5 w-5" /></span>
+                            <span><span className="block text-base font-bold text-slate-950">Desenvolver com IA</span>
+                            <span className="mt-1 block text-xs leading-5 text-slate-600">{projectScope === "room" ? "Descreva uso, medidas, estilo, móveis e necessidades. A IA monta a primeira proposta do ambiente." : "Informe ambientes, metragens, estilo e prioridades. A IA arquiteta desenvolve a planta inicial para revisão."}</span>
+                            <span className="mt-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-orange-700">Recomendado</span></span></div>
+                        </button>
+
+                        <button type="button" onClick={() => {
+                          if ((safeRooms.length > 0 || safeCustomWalls.length > 0) && !window.confirm("Iniciar do zero substitui a geometria atual deste rascunho. Continuar?")) return;
+                          setStartSourceChosen(true); setStartChooserDismissed(true); startBlankPlan(); setLibraryOpen(true);
+                        }} className="group min-h-32 rounded-2xl border bg-white p-5 text-left transition hover:border-slate-400 hover:shadow-sm">
+                          <div className="flex items-start gap-4"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-950 text-white"><Plus className="h-5 w-5" /></span>
+                            <span><span className="block text-base font-bold text-slate-950">Desenhar do zero</span>
+                            <span className="mt-1 block text-xs leading-5 text-slate-600">{projectScope === "room" ? "Desenhe o perímetro do ambiente, aberturas, mobiliário e materiais." : "Desenhe paredes, ambientes, portas, janelas e escadas manualmente."}</span></span></div>
+                        </button>
+
+                        <button type="button" onClick={() => projectStartImportInputRef.current?.click()}
+                          className="group min-h-32 rounded-2xl border bg-white p-5 text-left transition hover:border-slate-400 hover:shadow-sm">
+                          <div className="flex items-start gap-4"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-800"><FolderOpen className="h-5 w-5" /></span>
+                            <span><span className="block text-base font-bold text-slate-950">Importar projeto</span>
+                            <span className="mt-1 block text-xs leading-5 text-slate-600">DXF entra como geometria editável. IFC, DWG, RVT e SKP ficam vinculados ao pré-projeto.</span></span></div>
+                        </button>
+
+                        <button type="button" onClick={() => projectStartReferenceInputRef.current?.click()}
+                          className="group min-h-32 rounded-2xl border bg-white p-5 text-left transition hover:border-slate-400 hover:shadow-sm">
+                          <div className="flex items-start gap-4"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-800"><Camera className="h-5 w-5" /></span>
+                            <span><span className="block text-base font-bold text-slate-950">{projectScope === "room" ? "Foto / croqui / planta" : "Croqui / pré-planta / foto"}</span>
+                            <span className="mt-1 block text-xs leading-5 text-slate-600">Envie imagem ou PDF. Em imagens, a IA interpreta a referência e reconstrói paredes e aberturas como geometria editável.</span></span></div>
+                        </button>
                       </div>
-                    </button>
 
-                    <button
-                      type="button"
-                      onClick={() => projectStartReferenceInputRef.current?.click()}
-                      className="group min-h-32 rounded-2xl border bg-white p-5 text-left transition hover:border-slate-400 hover:shadow-sm"
-                    >
-                      <div className="flex items-start gap-4">
-                        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-800">
-                          <Camera className="h-5 w-5" />
-                        </span>
-                        <span>
-                          <span className="block text-base font-bold text-slate-950">Croqui / pré-planta</span>
-                          <span className="mt-1 block text-xs leading-5 text-slate-600">Envie foto, imagem ou PDF de um croqui/pré-planta. Em imagens, a IA reconstrói paredes e aberturas para gerar uma planta editável no Arqdor.</span>
-                        </span>
+                      <div className="mt-5 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
+                        A referência enviada não vira apenas uma imagem: primeiro é convertida em <strong className="font-semibold text-slate-800">geometria editável</strong>. Depois o mesmo projeto segue para 2D, 3D e Genius Render.
                       </div>
-                    </button>
-                  </div>
-
-                  <div className="mt-5 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
-                    Primeiro definimos o terreno. Depois definimos <strong className="font-semibold text-slate-800">como o projeto nasce</strong>. Só então entram edição da planta, implantação, fachada e apresentação.
-                  </div>
+                    </>
+                  )}
                 </div>
               </div>
             )}
@@ -6147,16 +6196,16 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
             <div className="arq-journey-row flex flex-wrap items-center gap-2 border-b bg-white px-3 py-2 sm:px-4">
               <div className="min-w-0 flex-1">
                 <div className="text-xs font-bold text-slate-950">
-                  <span className="sm:hidden">{journeyIndex + 1}/{CONCEPT_JOURNEY.length} · </span>
-                  <span className="hidden sm:inline">Etapa {journeyIndex + 1} de {CONCEPT_JOURNEY.length} · </span>
-                  {CONCEPT_JOURNEY[journeyIndex].label}
+                  <span className="sm:hidden">{journeyIndex + 1}/{journeyStages.length} · </span>
+                  <span className="hidden sm:inline">Etapa {journeyIndex + 1} de {journeyStages.length} · </span>
+                  {journeyStages[journeyIndex].label}
                 </div>
                 <div className={journeyIndex === 2 || journeyIndex === 3 ? "hidden truncate text-xs text-slate-500 sm:block" : "truncate text-xs text-slate-500"}>
-                  {CONCEPT_JOURNEY[journeyIndex].helper}
+                  {journeyStages[journeyIndex].helper}
                 </div>
               </div>
               <div className="hidden shrink-0 rounded-xl border bg-slate-50 p-1 sm:flex">
-                {CONCEPT_JOURNEY.map((stage, index) => (
+                {journeyStages.map((stage, index) => (
                   <button
                     key={stage.id}
                     type="button"
@@ -8167,7 +8216,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
               </div>
 
               <div className="fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-30 flex items-center justify-between rounded-2xl border bg-white/95 p-1.5 shadow-xl backdrop-blur md:hidden">
-                {CONCEPT_JOURNEY.map((stage, index) => (
+                {journeyStages.map((stage, index) => (
                   <button
                     key={stage.id}
                     type="button"
