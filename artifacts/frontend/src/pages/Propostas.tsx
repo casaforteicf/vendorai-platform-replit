@@ -5465,7 +5465,11 @@ function newFreeItem(): FreeItem {
                         {integrityLoading
                           ? "Validando alterações…"
                           : integrityReport
-                            ? `${integrityReport.blockers} erro${integrityReport.blockers === 1 ? "" : "s"} crítico${integrityReport.blockers === 1 ? "" : "s"} · ${integrityReport.warnings} alerta${integrityReport.warnings === 1 ? "" : "s"}`
+                            ? integrityReport.blockers > 0
+                              ? `${integrityReport.blockers} erro${integrityReport.blockers === 1 ? "" : "s"} crítico${integrityReport.blockers === 1 ? "" : "s"} · ${integrityReport.warnings} alerta${integrityReport.warnings === 1 ? "" : "s"} — clique em Corrigir`
+                              : integrityReport.warnings > 0
+                                ? `${integrityReport.warnings} alerta${integrityReport.warnings === 1 ? "" : "s"} não bloqueante${integrityReport.warnings === 1 ? "" : "s"} — clique em Corrigir para completar`
+                                : "Orçamento consistente e pronto para concluir."
                             : "Validação temporariamente indisponível"}
                       </p>
                     </div>
@@ -5481,11 +5485,13 @@ function newFreeItem(): FreeItem {
                         key={`${issue.code}-${issue.stageId ?? ""}-${issue.itemIndex ?? ""}-${index}`}
                         onClick={() => focusIntegrityIssue(issue)}
                         className="flex w-full items-start gap-2 rounded-md border px-2.5 py-2 text-left text-xs transition-colors hover:bg-muted/60"
+                        title="Ir para o campo que precisa ser corrigido"
                       >
                         <span className={issue.severity === "blocker" ? "font-semibold text-destructive" : "font-semibold text-amber-700"}>
                           {issue.severity === "blocker" ? "Erro" : "Alerta"}
                         </span>
-                        <span className="text-foreground">{issue.message}</span>
+                        <span className="min-w-0 flex-1 text-foreground">{issue.message}</span>
+                        <span className="shrink-0 font-semibold text-primary underline underline-offset-2">Corrigir</span>
                       </button>
                     ))}
                   </div>
