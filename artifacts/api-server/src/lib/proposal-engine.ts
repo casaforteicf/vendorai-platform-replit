@@ -2234,6 +2234,25 @@ export function renderProposalHtml(json: unknown, theme: {
     : null;
   const builderModuleEnabled = (key: string, fallback = true) =>
     builderModuleSet ? builderModuleSet.has(key) : fallback;
+  const genericBuilderModule = (key: string) =>
+    Array.isArray(builder?.modules)
+      ? builder.modules.find((item) => String(item?.key ?? "") === key) ?? null
+      : null;
+  const genericBuilderText = (key: string, field: "title" | "description" | "contentPrompt") => {
+    const value = genericBuilderModule(key)?.[field];
+    return typeof value === "string" && value.trim() ? value.trim() : "";
+  };
+  const genericCoverBenefits = extractProposalBenefits(
+    genericBuilderText("diferenciais", "contentPrompt"),
+    genericBuilderText("diferenciais", "description"),
+    companyInfo.highlights,
+    offerInfo.bullets,
+    solution.agents,
+  );
+  const genericCoverValue = genericBuilderText("produto_servico", "description")
+    || genericBuilderText("diferenciais", "description")
+    || String(offerInfo.text || hero.subheadline || "").trim()
+    || "Uma proposta clara para apresentar solução, benefícios e condições comerciais.";
 
   const navName = tenantName || "Proposta Comercial";
   const navLogoUrl = tenantLogoUrl || null;
@@ -2427,6 +2446,8 @@ export function renderProposalHtml(json: unknown, theme: {
   h1 { font-family: "Instrument Serif", serif; font-weight: 400; font-size: 27pt; line-height: 1.08; max-width: 18ch; color: ${theme.navyDeep}; }
   .cover-sub { font-size: 10pt; color: #3a3358; max-width: 56ch; }
   .cover-fortag { margin-top: 3mm; border-left: 3px solid ${theme.accent}; padding-left: 8px; font-family: "JetBrains Mono", monospace; font-size: 7pt; color: ${theme.navyMid}; opacity: .7; letter-spacing: .04em; }
+  .cover-benefits-grid { display:grid; grid-template-columns:1fr 1fr; gap:3mm; margin:4mm 0 2mm; }
+  .cover-benefits-grid > div { border:1px solid ${theme.concreteLine}; border-left:2px solid ${theme.accent}; border-radius:6px; padding:3mm 3.5mm; background:rgba(255,255,255,.76); font-size:8pt; font-weight:700; color:${theme.navyDeep}; }
   .cover-footer {
     margin-top: auto;
     padding-top: 5mm;
@@ -2725,8 +2746,9 @@ export function renderProposalHtml(json: unknown, theme: {
         ? `<div class="cover-client"><div><span class="cover-prepared">Preparado para</span><span class="cover-client-name">${clientName}</span></div></div>`
         : ""}
     <h1>${hero.headline || ""}</h1>
-    <p class="cover-sub">${hero.subheadline || ""}</p>
-    ${pageImage(0) ? `<div class="img-hero-wrap"><img src="${pageImage(0)}" alt="Imagem principal da proposta" loading="eager" onerror="this.style.display='none'" /></div>` : ""}
+    <p class="cover-sub">${escapeProposalText(genericCoverValue)}</p>
+    ${genericCoverBenefits.length ? `<div class="cover-benefits-grid">${genericCoverBenefits.map((benefit) => `<div>${escapeProposalText(benefit)}</div>`).join("")}</div>` : ""}
+    ${pageImage(0) ? `<div class="img-hero-wrap"><img src="${pageImage(0)}" alt="Imagem principal da proposta" loading="eager" onerror="this.style.display=\'none\'" /></div>` : ""}
     <div class="cover-fortag">${hero.forTag || ""}</div>
   </div>
 
