@@ -684,7 +684,7 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId, onCreateBudget
       </Card>
 
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-2xl overflow-x-hidden sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{editingId ? "Editar revisão" : "Registrar nova rodada de negociação"}</DialogTitle>
           </DialogHeader>
@@ -694,11 +694,13 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId, onCreateBudget
               A revisão fica vinculada ao orçamento selecionado e aparece imediatamente abaixo dele na tabela única.
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-1.5">
+            <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_170px]">
+              <div className="grid min-w-0 gap-1.5">
                 <Label>Orçamento de referência</Label>
                 <Select value={numero} onValueChange={setNumero}>
-                  <SelectTrigger><SelectValue placeholder="Selecione o orçamento" /></SelectTrigger>
+                  <SelectTrigger className="min-w-0 w-full">
+                    <SelectValue placeholder="Selecione o orçamento" />
+                  </SelectTrigger>
                   <SelectContent>
                     {baseOrcamentos.map((orc) => (
                       <SelectItem key={orc.id} value={budgetReference(orc)}>
@@ -709,9 +711,14 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId, onCreateBudget
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid gap-1.5">
+              <div className="grid min-w-0 gap-1.5">
                 <Label>Data</Label>
-                <Input type="date" value={data} onChange={(event) => setData(event.target.value)} />
+                <Input
+                  className="min-w-0 w-full"
+                  type="date"
+                  value={data}
+                  onChange={(event) => setData(event.target.value)}
+                />
               </div>
             </div>
 
@@ -761,7 +768,7 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId, onCreateBudget
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setFormOpen(false)}>Cancelar</Button>
             <Button disabled={saving || uploading || !numero} onClick={() => void save()}>
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
