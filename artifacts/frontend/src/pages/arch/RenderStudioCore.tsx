@@ -1879,8 +1879,8 @@ function RenderStudioInner() {
       logEvent("approved", `Versão aprovada por ${userName}`);
       // P2-20: mark version as approved
       setVersions(vs => vs.map((v) => v.id === renderId
-        ? { ...v, approvedBy: userName, approvedAt: record.at, approvalNote, operationType: "approved" }
-        : v));
+        ? { ...v, approvedBy: userName, approvedAt: record.at, approvalNote }
+        : { ...v, approvedBy: undefined, approvedAt: undefined, approvalNote: undefined }));
       setSaveState("saved"); setLastSavedAt(new Date()); go("especificacao");
     } catch (e: unknown) { setErr(categorizeError(e)); setSaveState("error"); }
     finally { setLoading(false); }
