@@ -161,6 +161,7 @@ interface LeadPropostaTabProps {
   leadId: string;
   tenantId: string;
   lead: any;
+  onCreateBudget?: () => void;
 }
 
 type ProposalBudgetRevision = {
@@ -215,7 +216,7 @@ function api(path: string) {
   return `${BASE}${path}`;
 }
 
-export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadPropostaTabProps) {
+export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget }: LeadPropostaTabProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const token = localStorage.getItem("vendorai_token") ?? "";
@@ -1980,18 +1981,6 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     }
   }
 
-  function openBudgetCreation() {
-    const budgetButton = document.querySelector<HTMLElement>('[data-testid="btn-new-budget"]');
-    if (budgetButton) {
-      budgetButton.click();
-      return;
-    }
-    toast({
-      title: "Criar orçamento para este cliente",
-      description: "Use a ação “Gerar orçamento” no topo do atendimento para manter o contexto do lead.",
-    });
-  }
-
   return (
     <div className="flex min-w-0 max-w-full flex-col gap-4 overflow-x-hidden">
       {/* Contexto específico do cliente — não altera o modelo da empresa */}
@@ -2001,11 +1990,6 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
             <span className="flex min-w-0 items-center gap-2">
               <Palette className="h-4 w-4" />
               Contexto do cliente
-              {proposalImages.length > 0 && (
-                <Badge variant="secondary" className="text-xs ml-1">
-                  {proposalImages.length} {proposalImages.length === 1 ? "imagem selecionada" : "imagens selecionadas"}
-                </Badge>
-              )}
             </span>
             <Button
               size="sm"
@@ -2138,7 +2122,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
 
       {/* Orçamento e revisões — origem comercial da proposta */}
       <div className="order-1">
-        <OrcamentoRevisoesCard leadId={leadId} tenantId={tenantId} />
+        <OrcamentoRevisoesCard leadId={leadId} tenantId={tenantId} onCreateBudget={onCreateBudget} />
       </div>
 
       {/* Proposta comercial */}
@@ -4079,7 +4063,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                     <div key={item.key} className="flex items-start gap-2 rounded-lg border bg-background px-2.5 py-2">
                       {item.ok
                         ? <CheckSquare className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
-                        : <XCircle className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${item.key === "budget" ? "text-red-500" : "text-amber-500"}`} />}
+                        : <XCircle className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${proposalComposerBlockingIssues.some((blocking) => blocking.key === item.key) ? "text-red-500" : "text-amber-500"}`} />}
                       <div className="min-w-0">
                         <p className="text-[11px] font-medium">{item.label}</p>
                         <p className="line-clamp-2 text-[10px] text-muted-foreground">{item.detail}</p>
@@ -4090,7 +4074,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
 
                 {(proposalComposerWarnings.length > 0 || proposalComposerBlockingIssues.length > 0) && (
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {proposalComposerWarnings.some((item) => item.key === "cover" || item.key === "stages") && (
+                    {[...proposalComposerWarnings, ...proposalComposerBlockingIssues].some((item) => item.key === "cover" || item.key === "stages") && (
                       <Button
                         type="button"
                         size="sm"
