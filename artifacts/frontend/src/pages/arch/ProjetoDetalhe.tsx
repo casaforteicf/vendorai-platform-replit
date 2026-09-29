@@ -357,6 +357,15 @@ export default function ProjetoDetalhe() {
     );
   }
 
+  function abrirRenderExistente(render: ProjetoRender) {
+    const ambienteLabel = ambienteRenderLabel(render.ambiente);
+    localStorage.setItem("arq_last_project_id", projetoId);
+    sessionStorage.setItem("arq_studio_ambiente", ambienteLabel === "Sem ambiente" ? "" : ambienteLabel);
+    navigate(
+      `/arch/render?project_id=${encodeURIComponent(projetoId)}&render_id=${encodeURIComponent(render.id)}${ambienteLabel !== "Sem ambiente" ? `&ambiente=${encodeURIComponent(ambienteLabel)}` : ""}`,
+    );
+  }
+
   const rendersPorAmbiente = renders.reduce<Record<string, ProjetoRender[]>>((acc, render) => {
     const key = ambienteRenderLabel(render.ambiente);
     if (!acc[key]) acc[key] = [];
@@ -1194,7 +1203,7 @@ export default function ProjetoDetalhe() {
                             key={render.id}
                             type="button"
                             className="overflow-hidden rounded-lg border bg-background text-left hover:border-orange-300 hover:shadow-sm transition-all"
-                            onClick={() => abrirRenderStudio(render.ambiente)}
+                            onClick={() => abrirRenderExistente(render)}
                           >
                             <div className="aspect-video bg-muted flex items-center justify-center overflow-hidden">
                               {imageUrl ? (
