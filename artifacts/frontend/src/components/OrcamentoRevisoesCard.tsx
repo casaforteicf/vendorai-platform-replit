@@ -118,7 +118,7 @@ function revisionMatchesBudget(revisao: Revisao, orc: Orcamento) {
     || (!!orc.numero && revisionRef.startsWith(`${orc.numero}-R`));
 }
 
-export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: string; tenantId: string; dealId?: string }) {
+export function OrcamentoRevisoesCard({ leadId, tenantId, dealId, onCreateBudget }: { leadId: string; tenantId: string; dealId?: string; onCreateBudget?: () => void }) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const token = localStorage.getItem("vendorai_token") ?? "";
@@ -177,14 +177,13 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
   const [viewerAnexos, setViewerAnexos] = useState<{ titulo: string; anexos: Anexo[] } | null>(null);
 
   function openBudgetCreation() {
-    const budgetButton = document.querySelector<HTMLElement>('[data-testid="btn-new-budget"]');
-    if (budgetButton) {
-      budgetButton.click();
+    if (onCreateBudget) {
+      onCreateBudget();
       return;
     }
     toast({
       title: "Criar orçamento",
-      description: "Use a ação de novo orçamento neste atendimento para manter o contexto do lead.",
+      description: "Abra a ação de orçamento deste atendimento para criar a primeira versão comercial.",
     });
   }
 
