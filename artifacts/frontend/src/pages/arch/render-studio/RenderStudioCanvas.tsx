@@ -79,7 +79,7 @@ function SelectionCanvas({ isActive, renderUrl, onSelection, onUpdateSelection, 
   isActive: boolean;
   renderUrl: string;
   onSelection: (sel: Omit<SelectionRect, "id" | "label">) => void;
-  onUpdateSelection: (id: string, patch: Partial<Pick<SelectionRect, "x" | "y" | "w" | "h">>) => void;
+  onUpdateSelection?: (id: string, patch: Partial<Pick<SelectionRect, "x" | "y" | "w" | "h">>) => void;
   existingSelections: SelectionRect[];
   onClearSelection: () => void;
 }) {
@@ -157,7 +157,7 @@ function SelectionCanvas({ isActive, renderUrl, onSelection, onUpdateSelection, 
     if(d.mode.includes("s")) y2=clamp(s.y+s.h+dy,y1+min,100);
     if(d.mode.includes("w")) x1=clamp(s.x+dx,0,x2-min);
     if(d.mode.includes("e")) x2=clamp(s.x+s.w+dx,x1+min,100);
-    onUpdateSelection(s.id,{x:x1,y:y1,w:x2-x1,h:y2-y1});
+    onUpdateSelection?.(s.id,{x:x1,y:y1,w:x2-x1,h:y2-y1});
   }
   function handleMouseUp(e: React.MouseEvent<HTMLCanvasElement>) {
     if(!isActive||!dragRef.current.active) return; const p=coords(e),d=dragRef.current;dragRef.current.active=false;
@@ -323,7 +323,14 @@ export function RenderStudioCanvas({ step, imageDataUrl, renderUrl, loading, isD
                 </div>
               )}
               {showRender && (
-                <SelectionCanvas isActive={selectionMode === "rect"} renderUrl={renderUrl} onSelection={onSelection} existingSelections={selections} onClearSelection={onClearSelection} />
+                <SelectionCanvas
+                  isActive={selectionMode === "rect"}
+                  renderUrl={renderUrl}
+                  onSelection={onSelection}
+                  onUpdateSelection={onUpdateSelection}
+                  existingSelections={selections}
+                  onClearSelection={onClearSelection}
+                />
               )}
             </div>
           )}
