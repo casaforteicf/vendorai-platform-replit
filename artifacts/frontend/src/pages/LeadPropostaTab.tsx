@@ -4622,7 +4622,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
               </aside>
             </div>
 
-            <DialogFooter className="border-t px-5 py-3">
+            <DialogFooter className="shrink-0 border-t px-5 py-3">
               <div className="mr-auto text-[10px] text-muted-foreground">
                 As alterações afetam novas propostas que utilizarem este modelo; valores continuam vindo do orçamento selecionado.
               </div>
@@ -4745,8 +4745,8 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
           }
         }}
       >
-        <DialogContent className="max-h-[88vh] w-[calc(100vw-32px)] max-w-5xl overflow-hidden p-0">
-          <DialogHeader className="border-b px-5 py-4">
+        <DialogContent className="flex max-h-[88vh] w-[calc(100vw-32px)] max-w-5xl flex-col overflow-hidden p-0">
+          <DialogHeader className="shrink-0 border-b px-5 py-4">
             <DialogTitle className="flex items-center gap-2">
               <Image className="h-4 w-4" />
               Biblioteca de Mídias
@@ -4758,8 +4758,8 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
             )}
           </DialogHeader>
 
-          <div className="flex min-h-0 flex-col">
-            <div className="border-b bg-muted/10 p-4">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="shrink-0 border-b bg-muted/10 p-4">
               <Input
                 autoFocus
                 value={proposalMediaLibrarySearch}
@@ -4787,7 +4787,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
               </div>
             </div>
 
-            <div className="min-h-[420px] flex-1 overflow-y-auto p-4">
+            <div className="min-h-0 flex-1 overflow-y-scroll overscroll-contain p-4 [scrollbar-gutter:stable]">
               {proposalMediaLibraryLoading ? (
                 <div className="flex h-[420px] items-center justify-center">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
