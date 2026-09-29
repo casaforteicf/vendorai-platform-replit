@@ -2534,11 +2534,12 @@ function renderStudioOrderedProposal(args: {
 
   const schedulePageBodies = () => {
     if (!scheduleRows.length) return ['<p class="studio-muted">Cronograma não configurado para esta proposta.</p>'];
-    return chunk(scheduleRows, 14).map((rows) =>
-      '<table class="studio-table"><thead><tr><th>Etapa</th><th>Início</th><th>Duração</th><th>Término</th></tr></thead><tbody>' +
+    return chunk(scheduleRows, 12).map((rows) =>
+      '<table class="studio-table"><thead><tr><th>Etapa</th><th>Início</th><th>Duração</th><th>Término</th><th class="r">Avanço físico</th><th class="r">Peso financeiro</th></tr></thead><tbody>' +
       rows.map((row) => '<tr><td><strong>Etapa ' + esc(row.ordem) + '</strong> · ' + esc(row.nome) + '</td><td>' +
         proposalFormatDate(row.start) + '</td><td>' + esc(row.duration ? row.duration + " dias" : "A definir") +
-        '</td><td>' + proposalFormatDate(row.end) + '</td></tr>').join("") + '</tbody></table>'
+        '</td><td>' + proposalFormatDate(row.end) + '</td><td class="r">' + Number(row.physicalPercent || 0).toFixed(2) +
+        '%</td><td class="r">' + Number(row.financialPercent || 0).toFixed(2) + '%</td></tr>').join("") + '</tbody></table>'
     );
   };
 
