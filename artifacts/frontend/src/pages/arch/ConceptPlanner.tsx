@@ -4417,7 +4417,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       setReferencePlanState("success");
       setReferencePlanMessage(
         payload.kind === "image"
-          ? "Imagem vinculada ao pré-projeto e exibida como referência no editor 2D."
+          ? "Croqui/pré-planta recebido. Confira a escala e clique em Gerar planta com IA para transformar o desenho em geometria editável."
           : "PDF vinculado ao pré-projeto. A conversão automática da página para geometria será a próxima etapa.",
       );
       window.setTimeout(() => setReferencePlanState("idle"), 5000);
@@ -6120,8 +6120,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           <Camera className="h-5 w-5" />
                         </span>
                         <span>
-                          <span className="block text-base font-bold text-slate-950">Usar imagem ou PDF</span>
-                          <span className="mt-1 block text-xs leading-5 text-slate-600">Envie uma planta como imagem ou PDF para usar como referência e, quando aplicável, interpretar o traçado com IA.</span>
+                          <span className="block text-base font-bold text-slate-950">Croqui / pré-planta</span>
+                          <span className="mt-1 block text-xs leading-5 text-slate-600">Envie foto, imagem ou PDF de um croqui/pré-planta. Em imagens, a IA reconstrói paredes e aberturas para gerar uma planta editável no Arqdor.</span>
                         </span>
                       </div>
                     </button>
@@ -8902,8 +8902,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50/60 p-3 text-xs">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
-                        <div className="font-semibold text-blue-950">Leitura da planta com IA</div>
-                        <div className="mt-0.5 text-blue-800/80">Importação fiel: a geometria atual fica oculta durante a conferência para não misturar o projeto antigo com a referência.</div>
+                        <div className="font-semibold text-blue-950">Croqui → planta editável</div>
+                        <div className="mt-0.5 text-blue-800/80">A IA interpreta o desenho, gera paredes e aberturas e mostra a sobreposição antes de substituir qualquer geometria atual.</div>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <button
@@ -8912,7 +8912,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           disabled={referenceTraceState === "loading"}
                           className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 font-semibold text-blue-800 disabled:opacity-50"
                         >
-                          {referenceTraceState === "loading" ? "Lendo planta..." : "Ler planta com IA"}
+                          {referenceTraceState === "loading" ? "Gerando planta..." : "Gerar planta com IA"}
                         </button>
                         {referenceTracePreview?.canApply && (
                           <button
@@ -8921,7 +8921,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                             disabled={Boolean(projectMaster)}
                             className="rounded-lg bg-emerald-600 px-3 py-1.5 font-semibold text-white disabled:opacity-50"
                           >
-                            Aplicar traçado
+                            Usar como planta editável
                           </button>
                         )}
                       </div>
