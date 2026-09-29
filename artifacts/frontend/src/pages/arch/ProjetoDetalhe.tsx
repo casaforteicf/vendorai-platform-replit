@@ -45,6 +45,11 @@ type Projeto = {
   dealId: string | null;
   propostaId: string | null;
   obraId: string | null;
+  escopoOrcamento?: {
+    tipos: string[];
+    observacoes?: string;
+    tratamentoExistentes?: "avaliar_individualmente" | "manter" | "substituir";
+  } | null;
 };
 
 type Cena = {
@@ -113,6 +118,27 @@ type CatalogoProduto = {
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const CATEGORIAS = ["Móveis", "Iluminação", "Revestimentos", "Elétrica", "Hidráulica", "Marcenaria", "Acessórios", "Pintura", "Outros"];
+
+const ESCOPO_ORCAMENTO_OPTIONS = [
+  { value: "completo", label: "Projeto completo", description: "Combina todas as frentes necessárias do projeto." },
+  { value: "mobiliario", label: "Mobiliário", description: "Móveis soltos, estofados, mesas, cadeiras e similares." },
+  { value: "marcenaria", label: "Marcenaria", description: "Planejados, painéis, cozinhas, closets e armários." },
+  { value: "revestimentos", label: "Revestimentos", description: "Pisos, porcelanatos, pedras, paredes e acabamentos." },
+  { value: "reforma", label: "Reforma", description: "Retiradas, preparação, mão de obra e intervenções." },
+  { value: "decoracao", label: "Decoração", description: "Objetos, tapetes, cortinas, quadros e acessórios." },
+  { value: "iluminacao", label: "Iluminação", description: "Luminárias, perfis, spots, fitas e instalação." },
+  { value: "eletrica", label: "Elétrica", description: "Pontos, infraestrutura e adequações elétricas." },
+  { value: "hidraulica", label: "Hidráulica", description: "Pontos, louças, metais e adequações hidráulicas." },
+  { value: "pintura", label: "Pintura", description: "Preparação de superfícies e pintura." },
+  { value: "outros", label: "Outros", description: "Itens adicionais definidos no briefing." },
+] as const;
+
+type BudgetScopeValue = typeof ESCOPO_ORCAMENTO_OPTIONS[number]["value"];
+type BudgetScopeForm = {
+  tipos: BudgetScopeValue[];
+  observacoes: string;
+  tratamentoExistentes: "avaliar_individualmente" | "manter" | "substituir";
+};
 
 const STATUS_CLASS: Record<string, string> = {
   briefing:    "bg-gray-100 text-gray-700 border-gray-200",
@@ -233,6 +259,11 @@ export default function ProjetoDetalhe() {
   const [totalGeral, setTotalGeral] = useState(0);
   const [orcLoading, setOrcLoading] = useState(false);
   const [gerandoIA, setGerandoIA]   = useState(false);
+  const [scopeOpen, setScopeOpen] = useState(false);
+  const [savingScope, setSavingScope] = useState(false);
+  const [scopeForm, setScopeForm] = useState<BudgetScopeForm>({
+    tipos: [], observacoes: "", tratamentoExistentes: "avaliar_individualmente",
+  });
 
   // ── Item dialog state
   const [addItemOpen, setAddItemOpen] = useState(false);
@@ -381,8 +412,63 @@ export default function ProjetoDetalhe() {
     byAmbiente[key].push(g);
   }
 
+  // ── Escopo do orçamento por cliente ────────────────────────────────────
+  function openBudgetScope() {
+    const current = projeto?.escopoOrcamento;
+    setScopeForm({
+      tipos: (current?.tipos ?? []) as BudgetScopeValue[],
+      observacoes: current?.observacoes ?? "",
+      tratamentoExistentes: current?.tratamentoExistentes ?? "avaliar_individualmente",
+    });
+    setScopeOpen(true);
+  }
+
+  function toggleBudgetScope(value: BudgetScopeValue) {
+    setScopeForm((current) => {
+      if (value === "completo") {
+        return { ...current, tipos: current.tipos.includes("completo") ? [] : ["completo"] };
+      }
+      const withoutComplete = current.tipos.filter((item) => item !== "completo");
+      return {
+        ...current,
+        tipos: withoutComplete.includes(value)
+          ? withoutComplete.filter((item) => item !== value)
+          : [...withoutComplete, value],
+      };
+    });
+  }
+
+  async function saveBudgetScope() {
+    if (scopeForm.tipos.length === 0) {
+      toast({ title: "Selecione ao menos um escopo", variant: "destructive" });
+      return;
+    }
+    setSavingScope(true);
+    try {
+      const res = await fetch(`/api/arch/projetos/${projetoId}`, {
+        method: "PATCH", headers: authH(), body: JSON.stringify({ escopoOrcamento: scopeForm }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(typeof err?.error === "string" ? err.error : "Falha ao salvar o escopo.");
+      }
+      await loadProjeto();
+      setScopeOpen(false);
+      toast({ title: "Escopo do orçamento salvo" });
+    } catch (error) {
+      toast({ title: "Erro", description: error instanceof Error ? error.message : "Falha ao salvar o escopo.", variant: "destructive" });
+    } finally {
+      setSavingScope(false);
+    }
+  }
+
   // ── Gerar com IA ───────────────────────────────────────────────────────
   async function gerarIA() {
+    if (!projeto?.escopoOrcamento?.tipos?.length) {
+      openBudgetScope();
+      toast({ title: "Defina primeiro o que este cliente quer orçar." });
+      return;
+    }
     setGerandoIA(true);
     try {
       const res = await fetch(`/api/arch/projetos/${projetoId}/orcamento/gerar-ia`, {
@@ -942,6 +1028,28 @@ export default function ProjetoDetalhe() {
             ABA: ORÇAMENTO
         ════════════════════════════════════════════════════════════════ */}
         <TabsContent value="orcamento" className="space-y-4 mt-4">
+          <div className="rounded-lg border bg-muted/20 p-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-sm font-semibold">Escopo deste cliente</p>
+              {projeto?.escopoOrcamento?.tipos?.length ? (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {projeto.escopoOrcamento.tipos.map((tipo) => (
+                    <span key={tipo} className="rounded-full border bg-background px-2.5 py-1 text-xs font-medium">
+                      {ESCOPO_ORCAMENTO_OPTIONS.find((option) => option.value === tipo)?.label ?? tipo}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-1 text-sm text-muted-foreground">Antes de gerar, informe exatamente o que o cliente quer contratar.</p>
+              )}
+              {projeto?.escopoOrcamento?.observacoes && <p className="mt-2 text-xs text-muted-foreground">{projeto.escopoOrcamento.observacoes}</p>}
+            </div>
+            <Button variant="outline" onClick={openBudgetScope} className="shrink-0">
+              <Pencil className="h-4 w-4 mr-2" />
+              {projeto?.escopoOrcamento?.tipos?.length ? "Editar escopo" : "Definir escopo"}
+            </Button>
+          </div>
+
           <div className="flex gap-2 flex-wrap">
             <Button variant="outline" onClick={gerarIA} disabled={gerandoIA}>
               {gerandoIA
@@ -1522,6 +1630,50 @@ export default function ProjetoDetalhe() {
           )}
         </TabsContent>
       </Tabs>
+
+      <Dialog open={scopeOpen} onOpenChange={setScopeOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>O que será orçado para este cliente?</DialogTitle></DialogHeader>
+          <div className="space-y-5">
+            <p className="text-sm text-muted-foreground">Selecione um ou mais escopos. A IA gera somente o que foi contratado para este cliente.</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {ESCOPO_ORCAMENTO_OPTIONS.map((option) => {
+                const selected = scopeForm.tipos.includes(option.value);
+                return (
+                  <button key={option.value} type="button" onClick={() => toggleBudgetScope(option.value)} className={`rounded-lg border p-3 text-left transition-colors ${selected ? "border-primary bg-primary/5" : "hover:bg-muted/40"}`}>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-sm font-semibold">{option.label}</span>
+                      <span className={`h-4 w-4 rounded-full border ${selected ? "border-primary bg-primary" : "border-muted-foreground/40"}`} />
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">{option.description}</p>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="space-y-2">
+              <Label>Como tratar itens que já existem?</Label>
+              <Select value={scopeForm.tratamentoExistentes} onValueChange={(value) => setScopeForm((current) => ({ ...current, tratamentoExistentes: value as BudgetScopeForm["tratamentoExistentes"] }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="avaliar_individualmente">Avaliar item a item</SelectItem>
+                  <SelectItem value="manter">Manter existentes — não orçar</SelectItem>
+                  <SelectItem value="substituir">Substituir existentes dentro do escopo</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Necessidades e observações do cliente</Label>
+              <Textarea rows={4} value={scopeForm.observacoes} onChange={(event) => setScopeForm((current) => ({ ...current, observacoes: event.target.value }))} placeholder="Ex.: manter sofá e eletrodomésticos; trocar piso da sala; nova marcenaria da cozinha; não mexer na hidráulica..." />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setScopeOpen(false)} disabled={savingScope}>Cancelar</Button>
+              <Button onClick={saveBudgetScope} disabled={savingScope || scopeForm.tipos.length === 0}>
+                {savingScope && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}Salvar escopo
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* ══════════════════════════════════════════════════════════════════
           DIALOG: Adicionar / Editar Item
