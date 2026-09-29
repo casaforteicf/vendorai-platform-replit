@@ -241,6 +241,9 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const [proposalShowGrandTotal, setProposalShowGrandTotal] = useState(true);
   const [proposalBuiltArea, setProposalBuiltArea] = useState("");
   const [proposalExcludedText, setProposalExcludedText] = useState("");
+  const [proposalAppearanceOpen, setProposalAppearanceOpen] = useState(false);
+  const [proposalAttachmentsOpen, setProposalAttachmentsOpen] = useState(false);
+  const [proposalAdvancedOpen, setProposalAdvancedOpen] = useState(false);
 
   // Refinement dialog
   const [refineOpen, setRefineOpen] = useState(false);
@@ -2038,8 +2041,8 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
 
       {/* Orçamentos vinculados — primeira etapa do fluxo */}
       <Card data-testid="card-orcamentos-lead" className="order-1">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold flex items-center justify-between">
+        <CardHeader className="px-3 pb-3 pt-4 sm:px-6">
+          <CardTitle className="flex flex-col items-stretch gap-3 text-sm font-semibold sm:flex-row sm:items-center sm:justify-between">
             <span className="flex items-center gap-2">
               <Receipt className="h-4 w-4" />
               Orçamentos
@@ -2162,7 +2165,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
             </span>
             <Button
               size="sm"
-              className="h-7 text-xs gap-1"
+              className="h-9 w-full gap-1.5 text-xs sm:h-8 sm:w-auto"
               onClick={() => openRefineDialog()}
               disabled={generating || loadingOrcamentos || loadingBudgetRevisions || proposalBudgetOptions.length === 0 || selectedOrcamentoId === "__none__"}
             >
@@ -2185,7 +2188,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                     type="button"
                     size="sm"
                     variant="outline"
-                    className="h-8 gap-1.5 text-xs"
+                    className="h-9 w-full gap-1.5 text-xs sm:h-8 sm:w-auto"
                     onClick={openProposalBuilderEditor}
                   >
                     <Settings2 className="h-3.5 w-3.5" />
@@ -2196,7 +2199,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                   type="button"
                   size="sm"
                   variant="outline"
-                  className="h-8 gap-1.5 text-xs"
+                  className="h-9 w-full gap-1.5 text-xs sm:h-8 sm:w-auto"
                   onClick={createProposalBuilderTemplateWithAI}
                   disabled={generatingProposalBuilderTemplate}
                 >
@@ -2243,28 +2246,47 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
             )}
           </div>
 
-          {/* Modelo documental por linha, quando o tenant já possui um arquivo de referência */}
-          <div className="mt-2 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
-            {proposalLineTemplates.length > 0 ? (
-              <Select value={selectedProposalTemplateId} onValueChange={setSelectedProposalTemplateId}>
-                <SelectTrigger className="h-9 min-w-0 w-full max-w-full text-xs sm:h-8 sm:w-[280px] [&>span]:truncate">
-                  <SelectValue placeholder="Referência documental" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__auto__">Automático — referência padrão</SelectItem>
-                  {proposalLineTemplates.map((item) => (
-                    <SelectItem key={item.id} value={item.id}>{item.name} — {item.productLine}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : hasProposalTemplate ? (
-              <span className="flex items-center gap-1.5 text-xs text-emerald-600">
-                <FileText className="h-3 w-3" /> Referência ativa: {proposalTemplateName || "modelo-proposta"}
-              </span>
-            ) : null}
-          </div>
+          {/* Referência documental — fica em avançado para não poluir o fluxo principal */}
+          {(proposalLineTemplates.length > 0 || hasProposalTemplate) && (
+            <div className="mt-2 rounded-lg border bg-background/60">
+              <button
+                type="button"
+                onClick={() => setProposalAdvancedOpen((value) => !value)}
+                className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left"
+              >
+                <div className="min-w-0">
+                  <p className="text-xs font-medium">Referência documental</p>
+                  <p className="truncate text-[10px] text-muted-foreground">
+                    Opcional · use somente quando quiser seguir um arquivo/modelo específico.
+                  </p>
+                </div>
+                {proposalAdvancedOpen ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
+              </button>
+              {proposalAdvancedOpen && (
+                <div className="border-t px-3 pb-3 pt-2">
+                  {proposalLineTemplates.length > 0 ? (
+                    <Select value={selectedProposalTemplateId} onValueChange={setSelectedProposalTemplateId}>
+                      <SelectTrigger className="h-10 min-w-0 w-full max-w-full text-xs [&>span]:truncate">
+                        <SelectValue placeholder="Referência documental" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__auto__">Automático — referência padrão</SelectItem>
+                        {proposalLineTemplates.map((item) => (
+                          <SelectItem key={item.id} value={item.id}>{item.name} — {item.productLine}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <span className="flex items-center gap-1.5 text-xs text-emerald-600">
+                      <FileText className="h-3 w-3" /> Referência ativa: {proposalTemplateName || "modelo-proposta"}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-3 pb-4 sm:px-6">
           {/* Seletor de orçamento a incluir */}
           {proposalBudgetOptions.length > 0 && (
             <div className="mb-4 min-w-0 space-y-1 overflow-hidden border-b pb-4">
@@ -2327,7 +2349,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                     type="button"
                     size="sm"
                     variant="outline"
-                    className="h-8 gap-1.5 text-xs"
+                    className="h-9 w-full gap-1.5 text-xs sm:h-8 sm:w-auto"
                     disabled={attachmentUploading}
                     onClick={() => attachmentInputRef.current?.click()}
                   >
@@ -2454,7 +2476,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                           type="button"
                           size="sm"
                           variant="outline"
-                          className="h-8 gap-1.5 text-xs"
+                          className="h-9 w-full gap-1.5 text-xs sm:h-8 sm:w-auto"
                           disabled={generatingCoverImage}
                           onClick={() => void generatePremiumCoverImage()}
                         >
@@ -2561,7 +2583,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                             type="button"
                             variant="outline"
                             size="sm"
-                            className="h-8 gap-1.5 text-xs"
+                            className="h-9 w-full gap-1.5 text-xs sm:h-8 sm:w-auto"
                             disabled={generatingStageImages || selectedStageImageIds.length === 0}
                             onClick={() => void generateRepresentativeStageImages(false)}
                           >
@@ -3311,7 +3333,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                               <Button
                                 type="button"
                                 size="sm"
-                                className="h-8 gap-1.5 text-xs"
+                                className="h-9 w-full gap-1.5 text-xs sm:h-8 sm:w-auto"
                                 disabled={proposalBuilderGeneratingModuleImage === selectedModule.key}
                                 onClick={() => void generateProposalBuilderModuleImage(selectedModule.key)}
                               >
@@ -3342,7 +3364,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                       type="button"
                       size="sm"
                       variant="outline"
-                      className="h-8 gap-1.5 text-xs"
+                      className="h-9 w-full gap-1.5 text-xs sm:h-8 sm:w-auto"
                       disabled={generatingCoverImage}
                       onClick={() => void generatePremiumCoverImage()}
                     >
@@ -3354,7 +3376,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                       type="button"
                       size="sm"
                       variant="outline"
-                      className="h-8 gap-1.5 text-xs"
+                      className="h-9 w-full gap-1.5 text-xs sm:h-8 sm:w-auto"
                       disabled={generatingStageImages || selectedStageImageIds.length === 0}
                       onClick={() => void generateRepresentativeStageImages(false)}
                     >
