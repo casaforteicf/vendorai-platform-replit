@@ -24,7 +24,7 @@ import { RenderStudioCopilot as CopilotPanel } from "./RenderStudioCopilot";
 // ─── Right Panel (P2-14/15/16/17/20/21) ──────────────────────────────────────
 
 export function RenderStudioRightPanel({
-  step, arq, ambiente, setAmbiente, imageFile, imageDataUrl, renderUrl, versions, loading, err,
+  step, arq, ambiente, setAmbiente, imageFile, imageDataUrl, renderUrl, currentRenderId, versions, loading, err,
   melhoriaPrompt, setMelhoriaPrompt, melhoriaMode, setMelhoriaMode,
   approved, specDone, specData,
   specificationId, enviandoOrcamento, orcamentoMsg, onEnviarOrcamento,
@@ -38,7 +38,7 @@ export function RenderStudioRightPanel({
   isOpen, onToggle,
 }: {
   step: Step; arq: any; ambiente: string; setAmbiente: (v: string) => void;
-  imageFile: File | null; imageDataUrl: string | null; renderUrl: string | null;
+  imageFile: File | null; imageDataUrl: string | null; renderUrl: string | null; currentRenderId: string | null;
   versions: RenderVersion[]; loading: boolean; err: string | null;
   melhoriaPrompt: string; setMelhoriaPrompt: (v: string) => void;
   melhoriaMode: RenderStudioImprovementMode; setMelhoriaMode: (v: RenderStudioImprovementMode) => void;
@@ -60,6 +60,9 @@ export function RenderStudioRightPanel({
   isOpen: boolean; onToggle: () => void;
 }) {
   const [tab, setTab] = useState<"propriedades" | "camadas">("propriedades");
+  const currentVersion = versions.find((version) => version.id === currentRenderId) ?? versions[0] ?? null;
+  const otherVersions = versions.filter((version) => version.id !== currentVersion?.id);
+
   const AMBIENTE_OPTIONS = ["Sala de Estar", "Quarto Master", "Cozinha", "Banheiro", "Escritório", "Varanda", "Hall de Entrada"];
   const MELHORIA_MODES: { id: RenderStudioImprovementMode; label: string; icon: string }[] = [
     { id: "improve", label: "Melhorar qualidade", icon: "✨" },
@@ -95,15 +98,15 @@ export function RenderStudioRightPanel({
                   <Badge label="imutável" color={D.dim} />
                 </div>
                 {/* Current render */}
-                {renderUrl && versions.length > 0 && (
+                {renderUrl && currentVersion && (
                   <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 8px", borderRadius: 7, border: `1px solid ${D.purple}`, background: `${D.purple}18` }}>
                     <span style={{ fontSize: 10, color: D.purple }}>✦</span>
-                    <span style={{ fontSize: 11, color: D.purpleText, flex: 1 }}>{versions[0].label}</span>
-                    {versions[0].approvedBy && <Badge label="aprovado" color={D.green} />}
+                    <span style={{ fontSize: 11, color: D.purpleText, flex: 1 }}>{currentVersion.label}</span>
+                    {currentVersion.approvedBy && <Badge label="aprovado" color={D.green} />}
                   </div>
                 )}
                 {/* Version history */}
-                {versions.slice(1).map((v) => (
+                {otherVersions.map((v) => (
                   <div key={v.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 7, border: `1px solid ${D.border}`, background: D.card, opacity: 0.75 }}>
                     <span style={{ fontSize: 10, color: D.dim }}>⧉</span>
                     <span style={{ fontSize: 10, color: D.muted, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.label}</span>
