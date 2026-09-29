@@ -364,6 +364,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
   >([]);
   const [proposalBuilderDraggedIndex, setProposalBuilderDraggedIndex] = useState<number | null>(null);
   const [proposalBuilderModuleImageUploading, setProposalBuilderModuleImageUploading] = useState<string | null>(null);
+  const [proposalImageBankOpen, setProposalImageBankOpen] = useState(false);
   const proposalBuilderModuleImageInputRef = useRef<HTMLInputElement>(null);
 
   // Renderizações 3D pertencem ao fluxo Arch e só devem aparecer em segmentos
@@ -3981,7 +3982,10 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                           </div>
 
                           <div className="rounded-lg border bg-background p-2.5">
-                            <p className="text-[10px] font-semibold">Imagem da página</p>
+                            <p className="text-[10px] font-semibold">Imagem desta página</p>
+                            <p className="mt-1 text-[9px] text-muted-foreground">
+                              Destino: Página {Math.max(1, proposalBuilderEditorModules.findIndex((item) => item.key === selectedModule.key) + 1)} · {selectedModule.title || PROPOSAL_MODULE_LABELS[selectedModule.key] || selectedModule.key}.
+                            </p>
                             {selectedModule.image?.url ? (
                               <img src={normalizeTenantLogoUrl(selectedModule.image.url)} alt="" className="mt-2 h-28 w-full rounded-md border object-cover" />
                             ) : (
@@ -4081,10 +4085,38 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                 )}
 
                 <div className="mb-4 rounded-xl border p-3">
-                  <p className="text-xs font-semibold">Imagens da proposta</p>
-                  <p className="mt-1 text-[10px] text-muted-foreground">
-                    Gere a capa da casa e imagens específicas das etapas sem sair do Studio.
-                  </p>
+                  <button
+                    type="button"
+                    className="flex w-full items-start justify-between gap-3 text-left"
+                    onClick={() => setProposalImageBankOpen((open) => !open)}
+                  >
+                    <div>
+                      <p className="text-xs font-semibold">Banco de imagens da proposta</p>
+                      <p className="mt-1 text-[10px] text-muted-foreground">
+                        Imagens vinculadas à capa e às etapas. Cada geração mostra exatamente onde será usada.
+                      </p>
+                    </div>
+                    {proposalImageBankOpen ? <ChevronUp className="mt-0.5 h-4 w-4 text-muted-foreground" /> : <ChevronDown className="mt-0.5 h-4 w-4 text-muted-foreground" />}
+                  </button>
+
+                  {!proposalImageBankOpen && (
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-[10px]">
+                      <div className="rounded-lg bg-muted/40 p-2.5">
+                        <span className="text-muted-foreground">Capa</span>
+                        <strong className="mt-1 block">{selectedOrcamento?.apresentacao?.imagemCapa ? "imagem pronta" : "sem imagem"}</strong>
+                      </div>
+                      <div className="rounded-lg bg-muted/40 p-2.5">
+                        <span className="text-muted-foreground">Etapas</span>
+                        <strong className="mt-1 block">{Object.keys(selectedStageImages).length}/{selectedOrcamentoStages.length || 0} com imagem</strong>
+                      </div>
+                    </div>
+                  )}
+
+                  {proposalImageBankOpen && (<div className="mt-3">
+
+                  <div className="rounded-lg border border-blue-200 bg-blue-50 p-2.5 text-[10px] text-blue-900">
+                    <strong>Destino da capa:</strong> Página 1 · Capa. A imagem também fica disponível na Biblioteca de Mídias.
+                  </div>
 
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Button
@@ -4114,6 +4146,9 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
 
                   <div className="mt-3 space-y-1.5">
                     <p className="text-[10px] font-medium text-muted-foreground">Selecione até 3 etapas por ação</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      Destino automático: Página “Etapas do orçamento” e Página “Imagem por etapa”, quando essas páginas estiverem ativas no modelo.
+                    </p>
                     {selectedOrcamentoStages.slice(0, 14).map((stage) => {
                       const selected = selectedStageImageIds.includes(stage.id);
                       const hasImage = Boolean(selectedStageImages[stage.id]);
@@ -4131,9 +4166,25 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                           }`}>
                             {selected ? "✓" : ""}
                           </span>
-                          <span className="min-w-0 flex-1 truncate">{stage.ordem}. {stage.nome}</span>
+                          {hasImage ? (
+                            <img
+                              src={normalizeTenantLogoUrl(selectedStageImages[stage.id])}
+                              alt=""
+                              className="h-9 w-12 shrink-0 rounded border object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-9 w-12 shrink-0 items-center justify-center rounded border border-dashed bg-muted/30 text-[8px] text-muted-foreground">
+                              sem foto
+                            </div>
+                          )}
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate font-medium">{stage.ordem}. {stage.nome}</span>
+                            <span className="mt-0.5 block truncate text-[9px] text-muted-foreground">
+                              Vai para: Etapas do orçamento + Imagem por etapa
+                            </span>
+                          </span>
                           <span className={hasImage ? "text-emerald-600" : "text-amber-600"}>
-                            {hasImage ? "imagem ok" : "sem imagem"}
+                            {hasImage ? "pronta" : "gerar"}
                           </span>
                         </button>
                       );
@@ -4141,8 +4192,9 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                   </div>
 
                   <div className="mt-3 rounded-lg bg-muted/40 p-2.5 text-[10px] text-muted-foreground">
-                    A geração usa o estilo da casa escolhido na proposta e mantém a regra técnica de cada etapa para evitar imagens desconexas.
+                    A geração usa o estilo da casa escolhido na proposta, mantém a regra técnica de cada etapa e salva a mídia para reutilização posterior.
                   </div>
+                  </div>)}
                 </div>
 
                 <div>
