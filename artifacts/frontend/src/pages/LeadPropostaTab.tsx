@@ -2832,6 +2832,14 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                 </p>
               </div>
               <div className="flex items-center gap-2">
+                <div className="mr-2 flex items-center rounded-lg border bg-muted/30 p-1">
+                  <Button type="button" size="sm" variant={proposalBuilderPreviewMode === "template" ? "default" : "ghost"} className="h-7 text-xs" onClick={() => setProposalBuilderPreviewMode("template")}>
+                    Modelo
+                  </Button>
+                  <Button type="button" size="sm" variant={proposalBuilderPreviewMode === "budget" ? "default" : "ghost"} className="h-7 text-xs" onClick={() => setProposalBuilderPreviewMode("budget")}>
+                    Simular com orçamento
+                  </Button>
+                </div>
                 <Button
                   type="button"
                   size="sm"
@@ -2937,7 +2945,9 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                   <div>
                     <p className="text-xs font-semibold">Proposta para editar e organizar</p>
                     <p className="text-[10px] text-muted-foreground">
-                      Prévia com os dados reais do orçamento selecionado. Arraste os blocos diretamente na proposta ou use as setas.
+                      {proposalBuilderPreviewMode === "template"
+                        ? "Você está editando o MODELO reutilizável da empresa. Os textos e imagens são padrões; dados do cliente entram somente na geração."
+                        : "Simulação opcional usando o orçamento selecionado, sem alterar os dados do modelo."}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-1">
@@ -3153,8 +3163,126 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                       })()}
                     </div>
                     <p className="mt-2 text-[10px] text-muted-foreground">
-                      Clique em outro bloco na prévia para editar sua posição e visibilidade.
+                      Clique em outro bloco na prévia para editar conteúdo, imagem, origem dos dados e posição.
                     </p>
+
+                    {(() => {
+                      const selectedModule = proposalBuilderEditorModules.find((item) => item.key === proposalBuilderSelectedModuleKey);
+                      if (!selectedModule) return null;
+                      return (
+                        <div className="mt-4 space-y-3 border-t border-primary/15 pt-3">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-medium text-muted-foreground">Título do bloco</label>
+                            <Input
+                              value={selectedModule.title ?? PROPOSAL_MODULE_LABELS[selectedModule.key] ?? selectedModule.key}
+                              onChange={(e) => updateProposalBuilderModuleConfig(selectedModule.key, { title: e.target.value })}
+                              className="h-8 text-xs"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-medium text-muted-foreground">Descrição / objetivo</label>
+                            <Textarea
+                              value={selectedModule.description ?? ""}
+                              onChange={(e) => updateProposalBuilderModuleConfig(selectedModule.key, { description: e.target.value })}
+                              placeholder="Explique o papel deste bloco no modelo."
+                              className="min-h-[70px] text-xs"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-medium text-muted-foreground">Fonte dos dados</label>
+                            <Select
+                              value={selectedModule.dataSource ?? "mixed"}
+                              onValueChange={(value) => updateProposalBuilderModuleConfig(selectedModule.key, { dataSource: value as any })}
+                            >
+                              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="tenant">Empresa / tenant</SelectItem>
+                                <SelectItem value="budget">Orçamento</SelectItem>
+                                <SelectItem value="client">Cliente</SelectItem>
+                                <SelectItem value="catalog">Catálogo</SelectItem>
+                                <SelectItem value="manual">Conteúdo manual</SelectItem>
+                                <SelectItem value="mixed">Misto / automático</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-medium text-muted-foreground">Instrução para a IA</label>
+                            <Textarea
+                              value={selectedModule.contentPrompt ?? ""}
+                              onChange={(e) => updateProposalBuilderModuleConfig(selectedModule.key, { contentPrompt: e.target.value })}
+                              placeholder="Ex.: resumir diferenciais em até 4 cards, linguagem premium e objetiva."
+                              className="min-h-[82px] text-xs"
+                            />
+                          </div>
+
+                          <div className="rounded-lg border bg-background p-2.5">
+                            <p className="text-[10px] font-semibold">Imagem padrão do bloco</p>
+                            {selectedModule.image?.url ? (
+                              <img src={normalizeTenantLogoUrl(selectedModule.image.url)} alt="" className="mt-2 h-28 w-full rounded-md border object-cover" />
+                            ) : (
+                              <div className="mt-2 flex h-20 items-center justify-center rounded-md border border-dashed text-[10px] text-muted-foreground">
+                                Sem imagem padrão
+                              </div>
+                            )}
+                            <div className="mt-2 grid grid-cols-2 gap-2">
+                              <Select
+                                value={selectedModule.image?.mode ?? "automatic"}
+                                onValueChange={(value) => updateProposalBuilderModuleImage(selectedModule.key, { mode: value as any })}
+                              >
+                                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="automatic">Automática</SelectItem>
+                                  <SelectItem value="ai">Gerada por IA</SelectItem>
+                                  <SelectItem value="manual">Manual / URL</SelectItem>
+                                  <SelectItem value="library">Biblioteca</SelectItem>
+                                  <SelectItem value="none">Sem imagem</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <Select
+                                value={selectedModule.image?.aspectRatio ?? "16:9"}
+                                onValueChange={(value) => updateProposalBuilderModuleImage(selectedModule.key, { aspectRatio: value as any })}
+                              >
+                                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="16:9">16:9</SelectItem>
+                                  <SelectItem value="4:3">4:3</SelectItem>
+                                  <SelectItem value="1:1">1:1</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <Input
+                              value={selectedModule.image?.url ?? ""}
+                              onChange={(e) => updateProposalBuilderModuleImage(selectedModule.key, { mode: "manual", url: e.target.value })}
+                              placeholder="URL da imagem ou arquivo da biblioteca"
+                              className="mt-2 h-8 text-xs"
+                            />
+                            <Textarea
+                              value={selectedModule.image?.prompt ?? ""}
+                              onChange={(e) => updateProposalBuilderModuleImage(selectedModule.key, { prompt: e.target.value })}
+                              placeholder="Prompt da imagem deste bloco. Ex.: casa contemporânea brasileira de alto padrão, fotografia arquitetônica..."
+                              className="mt-2 min-h-[80px] text-xs"
+                            />
+                            <div className="mt-2 flex gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                className="h-8 gap-1.5 text-xs"
+                                disabled={proposalBuilderGeneratingModuleImage === selectedModule.key}
+                                onClick={() => void generateProposalBuilderModuleImage(selectedModule.key)}
+                              >
+                                {proposalBuilderGeneratingModuleImage === selectedModule.key ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                                Gerar com IA
+                              </Button>
+                              {selectedModule.image?.url && (
+                                <Button type="button" size="sm" variant="outline" className="h-8 text-xs" onClick={() => updateProposalBuilderModuleImage(selectedModule.key, { url: "", mode: "none" })}>
+                                  Remover imagem
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
 
