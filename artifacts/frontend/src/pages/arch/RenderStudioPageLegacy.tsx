@@ -888,12 +888,7 @@ function LeftSidebar({ step, projectTitle, onStepClick }: { step: Step; projectT
               const isActive = isStudio && item.id === step;
               const isDone = isStudio && stepIdx < ci;
               const isClickable = isStudio && stepIdx <= ci;
-              if (!isStudio) return (
-                <div key={item.id} title="Disponível em breve" aria-disabled="true" style={{ width: "100%", padding: "7px 14px 7px 12px", display: "flex", alignItems: "center", gap: 8, opacity: 0.35, cursor: "default", userSelect: "none" }}>
-                  <span style={{ fontSize: 12, color: D.dim, width: 14, flexShrink: 0, textAlign: "center" }}>{item.icon}</span>
-                  <span style={{ fontSize: 11, color: D.dim }}>{item.label}</span>
-                </div>
-              );
+              if (!isStudio) return null;
               return (
                 <button className="arqdor-studio-step" data-step-number={String(stepIdx + 1).padStart(2, "0")} key={item.id} onClick={() => { if (stepId && isClickable) onStepClick(stepId); }} aria-current={isActive ? "step" : undefined} disabled={!isClickable}
                   title={!isClickable ? "Complete as etapas anteriores primeiro" : isDone ? `Voltar para ${item.label}` : undefined}
@@ -978,7 +973,7 @@ function CentralCanvas({ step, imageDataUrl, renderUrl, loading, isDragging, can
 
       {/* Main area */}
       {!compareMode && (
-        <div style={{ flex: 1, display: "flex", alignItems: canvasMode === "1to1" ? "flex-start" : "center", justifyContent: canvasMode === "1to1" ? "flex-start" : "center", overflow: canvasMode === "1to1" ? "auto" : "hidden", position: "relative", padding: canvasMode === "1to1" ? 24 : 0, outline: isDragging ? `2px dashed ${D.purple}` : undefined, transition: "outline 0.15s" }}
+        <div className="arqdor-canvas-stage" style={{ flex: 1, display: "flex", alignItems: canvasMode === "1to1" ? "flex-start" : "center", justifyContent: canvasMode === "1to1" ? "flex-start" : "center", overflow: canvasMode === "1to1" ? "auto" : "hidden", position: "relative", padding: canvasMode === "1to1" ? 24 : 0, outline: isDragging ? `2px dashed ${D.purple}` : undefined, transition: "outline 0.15s" }}
           onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
           {(loading || isRecovering) && <ProgressOverlay stage={processingStage} elapsedSeconds={elapsedSeconds} isRecovering={isRecovering} />}
           {isDragging && (
