@@ -494,6 +494,23 @@ const SHELL_STYLES = `
   }
 `;
 
+function clearRenderDraftSession() {
+  try {
+    [
+      SK.step,
+      SK.ambiente,
+      SK.renderId,
+      SK.renderUrl,
+      SK.imageUrl,
+      SK.versions,
+      SK.approvedVersionId,
+      SK.context,
+    ].forEach((key) => sessionStorage.removeItem(key));
+  } catch {
+    // session cleanup is best effort
+  }
+}
+
 function reviveDate(value: unknown): Date | undefined {
   if (!value) return undefined;
   if (value instanceof Date) return value;
@@ -570,12 +587,18 @@ function persistBootstrapState(state: {
 export default function RenderStudioPage() {
   const shellRef = useRef<HTMLDivElement>(null);
   const [, setLocation] = useLocation();
+  const [freshStart] = useState(() => {
+    const requested = new URLSearchParams(window.location.search).get("new") === "1";
+    if (requested) clearRenderDraftSession();
+    return requested;
+  });
   const [projectId, setProjectId] = useState<string | null>(() => localStorage.getItem("arq_last_project_id"));
   const [ambiente, setAmbiente] = useState(() => sessionStorage.getItem(SK.ambiente) ?? "");
   const [hydratedKey, setHydratedKey] = useState<string | null>(null);
   const targetKey = `${projectId ?? "no-project"}:${ambiente}`;
 
   const recoveryCache = useMemo(() => {
+    if (freshStart) return { versions: [], renderId: null, renderUrl: null, imageUrl: null };
     const cachedContext = sessionStorage.getItem(SK.context);
     if (cachedContext !== targetKey) {
       return { versions: [], renderId: null, renderUrl: null, imageUrl: null };
@@ -586,10 +609,18 @@ export default function RenderStudioPage() {
       renderUrl: sessionStorage.getItem(SK.renderUrl),
       imageUrl: sessionStorage.getItem(SK.imageUrl),
     };
-  }, [targetKey]);
+  }, [targetKey, freshStart]);
 
   const bootstrap = useRenderStudioPersistentBootstrap(projectId, ambiente, recoveryCache);
-  const approvedVersion = useMemo(() => findApprovedVersion(bootstrap.state), [bootstrap.state]);
+  const approvedVersion = useMemo(
+    () => freshStart ? null : findApprovedVersion(bootstrap.state),
+    [bootstrap.state, freshStart],
+  );
+
+  useEffect(() => {
+    if (!freshStart) return;
+    window.history.replaceState(window.history.state, "", window.location.pathname);
+  }, [freshStart]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -604,6 +635,10 @@ export default function RenderStudioPage() {
   useEffect(() => setHydratedKey(null), [projectId, ambiente]);
 
   useEffect(() => {
+    if (freshStart) {
+      setHydratedKey(targetKey);
+      return;
+    }
     if (!projectId) {
       setHydratedKey(targetKey);
       return;
@@ -613,7 +648,7 @@ export default function RenderStudioPage() {
     if (!backendLoaded && !canUseRecovery) return;
     persistBootstrapState(bootstrap.state, targetKey);
     setHydratedKey(targetKey);
-  }, [projectId, targetKey, bootstrap.loadedProjectId, bootstrap.error, bootstrap.hasRecoveryOnly, bootstrap.state]);
+  }, [projectId, targetKey, freshStart, bootstrap.loadedProjectId, bootstrap.error, bootstrap.hasRecoveryOnly, bootstrap.state]);
 
   if (hydratedKey !== targetKey) {
     return (
