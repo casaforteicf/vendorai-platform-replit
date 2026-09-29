@@ -255,7 +255,7 @@ archAiRenderRouter.get("/arch/ai-render-video/:id", authenticate, async (req, re
     movement: job.movement,
     aspect_ratio: job.aspect_ratio,
     status: job.status,
-    video_url: job.video_url,
+    video_url: renderDisplayUrl(job.video_url),
     error: job.error_message,
     created_at: job.created_at,
     completed_at: job.completed_at,
