@@ -630,6 +630,72 @@ router.post("/leads/:leadId/proposals/stage-images", async (req, res) => {
 });
 
 
+router.post("/leads/:leadId/proposals/stage-image/manual", async (req, res) => {
+  // tenant-audit: reviewed route validates lead/proposal ownership before mutating presentation images
+  const leadId = String(req.params.leadId);
+  const tenantId = req.user?.tenantId ?? "";
+  const [lead] = await db
+    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId })
+    .from(leadsTable)
+    .where(eq(leadsTable.id, leadId));
+
+  if (!lead || (req.user?.platformRole !== "super_admin" && lead.tenantId !== tenantId)) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+
+  const propostaId = typeof req.body?.propostaId === "string" ? req.body.propostaId.trim() : "";
+  const stageId = typeof req.body?.stageId === "string" ? req.body.stageId.trim() : "";
+  const imageUrl = typeof req.body?.imageUrl === "string" ? req.body.imageUrl.trim() : "";
+
+  if (!propostaId || !stageId) {
+    res.status(400).json({ error: "propostaId e stageId são obrigatórios" });
+    return;
+  }
+  if (imageUrl && !/^\/api\/storage\//.test(imageUrl) && !/^https?:\/\//i.test(imageUrl)) {
+    res.status(422).json({ error: "URL de imagem inválida" });
+    return;
+  }
+
+  const [proposta] = await db
+    .select()
+    .from(propostasTable)
+    .where(and(
+      eq(propostasTable.id, propostaId),
+      eq(propostasTable.tenantId, lead.tenantId),
+      eq(propostasTable.leadId, leadId),
+    ));
+
+  if (!proposta) {
+    res.status(404).json({ error: "Orçamento não encontrado para este lead" });
+    return;
+  }
+
+  const presentation = (proposta.apresentacao ?? {}) as Record<string, any>;
+  const stageImages: Record<string, string> = {
+    ...((presentation.imagensEtapas && typeof presentation.imagensEtapas === "object")
+      ? presentation.imagensEtapas
+      : {}),
+  };
+
+  if (imageUrl) stageImages[stageId] = imageUrl;
+  else delete stageImages[stageId];
+
+  await db
+    .update(propostasTable)
+    .set({
+      apresentacao: {
+        ...(proposta.apresentacao ?? {}),
+        imagensEtapas: stageImages,
+      },
+      updatedAt: new Date(),
+    })
+    .where(eq(propostasTable.id, proposta.id));
+
+  res.json({ stageId, imageUrl: imageUrl || null, removed: !imageUrl });
+});
+
+
 router.post("/leads/:leadId/proposals/cover-image", async (req, res) => {
   const leadId = String(req.params.leadId);
   const tenantId = req.user?.tenantId ?? "";
@@ -743,6 +809,61 @@ router.post("/leads/:leadId/proposals/cover-image", async (req, res) => {
     req.log.warn({ err, propostaId }, "proposal premium cover generation failed");
     res.status(502).json({ error: message });
   }
+});
+
+
+router.post("/leads/:leadId/proposals/cover-image/manual", async (req, res) => {
+  // tenant-audit: reviewed route validates lead/proposal ownership before mutating cover image
+  const leadId = String(req.params.leadId);
+  const tenantId = req.user?.tenantId ?? "";
+  const [lead] = await db
+    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId })
+    .from(leadsTable)
+    .where(eq(leadsTable.id, leadId));
+
+  if (!lead || (req.user?.platformRole !== "super_admin" && lead.tenantId !== tenantId)) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+
+  const propostaId = typeof req.body?.propostaId === "string" ? req.body.propostaId.trim() : "";
+  const imageUrl = typeof req.body?.imageUrl === "string" ? req.body.imageUrl.trim() : "";
+
+  if (!propostaId) {
+    res.status(400).json({ error: "propostaId é obrigatório" });
+    return;
+  }
+  if (imageUrl && !/^\/api\/storage\//.test(imageUrl) && !/^https?:\/\//i.test(imageUrl)) {
+    res.status(422).json({ error: "URL de imagem inválida" });
+    return;
+  }
+
+  const [proposta] = await db
+    .select()
+    .from(propostasTable)
+    .where(and(
+      eq(propostasTable.id, propostaId),
+      eq(propostasTable.tenantId, lead.tenantId),
+      eq(propostasTable.leadId, leadId),
+    ));
+
+  if (!proposta) {
+    res.status(404).json({ error: "Orçamento não encontrado para este lead" });
+    return;
+  }
+
+  await db
+    .update(propostasTable)
+    .set({
+      apresentacao: {
+        ...(proposta.apresentacao ?? {}),
+        imagemCapa: imageUrl || undefined,
+      },
+      updatedAt: new Date(),
+    })
+    .where(eq(propostasTable.id, proposta.id));
+
+  res.json({ imageUrl: imageUrl || null, removed: !imageUrl });
 });
 
 // ── Async proposal generation ────────────────────────────────────────────────

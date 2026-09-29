@@ -90,7 +90,7 @@ const PROPOSTA_EDIT_SCRIPT = `<script id="__proposta_editor__">
   document.head.appendChild(css);
 
   function send(){
-    window.parent.postMessage({type:'proposta-edit',html:'<!DOCTYPE html>'+document.documentElement.outerHTML},'*');
+    window.parent.postMessage({type:'proposta-edit',html:'<!DOCTYPE html>'+document.documentElement.outerHTML},window.location.origin);
   }
 
   var bar=null;
@@ -245,6 +245,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const [proposalAttachmentsOpen, setProposalAttachmentsOpen] = useState(false);
   const [proposalAdvancedOpen, setProposalAdvancedOpen] = useState(false);
   const [proposalStagesOpen, setProposalStagesOpen] = useState(false);
+  const [proposalVisualCenterOpen, setProposalVisualCenterOpen] = useState(false);
   const [proposalDraftSavedAt, setProposalDraftSavedAt] = useState<string | null>(null);
 
   // Refinement dialog
@@ -376,7 +377,12 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const [generatingStageImages, setGeneratingStageImages] = useState(false);
   const [generatingCoverImage, setGeneratingCoverImage] = useState(false);
   const [selectedStageImageIds, setSelectedStageImageIds] = useState<string[]>([]);
+  const [stageImageUploadTarget, setStageImageUploadTarget] = useState<string | null>(null);
+  const [stageImageUploading, setStageImageUploading] = useState(false);
+  const [coverImageUploading, setCoverImageUploading] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const stageImageInputRef = useRef<HTMLInputElement>(null);
+  const coverImageInputRef = useRef<HTMLInputElement>(null);
 
   type ProposalAttachment = { nome: string; url: string; mimeType?: string; tamanho?: number };
   const [proposalAttachments, setProposalAttachments] = useState<ProposalAttachment[]>([]);
@@ -604,6 +610,37 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
 
     return Array.from(groups.values()).sort((a, b) => a.ordem - b.ordem);
   })();
+
+  function selectNextMissingStageImages() {
+    const missing = selectedOrcamentoStages
+      .filter((stage) => !selectedStageImages[stage.id])
+      .slice(0, 3)
+      .map((stage) => stage.id);
+    setSelectedStageImageIds(missing);
+    if (missing.length === 0) {
+      toast({ title: "Todas as etapas já possuem imagem" });
+    }
+  }
+
+  function applyFinancialModeToAllStages(mode: ProposalPresentationMode | "__default__") {
+    if (mode === "__default__") {
+      setProposalPresentationStageModes({});
+      return;
+    }
+    setProposalPresentationStageModes(
+      Object.fromEntries(selectedOrcamentoStages.map((stage) => [stage.id, mode])),
+    );
+  }
+
+  function applyTechnicalVisibilityToAllStages(mode: "mostrar" | "ocultar" | "__default__") {
+    if (mode === "__default__") {
+      setProposalTechnicalDetailStages({});
+      return;
+    }
+    setProposalTechnicalDetailStages(
+      Object.fromEntries(selectedOrcamentoStages.map((stage) => [stage.id, mode === "mostrar"])),
+    );
+  }
 
   function toggleStageImageSelection(stageId: string) {
     setSelectedStageImageIds((current) => {
@@ -976,6 +1013,8 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   // Listen for inline edits from the preview iframe
   useEffect(() => {
     const handler = (e: MessageEvent) => {
+      if (e.source !== iframeRef.current?.contentWindow) return;
+      if (e.origin !== window.location.origin) return;
       if (e.data?.type === "proposta-edit" && typeof e.data.html === "string") {
         setEditableHtml(e.data.html);
         setEditDirty(true);
@@ -1185,6 +1224,121 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
       toast({ title: "Erro no upload de imagem", variant: "destructive" });
     } finally {
       setImageUploading(false);
+    }
+  }
+
+  async function handleCoverImageUpload(file: File) {
+    if (!selectedOrcamento?.id) return;
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Selecione uma imagem válida.", variant: "destructive" });
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ title: `${file.name} excede 10MB`, variant: "destructive" });
+      return;
+    }
+
+    setCoverImageUploading(true);
+    try {
+      const imageUrl = await uploadImageFile(file);
+      const response = await fetch(api(`/api/leads/${leadId}/proposals/cover-image/manual`), {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ propostaId: selectedOrcamento.id, imageUrl }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? "Não foi possível definir a capa.");
+      await queryClient.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId, { leadId }) });
+      toast({ title: "Capa da proposta atualizada" });
+    } catch (error) {
+      toast({
+        title: "Erro ao alterar capa",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setCoverImageUploading(false);
+    }
+  }
+
+  async function removeManualCoverImage() {
+    if (!selectedOrcamento?.id) return;
+    try {
+      const response = await fetch(api(`/api/leads/${leadId}/proposals/cover-image/manual`), {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ propostaId: selectedOrcamento.id, imageUrl: "" }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? "Não foi possível remover a capa.");
+      await queryClient.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId, { leadId }) });
+      toast({ title: "Capa específica removida", description: "A proposta voltará a usar a capa padrão do modelo ou a biblioteca visual." });
+    } catch (error) {
+      toast({
+        title: "Erro ao remover capa",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    }
+  }
+
+  async function handleStageImageUpload(file: File) {
+    if (!stageImageUploadTarget || !selectedOrcamento?.id) return;
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Selecione uma imagem válida.", variant: "destructive" });
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ title: `${file.name} excede 10MB`, variant: "destructive" });
+      return;
+    }
+
+    setStageImageUploading(true);
+    try {
+      const imageUrl = await uploadImageFile(file);
+      const response = await fetch(api(`/api/leads/${leadId}/proposals/stage-image/manual`), {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          propostaId: selectedOrcamento.id,
+          stageId: stageImageUploadTarget,
+          imageUrl,
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? "Não foi possível vincular a imagem à etapa.");
+      await queryClient.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId, { leadId }) });
+      toast({ title: "Imagem da etapa atualizada" });
+    } catch (error) {
+      toast({
+        title: "Erro ao alterar imagem da etapa",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setStageImageUploading(false);
+      setStageImageUploadTarget(null);
+    }
+  }
+
+  async function removeManualStageImage(stageId: string) {
+    if (!selectedOrcamento?.id) return;
+    try {
+      const response = await fetch(api(`/api/leads/${leadId}/proposals/stage-image/manual`), {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ propostaId: selectedOrcamento.id, stageId, imageUrl: "" }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? "Não foi possível remover a imagem.");
+      await queryClient.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId, { leadId }) });
+      toast({ title: "Imagem da etapa removida" });
+    } catch (error) {
+      toast({
+        title: "Erro ao remover imagem",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
     }
   }
 
@@ -1500,6 +1654,9 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
       || proposalImages[0]
       || "",
   );
+  const proposalComposerTemplateImageModules = (proposalComposerTemplate?.modules ?? [])
+    .filter((module) => module.enabled !== false && module.image?.mode !== "none" && Boolean(module.image?.url));
+  const proposalComposerTemplateImageCount = proposalComposerTemplateImageModules.length;
   const proposalComposerStageImageCount = selectedOrcamentoStages.filter((stage) => Boolean(selectedStageImages[stage.id])).length;
   const proposalComposerStageCoverage = selectedOrcamentoStages.length > 0
     ? Math.round((proposalComposerStageImageCount / selectedOrcamentoStages.length) * 100)
@@ -2476,6 +2633,196 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
             </div>
           </div>
 
+          <div className="mb-4 overflow-hidden rounded-xl border bg-background">
+            <button
+              type="button"
+              onClick={() => setProposalVisualCenterOpen((value) => !value)}
+              className="flex w-full items-start justify-between gap-3 p-3 text-left"
+            >
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <ImagePlus className="h-4 w-4 text-muted-foreground" />
+                  <p className="text-sm font-semibold">Central visual</p>
+                  <Badge variant="outline" className="text-[10px]">{proposalComposerCover ? "capa ✓" : "capa pendente"}</Badge>
+                  <Badge variant="outline" className="text-[10px]">{proposalComposerTemplateImageCount} imagens do modelo</Badge>
+                  <Badge variant="outline" className="text-[10px]">{proposalComposerStageImageCount}/{selectedOrcamentoStages.length || 0} etapas</Badge>
+                </div>
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  Uma única visão para capa, imagens do modelo, etapas e biblioteca de apoio. Prioridade: proposta → modelo → etapa → biblioteca.
+                </p>
+              </div>
+              {proposalVisualCenterOpen ? <ChevronUp className="mt-0.5 h-4 w-4 shrink-0" /> : <ChevronDown className="mt-0.5 h-4 w-4 shrink-0" />}
+            </button>
+
+            {proposalVisualCenterOpen && (
+              <div className="space-y-3 border-t p-3">
+                <input
+                  ref={coverImageInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void handleCoverImageUpload(file);
+                    event.target.value = "";
+                  }}
+                />
+                <div className="grid gap-3 lg:grid-cols-3">
+                  <div className="rounded-lg border p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-semibold">Capa da proposta</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {selectedOrcamento?.apresentacao?.imagemCapa
+                            ? "Imagem específica desta proposta"
+                            : proposalComposerTemplateCover
+                              ? "Usando capa padrão do modelo"
+                              : proposalImages[0]
+                                ? "Usando biblioteca visual como fallback"
+                                : "Sem capa definida"}
+                        </p>
+                      </div>
+                      <Badge variant={proposalComposerCover ? "secondary" : "outline"} className="text-[10px]">
+                        {proposalComposerCover ? "Pronta" : "Pendente"}
+                      </Badge>
+                    </div>
+                    {proposalComposerCover ? (
+                      <img src={normalizeTenantLogoUrl(proposalComposerCover)} alt="Capa da proposta" className="mt-2 h-28 w-full rounded-md border object-cover" />
+                    ) : (
+                      <div className="mt-2 flex h-28 items-center justify-center rounded-md border border-dashed bg-muted/20 text-[10px] text-muted-foreground">
+                        Nenhuma imagem
+                      </div>
+                    )}
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-9 w-full gap-1.5 text-xs"
+                        disabled={generatingCoverImage || !selectedOrcamento}
+                        onClick={() => void generatePremiumCoverImage()}
+                      >
+                        {generatingCoverImage ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                        Gerar com IA
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-9 w-full gap-1.5 text-xs"
+                        disabled={coverImageUploading || !selectedOrcamento}
+                        onClick={() => coverImageInputRef.current?.click()}
+                      >
+                        {coverImageUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                        Enviar imagem
+                      </Button>
+                    </div>
+                    {selectedOrcamento?.apresentacao?.imagemCapa && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="mt-1 h-8 w-full text-[11px] text-destructive"
+                        onClick={() => void removeManualCoverImage()}
+                      >
+                        Remover capa específica e usar padrão do modelo
+                      </Button>
+                    )}
+                  </div>
+
+                  <div className="rounded-lg border p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-semibold">Imagens do modelo</p>
+                        <p className="text-[10px] text-muted-foreground">Padrões reutilizáveis definidos no Studio.</p>
+                      </div>
+                      <Badge variant="outline" className="text-[10px]">{proposalComposerTemplateImageCount}</Badge>
+                    </div>
+                    <div className="mt-2 grid grid-cols-3 gap-1.5">
+                      {proposalComposerTemplateImageModules.slice(0, 6).map((module) => (
+                        <div key={module.key} className="overflow-hidden rounded-md border bg-muted/20">
+                          <img src={normalizeTenantLogoUrl(module.image?.url || "")} alt={module.title || PROPOSAL_MODULE_LABELS[module.key] || module.key} className="h-16 w-full object-cover" />
+                          <p className="truncate px-1.5 py-1 text-[9px]">{module.title || PROPOSAL_MODULE_LABELS[module.key] || module.key}</p>
+                        </div>
+                      ))}
+                      {proposalComposerTemplateImageCount === 0 && (
+                        <div className="col-span-3 flex h-20 items-center justify-center rounded-md border border-dashed text-[10px] text-muted-foreground">
+                          Nenhuma imagem padrão no modelo
+                        </div>
+                      )}
+                    </div>
+                    <Button type="button" size="sm" variant="outline" className="mt-2 h-9 w-full gap-1.5 text-xs" onClick={openProposalBuilderEditor} disabled={!proposalBuilderTemplates.length}>
+                      <Settings2 className="h-3.5 w-3.5" />
+                      Editar imagens no Studio
+                    </Button>
+                  </div>
+
+                  <div className="rounded-lg border p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-semibold">Imagens das etapas</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {selectedOrcamentoStages.length
+                            ? `${proposalComposerStageImageCount} de ${selectedOrcamentoStages.length} prontas`
+                            : "O orçamento não possui etapas estruturadas"}
+                        </p>
+                      </div>
+                      <Badge variant="outline" className="text-[10px]">{proposalComposerStageCoverage}%</Badge>
+                    </div>
+                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+                      <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${proposalComposerStageCoverage}%` }} />
+                    </div>
+                    <div className="mt-3 flex flex-col gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-9 w-full gap-1.5 text-xs"
+                        disabled={generatingStageImages || selectedOrcamentoStages.length === 0 || proposalComposerStageImageCount === selectedOrcamentoStages.length}
+                        onClick={() => {
+                          selectNextMissingStageImages();
+                          setProposalStagesOpen(true);
+                        }}
+                      >
+                        <ImagePlus className="h-3.5 w-3.5" />
+                        Selecionar próximas 3 sem imagem
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-9 w-full gap-1.5 text-xs"
+                        disabled={generatingStageImages || selectedStageImageIds.length === 0}
+                        onClick={() => void generateRepresentativeStageImages(false)}
+                      >
+                        {generatingStageImages ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                        Gerar {selectedStageImageIds.length || ""} selecionada{selectedStageImageIds.length === 1 ? "" : "s"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border bg-muted/20 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-semibold">Biblioteca visual de apoio</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {effectiveProposalImages.length} imagem(ns) gerais disponíveis. Elas só entram quando não houver imagem mais específica para o bloco.
+                      </p>
+                    </div>
+                    <Badge variant="outline" className="text-[10px]">fallback</Badge>
+                  </div>
+                  {effectiveProposalImages.length > 0 && (
+                    <div className="mt-2 grid grid-cols-4 gap-1.5 sm:grid-cols-6">
+                      {effectiveProposalImages.slice(0, 6).map((url, index) => (
+                        <img key={`${url}-visual-center-${index}`} src={url} alt="" className="aspect-video w-full rounded-md border object-cover" />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Seletor de orçamento a incluir */}
           {proposalBudgetOptions.length > 0 && (
             <div className="mb-4 min-w-0 space-y-1 overflow-hidden border-b pb-4">
@@ -2804,44 +3151,101 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                       </button>
                       {proposalStagesOpen && (
                         <div className="space-y-2 border-t p-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div>
-                          <p className="text-xs font-semibold">Configuração por etapa</p>
-                          <span className="text-[11px] text-muted-foreground">
-                            Selecione até 3 etapas por ação para gerar imagens sem consumo acidental.
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="text-[11px] text-muted-foreground">
-                            Selecione até 3 etapas · {selectedStageImageIds.length}/3
-                          </span>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-9 w-full gap-1.5 text-xs sm:h-8 sm:w-auto"
-                            disabled={generatingStageImages || selectedStageImageIds.length === 0}
-                            onClick={() => void generateRepresentativeStageImages(false)}
-                          >
-                            {generatingStageImages ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                            {generatingStageImages
-                              ? "Gerando..."
-                              : `Gerar ${selectedStageImageIds.length || ""} foto${selectedStageImageIds.length === 1 ? "" : "s"}`}
-                          </Button>
-                          {Object.keys(selectedStageImages).length > 0 && (
+                      <div className="flex flex-col gap-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="text-xs font-semibold">Configuração por etapa</p>
+                            <span className="text-[11px] text-muted-foreground">
+                              Use os controles em massa primeiro e ajuste apenas as exceções abaixo.
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-8 text-[11px]"
+                              disabled={generatingStageImages || selectedOrcamentoStages.length === 0 || proposalComposerStageImageCount === selectedOrcamentoStages.length}
+                              onClick={selectNextMissingStageImages}
+                            >
+                              Selecionar 3 sem imagem
+                            </Button>
                             <Button
                               type="button"
                               variant="ghost"
                               size="sm"
                               className="h-8 text-[11px]"
                               disabled={generatingStageImages || selectedStageImageIds.length === 0}
-                              onClick={() => void generateRepresentativeStageImages(true)}
+                              onClick={() => setSelectedStageImageIds([])}
                             >
-                              Regenerar selecionadas
+                              Limpar seleção
                             </Button>
-                          )}
+                          </div>
+                        </div>
+
+                        <div className="grid gap-2 rounded-lg border bg-muted/20 p-2.5 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Aplicar financeiro em todas</label>
+                            <Select onValueChange={(value) => applyFinancialModeToAllStages(value as ProposalPresentationMode | "__default__")}>
+                              <SelectTrigger className="h-8 w-full text-xs"><SelectValue placeholder="Escolher padrão em massa" /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__default__">Usar padrão geral</SelectItem>
+                                {PROPOSAL_PRESENTATION_OPTIONS.map((option) => (
+                                  <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Aplicar técnico em todas</label>
+                            <Select onValueChange={(value) => applyTechnicalVisibilityToAllStages(value as "mostrar" | "ocultar" | "__default__")}>
+                              <SelectTrigger className="h-8 w-full text-xs"><SelectValue placeholder="Escolher padrão em massa" /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__default__">Usar padrão geral</SelectItem>
+                                <SelectItem value="mostrar">Mostrar escopo em todas</SelectItem>
+                                <SelectItem value="ocultar">Ocultar escopo em todas</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-[11px] text-muted-foreground">IA: {selectedStageImageIds.length}/3</span>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-8 gap-1.5 text-xs"
+                              disabled={generatingStageImages || selectedStageImageIds.length === 0}
+                              onClick={() => void generateRepresentativeStageImages(false)}
+                            >
+                              {generatingStageImages ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                              Gerar selecionadas
+                            </Button>
+                            {Object.keys(selectedStageImages).length > 0 && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 text-[11px]"
+                                disabled={generatingStageImages || selectedStageImageIds.length === 0}
+                                onClick={() => void generateRepresentativeStageImages(true)}
+                              >
+                                Regenerar
+                              </Button>
+                            )}
+                          </div>
                         </div>
                       </div>
+                      <input
+                        ref={stageImageInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (file) void handleStageImageUpload(file);
+                          event.target.value = "";
+                        }}
+                      />
                       <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
                         {selectedOrcamentoStages.map((stage) => (
                           <div
@@ -2857,18 +3261,42 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                                 onChange={() => toggleStageImageSelection(stage.id)}
                                 className="h-4 w-4 shrink-0"
                               />
-                              {selectedStageImages[stage.id] ? (
-                                <img
-                                  src={selectedStageImages[stage.id]}
-                                  alt={`Imagem representativa da etapa ${stage.nome}`}
-                                  className="h-12 w-20 shrink-0 rounded-md border object-cover"
-                                  onError={(event) => { (event.currentTarget as HTMLImageElement).style.display = "none"; }}
-                                />
-                              ) : (
-                                <div className="flex h-12 w-20 shrink-0 items-center justify-center rounded-md border border-dashed bg-muted/30 text-[9px] text-muted-foreground">
-                                  Sem imagem
+                              <div className="w-20 shrink-0">
+                                {selectedStageImages[stage.id] ? (
+                                  <img
+                                    src={selectedStageImages[stage.id]}
+                                    alt={`Imagem representativa da etapa ${stage.nome}`}
+                                    className="h-12 w-20 rounded-md border object-cover"
+                                    onError={(event) => { (event.currentTarget as HTMLImageElement).style.display = "none"; }}
+                                  />
+                                ) : (
+                                  <div className="flex h-12 w-20 items-center justify-center rounded-md border border-dashed bg-muted/30 text-[9px] text-muted-foreground">
+                                    Sem imagem
+                                  </div>
+                                )}
+                                <div className="mt-1 flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    className="text-[9px] text-primary hover:underline disabled:opacity-50"
+                                    disabled={stageImageUploading}
+                                    onClick={() => {
+                                      setStageImageUploadTarget(stage.id);
+                                      stageImageInputRef.current?.click();
+                                    }}
+                                  >
+                                    {selectedStageImages[stage.id] ? "Trocar" : "Enviar"}
+                                  </button>
+                                  {selectedStageImages[stage.id] && (
+                                    <button
+                                      type="button"
+                                      className="text-[9px] text-destructive hover:underline"
+                                      onClick={() => void removeManualStageImage(stage.id)}
+                                    >
+                                      Remover
+                                    </button>
+                                  )}
                                 </div>
-                              )}
+                              </div>
                               <div className="min-w-0">
                                 <p
                                   className="text-xs font-medium leading-snug whitespace-normal break-words"
