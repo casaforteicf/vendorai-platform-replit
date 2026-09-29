@@ -131,8 +131,17 @@ export default function PublicProposta() {
           {portalUserName ? `Portal · ${portalUserName}` : "Portal do Cliente"}
         </button>
         {portalOpen && (
-          <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/55 p-4">
-            <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+          <div
+            className="fixed inset-0 z-[110] overflow-y-auto bg-black/55 p-4 sm:p-6"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Portal do Cliente"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setPortalOpen(false);
+            }}
+          >
+            <div className="flex min-h-full items-start justify-center sm:items-center">
+              <div className="relative my-auto w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Portal do Cliente</p>
@@ -143,7 +152,15 @@ export default function PublicProposta() {
                     Sua conta fica vinculada automaticamente à empresa e a esta proposta.
                   </p>
                 </div>
-                <button type="button" onClick={() => setPortalOpen(false)} className="text-2xl text-slate-400">×</button>
+                <button
+                  type="button"
+                  onClick={() => setPortalOpen(false)}
+                  aria-label="Fechar Portal do Cliente"
+                  title="Fechar"
+                  className="sticky top-0 z-20 -mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-2xl leading-none text-slate-500 shadow-sm hover:bg-slate-50 hover:text-slate-900"
+                >
+                  ×
+                </button>
               </div>
 
               {portalUserName ? (
@@ -172,6 +189,14 @@ export default function PublicProposta() {
                 </>
               )}
               {portalMessage && <p className="mt-3 text-sm text-slate-600">{portalMessage}</p>}
+              <button
+                type="button"
+                onClick={() => setPortalOpen(false)}
+                className="mt-4 w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Fechar
+              </button>
+              </div>
             </div>
           </div>
         )}
