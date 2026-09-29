@@ -2326,70 +2326,96 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                 </SelectContent>
               </Select>
 
-              <div className="mt-3 rounded-xl border bg-background p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="text-xs font-semibold">Anexos da proposta</p>
-                    <p className="text-[11px] text-muted-foreground">
-                      Anexe memoriais, plantas, especificações, planilhas, PDFs ou outros documentos que devem acompanhar esta versão.
+              <div className="mt-3 overflow-hidden rounded-xl border bg-background">
+                <button
+                  type="button"
+                  onClick={() => setProposalAttachmentsOpen((value) => !value)}
+                  className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <Paperclip className="h-4 w-4 text-muted-foreground" />
+                      <p className="text-xs font-semibold">Anexos da proposta</p>
+                      {proposalAttachments.length > 0 && <Badge variant="secondary" className="h-5 text-[10px]">{proposalAttachments.length}</Badge>}
+                    </div>
+                    <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
+                      Plantas, memoriais, especificações, PDFs e outros documentos.
                     </p>
                   </div>
-                  <input
-                    ref={attachmentInputRef}
-                    type="file"
-                    multiple
-                    className="hidden"
-                    accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg,.webp"
-                    onChange={(event) => {
-                      if (event.target.files?.length) void handleProposalAttachmentUpload(event.target.files);
-                      event.target.value = "";
-                    }}
-                  />
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="h-9 w-full gap-1.5 text-xs sm:h-8 sm:w-auto"
-                    disabled={attachmentUploading}
-                    onClick={() => attachmentInputRef.current?.click()}
-                  >
-                    {attachmentUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip className="h-3.5 w-3.5" />}
-                    {attachmentUploading ? "Enviando..." : "Anexar arquivos"}
-                  </Button>
-                </div>
-                {proposalAttachments.length > 0 && (
-                  <div className="mt-3 space-y-1.5">
-                    {proposalAttachments.map((anexo, index) => (
-                      <div key={`${anexo.url}-${index}`} className="flex items-center justify-between gap-2 rounded-md border px-2.5 py-2 text-xs">
-                        <a href={anexo.url} target="_blank" rel="noopener noreferrer" className="flex min-w-0 items-center gap-2 hover:underline">
-                          <FileText className="h-3.5 w-3.5 shrink-0" />
-                          <span className="truncate">{anexo.nome}</span>
-                        </a>
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          className="h-6 w-6"
-                          title="Remover anexo"
-                          onClick={() => setProposalAttachments((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </Button>
+                  {proposalAttachmentsOpen ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
+                </button>
+                {proposalAttachmentsOpen && (
+                  <div className="border-t p-3">
+                    <input
+                      ref={attachmentInputRef}
+                      type="file"
+                      multiple
+                      className="hidden"
+                      accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg,.webp"
+                      onChange={(event) => {
+                        if (event.target.files?.length) void handleProposalAttachmentUpload(event.target.files);
+                        event.target.value = "";
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-10 w-full gap-1.5 text-xs sm:h-8 sm:w-auto"
+                      disabled={attachmentUploading}
+                      onClick={() => attachmentInputRef.current?.click()}
+                    >
+                      {attachmentUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip className="h-3.5 w-3.5" />}
+                      {attachmentUploading ? "Enviando..." : "Adicionar arquivos"}
+                    </Button>
+                    {proposalAttachments.length > 0 && (
+                      <div className="mt-3 space-y-1.5">
+                        {proposalAttachments.map((anexo, index) => (
+                          <div key={`${anexo.url}-${index}`} className="flex items-center justify-between gap-2 rounded-md border px-2.5 py-2 text-xs">
+                            <a href={anexo.url} target="_blank" rel="noopener noreferrer" className="flex min-w-0 items-center gap-2 hover:underline">
+                              <FileText className="h-3.5 w-3.5 shrink-0" />
+                              <span className="truncate">{anexo.nome}</span>
+                            </a>
+                            <Button type="button" size="icon" variant="ghost" className="h-7 w-7 shrink-0" title="Remover anexo" onClick={() => setProposalAttachments((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}>
+                              <X className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    )}
                   </div>
                 )}
               </div>
 
               {selectedOrcamentoId !== "__none__" && (
-                <div className="mt-3 space-y-3 rounded-xl border bg-muted/20 p-3">
-                  <div>
-                    <p className="text-sm font-semibold">Como apresentar o orçamento ao cliente</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      Separe o detalhamento financeiro do técnico. O orçamento interno continua completo, independentemente do que for exibido.
-                    </p>
-                  </div>
+                <div className="mt-3 overflow-hidden rounded-xl border bg-muted/20">
+                  <button
+                    type="button"
+                    onClick={() => setProposalAppearanceOpen((value) => !value)}
+                    className="flex w-full items-start justify-between gap-3 p-3 text-left"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Palette className="h-4 w-4 text-muted-foreground" />
+                        <p className="text-sm font-semibold">Apresentação e experiência do cliente</p>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        <Badge variant="outline" className="text-[10px]">
+                          {proposalPresentationFormat === "site_interativo" ? "Site interativo" : proposalPresentationFormat === "hibrido" ? "Site + PDF" : "PDF"}
+                        </Badge>
+                        <Badge variant="outline" className="text-[10px]">{proposalHouseStyle}</Badge>
+                        <Badge variant="outline" className="text-[10px]">{proposalHouseStandard.replace("_", " ")}</Badge>
+                        {proposalBuiltArea && <Badge variant="outline" className="text-[10px]">{proposalBuiltArea} m²</Badge>}
+                      </div>
+                      <p className="mt-1.5 text-[10px] text-muted-foreground">
+                        Formato, estilo visual, capa, área, exclusões, detalhamento e regras por etapa.
+                      </p>
+                    </div>
+                    {proposalAppearanceOpen ? <ChevronUp className="mt-1 h-4 w-4 shrink-0" /> : <ChevronDown className="mt-1 h-4 w-4 shrink-0" />}
+                  </button>
 
+                  {proposalAppearanceOpen && (
+                    <div className="space-y-3 border-t p-3">
                   <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-end">
                     <div className="space-y-1.5 lg:col-span-3">
                       <label className="text-xs font-medium text-muted-foreground">Formato da proposta</label>
@@ -2565,6 +2591,8 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                       <Switch checked={proposalShowGrandTotal} onCheckedChange={setProposalShowGrandTotal} />
                     </div>
                   </div>
+                    </div>
+                  )}
 
                   {selectedOrcamentoStages.length > 0 && (
                     <div className="space-y-2">
