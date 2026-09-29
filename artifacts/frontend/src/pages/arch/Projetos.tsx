@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, ExternalLink, FolderOpen, Search, UserRound, X, Loader2, Image } from "lucide-react";
+import { Plus, ExternalLink, FolderOpen, Search, UserRound, UserPlus, Pencil, X, Loader2, Image } from "lucide-react";
 
 function getToken() { return localStorage.getItem("vendorai_token"); }
 
@@ -117,6 +117,87 @@ export default function Projetos() {
   const [leadResults, setLeadResults] = useState<Lead[]>([]);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [leadsLoading, setLeadsLoading] = useState(false);
+
+  // Cadastro / edição rápida de lead sem sair de Projetos
+  const [leadDialogOpen, setLeadDialogOpen] = useState(false);
+  const [leadEditing, setLeadEditing] = useState<Lead | null>(null);
+  const [leadForm, setLeadForm] = useState({ nome: "", telefone: "", email: "" });
+  const [leadSaving, setLeadSaving] = useState(false);
+
+  function openCreateLead() {
+    setLeadEditing(null);
+    setLeadForm({
+      nome: leadSearch.trim(),
+      telefone: "",
+      email: "",
+    });
+    setLeadDialogOpen(true);
+  }
+
+  function openEditLead(lead: Lead) {
+    setLeadEditing(lead);
+    setLeadForm({
+      nome: lead.nome ?? "",
+      telefone: lead.telefone ?? "",
+      email: lead.email ?? "",
+    });
+    setLeadDialogOpen(true);
+  }
+
+  async function saveLead(e: React.FormEvent) {
+    e.preventDefault();
+    if (!tenantId || !leadForm.nome.trim()) return;
+
+    setLeadSaving(true);
+    try {
+      const payload = {
+        ...(leadEditing ? {} : { tenantId }),
+        nome: leadForm.nome.trim(),
+        telefone: leadForm.telefone.trim() || null,
+        email: leadForm.email.trim() || null,
+        ...(leadEditing ? {} : { source: "manual" }),
+      };
+
+      const res = await fetch(leadEditing ? `/api/leads/${leadEditing.id}` : "/api/leads", {
+        method: leadEditing ? "PATCH" : "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getToken()}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (res.status === 409 && data?.lead) {
+          selectLead(data.lead);
+          setLeadDialogOpen(false);
+          toast({
+            title: "Lead já cadastrado",
+            description: "O cadastro existente foi selecionado para este projeto.",
+          });
+          return;
+        }
+        throw new Error(data?.error ?? "Não foi possível salvar o lead.");
+      }
+
+      const savedLead: Lead = data;
+      selectLead(savedLead);
+      setLeadDialogOpen(false);
+      toast({
+        title: leadEditing ? "Lead atualizado" : "Lead cadastrado",
+        description: savedLead.nome,
+      });
+    } catch (err: any) {
+      toast({
+        title: "Erro",
+        description: err?.message ?? "Falha ao salvar lead.",
+        variant: "destructive",
+      });
+    } finally {
+      setLeadSaving(false);
+    }
+  }
 
   function load() {
     if (!tenantId) return;
@@ -284,9 +365,22 @@ export default function Projetos() {
                           {selectedLead.email && <p className="truncate">{selectedLead.email}</p>}
                         </div>
                       </div>
-                      <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={clearLead} aria-label="Trocar cliente">
-                        <X className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => openEditLead(selectedLead)}
+                          aria-label="Editar lead"
+                          title="Editar lead"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={clearLead} aria-label="Trocar cliente" title="Trocar cliente">
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                   ) : (
                     <div className="relative">
@@ -321,14 +415,26 @@ export default function Projetos() {
                           ) : (
                             <div className="px-3 py-3 text-sm">
                               <p className="font-medium">Nenhum lead encontrado</p>
-                              <p className="text-xs text-muted-foreground mt-1">Cadastre o cliente no CRM e depois selecione aqui.</p>
+                              <p className="text-xs text-muted-foreground mt-1 mb-2">Você pode cadastrar o cliente sem sair desta tela.</p>
+                              <Button type="button" size="sm" variant="outline" className="w-full" onClick={openCreateLead}>
+                                <UserPlus className="h-4 w-4 mr-2" />
+                                Cadastrar novo lead
+                              </Button>
                             </div>
                           )}
                         </div>
                       )}
                     </div>
                   )}
-                  <p className="text-xs text-muted-foreground">O projeto usa os dados do lead já cadastrado na base do tenant.</p>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs text-muted-foreground">O projeto usa os dados do lead já cadastrado na base do tenant.</p>
+                    {!selectedLead && (
+                      <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs" onClick={openCreateLead}>
+                        <UserPlus className="h-3.5 w-3.5 mr-1" />
+                        Cadastrar lead
+                      </Button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="col-span-2 space-y-1">
@@ -371,6 +477,58 @@ export default function Projetos() {
           </DialogContent>
         </Dialog>
       </div>
+
+
+      <Dialog open={leadDialogOpen} onOpenChange={(open) => {
+        setLeadDialogOpen(open);
+        if (!open) {
+          setLeadEditing(null);
+          setLeadForm({ nome: "", telefone: "", email: "" });
+        }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{leadEditing ? "Editar lead" : "Cadastrar lead"}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={saveLead} className="space-y-4 mt-2">
+            <div className="space-y-1.5">
+              <Label>Nome *</Label>
+              <Input
+                value={leadForm.nome}
+                onChange={(e) => setLeadForm((f) => ({ ...f, nome: e.target.value }))}
+                placeholder="Nome do cliente"
+                required
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Telefone</Label>
+              <Input
+                value={leadForm.telefone}
+                onChange={(e) => setLeadForm((f) => ({ ...f, telefone: e.target.value }))}
+                placeholder="(49) 99999-9999"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>E-mail</Label>
+              <Input
+                type="email"
+                value={leadForm.email}
+                onChange={(e) => setLeadForm((f) => ({ ...f, email: e.target.value }))}
+                placeholder="cliente@email.com"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="outline" onClick={() => setLeadDialogOpen(false)} disabled={leadSaving}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={leadSaving || !leadForm.nome.trim()}>
+                {leadSaving ? "Salvando..." : leadEditing ? "Salvar alterações" : "Cadastrar e selecionar"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Filtros */}
       <div className="flex gap-3 flex-wrap">
