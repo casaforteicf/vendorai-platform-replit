@@ -99,6 +99,13 @@ export function categorizeRenderError(error: unknown): string {
   if (message.includes("Failed to fetch") || message.includes("NetworkError")) return "Sem conexão. Verifique sua internet e tente novamente.";
   if (message.includes("413")) return "Imagem muito grande. Reduza o tamanho e tente novamente.";
   if (message.includes("processamento")) return "O motor de IA encontrou um erro. Tente novamente com a mesma imagem.";
+  if (
+    message.toLowerCase().includes("failed query") ||
+    message.toLowerCase().includes("value too long for type character varying") ||
+    message.toLowerCase().includes("params:")
+  ) {
+    return "O render foi processado, mas ocorreu uma falha interna ao finalizar a versão. Tente novamente.";
+  }
   return message;
 }
 
