@@ -213,6 +213,8 @@ type RealCatalogProduct = {
   fornecedor?: string | null;
   precoBase?: string | number | null;
   imagens?: string[] | null;
+  textureUrl?: string | null;
+  model3dUrl?: string | null;
   especificacoes?: Record<string, unknown> | null;
 };
 
@@ -235,6 +237,7 @@ type AutoModelPreview = {
 
 
 function getCatalogModel3dUrl(item: RealCatalogProduct) {
+  if (typeof item.model3dUrl === "string" && item.model3dUrl.trim()) return item.model3dUrl;
   const specs = item.especificacoes;
   if (!specs || typeof specs !== "object") return undefined;
   const keys = ["model3dUrl", "modelUrl", "glbUrl", "gltfUrl", "glb", "gltf", "modelo3d", "modelo_3d"];
@@ -245,6 +248,13 @@ function getCatalogModel3dUrl(item: RealCatalogProduct) {
     }
   }
   return undefined;
+}
+
+function getCatalogTextureUrl(item: RealCatalogProduct) {
+  if (typeof item.textureUrl === "string" && item.textureUrl.trim()) return item.textureUrl;
+  const specs = item.especificacoes;
+  const value = specs && typeof specs === "object" ? specs.textureUrl : null;
+  return typeof value === "string" && value.trim() ? value : undefined;
 }
 
 function getCatalogPolyHavenSlug(item: RealCatalogProduct) {
@@ -2349,7 +2359,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     width: number,
     depth: number,
     point?: { x: number; y: number },
-    metadata?: Partial<Pick<ConceptPlanObject, "catalogProductId" | "imageUrl" | "supplier" | "price" | "model3dUrl">>,
+    metadata?: Partial<Pick<ConceptPlanObject, "catalogProductId" | "imageUrl" | "supplier" | "price" | "model3dUrl" | "textureUrl">>,
   ) => {
     const before = snapshotEditor();
     const x = point
@@ -6969,6 +6979,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                                       supplier: item.fornecedor ?? undefined,
                                       price: price > 0 ? price : undefined,
                                       model3dUrl: getCatalogModel3dUrl(item),
+                                      textureUrl: getCatalogTextureUrl(item),
                                     }));
                                   }}
                                   onKeyDown={(event) => {
@@ -7045,6 +7056,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                                         supplier: resolvedSupplier,
                                         price: price > 0 ? price : undefined,
                                         model3dUrl,
+                                        textureUrl: getCatalogTextureUrl(item),
                                       },
                                     );
                                   }}
