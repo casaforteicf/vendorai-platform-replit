@@ -28,6 +28,7 @@ import { ObjectStorageService } from "../lib/objectStorage.js";
 import {
   createZoneMask,
   createRectMask,
+  createSmartMaterialMask,
   compositeWithOriginal,
   validateEdgeIntegrity,
   validateArchitecturalStructure,
@@ -155,6 +156,9 @@ const adjustBodySchema = z.object({
   // no schema) e o ajuste caía no mapa heurístico de zonas fixas, que não
   // batia com nenhuma seleção real desenhada.
   mask_coordinates: z.array(z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() })).optional(),
+  // Quando ativo, uma seleção parcial vira semente para reconhecer e expandir
+  // a máscara até o material/superfície visualmente contínuo ao redor.
+  smart_region: z.boolean().optional().default(true),
 });
 
 const projectConfigBodySchema = z.object({
@@ -453,7 +457,7 @@ archAiRenderRouter.post("/arch/ai-render/:id/adjust", authenticate, async (req: 
     });
   }
 
-  const { mask_zones, ajuste_prompt, mask_file_base64, mask_coordinates } = parsed.data;
+  const { mask_zones, ajuste_prompt, mask_file_base64, mask_coordinates, smart_region } = parsed.data;
 
   // Herda mode do pai — e sanitiza zonas se mode=preservar
   const safeZones = parent.mode === "preservar"
@@ -498,6 +502,7 @@ archAiRenderRouter.post("/arch/ai-render/:id/adjust", authenticate, async (req: 
     maskZones:    safeZones,
     maskFileBase64: mask_file_base64,
     maskCoordinates: mask_coordinates,
+    smartRegion: smart_region,
     ambiente:     parent.ambiente,
     estilo:       parent.estilo,
     iluminacao:   parent.iluminacao,
@@ -590,6 +595,7 @@ export interface RenderJobParams {
   // não mais só 5 zonas em posição fixa presumindo cozinha padrão.
   maskFileBase64?: string;
   maskCoordinates?: { x: number; y: number; w: number; h: number }[];
+  smartRegion?: boolean;
   ambiente:     string | null | undefined;
   estilo:       string | null | undefined;
   iluminacao:   string | null | undefined;
@@ -631,7 +637,7 @@ async function enhanceFinalRender(buffer: Buffer): Promise<Buffer> {
 
 export async function processRenderJob(params: RenderJobParams): Promise<void> {
   const {
-    renderId, tenantId: tid, mode, originalUrl, maskZones, maskFileBase64, maskCoordinates,
+    renderId, tenantId: tid, mode, originalUrl, maskZones, maskFileBase64, maskCoordinates, smartRegion,
     ambiente, estilo, iluminacao, angulo, materials, userNotes, renderPresets, source, renderView, renderProfile,
     logger, retentativas,
   } = params;
@@ -667,8 +673,12 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
     let compositedFlag = false;
     let segConf: Record<string, number> | undefined;
     let maskFileUrl: string | undefined;
+    const hasLocalEditMask = Boolean(maskFileBase64 || (maskCoordinates && maskCoordinates.length > 0));
 
-    if (mode === "preservar") {
+    // Ajuste pontual deve respeitar a máscara mesmo quando o render pai está
+    // em modo "preservar". Sem esta distinção, o fluxo de preservação fazia
+    // uma edição global e ignorava a região desenhada.
+    if (mode === "preservar" && !hasLocalEditMask) {
       const originalDataUrl = bufferToDataUrl(originalBuf, originalMime);
 
       // Todos os perfis de preservação usam o mesmo motor oficial OpenAI.
@@ -706,7 +716,7 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
         .set({ segmentationConfidence: segConf })
         .where(ownedRender);
 
-    } else if (mode === "criar" && params.userNotes) {
+    } else if (params.userNotes && hasLocalEditMask) {
       // ── 3b. Ajuste pós-geração de elemento pontual (Fill Pro + máscara) ─
       // Chamada separada sobre resultado já convertido — nunca combinada
       // com a geração inicial do Kontext no mesmo fluxo.
@@ -717,7 +727,9 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
       const maskBuf = maskFileBase64
         ? Buffer.from(maskFileBase64.replace(/^data:image\/\w+;base64,/, ""), "base64")
         : maskCoordinates && maskCoordinates.length > 0
-          ? await createRectMask(maskCoordinates, width, height)
+          ? smartRegion !== false
+            ? await createSmartMaterialMask(originalBuf, maskCoordinates, width, height)
+            : await createRectMask(maskCoordinates, width, height)
           : await createZoneMask(maskZones, width, height);
 
       const maskPath = await storage.savePrivateBuffer(
