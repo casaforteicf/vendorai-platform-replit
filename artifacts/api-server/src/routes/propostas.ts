@@ -31,6 +31,7 @@ import {
   normalizeOrcamentoQuantity,
   roundOrcamentoNumber,
 } from "../lib/orcamento-numbers.js";
+import { auditProposalBudget, calculateBudgetItemsTotal } from "../lib/budget-integrity.js";
 import {
   defaultProposalBuilderTemplate,
   ensureTenantProposalBuilderTemplate,
@@ -446,15 +447,18 @@ router.post("/propostas", async (req, res) => {
   const numero = await generateNumero(parsed.data.tenantId);
 
   const itensNormalizados = normalizarItensExecucao((parsed.data.itens ?? []) as PropostaItem[]);
+  const calculatedItemsTotal = itensNormalizados.length ? calculateBudgetItemsTotal(itensNormalizados) : null;
 
   const [proposta] = await db
     .insert(propostasTable)
     .values({
       ...parsed.data,
       itens: itensNormalizados,
-      ...(parsed.data.valorTotal !== undefined && parsed.data.valorTotal !== null
-        ? { valorTotal: roundOrcamentoNumber(parsed.data.valorTotal).toFixed(2) }
-        : {}),
+      ...(calculatedItemsTotal !== null
+        ? { valorTotal: calculatedItemsTotal.toFixed(2) }
+        : parsed.data.valorTotal !== undefined && parsed.data.valorTotal !== null
+          ? { valorTotal: roundOrcamentoNumber(parsed.data.valorTotal).toFixed(2) }
+          : {}),
       ...(parsed.data.valorMensal !== undefined && parsed.data.valorMensal !== null
         ? { valorMensal: roundOrcamentoNumber(parsed.data.valorMensal).toFixed(2) }
         : {}),
@@ -730,6 +734,32 @@ router.get("/propostas/:id", async (req, res) => {
   res.json(proposta);
 });
 
+
+router.get("/propostas/:id/integrity", async (req, res) => {
+  const [proposta] = await db
+    .select()
+    .from(propostasTable)
+    .where(eq(propostasTable.id, String(req.params.id)))
+    .limit(1);
+
+  if (!proposta) {
+    res.status(404).json({ error: "Proposta not found" });
+    return;
+  }
+  if (req.user?.platformRole !== "super_admin" && proposta.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  res.json(auditProposalBudget({
+    itens: (proposta.itens ?? []) as PropostaItem[],
+    valorTotal: proposta.valorTotal,
+    validadeAte: proposta.validadeAte,
+    prazoEntrega: proposta.prazoEntrega,
+    apresentacao: proposta.apresentacao,
+  }));
+});
+
 // ── GET /propostas/:id/pdf — capa + tabela A4 ─────────────────────────────
 router.get("/propostas/:id/pdf", async (req, res) => {
   const propostaId = String(req.params.id);
@@ -866,14 +896,18 @@ router.patch("/propostas/:id", async (req, res) => {
     return;
   }
 
+  const normalizedItems = parsed.data.itens
+    ? normalizarItensExecucao(parsed.data.itens as PropostaItem[])
+    : null;
+  const calculatedUpdateTotal = normalizedItems ? calculateBudgetItemsTotal(normalizedItems) : null;
   const normalizedUpdate = {
     ...parsed.data,
-    ...(parsed.data.itens
-      ? { itens: normalizarItensExecucao(parsed.data.itens as PropostaItem[]) }
-      : {}),
-    ...(parsed.data.valorTotal !== undefined && parsed.data.valorTotal !== null
-      ? { valorTotal: roundOrcamentoNumber(parsed.data.valorTotal).toFixed(2) }
-      : {}),
+    ...(normalizedItems ? { itens: normalizedItems } : {}),
+    ...(calculatedUpdateTotal !== null
+      ? { valorTotal: calculatedUpdateTotal.toFixed(2) }
+      : parsed.data.valorTotal !== undefined && parsed.data.valorTotal !== null
+        ? { valorTotal: roundOrcamentoNumber(parsed.data.valorTotal).toFixed(2) }
+        : {}),
     ...(parsed.data.valorMensal !== undefined && parsed.data.valorMensal !== null
       ? { valorMensal: roundOrcamentoNumber(parsed.data.valorMensal).toFixed(2) }
       : {}),
