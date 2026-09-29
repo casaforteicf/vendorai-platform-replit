@@ -810,7 +810,14 @@ export default function ArqWorkspace() {
 // ─── WorkspaceInner ───────────────────────────────────────────────────────────
 function WorkspaceInner() {
   const [activeModule,     setActiveModuleRaw]  = useState<ModuleId>(() => {
-    if (typeof window !== 'undefined' && window.location.pathname === '/arch/render') return 'render-gallery'
+    if (typeof window !== 'undefined') {
+      if (window.location.pathname === '/arch/render') return 'render-gallery'
+      const params = new URLSearchParams(window.location.search)
+      const requestedProjectId = params.get('project_id')?.trim()
+      if (requestedProjectId) localStorage.setItem('arq_last_project_id', requestedProjectId)
+      const requestedModule = params.get('module') as ModuleId | null
+      if (requestedModule && MODULE_MAP_INTERNAL[requestedModule]) return requestedModule
+    }
     return 'home'
   })
   const [copilotCollapsed, setCopilotCollapsed] = useState(true)   // starts collapsed
