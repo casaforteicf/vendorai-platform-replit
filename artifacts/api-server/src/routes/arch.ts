@@ -4721,21 +4721,63 @@ router.patch("/arch/materials/:id/primary-image", authenticate, async (req, res)
 });
 
 // GET /api/arch/catalogo/:id/materials — materiais/acabamentos permitidos no produto
+router.patch("/arch/catalogo/:id/technical", authenticate, async (req, res) => {
+  const productId = String(req.params.id);
+  const tid = tenantId(req);
+  const parsed = z.object({
+    model3dUrl: z.string().max(4000).nullable().optional(),
+    textureUrl: z.string().max(4000).nullable().optional(),
+    projectLibraryEnabled: z.boolean().optional(),
+    projectTechnicalConfig: z.record(z.string(), z.unknown()).optional(),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const [product] = await db.select()
+    .from(produtosCatalogoTable)
+    .where(and(
+      eq(produtosCatalogoTable.id, productId),
+      eq(produtosCatalogoTable.tenantId, tid),
+    ))
+    .limit(1);
+  if (!product) return res.status(404).json({ error: "Produto mestre não encontrado." });
+
+  const [updated] = await db.update(produtosCatalogoTable)
+    .set({
+      ...(parsed.data.model3dUrl !== undefined ? { model3dUrl: parsed.data.model3dUrl } : {}),
+      ...(parsed.data.textureUrl !== undefined ? { textureUrl: parsed.data.textureUrl } : {}),
+      ...(parsed.data.projectLibraryEnabled !== undefined ? { projectLibraryEnabled: parsed.data.projectLibraryEnabled } : {}),
+      ...(parsed.data.projectTechnicalConfig !== undefined ? { projectTechnicalConfig: parsed.data.projectTechnicalConfig } : {}),
+      updatedAt: new Date(),
+    })
+    .where(and(
+      eq(produtosCatalogoTable.id, productId),
+      eq(produtosCatalogoTable.tenantId, tid),
+    ))
+    .returning();
+
+  return res.json(updated);
+});
+
+// GET /api/arch/catalogo/:id/materials — materiais do mesmo produto mestre
 router.get("/arch/catalogo/:id/materials", authenticate, async (req, res) => {
   const productId = String(req.params.id);
   const tid = tenantId(req);
 
-  const [product] = await db.select({ id: archCatalogoTable.id })
-    .from(archCatalogoTable)
-    .where(and(eq(archCatalogoTable.id, productId), eq(archCatalogoTable.tenantId, tid), eq(archCatalogoTable.ativo, true)))
+  const [product] = await db.select({ id: produtosCatalogoTable.id })
+    .from(produtosCatalogoTable)
+    .where(and(
+      eq(produtosCatalogoTable.id, productId),
+      eq(produtosCatalogoTable.tenantId, tid),
+      eq(produtosCatalogoTable.ativo, true),
+    ))
     .limit(1);
-  if (!product) return res.status(404).json({ error: "Produto não encontrado." });
+  if (!product) return res.status(404).json({ error: "Produto mestre não encontrado." });
 
   const links = await db.select()
     .from(archCatalogProductMaterialsTable)
     .where(and(
       eq(archCatalogProductMaterialsTable.tenantId, tid),
-      eq(archCatalogProductMaterialsTable.productId, productId),
+      eq(archCatalogProductMaterialsTable.masterProductId, productId),
       eq(archCatalogProductMaterialsTable.ativo, true),
     ))
     .orderBy(archCatalogProductMaterialsTable.grupo, archCatalogProductMaterialsTable.surfaceKey);
@@ -4755,6 +4797,7 @@ router.get("/arch/catalogo/:id/materials", authenticate, async (req, res) => {
     const material = byId.get(link.materialId) ?? null;
     return {
       ...link,
+      productId,
       material: material
         ? {
             ...material,
@@ -4765,7 +4808,7 @@ router.get("/arch/catalogo/:id/materials", authenticate, async (req, res) => {
   }));
 });
 
-// POST /api/arch/catalogo/:id/model-surfaces — persiste partes editáveis detectadas no GLB
+// POST /api/arch/catalogo/:id/model-surfaces — persiste partes no produto mestre
 router.post("/arch/catalogo/:id/model-surfaces", authenticate, async (req, res) => {
   const productId = String(req.params.id);
   const tid = tenantId(req);
@@ -4782,56 +4825,67 @@ router.post("/arch/catalogo/:id/model-surfaces", authenticate, async (req, res) 
   if (!body.success) return res.status(400).json({ error: body.error.flatten() });
 
   const [product] = await db.select()
-    .from(archCatalogoTable)
+    .from(produtosCatalogoTable)
     .where(and(
-      eq(archCatalogoTable.id, productId),
-      eq(archCatalogoTable.tenantId, tid),
-      eq(archCatalogoTable.ativo, true),
+      eq(produtosCatalogoTable.id, productId),
+      eq(produtosCatalogoTable.tenantId, tid),
+      eq(produtosCatalogoTable.ativo, true),
     ))
     .limit(1);
-  if (!product) return res.status(404).json({ error: "Produto não encontrado." });
+  if (!product) return res.status(404).json({ error: "Produto mestre não encontrado." });
 
-  const previous = (product.especificacoes ?? {}) as Record<string, unknown>;
-  const existing = Array.isArray(previous.modelSurfaces) ? previous.modelSurfaces as Array<Record<string, unknown>> : [];
+  const previous = (product.projectTechnicalConfig ?? {}) as Record<string, unknown>;
+  const existing = Array.isArray(previous.modelSurfaces)
+    ? previous.modelSurfaces as Array<Record<string, unknown>>
+    : [];
   const previousByKey = new Map(existing.map((surface) => [String(surface.key ?? ""), surface]));
-
   const modelSurfaces = body.data.surfaces.map((surface) => ({
     ...previousByKey.get(surface.key),
     ...surface,
     detected: true,
   }));
-
-  const nextSpecs = {
+  const nextConfig = {
     ...previous,
-    ...(body.data.model3dUrl ? { model3dUrl: body.data.model3dUrl } : {}),
     modelSurfaces,
     modelSurfacesDetectedAt: new Date().toISOString(),
   };
 
-  const [updated] = await db.update(archCatalogoTable)
-    .set({ especificacoes: nextSpecs })
-    .where(and(eq(archCatalogoTable.id, productId), eq(archCatalogoTable.tenantId, tid)))
+  const [updated] = await db.update(produtosCatalogoTable)
+    .set({
+      projectTechnicalConfig: nextConfig,
+      ...(body.data.model3dUrl ? { model3dUrl: body.data.model3dUrl } : {}),
+      updatedAt: new Date(),
+    })
+    .where(and(
+      eq(produtosCatalogoTable.id, productId),
+      eq(produtosCatalogoTable.tenantId, tid),
+    ))
     .returning();
 
   return res.json({
     productId,
     modelSurfaces,
-    especificacoes: updated.especificacoes,
+    model3dUrl: updated.model3dUrl,
+    projectTechnicalConfig: updated.projectTechnicalConfig,
   });
 });
 
-// POST /api/arch/catalogo/:id/materials — vincula material disponível ao produto
+// POST /api/arch/catalogo/:id/materials — vínculo direto com produto mestre
 router.post("/arch/catalogo/:id/materials", authenticate, async (req, res) => {
   const productId = String(req.params.id);
   const tid = tenantId(req);
-  const parsed = insertArchCatalogProductMaterialSchema.safeParse({ ...req.body, productId });
+  const parsed = insertArchCatalogProductMaterialSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-  const [product] = await db.select({ id: archCatalogoTable.id })
-    .from(archCatalogoTable)
-    .where(and(eq(archCatalogoTable.id, productId), eq(archCatalogoTable.tenantId, tid), eq(archCatalogoTable.ativo, true)))
+  const [product] = await db.select({ id: produtosCatalogoTable.id })
+    .from(produtosCatalogoTable)
+    .where(and(
+      eq(produtosCatalogoTable.id, productId),
+      eq(produtosCatalogoTable.tenantId, tid),
+      eq(produtosCatalogoTable.ativo, true),
+    ))
     .limit(1);
-  if (!product) return res.status(404).json({ error: "Produto não encontrado." });
+  if (!product) return res.status(404).json({ error: "Produto mestre não encontrado." });
 
   const material = await materialAccessible(parsed.data.materialId, tid);
   if (!material) return res.status(404).json({ error: "Material não encontrado ou sem acesso." });
@@ -4841,7 +4895,7 @@ router.post("/arch/catalogo/:id/materials", authenticate, async (req, res) => {
       .set({ isDefault: false })
       .where(and(
         eq(archCatalogProductMaterialsTable.tenantId, tid),
-        eq(archCatalogProductMaterialsTable.productId, productId),
+        eq(archCatalogProductMaterialsTable.masterProductId, productId),
         parsed.data.surfaceKey
           ? eq(archCatalogProductMaterialsTable.surfaceKey, parsed.data.surfaceKey)
           : sql`${archCatalogProductMaterialsTable.surfaceKey} is null`,
@@ -4849,35 +4903,39 @@ router.post("/arch/catalogo/:id/materials", authenticate, async (req, res) => {
   }
 
   const [link] = await db.insert(archCatalogProductMaterialsTable)
-    .values({ ...(parsed.data as any), tenantId: tid, productId })
+    .values({
+      ...(parsed.data as any),
+      tenantId: tid,
+      masterProductId: productId,
+      productId: null,
+    })
     .onConflictDoNothing()
     .returning();
 
   if (!link) {
-    const [existing] = await db.select().from(archCatalogProductMaterialsTable)
+    const [existingLink] = await db.select().from(archCatalogProductMaterialsTable)
       .where(and(
         eq(archCatalogProductMaterialsTable.tenantId, tid),
-        eq(archCatalogProductMaterialsTable.productId, productId),
+        eq(archCatalogProductMaterialsTable.masterProductId, productId),
         eq(archCatalogProductMaterialsTable.materialId, parsed.data.materialId),
         parsed.data.surfaceKey
           ? eq(archCatalogProductMaterialsTable.surfaceKey, parsed.data.surfaceKey)
           : sql`${archCatalogProductMaterialsTable.surfaceKey} is null`,
       ))
       .limit(1);
-    if (existing && parsed.data.isDefault && !existing.isDefault) {
+    if (existingLink && parsed.data.isDefault && !existingLink.isDefault) {
       const [updated] = await db.update(archCatalogProductMaterialsTable)
         .set({ isDefault: true })
-        .where(eq(archCatalogProductMaterialsTable.id, existing.id))
+        .where(eq(archCatalogProductMaterialsTable.id, existingLink.id))
         .returning();
-      return res.status(200).json({ ...updated, duplicate: true });
+      return res.status(200).json({ ...updated, productId, duplicate: true });
     }
-    return res.status(200).json({ ...existing, duplicate: true });
+    return res.status(200).json({ ...existingLink, productId, duplicate: true });
   }
 
-  return res.status(201).json({ ...link, duplicate: false });
+  return res.status(201).json({ ...link, productId, duplicate: false });
 });
 
-// DELETE /api/arch/catalogo/:id/materials/:linkId — remove vínculo sem apagar o material mestre
 router.delete("/arch/catalogo/:id/materials/:linkId", authenticate, async (req, res) => {
   const productId = String(req.params.id);
   const linkId = String(req.params.linkId);
@@ -4886,7 +4944,7 @@ router.delete("/arch/catalogo/:id/materials/:linkId", authenticate, async (req, 
   const [deleted] = await db.delete(archCatalogProductMaterialsTable)
     .where(and(
       eq(archCatalogProductMaterialsTable.id, linkId),
-      eq(archCatalogProductMaterialsTable.productId, productId),
+      eq(archCatalogProductMaterialsTable.masterProductId, productId),
       eq(archCatalogProductMaterialsTable.tenantId, tid),
     ))
     .returning({ id: archCatalogProductMaterialsTable.id });
