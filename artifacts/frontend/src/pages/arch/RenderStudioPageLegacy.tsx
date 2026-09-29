@@ -113,6 +113,42 @@ async function apiPatch(path: string, body: unknown) {
   if (!res.ok) throw new Error((data as any).error ?? `Erro ${res.status}`);
   return data;
 }
+
+function normalizeRenderMediaUrl(value: string | null | undefined): string {
+  const raw = (value ?? "").trim();
+  if (!raw) return "";
+  if (/^(data:|blob:)/i.test(raw)) return raw;
+
+  try {
+    const parsed = new URL(raw, window.location.origin);
+    const pathname = parsed.pathname;
+
+    if (pathname.startsWith("/api/storage/objects/")) {
+      return `${pathname}${parsed.search}`;
+    }
+    if (pathname.startsWith("/objects/")) {
+      return `/api/storage${pathname}${parsed.search}`;
+    }
+  } catch {
+    // segue para os formatos relativos legados abaixo
+  }
+
+  if (raw.startsWith("/api/storage/objects/")) return raw;
+  if (raw.startsWith("/objects/")) return `/api/storage${raw}`;
+  if (raw.startsWith("objects/")) return `/api/storage/${raw}`;
+
+  // Compatibilidade com registros antigos que salvaram apenas o nome/chave.
+  if (!raw.startsWith("/") && !/^https?:\/\//i.test(raw)) {
+    return `/api/storage/objects/${raw.replace(/^\/+/, "")}`;
+  }
+
+  return raw;
+}
+
+function normalizeRenderVersion(version: RenderVersion): RenderVersion {
+  const normalized = normalizeRenderMediaUrl(version.url);
+  return normalized && normalized !== version.url ? { ...version, url: normalized } : version;
+}
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result as string); r.onerror = reject; r.readAsDataURL(file); });
 }
@@ -639,7 +675,7 @@ function ComparisonView({ versionA, versionB, allVersions, onChangeA, onChangeB 
               {v.approvedBy && <span style={{ marginLeft: "auto", fontSize: 9, color: D.green }}>✓ Aprovado</span>}
             </div>
             <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", padding: 12 }}>
-              <img src={v.url} alt={v.label} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+              <img src={normalizeRenderMediaUrl(v.url)} alt={v.label} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
             </div>
             {/* P2-19: diff summary */}
             {v.operationType !== "initial" && (
@@ -942,7 +978,28 @@ function CentralCanvas({ step, imageDataUrl, renderUrl, loading, isDragging, can
           {/* Image + P2-13 selection canvas */}
           {showImage && displayUrl && !isDragging && (
             <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", width: canvasMode === "1to1" ? "auto" : "100%", height: canvasMode === "1to1" ? "auto" : "100%" }}>
-              <img src={displayUrl} alt={renderUrl ? "render gerado" : "imagem base"} style={imageStyle} />
+              <img
+                src={normalizeRenderMediaUrl(displayUrl)}
+                alt={renderUrl ? "render gerado" : "imagem base"}
+                style={imageStyle}
+                onError={(e) => {
+                  const el = e.currentTarget;
+                  el.style.display = "none";
+                  el.parentElement?.setAttribute("data-render-load-error", "true");
+                }}
+              />
+              {renderUrl && (
+                <div style={{ position: "absolute", inset: 0, display: "none", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 8, color: D.red, fontSize: 12, pointerEvents: "none" }}
+                  ref={(el) => {
+                    if (!el) return;
+                    const parent = el.parentElement;
+                    const sync = () => { el.style.display = parent?.getAttribute("data-render-load-error") === "true" ? "flex" : "none"; };
+                    sync();
+                  }}>
+                  <strong>Imagem do render indisponível</strong>
+                  <span style={{ color: D.muted }}>O arquivo não foi encontrado no Storage.</span>
+                </div>
+              )}
               {renderUrl && (
                 <SelectionCanvas isActive={selectionMode === "rect"} renderUrl={renderUrl} onSelection={onSelection} existingSelections={selections} onClearSelection={onClearSelection} />
               )}
@@ -1283,7 +1340,7 @@ function RightPanel({
                       <div style={{ fontSize: 11, color: D.muted, textAlign: "center", padding: 12 }}>Nenhuma versão gerada.</div>
                     ) : versions.map((v, i) => (
                       <div key={v.id} style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "7px 8px", borderRadius: 7, border: `1px solid ${v.approvedBy ? D.green : i === 0 ? D.purple : D.border}`, background: v.approvedBy ? `${D.green}12` : i === 0 ? `${D.purple}18` : D.card }}>
-                        <img src={v.url} alt={v.label} style={{ width: 52, height: 38, objectFit: "cover", borderRadius: 4 }} />
+                        <img src={normalizeRenderMediaUrl(v.url)} alt={v.label} style={{ width: 52, height: 38, objectFit: "cover", borderRadius: 4 }} />
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 10, fontWeight: 700, color: v.approvedBy ? D.green : i === 0 ? D.purpleText : D.muted }}>{v.label}</div>
                           {v.parentVersionId && <div style={{ fontSize: 9, color: D.dim }}>↳ versão filha</div>}
@@ -1497,7 +1554,7 @@ function BottomPanel({ versions, projectId, isOpen, onToggle, eventLog, userName
                 return (
                   <div key={v.id} onClick={() => setExpandedVersion(expandedVersion === v.id ? null : v.id)} style={{ flexShrink: 0, width: 110, height: 138, background: D.card, border: `1px solid ${v.approvedBy ? D.green : i === 0 ? D.purple : D.border}`, borderRadius: 8, overflow: "hidden", cursor: "pointer", display: "flex", flexDirection: "column" }}>
                     <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
-                      <img src={v.url} alt={v.label} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      <img src={normalizeRenderMediaUrl(v.url)} alt={v.label} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                       {i === 0 && !v.approvedBy && <div style={{ position: "absolute", top: 4, right: 4, fontSize: 8, fontWeight: 800, background: D.purple, color: "#fff", padding: "2px 5px", borderRadius: 3 }}>ATUAL</div>}
                       {v.approvedBy && <div style={{ position: "absolute", top: 4, right: 4, fontSize: 8, fontWeight: 800, background: D.green, color: "#fff", padding: "2px 5px", borderRadius: 3 }}>✓</div>}
                       {v.parentVersionId && <div style={{ position: "absolute", bottom: 4, left: 4, fontSize: 7, color: D.purpleText }}>↳</div>}
@@ -1528,7 +1585,7 @@ function BottomPanel({ versions, projectId, isOpen, onToggle, eventLog, userName
                       <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
                         <button onClick={() => moveStoryboardItem(i, -1)} disabled={i === 0} style={{ padding: "1px 5px", fontSize: 9, background: D.card, border: `1px solid ${D.border}`, borderRadius: 4, cursor: i === 0 ? "default" : "pointer", color: i === 0 ? D.dim : D.text, opacity: i === 0 ? 0.3 : 1 }}>←</button>
                         <div style={{ width: 90, height: 68, background: D.card, borderRadius: 6, overflow: "hidden", position: "relative", border: `1px solid ${D.border}` }}>
-                          <img src={v.url} alt={v.label} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          <img src={normalizeRenderMediaUrl(v.url)} alt={v.label} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                           <div style={{ position: "absolute", top: 3, left: 3, fontSize: 8, fontWeight: 800, background: D.purple, color: "#fff", padding: "1px 4px", borderRadius: 3 }}>{i + 1}</div>
                         </div>
                         <button onClick={() => moveStoryboardItem(i, 1)} disabled={i === storyboard.length - 1} style={{ padding: "1px 5px", fontSize: 9, background: D.card, border: `1px solid ${D.border}`, borderRadius: 4, cursor: i === storyboard.length - 1 ? "default" : "pointer", color: i === storyboard.length - 1 ? D.dim : D.text, opacity: i === storyboard.length - 1 ? 0.3 : 1 }}>→</button>
@@ -1553,7 +1610,7 @@ function BottomPanel({ versions, projectId, isOpen, onToggle, eventLog, userName
                 return (
                   <div key={v.id} style={{ display: "flex", flexDirection: "column", gap: 6, padding: "8px 10px", borderRadius: 8, background: D.card, border: `1px solid ${D.border}` }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <img src={v.url} alt={v.label} style={{ width: 36, height: 26, objectFit: "cover", borderRadius: 4 }} />
+                      <img src={normalizeRenderMediaUrl(v.url)} alt={v.label} style={{ width: 36, height: 26, objectFit: "cover", borderRadius: 4 }} />
                       <span style={{ fontSize: 11, fontWeight: 700, color: D.text, flex: 1 }}>{v.label}</span>
                       <span style={{ fontSize: 9, color: D.dim }}>{vComments.length} coment.</span>
                     </div>
@@ -1726,8 +1783,11 @@ function RenderStudioInner() {
     const siu = sessionStorage.getItem(SK.imageUrl);
     if (sa)  setAmbiente(sa);
     if (sri) setRenderId(sri);
-    if (sru) setRenderUrl(sru);
-    if (sv)  try { setVersions(JSON.parse(sv)); } catch {}
+    if (sru) setRenderUrl(normalizeRenderMediaUrl(sru));
+    if (sv)  try {
+      const restored = JSON.parse(sv) as RenderVersion[];
+      setVersions(Array.isArray(restored) ? restored.map(normalizeRenderVersion) : []);
+    } catch {}
     if (siu) setImageDataUrl(siu);
     if (ss)  setStep(ss);
     // P1-11: orphan job recovery
@@ -1736,10 +1796,10 @@ function RenderStudioInner() {
       apiGet(`/api/arch/ai-render/${sri}`)
         .then((data) => {
           if (data.status === "concluido" && data.result_image_url) {
-            setRenderUrl(data.result_image_url);
-            const v: RenderVersion = { id: sri, url: data.result_image_url, label: "Versão 1 · Original", operationType: "initial", createdAt: new Date() };
+            setRenderUrl(normalizeRenderMediaUrl(data.result_image_url));
+            const v: RenderVersion = { id: sri, url: normalizeRenderMediaUrl(data.result_image_url), label: "Versão 1 · Original", operationType: "initial", createdAt: new Date() };
             setVersions([v]);
-            sessionStorage.setItem(SK.renderUrl, data.result_image_url);
+            sessionStorage.setItem(SK.renderUrl, normalizeRenderMediaUrl(data.result_image_url));
             setSaveState("saved"); setLastSavedAt(new Date());
           }
         })
@@ -1828,8 +1888,8 @@ function RenderStudioInner() {
       setRenderId(render_id); setProcessingStage("Gerando render…");
       const data = await waitForRenderCompletion(render_id);
       setProcessingStage("Finalizando e salvando versão…");
-      const v: RenderVersion = { id: render_id, url: data.result_image_url, label: "Versão 1 · Original", operationType: "initial", createdAt: new Date() };
-      setRenderUrl(data.result_image_url); setVersions([v]);
+      const v: RenderVersion = { id: render_id, url: normalizeRenderMediaUrl(data.result_image_url), label: "Versão 1 · Original", operationType: "initial", createdAt: new Date() };
+      setRenderUrl(normalizeRenderMediaUrl(data.result_image_url)); setVersions([v]);
       logEvent("render_created", `Render inicial gerado · ${ambiente}`);
       setSaveState("saved"); setLastSavedAt(new Date());
     } catch (e: unknown) { setErr(categorizeError(e)); setSaveState("error"); }
@@ -1893,7 +1953,7 @@ function RenderStudioInner() {
       });
       const data = await waitForRenderCompletion(render_id);
       const newVersion: RenderVersion = {
-        id: render_id, url: data.result_image_url,
+        id: render_id, url: normalizeRenderMediaUrl(data.result_image_url),
         label: `Versão ${versions.length + 1} · ${melhoriaMode === "change-material" ? selectedMaterial?.nome ?? "Material" : melhoriaMode === "change-lighting" ? "Iluminação" : "Melhoria"}`,
         operationType: melhoriaMode === "change-material" ? "material" : melhoriaMode === "change-lighting" ? "lighting" : "improve",
         parentVersionId: currentRenderId, // P2-18: imutável, rastreável
@@ -1902,7 +1962,7 @@ function RenderStudioInner() {
         materialId: selectedMaterial?.id,
         materialName: selectedMaterial?.nome,
       };
-      setRenderUrl(data.result_image_url); setRenderId(render_id);
+      setRenderUrl(normalizeRenderMediaUrl(data.result_image_url)); setRenderId(render_id);
       setVersions(v => [newVersion, ...v]);
       logEvent("version_created", `${newVersion.label} criada`);
       // Update comparison B automatically
