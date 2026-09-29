@@ -1058,7 +1058,7 @@ export function CatalogoModal({
 
       {/* Product form dialog */}
       <Dialog open={formOpen} onOpenChange={(o) => !o && setFormOpen(false)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="!w-[96vw] !max-w-[1400px] max-h-[92vh] overflow-y-auto p-5 md:p-6">
           <DialogHeader>
             <DialogTitle>{editingProd ? "Editar Produto" : "Novo Produto"}</DialogTitle>
           </DialogHeader>
