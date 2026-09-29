@@ -23,12 +23,21 @@ export async function generateRenderPremiumOpenAI(input: {
   imageDataUrl: string;
   prompt: string;
   maskDataUrl?: string;
+  referenceImageDataUrls?: string[];
   logger?: Logger;
 }): Promise<{ base64: string; provider: "openai"; model: string }> {
   const { source, mime } = decodeDataUrl(input.imageDataUrl, "Render Premium");
   const openai = await getOpenAIForTenant(input.tenantId);
   const model = arqdorImageModel();
-  const image = await toFile(source, "arqdor-reference.png", { type: mime });
+  const baseImage = await toFile(source, "arqdor-reference.png", { type: mime });
+
+  const extraReferences = await Promise.all(
+    (input.referenceImageDataUrls ?? []).slice(0, 3).map(async (dataUrl, index) => {
+      const decoded = decodeDataUrl(dataUrl, `referência visual ${index + 1}`);
+      return toFile(decoded.source, `arqdor-material-reference-${index + 1}.png`, { type: decoded.mime });
+    }),
+  );
+  const image = extraReferences.length > 0 ? [baseImage, ...extraReferences] : baseImage;
 
   let mask: any;
   if (input.maskDataUrl) {
@@ -37,7 +46,7 @@ export async function generateRenderPremiumOpenAI(input: {
   }
 
   input.logger?.info(
-    { provider: "openai", model, operation: mask ? "masked-edit" : "edit" },
+    { provider: "openai", model, operation: mask ? "masked-edit" : "edit", referenceCount: extraReferences.length },
     "Arqdor Premium: submitting OpenAI image edit",
   );
 
