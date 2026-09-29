@@ -1081,14 +1081,21 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
       const res = await fetch(api(`/api/leads/${leadId}/proposals/${activeVersion}`), {
         method: "PATCH",
         headers,
-        body: JSON.stringify({ htmlContent: html }),
+        body: JSON.stringify({ htmlContent: html, createRevision: true }),
       });
-      if (!res.ok) throw new Error("Falha ao salvar");
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Falha ao salvar");
+      const nextVersion = Number(body.version || activeVersion);
       setPreviewHtml(html);
+      setActiveVersion(nextVersion);
       setEditMode(false);
       setEditableHtml(null);
       setEditDirty(false);
-      toast({ title: "Edições salvas com sucesso!" });
+      await queryClient.invalidateQueries({ queryKey: ["listLeadProposals", leadId] });
+      toast({
+        title: `Revisão R${String(nextVersion).padStart(2, "0")} criada`,
+        description: "A versão anterior foi preservada no histórico.",
+      });
     } catch {
       toast({ title: "Erro ao salvar edições", variant: "destructive" });
     } finally {
@@ -2097,8 +2104,8 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
         // sem impacto na geração
       }
       setActiveVersion(generatedVersion);
-      toast({ title: `Proposta v${generatedVersion} gerada com sucesso` });
-      await previewProposal(generatedVersion);
+      toast({ title: `Proposta v${generatedVersion} gerada com sucesso`, description: "Revise a versão antes de compartilhar com o cliente." });
+      await reviewProposal(generatedVersion);
     } catch (e: any) {
       const msg = String(e?.error || e?.message || "Erro ao gerar proposta");
       toast({
@@ -2156,6 +2163,38 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
       });
     }
   }
+
+  async function reviewProposal(version: number, startEditing = false) {
+    if (!leadId || !token) return;
+    try {
+      const res = await fetch(`/api/leads/${leadId}/proposals/${version}/download`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(`Falha ao carregar proposta (${res.status})`);
+      const htmlContent = await res.text();
+      if (!htmlContent.trim()) throw new Error("Conteúdo da proposta não disponível");
+
+      setPreviewHtml(htmlContent);
+      setActiveVersion(version);
+      setPreviewOpen(true);
+      setEditDirty(false);
+
+      if (startEditing) {
+        setEditableHtml(injectEditScript(htmlContent));
+        setEditMode(true);
+      } else {
+        setEditableHtml(null);
+        setEditMode(false);
+      }
+    } catch (e: any) {
+      toast({
+        title: "Erro ao revisar proposta",
+        description: e?.message || "Não foi possível carregar a proposta.",
+        variant: "destructive",
+      });
+    }
+  }
+
 
   function openWhatsAppProposal(version: number) {
     const raw = lead?.telefone ?? "";
@@ -3474,10 +3513,19 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                         size="sm"
                         variant="outline"
                         className="h-8 flex-1 gap-1.5 text-xs sm:flex-none"
-                        onClick={() => previewProposal(p.version)}
+                        onClick={() => reviewProposal(p.version)}
                       >
                         <Eye className="h-3.5 w-3.5" />
-                        Abrir
+                        Revisar
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 flex-1 gap-1.5 text-xs sm:flex-none"
+                        onClick={() => reviewProposal(p.version, true)}
+                      >
+                        <PencilLine className="h-3.5 w-3.5" />
+                        Editar
                       </Button>
                       <Button
                         size="sm"
@@ -4729,7 +4777,7 @@ ${chip}`
               {!editMode ? (
                 <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 mr-6" onClick={enterEditMode}>
                   <PencilLine className="h-3.5 w-3.5" />
-                  Editar texto
+                  Revisar e editar
                 </Button>
               ) : (
                 <div className="flex items-center gap-2 mr-6">
@@ -4739,7 +4787,7 @@ ${chip}`
                   </Button>
                   <Button size="sm" className="h-7 text-xs gap-1" onClick={saveEditedHtml} disabled={editSaving || !editDirty}>
                     {editSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                    {editSaving ? "Salvando…" : "Salvar edições"}
+                    {editSaving ? "Salvando…" : "Salvar como nova revisão"}
                   </Button>
                 </div>
               )}
