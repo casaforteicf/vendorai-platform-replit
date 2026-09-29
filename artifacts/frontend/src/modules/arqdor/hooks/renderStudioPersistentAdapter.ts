@@ -51,7 +51,7 @@ function parseCost(value: PersistentRenderVersion["costEstimateUsd"]): number | 
 }
 
 export function mapPersistentVersionToStudio(version: PersistentRenderVersion): RenderStudioVersion | null {
-  if (!version.resultImageUrl || version.status !== "concluido") return null;
+  if (!version.fileAvailable || !(version.displayUrl || version.resultImageUrl) || version.status !== "concluido") return null;
 
   const approved = Boolean(version.approvedAt || version.versionTag === "aprovado");
   const operationType = normalizeOperationType(version.operationType, approved, version.parentRenderId);
@@ -59,7 +59,7 @@ export function mapPersistentVersionToStudio(version: PersistentRenderVersion): 
 
   return {
     id: version.id,
-    url: version.resultImageUrl,
+    url: version.displayUrl || version.resultImageUrl!,
     label: versionLabel(version, operationType),
     parentVersionId: version.parentRenderId || undefined,
     operationType,
