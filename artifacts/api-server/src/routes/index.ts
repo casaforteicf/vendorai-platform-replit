@@ -1,3 +1,4 @@
+import businessPlanRouter from "./business_plan.js";
 import { Router, type IRouter } from "express";
 // Deploy marker: Arqdor Concept production validation 2026-09-19
 import healthRouter from "./health";
@@ -379,6 +380,7 @@ router.use(agentActionsLogRouter);
 router.use(consentsRouter);
 
 // Business Hub
+router.use(businessPlanRouter);
 router.use(businessProfilesRouter);
 router.use(leadCaptureRouter);
 
@@ -635,3 +637,4 @@ router.use(contentTrackingRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;
+

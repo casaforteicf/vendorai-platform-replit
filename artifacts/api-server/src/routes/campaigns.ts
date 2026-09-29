@@ -14,7 +14,7 @@ import {
 import type { NumericFilter, SegmentoFiltro } from "@workspace/db";
 import type { SQL } from "drizzle-orm";
 import { z } from "zod";
-import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { callOpenAI as generateCampaignText } from "../lib/ai-gateway.js";
 import { callReplicateFlux11Pro, callReplicateFluxKontext } from "../lib/arch-render-pipeline.js";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.js";
 import { buildCampaignMarketingIntelligence } from "../services/campaign-marketing-intelligence.js";
@@ -321,18 +321,11 @@ router.post("/tenants/:tenantId/campaigns/generate-copy", async (req, res) => {
   const prompt = buildCopyPrompt({ nome, tipo, objetivo, segmentoResumo, abTest: gerarVariantesAB });
 
   try {
-    const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 1024,
-      system: "Você responde SEMPRE em JSON válido, sem markdown, sem texto fora do JSON.",
-      messages: [{ role: "user", content: prompt }],
-    });
-
-    const raw = message.content
-      .filter((b) => b.type === "text")
-      .map((b) => (b as { type: "text"; text: string }).text)
-      .join("\n")
-      .trim();
+    const message = await generateCampaignText(String(tenantId), "content_generator", [
+      { role: "system", content: "Você responde SEMPRE em JSON válido. Use as informações aprovadas da empresa, respeite o público e não invente benefícios ou condições." },
+      { role: "user", content: prompt },
+    ], { maxTokens: 1500, responseFormat: { type: "json_object" }, log: req.log });
+    const raw = message.content.trim();
 
     let result: { mensagem?: string; variantA?: string; variantB?: string };
     try {

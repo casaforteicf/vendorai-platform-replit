@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import {
   db,
   businessProfilesTable,
@@ -656,7 +656,7 @@ router.patch("/business-profiles/:id", async (req, res) => {
   const [profile] = await db.update(businessProfilesTable)
     .set({
       ...parsed.data,
-      ...(protectedDiscovery ? { discoveryData: protectedDiscovery } : {}),
+      ...(protectedDiscovery ? { discoveryData: sql`(${JSON.stringify(protectedDiscovery)}::jsonb - 'businessPlan') || CASE WHEN ${businessProfilesTable.discoveryData} ? 'businessPlan' THEN jsonb_build_object('businessPlan', ${businessProfilesTable.discoveryData}->'businessPlan') ELSE '{}'::jsonb END` } : {}),
       updatedAt: new Date(),
     })
     .where(eq(businessProfilesTable.id, existing.id))
