@@ -4505,16 +4505,45 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       setReferencePlan(payload);
       setReferenceTracePreview(null);
       setSelectedTraceElement(null);
-      setReferenceTraceState("idle");
       setReferenceDisplayMode("reference");
       setEditorView("plan");
       setEditorLibraryTab("build");
       setReferencePlanState("success");
-      setReferencePlanMessage(
-        payload.kind === "image"
-          ? "Croqui/pré-planta recebido. Confira a escala e clique em Gerar planta com IA para transformar o desenho em geometria editável."
-          : "PDF vinculado ao pré-projeto. A conversão automática da página para geometria será a próxima etapa.",
-      );
+
+      if (payload.kind === "image") {
+        setReferenceTraceState("loading");
+        setReferencePlanMessage("Imagem recebida. A IA está reconstruindo paredes e aberturas para gerar a planta editável...");
+        try {
+          const traceResponse = await fetch(
+            `/api/arch/concept-projects/${encodeURIComponent(id)}/reference-plan/trace`,
+            {
+              method: "POST",
+              headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+            },
+          );
+          const tracePayload = await traceResponse.json().catch(() => ({})) as ReferenceTracePreview & { error?: string };
+          if (!traceResponse.ok) throw new Error(tracePayload.error ?? "Não foi possível interpretar a planta com IA.");
+          setReferenceTracePreview(tracePayload);
+          setSelectedTraceElement(null);
+          setReferenceTraceState("ready");
+          setReferenceDisplayMode("overlay");
+          setReferencePlanMessage(
+            `Planta reconhecida: ${tracePayload.walls.length} paredes e ${tracePayload.openings.length} aberturas · confiança ${Math.round(tracePayload.confidence * 100)}%. Revise a sobreposição e use como planta editável.`,
+          );
+        } catch (traceError) {
+          setReferenceTraceState("error");
+          setReferencePlanMessage(
+            traceError instanceof Error
+              ? `Imagem importada, mas a leitura automática falhou: ${traceError.message}`
+              : "Imagem importada, mas a leitura automática falhou. Tente gerar a planta novamente.",
+          );
+        }
+      } else {
+        setReferenceTraceState("idle");
+        setReferencePlanMessage(
+          "PDF vinculado ao pré-projeto. Converta a página desejada para imagem para gerar a planta editável automaticamente.",
+        );
+      }
       window.setTimeout(() => setReferencePlanState("idle"), 5000);
     } catch (error) {
       setReferencePlanState("error");
