@@ -39,15 +39,6 @@ function RenderStudioInner() {
     renderUrl,
     versions,
     approved,
-    specDone,
-    specData,
-    specificationId,
-    enviandoOrcamento,
-    orcamentoMsg,
-    areaM2,
-    setAreaM2,
-    peDireitoM,
-    setPeDireitoM,
     loading,
     err,
     melhoriaPrompt,
@@ -122,10 +113,6 @@ function RenderStudioInner() {
     generateRenderVideo5s,
     applyMelhoria,
     handleApprove,
-    handleSendToSpec,
-    handleSalvarMedidasAmbiente,
-    handleSalvarMedidasItem,
-    handleEnviarOrcamento,
     handleRenderLoadError,
     handleSelectVersion,
     handleNextStep,
@@ -217,13 +204,9 @@ function RenderStudioInner() {
           loading={loading} err={err}
           melhoriaPrompt={melhoriaPrompt} setMelhoriaPrompt={setMelhoriaPrompt}
           melhoriaMode={melhoriaMode} setMelhoriaMode={setMelhoriaMode}
-          approved={approved} specDone={specDone} specData={specData}
-          specificationId={specificationId} enviandoOrcamento={enviandoOrcamento}
-          orcamentoMsg={orcamentoMsg} onEnviarOrcamento={handleEnviarOrcamento}
-          areaM2={areaM2} setAreaM2={setAreaM2} peDireitoM={peDireitoM} setPeDireitoM={setPeDireitoM}
-          onSalvarMedidasAmbiente={handleSalvarMedidasAmbiente} onSalvarMedidasItem={handleSalvarMedidasItem}
+          approved={approved}
           onNextStep={handleNextStep} onStartRender={startRender}
-          onApplyMelhoria={applyMelhoria} onApprove={handleApprove} onSendToSpec={handleSendToSpec}
+          onApplyMelhoria={applyMelhoria} onApprove={handleApprove}
           sceneType={sceneType} setSceneType={setSceneType}
           renderProfile={renderProfile} setRenderProfile={setRenderProfile}
           visualStyle={visualStyle} setVisualStyle={setVisualStyle}
