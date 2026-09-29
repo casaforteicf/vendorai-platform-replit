@@ -167,6 +167,8 @@ type BudgetIntegrityIssue = {
 
 type BudgetIntegrityReport = {
   ok: boolean;
+  validatorProfile: string;
+  validatorLabel: string;
   blockers: number;
   warnings: number;
   calculatedTotal: number;
@@ -2600,9 +2602,15 @@ function newFreeItem(): FreeItem {
     const [mode, setMode] = useState<"catalogo" | "livre" | "template" | "importar">("catalogo");
     const [selectedTemplateSlug, setSelectedTemplateSlug] = useState<string>("");
     const [constructionSystem, setConstructionSystem] = useState<ConstructionSystem>("icf");
+    const persistedValidatorContext = (editingProposta as any)?.apresentacao?.validatorContext as
+      | { scopeTypes?: string[]; constructionSystem?: string }
+      | undefined;
+    const validatorScopeTypes = initialExternalBudget?.scopeTypes
+      ?? persistedValidatorContext?.scopeTypes
+      ?? [];
     const showConstructionSystem = !initialExternalBudget?.projectId
-      || !initialExternalBudget.scopeTypes?.length
-      || initialExternalBudget.scopeTypes.some((type) => type === "completo" || type === "reforma");
+      || !validatorScopeTypes.length
+      || validatorScopeTypes.some((type) => type === "completo" || type === "reforma");
   
     // catálogo + composições organizados por grupos de etapa
     const [orcamentoEtapas, setOrcamentoEtapas] = useState<OrcamentoEtapaDraft[]>([
@@ -3887,6 +3895,12 @@ function newFreeItem(): FreeItem {
       politicaReajuste: adjustmentPolicy.trim(),
       garantiasContratuais: warrantyTerms.trim(),
       condicoesPagamentoDetalhadas: detailedPaymentTerms.trim(),
+      validatorContext: {
+        scopeTypes: validatorScopeTypes,
+        constructionSystem: showConstructionSystem
+          ? constructionSystem
+          : undefined,
+      },
     };
   }
 
@@ -5951,7 +5965,11 @@ function newFreeItem(): FreeItem {
                       ? <AlertTriangle className="h-4 w-4 text-destructive" />
                       : <CheckCircle2 className="h-4 w-4 text-emerald-600" />}
                     <div>
-                      <p className="text-sm font-semibold">Validador do orçamento</p>
+                      <p className="text-sm font-semibold">
+                        {integrityReport?.validatorLabel
+                          ? `Validador — ${integrityReport.validatorLabel}`
+                          : "Validador do orçamento"}
+                      </p>
                       <p className="text-xs text-muted-foreground">
                         {integrityLoading
                           ? "Validando alterações…"
