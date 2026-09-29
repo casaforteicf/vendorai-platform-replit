@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { OrcamentoRevisoesCard } from "@/components/OrcamentoRevisoesCard";
 import {
   Select,
@@ -4787,7 +4788,8 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-scroll overscroll-contain p-4 [scrollbar-gutter:stable]">
+            <ScrollArea className="min-h-0 flex-1">
+              <div className="p-4">
               {proposalMediaLibraryLoading ? (
                 <div className="flex h-[420px] items-center justify-center">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -4861,10 +4863,11 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                   </div>
                 );
               })()}
-            </div>
+              </div>
+            </ScrollArea>
           </div>
 
-          <DialogFooter className="border-t px-5 py-3">
+          <DialogFooter className="shrink-0 border-t px-5 py-3">
             <Button type="button" variant="outline" onClick={() => setStageMediaLibraryTarget(null)}>
               Cancelar
             </Button>
