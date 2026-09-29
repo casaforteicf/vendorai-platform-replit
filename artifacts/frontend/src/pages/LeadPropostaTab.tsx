@@ -337,6 +337,9 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
   const [proposalBuilderPreviewMode, setProposalBuilderPreviewMode] = useState<"template" | "budget">("template");
   const [proposalBuilderSelectedModuleKey, setProposalBuilderSelectedModuleKey] = useState<string | null>(null);
   const [proposalBuilderGeneratingModuleImage, setProposalBuilderGeneratingModuleImage] = useState<string | null>(null);
+  const [proposalBuilderDevelopingPage, setProposalBuilderDevelopingPage] = useState<string | null>(null);
+  const [proposalBuilderPageAIInstruction, setProposalBuilderPageAIInstruction] = useState("");
+  const [proposalBuilderAdvancedOpen, setProposalBuilderAdvancedOpen] = useState(false);
   const [proposalBuilderEditorName, setProposalBuilderEditorName] = useState("");
   const [proposalBuilderEditorPreset, setProposalBuilderEditorPreset] = useState<"premium_arquitetonico" | "corporativo" | "catalogo_comercial" | "minimalista" | "tecnico">("premium_arquitetonico");
   const [proposalBuilderHeroVariant, setProposalBuilderHeroVariant] = useState<"fotografico" | "minimalista" | "institucional" | "produto">("fotografico");
@@ -1597,6 +1600,52 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
   function chooseProposalBuilderModuleImage(moduleKey: string) {
     setProposalBuilderSelectedModuleKey(moduleKey);
     window.setTimeout(() => proposalBuilderModuleImageInputRef.current?.click(), 0);
+  }
+
+  async function developProposalBuilderPage(moduleKey: string, instructionOverride?: string) {
+    const template = resolveProposalBuilderTemplateForEditor();
+    const module = proposalBuilderEditorModules.find((item) => item.key === moduleKey);
+    if (!template || !tenantId || !token || !module) return;
+
+    const instruction = (instructionOverride ?? proposalBuilderPageAIInstruction).trim();
+    setProposalBuilderDevelopingPage(moduleKey);
+    try {
+      const response = await fetch(api(`/api/tenants/${tenantId}/proposal-builder/templates/${template.id}/modules/${moduleKey}/develop`), {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          instruction,
+          styleHint: [
+            `preset ${proposalBuilderEditorPreset.replace(/_/g, " ")}`,
+            `densidade ${proposalBuilderDensity}`,
+            `ênfase em imagens ${proposalBuilderImageEmphasis}`,
+          ].join(", "),
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? "Não foi possível desenvolver esta página.");
+
+      const developed = body.module ?? {};
+      updateProposalBuilderModuleConfig(moduleKey, {
+        title: developed.title ?? module.title,
+        description: developed.description ?? module.description,
+        contentPrompt: developed.contentPrompt ?? module.contentPrompt,
+        image: developed.image ?? module.image,
+      });
+      setProposalBuilderPageAIInstruction("");
+      toast({
+        title: "Página desenvolvida com IA",
+        description: "Revise o resultado e ajuste o que quiser antes de salvar o modelo.",
+      });
+    } catch (error) {
+      toast({
+        title: "Erro ao desenvolver página",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setProposalBuilderDevelopingPage(null);
+    }
   }
 
   async function generateProposalBuilderModuleImage(moduleKey: string) {
@@ -3894,7 +3943,13 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                                 <div className="rounded-lg bg-muted/40 p-3"><p className="text-[10px] text-muted-foreground">Etapas</p><p className="mt-1 text-sm font-bold">{proposalBuilderDisplayStages.length}</p></div>
                               </div>
                             ) : module.key === "apresentacao_empresa" ? (
-                              <div><h3 className="text-lg font-semibold">{proposalBuilderPreviewCompany}</h3><p className="mt-1 text-sm text-muted-foreground">Apresentação institucional, diferenciais e posicionamento da empresa.</p></div>
+                              <div className="max-w-3xl">
+                                <h3 className="text-2xl font-semibold tracking-tight">{module.title || proposalBuilderPreviewCompany}</h3>
+                                {module.description ? <p className="mt-2 text-sm font-medium text-muted-foreground">{module.description}</p> : null}
+                                <div className="mt-5 whitespace-pre-line text-sm leading-7 text-slate-700">
+                                  {module.contentPrompt || `${proposalBuilderPreviewCompany} apresenta sua trajetória, posicionamento, diferenciais e a forma como conduz cada projeto com qualidade e transparência.`}
+                                </div>
+                              </div>
                             ) : module.key === "diferenciais" ? (
                               <div className="grid gap-2 sm:grid-cols-2"><div className="rounded-lg bg-slate-950 p-3 text-xs text-white">Qualidade e execução</div><div className="rounded-lg bg-slate-950 p-3 text-xs text-white">Gestão e transparência</div></div>
                             ) : module.key === "etapas_orcamento" ? (
@@ -4036,7 +4091,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                             />
                           </div>
                           <div className="space-y-1">
-                            <label className="text-[10px] font-medium text-muted-foreground">Descrição / objetivo</label>
+                            <label className="text-[10px] font-medium text-muted-foreground">Subtítulo / objetivo</label>
                             <Textarea
                               value={selectedModule.description ?? ""}
                               onChange={(e) => updateProposalBuilderModuleConfig(selectedModule.key, { description: e.target.value })}
@@ -4062,12 +4117,12 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                             </Select>
                           </div>
                           <div className="space-y-1">
-                            <label className="text-[10px] font-medium text-muted-foreground">Instrução para a IA</label>
+                            <label className="text-[10px] font-medium text-muted-foreground">Conteúdo da página</label>
                             <Textarea
                               value={selectedModule.contentPrompt ?? ""}
                               onChange={(e) => updateProposalBuilderModuleConfig(selectedModule.key, { contentPrompt: e.target.value })}
-                              placeholder="Ex.: resumir diferenciais em até 4 cards, linguagem premium e objetiva."
-                              className="min-h-[82px] text-xs"
+                              placeholder="Conteúdo final que será usado nesta página do modelo."
+                              className="min-h-[120px] text-xs"
                             />
                           </div>
 
@@ -4392,15 +4447,88 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                   <div className="space-y-1"><label className="text-[10px] text-muted-foreground">Ênfase em imagens</label><Select value={proposalBuilderImageEmphasis} onValueChange={(value) => setProposalBuilderImageEmphasis(value as any)}><SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="alta">Alta</SelectItem><SelectItem value="media">Média</SelectItem><SelectItem value="baixa">Baixa</SelectItem></SelectContent></Select></div>
                 </div>
 
-                <div className="mt-4">
-                  <p className="text-xs font-semibold">Regras da IA</p>
-                  <div className="mt-2 space-y-2">
-                    <Input value={proposalBuilderTone} onChange={(e) => setProposalBuilderTone(e.target.value)} placeholder="Tom da proposta" className="h-8 text-xs" />
-                    <Input value={proposalBuilderTechnicalLevel} onChange={(e) => setProposalBuilderTechnicalLevel(e.target.value)} placeholder="Nível técnico" className="h-8 text-xs" />
-                    <Textarea value={proposalBuilderImageRules} onChange={(e) => setProposalBuilderImageRules(e.target.value)} placeholder="Regras de imagens — uma por linha" className="min-h-[90px] text-xs" />
-                    <Textarea value={proposalBuilderContentRules} onChange={(e) => setProposalBuilderContentRules(e.target.value)} placeholder="Regras de conteúdo — uma por linha" className="min-h-[90px] text-xs" />
-                    <Textarea value={proposalBuilderAvoidRules} onChange={(e) => setProposalBuilderAvoidRules(e.target.value)} placeholder="O que evitar — uma regra por linha" className="min-h-[80px] text-xs" />
+                {proposalBuilderSelectedModuleKey && (
+                  <div className="mt-4 rounded-xl border border-violet-200 bg-violet-50/50 p-3">
+                    <div className="flex items-start gap-2">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
+                        <Sparkles className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold">Desenvolver esta página com IA</p>
+                        <p className="mt-0.5 text-[10px] leading-relaxed text-muted-foreground">
+                          A IA cria título, subtítulo, conteúdo e direção visual. Depois você pode ajustar tudo manualmente.
+                        </p>
+                      </div>
+                    </div>
+
+                    <Textarea
+                      value={proposalBuilderPageAIInstruction}
+                      onChange={(event) => setProposalBuilderPageAIInstruction(event.target.value)}
+                      placeholder="Ex.: apresentar a CasaForteICF com foco em credibilidade, tecnologia ICF, conforto e atendimento nacional."
+                      className="mt-3 min-h-[86px] bg-background text-xs"
+                    />
+
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="mt-2 h-9 w-full gap-1.5 text-xs"
+                      disabled={proposalBuilderDevelopingPage === proposalBuilderSelectedModuleKey}
+                      onClick={() => void developProposalBuilderPage(proposalBuilderSelectedModuleKey)}
+                    >
+                      {proposalBuilderDevelopingPage === proposalBuilderSelectedModuleKey
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        : <Sparkles className="h-3.5 w-3.5" />}
+                      {proposalBuilderDevelopingPage === proposalBuilderSelectedModuleKey ? "Desenvolvendo página..." : "Desenvolver com IA"}
+                    </Button>
+
+                    <div className="mt-2 grid grid-cols-2 gap-1.5">
+                      {[
+                        ["Mais comercial", "Torne a página mais comercial, persuasiva e objetiva, sem exageros."],
+                        ["Mais técnico", "Torne a página mais técnica e informativa, mantendo leitura simples para o cliente."],
+                        ["Mais visual", "Reduza o texto e priorize uma composição visual premium com mensagens curtas."],
+                        ["Mais resumido", "Resuma a página ao essencial, com linguagem direta e elegante."],
+                      ].map(([label, instruction]) => (
+                        <Button
+                          key={label}
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-8 px-2 text-[10px]"
+                          disabled={proposalBuilderDevelopingPage === proposalBuilderSelectedModuleKey}
+                          onClick={() => void developProposalBuilderPage(proposalBuilderSelectedModuleKey, instruction)}
+                        >
+                          {label}
+                        </Button>
+                      ))}
+                    </div>
+
+                    <p className="mt-2 text-[9px] text-muted-foreground">
+                      O resultado entra no editor da página; nada é definitivo até você salvar o modelo.
+                    </p>
                   </div>
+                )}
+
+                <div className="mt-3 rounded-xl border bg-background">
+                  <button
+                    type="button"
+                    onClick={() => setProposalBuilderAdvancedOpen((open) => !open)}
+                    className="flex w-full items-center justify-between gap-3 p-3 text-left"
+                  >
+                    <div>
+                      <p className="text-xs font-semibold">Configurações avançadas</p>
+                      <p className="mt-0.5 text-[10px] text-muted-foreground">Regras internas da IA e comportamento global do modelo.</p>
+                    </div>
+                    {proposalBuilderAdvancedOpen ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                  </button>
+                  {proposalBuilderAdvancedOpen && (
+                    <div className="space-y-2 border-t p-3">
+                      <Input value={proposalBuilderTone} onChange={(e) => setProposalBuilderTone(e.target.value)} placeholder="Tom da proposta" className="h-8 text-xs" />
+                      <Input value={proposalBuilderTechnicalLevel} onChange={(e) => setProposalBuilderTechnicalLevel(e.target.value)} placeholder="Nível técnico" className="h-8 text-xs" />
+                      <Textarea value={proposalBuilderImageRules} onChange={(e) => setProposalBuilderImageRules(e.target.value)} placeholder="Regras de imagens — uma por linha" className="min-h-[78px] text-xs" />
+                      <Textarea value={proposalBuilderContentRules} onChange={(e) => setProposalBuilderContentRules(e.target.value)} placeholder="Regras de conteúdo — uma por linha" className="min-h-[78px] text-xs" />
+                      <Textarea value={proposalBuilderAvoidRules} onChange={(e) => setProposalBuilderAvoidRules(e.target.value)} placeholder="O que evitar — uma regra por linha" className="min-h-[70px] text-xs" />
+                    </div>
+                  )}
                 </div>
               </aside>
             </div>
