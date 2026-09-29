@@ -2081,8 +2081,8 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
       }
     });
     if (starts.length && ends.length) {
-      const first = starts.sort((a, b) => a.getTime() - b.getTime())[0];
-      const last = ends.sort((a, b) => b.getTime() - a.getTime())[0];
+      const first = starts.sort((a, b) => a.getTime() - b.getTime())[0]!;
+      const last = ends.sort((a, b) => b.getTime() - a.getTime())[0]!;
       const days = Math.max(1, Math.ceil((last.getTime() - first.getTime()) / 86_400_000) + 1);
       return `${days} dias`;
     }
