@@ -300,55 +300,234 @@ router.get("/leads/:leadId/proposals/:version/pdf", async (req, res) => {
 // As imagens ficam salvas na própria apresentação do orçamento, então são
 // reutilizadas na proposta, no PDF e em futuras reaberturas sem depender da URL
 // temporária retornada pelo provedor de IA.
-function proposalStageImageRule(normalizedStageContext: string): string {
-  if (/esquadria|porta pvc|janela pvc/.test(normalizedStageContext)) {
-    return "REGRA TÉCNICA OBRIGATÓRIA: para a etapa de esquadrias, usar como assunto principal UMA ÚNICA PORTA MODERNA DE PVC instalada ou em instalação, mostrando claramente perfil, marco, ferragens e vedação. Não usar fachada completa como assunto principal e não trocar PVC por alumínio ou madeira.";
-  }
-  if (/(forro.*pintura|pintura.*forro)/.test(normalizedStageContext)) {
-    return "REGRA TÉCNICA OBRIGATÓRIA: mostrar claramente um FORRO DE GESSO acabado e uma PAREDE PINTADA no mesmo ambiente, com acabamento residencial realista. O teto de gesso e a pintura devem ser os assuntos principais; não usar fachada externa ou imagem genérica de casa pronta.";
-  }
-  if (/porcelanato|revestimento/.test(normalizedStageContext)) {
-    return "REGRA TÉCNICA OBRIGATÓRIA: mostrar PORCELANATO como assunto principal, preferencialmente piso residencial assentado e acabado, com paginação, juntas e superfície visíveis. Não usar fachada ou tijolos como representação de revestimentos.";
-  }
-  if (/forro|gesso/.test(normalizedStageContext)) {
-    return "REGRA TÉCNICA OBRIGATÓRIA: mostrar FORRO DE GESSO residencial como assunto principal, com planos, recortes ou sancas e acabamento coerente. Não usar cobertura/telhado como substituto de forro.";
-  }
-  if (/massa corrida|pintura/.test(normalizedStageContext)) {
-    return "REGRA TÉCNICA OBRIGATÓRIA: mostrar PAREDE PINTADA com acabamento uniforme como assunto principal, podendo evidenciar preparação e acabamento final. Não usar fachada completa ou revestimento cerâmico como substituto.";
-  }
-  if (/terraplen|movimentacao de terra/.test(normalizedStageContext)) {
-    return "REGRA TÉCNICA OBRIGATÓRIA: representar TERRAPLENAGEM, com terreno sendo escavado, nivelado ou compactado por equipamento adequado. Não mostrar pilares, fundações ou estrutura pronta como assunto principal.";
-  }
-  if (/servicos preliminares|limpeza do terreno|preparacao do canteiro|canteiro|sondagem|spt/.test(normalizedStageContext)) {
-    return "REGRA TÉCNICA OBRIGATÓRIA: representar SERVIÇOS PRELIMINARES, com terreno limpo, locação/canteiro organizado, tapume, apoio provisório ou sondagem quando prevista. Não mostrar alvenaria ou estrutura avançada.";
-  }
-  if (/radier|fundac/.test(normalizedStageContext)) {
-    return "REGRA TÉCNICA OBRIGATÓRIA: representar fundação em RADIER/laje de fundação, com base preparada, malhas/armaduras e passagens. NÃO mostrar baldrame, paredes de tijolo, pilares isolados ou solução diferente do radier quando o escopo indicar radier.";
-  }
-  if (/laje/.test(normalizedStageContext)) {
-    return "REGRA TÉCNICA OBRIGATÓRIA: mostrar execução de LAJE como assunto principal, com escoramento, vigotas/EPS ou armações e concretagem conforme o escopo. Não usar telhado ou fachada acabada.";
-  }
-  if (/cobertura|telha|rufo|calha/.test(normalizedStageContext)) {
-    return "REGRA TÉCNICA OBRIGATÓRIA: mostrar COBERTURA em execução, com estrutura, telhas, rufos ou calhas compatíveis com o escopo. Não usar imagem de instalações ou acabamento interno.";
-  }
-  if (/hidraul|tubo|esgoto|pex|cisterna|boiler|pressur|vaso|chuveiro|registro/.test(normalizedStageContext)) {
-    return "REGRA TÉCNICA OBRIGATÓRIA: destacar as INSTALAÇÕES HIDRÁULICAS/HIDROSSANITÁRIAS em execução, com tubulações de água e esgoto, conexões, caixas, shafts e equipamentos previstos. Não usar instalação elétrica como assunto principal.";
-  }
-  if (/eletric|quadro|cabo|eletroduto|corrugad|carro eletrico|frigorigena/.test(normalizedStageContext)) {
-    return "REGRA TÉCNICA OBRIGATÓRIA: destacar as INSTALAÇÕES ELÉTRICAS em execução, com eletrodutos, conduítes corrugados, caixas, cabeamento, quadro e pontos previstos. Não usar tubulação hidráulica como assunto principal.";
-  }
-  if (/icf|estrutura/.test(normalizedStageContext)) {
-    return "REGRA TÉCNICA OBRIGATÓRIA: mostrar claramente a ESTRUTURA EM ICF correspondente ao escopo, incluindo blocos/painéis brancos de ICF, armações e concretagem quando previstos. Não representar alvenaria cerâmica convencional como sistema principal.";
-  }
-  if (/projeto|legaliza|arquitet/.test(normalizedStageContext)) {
-    return "REGRA TÉCNICA OBRIGATÓRIA: representar PROJETOS E LEGALIZAÇÃO com plantas arquitetônicas, desenhos técnicos, documentos de aprovação e material de projeto. Não usar apenas uma casa pronta ou obra em execução.";
-  }
-  if (/limpeza final|entrega/.test(normalizedStageContext)) {
-    return "REGRA TÉCNICA OBRIGATÓRIA: representar LIMPEZA FINAL E ENTREGA, com residência concluída, ambiente limpo, revisado e pronto para uso. Não mostrar obra bruta.";
-  }
-  return "REGRA TÉCNICA OBRIGATÓRIA: a fotografia deve representar exatamente o serviço e o estado construtivo desta etapa, usando os itens do orçamento como fonte de verdade visual.";
+type ProposalStageVisualRule = {
+  key: string;
+  visualType: string;
+  promptBase: string;
+  negativePrompt: string[];
+  quickSuggestions: string[];
+};
+
+function normalizeStageVisualText(value: string): string {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
 }
 
+function proposalStageVisualRule(stageName: string, scopeContext = ""): ProposalStageVisualRule {
+  const name = normalizeStageVisualText(stageName);
+  const context = normalizeStageVisualText(scopeContext);
+
+  // A classificação visual prioriza SEMPRE o nome da etapa. O escopo é usado
+  // apenas para refinar a cena depois da classificação, evitando que palavras
+  // como "estrutura", "obra" ou "fundação" dentro de uma descrição desviem a IA
+  // para outra fase.
+  if (/projeto|legaliza|aprovacao|alvara|documentacao|arquitet/.test(name)) {
+    return {
+      key: "projetos_legalizacao",
+      visualType: "planejamento_aprovacao",
+      promptBase:
+        "Fotografia profissional hiper-realista de planejamento técnico e aprovação de projeto no Brasil. Representar a etapa de PROJETOS E LEGALIZAÇÃO em ambiente de escritório técnico, sala de reunião ou visita técnica leve. Mostrar arquiteto, engenheiro ou técnico analisando planta baixa, pranchas, desenhos técnicos, documentos, checklist de aprovação ou material de projeto. A cena deve comunicar planejamento, precisão, documentação e tomada de decisão — não execução física da obra.",
+      negativePrompt: [
+        "NÃO mostrar escavação, terraplenagem, fundações, ferragens, concretagem, alvenaria, ICF, telhado, revestimentos ou obra bruta como assunto principal.",
+        "NÃO mostrar trabalhadores executando estrutura, operários usando ferramentas pesadas ou canteiro de obras em produção.",
+        "NÃO usar computador genérico ou notebook como assunto principal; plantas, documentos técnicos e interação profissional devem ser visualmente predominantes.",
+        "NÃO representar esta etapa como obra em execução.",
+      ],
+      quickSuggestions: [
+        "Mostrar planta e documentação",
+        "Reunião técnica com cliente",
+        "Aprovação e legalização",
+        "Arquiteto e engenheiro analisando projeto",
+      ],
+    };
+  }
+
+  if (/servicos preliminares|limpeza do terreno|preparacao do canteiro|canteiro|sondagem|spt|locacao/.test(name)) {
+    return {
+      key: "servicos_preliminares",
+      visualType: "preparacao_inicial",
+      promptBase:
+        "Fotografia profissional hiper-realista da etapa de SERVIÇOS PRELIMINARES. Mostrar preparação inicial do terreno, locação da obra, organização do canteiro, limpeza, tapume, gabarito ou sondagem quando compatível com o escopo.",
+      negativePrompt: [
+        "NÃO mostrar fundação concluída, estrutura avançada, cobertura ou acabamento final.",
+        "NÃO mostrar residência pronta.",
+      ],
+      quickSuggestions: ["Preparação do terreno", "Locação da obra", "Organização do canteiro", "Mais técnico"],
+    };
+  }
+
+  if (/terraplen|movimentacao de terra|nivelamento/.test(name)) {
+    return {
+      key: "terraplenagem",
+      visualType: "movimento_terra",
+      promptBase:
+        "Fotografia profissional hiper-realista da etapa de TERRAPLENAGEM. Mostrar movimentação de terra, escavação, nivelamento ou compactação com equipamento adequado e terreno coerente com esta fase.",
+      negativePrompt: [
+        "NÃO mostrar fundação pronta, pilares, paredes, cobertura ou acabamento.",
+        "NÃO transformar a cena em reunião de projeto ou escritório.",
+      ],
+      quickSuggestions: ["Máquinas em operação", "Nivelamento do terreno", "Preparação do solo", "Mais realista"],
+    };
+  }
+
+  if (/radier|fundac|sapata|baldrame|estaca/.test(name)) {
+    return {
+      key: "fundacoes",
+      visualType: "fundacao",
+      promptBase:
+        "Fotografia profissional hiper-realista da etapa de FUNDAÇÕES. Mostrar base estrutural, escavação técnica, preparação, armaduras, formas, passagens e concretagem somente quando compatíveis com o escopo real.",
+      negativePrompt: [
+        "NÃO mostrar telhado, revestimentos, interiores acabados ou residência pronta.",
+        "NÃO substituir o sistema de fundação especificado por outro sistema.",
+      ],
+      quickSuggestions: ["Ferragem e formas", "Base estrutural", "Execução técnica da fundação", "Mais detalhado"],
+    };
+  }
+
+  if (/laje/.test(name)) {
+    return {
+      key: "lajes",
+      visualType: "laje",
+      promptBase:
+        "Fotografia profissional hiper-realista da etapa de LAJES. Mostrar execução da laje, escoramento, vigotas/EPS, armações, passagens e concretagem apenas conforme o escopo.",
+      negativePrompt: ["NÃO mostrar telhado ou fachada acabada como assunto principal.", "NÃO mostrar interiores decorados."],
+      quickSuggestions: ["Execução da laje", "Ferragem e formas", "Mais técnico", "Mais realista"],
+    };
+  }
+
+  if (/cobertura|telha|rufo|calha|telhado/.test(name)) {
+    return {
+      key: "cobertura",
+      visualType: "cobertura",
+      promptBase:
+        "Fotografia profissional hiper-realista da etapa de COBERTURA. Mostrar estrutura de cobertura, telhas, rufos, calhas ou impermeabilização conforme o escopo real.",
+      negativePrompt: ["NÃO mostrar fundações ou terraplenagem.", "NÃO usar acabamento interno como assunto principal."],
+      quickSuggestions: ["Estrutura do telhado", "Montagem da cobertura", "Mais comercial", "Mais técnico"],
+    };
+  }
+
+  if (/hidraul|hidrossanit|tubulacao|esgoto|agua|pex|cisterna|boiler|pressur/.test(name)) {
+    return {
+      key: "instalacoes_hidraulicas",
+      visualType: "instalacao_hidraulica",
+      promptBase:
+        "Fotografia profissional hiper-realista da etapa de INSTALAÇÕES HIDRÁULICAS/HIDROSSANITÁRIAS. Mostrar tubulações, conexões, caixas, shafts e pontos de água/esgoto coerentes com o escopo.",
+      negativePrompt: ["NÃO usar instalação elétrica como assunto principal.", "NÃO mostrar acabamento final como se a infraestrutura estivesse oculta."],
+      quickSuggestions: ["Tubulações aparentes", "Pontos hidráulicos", "Infraestrutura técnica", "Mais detalhado"],
+    };
+  }
+
+  if (/eletric|quadro|cabo|eletroduto|corrugad|fiacao|iluminacao/.test(name)) {
+    return {
+      key: "instalacoes_eletricas",
+      visualType: "instalacao_eletrica",
+      promptBase:
+        "Fotografia profissional hiper-realista da etapa de INSTALAÇÕES ELÉTRICAS. Mostrar eletrodutos, caixas, cabeamento, quadro e pontos elétricos coerentes com o escopo real.",
+      negativePrompt: ["NÃO usar tubulação hidráulica como assunto principal.", "NÃO mostrar decoração como foco da imagem."],
+      quickSuggestions: ["Eletrodutos e pontos", "Infraestrutura elétrica", "Mais técnico", "Mais detalhado"],
+    };
+  }
+
+  if (/esquadria|porta|janela/.test(name)) {
+    const pvc = /pvc/.test(name + " " + context);
+    return {
+      key: "esquadrias",
+      visualType: "esquadrias",
+      promptBase: pvc
+        ? "Fotografia profissional hiper-realista da etapa de ESQUADRIAS EM PVC. Mostrar instalação ou detalhe técnico-comercial de porta ou janela de PVC, evidenciando perfil, marco, ferragens, vedação e acabamento."
+        : "Fotografia profissional hiper-realista da etapa de ESQUADRIAS. Mostrar instalação ou detalhe técnico-comercial de portas e janelas coerentes com o material especificado no escopo.",
+      negativePrompt: [
+        pvc ? "NÃO substituir PVC por alumínio ou madeira." : "NÃO inventar material diferente do escopo.",
+        "NÃO usar fachada completa como assunto principal quando o objetivo for mostrar a esquadria.",
+      ],
+      quickSuggestions: ["Instalação de esquadrias", "Detalhe de portas e janelas", "Mais premium", "Mais comercial"],
+    };
+  }
+
+  if (/porcelanato|revestimento|ceramica/.test(name)) {
+    return {
+      key: "revestimentos",
+      visualType: "revestimento_acabamento",
+      promptBase:
+        "Fotografia profissional hiper-realista da etapa de REVESTIMENTOS. Mostrar aplicação ou acabamento de porcelanato/revestimento coerente com o escopo, com paginação, juntas, textura e qualidade de execução visíveis.",
+      negativePrompt: ["NÃO mostrar fundação ou estrutura bruta.", "NÃO usar fachada genérica como substituto do revestimento especificado."],
+      quickSuggestions: ["Aplicação de revestimentos", "Acabamento interno", "Mais premium", "Mais comercial"],
+    };
+  }
+
+  if (/forro.*pintura|pintura.*forro/.test(name)) {
+    return {
+      key: "forro_pintura",
+      visualType: "acabamento_interno",
+      promptBase:
+        "Fotografia profissional hiper-realista da etapa de FORRO E PINTURA. Mostrar forro de gesso acabado e paredes com pintura residencial de alta qualidade no mesmo ambiente, com acabamento limpo e coerente.",
+      negativePrompt: ["NÃO usar fachada externa ou telhado como substituto de forro.", "NÃO mostrar obra estrutural como foco principal."],
+      quickSuggestions: ["Forro de gesso", "Parede pintada", "Acabamento premium", "Mais realista"],
+    };
+  }
+
+  if (/forro|gesso/.test(name)) {
+    return {
+      key: "forro_gesso",
+      visualType: "forro",
+      promptBase:
+        "Fotografia profissional hiper-realista da etapa de FORRO DE GESSO. Mostrar planos de forro, recortes, sancas ou detalhes de execução coerentes com o escopo.",
+      negativePrompt: ["NÃO usar cobertura/telhado como substituto de forro.", "NÃO usar fachada como assunto principal."],
+      quickSuggestions: ["Forro de gesso", "Detalhe de acabamento", "Mais técnico", "Mais premium"],
+    };
+  }
+
+  if (/massa corrida|pintura/.test(name)) {
+    return {
+      key: "pintura",
+      visualType: "pintura",
+      promptBase:
+        "Fotografia profissional hiper-realista da etapa de PINTURA. Mostrar preparação e acabamento uniforme de paredes, com foco na qualidade da superfície e aplicação.",
+      negativePrompt: ["NÃO usar revestimento cerâmico como substituto.", "NÃO usar fachada completa como assunto principal."],
+      quickSuggestions: ["Preparação de parede", "Pintura final", "Mais premium", "Mais realista"],
+    };
+  }
+
+  if (/icf|estrutura|elevacao|paredes/.test(name)) {
+    return {
+      key: "estrutura",
+      visualType: "estrutura",
+      promptBase: /icf/.test(name + " " + context)
+        ? "Fotografia profissional hiper-realista da etapa de ESTRUTURA EM ICF. Mostrar blocos/painéis brancos de ICF, armações e concretagem somente quando previstos, com o sistema construtivo claramente identificável."
+        : "Fotografia profissional hiper-realista da etapa de ESTRUTURA. Mostrar o sistema estrutural real especificado no escopo, com materiais e estado construtivo coerentes.",
+      negativePrompt: [
+        /icf/.test(name + " " + context) ? "NÃO representar alvenaria cerâmica convencional como sistema principal." : "NÃO inventar sistema construtivo diferente do escopo.",
+        "NÃO mostrar acabamento final como foco principal.",
+      ],
+      quickSuggestions: ["Montagem estrutural", "Paredes em execução", "Mostrar sistema construtivo", "Mais técnico"],
+    };
+  }
+
+  if (/limpeza final|entrega/.test(name)) {
+    return {
+      key: "limpeza_entrega",
+      visualType: "entrega_final",
+      promptBase:
+        "Fotografia profissional hiper-realista da etapa de LIMPEZA FINAL E ENTREGA. Mostrar ambiente ou residência concluída, limpa, revisada e pronta para uso.",
+      negativePrompt: ["NÃO mostrar obra bruta, escavação ou estrutura inacabada."],
+      quickSuggestions: ["Ambiente finalizado", "Entrega ao cliente", "Mais comercial", "Mais premium"],
+    };
+  }
+
+  return {
+    key: "generico",
+    visualType: "etapa_generica",
+    promptBase:
+      "Fotografia profissional hiper-realista representando exatamente o serviço desta etapa. Usar o nome e os itens do orçamento como fonte de verdade visual e mostrar apenas o estado construtivo coerente com esta fase.",
+    negativePrompt: [
+      "NÃO mostrar elementos incompatíveis com o escopo real da etapa.",
+      "NÃO usar cena genérica de obra quando o nome da etapa indicar uma atividade específica.",
+    ],
+    quickSuggestions: ["Mais técnico", "Mais comercial", "Mais realista"],
+  };
+}
 
 function proposalHouseVisualDirection(input: {
   estiloCasa?: unknown;
@@ -536,26 +715,26 @@ router.post("/leads/:leadId/proposals/stage-images", async (req, res) => {
       })
       .join("\n");
 
-    const normalizedStageContext = `${group.nome} ${scope}`
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase();
-
-    const technicalImageRule = proposalStageImageRule(normalizedStageContext);
+    const visualRule = proposalStageVisualRule(group.nome, scope);
 
     const prompt = [
-      "Fotografia documental hiper-realista de construção civil no Brasil, composição horizontal 3:2, aparência de fotografia profissional de obra real.",
-      `Representar visualmente a etapa "${group.nome}" de uma obra residencial de padrão alto, sem transformar a imagem em render conceitual e sem inventar elementos incompatíveis com a etapa.`,
-      "Mostrar somente o estado construtivo coerente com esta fase: materiais, sistemas, equipamentos e profissionais que normalmente estariam presentes neste momento da execução.",
-      "Trabalhadores com EPI adequado, canteiro organizado, luz natural realista, materiais com escala correta, geometria consistente, sem objetos deformados.",
-      scope ? `Escopo contratado desta etapa:\n${scope}` : "",
-      technicalImageRule,
+      visualRule.promptBase,
+      `ETAPA: "${group.nome}".`,
+      scope ? `ESCOPO REAL DESTA ETAPA — fonte de verdade:\n${scope}` : "",
+      visualRule.key === "projetos_legalizacao"
+        ? "Esta é uma fase de PLANEJAMENTO, PROJETO, DOCUMENTAÇÃO E APROVAÇÃO. Não trate esta etapa como execução física da obra."
+        : "Mostrar somente o estado construtivo coerente com esta fase, sem antecipar etapas posteriores.",
       visualDirection,
-      "A imagem precisa representar o conteúdo REAL desta etapa do orçamento. Não introduza método construtivo, material ou serviço incompatível com o escopo informado.",
-      customPrompt ? `Instrução adicional do usuário para esta imagem: ${customPrompt}` : "",
-      "Quando houver conflito entre a instrução adicional e o escopo real da etapa, preserve o escopo real e adapte apenas composição, foco, ambiente e linguagem visual.",
-      "A imagem é apenas representativa da etapa, não deve fingir ser foto do projeto real do cliente.",
-      "Sem textos, sem letras, sem placas legíveis, sem logotipos, sem marcas d'água, sem molduras e sem antes/depois.",
+      "Prioridade obrigatória: 1) nome da etapa, 2) escopo real do orçamento, 3) instrução do usuário, 4) direção visual global.",
+      customPrompt ? `INSTRUÇÃO ADICIONAL DO USUÁRIO: ${customPrompt}` : "",
+      "A instrução do usuário pode mudar enquadramento, ambiente, linguagem visual ou foco, mas NÃO pode transformar a etapa em outra atividade.",
+      ...visualRule.negativePrompt,
+      "Fotografia profissional realista, composição horizontal 3:2, luz natural coerente, escala correta, geometria consistente e sem objetos deformados.",
+      visualRule.key !== "projetos_legalizacao"
+        ? "Quando houver trabalhadores, usar EPI adequado e contexto organizado."
+        : "Quando houver pessoas, priorizar interação profissional entre arquiteto, engenheiro, técnico e/ou cliente, sem ação de construção pesada.",
+      "A imagem é representativa da etapa e não deve fingir ser fotografia do projeto real do cliente.",
+      "Sem textos legíveis, sem logotipos, sem marcas d'água, sem molduras e sem antes/depois.",
     ].filter(Boolean).join("\n");
 
     try {

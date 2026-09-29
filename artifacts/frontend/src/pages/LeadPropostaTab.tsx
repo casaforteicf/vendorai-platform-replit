@@ -208,6 +208,153 @@ function normalizeProposalPresentationMode(value: unknown): ProposalPresentation
     : "completo";
 }
 
+type ProposalStageVisualHint = {
+  visualType: string;
+  label: string;
+  description: string;
+  suggestions: string[];
+};
+
+function proposalStageVisualHint(stageName: string): ProposalStageVisualHint {
+  const name = String(stageName || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  if (/projeto|legaliza|aprovacao|alvara|documentacao|arquitet/.test(name)) {
+    return {
+      visualType: "planejamento_aprovacao",
+      label: "Planejamento, projeto e aprovação",
+      description: "A imagem deve mostrar plantas, documentação, análise técnica e interação profissional — não obra pesada.",
+      suggestions: [
+        "Mostrar planta e documentação",
+        "Reunião técnica com cliente",
+        "Aprovação e legalização",
+        "Arquiteto e engenheiro analisando projeto",
+      ],
+    };
+  }
+  if (/servicos preliminares|limpeza do terreno|canteiro|sondagem|spt|locacao/.test(name)) {
+    return {
+      visualType: "preparacao_inicial",
+      label: "Preparação inicial da obra",
+      description: "Mostrar limpeza, locação, canteiro, gabarito ou sondagem conforme o escopo.",
+      suggestions: ["Preparação do terreno", "Locação da obra", "Organização do canteiro", "Mais técnico"],
+    };
+  }
+  if (/terraplen|movimentacao de terra|nivelamento/.test(name)) {
+    return {
+      visualType: "movimento_terra",
+      label: "Movimentação de terra",
+      description: "Mostrar escavação, nivelamento ou compactação com equipamento coerente.",
+      suggestions: ["Máquinas em operação", "Nivelamento do terreno", "Preparação do solo", "Mais realista"],
+    };
+  }
+  if (/radier|fundac|sapata|baldrame|estaca/.test(name)) {
+    return {
+      visualType: "fundacao",
+      label: "Fundação",
+      description: "Mostrar somente o sistema de fundação realmente previsto no escopo.",
+      suggestions: ["Ferragem e formas", "Base estrutural", "Execução técnica da fundação", "Mais detalhado"],
+    };
+  }
+  if (/laje/.test(name)) {
+    return {
+      visualType: "laje",
+      label: "Laje",
+      description: "Mostrar execução da laje conforme o sistema previsto.",
+      suggestions: ["Execução da laje", "Ferragem e formas", "Mais técnico", "Mais realista"],
+    };
+  }
+  if (/cobertura|telha|rufo|calha|telhado/.test(name)) {
+    return {
+      visualType: "cobertura",
+      label: "Cobertura",
+      description: "Mostrar telhado, estrutura, telhas, rufos ou calhas conforme o escopo.",
+      suggestions: ["Estrutura do telhado", "Montagem da cobertura", "Mais comercial", "Mais técnico"],
+    };
+  }
+  if (/hidraul|hidrossanit|tubulacao|esgoto|agua|pex|cisterna|boiler|pressur/.test(name)) {
+    return {
+      visualType: "instalacao_hidraulica",
+      label: "Instalações hidráulicas",
+      description: "Mostrar tubulações, conexões, shafts e pontos hidráulicos coerentes.",
+      suggestions: ["Tubulações aparentes", "Pontos hidráulicos", "Infraestrutura técnica", "Mais detalhado"],
+    };
+  }
+  if (/eletric|quadro|cabo|eletroduto|corrugad|fiacao|iluminacao/.test(name)) {
+    return {
+      visualType: "instalacao_eletrica",
+      label: "Instalações elétricas",
+      description: "Mostrar eletrodutos, caixas, cabeamento e quadro elétrico coerentes.",
+      suggestions: ["Eletrodutos e pontos", "Infraestrutura elétrica", "Mais técnico", "Mais detalhado"],
+    };
+  }
+  if (/esquadria|porta|janela/.test(name)) {
+    return {
+      visualType: "esquadrias",
+      label: "Esquadrias",
+      description: "Mostrar instalação ou detalhe técnico-comercial da esquadria prevista.",
+      suggestions: ["Instalação de esquadrias", "Detalhe de portas e janelas", "Mais premium", "Mais comercial"],
+    };
+  }
+  if (/porcelanato|revestimento|ceramica/.test(name)) {
+    return {
+      visualType: "revestimento_acabamento",
+      label: "Revestimentos",
+      description: "Mostrar aplicação e acabamento do revestimento real da etapa.",
+      suggestions: ["Aplicação de revestimentos", "Acabamento interno", "Mais premium", "Mais comercial"],
+    };
+  }
+  if (/forro.*pintura|pintura.*forro/.test(name)) {
+    return {
+      visualType: "acabamento_interno",
+      label: "Forro e pintura",
+      description: "Mostrar acabamento de forro e paredes, sem desviar para estrutura ou fachada.",
+      suggestions: ["Forro de gesso", "Parede pintada", "Acabamento premium", "Mais realista"],
+    };
+  }
+  if (/forro|gesso/.test(name)) {
+    return {
+      visualType: "forro",
+      label: "Forro",
+      description: "Mostrar forro, recortes, sancas e detalhes de execução coerentes.",
+      suggestions: ["Forro de gesso", "Detalhe de acabamento", "Mais técnico", "Mais premium"],
+    };
+  }
+  if (/massa corrida|pintura/.test(name)) {
+    return {
+      visualType: "pintura",
+      label: "Pintura",
+      description: "Mostrar preparação ou acabamento de pintura com foco na superfície.",
+      suggestions: ["Preparação de parede", "Pintura final", "Mais premium", "Mais realista"],
+    };
+  }
+  if (/icf|estrutura|elevacao|paredes/.test(name)) {
+    return {
+      visualType: "estrutura",
+      label: "Estrutura",
+      description: "Mostrar o sistema estrutural real da etapa, sem inventar outro método.",
+      suggestions: ["Montagem estrutural", "Paredes em execução", "Mostrar sistema construtivo", "Mais técnico"],
+    };
+  }
+  if (/limpeza final|entrega/.test(name)) {
+    return {
+      visualType: "entrega_final",
+      label: "Limpeza final e entrega",
+      description: "Mostrar ambiente concluído, limpo e pronto para uso.",
+      suggestions: ["Ambiente finalizado", "Entrega ao cliente", "Mais comercial", "Mais premium"],
+    };
+  }
+
+  return {
+    visualType: "etapa_generica",
+    label: "Etapa do orçamento",
+    description: "A imagem deve seguir o nome e o escopo real desta etapa, sem usar cena genérica incompatível.",
+    suggestions: ["Mais técnico", "Mais comercial", "Mais realista"],
+  };
+}
+
 const BASE = typeof import.meta.env !== "undefined" && import.meta.env.BASE_URL
   ? import.meta.env.BASE_URL.replace(/\/$/, "")
   : "";
@@ -638,6 +785,9 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
   })();
   const stageImageDialogStage = stageImageDialogTarget
     ? selectedOrcamentoStages.find((stage) => stage.id === stageImageDialogTarget) ?? null
+    : null;
+  const stageImageDialogVisualHint = stageImageDialogStage
+    ? proposalStageVisualHint(stageImageDialogStage.nome)
     : null;
   const stageMediaLibraryStage = stageMediaLibraryTarget
     ? selectedOrcamentoStages.find((stage) => stage.id === stageMediaLibraryTarget) ?? null
@@ -4677,6 +4827,11 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                   <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
                     A IA já recebe automaticamente o nome e o escopo real desta etapa. Use o campo abaixo para dizer exatamente o que quer ver na imagem.
                   </p>
+                  {stageImageDialogVisualHint && (
+                    <div className="mt-2 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-2 text-[10px] text-violet-900">
+                      <strong>{stageImageDialogVisualHint.label}:</strong> {stageImageDialogVisualHint.description}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -4685,11 +4840,13 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                 <Textarea
                   value={stageImageDialogPrompt}
                   onChange={(event) => setStageImageDialogPrompt(event.target.value)}
-                  placeholder={`Ex.: representar "${stageImageDialogStage.nome}" com uma cena profissional, coerente com o escopo da etapa, foco no processo técnico e aparência fotográfica realista.`}
+                  placeholder={stageImageDialogVisualHint?.visualType === "planejamento_aprovacao"
+                    ? 'Ex.: mostrar arquiteto e cliente analisando planta e documentação de aprovação em ambiente técnico profissional, sem obra pesada.'
+                    : `Ex.: representar "${stageImageDialogStage.nome}" com uma cena profissional, coerente com o escopo da etapa, foco no processo técnico e aparência fotográfica realista.`}
                   className="min-h-[130px] resize-y"
                 />
                 <div className="flex flex-wrap gap-2">
-                  {["Mais técnico", "Mais comercial", "Mais institucional", "Mais realista", "Mostrar profissionais trabalhando"].map((suggestion) => (
+                  {(stageImageDialogVisualHint?.suggestions ?? ["Mais técnico", "Mais comercial", "Mais realista"]).map((suggestion) => (
                     <Button
                       key={suggestion}
                       type="button"
