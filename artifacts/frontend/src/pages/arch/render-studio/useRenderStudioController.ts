@@ -39,8 +39,15 @@ const SK = {
 } as const;
 
 function normalizeRenderVersion(version: RenderVersion): RenderVersion {
-  const normalized = normalizeRenderMediaUrl(version.url);
-  return normalized && normalized !== version.url ? { ...version, url: normalized } : version;
+  const normalizedUrl = normalizeRenderMediaUrl(version.url);
+  return {
+    ...version,
+    url: normalizedUrl || version.url,
+    createdAt: version.createdAt instanceof Date ? version.createdAt : new Date(version.createdAt),
+    approvedAt: version.approvedAt
+      ? (version.approvedAt instanceof Date ? version.approvedAt : new Date(version.approvedAt))
+      : undefined,
+  };
 }
 
 export function useRenderStudioController() {
@@ -192,11 +199,30 @@ export function useRenderStudioController() {
   }, []);
 
   useEffect(() => { sessionStorage.setItem(SK.step, step); }, [step]);
-  useEffect(() => { if (ambiente) sessionStorage.setItem(SK.ambiente, ambiente); }, [ambiente]);
-  useEffect(() => { if (renderId) sessionStorage.setItem(SK.renderId, renderId); }, [renderId]);
-  useEffect(() => { if (renderUrl) sessionStorage.setItem(SK.renderUrl, renderUrl); }, [renderUrl]);
-  useEffect(() => { try { sessionStorage.setItem(SK.versions, JSON.stringify(versions)); } catch {} }, [versions]);
-  useEffect(() => { if (imageDataUrl) { try { sessionStorage.setItem(SK.imageUrl, imageDataUrl); } catch {} } }, [imageDataUrl]);
+  useEffect(() => {
+    if (ambiente) sessionStorage.setItem(SK.ambiente, ambiente);
+    else sessionStorage.removeItem(SK.ambiente);
+  }, [ambiente]);
+  useEffect(() => {
+    if (renderId) sessionStorage.setItem(SK.renderId, renderId);
+    else sessionStorage.removeItem(SK.renderId);
+  }, [renderId]);
+  useEffect(() => {
+    if (renderUrl) sessionStorage.setItem(SK.renderUrl, renderUrl);
+    else sessionStorage.removeItem(SK.renderUrl);
+  }, [renderUrl]);
+  useEffect(() => {
+    try {
+      if (versions.length > 0) sessionStorage.setItem(SK.versions, JSON.stringify(versions));
+      else sessionStorage.removeItem(SK.versions);
+    } catch {}
+  }, [versions]);
+  useEffect(() => {
+    try {
+      if (imageDataUrl) sessionStorage.setItem(SK.imageUrl, imageDataUrl);
+      else sessionStorage.removeItem(SK.imageUrl);
+    } catch {}
+  }, [imageDataUrl]);
 
   // Elapsed time
   useEffect(() => {
