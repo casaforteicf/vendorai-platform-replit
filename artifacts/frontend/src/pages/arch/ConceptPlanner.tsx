@@ -49,7 +49,7 @@ import type { ConceptPlanObject } from "./ConceptPlan2D";
 
 import type { AIDevelopmentResponse } from "./ConceptFacadeEditor";
 
-import { CONCEPT_JOURNEY, conceptJourneyContinueLabel, conceptJourneyIndex } from "./conceptJourney";
+import { buildConceptJourney, conceptJourneyContinueLabel, conceptJourneyIndex } from "./conceptJourney";
 
 import { DEFAULT_SITE_PLACEMENT, getBuildingBounds, migrateLegacySitePlacement, normalizeSitePlacement, resolveSiteSetbacks, type SitePlacement } from "./conceptSitePlacement";
 import { type ClientBriefAlternative, type ProjectBriefSnapshot } from "./conceptClientBrief";
@@ -478,6 +478,8 @@ type ConceptDraftResponse = {
     startWithTerrain?: boolean;
     startSourceChosen?: boolean;
     intakeStage?: ConceptIntakeStage;
+    terrainDefined?: boolean;
+    workspaceBounds?: { width: number; depth: number };
     facadeDesign?: FacadeDesignState;
     projectMaster?: {
       version: number;
@@ -1053,6 +1055,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [renderLightingOverride, setRenderLightingOverride] = useState<"day" | "sunset" | "night" | null>(null);
   const [projectScope, setProjectScope] = useState<ConceptProjectScope | null>(null);
   const [startWithTerrain, setStartWithTerrain] = useState<boolean | null>(null);
+  const [terrainDefined, setTerrainDefined] = useState(false);
   const [startSourceChosen, setStartSourceChosen] = useState(false);
   const [startWizardStage, setStartWizardStage] = useState<ConceptStartWizardStage>("kind");
   const [intakeStage, setIntakeStage] = useState<ConceptIntakeStage>("kind");
@@ -1096,6 +1099,20 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [editorLibraryTab, setEditorLibraryTab] = useState<EditorLibraryTab>("site");
   const [libraryOpen, setLibraryOpen] = useState(() => typeof window === "undefined" ? true : window.innerWidth >= 768);
   const [mobileValidationOpen, setMobileValidationOpen] = useState(false);
+
+  useEffect(() => {
+    if (projectScope === "room") {
+      if (editorView === "facade") setEditorView("model3d");
+      if (editorLibraryTab === "site" || editorLibraryTab === "placement" || editorLibraryTab === "outdoor") {
+        setEditorLibraryTab(startSourceChosen ? "build" : "brief");
+      }
+      return;
+    }
+    if (projectScope === "house" && !terrainDefined && (editorLibraryTab === "site" || editorLibraryTab === "placement")) {
+      setEditorLibraryTab(startSourceChosen ? "build" : "brief");
+    }
+  }, [projectScope, terrainDefined, editorView, editorLibraryTab, startSourceChosen]);
+
   const closeLibraryOnMobile = () => {
     if (typeof window !== "undefined" && window.innerWidth < 768) setLibraryOpen(false);
   };
@@ -1401,6 +1418,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
             conceptIdRef.current = null;
             setProjectScope(null);
             setStartWithTerrain(null);
+            setTerrainDefined(false);
             setStartSourceChosen(false);
             setStartWizardStage("kind");
             setIntakeStage("kind");
@@ -1489,6 +1507,11 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
         setProjectScope(loadedScope === "house" || loadedScope === "room" ? loadedScope : null);
         setStartWithTerrain(loadedStartWithTerrain);
+        setTerrainDefined(
+          typeof draft.configuration?.terrainDefined === "boolean"
+            ? draft.configuration.terrainDefined
+            : loadedScope === "house" && loadedStartWithTerrain === true,
+        );
         setStartSourceChosen(loadedStartSourceChosen);
         setIntakeStage(migratedIntakeStage);
         setStartWizardStage(
@@ -1572,6 +1595,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         startWithTerrain: startWithTerrain ?? undefined,
         startSourceChosen,
         intakeStage,
+        terrainDefined,
+        workspaceBounds: { width: lotWidth, depth: lotDepth },
         facadeDesign: nextFacadeDesign,
       },
       rooms: nextRooms,
@@ -1629,12 +1654,12 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const autosaveKey = useMemo(() => JSON.stringify([
     rooms, customWalls, customOpenings, objects, openingOverrides, wallMaterials,
     lotWidth, lotDepth, floors, desiredArea, typology, layoutPreferences, sitePlacement, projectBrief,
-    projectScope, startWithTerrain, startSourceChosen, intakeStage,
+    projectScope, startWithTerrain, terrainDefined, startSourceChosen, intakeStage,
     facadePreferences, spaceProfiles, customerProfile, showDimensions, wallFirstFloors,
   ]), [
     rooms, customWalls, customOpenings, objects, openingOverrides, wallMaterials,
     lotWidth, lotDepth, floors, desiredArea, typology, layoutPreferences, sitePlacement, projectBrief,
-    projectScope, startWithTerrain, startSourceChosen, intakeStage,
+    projectScope, startWithTerrain, terrainDefined, startSourceChosen, intakeStage,
     facadePreferences, spaceProfiles, customerProfile, showDimensions, wallFirstFloors,
   ]);
   const [lastSavedKey, setLastSavedKey] = useState<string | null>(null);
@@ -1686,18 +1711,17 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((customerProfile.email ?? "").trim())
     );
 
-  const journeyIndex = conceptJourneyIndex({ step, editorView, libraryTab: editorLibraryTab });
-  const journeyStages = useMemo(() => CONCEPT_JOURNEY.map((stage) => {
-    if (projectScope === "room") {
-      if (stage.id === "terreno") return { ...stage, label: "Ambiente", helper: "Projeto de um espaço isolado, sem exigir terreno." };
-      if (stage.id === "casa") return { ...stage, label: "Briefing", helper: "Defina o ambiente por IA, referência, desenho ou importação." };
-      if (stage.id === "fachada") return { ...stage, label: "Visual", helper: "Revise o 3D e gere a imagem realista do ambiente." };
-    }
-    if (projectScope === "house" && startWithTerrain === false && stage.id === "terreno") {
-      return { ...stage, label: "Início", helper: "Terreno opcional: ele pode ser informado ou ajustado depois." };
-    }
-    return stage;
-  }), [projectScope, startWithTerrain]);
+  const journeyStages = useMemo(
+    () => buildConceptJourney({ scope: projectScope, terrainDefined }),
+    [projectScope, terrainDefined],
+  );
+  const journeyIndex = conceptJourneyIndex({
+    step,
+    editorView,
+    libraryTab: editorLibraryTab,
+    scope: projectScope,
+    terrainDefined,
+  });
 
   const goToJourneyStage = (index: number) => {
     if (index > journeyIndex && blockingLayoutIssues.length > 0) {
@@ -1705,34 +1729,58 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       return;
     }
     const isWide = typeof window !== "undefined" && window.innerWidth >= 768;
-    if (index >= 4) {
+    const stage = journeyStages[Math.max(0, Math.min(index, journeyStages.length - 1))];
+    if (!stage || stage.id === "send") {
       void saveConcept(RESULT_STEP);
       setStep(RESULT_STEP);
       window.scrollTo({ top: 0 });
       return;
     }
+
     setStep(WORKSPACE_STEP);
-    if (index === 0) {
+
+    if (stage.id === "terrain") {
       setEditorView("plan");
       setEditorLibraryTab("site");
       setLibraryOpen(true);
-    } else if (index === 1) {
+      return;
+    }
+
+    if (stage.id === "brief") {
       setEditorView("plan");
-      setEditorLibraryTab(editorExperienceMode === "professional" ? "models" : "brief");
+      setEditorLibraryTab("brief");
+      setLibraryOpen(true);
+      return;
+    }
+
+    if (stage.id === "plan") {
+      setEditorView("plan");
+      setEditorLibraryTab(editorExperienceMode === "professional" ? "build" : (projectScope === "room" ? "rooms" : "build"));
       setLibraryOpen(true);
       if (projectScope === "house" && intakeStage === "terrain_editor") {
         setIntakeStage("source");
         setStartWizardStage("source");
         setStartChooserDismissed(false);
       }
-    } else if (index === 2) {
-      setEditorView("plan");
-      if (!["build", "furniture", "materials", "outdoor"].includes(editorLibraryTab)) setEditorLibraryTab("build");
-      setLibraryOpen(isWide);
-    } else {
-      setEditorView("facade");
-      setLibraryOpen(false);
+      return;
     }
+
+    if (stage.id === "decorate" || stage.id === "adjustments") {
+      setEditorView("plan");
+      setEditorLibraryTab(stage.id === "decorate" ? "furniture" : "build");
+      setLibraryOpen(isWide);
+      return;
+    }
+
+    if (stage.id === "render") {
+      setEditorView("model3d");
+      setLibraryOpen(false);
+      return;
+    }
+
+    // Casa: visual = fachada/3D. Ambiente nunca entra no editor de fachada.
+    setEditorView(projectScope === "room" ? "model3d" : "facade");
+    setLibraryOpen(false);
   };
 
   const publicLinkUrl = publicLink ? `${window.location.origin}/projeto/${publicLink.slug}` : "";
@@ -2014,7 +2062,21 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const safeObjects = Array.isArray(objects) ? objects : [];
   // Etapa 1 é exclusivamente o terreno. Mesmo que um rascunho antigo já tenha
   // planta salva, ela fica oculta até o usuário avançar para Casa/Ajustes.
-  const terrainOnly = editorView === "plan" && editorLibraryTab === "site";
+  const terrainOnly = terrainDefined && editorView === "plan" && editorLibraryTab === "site";
+  const referenceImportStage =
+    referencePlanState === "uploading"
+      ? "uploading"
+      : referenceTraceState === "loading"
+        ? "analyzing"
+        : referenceTraceState === "applied"
+          ? "editable"
+          : referenceTraceState === "ready"
+            ? "review"
+            : referenceTraceState === "error"
+              ? "error"
+              : referencePlan?.kind === "image"
+                ? "received"
+                : "idle";
   const referenceReviewActive = editorView === "plan" && referencePlan?.kind === "image" && referenceTraceState !== "applied";
   const hideCurrentGeometryForReferenceReview = referenceReviewActive;
   const showReferenceImage = referencePlan?.kind === "image" && referenceDisplayMode !== "vector";
@@ -6167,7 +6229,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       <h2 className="mt-1 text-2xl font-bold text-slate-950">O que você quer projetar?</h2>
                       <p className="mt-1 text-sm leading-6 text-slate-500">Isso define a jornada correta antes de pedir terreno, planta ou referências.</p>
                       <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                        <button type="button" onClick={() => { setProjectScope("house"); setStartWithTerrain(null); setIntakeStage("terrain_choice"); setStartWizardStage("terrain"); setStartChooserDismissed(false); }}
+                        <button type="button" onClick={() => { setProjectScope("house"); setStartWithTerrain(null); setTerrainDefined(false); setIntakeStage("terrain_choice"); setStartWizardStage("terrain"); setStartChooserDismissed(false); }}
                           className="group min-h-36 rounded-2xl border-2 border-orange-400 bg-orange-50 p-5 text-left transition hover:border-orange-500 hover:bg-orange-100/70">
                           <div className="flex items-start gap-4">
                             <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-orange-500 text-white"><Home className="h-5 w-5" /></span>
@@ -6178,6 +6240,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         <button type="button" onClick={() => {
                           setProjectScope("room");
                           setStartWithTerrain(false);
+                          setTerrainDefined(false);
                           setIntakeStage("source");
                           setLotWidth(8); setLotDepth(8); setDesiredArea(25); setFloors(1);
                           setStartWizardStage("source");
@@ -6197,13 +6260,14 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
                   {startWizardStage === "terrain" && (
                     <>
-                      <button type="button" onClick={() => { setProjectScope(null); setStartWithTerrain(null); setIntakeStage("kind"); setStartWizardStage("kind"); setStartChooserDismissed(false); }} className="mb-3 text-xs font-semibold text-slate-500 hover:text-slate-900">← Voltar</button>
+                      <button type="button" onClick={() => { setProjectScope(null); setStartWithTerrain(null); setTerrainDefined(false); setIntakeStage("kind"); setStartWizardStage("kind"); setStartChooserDismissed(false); }} className="mb-3 text-xs font-semibold text-slate-500 hover:text-slate-900">← Voltar</button>
                       <div className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-500">Casa completa</div>
                       <h2 className="mt-1 text-2xl font-bold text-slate-950">Quer começar pelo terreno?</h2>
                       <p className="mt-1 text-sm leading-6 text-slate-500">Se você já conhece o lote, o Arqdor usa medidas, frente e recuos desde a primeira proposta. Se não conhece, pode começar pela casa e informar o terreno depois.</p>
                       <div className="mt-6 grid gap-3 sm:grid-cols-2">
                         <button type="button" onClick={() => {
                           setStartWithTerrain(true);
+                          setTerrainDefined(true);
                           setIntakeStage("terrain_editor");
                           setStartChooserDismissed(true);
                           setEditorView("plan"); setEditorLibraryTab("site"); setLibraryOpen(true);
@@ -6214,6 +6278,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         </button>
                         <button type="button" onClick={() => {
                           setStartWithTerrain(false);
+                          setTerrainDefined(false);
                           setIntakeStage("source");
                           setStartWizardStage("source");
                           setStartChooserDismissed(false);
@@ -6229,7 +6294,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
                   {startWizardStage === "source" && (
                     <>
-                      <button type="button" onClick={() => { if (projectScope === "house") { setIntakeStage("terrain_choice"); setStartWizardStage("terrain"); } else { setProjectScope(null); setStartWithTerrain(null); setIntakeStage("kind"); setStartWizardStage("kind"); } setStartChooserDismissed(false); }} className="mb-3 text-xs font-semibold text-slate-500 hover:text-slate-900">← Voltar</button>
+                      <button type="button" onClick={() => { if (projectScope === "house") { setIntakeStage("terrain_choice"); setStartWizardStage("terrain"); } else { setProjectScope(null); setStartWithTerrain(null); setTerrainDefined(false); setIntakeStage("kind"); setStartWizardStage("kind"); } setStartChooserDismissed(false); }} className="mb-3 text-xs font-semibold text-slate-500 hover:text-slate-900">← Voltar</button>
                       <div className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-500">{projectScope === "room" ? "Ambiente" : "Projeto"}</div>
                       <h2 className="mt-1 text-2xl font-bold text-slate-950">Como você quer começar?</h2>
                       <p className="mt-1 text-sm leading-6 text-slate-500">
@@ -6331,7 +6396,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                 <div className="flex shrink-0 rounded-xl border bg-slate-50 p-1">
                   {(journeyIndex === 2
                     ? ([["plan", "Planta 2D"], ["model3d", "3D"]] as const)
-                    : ([["facade", "Fachada"], ["render", "Imagem"]] as const)
+                    : projectScope === "room"
+                      ? ([["model3d", "3D"], ["render", "Imagem"]] as const)
+                      : ([["facade", "Fachada"], ["render", "Imagem"]] as const)
                   ).map(([value, label]) => (
                     <button
                       key={value}
@@ -6364,7 +6431,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   <Sparkles className="h-4 w-4" /> Corrigir planta
                 </button>
               )}
-              {conceptJourneyContinueLabel(journeyIndex) && (
+              {conceptJourneyContinueLabel(journeyIndex, journeyStages) && (
                 <button
                   type="button"
                   onClick={() => goToJourneyStage(journeyIndex + 1)}
@@ -6372,7 +6439,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   title={blockingLayoutIssues.length > 0 ? "Corrija os erros arquitetônicos antes de avançar." : undefined}
                   className="arq-journey-continue inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-xl bg-orange-500 px-4 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600 disabled:shadow-none"
                 >
-                  {blockingLayoutIssues.length > 0 ? "Corrija os erros" : conceptJourneyContinueLabel(journeyIndex)} <ArrowRight className="h-4 w-4" />
+                  {blockingLayoutIssues.length > 0 ? "Corrija os erros" : conceptJourneyContinueLabel(journeyIndex, journeyStages)} <ArrowRight className="h-4 w-4" />
                 </button>
               )}
             </div>
@@ -6524,11 +6591,13 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         ["materials", Paintbrush, editorExperienceMode === "guided" ? "Acabamentos" : "Materiais"],
                         ["outdoor", Trees, "Externo"],
                       ] as Array<[EditorLibraryTab, typeof Ruler, string]>)
-                        .filter(([value]) => terrainOnly
-                          ? value === "site"
-                          : editorExperienceMode === "professional"
-                            ? value !== "brief" && value !== "placement"
-                            : true)
+                        .filter(([value]) => {
+                          if (terrainOnly) return value === "site";
+                          if (projectScope === "room" && (value === "site" || value === "placement" || value === "outdoor")) return false;
+                          if (projectScope === "house" && !terrainDefined && (value === "site" || value === "placement")) return false;
+                          if (editorExperienceMode === "professional") return value !== "brief" && value !== "placement";
+                          return true;
+                        })
                         .map(([value, Icon, label]) => (
                         <button
                           key={value}
@@ -6617,7 +6686,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                               min={5}
                               step={0.1}
                               value={lotWidth}
-                              onChange={(event) => setLotWidth(Math.max(5, Number(event.target.value) || 5))}
+                              onChange={(event) => { setTerrainDefined(true); setLotWidth(Math.max(5, Number(event.target.value) || 5)); }}
                               className="w-full bg-transparent text-sm font-semibold outline-none"
                             />
                             <span className="text-xs text-slate-400">m</span>
@@ -6631,7 +6700,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                               min={10}
                               step={0.1}
                               value={lotDepth}
-                              onChange={(event) => setLotDepth(Math.max(10, Number(event.target.value) || 10))}
+                              onChange={(event) => { setTerrainDefined(true); setLotDepth(Math.max(10, Number(event.target.value) || 10)); }}
                               className="w-full bg-transparent text-sm font-semibold outline-none"
                             />
                             <span className="text-xs text-slate-400">m</span>
@@ -9070,8 +9139,39 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50/60 p-3 text-xs">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
-                        <div className="font-semibold text-blue-950">Croqui → planta editável</div>
-                        <div className="mt-0.5 text-blue-800/80">A IA interpreta o desenho, gera paredes e aberturas e mostra a sobreposição antes de substituir qualquer geometria atual.</div>
+                        <div className="font-semibold text-blue-950">Importação da planta</div>
+                        <div className="mt-0.5 text-blue-800/80">
+                          {referenceImportStage === "uploading"
+                            ? "Enviando a referência..."
+                            : referenceImportStage === "analyzing"
+                              ? "Analisando paredes, portas, janelas e topologia..."
+                              : referenceImportStage === "review"
+                                ? "Leitura concluída. Revise a sobreposição antes de substituir geometria existente."
+                                : referenceImportStage === "editable"
+                                  ? "Planta editável criada. A imagem original continua disponível como referência."
+                                  : referenceImportStage === "error"
+                                    ? "A leitura precisa de revisão antes de continuar."
+                                    : "A imagem será convertida em geometria editável, não apenas inserida no canvas."}
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {[
+                            ["uploading", "1. Enviar"],
+                            ["analyzing", "2. Analisar"],
+                            ["review", "3. Revisar"],
+                            ["editable", "4. Editável"],
+                          ].map(([stage, label]) => {
+                            const order = { uploading: 0, analyzing: 1, review: 2, editable: 3 } as const;
+                            const current = referenceImportStage in order ? order[referenceImportStage as keyof typeof order] : -1;
+                            const target = order[stage as keyof typeof order];
+                            return (
+                              <span key={stage} className={current >= target
+                                ? "rounded-full bg-blue-700 px-2 py-1 text-[10px] font-bold text-white"
+                                : "rounded-full border border-blue-200 bg-white px-2 py-1 text-[10px] font-semibold text-blue-500"}>
+                                {label}
+                              </span>
+                            );
+                          })}
+                        </div>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <button
@@ -9080,7 +9180,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           disabled={referenceTraceState === "loading"}
                           className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 font-semibold text-blue-800 disabled:opacity-50"
                         >
-                          {referenceTraceState === "loading" ? "Gerando planta..." : "Gerar planta com IA"}
+                          {referenceTraceState === "loading" ? "Analisando..." : referenceTraceState === "applied" ? "Analisar novamente" : "Tentar leitura novamente"}
                         </button>
                         {referenceTracePreview?.canApply && (
                           <button

@@ -1,12 +1,79 @@
 import { describe, expect, it } from "vitest";
-import { CONCEPT_JOURNEY, conceptJourneyContinueLabel, conceptJourneyIndex } from "./conceptJourney";
+import {
+  CONCEPT_JOURNEY,
+  buildConceptJourney,
+  conceptJourneyContinueLabel,
+  conceptJourneyIndex,
+} from "./conceptJourney";
 
 describe("conceptJourney", () => {
-  it("tem 5 etapas na ordem do usuário", () => {
+  it("mantém a jornada residencial legada compatível", () => {
     expect(CONCEPT_JOURNEY.map((stage) => stage.label)).toEqual(["Terreno", "Projeto", "Ajustes", "Fachada", "Enviar"]);
   });
 
-  it("mapeia abas e visões para a etapa certa", () => {
+  it("cria jornada real para ambiente sem terreno e sem fachada", () => {
+    const stages = buildConceptJourney({ scope: "room", terrainDefined: false });
+    expect(stages.map((stage) => stage.label)).toEqual([
+      "Briefing",
+      "Layout",
+      "Materiais e mobiliário",
+      "Render",
+      "Apresentar",
+    ]);
+    expect(stages.some((stage) => stage.id === "terrain")).toBe(false);
+    expect(stages.some((stage) => stage.id === "visual")).toBe(false);
+  });
+
+  it("cria jornada de casa sem terreno sem inventar lote", () => {
+    const stages = buildConceptJourney({ scope: "house", terrainDefined: false });
+    expect(stages.map((stage) => stage.label)).toEqual([
+      "Briefing",
+      "Planta",
+      "Ajustes",
+      "Visual",
+      "Apresentar",
+    ]);
+    expect(stages.some((stage) => stage.id === "terrain")).toBe(false);
+  });
+
+  it("mantém terreno como primeira etapa somente quando ele foi definido", () => {
+    const stages = buildConceptJourney({ scope: "house", terrainDefined: true });
+    expect(stages[0].id).toBe("terrain");
+    expect(stages[0].label).toBe("Terreno");
+  });
+
+  it("mapeia a jornada de ambiente sem cair em fachada", () => {
+    expect(conceptJourneyIndex({
+      step: 4,
+      editorView: "plan",
+      libraryTab: "brief",
+      scope: "room",
+      terrainDefined: false,
+    })).toBe(0);
+    expect(conceptJourneyIndex({
+      step: 4,
+      editorView: "plan",
+      libraryTab: "build",
+      scope: "room",
+      terrainDefined: false,
+    })).toBe(1);
+    expect(conceptJourneyIndex({
+      step: 4,
+      editorView: "plan",
+      libraryTab: "materials",
+      scope: "room",
+      terrainDefined: false,
+    })).toBe(2);
+    expect(conceptJourneyIndex({
+      step: 4,
+      editorView: "model3d",
+      libraryTab: "materials",
+      scope: "room",
+      terrainDefined: false,
+    })).toBe(3);
+  });
+
+  it("mapeia abas e visões residenciais legadas para a etapa certa", () => {
     expect(conceptJourneyIndex({ step: 4, editorView: "plan", libraryTab: "site" })).toBe(0);
     expect(conceptJourneyIndex({ step: 4, editorView: "plan", libraryTab: "brief" })).toBe(1);
     expect(conceptJourneyIndex({ step: 4, editorView: "plan", libraryTab: "models" })).toBe(1);
@@ -18,9 +85,10 @@ describe("conceptJourney", () => {
     expect(conceptJourneyIndex({ step: 6, editorView: "plan", libraryTab: "site" })).toBe(4);
   });
 
-  it("não oferece continuar na última etapa", () => {
-    expect(conceptJourneyContinueLabel(0)).toBe("Continuar: Projeto");
-    expect(conceptJourneyContinueLabel(3)).toBe("Revisar e enviar");
-    expect(conceptJourneyContinueLabel(4)).toBeNull();
+  it("gera CTA a partir da jornada adaptativa", () => {
+    const roomStages = buildConceptJourney({ scope: "room", terrainDefined: false });
+    expect(conceptJourneyContinueLabel(0, roomStages)).toBe("Continuar: Layout");
+    expect(conceptJourneyContinueLabel(3, roomStages)).toBe("Revisar e apresentar");
+    expect(conceptJourneyContinueLabel(4, roomStages)).toBeNull();
   });
 });

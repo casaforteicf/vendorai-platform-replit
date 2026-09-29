@@ -786,10 +786,10 @@ function conceptGeometryHealth(concept: { rooms: unknown; configuration: unknown
     score -= 8;
     messages.push("Sem paredes personalizadas persistidas; o envelope pode ser inferido a partir dos ambientes.");
   }
+  const projectScope = String(configuration.projectScope ?? "house");
   const hasGarage = rooms.some((room) => String(room.kind ?? "").toLowerCase() === "garagem");
-  if (!hasGarage) {
-    score -= 4;
-    messages.push("Garagem não identificada; a IA não deve inventar portão ou volume de garagem.");
+  if (projectScope === "house" && !hasGarage) {
+    messages.push("Garagem não identificada. Não invente garagem, portão ou volume se o briefing não exigir.");
   }
 
   score = Math.max(0, Math.min(100, score));
@@ -2388,14 +2388,29 @@ router.post("/arch/concept-projects/:id/develop-with-ai", authenticate, async (r
     vision: projectBrief?.vision ?? null,
   });
 
+  const projectScope = config.projectScope === "room" ? "room" : "house";
+  const terrainDefined = config.terrainDefined === true;
+  const scopeDirective = projectScope === "room"
+    ? `ESCOPO: UM AMBIENTE / INTERIORES.
+- Trabalhe somente no espaço interior solicitado.
+- Não exigir terreno, implantação, garagem, fachada, paisagismo ou volumetria externa.
+- Priorize circulação, ergonomia, mobiliário, aberturas, iluminação, pontos técnicos e materiais.
+- Não transforme o ambiente em uma casa completa.`
+    : `ESCOPO: CASA COMPLETA.
+- Terreno real definido: ${terrainDefined ? "sim" : "não"}.
+- Se o terreno não estiver definido, trate as dimensões do workspace apenas como limites técnicos de edição; não faça conclusões de implantação, recuos ou orientação do lote.
+- Não invente garagem, piscina, pavimentos ou elementos externos ausentes do briefing.`;
+
   const prompt = `Você é o Copiloto de Desenvolvimento Arquitetônico do Arqdor.
-Analise este pré-projeto residencial brasileiro e proponha SOMENTE ajustes compatíveis com a geometria existente.
-NUNCA invente outro projeto, nunca troque o número de pavimentos, nunca mova a garagem sem necessidade e nunca crie aberturas sem justificativa.
+Analise o projeto brasileiro abaixo e proponha SOMENTE ajustes compatíveis com a geometria existente.
+NUNCA invente outro projeto, nunca troque o número de pavimentos e nunca crie aberturas sem justificativa.
+
+${scopeDirective}
 
 Modo: ${parsed.data.mode}
 Preservar layout: ${parsed.data.preserveLayout ? "sim" : "não"}
 Estilo desejado: ${requestedStyle}
-Lote: ${JSON.stringify(concept.lot)}
+${terrainDefined ? `Terreno real: ${JSON.stringify(concept.lot)}` : `Workspace técnico: ${JSON.stringify(config.workspaceBounds ?? concept.lot)}`}
 Configuração: ${JSON.stringify(config)}
 BRIEFING MESTRE / DNA DO PROJETO: ${JSON.stringify(config.projectBrief ?? null)}
 Ambientes: ${JSON.stringify(rooms)}
@@ -2439,7 +2454,8 @@ REGRAS DE GEOMETRIA:
 - Manter tudo dentro do lote.
 - wallSuggestions devem ser ortogonais e só devem existir quando realmente melhorarem o fechamento/circulação.
 - openingSuggestions só devem apontar para uma parede existente ou sugerida.
-- Preserve garagem, escada e circulação salvo erro claro de projeto.
+- Preserve escada e circulação salvo erro claro de projeto.
+${projectScope === "house" ? "- Preserve garagem apenas quando ela existir ou estiver explicitamente exigida pelo briefing." : "- Em ambiente, não criar garagem, fachada, terreno ou elementos externos."}
 
 REPERTÓRIO DE APOIO:
 ${developmentRepertoire}
@@ -2474,7 +2490,7 @@ Não substitua esse DNA por uma solução aleatória. Evolua o mesmo projeto e s
     return res.json({
       geometryHealth,
       layoutSuggestion,
-      facadeSuggestion: ai.facadeSuggestion ?? null,
+      facadeSuggestion: projectScope === "room" ? null : ai.facadeSuggestion ?? null,
       notes: Array.isArray(ai.notes) ? ai.notes : [],
       geometryWarnings: Array.isArray(ai.geometryWarnings) ? ai.geometryWarnings : [],
     });
