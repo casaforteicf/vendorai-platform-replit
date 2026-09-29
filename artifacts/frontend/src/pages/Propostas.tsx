@@ -154,6 +154,24 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
+type BudgetIntegrityIssue = {
+  code: string;
+  severity: "blocker" | "warning";
+  message: string;
+  field?: string;
+  stageId?: string;
+  itemIndex?: number;
+};
+
+type BudgetIntegrityReport = {
+  ok: boolean;
+  blockers: number;
+  warnings: number;
+  calculatedTotal: number;
+  storedTotal: number;
+  issues: BudgetIntegrityIssue[];
+};
+
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
   rascunho:  { label: "Rascunho",  className: "bg-zinc-100 text-zinc-600 border-zinc-200" },
   enviada:   { label: "Enviada",   className: "bg-blue-100 text-blue-700 border-blue-200" },
@@ -2267,6 +2285,9 @@ function newFreeItem(): FreeItem {
     const [adjustmentPolicy, setAdjustmentPolicy] = useState("");
     const [warrantyTerms, setWarrantyTerms] = useState("");
     const [detailedPaymentTerms, setDetailedPaymentTerms] = useState("");
+    const [integrityReport, setIntegrityReport] = useState<BudgetIntegrityReport | null>(null);
+    const [integrityLoading, setIntegrityLoading] = useState(false);
+
     const standardBudgetAppliedRef = useRef(false);
     // livre mode
     const [freeItems, setFreeItems] = useState<FreeItem[]>([newFreeItem()]);
@@ -3386,8 +3407,166 @@ function newFreeItem(): FreeItem {
     };
   }
 
+
+  function budgetIntegrityPreviewPayload() {
+    const vals = form.getValues();
+    let itens: Array<Record<string, unknown>> = [];
+
+    if (mode === "importar") {
+      if (importValorTotal && importValorTotal > 0) {
+        itens = [{
+          nome: "Orçamento importado de outro sistema",
+          quantidade: 1,
+          valorUnitario: roundBudgetNumber(importValorTotal),
+        }];
+      }
+    } else if (mode === "catalogo") {
+      const etapaOrder = new Map(orcamentoEtapas.map((etapa, index) => [etapa.id, index + 1]));
+      const etapaName = new Map(orcamentoEtapas.map((etapa, index) => [
+        etapa.id,
+        etapa.nome.trim() || `Etapa ${index + 1}`,
+      ]));
+      itens = orcamentoEtapas.flatMap((etapa) =>
+        cartLines
+          .filter((line) => line.etapaId === etapa.id && (
+            (line.tipo === "produto" && line.produtoId)
+            || (line.tipo === "composicao" && line.composicaoId)
+          ))
+          .map((line) => {
+            const produto = line.produtoId ? activeCatalog.find((item) => item.id === line.produtoId) : undefined;
+            const composicao = line.composicaoId ? composicoes.find((item) => item.id === line.composicaoId) : undefined;
+            const basePrice = produto ? Number(produto.precoBase ?? 0) : Number(composicao?.custoTotal ?? 0);
+            return {
+              nome: line.nomeOverride?.trim() || produto?.nome || composicao?.nome || "Item do orçamento",
+              quantidade: roundBudgetNumber(line.quantidade ?? 1),
+              valorUnitario: roundBudgetNumber(line.precoUnitarioOverride !== undefined ? line.precoUnitarioOverride : basePrice),
+              etapaId: line.etapaId,
+              etapaNome: etapaName.get(line.etapaId),
+              etapaOrdem: etapaOrder.get(line.etapaId),
+            };
+          })
+      );
+    } else {
+      itens = freeItems
+        .filter((item) => item.nome.trim())
+        .map((item) => ({
+          nome: item.nome.trim(),
+          quantidade: roundBudgetNumber(item.quantidade ?? 1),
+          valorUnitario: roundBudgetNumber(item.valorUnitario ?? 0),
+        }));
+    }
+
+    const valorTotal = itens.reduce(
+      (sum, item) => sum + Number(item.quantidade ?? 0) * Number(item.valorUnitario ?? 0),
+      0,
+    );
+
+    return {
+      tenantId,
+      itens,
+      valorTotal: roundBudgetNumber(valorTotal),
+      validadeAte: vals.validadeAte || null,
+      prazoEntrega: vals.prazoEntrega || null,
+      apresentacao: proposalPresentationConfig(),
+    };
+  }
+
+  function focusIntegrityIssue(issue?: BudgetIntegrityIssue) {
+    if (!issue) return;
+    const explicit = issue.field
+      ? document.querySelector<HTMLElement>(`[data-integrity-field="${issue.field}"]`)
+      : null;
+    const named = issue.field
+      ? document.querySelector<HTMLElement>(`[name="${issue.field}"]`)
+      : null;
+    const fallback =
+      issue.field === "itens" || issue.itemIndex !== undefined
+        ? document.querySelector<HTMLElement>('[data-integrity-field="itens"]')
+        : null;
+    const target = explicit ?? named ?? fallback;
+    target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    target?.focus?.();
+  }
+
+  useEffect(() => {
+    if (!open || mode === "template") {
+      setIntegrityReport(null);
+      setIntegrityLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setIntegrityLoading(true);
+      try {
+        const response = await fetch("/api/propostas/integrity/preview", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`,
+          },
+          body: JSON.stringify(budgetIntegrityPreviewPayload()),
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error("Falha ao validar orçamento");
+        setIntegrityReport(await response.json() as BudgetIntegrityReport);
+      } catch (error) {
+        if ((error as Error)?.name !== "AbortError") setIntegrityReport(null);
+      } finally {
+        if (!controller.signal.aborted) setIntegrityLoading(false);
+      }
+    }, 450);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [
+    open,
+    mode,
+    tenantId,
+    importValorTotal,
+    orcamentoEtapas,
+    cartLines,
+    freeItems,
+    activeCatalog,
+    composicoes,
+    presentationDefaultMode,
+    presentationStageModes,
+    showTechnicalDetails,
+    technicalDetailStages,
+    showProposalGrandTotal,
+    proposalStartDate,
+    proposalStageSchedule,
+    showExecutionSchedule,
+    showPhysicalFinancial,
+    entryPercent,
+    entryAmortizationPercent,
+    showEntryAmortization,
+    showClientPortalPlan,
+    projectDescription,
+    projectAssumptionsText,
+    descriptiveMemorial,
+    adjustmentPolicy,
+    warrantyTerms,
+    detailedPaymentTerms,
+    form.watch("validadeAte"),
+    form.watch("prazoEntrega"),
+  ]);
+
   // ── submit ────────────────────────────────────────────────────────────────
   function onSubmit(vals: PropostaFormValues, stayOpen = false) {
+    if (!stayOpen && integrityReport?.blockers) {
+      const firstBlocker = integrityReport.issues.find((issue) => issue.severity === "blocker");
+      toast({
+        title: `${integrityReport.blockers} erro${integrityReport.blockers === 1 ? "" : "s"} crítico${integrityReport.blockers === 1 ? "" : "s"} no orçamento`,
+        description: firstBlocker?.message ?? "Corrija os erros críticos antes de concluir o orçamento.",
+        variant: "destructive",
+      });
+      focusIntegrityIssue(firstBlocker);
+      return;
+    }
+
     const recFields = vals.recorrente
       ? {
           recorrente: true,
@@ -4390,6 +4569,7 @@ function newFreeItem(): FreeItem {
                       <div className="space-y-1.5 lg:col-span-2">
                         <Label>Entendimento do projeto</Label>
                         <Textarea
+                          data-integrity-field="apresentacao.descricaoProjeto"
                           value={projectDescription}
                           onChange={(event) => setProjectDescription(event.target.value)}
                           placeholder="Ex.: residência de 250 m², 2 pavimentos, 3 suítes, área gourmet, padrão alto, sistema ICF..."
@@ -4399,6 +4579,7 @@ function newFreeItem(): FreeItem {
                       <div className="space-y-1.5">
                         <Label>Premissas técnicas</Label>
                         <Textarea
+                          data-integrity-field="apresentacao.premissasObra"
                           value={projectAssumptionsText}
                           onChange={(event) => setProjectAssumptionsText(event.target.value)}
                           placeholder={"Uma premissa por linha\nEx.: terreno com acesso para betoneira\nSPT compatível com a solução prevista"}
@@ -4408,6 +4589,7 @@ function newFreeItem(): FreeItem {
                       <div className="space-y-1.5">
                         <Label>Memorial descritivo resumido</Label>
                         <Textarea
+                          data-integrity-field="apresentacao.memorialDescritivo"
                           value={descriptiveMemorial}
                           onChange={(event) => setDescriptiveMemorial(event.target.value)}
                           placeholder="Materiais, padrões, marcas de referência, normas e nível de acabamento."
@@ -4417,6 +4599,7 @@ function newFreeItem(): FreeItem {
                       <div className="space-y-1.5">
                         <Label>Condições e marcos de pagamento</Label>
                         <Textarea
+                          data-integrity-field="apresentacao.condicoesPagamentoDetalhadas"
                           value={detailedPaymentTerms}
                           onChange={(event) => setDetailedPaymentTerms(event.target.value)}
                           placeholder="Ex.: 10% na contratação; medições mensais por avanço; vencimento em 5 dias após medição aprovada."
@@ -4426,6 +4609,7 @@ function newFreeItem(): FreeItem {
                       <div className="space-y-1.5">
                         <Label>Política de reajuste</Label>
                         <Textarea
+                          data-integrity-field="apresentacao.politicaReajuste"
                           value={adjustmentPolicy}
                           onChange={(event) => setAdjustmentPolicy(event.target.value)}
                           placeholder="Ex.: reajuste pelo INCC após 12 meses, conforme contrato."
@@ -4435,6 +4619,7 @@ function newFreeItem(): FreeItem {
                       <div className="space-y-1.5 lg:col-span-2">
                         <Label>Garantias e assistência pós-obra</Label>
                         <Textarea
+                          data-integrity-field="apresentacao.garantiasContratuais"
                           value={warrantyTerms}
                           onChange={(event) => setWarrantyTerms(event.target.value)}
                           placeholder="Descreva garantias, responsabilidades, assistência e condições aplicáveis."
@@ -4446,7 +4631,7 @@ function newFreeItem(): FreeItem {
 
                   <Separator />
 
-                  <div className="space-y-4">
+                  <div className="space-y-4" data-integrity-field="apresentacao.cronogramaEtapas">
                     <div>
                       <p className="text-sm font-semibold">Cronograma executivo e fluxo financeiro</p>
                       <p className="text-xs text-muted-foreground">
@@ -5168,12 +5353,57 @@ function newFreeItem(): FreeItem {
               </FormItem>
             )} />
 
+            {mode !== "template" && (
+              <div className="rounded-lg border p-3 space-y-3" aria-live="polite">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    {integrityReport?.blockers
+                      ? <AlertTriangle className="h-4 w-4 text-destructive" />
+                      : <CheckCircle2 className="h-4 w-4 text-emerald-600" />}
+                    <div>
+                      <p className="text-sm font-semibold">Validador do orçamento</p>
+                      <p className="text-xs text-muted-foreground">
+                        {integrityLoading
+                          ? "Validando alterações…"
+                          : integrityReport
+                            ? `${integrityReport.blockers} erro${integrityReport.blockers === 1 ? "" : "s"} crítico${integrityReport.blockers === 1 ? "" : "s"} · ${integrityReport.warnings} alerta${integrityReport.warnings === 1 ? "" : "s"}`
+                            : "Validação temporariamente indisponível"}
+                      </p>
+                    </div>
+                  </div>
+                  {integrityLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                </div>
+
+                {!!integrityReport?.issues.length && (
+                  <div className="max-h-44 space-y-1.5 overflow-y-auto pr-1">
+                    {integrityReport.issues.map((issue, index) => (
+                      <button
+                        type="button"
+                        key={`${issue.code}-${issue.stageId ?? ""}-${issue.itemIndex ?? ""}-${index}`}
+                        onClick={() => focusIntegrityIssue(issue)}
+                        className="flex w-full items-start gap-2 rounded-md border px-2.5 py-2 text-left text-xs transition-colors hover:bg-muted/60"
+                      >
+                        <span className={issue.severity === "blocker" ? "font-semibold text-destructive" : "font-semibold text-amber-700"}>
+                          {issue.severity === "blocker" ? "Erro" : "Alerta"}
+                        </span>
+                        <span className="text-foreground">{issue.message}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {integrityReport && integrityReport.blockers === 0 && integrityReport.warnings === 0 && (
+                  <p className="text-xs text-emerald-700">Orçamento consistente e pronto para concluir.</p>
+                )}
+              </div>
+            )}
+
             <div className="flex flex-col gap-2 sm:flex-row">
               <Button type="button" variant="outline" className="sm:flex-1" onClick={handleClose}>Fechar</Button>
               <Button type="button" variant="secondary" className="sm:flex-1" onClick={saveDraftAndContinue} disabled={isPending}>
                 Salvar e continuar
               </Button>
-              <Button type="submit" className="sm:flex-1" disabled={isPending}>
+              <Button type="submit" className="sm:flex-1" disabled={isPending || integrityLoading || Boolean(integrityReport?.blockers)}>
                 {isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 {editingProposta ? "Salvar Orçamento" : "Criar Orçamento"}
               </Button>
