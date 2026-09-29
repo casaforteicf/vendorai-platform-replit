@@ -2506,10 +2506,12 @@ function renderStudioOrderedProposal(args: {
     const value = group.itens.reduce((sum, item) => sum + Number(item.quantidade || 0) * Number(item.valorUnitario || 0), 0);
     if (mode === "resumo_etapa") {
       return '<div class="studio-stage-summary"><span><strong>Etapa ' + esc(group.ordem) + '</strong> · ' +
-        esc(group.nome || "Entrega") + '</span><strong>' + fmtMoney(value) + '</strong></div>';
+        esc(group.nome || "Entrega") + '</span><strong>' + fmtMoney(value) + '</strong></div>' +
+        stageCommercialNote(group);
     }
     if (mode === "preco_medio") {
       return stageHeader(group, value, continuation) +
+        stageCommercialNote(group) +
         '<table class="studio-table"><thead><tr><th>Item</th><th class="r">Valor por item</th></tr></thead><tbody>' +
         groupItems.map((item) => '<tr><td><strong>' + esc(item.nome) + '</strong>' +
           (item.descricao ? '<small>' + esc(item.descricao) + '</small>' : '') +
@@ -2517,6 +2519,7 @@ function renderStudioOrderedProposal(args: {
         '</tbody></table>';
     }
     return stageHeader(group, value, continuation) +
+      stageCommercialNote(group) +
       '<table class="studio-table"><thead><tr><th>Item</th><th class="r">Qtd.</th><th class="r">Valor unit.</th><th class="r">Subtotal</th></tr></thead><tbody>' +
       groupItems.map((item) =>
         '<tr><td><strong>' + esc(item.nome) + '</strong>' +
