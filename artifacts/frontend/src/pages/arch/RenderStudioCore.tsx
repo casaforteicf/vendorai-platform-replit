@@ -959,7 +959,7 @@ function RightPanel({
   areaM2, setAreaM2, peDireitoM, setPeDireitoM, onSalvarMedidasAmbiente, onSalvarMedidasItem,
   onNextStep, onStartRender, onApplyMelhoria, onApprove, onSendToSpec,
   renderPreset, setRenderPreset, videoMovement, setVideoMovement, videoGenerating, renderVideoUrl, onGenerateVideo5s,
-  onShowCreateModal, onUpload, onOpenMediaLibrary,
+  onShowCreateModal, onUpload, onOpenMediaLibrary, mediaLibraryAvailable,
   selections, selectedMaterial, onOpenMaterialLib, onClearSelection, onRemoveSelection,
   approvalRecord, approvalNote, setApprovalNote,
   onTestCopilotAction,
@@ -980,7 +980,7 @@ function RightPanel({
   renderPreset: RenderPreset; setRenderPreset: (v: RenderPreset) => void;
   videoMovement: VideoMovement; setVideoMovement: (v: VideoMovement) => void;
   videoGenerating: boolean; renderVideoUrl: string | null; onGenerateVideo5s: () => void;
-  onShowCreateModal: () => void; onUpload: () => void; onOpenMediaLibrary: () => void;
+  onShowCreateModal: () => void; onUpload: () => void; onOpenMediaLibrary: () => void; mediaLibraryAvailable: boolean;
   selections: SelectionRect[]; selectedMaterial: CatalogItem | null;
   onOpenMaterialLib: () => void; onClearSelection: () => void; onRemoveSelection: (id: string) => void;
   approvalRecord: ApprovalRecord | null; approvalNote: string; setApprovalNote: (v: string) => void;
@@ -1098,7 +1098,7 @@ function RightPanel({
                     <InfoBox>Ambiente: <strong style={{ color: D.text }}>{ambiente}</strong></InfoBox>
                     {imageDataUrl && <div style={{ fontSize: 11, color: D.green, padding: "6px 8px", background: D.greenDim, borderRadius: 6 }}>✓ {imageFile?.name ?? "Imagem base recuperada"}</div>}
                     <DkBtn onClick={onUpload} variant={imageDataUrl ? "secondary" : "primary"}>{imageDataUrl ? "↺ Trocar imagem" : "⬜ Carregar imagem"}</DkBtn>
-                    <DkBtn onClick={onOpenMediaLibrary} variant="secondary">▦ Biblioteca de Mídias</DkBtn>
+                    <DkBtn onClick={onOpenMediaLibrary} variant="secondary" disabled={!mediaLibraryAvailable}>▦ Biblioteca de Mídias</DkBtn>
                     {imageDataUrl && <DkBtn onClick={onNextStep}>→ Continuar</DkBtn>}
                   </div>
                 )}
@@ -2142,7 +2142,7 @@ function RenderStudioInner() {
           renderPreset={renderPreset} setRenderPreset={setRenderPreset}
           videoMovement={videoMovement} setVideoMovement={setVideoMovement}
           videoGenerating={videoGenerating} renderVideoUrl={renderVideoUrl} onGenerateVideo5s={generateRenderVideo5s}
-          onShowCreateModal={() => setShowCreateModal(true)} onUpload={handleUpload} onOpenMediaLibrary={() => setShowMediaLibrary(true)}
+          onShowCreateModal={() => setShowCreateModal(true)} onUpload={handleUpload} onOpenMediaLibrary={() => setShowMediaLibrary(true)} mediaLibraryAvailable={Boolean(tenantId)}
           selections={selections} selectedMaterial={selectedMaterial}
           onOpenMaterialLib={() => setShowMaterialLib(true)}
           onClearSelection={() => setSelections([])}
