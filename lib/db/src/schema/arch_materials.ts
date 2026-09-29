@@ -13,6 +13,7 @@ import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 import { archCatalogoTable } from "./arch_catalogo";
+import { produtosCatalogoTable } from "./produtos_catalogo";
 
 export const archMaterialsTable = pgTable("arch_materials", {
   id: text("id")
@@ -88,9 +89,12 @@ export const archCatalogProductMaterialsTable = pgTable("arch_catalog_product_ma
   tenantId: text("tenant_id")
     .notNull()
     .references(() => tenantsTable.id, { onDelete: "cascade" }),
+  // Legado: vínculo antigo com arch_catalogo. Mantido durante a transição.
   productId: text("product_id")
-    .notNull()
     .references(() => archCatalogoTable.id, { onDelete: "cascade" }),
+  // Fonte oficial: o mesmo produto mestre de produtos_catalogo usado pelo comercial.
+  masterProductId: text("master_product_id")
+    .references(() => produtosCatalogoTable.id, { onDelete: "cascade" }),
   materialId: text("material_id")
     .notNull()
     .references(() => archMaterialsTable.id, { onDelete: "cascade" }),
@@ -129,7 +133,7 @@ export const updateArchMaterialSchema = createSelectSchema(archMaterialsTable, {
 
 export const insertArchCatalogProductMaterialSchema = createInsertSchema(archCatalogProductMaterialsTable, {
   precoAdicional: z.coerce.number().nonnegative().optional(),
-}).omit({ id: true, tenantId: true, createdAt: true });
+}).omit({ id: true, tenantId: true, productId: true, masterProductId: true, createdAt: true });
 
 export type ArchMaterial = typeof archMaterialsTable.$inferSelect;
 export type ArchMaterialImage = typeof archMaterialImagesTable.$inferSelect;

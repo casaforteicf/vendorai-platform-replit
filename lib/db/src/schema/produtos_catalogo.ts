@@ -18,6 +18,25 @@ export interface ProdutoEspecificacao {
   value: string;
 }
 
+export interface ProdutoProjectSurface {
+  key: string;
+  label: string;
+  nodeName?: string;
+  materialName?: string;
+  meshCount?: number;
+  detected?: boolean;
+}
+
+export interface ProdutoProjectTechnicalConfig {
+  modelSurfaces?: ProdutoProjectSurface[];
+  modelSurfacesDetectedAt?: string;
+  textureScale?: number;
+  textureRotation?: number;
+  renderNotes?: string;
+  projectTags?: string[];
+  [key: string]: unknown;
+}
+
 // Compatibilidade veicular (Complemento Praça.ai — filtro "selecione seu
 // carro" tipo Tuning Parts). anoFim vazio/null = "até hoje" (ano corrente).
 export interface ProdutoCompatibilidadeVeicular {
@@ -148,6 +167,12 @@ export const produtosCatalogoTable = pgTable("produtos_catalogo", {
   imagemUrl: text("imagem_url"),
   imagens: jsonb("imagens").$type<string[]>(),
   videoUrl: text("video_url"),
+  // Produto mestre único: estes campos também alimentam Biblioteca de Projeto,
+  // render, orçamento e proposta. Não existe um segundo cadastro técnico.
+  projectLibraryEnabled: boolean("project_library_enabled").notNull().default(true),
+  textureUrl: text("texture_url"),
+  model3dUrl: text("model3d_url"),
+  projectTechnicalConfig: jsonb("project_technical_config").$type<ProdutoProjectTechnicalConfig>(),
   peso: numeric("peso", { precision: 10, scale: 3 }),
   dimensoes: jsonb("dimensoes").$type<ProdutoDimensoes>(),
   recorrencia: text("recorrencia"),

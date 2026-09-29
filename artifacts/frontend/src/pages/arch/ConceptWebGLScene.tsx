@@ -67,7 +67,7 @@ type Props = {
   onObjectChange?: (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "rotation" | "materialId" | "materialScale" | "materialRotation">>) => void;
   onObjectDrop?: (
     preset: Pick<ConceptPlanObject, "kind" | "label" | "width" | "depth"> &
-      Partial<Pick<ConceptPlanObject, "catalogProductId" | "imageUrl" | "supplier" | "price" | "model3dUrl">>,
+      Partial<Pick<ConceptPlanObject, "catalogProductId" | "imageUrl" | "supplier" | "price" | "model3dUrl" | "textureUrl">>,
     point: { x: number; y: number },
   ) => void;
   onObjectEditStart?: () => void;
@@ -1217,7 +1217,7 @@ export default function ConceptWebGLScene({
                 entries.forEach(({ index, key }) => {
                   const configuredSelection = configured[key] ?? configuredGlobal;
                   const link = bySurface.get(key) ?? globalDefault;
-                  const textureUrl = configuredSelection?.textureUrl ?? link?.material?.primaryImage?.storageUrl;
+                  const textureUrl = configuredSelection?.textureUrl ?? link?.material?.primaryImage?.storageUrl ?? object.textureUrl;
                   const source = sourceMaterials[index];
                   if (!textureUrl || !source?.clone) return;
                   const cloned = source.clone();

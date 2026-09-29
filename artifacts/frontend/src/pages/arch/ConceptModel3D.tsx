@@ -51,7 +51,7 @@ type Props = {
   onObjectChange?: (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "width" | "depth" | "rotation" | "materialId" | "materialScale" | "materialRotation" | "model3dUrl">>) => void;
   onObjectDrop?: (
     preset: Pick<ConceptPlanObject, "kind" | "label" | "width" | "depth"> &
-      Partial<Pick<ConceptPlanObject, "catalogProductId" | "imageUrl" | "supplier" | "price" | "model3dUrl">>,
+      Partial<Pick<ConceptPlanObject, "catalogProductId" | "imageUrl" | "supplier" | "price" | "model3dUrl" | "textureUrl">>,
     point: { x: number; y: number },
   ) => void;
   onObjectRotate?: (objectId: string) => void;
