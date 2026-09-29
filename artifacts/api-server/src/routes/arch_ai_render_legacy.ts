@@ -22,6 +22,9 @@ import {
   archProjetosTable,
   archProjectConfigsTable,
   automationLogsTable,
+  archMaterialsTable,
+  archMaterialImagesTable,
+  archMaterialTenantAccessTable,
 } from "@workspace/db";
 import { authenticate } from "../middlewares/auth.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
@@ -491,7 +494,100 @@ archAiRenderRouter.post("/arch/ai-render/:id/adjust", authenticate, async (req: 
     });
   }
 
-  if (material_reference_url && !(
+  // Resolve material reference server-side from the canonical Material Library record.
+  // This avoids rejecting valid library images when the frontend receives an absolute/CDN URL
+  // and prevents trusting an arbitrary URL supplied by the browser.
+  let resolvedMaterialReferenceUrl = material_reference_url;
+  let resolvedMaterialName = material_name;
+
+  if (material_id) {
+    const [material] = await db
+      .select({
+        id: archMaterialsTable.id,
+        ownerTenantId: archMaterialsTable.ownerTenantId,
+        nome: archMaterialsTable.nome,
+        compartilhamento: archMaterialsTable.compartilhamento,
+        primaryImageId: archMaterialsTable.primaryImageId,
+        ativo: archMaterialsTable.ativo,
+      })
+      .from(archMaterialsTable)
+      .where(eq(archMaterialsTable.id, material_id))
+      .limit(1);
+
+    if (!material || !material.ativo) {
+      return res.status(404).json({
+        success: false,
+        error: "Material não encontrado na Biblioteca de Materiais.",
+        code: "MATERIAL_NOT_FOUND",
+      });
+    }
+
+    let materialAllowed =
+      material.ownerTenantId === tid ||
+      material.compartilhamento === "publico" ||
+      material.compartilhamento === "parceiros";
+
+    if (!materialAllowed) {
+      const [access] = await db
+        .select({ id: archMaterialTenantAccessTable.id })
+        .from(archMaterialTenantAccessTable)
+        .where(and(
+          eq(archMaterialTenantAccessTable.materialId, material.id),
+          eq(archMaterialTenantAccessTable.tenantId, tid),
+        ))
+        .limit(1);
+      materialAllowed = Boolean(access);
+    }
+
+    if (!materialAllowed) {
+      return res.status(403).json({
+        success: false,
+        error: "Este material não está disponível para este tenant.",
+        code: "MATERIAL_ACCESS_DENIED",
+      });
+    }
+
+    let [referenceImage] = material.primaryImageId
+      ? await db
+          .select({
+            id: archMaterialImagesTable.id,
+            storageUrl: archMaterialImagesTable.storageUrl,
+          })
+          .from(archMaterialImagesTable)
+          .where(and(
+            eq(archMaterialImagesTable.id, material.primaryImageId),
+            eq(archMaterialImagesTable.materialId, material.id),
+            eq(archMaterialImagesTable.status, "ativa"),
+          ))
+          .limit(1)
+      : [];
+
+    if (!referenceImage) {
+      [referenceImage] = await db
+        .select({
+          id: archMaterialImagesTable.id,
+          storageUrl: archMaterialImagesTable.storageUrl,
+        })
+        .from(archMaterialImagesTable)
+        .where(and(
+          eq(archMaterialImagesTable.materialId, material.id),
+          eq(archMaterialImagesTable.status, "ativa"),
+        ))
+        .orderBy(asc(archMaterialImagesTable.createdAt))
+        .limit(1);
+    }
+
+    if (!referenceImage?.storageUrl) {
+      return res.status(400).json({
+        success: false,
+        error: "Este material não possui imagem de referência disponível para o render.",
+        code: "MATERIAL_REFERENCE_REQUIRED",
+      });
+    }
+
+    resolvedMaterialReferenceUrl = referenceImage.storageUrl;
+    resolvedMaterialName = material.nome;
+  } else if (material_reference_url && !(
     material_reference_url.startsWith("/objects/") ||
     material_reference_url.startsWith("/api/storage/objects/") ||
     material_reference_url.startsWith("data:image/")
@@ -519,7 +615,7 @@ archAiRenderRouter.post("/arch/ai-render/:id/adjust", authenticate, async (req: 
     status:           "processando",
     operationType:    material_id ? "material" : ajuste_prompt?.includes("refino global em alta qualidade") ? "improve" : "adjust",
     materialId:        material_id,
-    materialName:      material_name,
+    materialName:      resolvedMaterialName,
     prompt:            ajuste_prompt,
     versionTag:       parent.versionTag,
   }).returning();
@@ -540,8 +636,8 @@ archAiRenderRouter.post("/arch/ai-render/:id/adjust", authenticate, async (req: 
     maskCoordinates: mask_coordinates,
     materialAwareSelection: expand_selection_to_material,
     selectionPaddingPercent: selection_padding_percent,
-    materialReferenceUrl: material_reference_url,
-    materialName: material_name,
+    materialReferenceUrl: resolvedMaterialReferenceUrl,
+    materialName: resolvedMaterialName,
     ambiente:     parent.ambiente,
     estilo:       parent.estilo,
     iluminacao:   parent.iluminacao,
