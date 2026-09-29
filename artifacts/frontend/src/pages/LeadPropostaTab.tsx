@@ -245,6 +245,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const [proposalAttachmentsOpen, setProposalAttachmentsOpen] = useState(false);
   const [proposalAdvancedOpen, setProposalAdvancedOpen] = useState(false);
   const [proposalStagesOpen, setProposalStagesOpen] = useState(false);
+  const [proposalVisualCenterOpen, setProposalVisualCenterOpen] = useState(false);
   const [proposalDraftSavedAt, setProposalDraftSavedAt] = useState<string | null>(null);
 
   // Refinement dialog
@@ -604,6 +605,37 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
 
     return Array.from(groups.values()).sort((a, b) => a.ordem - b.ordem);
   })();
+
+  function selectNextMissingStageImages() {
+    const missing = selectedOrcamentoStages
+      .filter((stage) => !selectedStageImages[stage.id])
+      .slice(0, 3)
+      .map((stage) => stage.id);
+    setSelectedStageImageIds(missing);
+    if (missing.length === 0) {
+      toast({ title: "Todas as etapas já possuem imagem" });
+    }
+  }
+
+  function applyFinancialModeToAllStages(mode: ProposalPresentationMode | "__default__") {
+    if (mode === "__default__") {
+      setProposalPresentationStageModes({});
+      return;
+    }
+    setProposalPresentationStageModes(
+      Object.fromEntries(selectedOrcamentoStages.map((stage) => [stage.id, mode])),
+    );
+  }
+
+  function applyTechnicalVisibilityToAllStages(mode: "mostrar" | "ocultar" | "__default__") {
+    if (mode === "__default__") {
+      setProposalTechnicalDetailStages({});
+      return;
+    }
+    setProposalTechnicalDetailStages(
+      Object.fromEntries(selectedOrcamentoStages.map((stage) => [stage.id, mode === "mostrar"])),
+    );
+  }
 
   function toggleStageImageSelection(stageId: string) {
     setSelectedStageImageIds((current) => {
@@ -1500,6 +1532,9 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
       || proposalImages[0]
       || "",
   );
+  const proposalComposerTemplateImageModules = (proposalComposerTemplate?.modules ?? [])
+    .filter((module) => module.enabled !== false && module.image?.mode !== "none" && Boolean(module.image?.url));
+  const proposalComposerTemplateImageCount = proposalComposerTemplateImageModules.length;
   const proposalComposerStageImageCount = selectedOrcamentoStages.filter((stage) => Boolean(selectedStageImages[stage.id])).length;
   const proposalComposerStageCoverage = selectedOrcamentoStages.length > 0
     ? Math.round((proposalComposerStageImageCount / selectedOrcamentoStages.length) * 100)
