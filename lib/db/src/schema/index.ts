@@ -135,6 +135,7 @@ export * from "./arch_projetos";
 export * from "./arch_ambientes";
 export * from "./arch_orcamento_itens";
 export * from "./arch_catalogo";
+export * from "./arch_materials";
 export * from "./arch_cenas";
 export * from "./arch_renders";
 export * from "./arch_marketplace_items";
