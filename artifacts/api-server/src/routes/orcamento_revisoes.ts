@@ -103,7 +103,8 @@ router.post("/tenants/:tenantId/leads/:leadId/orcamento-revisoes", async (req, r
     ));
 
   const revisionNumber = (revisionCount[0]?.count ?? 0) + 1;
-  const revisionLabel = `R${revisionNumber}`;
+  const isContractAddendum = baseProposta.status === "aceita";
+  const revisionLabel = `${isContractAddendum ? "A" : "R"}${revisionNumber}`;
   const revisionNumero = `${baseNumero}-${revisionLabel}`;
 
   const revisionProposalId = crypto.randomUUID();
@@ -119,6 +120,7 @@ router.post("/tenants/:tenantId/leads/:leadId/orcamento-revisoes", async (req, r
       capturedAt: new Date().toISOString(),
       immutableForVersion: true,
       origin: "revision",
+      changeType: isContractAddendum ? "contract_addendum" : "commercial_revision",
       baseBudgetId: baseProposta.id,
       baseBudgetNumber: baseNumero,
       revisionLabel,
@@ -176,7 +178,11 @@ router.post("/tenants/:tenantId/leads/:leadId/orcamento-revisoes", async (req, r
     })
     .returning();
 
-  return res.status(201).json({ ...created, propostaRevisao: revisionProposal });
+  return res.status(201).json({
+    ...created,
+    changeType: isContractAddendum ? "contract_addendum" : "commercial_revision",
+    propostaRevisao: revisionProposal,
+  });
 });
 
 // ─── Update a revision entry ────────────────────────────────────────────────
