@@ -468,6 +468,7 @@ export function useRenderStudioController() {
         preservation_policy: preservationLocks,
         parent_render_id: currentRenderId, // P2-18
         material_id:      selectedMaterial?.id,
+        quality_mode:     melhoriaMode === "improve" ? "premium" : "standard",
       });
       const data = await waitForRenderCompletion(render_id);
       const newVersion: RenderVersion = {
