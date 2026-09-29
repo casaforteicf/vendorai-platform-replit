@@ -8,7 +8,13 @@ export type ArqdorRenderPreset =
   | "roof_openings_lock"
   | "lighting_realism"
   | "landscape_controlled"
-  | "pool_water_fidelity";
+  | "pool_water_fidelity"
+  | "glass_mirror_fidelity"
+  | "outdoor_gourmet_preserve"
+  | "deck_pergola_preserve"
+  | "wall_gate_fidelity"
+  | "night_lighting_exterior"
+  | "guardrail_glass_precision";
 
 export type ArqdorVideoMovement =
   | "zoom_in_soft"
@@ -135,8 +141,35 @@ const PRESETS: Record<ArqdorRenderPreset, string> = {
     "Do not hide facade openings, entrances, garage, architectural edges or circulation. Never place plants through walls, slabs, paving or pool edges.",
   ].join(" "),
   pool_water_fidelity: [
-    "POOL/WATER LOCK: preserve pool shape, coping, level, deck boundaries and all edge geometry.",
-    "Water must remain contained inside the pool with physically plausible transparency, caustics and reflections. No warped coping, flooded deck or melted water edges.",
+    "POOL/WATER LOCK: preserve pool shape, spa shape, coping, waterline, level, deck boundaries, drains and all edge geometry exactly.",
+    "Water must remain contained inside the pool/spa with physically plausible transparency, depth, caustics and reflections. No warped coping, flooded deck, melted water edges or invented overflow.",
+  ].join(" "),
+  glass_mirror_fidelity: [
+    "GLASS/MIRROR LOCK: preserve the exact position, dimensions, proportions, frame alignment and boundaries of every glass panel, window, mirror and reflective surface.",
+    "Glass must have physically plausible transparency, Fresnel reflections, controlled glare and light transmission without becoming opaque, milky or mirror-like unless it is actually mirrored glass.",
+    "Mirrors must reflect the real surrounding scene consistently with the source camera and room geometry. Never invent openings, duplicate furniture, create impossible reflected objects or show a fake second room.",
+    "No warped reflections, melted edges, doubled frames, broken mullions, floating glass, distorted silhouettes or grey flat mirror surfaces.",
+  ].join(" "),
+  outdoor_gourmet_preserve: [
+    "OUTDOOR GOURMET LOCK: preserve barbecue/grill, oven, counters, sink, cabinetry, appliances, fixed furniture, pergola/supports, roof/soffit, openings and circulation exactly.",
+    "Preserve all existing movable furniture positions and dimensions. Improve only material realism, lighting, vegetation coherence and photographic finish.",
+    "Do not invent or relocate tables, chairs, stools, sofas, planters or appliances. Decorative additions are forbidden unless explicitly requested.",
+  ].join(" "),
+  deck_pergola_preserve: [
+    "DECK/PERGOLA LOCK: preserve deck outline, board direction, steps, level changes, pergola posts, beams, slats, roof panels and structural spacing exactly.",
+    "Enhance wood/metal texture, weathering realism, shadows and outdoor lighting without bending, multiplying, relocating or resizing any structural element.",
+  ].join(" "),
+  wall_gate_fidelity: [
+    "WALL/GATE LOCK: preserve perimeter walls, fences, gates, pedestrian access, garage gate width, pillars, hinges, slats, openings and alignment exactly.",
+    "Do not change height, spacing, material color, gate position or access geometry. Improve only texture fidelity, metal/glass response, lighting and realistic depth.",
+  ].join(" "),
+  night_lighting_exterior: [
+    "EXTERIOR NIGHT LIGHTING ONLY: preserve geometry, materials, colors, landscaping, furniture and camera exactly while changing only the lighting condition to a physically plausible night scene.",
+    "Use realistic warm/cool fixture temperatures, believable light falloff, controlled facade highlights, readable shadows and dark-sky exposure. Do not invent fixtures, windows, people, vehicles or glowing surfaces.",
+  ].join(" "),
+  guardrail_glass_precision: [
+    "GUARDRAIL/GLASS PRECISION: preserve exact guardrail height, post spacing, handrail alignment, glass panel count, panel width, edges and mounting points.",
+    "Glass must remain transparent with physically plausible reflections and edge thickness. Never remove posts, merge panels, bend rails, create gaps or alter safety geometry.",
   ].join(" "),
 };
 
@@ -154,8 +187,14 @@ export function inferArqdorRenderPresets(input: {
   if (/fachada|exterior|facade/.test(text)) result.push("facade_exterior_preserve", "camera_perspective_lock", "roof_openings_lock");
   else result.push("interior_layout_preserve", "camera_perspective_lock");
   if (/cozinha|roupeiro|arm[aá]rio|marcenaria|cabinet|joinery/.test(text)) result.push("joinery_precision");
-  if (/piscina|pool|agua|água/.test(text)) result.push("pool_water_fidelity");
+  if (/piscina|pool|spa|agua|água/.test(text)) result.push("pool_water_fidelity");
   if (/jardim|paisag|landscap/.test(text)) result.push("landscape_controlled");
+  if (/vidro|glass|espelho|mirror/.test(text)) result.push("glass_mirror_fidelity");
+  if (/gourmet|churrasque|barbecue|grill|outdoor kitchen/.test(text)) result.push("outdoor_gourmet_preserve");
+  if (/deck|pergol|pergola/.test(text)) result.push("deck_pergola_preserve");
+  if (/muro|cerca|port[aã]o|gate|fence/.test(text)) result.push("wall_gate_fidelity");
+  if (/guarda[- ]?corpo|guardrail|balustr/.test(text)) result.push("guardrail_glass_precision");
+  if (/noturn|night|noite/.test(text) && /fachada|exterior|facade|jardim|piscina|gourmet|deck|varanda|terra[cç]o/.test(text)) result.push("night_lighting_exterior");
   if (/detalhe|close|macro|material/.test(text)) result.push("material_detail_enhancer");
   return Array.from(new Set(result));
 }
