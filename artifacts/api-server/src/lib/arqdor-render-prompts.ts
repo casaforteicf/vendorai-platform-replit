@@ -181,11 +181,18 @@ export function inferArqdorRenderPresets(input: {
   explicit?: ArqdorRenderPreset[];
 }): ArqdorRenderPreset[] {
   const explicit = input.explicit ?? [];
-  if (explicit.length) return Array.from(new Set(explicit));
   const text = `${input.ambiente ?? ""} ${input.renderView ?? ""} ${input.source ?? ""} ${input.userNotes ?? ""}`.toLowerCase();
-  const result: ArqdorRenderPreset[] = [];
-  if (/fachada|exterior|facade/.test(text)) result.push("facade_exterior_preserve", "camera_perspective_lock", "roof_openings_lock");
-  else result.push("interior_layout_preserve", "camera_perspective_lock");
+  const result: ArqdorRenderPreset[] = [...explicit];
+  const hasBasePreset = result.includes("facade_exterior_preserve") || result.includes("interior_layout_preserve");
+  if (!hasBasePreset) {
+    if (/fachada|exterior|facade|jardim|paisag|piscina|pool|spa|gourmet|deck|pergol|varanda|terra[cç]o|muro|port[aã]o/.test(text)) {
+      result.push("facade_exterior_preserve", "camera_perspective_lock", "roof_openings_lock");
+    } else {
+      result.push("interior_layout_preserve", "camera_perspective_lock");
+    }
+  } else if (!result.includes("camera_perspective_lock")) {
+    result.push("camera_perspective_lock");
+  }
   if (/cozinha|roupeiro|arm[aá]rio|marcenaria|cabinet|joinery/.test(text)) result.push("joinery_precision");
   if (/piscina|pool|spa|agua|água/.test(text)) result.push("pool_water_fidelity");
   if (/jardim|paisag|landscap/.test(text)) result.push("landscape_controlled");
