@@ -371,6 +371,9 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [activeVersion, setActiveVersion] = useState<number | null>(null);
+  const [proposalSourcesOpen, setProposalSourcesOpen] = useState(false);
+  const [proposalSourcesLoading, setProposalSourcesLoading] = useState(false);
+  const [proposalSources, setProposalSources] = useState<any>(null);
   const [showProducts, setShowProducts] = useState(false);
   const [selectedOrcamentoId, setSelectedOrcamentoId] = useState<string>("__none__");
   const [proposalPresentationFormat, setProposalPresentationFormat] =
@@ -2570,6 +2573,40 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
         description: e?.message || "Não foi possível carregar a proposta.",
         variant: "destructive",
       });
+    }
+  }
+
+  async function openProposalSources() {
+    if (!activeVersion || !leadId || !token) return;
+    setProposalSourcesLoading(true);
+    setProposalSourcesOpen(true);
+    try {
+      const response = await fetch(api(`/api/leads/${leadId}/proposals/${activeVersion}`), {
+        headers,
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error ?? "Não foi possível carregar as fontes desta versão.");
+      let json: any = {};
+      try {
+        json = typeof body?.jsonContent === "string" ? JSON.parse(body.jsonContent) : body?.jsonContent ?? {};
+      } catch {
+        json = {};
+      }
+      setProposalSources({
+        version: body?.version ?? activeVersion,
+        createdAt: body?.createdAt ?? null,
+        snapshot: json?._sourceSnapshot ?? null,
+        meta: json?._proposalMeta ?? null,
+      });
+    } catch (error) {
+      setProposalSources(null);
+      toast({
+        title: "Erro ao carregar fontes",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setProposalSourcesLoading(false);
     }
   }
 
@@ -5489,6 +5526,102 @@ ${chip}`
         </DialogContent>
       </Dialog>
 
+      <Dialog open={proposalSourcesOpen} onOpenChange={setProposalSourcesOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ListChecks className="h-4 w-4" />
+              Fontes utilizadas — Proposta v{proposalSources?.version ?? activeVersion}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[70vh] space-y-3 overflow-y-auto py-1">
+            {proposalSourcesLoading ? (
+              <div className="flex items-center gap-2 rounded-lg border p-3 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Carregando rastreabilidade…
+              </div>
+            ) : proposalSources?.snapshot ? (
+              <>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="rounded-lg border p-3">
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Plano de Negócios</p>
+                    <p className="mt-1 text-xs font-medium">
+                      {proposalSources.snapshot.businessPlan?.approvedContext ? "Contexto aprovado congelado" : "Sem contexto aprovado"}
+                    </p>
+                    <p className="mt-1 line-clamp-4 whitespace-pre-wrap text-[10px] text-muted-foreground">
+                      {proposalSources.snapshot.businessPlan?.approvedContext || "—"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border p-3">
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Orçamento</p>
+                    <p className="mt-1 text-xs font-medium">
+                      {proposalSources.snapshot.budget?.title || "Não vinculado"}
+                    </p>
+                    <p className="mt-1 text-[10px] text-muted-foreground">
+                      ID: {proposalSources.snapshot.budget?.id || "—"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border p-3">
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Cliente</p>
+                    <p className="mt-1 text-xs font-medium">
+                      {proposalSources.snapshot.client?.lead?.empresa || proposalSources.snapshot.client?.lead?.nome || "—"}
+                    </p>
+                    <p className="mt-1 text-[10px] text-muted-foreground">
+                      Briefing {proposalSources.snapshot.client?.briefing ? "incluído" : "não disponível"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border p-3">
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Catálogo e mídias</p>
+                    <p className="mt-1 text-xs font-medium">
+                      {(proposalSources.snapshot.catalog?.linkedProducts?.length ?? 0)} produto(s) · {(proposalSources.snapshot.media?.proposalImages?.length ?? 0)} imagem(ns)
+                    </p>
+                    <p className="mt-1 text-[10px] text-muted-foreground">
+                      {(proposalSources.snapshot.media?.attachments?.length ?? 0)} anexo(s)
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold">Snapshot histórico</p>
+                    <Badge variant="outline" className="text-[10px]">
+                      {proposalSources.snapshot.capturedAt
+                        ? new Date(proposalSources.snapshot.capturedAt).toLocaleString("pt-BR")
+                        : "data indisponível"}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    Esta versão preserva as fontes usadas na geração. Alterações futuras nos cadastros não reescrevem este registro.
+                  </p>
+                </div>
+
+                {(proposalSources.snapshot.pending?.length ?? 0) > 0 && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                    <p className="text-xs font-semibold text-amber-900">Pendências existentes na emissão</p>
+                    <div className="mt-2 space-y-1">
+                      {proposalSources.snapshot.pending.map((item: any, index: number) => (
+                        <p key={`${item.code}-${index}`} className="text-[10px] text-amber-800">
+                          • {item.message}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="rounded-lg border p-4 text-sm text-muted-foreground">
+                Esta versão é anterior à rastreabilidade completa e não possui snapshot de fontes salvo.
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setProposalSourcesOpen(false)}>
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Preview Dialog */}
       <Dialog open={previewOpen} onOpenChange={(open) => { if (!open) { cancelEditMode(); setPreviewOpen(false); } }}>
         <DialogContent className="max-w-[95vw] w-full h-[95vh] flex flex-col p-4">
@@ -5549,6 +5682,10 @@ ${chip}`
                   onClick={() => activeVersion && downloadProposal(activeVersion, "pdf")}>
                   <FileText className="h-3.5 w-3.5" />
                   Download PDF
+                </Button>
+                <Button variant="outline" size="sm" className="gap-1" onClick={openProposalSources}>
+                  <ListChecks className="h-3.5 w-3.5" />
+                  Fontes utilizadas
                 </Button>
               </>
             )}
