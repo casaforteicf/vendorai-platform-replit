@@ -9,8 +9,51 @@ import { archAiRenderRouter as legacyArchAiRenderRouter } from "./arch_ai_render
 import { RenderGalleryError, updateConceptRenderGallery } from "../services/arch-concept-render-gallery.js";
 import { getArqdorRenderVideo, startArqdorRenderVideo } from "../services/arqdor-render-video.js";
 import type { ArqdorVideoMovement } from "../lib/arqdor-render-prompts.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 
 export const archAiRenderRouter = Router();
+const renderStorage = new ObjectStorageService();
+
+function renderObjectPath(value: string | null | undefined): string | null {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  if (raw.startsWith("/objects/")) return raw;
+  if (raw.startsWith("/api/storage/objects/")) {
+    return `/objects/${raw.slice("/api/storage/objects/".length)}`;
+  }
+  try {
+    const parsed = new URL(raw);
+    if (parsed.pathname.startsWith("/api/storage/objects/")) {
+      return `/objects/${parsed.pathname.slice("/api/storage/objects/".length)}`;
+    }
+    if (parsed.pathname.startsWith("/objects/")) return parsed.pathname;
+  } catch {
+    // relative/legacy value
+  }
+  return null;
+}
+
+function renderDisplayUrl(value: string | null | undefined): string | null {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  const objectPath = renderObjectPath(raw);
+  if (objectPath) return `/api/storage${objectPath}`;
+  return raw;
+}
+
+async function renderFileAvailable(value: string | null | undefined): Promise<boolean> {
+  const raw = String(value ?? "").trim();
+  if (!raw) return false;
+  if (raw.startsWith("data:")) return true;
+  const objectPath = renderObjectPath(raw);
+  if (!objectPath) return /^https?:\/\//i.test(raw);
+  try {
+    await renderStorage.getObjectEntityFile(objectPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function tenantId(req: Request): string | null {
   return (req as any).user?.tenantId ?? null;
@@ -100,8 +143,29 @@ archAiRenderRouter.post("/arch/ai-render/:id/adjust", authenticate, (req, res, n
   }, next);
 });
 
-archAiRenderRouter.post("/arch/ai-render/:id/approve", authenticate, (req, res, next) => {
+archAiRenderRouter.post("/arch/ai-render/:id/approve", authenticate, async (req, res, next) => {
   const tid = tenantId(req);
+  if (!tid) return res.status(403).json({ success: false, error: "Tenant não identificado" });
+
+  const [candidate] = await db.select().from(archAiRendersTable)
+    .where(and(
+      eq(archAiRendersTable.id, req.params["id"] as string),
+      eq(archAiRendersTable.tenantId, tid),
+    ))
+    .limit(1);
+
+  if (!candidate) return res.status(404).json({ success: false, error: "Render não encontrado" });
+  if (candidate.status !== "concluido" || !candidate.resultImageUrl) {
+    return res.status(409).json({ success: false, error: "Finalize o render antes de aprovar" });
+  }
+  if (!(await renderFileAvailable(candidate.resultImageUrl))) {
+    return res.status(409).json({
+      success: false,
+      error: "O arquivo desta versão não está disponível no Storage. Gere ou recupere uma nova versão antes de aprovar.",
+      code: "RENDER_FILE_MISSING",
+    });
+  }
+
   const approvalNote = asOptionalString(req.body?.notes ?? req.body?.approval_note);
   captureJson(req, res, async (body) => {
     const renderId = asOptionalString(body?.render_id) ?? asOptionalString(req.params["id"]);
@@ -223,11 +287,9 @@ archAiRenderRouter.get("/arch/ai-renders", authenticate, async (req: Request, re
     .where(and(...conditions))
     .orderBy(asc(archAiRendersTable.createdAt));
 
-  return res.json({
-    success: true,
-    project_id: projectId || null,
-    concept_project_id: conceptProjectId || null,
-    versions: renders.map((render, index) => ({
+  const versions = await Promise.all(renders.map(async (render, index) => {
+    const fileAvailable = await renderFileAvailable(render.resultImageUrl);
+    return {
       id: render.id,
       project_id: render.projectId,
       concept_project_id: render.conceptProjectId,
@@ -252,6 +314,10 @@ archAiRenderRouter.get("/arch/ai-renders", authenticate, async (req: Request, re
       motor: render.motor,
       original_image_url: render.originalImageUrl,
       result_image_url: render.resultImageUrl,
+    display_url: renderDisplayUrl(render.resultImageUrl),
+    file_available: fileAvailable,
+      display_url: renderDisplayUrl(render.resultImageUrl),
+      file_available: fileAvailable,
       mask_zones: render.maskZones,
       mask_file_url: render.maskFileUrl,
       composited: render.composited,
@@ -261,7 +327,14 @@ archAiRenderRouter.get("/arch/ai-renders", authenticate, async (req: Request, re
       created_at: render.createdAt,
       concluido_em: render.concluidoEm,
       version_number: index + 1,
-    })),
+    };
+  }));
+
+  return res.json({
+    success: true,
+    project_id: projectId || null,
+    concept_project_id: conceptProjectId || null,
+    versions,
   });
 });
 
@@ -277,6 +350,8 @@ archAiRenderRouter.get("/arch/ai-render/:id", authenticate, async (req: Request,
     .limit(1);
 
   if (!render) return res.status(404).json({ success: false, error: "Render não encontrado" });
+
+  const fileAvailable = await renderFileAvailable(render.resultImageUrl);
 
   return res.json({
     success: render.status === "concluido",
