@@ -4541,10 +4541,73 @@ router.get("/arch/materials", authenticate, async (req, res) => {
     imagesByMaterial.set(image.materialId, current);
   }
 
-  return res.json(materials.map((material) => ({
-    ...material,
-    images: imagesByMaterial.get(material.id) ?? [],
-  })));
+  // Capa visual obrigatória: quando um material ainda não possui uma imagem
+  // própria na Biblioteca, reaproveitamos a melhor referência visual do
+  // produto mestre ao qual ele está vinculado. Isso evita cards vazios sem
+  // duplicar imagem/cadastro e mantém o produto mestre como fonte única.
+  const materialsWithoutImages = materials
+    .filter((material) => !(imagesByMaterial.get(material.id)?.length))
+    .map((material) => material.id);
+
+  const fallbackCoverByMaterial = new Map<string, string>();
+  if (materialsWithoutImages.length) {
+    const links = await db
+      .select({
+        materialId: archCatalogProductMaterialsTable.materialId,
+        masterProductId: archCatalogProductMaterialsTable.masterProductId,
+      })
+      .from(archCatalogProductMaterialsTable)
+      .where(and(
+        eq(archCatalogProductMaterialsTable.tenantId, tid),
+        eq(archCatalogProductMaterialsTable.ativo, true),
+        inArray(archCatalogProductMaterialsTable.materialId, materialsWithoutImages),
+      ));
+
+    const masterProductIds = Array.from(new Set(
+      links
+        .map((link) => link.masterProductId)
+        .filter((id): id is string => Boolean(id)),
+    ));
+
+    if (masterProductIds.length) {
+      const products = await db
+        .select({
+          id: produtosCatalogoTable.id,
+          textureUrl: produtosCatalogoTable.textureUrl,
+          imagemUrl: produtosCatalogoTable.imagemUrl,
+          imagens: produtosCatalogoTable.imagens,
+        })
+        .from(produtosCatalogoTable)
+        .where(and(
+          inArray(produtosCatalogoTable.id, masterProductIds),
+          eq(produtosCatalogoTable.ativo, true),
+        ));
+
+      const productsById = new Map(products.map((product) => [product.id, product]));
+      for (const link of links) {
+        if (!link.masterProductId || fallbackCoverByMaterial.has(link.materialId)) continue;
+        const product = productsById.get(link.masterProductId);
+        if (!product) continue;
+        const gallery = Array.isArray(product.imagens) ? product.imagens : [];
+        const cover = product.textureUrl ?? product.imagemUrl ?? gallery.find(Boolean) ?? null;
+        if (cover) fallbackCoverByMaterial.set(link.materialId, cover);
+      }
+    }
+  }
+
+  return res.json(materials.map((material) => {
+    const materialImages = imagesByMaterial.get(material.id) ?? [];
+    const directCover =
+      materialImages.find((image) => image.id === material.primaryImageId)?.storageUrl ??
+      materialImages[0]?.storageUrl ??
+      null;
+
+    return {
+      ...material,
+      images: materialImages,
+      coverImageUrl: directCover ?? fallbackCoverByMaterial.get(material.id) ?? null,
+    };
+  }));
 });
 
 // POST /api/arch/materials

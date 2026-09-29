@@ -148,6 +148,7 @@ type MaterialLibraryItem = {
   compartilhamento: "privado" | "parceiros" | "publico";
   status: string;
   primaryImageId?: string | null;
+  coverImageUrl?: string | null;
   images: MaterialLibraryImage[];
 };
 
@@ -380,13 +381,14 @@ export function RenderStudioMaterialLibraryModal({ isOpen, onClose, onSelect }: 
 
   function selectMaterial(item: MaterialLibraryItem) {
     const image = primaryImage(item);
+    const selectedImageUrl = image?.storageUrl ?? item.coverImageUrl ?? null;
     onSelect({
       id: item.id,
       nome: item.nome,
       categoria: item.categoria,
       fornecedor: item.fabricante,
       referencia: item.referencia ?? undefined,
-      imagens: image ? [image.storageUrl] : [],
+      imagens: selectedImageUrl ? [selectedImageUrl] : [],
     } as CatalogItem);
     onClose();
   }
@@ -549,18 +551,19 @@ export function RenderStudioMaterialLibraryModal({ isOpen, onClose, onSelect }: 
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(155px, 1fr))", gap: 12 }}>
                   {items.map((item) => {
                     const image = primaryImage(item);
+                    const coverUrl = image?.storageUrl ?? item.coverImageUrl ?? null;
                     return (
                       <div key={item.id} style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 10, overflow: "hidden", display: "flex", flexDirection: "column" }}>
                         <button onClick={() => selectMaterial(item)} title={item.nome}
                           style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer", textAlign: "left", color: "inherit" }}>
                           <div style={{ height: 96, background: D.inputBg, position: "relative", overflow: "hidden" }}>
-                            {image ? (
-                              <img src={imageSrc(image.storageUrl)} alt={item.nome} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                            {coverUrl ? (
+                              <img src={imageSrc(coverUrl)} alt={item.nome} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                             ) : (
                               <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, color: D.dim }}>▦</div>
                             )}
                             <div style={{ position: "absolute", top: 6, right: 6, padding: "2px 5px", borderRadius: 5, background: "rgba(6,9,17,0.78)", color: "#fff", fontSize: 8 }}>
-                              {item.images.length} ref.
+                              {item.images.length > 0 ? `${item.images.length} ref.` : coverUrl ? "capa" : "sem imagem"}
                             </div>
                           </div>
                           <div style={{ padding: "8px 8px 5px" }}>
