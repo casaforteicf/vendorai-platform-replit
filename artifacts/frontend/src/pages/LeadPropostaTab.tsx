@@ -2994,42 +2994,88 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                       </button>
                       {proposalStagesOpen && (
                         <div className="space-y-2 border-t p-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div>
-                          <p className="text-xs font-semibold">Configuração por etapa</p>
-                          <span className="text-[11px] text-muted-foreground">
-                            Selecione até 3 etapas por ação para gerar imagens sem consumo acidental.
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="text-[11px] text-muted-foreground">
-                            Selecione até 3 etapas · {selectedStageImageIds.length}/3
-                          </span>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-9 w-full gap-1.5 text-xs sm:h-8 sm:w-auto"
-                            disabled={generatingStageImages || selectedStageImageIds.length === 0}
-                            onClick={() => void generateRepresentativeStageImages(false)}
-                          >
-                            {generatingStageImages ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                            {generatingStageImages
-                              ? "Gerando..."
-                              : `Gerar ${selectedStageImageIds.length || ""} foto${selectedStageImageIds.length === 1 ? "" : "s"}`}
-                          </Button>
-                          {Object.keys(selectedStageImages).length > 0 && (
+                      <div className="flex flex-col gap-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="text-xs font-semibold">Configuração por etapa</p>
+                            <span className="text-[11px] text-muted-foreground">
+                              Use os controles em massa primeiro e ajuste apenas as exceções abaixo.
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-8 text-[11px]"
+                              disabled={generatingStageImages || selectedOrcamentoStages.length === 0 || proposalComposerStageImageCount === selectedOrcamentoStages.length}
+                              onClick={selectNextMissingStageImages}
+                            >
+                              Selecionar 3 sem imagem
+                            </Button>
                             <Button
                               type="button"
                               variant="ghost"
                               size="sm"
                               className="h-8 text-[11px]"
                               disabled={generatingStageImages || selectedStageImageIds.length === 0}
-                              onClick={() => void generateRepresentativeStageImages(true)}
+                              onClick={() => setSelectedStageImageIds([])}
                             >
-                              Regenerar selecionadas
+                              Limpar seleção
                             </Button>
-                          )}
+                          </div>
+                        </div>
+
+                        <div className="grid gap-2 rounded-lg border bg-muted/20 p-2.5 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Aplicar financeiro em todas</label>
+                            <Select onValueChange={(value) => applyFinancialModeToAllStages(value as ProposalPresentationMode | "__default__")}>
+                              <SelectTrigger className="h-8 w-full text-xs"><SelectValue placeholder="Escolher padrão em massa" /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__default__">Usar padrão geral</SelectItem>
+                                {PROPOSAL_PRESENTATION_OPTIONS.map((option) => (
+                                  <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Aplicar técnico em todas</label>
+                            <Select onValueChange={(value) => applyTechnicalVisibilityToAllStages(value as "mostrar" | "ocultar" | "__default__")}>
+                              <SelectTrigger className="h-8 w-full text-xs"><SelectValue placeholder="Escolher padrão em massa" /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__default__">Usar padrão geral</SelectItem>
+                                <SelectItem value="mostrar">Mostrar escopo em todas</SelectItem>
+                                <SelectItem value="ocultar">Ocultar escopo em todas</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-[11px] text-muted-foreground">IA: {selectedStageImageIds.length}/3</span>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-8 gap-1.5 text-xs"
+                              disabled={generatingStageImages || selectedStageImageIds.length === 0}
+                              onClick={() => void generateRepresentativeStageImages(false)}
+                            >
+                              {generatingStageImages ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                              Gerar selecionadas
+                            </Button>
+                            {Object.keys(selectedStageImages).length > 0 && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 text-[11px]"
+                                disabled={generatingStageImages || selectedStageImageIds.length === 0}
+                                onClick={() => void generateRepresentativeStageImages(true)}
+                              >
+                                Regenerar
+                              </Button>
+                            )}
+                          </div>
                         </div>
                       </div>
                       <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
