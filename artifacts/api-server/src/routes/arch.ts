@@ -7611,6 +7611,13 @@ router.patch("/arch/specification/item/:itemId", authenticate, async (req, res) 
 router.post("/arch/specification/:specificationId/enviar-orcamento", authenticate, async (req, res) => {
   const tid = tenantId(req);
   const specificationId = req.params.specificationId as string;
+  const requestedIds = Array.isArray((req.body as any)?.itemIds)
+    ? (req.body as any).itemIds.filter((id: unknown): id is string => typeof id === "string" && id.length > 0)
+    : [];
+
+  if (requestedIds.length === 0) {
+    return res.status(400).json({ error: "Selecione pelo menos um item confirmado para enviar ao orçamento." });
+  }
 
   const [spec] = await db
     .select()
@@ -7625,17 +7632,18 @@ router.post("/arch/specification/:specificationId/enviar-orcamento", authenticat
     .from(archSpecItemsTable)
     .where(eq(archSpecItemsTable.specificationId, specificationId));
 
-  // Nota: os itens nascem com status 'pendente' assim que a IA gera a
-  // especificação (endpoint /analyze) — a tela atual ainda não tem controle
-  // pra marcar item por item como 'especificado', então travar o envio até
-  // isso não existiria caminho nenhum pro usuário desbloquear. Envia tudo
-  // que não foi explicitamente rejeitado ('nao_especificado'); item
-  // 'pendente' ainda tem descrição/quantidade sugeridas pela IA, então é
-  // dado válido pra semear a linha de orçamento (marcado geradoPorIa=true,
-  // editável depois na tela de orçamento).
-  const enviaveis = items.filter((i) => i.status !== "nao_especificado");
+  // Quality gate: somente itens explicitamente confirmados como parte do
+  // escopo comercial podem virar linha de orçamento. Itens pendentes ficam
+  // na revisão técnica; itens "nao_especificado" permanecem como referência.
+  const requestedSet = new Set(requestedIds);
+  const enviaveis = items.filter((i) => requestedSet.has(i.id) && i.status === "especificado");
   if (enviaveis.length === 0) {
-    return res.status(422).json({ error: "Nenhum item disponível pra enviar pro orçamento (todos marcados como não especificados)." });
+    return res.status(422).json({ error: "Os itens selecionados ainda não foram confirmados como inclusos no orçamento." });
+  }
+
+  const invalidRequested = requestedIds.filter((id: string) => !items.some((item) => item.id === id));
+  if (invalidRequested.length > 0) {
+    return res.status(400).json({ error: "Há itens selecionados que não pertencem a esta especificação." });
   }
 
   // Resolve nome/preço/fornecedor de cada item — catálogo vinculado tem
@@ -7667,14 +7675,29 @@ router.post("/arch/specification/:specificationId/enviar-orcamento", authenticat
 
   const inseridos = await db.insert(archOrcamentoItensTable).values(novosItens).returning();
 
+  const pendentes = items.filter((item) => item.status === "pendente").length;
+  const referencias = items.filter((item) => item.status === "nao_especificado").length;
+
   await db
     .update(archSpecificationsTable)
-    .set({ status: "enviado_orcamento", updatedAt: new Date() })
+    .set({
+      status: pendentes > 0 ? "enviado_orcamento_parcial" : "enviado_orcamento",
+      updatedAt: new Date(),
+    })
     .where(eq(archSpecificationsTable.id, specificationId));
 
-  req.log.info({ tenantId: tid, specificationId, itensCriados: inseridos.length }, "arch/specification: enviado pro orçamento");
+  req.log.info(
+    { tenantId: tid, specificationId, itensCriados: inseridos.length, pendentes, referencias },
+    "arch/specification: itens confirmados enviados pro orçamento",
+  );
 
-  return res.status(201).json({ success: true, itensCriados: inseridos.length, itens: inseridos });
+  return res.status(201).json({
+    success: true,
+    itensCriados: inseridos.length,
+    pendentes,
+    referencias,
+    itens: inseridos,
+  });
 });
 
 // ═════════════════════════════════════════════════════════════════════════════

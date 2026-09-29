@@ -589,7 +589,15 @@ export function useRenderStudioController() {
     } catch (e: unknown) { setErr(categorizeError(e)); }
   }
 
-  async function handleSalvarMedidasItem(itemId: string, patch: { larguraCm?: string; alturaCm?: string; profundidadeCm?: string }) {
+  async function handleSalvarMedidasItem(itemId: string, patch: {
+    larguraCm?: string;
+    alturaCm?: string;
+    profundidadeCm?: string;
+    status?: "pendente" | "especificado" | "nao_especificado";
+    overrideNome?: string | null;
+    overrideFornecedor?: string | null;
+    overridePreco?: string | null;
+  }) {
     setSpecData(prev => prev.map((item: any) => item.id === itemId ? { ...item, ...patch } : item));
     try {
       await apiPatch(`/api/arch/specification/item/${itemId}`, patch);
@@ -598,13 +606,23 @@ export function useRenderStudioController() {
 
   // Enviar especificação pro orçamento — ponte real (antes só existia render
   // → especificação; especificação → orçamento nunca tinha sido conectada).
-  async function handleEnviarOrcamento() {
+  async function handleEnviarOrcamento(itemIds?: string[]) {
     if (!specificationId) return;
+    const selectedIds = (itemIds ?? []).filter(Boolean);
+    if (selectedIds.length === 0) {
+      setErr("Selecione pelo menos um item como incluso no orçamento antes de enviar.");
+      return;
+    }
     setEnviandoOrcamento(true); setErr(null); setOrcamentoMsg(null);
     try {
-      const data = await apiPost(`/api/arch/specification/${specificationId}/enviar-orcamento`, {});
+      const data = await apiPost(`/api/arch/specification/${specificationId}/enviar-orcamento`, { itemIds: selectedIds });
       logEvent("spec_sent_to_budget", `Especificação enviada pro orçamento · ${data.itensCriados} itens`);
-      setOrcamentoMsg(`${data.itensCriados} item(ns) enviado(s) pro orçamento.`);
+      const pendentes = Number(data.pendentes ?? 0);
+      setOrcamentoMsg(
+        pendentes > 0
+          ? `${data.itensCriados} item(ns) enviado(s). ${pendentes} pendência(s) permanecem na especificação.`
+          : `${data.itensCriados} item(ns) enviado(s) pro orçamento.`
+      );
     } catch (e: unknown) {
       setErr(categorizeError(e));
     } finally {

@@ -47,10 +47,18 @@ export function RenderStudioRightPanel({
   melhoriaPrompt: string; setMelhoriaPrompt: (v: string) => void;
   melhoriaMode: RenderStudioImprovementMode; setMelhoriaMode: (v: RenderStudioImprovementMode) => void;
   approved: boolean; specDone: boolean; specData: any[];
-  specificationId: string | null; enviandoOrcamento: boolean; orcamentoMsg: string | null; onEnviarOrcamento: () => void;
+  specificationId: string | null; enviandoOrcamento: boolean; orcamentoMsg: string | null; onEnviarOrcamento: (itemIds?: string[]) => void;
   areaM2: string; setAreaM2: (v: string) => void; peDireitoM: string; setPeDireitoM: (v: string) => void;
   onSalvarMedidasAmbiente: () => void;
-  onSalvarMedidasItem: (itemId: string, patch: { larguraCm?: string; alturaCm?: string; profundidadeCm?: string }) => void;
+  onSalvarMedidasItem: (itemId: string, patch: {
+    larguraCm?: string;
+    alturaCm?: string;
+    profundidadeCm?: string;
+    status?: "pendente" | "especificado" | "nao_especificado";
+    overrideNome?: string | null;
+    overrideFornecedor?: string | null;
+    overridePreco?: string | null;
+  }) => void;
   onNextStep: () => void; onStartRender: () => void;
   onApplyMelhoria: () => void; onApprove: () => void; onSendToSpec: () => void;
   sceneType: RenderStudioSceneType; setSceneType: (v: RenderStudioSceneType) => void;
@@ -67,7 +75,26 @@ export function RenderStudioRightPanel({
   isOpen: boolean; onToggle: () => void;
 }) {
   const [tab, setTab] = useState<"propriedades" | "camadas">("propriedades");
+  const [specFilter, setSpecFilter] = useState<"todos" | "pendente" | "especificado" | "nao_especificado">("todos");
   const currentVersion = versions.find((version) => version.id === currentRenderId) ?? versions[0] ?? null;
+
+  const specStats = specData.reduce((acc: { total: number; pendente: number; especificado: number; nao_especificado: number }, item: any) => {
+    acc.total += 1;
+    const status = item.status === "especificado" || item.status === "nao_especificado" ? item.status : "pendente";
+    acc[status] += 1;
+    return acc;
+  }, { total: 0, pendente: 0, especificado: 0, nao_especificado: 0 });
+
+  const visibleSpecItems = specData.filter((item: any) => {
+    const status = item.status === "especificado" || item.status === "nao_especificado" ? item.status : "pendente";
+    return specFilter === "todos" || status === specFilter;
+  });
+
+  const specGroups = visibleSpecItems.reduce((groups: Record<string, any[]>, item: any) => {
+    const key = item.categoria || "Outros";
+    (groups[key] ??= []).push(item);
+    return groups;
+  }, {});
   const otherVersions = versions.filter((version) => version.id !== currentVersion?.id);
 
   const AMBIENTE_OPTIONS = [
@@ -444,21 +471,24 @@ export function RenderStudioRightPanel({
                   </div>
                 )}
 
-                {/* Especificação — P2-21 */}
+                {/* Especificação — revisão técnica antes do orçamento */}
                 {step === "especificacao" && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     <PanelLabel>Especificação técnica</PanelLabel>
                     {specDone ? (
                       <>
-                        <div style={{ padding: "8px", borderRadius: 7, background: D.greenDim, border: `1px solid ${D.green}44`, color: D.green, fontSize: 11, textAlign: "center" }}>✅ Especificação gerada</div>
+                        <div style={{ padding: "8px 9px", borderRadius: 7, background: D.greenDim, border: `1px solid ${D.green}44`, color: D.green, fontSize: 10, lineHeight: 1.5 }}>
+                          <strong>{specStats.total} elementos</strong> · {specStats.especificado} inclusos · {specStats.pendente} pendentes · {specStats.nao_especificado} somente referência
+                        </div>
 
-                        {/* Medidas do ambiente — preenchimento manual */}
+                        {/* Medidas do ambiente — sempre manuais ou vindas do modelo, nunca inventadas pela imagem */}
                         <div style={{ display: "flex", gap: 6, alignItems: "flex-end" }}>
                           <div style={{ flex: 1 }}>
                             <div style={{ fontSize: 9, color: D.muted, marginBottom: 3 }}>Área (m²)</div>
                             <input type="number" min={0} step={0.01} value={areaM2}
                               onChange={(e) => setAreaM2(e.target.value)}
                               onBlur={onSalvarMedidasAmbiente}
+                              placeholder="Informar"
                               style={{ width: "100%", padding: "5px 7px", borderRadius: 6, border: `1px solid ${D.border}`, background: D.bg, color: D.text, fontSize: 11 }} />
                           </div>
                           <div style={{ flex: 1 }}>
@@ -466,56 +496,130 @@ export function RenderStudioRightPanel({
                             <input type="number" min={0} step={0.01} value={peDireitoM}
                               onChange={(e) => setPeDireitoM(e.target.value)}
                               onBlur={onSalvarMedidasAmbiente}
+                              placeholder="Informar"
                               style={{ width: "100%", padding: "5px 7px", borderRadius: 6, border: `1px solid ${D.border}`, background: D.bg, color: D.text, fontSize: 11 }} />
                           </div>
                         </div>
 
-                        {specData.map((item, i) => (
-                          <div key={i} style={{ padding: "7px 9px", borderRadius: 7, background: D.card, border: `1px solid ${D.border}`, fontSize: 11 }}>
-                            <div style={{ fontWeight: 700, color: D.text, marginBottom: 2 }}>{item.nome ?? `Item ${i + 1}`}</div>
-                            {item.material && <div style={{ fontSize: 10, color: D.muted }}>Material: {item.material}</div>}
-                            {item.quantidade && <div style={{ fontSize: 10, color: D.muted }}>Qtd: {item.quantidade}</div>}
-                            {/* Dimensões do item — preenchimento manual */}
-                            {item.id && (
-                              <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
-                                {(["larguraCm", "alturaCm", "profundidadeCm"] as const).map((campo) => (
-                                  <input key={campo} type="number" min={0} step={0.5}
-                                    placeholder={campo === "larguraCm" ? "L cm" : campo === "alturaCm" ? "A cm" : "P cm"}
-                                    defaultValue={item[campo] ?? ""}
-                                    onBlur={(e) => onSalvarMedidasItem(item.id, { [campo]: e.target.value || undefined })}
-                                    style={{ width: 0, flex: 1, padding: "4px 5px", borderRadius: 5, border: `1px solid ${D.border}`, background: D.bg, color: D.text, fontSize: 10 }} />
-                                ))}
+                        {/* Filtros de revisão */}
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 5 }}>
+                          {([
+                            ["todos", `Todos (${specStats.total})`],
+                            ["pendente", `Pendentes (${specStats.pendente})`],
+                            ["especificado", `Inclusos (${specStats.especificado})`],
+                            ["nao_especificado", `Referência (${specStats.nao_especificado})`],
+                          ] as const).map(([id, label]) => (
+                            <button key={id} type="button" onClick={() => setSpecFilter(id)}
+                              style={{ padding: "6px 7px", borderRadius: 6, border: `1px solid ${specFilter === id ? D.purple : D.border}`, background: specFilter === id ? `${D.purple}12` : D.card, color: specFilter === id ? D.purpleText : D.muted, fontSize: 9, fontWeight: 700, cursor: "pointer" }}>
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+
+                        {specStats.pendente > 0 && (
+                          <button type="button" onClick={() => setSpecFilter("pendente")}
+                            style={{ padding: "7px 9px", borderRadius: 7, border: `1px solid ${D.amber}55`, background: `${D.amber}10`, color: D.amber, fontSize: 10, fontWeight: 700, cursor: "pointer", textAlign: "left" }}>
+                            ⚠ Revisar {specStats.pendente} pendência(s) antes de fechar a especificação
+                          </button>
+                        )}
+
+                        {/* Lista compacta agrupada por categoria */}
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {Object.entries(specGroups).map(([categoria, items]) => (
+                            <div key={categoria} style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 2px" }}>
+                                <span style={{ fontSize: 9, fontWeight: 800, color: D.dim, textTransform: "uppercase", letterSpacing: ".06em" }}>{categoria}</span>
+                                <span style={{ fontSize: 9, color: D.dim }}>{items.length}</span>
                               </div>
-                            )}
-                            {/* P2-21: source attribution */}
-                            <div style={{ marginTop: 4 }}>
-                              <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 3, background: item.confirmedByUser ? `${D.green}22` : `${D.amber}22`, color: item.confirmedByUser ? D.green : D.amber, border: `1px solid ${item.confirmedByUser ? D.green : D.amber}44` }}>
-                                {item.confirmedByUser ? "✓ Confirmado pelo usuário" : "~ Inferência IA"}
-                              </span>
+
+                              {items.map((item: any, i: number) => {
+                                const status = item.status === "especificado" || item.status === "nao_especificado" ? item.status : "pendente";
+                                const confidence = Math.round(Number(item.confianca ?? 0) * 100);
+                                const displayName = item.overrideNome ?? item.nome ?? item.descricao ?? `Item ${i + 1}`;
+                                const sourceLabel = item.catalogoItemId ? "Catálogo" : item.materialId ? "Material" : "Inferência IA";
+                                return (
+                                  <div key={item.id ?? `${categoria}-${i}`} style={{ padding: "8px", borderRadius: 7, background: D.card, border: `1px solid ${status === "especificado" ? D.green + "55" : status === "nao_especificado" ? D.border : D.amber + "55"}`, fontSize: 11 }}>
+                                    <div style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div title={displayName} style={{ fontWeight: 700, color: D.text, lineHeight: 1.35 }}>{displayName}</div>
+                                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }}>
+                                          <span style={{ fontSize: 8, padding: "2px 5px", borderRadius: 4, background: `${D.purple}12`, color: D.purpleText }}>{sourceLabel}</span>
+                                          <span style={{ fontSize: 8, padding: "2px 5px", borderRadius: 4, background: `${D.amber}10`, color: D.amber }}>Confiança {Number.isFinite(confidence) ? confidence : 0}%</span>
+                                          <span style={{ fontSize: 8, color: D.muted }}>Qtd. {item.quantidade ?? 1}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {item.id && (
+                                      <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
+                                        {(["larguraCm", "alturaCm", "profundidadeCm"] as const).map((campo) => (
+                                          <input key={campo} type="number" min={0} step={0.5}
+                                            placeholder={campo === "larguraCm" ? "L cm" : campo === "alturaCm" ? "A cm" : "P cm"}
+                                            defaultValue={item[campo] ?? ""}
+                                            onBlur={(e) => onSalvarMedidasItem(item.id, { [campo]: e.target.value || undefined })}
+                                            style={{ width: 0, flex: 1, padding: "4px 5px", borderRadius: 5, border: `1px solid ${D.border}`, background: D.bg, color: D.text, fontSize: 9 }} />
+                                        ))}
+                                      </div>
+                                    )}
+
+                                    {item.id && (
+                                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 4, marginTop: 6 }}>
+                                        <button type="button" onClick={() => onSalvarMedidasItem(item.id, { status: "especificado" })}
+                                          style={{ padding: "5px 3px", borderRadius: 5, border: `1px solid ${status === "especificado" ? D.green : D.border}`, background: status === "especificado" ? D.greenDim : D.bg, color: status === "especificado" ? D.green : D.muted, fontSize: 8, fontWeight: 800, cursor: "pointer" }}>
+                                          ✓ Incluir
+                                        </button>
+                                        <button type="button" onClick={() => onSalvarMedidasItem(item.id, { status: "nao_especificado" })}
+                                          style={{ padding: "5px 3px", borderRadius: 5, border: `1px solid ${status === "nao_especificado" ? D.purple : D.border}`, background: status === "nao_especificado" ? `${D.purple}10` : D.bg, color: status === "nao_especificado" ? D.purpleText : D.muted, fontSize: 8, fontWeight: 800, cursor: "pointer" }}>
+                                          Referência
+                                        </button>
+                                        <button type="button" onClick={() => onSalvarMedidasItem(item.id, { status: "pendente" })}
+                                          style={{ padding: "5px 3px", borderRadius: 5, border: `1px solid ${status === "pendente" ? D.amber : D.border}`, background: status === "pendente" ? `${D.amber}10` : D.bg, color: status === "pendente" ? D.amber : D.muted, fontSize: 8, fontWeight: 800, cursor: "pointer" }}>
+                                          Pendente
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
-                          </div>
-                        ))}
-                        {/* P2-22: export */}
+                          ))}
+
+                          {visibleSpecItems.length === 0 && (
+                            <div style={{ padding: "12px 8px", textAlign: "center", fontSize: 10, color: D.dim }}>Nenhum item neste filtro.</div>
+                          )}
+                        </div>
+
                         <DkBtn variant="secondary" small onClick={() => {
-                          const content = JSON.stringify(specData, null, 2);
+                          const content = JSON.stringify({ specificationId, room: { areaM2, peDireitoM }, items: specData }, null, 2);
                           const blob = new Blob([content], { type: "application/json" });
                           const url = URL.createObjectURL(blob);
                           const a = document.createElement("a");
                           a.href = url; a.download = `especificacao-${arq.projectMeta?.titulo ?? "arqdor"}-${new Date().toISOString().split("T")[0]}.json`;
                           a.click(); URL.revokeObjectURL(url);
                         }}>⬇ Exportar especificação</DkBtn>
+
                         {specificationId && (
-                          <DkBtn disabled={enviandoOrcamento} onClick={onEnviarOrcamento}>
-                            {enviandoOrcamento ? "Enviando…" : "→ Enviar para Orçamento"}
+                          <DkBtn
+                            disabled={enviandoOrcamento || specStats.especificado === 0}
+                            onClick={() => onEnviarOrcamento(specData.filter((item: any) => item.status === "especificado" && item.id).map((item: any) => item.id))}
+                          >
+                            {enviandoOrcamento ? "Enviando…" : `→ Enviar ${specStats.especificado} item(ns) ao orçamento`}
                           </DkBtn>
                         )}
+
+                        {specStats.especificado === 0 && (
+                          <div style={{ fontSize: 9, lineHeight: 1.4, color: D.muted, textAlign: "center" }}>
+                            Marque como <strong>Incluir</strong> somente os itens que fazem parte do escopo comercial.
+                          </div>
+                        )}
+
                         {orcamentoMsg && (
-                          <div style={{ padding: "8px", borderRadius: 7, background: D.greenDim, border: `1px solid ${D.green}44`, color: D.green, fontSize: 11, textAlign: "center" }}>✅ {orcamentoMsg}</div>
+                          <div style={{ padding: "8px", borderRadius: 7, background: D.greenDim, border: `1px solid ${D.green}44`, color: D.green, fontSize: 10, textAlign: "center" }}>✅ {orcamentoMsg}</div>
                         )}
                       </>
                     ) : (
                       <>
-                        <div style={{ fontSize: 11, color: D.muted, lineHeight: 1.5 }}>✦ Extrai materiais, acabamentos e objetos do render aprovado.</div>
+                        <div style={{ fontSize: 11, color: D.muted, lineHeight: 1.5 }}>✦ A IA identifica os elementos do render. Depois você confirma o que entra no escopo, o que é somente referência e o que ainda precisa ser definido.</div>
                         <DkBtn disabled={loading} onClick={onSendToSpec}>{loading ? "Gerando…" : "✦ Gerar especificação"}</DkBtn>
                       </>
                     )}
