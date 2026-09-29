@@ -827,6 +827,17 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
     // ── 5. Refino técnico + salvar resultado em alta resolução ─────────────
     const finalResultBuf = await enhanceFinalRender(resultBuf);
     const finalMeta = await sharp(finalResultBuf).metadata();
+    const [renderContext] = await db
+      .select({
+        projectId: archAiRendersTable.projectId,
+        leadId: archAiRendersTable.leadId,
+      })
+      .from(archAiRendersTable)
+      .where(and(
+        eq(archAiRendersTable.id, renderId),
+        eq(archAiRendersTable.tenantId, tid),
+      ))
+      .limit(1);
 
     const captured = await captureGeneratedMedia({
       tenantId: tid,
@@ -840,6 +851,8 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
       metadata: {
         module: "arqdor",
         renderId,
+        archProjectId: renderContext?.projectId ?? null,
+        leadId: renderContext?.leadId ?? null,
         ambiente: ambiente ?? null,
         source: source ?? "render-studio",
         renderView: renderView ?? null,
