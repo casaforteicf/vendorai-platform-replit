@@ -2069,19 +2069,21 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
           : {}),
       };
 
-      // Persist presentation choices made in the proposal screen, including
-      // the manually informed total built area. This keeps the orçamento as the
-      // single source of truth for future proposal versions.
-      await db
-        .update(propostasTable)
-        .set({
-          apresentacao: {
-            ...(orc.apresentacao ?? {}),
-            ...mergedPresentation,
-          },
-          updatedAt: new Date(),
-        })
-        .where(eq(propostasTable.id, orc.id));
+      // Draft budgets may absorb presentation edits. Once emitted, the budget is
+      // immutable: proposal-specific presentation choices live only in the
+      // generated proposal snapshot and a commercial change requires R1/R2/...
+      if (orc.status === "rascunho") {
+        await db
+          .update(propostasTable)
+          .set({
+            apresentacao: {
+              ...(orc.apresentacao ?? {}),
+              ...mergedPresentation,
+            },
+            updatedAt: new Date(),
+          })
+          .where(eq(propostasTable.id, orc.id));
+      }
 
       if (builderWantsStageImages) {
         const stageImages =
