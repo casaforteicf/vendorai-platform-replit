@@ -3143,6 +3143,17 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                           </div>
                         </div>
                       </div>
+                      <input
+                        ref={stageImageInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (file) void handleStageImageUpload(file);
+                          event.target.value = "";
+                        }}
+                      />
                       <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
                         {selectedOrcamentoStages.map((stage) => (
                           <div
@@ -3158,18 +3169,42 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                                 onChange={() => toggleStageImageSelection(stage.id)}
                                 className="h-4 w-4 shrink-0"
                               />
-                              {selectedStageImages[stage.id] ? (
-                                <img
-                                  src={selectedStageImages[stage.id]}
-                                  alt={`Imagem representativa da etapa ${stage.nome}`}
-                                  className="h-12 w-20 shrink-0 rounded-md border object-cover"
-                                  onError={(event) => { (event.currentTarget as HTMLImageElement).style.display = "none"; }}
-                                />
-                              ) : (
-                                <div className="flex h-12 w-20 shrink-0 items-center justify-center rounded-md border border-dashed bg-muted/30 text-[9px] text-muted-foreground">
-                                  Sem imagem
+                              <div className="w-20 shrink-0">
+                                {selectedStageImages[stage.id] ? (
+                                  <img
+                                    src={selectedStageImages[stage.id]}
+                                    alt={`Imagem representativa da etapa ${stage.nome}`}
+                                    className="h-12 w-20 rounded-md border object-cover"
+                                    onError={(event) => { (event.currentTarget as HTMLImageElement).style.display = "none"; }}
+                                  />
+                                ) : (
+                                  <div className="flex h-12 w-20 items-center justify-center rounded-md border border-dashed bg-muted/30 text-[9px] text-muted-foreground">
+                                    Sem imagem
+                                  </div>
+                                )}
+                                <div className="mt-1 flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    className="text-[9px] text-primary hover:underline disabled:opacity-50"
+                                    disabled={stageImageUploading}
+                                    onClick={() => {
+                                      setStageImageUploadTarget(stage.id);
+                                      stageImageInputRef.current?.click();
+                                    }}
+                                  >
+                                    {selectedStageImages[stage.id] ? "Trocar" : "Enviar"}
+                                  </button>
+                                  {selectedStageImages[stage.id] && (
+                                    <button
+                                      type="button"
+                                      className="text-[9px] text-destructive hover:underline"
+                                      onClick={() => void removeManualStageImage(stage.id)}
+                                    >
+                                      Remover
+                                    </button>
+                                  )}
                                 </div>
-                              )}
+                              </div>
                               <div className="min-w-0">
                                 <p
                                   className="text-xs font-medium leading-snug whitespace-normal break-words"
