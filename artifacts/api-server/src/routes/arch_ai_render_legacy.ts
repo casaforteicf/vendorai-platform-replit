@@ -1133,7 +1133,7 @@ function buildKontextPrompt(p: {
   const hasExplicitAppearanceEdit = editZones.size > 0 || materialLines.length > 0;
   const lines: string[] = [
     `STRICT PRESERVATION MODE — the reference image is the immutable design source. Fidelity has priority over styling, decoration and visual creativity.`,
-    `FURNITURE LOCK: preserve every existing furniture item, cabinet, countertop, appliance, fixture and built-in in the exact same position, orientation, size, proportions and visible shape. Never move, resize, rotate, replace, delete or redesign an existing item.`,
+    `OBJECT INVENTORY LOCK: every visible object in the reference is mandatory and must remain present in the output. Preserve every existing furniture item, loose object, stool, pouf, chair, bench, table, sofa, cabinet, countertop, appliance, fixture, decoration and built-in in the exact same count, position, orientation, size, proportions, silhouette and visible shape. Never move, resize, rotate, replace, delete, hide, merge, occlude, simplify or redesign an existing item.`,
     `COLOR LOCK: preserve the exact perceived colors of cabinetry, furniture, walls, floors, stone, wood, metals, fabrics and all existing finishes. Do not recolor, warm, cool, desaturate or reinterpret them. Lighting may affect natural highlights and shadows, but the underlying material color must remain the same.`,
     `TEXTURE IDENTITY LOCK: keep each existing material identity, texture family, grain direction, veining direction and pattern. Improve only texture resolution, micro-detail, roughness, depth, reflectance and realism. Do not swap one wood, stone, fabric, paint or metal for another unless that exact zone was explicitly selected for a material change.`,
     `ARCHITECTURE/CAMERA LOCK: preserve walls, openings, trim, mouldings, ceiling, floor boundaries, cabinetry geometry, circulation, camera position, framing, perspective and field of view exactly. No crop, zoom, mirror or composition change.`,
@@ -1165,7 +1165,7 @@ function buildKontextPrompt(p: {
     ``,
     `Shot on a professional full-frame camera, 35mm lens, f/5.6, sharp focus throughout, high dynamic range, realistic tonal separation, fine material detail, premium architectural-magazine quality, no noise, no blur, no visible artifacts, no smeared textures and no underexposed or clipped areas.`,
     ``,
-    `FINAL SELF-CHECK: compare against the reference before finishing. Existing furniture count, placement, dimensions, orientation, colors, material identity, architecture, camera and composition must still match. Only realism, texture fidelity, lighting and resolution may improve unless an explicit selected-zone edit was requested.`,
+    `FINAL SELF-CHECK: compare against the reference before finishing. Existing object inventory must match one-for-one: same count, same visible objects, same placement, dimensions, orientation, silhouette, colors and material identity. Verify stools, poufs, chairs, benches, tables, sofas, appliances, fixtures and decorations are all still present. Architecture, camera and composition must also match. Only realism, texture fidelity, lighting and resolution may improve unless an explicit selected-zone edit was requested.`,
     fidelityBlock,
   );
 
