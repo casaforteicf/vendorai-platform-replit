@@ -302,8 +302,20 @@ export function RenderStudioRightPanel({
                           🔒 Preservação ativa: câmera · geometria · vãos · marcenaria fora da seleção
                         </div>
 
-                        <DkBtn disabled={!melhoriaPrompt.trim() || loading} onClick={onApplyMelhoria}>
-                          {loading ? "Aplicando…" : "✦ Aplicar melhoria"}
+                        {melhoriaMode === "improve" && (
+                          <div style={{ padding: "7px 9px", borderRadius: 7, background: `${D.purple}0D`, border: `1px solid ${D.purple}22`, fontSize: 10, lineHeight: 1.45, color: D.muted }}>
+                            ✨ Refino global: não exige seleção nem descrição. O sistema melhora nitidez, materiais, iluminação e realismo preservando projeto e câmera.
+                          </div>
+                        )}
+                        <DkBtn
+                          disabled={
+                            loading ||
+                            !renderUrl ||
+                            (melhoriaMode !== "improve" && !melhoriaPrompt.trim() && !(melhoriaMode === "change-material" && selectedMaterial))
+                          }
+                          onClick={onApplyMelhoria}
+                        >
+                          {loading ? "Aplicando…" : melhoriaMode === "improve" ? "✦ Gerar versão em alta qualidade" : "✦ Aplicar melhoria"}
                         </DkBtn>
                         {!loading && <DkBtn variant="ghost" small onClick={onNextStep}>Pular → Ver versões</DkBtn>}
                       </>
