@@ -2254,9 +2254,48 @@ function renderStudioOrderedProposal(args: {
   const visualImages = (imagens ?? []).filter((value): value is string => typeof value === "string" && value.trim().length > 0);
 
   const moduleByKey = (key: string) => modules.find((item) => String(item.key) === key) ?? null;
+  const studioModuleLabels: Record<string, string> = {
+    capa: "Capa",
+    apresentacao_empresa: "Apresentação da empresa",
+    produto_servico: "Produto / serviço",
+    curiosidades_conteudo: "Curiosidades e conteúdo",
+    cases_provas: "Cases e provas",
+    faq: "Perguntas frequentes",
+    diferenciais: "Diferenciais",
+    resumo_executivo: "Resumo executivo",
+    escopo: "Escopo da proposta",
+    etapas_orcamento: "Etapas do orçamento",
+    imagem_por_etapa: "Imagens das etapas",
+    tabela_itens: "Tabela de itens",
+    cronograma: "Cronograma executivo",
+    fisico_financeiro: "Cronograma físico-financeiro",
+    condicoes_comerciais: "Condições comerciais",
+    validade_inicio: "Validade e previsão de início",
+    aceite: "Aceite e próximos passos",
+    anexos: "Anexos",
+    portal_cliente: "Portal do Cliente",
+  };
   const moduleText = (module: Record<string, unknown>, field: "title" | "description" | "contentPrompt", fallback = "") => {
     const value = module[field];
     return typeof value === "string" && value.trim() ? value.trim() : fallback;
+  };
+  const moduleDisplayTitle = (module: Record<string, unknown>) => {
+    const key = String(module.key ?? "");
+    const raw = moduleText(module, "title");
+    const normalizedRaw = raw
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+    const normalizedKey = key
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+    if (!raw || normalizedRaw === normalizedKey) return studioModuleLabels[key] || raw || "Página";
+    return raw;
   };
   const moduleImage = (module: Record<string, unknown>) => {
     const raw = module.image && typeof module.image === "object" ? module.image as Record<string, unknown> : {};
@@ -2354,16 +2393,18 @@ function renderStudioOrderedProposal(args: {
         '</td><td>' + proposalFormatDate(row.end) + '</td></tr>').join("") + '</tbody></table>';
   };
 
-  const genericPage = (module: Record<string, unknown>, index: number, body: string) =>
-    '<section class="studio-page" data-studio-key="' + esc(module.key) + '">' +
-      header(moduleText(module, "title", String(module.key ?? "Página"))) +
+  const genericPage = (module: Record<string, unknown>, index: number, body: string) => {
+    const displayTitle = moduleDisplayTitle(module);
+    return '<section class="studio-page" data-studio-key="' + esc(module.key) + '">' +
+      header(displayTitle) +
       '<div class="studio-page-body">' +
         '<span class="studio-kicker">Página ' + (index + 1) + '</span>' +
-        '<h1>' + esc(moduleText(module, "title", String(module.key ?? "Página"))) + '</h1>' +
+        '<h1>' + esc(displayTitle) + '</h1>' +
         (moduleText(module, "description") ? '<p class="studio-lead">' + esc(moduleText(module, "description")) + '</p>' : '') +
         body +
       '</div>' + footer() +
     '</section>';
+  };
 
   const renderModule = (module: Record<string, unknown>, index: number): string => {
     const key = String(module.key ?? "");

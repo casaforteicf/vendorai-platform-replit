@@ -158,10 +158,10 @@ function absolutifyStorageUrls(html: string): string {
   const base = process.env.BASE_PATH ?? "";
   const abs = (path: string) => `http://localhost:${port}${base}${path}`;
   return html
-    .replace(/src="\/api\/storage\/public-objects\/objects\//g, abs("/api/storage/objects/"))
-    .replace(/src="\/api\/storage\/objects\//g, abs("/api/storage/objects/"))
-    .replace(/src="\/api\/storage\/public-objects\//g, abs("/api/storage/public-objects/"))
-    .replace(/src="\/objects\//g, abs("/api/storage/objects/"));
+    .replace(/src="\/api\/storage\/public-objects\/objects\//g, `src="${abs("/api/storage/objects/")}`)
+    .replace(/src="\/api\/storage\/objects\//g, `src="${abs("/api/storage/objects/")}`)
+    .replace(/src="\/api\/storage\/public-objects\//g, `src="${abs("/api/storage/public-objects/")}`)
+    .replace(/src="\/objects\//g, `src="${abs("/api/storage/objects/")}`);
 }
 
 /** Make a downloaded HTML proposal portable outside the app.
@@ -178,13 +178,13 @@ function absolutifyStorageUrlsForDownload(html: string, req: any): string {
   const origin = `${protocol}://${host}`;
   const toAbsolute = (path: string) => `${origin}${path}`;
   return html
-    .replace(/src="\/api\/storage\/public-objects\/objects\//g, toAbsolute("/api/storage/objects/"))
-    .replace(/src="\/api\/storage\/objects\//g, toAbsolute("/api/storage/objects/"))
-    .replace(/src="\/api\/storage\/public-objects\//g, toAbsolute("/api/storage/public-objects/"))
-    .replace(/src="\/objects\//g, toAbsolute("/api/storage/objects/"))
-    .replace(/href="\/api\/storage\/public-objects\/objects\//g, toAbsolute("/api/storage/objects/"))
-    .replace(/href="\/api\/storage\/objects\//g, toAbsolute("/api/storage/objects/"))
-    .replace(/href="\/objects\//g, toAbsolute("/api/storage/objects/"));
+    .replace(/src="\/api\/storage\/public-objects\/objects\//g, `src="${toAbsolute("/api/storage/objects/")}`)
+    .replace(/src="\/api\/storage\/objects\//g, `src="${toAbsolute("/api/storage/objects/")}`)
+    .replace(/src="\/api\/storage\/public-objects\//g, `src="${toAbsolute("/api/storage/public-objects/")}`)
+    .replace(/src="\/objects\//g, `src="${toAbsolute("/api/storage/objects/")}`)
+    .replace(/href="\/api\/storage\/public-objects\/objects\//g, `href="${toAbsolute("/api/storage/objects/")}`)
+    .replace(/href="\/api\/storage\/objects\//g, `href="${toAbsolute("/api/storage/objects/")}`)
+    .replace(/href="\/objects\//g, `href="${toAbsolute("/api/storage/objects/")}`);
 }
 
 // ── GET /leads/:leadId/proposals ─────────────────────────────────────────────────

@@ -1660,6 +1660,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
     setProposalBuilderEditorModules(modules);
     setProposalBuilderDraggedIndex(null);
     setProposalBuilderSelectedModuleKey(modules.find((item) => item.enabled !== false)?.key ?? null);
+    setProposalBuilderPreviewMode(selectedOrcamentoId !== "__none__" ? "budget" : "template");
     setProposalBuilderEditorOpen(true);
   }
 
@@ -3726,16 +3727,23 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                   Studio de Propostas
                 </DialogTitle>
                 <p className="mt-0.5 text-[11px] text-muted-foreground">
-                  Crie o padrão comercial desta empresa e reutilize em todas as próximas propostas.
+                  Edite a estrutura do modelo ou visualize a proposta preenchida com o orçamento selecionado. A geração final segue esta mesma ordem de páginas.
                 </p>
               </div>
               <div className="flex items-center gap-2">
                 <div className="mr-2 flex items-center rounded-lg border bg-muted/30 p-1">
                   <Button type="button" size="sm" variant={proposalBuilderPreviewMode === "template" ? "default" : "ghost"} className="h-7 text-xs" onClick={() => setProposalBuilderPreviewMode("template")}>
-                    Modelo
+                    Estrutura do modelo
                   </Button>
-                  <Button type="button" size="sm" variant={proposalBuilderPreviewMode === "budget" ? "default" : "ghost"} className="h-7 text-xs" onClick={() => setProposalBuilderPreviewMode("budget")}>
-                    Simular com orçamento
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={proposalBuilderPreviewMode === "budget" ? "default" : "ghost"}
+                    className="h-7 text-xs"
+                    onClick={() => setProposalBuilderPreviewMode("budget")}
+                    disabled={selectedOrcamentoId === "__none__"}
+                  >
+                    Prévia com orçamento real
                   </Button>
                 </div>
                 <Button
