@@ -93,6 +93,28 @@ archProcurementRfqRouter.get("/arch/procurement-rfq/:obraId", async (req, res, n
   } catch (err) { logger.error({ err }, "rfq bundle error"); next(err); }
 });
 
+archProcurementRfqRouter.patch("/arch/procurement-rfq/suppliers/:supplierId/scope", async (req, res, next) => {
+  try {
+    const tid = requireTenant(req, res); if (!tid) return;
+    const supplierId = String(req.params["supplierId"] || "");
+    const categories = Array.isArray(req.body?.categories) ? [...new Set(req.body.categories.map((x: unknown) => normalizeText(x)).filter(Boolean))] : [];
+    const disciplines = Array.isArray(req.body?.disciplines) ? [...new Set(req.body.disciplines.map((x: unknown) => normalizeText(x)).filter(Boolean))] : [];
+    const regions = Array.isArray(req.body?.regions) ? [...new Set(req.body.regions.map((x: unknown) => String(x).trim()).filter(Boolean))] : [];
+    const brands = Array.isArray(req.body?.brands) ? [...new Set(req.body.brands.map((x: unknown) => String(x).trim()).filter(Boolean))] : [];
+    const leadTime = req.body?.leadTimeDays == null || req.body?.leadTimeDays === "" ? null : Math.max(0, Math.round(n(req.body.leadTimeDays)));
+    const result = await pool.query(
+      `UPDATE fornecedores
+          SET categorias=$1::jsonb, disciplinas=$2::jsonb, regioes=$3::jsonb, marcas=$4::jsonb,
+              prazo_medio_dias=$5, updated_at=now()
+        WHERE id=$6 AND tenant_id=$7
+        RETURNING id,nome,contato,telefone,email,categorias,disciplinas,regioes,marcas,prazo_medio_dias,ativo`,
+      [JSON.stringify(categories), JSON.stringify(disciplines), JSON.stringify(regions), JSON.stringify(brands), leadTime, supplierId, tid],
+    );
+    if (!result.rows[0]) return res.status(404).json({ error: "Fornecedor não encontrado." });
+    res.json({ supplier: result.rows[0] });
+  } catch (err) { logger.error({ err }, "supplier scope update error"); next(err); }
+});
+
 archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async (req, res, next) => {
   const client = await pool.connect();
   try {
@@ -174,13 +196,21 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async
         requestIds.push(finalRequestId);
         snapshotItems.push({ ...snapshot, requestId: finalRequestId, scopeHash: hash });
       }
-      const packageSnapshot = { budgetId, budgetVersion: budget.version, category: group.category, discipline: group.discipline, items: snapshotItems };
+      const versionResult = await client.query(
+        `SELECT COALESCE(MAX(version),0)::int AS latest
+           FROM arch_rfq_packages
+          WHERE tenant_id=$1 AND obra_id=$2 AND budget_id=$3::uuid
+            AND COALESCE(category,'')=COALESCE($4,'') AND COALESCE(discipline,'')=COALESCE($5,'')`,
+        [tid, obraId, budgetId, group.category, group.discipline],
+      );
+      const packageVersion = n(versionResult.rows[0]?.latest) + 1;
+      const packageSnapshot = { budgetId, budgetVersion: budget.version, category: group.category, discipline: group.discipline, version: packageVersion, items: snapshotItems };
       const packageHash = scopeHash(packageSnapshot);
       const pkg = await client.query(
         `INSERT INTO arch_rfq_packages
          (tenant_id,obra_id,project_id,budget_id,code,title,category,discipline,version,status,scope_hash,scope_snapshot,documents,created_by,created_at,updated_at)
-         VALUES($1,$2,$3::uuid,$4::uuid,$5,$6,$7,$8,1,'draft',$9,$10::jsonb,'[]'::jsonb,$11,now(),now()) RETURNING *`,
-        [tid,obraId,budget.project_id,budgetId,codeFor(group.category),`Cotação — ${group.category}`,group.category,group.discipline,packageHash,JSON.stringify(packageSnapshot),req.user?.sub??null],
+         VALUES($1,$2,$3::uuid,$4::uuid,$5,$6,$7,$8,$9,'draft',$10,$11::jsonb,'[]'::jsonb,$12,now(),now()) RETURNING *`,
+        [tid,obraId,budget.project_id,budgetId,codeFor(group.category),`Cotação — ${group.category}`,group.category,group.discipline,packageVersion,packageHash,JSON.stringify(packageSnapshot),req.user?.sub??null],
       );
       for (let i=0;i<requestIds.length;i++) {
         await client.query(`INSERT INTO arch_rfq_package_items(package_id,compra_id,sort_order) VALUES($1::uuid,$2,$3) ON CONFLICT DO NOTHING`, [pkg.rows[0].id,requestIds[i],i]);
@@ -262,22 +292,28 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
     const inv = invResult.rows[0];
     if (!inv || inv.status !== "responded") return res.status(409).json({ error: "A cotação precisa estar respondida antes da seleção." });
     const items = await client.query(`SELECT * FROM arch_rfq_quote_items WHERE invitation_id=$1::uuid`, [invitationId]);
+    const lineTotal = items.rows.reduce((sum: number, qi: any) => sum + n(qi.total_value), 0);
+    const netExtras = n(inv.freight_value) + n(inv.tax_value) - n(inv.discount_value);
     await client.query("BEGIN");
     for (const qi of items.rows) {
       const request = await client.query(`SELECT * FROM compras_obras WHERE id=$1 AND obra_id=$2 AND tenant_id=$3 LIMIT 1`, [qi.compra_id,obraId,tid]);
       const row = request.rows[0]; if (!row) continue;
+      const weight = lineTotal > 0 ? n(qi.total_value) / lineTotal : 1 / Math.max(items.rows.length, 1);
+      const allocatedExtras = netExtras * weight;
+      const confirmedCost = Math.max(0, n(qi.total_value) + allocatedExtras);
       const order = await client.query(
         `INSERT INTO arch_supplier_orders
          (id,tenant_id,project_id,obra_id,compra_id,supplier_name,item,quantity,unit,estimated_value,confirmed_value,
           freight_value,discount_value,tax_value,payment_terms,quote_valid_until,lead_time_days,status,requested_at,quoted_at,notes,documents,created_at,updated_at)
          VALUES(gen_random_uuid(),$1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8,$9,$10,0,0,0,$11,$12,$13,'approved',now(),now(),$14,'[]'::jsonb,now(),now()) RETURNING id`,
         [tid,inv.project_id,obraId,qi.compra_id,inv.supplier_name,row.descricao,String(qi.quantity),qi.unit,String(row.custo_estimado_snapshot||row.valor_total||0),
-         String(qi.total_value),inv.payment_terms||null,inv.validity_date||null,inv.lead_time_days||null,qi.notes||null],
+         String(confirmedCost),inv.payment_terms||null,inv.validity_date||null,inv.lead_time_days||null,
+         [qi.notes, allocatedExtras ? `Rateio de frete/impostos/desconto do pacote: ${allocatedExtras.toFixed(2)}` : ""].filter(Boolean).join(" • ") || null],
       );
       await client.query(
         `UPDATE compras_obras SET fornecedor=$1,cotacao_selecionada_id=$2::uuid,custo_confirmado=$3,status='aprovado',cotacao_desatualizada=false,updated_at=now()
          WHERE id=$4 AND obra_id=$5 AND tenant_id=$6`,
-        [inv.supplier_name,order.rows[0].id,String(qi.total_value),qi.compra_id,obraId,tid],
+        [inv.supplier_name,order.rows[0].id,String(confirmedCost),qi.compra_id,obraId,tid],
       );
     }
     await client.query(`UPDATE arch_rfq_invitations SET status='accepted',updated_at=now() WHERE id=$1::uuid`, [invitationId]);
