@@ -816,9 +816,9 @@ function CopilotPanel({ projectId, step, selections, onTestAction }: {
 
 // ─── Topbar ───────────────────────────────────────────────────────────────────
 
-function Topbar({ step, projectTitle, ambiente, onNextStep, userName, onHelp, onShortcuts }: {
+function Topbar({ step, projectTitle, ambiente, onNextStep, onOpenStudio, userName, onHelp, onShortcuts }: {
   step: Step; projectTitle: string | null; ambiente: string;
-  onNextStep: () => void; userName: string; onHelp: () => void; onShortcuts: () => void;
+  onNextStep: () => void; onOpenStudio: () => void; userName: string; onHelp: () => void; onShortcuts: () => void;
 }) {
   const nextLabels: Partial<Record<Step, string>> = {
     projeto: "→ Definir Ambiente", ambiente: "→ Carregar Imagem", imagem: "→ Gerar Render",
@@ -841,6 +841,12 @@ function Topbar({ step, projectTitle, ambiente, onNextStep, userName, onHelp, on
         </span>))}
       </div>
       <div style={{ flex: 1 }} />
+      {stepIndex(step) >= stepIndex("render") && (
+        <button onClick={onOpenStudio} aria-label="Abrir Studio IA" title="Materiais, iluminação, variações e versões"
+          style={{ background: D.card, color: D.purpleText, border: `1px solid ${D.purple}55`, borderRadius: 8, padding: "7px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer", marginRight: 8 }}>
+          ✦ Studio IA
+        </button>
+      )}
       <button onClick={onNextStep} aria-label={nextLabels[step] ?? "Próxima Etapa"} style={{ background: `linear-gradient(135deg, ${D.purple}, #6D28D9)`, color: "#fff", border: "none", borderRadius: 8, padding: "7px 18px", fontSize: 12, fontWeight: 700, cursor: "pointer", letterSpacing: "0.02em", boxShadow: `0 0 16px ${D.purpleGlow}`, marginRight: 12 }}>
         {nextLabels[step] ?? "Próxima Etapa"}
       </button>
@@ -1211,7 +1217,7 @@ function RightPanel({
                 {step === "render" && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     <PanelLabel>Render IA</PanelLabel>
-                    <InfoBox>{arq.projectMeta?.titulo} · {ambiente}</InfoBox>
+                    <InfoBox>{arq.projectMeta?.titulo && arq.projectMeta.titulo.trim().toLowerCase() !== ambiente.trim().toLowerCase() ? `${arq.projectMeta.titulo} · ${ambiente}` : ambiente || arq.projectMeta?.titulo || "Ambiente"}</InfoBox>
                     {!renderUrl && !loading && (
                       <>
                         <div style={{ fontSize: 11, color: D.muted, lineHeight: 1.5 }}>Fidelidade automática ativa. Escolha apenas o objetivo principal.</div>
@@ -2165,7 +2171,7 @@ function RenderStudioInner() {
       <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }}
         onChange={async (e) => { const f = e.target.files?.[0]; if (f) await handleFileSelect(f); e.target.value = ""; }} />
 
-      <Topbar step={step} projectTitle={arq.projectMeta?.titulo ?? null} ambiente={ambiente} onNextStep={handleNextStep} userName={userName} onHelp={() => setShowHelp(true)} onShortcuts={() => setShowShortcuts(true)} />
+      <Topbar step={step} projectTitle={arq.projectMeta?.titulo ?? null} ambiente={ambiente} onNextStep={handleNextStep} onOpenStudio={() => setLocation("/arch/studio")} userName={userName} onHelp={() => setShowHelp(true)} onShortcuts={() => setShowShortcuts(true)} />
 
       <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
         <LeftSidebar step={step} projectTitle={arq.projectMeta?.titulo ?? null} onStepClick={handleStepClick} />
