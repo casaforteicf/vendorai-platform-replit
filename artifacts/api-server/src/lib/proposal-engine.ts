@@ -492,6 +492,65 @@ export async function generateProposalPDF(htmlContent: string): Promise<Buffer> 
     page.setDefaultTimeout(15_000);
     await page.setContent(htmlContent, { waitUntil: "domcontentloaded", timeout: 15_000 });
     await page.emulateMediaType("print");
+
+    // A proposta pode ser visualizada em modo site/híbrido, onde as regras de tela
+    // removem as quebras entre páginas. No PDF, porém, a estrutura salva no Studio
+    // é a fonte de verdade: cada .studio-page/.page deve voltar a ocupar uma folha A4.
+    // O CSS é injetado por último para vencer as regras responsivas do preview.
+    await page.addStyleTag({
+      content: `
+        @page { size: A4; margin: 0; }
+
+        @media print {
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #fff !important;
+          }
+
+          .studio-page,
+          .studio-web .studio-page,
+          .studio-hybrid .studio-page,
+          .document-layout .page,
+          .web-interactive .page {
+            width: 210mm !important;
+            height: 297mm !important;
+            min-height: 297mm !important;
+            max-height: 297mm !important;
+            margin: 0 !important;
+            break-before: auto !important;
+            break-after: page !important;
+            page-break-before: auto !important;
+            page-break-after: always !important;
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+            box-shadow: none !important;
+          }
+
+          .studio-page:last-child,
+          .studio-web .studio-page:last-child,
+          .studio-hybrid .studio-page:last-child,
+          .document-layout .page:last-child,
+          .web-interactive .page:last-child {
+            break-after: auto !important;
+            page-break-after: auto !important;
+          }
+
+          .studio-web-nav,
+          .proposal-web-nav,
+          .web-stage-toggle,
+          .web-accept {
+            display: none !important;
+          }
+
+          .studio-web .studio-hdr,
+          .studio-web .studio-footer {
+            display: flex !important;
+          }
+        }
+      `,
+    });
+
     await page.evaluate(async () => {
       const pending = Array.from(document.images).filter((img) => !img.complete);
       await Promise.all(
@@ -505,6 +564,7 @@ export async function generateProposalPDF(htmlContent: string): Promise<Buffer> 
     });
     const pdf = await page.pdf({
       format: "A4",
+      preferCSSPageSize: true,
       printBackground: true,
       margin: { top: "0", bottom: "0", left: "0", right: "0" },
     });
