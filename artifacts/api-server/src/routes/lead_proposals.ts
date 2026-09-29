@@ -21,6 +21,7 @@ import { ObjectStorageService } from "../lib/objectStorage.js";
 import pdfParse from "pdf-parse";
 import mammoth from "mammoth";
 import http from "node:http";
+import { auditProposalBudget } from "../lib/budget-integrity.js";
 
 const router: IRouter = Router();
 const objectStorage = new ObjectStorageService();
@@ -38,6 +39,28 @@ function reservePaidImageAction(key: string): boolean {
   return true;
 }
 
+
+async function loadBudgetIntegrityForProposal(tenantId: string, leadId: string, propostaId: string) {
+  const [budget] = await db
+    .select()
+    .from(propostasTable)
+    .where(and(
+      eq(propostasTable.id, propostaId),
+      eq(propostasTable.tenantId, tenantId),
+      eq(propostasTable.leadId, leadId),
+    ))
+    .limit(1);
+
+  if (!budget) return null;
+  const integrity = auditProposalBudget({
+    itens: budget.itens,
+    valorTotal: budget.valorTotal,
+    validadeAte: budget.validadeAte,
+    prazoEntrega: budget.prazoEntrega,
+    apresentacao: budget.apresentacao,
+  });
+  return { budget, integrity };
+}
 
 // ── Helper: load proposal context ──────────────────────────────────────────────
 async function loadProposalContext(leadId: string, tenantId: string) {
@@ -1184,6 +1207,24 @@ router.post("/leads/:leadId/proposals/async", async (req, res) => {
     return;
   }
 
+  const requestedBudgetId = typeof req.body?.propostaId === "string" ? req.body.propostaId.trim() : "";
+  if (!requestedBudgetId) {
+    res.status(422).json({ error: "Selecione um orçamento antes de gerar a proposta." });
+    return;
+  }
+  const auditedBudget = await loadBudgetIntegrityForProposal(ctx.lead.tenantId, leadId, requestedBudgetId);
+  if (!auditedBudget) {
+    res.status(404).json({ error: "Orçamento selecionado não encontrado para este lead." });
+    return;
+  }
+  if (!auditedBudget.integrity.ok) {
+    res.status(409).json({
+      error: "O orçamento possui inconsistências críticas e precisa ser corrigido antes de gerar a proposta.",
+      integrity: auditedBudget.integrity,
+    });
+    return;
+  }
+
   // Encode the current proposal version + start time into the job id.
   // The status poll can then recover across rolling deploys / multiple replicas,
   // even when the in-memory Map lives on a different process.
@@ -1425,26 +1466,24 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
   } | null = null;
 
   if (bodyPropostaId) {
-    const [selectedBudget] = await db
-      .select({
-        titulo: propostasTable.titulo,
-        valorTotal: propostasTable.valorTotal,
-        itens: propostasTable.itens,
-        observacoes: propostasTable.observacoes,
-      })
-      .from(propostasTable)
-      .where(and(
-        eq(propostasTable.id, bodyPropostaId),
-        eq(propostasTable.tenantId, tenantId),
-        eq(propostasTable.leadId, leadId),
-      ))
-      .limit(1);
-
-    if (!selectedBudget) {
+    const auditedBudget = await loadBudgetIntegrityForProposal(tenantId, leadId, bodyPropostaId);
+    if (!auditedBudget) {
       res.status(404).json({ error: "Orçamento selecionado não encontrado para este lead." });
       return;
     }
-    selectedBudgetForAI = selectedBudget;
+    if (!auditedBudget.integrity.ok) {
+      res.status(409).json({
+        error: "O orçamento possui inconsistências críticas e precisa ser corrigido antes de gerar a proposta.",
+        integrity: auditedBudget.integrity,
+      });
+      return;
+    }
+    selectedBudgetForAI = {
+      titulo: auditedBudget.budget.titulo,
+      valorTotal: auditedBudget.budget.valorTotal,
+      itens: auditedBudget.budget.itens,
+      observacoes: auditedBudget.budget.observacoes,
+    };
   }
 
   const prompt = buildProposalPrompt({
