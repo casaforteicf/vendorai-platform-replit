@@ -2516,20 +2516,6 @@ function renderStudioOrderedProposal(args: {
     return bodies;
   };
 
-  const stageGalleryBodies = () => {
-    const gallery = groups
-      .map((group) => ({ group, url: presentation.imagensEtapas[group.id] || "" }))
-      .filter((item) => item.url);
-    if (!gallery.length) return ['<p class="studio-muted">Nenhuma imagem de etapa vinculada a esta proposta.</p>'];
-    return chunk(gallery, 6).map((galleryChunk) =>
-      '<div class="studio-gallery">' +
-      galleryChunk.map(({ group, url }) =>
-        '<figure><img src="' + esc(url) + '" alt="' + esc(group.nome) + '" /><figcaption>Etapa ' +
-        esc(group.ordem) + ' · ' + esc(group.nome) + '</figcaption></figure>'
-      ).join("") + '</div>'
-    );
-  };
-
   const schedulePageBodies = () => {
     if (!scheduleRows.length) return ['<p class="studio-muted">Cronograma não configurado para esta proposta.</p>'];
     return chunk(scheduleRows, 14).map((rows) =>
