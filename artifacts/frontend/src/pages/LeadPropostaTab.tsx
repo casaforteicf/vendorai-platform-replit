@@ -53,6 +53,7 @@ import {
   Settings2,
   Paperclip,
   MoreHorizontal,
+  ListChecks,
 } from "lucide-react";
 import {
   DropdownMenu,
