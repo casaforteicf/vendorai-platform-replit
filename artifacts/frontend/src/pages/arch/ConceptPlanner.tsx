@@ -270,6 +270,31 @@ type ConceptMaterialOption = {
   catalogProductId?: string;
 };
 
+type ProductMaterialLink = {
+  id: string;
+  materialId: string;
+  surfaceKey: string | null;
+  grupo: string | null;
+  isDefault: boolean;
+  precoAdicional: string | null;
+  material: {
+    id: string;
+    nome: string;
+    fabricante: string;
+    linha: string;
+    categoria: string;
+    cor?: string | null;
+    acabamento?: string | null;
+    primaryImage?: {
+      id: string;
+      storageUrl: string;
+      width?: number | null;
+      height?: number | null;
+      qualityScore?: string | null;
+    } | null;
+  } | null;
+};
+
 function getCatalogMaterialOption(item: RealCatalogProduct): ConceptMaterialOption | null {
   const specs = item.especificacoes;
   if (!specs || typeof specs !== "object" || specs.assetType !== "material") return null;
@@ -934,6 +959,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [spaceProfiles, setSpaceProfiles] = useState<SpaceProfile[]>([]);
   const [objects, setObjects] = useState<ConceptPlanObject[]>([]);
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
+  const [selectedProductMaterialLinks, setSelectedProductMaterialLinks] = useState<ProductMaterialLink[]>([]);
+  const [selectedProductMaterialsLoading, setSelectedProductMaterialsLoading] = useState(false);
   const [furnishLayoutOptions, setFurnishLayoutOptions] = useState<Array<{
     id: string;
     score: number;
@@ -1900,6 +1927,37 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
   const selected = safeRooms.find((r) => r.id === selectedId) ?? null;
   const selectedObject = safeObjects.find((object) => object.id === selectedObjectId) ?? null;
+
+  useEffect(() => {
+    let cancelled = false;
+    const productId = selectedObject?.catalogProductId;
+    if (!productId) {
+      setSelectedProductMaterialLinks([]);
+      setSelectedProductMaterialsLoading(false);
+      return;
+    }
+
+    setSelectedProductMaterialsLoading(true);
+    void fetch(`/api/arch/catalogo/${encodeURIComponent(productId)}/materials`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Falha ao carregar acabamentos do produto.");
+        const data = await response.json() as ProductMaterialLink[];
+        if (!cancelled) setSelectedProductMaterialLinks(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (!cancelled) setSelectedProductMaterialLinks([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSelectedProductMaterialsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedObject?.catalogProductId]);
+
   const visibleRooms = wallFirstActive
     ? safeRooms.filter((r) => r.floor === activeFloor && (r.kind === "escada" || r.kind === "piscina"))
     : safeRooms.filter((r) => r.floor === activeFloor);
@@ -2326,7 +2384,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const addObject = (kind: ConceptPlanObject["kind"], label: string, width: number, depth: number) =>
     addObjectAt(kind, label, width, depth);
 
-  const updateObjectById = (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "width" | "depth" | "rotation" | "materialId" | "materialScale" | "materialRotation" | "model3dUrl">>) => {
+  const updateObjectById = (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "width" | "depth" | "rotation" | "materialId" | "materialScale" | "materialRotation" | "model3dUrl" | "materialSelections" | "configuredPrice">>) => {
     setObjects((prev) => (Array.isArray(prev) ? prev : []).map((object) => {
       if (object.id !== objectId) return object;
       const width = Math.max(0.3, Math.min(lotWidth, patch.width ?? object.width));
@@ -2458,6 +2516,53 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     const before = snapshotEditor();
     updateObjectById(objectId, { materialId });
     pushRoomHistory(before);
+  };
+
+  const applyProductMaterialSelection = (surfaceKey: string, link: ProductMaterialLink) => {
+    if (!selectedObject || !link.material) return;
+    const before = snapshotEditor();
+    const key = surfaceKey || "__all__";
+    const textureUrl = link.material.primaryImage?.storageUrl ?? undefined;
+    const nextSelections = {
+      ...(selectedObject.materialSelections ?? {}),
+      [key]: {
+        materialId: link.material.id,
+        materialName: link.material.nome,
+        ...(textureUrl ? { textureUrl } : {}),
+        ...(link.grupo ? { grupo: link.grupo } : {}),
+        priceDelta: Number(link.precoAdicional ?? 0) || 0,
+      },
+    };
+    const basePrice = Number(selectedObject.price ?? 0) || 0;
+    const extras = Object.values(nextSelections).reduce((sum, selection) => sum + (Number(selection.priceDelta) || 0), 0);
+    const nextObjects = safeObjects.map((object) =>
+      object.id === selectedObject.id
+        ? { ...object, materialSelections: nextSelections, configuredPrice: basePrice + extras }
+        : object
+    );
+    objectsRef.current = nextObjects;
+    setObjects(nextObjects);
+    pushRoomHistory(before);
+    void saveConcept(4, undefined, { objects: nextObjects });
+  };
+
+  const clearProductMaterialSelection = (surfaceKey: string) => {
+    if (!selectedObject?.materialSelections) return;
+    const before = snapshotEditor();
+    const key = surfaceKey || "__all__";
+    const nextSelections = { ...selectedObject.materialSelections };
+    delete nextSelections[key];
+    const basePrice = Number(selectedObject.price ?? 0) || 0;
+    const extras = Object.values(nextSelections).reduce((sum, selection) => sum + (Number(selection.priceDelta) || 0), 0);
+    const nextObjects = safeObjects.map((object) =>
+      object.id === selectedObject.id
+        ? { ...object, materialSelections: nextSelections, configuredPrice: basePrice + extras }
+        : object
+    );
+    objectsRef.current = nextObjects;
+    setObjects(nextObjects);
+    pushRoomHistory(before);
+    void saveConcept(4, undefined, { objects: nextObjects });
   };
 
   const setSelectedSurfaceMaterial = (materialId: string) => {
@@ -7141,28 +7246,110 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
                       {selectedObject ? (
                         <>
-                          <div className="mb-3 text-xs font-semibold text-slate-600">Acabamento do móvel</div>
-                          <div className="grid grid-cols-2 gap-3">
-                            {objectMaterialOptions.map((material) => (
-                              <button
-                                key={material.id}
-                                type="button"
-                                onClick={() => {
-                                  applyObjectMaterialToId(selectedObject.id, material.id);
-                                  armPaintTool("object", material);
-                                }}
-                                className={selectedObject.materialId === material.id
-                                  ? "overflow-hidden rounded-xl border-2 border-orange-500 bg-orange-50 text-left"
-                                  : "overflow-hidden rounded-xl border bg-white text-left hover:border-orange-300 hover:shadow-sm"}
-                              >
-                                <div className="h-16 border-b" style={{ background: material.swatch }} />
-                                <div className="p-3">
-                                  <div className="text-sm font-semibold">{material.name}</div>
-                                  <div className="mt-0.5 text-[10px] text-muted-foreground">{material.category}</div>
+                          {selectedObject.catalogProductId && selectedProductMaterialLinks.length > 0 ? (
+                            <div className="space-y-4">
+                              <div className="rounded-xl border bg-slate-50 p-3">
+                                <div className="text-xs font-semibold text-slate-700">Acabamentos disponíveis para este produto</div>
+                                <div className="mt-1 text-[10px] leading-4 text-slate-500">
+                                  Somente materiais autorizados no Catálogo. A escolha é salva nesta peça e aparece imediatamente no 3D.
                                 </div>
-                              </button>
-                            ))}
-                          </div>
+                                {Number(selectedObject.configuredPrice ?? selectedObject.price ?? 0) > 0 && (
+                                  <div className="mt-2 text-sm font-bold text-slate-800">
+                                    R$ {Number(selectedObject.configuredPrice ?? selectedObject.price ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </div>
+                                )}
+                              </div>
+
+                              {[...new Set(selectedProductMaterialLinks.map((link) => link.surfaceKey || "__all__"))].map((surface) => {
+                                const links = selectedProductMaterialLinks.filter((link) => (link.surfaceKey || "__all__") === surface);
+                                const current = selectedObject.materialSelections?.[surface];
+                                const surfaceLabel = surface === "__all__"
+                                  ? (links[0]?.grupo || "Produto inteiro")
+                                  : (links[0]?.grupo || surface.replace(/^material:|^node:/, "").replace(/-/g, " "));
+                                return (
+                                  <div key={surface} className="space-y-2">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="text-xs font-semibold capitalize text-slate-700">{surfaceLabel}</div>
+                                      {current && (
+                                        <button type="button" onClick={() => clearProductMaterialSelection(surface)}
+                                          className="text-[10px] font-medium text-slate-400 hover:text-slate-700">
+                                          Usar padrão
+                                        </button>
+                                      )}
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                      {links.map((link) => {
+                                        const material = link.material;
+                                        if (!material) return null;
+                                        const texture = material.primaryImage?.storageUrl;
+                                        const selectedMaterial = current?.materialId === material.id
+                                          || (!current && link.isDefault);
+                                        return (
+                                          <button
+                                            key={link.id}
+                                            type="button"
+                                            onClick={() => applyProductMaterialSelection(surface, link)}
+                                            className={selectedMaterial
+                                              ? "overflow-hidden rounded-xl border-2 border-orange-500 bg-orange-50 text-left"
+                                              : "overflow-hidden rounded-xl border bg-white text-left hover:border-orange-300 hover:shadow-sm"}
+                                          >
+                                            <div className="h-20 border-b bg-slate-100">
+                                              {texture ? (
+                                                <img src={texture} alt={material.nome} className="h-full w-full object-cover" />
+                                              ) : (
+                                                <div className="grid h-full place-items-center text-[10px] text-slate-400">Sem imagem</div>
+                                              )}
+                                            </div>
+                                            <div className="p-2.5">
+                                              <div className="truncate text-xs font-semibold">{material.nome}</div>
+                                              <div className="mt-0.5 truncate text-[9px] text-muted-foreground">{material.fabricante} · {material.linha}</div>
+                                              {Number(link.precoAdicional ?? 0) > 0 && (
+                                                <div className="mt-1 text-[10px] font-semibold text-emerald-700">
+                                                  + R$ {Number(link.precoAdicional).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                </div>
+                                              )}
+                                              {selectedMaterial && (
+                                                <div className="mt-1 text-[9px] font-semibold text-orange-600">Selecionado</div>
+                                              )}
+                                            </div>
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : selectedObject.catalogProductId && selectedProductMaterialsLoading ? (
+                            <div className="rounded-xl border border-dashed p-4 text-center text-xs text-slate-500">
+                              Carregando acabamentos do produto…
+                            </div>
+                          ) : (
+                            <>
+                              <div className="mb-3 text-xs font-semibold text-slate-600">Acabamento genérico do objeto</div>
+                              <div className="grid grid-cols-2 gap-3">
+                                {objectMaterialOptions.map((material) => (
+                                  <button
+                                    key={material.id}
+                                    type="button"
+                                    onClick={() => {
+                                      applyObjectMaterialToId(selectedObject.id, material.id);
+                                      armPaintTool("object", material);
+                                    }}
+                                    className={selectedObject.materialId === material.id
+                                      ? "overflow-hidden rounded-xl border-2 border-orange-500 bg-orange-50 text-left"
+                                      : "overflow-hidden rounded-xl border bg-white text-left hover:border-orange-300 hover:shadow-sm"}
+                                  >
+                                    <div className="h-16 border-b" style={{ background: material.swatch }} />
+                                    <div className="p-3">
+                                      <div className="text-sm font-semibold">{material.name}</div>
+                                      <div className="mt-0.5 text-[10px] text-muted-foreground">{material.category}</div>
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            </>
+                          )}
                         </>
                       ) : selectedCustomWall || selectedWall ? (
                         <>
