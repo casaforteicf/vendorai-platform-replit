@@ -2341,6 +2341,28 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
   const proposalGenerationBlocked =
     proposalComposerBlockingIssues.length > 0 || proposalPreflightBlockers.length > 0;
 
+  function proposalPreflightCorrectionLabel(item: ProposalPreflightPending) {
+    if (item.source === "budget") return "Corrigir orçamento";
+    if (item.source === "company") return "Corrigir empresa";
+    if (item.source === "media") return "Corrigir mídia";
+    return null;
+  }
+
+  function openProposalPreflightCorrection(item: ProposalPreflightPending) {
+    if (item.source === "budget" && selectedOrcamentoId !== "__none__") {
+      window.location.href = `${import.meta.env.BASE_URL}propostas?edit=${encodeURIComponent(selectedOrcamentoId)}&returnTo=${encodeURIComponent(`/leads/${leadId}`)}`;
+      return;
+    }
+    if (item.source === "company") {
+      window.location.href = `${import.meta.env.BASE_URL}configuracoes?tab=perfil`;
+      return;
+    }
+    if (item.source === "media") {
+      setProposalVisualCenterOpen(true);
+      setRefineOpen(false);
+    }
+  }
+
 
   function openRefineDialog(fromVersion?: number) {
     setRefineNotes("");
@@ -2920,7 +2942,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                     className="flex items-start gap-2 rounded-lg border bg-white px-2.5 py-2"
                   >
                     <XCircle className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${item.severity === "blocker" ? "text-red-500" : "text-amber-500"}`} />
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="text-[11px] font-medium text-foreground">{item.message}</p>
                       <p className="mt-0.5 text-[10px] text-muted-foreground">
                         {item.source === "budget" ? "Orçamento" :
@@ -2931,6 +2953,17 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                         {item.field ? ` · Campo: ${item.field}` : ""}
                       </p>
                     </div>
+                    {proposalPreflightCorrectionLabel(item) && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 shrink-0 px-2 text-[10px]"
+                        onClick={() => openProposalPreflightCorrection(item)}
+                      >
+                        {proposalPreflightCorrectionLabel(item)}
+                      </Button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -5441,17 +5474,28 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                       {proposalPreflightPending.slice(0, 8).map((item) => (
                         <div
                           key={`${item.code}-${item.field ?? "none"}`}
-                          className={`rounded-md border px-2 py-1.5 text-[10px] ${item.severity === "blocker"
+                          className={`flex items-start justify-between gap-2 rounded-md border px-2 py-1.5 text-[10px] ${item.severity === "blocker"
                             ? "border-red-200 bg-red-50 text-red-700"
                             : "border-amber-200 bg-amber-50 text-amber-800"}`}
                         >
-                          <span className="font-semibold">
-                            {item.source === "budget" ? "Orçamento" :
-                              item.source === "client" ? "Cliente" :
-                              item.source === "company" ? "Empresa" :
-                              item.source === "business_plan" ? "Plano de Negócios" :
-                              item.source === "catalog" ? "Catálogo" : "Mídia"}:
-                          </span>{" "}{item.message}
+                          <span className="min-w-0">
+                            <span className="font-semibold">
+                              {item.source === "budget" ? "Orçamento" :
+                                item.source === "client" ? "Cliente" :
+                                item.source === "company" ? "Empresa" :
+                                item.source === "business_plan" ? "Plano de Negócios" :
+                                item.source === "catalog" ? "Catálogo" : "Mídia"}:
+                            </span>{" "}{item.message}
+                          </span>
+                          {proposalPreflightCorrectionLabel(item) && (
+                            <button
+                              type="button"
+                              className="shrink-0 font-semibold underline underline-offset-2"
+                              onClick={() => openProposalPreflightCorrection(item)}
+                            >
+                              Corrigir
+                            </button>
+                          )}
                         </div>
                       ))}
                     </div>
