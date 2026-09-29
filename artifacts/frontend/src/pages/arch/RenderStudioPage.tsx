@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./planner5d-reference.css";
 import { useLocation } from "wouter";
-import LegacyRenderStudioPage from "./RenderStudioPageLegacy";
+import RenderStudioCore from "./RenderStudioCore";
 import { useRenderStudioPersistentBootstrap } from "@/modules/arqdor/hooks/useRenderStudioPersistentBootstrap";
 import type { RenderStudioVersion } from "@/modules/arqdor/hooks/renderStudioPersistentAdapter";
 
@@ -662,7 +662,7 @@ export default function RenderStudioPage() {
         <span aria-hidden="true">←</span>
         Voltar
       </button>
-      <LegacyRenderStudioPage key={`${targetKey}:${approvalRedirectEpoch}`} />
+      <RenderStudioCore key={`${targetKey}:${approvalRedirectEpoch}`} />
 
       {approvedVersion && (
         <div role="status" title={approvalTitle} className="arqdor-approved-badge">
