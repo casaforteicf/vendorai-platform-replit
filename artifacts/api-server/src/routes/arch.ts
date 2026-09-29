@@ -7624,6 +7624,73 @@ Responda SOMENTE com JSON válido, sem texto adicional:
       return "ESP";
     };
 
+    // Objetos 3D persistidos são a fonte de verdade para dimensões.
+    // O reconhecimento visual serve apenas para localizar/classificar o item.
+    const projectObjects = await db
+      .select()
+      .from(arqObjectsTable)
+      .where(eq(arqObjectsTable.projetoId, String(projetoId)));
+
+    const normText = (value: unknown) =>
+      String(value ?? "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
+
+    const categoryAliases: Record<string, string[]> = {
+      mobiliario: ["mobiliario", "sofa", "poltrona", "cadeira", "mesa", "cama", "banco"],
+      marcenaria: ["marcenaria", "armario", "gabinete", "painel", "estante", "closet"],
+      iluminacao: ["iluminacao", "luminaria", "pendente", "spot", "plafon", "led"],
+      revestimento: ["piso", "revestimento", "pedra"],
+      metal: ["metal", "torneira", "misturador"],
+      louca: ["louca", "cuba", "vaso", "banheira"],
+      eletrodomestico: ["equipamentos", "eletrodomestico", "geladeira", "forno", "cooktop"],
+      esquadria: ["esquadria", "porta", "janela", "vidro"],
+      componente: ["componente", "ferragem", "puxador", "bancada"],
+    };
+
+    const itemCategoryCompatible = (aiCategory: string, objectCategory: string, objectName: string) => {
+      const ai = normText(aiCategory);
+      const obj = normText(objectCategory);
+      const name = normText(objectName);
+      if (ai && (obj.includes(ai) || ai.includes(obj))) return true;
+      const aliases = categoryAliases[ai] ?? [];
+      return aliases.some((alias) => obj.includes(alias) || name.includes(alias));
+    };
+
+    const tokens = (value: unknown) =>
+      new Set(normText(value).split(" ").filter((token) => token.length >= 3));
+
+    const matchProjectObject = (item: { categoria: string; descricao: string }) => {
+      const itemTokens = tokens(item.descricao);
+      const candidates = projectObjects
+        .map((obj) => {
+          const objectTokens = tokens(`${obj.name} ${obj.category} ${obj.material ?? ""}`);
+          let overlap = 0;
+          for (const token of itemTokens) if (objectTokens.has(token)) overlap++;
+          const categoryOk = itemCategoryCompatible(item.categoria, obj.category, obj.name);
+          const score = overlap * 3 + (categoryOk ? 4 : 0);
+          return { obj, score, categoryOk, overlap };
+        })
+        .filter(({ obj, score, categoryOk }) => Boolean(obj.dimensions) && categoryOk && score >= 4)
+        .sort((a, b) => b.score - a.score);
+
+      // Evita preencher medidas com correspondência textual fraca entre vários objetos.
+      if (!candidates[0]) return null;
+      if (candidates[1] && candidates[0].score === candidates[1].score && candidates[0].overlap === 0) return null;
+      return candidates[0].obj;
+    };
+
+    const toCm = (value: unknown, unit: unknown): string | null => {
+      const n = Number(value);
+      if (!Number.isFinite(n) || n <= 0) return null;
+      const u = normText(unit);
+      const factor = u === "m" || u.includes("metro") ? 100 : u === "mm" ? 0.1 : 1;
+      return String(Math.round(n * factor * 10) / 10);
+    };
+
     const counters = new Map<string, number>();
     const items = await db
       .insert(archSpecItemsTable)
@@ -7632,6 +7699,14 @@ Responda SOMENTE com JSON válido, sem texto adicional:
           const prefix = prefixForCategory(item.categoria);
           const next = (counters.get(prefix) ?? 0) + 1;
           counters.set(prefix, next);
+
+          const projectObject = matchProjectObject(item);
+          const dims = projectObject?.dimensions;
+          const widthCm = dims ? toCm(dims.width, dims.unit) : null;
+          const heightCm = dims ? toCm(dims.height, dims.unit) : null;
+          const depthCm = dims ? toCm(dims.depth, dims.unit) : null;
+          const hasProjectDimensions = Boolean(widthCm || heightCm || depthCm);
+
           return {
             specificationId: spec.id,
             categoria:       item.categoria,
@@ -7640,8 +7715,17 @@ Responda SOMENTE com JSON válido, sem texto adicional:
             confianca:       String(Math.min(1, Math.max(0.5, item.confianca)).toFixed(2)),
             status:          "pendente",
             codigo:          `${prefix}-${String(next).padStart(2, "0")}`,
-            origemMedida:    "pendente",
+            origemMedida:    hasProjectDimensions ? "projeto" : "pendente",
             unidadeQuantificacao: "un",
+            larguraCm:       widthCm,
+            alturaCm:        heightCm,
+            profundidadeCm:  depthCm,
+            material:        projectObject?.material ?? null,
+            acabamento:      projectObject?.finish ?? null,
+            cor:             projectObject?.color ?? null,
+            notes: projectObject
+              ? `Vinculado automaticamente ao objeto 3D "${projectObject.name}" (${projectObject.objectClientId}).`
+              : null,
           };
         })
       )
