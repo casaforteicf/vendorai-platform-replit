@@ -173,7 +173,9 @@ export function RenderStudioMaterialLibraryModal({ isOpen, onClose, onSelect }: 
   const [importInfo, setImportInfo] = useState<string | null>(null);
   const [managingMaterial, setManagingMaterial] = useState<MaterialLibraryItem | null>(null);
   const [primaryBusy, setPrimaryBusy] = useState<string | null>(null);
+  const [addingReferences, setAddingReferences] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const referenceInputRef = useRef<HTMLInputElement>(null);
 
   const categorias = ["Tecido", "Madeira", "MDF", "Pedra", "Porcelanato", "Cerâmica", "Pintura", "Metal", "Vidro", "Concreto", "Revestimento", "Outros"];
 
@@ -316,6 +318,34 @@ export function RenderStudioMaterialLibraryModal({ isOpen, onClose, onSelect }: 
       setImportError(error instanceof Error ? error.message : "Falha ao importar material.");
     } finally {
       setSavingMaterial(false);
+    }
+  }
+
+  async function addReferenceImages(e: ChangeEvent<HTMLInputElement>) {
+    if (!managingMaterial) return;
+    const newFiles = Array.from(e.target.files ?? []).slice(0, 5);
+    e.target.value = "";
+    if (!newFiles.length) return;
+
+    const token = localStorage.getItem("vendorai_token");
+    setAddingReferences(true);
+    setImportError(null);
+    try {
+      const formData = new FormData();
+      newFiles.forEach((file) => formData.append("imagens", file));
+      const response = await fetch(`/api/arch/materials/${managingMaterial.id}/images`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      const data = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(data.error || "Não foi possível adicionar as novas imagens.");
+      setImportInfo("Novas referências adicionadas. A biblioteca reavaliou automaticamente a melhor imagem.");
+      await loadItems();
+    } catch (error: unknown) {
+      setImportError(error instanceof Error ? error.message : "Falha ao adicionar imagens.");
+    } finally {
+      setAddingReferences(false);
     }
   }
 
@@ -462,8 +492,16 @@ export function RenderStudioMaterialLibraryModal({ isOpen, onClose, onSelect }: 
                 <div style={{ fontSize: 10, color: D.dim }}>{managingMaterial.fabricante} · {managingMaterial.linha} · {managingMaterial.categoria}</div>
                 <div style={{ fontSize: 9, color: D.dim, marginTop: 3 }}>Selecione manualmente a melhor referência. A importação nova nunca cria outro material igual.</div>
               </div>
-              <button onClick={() => setManagingMaterial(null)} style={{ padding: "6px 10px", borderRadius: 7, background: D.card, color: D.text, border: `1px solid ${D.border}`, cursor: "pointer", fontSize: 10 }}>← Voltar</button>
+              <div style={{ display: "flex", gap: 7 }}>
+                <button onClick={() => referenceInputRef.current?.click()} disabled={addingReferences}
+                  style={{ padding: "6px 10px", borderRadius: 7, background: D.purple, color: "#fff", border: "none", cursor: addingReferences ? "wait" : "pointer", fontSize: 10, fontWeight: 800 }}>
+                  {addingReferences ? "Enviando…" : "＋ Adicionar imagens"}
+                </button>
+                <input ref={referenceInputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={addReferenceImages} style={{ display: "none" }} />
+                <button onClick={() => setManagingMaterial(null)} style={{ padding: "6px 10px", borderRadius: 7, background: D.card, color: D.text, border: `1px solid ${D.border}`, cursor: "pointer", fontSize: 10 }}>← Voltar</button>
+              </div>
             </div>
+            {importError && <div role="alert" style={{ marginBottom: 10, fontSize: 10, color: D.red }}>{importError}</div>}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 12 }}>
               {managingMaterial.images.map((image) => {
                 const isPrimary = image.id === managingMaterial.primaryImageId;
