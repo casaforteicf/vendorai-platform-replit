@@ -1640,6 +1640,17 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     );
 
   const journeyIndex = conceptJourneyIndex({ step, editorView, libraryTab: editorLibraryTab });
+  const journeyStages = useMemo(() => CONCEPT_JOURNEY.map((stage) => {
+    if (projectScope === "room") {
+      if (stage.id === "terreno") return { ...stage, label: "Ambiente", helper: "Projeto de um espaço isolado, sem exigir terreno." };
+      if (stage.id === "casa") return { ...stage, label: "Briefing", helper: "Defina o ambiente por IA, referência, desenho ou importação." };
+      if (stage.id === "fachada") return { ...stage, label: "Visual", helper: "Revise o 3D e gere a imagem realista do ambiente." };
+    }
+    if (projectScope === "house" && startWithTerrain === false && stage.id === "terreno") {
+      return { ...stage, label: "Início", helper: "Terreno opcional: ele pode ser informado ou ajustado depois." };
+    }
+    return stage;
+  }), [projectScope, startWithTerrain]);
 
   const goToJourneyStage = (index: number) => {
     if (index > journeyIndex && blockingLayoutIssues.length > 0) {
@@ -6042,7 +6053,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
               </>
             )}
 
-            {saveState !== "loading" && !startChooserDismissed && !modelGalleryOpen && !projectMaster && (
+            {saveState !== "loading" && !startChooserDismissed && !modelGalleryOpen && !projectMaster &&
+              !startSourceChosen &&
+              safeRooms.length === 0 && safeCustomWalls.length === 0 && !referencePlan && sourceFiles.length === 0 &&
+              (!conceptId || guestMode || projectScope !== null || journeyIndex === 1) && (
               <div className="fixed inset-0 z-[110] flex items-end justify-center bg-slate-950/55 sm:items-center sm:p-6">
                 <div className="max-h-[92dvh] w-full max-w-3xl overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-7" role="dialog" aria-label="Iniciar pré-projeto">
                   {startWizardStage === "kind" && (
@@ -6182,16 +6196,16 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
             <div className="arq-journey-row flex flex-wrap items-center gap-2 border-b bg-white px-3 py-2 sm:px-4">
               <div className="min-w-0 flex-1">
                 <div className="text-xs font-bold text-slate-950">
-                  <span className="sm:hidden">{journeyIndex + 1}/{CONCEPT_JOURNEY.length} · </span>
-                  <span className="hidden sm:inline">Etapa {journeyIndex + 1} de {CONCEPT_JOURNEY.length} · </span>
-                  {CONCEPT_JOURNEY[journeyIndex].label}
+                  <span className="sm:hidden">{journeyIndex + 1}/{journeyStages.length} · </span>
+                  <span className="hidden sm:inline">Etapa {journeyIndex + 1} de {journeyStages.length} · </span>
+                  {journeyStages[journeyIndex].label}
                 </div>
                 <div className={journeyIndex === 2 || journeyIndex === 3 ? "hidden truncate text-xs text-slate-500 sm:block" : "truncate text-xs text-slate-500"}>
-                  {CONCEPT_JOURNEY[journeyIndex].helper}
+                  {journeyStages[journeyIndex].helper}
                 </div>
               </div>
               <div className="hidden shrink-0 rounded-xl border bg-slate-50 p-1 sm:flex">
-                {CONCEPT_JOURNEY.map((stage, index) => (
+                {journeyStages.map((stage, index) => (
                   <button
                     key={stage.id}
                     type="button"
@@ -8202,7 +8216,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
               </div>
 
               <div className="fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-30 flex items-center justify-between rounded-2xl border bg-white/95 p-1.5 shadow-xl backdrop-blur md:hidden">
-                {CONCEPT_JOURNEY.map((stage, index) => (
+                {journeyStages.map((stage, index) => (
                   <button
                     key={stage.id}
                     type="button"
