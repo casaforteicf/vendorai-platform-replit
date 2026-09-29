@@ -185,6 +185,9 @@ export function RenderStudioRightPanel({
                     <InfoBox>{arq.projectMeta?.titulo && arq.projectMeta.titulo.trim().toLowerCase() !== ambiente.trim().toLowerCase() ? `${arq.projectMeta.titulo} · ${ambiente}` : ambiente || arq.projectMeta?.titulo || "Ambiente"}</InfoBox>
                     {!renderUrl && !loading && (
                       <>
+                        <div style={{ padding: "7px 9px", borderRadius: 7, background: `${D.green}0D`, border: `1px solid ${D.green}22`, fontSize: 10, lineHeight: 1.5, color: D.green }}>
+                          🔒 Preservação rígida ativa: cores, materiais, texturas-base, medidas, posição e proporções do mobiliário permanecem bloqueadas. O render melhora somente realismo, luz e definição.
+                        </div>
                         <div style={{ fontSize: 11, color: D.muted, lineHeight: 1.5 }}>Fidelidade automática ativa. Escolha apenas o objetivo principal.</div>
                         <select value={renderPreset} onChange={(e) => setRenderPreset(e.target.value as RenderPreset)} style={inputStyle}>
                           <option value="interior_layout_preserve">Interior · preservar layout</option>
