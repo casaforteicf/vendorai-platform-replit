@@ -126,10 +126,13 @@ export const propostaCronogramaEtapaSchema = z.object({
   fases: z.array(propostaCronogramaFaseSchema).default([]),
   observacao: z.string().optional(),
   marcoPagamento: z.string().optional(),
-  // Configuração comercial de apresentação ao cliente por etapa.
-  // Permite exibir uma referência em R$/m² e marcar valores como previsão
-  // sujeita a recálculo quando houver alteração do projeto.
+  // Configuração comercial definida no orçamento e apenas apresentada ao cliente.
+  // Esquadrias usam valor global previsto; revestimentos usam referência em R$/m².
+  // Os campos ficam no orçamento para evitar definições paralelas na proposta.
+  valorGlobalPrevisto: z.number().nonnegative().optional(),
   valorReferenciaM2: z.number().nonnegative().optional(),
+  // Mantido por compatibilidade com orçamentos anteriores; a interface nova
+  // deriva a apresentação diretamente da definição comercial cadastrada.
   mostrarOrcamentoPrevisto: z.boolean().optional(),
   reajusteSeAlteracao: z.boolean().optional(),
 });
