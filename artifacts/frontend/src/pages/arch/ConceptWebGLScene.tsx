@@ -132,6 +132,74 @@ const GLTF_SRC = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/
 const RGBE_SRC = "https://unpkg.com/three@0.128.0/examples/js/loaders/RGBELoader.js";
 const ARQDOR_HDRI = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_08_1k.hdr";
 
+type CatalogMaterialLink = {
+  surfaceKey?: string | null;
+  grupo?: string | null;
+  isDefault?: boolean;
+  material?: {
+    id: string;
+    nome: string;
+    primaryImage?: { storageUrl?: string | null } | null;
+  } | null;
+};
+
+const catalogMaterialLinksCache = new Map<string, Promise<CatalogMaterialLink[]>>();
+const reportedCatalogSurfaceSignature = new Map<string, string>();
+
+function normalizeGlbSurfaceToken(value?: string | null) {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function glbSurfaceKey(node: any, material: any) {
+  const materialToken = normalizeGlbSurfaceToken(material?.name);
+  if (materialToken) return `material:${materialToken}`;
+  const nodeToken = normalizeGlbSurfaceToken(node?.name);
+  return `node:${nodeToken || "surface"}`;
+}
+
+function catalogMaterialLinks(productId: string) {
+  let pending = catalogMaterialLinksCache.get(productId);
+  if (!pending) {
+    pending = fetch(`/api/arch/catalogo/${productId}/materials`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+    })
+      .then(async (response) => response.ok ? await response.json() as CatalogMaterialLink[] : [])
+      .catch(() => []);
+    catalogMaterialLinksCache.set(productId, pending);
+  }
+  return pending;
+}
+
+function reportCatalogModelSurfaces(productId: string, model3dUrl: string, surfaces: Array<{
+  key: string;
+  label: string;
+  nodeName?: string;
+  materialName?: string;
+  meshCount: number;
+}>) {
+  if (!surfaces.length) return;
+  const signature = surfaces.map((surface) => `${surface.key}:${surface.meshCount}`).sort().join("|");
+  if (reportedCatalogSurfaceSignature.get(productId) === signature) return;
+  reportedCatalogSurfaceSignature.set(productId, signature);
+  void fetch(`/api/arch/catalogo/${productId}/model-surfaces`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`,
+    },
+    body: JSON.stringify({ model3dUrl, surfaces }),
+  }).catch(() => {
+    reportedCatalogSurfaceSignature.delete(productId);
+  });
+}
+
+
 function loadScript(src: string) {
   const key = `__arqdor_script_${src}`;
   const w = window as any;
@@ -1092,6 +1160,15 @@ export default function ConceptWebGLScene({
 
           model.scale.setScalar(Math.max(0.001, scale));
           model.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
+          const surfaceMap = new Map<string, {
+            key: string;
+            label: string;
+            nodeName?: string;
+            materialName?: string;
+            meshCount: number;
+          }>();
+          const meshSurfaces: Array<{ node: any; entries: Array<{ index: number; key: string }> }> = [];
+
           model.traverse((node: any) => {
             if (!node?.isMesh) return;
             node.castShadow = true;
@@ -1099,12 +1176,64 @@ export default function ConceptWebGLScene({
             node.userData.objectId = object.id;
             runtime.pickables.push(node);
             const materials = Array.isArray(node.material) ? node.material : [node.material];
-            for (const material of materials) {
-              if (!material) continue;
+            const entries: Array<{ index: number; key: string }> = [];
+            materials.forEach((material: any, index: number) => {
+              if (!material) return;
               if ("envMapIntensity" in material) material.envMapIntensity = 0.95;
               material.needsUpdate = true;
-            }
+
+              const key = glbSurfaceKey(node, material);
+              entries.push({ index, key });
+              const previous = surfaceMap.get(key);
+              const materialName = String(material.name || "").trim();
+              const nodeName = String(node.name || "").trim();
+              surfaceMap.set(key, {
+                key,
+                label: materialName || nodeName || `Superfície ${surfaceMap.size + 1}`,
+                ...(nodeName ? { nodeName } : {}),
+                ...(materialName ? { materialName } : {}),
+                meshCount: (previous?.meshCount ?? 0) + 1,
+              });
+            });
+            meshSurfaces.push({ node, entries });
           });
+
+          if (object.catalogProductId) {
+            const surfaces = [...surfaceMap.values()];
+            reportCatalogModelSurfaces(object.catalogProductId, definition.url, surfaces);
+
+            void catalogMaterialLinks(object.catalogProductId).then((links) => {
+              if (runtime.objectGroups.get(object.id) !== root) return;
+              const defaults = links.filter((link) => link.isDefault && link.material?.primaryImage?.storageUrl);
+              if (!defaults.length) return;
+              const bySurface = new Map(defaults.filter((link) => link.surfaceKey).map((link) => [String(link.surfaceKey), link]));
+              const globalDefault = defaults.find((link) => !link.surfaceKey) ?? null;
+              const loader = new THREE.TextureLoader();
+
+              for (const { node, entries } of meshSurfaces) {
+                const sourceMaterials = Array.isArray(node.material) ? [...node.material] : [node.material];
+                let changed = false;
+                entries.forEach(({ index, key }) => {
+                  const link = bySurface.get(key) ?? globalDefault;
+                  const textureUrl = link?.material?.primaryImage?.storageUrl;
+                  const source = sourceMaterials[index];
+                  if (!textureUrl || !source?.clone) return;
+                  const cloned = source.clone();
+                  const texture = loader.load(textureUrl);
+                  texture.wrapS = THREE.RepeatWrapping;
+                  texture.wrapT = THREE.RepeatWrapping;
+                  if ("encoding" in texture && THREE.sRGBEncoding) texture.encoding = THREE.sRGBEncoding;
+                  cloned.map = texture;
+                  if (cloned.color?.setHex) cloned.color.setHex(0xffffff);
+                  if ("envMapIntensity" in cloned) cloned.envMapIntensity = 0.95;
+                  cloned.needsUpdate = true;
+                  sourceMaterials[index] = cloned;
+                  changed = true;
+                });
+                if (changed) node.material = Array.isArray(node.material) ? sourceMaterials : sourceMaterials[0];
+              }
+            });
+          }
 
           const fallbackNodes = new Set<any>();
           for (const child of [...root.children]) {

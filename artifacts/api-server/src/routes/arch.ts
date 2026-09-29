@@ -4559,9 +4559,80 @@ router.get("/arch/catalogo/:id/materials", authenticate, async (req, res) => {
   const materials = materialIds.length
     ? await db.select().from(archMaterialsTable).where(inArray(archMaterialsTable.id, materialIds))
     : [];
+  const primaryImageIds = materials.map((material) => material.primaryImageId).filter(Boolean) as string[];
+  const primaryImages = primaryImageIds.length
+    ? await db.select().from(archMaterialImagesTable).where(inArray(archMaterialImagesTable.id, primaryImageIds))
+    : [];
   const byId = new Map(materials.map((material) => [material.id, material]));
+  const imageById = new Map(primaryImages.map((image) => [image.id, image]));
 
-  return res.json(links.map((link) => ({ ...link, material: byId.get(link.materialId) ?? null })));
+  return res.json(links.map((link) => {
+    const material = byId.get(link.materialId) ?? null;
+    return {
+      ...link,
+      material: material
+        ? {
+            ...material,
+            primaryImage: material.primaryImageId ? imageById.get(material.primaryImageId) ?? null : null,
+          }
+        : null,
+    };
+  }));
+});
+
+// POST /api/arch/catalogo/:id/model-surfaces — persiste partes editáveis detectadas no GLB
+router.post("/arch/catalogo/:id/model-surfaces", authenticate, async (req, res) => {
+  const productId = String(req.params.id);
+  const tid = tenantId(req);
+  const body = z.object({
+    model3dUrl: z.string().min(1).optional(),
+    surfaces: z.array(z.object({
+      key: z.string().min(1).max(180),
+      label: z.string().min(1).max(255),
+      nodeName: z.string().max(255).optional(),
+      materialName: z.string().max(255).optional(),
+      meshCount: z.number().int().min(1).max(500).default(1),
+    })).min(1).max(100),
+  }).safeParse(req.body);
+  if (!body.success) return res.status(400).json({ error: body.error.flatten() });
+
+  const [product] = await db.select()
+    .from(archCatalogoTable)
+    .where(and(
+      eq(archCatalogoTable.id, productId),
+      eq(archCatalogoTable.tenantId, tid),
+      eq(archCatalogoTable.ativo, true),
+    ))
+    .limit(1);
+  if (!product) return res.status(404).json({ error: "Produto não encontrado." });
+
+  const previous = (product.especificacoes ?? {}) as Record<string, unknown>;
+  const existing = Array.isArray(previous.modelSurfaces) ? previous.modelSurfaces as Array<Record<string, unknown>> : [];
+  const previousByKey = new Map(existing.map((surface) => [String(surface.key ?? ""), surface]));
+
+  const modelSurfaces = body.data.surfaces.map((surface) => ({
+    ...previousByKey.get(surface.key),
+    ...surface,
+    detected: true,
+  }));
+
+  const nextSpecs = {
+    ...previous,
+    ...(body.data.model3dUrl ? { model3dUrl: body.data.model3dUrl } : {}),
+    modelSurfaces,
+    modelSurfacesDetectedAt: new Date().toISOString(),
+  };
+
+  const [updated] = await db.update(archCatalogoTable)
+    .set({ especificacoes: nextSpecs })
+    .where(and(eq(archCatalogoTable.id, productId), eq(archCatalogoTable.tenantId, tid)))
+    .returning();
+
+  return res.json({
+    productId,
+    modelSurfaces,
+    especificacoes: updated.especificacoes,
+  });
 });
 
 // POST /api/arch/catalogo/:id/materials — vincula material disponível ao produto
@@ -4580,6 +4651,18 @@ router.post("/arch/catalogo/:id/materials", authenticate, async (req, res) => {
   const material = await materialAccessible(parsed.data.materialId, tid);
   if (!material) return res.status(404).json({ error: "Material não encontrado ou sem acesso." });
 
+  if (parsed.data.isDefault) {
+    await db.update(archCatalogProductMaterialsTable)
+      .set({ isDefault: false })
+      .where(and(
+        eq(archCatalogProductMaterialsTable.tenantId, tid),
+        eq(archCatalogProductMaterialsTable.productId, productId),
+        parsed.data.surfaceKey
+          ? eq(archCatalogProductMaterialsTable.surfaceKey, parsed.data.surfaceKey)
+          : sql`${archCatalogProductMaterialsTable.surfaceKey} is null`,
+      ));
+  }
+
   const [link] = await db.insert(archCatalogProductMaterialsTable)
     .values({ ...(parsed.data as any), tenantId: tid, productId })
     .onConflictDoNothing()
@@ -4596,6 +4679,13 @@ router.post("/arch/catalogo/:id/materials", authenticate, async (req, res) => {
           : sql`${archCatalogProductMaterialsTable.surfaceKey} is null`,
       ))
       .limit(1);
+    if (existing && parsed.data.isDefault && !existing.isDefault) {
+      const [updated] = await db.update(archCatalogProductMaterialsTable)
+        .set({ isDefault: true })
+        .where(eq(archCatalogProductMaterialsTable.id, existing.id))
+        .returning();
+      return res.status(200).json({ ...updated, duplicate: true });
+    }
     return res.status(200).json({ ...existing, duplicate: true });
   }
 
