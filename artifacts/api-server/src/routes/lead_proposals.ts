@@ -1935,6 +1935,7 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
       etapaId?: string | null;
       etapaNome?: string | null;
       etapaOrdem?: number | null;
+      unidade?: string | null;
     }>;
     valorTotal?: string | null; observacoes?: string | null;
     formaPagamento?: string | null; condPagamento?: string | null; prazoEntrega?: string | null;
@@ -2170,6 +2171,7 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
           etapaId?: string | null;
           etapaNome?: string | null;
           etapaOrdem?: number | null;
+          unidade?: string | null;
         }>,
         valorTotal: orc.valorTotal,
         observacoes: orc.observacoes,
