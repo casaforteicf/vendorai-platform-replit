@@ -1,6 +1,6 @@
 import { getOpenAIForTenant } from "./agent-engine.js";
 import { callOpenAI as gatewayCallOpenAI } from "./ai-gateway.js";
-import { ObjectStorageService } from "./objectStorage.js";
+import { captureGeneratedMedia } from "../services/media-library.js";
 import { toFile } from "openai";
 import { callReplicateFlux11Pro } from "./arch-render-pipeline.js";
 import type {
@@ -112,13 +112,29 @@ function buildBrandStyleBlock(profile: TenantProfile): string {
   return parts.join(" ");
 }
 
-async function saveImageFromUrl(url: string): Promise<string> {
+async function saveImageFromUrl(
+  tenantId: string,
+  url: string,
+  operation: string,
+  metadata: Record<string, unknown> = {},
+): Promise<string> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to download generated image: ${res.status}`);
   const buf = Buffer.from(await res.arrayBuffer());
-  const storage = new ObjectStorageService();
-  const objectPath = await storage.savePrivateBuffer(buf, "image/jpeg", `${crypto.randomUUID()}.jpg`);
-  const servePath = objectPath.replace(/^\/objects\//, "");
+  const mimeType = res.headers.get("content-type") || "image/jpeg";
+  const extension = mimeType.includes("png") ? "png" : mimeType.includes("webp") ? "webp" : "jpg";
+  const captured = await captureGeneratedMedia({
+    tenantId,
+    title: "Imagem gerada — Content Studio",
+    operation,
+    buffer: buf,
+    mimeType,
+    type: "image",
+    originalFilename: `content-${crypto.randomUUID()}.${extension}`,
+    kind: "mixed",
+    metadata: { module: "content_studio", generatedByAi: true, ...metadata },
+  });
+  const servePath = captured.storageUrl.replace(/^\/objects\//, "");
   return `/api/storage/objects/${servePath}`;
 }
 
@@ -143,11 +159,25 @@ const IMAGE_MODELS_PRIORITY = [
   "dall-e-2",
 ];
 
-async function saveB64Image(b64: string): Promise<string> {
+async function saveB64Image(
+  tenantId: string,
+  b64: string,
+  operation: string,
+  metadata: Record<string, unknown> = {},
+): Promise<string> {
   const buf = Buffer.from(b64, "base64");
-  const storage = new ObjectStorageService();
-  const objectPath = await storage.savePrivateBuffer(buf, "image/png", `${crypto.randomUUID()}.png`);
-  const servePath = objectPath.replace(/^\/objects\//, "");
+  const captured = await captureGeneratedMedia({
+    tenantId,
+    title: "Imagem gerada — Content Studio",
+    operation,
+    buffer: buf,
+    mimeType: "image/png",
+    type: "image",
+    originalFilename: `content-${crypto.randomUUID()}.png`,
+    kind: "mixed",
+    metadata: { module: "content_studio", generatedByAi: true, ...metadata },
+  });
+  const servePath = captured.storageUrl.replace(/^\/objects\//, "");
   return `/api/storage/objects/${servePath}`;
 }
 
@@ -215,8 +245,8 @@ export async function generateImagesWithReference(
         } as Parameters<typeof openai.images.generate>[0]);
         const item = Array.isArray((response as any)?.data) ? (response as any).data[0] : undefined;
         if (!item) continue;
-        if ((item as any).b64_json) return await saveB64Image((item as any).b64_json);
-        if ((item as any).url) return (item as any).url as string;
+        if ((item as any).b64_json) return await saveB64Image(tenantId, (item as any).b64_json, "content_reference_edit", { prompt: variantPrompt, referenceImageUrl });
+        if ((item as any).url) return await saveImageFromUrl(tenantId, (item as any).url as string, "content_reference_generation", { prompt: variantPrompt, referenceImageUrl });
       } catch {
         // Try next model
       }
@@ -318,7 +348,7 @@ export async function generateImagesForContent(
     // Primary: Flux 1.1 Pro via Replicate
     try {
       const outputUrl = await callReplicateFlux11Pro({ prompt: fullPrompt, aspectRatio: fluxAspectRatio });
-      return await saveImageFromUrl(outputUrl);
+      return await saveImageFromUrl(tenantId, outputUrl, "content_image_generation", { prompt: fullPrompt, theme, productName, format, aspectRatio: fluxAspectRatio, provider: "replicate" });
     } catch {
       // Fallback: OpenAI image generation
     }
@@ -337,8 +367,8 @@ export async function generateImagesForContent(
         } as Parameters<typeof openai.images.generate>[0]);
         const item = "data" in response && Array.isArray(response.data) ? response.data[0] : undefined;
         if (!item) continue;
-        if ("url" in item && item.url) return item.url as string;
-        if ("b64_json" in item && item.b64_json) return await saveB64Image(item.b64_json);
+        if ("url" in item && item.url) return await saveImageFromUrl(tenantId, item.url as string, "content_image_generation", { prompt: fullPrompt, theme, productName, format, aspectRatio, model });
+        if ("b64_json" in item && item.b64_json) return await saveB64Image(tenantId, item.b64_json, "content_image_generation", { prompt: fullPrompt, theme, productName, format, aspectRatio, model });
       } catch (err) { lastError = err; }
     }
     throw lastError ?? new Error(`Nenhum modelo retornou resultado para imagem ${i + 1}`);
