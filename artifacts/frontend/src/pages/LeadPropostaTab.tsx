@@ -365,6 +365,18 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
   const [proposalBuilderDraggedIndex, setProposalBuilderDraggedIndex] = useState<number | null>(null);
   const [proposalBuilderModuleImageUploading, setProposalBuilderModuleImageUploading] = useState<string | null>(null);
   const [proposalImageBankOpen, setProposalImageBankOpen] = useState(false);
+  type ProposalMediaLibraryAsset = {
+    id: string;
+    type: string;
+    storageUrl: string;
+    originalFilename?: string | null;
+    createdAt?: string | null;
+    metadata?: Record<string, unknown> | null;
+  };
+  const [proposalMediaLibraryOpen, setProposalMediaLibraryOpen] = useState(false);
+  const [proposalMediaLibraryLoading, setProposalMediaLibraryLoading] = useState(false);
+  const [proposalMediaLibrarySearch, setProposalMediaLibrarySearch] = useState("");
+  const [proposalMediaLibraryAssets, setProposalMediaLibraryAssets] = useState<ProposalMediaLibraryAsset[]>([]);
   const proposalBuilderModuleImageInputRef = useRef<HTMLInputElement>(null);
 
   // Renderizações 3D pertencem ao fluxo Arch e só devem aparecer em segmentos
@@ -1479,6 +1491,41 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
     );
   }
 
+  function proposalMediaLibraryUrl(storageUrl: string): string {
+    if (!storageUrl) return "";
+    if (storageUrl.startsWith("/api/storage/objects/")) return storageUrl;
+    if (storageUrl.startsWith("/objects/")) return `/api/storage/objects/${storageUrl.slice("/objects/".length)}`;
+    return normalizeTenantLogoUrl(storageUrl);
+  }
+
+  async function fetchProposalMediaLibrary(force = false) {
+    if (!tenantId || !token || (proposalMediaLibraryAssets.length > 0 && !force)) return;
+    setProposalMediaLibraryLoading(true);
+    try {
+      const response = await fetch(api(`/api/tenants/${tenantId}/media/assets?type=image&limit=150`), {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? "Não foi possível abrir a Biblioteca de Mídias.");
+      setProposalMediaLibraryAssets(Array.isArray(body.assets) ? body.assets : []);
+    } catch (error) {
+      toast({
+        title: "Biblioteca indisponível",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setProposalMediaLibraryLoading(false);
+    }
+  }
+
+  function openProposalMediaLibrary(moduleKey: string) {
+    setProposalBuilderSelectedModuleKey(moduleKey);
+    setProposalMediaLibraryOpen(true);
+    void fetchProposalMediaLibrary();
+  }
+
   async function handleProposalBuilderModuleImageUpload(moduleKey: string, file: File) {
     if (!file.type.startsWith("image/")) {
       toast({ title: "Selecione uma imagem válida.", variant: "destructive" });
@@ -1490,9 +1537,51 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
     }
     setProposalBuilderModuleImageUploading(moduleKey);
     try {
-      const imageUrl = await uploadImageFile(file);
+      const prepare = await fetch(api(`/api/tenants/${tenantId}/media/assets/request-upload`), {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          name: file.name,
+          contentType: file.type || "image/jpeg",
+          type: "image",
+          size: file.size,
+        }),
+      });
+      const prepared = await prepare.json().catch(() => ({}));
+      if (!prepare.ok) throw new Error(prepared.error ?? "Não foi possível preparar o upload.");
+
+      const uploadResponse = await fetch(prepared.uploadURL, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type || "image/jpeg" },
+      });
+      if (!uploadResponse.ok) throw new Error("Falha ao enviar a imagem.");
+
+      const register = await fetch(api(`/api/tenants/${tenantId}/media/assets`), {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          type: "image",
+          role: "source",
+          source: "upload",
+          storageUrl: prepared.objectPath,
+          originalFilename: file.name,
+          mimeType: file.type || "image/jpeg",
+          fileSize: file.size,
+          metadata: {
+            uploadedFrom: "proposal_builder",
+            module: "propostas",
+            proposalBuilderModuleKey: moduleKey,
+          },
+        }),
+      });
+      const registered = await register.json().catch(() => ({}));
+      if (!register.ok) throw new Error(registered.error ?? "Não foi possível registrar a imagem na Biblioteca.");
+
+      const imageUrl = proposalMediaLibraryUrl(prepared.objectPath);
       updateProposalBuilderModuleImage(moduleKey, { mode: "manual", url: imageUrl });
-      toast({ title: "Imagem adicionada ao bloco", description: "Salve o modelo para reutilizar esta imagem nas próximas propostas." });
+      setProposalMediaLibraryAssets((current) => registered.asset ? [registered.asset, ...current.filter((asset) => asset.id !== registered.asset.id)] : current);
+      toast({ title: "Imagem adicionada", description: "A imagem também foi salva na Biblioteca de Mídias." });
     } catch (error) {
       toast({
         title: "Erro ao adicionar imagem",
@@ -1526,7 +1615,8 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
       if (!response.ok) throw new Error(body.error ?? "Não foi possível gerar a imagem do bloco.");
       updateProposalBuilderModuleImage(moduleKey, { mode: "ai", url: body.imageUrl });
       await queryClient.invalidateQueries({ queryKey: getGetBusinessProfileByTenantQueryKey(tenantId) });
-      toast({ title: "Imagem do bloco gerada", description: "A imagem foi salva no modelo da empresa." });
+      await fetchProposalMediaLibrary(true);
+      toast({ title: "Imagem do bloco gerada", description: "A imagem foi salva no modelo e na Biblioteca de Mídias." });
     } catch (error) {
       toast({ title: "Erro ao gerar imagem", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
     } finally {
@@ -4031,32 +4121,109 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                               placeholder="Prompt da imagem deste bloco. Ex.: casa contemporânea brasileira de alto padrão, fotografia arquitetônica..."
                               className="mt-2 min-h-[80px] text-xs"
                             />
-                            <div className="mt-2 grid grid-cols-2 gap-2">
+                            <div className="mt-2 grid grid-cols-3 gap-2">
                               <Button
                                 type="button"
                                 size="sm"
                                 variant="outline"
-                                className="h-8 gap-1.5 text-xs"
-                                disabled={proposalBuilderModuleImageUploading === selectedModule.key}
-                                onClick={() => chooseProposalBuilderModuleImage(selectedModule.key)}
+                                className="h-8 gap-1 text-xs"
+                                onClick={() => openProposalMediaLibrary(selectedModule.key)}
                               >
-                                {proposalBuilderModuleImageUploading === selectedModule.key ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-                                Enviar imagem
+                                <Image className="h-3.5 w-3.5" />
+                                Biblioteca
                               </Button>
                               <Button
                                 type="button"
                                 size="sm"
-                                className="h-8 gap-1.5 text-xs"
+                                variant="outline"
+                                className="h-8 gap-1 text-xs"
+                                disabled={proposalBuilderModuleImageUploading === selectedModule.key}
+                                onClick={() => chooseProposalBuilderModuleImage(selectedModule.key)}
+                              >
+                                {proposalBuilderModuleImageUploading === selectedModule.key ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                                Upload
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                className="h-8 gap-1 text-xs"
                                 disabled={proposalBuilderGeneratingModuleImage === selectedModule.key}
                                 onClick={() => void generateProposalBuilderModuleImage(selectedModule.key)}
                               >
                                 {proposalBuilderGeneratingModuleImage === selectedModule.key ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                                Gerar com IA
+                                Gerar IA
                               </Button>
                             </div>
+
+                            {proposalMediaLibraryOpen && proposalBuilderSelectedModuleKey === selectedModule.key && (
+                              <div className="mt-3 rounded-xl border bg-muted/20 p-2.5">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div>
+                                    <p className="text-[11px] font-semibold">Biblioteca de Mídias</p>
+                                    <p className="text-[9px] text-muted-foreground">Escolha uma imagem já salva neste tenant.</p>
+                                  </div>
+                                  <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-[10px]" onClick={() => setProposalMediaLibraryOpen(false)}>
+                                    Fechar
+                                  </Button>
+                                </div>
+                                <Input
+                                  value={proposalMediaLibrarySearch}
+                                  onChange={(event) => setProposalMediaLibrarySearch(event.target.value)}
+                                  placeholder="Buscar por nome, módulo ou descrição"
+                                  className="mt-2 h-8 text-xs"
+                                />
+                                {proposalMediaLibraryLoading ? (
+                                  <div className="flex h-28 items-center justify-center">
+                                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                                  </div>
+                                ) : (
+                                  <div className="mt-2 grid max-h-64 grid-cols-3 gap-2 overflow-y-auto pr-1">
+                                    {proposalMediaLibraryAssets
+                                      .filter((asset) => {
+                                        const term = proposalMediaLibrarySearch.trim().toLowerCase();
+                                        if (!term) return true;
+                                        const metadata = asset.metadata ?? {};
+                                        const haystack = [
+                                          asset.originalFilename ?? "",
+                                          String(metadata["description"] ?? ""),
+                                          String(metadata["module"] ?? ""),
+                                          String(metadata["operation"] ?? ""),
+                                          String(metadata["folderPath"] ?? ""),
+                                        ].join(" ").toLowerCase();
+                                        return haystack.includes(term);
+                                      })
+                                      .map((asset) => {
+                                        const url = proposalMediaLibraryUrl(asset.storageUrl);
+                                        const selected = selectedModule.image?.url === url;
+                                        return (
+                                          <button
+                                            key={asset.id}
+                                            type="button"
+                                            className={`group overflow-hidden rounded-lg border bg-background text-left transition ${selected ? "border-primary ring-2 ring-primary/30" : "hover:border-primary/50"}`}
+                                            onClick={() => {
+                                              updateProposalBuilderModuleImage(selectedModule.key, { mode: "library", url });
+                                              setProposalMediaLibraryOpen(false);
+                                              toast({ title: "Imagem aplicada ao bloco", description: "A mídia original continua disponível na Biblioteca." });
+                                            }}
+                                          >
+                                            <img src={url} alt="" className="aspect-[4/3] w-full bg-muted object-cover" />
+                                            <span className="block truncate px-1.5 py-1 text-[9px] text-muted-foreground">
+                                              {asset.originalFilename || "Imagem da biblioteca"}
+                                            </span>
+                                          </button>
+                                        );
+                                      })}
+                                  </div>
+                                )}
+                                {!proposalMediaLibraryLoading && proposalMediaLibraryAssets.length === 0 && (
+                                  <p className="py-5 text-center text-[10px] text-muted-foreground">Nenhuma imagem salva na Biblioteca.</p>
+                                )}
+                              </div>
+                            )}
+
                             {effectiveProposalImages.length > 0 && (
                               <div className="mt-3">
-                                <p className="text-[10px] font-medium text-muted-foreground">Biblioteca desta proposta</p>
+                                <p className="text-[10px] font-medium text-muted-foreground">Imagens já usadas nesta proposta</p>
                                 <div className="mt-1.5 grid grid-cols-4 gap-1.5">
                                   {effectiveProposalImages.slice(0, 8).map((url) => (
                                     <button
