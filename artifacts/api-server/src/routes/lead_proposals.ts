@@ -1942,10 +1942,12 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
 });
 
 // ── PATCH /leads/:leadId/proposals/:version — save manually edited HTML ───────
+// By default this can still update the current version for backwards compatibility.
+// The UI sends createRevision=true so a client-facing proposal is never silently overwritten.
 router.patch("/leads/:leadId/proposals/:version", async (req, res) => {
   const leadId = String(req.params.leadId);
   const version = parseInt(req.params.version, 10);
-  const { htmlContent } = req.body;
+  const { htmlContent, createRevision } = req.body;
   if (typeof htmlContent !== "string" || !htmlContent.trim()) {
     res.status(400).json({ error: "htmlContent é obrigatório" });
     return;
@@ -1960,25 +1962,71 @@ router.patch("/leads/:leadId/proposals/:version", async (req, res) => {
     return;
   }
 
-  // Fetch original HTML for learning diff (before overwriting)
   const [existing] = await db
-    .select({ htmlContent: leadProposalsTable.htmlContent })
+    .select()
     .from(leadProposalsTable)
-    .where(and(eq(leadProposalsTable.leadId, leadId), eq(leadProposalsTable.tenantId, lead.tenantId), eq(leadProposalsTable.version, version)));
+    .where(and(
+      eq(leadProposalsTable.leadId, leadId),
+      eq(leadProposalsTable.tenantId, lead.tenantId),
+      eq(leadProposalsTable.version, version),
+    ));
 
-  const [updated] = await db
-    .update(leadProposalsTable)
-    .set({ htmlContent })
-    .where(and(eq(leadProposalsTable.leadId, leadId), eq(leadProposalsTable.tenantId, lead.tenantId), eq(leadProposalsTable.version, version)))
-    .returning({ id: leadProposalsTable.id });
-  if (!updated) {
+  if (!existing) {
     res.status(404).json({ error: "Proposal not found" });
     return;
   }
-  res.json({ ok: true });
 
-  // Fire-and-forget: learn from this edit and update tenant style memory
-  if (existing?.htmlContent && existing.htmlContent !== htmlContent) {
+  let savedVersion = version;
+  let savedId = existing.id;
+
+  if (createRevision === true) {
+    const [latest] = await db
+      .select({ version: leadProposalsTable.version })
+      .from(leadProposalsTable)
+      .where(and(eq(leadProposalsTable.leadId, leadId), eq(leadProposalsTable.tenantId, lead.tenantId)))
+      .orderBy(desc(leadProposalsTable.version))
+      .limit(1);
+
+    savedVersion = Math.max(Number(latest?.version ?? 0), version) + 1;
+    const [created] = await db
+      .insert(leadProposalsTable)
+      .values({
+        tenantId: lead.tenantId,
+        leadId,
+        version: savedVersion,
+        htmlContent,
+        jsonContent: existing.jsonContent,
+        status: "ready",
+      })
+      .returning({ id: leadProposalsTable.id });
+
+    if (!created) {
+      res.status(500).json({ error: "Não foi possível criar a revisão da proposta" });
+      return;
+    }
+    savedId = created.id;
+  } else {
+    const [updated] = await db
+      .update(leadProposalsTable)
+      .set({ htmlContent, updatedAt: new Date() })
+      .where(and(
+        eq(leadProposalsTable.leadId, leadId),
+        eq(leadProposalsTable.tenantId, lead.tenantId),
+        eq(leadProposalsTable.version, version),
+      ))
+      .returning({ id: leadProposalsTable.id });
+
+    if (!updated) {
+      res.status(404).json({ error: "Proposal not found" });
+      return;
+    }
+    savedId = updated.id;
+  }
+
+  res.json({ ok: true, id: savedId, version: savedVersion, createdRevision: createRevision === true });
+
+  // Fire-and-forget: learn from this edit and update tenant style memory.
+  if (existing.htmlContent !== htmlContent) {
     const tenantId = lead.tenantId;
     const log = req.log;
     (async () => {
@@ -1992,7 +2040,7 @@ router.patch("/leads/:leadId/proposals/:version", async (req, res) => {
           log,
         );
         await db.update(tenantsTable).set({ proposalStyleMemory: newMemory } as any).where(eq(tenantsTable.id, tenantId));
-        log.info({ tenantId }, "proposal style memory persisted");
+        log.info({ tenantId, sourceVersion: version, savedVersion }, "proposal style memory persisted");
       } catch (err: any) {
         log.warn({ err: err?.message, tenantId }, "proposal style memory update failed (non-fatal)");
       }
