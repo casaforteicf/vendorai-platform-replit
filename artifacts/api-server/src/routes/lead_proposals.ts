@@ -1188,7 +1188,7 @@ function scheduleProposalGenerationJobCleanup(jobId: string) {
   timer.unref?.();
 }
 
-router.get("/leads/:leadId/proposals/preflight", async (req, res) => {
+router.get("/leads/:leadId/proposal-preflight", async (req, res) => {
   const leadId = String(req.params.leadId);
   const tenantId = req.user?.tenantId ?? "";
   const ctx = await loadProposalContext(leadId, tenantId);
