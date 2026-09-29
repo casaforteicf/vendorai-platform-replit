@@ -1886,6 +1886,18 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
                       ...(typeof row.marcoPagamento === "string" && row.marcoPagamento.trim()
                         ? { marcoPagamento: row.marcoPagamento.trim() }
                         : {}),
+                      ...(Number.isFinite(Number(row.valorGlobalPrevisto)) && Number(row.valorGlobalPrevisto) > 0
+                        ? { valorGlobalPrevisto: Number(row.valorGlobalPrevisto) }
+                        : {}),
+                      ...(Number.isFinite(Number(row.valorReferenciaM2)) && Number(row.valorReferenciaM2) > 0
+                        ? { valorReferenciaM2: Number(row.valorReferenciaM2) }
+                        : {}),
+                      ...(typeof row.mostrarOrcamentoPrevisto === "boolean"
+                        ? { mostrarOrcamentoPrevisto: row.mostrarOrcamentoPrevisto }
+                        : {}),
+                      ...(typeof row.reajusteSeAlteracao === "boolean"
+                        ? { reajusteSeAlteracao: row.reajusteSeAlteracao }
+                        : {}),
                     }];
                   }),
               )
