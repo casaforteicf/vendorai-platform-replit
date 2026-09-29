@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, numeric, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, numeric, integer, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -16,6 +16,12 @@ export const fornecedoresTable = pgTable("fornecedores", {
   contato: text("contato"), // nome do vendedor/representante
   telefone: text("telefone"),
   email: text("email"),
+  categorias: jsonb("categorias").$type<string[]>().notNull().default([]),
+  disciplinas: jsonb("disciplinas").$type<string[]>().notNull().default([]),
+  regioes: jsonb("regioes").$type<string[]>().notNull().default([]),
+  marcas: jsonb("marcas").$type<string[]>().notNull().default([]),
+  prazoMedioDias: integer("prazo_medio_dias"),
+  ativo: boolean("ativo").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

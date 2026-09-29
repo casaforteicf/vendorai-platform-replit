@@ -172,6 +172,15 @@ export default function RealBudgetEngineStudio({ arqState, onNavigate }: RealBud
 
                 <button
                   type="button"
+                  disabled={!budget}
+                  onClick={() => onNavigate?.("procurement")}
+                  className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                >
+                  Solicitar cotações aos fornecedores
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => onNavigate?.("portal-cliente")}
                   className="rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-5 py-3 text-sm font-semibold text-[var(--arq-foreground)] hover:border-violet-200 hover:text-[var(--arq-accent)]"
                 >
