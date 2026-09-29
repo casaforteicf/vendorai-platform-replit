@@ -11,6 +11,7 @@ import {
   archRendersTable,
   archCatalogoTable,
   produtosCatalogoTable,
+  categoriasProdutoTable,
   archMaterialsTable,
   archMaterialImagesTable,
   archMaterialTenantAccessTable,
@@ -4096,24 +4097,75 @@ router.get("/arch/polyhaven/assets/:slug", authenticate, async (req, res) => {
 // GET /api/arch/catalogo
 router.get("/arch/catalogo", authenticate, async (req, res) => {
   const tid = tenantId(req);
-  await ensureArqdorStarterLibrary(tid);
-  const { categoria, fornecedor, busca, limit = "20", offset = "0" } =
+  const { categoria, fornecedor, busca, limit = "50", offset = "0" } =
     req.query as Record<string, string | undefined>;
 
-  const conditions = [eq(archCatalogoTable.tenantId, tid), eq(archCatalogoTable.ativo, true)];
-  if (categoria) conditions.push(eq(archCatalogoTable.categoria, categoria));
-  if (fornecedor) conditions.push(ilike(archCatalogoTable.fornecedor, `%${fornecedor}%`));
-  if (busca)      conditions.push(ilike(archCatalogoTable.nome, `%${busca}%`));
+  // Fonte única: a Biblioteca de Projeto lê diretamente produtos_catalogo.
+  // O mesmo ID é reutilizado em projeto, render, orçamento e proposta.
+  const conditions = [
+    eq(produtosCatalogoTable.tenantId, tid),
+    eq(produtosCatalogoTable.ativo, true),
+    eq(produtosCatalogoTable.projectLibraryEnabled, true),
+  ];
+  if (fornecedor) conditions.push(ilike(produtosCatalogoTable.fornecedor, `%${fornecedor}%`));
+  if (busca) conditions.push(ilike(produtosCatalogoTable.nome, `%${busca}%`));
+  if (categoria) {
+    conditions.push(or(
+      eq(produtosCatalogoTable.categoriaId, categoria),
+      ilike(categoriasProdutoTable.nome, `%${categoria}%`),
+    )!);
+  }
 
-  const produtos = await db
-    .select()
-    .from(archCatalogoTable)
+  const rows = await db
+    .select({
+      produto: produtosCatalogoTable,
+      categoriaNome: categoriasProdutoTable.nome,
+    })
+    .from(produtosCatalogoTable)
+    .leftJoin(
+      categoriasProdutoTable,
+      and(
+        eq(categoriasProdutoTable.id, produtosCatalogoTable.categoriaId),
+        eq(categoriasProdutoTable.tenantId, tid),
+      ),
+    )
     .where(and(...conditions))
-    .orderBy(desc(archCatalogoTable.createdAt))
-    .limit(Number(limit))
-    .offset(Number(offset));
+    .orderBy(desc(produtosCatalogoTable.createdAt))
+    .limit(Math.min(200, Math.max(1, Number(limit) || 50)))
+    .offset(Math.max(0, Number(offset) || 0));
 
-  return res.json(produtos);
+  return res.json(rows.map(({ produto, categoriaNome }) => {
+    const imagens = Array.from(new Set([
+      produto.imagemUrl,
+      ...((produto.imagens as string[] | null) ?? []),
+    ].filter((value): value is string => Boolean(value))));
+
+    return {
+      id: produto.id,
+      sourceProductId: produto.id,
+      nome: produto.nome,
+      descricao: produto.descricao,
+      categoria: categoriaNome ?? produto.categoriaId,
+      subcategoria: null,
+      fornecedor: produto.fornecedor ?? produto.marca,
+      precoBase: produto.precoBase,
+      precoPromocional: produto.precoPromocional,
+      promocaoAtivaAte: produto.promocaoAtivaAte,
+      unidade: produto.unidade,
+      imagens,
+      textureUrl: produto.textureUrl,
+      model3dUrl: produto.model3dUrl,
+      especificacoes: {
+        ...((produto.projectTechnicalConfig ?? {}) as Record<string, unknown>),
+        ...(produto.model3dUrl ? { model3dUrl: produto.model3dUrl } : {}),
+        ...(produto.textureUrl ? { textureUrl: produto.textureUrl } : {}),
+        source: "produtos_catalogo",
+        sourceProductId: produto.id,
+      },
+      ativo: produto.ativo,
+      createdAt: produto.createdAt,
+    };
+  }));
 });
 
 // POST /api/arch/catalogo
