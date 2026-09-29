@@ -2581,7 +2581,7 @@ function renderStudioOrderedProposal(args: {
         || String(offerInfo.text || hero.subheadline || "").trim()
         || "Uma proposta comercial clara, orientada ao valor e aos próximos passos.";
       const summary = [
-        total > 0 ? '<div><span>Investimento</span><strong>' + fmtMoney(total) + '</strong></div>' : '',
+        presentation.mostrarTotalGeral && total > 0 ? '<div><span>Investimento</span><strong>' + fmtMoney(total) + '</strong></div>' : '',
         '<div><span>Prazo</span><strong>' + esc(effectiveDeadlineLabel) + '</strong></div>',
         groups.length ? '<div><span>Etapas / grupos</span><strong>' + groups.length + '</strong></div>' : '',
         presentation.areaTotalConstruida > 0 ? '<div><span>Área</span><strong>' + esc(presentation.areaTotalConstruida.toLocaleString("pt-BR")) + ' m²</strong></div>' : '',
@@ -2626,7 +2626,7 @@ function renderStudioOrderedProposal(args: {
 
     if (key === "resumo_executivo") {
       const cards = [
-        total > 0 ? ['Investimento', fmtMoney(total)] : null,
+        presentation.mostrarTotalGeral && total > 0 ? ['Investimento', fmtMoney(total)] : null,
         ['Prazo', effectiveDeadlineLabel],
         groups.length ? ['Etapas / grupos', String(groups.length)] : null,
         presentation.previsaoInicio ? ['Início previsto', proposalFormatDate(presentation.previsaoInicio)] : null,
@@ -2642,12 +2642,18 @@ function renderStudioOrderedProposal(args: {
     if (key === "etapas_orcamento") return genericPages(module, index, financialPageBodies(), { includeVisual: false });
     if (key === "imagem_por_etapa") return genericPages(module, index, stageGalleryBodies(), { includeVisual: false });
     if (key === "tabela_itens") return genericPages(module, index, financialPageBodies(), { includeVisual: false });
-    if (key === "cronograma") return genericPages(module, index, schedulePageBodies(), { includeVisual: false });
-    if (key === "fisico_financeiro") return genericPages(module, index, monthlyFinancialPageBodies(), { includeVisual: false });
+    if (key === "cronograma") {
+      if (!presentation.mostrarCronogramaExecucao) return "";
+      return genericPages(module, index, schedulePageBodies(), { includeVisual: false });
+    }
+    if (key === "fisico_financeiro") {
+      if (!presentation.mostrarFisicoFinanceiro) return "";
+      return genericPages(module, index, monthlyFinancialPageBodies(), { includeVisual: false });
+    }
 
     if (key === "condicoes_comerciais") {
       const conditions = [
-        total > 0 ? ['Valor da proposta', fmtMoney(total)] : null,
+        presentation.mostrarTotalGeral && total > 0 ? ['Valor da proposta', fmtMoney(total)] : null,
         orcamento?.condPagamento ? ['Condição de pagamento', orcamento.condPagamento] : null,
         orcamento?.formaPagamento ? ['Forma de pagamento', orcamento.formaPagamento] : null,
         ['Prazo / entrega', effectiveDeadlineLabel],
@@ -2683,6 +2689,7 @@ function renderStudioOrderedProposal(args: {
     }
 
     if (key === "portal_cliente") {
+      if (!presentation.mostrarPortalCliente) return "";
       return genericPage(module, index,
         '<div class="studio-callout"><strong>Portal do Cliente</strong><p>' +
         esc(moduleManualContent(module) || "Após a contratação, o cliente poderá acompanhar documentos, cronograma, atualizações e informações disponibilizadas pela empresa.") +
@@ -2691,23 +2698,32 @@ function renderStudioOrderedProposal(args: {
 
     if (key === "curiosidades_conteudo") {
       const cards = Array.isArray(curiositiesInfo.items) ? curiositiesInfo.items : [];
-      return genericPage(module, index, pageVisual(module, index) + '<div class="studio-card-grid">' +
-        cards.slice(0, 6).map((item: any) => '<div><strong>' + esc(item?.title) + '</strong><p>' + esc(item?.text) + '</p></div>').join("") +
-        '</div>');
+      const bodies = cards.length
+        ? chunk(cards, 6).map((part) => '<div class="studio-card-grid">' +
+            part.map((item: any) => '<div><strong>' + esc(item?.title) + '</strong><p>' + esc(item?.text) + '</p></div>').join("") +
+            '</div>')
+        : ['<p class="studio-muted">Nenhum conteúdo adicional cadastrado.</p>'];
+      return genericPages(module, index, bodies, { includeVisual: true });
     }
 
     if (key === "cases_provas") {
       const cards = Array.isArray(proofInfo.items) ? proofInfo.items : [];
-      return genericPage(module, index, pageVisual(module, index) + '<div class="studio-card-grid">' +
-        cards.slice(0, 6).map((item: any) => '<div><strong>' + esc(item?.title) + '</strong><p>' + esc(item?.text) + '</p></div>').join("") +
-        '</div>');
+      const bodies = cards.length
+        ? chunk(cards, 6).map((part) => '<div class="studio-card-grid">' +
+            part.map((item: any) => '<div><strong>' + esc(item?.title) + '</strong><p>' + esc(item?.text) + '</p></div>').join("") +
+            '</div>')
+        : ['<p class="studio-muted">Nenhuma prova ou case cadastrado para esta proposta.</p>'];
+      return genericPages(module, index, bodies, { includeVisual: true });
     }
 
     if (key === "faq") {
       const cards = Array.isArray(faqInfo.items) ? faqInfo.items : [];
-      return genericPage(module, index, '<div class="studio-faq">' +
-        cards.slice(0, 7).map((item: any) => '<div><strong>' + esc(item?.question) + '</strong><p>' + esc(item?.answer) + '</p></div>').join("") +
-        '</div>');
+      const bodies = cards.length
+        ? chunk(cards, 7).map((part) => '<div class="studio-faq">' +
+            part.map((item: any) => '<div><strong>' + esc(item?.question) + '</strong><p>' + esc(item?.answer) + '</p></div>').join("") +
+            '</div>')
+        : ['<p class="studio-muted">Nenhuma pergunta frequente cadastrada.</p>'];
+      return genericPages(module, index, bodies, { includeVisual: false });
     }
 
     if (key === "anexos") {
