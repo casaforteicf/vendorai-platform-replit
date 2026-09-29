@@ -400,6 +400,8 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
   const [selectedStageImageIds, setSelectedStageImageIds] = useState<string[]>([]);
   const [stageImageUploadTarget, setStageImageUploadTarget] = useState<string | null>(null);
   const [stageMediaLibraryTarget, setStageMediaLibraryTarget] = useState<string | null>(null);
+  const [stageImageDialogTarget, setStageImageDialogTarget] = useState<string | null>(null);
+  const [stageImageDialogPrompt, setStageImageDialogPrompt] = useState("");
   const [stageImageGeneratingTarget, setStageImageGeneratingTarget] = useState<string | null>(null);
   const [stageImageUploading, setStageImageUploading] = useState(false);
   const [coverImageUploading, setCoverImageUploading] = useState(false);
@@ -1320,18 +1322,23 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
 
   function openStageMediaLibrary(stageId: string) {
     setStageMediaLibraryTarget(stageId);
-    void fetchProposalMediaLibrary();
+    setProposalMediaLibrarySearch("");
+    void fetchProposalMediaLibrary(true);
   }
 
-  async function generateSingleStageImage(stageId: string) {
+  function openStageImageDialog(stageId: string) {
+    const stage = selectedOrcamentoStages.find((item) => item.id === stageId);
+    if (!stage) return;
+    setStageImageDialogTarget(stageId);
+    setStageImageDialogPrompt("");
+  }
+
+  async function generateSingleStageImage(stageId: string, customPrompt = "") {
     if (!selectedOrcamento?.id) return;
     const stage = selectedOrcamentoStages.find((item) => item.id === stageId);
     if (!stage) return;
 
     const alreadyHasImage = Boolean(selectedStageImages[stageId]);
-    const action = alreadyHasImage ? "Regenerar" : "Gerar";
-    if (!window.confirm(`${action} imagem com IA para a etapa "${stage.nome}"? Esta ação consome 1 geração de imagem.`)) return;
-
     const userActionId =
       typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
         ? crypto.randomUUID()
@@ -1352,15 +1359,18 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
           padraoCasa: proposalHouseStandard,
           tipoCasa: proposalHouseType,
           elementosVisuais: proposalVisualElements,
+          customPrompt: customPrompt.trim(),
         }),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error ?? "Não foi possível gerar a imagem da etapa.");
       await queryClient.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId, { leadId }) });
       await fetchProposalMediaLibrary(true);
+      setStageImageDialogTarget(null);
+      setStageImageDialogPrompt("");
       toast({
         title: alreadyHasImage ? "Imagem regenerada com IA" : "Imagem gerada com IA",
-        description: "A nova mídia foi vinculada à etapa e salva na Biblioteca de Mídias.",
+        description: `Etapa: ${stage.nome}. A mídia foi vinculada à etapa e salva na Biblioteca de Mídias.`,
       });
     } catch (error) {
       toast({
@@ -3291,7 +3301,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                                       type="button"
                                       className="inline-flex items-center gap-1 text-[9px] font-medium text-violet-700 hover:underline disabled:opacity-50"
                                       disabled={stageImageGeneratingTarget === stage.id}
-                                      onClick={() => void generateSingleStageImage(stage.id)}
+                                      onClick={() => openStageImageDialog(stage.id)}
                                     >
                                       {stageImageGeneratingTarget === stage.id ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <Sparkles className="h-2.5 w-2.5" />}
                                       {selectedStageImages[stage.id] ? "Regenerar IA" : "Gerar com IA"}
