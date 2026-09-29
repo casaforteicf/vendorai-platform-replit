@@ -550,6 +550,9 @@ type ProposalStageSchedule = {
   fases?: ProposalStagePhase[];
   observacao?: string;
   marcoPagamento?: string;
+  valorReferenciaM2?: number;
+  mostrarOrcamentoPrevisto?: boolean;
+  reajusteSeAlteracao?: boolean;
 };
 
 type ProposalPresentationConfig = {
@@ -2425,9 +2428,31 @@ function renderStudioOrderedProposal(args: {
     return result;
   };
 
-  const stageHeader = (group: typeof groups[number], value: number, suffix = "") =>
-    '<div class="studio-stage-title"><span>Etapa ' + esc(group.ordem) + ' · ' + esc(group.nome || "Entrega") +
-    (suffix ? ' <small>' + esc(suffix) + '</small>' : '') + '</span><strong>' + fmtMoney(value) + '</strong></div>';
+  const stageHeader = (group: typeof groups[number], value: number, suffix = "") => {
+    const commercial = presentation.cronogramaEtapas[group.id] ?? {};
+    return '<div class="studio-stage-title"><span>Etapa ' + esc(group.ordem) + ' · ' + esc(group.nome || "Entrega") +
+      (suffix ? ' <small>' + esc(suffix) + '</small>' : '') +
+      '</span><div class="studio-stage-value">' +
+      (commercial.mostrarOrcamentoPrevisto ? '<small>Orçamento previsto</small>' : '') +
+      '<strong>' + fmtMoney(value) + '</strong></div></div>';
+  };
+
+  const stageCommercialNote = (group: typeof groups[number]) => {
+    const commercial = presentation.cronogramaEtapas[group.id] ?? {};
+    const notes: string[] = [];
+    if (Number(commercial.valorReferenciaM2 ?? 0) > 0) {
+      notes.push('<strong>Referência considerada:</strong> ' + fmtMoney(Number(commercial.valorReferenciaM2)) + ' / m².');
+    }
+    if (commercial.mostrarOrcamentoPrevisto) {
+      notes.push('<strong>Orçamento previsto para o projeto atual.</strong>');
+    }
+    if (commercial.reajusteSeAlteracao) {
+      notes.push('Alterações de medidas, quantitativos, materiais, ferragens, vidros, acabamentos ou especificações serão recalculadas e poderão gerar reajuste.');
+    }
+    return notes.length
+      ? '<div class="studio-commercial-note">' + notes.map((item) => '<p>' + item + '</p>').join("") + '</div>'
+      : '';
+  };
 
   const scopeBlock = (group: typeof groups[number], groupItems = group.itens) => {
     const showDetail = resolveProposalTechnicalDetail(presentation, group.id);
