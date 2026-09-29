@@ -2059,9 +2059,35 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
   }
 
   const proposalBuilderPreviewTotal = proposalBuilderPreviewMode === "budget" ? Number(selectedOrcamento?.valorTotal ?? 0) : 1250000;
-  const proposalBuilderPreviewDeadline = proposalBuilderPreviewMode === "budget"
-    ? String(selectedOrcamento?.prazoEntrega ?? "").trim()
-    : "Prazo conforme orçamento";
+  const proposalBuilderPreviewDeadline = (() => {
+    if (proposalBuilderPreviewMode !== "budget") return "Prazo conforme orçamento";
+    const presentation = (selectedOrcamento?.apresentacao ?? {}) as any;
+    const schedules = Object.values(presentation?.cronogramaEtapas ?? {}) as any[];
+    const starts: Date[] = [];
+    const ends: Date[] = [];
+    const pushDate = (target: Date[], raw: unknown) => {
+      if (typeof raw !== "string" || !raw.trim()) return;
+      const value = new Date(/^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T12:00:00` : raw);
+      if (!Number.isNaN(value.getTime())) target.push(value);
+    };
+    schedules.forEach((schedule) => {
+      pushDate(starts, schedule?.inicioPrevisto);
+      pushDate(ends, schedule?.fimPrevisto);
+      if (Array.isArray(schedule?.fases)) {
+        schedule.fases.forEach((phase: any) => {
+          pushDate(starts, phase?.inicioPrevisto);
+          pushDate(ends, phase?.fimPrevisto);
+        });
+      }
+    });
+    if (starts.length && ends.length) {
+      const first = starts.sort((a, b) => a.getTime() - b.getTime())[0]!;
+      const last = ends.sort((a, b) => b.getTime() - a.getTime())[0]!;
+      const days = Math.max(1, Math.ceil((last.getTime() - first.getTime()) / 86_400_000) + 1);
+      return `${days} dias`;
+    }
+    return String(selectedOrcamento?.prazoEntrega ?? "").trim() || "A definir";
+  })();
   const proposalBuilderPreviewCompany = String((profileQuery.data as any)?.nomeFantasia || (profileQuery.data as any)?.razaoSocial || "Sua empresa");
   const proposalBuilderPreviewLogo = normalizeTenantLogoUrl(String((profileQuery.data as any)?.logoUrl || ""));
   const proposalBuilderPreviewTitle = proposalBuilderPreviewMode === "budget"
@@ -2078,13 +2104,30 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
     if (typeof raw === "string") return raw.split(/\r?\n|[•·]|;+/g);
     return [] as string[];
   })();
+  const proposalBuilderDiscovery = ((profileQuery.data as any)?.discoveryData ?? {}) as Record<string, unknown>;
+  const proposalBuilderDiscoveryBenefits = [
+    proposalBuilderDiscovery.mensagensChave,
+    proposalBuilderDiscovery.posicionamento,
+  ].flatMap((value) => typeof value === "string" ? value.split(/\r?\n|[•·]|;+/g) : []);
+  const proposalBuilderManualDifferentials =
+    proposalBuilderDifferentialsModule?.dataSource === "manual"
+      ? (proposalBuilderDifferentialsModule.contentPrompt ?? "").split(/\r?\n|[•·]|;+/g)
+      : [];
   const proposalBuilderCoverBenefits = Array.from(new Set([
-    ...(proposalBuilderDifferentialsModule?.contentPrompt ?? "").split(/\r?\n|[•·]|;+/g),
-    ...(proposalBuilderDifferentialsModule?.description ? [proposalBuilderDifferentialsModule.description] : []),
     ...proposalBuilderProfileDifferentials,
-  ].map((item) => String(item).replace(/^\s*(?:\d+[.)]|[-*])\s*/, "").trim()).filter((item) => item.length >= 4 && item.length <= 90))).slice(0, 4);
+    ...proposalBuilderDiscoveryBenefits,
+    ...proposalBuilderManualDifferentials,
+  ].map((item) => String(item)
+    .replace(/^\s*(?:\d+[.)]|[-*])\s*/, "")
+    .replace(/^(?:desempenho|diferenciacao|eficiencia)\s+[^:]{0,50}:\s*/i, "")
+    .trim())
+    .filter((item) => item.length >= 4 && item.length <= 140)))
+    .slice(0, 4);
   const proposalBuilderCoverValueStatement =
-    proposalBuilderProductModule?.description
+    (typeof proposalBuilderDiscovery.posicionamento === "string" && proposalBuilderDiscovery.posicionamento.trim()
+      ? proposalBuilderDiscovery.posicionamento.trim()
+      : "")
+    || proposalBuilderProductModule?.description
     || proposalBuilderDifferentialsModule?.description
     || "Uma proposta clara, comercial e orientada aos benefícios reais da solução para o cliente.";
   const proposalBuilderTemplateSampleStages = [
@@ -3807,7 +3850,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
 
                 <div className="mt-4">
                   <p className="text-xs font-semibold">Páginas da proposta</p>
-                  <p className="text-[10px] text-muted-foreground">Cada item abaixo é uma página. Clique para abrir e editar somente aquela página.</p>
+                  <p className="text-[10px] text-muted-foreground">Cada item abaixo é um bloco da proposta. Quando o conteúdo não couber em uma página, o sistema cria continuações automaticamente sem cortar informações.</p>
                 </div>
 
                 <div className="mt-2 space-y-1.5">
@@ -3834,7 +3877,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                         {index + 1}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-[11px] font-medium">Página {index + 1} · {module.title || PROPOSAL_MODULE_LABELS[module.key] || module.key}</p>
+                        <p className="truncate text-[11px] font-medium">Bloco {index + 1} · {module.title || PROPOSAL_MODULE_LABELS[module.key] || module.key}</p>
                       </div>
                       <PencilLine className={`h-3.5 w-3.5 shrink-0 ${proposalBuilderSelectedModuleKey === module.key ? "text-primary" : "text-muted-foreground/60 opacity-0 group-hover:opacity-100"}`} />
                       <Switch
@@ -3889,7 +3932,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                   </div>
                   <div className="flex flex-wrap items-center gap-1">
                     <Badge variant="outline">
-                      Página {Math.max(1, proposalBuilderEditorModules.findIndex((item) => item.key === proposalBuilderSelectedModuleKey) + 1)} de {proposalBuilderEditorModules.length}
+                      Bloco {Math.max(1, proposalBuilderEditorModules.findIndex((item) => item.key === proposalBuilderSelectedModuleKey) + 1)} de {proposalBuilderEditorModules.length}
                     </Badge>
                     <Badge variant="outline">{proposalBuilderEditorPreset.replace(/_/g, " ")}</Badge>
                     <Badge variant="outline">{proposalBuilderPreviewClient}</Badge>
