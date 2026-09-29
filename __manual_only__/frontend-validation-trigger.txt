@@ -1,0 +1,2 @@
+Trigger manual frontend validation after Arqdor render/specification separation.
+Target included commit: 5263568b97d0d12a10930d3af20b9f0637f8d744
