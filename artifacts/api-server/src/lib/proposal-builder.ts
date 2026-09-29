@@ -37,6 +37,9 @@ export type ProposalBuilderModule = {
     url?: string;
     prompt?: string;
     aspectRatio?: "16:9" | "4:3" | "1:1";
+    fit?: "cover" | "contain";
+    position?: "center" | "top" | "bottom" | "left" | "right";
+    overlay?: number;
   };
 };
 
@@ -328,6 +331,17 @@ export function normalizeProposalBuilderTemplate(
           url: typeof imageRaw.url === "string" && imageRaw.url.trim() ? imageRaw.url.trim() : undefined,
           prompt: typeof imageRaw.prompt === "string" ? imageRaw.prompt.trim().slice(0, 1800) : undefined,
           aspectRatio: imageRaw.aspectRatio === "4:3" || imageRaw.aspectRatio === "1:1" ? imageRaw.aspectRatio : "16:9",
+          fit: imageRaw.fit === "contain" ? "contain" : "cover",
+          position:
+            imageRaw.position === "top"
+            || imageRaw.position === "bottom"
+            || imageRaw.position === "left"
+            || imageRaw.position === "right"
+              ? imageRaw.position
+              : "center",
+          overlay: Number.isFinite(Number(imageRaw.overlay))
+            ? Math.max(0, Math.min(80, Math.round(Number(imageRaw.overlay))))
+            : 45,
         },
       };
     })
