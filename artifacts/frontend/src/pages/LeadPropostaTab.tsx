@@ -1697,6 +1697,9 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     },
   ];
   const proposalComposerReadyCount = proposalComposerChecks.filter((item) => item.ok).length;
+  const proposalComposerBlockingIssues = proposalComposerChecks.filter((item) => item.key === "budget" && !item.ok);
+  const proposalComposerWarnings = proposalComposerChecks.filter((item) => item.key !== "budget" && !item.ok);
+
 
   function openRefineDialog(fromVersion?: number) {
     setRefineNotes("");
@@ -4177,6 +4180,88 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
           </DialogHeader>
 
           <div className="space-y-4 py-1">
+            {refineFromVersion == null && (
+              <div className="rounded-xl border bg-muted/20 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-semibold">Revisão antes de gerar</p>
+                    <p className="mt-0.5 text-[10px] text-muted-foreground">
+                      Confirme orçamento, modelo, marca e material visual antes de criar a versão.
+                    </p>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className={proposalComposerBlockingIssues.length === 0 && proposalComposerWarnings.length === 0
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                      : proposalComposerBlockingIssues.length > 0
+                        ? "border-red-200 bg-red-50 text-red-700"
+                        : "border-amber-200 bg-amber-50 text-amber-700"}
+                  >
+                    {proposalComposerReadyCount}/{proposalComposerChecks.length} pronto
+                  </Badge>
+                </div>
+
+                <div className="mt-3 grid gap-1.5 sm:grid-cols-2">
+                  {proposalComposerChecks.map((item) => (
+                    <div key={item.key} className="flex items-start gap-2 rounded-lg border bg-background px-2.5 py-2">
+                      {item.ok
+                        ? <CheckSquare className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                        : <XCircle className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${item.key === "budget" ? "text-red-500" : "text-amber-500"}`} />}
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-medium">{item.label}</p>
+                        <p className="line-clamp-2 text-[10px] text-muted-foreground">{item.detail}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {(proposalComposerWarnings.length > 0 || proposalComposerBlockingIssues.length > 0) && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {proposalComposerWarnings.some((item) => item.key === "cover" || item.key === "stages") && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8 text-xs"
+                        onClick={() => {
+                          setRefineOpen(false);
+                          setProposalVisualCenterOpen(true);
+                        }}
+                      >
+                        <ImagePlus className="mr-1 h-3.5 w-3.5" />
+                        Corrigir imagens
+                      </Button>
+                    )}
+                    {proposalComposerWarnings.some((item) => item.key === "model") && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8 text-xs"
+                        onClick={() => {
+                          setRefineOpen(false);
+                          openProposalBuilderEditor();
+                        }}
+                      >
+                        <Settings2 className="mr-1 h-3.5 w-3.5" />
+                        Escolher modelo
+                      </Button>
+                    )}
+                  </div>
+                )}
+
+                {proposalComposerBlockingIssues.length > 0 ? (
+                  <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-2.5 py-2 text-[10px] text-red-700">
+                    A geração está bloqueada até selecionar um orçamento/revisão.
+                  </p>
+                ) : proposalComposerWarnings.length > 0 ? (
+                  <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[10px] text-amber-700">
+                    Há itens visuais opcionais pendentes. Você pode corrigir agora ou gerar mesmo assim usando os fallbacks disponíveis.
+                  </p>
+                ) : null}
+              </div>
+            )}
+
             <p className="text-sm text-muted-foreground">
               {refineFromVersion != null
                 ? "Descreva o que deve mudar na nova versão. A IA vai gerar uma versão melhorada com suas instruções."
@@ -4235,7 +4320,7 @@ ${chip}`
                 variant="ghost"
                 size="sm"
                 onClick={() => generateProposal(undefined)}
-                disabled={generating}
+                disabled={generating || proposalComposerBlockingIssues.length > 0}
               >
                 {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
                 Gerar sem instruções
@@ -4245,7 +4330,7 @@ ${chip}`
               size="sm"
               className="gap-1.5 bg-violet-600 hover:bg-violet-700"
               onClick={() => generateProposal(refineNotes || undefined)}
-              disabled={generating}
+              disabled={generating || (refineFromVersion == null && proposalComposerBlockingIssues.length > 0)}
             >
               {generating ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
