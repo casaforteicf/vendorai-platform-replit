@@ -29,7 +29,6 @@ import { useRenderStudioController } from "./render-studio/useRenderStudioContro
 
 function RenderStudioInner() {
   const {
-    setLocation,
     arq,
     step,
     ambiente,
