@@ -34,6 +34,8 @@ type Produto = {
   subcategoria: string | null;
   fornecedor: string | null;
   precoBase: string | null;
+  precoPromocional: string | null;
+  promocaoAtivaAte: string | null;
   unidade: string | null;
   imagens: string[] | null;
   especificacoes: {
@@ -81,6 +83,19 @@ function fmt(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+function promocaoAtiva(produto: Pick<Produto, "precoPromocional" | "promocaoAtivaAte">) {
+  if (!produto.precoPromocional || Number(produto.precoPromocional) <= 0) return false;
+  if (!produto.promocaoAtivaAte) return false;
+  return new Date(produto.promocaoAtivaAte).getTime() >= Date.now();
+}
+
+function descontoPercentual(precoBase: string | null, precoPromocional: string | null) {
+  const base = Number(precoBase);
+  const promo = Number(precoPromocional);
+  if (!(base > 0) || !(promo > 0) || promo >= base) return null;
+  return Math.round((1 - promo / base) * 100);
+}
+
 const CATEGORIAS = [
   "Estofados", "Móveis", "Iluminação", "Louças e Metais", "Eletrodomésticos",
   "Portas e Janelas", "Marcenaria", "Acessórios", "Decoração", "Outros",
@@ -93,6 +108,9 @@ const EMPTY_FORM = {
   subcategoria: "",
   fornecedor: "",
   precoBase: "",
+  promocaoAtiva: false,
+  precoPromocional: "",
+  promocaoAtivaAte: "",
   unidade: "un",
   publicarMarketplace: false,
 };
@@ -241,6 +259,9 @@ export default function Catalogo() {
       subcategoria:       p.subcategoria ?? "",
       fornecedor:         p.fornecedor ?? "",
       precoBase:          p.precoBase ?? "",
+      promocaoAtiva:      promocaoAtiva(p),
+      precoPromocional:   p.precoPromocional ?? "",
+      promocaoAtivaAte:   p.promocaoAtivaAte ? new Date(p.promocaoAtivaAte).toISOString().slice(0, 10) : "",
       unidade:            p.unidade ?? "un",
       publicarMarketplace: false,
     });
@@ -285,6 +306,39 @@ export default function Catalogo() {
         });
         if (!res.ok) throw new Error("Falha ao criar produto.");
         produto = await res.json();
+      }
+
+      // Promoção fica separada do preço base e usa a API comercial central.
+      if (form.promocaoAtiva) {
+        const base = Number(form.precoBase);
+        const promo = Number(form.precoPromocional);
+        if (!(promo > 0) || !(base > 0) || promo >= base) {
+          throw new Error("O preço promocional deve ser maior que zero e menor que o preço base.");
+        }
+        if (!form.promocaoAtivaAte) {
+          throw new Error("Informe a data final da promoção.");
+        }
+        const promoRes = await fetch(`/api/produtos-catalogo/${produto.id}/promocao`, {
+          method: "POST",
+          headers: authH(),
+          body: JSON.stringify({
+            precoPromocional: promo,
+            ativaAte: new Date(`${form.promocaoAtivaAte}T23:59:59`).toISOString(),
+          }),
+        });
+        if (!promoRes.ok) {
+          const payload = await promoRes.json().catch(() => null);
+          throw new Error(payload?.error || "Falha ao salvar a promoção.");
+        }
+      } else if (editing?.precoPromocional) {
+        const promoRes = await fetch(`/api/produtos-catalogo/${produto.id}/promocao`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${getToken()}` },
+        });
+        if (!promoRes.ok) {
+          const payload = await promoRes.json().catch(() => null);
+          throw new Error(payload?.error || "Falha ao remover a promoção.");
+        }
       }
 
       // Upload images if any
@@ -396,6 +450,8 @@ export default function Catalogo() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {produtos.map(p => {
             const thumb = p.imagens?.[0];
+            const isPromo = promocaoAtiva(p);
+            const desconto = isPromo ? descontoPercentual(p.precoBase, p.precoPromocional) : null;
             return (
               <Card key={p.id} className="overflow-hidden group">
                 {/* Image */}
@@ -408,6 +464,11 @@ export default function Catalogo() {
                     />
                   ) : (
                     <Image className="h-10 w-10 text-muted-foreground/20" />
+                  )}
+                  {isPromo && (
+                    <Badge className="absolute top-2 left-2 bg-red-600 text-white border-0 shadow-sm">
+                      {desconto ? `PROMOÇÃO · ${desconto}% OFF` : "PROMOÇÃO"}
+                    </Badge>
                   )}
                   {/* Hover actions */}
                   <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -454,7 +515,14 @@ export default function Catalogo() {
                     <p className="text-xs text-muted-foreground truncate">{p.fornecedor}</p>
                   )}
                   {p.precoBase && Number(p.precoBase) > 0 && (
-                    <p className="text-sm font-semibold text-green-700">{fmt(Number(p.precoBase))}</p>
+                    isPromo ? (
+                      <div className="flex items-baseline gap-2 flex-wrap">
+                        <span className="text-xs text-muted-foreground line-through">{fmt(Number(p.precoBase))}</span>
+                        <span className="text-sm font-semibold text-red-600">{fmt(Number(p.precoPromocional))}</span>
+                      </div>
+                    ) : (
+                      <p className="text-sm font-semibold text-green-700">{fmt(Number(p.precoBase))}</p>
+                    )
                   )}
                 </CardContent>
               </Card>
@@ -545,6 +613,52 @@ export default function Catalogo() {
                   onChange={e => setForm(f => ({ ...f, unidade: e.target.value }))}
                 />
               </div>
+            </div>
+
+            {/* Promoção */}
+            <div className="rounded-lg border p-3 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium">Promoção</p>
+                  <p className="text-xs text-muted-foreground">Mostra o preço promocional sobre o produto enquanto a oferta estiver vigente.</p>
+                </div>
+                <Switch
+                  checked={form.promocaoAtiva}
+                  onCheckedChange={v => setForm(f => ({ ...f, promocaoAtiva: v }))}
+                />
+              </div>
+              {form.promocaoAtiva && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Preço promocional (R$)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0,00"
+                      value={form.precoPromocional}
+                      onChange={e => setForm(f => ({ ...f, precoPromocional: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Válida até</Label>
+                    <Input
+                      type="date"
+                      value={form.promocaoAtivaAte}
+                      onChange={e => setForm(f => ({ ...f, promocaoAtivaAte: e.target.value }))}
+                    />
+                  </div>
+                  {Number(form.precoBase) > 0 && Number(form.precoPromocional) > 0 && Number(form.precoPromocional) < Number(form.precoBase) && (
+                    <div className="col-span-2 rounded-md bg-muted px-3 py-2 text-xs">
+                      Oferta: <span className="font-semibold">{fmt(Number(form.precoPromocional))}</span>
+                      <span className="ml-2 text-muted-foreground line-through">{fmt(Number(form.precoBase))}</span>
+                      <Badge variant="secondary" className="ml-2">
+                        {descontoPercentual(form.precoBase, form.precoPromocional)}% OFF
+                      </Badge>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Imagens dropzone */}
