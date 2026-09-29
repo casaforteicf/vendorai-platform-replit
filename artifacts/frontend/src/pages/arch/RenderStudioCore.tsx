@@ -28,13 +28,10 @@ import { RENDER_STUDIO_STEPS as STEPS, renderStudioStepIndex as stepIndex } from
 import { RenderStudioTopbar as Topbar, RenderStudioSidebar as LeftSidebar } from "./render-studio/RenderStudioNavigation";
 import { RenderStudioCanvas as CentralCanvas } from "./render-studio/RenderStudioCanvas";
 import { RenderStudioBottomPanel as BottomPanel } from "./render-studio/RenderStudioBottomPanel";
-import { RenderStudioCopilot as CopilotPanel } from "./render-studio/RenderStudioCopilot";
 import { RenderStudioFooter as Footer, type RenderStudioSaveState as SaveState } from "./render-studio/RenderStudioFooter";
 import { RenderStudioRightPanel as RightPanel } from "./render-studio/RenderStudioRightPanel";
 import {
-  RenderStudioButton as DkBtn,
   RenderStudioSpinner as DkSpinner,
-  RenderStudioError as DkErr,
   RenderStudioBadge as Badge,
   RenderStudioPanelLabel as PanelLabel,
   RenderStudioInfoBox as InfoBox,
