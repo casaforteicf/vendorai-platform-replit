@@ -4169,14 +4169,11 @@ router.get("/arch/catalogo", authenticate, async (req, res) => {
 });
 
 // POST /api/arch/catalogo
-router.post("/arch/catalogo", authenticate, async (req, res) => {
-  const tid = tenantId(req);
-
-  const parsed = insertArchCatalogoSchema.safeParse({ ...req.body, tenantId: tid });
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-
-  const [produto] = await db.insert(archCatalogoTable).values(parsed.data as any).returning();
-  return res.status(201).json(produto);
+router.post("/arch/catalogo", authenticate, async (_req, res) => {
+  return res.status(409).json({
+    error: "Cadastro duplicado desativado. Crie o produto no Catálogo Comercial; a Biblioteca de Projeto usa o mesmo produto mestre.",
+    source: "produtos_catalogo",
+  });
 });
 
 // POST /api/arch/catalogo/sync-source/:sourceProductId
@@ -4185,71 +4182,38 @@ router.post("/arch/catalogo", authenticate, async (req, res) => {
 router.post("/arch/catalogo/sync-source/:sourceProductId", authenticate, async (req, res) => {
   const tid = tenantId(req);
   const sourceProductId = String(req.params.sourceProductId);
-
-  const [source] = await db
-    .select()
+  const [source] = await db.select()
     .from(produtosCatalogoTable)
     .where(and(
       eq(produtosCatalogoTable.id, sourceProductId),
       eq(produtosCatalogoTable.tenantId, tid),
     ))
     .limit(1);
+  if (!source) return res.status(404).json({ error: "Produto mestre não encontrado." });
 
-  if (!source) return res.status(404).json({ error: "Produto do catálogo não encontrado." });
-
-  const [existing] = await db
-    .select()
-    .from(archCatalogoTable)
-    .where(and(
-      eq(archCatalogoTable.tenantId, tid),
-      eq(archCatalogoTable.sourceProductId, sourceProductId),
-    ))
-    .limit(1);
-
-  const sourceImages = [
-    source.imagemUrl,
-    ...((source.imagens as string[] | null) ?? []),
-  ].filter((value): value is string => Boolean(value));
-
-  if (existing) {
-    const [updated] = await db
-      .update(archCatalogoTable)
-      .set({
-        nome: source.nome,
-        descricao: source.descricao ?? null,
-        categoria: source.categoriaId ?? existing.categoria,
-        fornecedor: (source as any).fornecedor ?? source.marca ?? existing.fornecedor,
-        precoBase: source.precoBase,
-        unidade: source.unidade,
-        imagens: sourceImages.length ? Array.from(new Set(sourceImages)).slice(0, 8) : existing.imagens,
-        ativo: source.ativo,
-      })
-      .where(eq(archCatalogoTable.id, existing.id))
-      .returning();
-    return res.json(updated);
-  }
-
-  const [created] = await db
-    .insert(archCatalogoTable)
-    .values({
-      tenantId: tid,
-      sourceProductId,
-      nome: source.nome,
-      descricao: source.descricao ?? null,
-      categoria: source.categoriaId ?? null,
-      fornecedor: (source as any).fornecedor ?? source.marca ?? null,
-      precoBase: source.precoBase,
-      unidade: source.unidade,
-      imagens: Array.from(new Set(sourceImages)).slice(0, 8),
-      especificacoes: {
-        source: "produtos_catalogo",
-        sourceProductId,
-      },
-      ativo: source.ativo,
-    })
-    .returning();
-
-  return res.status(201).json(created);
+  return res.json({
+    id: source.id,
+    sourceProductId: source.id,
+    nome: source.nome,
+    descricao: source.descricao,
+    fornecedor: source.fornecedor ?? source.marca,
+    precoBase: source.precoBase,
+    unidade: source.unidade,
+    imagens: Array.from(new Set([
+      source.imagemUrl,
+      ...((source.imagens as string[] | null) ?? []),
+    ].filter((value): value is string => Boolean(value)))),
+    model3dUrl: source.model3dUrl,
+    textureUrl: source.textureUrl,
+    especificacoes: {
+      ...((source.projectTechnicalConfig ?? {}) as Record<string, unknown>),
+      ...(source.model3dUrl ? { model3dUrl: source.model3dUrl } : {}),
+      ...(source.textureUrl ? { textureUrl: source.textureUrl } : {}),
+      source: "produtos_catalogo",
+      sourceProductId: source.id,
+    },
+    ativo: source.ativo,
+  });
 });
 
 // POST /api/arch/catalogo/:id/resolve-real-model
