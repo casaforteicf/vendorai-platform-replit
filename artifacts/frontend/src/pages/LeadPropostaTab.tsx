@@ -2098,31 +2098,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
     : "Nome do cliente";
   const proposalBuilderDifferentialsModule = proposalBuilderEditorModules.find((item) => item.key === "diferenciais");
   const proposalBuilderProductModule = proposalBuilderEditorModules.find((item) => item.key === "produto_servico");
-  const proposalBuilderProfileDifferentials = (() => {
-    const raw = (profileQuery.data as any)?.diferenciais;
-    if (Array.isArray(raw)) return raw.map((item) => String(item));
-    if (typeof raw === "string") return raw.split(/\r?\n|[•·]|;+/g);
-    return [] as string[];
-  })();
   const proposalBuilderDiscovery = ((profileQuery.data as any)?.discoveryData ?? {}) as Record<string, unknown>;
-  const proposalBuilderDiscoveryBenefits = [
-    proposalBuilderDiscovery.mensagensChave,
-    proposalBuilderDiscovery.posicionamento,
-  ].flatMap((value) => typeof value === "string" ? value.split(/\r?\n|[•·]|;+/g) : []);
-  const proposalBuilderManualDifferentials =
-    proposalBuilderDifferentialsModule?.dataSource === "manual"
-      ? (proposalBuilderDifferentialsModule.contentPrompt ?? "").split(/\r?\n|[•·]|;+/g)
-      : [];
-  const proposalBuilderCoverBenefits = Array.from(new Set([
-    ...proposalBuilderProfileDifferentials,
-    ...proposalBuilderDiscoveryBenefits,
-    ...proposalBuilderManualDifferentials,
-  ].map((item) => String(item)
-    .replace(/^\s*(?:\d+[.)]|[-*])\s*/, "")
-    .replace(/^(?:desempenho|diferenciacao|eficiencia)\s+[^:]{0,50}:\s*/i, "")
-    .trim())
-    .filter((item) => item.length >= 4 && item.length <= 140)))
-    .slice(0, 4);
   const proposalBuilderCoverValueStatement =
     (typeof proposalBuilderDiscovery.posicionamento === "string" && proposalBuilderDiscovery.posicionamento.trim()
       ? proposalBuilderDiscovery.posicionamento.trim()
