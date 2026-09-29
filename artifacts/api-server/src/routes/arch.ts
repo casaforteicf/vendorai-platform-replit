@@ -5652,6 +5652,89 @@ router.post("/arch/projetos/:id/orcamento/gerar-ia", authenticate, async (req, r
 
   const catalogoMap = new Map(catalogoItens.map((item) => [item.id, item]));
 
+  // O ambiente escolhido no render/especificação é parte do contexto do item e
+  // precisa sobreviver até o orçamento. A especificação histórica guarda renderId,
+  // então resolvemos o ambiente a partir do render/cena e só usamos fallback
+  // automático quando o projeto possui um único ambiente.
+  const ambientesProjeto = await db
+    .select({ id: archAmbientesTable.id, nome: archAmbientesTable.nome })
+    .from(archAmbientesTable)
+    .where(eq(archAmbientesTable.projetoId, projetoId));
+
+  const normalizeEnvironmentName = (value: unknown) =>
+    String(value ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[_-]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
+
+  const findAmbienteIdByName = (value: unknown): string | null => {
+    const target = normalizeEnvironmentName(value);
+    if (!target) return null;
+
+    const exact = ambientesProjeto.find((ambiente) =>
+      normalizeEnvironmentName(ambiente.nome) === target
+    );
+    if (exact) return exact.id;
+
+    const compatible = ambientesProjeto.filter((ambiente) => {
+      const nome = normalizeEnvironmentName(ambiente.nome);
+      return nome.includes(target) || target.includes(nome);
+    });
+    return compatible.length === 1 ? compatible[0]!.id : null;
+  };
+
+  let ambienteIdEspecificacao: string | null = null;
+  let ambienteOrigem = "nao_resolvido";
+
+  if (spec.renderId) {
+    const [aiRender] = await db
+      .select({ ambiente: archAiRendersTable.ambiente })
+      .from(archAiRendersTable)
+      .where(and(
+        eq(archAiRendersTable.id, spec.renderId),
+        eq(archAiRendersTable.tenantId, projeto.tenantId),
+        eq(archAiRendersTable.projectId, projetoId),
+      ))
+      .limit(1);
+
+    ambienteIdEspecificacao = findAmbienteIdByName(aiRender?.ambiente);
+    if (ambienteIdEspecificacao) ambienteOrigem = "ai_render";
+
+    // Compatibilidade com renders antigos ligados a uma cena, onde o vínculo
+    // com ambiente já existe como ID e não apenas como nome.
+    if (!ambienteIdEspecificacao) {
+      const [legacyRender] = await db
+        .select({ cenaId: archRendersTable.cenaId })
+        .from(archRendersTable)
+        .where(eq(archRendersTable.id, spec.renderId))
+        .limit(1);
+
+      if (legacyRender?.cenaId) {
+        const [cena] = await db
+          .select({ ambienteId: archCenasTable.ambienteId })
+          .from(archCenasTable)
+          .where(and(
+            eq(archCenasTable.id, legacyRender.cenaId),
+            eq(archCenasTable.projetoId, projetoId),
+          ))
+          .limit(1);
+
+        if (cena?.ambienteId && ambientesProjeto.some((ambiente) => ambiente.id === cena.ambienteId)) {
+          ambienteIdEspecificacao = cena.ambienteId;
+          ambienteOrigem = "cena";
+        }
+      }
+    }
+  }
+
+  if (!ambienteIdEspecificacao && ambientesProjeto.length === 1) {
+    ambienteIdEspecificacao = ambientesProjeto[0]!.id;
+    ambienteOrigem = "ambiente_unico";
+  }
+
   const rows = dentroDoEscopo.map((item) => {
     const catalogo = item.catalogoItemId ? catalogoMap.get(item.catalogoItemId) : undefined;
     const quantidade = Math.max(0, Number(item.quantidade ?? 1));
@@ -5683,6 +5766,7 @@ router.post("/arch/projetos/:id/orcamento/gerar-ia", authenticate, async (req, r
 
     return {
       projetoId,
+      ambienteId: ambienteIdEspecificacao,
       categoria: item.categoria,
       descricao: descricaoTecnica,
       quantidade: String(quantidade),
@@ -5717,6 +5801,8 @@ router.post("/arch/projetos/:id/orcamento/gerar-ia", authenticate, async (req, r
       tenantId: projeto.tenantId,
       projetoId,
       specificationId: spec.id,
+      ambienteId: ambienteIdEspecificacao,
+      ambienteOrigem,
       itensConfirmados: confirmados.length,
       itensDentroDoEscopo: dentroDoEscopo.length,
       itensForaDoEscopo: foraDoEscopo,
