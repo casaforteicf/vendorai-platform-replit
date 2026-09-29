@@ -70,6 +70,20 @@ export default function SupplierRfqWorkspace({arqState,onNavigate}:{arqState:any
     catch(e){setError(e instanceof Error?e.message:"Falha ao gerar cotações.")}
     finally{setBusy(null)}
   }
+  async function classifySupplier(supplier: Supplier){
+    if(!selectedPackage)return;
+    const category=String(selectedPackage.category||selectedPackage.discipline||"").trim().toLowerCase();
+    if(!category)return;
+    setBusy(`scope-${supplier.id}`);setError(null);
+    try{
+      const categories=Array.from(new Set([...(Array.isArray(supplier.categorias)?supplier.categorias:[]),category]));
+      const disciplines=Array.from(new Set([...(Array.isArray(supplier.disciplinas)?supplier.disciplinas:[]),String(selectedPackage.discipline||category).toLowerCase()]));
+      await api(`/api/arch/procurement-rfq/suppliers/${supplier.id}/scope`,{method:"PATCH",body:JSON.stringify({categories,disciplines,regions:[],brands:[],leadTimeDays:supplier.prazo_medio_dias??null})});
+      await load();
+    }catch(e){setError(e instanceof Error?e.message:"Falha ao classificar fornecedor.")}
+    finally{setBusy(null)}
+  }
+
   async function invite(){
     if(!selectedPackage||!selectedSuppliers.length)return;
     setBusy("invite");setError(null);
@@ -137,7 +151,9 @@ export default function SupplierRfqWorkspace({arqState,onNavigate}:{arqState:any
           <div><p className="text-xs font-bold uppercase tracking-wide text-violet-600">Fornecedores compatíveis</p><h2 className="mt-1 text-xl font-semibold">Enviar para vários fornecedores</h2><p className="mt-1 text-sm text-slate-500">A lista respeita categoria/disciplina cadastrada. Fornecedor sem escopo definido permanece disponível até ser classificado.</p></div>
           <div className="mt-4 grid gap-3 md:grid-cols-2">{suppliers.map(s=><label key={s.id} className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-100 p-4 hover:border-violet-200">
             <input type="checkbox" className="mt-1" checked={selectedSuppliers.includes(s.id)} onChange={e=>setSelectedSuppliers(cur=>e.target.checked?[...cur,s.id]:cur.filter(x=>x!==s.id))}/>
-            <div><p className="font-semibold">{s.nome}</p><p className="text-xs text-slate-500">{s.email||s.telefone||"Será gerado link manual"}{s.prazo_medio_dias?` • prazo médio ${s.prazo_medio_dias} dias`:""}</p></div>
+            <div className="flex-1"><p className="font-semibold">{s.nome}</p><p className="text-xs text-slate-500">{s.email||s.telefone||"Será gerado link manual"}{s.prazo_medio_dias?` • prazo médio ${s.prazo_medio_dias} dias`:""}</p>
+              {!(s.categorias?.length||s.disciplinas?.length)&&selectedPackage?<button type="button" disabled={busy===`scope-${s.id}`} onClick={(e)=>{e.preventDefault();e.stopPropagation();void classifySupplier(s)}} className="mt-2 text-[11px] font-bold text-violet-700 hover:underline">{busy===`scope-${s.id}`?"Salvando...":`Vincular a ${selectedPackage.category||selectedPackage.discipline}`}</button>:null}
+            </div>
           </label>)}</div>
           <button disabled={!selectedSuppliers.length||busy==="invite"} onClick={()=>void invite()} className="mt-4 rounded-2xl bg-violet-600 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">{busy==="invite"?"Enviando...":`Enviar cotação para ${selectedSuppliers.length} fornecedor(es)`}</button>
         </section>
