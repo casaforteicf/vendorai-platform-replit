@@ -155,6 +155,12 @@ export const propostaApresentacaoSchema = z.object({
   // Exclusões comerciais editáveis pelo tenant. Cada linha representa um item
   // explicitamente fora do valor global e deve aparecer na proposta.
   itensNaoInclusos: z.array(z.string().min(1)).default([]),
+  descricaoProjeto: z.string().max(5000).default(""),
+  premissasObra: z.array(z.string().min(1)).default([]),
+  memorialDescritivo: z.string().max(12000).default(""),
+  politicaReajuste: z.string().max(3000).default(""),
+  garantiasContratuais: z.string().max(5000).default(""),
+  condicoesPagamentoDetalhadas: z.string().max(5000).default(""),
 });
 
 export type PropostaApresentacao = z.infer<typeof propostaApresentacaoSchema>;
@@ -179,6 +185,12 @@ const DEFAULT_PROPOSTA_APRESENTACAO: PropostaApresentacao = {
   mostrarAmortizacaoEntrada: true,
   mostrarPortalCliente: true,
   itensNaoInclusos: [],
+  descricaoProjeto: "",
+  premissasObra: [],
+  memorialDescritivo: "",
+  politicaReajuste: "",
+  garantiasContratuais: "",
+  condicoesPagamentoDetalhadas: "",
 };
 
 const valorField = z

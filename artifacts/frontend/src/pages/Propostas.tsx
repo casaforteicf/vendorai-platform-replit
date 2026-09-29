@@ -2261,6 +2261,12 @@ function newFreeItem(): FreeItem {
     const [entryAmortizationPercent, setEntryAmortizationPercent] = useState(0);
     const [showEntryAmortization, setShowEntryAmortization] = useState(true);
     const [showClientPortalPlan, setShowClientPortalPlan] = useState(true);
+    const [projectDescription, setProjectDescription] = useState("");
+    const [projectAssumptionsText, setProjectAssumptionsText] = useState("");
+    const [descriptiveMemorial, setDescriptiveMemorial] = useState("");
+    const [adjustmentPolicy, setAdjustmentPolicy] = useState("");
+    const [warrantyTerms, setWarrantyTerms] = useState("");
+    const [detailedPaymentTerms, setDetailedPaymentTerms] = useState("");
     const standardBudgetAppliedRef = useRef(false);
     // livre mode
     const [freeItems, setFreeItems] = useState<FreeItem[]>([newFreeItem()]);
@@ -2324,6 +2330,12 @@ function newFreeItem(): FreeItem {
         entryAmortizationPercent,
         showEntryAmortization,
         showClientPortalPlan,
+        projectDescription,
+        projectAssumptionsText,
+        descriptiveMemorial,
+        adjustmentPolicy,
+        warrantyTerms,
+        detailedPaymentTerms,
       }));
     }
 
@@ -2376,6 +2388,12 @@ function newFreeItem(): FreeItem {
             entryAmortizationPercent?: number;
             showEntryAmortization?: boolean;
             showClientPortalPlan?: boolean;
+            projectDescription?: string;
+            projectAssumptionsText?: string;
+            descriptiveMemorial?: string;
+            adjustmentPolicy?: string;
+            warrantyTerms?: string;
+            detailedPaymentTerms?: string;
           };
           if (draft.form) form.reset({ ...form.getValues(), ...draft.form });
           if (draft.mode) setMode(draft.mode);
@@ -2397,6 +2415,12 @@ function newFreeItem(): FreeItem {
           if (draft.entryAmortizationPercent !== undefined) setEntryAmortizationPercent(draft.entryAmortizationPercent);
           if (draft.showEntryAmortization !== undefined) setShowEntryAmortization(draft.showEntryAmortization);
           if (draft.showClientPortalPlan !== undefined) setShowClientPortalPlan(draft.showClientPortalPlan);
+          if (draft.projectDescription !== undefined) setProjectDescription(draft.projectDescription);
+          if (draft.projectAssumptionsText !== undefined) setProjectAssumptionsText(draft.projectAssumptionsText);
+          if (draft.descriptiveMemorial !== undefined) setDescriptiveMemorial(draft.descriptiveMemorial);
+          if (draft.adjustmentPolicy !== undefined) setAdjustmentPolicy(draft.adjustmentPolicy);
+          if (draft.warrantyTerms !== undefined) setWarrantyTerms(draft.warrantyTerms);
+          if (draft.detailedPaymentTerms !== undefined) setDetailedPaymentTerms(draft.detailedPaymentTerms);
           standardBudgetAppliedRef.current = true;
         }
       } catch {
@@ -2521,6 +2545,12 @@ function newFreeItem(): FreeItem {
         amortizacaoEntradaPercentual?: number;
         mostrarAmortizacaoEntrada?: boolean;
         mostrarPortalCliente?: boolean;
+        descricaoProjeto?: string;
+        premissasObra?: string[];
+        memorialDescritivo?: string;
+        politicaReajuste?: string;
+        garantiasContratuais?: string;
+        condicoesPagamentoDetalhadas?: string;
       } | null | undefined;
       setPresentationDefaultMode(currentPresentation?.modoPadrao ?? "completo");
       setPresentationStageModes(currentPresentation?.etapas ?? {});
@@ -2535,6 +2565,12 @@ function newFreeItem(): FreeItem {
       setEntryAmortizationPercent(Number(currentPresentation?.amortizacaoEntradaPercentual ?? currentPresentation?.entradaPercentual ?? 0));
       setShowEntryAmortization(currentPresentation?.mostrarAmortizacaoEntrada ?? true);
       setShowClientPortalPlan(currentPresentation?.mostrarPortalCliente ?? true);
+      setProjectDescription(currentPresentation?.descricaoProjeto ?? "");
+      setProjectAssumptionsText((currentPresentation?.premissasObra ?? []).join("\n"));
+      setDescriptiveMemorial(currentPresentation?.memorialDescritivo ?? "");
+      setAdjustmentPolicy(currentPresentation?.politicaReajuste ?? "");
+      setWarrantyTerms(currentPresentation?.garantiasContratuais ?? "");
+      setDetailedPaymentTerms(currentPresentation?.condicoesPagamentoDetalhadas ?? "");
 
       form.reset({
         leadId: editingProposta.leadId,
@@ -2745,6 +2781,12 @@ function newFreeItem(): FreeItem {
       setProposalStageSchedule({});
       setShowExecutionSchedule(true);
       setShowPhysicalFinancial(true);
+      setProjectDescription("");
+      setProjectAssumptionsText("");
+      setDescriptiveMemorial("");
+      setAdjustmentPolicy("");
+      setWarrantyTerms("");
+      setDetailedPaymentTerms("");
       standardBudgetAppliedRef.current = false;
       setDraftHydrated(false);
       setFreeItems([newFreeItem()]);
@@ -3332,6 +3374,15 @@ function newFreeItem(): FreeItem {
       amortizacaoEntradaPercentual: Math.min(100, Math.max(0, Number(entryAmortizationPercent) || 0)),
       mostrarAmortizacaoEntrada: showEntryAmortization,
       mostrarPortalCliente: showClientPortalPlan,
+      descricaoProjeto: projectDescription.trim(),
+      premissasObra: projectAssumptionsText
+        .split(/\r?\n/)
+        .map((item) => item.trim())
+        .filter(Boolean),
+      memorialDescritivo: descriptiveMemorial.trim(),
+      politicaReajuste: adjustmentPolicy.trim(),
+      garantiasContratuais: warrantyTerms.trim(),
+      condicoesPagamentoDetalhadas: detailedPaymentTerms.trim(),
     };
   }
 
@@ -4323,6 +4374,74 @@ function newFreeItem(): FreeItem {
 
                   <div className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
                     <strong>Padrão recomendado:</strong> apresentar o valor macro por etapa, manter o escopo técnico visível e ocultar quantidade/preço unitário quando não forem necessários. As fases continuam completas para cronograma e medição, mesmo quando o cliente vê apenas o resumo comercial.
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-4">
+                    <div>
+                      <p className="text-sm font-semibold">Contexto técnico e condições contratuais</p>
+                      <p className="text-xs text-muted-foreground">
+                        Estas informações passam a fazer parte do orçamento e alimentam automaticamente proposta, contrato e Portal do Cliente.
+                      </p>
+                    </div>
+
+                    <div className="grid gap-3 lg:grid-cols-2">
+                      <div className="space-y-1.5 lg:col-span-2">
+                        <Label>Entendimento do projeto</Label>
+                        <Textarea
+                          value={projectDescription}
+                          onChange={(event) => setProjectDescription(event.target.value)}
+                          placeholder="Ex.: residência de 250 m², 2 pavimentos, 3 suítes, área gourmet, padrão alto, sistema ICF..."
+                          className="min-h-[90px]"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Premissas técnicas</Label>
+                        <Textarea
+                          value={projectAssumptionsText}
+                          onChange={(event) => setProjectAssumptionsText(event.target.value)}
+                          placeholder={"Uma premissa por linha\nEx.: terreno com acesso para betoneira\nSPT compatível com a solução prevista"}
+                          className="min-h-[120px]"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Memorial descritivo resumido</Label>
+                        <Textarea
+                          value={descriptiveMemorial}
+                          onChange={(event) => setDescriptiveMemorial(event.target.value)}
+                          placeholder="Materiais, padrões, marcas de referência, normas e nível de acabamento."
+                          className="min-h-[120px]"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Condições e marcos de pagamento</Label>
+                        <Textarea
+                          value={detailedPaymentTerms}
+                          onChange={(event) => setDetailedPaymentTerms(event.target.value)}
+                          placeholder="Ex.: 10% na contratação; medições mensais por avanço; vencimento em 5 dias após medição aprovada."
+                          className="min-h-[110px]"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Política de reajuste</Label>
+                        <Textarea
+                          value={adjustmentPolicy}
+                          onChange={(event) => setAdjustmentPolicy(event.target.value)}
+                          placeholder="Ex.: reajuste pelo INCC após 12 meses, conforme contrato."
+                          className="min-h-[110px]"
+                        />
+                      </div>
+                      <div className="space-y-1.5 lg:col-span-2">
+                        <Label>Garantias e assistência pós-obra</Label>
+                        <Textarea
+                          value={warrantyTerms}
+                          onChange={(event) => setWarrantyTerms(event.target.value)}
+                          placeholder="Descreva garantias, responsabilidades, assistência e condições aplicáveis."
+                          className="min-h-[100px]"
+                        />
+                      </div>
+                    </div>
                   </div>
 
                   <Separator />

@@ -575,6 +575,12 @@ type ProposalPresentationConfig = {
   mostrarPortalCliente?: boolean;
   areaTotalConstruida?: number;
   itensNaoInclusos?: string[];
+  descricaoProjeto?: string;
+  premissasObra?: string[];
+  memorialDescritivo?: string;
+  politicaReajuste?: string;
+  garantiasContratuais?: string;
+  condicoesPagamentoDetalhadas?: string;
 };
 
 type PresentableProposalItem = {
@@ -623,6 +629,14 @@ function normalizeProposalPresentation(
     itensNaoInclusos: Array.isArray(value?.itensNaoInclusos)
       ? value.itensNaoInclusos.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
       : [],
+    descricaoProjeto: typeof value?.descricaoProjeto === "string" ? value.descricaoProjeto.trim() : "",
+    premissasObra: Array.isArray(value?.premissasObra)
+      ? value.premissasObra.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+      : [],
+    memorialDescritivo: typeof value?.memorialDescritivo === "string" ? value.memorialDescritivo.trim() : "",
+    politicaReajuste: typeof value?.politicaReajuste === "string" ? value.politicaReajuste.trim() : "",
+    garantiasContratuais: typeof value?.garantiasContratuais === "string" ? value.garantiasContratuais.trim() : "",
+    condicoesPagamentoDetalhadas: typeof value?.condicoesPagamentoDetalhadas === "string" ? value.condicoesPagamentoDetalhadas.trim() : "",
   };
 }
 
@@ -2646,7 +2660,22 @@ function renderStudioOrderedProposal(args: {
       return genericPage(module, index, pageVisual(module, index) + metrics + (manual ? '<p class="studio-copy">' + esc(manual) + '</p>' : ''));
     }
 
-    if (key === "escopo") return genericPages(module, index, scopePageBodies(), { includeVisual: false });
+    if (key === "escopo") {
+      const intro: string[] = [];
+      if (presentation.descricaoProjeto) {
+        intro.push('<div class="studio-callout"><strong>Entendimento do projeto</strong><p>' + esc(presentation.descricaoProjeto) + '</p></div>');
+      }
+      if (presentation.premissasObra.length) {
+        intro.push('<div class="studio-exclusions studio-premises"><h2>Premissas consideradas</h2><ul>' +
+          presentation.premissasObra.map((item) => '<li>' + esc(item) + '</li>').join("") +
+          '</ul></div>');
+      }
+      if (presentation.memorialDescritivo) {
+        intro.push('<div class="studio-callout"><strong>Memorial descritivo</strong><p>' + esc(presentation.memorialDescritivo) + '</p></div>');
+      }
+      const bodies = [...(intro.length ? [intro.join("")] : []), ...scopePageBodies()];
+      return genericPages(module, index, bodies, { includeVisual: false });
+    }
     if (key === "etapas_orcamento") return genericPages(module, index, financialPageBodies(), { includeVisual: false });
     if (key === "imagem_por_etapa") return "";
     if (key === "tabela_itens") return genericPages(module, index, financialPageBodies(), { includeVisual: false });
@@ -2674,7 +2703,19 @@ function renderStudioOrderedProposal(args: {
           presentation.itensNaoInclusos.map((item) => '<li>' + esc(item) + '</li>').join("") +
           '</ul></div>'
         : '';
+      const commercialDetails = [
+        presentation.condicoesPagamentoDetalhadas
+          ? '<div class="studio-callout"><strong>Condições e marcos de pagamento</strong><p>' + esc(presentation.condicoesPagamentoDetalhadas) + '</p></div>'
+          : '',
+        presentation.politicaReajuste
+          ? '<div class="studio-callout"><strong>Reajuste</strong><p>' + esc(presentation.politicaReajuste) + '</p></div>'
+          : '',
+        presentation.garantiasContratuais
+          ? '<div class="studio-callout"><strong>Garantias e assistência</strong><p>' + esc(presentation.garantiasContratuais) + '</p></div>'
+          : '',
+      ].filter(Boolean).join("");
       return genericPage(module, index, list +
+        commercialDetails +
         (orcamento?.observacoes ? '<p class="studio-copy">' + esc(orcamento.observacoes) + '</p>' : '') +
         exclusions, 0, 1, { includeVisual: true });
     }
