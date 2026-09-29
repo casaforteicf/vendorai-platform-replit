@@ -2595,7 +2595,6 @@ function renderStudioOrderedProposal(args: {
           '<div class="studio-cover-main"><span class="studio-kicker">Proposta de valor</span>' +
           '<h1>' + esc(orcamento?.titulo || hero.headline || moduleText(module, "title", "Proposta comercial")) + '</h1>' +
           '<p>' + esc(valueStatement) + '</p>' +
-          benefitsHtml(benefits.slice(0, 4)) +
           '</div>' +
           '<div class="studio-cover-bottom"><strong>Cliente: ' + esc(client) + '</strong>' +
           (summary ? '<div class="studio-cover-summary">' + summary + '</div>' : '') +
