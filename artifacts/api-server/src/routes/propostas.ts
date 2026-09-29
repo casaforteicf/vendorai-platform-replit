@@ -168,6 +168,111 @@ router.put("/tenants/:tenantId/proposal-builder/templates/:templateId", async (r
 });
 
 
+router.post("/tenants/:tenantId/proposal-builder/templates/:templateId/modules/:moduleKey/develop", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  const templateId = String(req.params.templateId);
+  const moduleKey = String(req.params.moduleKey);
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const [profile] = await db.select().from(businessProfilesTable)
+    .where(eq(businessProfilesTable.tenantId, tenantId)).limit(1);
+  if (!profile) {
+    res.status(404).json({ error: "Business profile not found" });
+    return;
+  }
+
+  const discovery = (profile.discoveryData ?? {}) as Record<string, unknown>;
+  const existing = Array.isArray(discovery.proposalBuilderTemplates)
+    ? discovery.proposalBuilderTemplates as ProposalBuilderTemplate[]
+    : [];
+  const template = existing.find((item) => item?.id === templateId);
+  if (!template) {
+    res.status(404).json({ error: "Proposal builder template not found" });
+    return;
+  }
+  const module = template.modules.find((item) => item.key === moduleKey);
+  if (!module) {
+    res.status(404).json({ error: "Proposal builder module not found" });
+    return;
+  }
+
+  const instruction = typeof req.body?.instruction === "string" ? req.body.instruction.trim() : "";
+  const styleHint = typeof req.body?.styleHint === "string" ? req.body.styleHint.trim() : "";
+  const company = profile.nomeFantasia || profile.razaoSocial || "empresa";
+  const aiRules = template.aiRules ?? {};
+
+  try {
+    const result = await gatewayCallOpenAI(
+      tenantId,
+      "proposal_generator",
+      [
+        {
+          role: "system",
+          content: [
+            "Você é diretor de conteúdo e design de propostas comerciais premium.",
+            "Desenvolva SOMENTE uma página reutilizável do modelo de proposta da empresa, sem inventar dados de cliente, preços, prazos ou escopo.",
+            "O conteúdo deve parecer pronto para apresentação comercial, com texto claro, profissional e visualmente enxuto.",
+            "Retorne APENAS JSON válido neste formato:",
+            '{"title":"...","description":"...","contentPrompt":"...","imagePrompt":"..."}',
+            "title: título curto da página.",
+            "description: subtítulo/linha de apoio de até 140 caracteres.",
+            "contentPrompt: conteúdo final da página em português, pronto para exibição, com 1 a 3 parágrafos curtos ou uma pequena lista quando fizer sentido.",
+            "imagePrompt: orientação visual objetiva para uma imagem coerente com a página, sem textos ou marcas d'água.",
+            aiRules.tone ? `Tom: ${aiRules.tone}` : "",
+            aiRules.technicalLevel ? `Nível técnico: ${aiRules.technicalLevel}` : "",
+            ...(aiRules.contentRules ?? []).map((rule) => `Regra de conteúdo: ${rule}`),
+            ...(aiRules.avoid ?? []).map((rule) => `Evitar: ${rule}`),
+          ].filter(Boolean).join("\n"),
+        },
+        {
+          role: "user",
+          content: [
+            `Empresa: ${company}`,
+            `Segmento: ${profile.vertical || "não informado"}`,
+            `Página: ${module.title || module.key}`,
+            module.description ? `Descrição atual: ${module.description}` : "",
+            module.contentPrompt ? `Conteúdo atual: ${module.contentPrompt}` : "",
+            styleHint ? `Direção visual: ${styleHint}` : "",
+            instruction ? `Pedido do usuário: ${instruction}` : "Desenvolva a melhor versão desta página.",
+          ].filter(Boolean).join("\n"),
+        },
+      ],
+      {
+        model: "gpt-4o-mini",
+        responseFormat: { type: "json_object" },
+        maxTokens: 900,
+        temperature: 0.65,
+        log: req.log,
+      },
+    );
+
+    const raw = JSON.parse(result.content || "{}") as Record<string, unknown>;
+    const title = typeof raw.title === "string" && raw.title.trim() ? raw.title.trim() : module.title;
+    const description = typeof raw.description === "string" ? raw.description.trim() : module.description;
+    const contentPrompt = typeof raw.contentPrompt === "string" ? raw.contentPrompt.trim() : module.contentPrompt;
+    const imagePrompt = typeof raw.imagePrompt === "string" ? raw.imagePrompt.trim() : module.image?.prompt;
+
+    res.json({
+      module: {
+        ...module,
+        title,
+        description,
+        contentPrompt,
+        image: {
+          ...(module.image ?? { mode: "automatic", aspectRatio: "16:9" }),
+          prompt: imagePrompt,
+        },
+      },
+    });
+  } catch (err) {
+    req.log.error({ err, tenantId, templateId, moduleKey }, "proposal-builder: develop page failed");
+    res.status(500).json({ error: "Não foi possível desenvolver esta página com IA." });
+  }
+});
+
 router.post("/tenants/:tenantId/proposal-builder/templates/:templateId/modules/:moduleKey/generate-image", async (req, res) => {
   // tenant-audit: reviewed route tenant is immediately checked against authenticated tenant or Super Admin before tenant-scoped reads/writes
   const tenantId = String(req.params.tenantId);
