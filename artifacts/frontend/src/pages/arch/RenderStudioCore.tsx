@@ -130,6 +130,7 @@ function RenderStudioInner() {
     handleSelectVersion,
     handleNextStep,
     handleStepClick,
+    handleOpenSpecification,
     handleCreateProject,
     handleNewSelection,
     handleUpdateSelection,
@@ -235,6 +236,7 @@ function RenderStudioInner() {
           onClearSelection={() => setSelections([])}
           onRemoveSelection={(id) => setSelections(prev => prev.filter(s => s.id !== id))}
           approvalRecord={approvalRecord} approvalNote={approvalNote} setApprovalNote={setApprovalNote}
+          onOpenSpecification={handleOpenSpecification}
           isOpen={rightPanelOpen} onToggle={() => setRightPanelOpen(o => !o)}
           onTestCopilotAction={handleTestCopilotAction}
         />
