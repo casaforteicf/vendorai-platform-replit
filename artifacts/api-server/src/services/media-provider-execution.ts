@@ -1,4 +1,6 @@
 import type { Logger } from "pino";
+import { toFile } from "openai";
+import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import {
   callReplicateFluxKontext,
   callReplicateFluxUltraPro,
@@ -45,6 +47,41 @@ export async function generateRenderPreserve(input: {
     onPredictionCreated: input.onPredictionCreated,
   });
   return { base64, provider: "replicate", model: "black-forest-labs/flux-kontext-pro" };
+}
+
+
+export async function generateRenderPremiumOpenAI(input: {
+  tenantId: string;
+  imageDataUrl: string;
+  prompt: string;
+  logger?: Logger;
+}): Promise<{ base64: string; provider: "openai"; model: string }> {
+  const match = input.imageDataUrl.match(/^data:([^;]+);base64,(.+)$/s);
+  if (!match) throw new Error("Imagem base inválida para Render Premium");
+  const mime = match[1] || "image/png";
+  const source = Buffer.from(match[2], "base64");
+  if (!source.length) throw new Error("Imagem base vazia para Render Premium");
+
+  const openai = await getOpenAIForTenant(input.tenantId);
+  const model = process.env["VENDORAI_IMAGE_MODEL_PREMIUM"]?.trim() || "gpt-image-2";
+  const image = await toFile(source, "arqdor-reference.png", { type: mime });
+
+  input.logger?.info({ provider: "openai", model }, "Arqdor Premium: submitting high-fidelity image edit");
+  const result = await (openai.images.edit as Function)({
+    model,
+    image,
+    prompt: input.prompt,
+    n: 1,
+    size: "auto",
+    quality: "high",
+    input_fidelity: "high",
+    output_format: "png",
+  });
+
+  const encoded = result?.data?.[0]?.b64_json as string | undefined;
+  if (!encoded) throw new Error(`${model} não retornou imagem para o Render Premium`);
+  input.logger?.info({ provider: "openai", model }, "Arqdor Premium: image edit succeeded");
+  return { base64: encoded, provider: "openai", model };
 }
 
 export async function generateRenderCreate(input: {

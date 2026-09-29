@@ -367,6 +367,7 @@ export function useRenderStudioController() {
         ambiente: ambiente.toLowerCase().replace(/\s+/g, "_"),
         iluminacao: lightingValue[lightingProfile],
         render_view: sceneType === "interior" ? "interior" : "exterior",
+        render_profile: renderProfile,
         render_presets: Array.from(new Set(renderPresets)),
         user_notes: [
           "Preservação rígida: manter exatamente cores, materiais, texturas-base, medidas, posição, orientação e proporções de todo mobiliário e marcenaria; manter câmera, perspectiva, layout, circulação e aberturas.",
