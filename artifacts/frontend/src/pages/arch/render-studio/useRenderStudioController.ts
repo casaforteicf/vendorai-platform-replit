@@ -169,7 +169,7 @@ export function useRenderStudioController() {
 
   // Session restore
   useEffect(() => {
-    const ss = sessionStorage.getItem(SK.step) as Step | null;
+    const ss = sessionStorage.getItem(SK.step);
     const sa = sessionStorage.getItem(SK.ambiente);
     const sri = sessionStorage.getItem(SK.renderId);
     const sru = sessionStorage.getItem(SK.renderUrl);
@@ -195,7 +195,8 @@ export function useRenderStudioController() {
       }
     } catch {}
     if (siu) setImageDataUrl(siu);
-    if (ss && ss !== "aprovar" && ss !== "especificacao") setStep(ss);
+    if (ss === "especificacao") setStep("aprovar");
+    else if (ss && STEPS.some((item) => item.id === ss)) setStep(ss as Step);
     // P1-11: orphan job recovery
     if (sri && !sru) {
       setIsRecovering(true);
