@@ -23,6 +23,11 @@ export type RenderStudioVideoMovement =
 
 export type RenderStudioImprovementMode = "improve" | "change-material" | "change-lighting";
 
+export type RenderStudioSceneType = "interior" | "facade" | "outdoor" | "gourmet" | "pool";
+export type RenderStudioProfile = "technical" | "premium" | "decorated";
+export type RenderStudioVisualStyle = "original" | "contemporary" | "minimalist" | "provencal";
+export type RenderStudioLightingProfile = "natural" | "warm" | "editorial" | "night";
+
 export type RenderStudioCatalogItem = {
   id: string;
   nome: string;

@@ -55,8 +55,14 @@ function RenderStudioInner() {
     setMelhoriaPrompt,
     melhoriaMode,
     setMelhoriaMode,
-    renderPreset,
-    setRenderPreset,
+    sceneType,
+    setSceneType,
+    renderProfile,
+    setRenderProfile,
+    visualStyle,
+    setVisualStyle,
+    lightingProfile,
+    setLightingProfile,
     videoMovement,
     setVideoMovement,
     videoGenerating,
@@ -202,7 +208,10 @@ function RenderStudioInner() {
           onSalvarMedidasAmbiente={handleSalvarMedidasAmbiente} onSalvarMedidasItem={handleSalvarMedidasItem}
           onNextStep={handleNextStep} onStartRender={startRender}
           onApplyMelhoria={applyMelhoria} onApprove={handleApprove} onSendToSpec={handleSendToSpec}
-          renderPreset={renderPreset} setRenderPreset={setRenderPreset}
+          sceneType={sceneType} setSceneType={setSceneType}
+          renderProfile={renderProfile} setRenderProfile={setRenderProfile}
+          visualStyle={visualStyle} setVisualStyle={setVisualStyle}
+          lightingProfile={lightingProfile} setLightingProfile={setLightingProfile}
           videoMovement={videoMovement} setVideoMovement={setVideoMovement}
           videoGenerating={videoGenerating} renderVideoUrl={renderVideoUrl} onGenerateVideo5s={generateRenderVideo5s}
           onShowCreateModal={() => setShowCreateModal(true)} onUpload={handleUpload} onOpenMediaLibrary={() => setShowMediaLibrary(true)} mediaLibraryAvailable={Boolean(tenantId)}

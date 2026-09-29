@@ -3,9 +3,12 @@ import type {
   RenderStudioStep as Step,
   RenderStudioSelectionRect as SelectionRect,
   RenderStudioVersion as RenderVersion,
-  RenderStudioPreset as RenderPreset,
   RenderStudioVideoMovement as VideoMovement,
   RenderStudioImprovementMode,
+  RenderStudioSceneType,
+  RenderStudioProfile,
+  RenderStudioVisualStyle,
+  RenderStudioLightingProfile,
   RenderStudioCatalogItem as CatalogItem,
   RenderStudioApprovalRecord as ApprovalRecord,
 } from "./renderStudioModel";
@@ -30,7 +33,8 @@ export function RenderStudioRightPanel({
   specificationId, enviandoOrcamento, orcamentoMsg, onEnviarOrcamento,
   areaM2, setAreaM2, peDireitoM, setPeDireitoM, onSalvarMedidasAmbiente, onSalvarMedidasItem,
   onNextStep, onStartRender, onApplyMelhoria, onApprove, onSendToSpec,
-  renderPreset, setRenderPreset, videoMovement, setVideoMovement, videoGenerating, renderVideoUrl, onGenerateVideo5s,
+  sceneType, setSceneType, renderProfile, setRenderProfile, visualStyle, setVisualStyle, lightingProfile, setLightingProfile,
+  videoMovement, setVideoMovement, videoGenerating, renderVideoUrl, onGenerateVideo5s,
   onShowCreateModal, onUpload, onOpenMediaLibrary, mediaLibraryAvailable,
   selections, selectedMaterial, onOpenMaterialLib, onClearSelection, onRemoveSelection,
   approvalRecord, approvalNote, setApprovalNote,
@@ -49,7 +53,10 @@ export function RenderStudioRightPanel({
   onSalvarMedidasItem: (itemId: string, patch: { larguraCm?: string; alturaCm?: string; profundidadeCm?: string }) => void;
   onNextStep: () => void; onStartRender: () => void;
   onApplyMelhoria: () => void; onApprove: () => void; onSendToSpec: () => void;
-  renderPreset: RenderPreset; setRenderPreset: (v: RenderPreset) => void;
+  sceneType: RenderStudioSceneType; setSceneType: (v: RenderStudioSceneType) => void;
+  renderProfile: RenderStudioProfile; setRenderProfile: (v: RenderStudioProfile) => void;
+  visualStyle: RenderStudioVisualStyle; setVisualStyle: (v: RenderStudioVisualStyle) => void;
+  lightingProfile: RenderStudioLightingProfile; setLightingProfile: (v: RenderStudioLightingProfile) => void;
   videoMovement: VideoMovement; setVideoMovement: (v: VideoMovement) => void;
   videoGenerating: boolean; renderVideoUrl: string | null; onGenerateVideo5s: () => void;
   onShowCreateModal: () => void; onUpload: () => void; onOpenMediaLibrary: () => void; mediaLibraryAvailable: boolean;
@@ -67,10 +74,10 @@ export function RenderStudioRightPanel({
     "Sala de Estar", "Quarto Master", "Cozinha", "Banheiro", "Escritório", "Hall de Entrada",
     "Varanda", "Terraço", "Área Gourmet", "Fachada", "Área Externa", "Piscina / SPA",
   ];
-  const MELHORIA_MODES: { id: RenderStudioImprovementMode; label: string; icon: string }[] = [
-    { id: "improve", label: "Melhorar qualidade", icon: "✨" },
-    { id: "change-material", label: "Trocar material", icon: "🎨" },
-    { id: "change-lighting", label: "Ajustar iluminação", icon: "💡" },
+  const MELHORIA_MODES: { id: RenderStudioImprovementMode; label: string; hint: string; icon: string }[] = [
+    { id: "improve", label: "Refinar qualidade", hint: "Texturas, luz, reflexos e definição.", icon: "✨" },
+    { id: "change-material", label: "Trocar material", hint: "Altera somente a região escolhida.", icon: "🎨" },
+    { id: "change-lighting", label: "Ajustar iluminação", hint: "Mantém materiais e geometria.", icon: "💡" },
   ];
 
   return (
@@ -177,7 +184,7 @@ export function RenderStudioRightPanel({
                     {imageDataUrl && <div style={{ fontSize: 11, color: D.green, padding: "6px 8px", background: D.greenDim, borderRadius: 6 }}>✓ {imageFile?.name ?? "Imagem base recuperada"}</div>}
                     <DkBtn onClick={onUpload} variant={imageDataUrl ? "secondary" : "primary"}>{imageDataUrl ? "↺ Trocar imagem" : "⬜ Carregar imagem"}</DkBtn>
                     <DkBtn onClick={onOpenMediaLibrary} variant="secondary" disabled={!mediaLibraryAvailable}>▦ Biblioteca de Mídias</DkBtn>
-                    {imageDataUrl && <DkBtn onClick={onNextStep}>→ Continuar</DkBtn>}
+                    {imageDataUrl && <DkBtn onClick={onNextStep}>→ Usar esta imagem</DkBtn>}
                   </div>
                 )}
 
@@ -191,37 +198,77 @@ export function RenderStudioRightPanel({
                         <div style={{ padding: "7px 9px", borderRadius: 7, background: `${D.green}0D`, border: `1px solid ${D.green}22`, fontSize: 10, lineHeight: 1.5, color: D.green }}>
                           🔒 Preservação rígida ativa: cores, materiais, texturas-base, medidas, posição e proporções do mobiliário permanecem bloqueadas. O render melhora somente realismo, luz e definição.
                         </div>
-                        <div style={{ fontSize: 11, color: D.muted, lineHeight: 1.5 }}>Fidelidade automática ativa. Escolha apenas o objetivo principal.</div>
-                        <select value={renderPreset} onChange={(e) => setRenderPreset(e.target.value as RenderPreset)} style={inputStyle}>
-                          <option value="interior_layout_preserve">Interior · preservar layout</option>
-                          <option value="facade_exterior_preserve">Fachada · preservar volumetria</option>
-                          <option value="material_detail_enhancer">Detalhe · melhorar materiais</option>
-                          <option value="distortion_correction">Corrigir distorções</option>
-                          <option value="camera_perspective_lock">Travar câmera e perspectiva</option>
-                          <option value="joinery_precision">Marcenaria de precisão</option>
-                          <option value="roof_openings_lock">Cobertura e aberturas</option>
-                          <option value="lighting_realism">Iluminação realista</option>
-                          <option value="landscape_controlled">Paisagismo controlado</option>
-                          <option value="pool_water_fidelity">Piscina / SPA · água e bordas</option>
-                          <option value="glass_mirror_fidelity">Vidros e espelhos · reflexos fiéis</option>
-                          <option value="outdoor_gourmet_preserve">Área gourmet externa · preservar</option>
-                          <option value="deck_pergola_preserve">Deck e pergolado · preservar</option>
-                          <option value="wall_gate_fidelity">Muros, cercas e portões · preservar</option>
-                          <option value="guardrail_glass_precision">Guarda-corpo e vidro · precisão</option>
-                          <option value="night_lighting_exterior">Exterior noturno · iluminação realista</option>
-                        </select>
+                        <div style={{ fontSize: 11, color: D.muted, lineHeight: 1.5 }}>Escolha o resultado visual. As proteções técnicas são aplicadas automaticamente.</div>
+
+                        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: D.dim, textTransform: "uppercase", letterSpacing: ".05em" }}>Tipo de cena</div>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6 }}>
+                            {([
+                              ["interior", "Interior"],
+                              ["facade", "Fachada"],
+                              ["outdoor", "Área externa"],
+                              ["gourmet", "Gourmet"],
+                              ["pool", "Piscina / SPA"],
+                            ] as const).map(([id, label]) => (
+                              <button key={id} type="button" onClick={() => setSceneType(id)}
+                                style={{ padding: "7px 8px", borderRadius: 7, border: `1px solid ${sceneType === id ? D.purple : D.border}`, background: sceneType === id ? `${D.purple}12` : D.card, color: sceneType === id ? D.purpleText : D.text, fontSize: 10, fontWeight: sceneType === id ? 800 : 600, cursor: "pointer", textAlign: "left" }}>
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: D.dim, textTransform: "uppercase", letterSpacing: ".05em" }}>Resultado desejado</div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 6 }}>
+                            {([
+                              ["technical", "Técnico fiel", "Sem decoração. Máxima fidelidade."],
+                              ["premium", "Premium", "Mais realismo, sem adicionar objetos."],
+                              ["decorated", "Premium decorado", "Acessórios leves, sem mover mobiliário."],
+                            ] as const).map(([id, label, hint]) => (
+                              <button key={id} type="button" onClick={() => setRenderProfile(id)}
+                                style={{ padding: "8px 9px", borderRadius: 7, border: `1px solid ${renderProfile === id ? D.purple : D.border}`, background: renderProfile === id ? `${D.purple}10` : D.card, cursor: "pointer", textAlign: "left" }}>
+                                <div style={{ fontSize: 11, fontWeight: 800, color: renderProfile === id ? D.purpleText : D.text }}>{label}</div>
+                                <div style={{ marginTop: 2, fontSize: 9, color: D.muted }}>{hint}</div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
+                          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                            <span style={{ fontSize: 9, fontWeight: 700, color: D.dim, textTransform: "uppercase" }}>Estilo</span>
+                            <select value={visualStyle} onChange={(e) => setVisualStyle(e.target.value as RenderStudioVisualStyle)} style={inputStyle}>
+                              <option value="original">Original</option>
+                              <option value="contemporary">Contemporâneo</option>
+                              <option value="minimalist">Minimalista</option>
+                              <option value="provencal">Provençal</option>
+                            </select>
+                          </label>
+                          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                            <span style={{ fontSize: 9, fontWeight: 700, color: D.dim, textTransform: "uppercase" }}>Iluminação</span>
+                            <select value={lightingProfile} onChange={(e) => setLightingProfile(e.target.value as RenderStudioLightingProfile)} style={inputStyle}>
+                              <option value="natural">Natural</option>
+                              <option value="warm">Aconchegante</option>
+                              <option value="editorial">Editorial</option>
+                              <option value="night">Noturna</option>
+                            </select>
+                          </label>
+                        </div>
                         <div style={{ padding: "7px 9px", borderRadius: 7, background: `${D.purple}0D`, border: `1px solid ${D.purple}22`, fontSize: 10, lineHeight: 1.45, color: D.muted }}>
-                          ✦ Qualidade Premium em 2 etapas: primeiro preserva projeto e mobiliário; depois refina texturas, iluminação, reflexos e definição. Se o refino alterar a cena, ele é descartado automaticamente.
+                          ✦ Processamento em 2 etapas: primeiro preserva projeto e mobiliário; depois refina texturas, iluminação, reflexos e definição. Se o refino alterar a cena, ele é descartado automaticamente.
                         </div>
                         <div style={{ fontSize: 11, color: D.muted, lineHeight: 1.5 }}>Tempo estimado: 60–180 segundos</div>
-                        <DkBtn onClick={onStartRender} disabled={loading}>✦ Gerar Render Premium</DkBtn>
+                        <DkBtn onClick={onStartRender} disabled={loading}>
+                          {renderProfile === "technical" ? "✦ Gerar Render Técnico" : renderProfile === "decorated" ? "✦ Gerar Render Premium Decorado" : "✦ Gerar Render Premium"}
+                        </DkBtn>
                       </>
                     )}
                     {loading && <div style={{ display: "flex", alignItems: "center", gap: 8, color: D.muted, fontSize: 11 }}><DkSpinner size={14} /> Processando…</div>}
                     {renderUrl && !loading && (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         <div style={{ fontSize: 11, color: D.green, padding: "6px 8px", background: D.greenDim, borderRadius: 6 }}>✓ Render gerado com sucesso</div>
-                        <DkBtn variant="secondary" onClick={onStartRender} small>↺ Novo render</DkBtn>
+                        <DkBtn variant="secondary" onClick={onStartRender} small>↺ Gerar nova versão deste ambiente</DkBtn>
                         <div style={{ display: "flex", flexDirection: "column", gap: 5, padding: "7px 8px", borderRadius: 7, background: D.card, border: `1px solid ${D.border}` }}>
                           <div style={{ fontSize: 10, fontWeight: 700, color: D.text }}>🎬 Gerar vídeo de 5s deste render</div>
                           <select value={videoMovement} onChange={(e) => setVideoMovement(e.target.value as VideoMovement)} style={inputStyle}>
@@ -242,7 +289,7 @@ export function RenderStudioRightPanel({
                           {renderVideoUrl && <a href={renderVideoUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: D.green, textDecoration: "none" }}>✓ Abrir vídeo gerado</a>}
                         </div>
                         <DkBtn onClick={onNextStep}>→ Melhorar</DkBtn>
-                        <DkBtn variant="ghost" onClick={onNextStep} small>Pular melhoria →</DkBtn>
+                        <DkBtn variant="ghost" onClick={onNextStep} small>Ver versões →</DkBtn>
                       </div>
                     )}
                   </div>
@@ -251,7 +298,7 @@ export function RenderStudioRightPanel({
                 {/* Melhoria — P2-13/14/16/17 */}
                 {step === "melhoria" && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <PanelLabel>Melhoria / Material</PanelLabel>
+                    <PanelLabel>Ajustes do render</PanelLabel>
 
                     {/* P2-14: objeto selecionado */}
                     {selections.length > 0 && (
@@ -281,8 +328,12 @@ export function RenderStudioRightPanel({
 
                         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                           {MELHORIA_MODES.map((m) => (
-                            <button key={m.id} onClick={() => setMelhoriaMode(m.id)} style={{ padding: "7px 10px", borderRadius: 6, textAlign: "left", border: `1px solid ${melhoriaMode === m.id ? D.purple : D.border}`, background: melhoriaMode === m.id ? `${D.purple}22` : D.card, cursor: "pointer", fontSize: 11, fontWeight: 700, color: melhoriaMode === m.id ? D.purpleText : D.muted, display: "flex", alignItems: "center", gap: 6 }}>
-                              <span>{m.icon}</span> {m.label}
+                            <button key={m.id} onClick={() => setMelhoriaMode(m.id)} style={{ padding: "8px 10px", borderRadius: 7, textAlign: "left", border: `1px solid ${melhoriaMode === m.id ? D.purple : D.border}`, background: melhoriaMode === m.id ? `${D.purple}14` : D.card, cursor: "pointer", display: "flex", alignItems: "flex-start", gap: 7 }}>
+                              <span style={{ fontSize: 13, lineHeight: 1.2 }}>{m.icon}</span>
+                              <span style={{ minWidth: 0 }}>
+                                <span style={{ display: "block", fontSize: 11, fontWeight: 800, color: melhoriaMode === m.id ? D.purpleText : D.text }}>{m.label}</span>
+                                <span style={{ display: "block", marginTop: 2, fontSize: 9, lineHeight: 1.35, color: D.muted }}>{m.hint}</span>
+                              </span>
                             </button>
                           ))}
                         </div>
@@ -330,9 +381,9 @@ export function RenderStudioRightPanel({
                           }
                           onClick={onApplyMelhoria}
                         >
-                          {loading ? "Aplicando…" : melhoriaMode === "improve" ? "✦ Gerar versão em alta qualidade" : "✦ Aplicar melhoria"}
+                          {loading ? "Aplicando…" : melhoriaMode === "improve" ? "✦ Gerar versão refinada" : melhoriaMode === "change-material" ? "✦ Aplicar troca de material" : "✦ Aplicar nova iluminação"}
                         </DkBtn>
-                        {!loading && <DkBtn variant="ghost" small onClick={onNextStep}>Pular → Ver versões</DkBtn>}
+                        {!loading && <DkBtn variant="ghost" small onClick={onNextStep}>Ver versões →</DkBtn>}
                       </>
                     )}
                   </div>
@@ -355,7 +406,7 @@ export function RenderStudioRightPanel({
                         </div>
                       </div>
                     ))}
-                    <DkBtn onClick={onNextStep}>→ Aprovar render</DkBtn>
+                    <DkBtn onClick={onNextStep}>→ Ir para aprovação</DkBtn>
                   </div>
                 )}
 
