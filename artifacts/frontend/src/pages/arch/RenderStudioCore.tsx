@@ -29,7 +29,6 @@ import { useRenderStudioController } from "./render-studio/useRenderStudioContro
 
 function RenderStudioInner() {
   const {
-    setLocation,
     arq,
     step,
     ambiente,
@@ -161,7 +160,22 @@ function RenderStudioInner() {
       <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }}
         onChange={async (e) => { const f = e.target.files?.[0]; if (f) await handleFileSelect(f); e.target.value = ""; }} />
 
-      <Topbar step={step} projectTitle={arq.projectMeta?.titulo ?? null} ambiente={ambiente} onNextStep={handleNextStep} onOpenStudio={() => setLocation("/arch/studio")} userName={userName} onHelp={() => setShowHelp(true)} onShortcuts={() => setShowShortcuts(true)} />
+      <Topbar
+        step={step}
+        projectTitle={arq.projectMeta?.titulo ?? null}
+        ambiente={ambiente}
+        onNextStep={handleNextStep}
+        onOpenStudio={() => {
+          // Studio IA faz parte do Render Studio. Não navegue para /arch/studio (workspace legado),
+          // pois isso perde o contexto do render atual e pode carregar um chunk incompatível.
+          setRightPanelOpen(true);
+          setBottomPanelOpen(true);
+          if (stepIndex(step) < stepIndex("melhoria")) go("melhoria");
+        }}
+        userName={userName}
+        onHelp={() => setShowHelp(true)}
+        onShortcuts={() => setShowShortcuts(true)}
+      />
 
       <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
         <LeftSidebar step={step} projectTitle={arq.projectMeta?.titulo ?? null} onStepClick={handleStepClick} />
