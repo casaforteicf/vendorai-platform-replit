@@ -3827,21 +3827,88 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                             <button type="button" className="rounded p-1 hover:bg-muted" title="Descer bloco" onClick={(e) => { e.stopPropagation(); proposalBuilderMoveModule(module.key, 1); }}><ChevronDown className="h-3.5 w-3.5" /></button>
                           </div>
 
-                          <div className="pr-20">
+                          <div className="flex items-center justify-between gap-3 pr-20">
                             <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                               {PROPOSAL_MODULE_LABELS[module.key] ?? module.key}
                             </p>
+                            <span className="text-[9px] text-muted-foreground">edição direta</span>
                           </div>
 
                           <div className="mt-3">
                             {module.image?.url && module.image.mode !== "none" ? (
-                              <img
-                                src={normalizeTenantLogoUrl(module.image.url)}
-                                alt={module.title || PROPOSAL_MODULE_LABELS[module.key] || module.key}
-                                className="mb-3 h-44 w-full rounded-lg border object-cover"
-                              />
-                            ) : null}
-                            {module.description ? <p className="mb-3 text-xs text-muted-foreground">{module.description}</p> : null}
+                              <div className="group/image relative mb-4 overflow-hidden rounded-lg border bg-muted/20">
+                                <img
+                                  src={normalizeTenantLogoUrl(module.image.url)}
+                                  alt={module.title || PROPOSAL_MODULE_LABELS[module.key] || module.key}
+                                  className="h-48 w-full object-cover"
+                                />
+                                <div className="absolute inset-x-0 bottom-0 flex flex-wrap items-center gap-1.5 bg-gradient-to-t from-black/75 via-black/35 to-transparent p-2 pt-8">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="secondary"
+                                    className="h-7 px-2 text-[10px]"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      openProposalMediaLibrary(module.key);
+                                    }}
+                                  >
+                                    Biblioteca
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="secondary"
+                                    className="h-7 px-2 text-[10px]"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      chooseProposalBuilderModuleImage(module.key);
+                                    }}
+                                  >
+                                    Upload
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="secondary"
+                                    className="h-7 px-2 text-[10px]"
+                                    disabled={proposalBuilderGeneratingModuleImage === module.key}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      void generateProposalBuilderModuleImage(module.key);
+                                    }}
+                                  >
+                                    {proposalBuilderGeneratingModuleImage === module.key ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Sparkles className="mr-1 h-3 w-3" />}
+                                    Gerar IA
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="secondary"
+                                    className="h-7 px-2 text-[10px] text-destructive"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      updateProposalBuilderModuleImage(module.key, { url: "", mode: "none" });
+                                    }}
+                                  >
+                                    Remover
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="mb-4 flex min-h-28 flex-col items-center justify-center gap-2 rounded-lg border border-dashed bg-muted/20 p-4">
+                                <p className="text-[10px] text-muted-foreground">Esta página ainda não possui imagem.</p>
+                                <div className="flex flex-wrap justify-center gap-1.5">
+                                  <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-[10px]" onClick={(event) => { event.stopPropagation(); openProposalMediaLibrary(module.key); }}>Biblioteca</Button>
+                                  <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-[10px]" onClick={(event) => { event.stopPropagation(); chooseProposalBuilderModuleImage(module.key); }}>Upload</Button>
+                                  <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-[10px]" disabled={proposalBuilderGeneratingModuleImage === module.key} onClick={(event) => { event.stopPropagation(); void generateProposalBuilderModuleImage(module.key); }}>
+                                    {proposalBuilderGeneratingModuleImage === module.key ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Sparkles className="mr-1 h-3 w-3" />}
+                                    Gerar IA
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+                            {module.key !== "apresentacao_empresa" && module.description ? <p className="mb-3 text-xs text-muted-foreground">{module.description}</p> : null}
                             {module.key === "resumo_executivo" ? (
                               <div className="grid gap-2 sm:grid-cols-3">
                                 <div className="rounded-lg bg-muted/40 p-3"><p className="text-[10px] text-muted-foreground">Investimento</p><p className="mt-1 text-sm font-bold">{proposalBuilderMoney(proposalBuilderPreviewTotal)}</p></div>
@@ -3849,12 +3916,26 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                                 <div className="rounded-lg bg-muted/40 p-3"><p className="text-[10px] text-muted-foreground">Etapas</p><p className="mt-1 text-sm font-bold">{proposalBuilderDisplayStages.length}</p></div>
                               </div>
                             ) : module.key === "apresentacao_empresa" ? (
-                              <div className="max-w-3xl">
-                                <h3 className="text-2xl font-semibold tracking-tight">{module.title || proposalBuilderPreviewCompany}</h3>
-                                {module.description ? <p className="mt-2 text-sm font-medium text-muted-foreground">{module.description}</p> : null}
-                                <div className="mt-5 whitespace-pre-line text-sm leading-7 text-slate-700">
-                                  {module.contentPrompt || `${proposalBuilderPreviewCompany} apresenta sua trajetória, posicionamento, diferenciais e a forma como conduz cada projeto com qualidade e transparência.`}
-                                </div>
+                              <div className="max-w-3xl space-y-3" onClick={(event) => event.stopPropagation()}>
+                                <Input
+                                  value={module.title ?? ""}
+                                  onChange={(event) => updateProposalBuilderModuleConfig(module.key, { title: event.target.value })}
+                                  placeholder="Título da página"
+                                  className="h-auto border-transparent bg-transparent px-0 py-1 text-2xl font-semibold tracking-tight shadow-none focus-visible:border-primary/30 focus-visible:ring-2 focus-visible:ring-primary/10"
+                                />
+                                <Input
+                                  value={module.description ?? ""}
+                                  onChange={(event) => updateProposalBuilderModuleConfig(module.key, { description: event.target.value })}
+                                  placeholder="Subtítulo ou mensagem de apoio"
+                                  className="h-auto border-transparent bg-transparent px-0 py-1 text-sm font-medium text-muted-foreground shadow-none focus-visible:border-primary/30 focus-visible:ring-2 focus-visible:ring-primary/10"
+                                />
+                                <Textarea
+                                  value={module.contentPrompt ?? ""}
+                                  onChange={(event) => updateProposalBuilderModuleConfig(module.key, { contentPrompt: event.target.value })}
+                                  placeholder={`${proposalBuilderPreviewCompany} apresenta sua trajetória, posicionamento, diferenciais e a forma como conduz cada projeto com qualidade e transparência.`}
+                                  className="min-h-[150px] resize-y border-transparent bg-transparent px-0 py-1 text-sm leading-7 text-slate-700 shadow-none focus-visible:border-primary/30 focus-visible:ring-2 focus-visible:ring-primary/10"
+                                />
+                                <p className="text-[9px] text-muted-foreground">Clique e digite diretamente. As alterações entram somente nesta página do modelo.</p>
                               </div>
                             ) : module.key === "diferenciais" ? (
                               <div className="grid gap-2 sm:grid-cols-2"><div className="rounded-lg bg-slate-950 p-3 text-xs text-white">Qualidade e execução</div><div className="rounded-lg bg-slate-950 p-3 text-xs text-white">Gestão e transparência</div></div>
