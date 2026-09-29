@@ -6,6 +6,7 @@ import {
   numeric,
   boolean,
   jsonb,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -18,6 +19,9 @@ export const archCatalogoTable = pgTable("arch_catalogo", {
   tenantId: text("tenant_id")
     .notNull()
     .references(() => tenantsTable.id, { onDelete: "cascade" }),
+  // Produto de origem no catálogo comercial. Quando preenchido, o Arqdor
+  // usa o mesmo cadastro como fonte e mantém apenas os metadados 3D aqui.
+  sourceProductId: text("source_product_id"),
   nome:           varchar("nome",          { length: 255 }).notNull(),
   descricao:      text("descricao"),
   categoria:      varchar("categoria",     { length: 50  }),
@@ -29,20 +33,25 @@ export const archCatalogoTable = pgTable("arch_catalogo", {
   especificacoes: jsonb("especificacoes").$type<Record<string, unknown>>(),
   ativo:          boolean("ativo").default(true),
   createdAt:      timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => ({
+  sourceProductUnique: uniqueIndex("arch_catalogo_tenant_source_product_uidx").on(
+    table.tenantId,
+    table.sourceProductId,
+  ),
+}));
 
 export const insertArchCatalogoSchema = createInsertSchema(archCatalogoTable, {
   precoBase: z.coerce.number().nonnegative().optional(),
   imagens:   z.array(z.string()).optional(),
   especificacoes: z.record(z.string(), z.unknown()).optional(),
-}).omit({ id: true, createdAt: true });
+}).omit({ id: true, sourceProductId: true, createdAt: true });
 
 export const updateArchCatalogoSchema = createSelectSchema(archCatalogoTable, {
   precoBase: z.coerce.number().nonnegative().optional(),
   imagens:   z.array(z.string()).optional(),
   especificacoes: z.record(z.string(), z.unknown()).optional(),
 })
-  .omit({ id: true, tenantId: true, createdAt: true })
+  .omit({ id: true, tenantId: true, sourceProductId: true, createdAt: true })
   .partial();
 
 export type InsertArchCatalogo = z.infer<typeof insertArchCatalogoSchema>;

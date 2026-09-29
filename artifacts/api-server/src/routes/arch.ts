@@ -10,6 +10,7 @@ import {
   archCenasTable,
   archRendersTable,
   archCatalogoTable,
+  produtosCatalogoTable,
   archMaterialsTable,
   archMaterialImagesTable,
   archMaterialTenantAccessTable,
@@ -4124,6 +4125,79 @@ router.post("/arch/catalogo", authenticate, async (req, res) => {
 
   const [produto] = await db.insert(archCatalogoTable).values(parsed.data as any).returning();
   return res.status(201).json(produto);
+});
+
+// POST /api/arch/catalogo/sync-source/:sourceProductId
+// Garante que o produto do catálogo comercial tenha uma representação técnica
+// única no Arqdor. O cadastro comercial continua sendo a fonte de nome/preço/imagens.
+router.post("/arch/catalogo/sync-source/:sourceProductId", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const sourceProductId = String(req.params.sourceProductId);
+
+  const [source] = await db
+    .select()
+    .from(produtosCatalogoTable)
+    .where(and(
+      eq(produtosCatalogoTable.id, sourceProductId),
+      eq(produtosCatalogoTable.tenantId, tid),
+    ))
+    .limit(1);
+
+  if (!source) return res.status(404).json({ error: "Produto do catálogo não encontrado." });
+
+  const [existing] = await db
+    .select()
+    .from(archCatalogoTable)
+    .where(and(
+      eq(archCatalogoTable.tenantId, tid),
+      eq(archCatalogoTable.sourceProductId, sourceProductId),
+    ))
+    .limit(1);
+
+  const sourceImages = [
+    source.imagemUrl,
+    ...((source.imagens as string[] | null) ?? []),
+  ].filter((value): value is string => Boolean(value));
+
+  if (existing) {
+    const [updated] = await db
+      .update(archCatalogoTable)
+      .set({
+        nome: source.nome,
+        descricao: source.descricao ?? null,
+        categoria: source.categoriaId ?? existing.categoria,
+        fornecedor: (source as any).fornecedor ?? source.marca ?? existing.fornecedor,
+        precoBase: source.precoBase,
+        unidade: source.unidade,
+        imagens: sourceImages.length ? Array.from(new Set(sourceImages)).slice(0, 8) : existing.imagens,
+        ativo: source.ativo,
+      })
+      .where(eq(archCatalogoTable.id, existing.id))
+      .returning();
+    return res.json(updated);
+  }
+
+  const [created] = await db
+    .insert(archCatalogoTable)
+    .values({
+      tenantId: tid,
+      sourceProductId,
+      nome: source.nome,
+      descricao: source.descricao ?? null,
+      categoria: source.categoriaId ?? null,
+      fornecedor: (source as any).fornecedor ?? source.marca ?? null,
+      precoBase: source.precoBase,
+      unidade: source.unidade,
+      imagens: Array.from(new Set(sourceImages)).slice(0, 8),
+      especificacoes: {
+        source: "produtos_catalogo",
+        sourceProductId,
+      },
+      ativo: source.ativo,
+    })
+    .returning();
+
+  return res.status(201).json(created);
 });
 
 // POST /api/arch/catalogo/:id/resolve-real-model
