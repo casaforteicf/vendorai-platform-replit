@@ -1113,7 +1113,8 @@ function renderConstructionProposalLayout(args: {
     minimumFractionDigits: 2,
   }).format(v || 0);
   const visualImages = (imagens || []).filter((value): value is string => typeof value === "string" && value.trim().length > 0);
-  const coverImage = builderModuleImage("capa") || presentation.imagemCapa || visualImages[0] || Object.values(presentation.imagensEtapas).find(Boolean) || null;
+  // Precedência visual: override específico da proposta > padrão do modelo > biblioteca visual > etapa.
+  const coverImage = presentation.imagemCapa || builderModuleImage("capa") || visualImages[0] || Object.values(presentation.imagensEtapas).find(Boolean) || null;
   const scheduleRows = buildProposalScheduleRows(groupedItems, presentation, total);
   const latestEnd = scheduleRows
     .map((row) => row.end)
@@ -1127,7 +1128,9 @@ function renderConstructionProposalLayout(args: {
     ? Math.max(1, Math.ceil((latestEnd.getTime() - earliestStart.getTime()) / 86400000) + 1)
     : scheduleRows.reduce((sum, row) => sum + (row.duration || 0), 0);
   const commercialDeadline = String(orcamento.prazoEntrega ?? "").trim();
-  const deadlineLabel = commercialDeadline || (estimatedDays > 0 ? `${estimatedDays} dias` : "A definir");
+  // Quando existe cronograma executivo calculável, ele é a fonte de verdade do prazo da proposta.
+  // O prazo comercial informado no orçamento é usado somente quando o cronograma não permite cálculo.
+  const deadlineLabel = estimatedDays > 0 ? `${estimatedDays} dias` : (commercialDeadline || "A definir");
   const company = tenantName || "Construtora";
   const client = clientName || meta.clientName || "Cliente";
   const title = orcamento.titulo || hero.title || "Construção residencial";
