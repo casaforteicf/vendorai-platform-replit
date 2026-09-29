@@ -1054,7 +1054,7 @@ export function CatalogoModal({
             <DialogTitle>{editingProd ? "Editar Produto" : "Novo Produto"}</DialogTitle>
           </DialogHeader>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form data-integrity-field="budget-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <FormField control={form.control} name="nome" render={({ field }) => (
                 <FormItem><FormLabel>Nome</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
               )} />
@@ -2497,6 +2497,8 @@ function newFreeItem(): FreeItem {
     const watchRecorrente = form.watch("recorrente");
     const watchValorMensal = form.watch("valorMensal");
     const watchPrazoMeses = form.watch("prazoContratoMeses");
+    const watchValidadeAte = form.watch("validadeAte");
+    const watchPrazoEntrega = form.watch("prazoEntrega");
     const totalContrato = (watchValorMensal ?? 0) * (watchPrazoMeses ?? 0);
   
     const { data: leads = [] } = useListTenantLeads(tenantId, {
@@ -3483,7 +3485,8 @@ function newFreeItem(): FreeItem {
       issue.field === "itens" || issue.itemIndex !== undefined
         ? document.querySelector<HTMLElement>('[data-integrity-field="itens"]')
         : null;
-    const target = explicit ?? named ?? fallback;
+    const formFallback = document.querySelector<HTMLElement>('[data-integrity-field="budget-form"]');
+    const target = explicit ?? named ?? fallback ?? formFallback;
     target?.scrollIntoView({ behavior: "smooth", block: "center" });
     target?.focus?.();
   }
@@ -3496,8 +3499,8 @@ function newFreeItem(): FreeItem {
     }
 
     const controller = new AbortController();
+    setIntegrityLoading(true);
     const timer = window.setTimeout(async () => {
-      setIntegrityLoading(true);
       try {
         const response = await fetch("/api/propostas/integrity/preview", {
           method: "POST",
@@ -3550,8 +3553,8 @@ function newFreeItem(): FreeItem {
     adjustmentPolicy,
     warrantyTerms,
     detailedPaymentTerms,
-    form.watch("validadeAte"),
-    form.watch("prazoEntrega"),
+    watchValidadeAte,
+    watchPrazoEntrega,
   ]);
 
   // ── submit ────────────────────────────────────────────────────────────────
