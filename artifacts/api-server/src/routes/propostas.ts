@@ -170,6 +170,7 @@ router.put("/tenants/:tenantId/proposal-builder/templates/:templateId", async (r
 
 
 router.post("/tenants/:tenantId/proposal-builder/templates/:templateId/modules/:moduleKey/generate-image", async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately checked against authenticated tenant or Super Admin before tenant-scoped reads/writes
   const tenantId = String(req.params.tenantId);
   const templateId = String(req.params.templateId);
   const moduleKey = String(req.params.moduleKey);
