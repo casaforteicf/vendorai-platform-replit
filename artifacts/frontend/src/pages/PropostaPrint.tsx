@@ -108,7 +108,7 @@ interface ItemEdit {
 export default function PropostaPrint() {
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
-  const { user, isEffectiveAdmin: isGerente } = useAuth();
+  const { user } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
   const [markingVendido, setMarkingVendido] = useState(false);
