@@ -1189,19 +1189,27 @@ export async function proposalAccepted(
   // 6. Inventory deduction
   let inventoryDeducted = false;
   try {
-    const itens = (proposta.itens ?? []) as Array<{ nome: string; quantidade: number }>;
+    const itens = (proposta.itens ?? []) as Array<{ nome: string; quantidade: number; produtoId?: string | null }>;
     for (const item of itens) {
-      // Best-effort lookup by product name
-      const [produto] = await db
-        .select({ id: produtosCatalogoTable.id })
-        .from(produtosCatalogoTable)
-        .where(
-          and(
-            eq(produtosCatalogoTable.tenantId, proposta.tenantId),
-            eq(produtosCatalogoTable.nome, item.nome)
-          )
-        )
-        .limit(1);
+      // Prefer the immutable catalog reference captured in the budget item.
+      // Name lookup remains only as legacy fallback for old proposals.
+      const [produto] = item.produtoId
+        ? await db
+            .select({ id: produtosCatalogoTable.id })
+            .from(produtosCatalogoTable)
+            .where(and(
+              eq(produtosCatalogoTable.tenantId, proposta.tenantId),
+              eq(produtosCatalogoTable.id, item.produtoId),
+            ))
+            .limit(1)
+        : await db
+            .select({ id: produtosCatalogoTable.id })
+            .from(produtosCatalogoTable)
+            .where(and(
+              eq(produtosCatalogoTable.tenantId, proposta.tenantId),
+              eq(produtosCatalogoTable.nome, item.nome),
+            ))
+            .limit(1);
 
       if (!produto) continue;
 
