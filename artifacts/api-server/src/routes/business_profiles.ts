@@ -238,9 +238,30 @@ router.get("/tenants/:tenantId/business-profile", async (req, res) => {
       .orderBy(desc(whatsappConnectionsTable.isDefault), desc(whatsappConnectionsTable.updatedAt))
       .limit(1),
   ]);
-  const profile = profileResult.status === "fulfilled" ? profileResult.value[0] ?? null : null;
+  let profile = profileResult.status === "fulfilled" ? profileResult.value[0] ?? null : null;
   const tenant = tenantResult.status === "fulfilled" ? tenantResult.value[0] ?? null : null;
   const whatsapp = whatsappResult.status === "fulfilled" ? whatsappResult.value[0] ?? null : null;
+
+  const profileDiscovery = (profile?.discoveryData ?? {}) as Record<string, unknown>;
+  const hasBuilderTemplates =
+    Array.isArray(profileDiscovery.proposalBuilderTemplates)
+    && profileDiscovery.proposalBuilderTemplates.length > 0;
+  if (profile && hasBuilderTemplates) {
+    try {
+      const ensured = await ensureTenantProposalBuilderTemplate({ tenantId, log: req.log });
+      profile = {
+        ...profile,
+        discoveryData: {
+          ...profileDiscovery,
+          proposalBuilderTemplates: ensured.templates,
+          activeProposalBuilderTemplateId: ensured.activeTemplateId,
+        },
+      };
+    } catch (err) {
+      req.log?.warn({ err, tenantId }, "business-profile: failed to synchronize proposal presets");
+    }
+  }
+
   const mergedProfile = tenant || profile || whatsapp ? {
     ...(profile ?? {}),
     tenantId,

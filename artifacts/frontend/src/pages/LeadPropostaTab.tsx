@@ -473,6 +473,34 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
     typeof profileDiscovery.activeProposalBuilderTemplateId === "string"
       ? profileDiscovery.activeProposalBuilderTemplateId
       : null;
+  const activeProposalBuilderTemplate =
+    proposalBuilderTemplates.find((item) => item.id === activeProposalBuilderTemplateId)
+    ?? proposalBuilderTemplates.find((item) => item.isDefault)
+    ?? proposalBuilderTemplates[0]
+    ?? null;
+  const normalizeProposalTemplateName = (value: unknown) => String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  const canonicalConstructionTemplateNames = new Set([
+    "casa alto padrao",
+    "casa medio padrao",
+    "casa etapa cinza",
+    "piscina icf",
+    "somente formas icf",
+  ]);
+  const hasCanonicalConstructionTemplates = proposalBuilderTemplates.some((item) =>
+    canonicalConstructionTemplateNames.has(normalizeProposalTemplateName(item.name)),
+  );
+  const proposalBuilderTemplatesForSelection = proposalBuilderTemplates.filter((item) => {
+    if (item.id === activeProposalBuilderTemplate?.id) return false;
+    if (!hasCanonicalConstructionTemplates) return true;
+    const normalized = normalizeProposalTemplateName(item.name);
+    if (canonicalConstructionTemplateNames.has(normalized)) return true;
+    return !/(proposta de construcao|obra proposta completa|proposta comercial padrao)/.test(normalized);
+  });
   const [selectedProposalBuilderTemplateId, setSelectedProposalBuilderTemplateId] = useState<string>("__auto__");
   const [generatingProposalBuilderTemplate, setGeneratingProposalBuilderTemplate] = useState(false);
   const [proposalBuilderAIBrief, setProposalBuilderAIBrief] = useState("");
@@ -2579,11 +2607,11 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="__auto__">
-                          Automático — {activeProposalBuilderTemplateId ? "usar modelo ativo" : "usar padrão seguro"}
+                          Modelo padrão atual — {activeProposalBuilderTemplate?.name || "padrão da empresa"}
                         </SelectItem>
-                        {proposalBuilderTemplates.map((item) => (
+                        {proposalBuilderTemplatesForSelection.map((item) => (
                           <SelectItem key={item.id} value={item.id}>
-                            {item.name}{item.isDefault ? " · padrão" : ""}
+                            {item.name}
                           </SelectItem>
                         ))}
                       </SelectContent>
