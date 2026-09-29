@@ -155,7 +155,7 @@ export const providers: ProviderConnection[] = [
     category: "Render IA",
     credentialMode: "Server-side",
     status: "connected",
-    scope: "Flux Kontext, Fill, Ultra",
+    scope: "Render Premium OpenAI",
     notes: "Usado no pipeline de render.",
   },
   {
