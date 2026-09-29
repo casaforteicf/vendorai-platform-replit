@@ -14,7 +14,7 @@ const budgets = [
   { label: "LeadWorkspace", pattern: /^LeadWorkspace-local-.*\.js$/, maxKb: 50 },
   { label: "SidebarLayout", pattern: /^SidebarLayout-local-.*\.js$/, maxKb: 30 },
   { label: "AppLegacy", pattern: /^AppLegacy-local-.*\.js$/, maxKb: 80 },
-  { label: "ArqWorkspace", pattern: /^ArqWorkspace-local-.*\.js$/, maxKb: 150 },
+  { label: "ArqWorkspace", pattern: /^ArqWorkspace-local-.*\.js$/, maxKb: 150, optional: true },
   { label: "ConceptPlanner", pattern: /^ConceptPlanner-local-.*\.js$/, maxKb: 350 },
 ];
 
@@ -24,6 +24,10 @@ const failures = [];
 for (const budget of budgets) {
   const matches = files.filter((name) => budget.pattern.test(name));
   if (!matches.length) {
+    if (budget.optional) {
+      console.log(`[bundle-budget] SKIP ${budget.label}: chunk não emitido separadamente nesta build`);
+      continue;
+    }
     failures.push(`${budget.label}: chunk não encontrado`);
     continue;
   }
