@@ -256,9 +256,9 @@ export function RenderStudioRightPanel({
                           </label>
                         </div>
                         <div style={{ padding: "7px 9px", borderRadius: 7, background: `${D.purple}0D`, border: `1px solid ${D.purple}22`, fontSize: 10, lineHeight: 1.45, color: D.muted }}>
-                          ✦ Processamento em 2 etapas: primeiro preserva projeto e mobiliário; depois refina texturas, iluminação, reflexos e definição. Se o refino alterar a cena, ele é descartado automaticamente.
+                          ✦ Geração Premium em uma única etapa: preserva projeto e mobiliário enquanto melhora texturas, materiais, iluminação, reflexos e definição.
                         </div>
-                        <div style={{ fontSize: 11, color: D.muted, lineHeight: 1.5 }}>Tempo estimado: 60–180 segundos</div>
+                        <div style={{ fontSize: 11, color: D.muted, lineHeight: 1.5 }}>Tempo estimado: 30–90 segundos</div>
                         <DkBtn onClick={onStartRender} disabled={loading}>
                           {renderProfile === "technical" ? "✦ Gerar Render Técnico" : renderProfile === "decorated" ? "✦ Gerar Render Premium Decorado" : "✦ Gerar Render Premium"}
                         </DkBtn>
