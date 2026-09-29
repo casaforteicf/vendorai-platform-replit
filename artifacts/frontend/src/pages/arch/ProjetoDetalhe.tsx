@@ -30,7 +30,7 @@ import {
   ArrowLeft, Plus, Sparkles, Loader2, Pencil, Trash2, Link2,
   Search, LayoutGrid, DollarSign, Clock, Eye, ExternalLink,
   Copy, CheckCircle, XCircle, RefreshCw, Globe, Image,
-  Download, AlertCircle, ClipboardList,
+  Download, AlertCircle, ClipboardList, Package,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
