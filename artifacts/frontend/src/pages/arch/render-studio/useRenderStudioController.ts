@@ -433,6 +433,15 @@ export function useRenderStudioController() {
       setErr("Descreva a alteração desejada ou selecione um material.");
       return;
     }
+    if (melhoriaMode === "change-material" && selections.length === 0) {
+      setErr("Selecione e confirme a região no render antes de trocar o material.");
+      setSelectionMode("rect");
+      return;
+    }
+    if (melhoriaMode === "change-material" && selectedMaterial && !(selectedMaterial.imagens?.[0])) {
+      setErr("Este material não possui imagem de referência. Adicione/defina a imagem principal na Biblioteca de Materiais antes de aplicar.");
+      return;
+    }
     setLoading(true); setErr(null); setSaveState("saving");
     startProgressStages();
     const currentRenderId = renderId;
@@ -477,6 +486,8 @@ export function useRenderStudioController() {
         preservation_policy: preservationLocks,
         parent_render_id: currentRenderId, // P2-18
         material_id:      selectedMaterial?.id,
+        material_name:    selectedMaterial?.nome,
+        material_reference_url: selectedMaterial?.imagens?.[0],
       });
       const data = await waitForRenderCompletion(render_id);
       const newVersion: RenderVersion = {
