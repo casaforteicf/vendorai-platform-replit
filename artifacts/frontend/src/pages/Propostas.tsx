@@ -1054,7 +1054,7 @@ export function CatalogoModal({
             <DialogTitle>{editingProd ? "Editar Produto" : "Novo Produto"}</DialogTitle>
           </DialogHeader>
           <Form {...form}>
-            <form data-integrity-field="budget-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <FormField control={form.control} name="nome" render={({ field }) => (
                 <FormItem><FormLabel>Nome</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
               )} />
@@ -3907,6 +3907,7 @@ function newFreeItem(): FreeItem {
 
         <Form {...form}>
           <form
+            data-integrity-field="budget-form"
             onSubmit={form.handleSubmit(mode === "template" ? onSubmitTemplate : (vals) => onSubmit(vals, false))}
             onKeyDown={(event) => {
               if (event.key === "Enter" && event.target instanceof HTMLInputElement) {
