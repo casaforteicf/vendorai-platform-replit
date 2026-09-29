@@ -822,7 +822,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
         };
       }
       const response = await fetch(
-        api(`/api/leads/${leadId}/proposals/preflight?propostaId=${encodeURIComponent(selectedOrcamentoId)}`),
+        api(`/api/leads/${leadId}/proposal-preflight?propostaId=${encodeURIComponent(selectedOrcamentoId)}`),
         { headers },
       );
       const body = await response.json().catch(() => null);
@@ -2357,7 +2357,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
 
     try {
       const preflightResponse = await fetch(
-        api(`/api/leads/${leadId}/proposals/preflight?propostaId=${encodeURIComponent(selectedOrcamentoId)}`),
+        api(`/api/leads/${leadId}/proposal-preflight?propostaId=${encodeURIComponent(selectedOrcamentoId)}`),
         { headers },
       );
       const preflightBody = await preflightResponse.json().catch(() => null);
