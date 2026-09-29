@@ -140,7 +140,7 @@ export function generateTheme(primaryHex: string): {
   return { cream, cream2, ink, navyDeep, navyMid, accent, accentSoft, secondary, secondarySoft, concrete, concreteLine, ok: "#3FAE7A", warn: "#E0793C" };
 }
 
-function extractProposalBenefits(...sources: unknown[]): string[] {
+function extractProposalBenefitList(maxItems: number, ...sources: unknown[]): string[] {
   const raw: string[] = [];
   const visit = (value: unknown) => {
     if (Array.isArray(value)) { value.forEach(visit); return; }
@@ -155,10 +155,14 @@ function extractProposalBenefits(...sources: unknown[]): string[] {
   return raw
     .flatMap((value) => value.split(/\r?\n|[•·]|\s+[—–-]\s+|;+/g))
     .map((value) => value.replace(/^\s*(?:\d+[.)]|[-*])\s*/, "").trim())
-    .filter((value) => value.length >= 4 && value.length <= 120)
+    .filter((value) => value.length >= 4 && value.length <= 160)
     .map((value) => value.replace(/[.]+$/, ""))
     .filter((value, index, list) => list.findIndex((item) => item.toLowerCase() === value.toLowerCase()) === index)
-    .slice(0, 4);
+    .slice(0, Math.max(1, maxItems));
+}
+
+function extractProposalBenefits(...sources: unknown[]): string[] {
+  return extractProposalBenefitList(4, ...sources);
 }
 
 // ── Prompt builder ───────────────────────────────────────────────────────────
@@ -2325,12 +2329,13 @@ function renderStudioOrderedProposal(args: {
   };
   const modelImageUrl = (module: Record<string, unknown>, index: number) =>
     moduleImage(module).url || visualImages[index] || visualImages[index % Math.max(1, visualImages.length)] || "";
-  const benefits = extractProposalBenefits(
-    moduleText(moduleByKey("diferenciais") ?? {}, "contentPrompt"),
-    moduleText(moduleByKey("diferenciais") ?? {}, "description"),
+  const benefits = extractProposalBenefitList(
+    6,
     companyInfo.highlights,
     offerInfo.bullets,
     solutionInfo.agents,
+    proofInfo.items,
+    moduleManualContent(moduleByKey("diferenciais") ?? {}),
   );
 
   const header = (label: string) =>
@@ -2450,7 +2455,7 @@ function renderStudioOrderedProposal(args: {
           '<div class="studio-cover-main"><span class="studio-kicker">Proposta de valor</span>' +
           '<h1>' + esc(orcamento?.titulo || hero.headline || moduleText(module, "title", "Proposta comercial")) + '</h1>' +
           '<p>' + esc(valueStatement) + '</p>' +
-          benefitsHtml(benefits) +
+          benefitsHtml(benefits.slice(0, 4)) +
           '</div>' +
           '<div class="studio-cover-bottom"><strong>Cliente: ' + esc(client) + '</strong>' +
           (summary ? '<div class="studio-cover-summary">' + summary + '</div>' : '') +
