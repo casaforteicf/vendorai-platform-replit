@@ -11,6 +11,7 @@ import { useArqProject } from "@/modules/arqdor/hooks/useArqProject";
 import { WorkspaceProvider } from "@/modules/arqdor/workspace/WorkspaceContext";
 import { ArqdorThemeProvider } from "@/modules/arqdor/theme/ArqdorThemeProvider";
 import { useAuth } from "@/contexts/AuthContext";
+import { MediaAssetPicker, mediaAssetUrl, type MediaPickerAsset } from "@/components/media/MediaAssetPicker";
 import type { RenderStudioStep as Step } from "./render-studio/renderStudioModel";
 import { RENDER_STUDIO_STEPS as STEPS, renderStudioStepIndex as stepIndex } from "./render-studio/renderStudioModel";
 import { RenderStudioTopbar as Topbar, RenderStudioSidebar as LeftSidebar } from "./render-studio/RenderStudioNavigation";
@@ -958,7 +959,7 @@ function RightPanel({
   areaM2, setAreaM2, peDireitoM, setPeDireitoM, onSalvarMedidasAmbiente, onSalvarMedidasItem,
   onNextStep, onStartRender, onApplyMelhoria, onApprove, onSendToSpec,
   renderPreset, setRenderPreset, videoMovement, setVideoMovement, videoGenerating, renderVideoUrl, onGenerateVideo5s,
-  onShowCreateModal, onUpload,
+  onShowCreateModal, onUpload, onOpenMediaLibrary,
   selections, selectedMaterial, onOpenMaterialLib, onClearSelection, onRemoveSelection,
   approvalRecord, approvalNote, setApprovalNote,
   onTestCopilotAction,
@@ -979,7 +980,7 @@ function RightPanel({
   renderPreset: RenderPreset; setRenderPreset: (v: RenderPreset) => void;
   videoMovement: VideoMovement; setVideoMovement: (v: VideoMovement) => void;
   videoGenerating: boolean; renderVideoUrl: string | null; onGenerateVideo5s: () => void;
-  onShowCreateModal: () => void; onUpload: () => void;
+  onShowCreateModal: () => void; onUpload: () => void; onOpenMediaLibrary: () => void;
   selections: SelectionRect[]; selectedMaterial: CatalogItem | null;
   onOpenMaterialLib: () => void; onClearSelection: () => void; onRemoveSelection: (id: string) => void;
   approvalRecord: ApprovalRecord | null; approvalNote: string; setApprovalNote: (v: string) => void;
@@ -1097,6 +1098,7 @@ function RightPanel({
                     <InfoBox>Ambiente: <strong style={{ color: D.text }}>{ambiente}</strong></InfoBox>
                     {imageDataUrl && <div style={{ fontSize: 11, color: D.green, padding: "6px 8px", background: D.greenDim, borderRadius: 6 }}>✓ {imageFile?.name ?? "Imagem base recuperada"}</div>}
                     <DkBtn onClick={onUpload} variant={imageDataUrl ? "secondary" : "primary"}>{imageDataUrl ? "↺ Trocar imagem" : "⬜ Carregar imagem"}</DkBtn>
+                    <DkBtn onClick={onOpenMediaLibrary} variant="secondary">▦ Biblioteca de Mídias</DkBtn>
                     {imageDataUrl && <DkBtn onClick={onNextStep}>→ Continuar</DkBtn>}
                   </div>
                 )}
@@ -1633,6 +1635,7 @@ function RenderStudioInner() {
   const [selections, setSelections] = useState<SelectionRect[]>([]);
   const [selectedMaterial, setSelectedMaterial] = useState<CatalogItem | null>(null);
   const [showMaterialLib, setShowMaterialLib] = useState(false);
+  const [showMediaLibrary, setShowMediaLibrary] = useState(false);
   const [compareMode, setCompareMode] = useState(false);
   const [compareVersionAId, setCompareVersionAId] = useState<string | null>(null);
   const [compareVersionBId, setCompareVersionBId] = useState<string | null>(null);
@@ -1655,6 +1658,7 @@ function RenderStudioInner() {
   const stageTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const userName = (user as any)?.name ?? (user as any)?.email ?? "Usuário";
+  const tenantId = (user as any)?.tenantId ?? "";
 
   // Derived comparison versions
   const compareVersionA = versions.find(v => v.id === compareVersionAId) ?? versions[0] ?? null;
@@ -1787,6 +1791,18 @@ function RenderStudioInner() {
   function handleDragLeave() { setIsDragging(false); }
   async function handleDrop(e: React.DragEvent) { e.preventDefault(); e.stopPropagation(); setIsDragging(false); const f = e.dataTransfer.files?.[0]; if (f) await handleFileSelect(f); }
   function handleUpload() { fileRef.current?.click(); }
+
+  function handleMediaLibraryConfirm(assets: MediaPickerAsset[]) {
+    const asset = assets.find((item) => item.type === "image");
+    if (!asset) return;
+    const url = mediaAssetUrl(asset.storageUrl);
+    setErr(null);
+    setImageFile(null);
+    setImageDataUrl(url);
+    try { sessionStorage.setItem(SK.imageUrl, url); } catch {}
+    logEvent("image_source_selected", "Imagem base selecionada da Biblioteca de Mídias");
+    if (step === "imagem") go("render");
+  }
 
   // Start render
   async function startRender() {
@@ -2069,6 +2085,18 @@ function RenderStudioInner() {
       <HelpModal isOpen={showHelp} onClose={() => setShowHelp(false)} currentStep={step} />
       <ShortcutsModal isOpen={showShortcuts} onClose={() => setShowShortcuts(false)} />
       <MaterialLibraryModal isOpen={showMaterialLib} onClose={() => setShowMaterialLib(false)} onSelect={mat => { setSelectedMaterial(mat); setMelhoriaMode("change-material"); }} />
+      {tenantId && (
+        <MediaAssetPicker
+          tenantId={tenantId}
+          open={showMediaLibrary}
+          onOpenChange={setShowMediaLibrary}
+          allowedTypes={["image"]}
+          maxSelection={1}
+          title="Escolher imagem base da Biblioteca"
+          confirmLabel="Usar como imagem base"
+          onConfirm={handleMediaLibraryConfirm}
+        />
+      )}
 
       <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }}
         onChange={async (e) => { const f = e.target.files?.[0]; if (f) await handleFileSelect(f); e.target.value = ""; }} />
@@ -2114,7 +2142,7 @@ function RenderStudioInner() {
           renderPreset={renderPreset} setRenderPreset={setRenderPreset}
           videoMovement={videoMovement} setVideoMovement={setVideoMovement}
           videoGenerating={videoGenerating} renderVideoUrl={renderVideoUrl} onGenerateVideo5s={generateRenderVideo5s}
-          onShowCreateModal={() => setShowCreateModal(true)} onUpload={handleUpload}
+          onShowCreateModal={() => setShowCreateModal(true)} onUpload={handleUpload} onOpenMediaLibrary={() => setShowMediaLibrary(true)}
           selections={selections} selectedMaterial={selectedMaterial}
           onOpenMaterialLib={() => setShowMaterialLib(true)}
           onClearSelection={() => setSelections([])}
