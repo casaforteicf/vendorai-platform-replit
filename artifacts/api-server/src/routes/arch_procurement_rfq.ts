@@ -37,6 +37,8 @@ function normalizeText(value: unknown) {
   return String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 function inferScope(item: any) {
+  const explicit = normalizeText(item.spec_category);
+  if (explicit) return { category: explicit, discipline: explicit };
   const text = normalizeText([item.item, item.description, item.product_name, item.material_name, item.type].filter(Boolean).join(" "));
   const rules: Array<[string, string, RegExp]> = [
     ["esquadrias", "esquadrias", /(janela|porta|esquadria|vidro|aluminio|pvc|fachada glazing)/],
@@ -109,7 +111,7 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async
     let filter = "";
     if (selectedIds.length) { params.push(selectedIds); filter = ` AND id = ANY($3::uuid[])`; }
     const itemResult = await client.query(
-      `SELECT * FROM arch_budget_items WHERE budget_id=$1::uuid AND tenant_id::text=$2 AND deleted_at IS NULL ${filter} ORDER BY sort_order,created_at`,
+      `SELECT abi.*, aso.category AS spec_category, aso.region AS spec_region, aa.nome AS ambiente_nome\n       FROM arch_budget_items abi\n       LEFT JOIN arch_spec_objects aso ON aso.id=abi.spec_object_id\n       LEFT JOIN arch_ambientes aa ON aa.id::text=abi.ambiente_id::text\n      WHERE abi.budget_id=$1::uuid AND abi.tenant_id::text=$2 AND abi.deleted_at IS NULL ${filter.replace(" id ", " abi.id ")}\n      ORDER BY abi.sort_order,abi.created_at`,
       params,
     );
     if (!itemResult.rows.length) return res.status(422).json({ error: "O orçamento não possui itens para cotação." });
@@ -134,7 +136,7 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async
         saleValue += total;
         const snapshot = {
           budgetItemId: row.id, specObjectId: row.spec_object_id, item: row.item, description: row.description,
-          ambienteId: row.ambiente_id, quantity: n(row.quantity, 1), unit: row.unit || "un",
+          ambienteId: row.ambiente_id, ambiente: row.ambiente_nome || null, region: row.spec_region || null, quantity: n(row.quantity, 1), unit: row.unit || "un",
           productName: row.product_name, materialName: row.material_name, manufacturerName: row.manufacturer_name,
           total, category: group.category, discipline: group.discipline,
         };
@@ -152,7 +154,7 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async
                escopo_hash=$10,cotacao_desatualizada=CASE WHEN $11 THEN true ELSE cotacao_desatualizada END,
                escopo_versao=CASE WHEN $11 THEN escopo_versao+1 ELSE escopo_versao END,updated_at=now()
              WHERE id=$12 AND tenant_id=$13`,
-            [row.item, row.ambiente_id ? String(row.ambiente_id) : null, group.discipline, group.category,
+            [row.item, row.ambiente_nome || (row.ambiente_id ? String(row.ambiente_id) : null), group.discipline, group.category,
              String(n(row.quantity,1)), row.unit || "un", String(total), String(total), JSON.stringify(snapshot), hash, Boolean(changed), finalRequestId, tid],
           );
         } else {
@@ -164,7 +166,7 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async
               valor_venda_snapshot,custo_estimado_snapshot,created_at,updated_at)
              VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'media','pendente','budget_rfq','[]'::jsonb,
                     $13::uuid,$14::uuid,$15::uuid,1,$16,$17::jsonb,$18,$19,now(),now())`,
-            [finalRequestId,tid,obraId,`BUD-${String(row.id).slice(0,8).toUpperCase()}`,row.item,row.ambiente_id?String(row.ambiente_id):null,
+            [finalRequestId,tid,obraId,`BUD-${String(row.id).slice(0,8).toUpperCase()}`,row.item,row.ambiente_nome||(row.ambiente_id?String(row.ambiente_id):null),
              group.discipline,group.category,String(n(row.quantity,1)),row.unit||"un",String(n(row.unit_total)),String(total),
              budgetId,row.id,row.spec_object_id||null,hash,JSON.stringify(snapshot),String(total),String(total)],
           );
