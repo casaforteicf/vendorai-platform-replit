@@ -2284,6 +2284,8 @@ function renderStudioOrderedProposal(args: {
   const proofInfo = json.proof || {};
   const faqInfo = json.faq || {};
   const presentation = normalizeProposalPresentation(orcamento?.apresentacao);
+  const interactive = presentation.formato === "site_interativo";
+  const hybrid = presentation.formato === "hibrido";
   const items = (orcamento?.itens ?? []).filter((item) => item && item.nome);
   const groups = groupProposalPresentationItems(items);
   const calculatedTotal = items.reduce((sum, item) => sum + Number(item.quantidade || 0) * Number(item.valorUnitario || 0), 0);
@@ -2555,10 +2557,10 @@ function renderStudioOrderedProposal(args: {
     const displayTitle = moduleDisplayTitle(module);
     const title = partCount > 1 ? displayTitle + ' · ' + (partIndex + 1) + '/' + partCount : displayTitle;
     const visual = options?.includeVisual === true ? pageVisual(module, index) : "";
-    return '<section class="studio-page" data-studio-key="' + esc(module.key) + '">' +
+    return '<section class="studio-page" data-studio-key="' + esc(module.key) + '" id="sec-' + esc(module.key) + '-' + partIndex + '">' +
       header(title) +
       '<div class="studio-page-body">' +
-        '<span class="studio-kicker">Página ' + (index + 1) + (partCount > 1 ? ' · continuação ' + (partIndex + 1) + '/' + partCount : '') + '</span>' +
+        '<span class="studio-kicker">' + (interactive ? esc(displayTitle) : 'Página ' + (index + 1) + (partCount > 1 ? ' · continuação ' + (partIndex + 1) + '/' + partCount : '')) + '</span>' +
         '<h1>' + esc(title) + '</h1>' +
         (moduleText(module, "description") && partIndex === 0 ? '<p class="studio-lead">' + esc(moduleText(module, "description")) + '</p>' : '') +
         visual + body +
@@ -2751,6 +2753,17 @@ function renderStudioOrderedProposal(args: {
 
   const pages = modules.map(renderModule).join("\n");
   const preset = String(builder.visualStyle?.preset ?? "corporativo");
+  const webNav = interactive
+    ? '<nav class="studio-web-nav"><div class="studio-web-nav-inner"><div class="studio-web-brand">' +
+        (tenantLogoUrl ? '<img src="' + esc(tenantLogoUrl) + '" alt="' + esc(company) + '" />' : '<strong>' + esc(company) + '</strong>') +
+        '</div><div class="studio-web-links">' +
+        modules
+          .filter((module) => !["capa","validade_inicio","imagem_por_etapa"].includes(String(module.key ?? "")))
+          .slice(0, 6)
+          .map((module) => '<a href="#sec-' + esc(module.key) + '-0">' + esc(moduleDisplayTitle(module)) + '</a>')
+          .join("") +
+        '</div></div></nav>'
+    : "";
 
   return '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">' +
     '<title>Proposta — ' + esc(client) + '</title><style>' +
@@ -2772,7 +2785,38 @@ function renderStudioOrderedProposal(args: {
     '.studio-cover{padding:0;color:#fff;background:#111}.studio-cover-bg{position:absolute;inset:0;width:100%;height:100%}.studio-cover-overlay{position:absolute;inset:0}.studio-cover-content{position:relative;z-index:2;height:100%;padding:16mm 15mm 14mm;display:flex;flex-direction:column}.studio-cover-top{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,.35);padding-bottom:5mm;font-size:7pt;letter-spacing:.1em}.studio-cover-top img{height:10mm;max-width:55mm;object-fit:contain;background:#fff;border-radius:2mm;padding:1.5mm}.studio-cover-main{margin-top:24mm;max-width:155mm}.studio-cover-main h1{font-size:31pt;color:#fff;margin:3mm 0 4mm}.studio-cover-main p{font-size:10.5pt;line-height:1.55;color:rgba(255,255,255,.9);max-width:125mm}.studio-cover .studio-kicker{color:#fff;opacity:.7}.studio-cover .studio-benefits{max-width:145mm}.studio-cover .studio-benefit{border-color:rgba(255,255,255,.3);background:rgba(0,0,0,.23)}.studio-cover .studio-benefit strong{color:#fff}.studio-cover-bottom{margin-top:auto;border-left:2mm solid ' + theme.accent + ';background:rgba(0,0,0,.32);padding:5mm 6mm}.studio-cover-bottom>strong{font-size:9pt}.studio-cover-summary{display:grid;grid-template-columns:repeat(2,1fr);gap:3mm 7mm;margin-top:4mm}.studio-cover-summary span{display:block;font-size:5.8pt;text-transform:uppercase;letter-spacing:.07em;opacity:.7}.studio-cover-summary strong{font-size:10pt}' +
     '.proposal-preset-minimalista .studio-benefit,.proposal-preset-minimalista .studio-stage-card{box-shadow:none}.proposal-preset-catalogo_comercial .studio-page h1{font-size:22pt}.proposal-preset-tecnico .studio-table{font-size:6.8pt}' +
     '@media screen{.studio-page{box-shadow:0 12px 36px rgba(15,23,42,.12)}}@media print{body{background:#fff}.studio-page{margin:0;box-shadow:none}}' +
-    '</style></head><body class="proposal-preset-' + esc(preset) + '">' + pages + '</body></html>';
+    (interactive ? [
+      '.studio-web{background:#fff}',
+      '.studio-web-nav{position:sticky;top:0;z-index:90;background:rgba(255,255,255,.96);backdrop-filter:blur(12px);border-bottom:1px solid #e5e7eb}',
+      '.studio-web-nav-inner{max-width:1180px;margin:0 auto;min-height:68px;padding:10px 24px;display:flex;align-items:center;gap:28px}',
+      '.studio-web-brand{min-width:140px;display:flex;align-items:center}.studio-web-brand img{height:38px;max-width:160px;object-fit:contain}',
+      '.studio-web-links{margin-left:auto;display:flex;gap:18px;align-items:center;overflow-x:auto;white-space:nowrap}.studio-web-links a{font-size:13px;color:#4b5563;text-decoration:none;font-weight:600}',
+      '.studio-web .studio-page{width:100%;height:auto;min-height:0;margin:0;padding:72px max(24px,calc((100vw - 1120px)/2));page-break-after:auto;overflow:visible;box-shadow:none;border-radius:0}',
+      '.studio-web .studio-page:not(.studio-cover){border-top:1px solid #eceff3}',
+      '.studio-web .studio-hdr,.studio-web .studio-footer{display:none}',
+      '.studio-web .studio-page-body{max-width:1120px;margin:0 auto}',
+      '.studio-web .studio-page h1{font-size:clamp(34px,4vw,54px);line-height:1.03;margin:8px 0 18px}',
+      '.studio-web .studio-kicker{font-size:12px;letter-spacing:.14em}',
+      '.studio-web .studio-lead,.studio-web .studio-copy{font-size:16px;line-height:1.7;max-width:860px}',
+      '.studio-web .studio-cover{min-height:76vh;padding:0}',
+      '.studio-web .studio-cover-content{min-height:76vh;height:auto;padding:78px max(24px,calc((100vw - 1120px)/2)) 56px}',
+      '.studio-web .studio-cover-main{margin-top:9vh;max-width:900px}',
+      '.studio-web .studio-cover-main h1{font-size:clamp(44px,6vw,78px);max-width:900px}',
+      '.studio-web .studio-cover-main p{font-size:18px;max-width:760px}',
+      '.studio-web .studio-cover-bottom{max-width:860px}',
+      '.studio-web .studio-benefits{grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}',
+      '.studio-web .studio-benefit{padding:20px;border-radius:16px}.studio-web .studio-benefit strong{font-size:15px}',
+      '.studio-web .studio-metrics{grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.studio-web .studio-metrics>div{padding:20px;border-radius:16px}.studio-web .studio-metrics strong{font-size:24px}',
+      '.studio-web .studio-stage-summary-list{grid-template-columns:1fr 1fr;gap:14px}.studio-web .studio-stage-summary{padding:18px;border-radius:14px;font-size:14px}',
+      '.studio-web .studio-stage-title{margin:18px 0}.studio-web .studio-stage-title span,.studio-web .studio-stage-title strong{font-size:16px}',
+      '.studio-web .studio-table{font-size:13px;border-collapse:separate;border-spacing:0;overflow:hidden;border-radius:14px}.studio-web .studio-table th,.studio-web .studio-table td{padding:12px}',
+      '.studio-web .studio-card-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.studio-web .studio-card-grid>div{padding:20px;border-radius:16px}.studio-web .studio-card-grid p{font-size:14px}',
+      '.studio-web .studio-conditions>div{grid-template-columns:220px 1fr;padding:16px 0}.studio-web .studio-conditions strong{font-size:16px}',
+      '.studio-web .studio-callout,.studio-web .studio-digital-accept-note,.studio-web .studio-exclusions{border-radius:16px;padding:22px}',
+      '.studio-web .studio-visual{height:min(420px,44vw);border-radius:18px}',
+      '@media(max-width:820px){.studio-web-nav-inner{padding:8px 14px}.studio-web-links{display:none}.studio-web .studio-page{padding:46px 20px}.studio-web .studio-cover-content{padding:54px 20px 36px}.studio-web .studio-benefits,.studio-web .studio-metrics,.studio-web .studio-card-grid,.studio-web .studio-stage-summary-list{grid-template-columns:1fr}.studio-web .studio-conditions>div{grid-template-columns:1fr;gap:6px}.studio-web .studio-table{display:block;width:100%;overflow-x:auto;white-space:nowrap}}'
+    ].join('') : '') +
+    '</style></head><body class="proposal-preset-' + esc(preset) + (interactive ? ' studio-web' : hybrid ? ' studio-hybrid' : '') + '">' + webNav + pages + '</body></html>';
 }
 
 export function renderProposalHtml(json: unknown, theme: {
