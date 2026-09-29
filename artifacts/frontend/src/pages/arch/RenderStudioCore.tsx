@@ -1720,6 +1720,8 @@ function RenderStudioInner() {
   async function startRender() {
     if (!imageDataUrl) { setErr("Carregue uma imagem antes de gerar o render."); return; }
     if (loading) return;
+    const previousRenderId = renderId;
+    const nextVersionNumber = versions.length + 1;
     setLoading(true); setErr(null); setRenderUrl(null); setRenderId(null); setSaveState("saving");
     startProgressStages();
     try {
@@ -1732,8 +1734,16 @@ function RenderStudioInner() {
       setRenderId(render_id); setProcessingStage("Gerando render…");
       const data = await waitForRenderCompletion(render_id);
       setProcessingStage("Finalizando e salvando versão…");
-      const v: RenderVersion = { id: render_id, url: normalizeRenderMediaUrl(data.result_image_url), label: "Versão 1 · Original", operationType: "initial", createdAt: new Date() };
-      setRenderUrl(normalizeRenderMediaUrl(data.result_image_url)); setVersions([v]);
+      const v: RenderVersion = {
+        id: render_id,
+        url: normalizeRenderMediaUrl(data.result_image_url),
+        label: versions.length === 0 ? "Versão 1 · Original" : `Versão ${nextVersionNumber} · Novo render`,
+        operationType: "initial",
+        parentVersionId: previousRenderId ?? undefined,
+        createdAt: new Date(),
+      };
+      setRenderUrl(normalizeRenderMediaUrl(data.result_image_url));
+      setVersions((current) => [v, ...current.filter((item) => item.id !== render_id)]);
       logEvent("render_created", `Render inicial gerado · ${ambiente}`);
       setSaveState("saved"); setLastSavedAt(new Date());
     } catch (e: unknown) { setErr(categorizeError(e)); setSaveState("error"); }
@@ -1868,7 +1878,9 @@ function RenderStudioInner() {
       setApproved(true);
       logEvent("approved", `Versão aprovada por ${userName}`);
       // P2-20: mark version as approved
-      setVersions(vs => vs.map((v, i) => i === 0 ? { ...v, approvedBy: userName, approvedAt: record.at, approvalNote, operationType: "approved" } : v));
+      setVersions(vs => vs.map((v) => v.id === renderId
+        ? { ...v, approvedBy: userName, approvedAt: record.at, approvalNote, operationType: "approved" }
+        : v));
       setSaveState("saved"); setLastSavedAt(new Date()); go("especificacao");
     } catch (e: unknown) { setErr(categorizeError(e)); setSaveState("error"); }
     finally { setLoading(false); }
