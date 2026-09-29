@@ -3976,6 +3976,12 @@ router.post("/arch/cenas/:cenaId/renderizar", authenticate, async (req, res) => 
 router.get("/arch/renders/gallery", authenticate, async (req, res) => {
   const tid = tenantId(req);
   const limit = Math.min(Number(req.query.limit) || 40, 80);
+  const projetoId = typeof req.query.projetoId === "string" && req.query.projetoId.trim()
+    ? req.query.projetoId.trim()
+    : null;
+
+  const conditions = [eq(archProjetosTable.tenantId, tid)];
+  if (projetoId) conditions.push(eq(archCenasTable.projetoId, projetoId));
 
   const rows = await db
     .select({
@@ -3991,7 +3997,7 @@ router.get("/arch/renders/gallery", authenticate, async (req, res) => {
     .from(archRenderVersoesTable)
     .innerJoin(archCenasTable, eq(archCenasTable.id, archRenderVersoesTable.cenaId))
     .innerJoin(archProjetosTable, eq(archProjetosTable.id, archCenasTable.projetoId))
-    .where(eq(archProjetosTable.tenantId, tid))
+    .where(and(...conditions))
     .orderBy(desc(archRenderVersoesTable.createdAt))
     .limit(limit);
 

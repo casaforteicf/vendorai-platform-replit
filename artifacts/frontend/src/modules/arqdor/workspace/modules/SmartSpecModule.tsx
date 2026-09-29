@@ -530,7 +530,7 @@ function buildMemorial(items: SpecItem[]): string {
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export function SmartSpecModule() {
+export function SmartSpecModule({ projectId }: { projectId?: string | null }) {
   const [renders,      setRenders]      = useState<GalleryRender[]>([])
   const [selRender,    setSelRender]    = useState<GalleryRender | null>(null)
   const [spec,         setSpec]         = useState<Specification | null>(null)
@@ -548,23 +548,36 @@ export function SmartSpecModule() {
   const [budgetMsg, setBudgetMsg] = useState<string | null>(null)
   const [requestedRenderId] = useState(() => typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('render_id') : null)
   const [requestedProjectId] = useState(() => typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('project_id') : null)
+  const effectiveProjectId = projectId ?? requestedProjectId
   const autoAnalyzeRef = useRef<string | null>(null)
 
-  // Load renders on mount. When coming from Render Studio, preserve the approved render as source.
+  // Load only renders from the active project. This prevents the specification
+  // studio from mixing scenes/specifications from different projects in a tenant.
   useEffect(() => {
-    fetch(`${BASE}/arch/renders/gallery?limit=50`, { headers: authHeaders() })
+    const qs = new URLSearchParams({ limit: '50' })
+    if (effectiveProjectId) qs.set('projetoId', effectiveProjectId)
+
+    fetch(`${BASE}/arch/renders/gallery?${qs.toString()}`, { headers: authHeaders() })
       .then(r => r.json())
       .then((data: GalleryRender[]) => {
-        setRenders(data)
-        if (data.length === 0) return
+        const scoped = effectiveProjectId ? data.filter(render => render.projetoId === effectiveProjectId) : data
+        setRenders(scoped)
+        if (scoped.length === 0) {
+          setSelRender(null)
+          setSpec(null)
+          setItems([])
+          return
+        }
         const preferred =
-          (requestedRenderId ? data.find(render => render.id === requestedRenderId) : undefined) ??
-          (requestedProjectId ? data.find(render => render.projetoId === requestedProjectId) : undefined) ??
-          data[0]
+          (requestedRenderId ? scoped.find(render => render.id === requestedRenderId) : undefined) ??
+          scoped[0]
         setSelRender(preferred ?? null)
       })
-      .catch(() => {})
-  }, [requestedRenderId, requestedProjectId])
+      .catch(() => {
+        setRenders([])
+        setSelRender(null)
+      })
+  }, [requestedRenderId, effectiveProjectId])
 
   // Load existing spec when render selected
   const loadExistingSpec = useCallback(async (projetoId: string) => {
