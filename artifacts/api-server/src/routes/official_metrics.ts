@@ -17,6 +17,7 @@ const KPI_DICTIONARY = [
   { key: "average_ticket", label: "Ticket médio", source: "deals.valor", formula: "Receita vendida / vendas confirmadas", availability: "native" },
   { key: "commercial_conversion", label: "Conversão comercial", source: "deals + leads", formula: "Deals válidos ganhos criados no período / oportunidades válidas criadas no período", availability: "native" },
   { key: "overdue_tasks", label: "Tarefas vencidas", source: "activities", formula: "Atividades pendentes ou planejadas com vencimento anterior a agora", availability: "native" },
+  { key: "unassigned_leads", label: "Leads sem responsável", source: "leads.assigned_to", formula: "Leads ativos e válidos sem responsável definido", availability: "native" },
   { key: "execution_active", label: "Execução ativa", source: "work_cards", formula: "Cards de execução não terminais", availability: "native" },
   { key: "support_active", label: "Suporte ativo", source: "work_cards", formula: "Cards de suporte não terminais", availability: "native" },
   { key: "customers_at_risk", label: "Clientes em risco", source: "customer_intelligence.churn_risk", formula: "Leads válidos com churnRisk > 60 e não encerrados", availability: "native" },
@@ -184,6 +185,12 @@ router.get("/tenants/:tenantId/dashboard/command-center", async (req, res) => {
           WHERE w.closed_at >= ${periodStart} AND w.closed_at <= ${periodEnd} AND w.valor IS NOT NULL) AS average_ticket,
         (SELECT count(*)::int FROM created_deals) AS opportunities_created,
         (SELECT count(*)::int FROM created_deals WHERE etapa = 'ganho') AS opportunities_created_and_won,
+        (SELECT count(*)::int FROM leads l
+          WHERE l.tenant_id = ${tenantId}
+            AND l.nao_lead_tipo IS NULL
+            AND l.excluido_em IS NULL
+            AND l.assigned_to IS NULL
+            AND COALESCE(l.status,'') NOT IN ('cliente','perdido')) AS unassigned_leads,
         (SELECT count(*)::int FROM activities a
           WHERE a.tenant_id = ${tenantId}
             AND a.status IN ('pendente','planejado')
@@ -378,6 +385,7 @@ router.get("/tenants/:tenantId/dashboard/command-center", async (req, res) => {
       commercialConversion: conversion,
       conversionDenominator: created,
       conversionNumerator: createdWon,
+      unassignedLeads: Number(c.unassigned_leads ?? 0),
       closingDateRule: "COALESCE(data_fechamento, won_at, updated_at)",
     },
     operation: {
