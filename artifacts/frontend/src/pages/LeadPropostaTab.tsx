@@ -377,7 +377,10 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const [generatingStageImages, setGeneratingStageImages] = useState(false);
   const [generatingCoverImage, setGeneratingCoverImage] = useState(false);
   const [selectedStageImageIds, setSelectedStageImageIds] = useState<string[]>([]);
+  const [stageImageUploadTarget, setStageImageUploadTarget] = useState<string | null>(null);
+  const [stageImageUploading, setStageImageUploading] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const stageImageInputRef = useRef<HTMLInputElement>(null);
 
   type ProposalAttachment = { nome: string; url: string; mimeType?: string; tamanho?: number };
   const [proposalAttachments, setProposalAttachments] = useState<ProposalAttachment[]>([]);
@@ -1219,6 +1222,66 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
       toast({ title: "Erro no upload de imagem", variant: "destructive" });
     } finally {
       setImageUploading(false);
+    }
+  }
+
+  async function handleStageImageUpload(file: File) {
+    if (!stageImageUploadTarget || !selectedOrcamento?.id) return;
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Selecione uma imagem válida.", variant: "destructive" });
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ title: `${file.name} excede 10MB`, variant: "destructive" });
+      return;
+    }
+
+    setStageImageUploading(true);
+    try {
+      const imageUrl = await uploadImageFile(file);
+      const response = await fetch(api(`/api/leads/${leadId}/proposals/stage-image/manual`), {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          propostaId: selectedOrcamento.id,
+          stageId: stageImageUploadTarget,
+          imageUrl,
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? "Não foi possível vincular a imagem à etapa.");
+      await queryClient.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId, { leadId }) });
+      toast({ title: "Imagem da etapa atualizada" });
+    } catch (error) {
+      toast({
+        title: "Erro ao alterar imagem da etapa",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setStageImageUploading(false);
+      setStageImageUploadTarget(null);
+    }
+  }
+
+  async function removeManualStageImage(stageId: string) {
+    if (!selectedOrcamento?.id) return;
+    try {
+      const response = await fetch(api(`/api/leads/${leadId}/proposals/stage-image/manual`), {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ propostaId: selectedOrcamento.id, stageId, imageUrl: "" }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? "Não foi possível remover a imagem.");
+      await queryClient.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId, { leadId }) });
+      toast({ title: "Imagem da etapa removida" });
+    } catch (error) {
+      toast({
+        title: "Erro ao remover imagem",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
     }
   }
 
