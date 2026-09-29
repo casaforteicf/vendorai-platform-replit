@@ -2496,7 +2496,8 @@ function renderStudioOrderedProposal(args: {
     }
 
     if (key === "anexos") {
-      return genericPage(module, index, '<div class="studio-callout"><strong>Anexos</strong><p>Os documentos vinculados a esta versão ficam disponíveis junto à proposta e no Portal do Cliente.</p></div>');
+      return genericPage(module, index,
+        '<div class="studio-callout"><strong>Anexos</strong><p>Documentos vinculados a esta versão da proposta.</p></div><!-- STUDIO_ATTACHMENTS -->');
     }
 
     return genericPage(module, index, pageVisual(module, index) +
