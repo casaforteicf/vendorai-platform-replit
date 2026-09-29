@@ -76,7 +76,8 @@ export function AgendarReuniaoModal({
   const [observacoes, setObservacoes]       = useState<string>("");
   const [slots, setSlots]                   = useState<Slot[]>([]);
   const [loadingSlots, setLoadingSlots]     = useState(false);
-  const [participanteId, setParticipanteId] = useState<string>(responsavelId ?? "__nenhum__");
+  const [participanteIds, setParticipanteIds] = useState<string[]>(responsavelId ? [responsavelId] : []);
+  const [clientesExtras, setClientesExtras] = useState<Array<{ nome: string; email: string }>>([]);
   const [enviarCliente, setEnviarCliente]   = useState<boolean>(true);
 
   const { data: agendas = [] } = useListAgendas(tenantId);
@@ -84,7 +85,7 @@ export function AgendarReuniaoModal({
   const defaultAgenda          = agendas[0];
   const createAgendamento      = useCreateAgendamento();
 
-  const resolvedResponsavelId = participanteId === "__nenhum__" ? undefined : participanteId;
+  const resolvedResponsavelId = participanteIds[0] ?? undefined;
 
   useEffect(() => {
     if (!open || !date) return;
@@ -94,7 +95,7 @@ export function AgendarReuniaoModal({
 
     const params = new URLSearchParams({ date, duracao });
     if (defaultAgenda?.id) params.set("agendaId", defaultAgenda.id);
-    if (resolvedResponsavelId) params.set("responsavelId", resolvedResponsavelId);
+    if (participanteIds.length) params.set("responsavelIds", participanteIds.join(","));
 
     const token = localStorage.getItem("vendorai_token");
     fetch(`/api/tenants/${tenantId}/agendamentos/slots?${params}`, {
@@ -109,12 +110,13 @@ export function AgendarReuniaoModal({
         setSlots([]);
       })
       .finally(() => setLoadingSlots(false));
-  }, [open, date, duracao, defaultAgenda?.id, resolvedResponsavelId, tenantId]);
+  }, [open, date, duracao, defaultAgenda?.id, participanteIds, tenantId]);
 
   // Reset when modal opens
   useEffect(() => {
     if (open) {
-      setParticipanteId(responsavelId ?? "__nenhum__");
+      setParticipanteIds(responsavelId ? [responsavelId] : []);
+      setClientesExtras([]);
       setEnviarCliente(true);
       setModalidade("meet");
       setDate(tomorrowISO());
@@ -134,10 +136,25 @@ export function AgendarReuniaoModal({
       return;
     }
 
-    const participanteUser = users.find((u) => u.id === resolvedResponsavelId);
-    const participantes = participanteUser
-      ? [{ nome: participanteUser.name, email: participanteUser.email }]
-      : [];
+    const participantesEquipe = users
+      .filter((u) => participanteIds.includes(u.id))
+      .map((u) => ({
+        nome: u.name,
+        email: u.email || undefined,
+        userId: u.id,
+        tipo: "equipe" as const,
+      }));
+
+    const participantesCliente = clientesExtras
+      .map((p) => ({ nome: p.nome.trim(), email: p.email.trim() }))
+      .filter((p) => p.nome || p.email)
+      .map((p) => ({
+        nome: p.nome || p.email,
+        email: p.email || undefined,
+        tipo: "cliente" as const,
+      }));
+
+    const participantes = [...participantesEquipe, ...participantesCliente];
 
     createAgendamento.mutate(
       {
@@ -176,7 +193,7 @@ export function AgendarReuniaoModal({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CalendarDays className="h-5 w-5 text-primary" />
@@ -211,26 +228,116 @@ export function AgendarReuniaoModal({
             </div>
           </div>
 
-          {/* ── Participante da equipe ── */}
-          <div className="space-y-2">
-            <Label className="flex items-center gap-1.5">
-              <Users className="h-3.5 w-3.5 text-muted-foreground" />
-              Participante da equipe
-            </Label>
-            <Select value={participanteId} onValueChange={setParticipanteId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione um participante…" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__nenhum__">— Nenhum —</SelectItem>
-                {users.filter((u) => u.active).map((u) => (
-                  <SelectItem key={u.id} value={u.id}>
-                    {u.name}
-                    {u.email ? <span className="text-muted-foreground ml-1 text-xs">({u.email})</span> : null}
-                  </SelectItem>
+          {/* ── Participantes ── */}
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                Participantes da equipe
+              </Label>
+              <div className="rounded-lg border p-2.5 space-y-1.5 max-h-40 overflow-y-auto">
+                {users.filter((u) => u.active).map((u) => {
+                  const selected = participanteIds.includes(u.id);
+                  return (
+                    <button
+                      key={u.id}
+                      type="button"
+                      onClick={() =>
+                        setParticipanteIds((prev) =>
+                          selected ? prev.filter((id) => id !== u.id) : [...prev, u.id]
+                        )
+                      }
+                      className={`w-full flex items-center justify-between gap-3 rounded-md px-2.5 py-2 text-left text-sm transition-colors ${
+                        selected ? "bg-primary/10 text-foreground" : "hover:bg-muted"
+                      }`}
+                    >
+                      <span className="min-w-0">
+                        <span className="font-medium">{u.name}</span>
+                        {u.email ? (
+                          <span className="block text-xs text-muted-foreground truncate">{u.email}</span>
+                        ) : null}
+                      </span>
+                      <span className={`h-5 w-5 shrink-0 rounded border flex items-center justify-center ${
+                        selected ? "bg-primary border-primary text-primary-foreground" : "border-input"
+                      }`}>
+                        {selected ? "✓" : ""}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {participanteIds.length === 0
+                  ? "Nenhum participante interno selecionado."
+                  : `${participanteIds.length} participante${participanteIds.length > 1 ? "s" : ""} da equipe selecionado${participanteIds.length > 1 ? "s" : ""}. Os horários consideram a disponibilidade de todos.`}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <Label className="flex items-center gap-1.5">
+                  <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                  Participantes do cliente
+                </Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7"
+                  onClick={() => setClientesExtras((prev) => [...prev, { nome: "", email: "" }])}
+                >
+                  + Adicionar
+                </Button>
+              </div>
+
+              <div className="rounded-lg border p-2.5 space-y-2">
+                <div className="flex items-center justify-between gap-3 rounded-md bg-muted/40 px-2.5 py-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{leadNome}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {leadEmail || "Sem e-mail cadastrado"}
+                    </p>
+                  </div>
+                  <span className="text-[11px] rounded-full border px-2 py-0.5 text-muted-foreground">Principal</span>
+                </div>
+
+                {clientesExtras.map((p, index) => (
+                  <div key={index} className="grid grid-cols-[1fr_1.2fr_auto] gap-2 items-center">
+                    <input
+                      value={p.nome}
+                      onChange={(e) =>
+                        setClientesExtras((prev) =>
+                          prev.map((item, i) => i === index ? { ...item, nome: e.target.value } : item)
+                        )
+                      }
+                      placeholder="Nome"
+                      className="h-9 min-w-0 px-3 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                    <input
+                      type="email"
+                      value={p.email}
+                      onChange={(e) =>
+                        setClientesExtras((prev) =>
+                          prev.map((item, i) => i === index ? { ...item, email: e.target.value } : item)
+                        )
+                      }
+                      placeholder="E-mail"
+                      className="h-9 min-w-0 px-3 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-9 px-2 text-muted-foreground"
+                      onClick={() => setClientesExtras((prev) => prev.filter((_, i) => i !== index))}
+                      aria-label="Remover participante"
+                    >
+                      ×
+                    </Button>
+                  </div>
                 ))}
-              </SelectContent>
-            </Select>
+              </div>
+            </div>
           </div>
 
           {/* ── Data ── */}
