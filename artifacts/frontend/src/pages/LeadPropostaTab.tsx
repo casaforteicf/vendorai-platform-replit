@@ -4772,7 +4772,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
               </aside>
             </div>
 
-            <DialogFooter className="shrink-0 border-t px-5 py-3">
+            <DialogFooter className="sticky bottom-0 z-10 border-t bg-background/95 px-5 py-3 backdrop-blur">
               <div className="mr-auto text-[10px] text-muted-foreground">
                 As alterações afetam novas propostas que utilizarem este modelo; valores continuam vindo do orçamento selecionado.
               </div>
@@ -4902,7 +4902,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
           }
         }}
       >
-        <DialogContent className="flex max-h-[88vh] w-[calc(100vw-32px)] max-w-5xl flex-col overflow-hidden p-0">
+        <DialogContent className="vendor-scrollbar max-h-[88vh] w-[calc(100vw-32px)] max-w-5xl overflow-y-auto p-0">
           <DialogHeader className="shrink-0 border-b px-5 py-4">
             <DialogTitle className="flex items-center gap-2">
               <Image className="h-4 w-4" />
@@ -4915,7 +4915,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
             )}
           </DialogHeader>
 
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div>
             <div className="shrink-0 border-b bg-muted/10 p-4">
               <Input
                 autoFocus
@@ -4944,7 +4944,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
               </div>
             </div>
 
-            <div className="vendor-scrollbar h-[460px] max-h-[calc(88vh-230px)] overflow-y-auto overscroll-contain p-4 pr-3">
+            <div className="p-4">
               {proposalMediaLibraryLoading ? (
                 <div className="flex h-[420px] items-center justify-center">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
