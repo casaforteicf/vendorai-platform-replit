@@ -2495,20 +2495,6 @@ function renderStudioOrderedProposal(args: {
     return bodies;
   };
 
-  const stageCardBodies = () => {
-    if (!groups.length) return ['<p class="studio-muted">Nenhuma etapa estruturada disponível.</p>'];
-    return chunk(groups, 8).map((groupChunk) =>
-      '<div class="studio-stage-grid">' +
-      groupChunk.map((group) => {
-        const value = group.itens.reduce((sum, item) => sum + Number(item.quantidade || 0) * Number(item.valorUnitario || 0), 0);
-        const mode = resolveProposalPresentationMode(presentation, group.id);
-        return '<div class="studio-stage-card"><span>Etapa ' + esc(group.ordem) + '</span><strong>' +
-          esc(group.nome || "Entrega") + '</strong><b>' + fmtMoney(value) + '</b>' +
-          '<small>' + esc(mode === "resumo_etapa" ? "Valor macro" : mode === "preco_medio" ? "Preço por item" : "Detalhamento completo") + '</small></div>';
-      }).join("") + '</div>'
-    );
-  };
-
   const stageGalleryBodies = () => {
     const gallery = groups
       .map((group) => ({ group, url: presentation.imagensEtapas[group.id] || "" }))
@@ -2561,7 +2547,7 @@ function renderStudioOrderedProposal(args: {
   ) => {
     const displayTitle = moduleDisplayTitle(module);
     const title = partCount > 1 ? displayTitle + ' · ' + (partIndex + 1) + '/' + partCount : displayTitle;
-    const visual = options?.includeVisual === false ? "" : pageVisual(module, index);
+    const visual = options?.includeVisual === true ? pageVisual(module, index) : "";
     return '<section class="studio-page" data-studio-key="' + esc(module.key) + '">' +
       header(title) +
       '<div class="studio-page-body">' +
@@ -2586,7 +2572,6 @@ function renderStudioOrderedProposal(args: {
 
   const renderModule = (module: Record<string, unknown>, index: number): string => {
     const key = String(module.key ?? "");
-    const content = moduleText(module, "contentPrompt");
     const img = moduleImage(module);
 
     if (key === "capa") {
