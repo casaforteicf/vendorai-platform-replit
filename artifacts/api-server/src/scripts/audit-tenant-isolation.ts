@@ -164,6 +164,18 @@ for (const filePath of walk(root)) {
       relativeFile === "routes/facebook_marketplace.ts" &&
       /const\s+tenantId\s*=\s*String\(req\.params\.tenantId\)/.test(line) &&
       /if\s*\(!hasTenantAccess\(req,\s*tenantId\)\)/.test(guardWindow);
+    // Business Plan mounts the entire /tenants/:tenantId/business-plan subtree
+    // behind the shared same-tenant/Super Admin middleware before any handler is registered.
+    // Suppress only direct tenant reads in this exact router while that guard remains present.
+    const guardedBusinessPlanTenant =
+      relativeFile === "routes/business_plan.ts" &&
+      lines.some((candidate) =>
+        /router\.use\(base,\s*requireSameTenanOrSuperAdmin\(\)\)/.test(candidate),
+      ) &&
+      (
+        /req\.params\.tenantId/.test(line) ||
+        /\{[^}]*\btenantId\b[^}]*\}\s*=\s*req\.(?:params|query|body)/.test(line)
+      );
 
     if (
       line.includes("tenant-audit: reviewed") ||
@@ -178,7 +190,8 @@ for (const filePath of walk(root)) {
       guardedSocialIdentityRoleTenant ||
       guardedGenerationPackTenant ||
       guardedSiteGeneratorQaTenant ||
-      guardedFacebookMarketplaceTenant
+      guardedFacebookMarketplaceTenant ||
+      guardedBusinessPlanTenant
     ) {
       return;
     }
