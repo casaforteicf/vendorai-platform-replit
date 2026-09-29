@@ -74,10 +74,10 @@ export function RenderStudioRightPanel({
     "Sala de Estar", "Quarto Master", "Cozinha", "Banheiro", "Escritório", "Hall de Entrada",
     "Varanda", "Terraço", "Área Gourmet", "Fachada", "Área Externa", "Piscina / SPA",
   ];
-  const MELHORIA_MODES: { id: RenderStudioImprovementMode; label: string; icon: string }[] = [
-    { id: "improve", label: "Melhorar qualidade", icon: "✨" },
-    { id: "change-material", label: "Trocar material", icon: "🎨" },
-    { id: "change-lighting", label: "Ajustar iluminação", icon: "💡" },
+  const MELHORIA_MODES: { id: RenderStudioImprovementMode; label: string; hint: string; icon: string }[] = [
+    { id: "improve", label: "Refinar qualidade", hint: "Texturas, luz, reflexos e definição.", icon: "✨" },
+    { id: "change-material", label: "Trocar material", hint: "Altera somente a região escolhida.", icon: "🎨" },
+    { id: "change-lighting", label: "Ajustar iluminação", hint: "Mantém materiais e geometria.", icon: "💡" },
   ];
 
   return (
@@ -296,7 +296,7 @@ export function RenderStudioRightPanel({
                 {/* Melhoria — P2-13/14/16/17 */}
                 {step === "melhoria" && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <PanelLabel>Melhoria / Material</PanelLabel>
+                    <PanelLabel>Ajustes do render</PanelLabel>
 
                     {/* P2-14: objeto selecionado */}
                     {selections.length > 0 && (
@@ -326,8 +326,12 @@ export function RenderStudioRightPanel({
 
                         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                           {MELHORIA_MODES.map((m) => (
-                            <button key={m.id} onClick={() => setMelhoriaMode(m.id)} style={{ padding: "7px 10px", borderRadius: 6, textAlign: "left", border: `1px solid ${melhoriaMode === m.id ? D.purple : D.border}`, background: melhoriaMode === m.id ? `${D.purple}22` : D.card, cursor: "pointer", fontSize: 11, fontWeight: 700, color: melhoriaMode === m.id ? D.purpleText : D.muted, display: "flex", alignItems: "center", gap: 6 }}>
-                              <span>{m.icon}</span> {m.label}
+                            <button key={m.id} onClick={() => setMelhoriaMode(m.id)} style={{ padding: "8px 10px", borderRadius: 7, textAlign: "left", border: `1px solid ${melhoriaMode === m.id ? D.purple : D.border}`, background: melhoriaMode === m.id ? `${D.purple}14` : D.card, cursor: "pointer", display: "flex", alignItems: "flex-start", gap: 7 }}>
+                              <span style={{ fontSize: 13, lineHeight: 1.2 }}>{m.icon}</span>
+                              <span style={{ minWidth: 0 }}>
+                                <span style={{ display: "block", fontSize: 11, fontWeight: 800, color: melhoriaMode === m.id ? D.purpleText : D.text }}>{m.label}</span>
+                                <span style={{ display: "block", marginTop: 2, fontSize: 9, lineHeight: 1.35, color: D.muted }}>{m.hint}</span>
+                              </span>
                             </button>
                           ))}
                         </div>
@@ -375,9 +379,9 @@ export function RenderStudioRightPanel({
                           }
                           onClick={onApplyMelhoria}
                         >
-                          {loading ? "Aplicando…" : melhoriaMode === "improve" ? "✦ Gerar versão em alta qualidade" : "✦ Aplicar melhoria"}
+                          {loading ? "Aplicando…" : melhoriaMode === "improve" ? "✦ Gerar versão refinada" : melhoriaMode === "change-material" ? "✦ Aplicar troca de material" : "✦ Aplicar nova iluminação"}
                         </DkBtn>
-                        {!loading && <DkBtn variant="ghost" small onClick={onNextStep}>Pular → Ver versões</DkBtn>}
+                        {!loading && <DkBtn variant="ghost" small onClick={onNextStep}>Ver versões →</DkBtn>}
                       </>
                     )}
                   </div>
