@@ -60,7 +60,9 @@ function parseCost(value: PersistentRenderVersion["costEstimateUsd"]): number | 
 export function mapPersistentVersionToStudio(version: PersistentRenderVersion): RenderStudioVersion | null {
   if (!version.fileAvailable || !(version.displayUrl || version.resultImageUrl) || version.status !== "concluido") return null;
 
-  const approved = Boolean(version.approvedAt || version.approvedBy);
+  const legacyApproved = !version.approvedAt && !version.approvedBy
+    && (version.versionTag === "aprovado" || version.operationType === "approved");
+  const approved = Boolean(version.approvedAt || version.approvedBy || legacyApproved);
   const operationType = normalizeOperationType(version.operationType, version.parentRenderId);
   const selectionLabel = version.selectionMetadata.find(selection => Boolean(selection.label?.trim()))?.label;
 
@@ -74,7 +76,7 @@ export function mapPersistentVersionToStudio(version: PersistentRenderVersion): 
     selectionLabel: selectionLabel || undefined,
     materialId: version.materialId || undefined,
     materialName: version.materialName || undefined,
-    approvedBy: version.approvedBy || undefined,
+    approvedBy: version.approvedBy || (legacyApproved ? "usuário autenticado" : undefined),
     approvedAt: version.approvedAt || undefined,
     approvalNote: version.approvalNote || undefined,
     costEstimateUsd: parseCost(version.costEstimateUsd),
