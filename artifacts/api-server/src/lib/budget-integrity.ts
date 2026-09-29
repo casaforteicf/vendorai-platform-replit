@@ -341,6 +341,60 @@ export function auditProposalBudget(input: AuditInput): BudgetIntegrityReport {
     });
   }
 
+  if (!presentation.descricaoProjeto?.trim()) {
+    issues.push({
+      code: "MISSING_PROJECT_DESCRIPTION",
+      severity: "warning",
+      field: "apresentacao.descricaoProjeto",
+      message: "O entendimento do projeto ainda não foi descrito.",
+    });
+  }
+
+  if (!Array.isArray(presentation.premissasObra) || presentation.premissasObra.length === 0) {
+    issues.push({
+      code: "MISSING_PROJECT_ASSUMPTIONS",
+      severity: "warning",
+      field: "apresentacao.premissasObra",
+      message: "Nenhuma premissa técnica da obra foi registrada.",
+    });
+  }
+
+  if (!presentation.memorialDescritivo?.trim()) {
+    issues.push({
+      code: "MISSING_MEMORIAL",
+      severity: "warning",
+      field: "apresentacao.memorialDescritivo",
+      message: "Memorial descritivo não informado.",
+    });
+  }
+
+  if (!presentation.politicaReajuste?.trim()) {
+    issues.push({
+      code: "MISSING_ADJUSTMENT_POLICY",
+      severity: "warning",
+      field: "apresentacao.politicaReajuste",
+      message: "Política de reajuste não informada.",
+    });
+  }
+
+  if (!presentation.garantiasContratuais?.trim()) {
+    issues.push({
+      code: "MISSING_WARRANTY",
+      severity: "warning",
+      field: "apresentacao.garantiasContratuais",
+      message: "Garantias e assistência pós-obra não informadas.",
+    });
+  }
+
+  if (!presentation.condicoesPagamentoDetalhadas?.trim()) {
+    issues.push({
+      code: "MISSING_PAYMENT_MILESTONES",
+      severity: "warning",
+      field: "apresentacao.condicoesPagamentoDetalhadas",
+      message: "Os marcos e regras de pagamento ainda não foram detalhados.",
+    });
+  }
+
   if (!input.prazoEntrega) {
     issues.push({
       code: "MISSING_DEADLINE",
