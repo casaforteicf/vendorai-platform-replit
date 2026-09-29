@@ -115,9 +115,11 @@ export default function Projetos() {
 
   // Cliente / lead existente
   const [leadSearch, setLeadSearch] = useState("");
+  const [allLeads, setAllLeads] = useState<Lead[]>([]);
   const [leadResults, setLeadResults] = useState<Lead[]>([]);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [leadsLoading, setLeadsLoading] = useState(false);
+  const [leadPickerOpen, setLeadPickerOpen] = useState(false);
 
   // Cadastro / edição rápida de lead sem sair de Projetos
   const [leadDialogOpen, setLeadDialogOpen] = useState(false);
@@ -243,43 +245,79 @@ export default function Projetos() {
   useEffect(() => { load(); }, [tenantId, filterStatus, filterBusca]);
 
   useEffect(() => {
-    if (!dialogOpen || !tenantId || selectedLead || leadSearch.trim().length < 2) {
+    if (!dialogOpen || !tenantId) {
+      setAllLeads([]);
       setLeadResults([]);
-      setLeadsLoading(false);
+      setLeadPickerOpen(false);
       return;
     }
 
     const controller = new AbortController();
-    const timer = window.setTimeout(async () => {
-      setLeadsLoading(true);
-      try {
-        const res = await fetch(
-          `/api/tenants/${tenantId}/leads?limit=10&search=${encodeURIComponent(leadSearch.trim())}`,
-          {
-            headers: { Authorization: `Bearer ${getToken()}` },
-            signal: controller.signal,
-          },
-        );
-        if (!res.ok) throw new Error("Erro ao buscar leads");
-        const data = await res.json();
-        setLeadResults(Array.isArray(data) ? data : Array.isArray(data?.leads) ? data.leads : []);
-      } catch (err: any) {
-        if (err?.name !== "AbortError") setLeadResults([]);
-      } finally {
-        if (!controller.signal.aborted) setLeadsLoading(false);
-      }
-    }, 250);
+    setLeadsLoading(true);
 
-    return () => {
-      window.clearTimeout(timer);
-      controller.abort();
-    };
-  }, [dialogOpen, tenantId, leadSearch, selectedLead]);
+    fetch(`/api/tenants/${tenantId}/leads?incluirNaoLeads=incluir`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+      signal: controller.signal,
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Erro ao carregar leads");
+        const data = await res.json();
+        return Array.isArray(data) ? data : Array.isArray(data?.leads) ? data.leads : [];
+      })
+      .then((items: Lead[]) => {
+        const sorted = [...items].sort((a, b) =>
+          (a.nome ?? "").localeCompare(b.nome ?? "", "pt-BR", { sensitivity: "base" }),
+        );
+        setAllLeads(sorted);
+        setLeadResults(sorted);
+      })
+      .catch((err: any) => {
+        if (err?.name !== "AbortError") {
+          setAllLeads([]);
+          setLeadResults([]);
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLeadsLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [dialogOpen, tenantId]);
+
+  useEffect(() => {
+    if (selectedLead) {
+      setLeadResults([]);
+      return;
+    }
+
+    const q = leadSearch.trim().toLocaleLowerCase("pt-BR");
+    if (!q) {
+      setLeadResults(allLeads);
+      return;
+    }
+
+    const onlyDigits = q.replace(/\D/g, "");
+    setLeadResults(
+      allLeads.filter((lead) => {
+        const nome = (lead.nome ?? "").toLocaleLowerCase("pt-BR");
+        const email = (lead.email ?? "").toLocaleLowerCase("pt-BR");
+        const telefone = lead.telefone ?? "";
+        const telefoneDigits = telefone.replace(/\D/g, "");
+        return (
+          nome.includes(q) ||
+          email.includes(q) ||
+          telefone.toLocaleLowerCase("pt-BR").includes(q) ||
+          (onlyDigits.length > 0 && telefoneDigits.includes(onlyDigits))
+        );
+      }),
+    );
+  }, [allLeads, leadSearch, selectedLead]);
 
   function selectLead(lead: Lead) {
     setSelectedLead(lead);
     setLeadSearch("");
     setLeadResults([]);
+    setLeadPickerOpen(false);
     setForm((f) => ({
       ...f,
       clienteNome: lead.nome ?? "",
@@ -291,7 +329,8 @@ export default function Projetos() {
   function clearLead() {
     setSelectedLead(null);
     setLeadSearch("");
-    setLeadResults([]);
+    setLeadResults(allLeads);
+    setLeadPickerOpen(true);
     setForm((f) => ({ ...f, clienteNome: "", clienteEmail: "", clienteTelefone: "" }));
   }
 
@@ -300,6 +339,7 @@ export default function Projetos() {
     setSelectedLead(null);
     setLeadSearch("");
     setLeadResults([]);
+    setLeadPickerOpen(false);
   }
 
   async function handleCreate(e: React.FormEvent) {
@@ -420,17 +460,27 @@ export default function Projetos() {
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
                         value={leadSearch}
-                        onChange={(e) => setLeadSearch(e.target.value)}
+                        onChange={(e) => {
+                          setLeadSearch(e.target.value);
+                          setLeadPickerOpen(true);
+                        }}
+                        onFocus={() => setLeadPickerOpen(true)}
                         placeholder="Buscar por nome, telefone ou e-mail..."
                         className="pl-9 pr-9"
-                        autoComplete="off"
+                        autoComplete="new-password"
+                        name="project-lead-search"
                       />
                       {leadsLoading && (
                         <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
                       )}
 
-                      {leadSearch.trim().length >= 2 && !leadsLoading && (
-                        <div className="absolute z-50 left-0 right-0 top-full mt-1 rounded-md border bg-popover shadow-lg max-h-56 overflow-y-auto">
+                      {leadPickerOpen && !leadsLoading && (
+                        <div className="absolute z-50 left-0 right-0 top-full mt-1 rounded-md border bg-popover shadow-lg max-h-72 overflow-y-auto">
+                          <div className="sticky top-0 z-10 border-b bg-popover px-3 py-2 text-xs text-muted-foreground">
+                            {leadSearch.trim()
+                              ? `${leadResults.length} lead(s) encontrado(s)`
+                              : `Todos os leads cadastrados (${leadResults.length})`}
+                          </div>
                           {leadResults.length > 0 ? (
                             leadResults.map((lead) => (
                               <button
@@ -448,7 +498,7 @@ export default function Projetos() {
                           ) : (
                             <div className="px-3 py-3 text-sm">
                               <p className="font-medium">Nenhum lead encontrado</p>
-                              <p className="text-xs text-muted-foreground mt-1 mb-2">Você pode cadastrar o cliente sem sair desta tela.</p>
+                              <p className="text-xs text-muted-foreground mt-1 mb-2">Busque por nome, telefone ou e-mail, ou cadastre um novo lead.</p>
                               <Button type="button" size="sm" variant="outline" className="w-full" onClick={openCreateLead}>
                                 <UserPlus className="h-4 w-4 mr-2" />
                                 Cadastrar novo lead
