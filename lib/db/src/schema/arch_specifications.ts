@@ -38,7 +38,19 @@ export const archSpecItemsTable = pgTable("arch_spec_items", {
   overrideNome:       text("override_nome"),
   overrideFornecedor: text("override_fornecedor"),
   overridePreco:      numeric("override_preco", { precision: 10, scale: 2 }),
-  // Dimensões do item — preenchidas manualmente (não estimadas por IA).
+  // Ficha técnica do elemento/mobiliário. A imagem pode identificar o item,
+  // mas medidas só são tratadas como confirmadas quando vêm do projeto,
+  // catálogo/fabricante ou revisão explícita do usuário.
+  codigo:             text("codigo"),
+  modelo:             text("modelo"),
+  fabricante:         text("fabricante"),
+  sku:                text("sku"),
+  configuracao:       text("configuracao"),
+  material:           text("material"),
+  acabamento:         text("acabamento"),
+  cor:                text("cor"),
+  origemMedida:       text("origem_medida").default("pendente"), // projeto | catalogo | confirmado | estimativa_ia | pendente
+  unidadeQuantificacao:text("unidade_quantificacao").default("un"),
   larguraCm:          numeric("largura_cm", { precision: 8, scale: 1 }),
   alturaCm:           numeric("altura_cm", { precision: 8, scale: 1 }),
   profundidadeCm:     numeric("profundidade_cm", { precision: 8, scale: 1 }),
