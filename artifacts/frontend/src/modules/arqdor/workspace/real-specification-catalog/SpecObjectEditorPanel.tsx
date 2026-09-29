@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from "react";
 import type { SpecObject, SpecObjectPayload } from "./specCatalogTypes";
 import { money, statusClass, statusLabel } from "./specCatalogUtils";
+import { CatalogoModal } from "@/pages/Propostas";
+import { useAuth } from "@/contexts/AuthContext";
+import { ordenarArvoreCategorias } from "@/lib/categoriaTree";
+import { useListCategoriasProduto, getListCategoriasProdutoQueryKey } from "@workspace/api-client-react";
 
 export function SpecObjectEditorPanel({
   projectId,
@@ -21,7 +25,18 @@ export function SpecObjectEditorPanel({
   onSave: (id: string, payload: Partial<SpecObjectPayload>) => Promise<unknown>;
   onSendToBudget: (object: SpecObject) => Promise<unknown>;
 }) {
+  const { user } = useAuth();
+  const tenantId = user?.tenantId ?? "";
+  const [catalogEditorOpen, setCatalogEditorOpen] = useState(false);
   const [form, setForm] = useState<SpecObjectPayload>(emptyPayload(projectId, renderId));
+  const { data: categoriasProduto = [] } = useListCategoriasProduto(tenantId, {
+    query: {
+      queryKey: getListCategoriasProdutoQueryKey(tenantId),
+      enabled: !!tenantId,
+      staleTime: 300_000,
+    },
+  });
+  const categoriasOrdenadas = ordenarArvoreCategorias(categoriasProduto);
 
   useEffect(() => {
     if (!selectedObject) {
@@ -89,13 +104,36 @@ export function SpecObjectEditorPanel({
 
       <div className="mt-5 grid gap-3 md:grid-cols-2">
         <Field label="Nome" value={form.name} onChange={(value) => set("name", value)} />
-        <Field label="Categoria" value={form.category || ""} onChange={(value) => set("category", value)} />
+        <label className="block">
+          <span className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-muted)]">Categoria</span>
+          <select
+            value={form.category || ""}
+            onChange={(event) => set("category", event.target.value)}
+            className="mt-2 w-full rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
+          >
+            <option value="">Selecione...</option>
+            {categoriasOrdenadas.map(({ categoria, profundidade }) => (
+              <option key={categoria.id} value={categoria.nome}>
+                {"— ".repeat(profundidade)}{categoria.nome}
+              </option>
+            ))}
+          </select>
+        </label>
         <Field label="Região no render" value={form.region || ""} onChange={(value) => set("region", value)} />
         <Field label="Unidade" value={form.unit} onChange={(value) => set("unit", value)} />
         <NumberField label="Quantidade" value={form.quantity} onChange={(value) => set("quantity", value)} />
         <NumberField label="Valor material" value={form.materialValue} onChange={(value) => set("materialValue", value)} />
         <NumberField label="Valor mão de obra" value={form.laborValue} onChange={(value) => set("laborValue", value)} />
-        <Field label="Produto" value={form.productName || ""} onChange={(value) => set("productName", value)} />
+        <div className="space-y-2">
+          <Field label="Produto" value={form.productName || ""} onChange={(value) => set("productName", value)} />
+          <button
+            type="button"
+            onClick={() => setCatalogEditorOpen(true)}
+            className="text-xs font-semibold text-[var(--arq-accent)] hover:underline"
+          >
+            {form.catalogProductId ? "Editar cadastro mestre" : "Cadastrar no catálogo mestre"}
+          </button>
+        </div>
         <Field label="Material" value={form.materialName || ""} onChange={(value) => set("materialName", value)} />
         <Field label="Fabricante" value={form.manufacturerName || ""} onChange={(value) => set("manufacturerName", value)} />
         <Field label="Fornecedor" value={form.supplierName || ""} onChange={(value) => set("supplierName", value)} />
@@ -136,6 +174,32 @@ export function SpecObjectEditorPanel({
           {sendingToBudget ? "Enviando..." : "Enviar para orçamento"}
         </button>
       </div>
+      {tenantId ? (
+        <CatalogoModal
+          open={catalogEditorOpen}
+          onClose={() => setCatalogEditorOpen(false)}
+          tenantId={tenantId}
+          initialProductId={form.catalogProductId || null}
+          initialCreateDraft={
+            form.catalogProductId
+              ? null
+              : {
+                  nome: form.productName || form.name,
+                  unidade: form.unit,
+                  fornecedor: form.supplierName || "",
+                  precoBase: Number(form.materialValue || 0),
+                }
+          }
+          onProductSaved={(product) => {
+            set("catalogProductId", product.id);
+            set("productName", product.nome);
+            set("unit", product.unidade || form.unit);
+            if ((product as any).fornecedor) set("supplierName", (product as any).fornecedor);
+            if ((product as any).categoriaNome) set("category", (product as any).categoriaNome);
+            setCatalogEditorOpen(false);
+          }}
+        />
+      ) : null}
     </section>
   );
 }
