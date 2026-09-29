@@ -505,7 +505,9 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
   const [generatingProposalBuilderTemplate, setGeneratingProposalBuilderTemplate] = useState(false);
   const [proposalBuilderAIBrief, setProposalBuilderAIBrief] = useState("");
   const [proposalBuilderEditorOpen, setProposalBuilderEditorOpen] = useState(false);
+  const [proposalBuilderEditorTemplateId, setProposalBuilderEditorTemplateId] = useState<string | null>(null);
   const [proposalBuilderEditorSaving, setProposalBuilderEditorSaving] = useState(false);
+  const [proposalBuilderTemplateAction, setProposalBuilderTemplateAction] = useState<"duplicate" | "default" | null>(null);
   const [proposalBuilderPreviewDevice, setProposalBuilderPreviewDevice] = useState<"desktop" | "mobile">("desktop");
   const [proposalBuilderPreviewMode, setProposalBuilderPreviewMode] = useState<"template" | "budget">("template");
   const [proposalBuilderSelectedModuleKey, setProposalBuilderSelectedModuleKey] = useState<string | null>(null);
@@ -1651,6 +1653,10 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
 
   function resolveProposalBuilderTemplateForEditor() {
     if (!proposalBuilderTemplates.length) return null;
+    if (proposalBuilderEditorTemplateId) {
+      const editorTarget = proposalBuilderTemplates.find((item) => item.id === proposalBuilderEditorTemplateId);
+      if (editorTarget) return editorTarget;
+    }
     if (selectedProposalBuilderTemplateId !== "__auto__") {
       return proposalBuilderTemplates.find((item) => item.id === selectedProposalBuilderTemplateId) ?? null;
     }
@@ -1661,18 +1667,11 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
     return proposalBuilderTemplates.find((item) => item.isDefault) ?? proposalBuilderTemplates[0] ?? null;
   }
 
-  function openProposalBuilderEditor() {
-    const template = resolveProposalBuilderTemplateForEditor();
-    if (!template) {
-      toast({
-        title: "Crie primeiro um modelo com IA",
-        description: "Depois você poderá ligar, desligar e reorganizar os módulos visualmente.",
-      });
-      return;
-    }
+  function loadProposalBuilderEditor(template: ProposalBuilderTemplate) {
     const modules = [...(template.modules ?? [])]
       .sort((a, b) => Number(a.order ?? 999) - Number(b.order ?? 999))
       .map((item, index) => ({ ...item, order: index + 1 }));
+    setProposalBuilderEditorTemplateId(template.id);
     setProposalBuilderEditorName(template.name);
     setProposalBuilderEditorPreset(template.visualStyle?.preset ?? "premium_arquitetonico");
     setProposalBuilderHeroVariant(template.visualStyle?.heroVariant ?? "fotografico");
@@ -1688,6 +1687,18 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
     setProposalBuilderEditorModules(modules);
     setProposalBuilderDraggedIndex(null);
     setProposalBuilderSelectedModuleKey(modules.find((item) => item.enabled !== false)?.key ?? null);
+  }
+
+  function openProposalBuilderEditor() {
+    const template = resolveProposalBuilderTemplateForEditor();
+    if (!template) {
+      toast({
+        title: "Crie primeiro um modelo com IA",
+        description: "Depois você poderá ligar, desligar e reorganizar os módulos visualmente.",
+      });
+      return;
+    }
+    loadProposalBuilderEditor(template);
     setProposalBuilderPreviewMode(selectedOrcamentoId !== "__none__" ? "budget" : "template");
     setProposalBuilderEditorOpen(true);
   }
@@ -2012,7 +2023,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
           headers,
           body: JSON.stringify({
             name: proposalBuilderEditorName.trim() || template.name,
-            isDefault: template.isDefault !== false,
+            isDefault: Boolean(template.isDefault),
             visualStyle: {
               preset: proposalBuilderEditorPreset,
               heroVariant: proposalBuilderHeroVariant,
@@ -2052,6 +2063,64 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
       });
     } finally {
       setProposalBuilderEditorSaving(false);
+    }
+  }
+
+  async function duplicateProposalBuilderTemplate() {
+    const template = resolveProposalBuilderTemplateForEditor();
+    if (!template || !tenantId || !token) return;
+    setProposalBuilderTemplateAction("duplicate");
+    try {
+      const response = await fetch(api(`/api/tenants/${tenantId}/proposal-builder/templates/${template.id}/duplicate`), {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ name: `${template.name} · Cópia` }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || "Não foi possível duplicar o modelo.");
+      if (body.template) loadProposalBuilderEditor(body.template as ProposalBuilderTemplate);
+      await queryClient.invalidateQueries({ queryKey: getGetBusinessProfileByTenantQueryKey(tenantId) });
+      toast({
+        title: "Modelo duplicado",
+        description: "A cópia foi criada e está aberta para edição. O modelo padrão não foi alterado.",
+      });
+    } catch (error) {
+      toast({
+        title: "Erro ao duplicar modelo",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setProposalBuilderTemplateAction(null);
+    }
+  }
+
+  async function setProposalBuilderTemplateAsDefault() {
+    const template = resolveProposalBuilderTemplateForEditor();
+    if (!template || !tenantId || !token || template.isDefault) return;
+    setProposalBuilderTemplateAction("default");
+    try {
+      const response = await fetch(api(`/api/tenants/${tenantId}/proposal-builder/templates/${template.id}/set-default`), {
+        method: "POST",
+        headers,
+        body: JSON.stringify({}),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || "Não foi possível definir o modelo padrão.");
+      setSelectedProposalBuilderTemplateId("__auto__");
+      await queryClient.invalidateQueries({ queryKey: getGetBusinessProfileByTenantQueryKey(tenantId) });
+      toast({
+        title: "Modelo padrão atualizado",
+        description: `${template.name} passa a ser usado automaticamente nas próximas propostas.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Erro ao definir modelo padrão",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setProposalBuilderTemplateAction(null);
     }
   }
 
@@ -3816,7 +3885,61 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
 
             <div className="grid min-h-0 flex-1 lg:grid-cols-[280px_minmax(420px,1fr)_330px]">
               <aside className="min-h-0 overflow-y-auto border-r bg-muted/10 p-3">
-                <div className="space-y-1.5">
+                <div className="rounded-xl border bg-background p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-semibold">Modelo em edição</p>
+                      <p className="text-[10px] text-muted-foreground">Escolha qualquer modelo da empresa para editar sem alterar a proposta atual.</p>
+                    </div>
+                    {resolveProposalBuilderTemplateForEditor()?.isDefault && (
+                      <Badge variant="secondary" className="text-[10px]">Padrão</Badge>
+                    )}
+                  </div>
+                  <Select
+                    value={proposalBuilderEditorTemplateId || resolveProposalBuilderTemplateForEditor()?.id || ""}
+                    onValueChange={(templateId) => {
+                      const template = proposalBuilderTemplates.find((item) => item.id === templateId);
+                      if (template) loadProposalBuilderEditor(template);
+                    }}
+                  >
+                    <SelectTrigger className="mt-2 h-9 w-full text-xs [&>span]:truncate">
+                      <SelectValue placeholder="Escolha o modelo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {proposalBuilderTemplates.map((item) => (
+                        <SelectItem key={item.id} value={item.id}>
+                          {item.name}{item.isDefault ? " · padrão" : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 gap-1.5 text-[11px]"
+                      disabled={proposalBuilderTemplateAction !== null}
+                      onClick={() => void duplicateProposalBuilderTemplate()}
+                    >
+                      {proposalBuilderTemplateAction === "duplicate" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                      Duplicar
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 gap-1.5 text-[11px]"
+                      disabled={proposalBuilderTemplateAction !== null || Boolean(resolveProposalBuilderTemplateForEditor()?.isDefault)}
+                      onClick={() => void setProposalBuilderTemplateAsDefault()}
+                    >
+                      {proposalBuilderTemplateAction === "default" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckSquare className="h-3.5 w-3.5" />}
+                      {resolveProposalBuilderTemplateForEditor()?.isDefault ? "Já é padrão" : "Definir padrão"}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="mt-3 space-y-1.5">
                   <label className="text-xs font-medium text-muted-foreground">Nome do modelo</label>
                   <Input
                     value={proposalBuilderEditorName}
