@@ -768,7 +768,7 @@ function buildProposalScheduleRows<T extends PresentableProposalItem>(
     0,
   );
 
-  return rawRows.map((row) => {
+  const resolvedRows = rawRows.map((row) => {
     const automaticPhysical = row.configuredPhysicalPercent !== null
       ? row.configuredPhysicalPercent
       : missingPhysical.length === 0
@@ -778,7 +778,7 @@ function buildProposalScheduleRows<T extends PresentableProposalItem>(
           : totalDuration > 0 && row.duration
             ? (Number(row.duration) / totalDuration) * 100
             : remainingPhysical / missingPhysical.length;
-    const physicalPercent = Math.max(0, Math.min(100, automaticPhysical));
+    const physicalPercent = Math.max(0, automaticPhysical);
 
     const phaseDateMap = new Map<string, { start: Date | null; end: Date | null }>();
     const phases = (row.config.fases ?? []).map((phase: ProposalStagePhase, index: number, all: ProposalStagePhase[]) => {
@@ -821,6 +821,27 @@ function buildProposalScheduleRows<T extends PresentableProposalItem>(
       phases,
     };
   });
+
+  const rawPhysicalTotal = resolvedRows.reduce((sum, row) => sum + Number(row.physicalPercent || 0), 0);
+  if (resolvedRows.length && rawPhysicalTotal > 0) {
+    let accumulated = 0;
+    return resolvedRows.map((row, index) => {
+      const normalized = index === resolvedRows.length - 1
+        ? Math.max(0, 100 - accumulated)
+        : (Number(row.physicalPercent || 0) / rawPhysicalTotal) * 100;
+      accumulated += normalized;
+      const phaseTotal = (row.phases ?? []).reduce((sum: number, phase: ProposalScheduleRow) => sum + Number(phase.physicalPercent || 0), 0);
+      const normalizedPhases = phaseTotal > 0
+        ? (row.phases ?? []).map((phase: ProposalScheduleRow) => ({
+            ...phase,
+            physicalPercent: normalized * (Number(phase.physicalPercent || 0) / phaseTotal),
+          }))
+        : row.phases;
+      return { ...row, physicalPercent: normalized, phases: normalizedPhases };
+    });
+  }
+
+  return resolvedRows;
 }
 
 type ProposalScheduleRow = {
@@ -1304,7 +1325,7 @@ function renderConstructionProposalLayout(args: {
         <div class="phase-block">
           <h2 class="scope-title">Fases de execução e medição</h2>
           <table class="phase-table">
-            <thead><tr><th>Fase</th><th>Início</th><th>Término</th><th class="r">Peso físico</th><th class="r">Valor</th></tr></thead>
+            <thead><tr><th>Fase</th><th>Início</th><th>Término</th><th class="r">% da execução</th><th class="r">Valor</th></tr></thead>
             <tbody>${row.phases.map((phase) => `
               <tr>
                 <td><strong>${escapeProposalText(phase.nome.replace(`${row.nome} · `, ""))}</strong></td>
@@ -2113,7 +2134,7 @@ ${(builderModuleEnabled("cronograma") || builderModuleEnabled("fisico_financeiro
   ${builderModuleImage("cronograma") ? `<img class="section-model-image" src="${escapeProposalText(builderModuleImage("cronograma")!)}" alt="" />` : ""}
   ${builderModuleEnabled("cronograma") ? `
   <table class="schedule-demo">
-    <thead><tr><th>Etapa</th><th>Início</th><th>Duração</th><th>Término</th><th class="r">Peso físico</th><th class="r">Valor</th></tr></thead>
+    <thead><tr><th>Etapa</th><th>Início</th><th>Duração</th><th>Término</th><th class="r">% da execução</th><th class="r">Valor</th></tr></thead>
     <tbody>${executionRows}</tbody>
   </table>` : ""}
   ${builderModuleEnabled("fisico_financeiro") ? `
@@ -2611,7 +2632,7 @@ function renderStudioOrderedProposal(args: {
     if (key === "diferenciais") {
       const manual = moduleManualContent(module);
       const differentialCopy = manual || String(offerInfo.text || "").trim();
-      return genericPage(module, index, pageVisual(module, index) +
+      return genericPage(module, index,
         (differentialCopy ? '<p class="studio-copy">' + esc(differentialCopy) + '</p>' : '') +
         benefitsHtml(benefits));
     }
@@ -2637,9 +2658,9 @@ function renderStudioOrderedProposal(args: {
       return genericPage(module, index, pageVisual(module, index) + metrics + (manual ? '<p class="studio-copy">' + esc(manual) + '</p>' : ''));
     }
 
-    if (key === "escopo") return genericPages(module, index, scopePageBodies(), { includeVisual: true });
+    if (key === "escopo") return genericPages(module, index, scopePageBodies(), { includeVisual: false });
     if (key === "etapas_orcamento") return genericPages(module, index, financialPageBodies(), { includeVisual: false });
-    if (key === "imagem_por_etapa") return genericPages(module, index, stageGalleryBodies(), { includeVisual: false });
+    if (key === "imagem_por_etapa") return "";
     if (key === "tabela_itens") return genericPages(module, index, financialPageBodies(), { includeVisual: false });
     if (key === "cronograma") {
       if (!presentation.mostrarCronogramaExecucao) return "";
@@ -2671,6 +2692,7 @@ function renderStudioOrderedProposal(args: {
     }
 
     if (key === "validade_inicio") {
+      if (moduleByKey("aceite")) return "";
       const values = [
         ['Validade', orcamento?.validadeAte ? proposalFormatDate(orcamento.validadeAte) : 'A definir'],
         ['Início previsto', presentation.previsaoInicio ? proposalFormatDate(presentation.previsaoInicio) : 'A definir'],
@@ -2681,10 +2703,17 @@ function renderStudioOrderedProposal(args: {
     }
 
     if (key === "aceite") {
+      const acceptanceValues = [
+        ['Validade da proposta', orcamento?.validadeAte ? proposalFormatDate(orcamento.validadeAte) : 'A definir'],
+        ['Início previsto', presentation.previsaoInicio ? proposalFormatDate(presentation.previsaoInicio) : 'A definir'],
+      ];
       return genericPage(module, index,
-        '<div class="studio-accept"><h2>Próximos passos</h2><p>' +
-        esc(moduleManualContent(module) || "Revise as condições desta proposta. Após o aceite, esta versão passa a ser a referência comercial da contratação.") +
-        '</p><div class="studio-signatures"><div>Nome / assinatura</div><div>Data</div></div></div>');
+        '<div class="studio-conditions">' +
+          acceptanceValues.map(([label, value]) => '<div><span>' + esc(label) + '</span><strong>' + esc(value) + '</strong></div>').join("") +
+        '</div>' +
+        '<div class="studio-accept"><h2>Aceite digital</h2><p>' +
+        esc(moduleManualContent(module) || "O aceite desta proposta é feito digitalmente pelo botão Aceitar proposta no link enviado ao cliente. Os dados confirmados ficam vinculados ao lead e iniciam o fluxo de contratação.") +
+        '</p><div class="studio-digital-accept-note"><strong>Sem assinatura física nesta página.</strong><span>O registro eletrônico do aceite fica associado à proposta, ao cliente e ao histórico comercial.</span></div></div>');
     }
 
     if (key === "portal_cliente") {
@@ -2752,7 +2781,7 @@ function renderStudioOrderedProposal(args: {
     '.studio-gallery{display:grid;grid-template-columns:1fr 1fr;gap:4mm;margin-top:4mm}.studio-gallery figure{margin:0}.studio-gallery img{width:100%;height:55mm;object-fit:cover;border-radius:2.5mm}.studio-gallery figcaption{font-size:6.5pt;color:#686176;margin-top:1.5mm}' +
     '.studio-conditions{border-top:2px solid ' + theme.navyDeep + ';margin-top:5mm}.studio-conditions>div{display:grid;grid-template-columns:55mm 1fr;gap:5mm;padding:4.5mm 0;border-bottom:1px solid ' + theme.concreteLine + '}.studio-conditions strong{font-size:9pt;color:' + theme.navyDeep + '}' +
     '.studio-callout{margin-top:8mm;padding:7mm;border-left:2mm solid ' + theme.accent + ';background:' + theme.cream2 + ';border-radius:2mm}.studio-callout strong{font-size:14pt}.studio-callout p{font-size:9pt;line-height:1.6;color:#514a61}' +
-    '.studio-accept{margin-top:10mm}.studio-accept h2{font-size:18pt}.studio-accept p{font-size:9pt;line-height:1.6;max-width:165mm}.studio-signatures{display:grid;grid-template-columns:1fr 55mm;gap:12mm;margin-top:24mm}.studio-signatures>div{border-top:1px solid #999;padding-top:2mm;font-size:7pt;color:#777}' +
+    '.studio-accept{margin-top:10mm}.studio-accept h2{font-size:18pt}.studio-accept p{font-size:9pt;line-height:1.6;max-width:165mm}.studio-digital-accept-note{margin-top:8mm;padding:5mm;border-radius:2mm;background:' + theme.cream2 + ';border-left:1.5mm solid ' + theme.accent + '}.studio-digital-accept-note strong,.studio-digital-accept-note span{display:block}.studio-digital-accept-note strong{font-size:9pt;color:' + theme.navyDeep + '}.studio-digital-accept-note span{font-size:7.5pt;line-height:1.45;color:#655e72;margin-top:1.5mm}' +
     '.studio-faq{display:grid;gap:3mm;margin-top:5mm}.studio-faq>div{border:1px solid ' + theme.concreteLine + ';border-radius:2mm;padding:4mm}.studio-faq strong{font-size:9pt}.studio-faq p{font-size:7.5pt;color:#5d566d;line-height:1.45}' +
     '.studio-cover{padding:0;color:#fff;background:#111}.studio-cover-bg{position:absolute;inset:0;width:100%;height:100%}.studio-cover-overlay{position:absolute;inset:0}.studio-cover-content{position:relative;z-index:2;height:100%;padding:16mm 15mm 14mm;display:flex;flex-direction:column}.studio-cover-top{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,.35);padding-bottom:5mm;font-size:7pt;letter-spacing:.1em}.studio-cover-top img{height:10mm;max-width:55mm;object-fit:contain;background:#fff;border-radius:2mm;padding:1.5mm}.studio-cover-main{margin-top:24mm;max-width:155mm}.studio-cover-main h1{font-size:31pt;color:#fff;margin:3mm 0 4mm}.studio-cover-main p{font-size:10.5pt;line-height:1.55;color:rgba(255,255,255,.9);max-width:125mm}.studio-cover .studio-kicker{color:#fff;opacity:.7}.studio-cover .studio-benefits{max-width:145mm}.studio-cover .studio-benefit{border-color:rgba(255,255,255,.3);background:rgba(0,0,0,.23)}.studio-cover .studio-benefit strong{color:#fff}.studio-cover-bottom{margin-top:auto;border-left:2mm solid ' + theme.accent + ';background:rgba(0,0,0,.32);padding:5mm 6mm}.studio-cover-bottom>strong{font-size:9pt}.studio-cover-summary{display:grid;grid-template-columns:repeat(2,1fr);gap:3mm 7mm;margin-top:4mm}.studio-cover-summary span{display:block;font-size:5.8pt;text-transform:uppercase;letter-spacing:.07em;opacity:.7}.studio-cover-summary strong{font-size:10pt}' +
     '.proposal-preset-minimalista .studio-benefit,.proposal-preset-minimalista .studio-stage-card{box-shadow:none}.proposal-preset-catalogo_comercial .studio-page h1{font-size:22pt}.proposal-preset-tecnico .studio-table{font-size:6.8pt}' +
@@ -3608,7 +3637,7 @@ ${orcamento && (builderModuleEnabled("etapas_orcamento") || builderModuleEnabled
     <div class="commercial-section">
       <div class="commercial-title">Cronograma físico-financeiro</div>
       <table class="schedule-table">
-        <thead><tr><th>Etapa</th><th>Período</th><th class="r">Peso físico</th><th class="r">% financeiro</th><th class="r">Valor</th><th>Marco / pagamento</th></tr></thead>
+        <thead><tr><th>Etapa</th><th>Período</th><th class="r">% da execução</th><th class="r">% financeiro</th><th class="r">Valor</th><th>Marco / pagamento</th></tr></thead>
         <tbody>${physicalFinancialRows}</tbody>
       </table>
       <div class="commercial-title" style="margin-top:4mm;">Modelo por colunas · cobrança mensal</div>
@@ -4248,7 +4277,7 @@ ${scheduleRows.length && (presentation.mostrarCronogramaExecucao || presentation
     <div class="commercial-section">
       <div class="commercial-title">Cronograma físico-financeiro</div>
       <table class="schedule-table">
-        <thead><tr><th>Etapa</th><th>Período</th><th class="r">Peso físico</th><th class="r">% financeiro</th><th class="r">Valor</th><th>Marco / pagamento</th></tr></thead>
+        <thead><tr><th>Etapa</th><th>Período</th><th class="r">% da execução</th><th class="r">% financeiro</th><th class="r">Valor</th><th>Marco / pagamento</th></tr></thead>
         <tbody>${physicalFinancialRows}</tbody>
       </table>
       <div class="commercial-title" style="margin-top:4mm;">Modelo por colunas · cobrança mensal</div>
