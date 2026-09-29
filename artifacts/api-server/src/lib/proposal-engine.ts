@@ -140,6 +140,27 @@ export function generateTheme(primaryHex: string): {
   return { cream, cream2, ink, navyDeep, navyMid, accent, accentSoft, secondary, secondarySoft, concrete, concreteLine, ok: "#3FAE7A", warn: "#E0793C" };
 }
 
+function extractProposalBenefits(...sources: unknown[]): string[] {
+  const raw: string[] = [];
+  const visit = (value: unknown) => {
+    if (Array.isArray(value)) { value.forEach(visit); return; }
+    if (value && typeof value === "object") {
+      const record = value as Record<string, unknown>;
+      for (const key of ["title", "label", "name", "text"]) if (typeof record[key] === "string") raw.push(String(record[key]));
+      return;
+    }
+    if (typeof value === "string") raw.push(value);
+  };
+  sources.forEach(visit);
+  return raw
+    .flatMap((value) => value.split(/\r?\n|[•·]|\s+[—–-]\s+|;+/g))
+    .map((value) => value.replace(/^\s*(?:\d+[.)]|[-*])\s*/, "").trim())
+    .filter((value) => value.length >= 4 && value.length <= 120)
+    .map((value) => value.replace(/[.]+$/, ""))
+    .filter((value, index, list) => list.findIndex((item) => item.toLowerCase() === value.toLowerCase()) === index)
+    .slice(0, 4);
+}
+
 // ── Prompt builder ───────────────────────────────────────────────────────────
 export type ProposalStyleMemory = {
   toneNotes?: string;
@@ -1088,6 +1109,14 @@ function renderConstructionProposalLayout(args: {
     const value = builderModuleConfig(key)?.title;
     return typeof value === "string" && value.trim() ? value.trim() : fallback;
   };
+  const builderModuleDescription = (key: string) => {
+    const value = builderModuleConfig(key)?.description;
+    return typeof value === "string" && value.trim() ? value.trim() : "";
+  };
+  const builderModuleContent = (key: string) => {
+    const value = builderModuleConfig(key)?.contentPrompt;
+    return typeof value === "string" && value.trim() ? value.trim() : "";
+  };
   const builderModuleImage = (key: string) => {
     const raw = builderModuleConfig(key)?.image;
     if (!raw || typeof raw !== "object") return null;
@@ -1134,12 +1163,22 @@ function renderConstructionProposalLayout(args: {
   const company = tenantName || "Construtora";
   const client = clientName || meta.clientName || "Cliente";
   const title = orcamento.titulo || hero.title || "Construção residencial";
-  const subtitle = "Orçamento por etapas + cronograma físico-financeiro";
   const proposalContext = `${company} ${title} ${groupedItems.map((group) => group.nome).join(" ")}`
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
-  const isIcfProposal = /casaforte|\bicf\b|forma isolante/.test(proposalContext);
+  const coverBenefits = extractProposalBenefits(
+    builderModuleContent("diferenciais"),
+    builderModuleDescription("diferenciais"),
+    companyInfo.highlights,
+    offerInfo.bullets,
+    json.solution?.agents,
+  );
+  const coverValueStatement =
+    builderModuleDescription("produto_servico")
+    || builderModuleDescription("diferenciais")
+    || String(offerInfo.text || hero.subheadline || "").trim()
+    || "Uma proposta estruturada para apresentar solução, benefícios, investimento e próximos passos com clareza.";
 
   const accent = "#f26b21";
   const ink = "#111827";
@@ -1220,25 +1259,14 @@ function renderConstructionProposalLayout(args: {
 </section>`
       : "";
 
-  const valuePropositionHtml = isIcfProposal
-    ? `
+  const valuePropositionHtml = builderModuleEnabled("diferenciais") ? `
       <div class="value-proposition">
-        <span class="value-kicker">POR QUE ESCOLHER A ${escapeProposalText(company)}</span>
-        <h2>Construção inteligente com tecnologia ICF</h2>
-        <p>Uma proposta orientada por desempenho, conforto e previsibilidade, com sistema construtivo em ICF e acompanhamento técnico ao longo da execução.</p>
-        <div class="value-grid">
-          <div><strong>Conforto térmico e acústico</strong><span>Paredes de alto desempenho para mais bem-estar e eficiência na residência.</span></div>
-          <div><strong>Rapidez construtiva</strong><span>Processo racionalizado que reduz retrabalho e favorece produtividade em obra.</span></div>
-          <div><strong>Resistência e durabilidade</strong><span>Sistema robusto, com desempenho estrutural e longa vida útil.</span></div>
-          <div><strong>Gestão e transparência</strong><span>Etapas, cronograma e acompanhamento organizados desde a proposta até a execução.</span></div>
-        </div>
+        <span class="value-kicker">${escapeProposalText(builderModuleTitle("diferenciais", "DIFERENCIAIS DA SOLUÇÃO"))}</span>
+        <h2>${escapeProposalText(builderModuleDescription("diferenciais") || "Benefícios que ajudam a decidir com mais clareza")}</h2>
+        <p>${escapeProposalText(builderModuleContent("diferenciais") || coverValueStatement)}</p>
+        ${coverBenefits.length ? `<div class="value-grid">${coverBenefits.map((benefit) => `<div><strong>${escapeProposalText(benefit)}</strong></div>`).join("")}</div>` : ""}
       </div>`
-    : `
-      <div class="value-proposition">
-        <span class="value-kicker">POR QUE ESCOLHER A ${escapeProposalText(company)}</span>
-        <h2>Uma proposta organizada para dar clareza à contratação</h2>
-        <p>Escopo, investimento, prazos e condições apresentados de forma objetiva, preservando o orçamento como fonte de verdade comercial.</p>
-      </div>`;
+    : "";
 
   const stagePages = groupedItems.map((group) => {
     const row = scheduleRows.find((item) => item.id === group.id);
@@ -1404,6 +1432,8 @@ function renderConstructionProposalLayout(args: {
   .cover-main { margin-top:28mm; }
   .cover-title { font-size:27pt; line-height:1.04; font-weight:800; max-width:150mm; margin-bottom:4mm; }
   .cover-subtitle { font-size:12pt; font-weight:400; }
+  .cover-benefits { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:2.5mm; margin-top:8mm; max-width:150mm; }
+  .cover-benefit { border:1px solid rgba(255,255,255,.35); background:rgba(0,0,0,.25); padding:3.2mm 3.5mm; border-radius:2.5mm; font-size:7.3pt; font-weight:700; line-height:1.3; }
   .cover-info { margin-top:auto; border:1px solid rgba(255,255,255,.75); border-radius:5mm; padding:7mm 7mm; backdrop-filter:blur(2px); background:rgba(0,0,0,.08); }
   .cover-info strong { display:block; font-size:8.8pt; margin-bottom:4mm; }
   .cover-info-grid { display:grid; grid-template-columns:1fr 1fr; gap:2.5mm 8mm; font-size:7.2pt; }
@@ -2028,7 +2058,8 @@ ${interactive ? `
     </div>
     <div class="cover-main">
       <h1 class="cover-title">${escapeProposalText(title)}</h1>
-      <div class="cover-subtitle">${subtitle}</div>
+      <div class="cover-subtitle">${escapeProposalText(coverValueStatement)}</div>
+      ${coverBenefits.length ? `<div class="cover-benefits">${coverBenefits.map((benefit) => `<div class="cover-benefit">${escapeProposalText(benefit)}</div>`).join("")}</div>` : ""}
     </div>
     <div class="cover-info">
       <strong>Cliente: ${escapeProposalText(client)}</strong>
@@ -2203,6 +2234,25 @@ export function renderProposalHtml(json: unknown, theme: {
     : null;
   const builderModuleEnabled = (key: string, fallback = true) =>
     builderModuleSet ? builderModuleSet.has(key) : fallback;
+  const genericBuilderModule = (key: string) =>
+    Array.isArray(builder?.modules)
+      ? builder.modules.find((item) => String(item?.key ?? "") === key) ?? null
+      : null;
+  const genericBuilderText = (key: string, field: "title" | "description" | "contentPrompt") => {
+    const value = genericBuilderModule(key)?.[field];
+    return typeof value === "string" && value.trim() ? value.trim() : "";
+  };
+  const genericCoverBenefits = extractProposalBenefits(
+    genericBuilderText("diferenciais", "contentPrompt"),
+    genericBuilderText("diferenciais", "description"),
+    companyInfo.highlights,
+    offerInfo.bullets,
+    solution.agents,
+  );
+  const genericCoverValue = genericBuilderText("produto_servico", "description")
+    || genericBuilderText("diferenciais", "description")
+    || String(offerInfo.text || hero.subheadline || "").trim()
+    || "Uma proposta clara para apresentar solução, benefícios e condições comerciais.";
 
   const navName = tenantName || "Proposta Comercial";
   const navLogoUrl = tenantLogoUrl || null;
@@ -2396,6 +2446,8 @@ export function renderProposalHtml(json: unknown, theme: {
   h1 { font-family: "Instrument Serif", serif; font-weight: 400; font-size: 27pt; line-height: 1.08; max-width: 18ch; color: ${theme.navyDeep}; }
   .cover-sub { font-size: 10pt; color: #3a3358; max-width: 56ch; }
   .cover-fortag { margin-top: 3mm; border-left: 3px solid ${theme.accent}; padding-left: 8px; font-family: "JetBrains Mono", monospace; font-size: 7pt; color: ${theme.navyMid}; opacity: .7; letter-spacing: .04em; }
+  .cover-benefits-grid { display:grid; grid-template-columns:1fr 1fr; gap:3mm; margin:4mm 0 2mm; }
+  .cover-benefits-grid > div { border:1px solid ${theme.concreteLine}; border-left:2px solid ${theme.accent}; border-radius:6px; padding:3mm 3.5mm; background:rgba(255,255,255,.76); font-size:8pt; font-weight:700; color:${theme.navyDeep}; }
   .cover-footer {
     margin-top: auto;
     padding-top: 5mm;
@@ -2694,8 +2746,9 @@ export function renderProposalHtml(json: unknown, theme: {
         ? `<div class="cover-client"><div><span class="cover-prepared">Preparado para</span><span class="cover-client-name">${clientName}</span></div></div>`
         : ""}
     <h1>${hero.headline || ""}</h1>
-    <p class="cover-sub">${hero.subheadline || ""}</p>
-    ${pageImage(0) ? `<div class="img-hero-wrap"><img src="${pageImage(0)}" alt="Imagem principal da proposta" loading="eager" onerror="this.style.display='none'" /></div>` : ""}
+    <p class="cover-sub">${escapeProposalText(genericCoverValue)}</p>
+    ${genericCoverBenefits.length ? `<div class="cover-benefits-grid">${genericCoverBenefits.map((benefit) => `<div>${escapeProposalText(benefit)}</div>`).join("")}</div>` : ""}
+    ${pageImage(0) ? `<div class="img-hero-wrap"><img src="${pageImage(0)}" alt="Imagem principal da proposta" loading="eager" onerror="this.style.display=\'none\'" /></div>` : ""}
     <div class="cover-fortag">${hero.forTag || ""}</div>
   </div>
 

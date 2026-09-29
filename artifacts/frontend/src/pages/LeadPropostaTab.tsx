@@ -1903,6 +1903,23 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
   const proposalBuilderPreviewClient = proposalBuilderPreviewMode === "budget"
     ? String((lead as any)?.nome || "Cliente")
     : "Nome do cliente";
+  const proposalBuilderDifferentialsModule = proposalBuilderEditorModules.find((item) => item.key === "diferenciais");
+  const proposalBuilderProductModule = proposalBuilderEditorModules.find((item) => item.key === "produto_servico");
+  const proposalBuilderProfileDifferentials = (() => {
+    const raw = (profileQuery.data as any)?.diferenciais;
+    if (Array.isArray(raw)) return raw.map((item) => String(item));
+    if (typeof raw === "string") return raw.split(/\r?\n|[•·]|;+/g);
+    return [] as string[];
+  })();
+  const proposalBuilderCoverBenefits = Array.from(new Set([
+    ...(proposalBuilderDifferentialsModule?.contentPrompt ?? "").split(/\r?\n|[•·]|;+/g),
+    ...(proposalBuilderDifferentialsModule?.description ? [proposalBuilderDifferentialsModule.description] : []),
+    ...proposalBuilderProfileDifferentials,
+  ].map((item) => String(item).replace(/^\s*(?:\d+[.)]|[-*])\s*/, "").trim()).filter((item) => item.length >= 4 && item.length <= 90))).slice(0, 4);
+  const proposalBuilderCoverValueStatement =
+    proposalBuilderProductModule?.description
+    || proposalBuilderDifferentialsModule?.description
+    || "Uma proposta clara, comercial e orientada aos benefícios reais da solução para o cliente.";
   const proposalBuilderTemplateSampleStages = [
     { id: "__sample_1", ordem: 1, nome: "Primeira etapa / serviço", total: 250000 },
     { id: "__sample_2", ordem: 2, nome: "Segunda etapa / serviço", total: 180000 },
@@ -3783,7 +3800,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                     tabIndex={0}
                     onClick={() => setProposalBuilderSelectedModuleKey("capa")}
                     onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setProposalBuilderSelectedModuleKey("capa"); }}
-                    className={`group relative block w-full cursor-pointer text-left ${
+                    className={`group relative block h-full w-full cursor-pointer text-left ${
                       proposalBuilderSelectedModuleKey === "capa" ? "ring-2 ring-inset ring-primary/50" : ""
                     }`}
                   >
@@ -3842,14 +3859,24 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                           </span>
                           <span>Proposta comercial</span>
                         </div>
-                        <div className="mt-12 max-w-[700px]">
-                          <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">{proposalBuilderHeroVariant}</p>
+                        <div className="flex flex-1 flex-col justify-center py-8 max-w-[700px]">
+                          <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Proposta de valor</p>
                           <h2 className={`mt-2 font-black tracking-tight ${
                             proposalBuilderPreviewDevice === "mobile" ? "text-4xl" : "text-6xl"
                           }`}>
                             {proposalBuilderPreviewTitle.replace(/^Orçamento\s*[—-]?\s*/i, "")}
                           </h2>
-                          <p className="mt-3 text-sm opacity-80">Cliente: {proposalBuilderPreviewClient}</p>
+                          <p className="mt-3 max-w-[620px] text-sm leading-relaxed opacity-85">{proposalBuilderCoverValueStatement}</p>
+                          <p className="mt-2 text-xs opacity-75">Cliente: {proposalBuilderPreviewClient}</p>
+                          {proposalBuilderCoverBenefits.length > 0 && (
+                            <div className="mt-6 grid max-w-[620px] grid-cols-2 gap-2">
+                              {proposalBuilderCoverBenefits.map((benefit) => (
+                                <div key={benefit} className="rounded-lg border border-white/25 bg-black/20 px-3 py-2 text-[11px] font-semibold leading-snug backdrop-blur-sm">
+                                  {benefit}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                           <div className="mt-5 flex flex-wrap gap-2 text-xs">
                             {proposalBuilderPreviewTotal > 0 && <span className="rounded-full border border-current/20 px-3 py-1.5">{proposalBuilderMoney(proposalBuilderPreviewTotal)}</span>}
                             {proposalBuilderPreviewDeadline && <span className="rounded-full border border-current/20 px-3 py-1.5">{proposalBuilderPreviewDeadline}</span>}

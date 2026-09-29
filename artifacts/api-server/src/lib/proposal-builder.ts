@@ -173,6 +173,74 @@ export function defaultProposalBuilderTemplate(
   };
   const keys = keysByKind[proposalKind];
 
+  const defaultModuleCopy: Partial<Record<ProposalBuilderModuleKey, {
+    title: string;
+    description: string;
+    dataSource: ProposalBuilderModule["dataSource"];
+    contentPrompt: string;
+  }>> = {
+    capa: {
+      title: "Proposta comercial",
+      description: "Abertura com identidade da empresa, proposta de valor, benefícios principais e resumo da oferta.",
+      dataSource: "mixed",
+      contentPrompt: "Apresente o que está sendo oferecido, por que isso é relevante para o cliente e destaque de 3 a 5 benefícios reais do produto ou serviço. Evite capa vazia ou meramente decorativa.",
+    },
+    apresentacao_empresa: {
+      title: "Sobre a empresa",
+      description: "Credibilidade, posicionamento, especialidade e forma de atendimento.",
+      dataSource: "tenant",
+      contentPrompt: "Apresente a empresa de forma objetiva, usando apenas informações reais do tenant. Mostre posicionamento, experiência, especialidades e como ela atende seus clientes.",
+    },
+    diferenciais: {
+      title: "Por que esta solução",
+      description: "Principais benefícios e diferenciais do produto, serviço ou proposta para o cliente.",
+      dataSource: "mixed",
+      contentPrompt: "Destaque de 3 a 5 benefícios concretos e específicos da solução ofertada. Transforme características em valor para o cliente. Não use benefícios genéricos que não estejam sustentados pelo tenant, catálogo, orçamento ou base de conhecimento.",
+    },
+    resumo_executivo: {
+      title: "Resumo executivo",
+      description: "Síntese comercial com investimento, escopo, prazo e pontos-chave para decisão.",
+      dataSource: "budget",
+      contentPrompt: "Resuma a proposta para facilitar a decisão: o que está sendo contratado, investimento, prazo, principais entregas e condições mais relevantes. Não invente dados ausentes.",
+    },
+    produto_servico: {
+      title: "Solução proposta",
+      description: "O produto ou serviço ofertado, sua aplicação e o resultado esperado.",
+      dataSource: "mixed",
+      contentPrompt: "Explique claramente o produto ou serviço ofertado, como será aplicado e quais resultados ou benefícios reais entrega ao cliente.",
+    },
+    escopo: {
+      title: "Escopo da proposta",
+      description: "O que está incluído, entregáveis e limites da contratação.",
+      dataSource: "budget",
+      contentPrompt: "Apresente o escopo real vindo do orçamento ou serviço selecionado. Diferencie claramente o que está incluído e, quando houver informação, o que não está incluído.",
+    },
+    etapas_orcamento: {
+      title: "Etapas e investimento",
+      description: "Organização do orçamento por etapas, grupos ou entregas conforme o tipo de operação.",
+      dataSource: "budget",
+      contentPrompt: "Organize etapas ou grupos de entrega sem inventar uma sequência operacional que não exista no orçamento.",
+    },
+    cronograma: {
+      title: "Cronograma",
+      description: "Prazos e marcos relevantes da entrega ou execução.",
+      dataSource: "budget",
+      contentPrompt: "Mostre apenas prazos, dependências e marcos suportados pelos dados da proposta ou orçamento.",
+    },
+    condicoes_comerciais: {
+      title: "Condições comerciais",
+      description: "Valores, pagamento, validade, prazos e demais condições aplicáveis.",
+      dataSource: "budget",
+      contentPrompt: "Consolide as condições comerciais reais sem expor custo interno, margem, preço de fornecedor ou informação privada.",
+    },
+    aceite: {
+      title: "Próximos passos",
+      description: "Fechamento da proposta, aceite e continuidade do relacionamento.",
+      dataSource: "mixed",
+      contentPrompt: "Apresente próximos passos de forma objetiva e facilite o aceite, sem pressão artificial ou promessas não sustentadas.",
+    },
+  };
+
   const names: Record<NonNullable<ProposalBuilderTemplate["proposalKind"]>, string> = {
     construction_project: "Obra · Proposta completa",
     architecture_service: "Arquitetura · Projeto e honorários",
@@ -208,12 +276,26 @@ export function defaultProposalBuilderTemplate(
     vertical: vertical || "geral",
     proposalKind,
     isDefault: true,
-    modules: keys.map((key, index) => ({
-      key,
-      enabled: true,
-      order: index + 1,
-      required: key === "capa" || key === "condicoes_comerciais" || key === "aceite",
-    })),
+    modules: keys.map((key, index) => {
+      const base = defaultModuleCopy[key];
+      return {
+        key,
+        enabled: !["curiosidades_conteudo", "cases_provas", "faq"].includes(key),
+        order: index + 1,
+        required: key === "capa" || key === "condicoes_comerciais" || key === "aceite",
+        title: base?.title,
+        description: base?.description,
+        dataSource: base?.dataSource ?? "mixed",
+        contentPrompt: base?.contentPrompt,
+        image: {
+          mode: key === "capa" ? "automatic" : "none",
+          aspectRatio: "16:9",
+          fit: "cover",
+          position: "center",
+          overlay: key === "capa" ? 45 : 0,
+        },
+      };
+    }),
     visualStyle: proposalKind === "construction_project" || proposalKind === "architecture_service"
       ? {
           preset: "premium_arquitetonico",
@@ -525,6 +607,10 @@ export async function ensureTenantProposalBuilderTemplate({
       `Modelo ativo anterior: ${JSON.stringify(existingTemplates.find((item) => item.id === discovery.activeProposalBuilderTemplateId) ?? existingTemplates.find((item) => item.isDefault) ?? null)}`,
       "Formato obrigatório:",
       '{"name":"...","vertical":"...","proposalKind":"construction_project|architecture_service|retail_quote|distribution_b2b|vehicle_sale|insurance_quote|professional_service|generic","isDefault":true,"modules":[{"key":"capa","enabled":true,"order":1,"required":true,"title":"...","description":"...","dataSource":"tenant|budget|client|catalog|manual|mixed","contentPrompt":"...","image":{"mode":"none|manual|library|ai|automatic","url":"","prompt":"...","aspectRatio":"16:9|4:3|1:1"}}],"visualStyle":{"preset":"premium_arquitetonico","heroVariant":"fotografico","stageVariant":"cards","investmentVariant":"por_etapa","density":"arejado","imageEmphasis":"alta"},"aiRules":{"tone":"...","technicalLevel":"...","imageRules":["..."],"contentRules":["..."],"avoid":["..."]}}',
+      "PADRÃO GLOBAL OBRIGATÓRIO: toda proposta deve ter lógica comercial coerente para qualquer tenant: capa com proposta de valor + benefícios; apresentação da empresa; diferenciais; resumo executivo; solução/escopo; condições comerciais; próximos passos/aceite. Módulos operacionais adicionais dependem da vertical.",
+      "A capa NÃO pode ser apenas uma foto com título. Ela deve comunicar claramente a solução e destacar de 3 a 5 benefícios reais relevantes para o cliente.",
+      "A página Diferenciais deve transformar características reais do produto/serviço em benefícios concretos. Não use vantagens genéricas sem sustentação nos dados do tenant.",
+      "Evite páginas vazias, conteúdo decorativo e repetição entre capa, apresentação, diferenciais e resumo executivo.",
       "Crie cada bloco como parte de um MODELO reutilizável da empresa, não como conteúdo de um cliente específico.",
       "Em cada módulo, defina title, description, dataSource, contentPrompt e regra de imagem. Use image.mode=ai ou automatic quando a imagem puder ser criada pela IA e image.prompt descrevendo o que deve aparecer.",
       "Nunca inclua nome de cliente, orçamento, preço ou endereço de uma proposta específica no modelo.",
