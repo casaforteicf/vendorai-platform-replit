@@ -88,7 +88,6 @@ export function startArchConceptRenderRunner(logger: Logger, pollMs = 3000) {
         materials: input.materials ?? [],
         userNotes: input.userNotes,
         renderPresets: input.renderPresets ?? [],
-        premiumRefine: false,
         source: render.source,
         renderView: render.render_view,
         retentativas: Number.parseInt(String(render.retentativas ?? "0"), 10) || 0,
