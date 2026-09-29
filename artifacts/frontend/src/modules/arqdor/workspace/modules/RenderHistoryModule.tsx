@@ -29,8 +29,12 @@ const MODELS: Record<string, { color: string; label: string; icon: string }> = {
 }
 function modelMeta(origem: string | null) {
   if (!origem) return { color: T.dim, label: 'Render', icon: '🎬' }
-  const key = Object.keys(MODELS).find(k => origem.toLowerCase().includes(k))
-  return key ? MODELS[key] : { color: T.dim, label: origem, icon: '🎬' }
+  const normalized = origem.toLowerCase()
+  if (normalized.includes('flux') || normalized.includes('replicate') || normalized.includes('kontext')) {
+    return { color: T.dim, label: 'Render legado', icon: '🕘' }
+  }
+  const key = Object.keys(MODELS).find(k => normalized.includes(k))
+  return key ? MODELS[key] : { color: T.dim, label: 'Render', icon: '🎬' }
 }
 function fmtDate(iso: string) {
   const d = new Date(iso)
