@@ -40,6 +40,7 @@ export type OfficialMetrics = {
     commercialConversion?: number | null;
     conversionDenominator?: number;
     conversionNumerator?: number;
+    unassignedLeads?: number;
   };
   operation?: {
     executionActive?: number;
@@ -291,7 +292,7 @@ export default function OfficialCommandCenter({ data, executive, loading, userNa
   const attentionItems = useMemo(() => {
     const items: Array<{ label: string; detail: string; severity: "normal" | "warning" | "critical"; href: string }> = [];
     const overdue = operation?.overdueTasks ?? 0;
-    const unassigned = operation?.unassignedActive ?? 0;
+    const unassigned = commercial?.unassignedLeads ?? 0;
     if (overdue > 0) {
       const firstOverdue = operation?.overdueTaskItems?.[0];
       const href = overdue === 1 && firstOverdue?.leadId
@@ -304,7 +305,7 @@ export default function OfficialCommandCenter({ data, executive, loading, userNa
         href,
       });
     }
-    if (unassigned > 0) items.push({ label: `${unassigned} operação${unassigned === 1 ? "" : "ões"} sem responsável`, detail: "Distribua a responsabilidade operacional", severity: "warning", href: "/pipeline-operacional/execucao" });
+    if (unassigned > 0) items.push({ label: `${unassigned} lead${unassigned === 1 ? "" : "s"} sem responsável`, detail: "Defina um responsável comercial", severity: "warning", href: "/leads" });
     for (const alert of alerts) {
       items.push({ label: alert.mensagem, detail: "Alerta do sistema", severity: alert.severidade === "critico" ? "critical" : "warning", href: alertHref(alert.tipo) });
     }
@@ -312,13 +313,13 @@ export default function OfficialCommandCenter({ data, executive, loading, userNa
       items.push({ label: risk.nome, detail: risk.churnRisk != null ? `Risco de perda ${risk.churnRisk}%` : "Sem contato recente", severity: "warning", href: `/leads/${risk.leadId}` });
     }
     return items.slice(0, 5);
-  }, [alerts, operation?.overdueTaskItems, operation?.overdueTasks, operation?.unassignedActive, risks]);
+  }, [alerts, commercial?.unassignedLeads, operation?.overdueTaskItems, operation?.overdueTasks, risks]);
 
   const attentionCount = useMemo(() => {
     const overdue = operation?.overdueTasks ?? 0;
-    const unassigned = operation?.unassignedActive ?? 0;
+    const unassigned = commercial?.unassignedLeads ?? 0;
     return overdue + unassigned + alerts.length + risks.length;
-  }, [alerts.length, operation?.overdueTasks, operation?.unassignedActive, risks.length]);
+  }, [alerts.length, commercial?.unassignedLeads, operation?.overdueTasks, risks.length]);
 
   if (loading && !data && !executive) {
     return (
@@ -423,7 +424,7 @@ export default function OfficialCommandCenter({ data, executive, loading, userNa
             <SectionHeader icon={CalendarDays} title="Agenda e próximos passos" description="Pendências programadas e movimento recente do negócio." href="/agenda" />
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-xl bg-muted/50 p-4"><p className="text-xs text-muted-foreground">Tarefas vencidas</p><p className="mt-1 text-2xl font-bold">{operation?.overdueTasks ?? 0}</p></div>
-              <div className="rounded-xl bg-muted/50 p-4"><p className="text-xs text-muted-foreground">Sem responsável</p><p className="mt-1 text-2xl font-bold">{operation?.unassignedActive ?? 0}</p></div>
+              <div className="rounded-xl bg-muted/50 p-4"><p className="text-xs text-muted-foreground">Leads sem responsável</p><p className="mt-1 text-2xl font-bold">{commercial?.unassignedLeads ?? 0}</p></div>
             </div>
             <div className="mt-4 space-y-2">
               {recentActivity.slice(0, 4).map((item) => (
