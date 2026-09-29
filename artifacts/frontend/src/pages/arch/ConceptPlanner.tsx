@@ -102,6 +102,7 @@ type EditorLibraryTab = "site" | "brief" | "placement" | "models" | "build" | "r
 type EditorExperienceMode = "guided" | "professional";
 type ConceptProjectScope = "house" | "room";
 type ConceptStartWizardStage = "kind" | "terrain" | "source";
+type ConceptIntakeStage = "kind" | "terrain_choice" | "terrain_editor" | "source" | "complete";
 
 const GUIDED_LIBRARY_FLOW: Array<{ id: EditorLibraryTab; label: string; helper: string }> = [
   { id: "site", label: "Terreno", helper: "Defina lote, frente e implantação." },
@@ -476,6 +477,7 @@ type ConceptDraftResponse = {
     projectScope?: ConceptProjectScope;
     startWithTerrain?: boolean;
     startSourceChosen?: boolean;
+    intakeStage?: ConceptIntakeStage;
     facadeDesign?: FacadeDesignState;
     projectMaster?: {
       version: number;
@@ -1053,6 +1055,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [startWithTerrain, setStartWithTerrain] = useState<boolean | null>(null);
   const [startSourceChosen, setStartSourceChosen] = useState(false);
   const [startWizardStage, setStartWizardStage] = useState<ConceptStartWizardStage>("kind");
+  const [intakeStage, setIntakeStage] = useState<ConceptIntakeStage>("kind");
   const [startChooserDismissed, setStartChooserDismissed] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [projectListError, setProjectListError] = useState<string | null>(null);
@@ -1400,6 +1403,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
             setStartWithTerrain(null);
             setStartSourceChosen(false);
             setStartWizardStage("kind");
+            setIntakeStage("kind");
             setStartChooserDismissed(false);
             setSaveState("idle");
           }
@@ -1459,34 +1463,44 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         setSitePlacement(migrateLegacySitePlacement(draft.configuration?.sitePlacement));
         setProjectBrief(draft.configuration?.projectBrief ?? null);
         const loadedScope = draft.configuration?.projectScope;
-        if (loadedScope === "house" || loadedScope === "room") {
-          const loadedStartWithTerrain = typeof draft.configuration?.startWithTerrain === "boolean"
-            ? draft.configuration.startWithTerrain
-            : null;
-          const loadedStartSourceChosen = Boolean(draft.configuration?.startSourceChosen);
-          setProjectScope(loadedScope);
-          setStartWithTerrain(loadedStartWithTerrain);
-          setStartSourceChosen(loadedStartSourceChosen);
+        const loadedStartWithTerrain = typeof draft.configuration?.startWithTerrain === "boolean"
+          ? draft.configuration.startWithTerrain
+          : null;
+        const loadedStartSourceChosen = Boolean(draft.configuration?.startSourceChosen);
+        const savedIntakeStage = draft.configuration?.intakeStage;
+        const migratedIntakeStage: ConceptIntakeStage =
+          savedIntakeStage === "kind" ||
+          savedIntakeStage === "terrain_choice" ||
+          savedIntakeStage === "terrain_editor" ||
+          savedIntakeStage === "source" ||
+          savedIntakeStage === "complete"
+            ? savedIntakeStage
+            : loadedStartSourceChosen
+              ? "complete"
+              : loadedScope === "room"
+                ? "source"
+                : loadedScope === "house" && loadedStartWithTerrain === true
+                  ? "terrain_editor"
+                  : loadedScope === "house" && loadedStartWithTerrain === false
+                    ? "source"
+                    : loadedScope === "house"
+                      ? "terrain_choice"
+                      : "kind";
 
-          if (loadedStartSourceChosen) {
-            setStartWizardStage("source");
-            setStartChooserDismissed(true);
-          } else if (loadedScope === "room") {
-            setStartWizardStage("source");
-            setStartChooserDismissed(false);
-          } else if (loadedStartWithTerrain === null) {
-            setStartWizardStage("terrain");
-            setStartChooserDismissed(false);
-          } else if (loadedStartWithTerrain === false) {
-            setStartWizardStage("source");
-            setStartChooserDismissed(false);
-          } else {
-            // O usuário escolheu começar pelo terreno. Mantém o workspace do terreno aberto;
-            // ao avançar para Projeto, goToJourneyStage reabre a escolha da origem.
-            setStartWizardStage("source");
-            setStartChooserDismissed(true);
-          }
-        }
+        setProjectScope(loadedScope === "house" || loadedScope === "room" ? loadedScope : null);
+        setStartWithTerrain(loadedStartWithTerrain);
+        setStartSourceChosen(loadedStartSourceChosen);
+        setIntakeStage(migratedIntakeStage);
+        setStartWizardStage(
+          migratedIntakeStage === "terrain_choice"
+            ? "terrain"
+            : migratedIntakeStage === "source"
+              ? "source"
+              : "kind",
+        );
+        setStartChooserDismissed(
+          migratedIntakeStage === "terrain_editor" || migratedIntakeStage === "complete",
+        );
         setRooms(loadedRooms);
         setOpeningOverrides(draft.openingOverrides && typeof draft.openingOverrides === "object" ? draft.openingOverrides : {});
         setCustomerProfile(draft.customerProfile ?? {});
@@ -1557,6 +1571,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         projectScope: projectScope ?? undefined,
         startWithTerrain: startWithTerrain ?? undefined,
         startSourceChosen,
+        intakeStage,
         facadeDesign: nextFacadeDesign,
       },
       rooms: nextRooms,
@@ -1588,9 +1603,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       const saved = (await response.json()) as ConceptDraftResponse;
       conceptIdRef.current = saved.id;
       setConceptId(saved.id);
-      if (!targetId && typeof window !== "undefined" && (startSourceChosen || (projectScope === "house" && startWithTerrain === true && startChooserDismissed))) {
-        // Só transforma a URL em projeto existente depois que o usuário concluiu uma decisão
-        // explícita de entrada. O autosave do assistente não pode pular/encerrar o intake.
+      if (!targetId && typeof window !== "undefined") {
+        // O intakeStage é persistido; portanto recarregar com ?id= retoma exatamente a etapa
+        // correta do onboarding sem confundir autosave com onboarding concluído.
         window.history.replaceState(null, "", `/arch/concept?id=${encodeURIComponent(saved.id)}`);
       }
       return saved.id;
@@ -1614,12 +1629,12 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const autosaveKey = useMemo(() => JSON.stringify([
     rooms, customWalls, customOpenings, objects, openingOverrides, wallMaterials,
     lotWidth, lotDepth, floors, desiredArea, typology, layoutPreferences, sitePlacement, projectBrief,
-    projectScope, startWithTerrain, startSourceChosen,
+    projectScope, startWithTerrain, startSourceChosen, intakeStage,
     facadePreferences, spaceProfiles, customerProfile, showDimensions, wallFirstFloors,
   ]), [
     rooms, customWalls, customOpenings, objects, openingOverrides, wallMaterials,
     lotWidth, lotDepth, floors, desiredArea, typology, layoutPreferences, sitePlacement, projectBrief,
-    projectScope, startWithTerrain, startSourceChosen,
+    projectScope, startWithTerrain, startSourceChosen, intakeStage,
     facadePreferences, spaceProfiles, customerProfile, showDimensions, wallFirstFloors,
   ]);
   const [lastSavedKey, setLastSavedKey] = useState<string | null>(null);
@@ -1705,7 +1720,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       setEditorView("plan");
       setEditorLibraryTab(editorExperienceMode === "professional" ? "models" : "brief");
       setLibraryOpen(true);
-      if (projectScope === "house" && startWithTerrain === true && !startSourceChosen) {
+      if (projectScope === "house" && intakeStage === "terrain_editor") {
+        setIntakeStage("source");
         setStartWizardStage("source");
         setStartChooserDismissed(false);
       }
@@ -6085,11 +6101,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
               </>
             )}
 
-            {saveState !== "loading" && !startChooserDismissed && !modelGalleryOpen && !projectMaster &&
-              (
-                projectScope === null ||
-                !startSourceChosen
-              ) && (
+            {saveState !== "loading" && !modelGalleryOpen && !projectMaster &&
+              (intakeStage === "kind" || intakeStage === "terrain_choice" || intakeStage === "source") && (
               <div className="fixed inset-0 z-[110] flex items-end justify-center bg-slate-950/55 sm:items-center sm:p-6">
                 <div className="max-h-[92dvh] w-full max-w-3xl overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-7" role="dialog" aria-label="Iniciar pré-projeto">
                   {startWizardStage === "kind" && (
@@ -6098,7 +6111,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       <h2 className="mt-1 text-2xl font-bold text-slate-950">O que você quer projetar?</h2>
                       <p className="mt-1 text-sm leading-6 text-slate-500">Isso define a jornada correta antes de pedir terreno, planta ou referências.</p>
                       <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                        <button type="button" onClick={() => { setProjectScope("house"); setStartWizardStage("terrain"); }}
+                        <button type="button" onClick={() => { setProjectScope("house"); setStartWithTerrain(null); setIntakeStage("terrain_choice"); setStartWizardStage("terrain"); setStartChooserDismissed(false); }}
                           className="group min-h-36 rounded-2xl border-2 border-orange-400 bg-orange-50 p-5 text-left transition hover:border-orange-500 hover:bg-orange-100/70">
                           <div className="flex items-start gap-4">
                             <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-orange-500 text-white"><Home className="h-5 w-5" /></span>
@@ -6109,8 +6122,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         <button type="button" onClick={() => {
                           setProjectScope("room");
                           setStartWithTerrain(false);
+                          setIntakeStage("source");
                           setLotWidth(8); setLotDepth(8); setDesiredArea(25); setFloors(1);
                           setStartWizardStage("source");
+                          setStartChooserDismissed(false);
                           setEditorView("plan"); setEditorLibraryTab("brief");
                         }}
                           className="group min-h-36 rounded-2xl border bg-white p-5 text-left transition hover:border-slate-400 hover:shadow-sm">
@@ -6126,13 +6141,14 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
                   {startWizardStage === "terrain" && (
                     <>
-                      <button type="button" onClick={() => setStartWizardStage("kind")} className="mb-3 text-xs font-semibold text-slate-500 hover:text-slate-900">← Voltar</button>
+                      <button type="button" onClick={() => { setProjectScope(null); setStartWithTerrain(null); setIntakeStage("kind"); setStartWizardStage("kind"); setStartChooserDismissed(false); }} className="mb-3 text-xs font-semibold text-slate-500 hover:text-slate-900">← Voltar</button>
                       <div className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-500">Casa completa</div>
                       <h2 className="mt-1 text-2xl font-bold text-slate-950">Quer começar pelo terreno?</h2>
                       <p className="mt-1 text-sm leading-6 text-slate-500">Se você já conhece o lote, o Arqdor usa medidas, frente e recuos desde a primeira proposta. Se não conhece, pode começar pela casa e informar o terreno depois.</p>
                       <div className="mt-6 grid gap-3 sm:grid-cols-2">
                         <button type="button" onClick={() => {
                           setStartWithTerrain(true);
+                          setIntakeStage("terrain_editor");
                           setStartChooserDismissed(true);
                           setEditorView("plan"); setEditorLibraryTab("site"); setLibraryOpen(true);
                         }} className="min-h-32 rounded-2xl border-2 border-orange-400 bg-orange-50 p-5 text-left hover:bg-orange-100/70">
@@ -6142,7 +6158,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         </button>
                         <button type="button" onClick={() => {
                           setStartWithTerrain(false);
+                          setIntakeStage("source");
                           setStartWizardStage("source");
+                          setStartChooserDismissed(false);
                           setEditorView("plan"); setEditorLibraryTab("brief");
                         }} className="min-h-32 rounded-2xl border bg-white p-5 text-left hover:border-slate-400 hover:shadow-sm">
                           <ArrowRight className="mb-3 h-6 w-6 text-slate-700" />
@@ -6155,7 +6173,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
                   {startWizardStage === "source" && (
                     <>
-                      <button type="button" onClick={() => setStartWizardStage(projectScope === "house" ? "terrain" : "kind")} className="mb-3 text-xs font-semibold text-slate-500 hover:text-slate-900">← Voltar</button>
+                      <button type="button" onClick={() => { if (projectScope === "house") { setIntakeStage("terrain_choice"); setStartWizardStage("terrain"); } else { setProjectScope(null); setStartWithTerrain(null); setIntakeStage("kind"); setStartWizardStage("kind"); } setStartChooserDismissed(false); }} className="mb-3 text-xs font-semibold text-slate-500 hover:text-slate-900">← Voltar</button>
                       <div className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-500">{projectScope === "room" ? "Ambiente" : "Projeto"}</div>
                       <h2 className="mt-1 text-2xl font-bold text-slate-950">Como você quer começar?</h2>
                       <p className="mt-1 text-sm leading-6 text-slate-500">
@@ -6169,7 +6187,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       <input ref={projectStartImportInputRef} type="file" accept=".dxf,.ifc,.dwg,.rvt,.skp,application/dxf" className="hidden"
                         onChange={(event) => {
                           const file = event.target.files?.[0]; if (!file) return;
-                          setStartSourceChosen(true); setStartChooserDismissed(true);
+                          setStartSourceChosen(true); setIntakeStage("complete"); setStartChooserDismissed(true);
                           setEditorView("plan"); setEditorLibraryTab("build"); setLibraryOpen(true);
                           const extension = file.name.split(".").pop()?.toLowerCase();
                           if (extension === "dxf") void importConceptDxf(file); else void uploadProjectSourceFile(file);
@@ -6177,14 +6195,14 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       <input ref={projectStartReferenceInputRef} type="file" accept="image/png,image/jpeg,image/webp,application/pdf,.pdf" className="hidden"
                         onChange={(event) => {
                           const file = event.target.files?.[0]; if (!file) return;
-                          setStartSourceChosen(true); setStartChooserDismissed(true);
+                          setStartSourceChosen(true); setIntakeStage("complete"); setStartChooserDismissed(true);
                           setEditorView("plan"); setEditorLibraryTab("build"); setLibraryOpen(true);
                           void uploadReferencePlan(file);
                         }} />
 
                       <div className="mt-6 grid gap-3 sm:grid-cols-2">
                         <button type="button" onClick={() => {
-                          setStartSourceChosen(true); setStartChooserDismissed(true); setEditorExperienceMode("guided");
+                          setStartSourceChosen(true); setIntakeStage("complete"); setStartChooserDismissed(true); setEditorExperienceMode("guided");
                           setEditorView("plan"); setEditorLibraryTab("brief"); setLibraryOpen(true);
                         }} className="group min-h-32 rounded-2xl border-2 border-orange-400 bg-orange-50 p-5 text-left transition hover:border-orange-500 hover:bg-orange-100/70">
                           <div className="flex items-start gap-4"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-orange-500 text-white"><Sparkles className="h-5 w-5" /></span>
@@ -6195,7 +6213,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
                         <button type="button" onClick={() => {
                           if ((safeRooms.length > 0 || safeCustomWalls.length > 0) && !window.confirm("Iniciar do zero substitui a geometria atual deste rascunho. Continuar?")) return;
-                          setStartSourceChosen(true); setStartChooserDismissed(true); startBlankPlan(); setLibraryOpen(true);
+                          setStartSourceChosen(true); setIntakeStage("complete"); setStartChooserDismissed(true); startBlankPlan(); setLibraryOpen(true);
                         }} className="group min-h-32 rounded-2xl border bg-white p-5 text-left transition hover:border-slate-400 hover:shadow-sm">
                           <div className="flex items-start gap-4"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-950 text-white"><Plus className="h-5 w-5" /></span>
                             <span><span className="block text-base font-bold text-slate-950">Desenhar do zero</span>
