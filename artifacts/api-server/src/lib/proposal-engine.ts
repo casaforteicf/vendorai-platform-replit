@@ -1196,6 +1196,7 @@ function renderConstructionProposalLayout(args: {
       etapaId?: string | null;
       etapaNome?: string | null;
       etapaOrdem?: number | null;
+      unidade?: string | null;
     }>;
     valorTotal?: string | null;
     observacoes?: string | null;
@@ -2321,6 +2322,7 @@ function renderStudioOrderedProposal(args: {
       etapaId?: string | null;
       etapaNome?: string | null;
       etapaOrdem?: number | null;
+      unidade?: string | null;
     }>;
     valorTotal?: string | null;
     observacoes?: string | null;
@@ -2583,22 +2585,44 @@ function renderStudioOrderedProposal(args: {
     const mode = specialCommercialStage ? "resumo_etapa" : resolveProposalPresentationMode(presentation, group.id);
     const value = group.itens.reduce((sum, item) => sum + Number(item.quantidade || 0) * Number(item.valorUnitario || 0), 0);
     if (mode === "resumo_etapa") {
-      if (isWindowsStage) {
+      if (isWindowsStage || isFinishesStage) {
         const configuredGlobal = Number(presentation.cronogramaEtapas[group.id]?.valorGlobalPrevisto ?? 0);
-        return '<div class="studio-stage-summary"><span><strong>Etapa ' + esc(group.ordem) + '</strong> · ' +
-          esc(group.nome || "Esquadrias") + '</span><strong>' +
-          (configuredGlobal > 0 ? fmtMoney(configuredGlobal) : 'A definir no orçamento') +
-          '</strong></div>' +
-          (presentation.cronogramaEtapas[group.id]?.reajusteSeAlteracao
-            ? '<div class="studio-commercial-note"><p>Alterações de medidas, quantitativos, materiais ou especificações serão recalculadas e poderão gerar reajuste.</p></div>'
-            : '');
-      }
-      if (isFinishesStage) {
         const configuredM2 = Number(presentation.cronogramaEtapas[group.id]?.valorReferenciaM2 ?? 0);
+        const headerValue = isWindowsStage
+          ? fmtMoney(configuredGlobal > 0 ? configuredGlobal : value)
+          : fmtMoney(value);
+
+        const itemRows = groupItems.map((item) => {
+          const unit = String(item.unidade ?? "").trim().toLowerCase();
+          const isFloorItem = isFinishesStage && /(piso|porcelanat|cer[aâ]mic)/i.test(String(item.nome ?? ""));
+          const perM2 = unit === "m2" || unit === "m²" || isFloorItem;
+          const unitLabel = perM2 ? " / m²" : "";
+          const itemValue = fmtMoney(Number(item.valorUnitario || 0)) + unitLabel;
+          const desc = clientFacingItemDescription(item.descricao);
+          return '<tr><td><strong>' + esc(item.nome) + '</strong>' +
+            (desc ? '<small>' + esc(desc) + '</small>' : '') +
+            '</td><td class="r">' + itemValue + '</td></tr>';
+        }).join("");
+
+        const reference = isFinishesStage
+          ? (() => {
+              const floorItem = groupItems.find((item) => {
+                const unit = String(item.unidade ?? "").trim().toLowerCase();
+                return unit === "m2" || unit === "m²" || /(piso|porcelanat|cer[aâ]mic)/i.test(String(item.nome ?? ""));
+              });
+              const valueM2 = configuredM2 > 0 ? configuredM2 : Number(floorItem?.valorUnitario ?? 0);
+              return valueM2 > 0
+                ? '<div class="studio-commercial-note"><p><strong>Valor do piso/revestimento considerado:</strong> ' + fmtMoney(valueM2) + ' / m².</p></div>'
+                : '';
+            })()
+          : '';
+
         return '<div class="studio-stage-summary"><span><strong>Etapa ' + esc(group.ordem) + '</strong> · ' +
-          esc(group.nome || "Revestimentos") + '</span><strong>' +
-          (configuredM2 > 0 ? fmtMoney(configuredM2) + ' / m²' : 'A definir no orçamento') +
-          '</strong></div>' +
+          esc(group.nome || (isWindowsStage ? "Esquadrias" : "Revestimentos")) + '</span><strong>' +
+          headerValue + '</strong></div>' +
+          reference +
+          '<table class="studio-table"><thead><tr><th>Item</th><th class="r">Valor definido no orçamento</th></tr></thead><tbody>' +
+          itemRows + '</tbody></table>' +
           (presentation.cronogramaEtapas[group.id]?.reajusteSeAlteracao
             ? '<div class="studio-commercial-note"><p>Alterações de medidas, quantitativos, materiais ou especificações serão recalculadas e poderão gerar reajuste.</p></div>'
             : '');
