@@ -4651,6 +4651,18 @@ router.post("/arch/catalogo/:id/materials", authenticate, async (req, res) => {
   const material = await materialAccessible(parsed.data.materialId, tid);
   if (!material) return res.status(404).json({ error: "Material não encontrado ou sem acesso." });
 
+  if (parsed.data.isDefault) {
+    await db.update(archCatalogProductMaterialsTable)
+      .set({ isDefault: false })
+      .where(and(
+        eq(archCatalogProductMaterialsTable.tenantId, tid),
+        eq(archCatalogProductMaterialsTable.productId, productId),
+        parsed.data.surfaceKey
+          ? eq(archCatalogProductMaterialsTable.surfaceKey, parsed.data.surfaceKey)
+          : sql`${archCatalogProductMaterialsTable.surfaceKey} is null`,
+      ));
+  }
+
   const [link] = await db.insert(archCatalogProductMaterialsTable)
     .values({ ...(parsed.data as any), tenantId: tid, productId })
     .onConflictDoNothing()
@@ -4667,6 +4679,13 @@ router.post("/arch/catalogo/:id/materials", authenticate, async (req, res) => {
           : sql`${archCatalogProductMaterialsTable.surfaceKey} is null`,
       ))
       .limit(1);
+    if (existing && parsed.data.isDefault && !existing.isDefault) {
+      const [updated] = await db.update(archCatalogProductMaterialsTable)
+        .set({ isDefault: true })
+        .where(eq(archCatalogProductMaterialsTable.id, existing.id))
+        .returning();
+      return res.status(200).json({ ...updated, duplicate: true });
+    }
     return res.status(200).json({ ...existing, duplicate: true });
   }
 
