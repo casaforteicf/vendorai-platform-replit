@@ -379,8 +379,10 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const [selectedStageImageIds, setSelectedStageImageIds] = useState<string[]>([]);
   const [stageImageUploadTarget, setStageImageUploadTarget] = useState<string | null>(null);
   const [stageImageUploading, setStageImageUploading] = useState(false);
+  const [coverImageUploading, setCoverImageUploading] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const stageImageInputRef = useRef<HTMLInputElement>(null);
+  const coverImageInputRef = useRef<HTMLInputElement>(null);
 
   type ProposalAttachment = { nome: string; url: string; mimeType?: string; tamanho?: number };
   const [proposalAttachments, setProposalAttachments] = useState<ProposalAttachment[]>([]);
@@ -1222,6 +1224,61 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
       toast({ title: "Erro no upload de imagem", variant: "destructive" });
     } finally {
       setImageUploading(false);
+    }
+  }
+
+  async function handleCoverImageUpload(file: File) {
+    if (!selectedOrcamento?.id) return;
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Selecione uma imagem válida.", variant: "destructive" });
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ title: `${file.name} excede 10MB`, variant: "destructive" });
+      return;
+    }
+
+    setCoverImageUploading(true);
+    try {
+      const imageUrl = await uploadImageFile(file);
+      const response = await fetch(api(`/api/leads/${leadId}/proposals/cover-image/manual`), {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ propostaId: selectedOrcamento.id, imageUrl }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? "Não foi possível definir a capa.");
+      await queryClient.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId, { leadId }) });
+      toast({ title: "Capa da proposta atualizada" });
+    } catch (error) {
+      toast({
+        title: "Erro ao alterar capa",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setCoverImageUploading(false);
+    }
+  }
+
+  async function removeManualCoverImage() {
+    if (!selectedOrcamento?.id) return;
+    try {
+      const response = await fetch(api(`/api/leads/${leadId}/proposals/cover-image/manual`), {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ propostaId: selectedOrcamento.id, imageUrl: "" }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? "Não foi possível remover a capa.");
+      await queryClient.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId, { leadId }) });
+      toast({ title: "Capa específica removida", description: "A proposta voltará a usar a capa padrão do modelo ou a biblioteca visual." });
+    } catch (error) {
+      toast({
+        title: "Erro ao remover capa",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
     }
   }
 
