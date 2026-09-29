@@ -453,7 +453,7 @@ export function useRenderStudioController() {
           melhoriaMode === "change-material" ? "Alteração de material." : null,
           melhoriaMode === "change-lighting" ? "Ajuste de iluminação." : null,
           selectedMaterial ? `Material selecionado: ${selectedMaterial.nome} (${selectedMaterial.categoria}${selectedMaterial.fornecedor ? `, ${selectedMaterial.fornecedor}` : ""}).` : null,
-          selections.length > 0 ? `Aplicar somente na região selecionada: ${selections.map(s => s.label || "seleção").join(", ")}.` : null,
+          selections.length > 0 ? `Usar a seleção como semente. Reconhecer o mesmo material/superfície conectado ao redor e aplicar a alteração em toda a peça reconhecida, mesmo que apenas uma parte tenha sido marcada. Não atravessar quinas, vãos ou objetos distintos.` : null,
           effectivePrompt,
           melhoriaMode === "improve"
             ? "Executar refino global em alta qualidade sobre a imagem inteira, sem exigir máscara ou seleção."
@@ -468,6 +468,9 @@ export function useRenderStudioController() {
           : selections.length > 0
             ? selections.map(s => ({ x: s.x, y: s.y, w: s.w, h: s.h }))
             : undefined,
+        // A seleção pode cobrir só parte do material: o backend usa essa área
+        // como semente e expande para a superfície visualmente contínua próxima.
+        smart_region: melhoriaMode !== "improve" && selections.length > 0,
         createNewVersion: true,
         preserveGeometry: preservationLocks.geometry,
         preserveCamera:   preservationLocks.camera,
