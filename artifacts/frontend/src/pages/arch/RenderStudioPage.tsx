@@ -587,6 +587,7 @@ function persistBootstrapState(state: {
 export default function RenderStudioPage() {
   const shellRef = useRef<HTMLDivElement>(null);
   const [, setLocation] = useLocation();
+  const [requestedRenderId] = useState(() => new URLSearchParams(window.location.search).get("render_id")?.trim() || null);
   const [freshStart] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     const requested = params.get("new") === "1";
@@ -653,9 +654,23 @@ export default function RenderStudioPage() {
     const backendLoaded = bootstrap.loadedProjectId === projectId;
     const canUseRecovery = Boolean(bootstrap.error) || bootstrap.hasRecoveryOnly;
     if (!backendLoaded && !canUseRecovery) return;
-    persistBootstrapState(bootstrap.state, targetKey);
+    const requestedVersion = requestedRenderId
+      ? bootstrap.state.versions.find((version) => version.id === requestedRenderId) ?? null
+      : null;
+    const stateToPersist = requestedVersion
+      ? {
+          ...bootstrap.state,
+          latestRenderId: requestedVersion.id,
+          latestRenderUrl: requestedVersion.url,
+        }
+      : bootstrap.state;
+
+    persistBootstrapState(stateToPersist, targetKey);
+    if (requestedVersion) {
+      sessionStorage.setItem(SK.step, "render");
+    }
     setHydratedKey(targetKey);
-  }, [projectId, targetKey, freshStart, bootstrap.loadedProjectId, bootstrap.error, bootstrap.hasRecoveryOnly, bootstrap.state]);
+  }, [projectId, targetKey, freshStart, requestedRenderId, bootstrap.loadedProjectId, bootstrap.error, bootstrap.hasRecoveryOnly, bootstrap.state]);
 
   if (hydratedKey !== targetKey) {
     return (
