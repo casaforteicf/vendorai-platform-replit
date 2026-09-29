@@ -206,6 +206,15 @@ function authorized(req: import("node:http").IncomingMessage): boolean {
   return req.headers.authorization === `Bearer ${expected}`;
 }
 
+async function readBody(req: import("node:http").IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => resolve(body));
+    req.on("error", reject);
+  });
+}
+
 const httpServer = createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
 
@@ -215,19 +224,61 @@ const httpServer = createServer(async (req, res) => {
     return;
   }
 
-  if (url.pathname !== "/mcp") {
-    res.writeHead(404, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "not_found" }));
+  // Public webhook endpoints for deployment operations
+  if (url.pathname === "/webhook/trigger-deployment" && req.method === "POST") {
+    try {
+      const body = await readBody(req);
+      const { projectName } = JSON.parse(body || "{}");
+      if (!projectName) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "projectName required" }));
+        return;
+      }
+      const result = await cloudflare<unknown>(`/accounts/${accountId()}/pages/projects/${encodeURIComponent(projectName)}/deployments`, {
+        method: "POST",
+        body: "{}",
+      });
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ success: true, result }));
+    } catch (error) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }));
+    }
     return;
   }
 
-  if (!authorized(req)) {
-    res.writeHead(401, { "Content-Type": "application/json", "WWW-Authenticate": "Bearer" });
-    res.end(JSON.stringify({ error: "unauthorized" }));
+  if (url.pathname === "/webhook/list-deployments" && req.method === "POST") {
+    try {
+      const body = await readBody(req);
+      const { projectName, perPage } = JSON.parse(body || "{}");
+      if (!projectName) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "projectName required" }));
+        return;
+      }
+      const result = await cloudflare<unknown[]>(`/accounts/${accountId()}/pages/projects/${encodeURIComponent(projectName)}/deployments?per_page=${perPage || 20}`);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ success: true, result }));
+    } catch (error) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }));
+    }
     return;
   }
 
-  await nodeMcpHandler(req, res);
+  // MCP endpoint (requires authorization)
+  if (url.pathname === "/mcp") {
+    if (!authorized(req)) {
+      res.writeHead(401, { "Content-Type": "application/json", "WWW-Authenticate": "Bearer" });
+      res.end(JSON.stringify({ error: "unauthorized" }));
+      return;
+    }
+    await nodeMcpHandler(req, res);
+    return;
+  }
+
+  res.writeHead(404, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ error: "not_found" }));
 });
 
 httpServer.listen(port, "0.0.0.0", () => {
@@ -241,3 +292,4 @@ async function shutdown() {
 
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
+
