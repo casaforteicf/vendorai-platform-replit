@@ -132,6 +132,7 @@ function RenderStudioInner() {
     handleStepClick,
     handleCreateProject,
     handleNewSelection,
+    handleUpdateSelection,
   } = useRenderStudioController();
 
   return (
@@ -190,7 +191,7 @@ function RenderStudioInner() {
             onUpload={handleUpload} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}
             projectTitle={arq.projectMeta?.titulo ?? null} ambiente={ambiente}
             selectionMode={selectionMode} selections={selections}
-            onSelection={handleNewSelection} onClearSelection={() => setSelections([])}
+            onSelection={handleNewSelection} onUpdateSelection={handleUpdateSelection} onClearSelection={() => setSelections([])}
             compareMode={compareMode} compareVersionA={compareVersionA} compareVersionB={compareVersionB}
             allVersions={versions}
             onCompareChangeA={(id) => setCompareVersionAId(id)} onCompareChangeB={(id) => setCompareVersionBId(id)}
