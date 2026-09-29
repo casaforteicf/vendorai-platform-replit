@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+// Deploy marker: refresh Projetos lead picker build.
 import "./planner5d-reference.css";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
