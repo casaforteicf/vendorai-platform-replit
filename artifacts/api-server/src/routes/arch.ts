@@ -4602,6 +4602,24 @@ router.post("/arch/catalogo/:id/materials", authenticate, async (req, res) => {
   return res.status(201).json({ ...link, duplicate: false });
 });
 
+// DELETE /api/arch/catalogo/:id/materials/:linkId — remove vínculo sem apagar o material mestre
+router.delete("/arch/catalogo/:id/materials/:linkId", authenticate, async (req, res) => {
+  const productId = String(req.params.id);
+  const linkId = String(req.params.linkId);
+  const tid = tenantId(req);
+
+  const [deleted] = await db.delete(archCatalogProductMaterialsTable)
+    .where(and(
+      eq(archCatalogProductMaterialsTable.id, linkId),
+      eq(archCatalogProductMaterialsTable.productId, productId),
+      eq(archCatalogProductMaterialsTable.tenantId, tid),
+    ))
+    .returning({ id: archCatalogProductMaterialsTable.id });
+
+  if (!deleted) return res.status(404).json({ error: "Vínculo não encontrado." });
+  return res.json({ ok: true, id: deleted.id });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Marketplace
 // ─────────────────────────────────────────────────────────────────────────────
