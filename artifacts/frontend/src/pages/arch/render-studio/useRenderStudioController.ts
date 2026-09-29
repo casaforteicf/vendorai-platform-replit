@@ -191,11 +191,11 @@ export function useRenderStudioController() {
           at: approvedAt,
           note: approvedVersion.approvalNote ?? "",
         });
-        if (ss === "aprovar") setStep("especificacao");
+        if (ss === "especificacao") setStep("aprovar");
       }
     } catch {}
     if (siu) setImageDataUrl(siu);
-    if (ss && ss !== "aprovar") setStep(ss);
+    if (ss && ss !== "aprovar" && ss !== "especificacao") setStep(ss);
     // P1-11: orphan job recovery
     if (sri && !sru) {
       setIsRecovering(true);
@@ -568,7 +568,7 @@ export function useRenderStudioController() {
       setVersions(vs => vs.map((v) => v.id === renderId
         ? { ...v, approvedBy: userName, approvedAt: record.at, approvalNote }
         : { ...v, approvedBy: undefined, approvedAt: undefined, approvalNote: undefined }));
-      setSaveState("saved"); setLastSavedAt(new Date()); go("especificacao");
+      setSaveState("saved"); setLastSavedAt(new Date());
     } catch (e: unknown) { setErr(categorizeError(e)); setSaveState("error"); }
     finally { setLoading(false); }
   }
@@ -711,15 +711,27 @@ export function useRenderStudioController() {
     if (step === "render"   && !renderUrl)        { void startRender(); return; }
     if (step === "melhoria")                      { go("versao"); return; }
     if (step === "aprovar")                        { void handleApprove(); return; }
-    if (step === "especificacao")                  { void handleSendToSpec(); return; }
     go(next.id);
   }
 
   // P1-9: step click with confirmation guard
   function handleStepClick(s: Step) {
     if (stepIndex(s) < stepIndex("render") && renderUrl) { setPendingNavStep(s); return; }
-    if (s === "aprovar" && approved) { go("especificacao"); return; }
     go(s);
+  }
+
+  function handleOpenSpecification() {
+    if (!arq.projectId) {
+      setErr("Selecione um projeto antes de abrir a especificação.");
+      return;
+    }
+    localStorage.setItem("arq_last_project_id", arq.projectId);
+    const params = new URLSearchParams();
+    params.set("module", "especificacao");
+    params.set("project_id", arq.projectId);
+    if (renderId) params.set("render_id", renderId);
+    if (ambiente.trim()) params.set("ambiente", ambiente.trim());
+    setLocation(`/arch/studio?${params.toString()}`);
   }
 
   // P0-1: create project
@@ -840,6 +852,7 @@ export function useRenderStudioController() {
     handleSelectVersion,
     handleNextStep,
     handleStepClick,
+    handleOpenSpecification,
     handleCreateProject,
     handleNewSelection,
     handleUpdateSelection,
