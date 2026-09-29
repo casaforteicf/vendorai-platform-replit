@@ -35,7 +35,11 @@ export const ROLE_SECTIONS: Record<string, PlanSectionId[]> = {
   onboarding: ["company", "products", "operations"], scout: ["company", "segments", "products", "opportunities"],
 };
 export function roleForFeature(feature: string): string | undefined {
-  if (feature === "content_generator" || feature === "marketing") return "marketing";
+  if (["content_generator", "site_generator", "marketing"].includes(feature)) return "marketing";
+  if (feature === "proposal_generator") return "closer";
+  if (["briefing_generator", "spin_briefing"].includes(feature)) return "sdr";
+  if (feature === "churn_retention") return "relacionamento";
+  if (feature === "agent_expansao_conta") return "scout";
   if (feature.startsWith("agent_")) { const role = feature.slice(6); return ROLE_SECTIONS[role] ? role : undefined; }
   return undefined;
 }

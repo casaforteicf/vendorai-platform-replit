@@ -30,4 +30,7 @@ test("gateway maps supported features without leaking business strategy to unrel
  assert.equal(roleForFeature("agent_sdr"),"sdr");
  assert.equal(roleForFeature("agent_financeiro"),"financeiro");
  assert.equal(roleForFeature("embedding"),undefined);
+ assert.equal(roleForFeature("agent_expansao_conta"),"scout");
+ assert.equal(roleForFeature("site_generator"),"marketing");
+ assert.equal(roleForFeature("proposal_generator"),"closer");
 });

@@ -14,7 +14,7 @@ export async function loadBusinessPlanSources(tenantId: string) {
     pool.query("SELECT id, nome, descricao FROM produtos_catalogo WHERE tenant_id=$1 AND ativo=true ORDER BY nome LIMIT 500", [tenantId]),
     pool.query("SELECT id, original_filename AS title, storage_url, metadata, type FROM media_assets WHERE tenant_id=$1 AND type='image' ORDER BY created_at DESC LIMIT 200", [tenantId]),
   ]);
-  return { profile: profile.rows[0] ?? null, products: products.rows, assets: assets.rows.map(r => ({ id: String(r.id), url: String(r.storage_url), title: String(r.metadata?.title || r.title || "Imagem da biblioteca") })) };
+  return { profile: profile.rows[0] ?? null, products: products.rows, assets: assets.rows.map(r => ({ id: String(r.id), url: String(r.storage_url).startsWith("/objects/") ? `/api/storage${r.storage_url}` : String(r.storage_url), title: String(r.metadata?.title || r.title || "Imagem da biblioteca") })) };
 }
 export async function validateBusinessReferences(tenantId: string, records: PlanRecord[]) {
   const products = [...new Set(records.flatMap(r => r.productIds))];
