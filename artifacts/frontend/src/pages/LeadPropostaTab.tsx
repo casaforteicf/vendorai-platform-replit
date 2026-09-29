@@ -90,7 +90,7 @@ const PROPOSTA_EDIT_SCRIPT = `<script id="__proposta_editor__">
   document.head.appendChild(css);
 
   function send(){
-    window.parent.postMessage({type:'proposta-edit',html:'<!DOCTYPE html>'+document.documentElement.outerHTML},'*');
+    window.parent.postMessage({type:'proposta-edit',html:'<!DOCTYPE html>'+document.documentElement.outerHTML},window.location.origin);
   }
 
   var bar=null;
@@ -1008,6 +1008,8 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   // Listen for inline edits from the preview iframe
   useEffect(() => {
     const handler = (e: MessageEvent) => {
+      if (e.source !== iframeRef.current?.contentWindow) return;
+      if (e.origin !== window.location.origin) return;
       if (e.data?.type === "proposta-edit" && typeof e.data.html === "string") {
         setEditableHtml(e.data.html);
         setEditDirty(true);
