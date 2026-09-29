@@ -7,6 +7,9 @@ ALTER TABLE produtos_catalogo
 ALTER TABLE arch_catalog_product_materials
   ADD COLUMN IF NOT EXISTS master_product_id text;
 
+ALTER TABLE arch_catalog_product_materials
+  ALTER COLUMN product_id DROP NOT NULL;
+
 UPDATE arch_catalog_product_materials link
 SET master_product_id = ac.source_product_id
 FROM arch_catalogo ac
