@@ -12,6 +12,10 @@ import type {
   RenderStudioPreset as RenderPreset,
   RenderStudioVideoMovement as VideoMovement,
   RenderStudioImprovementMode,
+  RenderStudioSceneType,
+  RenderStudioProfile,
+  RenderStudioVisualStyle,
+  RenderStudioLightingProfile,
   RenderStudioCatalogItem as CatalogItem,
   RenderStudioApprovalRecord as ApprovalRecord,
 } from "./renderStudioModel";
@@ -76,7 +80,10 @@ export function useRenderStudioController() {
   const [err, setErr] = useState<string | null>(null);
   const [melhoriaPrompt, setMelhoriaPrompt] = useState("");
   const [melhoriaMode, setMelhoriaMode] = useState<RenderStudioImprovementMode>("improve");
-  const [renderPreset, setRenderPreset] = useState<RenderPreset>("interior_layout_preserve");
+  const [sceneType, setSceneType] = useState<RenderStudioSceneType>("interior");
+  const [renderProfile, setRenderProfile] = useState<RenderStudioProfile>("premium");
+  const [visualStyle, setVisualStyle] = useState<RenderStudioVisualStyle>("original");
+  const [lightingProfile, setLightingProfile] = useState<RenderStudioLightingProfile>("natural");
   const [videoMovement, setVideoMovement] = useState<VideoMovement>("cinematic_micro_movement");
   const [videoGenerating, setVideoGenerating] = useState(false);
   const [renderVideoUrl, setRenderVideoUrl] = useState<string | null>(null);
@@ -100,6 +107,15 @@ export function useRenderStudioController() {
   useEffect(() => {
     if (step === "versao" && !bottomPanelOpen) setBottomPanelOpen(true);
   }, [step, bottomPanelOpen]);
+
+  useEffect(() => {
+    const value = ambiente.toLowerCase();
+    if (/piscina|spa/.test(value)) setSceneType("pool");
+    else if (/gourmet|churras/.test(value)) setSceneType("gourmet");
+    else if (/fachada/.test(value)) setSceneType("facade");
+    else if (/extern|varanda|terraço|terraco|deck|jardim/.test(value)) setSceneType("outdoor");
+    else if (value.trim()) setSceneType("interior");
+  }, [ambiente]);
 
   // P2 state
   const [selectionMode, setSelectionMode] = useState<"off" | "rect">("off");
@@ -305,11 +321,46 @@ export function useRenderStudioController() {
     setLoading(true); setErr(null); setRenderUrl(null); setRenderId(null); setSaveState("saving");
     startProgressStages();
     try {
+      const renderPresets: RenderPreset[] = ["camera_perspective_lock"];
+      if (sceneType === "interior") renderPresets.push("interior_layout_preserve");
+      if (sceneType === "facade") renderPresets.push("facade_exterior_preserve", "roof_openings_lock");
+      if (sceneType === "outdoor") renderPresets.push("facade_exterior_preserve", "landscape_controlled");
+      if (sceneType === "gourmet") renderPresets.push("facade_exterior_preserve", "outdoor_gourmet_preserve");
+      if (sceneType === "pool") renderPresets.push("facade_exterior_preserve", "pool_water_fidelity");
+      if (renderProfile !== "technical") renderPresets.push("material_detail_enhancer", "lighting_realism");
+      if (/vidro|espelho/.test(ambiente.toLowerCase())) renderPresets.push("glass_mirror_fidelity");
+      if (lightingProfile === "night" && sceneType !== "interior") renderPresets.push("night_lighting_exterior");
+
+      const styleInstruction: Record<RenderStudioVisualStyle, string> = {
+        original: "Manter a linguagem visual e os materiais do projeto original.",
+        contemporary: "Se houver decoração nova permitida, usar linguagem contemporânea discreta e coerente.",
+        minimalist: "Se houver decoração nova permitida, usar composição minimalista, limpa e sem excesso de objetos.",
+        provencal: "Se houver decoração nova permitida, usar acessórios provençais leves e elegantes sem alterar mobiliário, marcenaria ou acabamentos existentes.",
+      };
+      const profileInstruction: Record<RenderStudioProfile, string> = {
+        technical: "Modo Técnico Fiel: não adicionar nenhum objeto decorativo; melhorar somente realismo, textura, luz e definição.",
+        premium: "Modo Premium: máxima qualidade fotográfica sem adicionar, remover ou reposicionar objetos.",
+        decorated: "Modo Premium Decorado: preservar absolutamente todos os elementos existentes; pode adicionar somente poucos acessórios decorativos pequenos em áreas livres, sem cobrir elementos, alterar circulação ou mudar mobiliário.",
+      };
+      const lightingInstruction: Record<RenderStudioLightingProfile, string> = {
+        natural: "Iluminação natural suave e fisicamente plausível, mantendo as cores reais dos materiais.",
+        warm: "Iluminação aconchegante controlada, sem alterar a cor real dos materiais.",
+        editorial: "Iluminação editorial arquitetônica equilibrada, com contraste elegante, bounce light e highlights controlados.",
+        night: "Cena noturna fisicamente plausível; preservar geometria e materiais, alterando apenas a condição de iluminação.",
+      };
+
       const { render_id } = await apiPost("/api/arch/ai-render", {
-        project_id: arq.projectId ?? undefined, original_image_url: imageDataUrl, mode: "preservar",
+        project_id: arq.projectId ?? undefined,
+        original_image_url: imageDataUrl,
+        mode: "preservar",
         ambiente: ambiente.toLowerCase().replace(/\s+/g, "_"),
-        render_presets: [renderPreset],
-        user_notes: "Preservação rígida: manter exatamente cores, materiais, texturas-base, medidas, posição, orientação e proporções de todo mobiliário e marcenaria; manter câmera, perspectiva, layout, circulação e aberturas. Melhorar somente fotorealismo, resolução de textura, iluminação, reflexos, sombras e definição. Não adicionar decoração nem realocar objetos.",
+        render_presets: Array.from(new Set(renderPresets)),
+        user_notes: [
+          "Preservação rígida: manter exatamente cores, materiais, texturas-base, medidas, posição, orientação e proporções de todo mobiliário e marcenaria; manter câmera, perspectiva, layout, circulação e aberturas.",
+          profileInstruction[renderProfile],
+          styleInstruction[visualStyle],
+          lightingInstruction[lightingProfile],
+        ].join(" "),
       });
       setRenderId(render_id); setProcessingStage("Render Premium · preservando projeto e refinando materiais…");
       const data = await waitForRenderCompletion(render_id);
@@ -658,8 +709,14 @@ export function useRenderStudioController() {
     setMelhoriaPrompt,
     melhoriaMode,
     setMelhoriaMode,
-    renderPreset,
-    setRenderPreset,
+    sceneType,
+    setSceneType,
+    renderProfile,
+    setRenderProfile,
+    visualStyle,
+    setVisualStyle,
+    lightingProfile,
+    setLightingProfile,
     videoMovement,
     setVideoMovement,
     videoGenerating,
