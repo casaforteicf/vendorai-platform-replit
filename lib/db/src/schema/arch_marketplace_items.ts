@@ -11,6 +11,7 @@ import {
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
+import { produtosCatalogoTable } from "./produtos_catalogo";
 
 export const archMarketplaceItemsTable = pgTable("arch_marketplace_items", {
   id: text("id")
@@ -19,6 +20,8 @@ export const archMarketplaceItemsTable = pgTable("arch_marketplace_items", {
   vendedorTenantId: text("vendedor_tenant_id")
     .notNull()
     .references(() => tenantsTable.id, { onDelete: "cascade" }),
+  masterProductId: text("master_product_id")
+    .references(() => produtosCatalogoTable.id, { onDelete: "cascade" }),
   nome:              varchar("nome",               { length: 255 }).notNull(),
   descricao:         text("descricao"),
   categoria:         varchar("categoria",          { length: 50  }),
