@@ -430,23 +430,6 @@ const SHELL_STYLES = `
     display: none !important;
   }
 
-  .arqdor-studio-v3 .arqdor-approved-badge {
-    position: fixed;
-    right: 350px;
-    top: 68px;
-    z-index: 240;
-    max-width: 360px;
-    padding: 9px 12px;
-    border-radius: 10px;
-    background: #ecfdf5;
-    border: 1px solid #a7f3d0;
-    box-shadow: 0 8px 24px rgba(15,23,42,.08);
-    color: #047857;
-    font-size: 11px;
-    font-weight: 750;
-    pointer-events: none;
-  }
-
   .arqdor-studio-v3 .arqdor-studio-entry-btn {
     height: 38px;
     padding: 0 16px;
@@ -481,9 +464,6 @@ const SHELL_STYLES = `
     }
     .arqdor-studio-v3 .arqdor-legacy-right-panel > div {
       width: 288px !important;
-    }
-    .arqdor-studio-v3 .arqdor-approved-badge {
-      right: 314px;
     }
   }
 
@@ -621,10 +601,6 @@ export default function RenderStudioPage() {
   }, [targetKey, freshStart]);
 
   const bootstrap = useRenderStudioPersistentBootstrap(projectId, ambiente, recoveryCache);
-  const approvedVersion = useMemo(
-    () => freshStart ? null : findApprovedVersion(bootstrap.state),
-    [bootstrap.state, freshStart],
-  );
 
   useEffect(() => {
     if (!freshStart) return;
@@ -685,15 +661,6 @@ export default function RenderStudioPage() {
     );
   }
 
-  const approvedAt = reviveDate(approvedVersion?.approvedAt);
-  const approvalTitle = approvedVersion
-    ? [
-        `Aprovado por ${approvedVersion.approvedBy ?? "usuário autenticado"}`,
-        approvedAt ? approvedAt.toLocaleString("pt-BR") : null,
-        approvedVersion.approvalNote || null,
-      ].filter(Boolean).join(" · ")
-    : "";
-
   function handleBack() {
     if (window.history.length > 1) {
       window.history.back();
@@ -710,13 +677,6 @@ export default function RenderStudioPage() {
         Voltar
       </button>
       <RenderStudioCore key={targetKey} />
-
-      {approvedVersion && (
-        <div role="status" title={approvalTitle} className="arqdor-approved-badge">
-          ✓ Versão aprovada · {approvedVersion.approvedBy ?? "usuário autenticado"}
-          {approvedAt ? ` · ${approvedAt.toLocaleDateString("pt-BR")}` : ""}
-        </div>
-      )}
     </div>
   );
 }
