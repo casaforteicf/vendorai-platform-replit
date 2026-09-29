@@ -433,6 +433,15 @@ export function useRenderStudioController() {
       setErr("Descreva a alteração desejada ou selecione um material.");
       return;
     }
+    if (melhoriaMode === "change-material" && selections.length === 0) {
+      setErr("Selecione e confirme a região no render antes de trocar o material.");
+      setSelectionMode("rect");
+      return;
+    }
+    if (melhoriaMode === "change-material" && selectedMaterial && !selectedMaterial.imagens?.[0]) {
+      setErr("Este material não possui imagem principal. Defina uma imagem de referência na Biblioteca de Materiais antes de aplicar.");
+      return;
+    }
     setLoading(true); setErr(null); setSaveState("saving");
     startProgressStages();
     const currentRenderId = renderId;
@@ -454,7 +463,7 @@ export function useRenderStudioController() {
           melhoriaMode === "change-lighting" ? "Ajuste de iluminação." : null,
           selectedMaterial ? `Material selecionado: ${selectedMaterial.nome} (${selectedMaterial.categoria}${selectedMaterial.fornecedor ? `, ${selectedMaterial.fornecedor}` : ""}).` : null,
           selections.length > 0
-            ? `A seleção desenhada é uma semente de edição. Reconhecer a superfície/material conectado ao ponto selecionado e aplicar a alteração somente nessa superfície, sem contaminar materiais ou objetos vizinhos: ${selections.map(s => s.label || "seleção").join(", ")}.`
+            ? `Aplicar somente dentro da região final confirmada pelo usuário: ${selections.map(s => s.label || "seleção").join(", ")}. Não ampliar automaticamente para toda a peça ou material.`
             : null,
           effectivePrompt,
           melhoriaMode === "improve"
@@ -477,12 +486,11 @@ export function useRenderStudioController() {
         parent_render_id: currentRenderId, // P2-18
         material_id:      selectedMaterial?.id,
         material_name:    selectedMaterial?.nome,
+        material_reference_url: selectedMaterial?.imagens?.[0],
         operation_type:   melhoriaMode === "change-material" ? "material" : melhoriaMode === "change-lighting" ? "lighting" : "improve",
-        // Genius Render: seleção parcial funciona como semente. O backend
-        // amplia apenas o contexto necessário e recompõe sobre o original,
-        // impedindo deriva fora da região autorizada.
-        expand_selection_to_material: melhoriaMode === "change-material" && selections.length > 0,
-        selection_padding_percent: melhoriaMode === "change-material" ? 12 : 0,
+        // A região editável é definida e confirmada pelo usuário antes da geração.
+        expand_selection_to_material: false,
+        selection_padding_percent: 0,
       });
       const data = await waitForRenderCompletion(render_id);
       const newVersion: RenderVersion = {
@@ -724,6 +732,11 @@ export function useRenderStudioController() {
     if (step !== "melhoria") go("melhoria");
   }
 
+  function handleUpdateSelection(id: string, patch: Partial<Pick<SelectionRect, "x" | "y" | "w" | "h">>) {
+    setSelections(prev => prev.map(sel => sel.id === id ? { ...sel, ...patch } : sel));
+    setSaveState("unsaved");
+  }
+
   return {
     setLocation,
     arq,
@@ -829,5 +842,6 @@ export function useRenderStudioController() {
     handleStepClick,
     handleCreateProject,
     handleNewSelection,
+    handleUpdateSelection,
   };
 }
