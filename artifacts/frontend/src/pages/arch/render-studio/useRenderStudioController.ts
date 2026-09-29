@@ -453,7 +453,7 @@ export function useRenderStudioController() {
           melhoriaMode === "change-material" ? "Alteração de material." : null,
           melhoriaMode === "change-lighting" ? "Ajuste de iluminação." : null,
           selectedMaterial ? `Material selecionado: ${selectedMaterial.nome} (${selectedMaterial.categoria}${selectedMaterial.fornecedor ? `, ${selectedMaterial.fornecedor}` : ""}).` : null,
-          selections.length > 0 ? `Usar a seleção como semente. Reconhecer o mesmo material/superfície conectado ao redor e aplicar a alteração em toda a peça reconhecida, mesmo que apenas uma parte tenha sido marcada. Não atravessar quinas, vãos ou objetos distintos.` : null,
+          selections.length > 0 ? `Aplicar somente dentro da região final confirmada pelo usuário. A região já pode ter sido movida/redimensionada antes desta geração; não ampliar automaticamente para toda a peça ou material.` : null,
           effectivePrompt,
           melhoriaMode === "improve"
             ? "Executar refino global em alta qualidade sobre a imagem inteira, sem exigir máscara ou seleção."
@@ -468,9 +468,9 @@ export function useRenderStudioController() {
           : selections.length > 0
             ? selections.map(s => ({ x: s.x, y: s.y, w: s.w, h: s.h }))
             : undefined,
-        // A seleção pode cobrir só parte do material: o backend usa essa área
-        // como semente e expande para a superfície visualmente contínua próxima.
-        smart_region: melhoriaMode !== "improve" && selections.length > 0,
+        // A área é confirmada visualmente antes da geração. Não expandir
+        // automaticamente para o material inteiro sem a decisão do usuário.
+        smart_region: false,
         createNewVersion: true,
         preserveGeometry: preservationLocks.geometry,
         preserveCamera:   preservationLocks.camera,
@@ -700,6 +700,11 @@ export function useRenderStudioController() {
     if (step !== "melhoria") go("melhoria");
   }
 
+  function handleUpdateSelection(id: string, patch: Partial<Pick<SelectionRect, "x" | "y" | "w" | "h">>) {
+    setSelections(prev => prev.map(sel => sel.id === id ? { ...sel, ...patch } : sel));
+    setSaveState("unsaved");
+  }
+
   return {
     setLocation,
     arq,
@@ -805,5 +810,6 @@ export function useRenderStudioController() {
     handleStepClick,
     handleCreateProject,
     handleNewSelection,
+    handleUpdateSelection,
   };
 }
