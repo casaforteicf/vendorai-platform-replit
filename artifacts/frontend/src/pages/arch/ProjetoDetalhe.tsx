@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import "./planner5d-reference.css";
-import { useRoute, Link } from "wouter";
+import { useRoute, Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
+import { normalizeRenderMediaUrl } from "@/pages/arch/render-studio/renderStudioApi";
 import {
   ArrowLeft, Plus, Sparkles, Loader2, Pencil, Trash2, Link2,
   Search, LayoutGrid, DollarSign, Clock, Eye, ExternalLink,
@@ -64,6 +65,21 @@ type Ambiente = {
   areaM2: string | null;
   descricao: string | null;
   ordem: number;
+};
+
+type ProjetoRender = {
+  id: string;
+  parentRenderId: string | null;
+  ambiente: string | null;
+  mode: string | null;
+  status: string;
+  versionTag: string | null;
+  originalImageUrl: string | null;
+  resultImageUrl: string | null;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  createdAt: string;
+  concluidoEm: string | null;
 };
 
 type OrcamentoItem = {
@@ -201,6 +217,7 @@ function StatusBadge({ status }: { status: string }) {
 // ── Main Component ─────────────────────────────────────────────────────────
 export default function ProjetoDetalhe() {
   const [, params] = useRoute("/arch/projetos/:id");
+  const [, navigate] = useLocation();
   const projetoId = params?.id ?? "";
   const { toast } = useToast();
   const { user } = useAuth();
@@ -208,6 +225,7 @@ export default function ProjetoDetalhe() {
   // ── Project data
   const [projeto, setProjeto]     = useState<Projeto | null>(null);
   const [ambientes, setAmbientes] = useState<Ambiente[]>([]);
+  const [renders, setRenders]     = useState<ProjetoRender[]>([]);
   const [loading, setLoading]     = useState(true);
 
   // ── Orçamento data
@@ -274,6 +292,7 @@ export default function ProjetoDetalhe() {
     const data = await res.json();
     setProjeto(data.projeto ?? null);
     setAmbientes(data.ambientes ?? []);
+    setRenders(Array.isArray(data.renders) ? data.renders : []);
   }, [projetoId]);
 
   const loadOrcamento = useCallback(async () => {
@@ -307,6 +326,43 @@ export default function ProjetoDetalhe() {
       .filter((g) => g.ambienteId === ambId)
       .reduce((s, g) => s + g.itens.length, 0);
   }
+
+  function ambienteRenderLabel(value: string | null | undefined): string {
+    const normalized = String(value ?? "").trim().toLowerCase();
+    const known: Record<string, string> = {
+      cozinha: "Cozinha",
+      sala: "Sala de Estar",
+      sala_de_estar: "Sala de Estar",
+      quarto: "Quarto",
+      quarto_master: "Quarto Master",
+      banheiro: "Banheiro",
+      escritorio: "Escritório",
+      varanda: "Varanda",
+      hall_de_entrada: "Hall de Entrada",
+      fachada: "Fachada",
+      gourmet: "Área Gourmet",
+      area_gourmet: "Área Gourmet",
+    };
+    return known[normalized] ?? (value
+      ? String(value).replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase())
+      : "Sem ambiente");
+  }
+
+  function abrirRenderStudio(ambienteValue?: string | null) {
+    const ambienteLabel = ambienteRenderLabel(ambienteValue);
+    localStorage.setItem("arq_last_project_id", projetoId);
+    sessionStorage.setItem("arq_studio_ambiente", ambienteLabel === "Sem ambiente" ? "" : ambienteLabel);
+    navigate(
+      `/arch/render?new=1&project_id=${encodeURIComponent(projetoId)}${ambienteLabel !== "Sem ambiente" ? `&ambiente=${encodeURIComponent(ambienteLabel)}` : ""}`,
+    );
+  }
+
+  const rendersPorAmbiente = renders.reduce<Record<string, ProjetoRender[]>>((acc, render) => {
+    const key = ambienteRenderLabel(render.ambiente);
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(render);
+    return acc;
+  }, {});
 
   // Group orcamento itens by ambienteId
   const byAmbiente: Record<string, OrcamentoGrupo[]> = {};
@@ -859,6 +915,7 @@ export default function ProjetoDetalhe() {
         <TabsList>
           <TabsTrigger value="orcamento">Orçamento</TabsTrigger>
           <TabsTrigger value="ambientes">Ambientes</TabsTrigger>
+          <TabsTrigger value="renders">Renders ({renders.filter((render) => render.status === "concluido").length})</TabsTrigger>
           <TabsTrigger value="cenas">Cenas 3D</TabsTrigger>
           <TabsTrigger value="portal">Portal</TabsTrigger>
           <TabsTrigger
@@ -1076,6 +1133,92 @@ export default function ProjetoDetalhe() {
                       )}
                     </CardContent>
                   </Card>
+                );
+              })}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* ═══════════════════════════════════════════════════════════════
+            ABA: RENDERS
+        ════════════════════════════════════════════════════════════════ */}
+        <TabsContent value="renders" className="space-y-5 mt-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <h3 className="font-semibold">Renders do projeto</h3>
+              <p className="text-sm text-muted-foreground">
+                Todo render gerado no Render IA fica salvo aqui e também na Biblioteca de Mídias.
+              </p>
+            </div>
+            <Button onClick={() => abrirRenderStudio(null)}>
+              <Sparkles className="h-4 w-4 mr-2" /> Novo render
+            </Button>
+          </div>
+
+          {renders.length === 0 ? (
+            <div className="rounded-lg border border-dashed p-12 text-center">
+              <Image className="h-10 w-10 mx-auto text-muted-foreground/30 mb-3" />
+              <p className="font-medium">Nenhum render salvo neste projeto</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Gere o primeiro render e ele será vinculado automaticamente ao projeto e ao ambiente.
+              </p>
+              <Button className="mt-4" onClick={() => abrirRenderStudio(null)}>
+                <Sparkles className="h-4 w-4 mr-2" /> Gerar primeiro render
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {Object.entries(rendersPorAmbiente).map(([ambienteNome, ambienteRenders]) => {
+                const concluidos = ambienteRenders.filter((render) => render.status === "concluido" && render.resultImageUrl);
+                const latest = concluidos[0] ?? ambienteRenders[0];
+                return (
+                  <section key={ambienteNome} className="rounded-xl border bg-card overflow-hidden">
+                    <div className="flex items-center justify-between gap-3 border-b px-4 py-3 bg-muted/20">
+                      <div>
+                        <h4 className="font-semibold">{ambienteNome}</h4>
+                        <p className="text-xs text-muted-foreground">
+                          {concluidos.length} {concluidos.length === 1 ? "render concluído" : "renders concluídos"} · {ambienteRenders.length} versões
+                        </p>
+                      </div>
+                      <Button size="sm" variant="outline" onClick={() => abrirRenderStudio(latest?.ambiente ?? ambienteNome)}>
+                        <Plus className="h-4 w-4 mr-1.5" /> Novo neste ambiente
+                      </Button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 p-4">
+                      {ambienteRenders.map((render, index) => {
+                        const imageUrl = normalizeRenderMediaUrl(render.resultImageUrl ?? render.originalImageUrl);
+                        const aprovado = Boolean(render.approvedAt) || render.versionTag === "aprovado";
+                        return (
+                          <button
+                            key={render.id}
+                            type="button"
+                            className="overflow-hidden rounded-lg border bg-background text-left hover:border-orange-300 hover:shadow-sm transition-all"
+                            onClick={() => abrirRenderStudio(render.ambiente)}
+                          >
+                            <div className="aspect-video bg-muted flex items-center justify-center overflow-hidden">
+                              {imageUrl ? (
+                                <img src={imageUrl} alt={`Render ${ambienteNome}`} className="h-full w-full object-cover" />
+                              ) : (
+                                <Image className="h-8 w-8 text-muted-foreground/30" />
+                              )}
+                            </div>
+                            <div className="p-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-sm font-medium">Versão {ambienteRenders.length - index}</span>
+                                <span className={`text-[11px] rounded-full px-2 py-0.5 ${aprovado ? "bg-green-50 text-green-700" : render.status === "concluido" ? "bg-blue-50 text-blue-700" : "bg-muted text-muted-foreground"}`}>
+                                  {aprovado ? "Aprovado" : render.status === "concluido" ? "Concluído" : render.status}
+                                </span>
+                              </div>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {new Date(render.createdAt).toLocaleString("pt-BR")}
+                              </p>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
                 );
               })}
             </div>
