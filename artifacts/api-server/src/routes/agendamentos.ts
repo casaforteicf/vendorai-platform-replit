@@ -191,9 +191,10 @@ router.post("/agendamentos", async (req, res) => {
               observacoes: agendamento.observacoes,
               local: agendamento.local,
               gerarMeet: agendamento.gerarMeet ?? false,
+              participantes: agendamento.participantes ?? [],
             },
             calendarLead?.nome ?? undefined,
-            calendarLead?.email ?? undefined,
+            bodyLeadEmail,
             agendamento.gerarMeet ?? false
           ),
           new Promise<{ googleEventId: null; meetLink: null }>((resolve) =>
@@ -319,6 +320,41 @@ router.post("/agendamentos", async (req, res) => {
     }
   }
 
+  // Convites por e-mail para participantes extras do cliente.
+  const extraClientEmails = (agendamento.participantes ?? [])
+    .filter((p) => p.tipo === "cliente" && p.email)
+    .filter((p) => !bodyLeadEmail || p.email!.toLowerCase() !== bodyLeadEmail.toLowerCase());
+
+  if (extraClientEmails.length) {
+    try {
+      const [bpExtra] = await db
+        .select({ nomeFantasia: businessProfilesTable.nomeFantasia, razaoSocial: businessProfilesTable.razaoSocial })
+        .from(businessProfilesTable)
+        .where(eq(businessProfilesTable.tenantId, agendamento.tenantId))
+        .limit(1);
+      const nomeEmpresaExtra = bpExtra?.nomeFantasia ?? bpExtra?.razaoSocial ?? "Vendor.ai";
+      const modalidadeExtra = agendamento.modalidade ?? (agendamento.gerarMeet ? "meet" : "presencial");
+      const dataStrExtra = new Date(agendamento.dataHoraInicio).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "America/Sao_Paulo" });
+      const horaStrExtra = new Date(agendamento.dataHoraInicio).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
+
+      for (const participante of extraClientEmails) {
+        await sendMeetingInviteEmail({
+          to: participante.email!,
+          leadNome: participante.nome || "Participante",
+          nomeEmpresa: nomeEmpresaExtra,
+          dataStr: dataStrExtra,
+          horaStr: horaStrExtra,
+          modalidade: modalidadeExtra,
+          meetLink: agendamento.meetLink,
+          local: agendamento.local,
+          observacoes: agendamento.observacoes,
+        });
+      }
+    } catch (emailErr) {
+      req.log.warn({ err: emailErr, agendamentoId: agendamento.id }, "agendamento: extra participant email invite failed (non-fatal)");
+    }
+  }
+
   // ── Reunião activity on lead timeline ────────────────────────────────────
   if (agendamento.leadId) {
     try {
@@ -400,24 +436,31 @@ router.get("/tenants/:tenantId/agendamentos", async (req, res) => {
 // ── Slots endpoint ────────────────────────────────────────────────────────────
 // GET /tenants/:tenantId/agendamentos/slots
 // Query: date (YYYY-MM-DD), duracao (minutes, default 30), agendaId (optional)
-//        responsavelId (optional — filters internal conflicts by user)
+//        responsavelId (legacy) or responsavelIds (comma-separated) — conflicts for all selected users
 // Returns: { slots: [{start, end, label}] }
 const slotsQuerySchema = z.object({
   date:          z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD"),
   duracao:       z.coerce.number().int().min(15).max(240).default(30),
-  agendaId:      z.string().optional(),
-  responsavelId: z.string().optional(),
+  agendaId:       z.string().optional(),
+  responsavelId:  z.string().optional(),
+  responsavelIds: z.string().optional(),
 });
 
 router.get("/tenants/:tenantId/agendamentos/slots", async (req, res) => {
   const parsed = slotsQuerySchema.safeParse(req.query);
   if (!parsed.success) {
-    res.status(422).json({ error: "Query params: date (YYYY-MM-DD), duracao, agendaId?, responsavelId?" });
+    res.status(422).json({ error: "Query params: date (YYYY-MM-DD), duracao, agendaId?, responsavelId? ou responsavelIds?" });
     return;
   }
 
-  const { date, duracao, agendaId, responsavelId } = parsed.data;
+  const { date, duracao, agendaId, responsavelId, responsavelIds } = parsed.data;
   const tenantId = String(req.params.tenantId);
+  const selectedResponsavelIds = Array.from(new Set(
+    (responsavelIds ?? responsavelId ?? "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean)
+  ));
 
   // Build day boundaries in São Paulo timezone
   // We convert YYYY-MM-DD (interpreted as São Paulo local) to UTC
@@ -426,19 +469,33 @@ router.get("/tenants/:tenantId/agendamentos/slots", async (req, res) => {
   const workStart = new Date(Date.UTC(year, month - 1, day, 8  - (-3), 0, 0)); // 08:00 BRT = 11:00 UTC
   const workEnd   = new Date(Date.UTC(year, month - 1, day, 18 - (-3), 0, 0)); // 18:00 BRT = 21:00 UTC
 
-  // Collect busy periods from internal agendamentos
+  // Collect busy periods from internal agendamentos. For multiple selected team
+  // participants, a meeting conflicts when any selected user is either the
+  // primary responsavelId or is stored in participantes[].userId.
   const conditions = [
     eq(agendamentosTable.tenantId, tenantId),
     lt(agendamentosTable.dataHoraInicio, workEnd),
     gt(agendamentosTable.dataHoraFim, workStart),
     inArray(agendamentosTable.status, ["agendado", "confirmado"]),
   ];
-  if (responsavelId) conditions.push(eq(agendamentosTable.responsavelId, responsavelId));
 
-  const internal = await db
-    .select({ start: agendamentosTable.dataHoraInicio, end: agendamentosTable.dataHoraFim })
+  const internalRows = await db
+    .select({
+      start: agendamentosTable.dataHoraInicio,
+      end: agendamentosTable.dataHoraFim,
+      responsavelId: agendamentosTable.responsavelId,
+      participantes: agendamentosTable.participantes,
+    })
     .from(agendamentosTable)
     .where(and(...conditions));
+
+  const selectedSet = new Set(selectedResponsavelIds);
+  const internal = selectedResponsavelIds.length === 0
+    ? internalRows
+    : internalRows.filter((row) => {
+        if (row.responsavelId && selectedSet.has(row.responsavelId)) return true;
+        return (row.participantes ?? []).some((p) => p.userId && selectedSet.has(p.userId));
+      });
 
   // Collect busy periods from Google Calendar (if agendaId provided)
   let googleBusy: { start: Date; end: Date }[] = [];
@@ -454,13 +511,13 @@ router.get("/tenants/:tenantId/agendamentos/slots", async (req, res) => {
   // the responsavel is marked unavailable. dia_inteiro blocks the full
   // workday; manha/tarde block half the day.
   let bloqueioBusy: { start: Date; end: Date }[] = [];
-  if (responsavelId) {
+  if (selectedResponsavelIds.length) {
     const bloqueios = await db
       .select({ dataInicio: bloqueiosAgendaTable.dataInicio, dataFim: bloqueiosAgendaTable.dataFim, periodo: bloqueiosAgendaTable.periodo })
       .from(bloqueiosAgendaTable)
       .where(
         and(
-          eq(bloqueiosAgendaTable.responsavelId, responsavelId),
+          inArray(bloqueiosAgendaTable.responsavelId, selectedResponsavelIds),
           lt(bloqueiosAgendaTable.dataInicio, workEnd),
           gt(bloqueiosAgendaTable.dataFim, workStart)
         )
@@ -687,6 +744,7 @@ router.patch("/agendamentos/:id", async (req, res) => {
             observacoes: agendamento.observacoes,
             local: agendamento.local,
             gerarMeet: true,
+            participantes: agendamento.participantes ?? [],
           },
           leadRetry?.nome ?? undefined,
           leadRetry?.email ?? undefined,

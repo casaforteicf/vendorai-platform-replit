@@ -169,6 +169,13 @@ export interface CalendarEventInput {
   observacoes?: string | null;
   local?: string | null;
   gerarMeet?: boolean | null;
+  participantes?: Array<{
+    nome: string;
+    email?: string;
+    telefone?: string;
+    userId?: string;
+    tipo?: "equipe" | "cliente";
+  }> | null;
 }
 
 export async function createGoogleEvent(
@@ -215,10 +222,27 @@ export async function createGoogleEvent(
     end: { dateTime: endIso },
   };
 
+  const attendeeMap = new Map<string, { email: string; displayName?: string }>();
+
   if (leadEmail) {
-    requestBody.attendees = [
-      { email: leadEmail, displayName: leadName || leadEmail },
-    ];
+    attendeeMap.set(leadEmail.toLowerCase(), {
+      email: leadEmail,
+      displayName: leadName || leadEmail,
+    });
+  }
+
+  for (const participante of eventInput.participantes ?? []) {
+    const email = participante.email?.trim();
+    if (!email) continue;
+    attendeeMap.set(email.toLowerCase(), {
+      email,
+      displayName: participante.nome || email,
+    });
+  }
+
+  const attendees = Array.from(attendeeMap.values());
+  if (attendees.length) {
+    requestBody.attendees = attendees;
   }
 
   if (gerarMeet) {
@@ -236,6 +260,7 @@ export async function createGoogleEvent(
     const event = await cal.events.insert({
       calendarId: auth.calendarId,
       conferenceDataVersion: gerarMeet ? 1 : 0,
+      sendUpdates: "all",
       requestBody,
     });
 
