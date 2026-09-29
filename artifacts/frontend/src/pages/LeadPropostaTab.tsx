@@ -276,7 +276,22 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     name: string;
     vertical?: string;
     isDefault?: boolean;
-    modules?: Array<{ key: string; enabled?: boolean; order?: number; required?: boolean }>;
+    modules?: Array<{
+      key: string;
+      enabled?: boolean;
+      order?: number;
+      required?: boolean;
+      title?: string;
+      description?: string;
+      dataSource?: "tenant" | "budget" | "client" | "catalog" | "manual" | "mixed";
+      contentPrompt?: string;
+      image?: {
+        mode?: "none" | "manual" | "library" | "ai" | "automatic";
+        url?: string;
+        prompt?: string;
+        aspectRatio?: "16:9" | "4:3" | "1:1";
+      };
+    }>;
     visualStyle?: {
       preset?: "premium_arquitetonico" | "corporativo" | "catalogo_comercial" | "minimalista" | "tecnico";
       heroVariant?: "fotografico" | "minimalista" | "institucional" | "produto";
@@ -304,10 +319,13 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
       : null;
   const [selectedProposalBuilderTemplateId, setSelectedProposalBuilderTemplateId] = useState<string>("__auto__");
   const [generatingProposalBuilderTemplate, setGeneratingProposalBuilderTemplate] = useState(false);
+  const [proposalBuilderAIBrief, setProposalBuilderAIBrief] = useState("");
   const [proposalBuilderEditorOpen, setProposalBuilderEditorOpen] = useState(false);
   const [proposalBuilderEditorSaving, setProposalBuilderEditorSaving] = useState(false);
   const [proposalBuilderPreviewDevice, setProposalBuilderPreviewDevice] = useState<"desktop" | "mobile">("desktop");
+  const [proposalBuilderPreviewMode, setProposalBuilderPreviewMode] = useState<"template" | "budget">("template");
   const [proposalBuilderSelectedModuleKey, setProposalBuilderSelectedModuleKey] = useState<string | null>(null);
+  const [proposalBuilderGeneratingModuleImage, setProposalBuilderGeneratingModuleImage] = useState<string | null>(null);
   const [proposalBuilderEditorName, setProposalBuilderEditorName] = useState("");
   const [proposalBuilderEditorPreset, setProposalBuilderEditorPreset] = useState<"premium_arquitetonico" | "corporativo" | "catalogo_comercial" | "minimalista" | "tecnico">("premium_arquitetonico");
   const [proposalBuilderHeroVariant, setProposalBuilderHeroVariant] = useState<"fotografico" | "minimalista" | "institucional" | "produto">("fotografico");
@@ -321,7 +339,17 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const [proposalBuilderContentRules, setProposalBuilderContentRules] = useState("");
   const [proposalBuilderAvoidRules, setProposalBuilderAvoidRules] = useState("");
   const [proposalBuilderEditorModules, setProposalBuilderEditorModules] = useState<
-    Array<{ key: string; enabled?: boolean; order?: number; required?: boolean }>
+    Array<{
+      key: string;
+      enabled?: boolean;
+      order?: number;
+      required?: boolean;
+      title?: string;
+      description?: string;
+      dataSource?: "tenant" | "budget" | "client" | "catalog" | "manual" | "mixed";
+      contentPrompt?: string;
+      image?: { mode?: "none" | "manual" | "library" | "ai" | "automatic"; url?: string; prompt?: string; aspectRatio?: "16:9" | "4:3" | "1:1" };
+    }>
   >([]);
   const [proposalBuilderDraggedIndex, setProposalBuilderDraggedIndex] = useState<number | null>(null);
 
@@ -1184,6 +1212,50 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const proposalBuilderAvailableModules = Object.entries(PROPOSAL_MODULE_LABELS)
     .filter(([key]) => !proposalBuilderEditorModules.some((item) => item.key === key));
 
+  function updateProposalBuilderModuleConfig(
+    key: string,
+    patch: Partial<(typeof proposalBuilderEditorModules)[number]>,
+  ) {
+    setProposalBuilderEditorModules((prev) =>
+      prev.map((item) => item.key === key ? { ...item, ...patch } : item),
+    );
+  }
+
+  function updateProposalBuilderModuleImage(
+    key: string,
+    patch: Partial<NonNullable<(typeof proposalBuilderEditorModules)[number]["image"]>>,
+  ) {
+    setProposalBuilderEditorModules((prev) =>
+      prev.map((item) => item.key === key
+        ? { ...item, image: { mode: item.image?.mode ?? "automatic", aspectRatio: item.image?.aspectRatio ?? "16:9", ...item.image, ...patch } }
+        : item),
+    );
+  }
+
+  async function generateProposalBuilderModuleImage(moduleKey: string) {
+    const template = resolveProposalBuilderTemplateForEditor();
+    const module = proposalBuilderEditorModules.find((item) => item.key === moduleKey);
+    if (!template || !tenantId || !token || !module) return;
+    if (!window.confirm(`Gerar uma imagem padrão com IA para o bloco "${module.title || PROPOSAL_MODULE_LABELS[module.key] || module.key}"? Esta ação consome 1 geração.`)) return;
+    setProposalBuilderGeneratingModuleImage(moduleKey);
+    try {
+      const response = await fetch(api(`/api/tenants/${tenantId}/proposal-builder/templates/${template.id}/modules/${moduleKey}/generate-image`), {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ prompt: module.image?.prompt || "" }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? "Não foi possível gerar a imagem do bloco.");
+      updateProposalBuilderModuleImage(moduleKey, { mode: "ai", url: body.imageUrl });
+      await queryClient.invalidateQueries({ queryKey: getGetBusinessProfileByTenantQueryKey(tenantId) });
+      toast({ title: "Imagem do bloco gerada", description: "A imagem foi salva no modelo da empresa." });
+    } catch (error) {
+      toast({ title: "Erro ao gerar imagem", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+    } finally {
+      setProposalBuilderGeneratingModuleImage(null);
+    }
+  }
+
   async function saveProposalBuilderEditor() {
     const template = resolveProposalBuilderTemplateForEditor();
     if (!template || !tenantId || !token) return;
@@ -1246,7 +1318,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
       const res = await fetch(api(`/api/tenants/${tenantId}/proposal-builder/templates/ai-bootstrap`), {
         method: "POST",
         headers,
-        body: JSON.stringify({}),
+        body: JSON.stringify({ instruction: proposalBuilderAIBrief.trim() || undefined }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || "Não foi possível criar o modelo com IA");
@@ -1270,12 +1342,28 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     }
   }
 
-  const proposalBuilderPreviewTotal = Number(selectedOrcamento?.valorTotal ?? 0);
-  const proposalBuilderPreviewDeadline = String(selectedOrcamento?.prazoEntrega ?? "").trim();
+  const proposalBuilderPreviewTotal = proposalBuilderPreviewMode === "budget" ? Number(selectedOrcamento?.valorTotal ?? 0) : 1250000;
+  const proposalBuilderPreviewDeadline = proposalBuilderPreviewMode === "budget"
+    ? String(selectedOrcamento?.prazoEntrega ?? "").trim()
+    : "Prazo conforme orçamento";
   const proposalBuilderPreviewCompany = String((profileQuery.data as any)?.nomeFantasia || (profileQuery.data as any)?.razaoSocial || "Sua empresa");
   const proposalBuilderPreviewLogo = normalizeTenantLogoUrl(String((profileQuery.data as any)?.logoUrl || ""));
-  const proposalBuilderPreviewTitle = String(selectedOrcamento?.titulo || "Proposta comercial");
-  const proposalBuilderPreviewClient = String((lead as any)?.nome || "Cliente");
+  const proposalBuilderPreviewTitle = proposalBuilderPreviewMode === "budget"
+    ? String(selectedOrcamento?.titulo || "Proposta comercial")
+    : "Título da proposta";
+  const proposalBuilderPreviewClient = proposalBuilderPreviewMode === "budget"
+    ? String((lead as any)?.nome || "Cliente")
+    : "Nome do cliente";
+  const proposalBuilderTemplateSampleStages = [
+    { id: "__sample_1", ordem: 1, nome: "Primeira etapa / serviço", total: 250000 },
+    { id: "__sample_2", ordem: 2, nome: "Segunda etapa / serviço", total: 180000 },
+    { id: "__sample_3", ordem: 3, nome: "Terceira etapa / serviço", total: 320000 },
+    { id: "__sample_4", ordem: 4, nome: "Acabamentos / entrega", total: 500000 },
+  ];
+  const proposalBuilderDisplayStages = proposalBuilderPreviewMode === "budget"
+    ? selectedOrcamentoStages
+    : proposalBuilderTemplateSampleStages;
+
   const proposalBuilderPreviewExcluded = Array.isArray(selectedOrcamento?.apresentacao?.itensNaoInclusos)
     ? selectedOrcamento.apresentacao.itensNaoInclusos.filter((item: unknown): item is string => typeof item === "string")
     : [];
@@ -2755,6 +2843,14 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                 </p>
               </div>
               <div className="flex items-center gap-2">
+                <div className="mr-2 flex items-center rounded-lg border bg-muted/30 p-1">
+                  <Button type="button" size="sm" variant={proposalBuilderPreviewMode === "template" ? "default" : "ghost"} className="h-7 text-xs" onClick={() => setProposalBuilderPreviewMode("template")}>
+                    Modelo
+                  </Button>
+                  <Button type="button" size="sm" variant={proposalBuilderPreviewMode === "budget" ? "default" : "ghost"} className="h-7 text-xs" onClick={() => setProposalBuilderPreviewMode("budget")}>
+                    Simular com orçamento
+                  </Button>
+                </div>
                 <Button
                   type="button"
                   size="sm"
@@ -2786,6 +2882,32 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                     placeholder="Ex.: CasaForte · Residencial Premium"
                     className="h-9"
                   />
+                </div>
+
+                <div className="mt-3 rounded-xl border bg-background p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-semibold">Gerar modelo com IA</p>
+                      <p className="text-[10px] text-muted-foreground">A IA cria estrutura, textos-base e regras de imagens sem usar dados de um cliente específico.</p>
+                    </div>
+                    <Sparkles className="h-4 w-4 text-violet-500" />
+                  </div>
+                  <Textarea
+                    value={proposalBuilderAIBrief}
+                    onChange={(e) => setProposalBuilderAIBrief(e.target.value)}
+                    placeholder="Ex.: proposta premium para construtora ICF, foco em casas de alto padrão, pouco texto, imagens arquitetônicas e cronograma visual."
+                    className="mt-2 min-h-[86px] text-xs"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="mt-2 h-8 w-full gap-1.5 text-xs"
+                    disabled={generatingProposalBuilderTemplate}
+                    onClick={() => void createProposalBuilderTemplateWithAI()}
+                  >
+                    {generatingProposalBuilderTemplate ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                    {generatingProposalBuilderTemplate ? "Criando modelo..." : "Criar nova versão com IA"}
+                  </Button>
                 </div>
 
                 <div className="mt-4">
@@ -2860,7 +2982,9 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                   <div>
                     <p className="text-xs font-semibold">Proposta para editar e organizar</p>
                     <p className="text-[10px] text-muted-foreground">
-                      Prévia com os dados reais do orçamento selecionado. Arraste os blocos diretamente na proposta ou use as setas.
+                      {proposalBuilderPreviewMode === "template"
+                        ? "Você está editando o MODELO reutilizável da empresa. Os textos e imagens são padrões; dados do cliente entram somente na geração."
+                        : "Simulação opcional usando o orçamento selecionado, sem alterar os dados do modelo."}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-1">
@@ -2914,7 +3038,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                           <div className="mt-5 flex flex-wrap gap-2 text-xs">
                             {proposalBuilderPreviewTotal > 0 && <span className="rounded-full border border-current/20 px-3 py-1.5">{proposalBuilderMoney(proposalBuilderPreviewTotal)}</span>}
                             {proposalBuilderPreviewDeadline && <span className="rounded-full border border-current/20 px-3 py-1.5">{proposalBuilderPreviewDeadline}</span>}
-                            <span className="rounded-full border border-current/20 px-3 py-1.5">{selectedOrcamentoStages.length} etapas</span>
+                            <span className="rounded-full border border-current/20 px-3 py-1.5">{proposalBuilderDisplayStages.length} etapas</span>
                           </div>
                         </div>
                       </div>
@@ -2956,11 +3080,19 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                           </div>
 
                           <div className="mt-3">
+                            {module.image?.url && module.image.mode !== "none" ? (
+                              <img
+                                src={normalizeTenantLogoUrl(module.image.url)}
+                                alt={module.title || PROPOSAL_MODULE_LABELS[module.key] || module.key}
+                                className="mb-3 h-44 w-full rounded-lg border object-cover"
+                              />
+                            ) : null}
+                            {module.description ? <p className="mb-3 text-xs text-muted-foreground">{module.description}</p> : null}
                             {module.key === "resumo_executivo" ? (
                               <div className="grid gap-2 sm:grid-cols-3">
                                 <div className="rounded-lg bg-muted/40 p-3"><p className="text-[10px] text-muted-foreground">Investimento</p><p className="mt-1 text-sm font-bold">{proposalBuilderMoney(proposalBuilderPreviewTotal)}</p></div>
                                 <div className="rounded-lg bg-muted/40 p-3"><p className="text-[10px] text-muted-foreground">Prazo</p><p className="mt-1 text-sm font-bold">{proposalBuilderPreviewDeadline || "A definir"}</p></div>
-                                <div className="rounded-lg bg-muted/40 p-3"><p className="text-[10px] text-muted-foreground">Etapas</p><p className="mt-1 text-sm font-bold">{selectedOrcamentoStages.length}</p></div>
+                                <div className="rounded-lg bg-muted/40 p-3"><p className="text-[10px] text-muted-foreground">Etapas</p><p className="mt-1 text-sm font-bold">{proposalBuilderDisplayStages.length}</p></div>
                               </div>
                             ) : module.key === "apresentacao_empresa" ? (
                               <div><h3 className="text-lg font-semibold">{proposalBuilderPreviewCompany}</h3><p className="mt-1 text-sm text-muted-foreground">Apresentação institucional, diferenciais e posicionamento da empresa.</p></div>
@@ -2968,7 +3100,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                               <div className="grid gap-2 sm:grid-cols-2"><div className="rounded-lg bg-slate-950 p-3 text-xs text-white">Qualidade e execução</div><div className="rounded-lg bg-slate-950 p-3 text-xs text-white">Gestão e transparência</div></div>
                             ) : module.key === "etapas_orcamento" ? (
                               <div className={`grid gap-2 ${proposalBuilderStageVariant === "cards" && proposalBuilderPreviewDevice === "desktop" ? "grid-cols-2" : "grid-cols-1"}`}>
-                                {selectedOrcamentoStages.slice(0, 6).map((stage) => (
+                                {proposalBuilderDisplayStages.slice(0, 6).map((stage) => (
                                   <div key={stage.id} className="overflow-hidden rounded-lg border bg-muted/20">
                                     {selectedStageImages[stage.id] ? <img src={selectedStageImages[stage.id]} alt="" className="h-24 w-full object-cover" /> : null}
                                     <div className="p-3 text-xs">
@@ -2977,14 +3109,14 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                                     </div>
                                   </div>
                                 ))}
-                                {!selectedOrcamentoStages.length && <p className="text-xs text-muted-foreground">O orçamento selecionado ainda não possui etapas estruturadas.</p>}
+                                {!proposalBuilderDisplayStages.length && <p className="text-xs text-muted-foreground">O orçamento selecionado ainda não possui etapas estruturadas.</p>}
                               </div>
                             ) : module.key === "imagem_por_etapa" || module.key === "cases_provas" ? (
                               <div className={`grid gap-2 ${proposalBuilderImageEmphasis === "alta" && proposalBuilderPreviewDevice === "desktop" ? "grid-cols-3" : "grid-cols-2"}`}>
-                                {selectedOrcamentoStages.filter((stage) => selectedStageImages[stage.id]).slice(0, 6).map((stage) => (
+                                {proposalBuilderDisplayStages.filter((stage) => selectedStageImages[stage.id]).slice(0, 6).map((stage) => (
                                   <div key={stage.id} className="overflow-hidden rounded-lg border"><img src={selectedStageImages[stage.id]} alt={stage.nome} className="h-28 w-full object-cover" /><p className="p-2 text-[10px] font-medium">{stage.nome}</p></div>
                                 ))}
-                                {!selectedOrcamentoStages.some((stage) => selectedStageImages[stage.id]) && <div className="col-span-full rounded-lg border border-dashed p-4 text-xs text-muted-foreground">Nenhuma imagem específica de etapa vinculada.</div>}
+                                {!proposalBuilderDisplayStages.some((stage) => selectedStageImages[stage.id]) && <div className="col-span-full rounded-lg border border-dashed p-4 text-xs text-muted-foreground">Nenhuma imagem específica de etapa vinculada.</div>}
                               </div>
                             ) : module.key === "tabela_itens" ? (
                               <div className="overflow-hidden rounded-lg border text-xs">
@@ -2994,7 +3126,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                               </div>
                             ) : module.key === "cronograma" || module.key === "fisico_financeiro" ? (
                               <div className="space-y-2">
-                                {selectedOrcamentoStages.slice(0, 6).map((stage, n) => {
+                                {proposalBuilderDisplayStages.slice(0, 6).map((stage, n) => {
                                   const pct = proposalBuilderPreviewTotal > 0 ? Math.max(4, Math.min(100, stage.total / proposalBuilderPreviewTotal * 100)) : 10 + n * 10;
                                   return <div key={stage.id} className="grid grid-cols-[minmax(90px,180px)_1fr_100px] items-center gap-2 text-[10px]"><span className="truncate">{stage.nome}</span><div className="h-2 rounded-full bg-muted"><div className="h-2 rounded-full bg-primary" style={{ width: `${pct}%` }} /></div><span className="text-right">{proposalBuilderMoney(stage.total)}</span></div>;
                                 })}
@@ -3076,8 +3208,126 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                       })()}
                     </div>
                     <p className="mt-2 text-[10px] text-muted-foreground">
-                      Clique em outro bloco na prévia para editar sua posição e visibilidade.
+                      Clique em outro bloco na prévia para editar conteúdo, imagem, origem dos dados e posição.
                     </p>
+
+                    {(() => {
+                      const selectedModule = proposalBuilderEditorModules.find((item) => item.key === proposalBuilderSelectedModuleKey);
+                      if (!selectedModule) return null;
+                      return (
+                        <div className="mt-4 space-y-3 border-t border-primary/15 pt-3">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-medium text-muted-foreground">Título do bloco</label>
+                            <Input
+                              value={selectedModule.title ?? PROPOSAL_MODULE_LABELS[selectedModule.key] ?? selectedModule.key}
+                              onChange={(e) => updateProposalBuilderModuleConfig(selectedModule.key, { title: e.target.value })}
+                              className="h-8 text-xs"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-medium text-muted-foreground">Descrição / objetivo</label>
+                            <Textarea
+                              value={selectedModule.description ?? ""}
+                              onChange={(e) => updateProposalBuilderModuleConfig(selectedModule.key, { description: e.target.value })}
+                              placeholder="Explique o papel deste bloco no modelo."
+                              className="min-h-[70px] text-xs"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-medium text-muted-foreground">Fonte dos dados</label>
+                            <Select
+                              value={selectedModule.dataSource ?? "mixed"}
+                              onValueChange={(value) => updateProposalBuilderModuleConfig(selectedModule.key, { dataSource: value as any })}
+                            >
+                              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="tenant">Empresa / tenant</SelectItem>
+                                <SelectItem value="budget">Orçamento</SelectItem>
+                                <SelectItem value="client">Cliente</SelectItem>
+                                <SelectItem value="catalog">Catálogo</SelectItem>
+                                <SelectItem value="manual">Conteúdo manual</SelectItem>
+                                <SelectItem value="mixed">Misto / automático</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-medium text-muted-foreground">Instrução para a IA</label>
+                            <Textarea
+                              value={selectedModule.contentPrompt ?? ""}
+                              onChange={(e) => updateProposalBuilderModuleConfig(selectedModule.key, { contentPrompt: e.target.value })}
+                              placeholder="Ex.: resumir diferenciais em até 4 cards, linguagem premium e objetiva."
+                              className="min-h-[82px] text-xs"
+                            />
+                          </div>
+
+                          <div className="rounded-lg border bg-background p-2.5">
+                            <p className="text-[10px] font-semibold">Imagem padrão do bloco</p>
+                            {selectedModule.image?.url ? (
+                              <img src={normalizeTenantLogoUrl(selectedModule.image.url)} alt="" className="mt-2 h-28 w-full rounded-md border object-cover" />
+                            ) : (
+                              <div className="mt-2 flex h-20 items-center justify-center rounded-md border border-dashed text-[10px] text-muted-foreground">
+                                Sem imagem padrão
+                              </div>
+                            )}
+                            <div className="mt-2 grid grid-cols-2 gap-2">
+                              <Select
+                                value={selectedModule.image?.mode ?? "automatic"}
+                                onValueChange={(value) => updateProposalBuilderModuleImage(selectedModule.key, { mode: value as any })}
+                              >
+                                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="automatic">Automática</SelectItem>
+                                  <SelectItem value="ai">Gerada por IA</SelectItem>
+                                  <SelectItem value="manual">Manual / URL</SelectItem>
+                                  <SelectItem value="library">Biblioteca</SelectItem>
+                                  <SelectItem value="none">Sem imagem</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <Select
+                                value={selectedModule.image?.aspectRatio ?? "16:9"}
+                                onValueChange={(value) => updateProposalBuilderModuleImage(selectedModule.key, { aspectRatio: value as any })}
+                              >
+                                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="16:9">16:9</SelectItem>
+                                  <SelectItem value="4:3">4:3</SelectItem>
+                                  <SelectItem value="1:1">1:1</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <Input
+                              value={selectedModule.image?.url ?? ""}
+                              onChange={(e) => updateProposalBuilderModuleImage(selectedModule.key, { mode: "manual", url: e.target.value })}
+                              placeholder="URL da imagem ou arquivo da biblioteca"
+                              className="mt-2 h-8 text-xs"
+                            />
+                            <Textarea
+                              value={selectedModule.image?.prompt ?? ""}
+                              onChange={(e) => updateProposalBuilderModuleImage(selectedModule.key, { prompt: e.target.value })}
+                              placeholder="Prompt da imagem deste bloco. Ex.: casa contemporânea brasileira de alto padrão, fotografia arquitetônica..."
+                              className="mt-2 min-h-[80px] text-xs"
+                            />
+                            <div className="mt-2 flex gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                className="h-8 gap-1.5 text-xs"
+                                disabled={proposalBuilderGeneratingModuleImage === selectedModule.key}
+                                onClick={() => void generateProposalBuilderModuleImage(selectedModule.key)}
+                              >
+                                {proposalBuilderGeneratingModuleImage === selectedModule.key ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                                Gerar com IA
+                              </Button>
+                              {selectedModule.image?.url && (
+                                <Button type="button" size="sm" variant="outline" className="h-8 text-xs" onClick={() => updateProposalBuilderModuleImage(selectedModule.key, { url: "", mode: "none" })}>
+                                  Remover imagem
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
 

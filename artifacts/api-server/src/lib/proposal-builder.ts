@@ -28,6 +28,16 @@ export type ProposalBuilderModule = {
   enabled: boolean;
   order: number;
   required?: boolean;
+  title?: string;
+  description?: string;
+  dataSource?: "tenant" | "budget" | "client" | "catalog" | "manual" | "mixed";
+  contentPrompt?: string;
+  image?: {
+    mode: "none" | "manual" | "library" | "ai" | "automatic";
+    url?: string;
+    prompt?: string;
+    aspectRatio?: "16:9" | "4:3" | "1:1";
+  };
 };
 
 export type ProposalBuilderVisualStyle = {
@@ -283,6 +293,17 @@ export function normalizeProposalBuilderTemplate(
       const key = String(module.key ?? "") as ProposalBuilderModuleKey;
       if (!ALLOWED_PROPOSAL_MODULES.includes(key)) return null;
       const required = module.required === true;
+      const imageRaw = module.image && typeof module.image === "object"
+        ? module.image as Record<string, unknown>
+        : {};
+      const imageMode =
+        imageRaw.mode === "none"
+        || imageRaw.mode === "manual"
+        || imageRaw.mode === "library"
+        || imageRaw.mode === "ai"
+        || imageRaw.mode === "automatic"
+          ? imageRaw.mode
+          : "automatic";
       return {
         key,
         enabled: required ? true : module.enabled !== false,
@@ -290,6 +311,24 @@ export function normalizeProposalBuilderTemplate(
           ? Math.max(1, Math.round(Number(module.order)))
           : index + 1,
         required,
+        title: typeof module.title === "string" ? module.title.trim().slice(0, 120) : undefined,
+        description: typeof module.description === "string" ? module.description.trim().slice(0, 600) : undefined,
+        dataSource:
+          module.dataSource === "tenant"
+          || module.dataSource === "budget"
+          || module.dataSource === "client"
+          || module.dataSource === "catalog"
+          || module.dataSource === "manual"
+          || module.dataSource === "mixed"
+            ? module.dataSource
+            : "mixed",
+        contentPrompt: typeof module.contentPrompt === "string" ? module.contentPrompt.trim().slice(0, 1800) : undefined,
+        image: {
+          mode: imageMode,
+          url: typeof imageRaw.url === "string" && imageRaw.url.trim() ? imageRaw.url.trim() : undefined,
+          prompt: typeof imageRaw.prompt === "string" ? imageRaw.prompt.trim().slice(0, 1800) : undefined,
+          aspectRatio: imageRaw.aspectRatio === "4:3" || imageRaw.aspectRatio === "1:1" ? imageRaw.aspectRatio : "16:9",
+        },
       };
     })
     .filter((item): item is ProposalBuilderModule => Boolean(item))
@@ -389,6 +428,7 @@ export function normalizeProposalBuilderTemplate(
 type EnsureProposalBuilderOptions = {
   tenantId: string;
   forceNewVersion?: boolean;
+  customInstruction?: string;
   log?: {
     warn?: (obj: object, message?: string) => void;
     info?: (obj: object, message?: string) => void;
@@ -398,6 +438,7 @@ type EnsureProposalBuilderOptions = {
 export async function ensureTenantProposalBuilderTemplate({
   tenantId,
   forceNewVersion = false,
+  customInstruction,
   log,
 }: EnsureProposalBuilderOptions): Promise<{
   template: ProposalBuilderTemplate;
@@ -449,6 +490,7 @@ export async function ensureTenantProposalBuilderTemplate({
     const prompt = [
       "Crie um modelo modular padrão de proposta comercial para este tenant.",
       "Retorne APENAS JSON válido, sem markdown.",
+      customInstruction?.trim() ? `DIREÇÃO ESPECÍFICA DO USUÁRIO: ${customInstruction.trim().slice(0, 4000)}` : "",
       `Empresa: ${profile.nomeFantasia || profile.razaoSocial}`,
       `Vertical/segmento: ${profile.vertical || "não informado"}`,
       `Diferenciais: ${profile.diferenciais || "não informado"}`,
@@ -468,7 +510,10 @@ export async function ensureTenantProposalBuilderTemplate({
       "Se já existir um modelo ativo, use-o como referência para evoluir a nova versão sem perder as decisões válidas.",
       `Modelo ativo anterior: ${JSON.stringify(existingTemplates.find((item) => item.id === discovery.activeProposalBuilderTemplateId) ?? existingTemplates.find((item) => item.isDefault) ?? null)}`,
       "Formato obrigatório:",
-      '{"name":"...","vertical":"...","proposalKind":"construction_project|architecture_service|retail_quote|distribution_b2b|vehicle_sale|insurance_quote|professional_service|generic","isDefault":true,"modules":[{"key":"capa","enabled":true,"order":1,"required":true}],"aiRules":{"tone":"...","technicalLevel":"...","imageRules":["..."],"contentRules":["..."],"avoid":["..."]}}',
+      '{"name":"...","vertical":"...","proposalKind":"construction_project|architecture_service|retail_quote|distribution_b2b|vehicle_sale|insurance_quote|professional_service|generic","isDefault":true,"modules":[{"key":"capa","enabled":true,"order":1,"required":true,"title":"...","description":"...","dataSource":"tenant|budget|client|catalog|manual|mixed","contentPrompt":"...","image":{"mode":"none|manual|library|ai|automatic","url":"","prompt":"...","aspectRatio":"16:9|4:3|1:1"}}],"visualStyle":{"preset":"premium_arquitetonico","heroVariant":"fotografico","stageVariant":"cards","investmentVariant":"por_etapa","density":"arejado","imageEmphasis":"alta"},"aiRules":{"tone":"...","technicalLevel":"...","imageRules":["..."],"contentRules":["..."],"avoid":["..."]}}',
+      "Crie cada bloco como parte de um MODELO reutilizável da empresa, não como conteúdo de um cliente específico.",
+      "Em cada módulo, defina title, description, dataSource, contentPrompt e regra de imagem. Use image.mode=ai ou automatic quando a imagem puder ser criada pela IA e image.prompt descrevendo o que deve aparecer.",
+      "Nunca inclua nome de cliente, orçamento, preço ou endereço de uma proposta específica no modelo.",
       "Para construção civil, imagens por etapa precisam ser tecnicamente coerentes com o orçamento. Ex.: radier não deve virar baldrame; instalações devem mostrar PEX, conduítes/mangueiras corrugadas, hidráulica e elétrica quando estes itens estiverem no escopo.",
       "Nunca recomende exibir custos internos, margens ou preços de fornecedor ao cliente.",
     ].join("\n");

@@ -1069,8 +1069,9 @@ function renderConstructionProposalLayout(args: {
   };
   builderModuleEnabled: (key: string, fallback?: boolean) => boolean;
   builderVisualStyle?: Record<string, unknown> | null;
+  builderModules?: Array<Record<string, unknown>> | null;
 }): string {
-  const { json, tenantName, tenantLogoUrl, clientName, imagens, orcamento, builderModuleEnabled, builderVisualStyle } = args;
+  const { json, tenantName, tenantLogoUrl, clientName, imagens, orcamento, builderModuleEnabled, builderVisualStyle, builderModules } = args;
   const hero = json.hero || {};
   const meta = json.meta || {};
   const companyInfo = json.company || {};
@@ -1079,6 +1080,22 @@ function renderConstructionProposalLayout(args: {
   const proofInfo = json.proof || {};
   const faqInfo = json.faq || {};
   const presentation = normalizeProposalPresentation(orcamento.apresentacao);
+  const builderModuleConfig = (key: string) =>
+    Array.isArray(builderModules)
+      ? builderModules.find((item) => String(item?.key ?? "") === key) ?? null
+      : null;
+  const builderModuleTitle = (key: string, fallback: string) => {
+    const value = builderModuleConfig(key)?.title;
+    return typeof value === "string" && value.trim() ? value.trim() : fallback;
+  };
+  const builderModuleImage = (key: string) => {
+    const raw = builderModuleConfig(key)?.image;
+    if (!raw || typeof raw !== "object") return null;
+    const record = raw as Record<string, unknown>;
+    return record.mode !== "none" && typeof record.url === "string" && record.url.trim()
+      ? record.url.trim()
+      : null;
+  };
   const visualPreset = String(builderVisualStyle?.preset ?? "premium_arquitetonico");
   const heroVariant = String(builderVisualStyle?.heroVariant ?? "fotografico");
   const stageVariant = String(builderVisualStyle?.stageVariant ?? "cards");
@@ -1096,7 +1113,7 @@ function renderConstructionProposalLayout(args: {
     minimumFractionDigits: 2,
   }).format(v || 0);
   const visualImages = (imagens || []).filter((value): value is string => typeof value === "string" && value.trim().length > 0);
-  const coverImage = presentation.imagemCapa || visualImages[0] || Object.values(presentation.imagensEtapas).find(Boolean) || null;
+  const coverImage = builderModuleImage("capa") || presentation.imagemCapa || visualImages[0] || Object.values(presentation.imagensEtapas).find(Boolean) || null;
   const scheduleRows = buildProposalScheduleRows(groupedItems, presentation, total);
   const latestEnd = scheduleRows
     .map((row) => row.end)
@@ -1941,6 +1958,7 @@ function renderConstructionProposalLayout(args: {
   .web-interactive .scope-table-demo,.web-interactive .detail-table,.web-interactive .phase-table { font-size:13px; border-radius:14px; overflow:hidden; }
   .web-interactive .schedule-demo,.web-interactive table.period-matrix { font-size:12px; border-radius:14px; overflow:hidden; }
   .web-interactive .period-matrix-group { margin-top:22px; }
+  .section-model-image { width:100%; max-height:360px; object-fit:cover; border-radius:16px; margin:22px 0; border:1px solid #e7e3df; }
   .web-interactive .exclusions-block { border-radius:16px; padding:22px; }
   .web-section-anchor { scroll-margin-top:80px; height:0; }
   .web-accept { padding:78px max(24px,calc((100vw - 1120px)/2)); background:#07162d; color:#fff; }
@@ -2023,8 +2041,9 @@ ${interactive ? `
 
 <section id="visao-geral" class="page">
   ${header("RESUMO EXECUTIVO", "Proposta integrada ao orçamento")}
-  <h1 class="summary-heading">Visão geral da proposta</h1>
+  <h1 class="summary-heading">${escapeProposalText(builderModuleTitle("resumo_executivo", "Visão geral da proposta"))}</h1>
   <p class="summary-lead">Esta proposta reúne o investimento, o escopo contratado, o planejamento executivo e as condições comerciais em uma apresentação objetiva. O orçamento selecionado permanece como fonte de verdade para valores e serviços.</p>
+  ${builderModuleImage("resumo_executivo") ? `<img class="section-model-image" src="${escapeProposalText(builderModuleImage("resumo_executivo")!)}" alt="" />` : ""}
   <div class="metrics">${summaryCardsHtml}</div>
   ${valuePropositionHtml}
   ${footer()}
@@ -2037,8 +2056,9 @@ ${stagePages}
 ${(builderModuleEnabled("cronograma") || builderModuleEnabled("fisico_financeiro")) ? `
 <section id="cronograma-obra" class="page">
   ${header("CRONOGRAMA", "Execução e físico-financeiro")}
-  <h1 class="schedule-title">Cronograma de execução</h1>
+  <h1 class="schedule-title">${escapeProposalText(builderModuleTitle("cronograma", "Cronograma de execução"))}</h1>
   <p class="schedule-sub">Modelo com etapas independentes, dependências configuráveis e possibilidade de execução simultânea.</p>
+  ${builderModuleImage("cronograma") ? `<img class="section-model-image" src="${escapeProposalText(builderModuleImage("cronograma")!)}" alt="" />` : ""}
   ${builderModuleEnabled("cronograma") ? `
   <table class="schedule-demo">
     <thead><tr><th>Etapa</th><th>Início</th><th>Duração</th><th>Término</th><th class="r">Peso físico</th><th class="r">Valor</th></tr></thead>
@@ -2054,7 +2074,8 @@ ${(builderModuleEnabled("cronograma") || builderModuleEnabled("fisico_financeiro
 
 <section id="condicoes-comerciais" class="page">
   ${header("CONDIÇÕES COMERCIAIS", "Modelo final")}
-  <h1 class="conditions-title">Condições comerciais</h1>
+  <h1 class="conditions-title">${escapeProposalText(builderModuleTitle("condicoes_comerciais", "Condições comerciais"))}</h1>
+  ${builderModuleImage("condicoes_comerciais") ? `<img class="section-model-image" src="${escapeProposalText(builderModuleImage("condicoes_comerciais")!)}" alt="" />` : ""}
   ${exclusionsHtml}
   <div class="conditions-list">
     ${conditions.map(([label, value]) => `<div class="condition-row"><span>${escapeProposalText(label)}</span><strong>${escapeProposalText(String(value))}</strong></div>`).join("")}
@@ -2156,6 +2177,7 @@ export function renderProposalHtml(json: unknown, theme: {
   moduleOrder?: string[] | null;
   proposalKind?: string | null;
   visualStyle?: Record<string, unknown> | null;
+  modules?: Array<Record<string, unknown>> | null;
 } | null): string {
   const d = json as Record<string, any>;
   const hero = d.hero || {};
@@ -2182,9 +2204,20 @@ export function renderProposalHtml(json: unknown, theme: {
   const navName = tenantName || "Proposta Comercial";
   const navLogoUrl = tenantLogoUrl || null;
   const today = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
-  const visualImages = (imagens || []).filter(
-    (url): url is string => typeof url === "string" && url.trim().length > 0,
-  );
+  const builderVisualImages = Array.isArray(builder?.modules)
+    ? builder.modules
+        .map((module) => {
+          const raw = module?.image;
+          if (!raw || typeof raw !== "object") return null;
+          const record = raw as Record<string, unknown>;
+          return record.mode !== "none" && typeof record.url === "string" && record.url.trim() ? record.url.trim() : null;
+        })
+        .filter((url): url is string => Boolean(url))
+    : [];
+  const visualImages = [
+    ...builderVisualImages,
+    ...(imagens || []).filter((url): url is string => typeof url === "string" && url.trim().length > 0),
+  ];
   if (builder?.proposalKind === "construction_project" && orcamento) {
     return renderConstructionProposalLayout({
       json: d,
@@ -2195,6 +2228,7 @@ export function renderProposalHtml(json: unknown, theme: {
       orcamento,
       builderModuleEnabled,
       builderVisualStyle: builder?.visualStyle ?? null,
+      builderModules: builder?.modules ?? null,
     });
   }
   const pageImage = (index: number) => {
