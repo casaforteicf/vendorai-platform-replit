@@ -9,6 +9,23 @@ export type SpecificationObject = {
   supplierId?: string;
   quantity: number;
   unit: string;
+  origemMedida?: "projeto" | "catalogo" | "confirmado" | "estimativa_ia" | "pendente";
+  larguraCm?: string | null;
+  alturaCm?: string | null;
+  profundidadeCm?: string | null;
+  comprimentoCm?: string | null;
+  espessuraCm?: string | null;
+  areaBrutaM2?: string | null;
+  descontoVaosM2?: string | null;
+  areaLiquidaM2?: string | null;
+  perimetroM?: string | null;
+  perdaPercentual?: string | null;
+  peitorilCm?: string | null;
+  modulos?: number | null;
+  portas?: number | null;
+  gavetas?: number | null;
+  prateleiras?: number | null;
+  posicaoReferencia?: string | null;
   status: "draft" | "review" | "approved" | "rejected";
 };
 
