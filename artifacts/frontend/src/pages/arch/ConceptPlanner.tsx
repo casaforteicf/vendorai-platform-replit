@@ -1099,6 +1099,20 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [editorLibraryTab, setEditorLibraryTab] = useState<EditorLibraryTab>("site");
   const [libraryOpen, setLibraryOpen] = useState(() => typeof window === "undefined" ? true : window.innerWidth >= 768);
   const [mobileValidationOpen, setMobileValidationOpen] = useState(false);
+
+  useEffect(() => {
+    if (projectScope === "room") {
+      if (editorView === "facade") setEditorView("model3d");
+      if (editorLibraryTab === "site" || editorLibraryTab === "placement" || editorLibraryTab === "outdoor") {
+        setEditorLibraryTab(startSourceChosen ? "build" : "brief");
+      }
+      return;
+    }
+    if (projectScope === "house" && !terrainDefined && (editorLibraryTab === "site" || editorLibraryTab === "placement")) {
+      setEditorLibraryTab(startSourceChosen ? "build" : "brief");
+    }
+  }, [projectScope, terrainDefined, editorView, editorLibraryTab, startSourceChosen]);
+
   const closeLibraryOnMobile = () => {
     if (typeof window !== "undefined" && window.innerWidth < 768) setLibraryOpen(false);
   };
@@ -2049,6 +2063,20 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   // Etapa 1 é exclusivamente o terreno. Mesmo que um rascunho antigo já tenha
   // planta salva, ela fica oculta até o usuário avançar para Casa/Ajustes.
   const terrainOnly = terrainDefined && editorView === "plan" && editorLibraryTab === "site";
+  const referenceImportStage =
+    referencePlanState === "uploading"
+      ? "uploading"
+      : referenceTraceState === "loading"
+        ? "analyzing"
+        : referenceTraceState === "applied"
+          ? "editable"
+          : referenceTraceState === "ready"
+            ? "review"
+            : referenceTraceState === "error"
+              ? "error"
+              : referencePlan?.kind === "image"
+                ? "received"
+                : "idle";
   const referenceReviewActive = editorView === "plan" && referencePlan?.kind === "image" && referenceTraceState !== "applied";
   const hideCurrentGeometryForReferenceReview = referenceReviewActive;
   const showReferenceImage = referencePlan?.kind === "image" && referenceDisplayMode !== "vector";
@@ -9111,8 +9139,39 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50/60 p-3 text-xs">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
-                        <div className="font-semibold text-blue-950">Croqui → planta editável</div>
-                        <div className="mt-0.5 text-blue-800/80">A IA interpreta o desenho, gera paredes e aberturas e mostra a sobreposição antes de substituir qualquer geometria atual.</div>
+                        <div className="font-semibold text-blue-950">Importação da planta</div>
+                        <div className="mt-0.5 text-blue-800/80">
+                          {referenceImportStage === "uploading"
+                            ? "Enviando a referência..."
+                            : referenceImportStage === "analyzing"
+                              ? "Analisando paredes, portas, janelas e topologia..."
+                              : referenceImportStage === "review"
+                                ? "Leitura concluída. Revise a sobreposição antes de substituir geometria existente."
+                                : referenceImportStage === "editable"
+                                  ? "Planta editável criada. A imagem original continua disponível como referência."
+                                  : referenceImportStage === "error"
+                                    ? "A leitura precisa de revisão antes de continuar."
+                                    : "A imagem será convertida em geometria editável, não apenas inserida no canvas."}
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {[
+                            ["uploading", "1. Enviar"],
+                            ["analyzing", "2. Analisar"],
+                            ["review", "3. Revisar"],
+                            ["editable", "4. Editável"],
+                          ].map(([stage, label]) => {
+                            const order = { uploading: 0, analyzing: 1, review: 2, editable: 3 } as const;
+                            const current = referenceImportStage in order ? order[referenceImportStage as keyof typeof order] : -1;
+                            const target = order[stage as keyof typeof order];
+                            return (
+                              <span key={stage} className={current >= target
+                                ? "rounded-full bg-blue-700 px-2 py-1 text-[10px] font-bold text-white"
+                                : "rounded-full border border-blue-200 bg-white px-2 py-1 text-[10px] font-semibold text-blue-500"}>
+                                {label}
+                              </span>
+                            );
+                          })}
+                        </div>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <button
@@ -9121,7 +9180,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           disabled={referenceTraceState === "loading"}
                           className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 font-semibold text-blue-800 disabled:opacity-50"
                         >
-                          {referenceTraceState === "loading" ? "Gerando planta..." : "Gerar planta com IA"}
+                          {referenceTraceState === "loading" ? "Analisando..." : referenceTraceState === "applied" ? "Analisar novamente" : "Tentar leitura novamente"}
                         </button>
                         {referenceTracePreview?.canApply && (
                           <button
