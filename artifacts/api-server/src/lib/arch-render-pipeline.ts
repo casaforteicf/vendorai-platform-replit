@@ -108,6 +108,7 @@ export async function callReplicateFluxKontext(params: {
   prompt:       string;
   steps?:       number;
   guidance?:    number;
+  aspectRatio?: string;
   logger?:      Logger;
   signal?: AbortSignal;
   resumePredictionId?: string;
@@ -151,6 +152,7 @@ export async function callReplicateFluxKontext(params: {
             prompt,
             steps,
             guidance,
+            ...(params.aspectRatio ? { aspect_ratio: params.aspectRatio } : {}),
             output_format:       "png",
             output_quality:      100,
             safety_tolerance:    2,
