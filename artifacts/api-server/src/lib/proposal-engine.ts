@@ -2489,6 +2489,23 @@ function renderStudioOrderedProposal(args: {
     return result;
   };
 
+  // Remove metadados operacionais/importados que ajudam o orçamento internamente,
+  // mas não pertencem à apresentação comercial ao cliente.
+  const clientFacingItemDescription = (raw: unknown) => {
+    const text = String(raw ?? "").trim();
+    if (!text) return "";
+    const parts = text
+      .split(/\s*[•|]\s*/)
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .filter((part) => !/^etapa\s+\d+$/i.test(part))
+      .filter((part) => !/^composi[cç][aã]o\s+detalhada\s+importada/i.test(part))
+      .filter((part) => !/^(sc|pr|rs|sp|rj|mg|go|df|ba|pe|ce|es|mt|ms|pa|am|ro|rr|ac|ap|to|ma|pi|pb|rn|al|se)$/i.test(part))
+      .filter((part) => !/^refer[eê]ncia\s+\d{1,2}\/\d{4}$/i.test(part));
+    const cleaned = parts.join(" • ").trim();
+    return /composi[cç][aã]o\s+detalhada\s+importada/i.test(cleaned) ? "" : cleaned;
+  };
+
   const stageHeader = (group: typeof groups[number], value: number, suffix = "") => {
     const commercial = presentation.cronogramaEtapas[group.id] ?? {};
     return '<div class="studio-stage-title"><span>Etapa ' + esc(group.ordem) + ' · ' + esc(group.nome || "Entrega") +
@@ -2540,34 +2557,28 @@ function renderStudioOrderedProposal(args: {
 
   const scopePageBodies = () => {
     if (!groups.length) return ['<p class="studio-muted">Nenhum escopo estruturado disponível.</p>'];
-    const bodies: string[] = [];
-    for (const group of groups) {
-      const groupItems = resolveProposalTechnicalDetail(presentation, group.id) ? group.itens : [];
-      if (!groupItems.length) {
-        bodies.push(scopeBlock(group, []));
-        continue;
-      }
-      const parts = chunk(groupItems, 12);
-      parts.forEach((part, partIndex) => {
-        const suffix = parts.length > 1 ? `Parte ${partIndex + 1}/${parts.length}` : "";
-        const value = group.itens.reduce((sum, item) => sum + Number(item.quantidade || 0) * Number(item.valorUnitario || 0), 0);
-        bodies.push(stageHeader(group, value, suffix) +
-          '<div class="studio-scope-list">' +
-          part.map((item) => '<div><strong>' + esc(item.nome) + '</strong>' +
-            (item.descricao ? '<span>' + esc(item.descricao) + '</span>' : '') + '</div>').join("") +
-          '</div>');
-      });
-    }
-    if (presentation.itensNaoInclusos.length) {
-      bodies.push('<div class="studio-exclusions"><h2>Não inclusos nesta proposta</h2><ul>' +
-        presentation.itensNaoInclusos.map((item) => '<li>' + esc(item) + '</li>').join("") +
-        '</ul></div>');
-    }
-    return bodies;
+    // Escopo explica o que está incluído. Valores ficam exclusivamente em "Etapas e investimento".
+    // Isso evita repetir 14 etapas em 14-16 páginas antes de mostrá-las novamente com preços.
+    return chunk(groups, 7).map((stageGroup) =>
+      '<div class="studio-stage-grid">' +
+      stageGroup.map((group) => {
+        const showDetail = resolveProposalTechnicalDetail(presentation, group.id);
+        const names = showDetail
+          ? group.itens.map((item) => esc(item.nome)).filter(Boolean).slice(0, 6)
+          : [];
+        return '<div class="studio-stage-card"><span>Etapa ' + esc(group.ordem) + '</span><strong>' +
+          esc(group.nome || "Entrega") + '</strong>' +
+          (names.length ? '<small>' + names.join(' · ') + (group.itens.length > names.length ? ' · …' : '') + '</small>' : '') +
+          '</div>';
+      }).join("") +
+      '</div>'
+    );
   };
 
   const financialBlock = (group: typeof groups[number], groupItems = group.itens, continuation = "") => {
-    const mode = resolveProposalPresentationMode(presentation, group.id);
+    const stageName = String(group.nome ?? "");
+    const specialCommercialStage = /esquadr/i.test(stageName) || /(revest|porcelanat|cer[aâ]mic)/i.test(stageName);
+    const mode = specialCommercialStage ? "resumo_etapa" : resolveProposalPresentationMode(presentation, group.id);
     const value = group.itens.reduce((sum, item) => sum + Number(item.quantidade || 0) * Number(item.valorUnitario || 0), 0);
     if (mode === "resumo_etapa") {
       return '<div class="studio-stage-summary"><span><strong>Etapa ' + esc(group.ordem) + '</strong> · ' +
@@ -2578,21 +2589,25 @@ function renderStudioOrderedProposal(args: {
       return stageHeader(group, value, continuation) +
         stageCommercialNote(group) +
         '<table class="studio-table"><thead><tr><th>Item</th><th class="r">Valor por item</th></tr></thead><tbody>' +
-        groupItems.map((item) => '<tr><td><strong>' + esc(item.nome) + '</strong>' +
-          (item.descricao ? '<small>' + esc(item.descricao) + '</small>' : '') +
-          '</td><td class="r">' + fmtMoney(Number(item.valorUnitario || 0)) + '</td></tr>').join("") +
+        groupItems.map((item) => {
+          const desc = clientFacingItemDescription(item.descricao);
+          return '<tr><td><strong>' + esc(item.nome) + '</strong>' +
+            (desc ? '<small>' + esc(desc) + '</small>' : '') +
+            '</td><td class="r">' + fmtMoney(Number(item.valorUnitario || 0)) + '</td></tr>';
+        }).join("") +
         '</tbody></table>';
     }
     return stageHeader(group, value, continuation) +
       stageCommercialNote(group) +
       '<table class="studio-table"><thead><tr><th>Item</th><th class="r">Qtd.</th><th class="r">Valor unit.</th><th class="r">Subtotal</th></tr></thead><tbody>' +
-      groupItems.map((item) =>
-        '<tr><td><strong>' + esc(item.nome) + '</strong>' +
-        (item.descricao ? '<small>' + esc(item.descricao) + '</small>' : '') +
-        '</td><td class="r">' + esc(item.quantidade) + '</td><td class="r">' +
-        fmtMoney(Number(item.valorUnitario || 0)) + '</td><td class="r">' +
-        fmtMoney(Number(item.quantidade || 0) * Number(item.valorUnitario || 0)) + '</td></tr>'
-      ).join("") + '</tbody></table>';
+      groupItems.map((item) => {
+        const desc = clientFacingItemDescription(item.descricao);
+        return '<tr><td><strong>' + esc(item.nome) + '</strong>' +
+          (desc ? '<small>' + esc(desc) + '</small>' : '') +
+          '</td><td class="r">' + esc(item.quantidade) + '</td><td class="r">' +
+          fmtMoney(Number(item.valorUnitario || 0)) + '</td><td class="r">' +
+          fmtMoney(Number(item.quantidade || 0) * Number(item.valorUnitario || 0)) + '</td></tr>';
+      }).join("") + '</tbody></table>';
   };
 
   const financialPageBodies = () => {
@@ -2606,7 +2621,9 @@ function renderStudioOrderedProposal(args: {
       }
     };
     for (const group of groups) {
-      const mode = resolveProposalPresentationMode(presentation, group.id);
+      const stageName = String(group.nome ?? "");
+      const specialCommercialStage = /esquadr/i.test(stageName) || /(revest|porcelanat|cer[aâ]mic)/i.test(stageName);
+      const mode = specialCommercialStage ? "resumo_etapa" : resolveProposalPresentationMode(presentation, group.id);
       if (mode === "resumo_etapa") {
         summaries.push(financialBlock(group));
         if (summaries.length >= 8) flushSummaries();
@@ -2722,26 +2739,33 @@ function renderStudioOrderedProposal(args: {
     if (key === "apresentacao_empresa") {
       const manual = moduleManualContent(module);
       const text = manual || companyInfo.text || "Apresentação institucional da empresa.";
-      const highlights = extractProposalBenefits(companyInfo.highlights, offerInfo.bullets, moduleText(module, "description"));
+      // Empresa fala somente da empresa. Benefícios da solução ficam no bloco da solução.
+      const highlights = extractProposalBenefits(companyInfo.highlights);
       return genericPage(module, index, pageVisual(module, index) + '<p class="studio-copy">' + esc(text) + '</p>' + benefitsHtml(highlights));
     }
 
     if (key === "diferenciais") {
+      // Evita repetir o mesmo texto e os mesmos bullets de "Solução proposta".
+      // Só entra conteúdo exclusivo/manual ou benefícios ainda não usados no bloco do produto.
       const manual = moduleManualContent(module);
-      const differentialCopy = manual || String(offerInfo.text || "").trim();
+      const solutionBenefits = extractProposalBenefits(solutionInfo.agents, proofInfo.items);
+      if (!manual && !solutionBenefits.length) return "";
       return genericPage(module, index,
-        (differentialCopy ? '<p class="studio-copy">' + esc(differentialCopy) + '</p>' : '') +
-        benefitsHtml(benefits));
+        (manual ? '<p class="studio-copy">' + esc(manual) + '</p>' : '') +
+        benefitsHtml(solutionBenefits));
     }
 
     if (key === "produto_servico") {
       const manual = moduleManualContent(module);
       const text = manual || offerInfo.text || "Descrição da solução ofertada.";
-      const bullets = extractProposalBenefits(offerInfo.bullets, companyInfo.highlights, solutionInfo.agents);
+      const bullets = extractProposalBenefits(offerInfo.bullets);
       return genericPage(module, index, pageVisual(module, index) + '<p class="studio-copy">' + esc(text) + '</p>' + benefitsHtml(bullets));
     }
 
     if (key === "resumo_executivo") {
+      // Em obra completa, investimento/prazo/área já estão na capa e o escopo vem logo depois.
+      // Não gerar uma segunda página apenas para repetir esses mesmos números.
+      if (String(builder.proposalKind ?? "") === "construction_project") return "";
       const cards = [
         presentation.mostrarTotalGeral && total > 0 ? ['Investimento', fmtMoney(total)] : null,
         ['Prazo', effectiveDeadlineLabel],
@@ -2786,7 +2810,7 @@ function renderStudioOrderedProposal(args: {
     if (key === "condicoes_comerciais") {
       const conditions = [
         presentation.mostrarTotalGeral && total > 0 ? ['Valor da proposta', fmtMoney(total)] : null,
-        orcamento?.condPagamento ? ['Condição de pagamento', orcamento.condPagamento] : null,
+        !presentation.condicoesPagamentoDetalhadas && orcamento?.condPagamento ? ['Condição de pagamento', orcamento.condPagamento] : null,
         orcamento?.formaPagamento ? ['Forma de pagamento', orcamento.formaPagamento] : null,
         ['Prazo / entrega', effectiveDeadlineLabel],
       ].filter(Boolean) as Array<[string, string]>;
@@ -2831,21 +2855,25 @@ function renderStudioOrderedProposal(args: {
         ['Validade da proposta', orcamento?.validadeAte ? proposalFormatDate(orcamento.validadeAte) : 'A definir'],
         ['Início previsto', presentation.previsaoInicio ? proposalFormatDate(presentation.previsaoInicio) : 'A definir'],
       ];
+      const portalModule = moduleByKey("portal_cliente");
+      const portalBlock = presentation.mostrarPortalCliente
+        ? '<div class="studio-callout" style="margin-top:5mm;"><strong>Portal do Cliente</strong><p>' +
+          esc(moduleManualContent(portalModule ?? {}) || "Após a contratação, o cliente poderá acompanhar documentos, cronograma, atualizações e informações disponibilizadas pela empresa.") +
+          '</p></div>'
+        : '';
       return genericPage(module, index,
         '<div class="studio-conditions">' +
           acceptanceValues.map(([label, value]) => '<div><span>' + esc(label) + '</span><strong>' + esc(value) + '</strong></div>').join("") +
         '</div>' +
         '<div class="studio-accept"><h2>Aceite digital</h2><p>' +
         esc(moduleManualContent(module) || "O aceite desta proposta é feito digitalmente pelo botão Aceitar proposta no link enviado ao cliente. Os dados confirmados ficam vinculados ao lead e iniciam o fluxo de contratação.") +
-        '</p><div class="studio-digital-accept-note"><strong>Sem assinatura física nesta página.</strong><span>O registro eletrônico do aceite fica associado à proposta, ao cliente e ao histórico comercial.</span></div></div>');
+        '</p><div class="studio-digital-accept-note"><strong>Sem assinatura física nesta página.</strong><span>O registro eletrônico do aceite fica associado à proposta, ao cliente e ao histórico comercial.</span></div></div>' +
+        portalBlock);
     }
 
     if (key === "portal_cliente") {
-      if (!presentation.mostrarPortalCliente) return "";
-      return genericPage(module, index,
-        '<div class="studio-callout"><strong>Portal do Cliente</strong><p>' +
-        esc(moduleManualContent(module) || "Após a contratação, o cliente poderá acompanhar documentos, cronograma, atualizações e informações disponibilizadas pela empresa.") +
-        '</p></div>');
+      // O portal é apresentado junto dos próximos passos/aceite para não ocupar uma página isolada.
+      return "";
     }
 
     if (key === "curiosidades_conteudo") {
