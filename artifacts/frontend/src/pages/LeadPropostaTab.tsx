@@ -1737,16 +1737,27 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
       if (!response.ok) throw new Error(body.error ?? "Não foi possível desenvolver esta página.");
 
       const developed = body.module ?? {};
+      const explicitImageMode =
+        module.image?.mode === "manual"
+        || module.image?.mode === "library"
+        || module.image?.mode === "ai";
       updateProposalBuilderModuleConfig(moduleKey, {
         title: developed.title ?? module.title,
         description: developed.description ?? module.description,
         contentPrompt: developed.contentPrompt ?? module.contentPrompt,
-        image: developed.image ?? module.image,
+        // Desenvolver a página com IA não pode trocar/aplicar imagem automaticamente.
+        // Se o usuário já escolheu/gerou uma imagem explicitamente, ela é preservada.
+        // Em modo automático, removemos URL legado e mantemos apenas a direção visual.
+        image: {
+          ...(module.image ?? { mode: "automatic", aspectRatio: "16:9" }),
+          ...(explicitImageMode ? {} : { url: "" }),
+          prompt: developed.image?.prompt ?? module.image?.prompt,
+        },
       });
       setProposalBuilderPageAIInstruction("");
       toast({
         title: "Página desenvolvida com IA",
-        description: "Revise o resultado e ajuste o que quiser antes de salvar o modelo.",
+        description: "Texto e direção visual atualizados. A imagem só muda quando você escolher Biblioteca, Upload ou Gerar IA.",
       });
     } catch (error) {
       toast({
