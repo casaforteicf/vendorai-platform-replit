@@ -39,7 +39,7 @@ import {
   RenderStudioPanelLabel as PanelLabel,
   RenderStudioInfoBox as InfoBox,
 } from "./render-studio/RenderStudioPrimitives";
-import { RENDER_STUDIO_THEME as D, renderStudioInputStyle as inputStyle } from "./render-studio/renderStudioTheme";
+import { RENDER_STUDIO_THEME as D, RENDER_STUDIO_GLOBAL_STYLES as GLOBAL_STYLES, renderStudioInputStyle as inputStyle } from "./render-studio/renderStudioTheme";
 import {
   RENDER_STAGES,
   categorizeRenderError as categorizeError,
