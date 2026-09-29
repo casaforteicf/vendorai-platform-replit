@@ -246,6 +246,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const [proposalAdvancedOpen, setProposalAdvancedOpen] = useState(false);
   const [proposalStagesOpen, setProposalStagesOpen] = useState(false);
   const [proposalVisualCenterOpen, setProposalVisualCenterOpen] = useState(false);
+  const [proposalFallbackLibraryOpen, setProposalFallbackLibraryOpen] = useState(false);
   const [proposalDraftSavedAt, setProposalDraftSavedAt] = useState<string | null>(null);
 
   // Refinement dialog
@@ -1696,6 +1697,9 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     },
   ];
   const proposalComposerReadyCount = proposalComposerChecks.filter((item) => item.ok).length;
+  const proposalComposerBlockingIssues = proposalComposerChecks.filter((item) => item.key === "budget" && !item.ok);
+  const proposalComposerWarnings = proposalComposerChecks.filter((item) => item.key !== "budget" && !item.ok);
+
 
   function openRefineDialog(fromVersion?: number) {
     setRefineNotes("");
@@ -2116,23 +2120,33 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
 
           <div className="border-t" />
 
-          <section className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold text-foreground">
-              <span className="flex items-center gap-2">
-                <ImagePlus className="h-3.5 w-3.5 text-muted-foreground" />
-                Biblioteca visual
-              </span>
-              <Badge
-                variant="outline"
-                className={proposalHasMinimumImages ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}
-              >
-                {effectiveProposalImages.length} selecionada(s)
-              </Badge>
-            </div>
+          <section className="overflow-hidden rounded-xl border bg-background">
+            <button
+              type="button"
+              onClick={() => setProposalFallbackLibraryOpen((value) => !value)}
+              className="flex w-full items-start justify-between gap-3 p-3 text-left"
+            >
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-foreground">
+                  <ImagePlus className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span>Biblioteca visual de apoio</span>
+                  <Badge
+                    variant="outline"
+                    className={proposalHasMinimumImages ? "border-emerald-200 bg-emerald-50 text-emerald-700" : ""}
+                  >
+                    {effectiveProposalImages.length} imagem(ns)
+                  </Badge>
+                  <Badge variant="outline" className="text-[10px]">fallback</Badge>
+                </div>
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  Só entra quando não houver imagem específica da proposta, do modelo ou da etapa.
+                </p>
+              </div>
+              {proposalFallbackLibraryOpen ? <ChevronUp className="mt-0.5 h-4 w-4 shrink-0" /> : <ChevronDown className="mt-0.5 h-4 w-4 shrink-0" />}
+            </button>
 
-            <p className="text-xs text-muted-foreground">
-              Imagens gerais de apoio. A prioridade é: imagem específica da proposta → imagem do bloco/modelo → imagem da etapa → biblioteca visual. Use esta área apenas como fallback.
-            </p>
+            {proposalFallbackLibraryOpen && (
+              <div className="space-y-3 border-t p-3">
 
             {productProposalImages.filter((url) => !proposalImages.includes(url)).length > 0 && (
               <p className="rounded-md border border-dashed bg-muted/30 px-2.5 py-2 text-[11px] text-muted-foreground">
@@ -2144,10 +2158,10 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
               <div className="space-y-1.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-xs text-muted-foreground font-medium">
-                    Ordem da apresentação — cada imagem ocupa uma página:
+                    Imagens gerais de apoio — ordem de fallback:
                   </p>
                   <span className={`text-[10px] font-medium ${effectiveProposalImages.length >= proposalPrimaryPageCount ? "text-emerald-600" : "text-amber-600"}`}>
-                    {Math.min(effectiveProposalImages.length, proposalPrimaryPageCount)}/{proposalPrimaryPageCount} páginas principais cobertas
+                    {effectiveProposalImages.length} imagem(ns) disponíveis
                   </span>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
@@ -2234,7 +2248,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
             {imageSourceTab === "upload" && (
               <div className="space-y-2">
                 <p className="text-xs text-muted-foreground">
-                  Para máxima qualidade, use uma imagem diferente por página: capa, contexto, valor, solução e, quando houver, orçamento.
+                  Estas imagens são auxiliares e não substituem capa, imagem do bloco ou imagem específica de uma etapa.
                 </p>
                 <input
                   ref={imageInputRef}
@@ -2329,6 +2343,8 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                     </div>
                   </>
                 )}
+              </div>
+            )}
               </div>
             )}
           </section>
@@ -4164,6 +4180,88 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
           </DialogHeader>
 
           <div className="space-y-4 py-1">
+            {refineFromVersion == null && (
+              <div className="rounded-xl border bg-muted/20 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-semibold">Revisão antes de gerar</p>
+                    <p className="mt-0.5 text-[10px] text-muted-foreground">
+                      Confirme orçamento, modelo, marca e material visual antes de criar a versão.
+                    </p>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className={proposalComposerBlockingIssues.length === 0 && proposalComposerWarnings.length === 0
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                      : proposalComposerBlockingIssues.length > 0
+                        ? "border-red-200 bg-red-50 text-red-700"
+                        : "border-amber-200 bg-amber-50 text-amber-700"}
+                  >
+                    {proposalComposerReadyCount}/{proposalComposerChecks.length} pronto
+                  </Badge>
+                </div>
+
+                <div className="mt-3 grid gap-1.5 sm:grid-cols-2">
+                  {proposalComposerChecks.map((item) => (
+                    <div key={item.key} className="flex items-start gap-2 rounded-lg border bg-background px-2.5 py-2">
+                      {item.ok
+                        ? <CheckSquare className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                        : <XCircle className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${item.key === "budget" ? "text-red-500" : "text-amber-500"}`} />}
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-medium">{item.label}</p>
+                        <p className="line-clamp-2 text-[10px] text-muted-foreground">{item.detail}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {(proposalComposerWarnings.length > 0 || proposalComposerBlockingIssues.length > 0) && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {proposalComposerWarnings.some((item) => item.key === "cover" || item.key === "stages") && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8 text-xs"
+                        onClick={() => {
+                          setRefineOpen(false);
+                          setProposalVisualCenterOpen(true);
+                        }}
+                      >
+                        <ImagePlus className="mr-1 h-3.5 w-3.5" />
+                        Corrigir imagens
+                      </Button>
+                    )}
+                    {proposalComposerWarnings.some((item) => item.key === "model") && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8 text-xs"
+                        onClick={() => {
+                          setRefineOpen(false);
+                          openProposalBuilderEditor();
+                        }}
+                      >
+                        <Settings2 className="mr-1 h-3.5 w-3.5" />
+                        Escolher modelo
+                      </Button>
+                    )}
+                  </div>
+                )}
+
+                {proposalComposerBlockingIssues.length > 0 ? (
+                  <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-2.5 py-2 text-[10px] text-red-700">
+                    A geração está bloqueada até selecionar um orçamento/revisão.
+                  </p>
+                ) : proposalComposerWarnings.length > 0 ? (
+                  <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[10px] text-amber-700">
+                    Há itens visuais opcionais pendentes. Você pode corrigir agora ou gerar mesmo assim usando os fallbacks disponíveis.
+                  </p>
+                ) : null}
+              </div>
+            )}
+
             <p className="text-sm text-muted-foreground">
               {refineFromVersion != null
                 ? "Descreva o que deve mudar na nova versão. A IA vai gerar uma versão melhorada com suas instruções."
@@ -4222,7 +4320,7 @@ ${chip}`
                 variant="ghost"
                 size="sm"
                 onClick={() => generateProposal(undefined)}
-                disabled={generating}
+                disabled={generating || proposalComposerBlockingIssues.length > 0}
               >
                 {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
                 Gerar sem instruções
@@ -4232,7 +4330,7 @@ ${chip}`
               size="sm"
               className="gap-1.5 bg-violet-600 hover:bg-violet-700"
               onClick={() => generateProposal(refineNotes || undefined)}
-              disabled={generating}
+              disabled={generating || (refineFromVersion == null && proposalComposerBlockingIssues.length > 0)}
             >
               {generating ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
