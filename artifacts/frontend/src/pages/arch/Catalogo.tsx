@@ -40,6 +40,25 @@ type Produto = {
   createdAt: string;
 };
 
+type Material = {
+  id: string;
+  nome: string;
+  fabricante: string;
+  linha: string;
+  referencia: string | null;
+  categoria: string;
+};
+
+type ProdutoMaterial = {
+  id: string;
+  materialId: string;
+  grupo: string | null;
+  surfaceKey: string | null;
+  isDefault: boolean;
+  precoAdicional: string | null;
+  material: Material | null;
+};
+
 // ── Constants ──────────────────────────────────────────────────────────────
 function getToken() { return localStorage.getItem("vendorai_token"); }
 function getBase()  { return (import.meta.env.BASE_URL ?? "/").replace(/\/$/, ""); }
@@ -51,8 +70,8 @@ function fmt(v: number) {
 }
 
 const CATEGORIAS = [
-  "Móveis", "Iluminação", "Revestimentos", "Elétrica", "Hidráulica",
-  "Marcenaria", "Acessórios", "Pintura", "Metais", "Cerâmica", "Outros",
+  "Estofados", "Móveis", "Iluminação", "Louças e Metais", "Eletrodomésticos",
+  "Portas e Janelas", "Marcenaria", "Acessórios", "Decoração", "Outros",
 ];
 
 const EMPTY_FORM = {
@@ -81,6 +100,15 @@ export default function Catalogo() {
   const [editing, setEditing]   = useState<Produto | null>(null);
   const [form, setForm]         = useState({ ...EMPTY_FORM });
   const [saving, setSaving]     = useState(false);
+
+  // ── Product material options
+  const [materials, setMaterials] = useState<Material[]>([]);
+  const [productMaterials, setProductMaterials] = useState<ProdutoMaterial[]>([]);
+  const [materialId, setMaterialId] = useState("");
+  const [materialGroup, setMaterialGroup] = useState("Revestimento");
+  const [surfaceKey, setSurfaceKey] = useState("");
+  const [materialPriceDelta, setMaterialPriceDelta] = useState("");
+  const [linkingMaterial, setLinkingMaterial] = useState(false);
 
   // ── Image upload state
   const [files, setFiles]                   = useState<File[]>([]);
@@ -119,11 +147,70 @@ export default function Catalogo() {
   }
 
   // ── Open dialog ────────────────────────────────────────────────────────
+  function resetMaterialLinkState() {
+    setMaterials([]);
+    setProductMaterials([]);
+    setMaterialId("");
+    setMaterialGroup("Revestimento");
+    setSurfaceKey("");
+    setMaterialPriceDelta("");
+  }
+
+  async function loadProductMaterials(productId: string) {
+    const headers = { Authorization: `Bearer ${getToken()}` };
+    const [materialsRes, linkedRes] = await Promise.all([
+      fetch("/api/arch/materials?limit=200", { headers }),
+      fetch(`/api/arch/catalogo/${productId}/materials`, { headers }),
+    ]);
+    if (materialsRes.ok) setMaterials(await materialsRes.json());
+    if (linkedRes.ok) setProductMaterials(await linkedRes.json());
+  }
+
+  async function linkMaterial() {
+    if (!editing || !materialId) return;
+    setLinkingMaterial(true);
+    try {
+      const res = await fetch(`/api/arch/catalogo/${editing.id}/materials`, {
+        method: "POST",
+        headers: authH(),
+        body: JSON.stringify({
+          materialId,
+          grupo: materialGroup || undefined,
+          surfaceKey: surfaceKey.trim() || undefined,
+          precoAdicional: materialPriceDelta ? Number(materialPriceDelta) : undefined,
+        }),
+      });
+      if (!res.ok) throw new Error("Não foi possível vincular o material ao produto.");
+      await loadProductMaterials(editing.id);
+      setMaterialId("");
+      setSurfaceKey("");
+      setMaterialPriceDelta("");
+      toast({ title: "Material disponível adicionado ao produto." });
+    } catch (err: any) {
+      toast({ title: "Erro", description: err.message, variant: "destructive" });
+    } finally {
+      setLinkingMaterial(false);
+    }
+  }
+
+  async function unlinkMaterial(linkId: string) {
+    if (!editing) return;
+    const res = await fetch(`/api/arch/catalogo/${editing.id}/materials/${linkId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (res.ok) {
+      await loadProductMaterials(editing.id);
+      toast({ title: "Material removido do produto." });
+    }
+  }
+
   function openAdd() {
     setEditing(null);
     setForm({ ...EMPTY_FORM });
     setFiles([]);
     setPreviews([]);
+    resetMaterialLinkState();
     setOpen(true);
   }
 
@@ -141,7 +228,9 @@ export default function Catalogo() {
     });
     setFiles([]);
     setPreviews([]);
+    resetMaterialLinkState();
     setOpen(true);
+    void loadProductMaterials(p.id);
   }
 
   // ── Submit ─────────────────────────────────────────────────────────────
@@ -240,7 +329,7 @@ export default function Catalogo() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Catálogo de Produtos</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Gerencie seus produtos e materiais de design</p>
+          <p className="text-sm text-muted-foreground mt-0.5">Produtos e objetos do projeto. Materiais e texturas são gerenciados na Biblioteca de Materiais.</p>
         </div>
         <Button onClick={openAdd}>
           <Plus className="h-4 w-4 mr-2" /> Adicionar produto
@@ -280,7 +369,7 @@ export default function Catalogo() {
         <div className="rounded-lg border border-dashed p-16 text-center">
           <Package className="h-10 w-10 mx-auto text-muted-foreground/30 mb-3" />
           <p className="font-medium text-sm">Nenhum produto no catálogo</p>
-          <p className="text-xs text-muted-foreground mt-1">Adicione móveis, materiais e produtos que você usa nos projetos.</p>
+          <p className="text-xs text-muted-foreground mt-1">Adicione mobiliário, iluminação, objetos e demais produtos usados nos projetos.</p>
           <Button variant="outline" size="sm" className="mt-4" onClick={openAdd}>
             <Plus className="h-4 w-4 mr-1" /> Adicionar primeiro produto
           </Button>
@@ -358,7 +447,7 @@ export default function Catalogo() {
 
       {/* ── Dialog: Adicionar / Editar Produto ────────────────────────── */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing ? "Editar Produto" : "Adicionar Produto"}</DialogTitle>
           </DialogHeader>
@@ -478,6 +567,71 @@ export default function Catalogo() {
                 onChange={handleFileChange}
               />
             </div>
+
+            {editing && (
+              <div className="rounded-lg border p-3 space-y-3">
+                <div>
+                  <p className="text-sm font-medium">Materiais e acabamentos disponíveis</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Vincule materiais da Biblioteca sem duplicar texturas. Ex.: Estofado Asti → tecidos permitidos.
+                  </p>
+                </div>
+
+                {productMaterials.length > 0 && (
+                  <div className="space-y-2">
+                    {productMaterials.map(link => (
+                      <div key={link.id} className="flex items-center justify-between gap-3 rounded-md border bg-muted/30 p-2">
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium truncate">
+                            {link.material?.nome ?? "Material"}{link.material?.fabricante ? ` · ${link.material.fabricante}` : ""}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground truncate">
+                            {link.grupo ?? "Material"}{link.surfaceKey ? ` · superfície: ${link.surfaceKey}` : ""}
+                            {link.precoAdicional && Number(link.precoAdicional) > 0 ? ` · + ${fmt(Number(link.precoAdicional))}` : ""}
+                          </p>
+                        </div>
+                        <Button type="button" variant="ghost" size="sm" onClick={() => void unlinkMaterial(link.id)}>
+                          Remover
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="col-span-2 space-y-1">
+                    <Label className="text-xs">Adicionar material da biblioteca</Label>
+                    <Select value={materialId} onValueChange={setMaterialId}>
+                      <SelectTrigger><SelectValue placeholder="Selecione o material" /></SelectTrigger>
+                      <SelectContent>
+                        {materials.map(material => (
+                          <SelectItem key={material.id} value={material.id}>
+                            {material.fabricante} · {material.linha} · {material.nome}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Grupo / parte do produto</Label>
+                    <Input value={materialGroup} onChange={e => setMaterialGroup(e.target.value)} placeholder="Ex: Tecido, Pés, Estrutura" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Superfície 3D</Label>
+                    <Input value={surfaceKey} onChange={e => setSurfaceKey(e.target.value)} placeholder="Ex: seat_fabric" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Acréscimo de preço (R$)</Label>
+                    <Input type="number" min="0" step="0.01" value={materialPriceDelta} onChange={e => setMaterialPriceDelta(e.target.value)} placeholder="0,00" />
+                  </div>
+                  <div className="flex items-end">
+                    <Button type="button" variant="outline" className="w-full" onClick={() => void linkMaterial()} disabled={!materialId || linkingMaterial}>
+                      {linkingMaterial ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Vinculando…</> : "Adicionar material"}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Publicar no marketplace */}
             {!editing && (
