@@ -11,7 +11,6 @@ import { useArqProject } from "@/modules/arqdor/hooks/useArqProject";
 import { WorkspaceProvider } from "@/modules/arqdor/workspace/WorkspaceContext";
 import { ArqdorThemeProvider } from "@/modules/arqdor/theme/ArqdorThemeProvider";
 import { useAuth } from "@/contexts/AuthContext";
-import { useRealRenderGallery } from "@/modules/arqdor/workspace/real-render-gallery/useRealRenderGallery";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -1495,14 +1494,10 @@ function BottomPanel({ versions, projectId, isOpen, onToggle, eventLog, userName
   const [expandedVersion, setExpandedVersion] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
-  const gallery = useRealRenderGallery(projectId ?? "");
-  const galleryVersions: RenderVersion[] = (gallery.items ?? []).map((item) => ({
-    id: item.id, url: item.imageUrl, label: item.title,
-    operationType: "initial" as const, createdAt: new Date(),
-  }));
-  const allVersions: RenderVersion[] = Array.from(
-    new Map([...versions, ...galleryVersions].map((version) => [normalizeRenderMediaUrl(version.url) || version.id, version])).values(),
-  );
+  // Fonte única do histórico nesta tela: versões persistidas/hidratadas pelo Render Studio.
+  // A galeria real continua disponível em seus módulos próprios, mas não participa
+  // mais da árvore de versões do editor para evitar duplicação e estados conflitantes.
+  const allVersions: RenderVersion[] = versions;
   const filteredVersions = search.trim()
     ? allVersions.filter(v => v.label.toLowerCase().includes(search.toLowerCase()))
     : allVersions;
@@ -1558,8 +1553,7 @@ function BottomPanel({ versions, projectId, isOpen, onToggle, eventLog, userName
           {/* P3-29: versões com search */}
           {tab === "versoes" && (
             <div style={{ display: "flex", gap: 8, height: "100%", alignItems: "center" }}>
-              {gallery.loading && <div style={{ display: "flex", alignItems: "center", gap: 8, color: D.muted, fontSize: 11 }}><DkSpinner size={14} /> Carregando galeria…</div>}
-              {filteredVersions.length === 0 && !gallery.loading && <div style={{ fontSize: 11, color: D.dim }}>{search ? "Nenhuma versão encontrada." : "Nenhuma versão ainda."}</div>}
+              {filteredVersions.length === 0 && <div style={{ fontSize: 11, color: D.dim }}>{search ? "Nenhuma versão encontrada." : "Nenhuma versão ainda."}</div>}
               {filteredVersions.map((v, i) => {
                 const vComments = comments[v.id] ?? [];
                 return (
