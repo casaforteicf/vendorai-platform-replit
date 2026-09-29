@@ -7,15 +7,15 @@ type Comment = { id: string; text: string; author: string; timestamp: Date };
 
 // ─── Bottom Panel (P3-26 Storyboard, P3-27 Comments, P3-28 History, P3-29 Search) ─
 
-export function RenderStudioBottomPanel({ versions, projectId, isOpen, onToggle, eventLog, userName }: {
-  versions: RenderVersion[]; projectId: string | null; isOpen: boolean; onToggle: () => void;
+export function RenderStudioBottomPanel({ versions, projectId, currentRenderId, isOpen, onToggle, onSelectVersion, eventLog, userName }: {
+  versions: RenderVersion[]; projectId: string | null; currentRenderId: string | null; isOpen: boolean; onToggle: () => void;
+  onSelectVersion: (version: RenderVersion) => void;
   eventLog: EventLogEntry[]; userName: string;
 }) {
   const [tab, setTab] = useState<"versoes" | "storyboard" | "comentarios" | "historico">("versoes");
   const [storyboard, setStoryboard] = useState<RenderVersion[]>([]);
   const [comments, setComments] = useState<Record<string, Comment[]>>({});
   const [commentDraft, setCommentDraft] = useState<Record<string, string>>({});
-  const [expandedVersion, setExpandedVersion] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
   // Fonte única do histórico nesta tela: versões persistidas/hidratadas pelo Render Studio.
@@ -81,10 +81,18 @@ export function RenderStudioBottomPanel({ versions, projectId, isOpen, onToggle,
               {filteredVersions.map((v, i) => {
                 const vComments = comments[v.id] ?? [];
                 return (
-                  <div key={v.id} onClick={() => setExpandedVersion(expandedVersion === v.id ? null : v.id)} style={{ flexShrink: 0, width: 110, height: 138, background: D.card, border: `1px solid ${v.approvedBy ? D.green : i === 0 ? D.purple : D.border}`, borderRadius: 8, overflow: "hidden", cursor: "pointer", display: "flex", flexDirection: "column" }}>
+                  <div
+                    key={v.id}
+                    onClick={() => onSelectVersion(v)}
+                    role="button"
+                    tabIndex={0}
+                    aria-current={currentRenderId === v.id ? "true" : undefined}
+                    onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onSelectVersion(v); }}
+                    style={{ flexShrink: 0, width: 110, height: 138, background: D.card, border: `1px solid ${v.approvedBy ? D.green : currentRenderId === v.id ? D.purple : D.border}`, borderRadius: 8, overflow: "hidden", cursor: "pointer", display: "flex", flexDirection: "column", boxShadow: currentRenderId === v.id ? `0 0 0 2px ${D.purple}22` : "none" }}
+                  >
                     <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
                       <img src={normalizeRenderMediaUrl(v.url)} alt={v.label} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                      {i === 0 && !v.approvedBy && <div style={{ position: "absolute", top: 4, right: 4, fontSize: 8, fontWeight: 800, background: D.purple, color: "#fff", padding: "2px 5px", borderRadius: 3 }}>ATUAL</div>}
+                      {currentRenderId === v.id && !v.approvedBy && <div style={{ position: "absolute", top: 4, right: 4, fontSize: 8, fontWeight: 800, background: D.purple, color: "#fff", padding: "2px 5px", borderRadius: 3 }}>ATUAL</div>}
                       {v.approvedBy && <div style={{ position: "absolute", top: 4, right: 4, fontSize: 8, fontWeight: 800, background: D.green, color: "#fff", padding: "2px 5px", borderRadius: 3 }}>✓</div>}
                       {v.parentVersionId && <div style={{ position: "absolute", bottom: 4, left: 4, fontSize: 7, color: D.purpleText }}>↳</div>}
                       {vComments.length > 0 && <div style={{ position: "absolute", bottom: 4, right: 4, fontSize: 8, background: D.amber, color: "#fff", padding: "1px 4px", borderRadius: 8 }}>{vComments.length}</div>}
