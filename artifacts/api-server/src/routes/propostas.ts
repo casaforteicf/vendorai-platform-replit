@@ -18,7 +18,8 @@ import {
   type PropostaItem,
 } from "@workspace/db";
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
-import { callOpenAI as gatewayCallOpenAI } from "../lib/ai-gateway.js";
+import { callOpenAI as gatewayCallOpenAI, generateImage } from "../lib/ai-gateway.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 import { proposalAccepted } from "../lib/proposal-accepted.js";
 import { renderOrcamentoPdf, generateProposalPDF } from "../lib/proposal-engine.js";
 import { logger } from "../lib/logger.js";
@@ -37,6 +38,7 @@ import {
   type ProposalBuilderTemplate,
 } from "../lib/proposal-builder.js";
 const router: IRouter = Router();
+const proposalTemplateStorage = new ObjectStorageService();
 
 router.get("/tenants/:tenantId/proposal-builder/templates", async (req, res) => {
   // tenant-audit: reviewed route tenant is immediately authorized against the authenticated tenant or Super Admin
@@ -163,6 +165,105 @@ router.put("/tenants/:tenantId/proposal-builder/templates/:templateId", async (r
     .where(eq(businessProfilesTable.tenantId, tenantId));
 
   res.json({ template: updated, templates: nextTemplates });
+});
+
+
+router.post("/tenants/:tenantId/proposal-builder/templates/:templateId/modules/:moduleKey/generate-image", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  const templateId = String(req.params.templateId);
+  const moduleKey = String(req.params.moduleKey);
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const [profile] = await db.select().from(businessProfilesTable)
+    .where(eq(businessProfilesTable.tenantId, tenantId)).limit(1);
+  if (!profile) {
+    res.status(404).json({ error: "Business profile not found" });
+    return;
+  }
+
+  const discovery = (profile.discoveryData ?? {}) as Record<string, unknown>;
+  const existing = Array.isArray(discovery.proposalBuilderTemplates)
+    ? discovery.proposalBuilderTemplates as ProposalBuilderTemplate[]
+    : [];
+  const template = existing.find((item) => item?.id === templateId);
+  if (!template) {
+    res.status(404).json({ error: "Proposal builder template not found" });
+    return;
+  }
+  const module = template.modules.find((item) => item.key === moduleKey);
+  if (!module) {
+    res.status(404).json({ error: "Proposal builder module not found" });
+    return;
+  }
+
+  const customPrompt = typeof req.body?.prompt === "string" ? req.body.prompt.trim() : "";
+  const company = profile.nomeFantasia || profile.razaoSocial || "empresa";
+  const prompt = [
+    "Crie uma imagem editorial premium para um BLOCO DE MODELO DE PROPOSTA COMERCIAL reutilizável.",
+    `Empresa: ${company}.`,
+    `Segmento: ${profile.vertical || "não informado"}.`,
+    `Bloco: ${module.title || module.key}.`,
+    module.description ? `Objetivo do bloco: ${module.description}.` : "",
+    customPrompt || module.image?.prompt || "",
+    ...(template.aiRules?.imageRules ?? []),
+    "A imagem NÃO deve conter nome de cliente, preço, endereço, número de orçamento ou dados de uma proposta específica.",
+    "Sem textos, logotipos inventados, marcas d'água ou elementos deformados.",
+    "Fotorealismo e qualidade comercial profissional.",
+  ].filter(Boolean).join("\n");
+
+  try {
+    const { urls } = await generateImage(tenantId, "image_generator", prompt, {
+      model: "gpt-image-1",
+      size: "1536x1024",
+      n: 1,
+      log: req.log,
+      requestId: `proposal-template:${templateId}:${moduleKey}:${crypto.randomUUID()}`,
+    });
+    const sourceUrl = urls[0];
+    if (!sourceUrl) throw new Error("IA não retornou imagem");
+    const response = await fetch(sourceUrl);
+    if (!response.ok) throw new Error(`Falha ao baixar imagem gerada (${response.status})`);
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const mimeType = response.headers.get("content-type") ?? "image/png";
+    const objectPath = await proposalTemplateStorage.savePrivateBuffer(
+      buffer,
+      mimeType,
+      `proposal-template-${templateId}-${moduleKey}.png`,
+    );
+    const imageUrl = `/api/storage/objects${objectPath.replace(/^\/objects/, "")}`;
+
+    const nextTemplates = existing.map((item) => item.id !== templateId
+      ? item
+      : {
+          ...item,
+          modules: item.modules.map((candidate) => candidate.key !== moduleKey
+            ? candidate
+            : {
+                ...candidate,
+                image: {
+                  ...(candidate.image ?? { mode: "ai" }),
+                  mode: "ai" as const,
+                  url: imageUrl,
+                  prompt: customPrompt || candidate.image?.prompt,
+                  aspectRatio: candidate.image?.aspectRatio ?? "16:9",
+                },
+              }),
+          updatedAt: new Date().toISOString(),
+        });
+
+    await db.update(businessProfilesTable).set({
+      discoveryData: { ...discovery, proposalBuilderTemplates: nextTemplates },
+      updatedAt: new Date(),
+    }).where(eq(businessProfilesTable.tenantId, tenantId));
+
+    res.json({ imageUrl, templates: nextTemplates });
+  } catch (err) {
+    req.log.warn({ err, tenantId, templateId, moduleKey }, "proposal template module image generation failed");
+    res.status(502).json({ error: err instanceof Error ? err.message : "Falha ao gerar imagem do bloco" });
+  }
 });
 
 // ── Proposal number generation ────────────────────────────────────────────────
