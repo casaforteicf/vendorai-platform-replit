@@ -120,6 +120,7 @@ export default function Catalogo() {
   const [materialGroup, setMaterialGroup] = useState("Revestimento");
   const [surfaceKey, setSurfaceKey] = useState("");
   const [materialPriceDelta, setMaterialPriceDelta] = useState("");
+  const [materialDefault, setMaterialDefault] = useState(true);
   const [linkingMaterial, setLinkingMaterial] = useState(false);
 
   const modelSurfaces = editing?.especificacoes?.modelSurfaces ?? [];
@@ -168,6 +169,7 @@ export default function Catalogo() {
     setMaterialGroup("Revestimento");
     setSurfaceKey("");
     setMaterialPriceDelta("");
+    setMaterialDefault(true);
   }
 
   async function loadProductMaterials(productId: string) {
@@ -192,6 +194,7 @@ export default function Catalogo() {
           grupo: materialGroup || undefined,
           surfaceKey: surfaceKey.trim() || undefined,
           precoAdicional: materialPriceDelta ? Number(materialPriceDelta) : undefined,
+          isDefault: materialDefault,
         }),
       });
       if (!res.ok) throw new Error("Não foi possível vincular o material ao produto.");
@@ -199,6 +202,7 @@ export default function Catalogo() {
       setMaterialId("");
       setSurfaceKey("");
       setMaterialPriceDelta("");
+      setMaterialDefault(true);
       toast({ title: "Material disponível adicionado ao produto." });
     } catch (err: any) {
       toast({ title: "Erro", description: err.message, variant: "destructive" });
@@ -627,7 +631,8 @@ export default function Catalogo() {
                             {link.material?.nome ?? "Material"}{link.material?.fabricante ? ` · ${link.material.fabricante}` : ""}
                           </p>
                           <p className="text-[11px] text-muted-foreground truncate">
-                            {link.grupo ?? "Material"}{link.surfaceKey ? ` · superfície: ${link.surfaceKey}` : ""}
+                            {link.grupo ?? "Material"}{link.surfaceKey ? ` · superfície: ${link.surfaceKey}` : " · produto inteiro"}
+                            {link.isDefault ? " · padrão" : ""}
                             {link.precoAdicional && Number(link.precoAdicional) > 0 ? ` · + ${fmt(Number(link.precoAdicional))}` : ""}
                           </p>
                         </div>
@@ -679,8 +684,15 @@ export default function Catalogo() {
                     <Label className="text-xs">Acréscimo de preço (R$)</Label>
                     <Input type="number" min="0" step="0.01" value={materialPriceDelta} onChange={e => setMaterialPriceDelta(e.target.value)} placeholder="0,00" />
                   </div>
-                  <div className="flex items-end">
-                    <Button type="button" variant="outline" className="w-full" onClick={() => void linkMaterial()} disabled={!materialId || linkingMaterial}>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Uso inicial no 3D</Label>
+                    <div className="flex h-10 items-center justify-between rounded-md border px-3">
+                      <span className="text-xs text-muted-foreground">Material padrão</span>
+                      <Switch checked={materialDefault} onCheckedChange={setMaterialDefault} />
+                    </div>
+                  </div>
+                  <div className="col-span-2 flex justify-end">
+                    <Button type="button" variant="outline" onClick={() => void linkMaterial()} disabled={!materialId || linkingMaterial}>
                       {linkingMaterial ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Vinculando…</> : "Adicionar material"}
                     </Button>
                   </div>
