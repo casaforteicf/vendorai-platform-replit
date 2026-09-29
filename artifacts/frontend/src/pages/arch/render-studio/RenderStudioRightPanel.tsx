@@ -29,10 +29,8 @@ import { RenderStudioCopilot as CopilotPanel } from "./RenderStudioCopilot";
 export function RenderStudioRightPanel({
   step, arq, ambiente, setAmbiente, imageFile, imageDataUrl, renderUrl, currentRenderId, versions, loading, err,
   melhoriaPrompt, setMelhoriaPrompt, melhoriaMode, setMelhoriaMode,
-  approved, specDone, specData,
-  specificationId, enviandoOrcamento, orcamentoMsg, onEnviarOrcamento,
-  areaM2, setAreaM2, peDireitoM, setPeDireitoM, onSalvarMedidasAmbiente, onSalvarMedidasItem,
-  onNextStep, onStartRender, onApplyMelhoria, onApprove, onSendToSpec,
+  approved,
+  onNextStep, onStartRender, onApplyMelhoria, onApprove,
   sceneType, setSceneType, renderProfile, setRenderProfile, visualStyle, setVisualStyle, lightingProfile, setLightingProfile,
   videoMovement, setVideoMovement, videoGenerating, renderVideoUrl, onGenerateVideo5s,
   onShowCreateModal, onUpload, onOpenMediaLibrary, mediaLibraryAvailable,
@@ -47,21 +45,9 @@ export function RenderStudioRightPanel({
   versions: RenderVersion[]; loading: boolean; err: string | null;
   melhoriaPrompt: string; setMelhoriaPrompt: (v: string) => void;
   melhoriaMode: RenderStudioImprovementMode; setMelhoriaMode: (v: RenderStudioImprovementMode) => void;
-  approved: boolean; specDone: boolean; specData: any[];
-  specificationId: string | null; enviandoOrcamento: boolean; orcamentoMsg: string | null; onEnviarOrcamento: (itemIds?: string[]) => void;
-  areaM2: string; setAreaM2: (v: string) => void; peDireitoM: string; setPeDireitoM: (v: string) => void;
-  onSalvarMedidasAmbiente: () => void;
-  onSalvarMedidasItem: (itemId: string, patch: {
-    larguraCm?: string;
-    alturaCm?: string;
-    profundidadeCm?: string;
-    status?: "pendente" | "especificado" | "nao_especificado";
-    overrideNome?: string | null;
-    overrideFornecedor?: string | null;
-    overridePreco?: string | null;
-  }) => void;
+  approved: boolean;
   onNextStep: () => void; onStartRender: () => void;
-  onApplyMelhoria: () => void; onApprove: () => void; onSendToSpec: () => void;
+  onApplyMelhoria: () => void; onApprove: () => void;
   sceneType: RenderStudioSceneType; setSceneType: (v: RenderStudioSceneType) => void;
   renderProfile: RenderStudioProfile; setRenderProfile: (v: RenderStudioProfile) => void;
   visualStyle: RenderStudioVisualStyle; setVisualStyle: (v: RenderStudioVisualStyle) => void;
