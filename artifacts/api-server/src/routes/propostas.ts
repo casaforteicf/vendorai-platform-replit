@@ -169,6 +169,110 @@ router.put("/tenants/:tenantId/proposal-builder/templates/:templateId", async (r
 });
 
 
+
+router.post("/tenants/:tenantId/proposal-builder/templates/:templateId/duplicate", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  const templateId = String(req.params.templateId);
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const [profile] = await db.select().from(businessProfilesTable)
+    .where(eq(businessProfilesTable.tenantId, tenantId)).limit(1);
+  if (!profile) {
+    res.status(404).json({ error: "Business profile not found" });
+    return;
+  }
+
+  const discovery = (profile.discoveryData ?? {}) as Record<string, unknown>;
+  const existing = Array.isArray(discovery.proposalBuilderTemplates)
+    ? discovery.proposalBuilderTemplates as ProposalBuilderTemplate[]
+    : [];
+  const current = existing.find((item) => item?.id === templateId);
+  if (!current) {
+    res.status(404).json({ error: "Proposal builder template not found" });
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const requestedName = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+  const copy: ProposalBuilderTemplate = {
+    ...current,
+    id: crypto.randomUUID(),
+    name: requestedName || `${current.name} · Cópia`,
+    isDefault: false,
+    createdBy: "manual",
+    createdAt: now,
+    updatedAt: now,
+    modules: current.modules.map((module) => ({
+      ...module,
+      image: module.image ? { ...module.image } : undefined,
+    })),
+    visualStyle: { ...(current.visualStyle ?? {}) },
+    aiRules: {
+      ...(current.aiRules ?? {}),
+      imageRules: [...(current.aiRules?.imageRules ?? [])],
+      contentRules: [...(current.aiRules?.contentRules ?? [])],
+      avoid: [...(current.aiRules?.avoid ?? [])],
+    },
+  };
+
+  const nextTemplates = [...existing, copy];
+  await db.update(businessProfilesTable).set({
+    discoveryData: { ...discovery, proposalBuilderTemplates: nextTemplates },
+    updatedAt: new Date(),
+  }).where(eq(businessProfilesTable.tenantId, tenantId));
+
+  res.status(201).json({ template: copy, templates: nextTemplates });
+});
+
+router.post("/tenants/:tenantId/proposal-builder/templates/:templateId/set-default", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  const templateId = String(req.params.templateId);
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const [profile] = await db.select().from(businessProfilesTable)
+    .where(eq(businessProfilesTable.tenantId, tenantId)).limit(1);
+  if (!profile) {
+    res.status(404).json({ error: "Business profile not found" });
+    return;
+  }
+
+  const discovery = (profile.discoveryData ?? {}) as Record<string, unknown>;
+  const existing = Array.isArray(discovery.proposalBuilderTemplates)
+    ? discovery.proposalBuilderTemplates as ProposalBuilderTemplate[]
+    : [];
+  if (!existing.some((item) => item?.id === templateId)) {
+    res.status(404).json({ error: "Proposal builder template not found" });
+    return;
+  }
+
+  const nextTemplates = existing.map((item) => ({
+    ...item,
+    isDefault: item.id === templateId,
+    updatedAt: item.id === templateId ? new Date().toISOString() : item.updatedAt,
+  }));
+
+  await db.update(businessProfilesTable).set({
+    discoveryData: {
+      ...discovery,
+      proposalBuilderTemplates: nextTemplates,
+      activeProposalBuilderTemplateId: templateId,
+    },
+    updatedAt: new Date(),
+  }).where(eq(businessProfilesTable.tenantId, tenantId));
+
+  res.json({
+    template: nextTemplates.find((item) => item.id === templateId),
+    templates: nextTemplates,
+    activeTemplateId: templateId,
+  });
+});
+
 router.post("/tenants/:tenantId/proposal-builder/templates/:templateId/modules/:moduleKey/develop", async (req, res) => {
   // tenant-audit: reviewed route tenant is immediately authorized against the authenticated tenant or Super Admin
   const tenantId = String(req.params.tenantId);
