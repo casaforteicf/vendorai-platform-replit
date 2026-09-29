@@ -2283,193 +2283,149 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
               {generating ? "Gerando..." : "Gerar Proposta"}
             </Button>
           </CardTitle>
-          {/* Modelo da empresa — compacto no fluxo diário */}
-          <div className="mt-2 overflow-hidden rounded-xl border bg-muted/20">
-            <button
-              type="button"
-              onClick={() => setProposalModelOpen((value) => !value)}
-              className="flex w-full items-start justify-between gap-3 p-3 text-left"
-            >
+          {/* Configuração compacta da proposta */}
+          <div className="mt-2 rounded-xl border bg-muted/20 p-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <Settings2 className="h-4 w-4 text-muted-foreground" />
-                  <p className="text-xs font-semibold">Modelo da empresa</p>
-                  <Badge variant="outline" className="max-w-[220px] truncate text-[10px]">
+                  <p className="text-xs font-semibold">Modelo da proposta</p>
+                  <Badge variant="outline" className="max-w-[260px] truncate text-[10px]">
                     {proposalComposerTemplate?.name || "Automático"}
                   </Badge>
                 </div>
                 <p className="mt-1 text-[10px] text-muted-foreground">
-                  No uso diário, apenas confirme o modelo. Abra para trocar ou editar o padrão da empresa.
+                  O modelo define páginas, textos-base e imagens padrão. No dia a dia, só troque se necessário.
                 </p>
               </div>
-              {proposalModelOpen ? <ChevronUp className="mt-0.5 h-4 w-4 shrink-0" /> : <ChevronDown className="mt-0.5 h-4 w-4 shrink-0" />}
-            </button>
-            {proposalModelOpen && (
-              <div className="space-y-3 border-t p-3">
-          <div className="mt-2 space-y-2 rounded-lg border bg-muted/20 p-2.5">
-            <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <p className="text-xs font-semibold">Modelo inteligente da proposta</p>
-                <p className="text-[11px] text-muted-foreground">
-                  A IA organiza módulos, ordem, tom e regras visuais por tenant e segmento.
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                {proposalBuilderTemplates.length > 0 && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="h-9 w-full gap-1.5 text-xs sm:h-8 sm:w-auto"
-                    onClick={openProposalBuilderEditor}
-                  >
-                    <Settings2 className="h-3.5 w-3.5" />
-                    Studio de Propostas
-                  </Button>
-                )}
+              <div className="flex shrink-0 flex-wrap gap-2">
                 <Button
                   type="button"
                   size="sm"
                   variant="outline"
-                  className="h-9 w-full gap-1.5 text-xs sm:h-8 sm:w-auto"
-                  onClick={createProposalBuilderTemplateWithAI}
-                  disabled={generatingProposalBuilderTemplate}
+                  className="h-8 gap-1.5 text-xs"
+                  onClick={openProposalBuilderEditor}
+                  disabled={!proposalBuilderTemplates.length}
                 >
-                  {generatingProposalBuilderTemplate
-                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    : <Sparkles className="h-3.5 w-3.5 text-violet-500" />}
-                  {proposalBuilderTemplates.length ? "Criar nova versão com IA" : "Criar modelo com IA"}
+                  <Settings2 className="h-3.5 w-3.5" />
+                  Editar modelo
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 gap-1.5 text-xs"
+                  onClick={() => setProposalModelOpen((value) => !value)}
+                >
+                  {proposalModelOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  Trocar
                 </Button>
               </div>
             </div>
 
-            {proposalBuilderTemplates.length > 0 && (
-              <Select
-                value={selectedProposalBuilderTemplateId}
-                onValueChange={setSelectedProposalBuilderTemplateId}
-              >
-                <SelectTrigger className="h-9 min-w-0 w-full max-w-full text-xs [&>span]:truncate">
-                  <SelectValue placeholder="Modelo modular do tenant" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__auto__">
-                    Automático — {activeProposalBuilderTemplateId ? "usar modelo ativo" : "usar padrão seguro"}
-                  </SelectItem>
-                  {proposalBuilderTemplates.map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.name}{item.isDefault ? " · padrão" : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+            {proposalModelOpen && (
+              <div className="mt-3 grid gap-3 border-t pt-3 sm:grid-cols-[1fr_auto]">
+                <div className="space-y-2">
+                  {proposalBuilderTemplates.length > 0 && (
+                    <Select
+                      value={selectedProposalBuilderTemplateId}
+                      onValueChange={setSelectedProposalBuilderTemplateId}
+                    >
+                      <SelectTrigger className="h-9 min-w-0 w-full text-xs [&>span]:truncate">
+                        <SelectValue placeholder="Modelo da empresa" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__auto__">
+                          Automático — {activeProposalBuilderTemplateId ? "usar modelo ativo" : "usar padrão seguro"}
+                        </SelectItem>
+                        {proposalBuilderTemplates.map((item) => (
+                          <SelectItem key={item.id} value={item.id}>
+                            {item.name}{item.isDefault ? " · padrão" : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
 
-            {(proposalBuilderTemplates.length > 0 || hasProposalTemplate) && (
-              <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-                {proposalBuilderTemplates.length > 0 && (
-                  <span>
-                    {proposalBuilderTemplates.length} modelo(s) modular(es) · regras aplicadas na geração
-                  </span>
-                )}
-                <Link href="/configuracoes?tab=perfil" className="flex items-center gap-1 text-muted-foreground hover:text-primary no-underline">
-                  <Upload className="h-3 w-3" /> Kit da Marca e documentos
+                  {(proposalLineTemplates.length > 0 || hasProposalTemplate) && (
+                    <button
+                      type="button"
+                      onClick={() => setProposalAdvancedOpen((value) => !value)}
+                      className="flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-foreground"
+                    >
+                      {proposalAdvancedOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                      Referência documental opcional
+                    </button>
+                  )}
+
+                  {proposalAdvancedOpen && (proposalLineTemplates.length > 0 || hasProposalTemplate) && (
+                    <div className="pt-1">
+                      {proposalLineTemplates.length > 0 ? (
+                        <Select value={selectedProposalTemplateId} onValueChange={setSelectedProposalTemplateId}>
+                          <SelectTrigger className="h-9 min-w-0 w-full text-xs [&>span]:truncate">
+                            <SelectValue placeholder="Referência documental" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__auto__">Automático — referência padrão</SelectItem>
+                            {proposalLineTemplates.map((item) => (
+                              <SelectItem key={item.id} value={item.id}>{item.name} — {item.productLine}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <span className="flex items-center gap-1.5 text-xs text-emerald-600">
+                          <FileText className="h-3 w-3" /> {proposalTemplateName || "Referência padrão ativa"}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <Link href="/configuracoes?tab=perfil" className="flex h-9 items-center gap-1.5 self-start text-xs text-muted-foreground hover:text-primary no-underline">
+                  <Upload className="h-3.5 w-3.5" /> Kit da Marca
                 </Link>
               </div>
             )}
           </div>
-
-
-              </div>
-            )}
-          </div>
-          {/* Referência documental — fica em avançado para não poluir o fluxo principal */}
-          {(proposalLineTemplates.length > 0 || hasProposalTemplate) && (
-            <div className="mt-2 rounded-lg border bg-background/60">
-              <button
-                type="button"
-                onClick={() => setProposalAdvancedOpen((value) => !value)}
-                className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left"
-              >
-                <div className="min-w-0">
-                  <p className="text-xs font-medium">Referência documental</p>
-                  <p className="truncate text-[10px] text-muted-foreground">
-                    Opcional · use somente quando quiser seguir um arquivo/modelo específico.
-                  </p>
-                </div>
-                {proposalAdvancedOpen ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
-              </button>
-              {proposalAdvancedOpen && (
-                <div className="border-t px-3 pb-3 pt-2">
-                  {proposalLineTemplates.length > 0 ? (
-                    <Select value={selectedProposalTemplateId} onValueChange={setSelectedProposalTemplateId}>
-                      <SelectTrigger className="h-10 min-w-0 w-full max-w-full text-xs [&>span]:truncate">
-                        <SelectValue placeholder="Referência documental" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__auto__">Automático — referência padrão</SelectItem>
-                        {proposalLineTemplates.map((item) => (
-                          <SelectItem key={item.id} value={item.id}>{item.name} — {item.productLine}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <span className="flex items-center gap-1.5 text-xs text-emerald-600">
-                      <FileText className="h-3 w-3" /> Referência ativa: {proposalTemplateName || "modelo-proposta"}
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
         </CardHeader>
         <CardContent className="px-3 pb-4 sm:px-6">
           <div className="mb-4 rounded-xl border bg-background p-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-sm font-semibold">Composer da proposta</p>
+                  <p className="text-sm font-semibold">Pronto para gerar</p>
                   <Badge
                     variant="outline"
                     className={proposalComposerReadyCount === proposalComposerChecks.length
                       ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                       : "border-amber-200 bg-amber-50 text-amber-700"}
                   >
-                    {proposalComposerReadyCount}/{proposalComposerChecks.length} pronto
+                    {proposalComposerReadyCount}/{proposalComposerChecks.length}
                   </Badge>
                   {proposalDraftSavedAt && (
                     <span className="text-[10px] text-muted-foreground">
-                      rascunho salvo às {new Date(proposalDraftSavedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                      salvo às {new Date(proposalDraftSavedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                     </span>
                   )}
                 </div>
                 <p className="mt-1 text-[11px] text-muted-foreground">
-                  Orçamento → modelo → conteúdo → visual → publicação. Ajustes desta tela valem para esta proposta; o Studio altera o modelo da empresa.
+                  Orçamento, modelo e imagens. Só mostre detalhes quando houver algo pendente.
                 </p>
               </div>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="h-9 w-full gap-1.5 text-xs sm:w-auto"
-                onClick={openProposalBuilderEditor}
-                disabled={!proposalBuilderTemplates.length}
-              >
-                <Settings2 className="h-3.5 w-3.5" />
-                Editar modelo da empresa
-              </Button>
-            </div>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-              {proposalComposerChecks.map((item) => (
-                <div key={item.key} className="rounded-lg border bg-muted/20 px-2.5 py-2">
-                  <div className="flex items-center gap-1.5">
-                    {item.ok
-                      ? <CheckSquare className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
-                      : <XCircle className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
-                    <span className="text-[11px] font-medium">{item.label}</span>
-                  </div>
-                  <p className="mt-1 line-clamp-2 text-[10px] text-muted-foreground">{item.detail}</p>
-                </div>
-              ))}
+              <div className="flex flex-wrap gap-1.5">
+                {proposalComposerChecks.map((item) => (
+                  <Badge
+                    key={item.key}
+                    variant="outline"
+                    className={item.ok
+                      ? "border-emerald-200 bg-emerald-50 text-[10px] text-emerald-700"
+                      : "border-amber-200 bg-amber-50 text-[10px] text-amber-700"}
+                    title={item.detail}
+                  >
+                    {item.ok ? "✓ " : "• "}{item.label}
+                  </Badge>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -2482,13 +2438,13 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <ImagePlus className="h-4 w-4 text-muted-foreground" />
-                  <p className="text-sm font-semibold">Central visual</p>
+                  <p className="text-sm font-semibold">Imagens da proposta</p>
                   <Badge variant="outline" className="text-[10px]">{proposalComposerCover ? "capa ✓" : "capa pendente"}</Badge>
-                  <Badge variant="outline" className="text-[10px]">{proposalComposerTemplateImageCount} imagens do modelo</Badge>
+                  
                   <Badge variant="outline" className="text-[10px]">{proposalComposerStageImageCount}/{selectedOrcamentoStages.length || 0} etapas</Badge>
                 </div>
                 <p className="mt-1 text-[10px] text-muted-foreground">
-                  Uma única visão para capa, imagens do modelo, etapas e biblioteca de apoio. Prioridade: proposta → modelo → etapa → biblioteca.
+                  Gerencie somente as imagens desta proposta. Imagens padrão do modelo ficam no Studio.
                 </p>
               </div>
               {proposalVisualCenterOpen ? <ChevronUp className="mt-0.5 h-4 w-4 shrink-0" /> : <ChevronDown className="mt-0.5 h-4 w-4 shrink-0" />}
@@ -2507,7 +2463,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                     event.target.value = "";
                   }}
                 />
-                <div className="grid gap-3 lg:grid-cols-3">
+                <div className="grid gap-3 lg:grid-cols-2">
                   <div className="rounded-lg border p-3">
                     <div className="flex items-center justify-between gap-2">
                       <div>
@@ -2573,33 +2529,6 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                   <div className="rounded-lg border p-3">
                     <div className="flex items-center justify-between gap-2">
                       <div>
-                        <p className="text-xs font-semibold">Imagens do modelo</p>
-                        <p className="text-[10px] text-muted-foreground">Padrões reutilizáveis definidos no Studio.</p>
-                      </div>
-                      <Badge variant="outline" className="text-[10px]">{proposalComposerTemplateImageCount}</Badge>
-                    </div>
-                    <div className="mt-2 grid grid-cols-3 gap-1.5">
-                      {proposalComposerTemplateImageModules.slice(0, 6).map((module) => (
-                        <div key={module.key} className="overflow-hidden rounded-md border bg-muted/20">
-                          <img src={normalizeTenantLogoUrl(module.image?.url || "")} alt={module.title || PROPOSAL_MODULE_LABELS[module.key] || module.key} className="h-16 w-full object-cover" />
-                          <p className="truncate px-1.5 py-1 text-[9px]">{module.title || PROPOSAL_MODULE_LABELS[module.key] || module.key}</p>
-                        </div>
-                      ))}
-                      {proposalComposerTemplateImageCount === 0 && (
-                        <div className="col-span-3 flex h-20 items-center justify-center rounded-md border border-dashed text-[10px] text-muted-foreground">
-                          Nenhuma imagem padrão no modelo
-                        </div>
-                      )}
-                    </div>
-                    <Button type="button" size="sm" variant="outline" className="mt-2 h-9 w-full gap-1.5 text-xs" onClick={openProposalBuilderEditor} disabled={!proposalBuilderTemplates.length}>
-                      <Settings2 className="h-3.5 w-3.5" />
-                      Editar imagens no Studio
-                    </Button>
-                  </div>
-
-                  <div className="rounded-lg border p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
                         <p className="text-xs font-semibold">Imagens das etapas</p>
                         <p className="text-[10px] text-muted-foreground">
                           {selectedOrcamentoStages.length
@@ -2650,7 +2579,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                 <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-foreground">
                 <ImagePlus className="h-3.5 w-3.5 text-muted-foreground" />
-                <span>Biblioteca visual de apoio</span>
+                <span>Biblioteca de apoio</span>
                 <Badge
                 variant="outline"
                 className={proposalHasMinimumImages ? "border-emerald-200 bg-emerald-50 text-emerald-700" : ""}
@@ -2660,7 +2589,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                 <Badge variant="outline" className="text-[10px]">fallback</Badge>
                 </div>
                 <p className="mt-1 text-[10px] text-muted-foreground">
-                Só entra quando não houver imagem específica da proposta, do modelo ou da etapa.
+                Use apenas como apoio quando não houver imagem específica de capa ou etapa.
                 </p>
                 </div>
                 {proposalFallbackLibraryOpen ? <ChevronUp className="mt-0.5 h-4 w-4 shrink-0" /> : <ChevronDown className="mt-0.5 h-4 w-4 shrink-0" />}
