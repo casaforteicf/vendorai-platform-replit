@@ -635,6 +635,12 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
 
     return Array.from(groups.values()).sort((a, b) => a.ordem - b.ordem);
   })();
+  const stageImageDialogStage = stageImageDialogTarget
+    ? selectedOrcamentoStages.find((stage) => stage.id === stageImageDialogTarget) ?? null
+    : null;
+  const stageMediaLibraryStage = stageMediaLibraryTarget
+    ? selectedOrcamentoStages.find((stage) => stage.id === stageMediaLibraryTarget) ?? null
+    : null;
 
   function selectNextMissingStageImages() {
     const missing = selectedOrcamentoStages
@@ -3381,72 +3387,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                                   <SelectItem value="ocultar">Ocultar escopo</SelectItem>
                                 </SelectContent>
                               </Select>
-                              {stageMediaLibraryTarget === stage.id && (
-                              <div className="lg:col-span-3 rounded-lg border border-primary/20 bg-muted/20 p-2.5">
-                                <div className="flex items-center justify-between gap-2">
-                                  <div>
-                                    <p className="text-[11px] font-semibold">Biblioteca de Mídias</p>
-                                    <p className="text-[9px] text-muted-foreground">Escolha uma imagem existente para esta etapa.</p>
-                                  </div>
-                                  <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-[10px]" onClick={() => setStageMediaLibraryTarget(null)}>
-                                    Fechar
-                                  </Button>
-                                </div>
-                                <Input
-                                  value={proposalMediaLibrarySearch}
-                                  onChange={(event) => setProposalMediaLibrarySearch(event.target.value)}
-                                  placeholder="Buscar mídia"
-                                  className="mt-2 h-8 text-xs"
-                                />
-                                {proposalMediaLibraryLoading ? (
-                                  <div className="flex h-24 items-center justify-center"><Loader2 className="h-4 w-4 animate-spin" /></div>
-                                ) : (
-                                  <div className="mt-2 grid max-h-44 grid-cols-3 gap-2 overflow-y-auto sm:grid-cols-5">
-                                    {proposalMediaLibraryAssets
-                                      .filter((asset) => {
-                                        const term = proposalMediaLibrarySearch.trim().toLowerCase();
-                                        if (!term) return true;
-                                        const metadata = asset.metadata ?? {};
-                                        return [
-                                          asset.originalFilename ?? "",
-                                          String(metadata["description"] ?? ""),
-                                          String(metadata["module"] ?? ""),
-                                          String(metadata["operation"] ?? ""),
-                                        ].join(" ").toLowerCase().includes(term);
-                                      })
-                                      .map((asset) => {
-                                        const url = proposalMediaLibraryUrl(asset.storageUrl);
-                                        return (
-                                          <button
-                                            key={asset.id}
-                                            type="button"
-                                            className="overflow-hidden rounded-md border bg-background hover:border-primary/60"
-                                            onClick={async () => {
-                                              try {
-                                                await applyStageImage(stage.id, url);
-                                                setStageMediaLibraryTarget(null);
-                                                toast({ title: "Imagem da biblioteca aplicada", description: `Etapa: ${stage.nome}` });
-                                              } catch (error) {
-                                                toast({
-                                                  title: "Erro ao aplicar imagem",
-                                                  description: error instanceof Error ? error.message : "Tente novamente.",
-                                                  variant: "destructive",
-                                                });
-                                              }
-                                            }}
-                                          >
-                                            <img src={url} alt="" className="aspect-[4/3] w-full object-cover" />
-                                            <span className="block truncate px-1 py-1 text-[8px] text-muted-foreground">
-                                              {asset.originalFilename || "Imagem"}
-                                            </span>
-                                          </button>
-                                        );
-                                      })}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
+                                                        </div>
                           </div>
                         ))}
                       </div>
@@ -4696,6 +4637,241 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
       </Dialog>
 
       {/* Refinement Dialog */}
+      <Dialog
+        open={Boolean(stageImageDialogTarget)}
+        onOpenChange={(open) => {
+          if (!open && !stageImageGeneratingTarget) {
+            setStageImageDialogTarget(null);
+            setStageImageDialogPrompt("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-violet-600" />
+              {stageImageDialogStage && selectedStageImages[stageImageDialogStage.id] ? "Regenerar imagem da etapa" : "Gerar imagem da etapa"}
+            </DialogTitle>
+          </DialogHeader>
+
+          {stageImageDialogStage && (
+            <div className="space-y-4">
+              <div className="flex gap-3 rounded-xl border bg-muted/20 p-3">
+                {selectedStageImages[stageImageDialogStage.id] ? (
+                  <img
+                    src={normalizeTenantLogoUrl(selectedStageImages[stageImageDialogStage.id])}
+                    alt={stageImageDialogStage.nome}
+                    className="h-24 w-32 shrink-0 rounded-lg border object-cover"
+                  />
+                ) : (
+                  <div className="flex h-24 w-32 shrink-0 items-center justify-center rounded-lg border border-dashed bg-background text-xs text-muted-foreground">
+                    Sem imagem atual
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">{stageImageDialogStage.nome}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {stageImageDialogStage.total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                  </p>
+                  <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                    A IA já recebe automaticamente o nome e o escopo real desta etapa. Use o campo abaixo para dizer exatamente o que quer ver na imagem.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold">O que você quer gerar?</label>
+                <Textarea
+                  value={stageImageDialogPrompt}
+                  onChange={(event) => setStageImageDialogPrompt(event.target.value)}
+                  placeholder={`Ex.: representar "${stageImageDialogStage.nome}" com uma cena profissional, coerente com o escopo da etapa, foco no processo técnico e aparência fotográfica realista.`}
+                  className="min-h-[130px] resize-y"
+                />
+                <div className="flex flex-wrap gap-2">
+                  {["Mais técnico", "Mais comercial", "Mais institucional", "Mais realista", "Mostrar profissionais trabalhando"].map((suggestion) => (
+                    <Button
+                      key={suggestion}
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-[10px]"
+                      onClick={() => setStageImageDialogPrompt((current) => current ? `${current}. ${suggestion}.` : `${suggestion}.`)}
+                    >
+                      {suggestion}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-900">
+                A geração só acontece depois de clicar em <strong>Gerar imagem</strong>. Esta ação consome 1 geração de IA e substitui a imagem atual quando houver.
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setStageImageDialogTarget(null);
+                setStageImageDialogPrompt("");
+              }}
+              disabled={Boolean(stageImageGeneratingTarget)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              className="gap-2"
+              disabled={!stageImageDialogStage || Boolean(stageImageGeneratingTarget)}
+              onClick={() => {
+                if (stageImageDialogStage) void generateSingleStageImage(stageImageDialogStage.id, stageImageDialogPrompt);
+              }}
+            >
+              {stageImageGeneratingTarget ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              {stageImageGeneratingTarget ? "Gerando..." : "Gerar imagem"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(stageMediaLibraryTarget)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setStageMediaLibraryTarget(null);
+            setProposalMediaLibrarySearch("");
+          }
+        }}
+      >
+        <DialogContent className="max-h-[88vh] w-[calc(100vw-32px)] max-w-5xl overflow-hidden p-0">
+          <DialogHeader className="border-b px-5 py-4">
+            <DialogTitle className="flex items-center gap-2">
+              <Image className="h-4 w-4" />
+              Biblioteca de Mídias
+            </DialogTitle>
+            {stageMediaLibraryStage && (
+              <p className="text-xs text-muted-foreground">
+                Escolha uma imagem para a etapa <strong>{stageMediaLibraryStage.nome}</strong>.
+              </p>
+            )}
+          </DialogHeader>
+
+          <div className="flex min-h-0 flex-col">
+            <div className="border-b bg-muted/10 p-4">
+              <Input
+                autoFocus
+                value={proposalMediaLibrarySearch}
+                onChange={(event) => setProposalMediaLibrarySearch(event.target.value)}
+                placeholder="Buscar por nome, descrição, módulo ou origem..."
+                className="h-10"
+              />
+              <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
+                <span>
+                  {proposalMediaLibraryAssets.filter((asset) => {
+                    const term = proposalMediaLibrarySearch.trim().toLowerCase();
+                    if (!term) return true;
+                    const metadata = asset.metadata ?? {};
+                    return [
+                      asset.originalFilename ?? "",
+                      String(metadata["description"] ?? ""),
+                      String(metadata["module"] ?? ""),
+                      String(metadata["operation"] ?? ""),
+                    ].join(" ").toLowerCase().includes(term);
+                  }).length} imagem(ns)
+                </span>
+                <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={() => void fetchProposalMediaLibrary(true)}>
+                  Atualizar biblioteca
+                </Button>
+              </div>
+            </div>
+
+            <div className="min-h-[420px] flex-1 overflow-y-auto p-4">
+              {proposalMediaLibraryLoading ? (
+                <div className="flex h-[420px] items-center justify-center">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : (() => {
+                const filteredAssets = proposalMediaLibraryAssets.filter((asset) => {
+                  const term = proposalMediaLibrarySearch.trim().toLowerCase();
+                  if (!term) return true;
+                  const metadata = asset.metadata ?? {};
+                  return [
+                    asset.originalFilename ?? "",
+                    String(metadata["description"] ?? ""),
+                    String(metadata["module"] ?? ""),
+                    String(metadata["operation"] ?? ""),
+                  ].join(" ").toLowerCase().includes(term);
+                });
+
+                if (filteredAssets.length === 0) {
+                  return (
+                    <div className="flex h-[360px] flex-col items-center justify-center rounded-xl border border-dashed text-center">
+                      <Image className="h-8 w-8 text-muted-foreground/50" />
+                      <p className="mt-3 text-sm font-medium">Nenhuma imagem encontrada</p>
+                      <p className="mt-1 max-w-md text-xs text-muted-foreground">
+                        Tente outro termo ou atualize a Biblioteca. Imagens geradas pelo sistema ficam disponíveis aqui para reutilização.
+                      </p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                    {filteredAssets.map((asset) => {
+                      const url = proposalMediaLibraryUrl(asset.storageUrl);
+                      const metadata = asset.metadata ?? {};
+                      return (
+                        <button
+                          key={asset.id}
+                          type="button"
+                          className="group overflow-hidden rounded-xl border bg-background text-left transition hover:border-primary hover:shadow-md"
+                          onClick={async () => {
+                            if (!stageMediaLibraryStage) return;
+                            try {
+                              await applyStageImage(stageMediaLibraryStage.id, url);
+                              setStageMediaLibraryTarget(null);
+                              setProposalMediaLibrarySearch("");
+                              toast({
+                                title: "Imagem aplicada",
+                                description: `Etapa: ${stageMediaLibraryStage.nome}`,
+                              });
+                            } catch (error) {
+                              toast({
+                                title: "Erro ao aplicar imagem",
+                                description: error instanceof Error ? error.message : "Tente novamente.",
+                                variant: "destructive",
+                              });
+                            }
+                          }}
+                        >
+                          <div className="aspect-[4/3] overflow-hidden bg-muted">
+                            <img src={url} alt="" className="h-full w-full object-cover transition group-hover:scale-[1.02]" />
+                          </div>
+                          <div className="space-y-1 p-2.5">
+                            <p className="truncate text-xs font-medium">{asset.originalFilename || "Imagem"}</p>
+                            <p className="truncate text-[10px] text-muted-foreground">
+                              {String(metadata["module"] || metadata["operation"] || "Biblioteca de Mídias")}
+                            </p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+
+          <DialogFooter className="border-t px-5 py-3">
+            <Button type="button" variant="outline" onClick={() => setStageMediaLibraryTarget(null)}>
+              Cancelar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={refineOpen} onOpenChange={setRefineOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
