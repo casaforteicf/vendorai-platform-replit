@@ -319,6 +319,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
       : null;
   const [selectedProposalBuilderTemplateId, setSelectedProposalBuilderTemplateId] = useState<string>("__auto__");
   const [generatingProposalBuilderTemplate, setGeneratingProposalBuilderTemplate] = useState(false);
+  const [proposalBuilderAIBrief, setProposalBuilderAIBrief] = useState("");
   const [proposalBuilderEditorOpen, setProposalBuilderEditorOpen] = useState(false);
   const [proposalBuilderEditorSaving, setProposalBuilderEditorSaving] = useState(false);
   const [proposalBuilderPreviewDevice, setProposalBuilderPreviewDevice] = useState<"desktop" | "mobile">("desktop");
@@ -1317,7 +1318,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
       const res = await fetch(api(`/api/tenants/${tenantId}/proposal-builder/templates/ai-bootstrap`), {
         method: "POST",
         headers,
-        body: JSON.stringify({}),
+        body: JSON.stringify({ instruction: proposalBuilderAIBrief.trim() || undefined }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || "Não foi possível criar o modelo com IA");
@@ -2881,6 +2882,32 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                     placeholder="Ex.: CasaForte · Residencial Premium"
                     className="h-9"
                   />
+                </div>
+
+                <div className="mt-3 rounded-xl border bg-background p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-semibold">Gerar modelo com IA</p>
+                      <p className="text-[10px] text-muted-foreground">A IA cria estrutura, textos-base e regras de imagens sem usar dados de um cliente específico.</p>
+                    </div>
+                    <Sparkles className="h-4 w-4 text-violet-500" />
+                  </div>
+                  <Textarea
+                    value={proposalBuilderAIBrief}
+                    onChange={(e) => setProposalBuilderAIBrief(e.target.value)}
+                    placeholder="Ex.: proposta premium para construtora ICF, foco em casas de alto padrão, pouco texto, imagens arquitetônicas e cronograma visual."
+                    className="mt-2 min-h-[86px] text-xs"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="mt-2 h-8 w-full gap-1.5 text-xs"
+                    disabled={generatingProposalBuilderTemplate}
+                    onClick={() => void createProposalBuilderTemplateWithAI()}
+                  >
+                    {generatingProposalBuilderTemplate ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                    {generatingProposalBuilderTemplate ? "Criando modelo..." : "Criar nova versão com IA"}
+                  </Button>
                 </div>
 
                 <div className="mt-4">
