@@ -4020,15 +4020,6 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                           </h2>
                           <p className="mt-3 max-w-[620px] text-sm leading-relaxed opacity-85">{proposalBuilderCoverValueStatement}</p>
                           <p className="mt-2 text-xs opacity-75">Cliente: {proposalBuilderPreviewClient}</p>
-                          {proposalBuilderCoverBenefits.length > 0 && (
-                            <div className="mt-6 grid max-w-[620px] grid-cols-2 gap-2">
-                              {proposalBuilderCoverBenefits.map((benefit) => (
-                                <div key={benefit} className="rounded-lg border border-white/25 bg-black/20 px-3 py-2 text-[11px] font-semibold leading-snug backdrop-blur-sm">
-                                  {benefit}
-                                </div>
-                              ))}
-                            </div>
-                          )}
                           <div className="mt-5 flex flex-wrap gap-2 text-xs">
                             {proposalBuilderPreviewTotal > 0 && <span className="rounded-full border border-current/20 px-3 py-1.5">{proposalBuilderMoney(proposalBuilderPreviewTotal)}</span>}
                             {proposalBuilderPreviewDeadline && <span className="rounded-full border border-current/20 px-3 py-1.5">{proposalBuilderPreviewDeadline}</span>}
