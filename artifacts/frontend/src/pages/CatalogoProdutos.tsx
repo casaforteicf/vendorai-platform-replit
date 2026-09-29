@@ -111,6 +111,34 @@ type CatalogProductSummary = {
   deliveryConfig?: DeliveryConfig | null;
 };
 
+type ArqdorMaterial = {
+  id: string;
+  nome: string;
+  fabricante: string;
+  linha: string;
+  referencia?: string | null;
+  categoria: string;
+};
+
+type ArqdorProductMaterial = {
+  id: string;
+  materialId: string;
+  grupo: string | null;
+  surfaceKey: string | null;
+  isDefault: boolean;
+  precoAdicional: string | null;
+  material: ArqdorMaterial | null;
+};
+
+type ArqdorCatalogProduct = {
+  id: string;
+  especificacoes?: {
+    model3dUrl?: string;
+    modelSurfaces?: Array<{ key: string; label: string }>;
+    [key: string]: unknown;
+  } | null;
+};
+
 type CommercialSnapshot = {
   pricingConfig: PricingConfig;
   deliveryConfig: DeliveryConfig;
@@ -250,6 +278,242 @@ function NumberField({
         )}
       </div>
     </Field>
+  );
+}
+
+function ArqdorProductConfigurationPanel({ product }: { product: CatalogProductSummary }) {
+  const { toast } = useToast();
+  const [archProduct, setArchProduct] = useState<ArqdorCatalogProduct | null>(null);
+  const [materials, setMaterials] = useState<ArqdorMaterial[]>([]);
+  const [links, setLinks] = useState<ArqdorProductMaterial[]>([]);
+  const [modelUrl, setModelUrl] = useState("");
+  const [materialId, setMaterialId] = useState("");
+  const [group, setGroup] = useState("Revestimento");
+  const [surfaceKey, setSurfaceKey] = useState("");
+  const [priceDelta, setPriceDelta] = useState("");
+  const [isDefault, setIsDefault] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [savingModel, setSavingModel] = useState(false);
+  const [linking, setLinking] = useState(false);
+
+  const loadConfiguration = useCallback(async () => {
+    setLoading(true);
+    try {
+      const sync = await fetch(`/api/arch/catalogo/sync-source/${product.id}`, {
+        method: "POST",
+        headers: authHeaders(),
+      });
+      if (!sync.ok) throw new Error("Não foi possível preparar este produto para o Arqdor.");
+      const synced = await sync.json() as ArqdorCatalogProduct;
+      setArchProduct(synced);
+      setModelUrl(String(synced.especificacoes?.model3dUrl ?? ""));
+
+      const headers = { Authorization: authHeaders().Authorization };
+      const [materialsRes, linksRes] = await Promise.all([
+        fetch("/api/arch/materials?limit=200", { headers }),
+        fetch(`/api/arch/catalogo/${synced.id}/materials`, { headers }),
+      ]);
+      if (materialsRes.ok) setMaterials(await materialsRes.json());
+      if (linksRes.ok) setLinks(await linksRes.json());
+    } catch (error) {
+      toast({
+        title: "Configuração técnica indisponível",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [product.id, toast]);
+
+  useEffect(() => {
+    void loadConfiguration();
+  }, [loadConfiguration]);
+
+  const saveModel = async () => {
+    if (!archProduct) return;
+    setSavingModel(true);
+    try {
+      const current = archProduct.especificacoes ?? {};
+      const response = await fetch(`/api/arch/catalogo/${archProduct.id}`, {
+        method: "PATCH",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          especificacoes: {
+            ...current,
+            source: "produtos_catalogo",
+            sourceProductId: product.id,
+            model3dUrl: modelUrl.trim() || undefined,
+          },
+        }),
+      });
+      if (!response.ok) throw new Error("Não foi possível salvar o modelo 3D.");
+      const updated = await response.json() as ArqdorCatalogProduct;
+      setArchProduct(updated);
+      toast({ title: "Modelo 3D salvo no produto." });
+    } catch (error) {
+      toast({ title: "Erro ao salvar", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+    } finally {
+      setSavingModel(false);
+    }
+  };
+
+  const linkMaterial = async () => {
+    if (!archProduct || !materialId) return;
+    setLinking(true);
+    try {
+      const response = await fetch(`/api/arch/catalogo/${archProduct.id}/materials`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          materialId,
+          grupo: group.trim() || undefined,
+          surfaceKey: surfaceKey.trim() || undefined,
+          precoAdicional: priceDelta ? Number(priceDelta) : undefined,
+          isDefault,
+        }),
+      });
+      if (!response.ok) throw new Error("Não foi possível vincular o material.");
+      setMaterialId("");
+      setSurfaceKey("");
+      setPriceDelta("");
+      setIsDefault(true);
+      await loadConfiguration();
+      toast({ title: "Material vinculado ao produto." });
+    } catch (error) {
+      toast({ title: "Erro ao vincular material", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+    } finally {
+      setLinking(false);
+    }
+  };
+
+  const unlinkMaterial = async (linkId: string) => {
+    if (!archProduct) return;
+    const response = await fetch(`/api/arch/catalogo/${archProduct.id}/materials/${linkId}`, {
+      method: "DELETE",
+      headers: { Authorization: authHeaders().Authorization },
+    });
+    if (response.ok) {
+      await loadConfiguration();
+      toast({ title: "Material removido do produto." });
+    }
+  };
+
+  const surfaces = archProduct?.especificacoes?.modelSurfaces ?? [];
+
+  return (
+    <div className="space-y-4 rounded-xl border border-sky-200 bg-sky-50/35 p-4">
+      <div>
+        <h3 className="text-sm font-semibold">Modelo 3D, partes e materiais</h3>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          Esta é a configuração técnica do produto no Catálogo. A Biblioteca de Materiais apenas fornece texturas e acabamentos reutilizáveis.
+        </p>
+      </div>
+
+      {loading ? (
+        <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Carregando configuração técnica…</div>
+      ) : (
+        <>
+          <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto]">
+            <Field label="Modelo 3D / GLB" hint="Um único GLB pode receber materiais diferentes por parte, sem duplicar o modelo.">
+              <Input
+                value={modelUrl}
+                onChange={(event) => setModelUrl(event.target.value)}
+                placeholder="URL do arquivo .glb/.gltf"
+              />
+            </Field>
+            <div className="flex items-end">
+              <Button type="button" variant="outline" onClick={() => void saveModel()} disabled={savingModel || !archProduct}>
+                {savingModel ? "Salvando…" : "Salvar modelo 3D"}
+              </Button>
+            </div>
+          </div>
+
+          <div className="rounded-lg border bg-background p-3">
+            <p className="text-xs font-medium">Partes / superfícies detectadas</p>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {surfaces.length > 0
+                ? `${surfaces.length} superfície(s) disponíveis para receber acabamentos.`
+                : "As superfícies serão detectadas automaticamente quando o GLB for carregado no ambiente 3D."}
+            </p>
+            {surfaces.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {surfaces.map((surface) => (
+                  <span key={surface.key} className="rounded-full border bg-muted/30 px-2 py-1 text-[11px]">
+                    {surface.label}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <div>
+              <p className="text-xs font-medium">Materiais e acabamentos permitidos</p>
+              <p className="text-[11px] text-muted-foreground">Defina quais materiais da Biblioteca podem ser usados em cada parte deste produto.</p>
+            </div>
+            {links.length === 0 ? (
+              <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">Nenhum material vinculado.</div>
+            ) : (
+              <div className="grid gap-2 xl:grid-cols-2">
+                {links.map((link) => (
+                  <div key={link.id} className="flex items-center justify-between gap-3 rounded-md border bg-background p-2.5">
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-medium">
+                        {link.material?.nome ?? "Material"}{link.material?.fabricante ? ` · ${link.material.fabricante}` : ""}
+                      </p>
+                      <p className="truncate text-[11px] text-muted-foreground">
+                        {link.grupo ?? "Material"} · {link.surfaceKey || "produto inteiro"}
+                        {link.isDefault ? " · padrão" : ""}
+                        {link.precoAdicional && Number(link.precoAdicional) > 0 ? ` · + ${currency(Number(link.precoAdicional))}` : ""}
+                      </p>
+                    </div>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => void unlinkMaterial(link.id)}>Remover</Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <Field label="Material da Biblioteca">
+              <select className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={materialId} onChange={(event) => setMaterialId(event.target.value)}>
+                <option value="">Selecione…</option>
+                {materials.map((material) => (
+                  <option key={material.id} value={material.id}>
+                    {material.fabricante} · {material.linha} · {material.nome}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Grupo / parte">
+              <Input value={group} onChange={(event) => setGroup(event.target.value)} placeholder="Ex.: Assento, Encosto, Pés" />
+            </Field>
+            <Field label="Superfície 3D">
+              {surfaces.length > 0 ? (
+                <select className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={surfaceKey} onChange={(event) => setSurfaceKey(event.target.value)}>
+                  <option value="">Produto inteiro</option>
+                  {surfaces.map((surface) => <option key={surface.key} value={surface.key}>{surface.label}</option>)}
+                </select>
+              ) : (
+                <Input value={surfaceKey} onChange={(event) => setSurfaceKey(event.target.value)} placeholder="Detectada pelo GLB" />
+              )}
+            </Field>
+            <NumberField label="Acréscimo" value={priceDelta ? Number(priceDelta) : undefined} onChange={(value) => setPriceDelta(value == null ? "" : String(value))} suffix="R$" />
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background p-3">
+            <label className="flex items-center gap-2 text-xs">
+              <input type="checkbox" checked={isDefault} onChange={(event) => setIsDefault(event.target.checked)} />
+              Usar como material padrão desta parte
+            </label>
+            <Button type="button" onClick={() => void linkMaterial()} disabled={!materialId || linking || !archProduct}>
+              {linking ? "Vinculando…" : "Adicionar material ao produto"}
+            </Button>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -1074,12 +1338,18 @@ export default function CatalogoProdutos() {
       <CatalogoModal open tenantId={tenantId} onClose={() => navigate("/")} />
       {portalTarget && activeProduct
         ? createPortal(
-            <CommercialDeliveryPanel
-              key={activeProduct.id}
-              product={activeProduct}
-              portalTarget={portalTarget}
-              onSaved={handleCommercialSaved}
-            />,
+            <div className="space-y-4">
+              <CommercialDeliveryPanel
+                key={`commercial-${activeProduct.id}`}
+                product={activeProduct}
+                portalTarget={portalTarget}
+                onSaved={handleCommercialSaved}
+              />
+              <ArqdorProductConfigurationPanel
+                key={`arqdor-${activeProduct.id}`}
+                product={activeProduct}
+              />
+            </div>,
             portalTarget,
           )
         : null}
