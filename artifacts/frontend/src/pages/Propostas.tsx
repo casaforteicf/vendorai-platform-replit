@@ -3552,6 +3552,8 @@ function newFreeItem(): FreeItem {
     target?.focus?.();
   }
 
+  const integrityPreviewPayloadJson = JSON.stringify(budgetIntegrityPreviewPayload());
+
   useEffect(() => {
     if (!open || mode === "template") {
       setIntegrityReport(null);
@@ -3560,7 +3562,9 @@ function newFreeItem(): FreeItem {
     }
 
     const controller = new AbortController();
+    let settled = false;
     setIntegrityLoading(true);
+
     const timer = window.setTimeout(async () => {
       try {
         const response = await fetch("/api/propostas/integrity/preview", {
@@ -3569,7 +3573,7 @@ function newFreeItem(): FreeItem {
             "Content-Type": "application/json",
             Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`,
           },
-          body: JSON.stringify(budgetIntegrityPreviewPayload()),
+          body: integrityPreviewPayloadJson,
           signal: controller.signal,
         });
         if (!response.ok) throw new Error("Falha ao validar orçamento");
@@ -3577,46 +3581,23 @@ function newFreeItem(): FreeItem {
       } catch (error) {
         if ((error as Error)?.name !== "AbortError") setIntegrityReport(null);
       } finally {
+        settled = true;
         if (!controller.signal.aborted) setIntegrityLoading(false);
       }
     }, 450);
 
+    const safetyTimer = window.setTimeout(() => {
+      if (!settled && !controller.signal.aborted) {
+        setIntegrityLoading(false);
+      }
+    }, 8_000);
+
     return () => {
       window.clearTimeout(timer);
+      window.clearTimeout(safetyTimer);
       controller.abort();
     };
-  }, [
-    open,
-    mode,
-    tenantId,
-    importValorTotal,
-    orcamentoEtapas,
-    cartLines,
-    freeItems,
-    activeCatalog,
-    composicoes,
-    presentationDefaultMode,
-    presentationStageModes,
-    showTechnicalDetails,
-    technicalDetailStages,
-    showProposalGrandTotal,
-    proposalStartDate,
-    proposalStageSchedule,
-    showExecutionSchedule,
-    showPhysicalFinancial,
-    entryPercent,
-    entryAmortizationPercent,
-    showEntryAmortization,
-    showClientPortalPlan,
-    projectDescription,
-    projectAssumptionsText,
-    descriptiveMemorial,
-    adjustmentPolicy,
-    warrantyTerms,
-    detailedPaymentTerms,
-    watchValidadeAte,
-    watchPrazoEntrega,
-  ]);
+  }, [open, mode, integrityPreviewPayloadJson]);
 
   // ── submit ────────────────────────────────────────────────────────────────
   function onSubmit(vals: PropostaFormValues, stayOpen = false) {
