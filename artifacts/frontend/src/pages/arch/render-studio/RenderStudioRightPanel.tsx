@@ -63,7 +63,10 @@ export function RenderStudioRightPanel({
   const currentVersion = versions.find((version) => version.id === currentRenderId) ?? versions[0] ?? null;
   const otherVersions = versions.filter((version) => version.id !== currentVersion?.id);
 
-  const AMBIENTE_OPTIONS = ["Sala de Estar", "Quarto Master", "Cozinha", "Banheiro", "Escritório", "Varanda", "Hall de Entrada"];
+  const AMBIENTE_OPTIONS = [
+    "Sala de Estar", "Quarto Master", "Cozinha", "Banheiro", "Escritório", "Hall de Entrada",
+    "Varanda", "Terraço", "Área Gourmet", "Fachada", "Área Externa", "Piscina / SPA",
+  ];
   const MELHORIA_MODES: { id: RenderStudioImprovementMode; label: string; icon: string }[] = [
     { id: "improve", label: "Melhorar qualidade", icon: "✨" },
     { id: "change-material", label: "Trocar material", icon: "🎨" },
@@ -199,7 +202,13 @@ export function RenderStudioRightPanel({
                           <option value="roof_openings_lock">Cobertura e aberturas</option>
                           <option value="lighting_realism">Iluminação realista</option>
                           <option value="landscape_controlled">Paisagismo controlado</option>
-                          <option value="pool_water_fidelity">Piscina e água</option>
+                          <option value="pool_water_fidelity">Piscina / SPA · água e bordas</option>
+                          <option value="glass_mirror_fidelity">Vidros e espelhos · reflexos fiéis</option>
+                          <option value="outdoor_gourmet_preserve">Área gourmet externa · preservar</option>
+                          <option value="deck_pergola_preserve">Deck e pergolado · preservar</option>
+                          <option value="wall_gate_fidelity">Muros, cercas e portões · preservar</option>
+                          <option value="guardrail_glass_precision">Guarda-corpo e vidro · precisão</option>
+                          <option value="night_lighting_exterior">Exterior noturno · iluminação realista</option>
                         </select>
                         <div style={{ fontSize: 11, color: D.muted, lineHeight: 1.5 }}>Tempo estimado: 30–90 segundos</div>
                         <DkBtn onClick={onStartRender} disabled={loading}>✦ Gerar Render com IA</DkBtn>

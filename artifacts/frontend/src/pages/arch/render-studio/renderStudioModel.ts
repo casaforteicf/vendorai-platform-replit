@@ -8,7 +8,13 @@ export type RenderStudioPreset =
   | "roof_openings_lock"
   | "lighting_realism"
   | "landscape_controlled"
-  | "pool_water_fidelity";
+  | "pool_water_fidelity"
+  | "glass_mirror_fidelity"
+  | "outdoor_gourmet_preserve"
+  | "deck_pergola_preserve"
+  | "wall_gate_fidelity"
+  | "night_lighting_exterior"
+  | "guardrail_glass_precision";
 
 export type RenderStudioVideoMovement =
   | "zoom_in_soft" | "zoom_out_soft" | "pan_left_soft" | "pan_right_soft"

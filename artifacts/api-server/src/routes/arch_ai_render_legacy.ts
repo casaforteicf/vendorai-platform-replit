@@ -118,6 +118,12 @@ const renderBodySchema = z.object({
     "lighting_realism",
     "landscape_controlled",
     "pool_water_fidelity",
+    "glass_mirror_fidelity",
+    "outdoor_gourmet_preserve",
+    "deck_pergola_preserve",
+    "wall_gate_fidelity",
+    "night_lighting_exterior",
+    "guardrail_glass_precision",
   ])).optional().default([]),
   // materiais para modo criar (compatibilidade com o fluxo existente)
   materials: z.array(z.object({
