@@ -2577,10 +2577,32 @@ function renderStudioOrderedProposal(args: {
 
   const financialBlock = (group: typeof groups[number], groupItems = group.itens, continuation = "") => {
     const stageName = String(group.nome ?? "");
-    const specialCommercialStage = /esquadr/i.test(stageName) || /(revest|porcelanat|cer[aâ]mic)/i.test(stageName);
+    const isWindowsStage = /esquadr/i.test(stageName);
+    const isFinishesStage = /(revest|porcelanat|cer[aâ]mic)/i.test(stageName);
+    const specialCommercialStage = isWindowsStage || isFinishesStage;
     const mode = specialCommercialStage ? "resumo_etapa" : resolveProposalPresentationMode(presentation, group.id);
     const value = group.itens.reduce((sum, item) => sum + Number(item.quantidade || 0) * Number(item.valorUnitario || 0), 0);
     if (mode === "resumo_etapa") {
+      if (isWindowsStage) {
+        const configuredGlobal = Number(presentation.cronogramaEtapas[group.id]?.valorGlobalPrevisto ?? 0);
+        return '<div class="studio-stage-summary"><span><strong>Etapa ' + esc(group.ordem) + '</strong> · ' +
+          esc(group.nome || "Esquadrias") + '</span><strong>' +
+          (configuredGlobal > 0 ? fmtMoney(configuredGlobal) : 'A definir no orçamento') +
+          '</strong></div>' +
+          (presentation.cronogramaEtapas[group.id]?.reajusteSeAlteracao
+            ? '<div class="studio-commercial-note"><p>Alterações de medidas, quantitativos, materiais ou especificações serão recalculadas e poderão gerar reajuste.</p></div>'
+            : '');
+      }
+      if (isFinishesStage) {
+        const configuredM2 = Number(presentation.cronogramaEtapas[group.id]?.valorReferenciaM2 ?? 0);
+        return '<div class="studio-stage-summary"><span><strong>Etapa ' + esc(group.ordem) + '</strong> · ' +
+          esc(group.nome || "Revestimentos") + '</span><strong>' +
+          (configuredM2 > 0 ? fmtMoney(configuredM2) + ' / m²' : 'A definir no orçamento') +
+          '</strong></div>' +
+          (presentation.cronogramaEtapas[group.id]?.reajusteSeAlteracao
+            ? '<div class="studio-commercial-note"><p>Alterações de medidas, quantitativos, materiais ou especificações serão recalculadas e poderão gerar reajuste.</p></div>'
+            : '');
+      }
       return '<div class="studio-stage-summary"><span><strong>Etapa ' + esc(group.ordem) + '</strong> · ' +
         esc(group.nome || "Entrega") + '</span><strong>' + fmtMoney(value) + '</strong></div>' +
         stageCommercialNote(group);
