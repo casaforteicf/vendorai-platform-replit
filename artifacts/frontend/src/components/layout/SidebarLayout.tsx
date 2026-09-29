@@ -218,7 +218,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     const entries = [
       { href: "/arch/projetos", label: "Projetos", glyph: "P" },
       { href: "/arch/concept", label: "Pré-Projeto", glyph: "C" },
-      { href: "/arch/render", label: "Render IA", glyph: "R" },
+      { href: "/arch/render?new=1", label: "Render IA", glyph: "R" },
       { href: "/arch/catalogo", label: "Biblioteca do Projeto", glyph: "B" },
       { href: "/arch/marketplace", label: "Marketplace", glyph: "M" },
     ];
@@ -274,7 +274,8 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
             insertAfter.insertAdjacentElement("afterend", link);
           }
 
-          const active = pathname === entry.href || pathname.startsWith(`${entry.href}/`);
+          const entryPath = entry.href.split("?")[0];
+          const active = pathname === entryPath || pathname.startsWith(`${entryPath}/`);
           link.className = [
             "group relative flex min-h-[44px] items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200",
             active
