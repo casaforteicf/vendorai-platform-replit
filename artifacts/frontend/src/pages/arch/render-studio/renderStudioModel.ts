@@ -1,3 +1,10 @@
+export type RenderStudioEventLogEntry = {
+  id: string;
+  type: string;
+  label: string;
+  timestamp: Date;
+};
+
 export type RenderStudioCanvasMode = "fit" | "1to1";
 
 export type RenderStudioSelectionRect = {
