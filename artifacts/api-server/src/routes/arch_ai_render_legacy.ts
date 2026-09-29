@@ -86,6 +86,14 @@ function sanitizeRenderErrorForUser(value: unknown): string | null {
   if (low.includes("http 401") || low.includes("http 403") || low.includes("authentication")) {
     return "O provedor de render recusou a autenticação da plataforma. Avise o administrador.";
   }
+  if (
+    low.includes("failed query") ||
+    low.includes("value too long for type character varying") ||
+    low.includes("database") ||
+    low.includes("postgres")
+  ) {
+    return "O render foi processado, mas ocorreu uma falha interna ao finalizar e salvar a versão. Tente novamente; o erro técnico foi ocultado e registrado para correção.";
+  }
   return raw
     .replace(/https?:\/\/replicate\.com\/\S+/gi, "")
     .replace(/replicate/gi, "provedor de render")
@@ -812,7 +820,11 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
         if (structureQA.valid && colorQA.valid) {
           resultBuf = refinedBuf;
           resultB64 = refined.base64;
-          motor = `${motor}+premium:${refined.provider}-${refined.model}`;
+          // arch_ai_renders.motor is varchar(50). Keep a compact audit label;
+          // the full provider/model remains available in structured logs.
+          motor = refined.provider === "replicate"
+            ? "flux-kontext-pro-premium-2pass-replicate"
+            : "flux-kontext-pro-premium-2pass-bfl";
           logger?.info({ renderId }, "arch/ai-render: segundo passe premium aprovado");
         } else {
           resultBuf = firstPassBuf;
