@@ -84,6 +84,7 @@ router.post("/tenants/:tenantId/proposal-builder/templates/ai-bootstrap", async 
     const result = await ensureTenantProposalBuilderTemplate({
       tenantId,
       forceNewVersion: true,
+      customInstruction: typeof req.body?.instruction === "string" ? req.body.instruction : undefined,
       log: req.log,
     });
     res.status(201).json({
