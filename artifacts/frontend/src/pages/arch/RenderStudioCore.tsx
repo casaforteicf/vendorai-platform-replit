@@ -191,7 +191,7 @@ function RenderStudioInner() {
         <RightPanel
           step={step} arq={arq} ambiente={ambiente}
           setAmbiente={(v) => { setAmbiente(v); setSaveState("unsaved"); }}
-          imageFile={imageFile} imageDataUrl={imageDataUrl} renderUrl={renderUrl} versions={versions}
+          imageFile={imageFile} imageDataUrl={imageDataUrl} renderUrl={renderUrl} currentRenderId={renderId} versions={versions}
           loading={loading} err={err}
           melhoriaPrompt={melhoriaPrompt} setMelhoriaPrompt={setMelhoriaPrompt}
           melhoriaMode={melhoriaMode} setMelhoriaMode={setMelhoriaMode}
