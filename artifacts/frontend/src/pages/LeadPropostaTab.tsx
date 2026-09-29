@@ -1569,7 +1569,60 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error ?? "Não foi possível abrir a Biblioteca de Mídias.");
-      setProposalMediaLibraryAssets(Array.isArray(body.assets) ? body.assets : []);
+
+      let assets = Array.isArray(body.assets) ? body.assets as ProposalMediaLibraryAsset[] : [];
+
+      // Backfill de imagens já existentes em propostas antigas. Antes da regra global
+      // de Biblioteca de Mídias, capa e imagens de etapas podiam ficar vinculadas apenas
+      // ao orçamento/proposta. Ao abrir a Biblioteca no Studio, registramos essas mídias
+      // no tenant sem gerar novamente e sem consumir IA.
+      const legacyCandidates = Array.from(new Set([
+        String(selectedOrcamento?.apresentacao?.imagemCapa || "").trim(),
+        ...Object.values(selectedStageImages).map((url) => String(url || "").trim()),
+        ...proposalImages.map((url) => String(url || "").trim()),
+      ].filter(Boolean)));
+
+      const existingUrls = new Set(
+        assets
+          .map((asset) => proposalMediaLibraryUrl(String(asset.storageUrl || "")))
+          .filter(Boolean),
+      );
+
+      const missing = legacyCandidates.filter(
+        (url) => !existingUrls.has(proposalMediaLibraryUrl(url)),
+      );
+
+      if (missing.length > 0) {
+        const registered: ProposalMediaLibraryAsset[] = [];
+        for (const [index, storageUrl] of missing.entries()) {
+          try {
+            const register = await fetch(api(`/api/tenants/${tenantId}/media/assets`), {
+              method: "POST",
+              headers,
+              body: JSON.stringify({
+                type: "image",
+                role: "output",
+                source: "generated",
+                storageUrl,
+                originalFilename: `proposta-legado-${index + 1}.jpg`,
+                mimeType: "image/jpeg",
+                metadata: {
+                  module: "propostas",
+                  importedFromExistingProposal: true,
+                  propostaId: selectedOrcamento?.id ?? null,
+                },
+              }),
+            });
+            const registeredBody = await register.json().catch(() => ({}));
+            if (register.ok && registeredBody.asset) registered.push(registeredBody.asset);
+          } catch {
+            // A imagem continua utilizável na proposta mesmo se o backfill individual falhar.
+          }
+        }
+        if (registered.length > 0) assets = [...registered, ...assets];
+      }
+
+      setProposalMediaLibraryAssets(assets);
     } catch (error) {
       toast({
         title: "Biblioteca indisponível",
