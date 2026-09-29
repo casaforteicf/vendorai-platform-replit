@@ -796,7 +796,6 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
       metadata: {
         module: "arqdor",
         renderId,
-        archProjectId: params.renderId ? undefined : null,
         ambiente: ambiente ?? null,
         source: source ?? "render-studio",
         renderView: renderView ?? null,
