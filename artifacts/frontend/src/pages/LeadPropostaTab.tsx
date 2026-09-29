@@ -1353,6 +1353,16 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const proposalBuilderPreviewClient = proposalBuilderPreviewMode === "budget"
     ? String((lead as any)?.nome || "Cliente")
     : "Nome do cliente";
+  const proposalBuilderTemplateSampleStages = [
+    { id: "__sample_1", ordem: 1, nome: "Primeira etapa / serviço", total: 250000 },
+    { id: "__sample_2", ordem: 2, nome: "Segunda etapa / serviço", total: 180000 },
+    { id: "__sample_3", ordem: 3, nome: "Terceira etapa / serviço", total: 320000 },
+    { id: "__sample_4", ordem: 4, nome: "Acabamentos / entrega", total: 500000 },
+  ];
+  const proposalBuilderDisplayStages = proposalBuilderPreviewMode === "budget"
+    ? selectedOrcamentoStages
+    : proposalBuilderTemplateSampleStages;
+
   const proposalBuilderPreviewExcluded = Array.isArray(selectedOrcamento?.apresentacao?.itensNaoInclusos)
     ? selectedOrcamento.apresentacao.itensNaoInclusos.filter((item: unknown): item is string => typeof item === "string")
     : [];
@@ -3001,7 +3011,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                           <div className="mt-5 flex flex-wrap gap-2 text-xs">
                             {proposalBuilderPreviewTotal > 0 && <span className="rounded-full border border-current/20 px-3 py-1.5">{proposalBuilderMoney(proposalBuilderPreviewTotal)}</span>}
                             {proposalBuilderPreviewDeadline && <span className="rounded-full border border-current/20 px-3 py-1.5">{proposalBuilderPreviewDeadline}</span>}
-                            <span className="rounded-full border border-current/20 px-3 py-1.5">{selectedOrcamentoStages.length} etapas</span>
+                            <span className="rounded-full border border-current/20 px-3 py-1.5">{proposalBuilderDisplayStages.length} etapas</span>
                           </div>
                         </div>
                       </div>
@@ -3043,11 +3053,19 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                           </div>
 
                           <div className="mt-3">
+                            {module.image?.url && module.image.mode !== "none" ? (
+                              <img
+                                src={normalizeTenantLogoUrl(module.image.url)}
+                                alt={module.title || PROPOSAL_MODULE_LABELS[module.key] || module.key}
+                                className="mb-3 h-44 w-full rounded-lg border object-cover"
+                              />
+                            ) : null}
+                            {module.description ? <p className="mb-3 text-xs text-muted-foreground">{module.description}</p> : null}
                             {module.key === "resumo_executivo" ? (
                               <div className="grid gap-2 sm:grid-cols-3">
                                 <div className="rounded-lg bg-muted/40 p-3"><p className="text-[10px] text-muted-foreground">Investimento</p><p className="mt-1 text-sm font-bold">{proposalBuilderMoney(proposalBuilderPreviewTotal)}</p></div>
                                 <div className="rounded-lg bg-muted/40 p-3"><p className="text-[10px] text-muted-foreground">Prazo</p><p className="mt-1 text-sm font-bold">{proposalBuilderPreviewDeadline || "A definir"}</p></div>
-                                <div className="rounded-lg bg-muted/40 p-3"><p className="text-[10px] text-muted-foreground">Etapas</p><p className="mt-1 text-sm font-bold">{selectedOrcamentoStages.length}</p></div>
+                                <div className="rounded-lg bg-muted/40 p-3"><p className="text-[10px] text-muted-foreground">Etapas</p><p className="mt-1 text-sm font-bold">{proposalBuilderDisplayStages.length}</p></div>
                               </div>
                             ) : module.key === "apresentacao_empresa" ? (
                               <div><h3 className="text-lg font-semibold">{proposalBuilderPreviewCompany}</h3><p className="mt-1 text-sm text-muted-foreground">Apresentação institucional, diferenciais e posicionamento da empresa.</p></div>
@@ -3055,7 +3073,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                               <div className="grid gap-2 sm:grid-cols-2"><div className="rounded-lg bg-slate-950 p-3 text-xs text-white">Qualidade e execução</div><div className="rounded-lg bg-slate-950 p-3 text-xs text-white">Gestão e transparência</div></div>
                             ) : module.key === "etapas_orcamento" ? (
                               <div className={`grid gap-2 ${proposalBuilderStageVariant === "cards" && proposalBuilderPreviewDevice === "desktop" ? "grid-cols-2" : "grid-cols-1"}`}>
-                                {selectedOrcamentoStages.slice(0, 6).map((stage) => (
+                                {proposalBuilderDisplayStages.slice(0, 6).map((stage) => (
                                   <div key={stage.id} className="overflow-hidden rounded-lg border bg-muted/20">
                                     {selectedStageImages[stage.id] ? <img src={selectedStageImages[stage.id]} alt="" className="h-24 w-full object-cover" /> : null}
                                     <div className="p-3 text-xs">
@@ -3064,14 +3082,14 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                                     </div>
                                   </div>
                                 ))}
-                                {!selectedOrcamentoStages.length && <p className="text-xs text-muted-foreground">O orçamento selecionado ainda não possui etapas estruturadas.</p>}
+                                {!proposalBuilderDisplayStages.length && <p className="text-xs text-muted-foreground">O orçamento selecionado ainda não possui etapas estruturadas.</p>}
                               </div>
                             ) : module.key === "imagem_por_etapa" || module.key === "cases_provas" ? (
                               <div className={`grid gap-2 ${proposalBuilderImageEmphasis === "alta" && proposalBuilderPreviewDevice === "desktop" ? "grid-cols-3" : "grid-cols-2"}`}>
-                                {selectedOrcamentoStages.filter((stage) => selectedStageImages[stage.id]).slice(0, 6).map((stage) => (
+                                {proposalBuilderDisplayStages.filter((stage) => selectedStageImages[stage.id]).slice(0, 6).map((stage) => (
                                   <div key={stage.id} className="overflow-hidden rounded-lg border"><img src={selectedStageImages[stage.id]} alt={stage.nome} className="h-28 w-full object-cover" /><p className="p-2 text-[10px] font-medium">{stage.nome}</p></div>
                                 ))}
-                                {!selectedOrcamentoStages.some((stage) => selectedStageImages[stage.id]) && <div className="col-span-full rounded-lg border border-dashed p-4 text-xs text-muted-foreground">Nenhuma imagem específica de etapa vinculada.</div>}
+                                {!proposalBuilderDisplayStages.some((stage) => selectedStageImages[stage.id]) && <div className="col-span-full rounded-lg border border-dashed p-4 text-xs text-muted-foreground">Nenhuma imagem específica de etapa vinculada.</div>}
                               </div>
                             ) : module.key === "tabela_itens" ? (
                               <div className="overflow-hidden rounded-lg border text-xs">
@@ -3081,7 +3099,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                               </div>
                             ) : module.key === "cronograma" || module.key === "fisico_financeiro" ? (
                               <div className="space-y-2">
-                                {selectedOrcamentoStages.slice(0, 6).map((stage, n) => {
+                                {proposalBuilderDisplayStages.slice(0, 6).map((stage, n) => {
                                   const pct = proposalBuilderPreviewTotal > 0 ? Math.max(4, Math.min(100, stage.total / proposalBuilderPreviewTotal * 100)) : 10 + n * 10;
                                   return <div key={stage.id} className="grid grid-cols-[minmax(90px,180px)_1fr_100px] items-center gap-2 text-[10px]"><span className="truncate">{stage.nome}</span><div className="h-2 rounded-full bg-muted"><div className="h-2 rounded-full bg-primary" style={{ width: `${pct}%` }} /></div><span className="text-right">{proposalBuilderMoney(stage.total)}</span></div>;
                                 })}
