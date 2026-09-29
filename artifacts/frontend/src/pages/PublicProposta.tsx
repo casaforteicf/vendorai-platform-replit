@@ -40,12 +40,26 @@ type PropostaPublic =
       version: number;
       status: string;
       createdAt: string;
+      sourceStatus?: string | null;
+      validadeAte?: string | null;
+      acceptedAt?: string | null;
+      client?: {
+        nome?: string | null;
+        email?: string | null;
+        telefone?: string | null;
+        documento?: string | null;
+      } | null;
     };
 
 export default function PublicProposta() {
   const { token } = useParams<{ token: string }>();
   const [accepted, setAccepted] = useState(false);
   const [alreadyAccepted, setAlreadyAccepted] = useState(false);
+  const [acceptOpen, setAcceptOpen] = useState(false);
+  const [acceptName, setAcceptName] = useState("");
+  const [acceptEmail, setAcceptEmail] = useState("");
+  const [acceptPhone, setAcceptPhone] = useState("");
+  const [acceptDocument, setAcceptDocument] = useState("");
   const [portalOpen, setPortalOpen] = useState(false);
   const [portalMode, setPortalMode] = useState<"register" | "login">("register");
   const [portalName, setPortalName] = useState("");
@@ -71,11 +85,11 @@ export default function PublicProposta() {
   });
 
   const acceptMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (payload?: { nome?: string; email?: string; telefone?: string; documento?: string }) => {
       const res = await fetch(api(`/api/public/proposals/${token}/accept`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify(payload ?? {}),
       });
       const body = await res.json().catch(() => ({}));
       if (res.status === 409) {
@@ -86,9 +100,86 @@ export default function PublicProposta() {
     },
     onSuccess: () => {
       setAccepted(true);
-      setPortalOpen(true);
+      setAcceptOpen(false);
     },
   });
+
+  function openDigitalAcceptance() {
+    const client = proposta?.kind === "generated" ? proposta.client : null;
+    setAcceptName(String(client?.nome ?? ""));
+    setAcceptEmail(String(client?.email ?? ""));
+    setAcceptPhone(String(client?.telefone ?? ""));
+    setAcceptDocument(String(client?.documento ?? ""));
+    setAcceptOpen(true);
+  }
+
+  function acceptanceUi() {
+    if (!acceptOpen) return null;
+    return (
+      <div
+        className="fixed inset-0 z-[130] overflow-y-auto bg-black/60 p-4 sm:p-6"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Aceitar proposta"
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget && !acceptMutation.isPending) setAcceptOpen(false);
+        }}
+      >
+        <div className="flex min-h-full items-center justify-center">
+          <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-600">Aceite digital</p>
+                <h2 className="mt-1 text-2xl font-bold text-slate-950">Confirmar proposta</h2>
+                <p className="mt-2 text-sm leading-6 text-slate-500">
+                  Confirme seus dados. Eles serão atualizados no cadastro do cliente e usados para iniciar o fluxo de contratação.
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={acceptMutation.isPending}
+                onClick={() => setAcceptOpen(false)}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-xl text-slate-500 hover:bg-slate-50"
+              >
+                ×
+              </button>
+            </div>
+            <div className="mt-5 grid gap-3">
+              <input value={acceptName} onChange={(e) => setAcceptName(e.target.value)} placeholder="Nome completo" className="w-full rounded-xl border px-3 py-3 text-sm" />
+              <input type="email" value={acceptEmail} onChange={(e) => setAcceptEmail(e.target.value)} placeholder="E-mail" className="w-full rounded-xl border px-3 py-3 text-sm" />
+              <input value={acceptPhone} onChange={(e) => setAcceptPhone(e.target.value)} placeholder="WhatsApp / telefone" className="w-full rounded-xl border px-3 py-3 text-sm" />
+              <input value={acceptDocument} onChange={(e) => setAcceptDocument(e.target.value)} placeholder="CPF / CNPJ" className="w-full rounded-xl border px-3 py-3 text-sm" />
+            </div>
+            <div className="mt-5 rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-600">
+              Ao confirmar, o aceite fica registrado eletronicamente e a proposta aprovada passa para o fluxo de contratação. Não é necessária assinatura física nesta página.
+            </div>
+            <Button
+              className="mt-5 w-full bg-emerald-600 text-white hover:bg-emerald-700"
+              size="lg"
+              disabled={acceptMutation.isPending || !acceptName.trim() || !acceptEmail.trim() || !acceptPhone.trim() || !acceptDocument.trim()}
+              onClick={() => acceptMutation.mutate({
+                nome: acceptName.trim(),
+                email: acceptEmail.trim(),
+                telefone: acceptPhone.trim(),
+                documento: acceptDocument.trim(),
+              })}
+            >
+              {acceptMutation.isPending ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Confirmando...</>
+              ) : (
+                <><CheckCircle className="mr-2 h-4 w-4" />Aceitar proposta</>
+              )}
+            </Button>
+            {acceptMutation.error && (
+              <p className="mt-3 text-center text-sm text-red-600">
+                {acceptMutation.error instanceof Error ? acceptMutation.error.message : "Erro ao aceitar proposta"}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   async function submitPortalAccess() {
     if (!token) return;
@@ -229,10 +320,25 @@ export default function PublicProposta() {
   }
 
   if (proposta.kind === "generated") {
+    const generatedExpired = Boolean(proposta.validadeAte && new Date(proposta.validadeAte) < new Date());
+    const generatedTerminal = proposta.sourceStatus === "rejeitada" || proposta.sourceStatus === "expirada";
+    const generatedAccepted = Boolean(proposta.acceptedAt) || proposta.sourceStatus === "aceita" || accepted || alreadyAccepted;
+    const canGeneratedAccept = !generatedExpired && !generatedTerminal && !generatedAccepted;
     return (
       <div className="min-h-screen bg-white">
-        <div className="sticky top-0 z-[105] flex h-16 items-center justify-end border-b border-slate-200 bg-white/95 px-4 backdrop-blur">
-          {portalAccessUi(true)}
+        {acceptanceUi()}
+        <div className="sticky top-0 z-[105] flex min-h-16 items-center justify-between gap-3 border-b border-slate-200 bg-white/95 px-4 py-2 backdrop-blur">
+          <div className="text-sm text-slate-600">
+            {generatedAccepted ? <span className="font-semibold text-emerald-700">Proposta aceita digitalmente</span> : "Revise a proposta e confirme quando estiver de acordo."}
+          </div>
+          <div className="flex items-center gap-2">
+            {canGeneratedAccept && (
+              <Button className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={openDigitalAcceptance}>
+                <CheckCircle className="mr-2 h-4 w-4" />Aceitar proposta
+              </Button>
+            )}
+            {portalAccessUi(true)}
+          </div>
         </div>
         <iframe
           title={`Proposta v${proposta.version}`}
@@ -283,6 +389,7 @@ export default function PublicProposta() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-violet-50 to-blue-50 flex items-center justify-center p-6">
+      {acceptanceUi()}
       {portalAccessUi()}
       <div className="w-full max-w-2xl">
         <Card className="shadow-xl border-0">
@@ -370,7 +477,7 @@ export default function PublicProposta() {
               <Button
                 className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 text-base"
                 size="lg"
-                onClick={() => acceptMutation.mutate()}
+                onClick={openDigitalAcceptance}
                 disabled={acceptMutation.isPending}
               >
                 {acceptMutation.isPending ? (
