@@ -244,6 +244,8 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const [proposalAppearanceOpen, setProposalAppearanceOpen] = useState(false);
   const [proposalAttachmentsOpen, setProposalAttachmentsOpen] = useState(false);
   const [proposalAdvancedOpen, setProposalAdvancedOpen] = useState(false);
+  const [proposalStagesOpen, setProposalStagesOpen] = useState(false);
+  const [proposalDraftSavedAt, setProposalDraftSavedAt] = useState<string | null>(null);
 
   // Refinement dialog
   const [refineOpen, setRefineOpen] = useState(false);
