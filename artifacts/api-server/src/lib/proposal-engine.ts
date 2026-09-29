@@ -864,6 +864,7 @@ type ProposalScheduleRow = {
   nome: string;
   value: number;
   physicalPercent: number;
+  financialPercent?: number;
   start: Date | null;
   end: Date | null;
   duration?: number;
