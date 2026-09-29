@@ -325,6 +325,7 @@ router.post("/tenants/:tenantId/categorias-produto/padronizar-ia", async (req, r
 });
 
 router.post("/tenants/:tenantId/categorias-produto", async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately compared with the authenticated tenant before any tenant-scoped write.
   const { tenantId } = req.params;
 
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
