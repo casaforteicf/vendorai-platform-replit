@@ -23,11 +23,14 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { normalizeRenderMediaUrl } from "@/pages/arch/render-studio/renderStudioApi";
+import { CatalogoModal } from "@/pages/Propostas";
+import { ordenarArvoreCategorias } from "@/lib/categoriaTree";
+import { useListCategoriasProduto, getListCategoriasProdutoQueryKey } from "@workspace/api-client-react";
 import {
   ArrowLeft, Plus, Sparkles, Loader2, Pencil, Trash2, Link2,
   Search, LayoutGrid, DollarSign, Clock, Eye, ExternalLink,
   Copy, CheckCircle, XCircle, RefreshCw, Globe, Image,
-  Download, AlertCircle, ClipboardList,
+  Download, AlertCircle, ClipboardList, Package,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -117,8 +120,6 @@ type CatalogoProduto = {
 };
 
 // ── Constants ──────────────────────────────────────────────────────────────
-const CATEGORIAS = ["Móveis", "Iluminação", "Revestimentos", "Elétrica", "Hidráulica", "Marcenaria", "Acessórios", "Pintura", "Outros"];
-
 const ESCOPO_ORCAMENTO_OPTIONS = [
   { value: "completo", label: "Projeto completo", description: "Tudo o que estiver confirmado na especificação." },
   { value: "mobiliario", label: "Mobiliário", description: "Móveis soltos, estofados, mesas, cadeiras e similares." },
@@ -155,7 +156,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const EMPTY_ITEM = {
-  ambienteId: "__none__", categoria: "Móveis", descricao: "",
+  ambienteId: "__none__", categoria: "", descricao: "",
   quantidade: "1", unidade: "un", valorUnitario: "0", fornecedor: "",
 };
 
@@ -247,6 +248,7 @@ export default function ProjetoDetalhe() {
   const projetoId = params?.id ?? "";
   const { toast } = useToast();
   const { user } = useAuth();
+  const tenantId = user?.tenantId ?? "";
 
   // ── Project data
   const [projeto, setProjeto]     = useState<Projeto | null>(null);
@@ -259,6 +261,15 @@ export default function ProjetoDetalhe() {
   const [totalGeral, setTotalGeral] = useState(0);
   const [orcLoading, setOrcLoading] = useState(false);
   const [gerandoIA, setGerandoIA]   = useState(false);
+
+  const { data: categoriasProduto = [] } = useListCategoriasProduto(tenantId, {
+    query: {
+      queryKey: getListCategoriasProdutoQueryKey(tenantId),
+      enabled: !!tenantId,
+      staleTime: 300_000,
+    },
+  });
+  const categoriasOrdenadas = ordenarArvoreCategorias(categoriasProduto);
   const [scopeOpen, setScopeOpen] = useState(false);
   const [savingScope, setSavingScope] = useState(false);
   const [scopeForm, setScopeForm] = useState<BudgetScopeForm>({
@@ -271,6 +282,14 @@ export default function ProjetoDetalhe() {
   const [itemForm, setItemForm]       = useState({ ...EMPTY_ITEM });
   const [savingItem, setSavingItem]   = useState(false);
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
+  const [catalogMasterOpen, setCatalogMasterOpen] = useState(false);
+  const [catalogMasterProductId, setCatalogMasterProductId] = useState<string | null>(null);
+  const [catalogMasterDraft, setCatalogMasterDraft] = useState<{
+    nome?: string;
+    unidade?: string;
+    fornecedor?: string;
+    precoBase?: number;
+  } | null>(null);
 
   // ── Vincular dialog state
   const [vinculandoItem, setVinculandoItem]     = useState<OrcamentoItem | null>(null);
@@ -508,7 +527,7 @@ export default function ProjetoDetalhe() {
   function openEditItem(item: OrcamentoItem) {
     setItemForm({
       ambienteId:    item.ambienteId ?? "__none__",
-      categoria:     item.categoria ?? "Móveis",
+      categoria:     item.categoria ?? "",
       descricao:     item.descricao,
       quantidade:    item.quantidade,
       unidade:       item.unidade ?? "un",
@@ -517,6 +536,47 @@ export default function ProjetoDetalhe() {
     });
     setEditingItem(item);
     setAddItemOpen(true);
+  }
+
+  function openCatalogMasterForItem(item?: OrcamentoItem | null) {
+    const target = item ?? editingItem;
+    if (target?.produtoId) {
+      setCatalogMasterProductId(target.produtoId);
+      setCatalogMasterDraft(null);
+    } else {
+      setCatalogMasterProductId(null);
+      setCatalogMasterDraft({
+        nome: itemForm.descricao || target?.descricao || "",
+        unidade: itemForm.unidade || target?.unidade || "un",
+        fornecedor: itemForm.fornecedor || target?.fornecedor || "",
+        precoBase: Number(itemForm.valorUnitario || target?.valorUnitario || 0),
+      });
+    }
+    setCatalogMasterOpen(true);
+  }
+
+  async function handleCatalogProductSaved(product: any) {
+    setItemForm((current) => ({
+      ...current,
+      descricao: product?.nome ?? current.descricao,
+      unidade: product?.unidade ?? current.unidade,
+      fornecedor: product?.fornecedor ?? current.fornecedor,
+      valorUnitario: product?.precoBase != null ? String(product.precoBase) : current.valorUnitario,
+      categoria: product?.categoriaNome ?? current.categoria,
+    }));
+
+    if (editingItem?.id && product?.id) {
+      try {
+        const res = await fetch(`/api/arch/orcamento/${editingItem.id}/vincular-produto`, {
+          method: "POST",
+          headers: authH(),
+          body: JSON.stringify({ produtoId: product.id }),
+        });
+        if (res.ok) await loadOrcamento();
+      } catch {
+        // O cadastro mestre permanece salvo; o vínculo pode ser refeito pelo botão de catálogo.
+      }
+    }
   }
 
   async function handleSaveItem(e: React.FormEvent) {
@@ -1710,11 +1770,25 @@ export default function ProjetoDetalhe() {
               <div className="space-y-1">
                 <Label>Categoria</Label>
                 <Select value={itemForm.categoria} onValueChange={(v) => setItemForm((f) => ({ ...f, categoria: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                   <SelectContent>
-                    {CATEGORIAS.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    {categoriasOrdenadas.map(({ categoria: c, profundidade }) => (
+                      <SelectItem key={c.id} value={c.nome}>
+                        {"　".repeat(profundidade)}{profundidade > 0 ? "↳ " : ""}{c.nome}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-1.5 text-xs"
+                  onClick={() => openCatalogMasterForItem()}
+                >
+                  <Package className="mr-1.5 h-3.5 w-3.5" />
+                  {editingItem?.produtoId ? "Editar no catálogo mestre" : "Cadastrar no catálogo mestre"}
+                </Button>
               </div>
 
               <div className="col-span-2 space-y-1">
@@ -1766,6 +1840,21 @@ export default function ProjetoDetalhe() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {tenantId && (
+        <CatalogoModal
+          open={catalogMasterOpen}
+          onClose={() => {
+            setCatalogMasterOpen(false);
+            setCatalogMasterProductId(null);
+            setCatalogMasterDraft(null);
+          }}
+          tenantId={tenantId}
+          initialProductId={catalogMasterProductId}
+          initialCreateDraft={catalogMasterDraft}
+          onProductSaved={(product) => void handleCatalogProductSaved(product)}
+        />
+      )}
 
       {/* ══════════════════════════════════════════════════════════════════
           DIALOG: Vincular Produto do Catálogo
