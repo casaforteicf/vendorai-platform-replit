@@ -209,6 +209,9 @@ export const produtosCatalogoTable = pgTable("produtos_catalogo", {
   // padrão (visível, preço igual ao do Vendor.ai); explícito sobrepõe.
   vendeNoPracaAi: boolean("vende_no_praca_ai_produto"), // nullable de propósito — não confundir com tenants.vendeNoPracaAi (switch geral da loja)
   precoPracaAi: numeric("preco_praca_ai", { precision: 12, scale: 2 }),
+  // Venda no marketplace do Arqdor. O produto continua sendo o mesmo produto mestre.
+  vendeNoArqdor: boolean("vende_no_arqdor").notNull().default(false),
+  precoArqdor: numeric("preco_arqdor", { precision: 12, scale: 2 }),
   // Tabela de especificações livre (Complemento Praça.ai — pedido de
   // paridade com Mercado Livre: Marca/Modelo/Cor/etc). Lista de pares
   // label/value pra caber qualquer categoria (material de construção,
