@@ -26,10 +26,10 @@ Na abertura ou troca de projeto/ambiente, o backend vence o cache.
 
 A aprovação pertence à versão persistida, não ao estado React local.
 
-Enquanto o `RenderStudioPageLegacy.tsx` ainda existir, o entry point persistente deve:
+O fluxo consolidado usa `RenderStudioPage.tsx` como entry point de persistência e `RenderStudioCore.tsx` como núcleo funcional. O núcleo deve:
 
 1. identificar a versão aprovada pelo `approvedVersionId` ou por `approvedBy + approvedAt`;
-2. preservar autor, data e observação no cache hidratado;
+2. preservar autor, data e observação no estado hidratado;
 3. impedir que uma versão já aprovada volte a executar a ação de aprovação;
 4. direcionar a jornada para `Especificação` quando a etapa recuperada for `Aprovar`;
 5. exibir o status persistido de aprovação fora do estado local do Legacy.
