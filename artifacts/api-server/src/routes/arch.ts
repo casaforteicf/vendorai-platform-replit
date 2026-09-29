@@ -5470,39 +5470,106 @@ Retorne APENAS um array JSON válido com objetos no formato:
 
 Use preços de mercado brasileiro atuais. Seja detalhado e abrangente. Não inclua texto fora do JSON.`;
 
-  let message;
-  try {
-    message = await anthropic.messages.create({
+  async function gerarRespostaOrcamento(instruction: string, maxTokens = 8192) {
+    return anthropic.messages.create({
       model: "claude-sonnet-4-5",
-      max_tokens: 4096,
-      messages: [{ role: "user", content: prompt }],
+      max_tokens: maxTokens,
+      messages: [{ role: "user", content: instruction }],
     });
+  }
+
+  function extrairItensJson(raw: string): unknown {
+    const cleaned = raw
+      .trim()
+      .replace(/^\`\`\`(?:json)?\\s*/i, "")
+      .replace(/\\s*\`\`\`$/, "")
+      .trim();
+
+    const candidates = [
+      cleaned,
+      cleaned.match(/\[[\s\S]*\]/)?.[0],
+      cleaned.match(/\{[\s\S]*\}/)?.[0],
+    ].filter((value): value is string => Boolean(value));
+
+    for (const candidate of candidates) {
+      try {
+        const decoded = JSON.parse(candidate);
+        if (Array.isArray(decoded)) return decoded;
+        if (decoded && typeof decoded === "object") {
+          const obj = decoded as Record<string, unknown>;
+          if (Array.isArray(obj.items)) return obj.items;
+          if (Array.isArray(obj.itens)) return obj.itens;
+          if (Array.isArray(obj.orcamento)) return obj.orcamento;
+        }
+      } catch {
+        // tenta o próximo formato
+      }
+    }
+    return null;
+  }
+
+  let rawText = "";
+  let parsed: unknown = null;
+
+  try {
+    const message = await gerarRespostaOrcamento(
+      prompt + "\n\nIMPORTANTE: mantenha a resposta compacta, sem markdown e sem comentários. Limite a no máximo 40 itens para não truncar o JSON.",
+    );
+    rawText = message.content
+      .filter((c: any) => c.type === "text")
+      .map((c: any) => c.text)
+      .join("");
+    parsed = extrairItensJson(rawText);
+
+    // Uma resposta cortada ou envolta em texto não deve quebrar o fluxo.
+    // Faz uma única tentativa de correção, pedindo apenas o JSON compacto.
+    if (!parsed) {
+      const repairPrompt = `A resposta abaixo deveria ser um array JSON de orçamento, mas veio inválida ou truncada.
+Refaça do zero usando o briefing original e retorne SOMENTE um array JSON válido, compacto, com no máximo 40 itens.
+Não use markdown. Não escreva nenhuma explicação fora do JSON.
+
+BRIEFING ORIGINAL:
+${prompt}`;
+      const retry = await gerarRespostaOrcamento(repairPrompt, 8192);
+      rawText = retry.content
+        .filter((c: any) => c.type === "text")
+        .map((c: any) => c.text)
+        .join("");
+      parsed = extrairItensJson(rawText);
+    }
   } catch (err: any) {
     const { status, message } = sanitizeAIError(err);
     return res.status(status).json({ error: message });
   }
 
-  const rawText = message.content
-    .filter((c: any) => c.type === "text")
-    .map((c: any) => c.text)
-    .join("");
-
-  // Extrair JSON do response (pode vir com markdown)
-  const jsonMatch = rawText.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) {
-    return res.status(422).json({ error: "IA não retornou JSON válido.", raw: rawText.slice(0, 500) });
+  if (!parsed) {
+    return res.status(422).json({
+      error: "Não foi possível concluir a geração do orçamento. Tente novamente.",
+      code: "ARCH_BUDGET_AI_INVALID_JSON",
+    });
   }
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonMatch[0]);
-  } catch {
-    return res.status(422).json({ error: "Falha ao parsear JSON da IA.", raw: rawText.slice(0, 500) });
+  let itemsRaw = z.array(iaItemSchema).safeParse(parsed);
+
+  // Normaliza pequenas variações comuns da IA antes de desistir.
+  if (!itemsRaw.success && Array.isArray(parsed)) {
+    const normalized = parsed.map((item: any) => ({
+      ambiente: String(item?.ambiente ?? item?.comodo ?? item?.local ?? "Sem ambiente"),
+      categoria: String(item?.categoria ?? item?.grupo ?? "Outros"),
+      descricao: String(item?.descricao ?? item?.item ?? item?.nome ?? ""),
+      quantidade: Number(item?.quantidade ?? item?.qtd ?? 1),
+      unidade: String(item?.unidade ?? item?.un ?? "un"),
+      valorUnitario: Number(item?.valorUnitario ?? item?.valor_unitario ?? item?.precoUnitario ?? item?.preco ?? 0),
+    }));
+    itemsRaw = z.array(iaItemSchema).safeParse(normalized);
   }
 
-  const itemsRaw = z.array(iaItemSchema).safeParse(parsed);
   if (!itemsRaw.success) {
-    return res.status(422).json({ error: "Schema inválido retornado pela IA.", detail: itemsRaw.error.flatten() });
+    return res.status(422).json({
+      error: "A IA gerou itens incompletos. Tente novamente.",
+      code: "ARCH_BUDGET_AI_SCHEMA_INVALID",
+      detail: itemsRaw.error.flatten(),
+    });
   }
 
   // Mapear nome de ambiente para id
