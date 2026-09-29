@@ -1,5 +1,5 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, ne } from "drizzle-orm";
 import { db, pool, archAiRendersTable } from "@workspace/db";
 import { authenticate } from "../middlewares/auth.js";
 import { inferOperationType, renderOperationTypeSchema } from "../lib/arqdor-render-version-metadata.js";
@@ -167,15 +167,45 @@ archAiRenderRouter.post("/arch/ai-render/:id/approve", authenticate, async (req,
   }
 
   const approvalNote = asOptionalString(req.body?.notes ?? req.body?.approval_note);
+  const authenticatedUser = (req as any).user ?? {};
+  const approvedBy = String(authenticatedUser.id ?? authenticatedUser.email ?? authenticatedUser.name ?? "authenticated-user");
   captureJson(req, res, async (body) => {
     const renderId = asOptionalString(body?.render_id) ?? asOptionalString(req.params["id"]);
     if (!tid || !renderId) return;
+
+    const scope = candidate.projectId
+      ? and(
+          eq(archAiRendersTable.tenantId, tid),
+          eq(archAiRendersTable.projectId, candidate.projectId),
+          eq(archAiRendersTable.ambiente, candidate.ambiente),
+          ne(archAiRendersTable.id, renderId),
+        )
+      : candidate.conceptProjectId
+        ? and(
+            eq(archAiRendersTable.tenantId, tid),
+            eq(archAiRendersTable.conceptProjectId, candidate.conceptProjectId),
+            eq(archAiRendersTable.ambiente, candidate.ambiente),
+            ne(archAiRendersTable.id, renderId),
+          )
+        : null;
+
+    if (scope) {
+      await db.update(archAiRendersTable)
+        .set({ approvedBy: null, approvedAt: null, approvalNote: null })
+        .where(scope);
+    }
+
     await db.update(archAiRendersTable)
-      .set({ operationType: "approved", approvalNote })
+      .set({
+        approvedBy,
+        approvedAt: new Date(),
+        approvalNote,
+        versionTag: "aprovado",
+      })
       .where(and(eq(archAiRendersTable.id, renderId), eq(archAiRendersTable.tenantId, tid)));
 
     const specSync = await syncApprovedRenderSpecifications({ tenantId: tid, renderId });
-    req.log?.info?.({ renderId, ...specSync }, "arch/ai-render approve: especificações sincronizadas");
+    req.log?.info?.({ renderId, approvedBy, ...specSync }, "arch/ai-render approve: especificações sincronizadas");
   }, next);
 });
 

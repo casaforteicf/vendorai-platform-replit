@@ -28,21 +28,20 @@ type CachedVersion = Partial<RenderStudioVersion> & { id?: string; url?: string 
 
 function normalizeOperationType(
   value: PersistentRenderVersion["operationType"],
-  approved: boolean,
   parentRenderId: string | null,
 ): RenderStudioVersion["operationType"] {
-  if (approved) return "approved";
   if (value === "material" || value === "lighting" || value === "improve" || value === "initial") return value;
+  // Compatibilidade com registros antigos que gravavam "approved" como tipo.
   return parentRenderId ? "improve" : "initial";
 }
 
-function versionLabel(version: PersistentRenderVersion, operationType: RenderStudioVersion["operationType"]): string {
+function versionLabel(version: PersistentRenderVersion, operationType: RenderStudioVersion["operationType"], approved: boolean): string {
   const n = version.versionNumber || 1;
-  if (operationType === "approved") return `Versão ${n} · Aprovada`;
-  if (operationType === "material") return `Versão ${n} · ${version.materialName || "Material"}`;
-  if (operationType === "lighting") return `Versão ${n} · Iluminação`;
-  if (operationType === "improve") return `Versão ${n} · Melhoria`;
-  return `Versão ${n} · Original`;
+  const suffix = approved ? " · Aprovada" : "";
+  if (operationType === "material") return `Versão ${n} · ${version.materialName || "Material"}${suffix}`;
+  if (operationType === "lighting") return `Versão ${n} · Iluminação${suffix}`;
+  if (operationType === "improve") return `Versão ${n} · Melhoria${suffix}`;
+  return `Versão ${n} · Original${suffix}`;
 }
 
 function normalizeMediaUrl(value: string | null | undefined): string | null {
@@ -61,21 +60,23 @@ function parseCost(value: PersistentRenderVersion["costEstimateUsd"]): number | 
 export function mapPersistentVersionToStudio(version: PersistentRenderVersion): RenderStudioVersion | null {
   if (!version.fileAvailable || !(version.displayUrl || version.resultImageUrl) || version.status !== "concluido") return null;
 
-  const approved = Boolean(version.approvedAt || version.versionTag === "aprovado");
-  const operationType = normalizeOperationType(version.operationType, approved, version.parentRenderId);
+  const legacyApproved = !version.approvedAt && !version.approvedBy
+    && (version.versionTag === "aprovado" || version.operationType === "approved");
+  const approved = Boolean(version.approvedAt || version.approvedBy || legacyApproved);
+  const operationType = normalizeOperationType(version.operationType, version.parentRenderId);
   const selectionLabel = version.selectionMetadata.find(selection => Boolean(selection.label?.trim()))?.label;
 
   return {
     id: version.id,
     url: version.displayUrl || version.resultImageUrl!,
-    label: versionLabel(version, operationType),
+    label: versionLabel(version, operationType, approved),
     parentVersionId: version.parentRenderId || undefined,
     operationType,
     createdAt: version.createdAt,
     selectionLabel: selectionLabel || undefined,
     materialId: version.materialId || undefined,
     materialName: version.materialName || undefined,
-    approvedBy: version.approvedBy || undefined,
+    approvedBy: version.approvedBy || (legacyApproved ? "usuário autenticado" : undefined),
     approvedAt: version.approvedAt || undefined,
     approvalNote: version.approvalNote || undefined,
     costEstimateUsd: parseCost(version.costEstimateUsd),
@@ -95,7 +96,9 @@ export function buildRenderStudioPersistentState(
     .filter((version): version is RenderStudioVersion => Boolean(version));
 
   const latest = chronological.at(-1) ?? null;
-  const approved = [...chronological].reverse().find(version => Boolean(version.approvedAt) || version.operationType === "approved") ?? null;
+  const approved = [...chronological].reverse().find(version => Boolean(version.approvedAt || version.approvedBy))
+    ?? [...chronological].reverse().find(version => version.operationType === "approved")
+    ?? null;
   const sourceImageUrl = [...persistentVersions]
     .reverse()
     .map(version => normalizeMediaUrl(version.originalImageUrl))
