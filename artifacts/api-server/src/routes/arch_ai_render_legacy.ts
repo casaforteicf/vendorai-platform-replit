@@ -143,6 +143,7 @@ const renderBodySchema = z.object({
 const adjustBodySchema = z.object({
   mask_zones:      z.array(z.string()).optional().default([]),
   ajuste_prompt:   z.string().optional(),
+  quality_mode:    z.enum(["standard", "premium"]).optional().default("standard"),
   // Máscara real desenhada no frontend (PNG base64) — maior prioridade.
   mask_file_base64: z.string().optional(),
   // Seleção real por retângulo arrastável (SelectionCanvas no
@@ -449,7 +450,7 @@ archAiRenderRouter.post("/arch/ai-render/:id/adjust", authenticate, async (req: 
     });
   }
 
-  const { mask_zones, ajuste_prompt, mask_file_base64, mask_coordinates } = parsed.data;
+  const { mask_zones, ajuste_prompt, quality_mode, mask_file_base64, mask_coordinates } = parsed.data;
 
   // Herda mode do pai — e sanitiza zonas se mode=preservar
   const safeZones = parent.mode === "preservar"
@@ -475,6 +476,8 @@ archAiRenderRouter.post("/arch/ai-render/:id/adjust", authenticate, async (req: 
     maskZones:        safeZones,
     originalImageUrl: baseImageUrl,
     status:           "processando",
+    operationType:    quality_mode === "premium" ? "improve" : "adjust",
+    prompt:            ajuste_prompt,
     versionTag:       parent.versionTag,
   }).returning();
 
@@ -498,7 +501,13 @@ archAiRenderRouter.post("/arch/ai-render/:id/adjust", authenticate, async (req: 
     angulo:       parent.angulo,
     materials:    [],
     userNotes:    ajuste_prompt,
-    premiumRefine: false,
+    renderPresets: inferArqdorRenderPresets({
+      ambiente: parent.ambiente,
+      renderView: parent.renderView,
+      source: parent.source,
+      userNotes: ajuste_prompt,
+    }),
+    premiumRefine: quality_mode === "premium",
     logger:       req.log,
     retentativas: 0,
   }).catch(err => {
