@@ -4222,32 +4222,31 @@ router.post("/arch/catalogo/:id/resolve-real-model", authenticate, async (req, r
   const id = String(req.params.id);
   const tid = tenantId(req);
 
-  const [produto] = await db
-    .select()
-    .from(archCatalogoTable)
+  const [produto] = await db.select()
+    .from(produtosCatalogoTable)
     .where(and(
-      eq(archCatalogoTable.id, id),
-      eq(archCatalogoTable.tenantId, tid),
-      eq(archCatalogoTable.ativo, true),
+      eq(produtosCatalogoTable.id, id),
+      eq(produtosCatalogoTable.tenantId, tid),
+      eq(produtosCatalogoTable.ativo, true),
     ))
     .limit(1);
 
-  if (!produto) return res.status(404).json({ error: "Item de catálogo não encontrado." });
-
-  const specs = (produto.especificacoes ?? {}) as Record<string, unknown>;
-  const existingUrl = typeof specs.model3dUrl === "string" ? specs.model3dUrl : null;
-  if (existingUrl) {
+  if (!produto) return res.status(404).json({ error: "Produto mestre não encontrado." });
+  if (produto.model3dUrl) {
     return res.json({
       id: produto.id,
-      model3dUrl: existingUrl,
-      thumbnailUrl: Array.isArray(produto.imagens) ? produto.imagens[0] ?? null : null,
-      polyHavenSlug: typeof specs.polyHavenSlug === "string" ? specs.polyHavenSlug : null,
+      model3dUrl: produto.model3dUrl,
+      thumbnailUrl: produto.imagemUrl ?? (produto.imagens as string[] | null)?.[0] ?? null,
+      polyHavenSlug: typeof produto.projectTechnicalConfig?.polyHavenSlug === "string"
+        ? produto.projectTechnicalConfig.polyHavenSlug
+        : null,
       cached: true,
     });
   }
 
+  const specs = (produto.projectTechnicalConfig ?? {}) as Record<string, unknown>;
   const query = typeof specs.polyHavenQuery === "string" ? specs.polyHavenQuery.trim() : "";
-  if (!query) return res.status(400).json({ error: "Este item não possui estratégia automática de modelo 3D." });
+  if (!query) return res.status(400).json({ error: "Este produto não possui estratégia automática de modelo 3D." });
 
   try {
     const candidates = await searchPolyHavenModels(query, 6);
@@ -4256,9 +4255,8 @@ router.post("/arch/catalogo/:id/resolve-real-model", authenticate, async (req, r
         const asset = await resolvePolyHavenModel(candidate.slug);
         if (!asset.model3dUrl) continue;
 
-        const nextSpecs = {
+        const nextConfig = {
           ...specs,
-          model3dUrl: asset.model3dUrl,
           modelLabel: asset.name,
           modelLicense: "CC0",
           modelSource: "Poly Haven",
@@ -4270,24 +4268,28 @@ router.post("/arch/catalogo/:id/resolve-real-model", authenticate, async (req, r
         };
         const thumbnailUrl = asset.thumbnailUrl ?? candidate.thumbnailUrl ?? null;
         const nextImages = thumbnailUrl
-          ? [thumbnailUrl, ...((produto.imagens as string[] | null) ?? []).filter((url) => url !== thumbnailUrl)].slice(0, 5)
+          ? Array.from(new Set([
+              thumbnailUrl,
+              ...((produto.imagens as string[] | null) ?? []),
+            ])).slice(0, 8)
           : (produto.imagens as string[] | null) ?? [];
 
-        const [updated] = await db
-          .update(archCatalogoTable)
+        const [updated] = await db.update(produtosCatalogoTable)
           .set({
-            especificacoes: nextSpecs,
+            model3dUrl: asset.model3dUrl,
+            projectTechnicalConfig: nextConfig,
             imagens: nextImages,
+            updatedAt: new Date(),
           })
           .where(and(
-            eq(archCatalogoTable.id, id),
-            eq(archCatalogoTable.tenantId, tid),
+            eq(produtosCatalogoTable.id, id),
+            eq(produtosCatalogoTable.tenantId, tid),
           ))
           .returning();
 
         return res.json({
           id: updated.id,
-          model3dUrl: asset.model3dUrl,
+          model3dUrl: updated.model3dUrl,
           thumbnailUrl,
           polyHavenSlug: candidate.slug,
           modelLabel: asset.name,
@@ -4296,11 +4298,11 @@ router.post("/arch/catalogo/:id/resolve-real-model", authenticate, async (req, r
           cached: false,
         });
       } catch {
-        // Tenta o próximo candidato sem quebrar o catálogo.
+        // Tenta o próximo candidato sem quebrar o produto mestre.
       }
     }
 
-    return res.status(404).json({ error: "Nenhum modelo 3D compatível foi encontrado para este item." });
+    return res.status(404).json({ error: "Nenhum modelo 3D compatível foi encontrado para este produto." });
   } catch (error) {
     console.error("[arqdor/catalogo/resolve-real-model]", error);
     return res.status(502).json({ error: "Não foi possível resolver o modelo 3D automático agora." });
