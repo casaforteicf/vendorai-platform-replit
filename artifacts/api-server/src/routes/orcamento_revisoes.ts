@@ -107,6 +107,25 @@ router.post("/tenants/:tenantId/leads/:leadId/orcamento-revisoes", async (req, r
   const revisionNumero = `${baseNumero}-${revisionLabel}`;
 
   const revisionProposalId = crypto.randomUUID();
+  const basePresentation = (baseProposta.apresentacao ?? {}) as any;
+  const baseSourceSnapshot = basePresentation.sourceSnapshot && typeof basePresentation.sourceSnapshot === "object"
+    ? basePresentation.sourceSnapshot
+    : {};
+  const revisionPresentation = {
+    ...basePresentation,
+    sourceSnapshot: {
+      ...baseSourceSnapshot,
+      schemaVersion: Number(baseSourceSnapshot.schemaVersion ?? 1),
+      capturedAt: new Date().toISOString(),
+      immutableForVersion: true,
+      origin: "revision",
+      baseBudgetId: baseProposta.id,
+      baseBudgetNumber: baseNumero,
+      revisionLabel,
+      parentSnapshotCapturedAt: baseSourceSnapshot.capturedAt ?? null,
+    },
+  };
+
   const [revisionProposal] = await db
     .insert(propostasTable)
     .values({
@@ -116,7 +135,7 @@ router.post("/tenants/:tenantId/leads/:leadId/orcamento-revisoes", async (req, r
       dealId: baseProposta.dealId,
       titulo: baseProposta.titulo,
       itens: baseProposta.itens,
-      apresentacao: baseProposta.apresentacao,
+      apresentacao: revisionPresentation,
       valorTotal: baseProposta.valorTotal,
       status: "rascunho",
       validadeAte: baseProposta.validadeAte,
