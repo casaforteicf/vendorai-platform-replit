@@ -2185,6 +2185,7 @@ type ExternalBudgetSource = {
   projectTitle: string;
   projectDescription?: string;
   scopeSummary?: string;
+  scopeTypes?: string[];
   areaM2?: number;
   items: Array<{
     id: string;
@@ -2599,6 +2600,9 @@ function newFreeItem(): FreeItem {
     const [mode, setMode] = useState<"catalogo" | "livre" | "template" | "importar">("catalogo");
     const [selectedTemplateSlug, setSelectedTemplateSlug] = useState<string>("");
     const [constructionSystem, setConstructionSystem] = useState<ConstructionSystem>("icf");
+    const showConstructionSystem = !initialExternalBudget?.projectId
+      || !initialExternalBudget.scopeTypes?.length
+      || initialExternalBudget.scopeTypes.some((type) => type === "completo" || type === "reforma");
   
     // catálogo + composições organizados por grupos de etapa
     const [orcamentoEtapas, setOrcamentoEtapas] = useState<OrcamentoEtapaDraft[]>([
@@ -4419,24 +4423,26 @@ function newFreeItem(): FreeItem {
               )} />
             </div>
 
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-[280px_1fr] md:items-end">
-              <div className="space-y-1.5">
-                <Label>Sistema construtivo</Label>
-                <Select value={constructionSystem} onValueChange={(value) => changeConstructionSystem(value as ConstructionSystem)}>
-                  <SelectTrigger><SelectValue placeholder="Selecione o sistema construtivo" /></SelectTrigger>
-                  <SelectContent>
-                    {CONSTRUCTION_SYSTEMS.map((system) => (
-                      <SelectItem key={system.value} value={system.value}>{system.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            {showConstructionSystem && (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-[280px_1fr] md:items-end">
+                <div className="space-y-1.5">
+                  <Label>Sistema construtivo</Label>
+                  <Select value={constructionSystem} onValueChange={(value) => changeConstructionSystem(value as ConstructionSystem)}>
+                    <SelectTrigger><SelectValue placeholder="Selecione o sistema construtivo" /></SelectTrigger>
+                    <SelectContent>
+                      {CONSTRUCTION_SYSTEMS.map((system) => (
+                        <SelectItem key={system.value} value={system.value}>{system.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
+                  {constructionSystem === "icf"
+                    ? "ICF usa o pacote automático já cadastrado."
+                    : "As etapas comuns são criadas automaticamente, mas não carregamos composições ICF neste sistema."}
+                </div>
               </div>
-              <div className="rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
-                {constructionSystem === "icf"
-                  ? "ICF usa o pacote automático já cadastrado."
-                  : "As etapas comuns são criadas automaticamente, mas não carregamos composições ICF neste sistema."}
-              </div>
-            </div>
+            )}
 
             {/* Origens do orçamento: todas usam o mesmo fluxo e persistência real. */}
             <div className="rounded-lg border bg-muted/20 p-3">
@@ -6721,6 +6727,7 @@ export default function Propostas() {
             project?.clienteNome ? `Cliente: ${String(project.clienteNome)}` : "",
           ].filter(Boolean).join("\n"),
           scopeSummary: scopeTypes.map((type: string) => scopeLabels[type] ?? type).join(", "),
+          scopeTypes,
           areaM2: Number(project?.areaM2 ?? 0) || undefined,
           items,
         });
