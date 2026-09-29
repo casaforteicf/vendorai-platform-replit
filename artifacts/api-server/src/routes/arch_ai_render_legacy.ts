@@ -577,6 +577,7 @@ export interface RenderJobParams {
   angulo:       string | null | undefined;
   materials:    { zone: string; promptFragment: string }[];
   userNotes:    string | undefined;
+  renderPresets?: ArqdorRenderPreset[];
   premiumRefine?: boolean;
   source?: string | null;
   renderView?: string | null;
