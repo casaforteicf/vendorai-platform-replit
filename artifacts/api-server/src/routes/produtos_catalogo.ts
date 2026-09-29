@@ -13,6 +13,7 @@ import {
   updateProdutoCatalogoSchema,
   inventoryItemsTable,
   produtoComposicoesTable,
+  archMarketplaceItemsTable,
 } from "@workspace/db";
 
 const router: IRouter = Router();
@@ -33,6 +34,75 @@ async function categoriaPertenceAoTenant(categoriaId: string, tenantId: string):
     .from(categoriasProdutoTable)
     .where(and(eq(categoriasProdutoTable.id, categoriaId), eq(categoriasProdutoTable.tenantId, tenantId)));
   return Boolean(categoria);
+}
+
+async function syncArqdorMarketplaceProduct(product: typeof produtosCatalogoTable.$inferSelect): Promise<void> {
+  const [existing] = await db
+    .select({ id: archMarketplaceItemsTable.id })
+    .from(archMarketplaceItemsTable)
+    .where(and(
+      eq(archMarketplaceItemsTable.vendedorTenantId, product.tenantId),
+      eq(archMarketplaceItemsTable.masterProductId, product.id),
+    ))
+    .limit(1);
+
+  const imagens = Array.from(new Set([
+    product.imagemUrl,
+    ...((product.imagens as string[] | null) ?? []),
+  ].filter((value): value is string => Boolean(value))));
+  const preco = product.precoArqdor ?? product.precoBase;
+
+  if (!product.vendeNoArqdor) {
+    if (existing) {
+      await db.update(archMarketplaceItemsTable)
+        .set({ ativo: false })
+        .where(eq(archMarketplaceItemsTable.id, existing.id));
+    }
+    return;
+  }
+
+  let categoriaNome: string | null = null;
+  if (product.categoriaId) {
+    const [categoria] = await db
+      .select({ nome: categoriasProdutoTable.nome })
+      .from(categoriasProdutoTable)
+      .where(and(
+        eq(categoriasProdutoTable.id, product.categoriaId),
+        eq(categoriasProdutoTable.tenantId, product.tenantId),
+      ))
+      .limit(1);
+    categoriaNome = categoria?.nome ?? null;
+  }
+
+  const marketplaceData = {
+    masterProductId: product.id,
+    nome: product.nome,
+    descricao: product.descricao ?? null,
+    categoria: categoriaNome,
+    preco: preco == null ? null : String(preco),
+    imagens,
+    especificacoes: {
+      source: "produtos_catalogo",
+      masterProductId: product.id,
+      model3dUrl: product.model3dUrl ?? null,
+      textureUrl: product.textureUrl ?? null,
+      projectLibraryEnabled: product.projectLibraryEnabled,
+    },
+    ativo: product.ativo,
+  };
+
+  if (existing) {
+    await db.update(archMarketplaceItemsTable)
+      .set(marketplaceData)
+      .where(eq(archMarketplaceItemsTable.id, existing.id));
+    return;
+  }
+
+  await db.insert(archMarketplaceItemsTable)
+    .values({
+      vendedorTenantId: product.tenantId,
+      ...marketplaceData,
+    });
 }
 
 // ── Join helper: attach categoriaNome + categoriaDescontoMaximoPercentual ────
@@ -158,6 +228,7 @@ router.post("/produtos-catalogo", async (req, res) => {
     .insert(produtosCatalogoTable)
     .values(withCalculatedPrice(parsed.data) as any)
     .returning();
+  await syncArqdorMarketplaceProduct(product);
   res.status(201).json(product);
 });
 
@@ -311,6 +382,7 @@ router.patch("/produtos-catalogo/:id", async (req, res) => {
     .where(eq(produtosCatalogoTable.id, existing.id))
     .returning();
 
+  await syncArqdorMarketplaceProduct(product);
   res.json(product);
 });
 
@@ -704,10 +776,14 @@ const promocaoBodySchema = z.object({
 // produto. Baixa o resultado (URL temporária da OpenAI) e salva no nosso
 // próprio storage, pra não depender de um link que expira.
 const gerarImagemIaSchema = z.object({
-  nome: z.string().min(1),
+  nome: z.string().optional(),
   descricao: z.string().optional(),
   categoriaNome: z.string().optional(),
-});
+  prompt: z.string().max(1200).optional(),
+}).refine(
+  (data) => Boolean(data.nome?.trim() || data.prompt?.trim()),
+  { message: "Informe o nome do produto ou descreva a imagem que deseja gerar." },
+);
 
 router.post("/tenants/:tenantId/produtos-catalogo/gerar-imagem-ia", async (req, res) => {
   const parsed = gerarImagemIaSchema.safeParse(req.body);
@@ -720,10 +796,12 @@ router.post("/tenants/:tenantId/produtos-catalogo/gerar-imagem-ia", async (req, 
     res.status(403).json({ error: "Access denied" });
     return;
   }
-  const { nome, descricao, categoriaNome } = parsed.data;
+  const { nome, descricao, categoriaNome, prompt: promptManual } = parsed.data;
 
   const promptParts = [
-    `Fotografia de produto profissional, fundo neutro claro, iluminação de estúdio, foco nítido: ${nome}.`,
+    promptManual?.trim()
+      ? `Crie uma fotografia comercial profissional deste produto seguindo esta direção: ${promptManual.trim()}.`
+      : `Fotografia de produto profissional, fundo neutro claro, iluminação de estúdio, foco nítido: ${nome?.trim() || "produto"}.`,
   ];
   if (categoriaNome) promptParts.push(`Categoria: ${categoriaNome}.`);
   if (descricao) promptParts.push(descricao.slice(0, 300));
