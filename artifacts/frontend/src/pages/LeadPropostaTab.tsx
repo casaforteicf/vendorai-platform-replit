@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { OrcamentoRevisoesCard } from "@/components/OrcamentoRevisoesCard";
 import {
   Select,
@@ -4945,8 +4944,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
               </div>
             </div>
 
-            <ScrollArea className="min-h-0 flex-1">
-              <div className="p-4">
+            <div className="vendor-scrollbar h-[460px] max-h-[calc(88vh-230px)] overflow-y-auto overscroll-contain p-4 pr-3">
               {proposalMediaLibraryLoading ? (
                 <div className="flex h-[420px] items-center justify-center">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -5020,8 +5018,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                   </div>
                 );
               })()}
-              </div>
-            </ScrollArea>
+            </div>
           </div>
 
           <DialogFooter className="shrink-0 border-t px-5 py-3">
