@@ -6,6 +6,7 @@ import {
   numeric,
   integer,
   boolean,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -37,6 +38,11 @@ export const archProjetosTable = pgTable("arch_projetos", {
   status:                varchar("status",                 { length: 30  }).default("briefing"),
   pipelineStage:         text("pipeline_stage").default("lead"),
   tipoObra:              varchar("tipo_obra",              { length: 50  }),
+  escopoOrcamento:         jsonb("escopo_orcamento").$type<{
+    tipos: string[];
+    observacoes?: string;
+    tratamentoExistentes?: "avaliar_individualmente" | "manter" | "substituir";
+  }>(),
   areaM2:                numeric("area_m2",                { precision: 8,  scale: 2 }),
   orcamentoTotal:        numeric("orcamento_total",        { precision: 12, scale: 2 }),
   prazoEstimado:         integer("prazo_estimado"),

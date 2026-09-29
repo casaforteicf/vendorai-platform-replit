@@ -5436,6 +5436,57 @@ router.post("/arch/orcamento/:itemId/vincular-produto", authenticate, async (req
 // IA
 // ─────────────────────────────────────────────────────────────────────────────
 
+const budgetScopeSchema = z.object({
+  tipos: z.array(z.enum([
+    "completo", "mobiliario", "marcenaria", "revestimentos", "reforma",
+    "decoracao", "iluminacao", "eletrica", "hidraulica", "pintura", "outros",
+  ])).min(1),
+  observacoes: z.string().max(2000).optional().default(""),
+  tratamentoExistentes: z.enum(["avaliar_individualmente", "manter", "substituir"]).optional().default("avaliar_individualmente"),
+});
+
+const BUDGET_SCOPE_LABELS: Record<string, string> = {
+  completo: "Projeto completo",
+  mobiliario: "Mobiliário",
+  marcenaria: "Marcenaria",
+  revestimentos: "Revestimentos",
+  reforma: "Reforma",
+  decoracao: "Decoração",
+  iluminacao: "Iluminação",
+  eletrica: "Elétrica",
+  hidraulica: "Hidráulica",
+  pintura: "Pintura",
+  outros: "Outros",
+};
+
+function normalizeBudgetCategory(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function itemMatchesBudgetScope(category: unknown, description: unknown, scopeTypes: string[]): boolean {
+  if (scopeTypes.includes("completo")) return true;
+  const text = `${normalizeBudgetCategory(category)} ${normalizeBudgetCategory(description)}`;
+
+  const rules: Record<string, string[]> = {
+    mobiliario: ["movel", "moveis", "mobiliario", "sofa", "poltrona", "mesa", "cadeira", "cama", "estofado"],
+    marcenaria: ["marcenaria", "planejado", "armario", "closet", "painel", "gabinete"],
+    revestimentos: ["revestimento", "piso", "porcelanato", "ceramica", "pedra", "marmore", "granito", "acabamento"],
+    reforma: ["reforma", "demolicao", "retirada", "preparacao", "regularizacao", "mao de obra", "alvenaria", "gesso", "forro"],
+    decoracao: ["decoracao", "acessorio", "tapete", "cortina", "quadro", "objeto decorativo"],
+    iluminacao: ["iluminacao", "luminaria", "spot", "perfil led", "fita led", "pendente", "plafon"],
+    eletrica: ["eletrica", "eletrico", "tomada", "interruptor", "quadro eletrico", "ponto eletrico"],
+    hidraulica: ["hidraulica", "hidraulico", "louca", "metal sanitario", "torneira", "ponto hidraulico"],
+    pintura: ["pintura", "tinta", "massa corrida", "selador"],
+    outros: ["outros", "outro"],
+  };
+
+  return scopeTypes.some((scope) => (rules[scope] ?? []).some((term) => text.includes(term)));
+}
+
 const iaItemSchema = z.object({
   ambiente:      z.string(),
   categoria:     z.string(),
@@ -5463,6 +5514,15 @@ router.post("/arch/projetos/:id/orcamento/gerar-ia", authenticate, async (req, r
   if (!canAccessTenant(req, projeto.tenantId)) {
     return res.status(403).json({ error: "Acesso negado." });
   }
+
+  const scopeParsed = budgetScopeSchema.safeParse(projeto.escopoOrcamento ?? null);
+  if (!scopeParsed.success) {
+    return res.status(409).json({
+      error: "Defina primeiro o que será orçado para este cliente.",
+      code: "ARCH_BUDGET_SCOPE_REQUIRED",
+    });
+  }
+  const budgetScope = scopeParsed.data;
 
   const [spec] = await db
     .select()
@@ -5494,7 +5554,20 @@ router.post("/arch/projetos/:id/orcamento/gerar-ia", authenticate, async (req, r
     });
   }
 
-  const catalogoIds = confirmados
+  const dentroDoEscopo = confirmados.filter((item) =>
+    itemMatchesBudgetScope(item.categoria, item.overrideNome ?? item.descricao, budgetScope.tipos),
+  );
+  const foraDoEscopo = confirmados.length - dentroDoEscopo.length;
+
+  if (dentroDoEscopo.length === 0) {
+    const escopos = budgetScope.tipos.map((tipo) => BUDGET_SCOPE_LABELS[tipo] ?? tipo).join(", ");
+    return res.status(409).json({
+      error: `A especificação possui itens confirmados, mas nenhum pertence ao escopo deste cliente: ${escopos}.`,
+      code: "ARCH_BUDGET_NO_ITEMS_IN_SCOPE",
+    });
+  }
+
+  const catalogoIds = dentroDoEscopo
     .map((item) => item.catalogoItemId)
     .filter(Boolean) as string[];
 
@@ -5510,7 +5583,7 @@ router.post("/arch/projetos/:id/orcamento/gerar-ia", authenticate, async (req, r
 
   const catalogoMap = new Map(catalogoItens.map((item) => [item.id, item]));
 
-  const rows = confirmados.map((item) => {
+  const rows = dentroDoEscopo.map((item) => {
     const catalogo = item.catalogoItemId ? catalogoMap.get(item.catalogoItemId) : undefined;
     const quantidade = Math.max(0, Number(item.quantidade ?? 1));
     const precoCatalogo = catalogo?.precoBase != null ? Number(catalogo.precoBase) : null;
@@ -5559,6 +5632,8 @@ router.post("/arch/projetos/:id/orcamento/gerar-ia", authenticate, async (req, r
       projetoId,
       specificationId: spec.id,
       itensConfirmados: confirmados.length,
+      itensDentroDoEscopo: dentroDoEscopo.length,
+      itensForaDoEscopo: foraDoEscopo,
       itensCriados: inseridos.length,
       semPreco,
     },
@@ -5571,6 +5646,8 @@ router.post("/arch/projetos/:id/orcamento/gerar-ia", authenticate, async (req, r
     specificationId: spec.id,
     semPreco,
     fonte: "especificacao_confirmada",
+    escopo: budgetScope.tipos,
+    foraDoEscopo,
   });
 });
 
