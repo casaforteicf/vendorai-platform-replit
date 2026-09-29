@@ -3274,6 +3274,45 @@ function newFreeItem(): FreeItem {
     }));
   }
 
+  function resolvedPhysicalWeightsMap() {
+    const rows = orcamentoEtapas.map((stage) => {
+      const configuredRaw = proposalStageSchedule[stage.id]?.percentualFisico;
+      const configured = configuredRaw === undefined || configuredRaw === null || configuredRaw === ""
+        ? null
+        : Number(configuredRaw);
+      return {
+        stageId: stage.id,
+        configured: configured !== null && Number.isFinite(configured) ? Math.max(0, configured) : null,
+        duration: Math.max(1, Number(proposalStageSchedule[stage.id]?.duracaoDias ?? 1)),
+      };
+    });
+    const configuredTotal = rows.reduce((sum, row) => sum + Number(row.configured ?? 0), 0);
+    const missing = rows.filter((row) => row.configured === null);
+    const remaining = Math.max(0, 100 - configuredTotal);
+    const missingDurationTotal = missing.reduce((sum, row) => sum + row.duration, 0);
+    const raw = rows.map((row) => ({
+      stageId: row.stageId,
+      value: row.configured !== null
+        ? row.configured
+        : missing.length
+          ? (missingDurationTotal > 0 ? (row.duration / missingDurationTotal) * remaining : remaining / missing.length)
+          : 0,
+    }));
+    const total = raw.reduce((sum, row) => sum + row.value, 0);
+    const map = new Map<string, number>();
+    let accumulated = 0;
+    raw.forEach((row, index) => {
+      const normalized = total > 0
+        ? index === raw.length - 1
+          ? Math.max(0, 100 - accumulated)
+          : (row.value / total) * 100
+        : 0;
+      accumulated += normalized;
+      map.set(row.stageId, normalized);
+    });
+    return map;
+  }
+
   function buildMonthlyFinancialPreview() {
     const total = mode === "catalogo" ? catTotal : mode === "livre" ? freeTotal : importValorTotal;
     if (!total || total <= 0) return [];
@@ -3292,14 +3331,7 @@ function newFreeItem(): FreeItem {
 
     const buckets = new Map<string, MonthRow>();
     const stageTotalMap = new Map(orcamentoEtapas.map((stage) => [stage.id, proposalStageBudgetTotal(stage.id)]));
-    const physicalTotalConfigured = orcamentoEtapas.reduce(
-      (sum, stage) => sum + Number(proposalStageSchedule[stage.id]?.percentualFisico ?? 0),
-      0,
-    );
-    const totalScheduleDuration = orcamentoEtapas.reduce(
-      (sum, stage) => sum + Math.max(1, Number(proposalStageSchedule[stage.id]?.duracaoDias ?? 1)),
-      0,
-    );
+    const physicalWeights = resolvedPhysicalWeightsMap();
 
     const addSegment = (
       label: string,
@@ -3344,13 +3376,7 @@ function newFreeItem(): FreeItem {
     orcamentoEtapas.forEach((stage) => {
       const schedule = proposalStageSchedule[stage.id] ?? {};
       const stageValue = stageTotalMap.get(stage.id) ?? 0;
-      const stagePhysical = Number(schedule.percentualFisico ?? 0) > 0
-        ? Number(schedule.percentualFisico)
-        : physicalTotalConfigured > 0
-          ? 0
-          : totalScheduleDuration > 0
-            ? (Math.max(1, Number(schedule.duracaoDias ?? 1)) / totalScheduleDuration) * 100
-            : 0;
+      const stagePhysical = physicalWeights.get(stage.id) ?? 0;
       const phases = schedule.fases ?? [];
       if (phases.length) {
         const assigned = phases.reduce((sum, phase) => sum + Number(phase.percentualEtapa ?? 0), 0);
@@ -4765,6 +4791,9 @@ function newFreeItem(): FreeItem {
                                       ? (stageBudgetValue / (mode === "catalogo" ? catTotal : mode === "livre" ? freeTotal : importValorTotal)) * 100
                                       : 0).toFixed(2)}%
                                   </span>
+                                  <span className="ml-2 text-muted-foreground">
+                                    · Avanço físico {Number(resolvedPhysicalWeightsMap().get(etapa.id) ?? 0).toFixed(2)}%
+                                  </span>
                                 </p>
                               </div>
                               <Button type="button" variant="outline" size="sm" onClick={() => addProposalPhase(etapa.id)}>
@@ -4955,6 +4984,30 @@ function newFreeItem(): FreeItem {
                           </div>
                         );
                       })}
+                    </div>
+
+                    <div className="grid gap-2 rounded-lg border bg-muted/20 p-3 text-xs md:grid-cols-3">
+                      <div>
+                        <span className="text-muted-foreground">Total avanço físico</span>
+                        <strong className="ml-2">
+                          {Array.from(resolvedPhysicalWeightsMap().values()).reduce((sum, value) => sum + value, 0).toFixed(2)}%
+                        </strong>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Total peso financeiro</span>
+                        <strong className="ml-2">
+                          {((mode === "catalogo" ? catTotal : mode === "livre" ? freeTotal : importValorTotal) > 0
+                            ? orcamentoEtapas.reduce((sum, etapa) => sum + proposalStageBudgetTotal(etapa.id), 0)
+                              / (mode === "catalogo" ? catTotal : mode === "livre" ? freeTotal : importValorTotal) * 100
+                            : 0).toFixed(2)}%
+                        </strong>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Prazo efetivo</span>
+                        <strong className="ml-2">
+                          {integrityReport?.effectiveScheduleDays ? `${integrityReport.effectiveScheduleDays} dias` : form.watch("prazoEntrega") || "A definir"}
+                        </strong>
+                      </div>
                     </div>
 
                     {showPhysicalFinancial && (() => {
