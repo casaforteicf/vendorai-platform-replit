@@ -3522,6 +3522,16 @@ router.get("/arch/projetos", authenticate, async (req, res) => {
         select count(*) from arch_ambientes
         where arch_ambientes.projeto_id = ${archProjetosTable.id}
       )`.mapWith(Number),
+      totalRenders: sql<number>`(
+        select count(*) from arch_ai_renders
+        where arch_ai_renders.project_id = ${archProjetosTable.id}
+          and arch_ai_renders.status = 'concluido'
+      )`.mapWith(Number),
+      totalRenderAmbientes: sql<number>`(
+        select count(distinct arch_ai_renders.ambiente) from arch_ai_renders
+        where arch_ai_renders.project_id = ${archProjetosTable.id}
+          and arch_ai_renders.status = 'concluido'
+      )`.mapWith(Number),
     })
     .from(archProjetosTable)
     .where(and(...conditions))
@@ -3567,7 +3577,7 @@ router.get("/arch/projetos/:id", authenticate, async (req, res) => {
     return res.status(403).json({ error: "Acesso negado." });
   }
 
-  const [ambientes, orcamento, cenas] = await Promise.all([
+  const [ambientes, orcamento, cenas, renders] = await Promise.all([
     db
       .select()
       .from(archAmbientesTable)
@@ -3581,9 +3591,30 @@ router.get("/arch/projetos/:id", authenticate, async (req, res) => {
       .select()
       .from(archCenasTable)
       .where(eq(archCenasTable.projetoId, id)),
+    db
+      .select({
+        id: archAiRendersTable.id,
+        parentRenderId: archAiRendersTable.parentRenderId,
+        ambiente: archAiRendersTable.ambiente,
+        mode: archAiRendersTable.mode,
+        status: archAiRendersTable.status,
+        versionTag: archAiRendersTable.versionTag,
+        originalImageUrl: archAiRendersTable.originalImageUrl,
+        resultImageUrl: archAiRendersTable.resultImageUrl,
+        approvedBy: archAiRendersTable.approvedBy,
+        approvedAt: archAiRendersTable.approvedAt,
+        createdAt: archAiRendersTable.createdAt,
+        concluidoEm: archAiRendersTable.concluidoEm,
+      })
+      .from(archAiRendersTable)
+      .where(and(
+        eq(archAiRendersTable.projectId, id),
+        eq(archAiRendersTable.tenantId, projeto.tenantId),
+      ))
+      .orderBy(desc(archAiRendersTable.createdAt)),
   ]);
 
-  return res.json({ projeto, ambientes, orcamento, cenas });
+  return res.json({ projeto, ambientes, orcamento, cenas, renders });
 });
 
 // PATCH /api/arch/projetos/:id
