@@ -1205,17 +1205,19 @@ export default function ConceptWebGLScene({
             void catalogMaterialLinks(object.catalogProductId).then((links) => {
               if (runtime.objectGroups.get(object.id) !== root) return;
               const defaults = links.filter((link) => link.isDefault && link.material?.primaryImage?.storageUrl);
-              if (!defaults.length) return;
               const bySurface = new Map(defaults.filter((link) => link.surfaceKey).map((link) => [String(link.surfaceKey), link]));
               const globalDefault = defaults.find((link) => !link.surfaceKey) ?? null;
+              const configured = object.materialSelections ?? {};
+              const configuredGlobal = configured.__all__ ?? null;
               const loader = new THREE.TextureLoader();
 
               for (const { node, entries } of meshSurfaces) {
                 const sourceMaterials = Array.isArray(node.material) ? [...node.material] : [node.material];
                 let changed = false;
                 entries.forEach(({ index, key }) => {
+                  const configuredSelection = configured[key] ?? configuredGlobal;
                   const link = bySurface.get(key) ?? globalDefault;
-                  const textureUrl = link?.material?.primaryImage?.storageUrl;
+                  const textureUrl = configuredSelection?.textureUrl ?? link?.material?.primaryImage?.storageUrl;
                   const source = sourceMaterials[index];
                   if (!textureUrl || !source?.clone) return;
                   const cloned = source.clone();
