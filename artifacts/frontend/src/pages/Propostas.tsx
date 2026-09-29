@@ -314,6 +314,8 @@ const catFormSchema = z.object({
   // (tenants.vendeNoPracaAi); "sim"/"nao" sobrepõe só pra esse produto.
   vendeNoPracaAi: z.enum(["herda", "sim", "nao"]).default("herda"),
   precoPracaAi: z.coerce.number().min(0).optional(),
+  vendeNoArqdor: z.boolean().default(false),
+  precoArqdor: z.coerce.number().min(0).optional(),
 tipoCalculo: z
   .enum([
     "none",
@@ -529,6 +531,7 @@ export function CatalogoModal({
   const [galeriaUploading, setGaleriaUploading] = useState(false);
   const [videoUploading, setVideoUploading] = useState(false);
   const [gerandoImagemIa, setGerandoImagemIa] = useState(false);
+  const [imagemIaPrompt, setImagemIaPrompt] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<ProdutoCatalogo | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showOnlyPending, setShowOnlyPending] = useState(false);
@@ -566,7 +569,7 @@ export function CatalogoModal({
 
   const form = useForm<CatFormValues>({
     resolver: zodResolver(catFormSchema),
-    defaultValues: { nome: "", categoriaId: "", descontoMaximoPercentual: undefined, precoBase: 0, margemPercentual: 0, fretePercentual: 0, comissaoPercentual: 0, custoFinanceiroPercentual: 0, unidade: "un", descricao: "", imagemUrl: "", imagens: [], videoUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, especificacoes: [], compatibilidadeVeicular: [], dataValidade: "" },
+    defaultValues: { nome: "", categoriaId: "", descontoMaximoPercentual: undefined, precoBase: 0, margemPercentual: 0, fretePercentual: 0, comissaoPercentual: 0, custoFinanceiroPercentual: 0, unidade: "un", descricao: "", imagemUrl: "", imagens: [], videoUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, vendeNoArqdor: false, precoArqdor: undefined, especificacoes: [], compatibilidadeVeicular: [], dataValidade: "" },
   });
 
   const watchRecorrente = form.watch("recorrente");
@@ -583,13 +586,15 @@ export function CatalogoModal({
 
   function openCreate() {
     setEditingProd(null);
-    form.reset({ nome: "", categoriaId: "", descontoMaximoPercentual: undefined, precoBase: 0, margemPercentual: 0, fretePercentual: 0, comissaoPercentual: 0, custoFinanceiroPercentual: 0, unidade: "un", descricao: "", imagemUrl: "", imagens: [], videoUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, especificacoes: [], compatibilidadeVeicular: [], dataValidade: "" });
+    setImagemIaPrompt("");
+    form.reset({ nome: "", categoriaId: "", descontoMaximoPercentual: undefined, precoBase: 0, margemPercentual: 0, fretePercentual: 0, comissaoPercentual: 0, custoFinanceiroPercentual: 0, unidade: "un", descricao: "", imagemUrl: "", imagens: [], videoUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, vendeNoArqdor: false, precoArqdor: undefined, especificacoes: [], compatibilidadeVeicular: [], dataValidade: "" });
     setComposicaoItens([]);
     setFormOpen(true);
   }
 
   function openEdit(p: ProdutoCatalogo) {
     setEditingProd(p);
+    setImagemIaPrompt("");
     const vendeNoPracaAiValue = (p as any).vendeNoPracaAi;
     form.reset({
       nome: p.nome,
@@ -616,6 +621,8 @@ export function CatalogoModal({
       prazoContrato: p.prazoContrato ?? undefined,
       vendeNoPracaAi: vendeNoPracaAiValue === true ? "sim" : vendeNoPracaAiValue === false ? "nao" : "herda",
       precoPracaAi: (p as any).precoPracaAi != null ? parseFloat((p as any).precoPracaAi) : undefined,
+      vendeNoArqdor: (p as any).vendeNoArqdor === true,
+      precoArqdor: (p as any).precoArqdor != null ? parseFloat((p as any).precoArqdor) : undefined,
       especificacoes: Array.isArray((p as any).especificacoes)
         ? (p as any).especificacoes.filter(
             (spec: { label?: string }) =>
@@ -702,6 +709,8 @@ export function CatalogoModal({
       // (orval/openapi.yaml), backend já aceita (schema Drizzle da tabela).
       vendeNoPracaAi: vals.vendeNoPracaAi === "sim" ? true : vals.vendeNoPracaAi === "nao" ? false : null,
       precoPracaAi: vals.precoPracaAi != null ? vals.precoPracaAi.toFixed(2) : null,
+      vendeNoArqdor: vals.vendeNoArqdor,
+      precoArqdor: vals.precoArqdor != null ? vals.precoArqdor.toFixed(2) : null,
       especificacoes: vals.especificacoes.filter(
         (e) =>
           e.label.trim() &&
@@ -1363,15 +1372,15 @@ export function CatalogoModal({
 
               {/* Galeria de fotos adicionais + gerar com IA */}
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label>Mais fotos <span className="text-muted-foreground text-xs">(opcional — além da capa acima)</span></Label>
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Mais fotos <span className="text-muted-foreground text-xs">(opcional — além da capa acima)</span></Label>
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
                     className="text-xs gap-1.5"
-                    disabled={gerandoImagemIa || !form.watch("nome")}
-                    title={!form.watch("nome") ? "Preencha o nome do produto primeiro" : undefined}
+                    disabled={gerandoImagemIa || (!form.watch("nome")?.trim() && !imagemIaPrompt.trim())}
                     onClick={async () => {
                       setGerandoImagemIa(true);
                       try {
@@ -1383,6 +1392,7 @@ export function CatalogoModal({
                             nome: form.getValues("nome"),
                             descricao: form.getValues("descricao") || undefined,
                             categoriaNome,
+                            prompt: imagemIaPrompt.trim() || undefined,
                           }),
                         });
                         const data = await r.json();
@@ -1400,6 +1410,16 @@ export function CatalogoModal({
                     {gerandoImagemIa ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
                     Gerar com IA
                   </Button>
+                  </div>
+                  <Input
+                    value={imagemIaPrompt}
+                    onChange={(event) => setImagemIaPrompt(event.target.value)}
+                    placeholder="Descreva a imagem que deseja gerar (opcional se o nome do produto já estiver preenchido)"
+                    className="text-sm"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    A IA pode criar a imagem antes mesmo de salvar o produto. O resultado entra na galeria deste mesmo produto mestre.
+                  </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {(form.watch("imagens") ?? []).map((url, idx) => (
@@ -1586,6 +1606,55 @@ export function CatalogoModal({
                     <FormMessage />
                   </FormItem>
                 )} />
+              </div>
+
+              {/* Arqdor — produto mestre disponível para especificação e venda */}
+              <div className="rounded-lg border border-violet-200 bg-violet-50/30 p-3 space-y-3">
+                <div>
+                  <p className="text-sm font-medium">Arqdor</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    O mesmo produto mestre pode ser usado no projeto e também vendido pelo marketplace do Arqdor.
+                  </p>
+                </div>
+                <FormField control={form.control} name="vendeNoArqdor" render={({ field }) => (
+                  <FormItem>
+                    <div className="flex items-center justify-between gap-3 rounded-md border bg-background p-3">
+                      <div>
+                        <FormLabel className="text-sm">Vender pelo Arqdor</FormLabel>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Ao ativar, o produto é publicado no Marketplace do Arqdor sem criar outro cadastro.
+                        </p>
+                      </div>
+                      <FormControl>
+                        <Switch checked={field.value} onCheckedChange={field.onChange} />
+                      </FormControl>
+                    </div>
+                  </FormItem>
+                )} />
+                {form.watch("vendeNoArqdor") && (
+                  <FormField control={form.control} name="precoArqdor" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm">
+                        Preço no Arqdor <span className="text-muted-foreground text-xs">(opcional)</span>
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="Deixe em branco para usar o preço normal do catálogo"
+                          {...field}
+                          value={field.value ?? ""}
+                          onChange={(e) => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))}
+                        />
+                      </FormControl>
+                      <p className="text-xs text-muted-foreground">
+                        Imagens, descrição, GLB, textura, materiais e dados técnicos continuam vindo deste mesmo produto mestre.
+                      </p>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                )}
               </div>
 
               {/* Tabela de especificações — Marca/Modelo/Cor/etc, pra alimentar
