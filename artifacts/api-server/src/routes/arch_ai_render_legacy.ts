@@ -155,6 +155,11 @@ const adjustBodySchema = z.object({
   // no schema) e o ajuste caía no mapa heurístico de zonas fixas, que não
   // batia com nenhuma seleção real desenhada.
   mask_coordinates: z.array(z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() })).optional(),
+  // Genius Render: quando true, a seleção desenhada é tratada como semente.
+  // O backend amplia levemente a janela para dar contexto visual ao modelo,
+  // mas a composição final continua bloqueando qualquer mudança fora dela.
+  expand_selection_to_material: z.boolean().optional().default(false),
+  selection_padding_percent: z.number().min(0).max(25).optional().default(10),
 });
 
 const projectConfigBodySchema = z.object({
@@ -453,7 +458,14 @@ archAiRenderRouter.post("/arch/ai-render/:id/adjust", authenticate, async (req: 
     });
   }
 
-  const { mask_zones, ajuste_prompt, mask_file_base64, mask_coordinates } = parsed.data;
+  const {
+    mask_zones,
+    ajuste_prompt,
+    mask_file_base64,
+    mask_coordinates,
+    expand_selection_to_material,
+    selection_padding_percent,
+  } = parsed.data;
 
   // Herda mode do pai — e sanitiza zonas se mode=preservar
   const safeZones = parent.mode === "preservar"
@@ -498,6 +510,8 @@ archAiRenderRouter.post("/arch/ai-render/:id/adjust", authenticate, async (req: 
     maskZones:    safeZones,
     maskFileBase64: mask_file_base64,
     maskCoordinates: mask_coordinates,
+    materialAwareSelection: expand_selection_to_material,
+    selectionPaddingPercent: selection_padding_percent,
     ambiente:     parent.ambiente,
     estilo:       parent.estilo,
     iluminacao:   parent.iluminacao,
@@ -590,6 +604,8 @@ export interface RenderJobParams {
   // não mais só 5 zonas em posição fixa presumindo cozinha padrão.
   maskFileBase64?: string;
   maskCoordinates?: { x: number; y: number; w: number; h: number }[];
+  materialAwareSelection?: boolean;
+  selectionPaddingPercent?: number;
   ambiente:     string | null | undefined;
   estilo:       string | null | undefined;
   iluminacao:   string | null | undefined;
@@ -632,6 +648,7 @@ async function enhanceFinalRender(buffer: Buffer): Promise<Buffer> {
 export async function processRenderJob(params: RenderJobParams): Promise<void> {
   const {
     renderId, tenantId: tid, mode, originalUrl, maskZones, maskFileBase64, maskCoordinates,
+    materialAwareSelection, selectionPaddingPercent,
     ambiente, estilo, iluminacao, angulo, materials, userNotes, renderPresets, source, renderView, renderProfile,
     logger, retentativas,
   } = params;
@@ -670,29 +687,99 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
 
     if (mode === "preservar") {
       const originalDataUrl = bufferToDataUrl(originalBuf, originalMime);
+      const hasLocalSelection = Boolean(maskFileBase64 || (maskCoordinates && maskCoordinates.length > 0));
 
-      // Todos os perfis de preservação usam o mesmo motor oficial OpenAI.
-      // O perfil controla o prompt e a política visual, nunca o provedor.
-      const generated = await generateRenderPremiumOpenAI({
-        tenantId: tid,
-        imageDataUrl: originalDataUrl,
-        prompt: [
+      if (hasLocalSelection && params.userNotes) {
+        // Genius Render local edit:
+        // a seleção do usuário é sempre autoridade. Para troca de material,
+        // podemos ampliar apenas a janela de contexto; depois recompomos sobre
+        // o original, garantindo que nenhum pixel fora da área autorizada mude.
+        const expandedCoordinates = maskCoordinates?.map((rect) => {
+          if (!materialAwareSelection) return rect;
+          const padding = Math.max(0, Math.min(25, selectionPaddingPercent ?? 10));
+          const px = rect.w * (padding / 100);
+          const py = rect.h * (padding / 100);
+          const x = Math.max(0, rect.x - px);
+          const y = Math.max(0, rect.y - py);
+          const w = Math.min(100 - x, rect.w + px * 2);
+          const h = Math.min(100 - y, rect.h + py * 2);
+          return { x, y, w, h };
+        });
+
+        const maskBuf = maskFileBase64
+          ? Buffer.from(maskFileBase64.replace(/^data:image\/\w+;base64,/, ""), "base64")
+          : await createRectMask(expandedCoordinates ?? maskCoordinates ?? [], width, height);
+
+        const maskPath = await storage.savePrivateBuffer(
+          maskBuf, "image/png",
+          `arch-mask-${tid}-${renderId}.png`,
+        );
+        maskFileUrl = `/api/storage/objects/${maskPath.replace(/^\/objects\//, "")}`;
+
+        const localPrompt = [
           prompt,
-          "PREMIUM ARCHVIZ OUTPUT: produce a high-end photorealistic architectural visualization of the exact same project.",
-          "Preserve the reference camera, architecture, cabinetry, exact visible-object inventory, furniture count/placement and the perceived base colors/material identity.",
-          "Increase realistic global illumination, material micro-detail, wood grain fidelity, fabric weave, stone depth, metal/glass reflections, soft contact shadows and photographic clarity.",
-          iluminacao?.includes("bright") || iluminacao?.includes("linear led")
-            ? "BRIGHT SCENE: make the scene clearly brighter with realistic linear LED illumination where architecturally plausible, controlled practical lighting and soft ambient bounce light. Do not shift the underlying material colors."
-            : "Use balanced premium architectural lighting with readable shadow detail and controlled highlights.",
-          renderProfile === "decorated"
-            ? "DECORATED MODE: existing objects remain immutable; you may add only a few small tasteful accessories in genuinely empty areas, without covering, replacing or moving anything."
-            : "FAITHFUL MODE: do not add any new decoration or object.",
-        ].join(" "),
-        logger,
-      });
-      resultB64 = generated.base64;
-      motor = `${generated.provider}-${generated.model}`;
-      compositedFlag = false;
+          "LOCAL EDIT MODE. The mask is an editable candidate area, not permission to redesign it.",
+          materialAwareSelection
+            ? "MATERIAL-AWARE SELECTION: infer the contiguous surface/material that contains the user's seed selection. Apply the requested change only to that connected surface inside the mask context. Do not spill onto adjacent materials, objects, joints, trim, furniture, openings or disconnected surfaces."
+            : "Change only the explicitly selected region.",
+          "Everything outside the intended selected surface must remain visually identical to the source.",
+          "Preserve camera, geometry, object inventory, furniture placement, dimensions, seams, edges and all unrelated materials.",
+        ].join(" ");
+
+        const generated = await generateRenderPremiumOpenAI({
+          tenantId: tid,
+          imageDataUrl: originalDataUrl,
+          maskDataUrl: bufferToDataUrl(maskBuf, "image/png"),
+          prompt: localPrompt,
+          logger,
+        });
+
+        const generatedBuf = Buffer.from(generated.base64, "base64");
+        const compositedBuf = await compositeWithOriginal(generatedBuf, originalBuf, maskBuf);
+        resultB64 = compositedBuf.toString("base64");
+        compositedFlag = true;
+        motor = `${generated.provider}-${generated.model}`;
+
+        const validation = await validateEdgeIntegrity(originalBuf, compositedBuf, maskBuf);
+        logger?.info({ renderId, materialAwareSelection, ...validation }, "arch/ai-render: validação de bordas (Genius Render local)");
+
+        if (!validation.valid && retentativas < MAX_RETENTATIVAS) {
+          logger?.warn({ renderId, retentativas }, "arch/ai-render: ajuste local rejeitado, tentando novamente");
+          await db.update(archAiRendersTable)
+            .set({ retentativas: String(retentativas + 1) })
+            .where(ownedRender);
+          return processRenderJob({ ...params, retentativas: retentativas + 1 });
+        }
+        if (!validation.valid) {
+          throw new Error(`Ajuste local rejeitado após ${MAX_RETENTATIVAS} tentativas: ${validation.details}`);
+        }
+
+        await db.update(archAiRendersTable)
+          .set({ maskFileUrl })
+          .where(ownedRender);
+      } else {
+        // Refino global: preservação rígida sem máscara.
+        const generated = await generateRenderPremiumOpenAI({
+          tenantId: tid,
+          imageDataUrl: originalDataUrl,
+          prompt: [
+            prompt,
+            "PREMIUM ARCHVIZ OUTPUT: produce a high-end photorealistic architectural visualization of the exact same project.",
+            "Preserve the reference camera, architecture, cabinetry, exact visible-object inventory, furniture count/placement and the perceived base colors/material identity.",
+            "Increase realistic global illumination, material micro-detail, wood grain fidelity, fabric weave, stone depth, metal/glass reflections, soft contact shadows and photographic clarity.",
+            iluminacao?.includes("bright") || iluminacao?.includes("linear led")
+              ? "BRIGHT SCENE: make the scene clearly brighter with realistic linear LED illumination where architecturally plausible, controlled practical lighting and soft ambient bounce light. Do not shift the underlying material colors."
+              : "Use balanced premium architectural lighting with readable shadow detail and controlled highlights.",
+            renderProfile === "decorated"
+              ? "DECORATED MODE: existing objects remain immutable; you may add only a few small tasteful accessories in genuinely empty areas, without covering, replacing or moving anything."
+              : "FAITHFUL MODE: do not add any new decoration or object.",
+          ].join(" "),
+          logger,
+        });
+        resultB64 = generated.base64;
+        motor = `${generated.provider}-${generated.model}`;
+        compositedFlag = false;
+      }
 
       // Confiança heurística registrada por zona (para auditoria)
       segConf = {};
