@@ -1,9 +1,9 @@
 /**
  * Arch AI Render — pipeline async com roteamento por modo
  *
- * Modo Preservar → flux-kontext-pro (edição por instrução, sem máscara)
- * Modo Criar     → flux-1.1-pro-ultra raw:true (geração livre)
- * Ajuste pontual → flux-fill-pro com máscara (segunda chamada separada)
+ * Modo Preservar → OpenAI GPT Image Premium (edição com imagem de referência)
+ * Modo Criar     → OpenAI GPT Image Premium (geração livre)
+ * Ajuste pontual → OpenAI GPT Image Premium com máscara
  *
  * POST /api/arch/ai-render               → 202, render_id
  * GET  /api/arch/ai-renders              → histórico persistente por projeto
@@ -28,7 +28,6 @@ import { ObjectStorageService } from "../lib/objectStorage.js";
 import {
   createZoneMask,
   createRectMask,
-  callReplicateFluxFill,
   compositeWithOriginal,
   validateEdgeIntegrity,
   validateArchitecturalStructure,
@@ -36,7 +35,7 @@ import {
   bufferToDataUrl,
 } from "../lib/arch-render-pipeline.js";
 import sharp from "sharp";
-import { generateRenderCreate, generateRenderPreserve, generateRenderPremiumOpenAI } from "../services/media-provider-execution.js";
+import { generateRenderCreateOpenAI, generateRenderPremiumOpenAI } from "../services/media-provider-execution.js";
 import { captureGeneratedMedia } from "../services/media-library.js";
 import {
   buildArqdorFidelityBlock,
@@ -246,7 +245,7 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
       mode, ambiente, estilo, iluminacao, angulo, maskZones: safeMaskZones, materials,
       userNotes: user_notes, renderPresets: render_presets, source, renderView: render_view,
     }) : undefined,
-    motor: durable ? "replicate-flux-kontext-pro" : undefined,
+    motor: undefined,
     status:           durable ? "queued" : "processando",
     versionTag:       mode === "preservar" ? "fiel_ao_original" : "conceito",
   }).returning();
@@ -607,24 +606,6 @@ export interface RenderJobParams {
 
 const MAX_RETENTATIVAS = 2;
 
-function nearestRenderAspectRatio(width: number, height: number): string {
-  const ratio = width / Math.max(1, height);
-  const supported = [
-    ["21:9", 21 / 9],
-    ["16:9", 16 / 9],
-    ["3:2", 3 / 2],
-    ["4:3", 4 / 3],
-    ["1:1", 1],
-    ["3:4", 3 / 4],
-    ["2:3", 2 / 3],
-    ["9:16", 9 / 16],
-    ["9:21", 9 / 21],
-  ] as const;
-  return supported.reduce((best, candidate) =>
-    Math.abs(candidate[1] - ratio) < Math.abs(best[1] - ratio) ? candidate : best
-  )[0];
-}
-
 async function enhanceFinalRender(buffer: Buffer): Promise<Buffer> {
   const metadata = await sharp(buffer).metadata();
   const width = metadata.width ?? 0;
@@ -690,38 +671,25 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
     if (mode === "preservar") {
       const originalDataUrl = bufferToDataUrl(originalBuf, originalMime);
 
-      // Técnico Fiel continua no Kontext. Premium/Premium Decorado passam
-      // a usar GPT Image Premium com alta fidelidade de entrada para buscar
-      // qualidade fotográfica superior sem tratar o Kontext como renderizador final.
-      const usePremiumImageEngine = renderProfile !== "technical" && renderView === "interior";
-      const generated = usePremiumImageEngine
-        ? await generateRenderPremiumOpenAI({
-            tenantId: tid,
-            imageDataUrl: originalDataUrl,
-            prompt: [
-              prompt,
-              "PREMIUM ARCHVIZ OUTPUT: produce a high-end photorealistic architectural interior visualization, not a lightly edited CG image.",
-              "Preserve the reference camera, architecture, cabinetry, exact visible-object inventory, furniture count/placement and the perceived base colors/material identity.",
-              "Increase realistic global illumination, material micro-detail, wood grain fidelity, fabric weave, stone depth, metal/glass reflections, soft contact shadows and photographic clarity.",
-              iluminacao?.includes("bright") || iluminacao?.includes("linear led")
-                ? "BRIGHT INTERIOR: make the room clearly brighter with realistic ceiling linear LED illumination, stronger but controlled under-cabinet lighting and soft ambient bounce light. Do not shift the underlying wood/cabinet colors."
-                : "Use balanced premium architectural lighting with readable shadow detail and controlled highlights.",
-              renderProfile === "decorated"
-                ? "DECORATED MODE: existing objects remain immutable; you may add only a few small tasteful accessories in genuinely empty areas, without covering, replacing or moving anything."
-                : "FAITHFUL MODE: do not add any new decoration or object.",
-            ].join(" "),
-            logger,
-          })
-        : await generateRenderPreserve({
-            imageDataUrl: originalDataUrl,
-            prompt,
-            aspectRatio: nearestRenderAspectRatio(width, height),
-            logger,
-            signal: params.signal,
-            resumePredictionId: params.resumePredictionId,
-            beforeSubmit: params.beforeProviderSubmit,
-            onPredictionCreated: params.onPredictionCreated,
-          });
+      // Todos os perfis de preservação usam o mesmo motor oficial OpenAI.
+      // O perfil controla o prompt e a política visual, nunca o provedor.
+      const generated = await generateRenderPremiumOpenAI({
+        tenantId: tid,
+        imageDataUrl: originalDataUrl,
+        prompt: [
+          prompt,
+          "PREMIUM ARCHVIZ OUTPUT: produce a high-end photorealistic architectural visualization of the exact same project.",
+          "Preserve the reference camera, architecture, cabinetry, exact visible-object inventory, furniture count/placement and the perceived base colors/material identity.",
+          "Increase realistic global illumination, material micro-detail, wood grain fidelity, fabric weave, stone depth, metal/glass reflections, soft contact shadows and photographic clarity.",
+          iluminacao?.includes("bright") || iluminacao?.includes("linear led")
+            ? "BRIGHT SCENE: make the scene clearly brighter with realistic linear LED illumination where architecturally plausible, controlled practical lighting and soft ambient bounce light. Do not shift the underlying material colors."
+            : "Use balanced premium architectural lighting with readable shadow detail and controlled highlights.",
+          renderProfile === "decorated"
+            ? "DECORATED MODE: existing objects remain immutable; you may add only a few small tasteful accessories in genuinely empty areas, without covering, replacing or moving anything."
+            : "FAITHFUL MODE: do not add any new decoration or object.",
+        ].join(" "),
+        logger,
+      });
       resultB64 = generated.base64;
       motor = `${generated.provider}-${generated.model}`;
       compositedFlag = false;
@@ -761,20 +729,20 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
       const originalDataUrl = bufferToDataUrl(originalBuf, originalMime);
       const maskDataUrl     = bufferToDataUrl(maskBuf, "image/png");
 
-      resultB64 = await callReplicateFluxFill({
+      const generated = await generateRenderPremiumOpenAI({
+        tenantId: tid,
         imageDataUrl: originalDataUrl,
         maskDataUrl,
         prompt,
-        steps:    50,
-        guidance: 30,
         logger,
       });
+      resultB64 = generated.base64;
 
       const generatedBuf  = Buffer.from(resultB64, "base64");
       const compositedBuf = await compositeWithOriginal(generatedBuf, originalBuf, maskBuf);
       resultB64 = compositedBuf.toString("base64");
       compositedFlag = true;
-      motor = "replicate-flux-fill-pro";
+      motor = `${generated.provider}-${generated.model}`;
 
       const validation = await validateEdgeIntegrity(originalBuf, compositedBuf, maskBuf);
       logger?.info({ renderId, ...validation }, "arch/ai-render: validação de bordas (fill)");
@@ -795,11 +763,8 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
         .where(ownedRender);
 
     } else {
-      // ── 3c. Modo Criar: geração livre via Flux 1.1 Pro Ultra (raw:true) ─
-      if (!process.env["REPLICATE_API_TOKEN"]) {
-        throw new Error("REPLICATE_API_TOKEN não configurado");
-      }
-      const generated = await generateRenderCreate({ prompt, logger });
+      // ── 3c. Modo Criar: geração livre no mesmo motor oficial OpenAI ─────
+      const generated = await generateRenderCreateOpenAI({ tenantId: tid, prompt, logger });
       resultB64 = generated.base64;
       motor = `${generated.provider}-${generated.model}`;
     }
@@ -916,7 +881,7 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
         generatedByAi: true,
         finalWidth: finalMeta.width ?? null,
         finalHeight: finalMeta.height ?? null,
-        qualityPipeline: renderProfile === "technical" ? "technical-kontext+qa+2560" : "premium-gpt-image+qa+2560",
+        qualityPipeline: renderProfile === "technical" ? "technical-gpt-image+qa+2560" : "premium-gpt-image+qa+2560",
       },
     });
     // Persistimos a referência canônica do objeto. A API converte para display_url
@@ -1025,7 +990,7 @@ const ANGLE_MAP: Record<string, string> = {
   aerea:       "aerial top-down view",
 };
 
-// Descrições genéricas por zona para compor a lista de preservação no Kontext
+// Descrições genéricas por zona para compor a lista de preservação
 const ZONE_PRESERVE_DESCRIPTIONS: Record<string, string> = {
   piso:             "the floor with its current material and color",
   teto:             "the ceiling with its current finish",
@@ -1054,20 +1019,20 @@ function buildPrompt(p: {
   renderView?: string | null;
 }): string {
   if (p.mode === "preservar") {
-    return buildKontextPrompt(p);
+    return buildPreservePrompt(p);
   }
   return buildCriarPrompt(p);
 }
 
 /**
- * Template validado para flux-kontext-pro (Seção 1.2 do briefing, 02/07/2026).
+ * Template de preservação rígida para GPT Image (Seção 1.2 do briefing, 02/07/2026).
  * Regras críticas:
  * 1. Ação de conversão de estilo PRIMEIRO (não "preserve everything but…")
  * 2. Lista de preservação individual por objeto/elemento — não termos genéricos
  * 3. Material/cor exatos por elemento, com contraste explícito quando ambíguo
  * 4. Bloco de câmera/qualidade no final
  */
-function buildKontextPrompt(p: {
+function buildPreservePrompt(p: {
   ambiente:   string | null | undefined;
   iluminacao: string | null | undefined;
   maskZones:  string[];
