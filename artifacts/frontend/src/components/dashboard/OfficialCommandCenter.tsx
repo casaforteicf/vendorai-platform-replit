@@ -285,7 +285,7 @@ export default function OfficialCommandCenter({ data, executive, loading, userNa
     const items: Array<{ label: string; detail: string; severity: "normal" | "warning" | "critical"; href: string }> = [];
     const overdue = operation?.overdueTasks ?? 0;
     const unassigned = operation?.unassignedActive ?? 0;
-    if (overdue > 0) items.push({ label: `${overdue} tarefa${overdue === 1 ? "" : "s"} vencida${overdue === 1 ? "" : "s"}`, detail: "Exigem ação imediata", severity: "critical", href: "/agenda" });
+    if (overdue > 0) items.push({ label: `${overdue} tarefa${overdue === 1 ? "" : "s"} vencida${overdue === 1 ? "" : "s"}`, detail: "Exigem ação imediata", severity: "critical", href: "/agenda?focus=overdue" });
     if (unassigned > 0) items.push({ label: `${unassigned} operação${unassigned === 1 ? "" : "ões"} sem responsável`, detail: "Distribua a responsabilidade operacional", severity: "warning", href: "/pipeline-operacional/execucao" });
     for (const alert of alerts) {
       items.push({ label: alert.mensagem, detail: "Alerta do sistema", severity: alert.severidade === "critico" ? "critical" : "warning", href: alertHref(alert.tipo) });
