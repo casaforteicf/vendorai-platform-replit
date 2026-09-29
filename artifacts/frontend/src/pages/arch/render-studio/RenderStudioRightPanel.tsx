@@ -332,13 +332,13 @@ export function RenderStudioRightPanel({
                 {/* Melhoria — P2-13/14/16/17 */}
                 {step === "melhoria" && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <PanelLabel>Studio IA — solicitar mudanças</PanelLabel>
-                    <InfoBox>Edite o prompt abaixo e peça mudanças no render atual. A IA cria uma nova versão sem substituir a anterior e mantém a preservação do projeto.</InfoBox>
+                    <PanelLabel>Genius Render — editar versão atual</PanelLabel>
+                    <InfoBox>Edite o prompt e escolha exatamente o que pode mudar. Toda alteração gera uma nova versão; o render atual permanece intacto.</InfoBox>
 
                     {/* P2-14: objeto selecionado */}
                     {selections.length > 0 && (
                       <div style={{ padding: "8px 10px", borderRadius: 7, background: `${D.amber}12`, border: `1px solid ${D.amber}44` }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: D.amber, marginBottom: 6 }}>⬚ REGIÃO SELECIONADA</div>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: D.amber, marginBottom: 6 }}>⬚ REGIÃO AUTORIZADA PARA EDIÇÃO</div>
                         {selections.map((sel) => (
                           <div key={sel.id} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
                             <span style={{ fontSize: 11, color: D.text, flex: 1 }}>{sel.label || "Seleção sem nome"}</span>
@@ -357,7 +357,7 @@ export function RenderStudioRightPanel({
                         {/* P2-13: prompt to select region */}
                         {selections.length === 0 && (
                           <div style={{ padding: "8px 10px", borderRadius: 7, background: D.card, border: `1px solid ${D.border}`, fontSize: 11, color: D.muted }}>
-                            Clique em <strong style={{ color: D.purpleText }}>⬚ Selecionar</strong> na barra do canvas para marcar a região a alterar, ou descreva a melhoria livremente abaixo.
+                            Para uma mudança localizada, clique em <strong style={{ color: D.purpleText }}>⬚ Selecionar</strong> e marque apenas uma parte da superfície. Na troca de material, o Genius Render usa essa seleção como semente para reconhecer o material/superfície conectado, sem liberar a imagem inteira para edição.
                           </div>
                         )}
 
@@ -372,6 +372,12 @@ export function RenderStudioRightPanel({
                             </button>
                           ))}
                         </div>
+
+                        {melhoriaMode === "change-material" && selections.length > 0 && (
+                          <div style={{ padding: "7px 9px", borderRadius: 7, background: `${D.amber}0D`, border: `1px solid ${D.amber}33`, fontSize: 10, lineHeight: 1.45, color: D.muted }}>
+                            ◉ Reconhecimento de superfície ativo: a seleção pode pegar só uma parte do revestimento. O sistema amplia o contexto, identifica a superfície contínua dentro da região segura e mantém o restante da imagem bloqueado.
+                          </div>
+                        )}
 
                         {/* P2-16: Material library */}
                         {melhoriaMode === "change-material" && (
@@ -400,7 +406,7 @@ export function RenderStudioRightPanel({
 
                         {/* P2-17: preservation locks summary */}
                         <div style={{ padding: "6px 8px", borderRadius: 6, background: `${D.green}08`, border: `1px solid ${D.green}22`, fontSize: 10, color: D.green }}>
-                          🔒 Preservação ativa: câmera · geometria · vãos · marcenaria fora da seleção
+                          🔒 Preservação ativa: câmera · geometria · vãos · mobiliário · materiais fora da região autorizada
                         </div>
 
                         {melhoriaMode === "improve" && (
