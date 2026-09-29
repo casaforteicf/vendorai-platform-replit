@@ -65,6 +65,7 @@ import { z } from "zod/v4";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { authenticate } from "../middlewares/auth.js";
 import { objectStorageClient, ObjectStorageService } from "../lib/objectStorage.js";
+import { captureGeneratedMedia } from "../services/media-library.js";
 import { iniciarRender, processarSolicitacao } from "../services/blenderService.js";
 import { toFile } from "openai";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
@@ -5321,16 +5322,33 @@ router.post("/arch/render", async (req, res) => {
       .png({ compressionLevel: 7, adaptiveFiltering: true })
       .toBuffer();
 
-    const objPath   = await storage.savePrivateBuffer(
-      buf,
-      "image/png",
-      `arch-render-${tid}-${outputResolution}-${targetSize.width}x${targetSize.height}-${Date.now()}.png`,
-    );
-    const servePath = objPath.replace(/^\/objects\//, "");
-    const imageUrl  = `/api/storage/objects/${servePath}`;
+    const captured = await captureGeneratedMedia({
+      tenantId: tid,
+      userId: req.user?.sub ?? null,
+      title: "Render Arqdor",
+      operation: "arqdor_render",
+      buffer: buf,
+      mimeType: "image/png",
+      type: "image",
+      originalFilename: `arch-render-${tid}-${outputResolution}-${targetSize.width}x${targetSize.height}-${Date.now()}.png`,
+      kind: "mixed",
+      metadata: {
+        module: "arqdor",
+        outputResolution,
+        width: targetSize.width,
+        height: targetSize.height,
+        lighting,
+        angle,
+        motor,
+        prompt,
+        generatedByAi: true,
+      },
+    });
+    const servePath = captured.storageUrl.replace(/^\/objects\//, "");
+    const imageUrl = `/api/storage/objects/${servePath}`;
 
-    req.log.info({ tenantId: tid, lighting, angle, motor }, "arch/render: concluído");
-    return res.json({ success: true, imageUrl, prompt, motor });
+    req.log.info({ tenantId: tid, lighting, angle, motor, assetId: captured.assetId }, "arch/render: concluído");
+    return res.json({ success: true, imageUrl, prompt, motor, mediaAssetId: captured.assetId });
   } catch (err: any) {
     req.log.error({ err, tenantId: tid }, "arch/render: erro");
     const { status, message } = sanitizeAIError(err);
@@ -5450,12 +5468,27 @@ async function executeRenderJob(opts: {
       .png({ compressionLevel: 7, adaptiveFiltering: true })
       .toBuffer();
 
-    const objPath = await storage.savePrivateBuffer(
-      buf,
-      "image/png",
-      `arch-render-${tid}-${outputResolution}-${targetSize.width}x${targetSize.height}-${Date.now()}.png`,
-    );
-    const servePath = objPath.replace(/^\/objects\//, "");
+    const captured = await captureGeneratedMedia({
+      tenantId: tid,
+      title: "Render Arqdor Studio",
+      operation: "arqdor_ai_render",
+      buffer: buf,
+      mimeType: "image/png",
+      type: "image",
+      originalFilename: `arch-render-${tid}-${outputResolution}-${targetSize.width}x${targetSize.height}-${Date.now()}.png`,
+      kind: "mixed",
+      metadata: {
+        module: "arqdor",
+        renderId,
+        outputResolution,
+        width: targetSize.width,
+        height: targetSize.height,
+        motor,
+        prompt,
+        generatedByAi: true,
+      },
+    });
+    const servePath = captured.storageUrl.replace(/^\/objects\//, "");
     const imageUrl = `/api/storage/objects/${servePath}`;
 
     await db.update(archAiRendersTable)
@@ -5807,10 +5840,26 @@ router.post("/arch/suggestions", async (req, res) => {
 
     if (!b64) throw new Error("gpt-image-1 não retornou imagem");
 
-    const buf       = Buffer.from(b64, "base64");
-    const objPath   = await storage.savePrivateBuffer(buf, "image/png", `arch-suggestion-${tid}-${Date.now()}.png`);
-    const servePath = objPath.replace(/^\/objects\//, "");
-    const imageUrl  = `/api/storage/objects/${servePath}`;
+    const buf = Buffer.from(b64, "base64");
+    const captured = await captureGeneratedMedia({
+      tenantId: tid,
+      userId: req.user?.sub ?? null,
+      title: "Sugestão visual Arqdor",
+      operation: "arqdor_suggestion",
+      buffer: buf,
+      mimeType: "image/png",
+      type: "image",
+      originalFilename: `arch-suggestion-${tid}-${Date.now()}.png`,
+      kind: "mixed",
+      metadata: {
+        module: "arqdor",
+        projectId: projectId ?? null,
+        style,
+        generatedByAi: true,
+      },
+    });
+    const servePath = captured.storageUrl.replace(/^\/objects\//, "");
+    const imageUrl = `/api/storage/objects/${servePath}`;
 
     let suggestionId: string | undefined;
     try {

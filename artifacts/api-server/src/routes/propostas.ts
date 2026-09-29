@@ -19,7 +19,7 @@ import {
 } from "@workspace/db";
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
 import { callOpenAI as gatewayCallOpenAI, generateImage } from "../lib/ai-gateway.js";
-import { ObjectStorageService } from "../lib/objectStorage.js";
+import { captureGeneratedMedia } from "../services/media-library.js";
 import { proposalAccepted } from "../lib/proposal-accepted.js";
 import { renderOrcamentoPdf, generateProposalPDF } from "../lib/proposal-engine.js";
 import { logger } from "../lib/logger.js";
@@ -38,7 +38,6 @@ import {
   type ProposalBuilderTemplate,
 } from "../lib/proposal-builder.js";
 const router: IRouter = Router();
-const proposalTemplateStorage = new ObjectStorageService();
 
 router.get("/tenants/:tenantId/proposal-builder/templates", async (req, res) => {
   // tenant-audit: reviewed route tenant is immediately authorized against the authenticated tenant or Super Admin
@@ -230,12 +229,25 @@ router.post("/tenants/:tenantId/proposal-builder/templates/:templateId/modules/:
     if (!response.ok) throw new Error(`Falha ao baixar imagem gerada (${response.status})`);
     const buffer = Buffer.from(await response.arrayBuffer());
     const mimeType = response.headers.get("content-type") ?? "image/png";
-    const objectPath = await proposalTemplateStorage.savePrivateBuffer(
+    const captured = await captureGeneratedMedia({
+      tenantId,
+      userId: req.user?.sub ?? null,
+      title: `Proposta — ${module.title || module.key}`,
+      operation: "proposal_template_image",
       buffer,
       mimeType,
-      `proposal-template-${templateId}-${moduleKey}.png`,
-    );
-    const imageUrl = `/api/storage/objects${objectPath.replace(/^\/objects/, "")}`;
+      type: "image",
+      originalFilename: `proposal-template-${templateId}-${moduleKey}.png`,
+      kind: "mixed",
+      metadata: {
+        module: "propostas",
+        templateId,
+        moduleKey,
+        prompt,
+        generatedByAi: true,
+      },
+    });
+    const imageUrl = `/api/storage/objects${captured.storageUrl.replace(/^\/objects/, "")}`;
 
     const nextTemplates = existing.map((item) => item.id !== templateId
       ? item
@@ -261,7 +273,7 @@ router.post("/tenants/:tenantId/proposal-builder/templates/:templateId/modules/:
       updatedAt: new Date(),
     }).where(eq(businessProfilesTable.tenantId, tenantId));
 
-    res.json({ imageUrl, templates: nextTemplates });
+    res.json({ imageUrl, mediaAssetId: captured.assetId, templates: nextTemplates });
   } catch (err) {
     req.log.warn({ err, tenantId, templateId, moduleKey }, "proposal template module image generation failed");
     res.status(502).json({ error: err instanceof Error ? err.message : "Falha ao gerar imagem do bloco" });

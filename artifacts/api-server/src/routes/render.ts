@@ -10,7 +10,7 @@ import { Router } from "express";
 import multer from "multer";
 import { toFile } from "openai";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
-import { ObjectStorageService } from "../lib/objectStorage.js";
+import { captureGeneratedMedia } from "../services/media-library.js";
 
 const router = Router();
 const upload = multer({
@@ -185,15 +185,31 @@ router.post("/render/quick", uploadFields, async (req, res) => {
     const b64 = (result.data?.[0] as Record<string, unknown>)?.["b64_json"] as string | undefined;
     if (!b64) throw new Error("gpt-image-1 não retornou b64_json");
 
-    const ts      = Date.now();
-    const buf     = Buffer.from(b64, "base64");
-    const storage = new ObjectStorageService();
-    const objPath = await storage.savePrivateBuffer(buf, "image/png", `render-${tenantId}-${ts}.png`);
-    const servePath = objPath.replace(/^\/objects\//, "");
-    const imageUrl  = `/api/storage/objects/${servePath}`;
+    const ts = Date.now();
+    const buf = Buffer.from(b64, "base64");
+    const captured = await captureGeneratedMedia({
+      tenantId,
+      userId: req.user?.sub ?? null,
+      title: `Render rápido — ${roomType || style || "imagem"}`,
+      operation: "render_quick",
+      buffer: buf,
+      mimeType: "image/png",
+      type: "image",
+      originalFilename: `render-${tenantId}-${ts}.png`,
+      kind: "mixed",
+      metadata: {
+        module: "render",
+        style,
+        roomType,
+        prompt,
+        generatedByAi: true,
+      },
+    });
+    const servePath = captured.storageUrl.replace(/^\/objects\//, "");
+    const imageUrl = `/api/storage/objects/${servePath}`;
 
-    req.log.info({ tenantId, style, roomType }, "render/quick: concluído");
-    return res.json({ imageUrl, prompt });
+    req.log.info({ tenantId, style, roomType, assetId: captured.assetId }, "render/quick: concluído");
+    return res.json({ imageUrl, prompt, mediaAssetId: captured.assetId });
   } catch (err: any) {
     req.log.error({ err }, "render/quick: erro");
     return res.status(500).json({ error: err?.message ?? "Erro ao renderizar imagem" });
