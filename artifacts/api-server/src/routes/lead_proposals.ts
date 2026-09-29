@@ -1834,6 +1834,14 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
           selectedBuilderTemplate.visualStyle && typeof selectedBuilderTemplate.visualStyle === "object"
             ? selectedBuilderTemplate.visualStyle as Record<string, unknown>
             : null,
+        modules: selectedBuilderModules.map((item) => ({
+          key: String(item.key),
+          title: typeof item.title === "string" ? item.title : undefined,
+          description: typeof item.description === "string" ? item.description : undefined,
+          dataSource: typeof item.dataSource === "string" ? item.dataSource : undefined,
+          contentPrompt: typeof item.contentPrompt === "string" ? item.contentPrompt : undefined,
+          image: item.image && typeof item.image === "object" ? item.image as Record<string, unknown> : undefined,
+        })),
       }
     : null;
 
