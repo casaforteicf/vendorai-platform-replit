@@ -2716,198 +2716,280 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
         </CardContent>
       </Card>
 
-      {/* Studio de Propostas — modelo visual e regras por tenant */}
+      {/* Studio de Propostas — construtor visual por empresa */}
       <Dialog open={proposalBuilderEditorOpen} onOpenChange={setProposalBuilderEditorOpen}>
-        <DialogContent className="max-w-6xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Settings2 className="h-4 w-4" />
-              Studio de Propostas
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="grid max-h-[72vh] gap-4 overflow-hidden lg:grid-cols-[320px_minmax(0,1fr)]">
-            <div className="space-y-4 overflow-y-auto pr-1">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Nome do modelo</label>
-                <Input
-                  value={proposalBuilderEditorName}
-                  onChange={(e) => setProposalBuilderEditorName(e.target.value)}
-                  placeholder="Ex.: CasaForte · Residencial Premium"
-                />
-              </div>
-
-              <div className="rounded-xl border bg-muted/20 p-3 space-y-3">
-                <div>
-                  <p className="text-sm font-semibold">Identidade visual do modelo</p>
-                  <p className="text-[11px] text-muted-foreground">
-                    O tenant pode ter vários modelos com linguagem visual própria.
-                  </p>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-muted-foreground">Preset visual</label>
-                  <Select value={proposalBuilderEditorPreset} onValueChange={(value) => setProposalBuilderEditorPreset(value as any)}>
-                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="premium_arquitetonico">Premium arquitetônico</SelectItem>
-                      <SelectItem value="corporativo">Corporativo</SelectItem>
-                      <SelectItem value="catalogo_comercial">Catálogo comercial</SelectItem>
-                      <SelectItem value="minimalista">Minimalista</SelectItem>
-                      <SelectItem value="tecnico">Técnico</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-medium text-muted-foreground">Capa</label>
-                    <Select value={proposalBuilderHeroVariant} onValueChange={(value) => setProposalBuilderHeroVariant(value as any)}>
-                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="fotografico">Fotográfica</SelectItem>
-                        <SelectItem value="minimalista">Minimalista</SelectItem>
-                        <SelectItem value="institucional">Institucional</SelectItem>
-                        <SelectItem value="produto">Produto</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-medium text-muted-foreground">Etapas</label>
-                    <Select value={proposalBuilderStageVariant} onValueChange={(value) => setProposalBuilderStageVariant(value as any)}>
-                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="cards">Cards</SelectItem>
-                        <SelectItem value="accordion">Expansível</SelectItem>
-                        <SelectItem value="timeline">Timeline</SelectItem>
-                        <SelectItem value="lista_tecnica">Lista técnica</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-medium text-muted-foreground">Investimento</label>
-                    <Select value={proposalBuilderInvestmentVariant} onValueChange={(value) => setProposalBuilderInvestmentVariant(value as any)}>
-                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="valor_global">Valor global</SelectItem>
-                        <SelectItem value="por_etapa">Por etapa</SelectItem>
-                        <SelectItem value="por_item">Por item</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-medium text-muted-foreground">Densidade</label>
-                    <Select value={proposalBuilderDensity} onValueChange={(value) => setProposalBuilderDensity(value as any)}>
-                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="arejado">Arejado</SelectItem>
-                        <SelectItem value="equilibrado">Equilibrado</SelectItem>
-                        <SelectItem value="compacto">Compacto</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-muted-foreground">Ênfase em imagens</label>
-                  <Select value={proposalBuilderImageEmphasis} onValueChange={(value) => setProposalBuilderImageEmphasis(value as any)}>
-                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="alta">Alta</SelectItem>
-                      <SelectItem value="media">Média</SelectItem>
-                      <SelectItem value="baixa">Baixa</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="rounded-xl border p-3 space-y-2">
-                <div>
-                  <p className="text-sm font-semibold">Regras da IA</p>
-                  <p className="text-[11px] text-muted-foreground">
-                    Definem como a empresa quer que suas propostas sejam escritas e apresentadas.
-                  </p>
-                </div>
-                <Input value={proposalBuilderTone} onChange={(e) => setProposalBuilderTone(e.target.value)} placeholder="Tom: sofisticado, comercial e objetivo" />
-                <Input value={proposalBuilderTechnicalLevel} onChange={(e) => setProposalBuilderTechnicalLevel(e.target.value)} placeholder="Nível técnico" />
-                <Textarea value={proposalBuilderImageRules} onChange={(e) => setProposalBuilderImageRules(e.target.value)} placeholder="Regras de imagens — uma por linha" className="min-h-[82px]" />
-                <Textarea value={proposalBuilderContentRules} onChange={(e) => setProposalBuilderContentRules(e.target.value)} placeholder="Regras de conteúdo — uma por linha" className="min-h-[82px]" />
-                <Textarea value={proposalBuilderAvoidRules} onChange={(e) => setProposalBuilderAvoidRules(e.target.value)} placeholder="Evitar — uma regra por linha" className="min-h-[70px]" />
-              </div>
-            </div>
-
-            <div className="overflow-y-auto rounded-xl border bg-muted/10 p-3">
-              <div className="mb-3">
-                <p className="text-sm font-semibold">Estrutura da proposta</p>
-                <p className="text-xs text-muted-foreground">
-                  Arraste os blocos para definir a sequência. O modelo fica salvo para esta empresa e pode ser reutilizado em novas propostas.
+        <DialogContent className="h-[92vh] w-[96vw] max-w-[96vw] overflow-hidden p-0">
+          <div className="flex h-full min-h-0 flex-col">
+            <div className="flex items-center justify-between gap-3 border-b px-5 py-3">
+              <div className="min-w-0">
+                <DialogTitle className="flex items-center gap-2 text-base">
+                  <Settings2 className="h-4 w-4" />
+                  Studio de Propostas
+                </DialogTitle>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  Crie o padrão comercial desta empresa e reutilize em todas as próximas propostas.
                 </p>
               </div>
-
-              <div className="space-y-2">
-                {proposalBuilderEditorModules.map((module, index) => (
-                  <div
-                    key={module.key}
-                    draggable
-                    onDragStart={() => setProposalBuilderDraggedIndex(index)}
-                    onDragOver={(event) => event.preventDefault()}
-                    onDrop={() => {
-                      if (proposalBuilderDraggedIndex != null) {
-                        reorderProposalBuilderModule(proposalBuilderDraggedIndex, index);
-                      }
-                      setProposalBuilderDraggedIndex(null);
-                    }}
-                    onDragEnd={() => setProposalBuilderDraggedIndex(null)}
-                    className={`flex items-center gap-3 rounded-lg border bg-background px-3 py-3 transition-all ${
-                      proposalBuilderDraggedIndex === index ? "opacity-50 ring-2 ring-primary/20" : ""
-                    }`}
-                  >
-                    <button type="button" className="cursor-grab text-muted-foreground active:cursor-grabbing" title="Arrastar bloco">
-                      <GripVertical className="h-4 w-4" />
-                    </button>
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted text-xs font-semibold text-muted-foreground">
-                      {index + 1}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{PROPOSAL_MODULE_LABELS[module.key] ?? module.key}</p>
-                      <p className="text-[11px] text-muted-foreground">
-                        {module.required ? "Obrigatório neste modelo" : module.enabled === false ? "Oculto" : "Ativo"}
-                      </p>
-                    </div>
-                    <Switch
-                      checked={module.required ? true : module.enabled !== false}
-                      disabled={module.required}
-                      onCheckedChange={(checked) => toggleProposalBuilderModule(index, checked)}
-                    />
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-4 rounded-xl border border-dashed bg-background p-4">
-                <p className="text-xs font-semibold">Prévia da lógica do modelo</p>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  <Badge variant="outline">{proposalBuilderEditorPreset.replace(/_/g, " ")}</Badge>
-                  <Badge variant="outline">Capa: {proposalBuilderHeroVariant}</Badge>
-                  <Badge variant="outline">Etapas: {proposalBuilderStageVariant}</Badge>
-                  <Badge variant="outline">Investimento: {proposalBuilderInvestmentVariant}</Badge>
-                  <Badge variant="outline">{proposalBuilderEditorModules.filter((item) => item.enabled !== false).length} blocos ativos</Badge>
-                </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={proposalBuilderPreviewDevice === "desktop" ? "default" : "outline"}
+                  className="h-8 text-xs"
+                  onClick={() => setProposalBuilderPreviewDevice("desktop")}
+                >
+                  Desktop
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={proposalBuilderPreviewDevice === "mobile" ? "default" : "outline"}
+                  className="h-8 text-xs"
+                  onClick={() => setProposalBuilderPreviewDevice("mobile")}
+                >
+                  Mobile
+                </Button>
               </div>
             </div>
-          </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setProposalBuilderEditorOpen(false)} disabled={proposalBuilderEditorSaving}>
-              Cancelar
-            </Button>
-            <Button onClick={saveProposalBuilderEditor} disabled={proposalBuilderEditorSaving || proposalBuilderEditorModules.length === 0} className="gap-1.5">
-              {proposalBuilderEditorSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-              Salvar modelo da empresa
-            </Button>
-          </DialogFooter>
+            <div className="grid min-h-0 flex-1 lg:grid-cols-[280px_minmax(420px,1fr)_330px]">
+              <aside className="min-h-0 overflow-y-auto border-r bg-muted/10 p-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">Nome do modelo</label>
+                  <Input
+                    value={proposalBuilderEditorName}
+                    onChange={(e) => setProposalBuilderEditorName(e.target.value)}
+                    placeholder="Ex.: CasaForte · Residencial Premium"
+                    className="h-9"
+                  />
+                </div>
+
+                <div className="mt-4">
+                  <p className="text-xs font-semibold">Estrutura</p>
+                  <p className="text-[10px] text-muted-foreground">Arraste para ordenar. Desative ou remova blocos opcionais.</p>
+                </div>
+
+                <div className="mt-2 space-y-1.5">
+                  {proposalBuilderEditorModules.map((module, index) => (
+                    <div
+                      key={module.key}
+                      draggable
+                      onDragStart={() => setProposalBuilderDraggedIndex(index)}
+                      onDragOver={(event) => event.preventDefault()}
+                      onDrop={() => {
+                        if (proposalBuilderDraggedIndex != null) reorderProposalBuilderModule(proposalBuilderDraggedIndex, index);
+                        setProposalBuilderDraggedIndex(null);
+                      }}
+                      onDragEnd={() => setProposalBuilderDraggedIndex(null)}
+                      className={`group flex items-center gap-2 rounded-lg border bg-background px-2.5 py-2 ${
+                        proposalBuilderDraggedIndex === index ? "opacity-50 ring-2 ring-primary/20" : ""
+                      }`}
+                    >
+                      <GripVertical className="h-3.5 w-3.5 shrink-0 cursor-grab text-muted-foreground" />
+                      <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-muted text-[10px] font-semibold text-muted-foreground">
+                        {index + 1}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[11px] font-medium">{PROPOSAL_MODULE_LABELS[module.key] ?? module.key}</p>
+                      </div>
+                      <Switch
+                        checked={module.required ? true : module.enabled !== false}
+                        disabled={module.required}
+                        onCheckedChange={(checked) => toggleProposalBuilderModule(index, checked)}
+                      />
+                      {!module.required && (
+                        <button
+                          type="button"
+                          className="hidden text-muted-foreground hover:text-destructive group-hover:block"
+                          title="Remover bloco"
+                          onClick={() => removeProposalBuilderModule(module.key)}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 rounded-xl border border-dashed bg-background p-3">
+                  <p className="text-xs font-semibold">Adicionar bloco</p>
+                  <div className="mt-2 grid gap-1.5">
+                    {proposalBuilderAvailableModules.length === 0 ? (
+                      <p className="text-[10px] text-muted-foreground">Todos os blocos disponíveis já estão no modelo.</p>
+                    ) : proposalBuilderAvailableModules.map(([key, label]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        className="flex items-center justify-between rounded-md border px-2.5 py-2 text-left text-[11px] hover:bg-muted"
+                        onClick={() => addProposalBuilderModule(key)}
+                      >
+                        <span>{label}</span>
+                        <Plus className="h-3.5 w-3.5" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </aside>
+
+              <main className="min-h-0 overflow-auto bg-[#eceff3] p-5">
+                <div className="mb-3 flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold">Prévia ao vivo</p>
+                    <p className="text-[10px] text-muted-foreground">Representação do modelo. Os dados reais entram ao gerar a proposta.</p>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    <Badge variant="outline">{proposalBuilderEditorPreset.replace(/_/g, " ")}</Badge>
+                    <Badge variant="outline">{proposalBuilderEditorModules.filter((item) => item.enabled !== false).length} blocos</Badge>
+                  </div>
+                </div>
+
+                <div
+                  className={`mx-auto min-h-[720px] overflow-hidden border bg-white shadow-xl transition-all ${
+                    proposalBuilderPreviewDevice === "mobile" ? "w-[390px] rounded-[24px]" : "w-full max-w-[920px] rounded-xl"
+                  }`}
+                >
+                  <div className={`relative overflow-hidden ${
+                    proposalBuilderEditorPreset === "premium_arquitetonico"
+                      ? "bg-slate-950 text-white"
+                      : proposalBuilderEditorPreset === "corporativo"
+                        ? "bg-slate-900 text-white"
+                        : proposalBuilderEditorPreset === "minimalista"
+                          ? "bg-white text-slate-950"
+                          : "bg-slate-100 text-slate-950"
+                  }`}>
+                    <div className={`p-7 ${
+                      proposalBuilderDensity === "compacto" ? "py-5" : proposalBuilderDensity === "equilibrado" ? "py-7" : "py-10"
+                    }`}>
+                      <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-[0.18em] opacity-70">
+                        <span>{(profileQuery.data as any)?.nomeFantasia || "Sua empresa"}</span>
+                        <span>Proposta comercial</span>
+                      </div>
+                      <div className="mt-12 max-w-[650px]">
+                        <p className="text-[10px] uppercase tracking-[0.2em] opacity-60">{proposalBuilderHeroVariant}</p>
+                        <h2 className={`mt-2 font-black tracking-tight ${
+                          proposalBuilderPreviewDevice === "mobile" ? "text-4xl" : "text-6xl"
+                        }`}>
+                          {(selectedOrcamento?.titulo || "Título da proposta").replace(/^Orçamento\s*[—-]?\s*/i, "")}
+                        </h2>
+                        <p className="mt-3 max-w-xl text-sm opacity-75">
+                          Uma apresentação comercial criada com o padrão visual, conteúdo e regras desta empresa.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className={`space-y-3 ${
+                    proposalBuilderDensity === "compacto" ? "p-4" : proposalBuilderDensity === "equilibrado" ? "p-6" : "p-8"
+                  }`}>
+                    {proposalBuilderEditorModules
+                      .filter((module) => module.enabled !== false)
+                      .slice(1)
+                      .map((module, index) => (
+                        <div key={module.key} className="rounded-xl border bg-white p-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                                Bloco {index + 2}
+                              </p>
+                              <h3 className="mt-1 text-base font-semibold">{PROPOSAL_MODULE_LABELS[module.key] ?? module.key}</h3>
+                            </div>
+                            {module.key === "etapas_orcamento" && (
+                              <Badge variant="secondary">{proposalBuilderStageVariant}</Badge>
+                            )}
+                            {(module.key === "tabela_itens" || module.key === "fisico_financeiro") && (
+                              <Badge variant="secondary">{proposalBuilderInvestmentVariant}</Badge>
+                            )}
+                          </div>
+                          <div className="mt-3 grid gap-2">
+                            {module.key === "etapas_orcamento" ? (
+                              <div className={`grid gap-2 ${proposalBuilderStageVariant === "cards" && proposalBuilderPreviewDevice === "desktop" ? "grid-cols-2" : "grid-cols-1"}`}>
+                                {[1, 2, 3].map((n) => (
+                                  <div key={n} className="rounded-lg bg-muted/50 p-3 text-xs">
+                                    <div className="h-20 rounded-md bg-muted" />
+                                    <p className="mt-2 font-semibold">Etapa {n}</p>
+                                    <p className="text-muted-foreground">Escopo, prazo e valor conforme orçamento.</p>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : module.key === "imagem_por_etapa" || module.key === "cases_provas" ? (
+                              <div className={`grid gap-2 ${proposalBuilderImageEmphasis === "alta" && proposalBuilderPreviewDevice === "desktop" ? "grid-cols-3" : "grid-cols-2"}`}>
+                                {[1, 2, 3].map((n) => <div key={n} className="h-24 rounded-lg bg-muted" />)}
+                              </div>
+                            ) : module.key === "cronograma" || module.key === "fisico_financeiro" ? (
+                              <div className="space-y-2">
+                                {[1,2,3].map((n) => (
+                                  <div key={n} className="grid grid-cols-[90px_1fr_70px] items-center gap-2 text-[10px]">
+                                    <span>Mês {n}</span><div className="h-2 rounded-full bg-muted"><div className="h-2 rounded-full bg-primary" style={{ width: `${25 + n * 18}%` }} /></div><span className="text-right">R$ —</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="space-y-2">
+                                <div className="h-2.5 w-4/5 rounded bg-muted" />
+                                <div className="h-2.5 w-full rounded bg-muted" />
+                                <div className="h-2.5 w-3/5 rounded bg-muted" />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              </main>
+
+              <aside className="min-h-0 overflow-y-auto border-l bg-background p-4">
+                <div>
+                  <p className="text-xs font-semibold">Design do modelo</p>
+                  <p className="text-[10px] text-muted-foreground">Configurações salvas para a empresa.</p>
+                </div>
+
+                <div className="mt-3 space-y-3 rounded-xl border p-3">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-medium text-muted-foreground">Preset visual</label>
+                    <Select value={proposalBuilderEditorPreset} onValueChange={(value) => setProposalBuilderEditorPreset(value as any)}>
+                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="premium_arquitetonico">Premium arquitetônico</SelectItem>
+                        <SelectItem value="corporativo">Corporativo</SelectItem>
+                        <SelectItem value="catalogo_comercial">Catálogo comercial</SelectItem>
+                        <SelectItem value="minimalista">Minimalista</SelectItem>
+                        <SelectItem value="tecnico">Técnico</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1"><label className="text-[10px] text-muted-foreground">Capa</label><Select value={proposalBuilderHeroVariant} onValueChange={(value) => setProposalBuilderHeroVariant(value as any)}><SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="fotografico">Fotográfica</SelectItem><SelectItem value="minimalista">Minimalista</SelectItem><SelectItem value="institucional">Institucional</SelectItem><SelectItem value="produto">Produto</SelectItem></SelectContent></Select></div>
+                    <div className="space-y-1"><label className="text-[10px] text-muted-foreground">Etapas</label><Select value={proposalBuilderStageVariant} onValueChange={(value) => setProposalBuilderStageVariant(value as any)}><SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="cards">Cards</SelectItem><SelectItem value="accordion">Expansível</SelectItem><SelectItem value="timeline">Timeline</SelectItem><SelectItem value="lista_tecnica">Lista técnica</SelectItem></SelectContent></Select></div>
+                    <div className="space-y-1"><label className="text-[10px] text-muted-foreground">Investimento</label><Select value={proposalBuilderInvestmentVariant} onValueChange={(value) => setProposalBuilderInvestmentVariant(value as any)}><SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="valor_global">Valor global</SelectItem><SelectItem value="por_etapa">Por etapa</SelectItem><SelectItem value="por_item">Por item</SelectItem></SelectContent></Select></div>
+                    <div className="space-y-1"><label className="text-[10px] text-muted-foreground">Densidade</label><Select value={proposalBuilderDensity} onValueChange={(value) => setProposalBuilderDensity(value as any)}><SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="arejado">Arejado</SelectItem><SelectItem value="equilibrado">Equilibrado</SelectItem><SelectItem value="compacto">Compacto</SelectItem></SelectContent></Select></div>
+                  </div>
+                  <div className="space-y-1"><label className="text-[10px] text-muted-foreground">Ênfase em imagens</label><Select value={proposalBuilderImageEmphasis} onValueChange={(value) => setProposalBuilderImageEmphasis(value as any)}><SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="alta">Alta</SelectItem><SelectItem value="media">Média</SelectItem><SelectItem value="baixa">Baixa</SelectItem></SelectContent></Select></div>
+                </div>
+
+                <div className="mt-4">
+                  <p className="text-xs font-semibold">Regras da IA</p>
+                  <div className="mt-2 space-y-2">
+                    <Input value={proposalBuilderTone} onChange={(e) => setProposalBuilderTone(e.target.value)} placeholder="Tom da proposta" className="h-8 text-xs" />
+                    <Input value={proposalBuilderTechnicalLevel} onChange={(e) => setProposalBuilderTechnicalLevel(e.target.value)} placeholder="Nível técnico" className="h-8 text-xs" />
+                    <Textarea value={proposalBuilderImageRules} onChange={(e) => setProposalBuilderImageRules(e.target.value)} placeholder="Regras de imagens — uma por linha" className="min-h-[90px] text-xs" />
+                    <Textarea value={proposalBuilderContentRules} onChange={(e) => setProposalBuilderContentRules(e.target.value)} placeholder="Regras de conteúdo — uma por linha" className="min-h-[90px] text-xs" />
+                    <Textarea value={proposalBuilderAvoidRules} onChange={(e) => setProposalBuilderAvoidRules(e.target.value)} placeholder="O que evitar — uma regra por linha" className="min-h-[80px] text-xs" />
+                  </div>
+                </div>
+              </aside>
+            </div>
+
+            <DialogFooter className="border-t px-5 py-3">
+              <div className="mr-auto text-[10px] text-muted-foreground">
+                As alterações afetam novas propostas que utilizarem este modelo; valores continuam vindo do orçamento selecionado.
+              </div>
+              <Button variant="outline" onClick={() => setProposalBuilderEditorOpen(false)} disabled={proposalBuilderEditorSaving}>Cancelar</Button>
+              <Button onClick={saveProposalBuilderEditor} disabled={proposalBuilderEditorSaving || proposalBuilderEditorModules.length === 0} className="gap-1.5">
+                {proposalBuilderEditorSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                Salvar modelo da empresa
+              </Button>
+            </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
 
