@@ -1846,8 +1846,10 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
           selectedBuilderTemplate.visualStyle && typeof selectedBuilderTemplate.visualStyle === "object"
             ? selectedBuilderTemplate.visualStyle as Record<string, unknown>
             : null,
-        modules: selectedBuilderModules.map((item) => ({
+        modules: selectedBuilderModules.map((item, index) => ({
           key: String(item.key),
+          enabled: item.enabled !== false,
+          order: Number.isFinite(Number(item.order)) ? Number(item.order) : index + 1,
           title: typeof item.title === "string" ? item.title : undefined,
           description: typeof item.description === "string" ? item.description : undefined,
           dataSource: typeof item.dataSource === "string" ? item.dataSource : undefined,
