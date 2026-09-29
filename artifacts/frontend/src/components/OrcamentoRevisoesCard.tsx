@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -118,7 +118,7 @@ function revisionMatchesBudget(revisao: Revisao, orc: Orcamento) {
     || (!!orc.numero && revisionRef.startsWith(`${orc.numero}-R`));
 }
 
-export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: string; tenantId: string; dealId?: string }) {
+export function OrcamentoRevisoesCard({ leadId, tenantId, dealId, onCreateBudget }: { leadId: string; tenantId: string; dealId?: string; onCreateBudget?: () => void }) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const token = localStorage.getItem("vendorai_token") ?? "";
@@ -176,25 +176,14 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [viewerAnexos, setViewerAnexos] = useState<{ titulo: string; anexos: Anexo[] } | null>(null);
 
-  useEffect(() => {
-    const legacy = document.querySelector<HTMLElement>('[data-testid="card-orcamentos-lead"]');
-    if (!legacy) return;
-    const previousDisplay = legacy.style.display;
-    legacy.style.display = "none";
-    return () => {
-      legacy.style.display = previousDisplay;
-    };
-  }, []);
-
   function openBudgetCreation() {
-    const budgetButton = document.querySelector<HTMLElement>('[data-testid="btn-new-budget"]');
-    if (budgetButton) {
-      budgetButton.click();
+    if (onCreateBudget) {
+      onCreateBudget();
       return;
     }
     toast({
       title: "Criar orçamento",
-      description: "Use a ação de novo orçamento neste atendimento para manter o contexto do lead.",
+      description: "Abra a ação de orçamento deste atendimento para criar a primeira versão comercial.",
     });
   }
 

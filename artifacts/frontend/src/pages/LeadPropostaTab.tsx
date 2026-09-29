@@ -53,6 +53,7 @@ import {
   GripVertical,
   Settings2,
   Paperclip,
+  MoreHorizontal,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -160,6 +161,7 @@ interface LeadPropostaTabProps {
   leadId: string;
   tenantId: string;
   lead: any;
+  onCreateBudget?: () => void;
 }
 
 type ProposalBudgetRevision = {
@@ -214,7 +216,7 @@ function api(path: string) {
   return `${BASE}${path}`;
 }
 
-export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadPropostaTabProps) {
+export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget }: LeadPropostaTabProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const token = localStorage.getItem("vendorai_token") ?? "";
@@ -1697,8 +1699,13 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     },
   ];
   const proposalComposerReadyCount = proposalComposerChecks.filter((item) => item.ok).length;
-  const proposalComposerBlockingIssues = proposalComposerChecks.filter((item) => item.key === "budget" && !item.ok);
-  const proposalComposerWarnings = proposalComposerChecks.filter((item) => item.key !== "budget" && !item.ok);
+  const proposalRequiresCompleteStageImages = proposalPresentationFormat !== "documento" && selectedOrcamentoStages.length > 0;
+  const proposalComposerBlockingIssues = proposalComposerChecks.filter((item) =>
+    !item.ok && (item.key === "budget" || (item.key === "stages" && proposalRequiresCompleteStageImages)),
+  );
+  const proposalComposerWarnings = proposalComposerChecks.filter((item) =>
+    !item.ok && !proposalComposerBlockingIssues.some((blocking) => blocking.key === item.key),
+  );
 
 
   function openRefineDialog(fromVersion?: number) {
@@ -1952,6 +1959,15 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     return num.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   }
 
+  function proposalVersionStatusLabel(status: string) {
+    const normalized = String(status || "").toLowerCase();
+    if (normalized === "ready") return "Pronta";
+    if (normalized === "accepted") return "Aceita";
+    if (normalized === "rejected") return "Recusada";
+    if (normalized === "sent") return "Enviada";
+    return status || "Pronta";
+  }
+
   async function removeProduct(productId: string) {
     if (!leadId || !token) return;
     if (!confirm("Remover este produto?")) return;
@@ -1965,32 +1981,15 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     }
   }
 
-  function openBudgetCreation() {
-    const budgetButton = document.querySelector<HTMLElement>('[data-testid="btn-new-budget"]');
-    if (budgetButton) {
-      budgetButton.click();
-      return;
-    }
-    toast({
-      title: "Criar orçamento para este cliente",
-      description: "Use a ação “Gerar orçamento” no topo do atendimento para manter o contexto do lead.",
-    });
-  }
-
   return (
     <div className="flex min-w-0 max-w-full flex-col gap-4 overflow-x-hidden">
-      {/* Contexto da proposta — personalização + materiais */}
+      {/* Contexto específico do cliente — não altera o modelo da empresa */}
       <Card data-testid="card-proposta-config" className="order-2">
         <CardHeader className="pb-3 min-w-0">
           <CardTitle className="text-sm font-semibold flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
             <span className="flex min-w-0 items-center gap-2">
               <Palette className="h-4 w-4" />
-              Contexto da proposta
-              {proposalImages.length > 0 && (
-                <Badge variant="secondary" className="text-xs ml-1">
-                  {proposalImages.length} {proposalImages.length === 1 ? "imagem selecionada" : "imagens selecionadas"}
-                </Badge>
-              )}
+              Contexto do cliente
             </span>
             <Button
               size="sm"
@@ -2004,7 +2003,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
             </Button>
           </CardTitle>
           <p className="text-xs text-muted-foreground">
-            A marca da empresa vem automaticamente do Kit da Marca. Aqui você define o contexto do cliente e as imagens da apresentação.
+            O modelo e a marca da empresa são definidos no Studio/Kit da Marca. Aqui ficam apenas dados e personalizações específicas deste cliente.
           </p>
         </CardHeader>
 
@@ -2012,7 +2011,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
           <section className="space-y-3">
             <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
               <Palette className="h-3.5 w-3.5 text-muted-foreground" />
-              Identidade e personalização
+              Personalização deste cliente
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2118,354 +2117,16 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
             </div>
           </section>
 
-          <div className="border-t" />
-
-          <section className="overflow-hidden rounded-xl border bg-background">
-            <button
-              type="button"
-              onClick={() => setProposalFallbackLibraryOpen((value) => !value)}
-              className="flex w-full items-start justify-between gap-3 p-3 text-left"
-            >
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-foreground">
-                  <ImagePlus className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span>Biblioteca visual de apoio</span>
-                  <Badge
-                    variant="outline"
-                    className={proposalHasMinimumImages ? "border-emerald-200 bg-emerald-50 text-emerald-700" : ""}
-                  >
-                    {effectiveProposalImages.length} imagem(ns)
-                  </Badge>
-                  <Badge variant="outline" className="text-[10px]">fallback</Badge>
-                </div>
-                <p className="mt-1 text-[10px] text-muted-foreground">
-                  Só entra quando não houver imagem específica da proposta, do modelo ou da etapa.
-                </p>
-              </div>
-              {proposalFallbackLibraryOpen ? <ChevronUp className="mt-0.5 h-4 w-4 shrink-0" /> : <ChevronDown className="mt-0.5 h-4 w-4 shrink-0" />}
-            </button>
-
-            {proposalFallbackLibraryOpen && (
-              <div className="space-y-3 border-t p-3">
-
-            {productProposalImages.filter((url) => !proposalImages.includes(url)).length > 0 && (
-              <p className="rounded-md border border-dashed bg-muted/30 px-2.5 py-2 text-[11px] text-muted-foreground">
-                {productProposalImages.filter((url) => !proposalImages.includes(url)).length} imagem(ns) de produto será(ão) usada(s) automaticamente depois das imagens selecionadas.
-              </p>
-            )}
-
-            {proposalImages.length > 0 && (
-              <div className="space-y-1.5">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-xs text-muted-foreground font-medium">
-                    Imagens gerais de apoio — ordem de fallback:
-                  </p>
-                  <span className={`text-[10px] font-medium ${effectiveProposalImages.length >= proposalPrimaryPageCount ? "text-emerald-600" : "text-amber-600"}`}>
-                    {effectiveProposalImages.length} imagem(ns) disponíveis
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                  {proposalImages.map((url, idx) => (
-                    <div key={`${url}-${idx}`} className="relative group rounded overflow-hidden border aspect-video bg-muted">
-                      <span className="absolute top-0.5 left-0.5 z-10 max-w-[78%] truncate bg-black/75 text-white text-[9px] font-medium px-1 py-0.5 rounded">
-                        {idx + 1} · {proposalImageSlotLabel(idx)}
-                      </span>
-                      <img
-                        src={url}
-                        alt={`Imagem ${idx + 1} — ${proposalImageSlotLabel(idx)}`}
-                        className="w-full h-full object-cover"
-                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                      />
-                      <div className="absolute bottom-0.5 left-0.5 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          type="button"
-                          onClick={() => moveProposalImage(idx, -1)}
-                          disabled={idx === 0}
-                          className="bg-black/65 text-white rounded p-0.5 disabled:opacity-30"
-                          aria-label="Mover imagem para antes"
-                          title="Mover para antes"
-                        >
-                          <ChevronUp className="h-2.5 w-2.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => moveProposalImage(idx, 1)}
-                          disabled={idx === proposalImages.length - 1}
-                          className="bg-black/65 text-white rounded p-0.5 disabled:opacity-30"
-                          aria-label="Mover imagem para depois"
-                          title="Mover para depois"
-                        >
-                          <ChevronDown className="h-2.5 w-2.5" />
-                        </button>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setProposalImages((prev) => prev.filter((_, i) => i !== idx))}
-                        className="absolute top-0.5 right-0.5 bg-black/60 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                        aria-label="Remover imagem"
-                      >
-                        <X className="h-2.5 w-2.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="flex rounded-md border overflow-hidden text-xs">
-              <button
-                type="button"
-                onClick={() => setImageSourceTab("upload")}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 transition-colors ${
-                  imageSourceTab === "upload"
-                    ? "bg-primary text-primary-foreground font-medium"
-                    : "bg-transparent text-muted-foreground hover:bg-muted"
-                }`}
-              >
-                <Upload className="h-3 w-3" />
-                Importar
-              </button>
-
-              {supports3DRenders && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setImageSourceTab("renders");
-                    void fetchRenders();
-                  }}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 border-l transition-colors ${
-                    imageSourceTab === "renders"
-                      ? "bg-primary text-primary-foreground font-medium"
-                      : "bg-transparent text-muted-foreground hover:bg-muted"
-                  }`}
-                >
-                  <Sparkles className="h-3 w-3" />
-                  Renderizações 3D
-                </button>
-              )}
-            </div>
-
-            {imageSourceTab === "upload" && (
-              <div className="space-y-2">
-                <p className="text-xs text-muted-foreground">
-                  Estas imagens são auxiliares e não substituem capa, imagem do bloco ou imagem específica de uma etapa.
-                </p>
-                <input
-                  ref={imageInputRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  className="hidden"
-                  onChange={(e) => {
-                    if (e.target.files?.length) {
-                      void handleProposalImageUpload(e.target.files);
-                      e.target.value = "";
-                    }
-                  }}
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full h-8 text-xs gap-2"
-                  disabled={imageUploading}
-                  onClick={() => imageInputRef.current?.click()}
-                >
-                  {imageUploading ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <Upload className="h-3 w-3" />
-                  )}
-                  {imageUploading ? "Enviando..." : "Selecionar arquivos"}
-                </Button>
-              </div>
-            )}
-
-            {supports3DRenders && imageSourceTab === "renders" && (
-              <div className="space-y-2">
-                {rendersLoading ? (
-                  <div className="grid grid-cols-3 gap-2">
-                    {[1, 2, 3, 4, 5, 6].map((i) => (
-                      <div key={i} className="aspect-video bg-muted animate-pulse rounded" />
-                    ))}
-                  </div>
-                ) : renders.length === 0 ? (
-                  <div className="py-6 text-center">
-                    <p className="text-xs text-muted-foreground">
-                      Nenhuma renderização encontrada.
-                    </p>
-                    <p className="mt-1 break-words text-xs text-muted-foreground">
-                      Gere renders no módulo Arch para usar aqui.
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    <p className="text-xs text-muted-foreground">
-                      Clique para adicionar ou remover da seleção:
-                    </p>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-64 overflow-y-auto pr-0.5">
-                      {renders.map((r) => {
-                        const selected = proposalImages.includes(r.imageUrl);
-                        return (
-                          <button
-                            type="button"
-                            key={r.id}
-                            onClick={() => toggleRenderImage(r.imageUrl)}
-                            className={`relative rounded overflow-hidden border-2 aspect-video bg-muted transition-all ${
-                              selected
-                                ? "border-primary ring-2 ring-primary/30"
-                                : "border-transparent hover:border-muted-foreground/40"
-                            }`}
-                            title={r.cenaNome ?? "Render"}
-                          >
-                            <img
-                              src={r.imageUrl}
-                              alt={r.cenaNome ?? "Render"}
-                              className="w-full h-full object-cover"
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).closest("button")?.classList.add("hidden");
-                              }}
-                            />
-                            {selected && (
-                              <span className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-                                <span className="bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-bold">
-                                  {proposalImages.indexOf(r.imageUrl) + 1}
-                                </span>
-                              </span>
-                            )}
-                            {r.cenaNome && (
-                              <span className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-[9px] px-1 py-0.5 truncate text-left">
-                                {r.cenaNome}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-              </div>
-            )}
-          </section>
         </CardContent>
       </Card>
 
-      {/* Orçamentos vinculados — primeira etapa do fluxo */}
-      <Card data-testid="card-orcamentos-lead" className="order-1">
-        <CardHeader className="px-3 pb-3 pt-4 sm:px-6">
-          <CardTitle className="flex flex-col items-stretch gap-3 text-sm font-semibold sm:flex-row sm:items-center sm:justify-between">
-            <span className="flex items-center gap-2">
-              <Receipt className="h-4 w-4" />
-              Orçamentos
-              {orcamentos.length > 0 && (
-                <Badge variant="outline" className="text-xs">{orcamentos.length}</Badge>
-              )}
-            </span>
-            <button
-              type="button"
-              onClick={openBudgetCreation}
-              className="text-xs font-normal text-muted-foreground hover:text-foreground underline underline-offset-2"
-            >
-              + Novo orçamento
-            </button>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="min-w-0 overflow-hidden">
-          {loadingOrcamentos ? (
-            <div className="space-y-2">
-              {[1, 2].map((i) => <div key={i} className="h-14 bg-muted animate-pulse rounded" />)}
-            </div>
-          ) : orcamentos.length === 0 ? (
-            <div className="flex flex-wrap items-center gap-2 py-2 text-xs text-muted-foreground">
-              <span>Nenhum orçamento criado para este lead.</span>
-              <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={openBudgetCreation}>
-                Criar orçamento para este cliente
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {orcamentos.map((orc) => {
-                const currentLabel = getOrcLabel(orc.status);
-                const labelCfg = ORCAMENTO_LABELS.find(l => l.value === currentLabel)!;
-                const terminal = isTerminalStatus(orc.status);
-                const isChanging = changingLabel === orc.id;
-                const expirou = orc.validadeAte && new Date(orc.validadeAte) < new Date();
-                return (
-                  <div
-                    key={orc.id}
-                    className="flex items-start justify-between gap-3 rounded-lg border p-3 bg-muted/30 hover:bg-muted/50 transition-colors"
-                  >
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <p className="text-xs font-medium truncate">{orc.titulo}</p>
-                      <div className="flex items-center gap-3 text-[11px] text-muted-foreground flex-wrap">
-                        <span className="font-semibold text-foreground">{formatCurrency(orc.valorTotal)}</span>
-                        {orc.numero && <span className="font-mono">{orc.numero}</span>}
-                        {orc.validadeAte && (
-                          <span className={`flex items-center gap-1 ${expirou ? "text-orange-500" : ""}`}>
-                            <Clock className="h-3 w-3" />
-                            {new Date(orc.validadeAte).toLocaleDateString("pt-BR")}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      {terminal ? (
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border ${labelCfg.color}`}>
-                          {labelCfg.label}
-                        </span>
-                      ) : (
-                        <Select
-                          value={currentLabel}
-                          onValueChange={(v) => handleChangeLabel(orc.id, orc.status, v)}
-                          disabled={isChanging}
-                        >
-                          <SelectTrigger className={`h-7 text-[10px] w-32 border font-medium focus:ring-0 ${labelCfg.color}`}>
-                            {isChanging ? <Loader2 className="h-3 w-3 animate-spin" /> : <SelectValue />}
-                          </SelectTrigger>
-                          <SelectContent>
-                            {ORCAMENTO_LABELS.map(l => (
-                              <SelectItem key={l.value} value={l.value} className="text-xs">
-                                <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${l.color}`}>
-                                  {l.label}
-                                </span>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                      <Link
-                        href={`/propostas?edit=${encodeURIComponent(orc.id)}&returnTo=${encodeURIComponent(`/leads/${leadId}`)}`}
-                      >
-                        <Button size="icon" variant="ghost" className="h-7 w-7" title="Abrir/editar orçamento">
-                          <ExternalLink className="h-3.5 w-3.5" />
-                        </Button>
-                      </Link>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7"
-                        title="Baixar PDF"
-                        onClick={() => downloadOrcamentoPdf(orc.id, orc.titulo)}
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Negociação e revisões — última etapa */}
-      <div className="order-5">
-        <OrcamentoRevisoesCard leadId={leadId} tenantId={tenantId} />
+      {/* Orçamento e revisões — origem comercial da proposta */}
+      <div className="order-1">
+        <OrcamentoRevisoesCard leadId={leadId} tenantId={tenantId} onCreateBudget={onCreateBudget} />
       </div>
 
       {/* Proposta comercial */}
-      <Card data-testid="card-propostas-geradas" className="order-4 min-w-0 max-w-full overflow-hidden">
+      <Card data-testid="card-propostas-geradas" className="order-3 min-w-0 max-w-full overflow-hidden">
         <CardHeader className="px-3 pb-3 pt-4 sm:px-6">
           <CardTitle className="flex flex-col items-stretch gap-3 text-sm font-semibold sm:flex-row sm:items-center sm:justify-between">
             <span className="flex items-center gap-2">
@@ -2817,24 +2478,235 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                   </div>
                 </div>
 
-                <div className="rounded-lg border bg-muted/20 p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p className="text-xs font-semibold">Biblioteca visual de apoio</p>
-                      <p className="text-[10px] text-muted-foreground">
-                        {effectiveProposalImages.length} imagem(ns) gerais disponíveis. Elas só entram quando não houver imagem mais específica para o bloco.
-                      </p>
-                    </div>
-                    <Badge variant="outline" className="text-[10px]">fallback</Badge>
-                  </div>
-                  {effectiveProposalImages.length > 0 && (
-                    <div className="mt-2 grid grid-cols-4 gap-1.5 sm:grid-cols-6">
-                      {effectiveProposalImages.slice(0, 6).map((url, index) => (
-                        <img key={`${url}-visual-center-${index}`} src={url} alt="" className="aspect-video w-full rounded-md border object-cover" />
-                      ))}
-                    </div>
-                  )}
+                <section className="overflow-hidden rounded-xl border bg-background">
+                <button
+                type="button"
+                onClick={() => setProposalFallbackLibraryOpen((value) => !value)}
+                className="flex w-full items-start justify-between gap-3 p-3 text-left"
+                >
+                <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-foreground">
+                <ImagePlus className="h-3.5 w-3.5 text-muted-foreground" />
+                <span>Biblioteca visual de apoio</span>
+                <Badge
+                variant="outline"
+                className={proposalHasMinimumImages ? "border-emerald-200 bg-emerald-50 text-emerald-700" : ""}
+                >
+                {effectiveProposalImages.length} imagem(ns)
+                </Badge>
+                <Badge variant="outline" className="text-[10px]">fallback</Badge>
                 </div>
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                Só entra quando não houver imagem específica da proposta, do modelo ou da etapa.
+                </p>
+                </div>
+                {proposalFallbackLibraryOpen ? <ChevronUp className="mt-0.5 h-4 w-4 shrink-0" /> : <ChevronDown className="mt-0.5 h-4 w-4 shrink-0" />}
+                </button>
+
+                {proposalFallbackLibraryOpen && (
+                <div className="space-y-3 border-t p-3">
+
+                {productProposalImages.filter((url) => !proposalImages.includes(url)).length > 0 && (
+                <p className="rounded-md border border-dashed bg-muted/30 px-2.5 py-2 text-[11px] text-muted-foreground">
+                {productProposalImages.filter((url) => !proposalImages.includes(url)).length} imagem(ns) de produto será(ão) usada(s) automaticamente depois das imagens selecionadas.
+                </p>
+                )}
+
+                {proposalImages.length > 0 && (
+                <div className="space-y-1.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground font-medium">
+                Imagens gerais de apoio — ordem de fallback:
+                </p>
+                <span className={`text-[10px] font-medium ${effectiveProposalImages.length >= proposalPrimaryPageCount ? "text-emerald-600" : "text-amber-600"}`}>
+                {effectiveProposalImages.length} imagem(ns) disponíveis
+                </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                {proposalImages.map((url, idx) => (
+                <div key={`${url}-${idx}`} className="relative group rounded overflow-hidden border aspect-video bg-muted">
+                <span className="absolute top-0.5 left-0.5 z-10 max-w-[78%] truncate bg-black/75 text-white text-[9px] font-medium px-1 py-0.5 rounded">
+                {idx + 1} · {proposalImageSlotLabel(idx)}
+                </span>
+                <img
+                src={url}
+                alt={`Imagem ${idx + 1} — ${proposalImageSlotLabel(idx)}`}
+                className="w-full h-full object-cover"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                />
+                <div className="absolute bottom-0.5 left-0.5 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                type="button"
+                onClick={() => moveProposalImage(idx, -1)}
+                disabled={idx === 0}
+                className="bg-black/65 text-white rounded p-0.5 disabled:opacity-30"
+                aria-label="Mover imagem para antes"
+                title="Mover para antes"
+                >
+                <ChevronUp className="h-2.5 w-2.5" />
+                </button>
+                <button
+                type="button"
+                onClick={() => moveProposalImage(idx, 1)}
+                disabled={idx === proposalImages.length - 1}
+                className="bg-black/65 text-white rounded p-0.5 disabled:opacity-30"
+                aria-label="Mover imagem para depois"
+                title="Mover para depois"
+                >
+                <ChevronDown className="h-2.5 w-2.5" />
+                </button>
+                </div>
+                <button
+                type="button"
+                onClick={() => setProposalImages((prev) => prev.filter((_, i) => i !== idx))}
+                className="absolute top-0.5 right-0.5 bg-black/60 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                aria-label="Remover imagem"
+                >
+                <X className="h-2.5 w-2.5" />
+                </button>
+                </div>
+                ))}
+                </div>
+                </div>
+                )}
+
+                <div className="flex rounded-md border overflow-hidden text-xs">
+                <button
+                type="button"
+                onClick={() => setImageSourceTab("upload")}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 transition-colors ${
+                imageSourceTab === "upload"
+                ? "bg-primary text-primary-foreground font-medium"
+                : "bg-transparent text-muted-foreground hover:bg-muted"
+                }`}
+                >
+                <Upload className="h-3 w-3" />
+                Importar
+                </button>
+
+                {supports3DRenders && (
+                <button
+                type="button"
+                onClick={() => {
+                setImageSourceTab("renders");
+                void fetchRenders();
+                }}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 border-l transition-colors ${
+                imageSourceTab === "renders"
+                ? "bg-primary text-primary-foreground font-medium"
+                : "bg-transparent text-muted-foreground hover:bg-muted"
+                }`}
+                >
+                <Sparkles className="h-3 w-3" />
+                Renderizações 3D
+                </button>
+                )}
+                </div>
+
+                {imageSourceTab === "upload" && (
+                <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">
+                Estas imagens são auxiliares e não substituem capa, imagem do bloco ou imagem específica de uma etapa.
+                </p>
+                <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                if (e.target.files?.length) {
+                void handleProposalImageUpload(e.target.files);
+                e.target.value = "";
+                }
+                }}
+                />
+                <Button
+                variant="outline"
+                size="sm"
+                className="w-full h-8 text-xs gap-2"
+                disabled={imageUploading}
+                onClick={() => imageInputRef.current?.click()}
+                >
+                {imageUploading ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                <Upload className="h-3 w-3" />
+                )}
+                {imageUploading ? "Enviando..." : "Selecionar arquivos"}
+                </Button>
+                </div>
+                )}
+
+                {supports3DRenders && imageSourceTab === "renders" && (
+                <div className="space-y-2">
+                {rendersLoading ? (
+                <div className="grid grid-cols-3 gap-2">
+                {[1, 2, 3, 4, 5, 6].map((i) => (
+                <div key={i} className="aspect-video bg-muted animate-pulse rounded" />
+                ))}
+                </div>
+                ) : renders.length === 0 ? (
+                <div className="py-6 text-center">
+                <p className="text-xs text-muted-foreground">
+                Nenhuma renderização encontrada.
+                </p>
+                <p className="mt-1 break-words text-xs text-muted-foreground">
+                Gere renders no módulo Arch para usar aqui.
+                </p>
+                </div>
+                ) : (
+                <>
+                <p className="text-xs text-muted-foreground">
+                Clique para adicionar ou remover da seleção:
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-64 overflow-y-auto pr-0.5">
+                {renders.map((r) => {
+                const selected = proposalImages.includes(r.imageUrl);
+                return (
+                <button
+                type="button"
+                key={r.id}
+                onClick={() => toggleRenderImage(r.imageUrl)}
+                className={`relative rounded overflow-hidden border-2 aspect-video bg-muted transition-all ${
+                selected
+                ? "border-primary ring-2 ring-primary/30"
+                : "border-transparent hover:border-muted-foreground/40"
+                }`}
+                title={r.cenaNome ?? "Render"}
+                >
+                <img
+                src={r.imageUrl}
+                alt={r.cenaNome ?? "Render"}
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                (e.target as HTMLImageElement).closest("button")?.classList.add("hidden");
+                }}
+                />
+                {selected && (
+                <span className="absolute inset-0 bg-primary/20 flex items-center justify-center">
+                <span className="bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-bold">
+                {proposalImages.indexOf(r.imageUrl) + 1}
+                </span>
+                </span>
+                )}
+                {r.cenaNome && (
+                <span className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-[9px] px-1 py-0.5 truncate text-left">
+                {r.cenaNome}
+                </span>
+                )}
+                </button>
+                );
+                })}
+                </div>
+                </>
+                )}
+                </div>
+                )}
+                </div>
+                )}
+                </section>
+
               </div>
             )}
           </div>
@@ -3426,104 +3298,89 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
               </Button>
             </div>
           ) : (
-            <div className="divide-y divide-border">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2 px-1">
+                <p className="text-xs font-semibold">Histórico de versões</p>
+                <span className="text-[10px] text-muted-foreground">Mais recente primeiro</span>
+              </div>
               {[...proposals]
                 .sort((a, b) => b.version - a.version)
                 .map((p) => (
-                  <div key={p.id} className="py-3 px-1 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                        v{p.version}
-                      </span>
-                      <Badge variant="outline" className="text-xs">
-                        {p.status}
-                      </Badge>
-                      <span className="text-xs text-muted-foreground">
-                        {new Date(p.createdAt).toLocaleDateString("pt-BR")}
-                      </span>
+                  <div key={p.id} className="flex flex-col gap-3 rounded-xl border bg-background p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+                          R{String(p.version).padStart(2, "0")}
+                        </span>
+                        <Badge variant="outline" className="text-xs">
+                          {proposalVersionStatusLabel(p.status)}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(p.createdAt).toLocaleDateString("pt-BR")}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[10px] text-muted-foreground">
+                        Versão gerada da proposta comercial deste cliente.
+                      </p>
                     </div>
-                    <div className="flex items-center gap-1">
+
+                    <div className="flex items-center gap-2">
                       <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7"
-                        title="Visualizar"
+                        size="sm"
+                        variant="outline"
+                        className="h-8 flex-1 gap-1.5 text-xs sm:flex-none"
                         onClick={() => previewProposal(p.version)}
                       >
                         <Eye className="h-3.5 w-3.5" />
+                        Abrir
                       </Button>
                       <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7"
-                        title="Download HTML"
-                        onClick={() => downloadProposal(p.version, "html")}
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7"
-                        title="Download PDF"
-                        onClick={() => downloadProposal(p.version, "pdf")}
-                      >
-                        <FileText className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7 text-violet-600 hover:text-violet-700 hover:bg-violet-50"
-                        title="Melhorar proposta"
-                        onClick={() => openRefineDialog(p.version)}
-                      >
-                        <Sparkles className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-50"
-                        title="Avançar no projeto via WhatsApp"
-                        onClick={() => openWhatsAppProposal(p.version)}
-                      >
-                        <MessageCircle className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7 text-blue-500 hover:text-blue-700 hover:bg-blue-50"
-                        title="Copiar link do Portal"
+                        size="sm"
+                        variant="outline"
+                        className="h-8 flex-1 gap-1.5 text-xs text-blue-600 sm:flex-none"
                         onClick={() => copyPublicLink(p.id)}
                       >
                         <Link2 className="h-3.5 w-3.5" />
+                        Compartilhar
                       </Button>
-                      {p.status !== "accepted" && p.status !== "rejected" && (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-7 w-7 text-green-700 hover:text-green-800 hover:bg-green-50"
-                              title="Marcar como aceita"
-                              disabled={acceptingId === p.id}
-                            >
-                              {acceptingId === p.id
-                                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                : <CheckSquare className="h-3.5 w-3.5" />}
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="min-w-[160px]">
-                            <DropdownMenuItem onClick={() => handleAcceptProposal(p.id, "whatsapp")}>
-                              <MessageCircle className="h-4 w-4 mr-2 text-green-600" />
-                              Via WhatsApp
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleAcceptProposal(p.id, "manual")}>
-                              <CheckSquare className="h-4 w-4 mr-2 text-blue-600" />
-                              Manualmente
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      )}
+
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="icon" variant="ghost" className="h-8 w-8" title="Mais ações">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="min-w-[210px]">
+                          <DropdownMenuItem onClick={() => downloadProposal(p.version, "pdf")}>
+                            <FileText className="mr-2 h-4 w-4" />
+                            Baixar PDF
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => downloadProposal(p.version, "html")}>
+                            <Download className="mr-2 h-4 w-4" />
+                            Baixar HTML
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openRefineDialog(p.version)}>
+                            <Sparkles className="mr-2 h-4 w-4 text-violet-600" />
+                            Criar nova revisão com IA
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openWhatsAppProposal(p.version)}>
+                            <MessageCircle className="mr-2 h-4 w-4 text-green-600" />
+                            Enviar mensagem no WhatsApp
+                          </DropdownMenuItem>
+                          {p.status !== "accepted" && p.status !== "rejected" && (
+                            <>
+                              <DropdownMenuItem onClick={() => handleAcceptProposal(p.id, "whatsapp")}>
+                                <MessageCircle className="mr-2 h-4 w-4 text-green-600" />
+                                Marcar aceite via WhatsApp
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleAcceptProposal(p.id, "manual")}>
+                                <CheckSquare className="mr-2 h-4 w-4 text-blue-600" />
+                                Marcar aceite manual
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
                 ))}
@@ -4206,7 +4063,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                     <div key={item.key} className="flex items-start gap-2 rounded-lg border bg-background px-2.5 py-2">
                       {item.ok
                         ? <CheckSquare className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
-                        : <XCircle className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${item.key === "budget" ? "text-red-500" : "text-amber-500"}`} />}
+                        : <XCircle className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${proposalComposerBlockingIssues.some((blocking) => blocking.key === item.key) ? "text-red-500" : "text-amber-500"}`} />}
                       <div className="min-w-0">
                         <p className="text-[11px] font-medium">{item.label}</p>
                         <p className="line-clamp-2 text-[10px] text-muted-foreground">{item.detail}</p>
@@ -4217,7 +4074,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
 
                 {(proposalComposerWarnings.length > 0 || proposalComposerBlockingIssues.length > 0) && (
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {proposalComposerWarnings.some((item) => item.key === "cover" || item.key === "stages") && (
+                    {[...proposalComposerWarnings, ...proposalComposerBlockingIssues].some((item) => item.key === "cover" || item.key === "stages") && (
                       <Button
                         type="button"
                         size="sm"
@@ -4252,11 +4109,13 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
 
                 {proposalComposerBlockingIssues.length > 0 ? (
                   <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-2.5 py-2 text-[10px] text-red-700">
-                    A geração está bloqueada até selecionar um orçamento/revisão.
+                    {proposalComposerBlockingIssues.some((item) => item.key === "budget")
+                      ? "A geração está bloqueada até selecionar um orçamento/revisão."
+                      : "A proposta interativa exige imagem específica em todas as etapas. Complete as imagens antes de gerar."}
                   </p>
                 ) : proposalComposerWarnings.length > 0 ? (
                   <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[10px] text-amber-700">
-                    Há itens visuais opcionais pendentes. Você pode corrigir agora ou gerar mesmo assim usando os fallbacks disponíveis.
+                    Há itens opcionais pendentes. Eles podem ser corrigidos agora ou a proposta pode seguir usando os fallbacks disponíveis.
                   </p>
                 ) : null}
               </div>

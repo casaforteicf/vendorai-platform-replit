@@ -2823,7 +2823,12 @@ export default function LeadDetail() {
           </TabsContent>
 
           <TabsContent value="proposta" className="mt-4">
-            <LeadPropostaTab leadId={id} tenantId={tenantId} lead={lead} />
+            <LeadPropostaTab
+              leadId={id}
+              tenantId={tenantId}
+              lead={lead}
+              onCreateBudget={() => setPropostaModalOpen(true)}
+            />
           </TabsContent>
 
           <TabsContent value="apresentacoes" className="mt-4">
