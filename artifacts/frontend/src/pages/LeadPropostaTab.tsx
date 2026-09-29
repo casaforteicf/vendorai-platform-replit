@@ -39,7 +39,6 @@ import {
   ChevronUp,
   Package,
   Upload,
-  Globe,
   ImagePlus,
   Receipt,
   ExternalLink,
@@ -249,7 +248,6 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
   const [proposalStagesOpen, setProposalStagesOpen] = useState(false);
   const [proposalVisualCenterOpen, setProposalVisualCenterOpen] = useState(false);
   const [proposalFallbackLibraryOpen, setProposalFallbackLibraryOpen] = useState(false);
-  const [proposalClientContextOpen, setProposalClientContextOpen] = useState(false);
   const [proposalModelOpen, setProposalModelOpen] = useState(false);
   const [proposalDraftSavedAt, setProposalDraftSavedAt] = useState<string | null>(null);
 
@@ -264,9 +262,6 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
   const [websiteUrl, setWebsiteUrl] = useState(lead?.websiteUrl ?? "");
   const [corDestaque, setCorDestaque] = useState(lead?.corDestaque ?? "#A78BFA");
   const [corSecundaria, setCorSecundaria] = useState(lead?.corSecundaria ?? "");
-  const [savingLead, setSavingLead] = useState(false);
-  const [logoUploading, setLogoUploading] = useState(false);
-  const logoInputRef = useRef<HTMLInputElement>(null);
   const requestUploadUrl = useRequestUploadUrl();
 
   // Business profile — para exibir status do modelo de proposta
@@ -1120,34 +1115,6 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
     return uploadStorageFile(file, "image/jpeg");
   }
 
-  async function handleLogoUpload(file: File) {
-    if (!file.type.startsWith("image/")) {
-      toast({ title: "Selecione um arquivo de imagem (PNG, JPG, SVG...)", variant: "destructive" });
-      return;
-    }
-    setLogoUploading(true);
-    try {
-      const result = await new Promise<{ uploadURL: string; objectPath: string }>((resolve, reject) => {
-        requestUploadUrl.mutate(
-          { data: { name: file.name, size: file.size, contentType: file.type } },
-          { onSuccess: resolve, onError: reject },
-        );
-      });
-      const uploadRes = await fetch(result.uploadURL, {
-        method: "PUT",
-        body: file,
-        headers: { "Content-Type": file.type },
-      });
-      if (!uploadRes.ok) throw new Error("Upload falhou");
-      setLogoUrl(result.objectPath);
-      toast({ title: "Logo carregada com sucesso!" });
-    } catch {
-      toast({ title: "Erro no upload. Tente novamente.", variant: "destructive" });
-    } finally {
-      setLogoUploading(false);
-    }
-  }
-
   async function fetchRenders() {
     if (rendersLoaded || !supports3DRenders) return;
     setRendersLoading(true);
@@ -1796,31 +1763,6 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
     reorderProposalBuilderModule(index, target);
   }
 
-  async function saveLeadFields() {
-    if (!leadId || !token) return;
-    setSavingLead(true);
-    try {
-      const res = await fetch(`/api/leads/${leadId}`, {
-        method: "PATCH",
-        headers,
-        body: JSON.stringify({
-          mercadoSegmento: mercadoSegmento || null,
-          logoUrl: logoUrl || null,
-          websiteUrl: websiteUrl || null,
-          corDestaque: corDestaque || null,
-          corSecundaria: corSecundaria || null,
-        }),
-      });
-      if (!res.ok) throw new Error("Falha ao salvar");
-      toast({ title: "Dados do lead salvos" });
-      queryClient.invalidateQueries({ queryKey: ["lead", leadId] });
-    } catch (e: any) {
-      toast({ title: "Erro", description: e.message, variant: "destructive" });
-    } finally {
-      setSavingLead(false);
-    }
-  }
-
   const proposalComposerTemplate = resolveProposalBuilderTemplateForEditor();
   const proposalComposerTemplateCover = proposalComposerTemplate?.modules?.find((item) => item.key === "capa")?.image?.url ?? "";
   const proposalComposerLogo = normalizeTenantLogoUrl(
@@ -2158,154 +2100,6 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
 
   return (
     <div className="flex min-w-0 max-w-full flex-col gap-4 overflow-x-hidden">
-      {/* Contexto específico do cliente — não altera o modelo da empresa */}
-      <Card data-testid="card-proposta-config" className="order-2 overflow-hidden">
-        <button
-          type="button"
-          onClick={() => setProposalClientContextOpen((value) => !value)}
-          className="flex w-full items-start justify-between gap-3 px-3 py-4 text-left sm:px-6"
-        >
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <Palette className="h-4 w-4" />
-              <p className="text-sm font-semibold">Contexto do cliente</p>
-              {mercadoSegmento && <Badge variant="outline" className="text-[10px]">{mercadoSegmento}</Badge>}
-              {logoUrl && <Badge variant="outline" className="text-[10px]">logo específico</Badge>}
-              {websiteUrl && <Badge variant="outline" className="text-[10px]">site informado</Badge>}
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Dados específicos deste cliente. O modelo e a marca da empresa continuam no Studio e no Kit da Marca.
-            </p>
-          </div>
-          {proposalClientContextOpen ? <ChevronUp className="mt-0.5 h-4 w-4 shrink-0" /> : <ChevronDown className="mt-0.5 h-4 w-4 shrink-0" />}
-        </button>
-        {proposalClientContextOpen && (
-          <CardContent className="space-y-5 border-t px-3 pb-4 pt-4 sm:px-6">
-            <div className="flex justify-end">
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-8 gap-1 text-xs"
-                onClick={saveLeadFields}
-                disabled={savingLead}
-              >
-                {savingLead ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-                Salvar contexto
-              </Button>
-            </div>
-          <section className="space-y-3">
-            <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
-              <Palette className="h-3.5 w-3.5 text-muted-foreground" />
-              Personalização deste cliente
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Segmento de Mercado</label>
-                <Input
-                  value={mercadoSegmento}
-                  onChange={(e) => setMercadoSegmento(e.target.value)}
-                  placeholder="Ex: Varejo, Construção, SaaS..."
-                  className="h-8 text-sm"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Logo do Cliente</label>
-                <div className="flex items-center gap-2">
-                  {logoUrl && (
-                    <img
-                      src={logoUrl.startsWith("/objects/") ? `/api/storage${logoUrl}` : logoUrl}
-                      alt="Logo"
-                      className="h-8 w-8 object-contain rounded border bg-white"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                    />
-                  )}
-                  <Input
-                    value={logoUrl}
-                    onChange={(e) => setLogoUrl(e.target.value)}
-                    placeholder="https://... ou faça upload →"
-                    className="h-8 text-sm flex-1"
-                  />
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="h-8 px-2 shrink-0"
-                    disabled={logoUploading}
-                    onClick={() => logoInputRef.current?.click()}
-                  >
-                    {logoUploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
-                  </Button>
-                  <input
-                    ref={logoInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) void handleLogoUpload(file);
-                      e.target.value = "";
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">URL do Site do Cliente</label>
-                <div className="flex items-center gap-2">
-                  <Globe className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                  <Input
-                    value={websiteUrl}
-                    onChange={(e) => setWebsiteUrl(e.target.value)}
-                    placeholder="https://www.cliente.com.br"
-                    className="h-8 text-sm"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Cor Destaque (primária)</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="color"
-                    value={corDestaque}
-                    onChange={(e) => setCorDestaque(e.target.value)}
-                    className="h-8 w-10 rounded border cursor-pointer"
-                  />
-                  <Input
-                    value={corDestaque}
-                    onChange={(e) => setCorDestaque(e.target.value)}
-                    placeholder="#A78BFA"
-                    className="h-8 text-sm flex-1"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Cor Secundária</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="color"
-                    value={corSecundaria || "#ffffff"}
-                    onChange={(e) => setCorSecundaria(e.target.value)}
-                    className="h-8 w-10 rounded border cursor-pointer"
-                  />
-                  <Input
-                    value={corSecundaria}
-                    onChange={(e) => setCorSecundaria(e.target.value)}
-                    placeholder="Opcional"
-                    className="h-8 text-sm flex-1"
-                  />
-                </div>
-              </div>
-            </div>
-          </section>
-
-        
-          </CardContent>
-        )}
-      </Card>
       {/* Orçamento e revisões — origem comercial da proposta */}
       <div className="order-1">
         <OrcamentoRevisoesCard leadId={leadId} tenantId={tenantId} onCreateBudget={onCreateBudget} />
