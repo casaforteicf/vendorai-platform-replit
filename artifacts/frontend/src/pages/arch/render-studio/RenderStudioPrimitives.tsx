@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { RENDER_STUDIO_THEME as D } from "./renderStudioTheme";
 
 export function RenderStudioButton({
@@ -16,7 +16,7 @@ export function RenderStudioButton({
   small?: boolean;
   fullWidth?: boolean;
 }) {
-  const styles: Record<string, React.CSSProperties> = {
+  const styles: Record<string, CSSProperties> = {
     primary: { background: D.purple, color: "#fff", border: `1px solid ${D.purpleHov}` },
     secondary: { background: D.card, color: D.text, border: `1px solid ${D.border}` },
     ghost: { background: "transparent", color: D.muted, border: "none" },
