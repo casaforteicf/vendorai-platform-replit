@@ -1653,7 +1653,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
 
   function resolveProposalBuilderTemplateForEditor() {
     if (!proposalBuilderTemplates.length) return null;
-    if (proposalBuilderEditorTemplateId) {
+    if (proposalBuilderEditorOpen && proposalBuilderEditorTemplateId) {
       const editorTarget = proposalBuilderTemplates.find((item) => item.id === proposalBuilderEditorTemplateId);
       if (editorTarget) return editorTarget;
     }
