@@ -159,6 +159,9 @@ const adjustBodySchema = z.object({
   // Quando ativo, uma seleção parcial vira semente para reconhecer e expandir
   // a máscara até o material/superfície visualmente contínuo ao redor.
   smart_region: z.boolean().optional().default(true),
+  material_id: z.string().trim().min(1).optional(),
+  material_name: z.string().trim().min(1).optional(),
+  material_reference_url: z.string().trim().min(1).optional(),
 });
 
 const projectConfigBodySchema = z.object({
@@ -457,7 +460,10 @@ archAiRenderRouter.post("/arch/ai-render/:id/adjust", authenticate, async (req: 
     });
   }
 
-  const { mask_zones, ajuste_prompt, mask_file_base64, mask_coordinates, smart_region } = parsed.data;
+  const {
+    mask_zones, ajuste_prompt, mask_file_base64, mask_coordinates, smart_region,
+    material_id, material_name, material_reference_url,
+  } = parsed.data;
 
   // Herda mode do pai — e sanitiza zonas se mode=preservar
   const safeZones = parent.mode === "preservar"
@@ -467,6 +473,26 @@ archAiRenderRouter.post("/arch/ai-render/:id/adjust", authenticate, async (req: 
   const baseImageUrl = parent.resultImageUrl ?? parent.originalImageUrl;
   if (!baseImageUrl) {
     return res.status(400).json({ success: false, error: "Render pai não possui imagem de resultado" });
+  }
+
+  if (material_id && (!mask_coordinates || mask_coordinates.length === 0) && !mask_file_base64) {
+    return res.status(400).json({
+      success: false,
+      error: "Selecione e confirme a região antes de aplicar um material do catálogo.",
+      code: "MATERIAL_REGION_REQUIRED",
+    });
+  }
+
+  if (material_reference_url && !(
+    material_reference_url.startsWith("/objects/") ||
+    material_reference_url.startsWith("/api/storage/objects/") ||
+    material_reference_url.startsWith("data:image/")
+  )) {
+    return res.status(400).json({
+      success: false,
+      error: "A imagem de referência do material precisa vir da Biblioteca de Materiais.",
+      code: "INVALID_MATERIAL_REFERENCE",
+    });
   }
 
   const [adjust] = await db.insert(archAiRendersTable).values({
@@ -483,7 +509,9 @@ archAiRenderRouter.post("/arch/ai-render/:id/adjust", authenticate, async (req: 
     maskZones:        safeZones,
     originalImageUrl: baseImageUrl,
     status:           "processando",
-    operationType:    ajuste_prompt?.includes("refino global em alta qualidade") ? "improve" : "adjust",
+    operationType:    material_id ? "material" : ajuste_prompt?.includes("refino global em alta qualidade") ? "improve" : "adjust",
+    materialId:        material_id,
+    materialName:      material_name,
     prompt:            ajuste_prompt,
     versionTag:       parent.versionTag,
   }).returning();
@@ -503,6 +531,8 @@ archAiRenderRouter.post("/arch/ai-render/:id/adjust", authenticate, async (req: 
     maskFileBase64: mask_file_base64,
     maskCoordinates: mask_coordinates,
     smartRegion: smart_region,
+    materialReferenceUrl: material_reference_url,
+    materialName: material_name,
     ambiente:     parent.ambiente,
     estilo:       parent.estilo,
     iluminacao:   parent.iluminacao,
@@ -596,6 +626,8 @@ export interface RenderJobParams {
   maskFileBase64?: string;
   maskCoordinates?: { x: number; y: number; w: number; h: number }[];
   smartRegion?: boolean;
+  materialReferenceUrl?: string;
+  materialName?: string;
   ambiente:     string | null | undefined;
   estilo:       string | null | undefined;
   iluminacao:   string | null | undefined;
@@ -638,6 +670,7 @@ async function enhanceFinalRender(buffer: Buffer): Promise<Buffer> {
 export async function processRenderJob(params: RenderJobParams): Promise<void> {
   const {
     renderId, tenantId: tid, mode, originalUrl, maskZones, maskFileBase64, maskCoordinates, smartRegion,
+    materialReferenceUrl, materialName,
     ambiente, estilo, iluminacao, angulo, materials, userNotes, renderPresets, source, renderView, renderProfile,
     logger, retentativas,
   } = params;
@@ -741,11 +774,28 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
       const originalDataUrl = bufferToDataUrl(originalBuf, originalMime);
       const maskDataUrl     = bufferToDataUrl(maskBuf, "image/png");
 
+      let materialReferenceDataUrl: string | undefined;
+      if (materialReferenceUrl) {
+        const reference = await fetchImageAsBuffer(materialReferenceUrl, storage);
+        materialReferenceDataUrl = bufferToDataUrl(reference.buf, reference.mime);
+      }
+
+      const materialPrompt = materialReferenceDataUrl
+        ? [
+            prompt,
+            `MATERIAL REFERENCE LOCK: the second input image is the exact visual reference for the new material${materialName ? ` "${materialName}"` : ""}.`,
+            "Inside the white mask only, reproduce the reference material's base color, texture pattern, grain/vein direction, scale, roughness, gloss and reflectance as faithfully as possible.",
+            "Use the second image only as a material/finish reference. Never copy its object shape, scene, lighting, perspective or background into the architectural render.",
+            "Do not change geometry, seams, panel divisions, handles, openings, furniture, objects or lighting outside the confirmed mask.",
+          ].join(" ")
+        : prompt;
+
       const generated = await generateRenderPremiumOpenAI({
         tenantId: tid,
         imageDataUrl: originalDataUrl,
         maskDataUrl,
-        prompt,
+        referenceImageDataUrls: materialReferenceDataUrl ? [materialReferenceDataUrl] : undefined,
+        prompt: materialPrompt,
         logger,
       });
       resultB64 = generated.base64;
