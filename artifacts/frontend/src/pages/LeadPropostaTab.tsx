@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
+import { normalizeTenantLogoUrl } from "@/components/TenantBrand";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -1272,7 +1273,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const proposalBuilderPreviewTotal = Number(selectedOrcamento?.valorTotal ?? 0);
   const proposalBuilderPreviewDeadline = String(selectedOrcamento?.prazoEntrega ?? "").trim();
   const proposalBuilderPreviewCompany = String((profileQuery.data as any)?.nomeFantasia || (profileQuery.data as any)?.razaoSocial || "Sua empresa");
-  const proposalBuilderPreviewLogo = String((profileQuery.data as any)?.logoUrl || "");
+  const proposalBuilderPreviewLogo = normalizeTenantLogoUrl(String((profileQuery.data as any)?.logoUrl || ""));
   const proposalBuilderPreviewTitle = String(selectedOrcamento?.titulo || "Proposta comercial");
   const proposalBuilderPreviewClient = String((lead as any)?.nome || "Cliente");
   const proposalBuilderPreviewExcluded = Array.isArray(selectedOrcamento?.apresentacao?.itensNaoInclusos)
@@ -3079,6 +3080,71 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                     </p>
                   </div>
                 )}
+
+                <div className="mb-4 rounded-xl border p-3">
+                  <p className="text-xs font-semibold">Imagens da proposta</p>
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    Gere a capa da casa e imagens específicas das etapas sem sair do Studio.
+                  </p>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 gap-1.5 text-xs"
+                      disabled={generatingCoverImage}
+                      onClick={() => void generatePremiumCoverImage()}
+                    >
+                      {generatingCoverImage ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImagePlus className="h-3.5 w-3.5" />}
+                      {selectedOrcamento?.apresentacao?.imagemCapa ? "Regenerar capa" : "Gerar capa da casa"}
+                    </Button>
+
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 gap-1.5 text-xs"
+                      disabled={generatingStageImages || selectedStageImageIds.length === 0}
+                      onClick={() => void generateRepresentativeStageImages(false)}
+                    >
+                      {generatingStageImages ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                      Gerar etapas selecionadas
+                    </Button>
+                  </div>
+
+                  <div className="mt-3 space-y-1.5">
+                    <p className="text-[10px] font-medium text-muted-foreground">Selecione até 3 etapas por ação</p>
+                    {selectedOrcamentoStages.slice(0, 14).map((stage) => {
+                      const selected = selectedStageImageIds.includes(stage.id);
+                      const hasImage = Boolean(selectedStageImages[stage.id]);
+                      return (
+                        <button
+                          key={stage.id}
+                          type="button"
+                          onClick={() => toggleStageImageSelection(stage.id)}
+                          className={`flex w-full items-center gap-2 rounded-md border px-2.5 py-2 text-left text-[10px] transition ${
+                            selected ? "border-primary bg-primary/5" : "bg-background hover:bg-muted"
+                          }`}
+                        >
+                          <span className={`flex h-4 w-4 items-center justify-center rounded border ${
+                            selected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/30"
+                          }`}>
+                            {selected ? "✓" : ""}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate">{stage.ordem}. {stage.nome}</span>
+                          <span className={hasImage ? "text-emerald-600" : "text-amber-600"}>
+                            {hasImage ? "imagem ok" : "sem imagem"}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="mt-3 rounded-lg bg-muted/40 p-2.5 text-[10px] text-muted-foreground">
+                    A geração usa o estilo da casa escolhido na proposta e mantém a regra técnica de cada etapa para evitar imagens desconexas.
+                  </div>
+                </div>
 
                 <div>
                   <p className="text-xs font-semibold">Design do modelo</p>
