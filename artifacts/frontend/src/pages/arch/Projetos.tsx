@@ -204,6 +204,7 @@ export default function Projetos() {
     setSaving(true);
     try {
       const body: Record<string, unknown> = {
+        leadId:    selectedLead.id,
         titulo:    form.titulo,
         tipoObra:  form.tipoObra,
       };
