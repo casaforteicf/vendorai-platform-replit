@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { createHash, randomBytes, randomUUID } from "crypto";
 import { eq } from "drizzle-orm";
 import { z } from "zod/v4";
-import { db, pool, propostasTable, leadProposalsTable } from "@workspace/db";
+import { db, pool, propostasTable, leadProposalsTable, leadsTable } from "@workspace/db";
 import { proposalAccepted } from "../lib/proposal-accepted.js";
 
 const router: IRouter = Router();
@@ -91,8 +91,10 @@ async function attachCustomerPortalAccess(userId: string, context: PublicProposa
 
 
 const acceptPublicBodySchema = z.object({
-  nome: z.string().min(1).optional(),
-  documento: z.string().optional(),
+  nome: z.string().trim().min(1).max(160).optional(),
+  email: z.string().trim().email().max(240).optional(),
+  telefone: z.string().trim().max(40).optional(),
+  documento: z.string().trim().max(40).optional(),
 });
 
 
@@ -257,6 +259,8 @@ router.get("/public/proposals/:token", async (req, res) => {
       version: leadProposalsTable.version,
       status: leadProposalsTable.status,
       createdAt: leadProposalsTable.createdAt,
+      jsonContent: leadProposalsTable.jsonContent,
+      leadId: leadProposalsTable.leadId,
     })
     .from(leadProposalsTable)
     .where(eq(leadProposalsTable.id, token))
@@ -267,12 +271,55 @@ router.get("/public/proposals/:token", async (req, res) => {
     return;
   }
 
+  let sourceStatus: string | null = null;
+  let validadeAte: Date | string | null = null;
+  let acceptedAt: Date | null = null;
+  try {
+    const payload = generatedProposal.jsonContent
+      ? JSON.parse(generatedProposal.jsonContent) as { _proposalMeta?: { sourcePropostaId?: string | null } }
+      : null;
+    const sourcePropostaId = payload?._proposalMeta?.sourcePropostaId;
+    if (sourcePropostaId) {
+      const [source] = await db
+        .select({
+          status: propostasTable.status,
+          validadeAte: propostasTable.validadeAte,
+          acceptedAt: propostasTable.acceptedAt,
+        })
+        .from(propostasTable)
+        .where(eq(propostasTable.id, sourcePropostaId))
+        .limit(1);
+      sourceStatus = source?.status ?? null;
+      validadeAte = source?.validadeAte ?? null;
+      acceptedAt = source?.acceptedAt ?? null;
+    }
+  } catch {
+    // Legacy generated proposals may not carry source metadata.
+  }
+
+  const [lead] = generatedProposal.leadId
+    ? await db
+        .select({
+          nome: leadsTable.nome,
+          email: leadsTable.email,
+          telefone: leadsTable.telefone,
+          documento: leadsTable.documento,
+        })
+        .from(leadsTable)
+        .where(eq(leadsTable.id, generatedProposal.leadId))
+        .limit(1)
+    : [undefined];
+
   res.json({
     kind: "generated",
     id: generatedProposal.id,
     version: generatedProposal.version,
     status: generatedProposal.status,
     createdAt: generatedProposal.createdAt,
+    sourceStatus,
+    validadeAte,
+    acceptedAt,
+    client: lead ?? null,
   });
 });
 
@@ -313,7 +360,7 @@ router.post("/public/proposals/:token/accept", async (req, res) => {
   }
 
   let [proposta] = await db
-    .select({ id: propostasTable.id, status: propostasTable.status, validadeAte: propostasTable.validadeAte })
+    .select({ id: propostasTable.id, status: propostasTable.status, validadeAte: propostasTable.validadeAte, leadId: propostasTable.leadId })
     .from(propostasTable)
     .where(eq(propostasTable.publicToken, token))
     .limit(1);
@@ -336,7 +383,7 @@ router.post("/public/proposals/:token/accept", async (req, res) => {
         const sourcePropostaId = parsed?._proposalMeta?.sourcePropostaId;
         if (sourcePropostaId) {
           [proposta] = await db
-            .select({ id: propostasTable.id, status: propostasTable.status, validadeAte: propostasTable.validadeAte })
+            .select({ id: propostasTable.id, status: propostasTable.status, validadeAte: propostasTable.validadeAte, leadId: propostasTable.leadId })
             .from(propostasTable)
             .where(eq(propostasTable.id, sourcePropostaId))
             .limit(1);
@@ -361,6 +408,18 @@ router.post("/public/proposals/:token/accept", async (req, res) => {
   if (proposta.validadeAte && new Date(proposta.validadeAte) < new Date()) {
     res.status(400).json({ error: "Esta proposta expirou e não pode mais ser aceita" });
     return;
+  }
+
+  if (proposta.leadId && (parsed.data.nome || parsed.data.email || parsed.data.telefone || parsed.data.documento)) {
+    const leadPatch: Partial<typeof leadsTable.$inferInsert> = { updatedAt: new Date() };
+    if (parsed.data.nome) leadPatch.nome = parsed.data.nome;
+    if (parsed.data.email) leadPatch.email = parsed.data.email.toLowerCase();
+    if (parsed.data.telefone) leadPatch.telefone = parsed.data.telefone;
+    if (parsed.data.documento) leadPatch.documento = parsed.data.documento;
+    await db
+      .update(leadsTable)
+      .set(leadPatch)
+      .where(eq(leadsTable.id, proposta.leadId));
   }
 
   const ip = (req.headers["x-forwarded-for"] as string) ?? req.ip ?? undefined;
