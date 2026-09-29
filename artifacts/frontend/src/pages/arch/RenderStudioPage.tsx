@@ -573,7 +573,6 @@ export default function RenderStudioPage() {
   const [projectId, setProjectId] = useState<string | null>(() => localStorage.getItem("arq_last_project_id"));
   const [ambiente, setAmbiente] = useState(() => sessionStorage.getItem(SK.ambiente) ?? "");
   const [hydratedKey, setHydratedKey] = useState<string | null>(null);
-  const [approvalRedirectEpoch, setApprovalRedirectEpoch] = useState(0);
   const targetKey = `${projectId ?? "no-project"}:${ambiente}`;
 
   const recoveryCache = useMemo(() => {
@@ -601,16 +600,6 @@ export default function RenderStudioPage() {
     }, 400);
     return () => window.clearInterval(interval);
   }, []);
-
-  useEffect(() => {
-    if (!approvedVersion) return;
-    const interval = window.setInterval(() => {
-      if (sessionStorage.getItem(SK.step) !== "aprovar") return;
-      sessionStorage.setItem(SK.step, "especificacao");
-      setApprovalRedirectEpoch((value) => value + 1);
-    }, 250);
-    return () => window.clearInterval(interval);
-  }, [approvedVersion?.id]);
 
   useEffect(() => setHydratedKey(null), [projectId, ambiente]);
 
@@ -662,7 +651,7 @@ export default function RenderStudioPage() {
         <span aria-hidden="true">←</span>
         Voltar
       </button>
-      <RenderStudioCore key={`${targetKey}:${approvalRedirectEpoch}`} />
+      <RenderStudioCore key={targetKey} />
 
       {approvedVersion && (
         <div role="status" title={approvalTitle} className="arqdor-approved-badge">

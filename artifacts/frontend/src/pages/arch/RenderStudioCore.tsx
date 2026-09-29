@@ -1795,10 +1795,22 @@ function RenderStudioInner() {
     if (sru) setRenderUrl(normalizeRenderMediaUrl(sru));
     if (sv)  try {
       const restored = JSON.parse(sv) as RenderVersion[];
-      setVersions(Array.isArray(restored) ? restored.map(normalizeRenderVersion) : []);
+      const normalized = Array.isArray(restored) ? restored.map(normalizeRenderVersion) : [];
+      setVersions(normalized);
+      const approvedVersion = normalized.find((version) => Boolean(version.approvedBy && version.approvedAt) || version.operationType === "approved");
+      if (approvedVersion) {
+        const approvedAt = approvedVersion.approvedAt ? new Date(approvedVersion.approvedAt) : new Date();
+        setApproved(true);
+        setApprovalRecord({
+          by: approvedVersion.approvedBy ?? "usuário autenticado",
+          at: approvedAt,
+          note: approvedVersion.approvalNote ?? "",
+        });
+        if (ss === "aprovar") setStep("especificacao");
+      }
     } catch {}
     if (siu) setImageDataUrl(siu);
-    if (ss)  setStep(ss);
+    if (ss && ss !== "aprovar") setStep(ss);
     // P1-11: orphan job recovery
     if (sri && !sru) {
       setIsRecovering(true);
@@ -2139,6 +2151,7 @@ function RenderStudioInner() {
   // P1-9: step click with confirmation guard
   function handleStepClick(s: Step) {
     if (stepIndex(s) < stepIndex("render") && renderUrl) { setPendingNavStep(s); return; }
+    if (s === "aprovar" && approved) { go("especificacao"); return; }
     go(s);
   }
 
