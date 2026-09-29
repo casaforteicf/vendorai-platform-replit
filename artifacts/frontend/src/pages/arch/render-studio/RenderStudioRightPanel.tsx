@@ -361,10 +361,26 @@ export function RenderStudioRightPanel({
                               )}
                             </button>
                             {selectedMaterial && (
-                              <div style={{ fontSize: 10, color: D.dim, padding: "4px 8px", borderRadius: 6, background: D.card, border: `1px solid ${D.border}` }}>
-                                {selectedMaterial.fornecedor && <div>Fornecedor: {selectedMaterial.fornecedor}</div>}
-                                {selectedMaterial.referencia && <div>Ref: {selectedMaterial.referencia}</div>}
-                                <div style={{ marginTop: 2, color: D.amber, fontSize: 9 }}>Vínculo comercial registrado na versão ✓</div>
+                              <div style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 10, color: D.dim, padding: "6px 8px", borderRadius: 6, background: D.card, border: `1px solid ${D.border}` }}>
+                                {selectedMaterial.imagens?.[0] ? (
+                                  <img
+                                    src={normalizeRenderMediaUrl(selectedMaterial.imagens[0])}
+                                    alt={selectedMaterial.nome}
+                                    style={{ width: 46, height: 46, borderRadius: 6, objectFit: "cover", border: `1px solid ${D.border}`, flexShrink: 0 }}
+                                  />
+                                ) : (
+                                  <div style={{ width: 46, height: 46, borderRadius: 6, background: D.inputBg, border: `1px dashed ${D.amber}`, display: "flex", alignItems: "center", justifyContent: "center", color: D.amber, fontSize: 9, textAlign: "center", flexShrink: 0 }}>sem<br/>imagem</div>
+                                )}
+                                <div style={{ minWidth: 0, flex: 1 }}>
+                                  {selectedMaterial.fornecedor && <div>Fornecedor: {selectedMaterial.fornecedor}</div>}
+                                  {selectedMaterial.referencia && <div>Ref: {selectedMaterial.referencia}</div>}
+                                  {selectedMaterial.imagens?.[0] ? (
+                                    <div style={{ marginTop: 3, color: D.green, fontSize: 9 }}>✓ Imagem real será usada como referência visual</div>
+                                  ) : (
+                                    <div style={{ marginTop: 3, color: D.amber, fontSize: 9 }}>Adicione uma imagem principal antes de aplicar</div>
+                                  )}
+                                  <div style={{ marginTop: 2, color: D.amber, fontSize: 9 }}>Vínculo comercial registrado na versão ✓</div>
+                                </div>
                               </div>
                             )}
                           </div>
@@ -388,12 +404,21 @@ export function RenderStudioRightPanel({
                           disabled={
                             loading ||
                             !renderUrl ||
-                            (melhoriaMode !== "improve" && !melhoriaPrompt.trim() && !(melhoriaMode === "change-material" && selectedMaterial))
+                            (melhoriaMode === "change-material" && (
+                              selections.length === 0 ||
+                              (selectedMaterial ? !selectedMaterial.imagens?.[0] : !melhoriaPrompt.trim())
+                            )) ||
+                            (melhoriaMode === "change-lighting" && !melhoriaPrompt.trim())
                           }
                           onClick={onApplyMelhoria}
                         >
                           {loading ? "Aplicando…" : melhoriaMode === "improve" ? "✦ Gerar versão refinada" : melhoriaMode === "change-material" ? "✦ Aplicar troca de material" : "✦ Aplicar nova iluminação"}
                         </DkBtn>
+                        {melhoriaMode === "change-material" && selections.length === 0 && (
+                          <div style={{ padding: "7px 9px", borderRadius: 7, background: `${D.amber}0D`, border: `1px solid ${D.amber}33`, color: D.amber, fontSize: 10, lineHeight: 1.4 }}>
+                            1. Marque a região no canvas · 2. ajuste tamanho/posição · 3. escolha o material · 4. aplique.
+                          </div>
+                        )}
                         {!loading && <DkBtn variant="ghost" small onClick={onNextStep}>Ver versões →</DkBtn>}
                       </>
                     )}
