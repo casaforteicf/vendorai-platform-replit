@@ -249,6 +249,8 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
   const [proposalStagesOpen, setProposalStagesOpen] = useState(false);
   const [proposalVisualCenterOpen, setProposalVisualCenterOpen] = useState(false);
   const [proposalFallbackLibraryOpen, setProposalFallbackLibraryOpen] = useState(false);
+  const [proposalClientContextOpen, setProposalClientContextOpen] = useState(false);
+  const [proposalModelOpen, setProposalModelOpen] = useState(false);
   const [proposalDraftSavedAt, setProposalDraftSavedAt] = useState<string | null>(null);
 
   // Refinement dialog
@@ -1984,30 +1986,40 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
   return (
     <div className="flex min-w-0 max-w-full flex-col gap-4 overflow-x-hidden">
       {/* Contexto específico do cliente — não altera o modelo da empresa */}
-      <Card data-testid="card-proposta-config" className="order-2">
-        <CardHeader className="pb-3 min-w-0">
-          <CardTitle className="text-sm font-semibold flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <span className="flex min-w-0 items-center gap-2">
+      <Card data-testid="card-proposta-config" className="order-2 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setProposalClientContextOpen((value) => !value)}
+          className="flex w-full items-start justify-between gap-3 px-3 py-4 text-left sm:px-6"
+        >
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
               <Palette className="h-4 w-4" />
-              Contexto do cliente
-            </span>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-9 w-full text-xs gap-1 sm:h-7 sm:w-auto"
-              onClick={saveLeadFields}
-              disabled={savingLead}
-            >
-              {savingLead ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-              Salvar contexto
-            </Button>
-          </CardTitle>
-          <p className="text-xs text-muted-foreground">
-            O modelo e a marca da empresa são definidos no Studio/Kit da Marca. Aqui ficam apenas dados e personalizações específicas deste cliente.
-          </p>
-        </CardHeader>
-
-        <CardContent className="space-y-5">
+              <p className="text-sm font-semibold">Contexto do cliente</p>
+              {mercadoSegmento && <Badge variant="outline" className="text-[10px]">{mercadoSegmento}</Badge>}
+              {logoUrl && <Badge variant="outline" className="text-[10px]">logo específico</Badge>}
+              {websiteUrl && <Badge variant="outline" className="text-[10px]">site informado</Badge>}
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Dados específicos deste cliente. O modelo e a marca da empresa continuam no Studio e no Kit da Marca.
+            </p>
+          </div>
+          {proposalClientContextOpen ? <ChevronUp className="mt-0.5 h-4 w-4 shrink-0" /> : <ChevronDown className="mt-0.5 h-4 w-4 shrink-0" />}
+        </button>
+        {proposalClientContextOpen && (
+          <CardContent className="space-y-5 border-t px-3 pb-4 pt-4 sm:px-6">
+            <div className="flex justify-end">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 gap-1 text-xs"
+                onClick={saveLeadFields}
+                disabled={savingLead}
+              >
+                {savingLead ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                Salvar contexto
+              </Button>
+            </div>
           <section className="space-y-3">
             <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
               <Palette className="h-3.5 w-3.5 text-muted-foreground" />
@@ -2117,9 +2129,10 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
             </div>
           </section>
 
-        </CardContent>
+        
+          </CardContent>
+        )}
       </Card>
-
       {/* Orçamento e revisões — origem comercial da proposta */}
       <div className="order-1">
         <OrcamentoRevisoesCard leadId={leadId} tenantId={tenantId} onCreateBudget={onCreateBudget} />
@@ -2146,7 +2159,29 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
               {generating ? "Gerando..." : "Gerar Proposta"}
             </Button>
           </CardTitle>
-          {/* Modelo inteligente modular do tenant */}
+          {/* Modelo da empresa — compacto no fluxo diário */}
+          <div className="mt-2 overflow-hidden rounded-xl border bg-muted/20">
+            <button
+              type="button"
+              onClick={() => setProposalModelOpen((value) => !value)}
+              className="flex w-full items-start justify-between gap-3 p-3 text-left"
+            >
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Settings2 className="h-4 w-4 text-muted-foreground" />
+                  <p className="text-xs font-semibold">Modelo da empresa</p>
+                  <Badge variant="outline" className="max-w-[220px] truncate text-[10px]">
+                    {proposalComposerTemplate?.name || "Automático"}
+                  </Badge>
+                </div>
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  No uso diário, apenas confirme o modelo. Abra para trocar ou editar o padrão da empresa.
+                </p>
+              </div>
+              {proposalModelOpen ? <ChevronUp className="mt-0.5 h-4 w-4 shrink-0" /> : <ChevronDown className="mt-0.5 h-4 w-4 shrink-0" />}
+            </button>
+            {proposalModelOpen && (
+              <div className="space-y-3 border-t p-3">
           <div className="mt-2 space-y-2 rounded-lg border bg-muted/20 p-2.5">
             <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
@@ -2219,6 +2254,10 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
             )}
           </div>
 
+
+              </div>
+            )}
+          </div>
           {/* Referência documental — fica em avançado para não poluir o fluxo principal */}
           {(proposalLineTemplates.length > 0 || hasProposalTemplate) && (
             <div className="mt-2 rounded-lg border bg-background/60">
@@ -3276,6 +3315,33 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
             </div>
           )}
 
+          <div className="mb-4 hidden items-center justify-between gap-3 rounded-xl border bg-muted/20 p-3 sm:flex">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-xs font-semibold">Pronto para gerar</p>
+                <Badge
+                  variant="outline"
+                  className={proposalComposerBlockingIssues.length === 0
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : "border-red-200 bg-red-50 text-red-700"}
+                >
+                  {proposalComposerBlockingIssues.length === 0 ? "sem bloqueios" : String(proposalComposerBlockingIssues.length) + " bloqueio(s)"}
+                </Badge>
+              </div>
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                Revise os pontos pendentes e gere somente quando orçamento, formato e imagens obrigatórias estiverem coerentes.
+              </p>
+            </div>
+            <Button
+              type="button"
+              className="h-9 shrink-0 gap-1.5"
+              onClick={() => openRefineDialog()}
+              disabled={generating || selectedOrcamentoId === "__none__"}
+            >
+              {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+              {generating ? "Gerando..." : "Revisar e gerar"}
+            </Button>
+          </div>
           {loadingProposals ? (
             <div className="space-y-2">
               {[1, 2].map((i) => (
@@ -3291,7 +3357,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                 size="sm"
                 className="gap-1"
                 onClick={() => openRefineDialog()}
-                disabled={generating}
+                disabled={generating || selectedOrcamentoId === "__none__"}
               >
                 {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
                 Gerar primeira proposta
