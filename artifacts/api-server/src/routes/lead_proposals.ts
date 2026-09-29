@@ -1714,127 +1714,18 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
         .where(eq(propostasTable.id, orc.id));
 
       if (builderWantsStageImages) {
-        const itensOrcamento = orc.itens ?? [];
-        const hasStructuredStages = itensOrcamento.some(
-          (item) => item.etapaId || item.etapaNome || item.etapaOrdem,
-        );
+        const stageImages =
+          mergedPresentation.imagensEtapas && typeof mergedPresentation.imagensEtapas === "object"
+            ? mergedPresentation.imagensEtapas as Record<string, string>
+            : {};
 
-        if (hasStructuredStages) {
-          const stageImages: Record<string, string> = {
-            ...((storedPresentation.imagensEtapas && typeof storedPresentation.imagensEtapas === "object")
-              ? storedPresentation.imagensEtapas
-              : {}),
-          };
-
-          const groups = Array.from(
-            itensOrcamento.reduce((map, item, index) => {
-              const ordem = Number(item.etapaOrdem ?? index + 1);
-              const nome = String(item.etapaNome ?? `Etapa ${ordem}`);
-              const id = String(item.etapaId ?? `__stage_${ordem}_${nome}`);
-              const current = map.get(id) ?? {
-                id,
-                ordem,
-                nome,
-                itens: [] as typeof itensOrcamento,
-              };
-              current.itens.push(item);
-              map.set(id, current);
-              return map;
-            }, new Map<string, { id: string; ordem: number; nome: string; itens: typeof itensOrcamento }>()),
-          )
-            .map(([, group]) => group)
-            .sort((a, b) => a.ordem - b.ordem);
-
-          const missingGroups = groups.filter((group) => !stageImages[group.id]).slice(0, 12);
-          let generatedAny = false;
-
-          for (const group of missingGroups) {
-            const scope = group.itens
-              .slice(0, 10)
-              .map((item) => {
-                const desc = item.descricao
-                  ? String(item.descricao).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()
-                  : "";
-                return `- ${item.nome}${desc ? `: ${desc.slice(0, 180)}` : ""}`;
-              })
-              .join("\n");
-
-            const normalizedStageContext = `${group.nome} ${scope}`
-              .normalize("NFD")
-              .replace(/[\u0300-\u036f]/g, "")
-              .toLowerCase();
-
-            const technicalImageRule = proposalStageImageRule(normalizedStageContext);
-            const visualDirection = proposalHouseVisualDirection(mergedPresentation);
-
-            const stagePrompt = [
-              "Fotografia documental hiper-realista de construção civil no Brasil, composição horizontal 3:2, aparência de fotografia profissional de obra real.",
-              `Representar visualmente a etapa "${group.nome}" de uma obra residencial de padrão alto, sem transformar a imagem em render conceitual e sem inventar elementos incompatíveis com a etapa.`,
-              "Mostrar somente o estado construtivo coerente com esta fase: materiais, sistemas, equipamentos e profissionais que normalmente estariam presentes neste momento da execução.",
-              "Trabalhadores com EPI adequado, canteiro organizado, luz natural realista, materiais com escala correta, geometria consistente, sem objetos deformados.",
-              scope ? `Escopo contratado desta etapa:\n${scope}` : "",
-              technicalImageRule,
-              visualDirection,
-              "A imagem precisa representar o conteúdo REAL desta etapa do orçamento. Não introduza método construtivo, material ou serviço incompatível com o escopo informado.",
-              "A imagem é apenas representativa da etapa, não deve fingir ser foto do projeto real do cliente.",
-              "Sem textos, sem letras, sem placas legíveis, sem logotipos, sem marcas d'água, sem molduras e sem antes/depois.",
-            ].filter(Boolean).join("\n");
-
-            try {
-              const { urls } = await generateImage(tenantId, "image_generator", stagePrompt, {
-                model: "gpt-image-1",
-                size: "1536x1024",
-                n: 1,
-                log: req.log,
-              });
-              const providerUrl = urls[0];
-              if (!providerUrl) throw new Error("IA não retornou imagem");
-
-              const imageResponse = await fetch(providerUrl);
-              if (!imageResponse.ok) {
-                throw new Error(`Falha ao baixar imagem gerada (${imageResponse.status})`);
-              }
-
-              const buffer = Buffer.from(await imageResponse.arrayBuffer());
-              const contentType = imageResponse.headers.get("content-type") ?? "image/png";
-              const objectPath = await objectStorage.savePrivateBuffer(
-                buffer,
-                contentType,
-                `proposta-etapa-${orc.id}-${group.ordem}.png`,
-              );
-              stageImages[group.id] = `/api/storage${objectPath}`;
-              generatedAny = true;
-            } catch (err) {
-              req.log.warn(
-                { err, propostaId: orc.id, stageId: group.id },
-                "automatic proposal stage image generation failed (non-fatal)",
-              );
-            }
-          }
-
-          mergedPresentation = {
-            ...mergedPresentation,
-            imagensEtapas: stageImages,
-          };
-
-          if (generatedAny) {
-            await db
-              .update(propostasTable)
-              .set({
-                apresentacao: {
-                  ...(orc.apresentacao ?? {}),
-                  ...mergedPresentation,
-                  imagensEtapas: stageImages,
-                },
-                updatedAt: new Date(),
-              })
-              .where(eq(propostasTable.id, orc.id));
-          }
-
-          for (const imageUrl of Object.values(stageImages)) {
-            if (bodyImagens.length >= 2) break;
-            if (imageUrl && !bodyImagens.includes(imageUrl)) bodyImagens.push(imageUrl);
-          }
+        // Safety rule: proposal generation must NEVER create stage images implicitly.
+        // Images are generated only by the explicit stage-image action, which is
+        // limited to 3 selected stages per user action. Generation here only reuses
+        // images that were already linked to the selected budget/proposal.
+        for (const imageUrl of Object.values(stageImages)) {
+          if (bodyImagens.length >= 2) break;
+          if (imageUrl && !bodyImagens.includes(imageUrl)) bodyImagens.push(imageUrl);
         }
       }
 
