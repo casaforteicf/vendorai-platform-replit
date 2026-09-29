@@ -790,6 +790,48 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
   });
 
   const selectedOrcamento = proposalBudgetOptions.find((orc) => orc.id === selectedOrcamentoId) ?? null;
+
+  type ProposalPreflightPending = {
+    code: string;
+    severity: "blocker" | "warning";
+    source: "business_plan" | "company" | "client" | "catalog" | "budget" | "media";
+    field?: string;
+    message: string;
+  };
+  type ProposalPreflight = {
+    ready: boolean;
+    blockers: number;
+    warnings: number;
+    pending: ProposalPreflightPending[];
+  };
+
+  const { data: proposalPreflight, isFetching: proposalPreflightLoading } = useQuery<ProposalPreflight>({
+    queryKey: ["proposal-preflight", leadId, selectedOrcamentoId],
+    queryFn: async () => {
+      if (!selectedOrcamentoId || selectedOrcamentoId === "__none__") {
+        return {
+          ready: false,
+          blockers: 1,
+          warnings: 0,
+          pending: [{
+            code: "BUDGET_MISSING",
+            severity: "blocker" as const,
+            source: "budget" as const,
+            message: "Selecione um orçamento/revisão antes de gerar a proposta.",
+          }],
+        };
+      }
+      const response = await fetch(
+        api(`/api/leads/${leadId}/proposals/preflight?propostaId=${encodeURIComponent(selectedOrcamentoId)}`),
+        { headers },
+      );
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error ?? "Não foi possível validar a proposta.");
+      return body as ProposalPreflight;
+    },
+    enabled: !!leadId && !!token && selectedOrcamentoId !== "__none__",
+    staleTime: 15_000,
+  });
   const selectedStageImages: Record<string, string> =
     selectedOrcamento?.apresentacao?.imagensEtapas && typeof selectedOrcamento.apresentacao.imagensEtapas === "object"
       ? selectedOrcamento.apresentacao.imagensEtapas
@@ -2289,6 +2331,12 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
     !item.ok && !proposalComposerBlockingIssues.some((blocking) => blocking.key === item.key),
   );
 
+  const proposalPreflightPending = proposalPreflight?.pending ?? [];
+  const proposalPreflightBlockers = proposalPreflightPending.filter((item) => item.severity === "blocker");
+  const proposalPreflightWarnings = proposalPreflightPending.filter((item) => item.severity === "warning");
+  const proposalGenerationBlocked =
+    proposalComposerBlockingIssues.length > 0 || proposalPreflightBlockers.length > 0;
+
 
   function openRefineDialog(fromVersion?: number) {
     setRefineNotes("");
@@ -2302,6 +2350,33 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
       toast({
         title: "Selecione o orçamento",
         description: "A proposta precisa estar vinculada a um orçamento.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const preflightResponse = await fetch(
+        api(`/api/leads/${leadId}/proposals/preflight?propostaId=${encodeURIComponent(selectedOrcamentoId)}`),
+        { headers },
+      );
+      const preflightBody = await preflightResponse.json().catch(() => null);
+      if (!preflightResponse.ok) throw new Error(preflightBody?.error ?? "Falha ao validar a proposta.");
+      const blockers = Array.isArray(preflightBody?.pending)
+        ? preflightBody.pending.filter((item: any) => item?.severity === "blocker")
+        : [];
+      if (blockers.length > 0) {
+        toast({
+          title: "Corrija as pendências antes de gerar",
+          description: blockers.map((item: any) => item.message).join(" · ").slice(0, 420),
+          variant: "destructive",
+        });
+        return;
+      }
+    } catch (error) {
+      toast({
+        title: "Não foi possível validar a proposta",
+        description: error instanceof Error ? error.message : "Tente novamente.",
         variant: "destructive",
       });
       return;
@@ -5245,6 +5320,45 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                   ))}
                 </div>
 
+                <div className="mt-3 rounded-lg border bg-background p-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] font-semibold">Dados e fontes</p>
+                    <Badge variant="outline" className={
+                      proposalPreflightBlockers.length > 0
+                        ? "border-red-200 bg-red-50 text-[10px] text-red-700"
+                        : proposalPreflightWarnings.length > 0
+                          ? "border-amber-200 bg-amber-50 text-[10px] text-amber-700"
+                          : "border-emerald-200 bg-emerald-50 text-[10px] text-emerald-700"
+                    }>
+                      {proposalPreflightLoading
+                        ? "validando…"
+                        : proposalPreflightBlockers.length > 0
+                          ? `${proposalPreflightBlockers.length} bloqueio(s)`
+                          : proposalPreflightWarnings.length > 0
+                            ? `${proposalPreflightWarnings.length} aviso(s)`
+                            : "fontes completas"}
+                    </Badge>
+                  </div>
+                  {proposalPreflightPending.length > 0 ? (
+                    <div className="mt-2 space-y-1.5">
+                      {proposalPreflightPending.slice(0, 8).map((item) => (
+                        <div
+                          key={`${item.code}-${item.field ?? "none"}`}
+                          className={`rounded-md border px-2 py-1.5 text-[10px] ${item.severity === "blocker"
+                            ? "border-red-200 bg-red-50 text-red-700"
+                            : "border-amber-200 bg-amber-50 text-amber-800"}`}
+                        >
+                          <span className="font-semibold">{item.source.replace("_", " ")}:</span> {item.message}
+                        </div>
+                      ))}
+                    </div>
+                  ) : !proposalPreflightLoading ? (
+                    <p className="mt-2 text-[10px] text-emerald-700">
+                      Cliente, orçamento e fontes essenciais validados.
+                    </p>
+                  ) : null}
+                </div>
+
                 {(proposalComposerWarnings.length > 0 || proposalComposerBlockingIssues.length > 0) && (
                   <div className="mt-3 flex flex-wrap gap-2">
                     {[...proposalComposerWarnings, ...proposalComposerBlockingIssues].some((item) => item.key === "cover" || item.key === "stages") && (
@@ -5352,7 +5466,7 @@ ${chip}`
                 variant="ghost"
                 size="sm"
                 onClick={() => generateProposal(undefined)}
-                disabled={generating || proposalComposerBlockingIssues.length > 0}
+                disabled={generating || proposalGenerationBlocked}
               >
                 {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
                 Gerar sem instruções
@@ -5362,7 +5476,7 @@ ${chip}`
               size="sm"
               className="gap-1.5 bg-violet-600 hover:bg-violet-700"
               onClick={() => generateProposal(refineNotes || undefined)}
-              disabled={generating || (refineFromVersion == null && proposalComposerBlockingIssues.length > 0)}
+              disabled={generating || (refineFromVersion == null && proposalGenerationBlocked)}
             >
               {generating ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
