@@ -169,7 +169,12 @@ async function waitForRenderCompletion(renderId: string, timeoutAttempts = 90) {
   while (attempts < timeoutAttempts) {
     await new Promise((r) => setTimeout(r, 2000));
     const data = await apiGet(`/api/arch/ai-render/${renderId}`);
-    if (data.status === "concluido" && data.result_image_url) return data;
+    if (data.status === "concluido" && data.file_available !== false && (data.display_url || data.result_image_url)) {
+      return { ...data, result_image_url: data.display_url || data.result_image_url };
+    }
+    if (data.status === "concluido" && data.file_available === false) {
+      throw new Error("O arquivo do render não está disponível no Storage. Gere uma nova versão.");
+    }
     if (data.status === "erro") throw new Error(data.erro_msg ?? "Erro no processamento do render");
     attempts++;
   }
@@ -1798,11 +1803,12 @@ function RenderStudioInner() {
       setIsRecovering(true);
       apiGet(`/api/arch/ai-render/${sri}`)
         .then((data) => {
-          if (data.status === "concluido" && data.result_image_url) {
-            setRenderUrl(normalizeRenderMediaUrl(data.result_image_url));
-            const v: RenderVersion = { id: sri, url: normalizeRenderMediaUrl(data.result_image_url), label: "Versão 1 · Original", operationType: "initial", createdAt: new Date() };
+          if (data.status === "concluido" && data.file_available !== false && (data.display_url || data.result_image_url)) {
+            const recoveredUrl = data.display_url || data.result_image_url;
+            setRenderUrl(normalizeRenderMediaUrl(recoveredUrl));
+            const v: RenderVersion = { id: sri, url: normalizeRenderMediaUrl(recoveredUrl), label: "Versão 1 · Original", operationType: "initial", createdAt: new Date() };
             setVersions([v]);
-            sessionStorage.setItem(SK.renderUrl, normalizeRenderMediaUrl(data.result_image_url));
+            sessionStorage.setItem(SK.renderUrl, normalizeRenderMediaUrl(recoveredUrl));
             setSaveState("saved"); setLastSavedAt(new Date());
           }
         })

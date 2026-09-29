@@ -22,11 +22,17 @@ async function renderImageBuffer(url: string): Promise<{ buffer: Buffer; mime: s
     if (!match) throw new Error("Render em data URL inválido");
     return { buffer: Buffer.from(match[2]!, "base64"), mime: match[1]! };
   }
-  if (url.startsWith("/api/storage/objects/")) {
-    const rawPath = "/" + url.replace(/^\/api\/storage\/objects\//, "objects/");
-    const fetched = await (storage as any).getPrivateBuffer?.(rawPath);
-    if (!fetched?.buf) throw new Error("Não foi possível carregar o render salvo");
-    return { buffer: fetched.buf, mime: fetched.mime ?? "image/png" };
+  if (url.startsWith("/api/storage/objects/") || url.startsWith("/objects/")) {
+    const rawPath = url.startsWith("/api/storage/objects/")
+      ? `/objects/${url.slice("/api/storage/objects/".length)}`
+      : url;
+    const file = await storage.getObjectEntityFile(rawPath);
+    const [[buffer], metadata] = await Promise.all([
+      file.download(),
+      file.getMetadata(),
+    ]);
+    if (!buffer.length) throw new Error("Não foi possível carregar o render salvo");
+    return { buffer, mime: metadata[0].contentType ?? "image/png" };
   }
   const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
   if (!response.ok) throw new Error(`Falha ao carregar render (${response.status})`);

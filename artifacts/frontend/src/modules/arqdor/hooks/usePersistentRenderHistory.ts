@@ -29,6 +29,8 @@ export type PersistentRenderVersion = {
   motor: string | null;
   originalImageUrl: string | null;
   resultImageUrl: string | null;
+  displayUrl: string | null;
+  fileAvailable: boolean;
   maskZones: string[];
   maskFileUrl: string | null;
   composited: boolean;
@@ -58,6 +60,8 @@ type ApiRenderVersion = {
   motor?: string | null;
   original_image_url?: string | null;
   result_image_url?: string | null;
+  display_url?: string | null;
+  file_available?: boolean | null;
   mask_zones?: string[] | null;
   mask_file_url?: string | null;
   composited?: boolean | null;
@@ -98,6 +102,8 @@ function mapVersion(v: ApiRenderVersion, index: number): PersistentRenderVersion
     motor: v.motor ?? null,
     originalImageUrl: v.original_image_url ?? null,
     resultImageUrl: v.result_image_url ?? null,
+    displayUrl: v.display_url ?? v.result_image_url ?? null,
+    fileAvailable: v.file_available !== false,
     maskZones: Array.isArray(v.mask_zones) ? v.mask_zones : [],
     maskFileUrl: v.mask_file_url ?? null,
     composited: Boolean(v.composited),
@@ -167,17 +173,17 @@ export function usePersistentRenderHistory(projectId: string | null | undefined,
   }, [reload]);
 
   const completedVersions = useMemo(
-    () => versions.filter(v => v.status === "concluido" && Boolean(v.resultImageUrl)),
+    () => versions.filter(v => v.status === "concluido" && v.fileAvailable && Boolean(v.displayUrl || v.resultImageUrl)),
     [versions],
   );
 
   const approvedVersion = useMemo(
-    () => [...versions].reverse().find(v => v.operationType === "approved" || v.versionTag === "aprovado" || Boolean(v.approvedAt)) ?? null,
+    () => [...versions].reverse().find(v => v.fileAvailable && (v.operationType === "approved" || v.versionTag === "aprovado" || Boolean(v.approvedAt))) ?? null,
     [versions],
   );
 
   const latestVersion = useMemo(
-    () => [...versions].reverse().find(v => v.status === "concluido" && Boolean(v.resultImageUrl)) ?? null,
+    () => [...versions].reverse().find(v => v.status === "concluido" && v.fileAvailable && Boolean(v.displayUrl || v.resultImageUrl)) ?? null,
     [versions],
   );
 
