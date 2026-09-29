@@ -165,7 +165,6 @@ export function RenderStudioMaterialLibraryModal({ isOpen, onClose, onSelect }: 
   const [reference, setReference] = useState("");
   const [subcategory, setSubcategory] = useState("");
   const [materialCategory, setMaterialCategory] = useState("Tecido");
-  const [sharing, setSharing] = useState<"privado" | "parceiros" | "publico">("privado");
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
   const [savingMaterial, setSavingMaterial] = useState(false);
@@ -226,7 +225,6 @@ export function RenderStudioMaterialLibraryModal({ isOpen, onClose, onSelect }: 
     setReference("");
     setSubcategory("");
     setMaterialCategory(categoria || "Tecido");
-    setSharing("privado");
     setFiles([]);
     setPreviews([]);
     setImportError(null);
@@ -291,7 +289,7 @@ export function RenderStudioMaterialLibraryModal({ isOpen, onClose, onSelect }: 
           referencia: reference.trim() || undefined,
           categoria: materialCategory,
           subcategoria: subcategory.trim() || undefined,
-          compartilhamento: sharing,
+          compartilhamento: "publico",
         }),
       });
       const created = await createRes.json() as MaterialLibraryItem & { duplicate?: boolean; error?: string };
@@ -429,17 +427,12 @@ export function RenderStudioMaterialLibraryModal({ isOpen, onClose, onSelect }: 
               <input value={manufacturer} onChange={(e) => { setManufacturer(e.target.value); setImportError(null); }} placeholder="Fabricante *" aria-label="Fabricante" style={{ ...inputStyle, width: "100%" }} />
               <input value={line} onChange={(e) => { setLine(e.target.value); setImportError(null); }} placeholder="Linha / coleção *" aria-label="Linha" style={{ ...inputStyle, width: "100%" }} />
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
               <select value={materialCategory} onChange={(e) => setMaterialCategory(e.target.value)} aria-label="Categoria do material" style={{ ...inputStyle, width: "100%" }}>
                 {categorias.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
               </select>
               <input value={subcategory} onChange={(e) => setSubcategory(e.target.value)} placeholder="Subcategoria" aria-label="Subcategoria" style={{ ...inputStyle, width: "100%" }} />
               <input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Referência / código" aria-label="Referência" style={{ ...inputStyle, width: "100%" }} />
-              <select value={sharing} onChange={(e) => setSharing(e.target.value as typeof sharing)} aria-label="Compartilhamento" style={{ ...inputStyle, width: "100%" }}>
-                <option value="privado">Privado</option>
-                <option value="parceiros">Compartilhar com parceiros</option>
-                <option value="publico">Biblioteca compartilhada</option>
-              </select>
             </div>
 
             <div style={{ padding: "8px 10px", borderRadius: 8, background: D.inputBg, border: `1px solid ${D.border}`, fontSize: 9, color: D.dim, lineHeight: 1.5 }}>
@@ -590,7 +583,7 @@ export function RenderStudioMaterialLibraryModal({ isOpen, onClose, onSelect }: 
         )}
 
         <div style={{ padding: "9px 20px", borderTop: `1px solid ${D.border}`, flexShrink: 0, display: "flex", justifyContent: "space-between", gap: 12 }}>
-          <div style={{ fontSize: 9, color: D.dim }}>Cadastro único por fabricante + linha + referência/nome.</div>
+          <div style={{ fontSize: 9, color: D.dim }}>O material é salvo automaticamente na Biblioteca de Materiais compartilhada da empresa.</div>
           <div style={{ fontSize: 9, color: D.dim }}>Novas fotos melhoram o mesmo material; a principal pode ser trocada a qualquer momento.</div>
         </div>
       </div>
