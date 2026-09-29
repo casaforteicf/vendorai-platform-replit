@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, numeric, date, jsonb, uuid, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, numeric, date, jsonb, uuid, integer, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -160,6 +160,16 @@ export const comprasObrasTable = pgTable("compras_obras", {
   pedidoFornecedorId: uuid("pedido_fornecedor_id"),
   lancamentoFinanceiroId: text("lancamento_financeiro_id").references(() => obraLancamentosTable.id, { onDelete: "set null" }),
   origem: text("origem").notNull().default("manual"),
+  budgetId: uuid("budget_id"),
+  budgetItemId: uuid("budget_item_id"),
+  specObjectId: uuid("spec_object_id"),
+  escopoVersao: integer("escopo_versao").notNull().default(1),
+  escopoHash: text("escopo_hash"),
+  escopoSnapshot: jsonb("escopo_snapshot").$type<Record<string, unknown>>().notNull().default({}),
+  valorVendaSnapshot: numeric("valor_venda_snapshot", { precision: 15, scale: 2 }).notNull().default("0"),
+  custoEstimadoSnapshot: numeric("custo_estimado_snapshot", { precision: 15, scale: 2 }).notNull().default("0"),
+  custoConfirmado: numeric("custo_confirmado", { precision: 15, scale: 2 }),
+  cotacaoDesatualizada: boolean("cotacao_desatualizada").notNull().default(false),
   documentos: jsonb("documentos").$type<Array<Record<string, unknown>>>().notNull().default([]),
   observacoes: text("observacoes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
