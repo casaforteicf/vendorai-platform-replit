@@ -351,7 +351,7 @@ export function useRenderStudioController() {
     if (!renderId || loading) return;
 
     const automaticQualityPrompt =
-      "Refine this architectural render to premium photorealistic quality. Increase true visual definition, fine material texture, edge clarity, realistic reflections, global illumination, shadow quality, tonal range and micro-detail. Preserve the exact architecture, geometry, layout, camera, perspective, openings, cabinetry, furniture positions, circulation and proportions. Do not redesign, crop, zoom, mirror or change the composition.";
+      "Re-render this image to premium photorealistic architectural-visualization quality, comparable to high-end editorial interior photography. Increase physically based material realism, fine wood/stone/textile micro-texture, accurate roughness and specular response, realistic glass and metal reflections, natural global illumination, soft contact shadows, ambient bounce, tonal separation, crisp edge definition and fine photographic detail. Remove flat CG shading, plastic-looking materials, grey haze, blur, smeared textures and low-resolution appearance. Preserve the exact architecture, geometry, layout, camera, perspective, openings, cabinetry, furniture positions, circulation, colors and proportions. Do not redesign, crop, zoom, mirror or change the composition.";
 
     const effectivePrompt = melhoriaMode === "improve"
       ? [automaticQualityPrompt, melhoriaPrompt.trim()].filter(Boolean).join(" ")
