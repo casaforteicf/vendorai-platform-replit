@@ -126,6 +126,12 @@ export const propostaCronogramaEtapaSchema = z.object({
   fases: z.array(propostaCronogramaFaseSchema).default([]),
   observacao: z.string().optional(),
   marcoPagamento: z.string().optional(),
+  // Configuração comercial de apresentação ao cliente por etapa.
+  // Permite exibir uma referência em R$/m² e marcar valores como previsão
+  // sujeita a recálculo quando houver alteração do projeto.
+  valorReferenciaM2: z.number().nonnegative().optional(),
+  mostrarOrcamentoPrevisto: z.boolean().optional(),
+  reajusteSeAlteracao: z.boolean().optional(),
 });
 
 export type PropostaCronogramaEtapa = z.infer<typeof propostaCronogramaEtapaSchema>;

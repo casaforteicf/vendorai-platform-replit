@@ -1895,6 +1895,9 @@ type ProposalStageSchedule = {
   fases?: ProposalStagePhase[];
   observacao?: string;
   marcoPagamento?: string;
+  valorReferenciaM2?: number;
+  mostrarOrcamentoPrevisto?: boolean;
+  reajusteSeAlteracao?: boolean;
 };
 
 function proposalDate(value?: string) {
@@ -4962,6 +4965,56 @@ function newFreeItem(): FreeItem {
                                     [etapa.id]: { ...(prev[etapa.id] ?? {}), marcoPagamento: event.target.value || undefined },
                                   }))}
                                 />
+                              </div>
+                            </div>
+
+                            <div className="grid gap-2 rounded-md border bg-muted/20 p-3 md:grid-cols-[180px_1fr_1fr] md:items-center">
+                              <div className="space-y-1">
+                                <Label className="text-xs">Referência comercial (R$/m²)</Label>
+                                <BudgetMoneyInput
+                                  value={schedule.valorReferenciaM2}
+                                  onChange={(value) => setProposalStageSchedule((prev) => ({
+                                    ...prev,
+                                    [etapa.id]: {
+                                      ...(prev[etapa.id] ?? {}),
+                                      valorReferenciaM2: value && value > 0 ? value : undefined,
+                                    },
+                                  }))}
+                                  placeholder="Ex.: 185,00"
+                                />
+                              </div>
+                              <div className="flex items-center gap-3 rounded-md border bg-background px-3 py-2.5">
+                                <Switch
+                                  checked={schedule.mostrarOrcamentoPrevisto ?? false}
+                                  onCheckedChange={(checked) => setProposalStageSchedule((prev) => ({
+                                    ...prev,
+                                    [etapa.id]: {
+                                      ...(prev[etapa.id] ?? {}),
+                                      mostrarOrcamentoPrevisto: checked,
+                                      reajusteSeAlteracao: checked ? (prev[etapa.id]?.reajusteSeAlteracao ?? true) : prev[etapa.id]?.reajusteSeAlteracao,
+                                    },
+                                  }))}
+                                />
+                                <div>
+                                  <p className="text-xs font-medium">Mostrar como orçamento previsto</p>
+                                  <p className="text-[11px] text-muted-foreground">Indica ao cliente que o valor considera o projeto atual.</p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3 rounded-md border bg-background px-3 py-2.5">
+                                <Switch
+                                  checked={schedule.reajusteSeAlteracao ?? false}
+                                  onCheckedChange={(checked) => setProposalStageSchedule((prev) => ({
+                                    ...prev,
+                                    [etapa.id]: {
+                                      ...(prev[etapa.id] ?? {}),
+                                      reajusteSeAlteracao: checked,
+                                    },
+                                  }))}
+                                />
+                                <div>
+                                  <p className="text-xs font-medium">Reajustar se o projeto mudar</p>
+                                  <p className="text-[11px] text-muted-foreground">Medidas, materiais, especificações ou quantitativos alterados podem recalcular o valor.</p>
+                                </div>
                               </div>
                             </div>
 
