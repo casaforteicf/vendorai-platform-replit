@@ -2625,6 +2625,27 @@ export function renderProposalHtml(json: unknown, theme: {
     ...builderVisualImages,
     ...(imagens || []).filter((url): url is string => typeof url === "string" && url.trim().length > 0),
   ];
+
+  // Studio de Propostas é a fonte de verdade quando existe um modelo modular.
+  // Cada módulo ativo gera exatamente uma página, na mesma ordem salva no Studio.
+  if (builder && Array.isArray(builder.modules) && builder.modules.length > 0) {
+    const studioHtml = renderStudioOrderedProposal({
+      json: d,
+      theme,
+      logoUrl,
+      clientName,
+      tenantName,
+      websiteUrl,
+      tenantLogoUrl,
+      imagens: visualImages,
+      orcamento,
+      contact,
+      builder,
+    });
+    if (studioHtml) return studioHtml;
+  }
+
+  // Compatibilidade para tenants antigos sem Studio configurado.
   if (builder?.proposalKind === "construction_project" && orcamento) {
     return renderConstructionProposalLayout({
       json: d,
