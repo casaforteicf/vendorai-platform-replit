@@ -576,6 +576,47 @@ export interface RenderJobParams {
 
 const MAX_RETENTATIVAS = 2;
 
+function nearestRenderAspectRatio(width: number, height: number): string {
+  const ratio = width / Math.max(1, height);
+  const supported = [
+    ["21:9", 21 / 9],
+    ["16:9", 16 / 9],
+    ["3:2", 3 / 2],
+    ["4:3", 4 / 3],
+    ["1:1", 1],
+    ["3:4", 3 / 4],
+    ["2:3", 2 / 3],
+    ["9:16", 9 / 16],
+    ["9:21", 9 / 21],
+  ] as const;
+  return supported.reduce((best, candidate) =>
+    Math.abs(candidate[1] - ratio) < Math.abs(best[1] - ratio) ? candidate : best
+  )[0];
+}
+
+async function enhanceFinalRender(buffer: Buffer): Promise<Buffer> {
+  const metadata = await sharp(buffer).metadata();
+  const width = metadata.width ?? 0;
+  const height = metadata.height ?? 0;
+  if (!width || !height) return buffer;
+
+  const longest = Math.max(width, height);
+  const targetLongest = Math.min(2048, Math.max(1536, longest));
+  const scale = targetLongest / longest;
+
+  return sharp(buffer)
+    .resize({
+      width: Math.round(width * scale),
+      height: Math.round(height * scale),
+      fit: "fill",
+      kernel: sharp.kernel.lanczos3,
+      withoutEnlargement: false,
+    })
+    .sharpen({ sigma: 0.8, m1: 0.6, m2: 2.0, x1: 2.0, y2: 10, y3: 20 })
+    .png({ compressionLevel: 6, adaptiveFiltering: true })
+    .toBuffer();
+}
+
 export async function processRenderJob(params: RenderJobParams): Promise<void> {
   const {
     renderId, tenantId: tid, mode, originalUrl, maskZones, maskFileBase64, maskCoordinates,
@@ -624,6 +665,7 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
       const generated = await generateRenderPreserve({
         imageDataUrl: originalDataUrl,
         prompt,
+        aspectRatio: nearestRenderAspectRatio(width, height),
         logger,
         signal: params.signal,
         resumePredictionId: params.resumePredictionId,
@@ -782,13 +824,15 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
       }
     }
 
-    // ── 5. Salvar resultado no storage ─────────────────────────────────────
+    // ── 5. Refino técnico + salvar resultado em alta resolução ─────────────
+    const finalResultBuf = await enhanceFinalRender(resultBuf);
+    const finalMeta = await sharp(finalResultBuf).metadata();
 
     const captured = await captureGeneratedMedia({
       tenantId: tid,
       title: `Arqdor · ${ambiente || "Render arquitetônico"}`,
       operation: "arqdor_render",
-      buffer: resultBuf,
+      buffer: finalResultBuf,
       mimeType: "image/png",
       type: "image",
       originalFilename: `arch-ai-render-${renderId}.png`,
@@ -802,6 +846,9 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
         mode,
         motor,
         generatedByAi: true,
+        finalWidth: finalMeta.width ?? null,
+        finalHeight: finalMeta.height ?? null,
+        qualityPipeline: "hq-lanczos-sharpen-v1",
       },
     });
     // Persistimos a referência canônica do objeto. A API converte para display_url
@@ -821,7 +868,12 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
       })
       .where(ownedRender);
 
-    logger?.info({ renderId, motor }, "arch/ai-render: concluído com sucesso");
+    logger?.info({
+      renderId,
+      motor,
+      finalWidth: finalMeta.width,
+      finalHeight: finalMeta.height,
+    }, "arch/ai-render: concluído com sucesso");
 
   } catch (err: any) {
     logger?.error({ err, renderId }, "arch/ai-render: erro no job");
