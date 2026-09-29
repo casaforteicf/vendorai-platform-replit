@@ -15,7 +15,7 @@ import {
 } from "@workspace/api-client-react";
 import {
   Loader2, Printer, MessageCircle, Pencil, CheckCircle2,
-  Plus, Trash2, X, CalendarIcon, ExternalLink, Play, LockKeyhole,
+  Plus, Trash2, X, CalendarIcon, ExternalLink, Play, LockKeyhole, CopyPlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -113,6 +113,7 @@ export default function PropostaPrint() {
   const qc = useQueryClient();
   const [markingVendido, setMarkingVendido] = useState(false);
   const [updatingExecutionIndex, setUpdatingExecutionIndex] = useState<number | null>(null);
+  const [creatingRevision, setCreatingRevision] = useState(false);
 
   // ── Edit sheet state ──────────────────────────────────────────────────────
   const [editOpen, setEditOpen] = useState(false);
@@ -158,6 +159,56 @@ export default function PropostaPrint() {
     if (!proposta) return;
     const returnTo = `/propostas/${proposta.id}/print`;
     navigate(`/propostas?edit=${encodeURIComponent(proposta.id)}&returnTo=${encodeURIComponent(returnTo)}`);
+  }
+
+  async function createCommercialRevision() {
+    if (!proposta?.leadId || !proposta.tenantId) return;
+    setCreatingRevision(true);
+    try {
+      const isAddendum = proposta.status === "aceita";
+      const response = await fetch(
+        `/api/tenants/${proposta.tenantId}/leads/${proposta.leadId}/orcamento-revisoes`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`,
+          },
+          body: JSON.stringify({
+            basePropostaId: proposta.id,
+            dealId: proposta.dealId ?? undefined,
+            numeroOrcamento: proposta.numero ?? proposta.id,
+            dataOrcamento: new Date().toISOString().slice(0, 10),
+            apresentacao: isAddendum ? "Aditivo contratual" : "Revisão comercial",
+            observacao: isAddendum
+              ? "Aditivo criado a partir da versão contratada. A linha de base anterior permanece preservada."
+              : "Revisão criada a partir da versão emitida. A versão anterior permanece preservada.",
+            anexos: [],
+          }),
+        },
+      );
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error ?? "Não foi possível criar a nova versão.");
+      const revisionId = body?.propostaRevisao?.id;
+      if (!revisionId) throw new Error("A revisão foi criada sem orçamento vinculado.");
+
+      toast({
+        title: isAddendum ? `Aditivo ${body.revisaoNumero ?? ""} criado` : `Revisão ${body.revisaoNumero ?? ""} criada`,
+        description: "A versão anterior foi preservada. Edite apenas a nova versão.",
+      });
+
+      const returnTo = `/propostas/${proposta.id}/print`;
+      navigate(`/propostas?edit=${encodeURIComponent(revisionId)}&returnTo=${encodeURIComponent(returnTo)}`);
+    } catch (error) {
+      toast({
+        title: proposta.status === "aceita" ? "Erro ao criar aditivo" : "Erro ao criar revisão",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setCreatingRevision(false);
+    }
   }
 
   async function handleSave() {
@@ -344,7 +395,8 @@ export default function PropostaPrint() {
     : undefined;
   const jaVendido = proposta.status === "aceita";
   const podeVender = proposta.status === "rascunho" || proposta.status === "enviada" || proposta.status === "pendente";
-  const podeEditar = !jaVendido || isGerente;
+  const podeEditar = proposta.status === "rascunho";
+  const precisaNovaVersao = proposta.status !== "rascunho";
 
   const itensExecucao = proposta.itens
     .map((raw, originalIndex) => {
@@ -386,6 +438,25 @@ export default function PropostaPrint() {
           >
             <Pencil className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Editar</span>
+          </Button>
+        )}
+
+        {precisaNovaVersao && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={createCommercialRevision}
+            disabled={creatingRevision}
+          >
+            {creatingRevision ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <CopyPlus className="h-3.5 w-3.5" />
+            )}
+            <span className="hidden sm:inline">
+              {jaVendido ? "Criar aditivo" : "Criar revisão"}
+            </span>
           </Button>
         )}
 
