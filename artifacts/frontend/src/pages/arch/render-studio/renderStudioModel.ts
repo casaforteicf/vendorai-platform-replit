@@ -84,7 +84,7 @@ export type RenderStudioVersion = {
 
 export type RenderStudioStep =
   | "projeto" | "ambiente" | "imagem" | "render"
-  | "melhoria" | "versao" | "aprovar" | "especificacao";
+  | "melhoria" | "versao" | "aprovar";
 
 export const RENDER_STUDIO_STEPS: { id: RenderStudioStep; label: string; icon: string; hint: string }[] = [
   { id: "projeto",       label: "Projeto",       icon: "◈", hint: "Selecione ou crie um projeto no painel direito." },
@@ -93,8 +93,7 @@ export const RENDER_STUDIO_STEPS: { id: RenderStudioStep; label: string; icon: s
   { id: "render",        label: "Render IA",     icon: "✦", hint: "Clique em 'Gerar Render' no painel direito." },
   { id: "melhoria",      label: "Studio IA",     icon: "✦", hint: "Edite o prompt e solicite mudanças no render atual." },
   { id: "versao",        label: "Versões",       icon: "⧉", hint: "Compare as versões geradas e escolha qual aprovar." },
-  { id: "aprovar",       label: "Aprovar",       icon: "✓", hint: "Aprove o render para liberar a especificação." },
-  { id: "especificacao", label: "Especificação", icon: "≡", hint: "Extraia materiais e objetos do render aprovado." },
+  { id: "aprovar",       label: "Aprovar",       icon: "✓", hint: "Aprove a versão final do render. A especificação é um módulo separado." },
 ];
 
 export function renderStudioStepIndex(step: RenderStudioStep) {

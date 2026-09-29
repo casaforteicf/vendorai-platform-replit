@@ -29,15 +29,14 @@ import { RenderStudioCopilot as CopilotPanel } from "./RenderStudioCopilot";
 export function RenderStudioRightPanel({
   step, arq, ambiente, setAmbiente, imageFile, imageDataUrl, renderUrl, currentRenderId, versions, loading, err,
   melhoriaPrompt, setMelhoriaPrompt, melhoriaMode, setMelhoriaMode,
-  approved, specDone, specData,
-  specificationId, enviandoOrcamento, orcamentoMsg, onEnviarOrcamento,
-  areaM2, setAreaM2, peDireitoM, setPeDireitoM, onSalvarMedidasAmbiente, onSalvarMedidasItem,
-  onNextStep, onStartRender, onApplyMelhoria, onApprove, onSendToSpec,
+  approved,
+  onNextStep, onStartRender, onApplyMelhoria, onApprove,
   sceneType, setSceneType, renderProfile, setRenderProfile, visualStyle, setVisualStyle, lightingProfile, setLightingProfile,
   videoMovement, setVideoMovement, videoGenerating, renderVideoUrl, onGenerateVideo5s,
   onShowCreateModal, onUpload, onOpenMediaLibrary, mediaLibraryAvailable,
   selections, selectedMaterial, onOpenMaterialLib, onClearSelection, onRemoveSelection,
   approvalRecord, approvalNote, setApprovalNote,
+  onOpenSpecification,
   onTestCopilotAction,
   isOpen, onToggle,
 }: {
@@ -46,21 +45,9 @@ export function RenderStudioRightPanel({
   versions: RenderVersion[]; loading: boolean; err: string | null;
   melhoriaPrompt: string; setMelhoriaPrompt: (v: string) => void;
   melhoriaMode: RenderStudioImprovementMode; setMelhoriaMode: (v: RenderStudioImprovementMode) => void;
-  approved: boolean; specDone: boolean; specData: any[];
-  specificationId: string | null; enviandoOrcamento: boolean; orcamentoMsg: string | null; onEnviarOrcamento: (itemIds?: string[]) => void;
-  areaM2: string; setAreaM2: (v: string) => void; peDireitoM: string; setPeDireitoM: (v: string) => void;
-  onSalvarMedidasAmbiente: () => void;
-  onSalvarMedidasItem: (itemId: string, patch: {
-    larguraCm?: string;
-    alturaCm?: string;
-    profundidadeCm?: string;
-    status?: "pendente" | "especificado" | "nao_especificado";
-    overrideNome?: string | null;
-    overrideFornecedor?: string | null;
-    overridePreco?: string | null;
-  }) => void;
+  approved: boolean;
   onNextStep: () => void; onStartRender: () => void;
-  onApplyMelhoria: () => void; onApprove: () => void; onSendToSpec: () => void;
+  onApplyMelhoria: () => void; onApprove: () => void;
   sceneType: RenderStudioSceneType; setSceneType: (v: RenderStudioSceneType) => void;
   renderProfile: RenderStudioProfile; setRenderProfile: (v: RenderStudioProfile) => void;
   visualStyle: RenderStudioVisualStyle; setVisualStyle: (v: RenderStudioVisualStyle) => void;
@@ -71,30 +58,12 @@ export function RenderStudioRightPanel({
   selections: SelectionRect[]; selectedMaterial: CatalogItem | null;
   onOpenMaterialLib: () => void; onClearSelection: () => void; onRemoveSelection: (id: string) => void;
   approvalRecord: ApprovalRecord | null; approvalNote: string; setApprovalNote: (v: string) => void;
+  onOpenSpecification: () => void;
   onTestCopilotAction: (prompt: string) => void;
   isOpen: boolean; onToggle: () => void;
 }) {
   const [tab, setTab] = useState<"propriedades" | "camadas">("propriedades");
-  const [specFilter, setSpecFilter] = useState<"todos" | "pendente" | "especificado" | "nao_especificado">("todos");
   const currentVersion = versions.find((version) => version.id === currentRenderId) ?? versions[0] ?? null;
-
-  const specStats = specData.reduce((acc: { total: number; pendente: number; especificado: number; nao_especificado: number }, item: any) => {
-    acc.total += 1;
-    const status = item.status === "especificado" || item.status === "nao_especificado" ? item.status : "pendente";
-    acc[status] += 1;
-    return acc;
-  }, { total: 0, pendente: 0, especificado: 0, nao_especificado: 0 });
-
-  const visibleSpecItems = specData.filter((item: any) => {
-    const status = item.status === "especificado" || item.status === "nao_especificado" ? item.status : "pendente";
-    return specFilter === "todos" || status === specFilter;
-  });
-
-  const specGroups = visibleSpecItems.reduce((groups: Record<string, any[]>, item: any) => {
-    const key = item.categoria || "Outros";
-    (groups[key] ??= []).push(item);
-    return groups;
-  }, {});
   const otherVersions = versions.filter((version) => version.id !== currentVersion?.id);
 
   const AMBIENTE_OPTIONS = [
@@ -476,14 +445,20 @@ export function RenderStudioRightPanel({
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     <PanelLabel>Aprovação</PanelLabel>
                     {approvalRecord ? (
-                      <div style={{ padding: "10px", borderRadius: 8, background: D.greenDim, border: `1px solid ${D.green}44` }}>
-                        <div style={{ fontSize: 12, fontWeight: 800, color: D.green, marginBottom: 6 }}>✓ Render aprovado</div>
-                        <div style={{ fontSize: 11, color: D.muted }}><div>Por: <strong style={{ color: D.text }}>{approvalRecord.by}</strong></div><div>Em: {approvalRecord.at.toLocaleDateString("pt-BR")} {approvalRecord.at.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</div>{approvalRecord.note && <div>Obs: {approvalRecord.note}</div>}</div>
-                      </div>
+                      <>
+                        <div style={{ padding: "10px", borderRadius: 8, background: D.greenDim, border: `1px solid ${D.green}44` }}>
+                          <div style={{ fontSize: 12, fontWeight: 800, color: D.green, marginBottom: 6 }}>✓ Render aprovado</div>
+                          <div style={{ fontSize: 11, color: D.muted }}><div>Por: <strong style={{ color: D.text }}>{approvalRecord.by}</strong></div><div>Em: {approvalRecord.at.toLocaleDateString("pt-BR")} {approvalRecord.at.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</div>{approvalRecord.note && <div>Obs: {approvalRecord.note}</div>}</div>
+                        </div>
+                        <div style={{ padding: "8px 10px", borderRadius: 7, background: D.card, border: `1px solid ${D.border}`, color: D.muted, fontSize: 10, lineHeight: 1.5 }}>
+                          O Render termina aqui. A especificação técnica é um módulo separado e usa esta versão aprovada como referência.
+                        </div>
+                        <DkBtn onClick={onOpenSpecification}>→ Abrir Especificação</DkBtn>
+                      </>
                     ) : (
                       <>
                         <div style={{ padding: "8px 10px", borderRadius: 7, fontSize: 11, lineHeight: 1.5, background: D.greenDim, border: `1px solid ${D.green}44`, color: D.green }}>
-                          ✓ Aprovação libera a especificação técnica e é registrada com autor e data.
+                          ✓ A aprovação registra a versão final do render com autor e data. Depois, a especificação pode usar esta versão como referência.
                         </div>
                         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                           <label style={{ fontSize: 10, fontWeight: 700, color: D.dim, letterSpacing: "0.06em", textTransform: "uppercase" }}>Observação (opcional)</label>
@@ -492,161 +467,6 @@ export function RenderStudioRightPanel({
                         <DkBtn disabled={loading} onClick={onApprove} variant="success">
                           {loading ? "Aprovando…" : "✓ Aprovar este render"}
                         </DkBtn>
-                      </>
-                    )}
-                  </div>
-                )}
-
-                {/* Especificação — revisão técnica antes do orçamento */}
-                {step === "especificacao" && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <PanelLabel>Especificação técnica</PanelLabel>
-                    {specDone ? (
-                      <>
-                        <div style={{ padding: "8px 9px", borderRadius: 7, background: D.greenDim, border: `1px solid ${D.green}44`, color: D.green, fontSize: 10, lineHeight: 1.5 }}>
-                          <strong>{specStats.total} elementos</strong> · {specStats.especificado} inclusos · {specStats.pendente} pendentes · {specStats.nao_especificado} somente referência
-                        </div>
-
-                        {/* Medidas do ambiente — sempre manuais ou vindas do modelo, nunca inventadas pela imagem */}
-                        <div style={{ display: "flex", gap: 6, alignItems: "flex-end" }}>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: 9, color: D.muted, marginBottom: 3 }}>Área (m²)</div>
-                            <input type="number" min={0} step={0.01} value={areaM2}
-                              onChange={(e) => setAreaM2(e.target.value)}
-                              onBlur={onSalvarMedidasAmbiente}
-                              placeholder="Informar"
-                              style={{ width: "100%", padding: "5px 7px", borderRadius: 6, border: `1px solid ${D.border}`, background: D.bg, color: D.text, fontSize: 11 }} />
-                          </div>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: 9, color: D.muted, marginBottom: 3 }}>Pé-direito (m)</div>
-                            <input type="number" min={0} step={0.01} value={peDireitoM}
-                              onChange={(e) => setPeDireitoM(e.target.value)}
-                              onBlur={onSalvarMedidasAmbiente}
-                              placeholder="Informar"
-                              style={{ width: "100%", padding: "5px 7px", borderRadius: 6, border: `1px solid ${D.border}`, background: D.bg, color: D.text, fontSize: 11 }} />
-                          </div>
-                        </div>
-
-                        {/* Filtros de revisão */}
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 5 }}>
-                          {([
-                            ["todos", `Todos (${specStats.total})`],
-                            ["pendente", `Pendentes (${specStats.pendente})`],
-                            ["especificado", `Inclusos (${specStats.especificado})`],
-                            ["nao_especificado", `Referência (${specStats.nao_especificado})`],
-                          ] as const).map(([id, label]) => (
-                            <button key={id} type="button" onClick={() => setSpecFilter(id)}
-                              style={{ padding: "6px 7px", borderRadius: 6, border: `1px solid ${specFilter === id ? D.purple : D.border}`, background: specFilter === id ? `${D.purple}12` : D.card, color: specFilter === id ? D.purpleText : D.muted, fontSize: 9, fontWeight: 700, cursor: "pointer" }}>
-                              {label}
-                            </button>
-                          ))}
-                        </div>
-
-                        {specStats.pendente > 0 && (
-                          <button type="button" onClick={() => setSpecFilter("pendente")}
-                            style={{ padding: "7px 9px", borderRadius: 7, border: `1px solid ${D.amber}55`, background: `${D.amber}10`, color: D.amber, fontSize: 10, fontWeight: 700, cursor: "pointer", textAlign: "left" }}>
-                            ⚠ Revisar {specStats.pendente} pendência(s) antes de fechar a especificação
-                          </button>
-                        )}
-
-                        {/* Lista compacta agrupada por categoria */}
-                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                          {Object.entries(specGroups).map(([categoria, items]) => (
-                            <div key={categoria} style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 2px" }}>
-                                <span style={{ fontSize: 9, fontWeight: 800, color: D.dim, textTransform: "uppercase", letterSpacing: ".06em" }}>{categoria}</span>
-                                <span style={{ fontSize: 9, color: D.dim }}>{items.length}</span>
-                              </div>
-
-                              {items.map((item: any, i: number) => {
-                                const status = item.status === "especificado" || item.status === "nao_especificado" ? item.status : "pendente";
-                                const confidence = Math.round(Number(item.confianca ?? 0) * 100);
-                                const displayName = item.overrideNome ?? item.nome ?? item.descricao ?? `Item ${i + 1}`;
-                                const sourceLabel = item.catalogoItemId ? "Catálogo" : item.materialId ? "Material" : "Inferência IA";
-                                return (
-                                  <div key={item.id ?? `${categoria}-${i}`} style={{ padding: "8px", borderRadius: 7, background: D.card, border: `1px solid ${status === "especificado" ? D.green + "55" : status === "nao_especificado" ? D.border : D.amber + "55"}`, fontSize: 11 }}>
-                                    <div style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
-                                      <div style={{ flex: 1, minWidth: 0 }}>
-                                        <div title={displayName} style={{ fontWeight: 700, color: D.text, lineHeight: 1.35 }}>{displayName}</div>
-                                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }}>
-                                          <span style={{ fontSize: 8, padding: "2px 5px", borderRadius: 4, background: `${D.purple}12`, color: D.purpleText }}>{sourceLabel}</span>
-                                          <span style={{ fontSize: 8, padding: "2px 5px", borderRadius: 4, background: `${D.amber}10`, color: D.amber }}>Confiança {Number.isFinite(confidence) ? confidence : 0}%</span>
-                                          <span style={{ fontSize: 8, color: D.muted }}>Qtd. {item.quantidade ?? 1}</span>
-                                        </div>
-                                      </div>
-                                    </div>
-
-                                    {item.id && (
-                                      <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
-                                        {(["larguraCm", "alturaCm", "profundidadeCm"] as const).map((campo) => (
-                                          <input key={campo} type="number" min={0} step={0.5}
-                                            placeholder={campo === "larguraCm" ? "L cm" : campo === "alturaCm" ? "A cm" : "P cm"}
-                                            defaultValue={item[campo] ?? ""}
-                                            onBlur={(e) => onSalvarMedidasItem(item.id, { [campo]: e.target.value || undefined })}
-                                            style={{ width: 0, flex: 1, padding: "4px 5px", borderRadius: 5, border: `1px solid ${D.border}`, background: D.bg, color: D.text, fontSize: 9 }} />
-                                        ))}
-                                      </div>
-                                    )}
-
-                                    {item.id && (
-                                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 4, marginTop: 6 }}>
-                                        <button type="button" onClick={() => onSalvarMedidasItem(item.id, { status: "especificado" })}
-                                          style={{ padding: "5px 3px", borderRadius: 5, border: `1px solid ${status === "especificado" ? D.green : D.border}`, background: status === "especificado" ? D.greenDim : D.bg, color: status === "especificado" ? D.green : D.muted, fontSize: 8, fontWeight: 800, cursor: "pointer" }}>
-                                          ✓ Incluir
-                                        </button>
-                                        <button type="button" onClick={() => onSalvarMedidasItem(item.id, { status: "nao_especificado" })}
-                                          style={{ padding: "5px 3px", borderRadius: 5, border: `1px solid ${status === "nao_especificado" ? D.purple : D.border}`, background: status === "nao_especificado" ? `${D.purple}10` : D.bg, color: status === "nao_especificado" ? D.purpleText : D.muted, fontSize: 8, fontWeight: 800, cursor: "pointer" }}>
-                                          Referência
-                                        </button>
-                                        <button type="button" onClick={() => onSalvarMedidasItem(item.id, { status: "pendente" })}
-                                          style={{ padding: "5px 3px", borderRadius: 5, border: `1px solid ${status === "pendente" ? D.amber : D.border}`, background: status === "pendente" ? `${D.amber}10` : D.bg, color: status === "pendente" ? D.amber : D.muted, fontSize: 8, fontWeight: 800, cursor: "pointer" }}>
-                                          Pendente
-                                        </button>
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          ))}
-
-                          {visibleSpecItems.length === 0 && (
-                            <div style={{ padding: "12px 8px", textAlign: "center", fontSize: 10, color: D.dim }}>Nenhum item neste filtro.</div>
-                          )}
-                        </div>
-
-                        <DkBtn variant="secondary" small onClick={() => {
-                          const content = JSON.stringify({ specificationId, room: { areaM2, peDireitoM }, items: specData }, null, 2);
-                          const blob = new Blob([content], { type: "application/json" });
-                          const url = URL.createObjectURL(blob);
-                          const a = document.createElement("a");
-                          a.href = url; a.download = `especificacao-${arq.projectMeta?.titulo ?? "arqdor"}-${new Date().toISOString().split("T")[0]}.json`;
-                          a.click(); URL.revokeObjectURL(url);
-                        }}>⬇ Exportar especificação</DkBtn>
-
-                        {specificationId && (
-                          <DkBtn
-                            disabled={enviandoOrcamento || specStats.especificado === 0}
-                            onClick={() => onEnviarOrcamento(specData.filter((item: any) => item.status === "especificado" && item.id).map((item: any) => item.id))}
-                          >
-                            {enviandoOrcamento ? "Enviando…" : `→ Enviar ${specStats.especificado} item(ns) ao orçamento`}
-                          </DkBtn>
-                        )}
-
-                        {specStats.especificado === 0 && (
-                          <div style={{ fontSize: 9, lineHeight: 1.4, color: D.muted, textAlign: "center" }}>
-                            Marque como <strong>Incluir</strong> somente os itens que fazem parte do escopo comercial.
-                          </div>
-                        )}
-
-                        {orcamentoMsg && (
-                          <div style={{ padding: "8px", borderRadius: 7, background: D.greenDim, border: `1px solid ${D.green}44`, color: D.green, fontSize: 10, textAlign: "center" }}>✅ {orcamentoMsg}</div>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        <div style={{ fontSize: 11, color: D.muted, lineHeight: 1.5 }}>✦ A IA identifica os elementos do render. Depois você confirma o que entra no escopo, o que é somente referência e o que ainda precisa ser definido.</div>
-                        <DkBtn disabled={loading} onClick={onSendToSpec}>{loading ? "Gerando…" : "✦ Gerar especificação"}</DkBtn>
                       </>
                     )}
                   </div>

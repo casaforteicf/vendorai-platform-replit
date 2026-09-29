@@ -574,9 +574,10 @@ function persistBootstrapState(state: {
     else sessionStorage.removeItem(SK.approvedVersionId);
 
     const currentStep = sessionStorage.getItem(SK.step);
-    if (findApprovedVersion(state) && currentStep === "aprovar") {
-      sessionStorage.setItem(SK.step, "especificacao");
-    } else if (!state.latestRenderUrl && !state.sourceImageUrl && ["render", "melhoria", "versao", "aprovar", "especificacao"].includes(currentStep ?? "")) {
+    if (currentStep === "especificacao") {
+      // Migração de sessões antigas: especificação não faz mais parte do Render Studio.
+      sessionStorage.setItem(SK.step, findApprovedVersion(state) ? "aprovar" : "versao");
+    } else if (!state.latestRenderUrl && !state.sourceImageUrl && ["render", "melhoria", "versao", "aprovar"].includes(currentStep ?? "")) {
       sessionStorage.setItem(SK.step, "imagem");
     }
   } catch {
