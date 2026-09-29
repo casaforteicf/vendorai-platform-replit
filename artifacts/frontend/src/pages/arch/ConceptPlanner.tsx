@@ -4419,13 +4419,17 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     setSelectedTraceElement((current) => current?.kind === "opening" && current.id === openingId ? null : current);
   };
 
-  const applyReferenceTrace = async () => {
-    const preview = referenceTracePreview;
-    if (!preview?.canApply || !preview.walls.length || projectMaster) return;
-    const confirmed = window.confirm(
-      `Aplicar ${preview.walls.length} paredes e ${preview.openings.length} aberturas sugeridas pela IA e substituir a geometria atual? A imagem de referência e o briefing serão preservados.`,
-    );
-    if (!confirmed) return;
+  const applyReferenceTracePreview = async (
+    preview: ReferenceTracePreview,
+    options?: { confirm?: boolean; referencePlanOverride?: ReferencePlan | null },
+  ) => {
+    if (!preview?.canApply || !preview.walls.length || projectMaster) return false;
+    if (options?.confirm !== false) {
+      const confirmed = window.confirm(
+        `Aplicar ${preview.walls.length} paredes e ${preview.openings.length} aberturas sugeridas pela IA e substituir a geometria atual? A imagem de referência e o briefing serão preservados.`,
+      );
+      if (!confirmed) return false;
+    }
 
     const importedWalls = preview.walls.map((wall, index) => ({
       id: wall.id || `trace-wall-${index + 1}`,
@@ -4476,13 +4480,21 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       customOpenings: importedOpenings,
       wallFirstFloors: [0],
       floors: 1,
+      referencePlan: options?.referencePlanOverride ?? referencePlan,
     });
 
     setReferenceTraceState("applied");
     setReferenceDisplayMode("vector");
     setReferencePlanMessage(
-      `Traçado aplicado: ${importedWalls.length} paredes e ${importedOpenings.length} aberturas. Revise medidas e conexões antes de seguir.`,
+      `Planta editável gerada: ${importedWalls.length} paredes e ${importedOpenings.length} aberturas. Revise medidas e conexões antes de seguir.`,
     );
+    return true;
+  };
+
+  const applyReferenceTrace = async () => {
+    const preview = referenceTracePreview;
+    if (!preview) return;
+    await applyReferenceTracePreview(preview, { confirm: true });
   };
 
   const uploadReferencePlan = async (file: File) => {
@@ -4525,11 +4537,26 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
           if (!traceResponse.ok) throw new Error(tracePayload.error ?? "Não foi possível interpretar a planta com IA.");
           setReferenceTracePreview(tracePayload);
           setSelectedTraceElement(null);
-          setReferenceTraceState("ready");
-          setReferenceDisplayMode("overlay");
-          setReferencePlanMessage(
-            `Planta reconhecida: ${tracePayload.walls.length} paredes e ${tracePayload.openings.length} aberturas · confiança ${Math.round(tracePayload.confidence * 100)}%. Revise a sobreposição e use como planta editável.`,
-          );
+
+          const hasEditableGeometry = safeRooms.length > 0 || safeCustomWalls.length > 0;
+          if (tracePayload.canApply && !hasEditableGeometry) {
+            const applied = await applyReferenceTracePreview(tracePayload, {
+              confirm: false,
+              referencePlanOverride: payload,
+            });
+            if (!applied) {
+              setReferenceTraceState("ready");
+              setReferenceDisplayMode("overlay");
+            }
+          } else {
+            setReferenceTraceState("ready");
+            setReferenceDisplayMode("overlay");
+            setReferencePlanMessage(
+              tracePayload.canApply
+                ? `Planta reconhecida: ${tracePayload.walls.length} paredes e ${tracePayload.openings.length} aberturas · confiança ${Math.round(tracePayload.confidence * 100)}%. Há geometria existente; revise a sobreposição antes de substituir.`
+                : `Leitura concluída, mas a confiança foi insuficiente para aplicar automaticamente. Revise a referência e calibre uma medida antes de tentar novamente.`,
+            );
+          }
         } catch (traceError) {
           setReferenceTraceState("error");
           setReferencePlanMessage(
