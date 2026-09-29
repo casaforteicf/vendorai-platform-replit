@@ -322,16 +322,13 @@ export function useRenderStudioController() {
     startProgressStages();
     try {
       const renderPresets: RenderPreset[] = ["camera_perspective_lock"];
-      if (sceneType === "interior") renderPresets.push("interior_layout_preserve", "ceiling_led_linear");
+      if (sceneType === "interior") renderPresets.push("interior_layout_preserve");
       if (sceneType === "facade") renderPresets.push("facade_exterior_preserve", "roof_openings_lock");
       if (sceneType === "outdoor") renderPresets.push("facade_exterior_preserve", "landscape_controlled");
       if (sceneType === "gourmet") renderPresets.push("facade_exterior_preserve", "outdoor_gourmet_preserve");
       if (sceneType === "pool") renderPresets.push("facade_exterior_preserve", "pool_water_fidelity");
       if (renderProfile !== "technical") renderPresets.push("material_detail_enhancer", "lighting_realism");
       if (/vidro|espelho/.test(ambiente.toLowerCase())) renderPresets.push("glass_mirror_fidelity");
-      if (lightingProfile === "more_light") {
-        renderPresets.push("ceiling_led_linear", "ambient_boost", "shadow_softening", "exposure_lift_controlled");
-      }
       if (lightingProfile === "night" && sceneType !== "interior") renderPresets.push("night_lighting_exterior");
 
       const styleInstruction: Record<RenderStudioVisualStyle, string> = {
