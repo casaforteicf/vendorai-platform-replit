@@ -188,7 +188,15 @@ router.get("/tenants/:tenantId/dashboard/command-center", async (req, res) => {
           WHERE a.tenant_id = ${tenantId}
             AND a.status IN ('pendente','planejado')
             AND a.data_vencimento IS NOT NULL
-            AND a.data_vencimento < ${periodEnd}) AS overdue_tasks,
+            AND a.data_vencimento < ${periodEnd}
+            AND EXISTS (
+              SELECT 1
+              FROM leads l
+              WHERE l.id = a.lead_id
+                AND l.tenant_id = a.tenant_id
+                AND l.excluido_em IS NULL
+                AND l.nao_lead_tipo IS NULL
+            )) AS overdue_tasks,
         (SELECT COALESCE(json_agg(json_build_object(
             'id', overdue.id,
             'leadId', overdue.lead_id,
@@ -203,6 +211,14 @@ router.get("/tenants/:tenantId/dashboard/command-center", async (req, res) => {
               AND a.status IN ('pendente','planejado')
               AND a.data_vencimento IS NOT NULL
               AND a.data_vencimento < ${periodEnd}
+              AND EXISTS (
+                SELECT 1
+                FROM leads l
+                WHERE l.id = a.lead_id
+                  AND l.tenant_id = a.tenant_id
+                  AND l.excluido_em IS NULL
+                  AND l.nao_lead_tipo IS NULL
+              )
             ORDER BY a.data_vencimento ASC
             LIMIT 5
           ) overdue) AS overdue_task_items
