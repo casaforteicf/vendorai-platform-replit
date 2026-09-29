@@ -292,88 +292,53 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
 archProcurementRfqPublicRouter.get("/public/arqdor/rfq/:token", async (req, res, next) => {
   try {
     const token = String(req.params["token"] || "");
-    const invResult = await pool.query(
-      `SELECT i.*,p.code,p.title,p.category,p.discipline,p.version,p.scope_snapshot,p.documents,
-              o.nome AS obra_nome
-       FROM arch_rfq_invitations i
-       JOIN arch_rfq_packages p ON p.id=i.package_id
-       JOIN obras o ON o.id=p.obra_id
-       WHERE i.public_token=$1::uuid LIMIT 1`, [token],
-    );
-    const inv = invResult.rows[0];
-    if (!inv) return res.status(404).send("Cotação não encontrada.");
-    const items = await pool.query(
-      `SELECT c.id,c.descricao,c.ambiente,c.quantidade,c.unidade,c.escopo_snapshot
-       FROM arch_rfq_package_items pi JOIN compras_obras c ON c.id=pi.compra_id
-       WHERE pi.package_id=$1::uuid ORDER BY pi.sort_order`, [inv.package_id],
-    );
-    if (inv.status === "sent") await pool.query(`UPDATE arch_rfq_invitations SET status='viewed',viewed_at=now(),updated_at=now() WHERE id=$1::uuid`, [inv.id]);
-    const itemRows = items.rows.map((item:any)=>`<tr>
+    const bundleResult = await pool.query(`SELECT public.arch_rfq_public_bundle($1::uuid) AS bundle`, [token]);
+    const bundle = bundleResult.rows[0]?.bundle;
+    if (!bundle) return res.status(404).send("Cotação não encontrada.");
+    const inv = bundle.invitation;
+    const pkg = bundle.package;
+    const obra = bundle.obra;
+    const items = Array.isArray(bundle.items) ? bundle.items : [];
+    await pool.query(`SELECT public.arch_rfq_public_mark_viewed($1::uuid)`, [token]);
+
+    const itemRows = items.map((item:any)=>`<tr>
       <td><strong>${esc(item.descricao)}</strong><br><small>${esc(item.ambiente || "")}</small></td>
       <td>${esc(item.quantidade)} ${esc(item.unidade)}</td>
       <td><input data-id="${esc(item.id)}" data-field="unitValue" type="number" step="0.01" min="0" required></td>
       <td><input data-id="${esc(item.id)}" data-field="brandModel" placeholder="marca/modelo"></td>
       <td><input data-id="${esc(item.id)}" data-field="notes" placeholder="observações"></td>
     </tr>`).join("");
+    const itemMeta = JSON.stringify(items.map((x:any)=>({id:String(x.id),quantity:n(x.quantidade),unit:x.unidade||"un"})));
+
     res.type("html").send(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>${esc(inv.code)} — Cotação</title><style>
+    <title>${esc(pkg.code)} — Cotação</title><style>
     body{font-family:Inter,Arial,sans-serif;background:#f6f7fb;color:#111827;margin:0}.wrap{max-width:1100px;margin:36px auto;padding:0 18px}.card{background:#fff;border:1px solid #e5e7eb;border-radius:22px;padding:24px;margin-bottom:18px}h1{margin:4px 0 8px;font-size:28px}small,.muted{color:#6b7280}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px;border-bottom:1px solid #eee;vertical-align:top}input,textarea{box-sizing:border-box;width:100%;padding:10px;border:1px solid #d1d5db;border-radius:10px}label{display:block;font-size:12px;font-weight:700;margin:12px 0 6px}button{background:#111827;color:#fff;border:0;border-radius:12px;padding:13px 18px;font-weight:700;cursor:pointer}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}@media(max-width:760px){.grid{grid-template-columns:1fr}table{font-size:12px}.wrap{margin:14px auto}}
-    </style></head><body><div class="wrap"><div class="card"><div class="muted">ARQDOR • Solicitação de cotação</div><h1>${esc(inv.title)}</h1>
-    <p>${esc(inv.obra_nome)} • ${esc(inv.code)} • versão ${esc(inv.version)}</p><p class="muted">Esta página contém somente os itens direcionados ao seu escopo: ${esc(inv.category || inv.discipline)}.</p></div>
+    </style></head><body><div class="wrap"><div class="card"><div class="muted">ARQDOR • Solicitação de cotação</div><h1>${esc(pkg.title)}</h1>
+    <p>${esc(obra?.nome || "Obra")} • ${esc(pkg.code)} • versão ${esc(pkg.version)}</p><p class="muted">Esta página contém somente os itens direcionados ao seu escopo: ${esc(pkg.category || pkg.discipline)}.</p></div>
     <div class="card"><table><thead><tr><th>Item</th><th>Quantidade</th><th>Valor unitário</th><th>Marca/modelo</th><th>Observação</th></tr></thead><tbody>${itemRows}</tbody></table></div>
     <div class="card"><div class="grid"><div><label>Frete</label><input id="freight" type="number" step="0.01" min="0" value="0"></div><div><label>Impostos/taxas</label><input id="taxes" type="number" step="0.01" min="0" value="0"></div>
     <div><label>Desconto</label><input id="discount" type="number" step="0.01" min="0" value="0"></div><div><label>Prazo de entrega (dias)</label><input id="leadTime" type="number" min="0"></div>
     <div><label>Validade</label><input id="validity" type="date"></div><div><label>Condição de pagamento</label><input id="payment" placeholder="Ex.: 30/60/90"></div></div>
     <label>Observações gerais</label><textarea id="supplierNotes" rows="4"></textarea><p id="msg" class="muted"></p><button id="send">Enviar cotação</button></div></div>
     <script>
-    document.getElementById('send').onclick=async()=>{const rows=[...document.querySelectorAll('[data-id][data-field="unitValue"]')].map(el=>{const id=el.dataset.id;const q=${JSON.stringify(items.rows.map((x:any)=>({id:String(x.id),quantity:n(x.quantidade),unit:x.unidade||"un"})))}.find(x=>x.id===id);return{compraId:id,quantity:q?.quantity||0,unit:q?.unit||'un',unitValue:Number(el.value||0),brandModel:document.querySelector('[data-id="'+id+'"][data-field="brandModel"]').value,notes:document.querySelector('[data-id="'+id+'"][data-field="notes"]').value}});const body={items:rows,freight:Number(freight.value||0),taxes:Number(taxes.value||0),discount:Number(discount.value||0),leadTimeDays:Number(leadTime.value||0)||null,validityDate:validity.value||null,paymentTerms:payment.value||null,supplierNotes:supplierNotes.value||null};const r=await fetch(location.pathname+'/respond',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json().catch(()=>({}));msg.textContent=r.ok?'Cotação enviada com sucesso.':(d.error||'Não foi possível enviar.');if(r.ok)send.disabled=true}
+    const META=${itemMeta};
+    document.getElementById('send').onclick=async()=>{const rows=[...document.querySelectorAll('[data-id][data-field="unitValue"]')].map(el=>{const id=el.dataset.id;const q=META.find(x=>x.id===id);return{compraId:id,quantity:q?.quantity||0,unit:q?.unit||'un',unitValue:Number(el.value||0),brandModel:document.querySelector('[data-id="'+id+'"][data-field="brandModel"]').value,notes:document.querySelector('[data-id="'+id+'"][data-field="notes"]').value}});const body={items:rows,freight:Number(document.getElementById('freight').value||0),taxes:Number(document.getElementById('taxes').value||0),discount:Number(document.getElementById('discount').value||0),leadTimeDays:Number(document.getElementById('leadTime').value||0)||null,validityDate:document.getElementById('validity').value||null,paymentTerms:document.getElementById('payment').value||null,supplierNotes:document.getElementById('supplierNotes').value||null};const r=await fetch(location.pathname+'/respond',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json().catch(()=>({}));document.getElementById('msg').textContent=r.ok?'Cotação enviada com sucesso.':(d.error||'Não foi possível enviar.');if(r.ok)document.getElementById('send').disabled=true}
     </script></body></html>`);
   } catch (err) { logger.error({ err }, "public rfq page error"); next(err); }
 });
 
 archProcurementRfqPublicRouter.post("/public/arqdor/rfq/:token/respond", async (req, res, next) => {
-  const client = await pool.connect();
   try {
     const token = String(req.params["token"] || "");
-    const invResult = await client.query(`SELECT * FROM arch_rfq_invitations WHERE public_token=$1::uuid LIMIT 1`, [token]);
-    const inv = invResult.rows[0];
-    if (!inv) return res.status(404).json({ error: "Cotação não encontrada." });
-    if (["accepted","rejected","expired"].includes(inv.status)) return res.status(409).json({ error: "Esta cotação já foi encerrada." });
-    const allowed = await client.query(`SELECT compra_id FROM arch_rfq_package_items WHERE package_id=$1::uuid`, [inv.package_id]);
-    const allowedIds = new Set(allowed.rows.map((x:any)=>String(x.compra_id)));
-    const items = Array.isArray(req.body?.items) ? req.body.items : [];
-    if (!items.length) return res.status(400).json({ error: "Informe os valores dos itens." });
-    await client.query("BEGIN");
-    let itemsTotal = 0;
-    for (const item of items) {
-      const compraId = String(item.compraId || "");
-      if (!allowedIds.has(compraId)) throw new Error("Item fora do escopo desta cotação.");
-      const quantity = Math.max(0,n(item.quantity));
-      const unitValue = Math.max(0,n(item.unitValue));
-      const totalValue = quantity * unitValue;
-      itemsTotal += totalValue;
-      await client.query(
-        `INSERT INTO arch_rfq_quote_items(invitation_id,compra_id,quantity,unit,unit_value,total_value,brand_model,notes,created_at,updated_at)
-         VALUES($1::uuid,$2,$3,$4,$5,$6,$7,$8,now(),now())
-         ON CONFLICT(invitation_id,compra_id) DO UPDATE SET quantity=EXCLUDED.quantity,unit=EXCLUDED.unit,unit_value=EXCLUDED.unit_value,total_value=EXCLUDED.total_value,brand_model=EXCLUDED.brand_model,notes=EXCLUDED.notes,updated_at=now()`,
-        [inv.id,compraId,String(quantity),String(item.unit||"un"),String(unitValue),String(totalValue),item.brandModel||null,item.notes||null],
-      );
-    }
-    const freight=Math.max(0,n(req.body?.freight)), taxes=Math.max(0,n(req.body?.taxes)), discount=Math.max(0,n(req.body?.discount));
-    const total=Math.max(0,itemsTotal+freight+taxes-discount);
-    await client.query(
-      `UPDATE arch_rfq_invitations SET status='responded',freight_value=$1,tax_value=$2,discount_value=$3,total_value=$4,
-       lead_time_days=$5,validity_date=$6,payment_terms=$7,supplier_notes=$8,responded_at=now(),viewed_at=COALESCE(viewed_at,now()),updated_at=now()
-       WHERE id=$9::uuid`,
-      [String(freight),String(taxes),String(discount),String(total),req.body?.leadTimeDays||null,req.body?.validityDate||null,req.body?.paymentTerms||null,req.body?.supplierNotes||null,inv.id],
-    );
-    await client.query(`UPDATE arch_rfq_packages SET status='partial',updated_at=now() WHERE id=$1::uuid AND status<>'completed'`, [inv.package_id]);
-    await client.query("COMMIT");
-    res.json({ ok:true,total });
+    const result = await pool.query(`SELECT public.arch_rfq_public_submit($1::uuid,$2::jsonb) AS result`, [token, JSON.stringify(req.body ?? {})]);
+    res.json(result.rows[0]?.result ?? { ok: true });
   } catch (err) {
-    await client.query("ROLLBACK").catch(()=>undefined);
     logger.error({ err }, "public rfq response error");
-    if (err instanceof Error && err.message.includes("fora do escopo")) return res.status(400).json({ error: err.message });
+    const message = err instanceof Error ? err.message : "Não foi possível registrar a cotação.";
+    if (/Cotação não encontrada|Cotação encerrada|Informe os itens|Item fora do escopo/i.test(message)) {
+      return res.status(400).json({ error: message.replace(/^.*?:\s*/, "") });
+    }
     next(err);
-  } finally { client.release(); }
+  }
 });
+
