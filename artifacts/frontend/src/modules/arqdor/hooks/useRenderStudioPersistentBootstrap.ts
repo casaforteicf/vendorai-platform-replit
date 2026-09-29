@@ -11,6 +11,7 @@ export type RenderStudioRecoveryCache = {
   versions?: RenderStudioVersion[];
   renderId?: string | null;
   renderUrl?: string | null;
+  imageUrl?: string | null;
 };
 
 /**
@@ -38,6 +39,7 @@ export function useRenderStudioPersistentBootstrap(
     const recovered = mergeRecoveryCache(
       persistentState,
       Array.isArray(recoveryCache.versions) ? recoveryCache.versions : [],
+      recoveryCache.imageUrl,
     );
 
     // Recovery de render isolado (job antigo concluído sem lista local de versões).
@@ -58,12 +60,13 @@ export function useRenderStudioPersistentBootstrap(
         versions: [fallback],
         latestRenderId: fallback.id,
         latestRenderUrl: fallback.url,
+        sourceImageUrl: recoveryCache.imageUrl ?? persistentState.sourceImageUrl ?? null,
         approvedVersionId: null,
       };
     }
 
     return recovered;
-  }, [persistentState, recoveryCache.versions, recoveryCache.renderId, recoveryCache.renderUrl]);
+  }, [persistentState, recoveryCache.versions, recoveryCache.renderId, recoveryCache.renderUrl, recoveryCache.imageUrl]);
 
   const source = history.versions.length > 0 ? "backend" : state.versions.length > 0 ? "recovery" : "empty";
 
