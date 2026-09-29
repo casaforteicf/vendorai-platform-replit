@@ -1246,7 +1246,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error ?? "Não foi possível gerar a imagem do bloco.");
       updateProposalBuilderModuleImage(moduleKey, { mode: "ai", url: body.imageUrl });
-      await fetchProposalBuilderTemplates();
+      await queryClient.invalidateQueries({ queryKey: getGetBusinessProfileByTenantQueryKey(tenantId) });
       toast({ title: "Imagem do bloco gerada", description: "A imagem foi salva no modelo da empresa." });
     } catch (error) {
       toast({ title: "Erro ao gerar imagem", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
