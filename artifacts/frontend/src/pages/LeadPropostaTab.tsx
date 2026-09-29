@@ -2718,7 +2718,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
 
       {/* Studio de Propostas — construtor visual por empresa */}
       <Dialog open={proposalBuilderEditorOpen} onOpenChange={setProposalBuilderEditorOpen}>
-        <DialogContent className="h-[92vh] w-[96vw] max-w-[96vw] overflow-hidden p-0">
+        <DialogContent className="h-[94vh] w-[calc(100vw-24px)] max-w-none overflow-hidden p-0 sm:h-[94vh] sm:w-[calc(100vw-32px)] sm:max-w-[calc(100vw-32px)] sm:p-0 xl:w-[96vw] xl:max-w-[96vw]">
           <div className="flex h-full min-h-0 flex-col">
             <div className="flex items-center justify-between gap-3 border-b px-5 py-3">
               <div className="min-w-0">
