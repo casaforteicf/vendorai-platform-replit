@@ -2287,7 +2287,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                   <Badge variant="outline" className="text-[10px]">{proposalComposerStageImageCount}/{selectedOrcamentoStages.length || 0} etapas</Badge>
                 </div>
                 <p className="mt-1 text-[10px] text-muted-foreground">
-                  Gerencie somente as imagens desta proposta. Imagens padrão do modelo ficam no Studio.
+                  Único lugar para gerar, enviar, trocar e organizar as imagens desta proposta. Imagens padrão do modelo ficam no Studio.
                 </p>
               </div>
               {proposalVisualCenterOpen ? <ChevronUp className="mt-0.5 h-4 w-4 shrink-0" /> : <ChevronDown className="mt-0.5 h-4 w-4 shrink-0" />}
@@ -2295,6 +2295,9 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
 
             {proposalVisualCenterOpen && (
               <div className="space-y-3 border-t p-3">
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-900">
+                  <strong>Central de imagens:</strong> capa, imagens das etapas e imagens adicionais são gerenciadas somente aqui.
+                </div>
                 <input
                   ref={coverImageInputRef}
                   type="file"
@@ -2422,7 +2425,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                 <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-foreground">
                 <ImagePlus className="h-3.5 w-3.5 text-muted-foreground" />
-                <span>Biblioteca de apoio</span>
+                <span>Imagens adicionais</span>
                 <Badge
                 variant="outline"
                 className={proposalHasMinimumImages ? "border-emerald-200 bg-emerald-50 text-emerald-700" : ""}
@@ -2432,7 +2435,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                 <Badge variant="outline" className="text-[10px]">fallback</Badge>
                 </div>
                 <p className="mt-1 text-[10px] text-muted-foreground">
-                Use apenas como apoio quando não houver imagem específica de capa ou etapa.
+                Envie várias imagens de uma vez para usar como galeria e apoio visual da proposta.
                 </p>
                 </div>
                 {proposalFallbackLibraryOpen ? <ChevronUp className="mt-0.5 h-4 w-4 shrink-0" /> : <ChevronDown className="mt-0.5 h-4 w-4 shrink-0" />}
@@ -2451,7 +2454,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                 <div className="space-y-1.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-xs text-muted-foreground font-medium">
-                Imagens gerais de apoio — ordem de fallback:
+                Imagens adicionais da proposta:
                 </p>
                 <span className={`text-[10px] font-medium ${effectiveProposalImages.length >= proposalPrimaryPageCount ? "text-emerald-600" : "text-amber-600"}`}>
                 {effectiveProposalImages.length} imagem(ns) disponíveis
@@ -2568,7 +2571,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                 ) : (
                 <Upload className="h-3 w-3" />
                 )}
-                {imageUploading ? "Enviando..." : "Selecionar arquivos"}
+                {imageUploading ? "Enviando..." : "Enviar várias imagens"}
                 </Button>
                 </div>
                 )}
@@ -2856,27 +2859,8 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                           Separe por vírgulas. A IA deve manter essa linguagem visual em todas as imagens, sem trocar o assunto técnico da etapa.
                         </p>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2 pt-1">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="h-9 w-full gap-1.5 text-xs sm:h-8 sm:w-auto"
-                          disabled={generatingCoverImage}
-                          onClick={() => void generatePremiumCoverImage()}
-                        >
-                          {generatingCoverImage ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                          {generatingCoverImage ? "Gerando capa..." : "Gerar capa premium"}
-                        </Button>
-                        {selectedOrcamento?.apresentacao?.imagemCapa ? (
-                          <img
-                            src={selectedOrcamento.apresentacao.imagemCapa}
-                            alt="Capa premium da proposta"
-                            className="h-14 w-24 rounded-md border object-cover"
-                          />
-                        ) : (
-                          <span className="text-[10px] text-muted-foreground">Nenhuma capa premium gerada ainda.</span>
-                        )}
+                      <div className="rounded-lg border border-dashed bg-muted/20 px-3 py-2 text-[10px] text-muted-foreground">
+                        A geração, upload e troca de imagens ficam centralizados em <strong>Imagens da proposta</strong>. Aqui você define apenas a direção visual usada pela IA.
                       </div>
                     </div>
                     <div className="space-y-1.5 lg:col-span-3">
@@ -2964,10 +2948,10 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                           <div className="flex flex-wrap items-center gap-2">
                             <p className="text-xs font-semibold">Etapas da proposta</p>
                             <Badge variant="outline" className="text-[10px]">{selectedOrcamentoStages.length}</Badge>
-                            <Badge variant="outline" className="text-[10px]">{proposalComposerStageImageCount} com imagem</Badge>
+                            <Badge variant="outline" className="text-[10px]">{selectedOrcamentoStages.length} etapas</Badge>
                           </div>
                           <span className="mt-1 block text-[10px] text-muted-foreground">
-                            Financeiro, detalhamento técnico e imagens específicas. Abra apenas quando precisar personalizar por etapa.
+                            Financeiro e detalhamento técnico. As imagens das etapas são gerenciadas somente em “Imagens da proposta”.
                           </span>
                         </div>
                         {proposalStagesOpen ? <ChevronUp className="mt-0.5 h-4 w-4 shrink-0" /> : <ChevronDown className="mt-0.5 h-4 w-4 shrink-0" />}
@@ -2982,31 +2966,10 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                               Use os controles em massa primeiro e ajuste apenas as exceções abaixo.
                             </span>
                           </div>
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="h-8 text-[11px]"
-                              disabled={generatingStageImages || selectedOrcamentoStages.length === 0 || proposalComposerStageImageCount === selectedOrcamentoStages.length}
-                              onClick={selectNextMissingStageImages}
-                            >
-                              Selecionar 3 sem imagem
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 text-[11px]"
-                              disabled={generatingStageImages || selectedStageImageIds.length === 0}
-                              onClick={() => setSelectedStageImageIds([])}
-                            >
-                              Limpar seleção
-                            </Button>
-                          </div>
+                          <span className="text-[10px] text-muted-foreground">Imagens: gerenciar em “Imagens da proposta”</span>
                         </div>
 
-                        <div className="grid gap-2 rounded-lg border bg-muted/20 p-2.5 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
+                        <div className="grid gap-2 rounded-lg border bg-muted/20 p-2.5 sm:grid-cols-2">
                           <div className="space-y-1">
                             <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Aplicar financeiro em todas</label>
                             <Select onValueChange={(value) => applyFinancialModeToAllStages(value as ProposalPresentationMode | "__default__")}>
@@ -3030,110 +2993,23 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                               </SelectContent>
                             </Select>
                           </div>
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="text-[11px] text-muted-foreground">IA: {selectedStageImageIds.length}/3</span>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="h-8 gap-1.5 text-xs"
-                              disabled={generatingStageImages || selectedStageImageIds.length === 0}
-                              onClick={() => void generateRepresentativeStageImages(false)}
-                            >
-                              {generatingStageImages ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                              Gerar selecionadas
-                            </Button>
-                            {Object.keys(selectedStageImages).length > 0 && (
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 text-[11px]"
-                                disabled={generatingStageImages || selectedStageImageIds.length === 0}
-                                onClick={() => void generateRepresentativeStageImages(true)}
-                              >
-                                Regenerar
-                              </Button>
-                            )}
-                          </div>
+
                         </div>
                       </div>
-                      <input
-                        ref={stageImageInputRef}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(event) => {
-                          const file = event.target.files?.[0];
-                          if (file) void handleStageImageUpload(file);
-                          event.target.value = "";
-                        }}
-                      />
+
                       <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
                         {selectedOrcamentoStages.map((stage) => (
                           <div
                             key={stage.id}
                             className="grid gap-2 rounded-lg border bg-background p-2.5 lg:grid-cols-[minmax(0,1fr)_210px_170px] lg:items-center"
                           >
-                            <div className="flex min-w-0 items-center gap-2.5">
-                              <input
-                                type="checkbox"
-                                aria-label={`Selecionar etapa ${stage.nome} para geração de imagem`}
-                                checked={selectedStageImageIds.includes(stage.id)}
-                                disabled={generatingStageImages}
-                                onChange={() => toggleStageImageSelection(stage.id)}
-                                className="h-4 w-4 shrink-0"
-                              />
-                              <div className="w-20 shrink-0">
-                                {selectedStageImages[stage.id] ? (
-                                  <img
-                                    src={selectedStageImages[stage.id]}
-                                    alt={`Imagem representativa da etapa ${stage.nome}`}
-                                    className="h-12 w-20 rounded-md border object-cover"
-                                    onError={(event) => { (event.currentTarget as HTMLImageElement).style.display = "none"; }}
-                                  />
-                                ) : (
-                                  <div className="flex h-12 w-20 items-center justify-center rounded-md border border-dashed bg-muted/30 text-[9px] text-muted-foreground">
-                                    Sem imagem
-                                  </div>
-                                )}
-                                <div className="mt-1 flex items-center gap-1">
-                                  <button
-                                    type="button"
-                                    className="text-[9px] text-primary hover:underline disabled:opacity-50"
-                                    disabled={stageImageUploading}
-                                    onClick={() => {
-                                      setStageImageUploadTarget(stage.id);
-                                      stageImageInputRef.current?.click();
-                                    }}
-                                  >
-                                    {selectedStageImages[stage.id] ? "Trocar" : "Enviar"}
-                                  </button>
-                                  {selectedStageImages[stage.id] && (
-                                    <button
-                                      type="button"
-                                      className="text-[9px] text-destructive hover:underline"
-                                      onClick={() => void removeManualStageImage(stage.id)}
-                                    >
-                                      Remover
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="min-w-0">
-                                <p
-                                  className="text-xs font-medium leading-snug whitespace-normal break-words"
-                                  title={stage.nome}
-                                >
-                                  {stage.nome}
-                                </p>
-                                <p className="text-[11px] text-muted-foreground">
-                                  {stage.total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                                </p>
-                                {selectedStageImages[stage.id] ? (
-                                  <p className="text-[10px] text-emerald-600">Imagem representativa vinculada</p>
-                                ) : null}
-                              </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-medium leading-snug whitespace-normal break-words" title={stage.nome}>
+                                {stage.nome}
+                              </p>
+                              <p className="text-[11px] text-muted-foreground">
+                                {stage.total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                              </p>
                             </div>
                             <div className="space-y-1">
                               <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Financeiro</span>
