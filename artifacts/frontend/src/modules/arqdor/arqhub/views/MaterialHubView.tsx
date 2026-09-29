@@ -7,21 +7,39 @@ function authHeaders(): Record<string, string> {
   return tok ? { Authorization: `Bearer ${tok}` } : {}
 }
 
+interface MaterialImage {
+  id: string
+  storageUrl: string
+  width: number | null
+  height: number | null
+  qualityScore: string | null
+}
+
 interface CatItem {
-  id:            string
-  nome:          string
-  descricao:     string | null
-  categoria:     string | null
-  subcategoria:  string | null
-  fornecedor:    string | null
-  precoBase:     string | null
-  imagens:       string[] | null
+  id: string
+  nome: string
+  fabricante: string
+  linha: string
+  referencia: string | null
+  categoria: string
+  subcategoria: string | null
+  cor: string | null
+  acabamento: string | null
+  aplicacao: string | null
+  compartilhamento: 'privado' | 'parceiros' | 'publico'
+  status: string
+  primaryImageId: string | null
+  images: MaterialImage[]
   especificacoes: Record<string, unknown> | null
-  createdAt:     string
+  createdAt: string
+}
+
+function primaryImage(item: CatItem) {
+  return item.images.find(img => img.id === item.primaryImageId) ?? item.images[0] ?? null
 }
 
 function CatCard({ item, selected, onSelect }: { item: CatItem; selected: boolean; onSelect: ()=>void }) {
-  const img = item.imagens?.[0]
+  const img = primaryImage(item)?.storageUrl
   return (
     <div onClick={onSelect} style={{ cursor:'pointer', borderRadius:10, overflow:'hidden',
       border:`1px solid ${selected?'rgba(124,58,237,0.5)':T.border}`,
@@ -35,7 +53,7 @@ function CatCard({ item, selected, onSelect }: { item: CatItem; selected: boolea
       )}
       <div style={{ padding:'10px 10px 12px' }}>
         <p style={{ margin:'0 0 2px', fontSize:11, fontWeight:700, color:'#fff', lineHeight:1.3 }}>{item.nome}</p>
-        <p style={{ margin:'0 0 4px', fontSize:9, color:T.dim }}>{item.fornecedor ?? '—'}</p>
+        <p style={{ margin:'0 0 4px', fontSize:9, color:T.dim }}>{item.fabricante} · {item.linha}</p>
         <div style={{ display:'flex', gap:4, flexWrap:'wrap' as const }}>
           {item.categoria && (
             <span style={{ fontSize:8, padding:'2px 6px', borderRadius:6, background:'rgba(124,58,237,0.12)', color:T.purpleL }}>
@@ -56,34 +74,39 @@ function CatCard({ item, selected, onSelect }: { item: CatItem; selected: boolea
 function CatDetail({ item }: { item: CatItem }) {
   return (
     <div style={{ height:'100%', overflowY:'auto' as const, padding:16 }}>
-      {item.imagens && item.imagens.length > 0 && (
+      {item.images.length > 0 && (
         <div style={{ display:'flex', gap:4, marginBottom:14, borderRadius:8, overflow:'hidden' }}>
-          {item.imagens.slice(0,3).map((url, i) => (
-            <img key={i} src={url} alt="" style={{ flex:1, height:70, objectFit:'cover' as const, display:'block' }}/>
+          {item.images.slice(0,3).map((image) => (
+            <img key={image.id} src={image.storageUrl} alt="" style={{ flex:1, height:70, objectFit:'cover' as const, display:'block' }}/>
           ))}
         </div>
       )}
 
       <p style={{ margin:'0 0 3px', fontSize:14, fontWeight:800, color:'#fff' }}>{item.nome}</p>
-      <p style={{ margin:'0 0 10px', fontSize:10, color:T.dim }}>{item.fornecedor ?? '—'} · {item.categoria ?? '—'}</p>
-
-      {item.descricao && (
-        <p style={{ margin:'0 0 14px', fontSize:11, color:T.text, lineHeight:1.65 }}>{item.descricao}</p>
-      )}
+      <p style={{ margin:'0 0 10px', fontSize:10, color:T.dim }}>{item.fabricante} · {item.linha}</p>
 
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginBottom:14 }}>
         {[
-          ['Categoria',    item.categoria ?? '—'],
+          ['Categoria', item.categoria],
           ['Subcategoria', item.subcategoria ?? '—'],
-          ['Fornecedor',   item.fornecedor ?? '—'],
-          ['Preço base',   item.precoBase ? `R$ ${Number(item.precoBase).toFixed(2)}` : '—'],
-          ['Adicionado',   new Date(item.createdAt).toLocaleDateString('pt-BR')],
+          ['Fabricante', item.fabricante],
+          ['Linha', item.linha],
+          ['Referência', item.referencia ?? '—'],
+          ['Cor', item.cor ?? '—'],
+          ['Acabamento', item.acabamento ?? '—'],
+          ['Imagens', String(item.images.length)],
         ].filter(([, v])=> v !== '—').map(([k,v]) => (
           <div key={k} style={{ padding:'6px 8px', borderRadius:6, background:'rgba(255,255,255,0.03)', border:`1px solid ${T.border}` }}>
             <p style={{ margin:'0 0 2px', fontSize:8, color:T.dim, fontWeight:700, letterSpacing:'0.06em' }}>{k}</p>
             <p style={{ margin:0, fontSize:10, color:T.text }}>{v}</p>
           </div>
         ))}
+      </div>
+
+      <div style={{ padding:'8px 10px', borderRadius:8, background:'rgba(124,58,237,0.08)', border:`1px solid rgba(124,58,237,0.18)`, marginBottom:12 }}>
+        <p style={{ margin:0, fontSize:9, color:T.purpleL }}>
+          {item.compartilhamento === 'publico' ? 'Biblioteca compartilhada' : item.compartilhamento === 'parceiros' ? 'Compartilhado com parceiros' : 'Material privado'}
+        </p>
       </div>
 
       {item.especificacoes && Object.keys(item.especificacoes).length > 0 && (
@@ -115,13 +138,13 @@ export function MaterialHubView() {
       const params = new URLSearchParams({ limit: '60' })
       if (cat)   params.set('categoria', cat)
       if (query) params.set('busca', query)
-      const res = await fetch(`${BASE}/arch/catalogo?${params}`, { headers: authHeaders() })
+      const res = await fetch(`${BASE}/arch/materials?${params}`, { headers: authHeaders() })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data: CatItem[] = await res.json()
       setItems(data)
       if (data.length > 0 && !sel) setSel(data[0])
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Erro ao carregar catálogo')
+      setError(e instanceof Error ? e.message : 'Erro ao carregar biblioteca de materiais')
     } finally {
       setLoading(false)
     }
@@ -169,7 +192,7 @@ export function MaterialHubView() {
           {!loading && items.length === 0 && (
             <div style={{ textAlign:'center' as const, padding:60, color:T.dim, fontSize:12 }}>
               <p style={{ margin:'0 0 8px', fontSize:28 }}>📦</p>
-              <p>Nenhum material no catálogo. Adicione via Biblioteca.</p>
+              <p>Nenhum material encontrado na biblioteca.</p>
             </div>
           )}
           {!loading && (

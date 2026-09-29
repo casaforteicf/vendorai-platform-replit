@@ -126,33 +126,70 @@ export function RenderStudioShortcutsModal({ isOpen, onClose }: { isOpen: boolea
 
 // ─── P2-16: MaterialLibraryModal ─────────────────────────────────────────────
 
+type MaterialLibraryImage = {
+  id: string;
+  storageUrl: string;
+  originalFilename?: string | null;
+  width?: number | null;
+  height?: number | null;
+  qualityScore?: string | number | null;
+};
+
+type MaterialLibraryItem = {
+  id: string;
+  nome: string;
+  fabricante: string;
+  linha: string;
+  referencia?: string | null;
+  categoria: string;
+  subcategoria?: string | null;
+  cor?: string | null;
+  acabamento?: string | null;
+  compartilhamento: "privado" | "parceiros" | "publico";
+  status: string;
+  primaryImageId?: string | null;
+  images: MaterialLibraryImage[];
+};
+
 export function RenderStudioMaterialLibraryModal({ isOpen, onClose, onSelect }: {
   isOpen: boolean; onClose: () => void; onSelect: (item: CatalogItem) => void;
 }) {
-  const [items, setItems] = useState<CatalogItem[]>([]);
+  const [items, setItems] = useState<MaterialLibraryItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [categoria, setCategoria] = useState("");
   const [showImporter, setShowImporter] = useState(false);
   const [materialName, setMaterialName] = useState("");
-  const [materialCategory, setMaterialCategory] = useState("Marcenaria");
-  const [supplier, setSupplier] = useState("");
+  const [manufacturer, setManufacturer] = useState("");
+  const [line, setLine] = useState("");
+  const [reference, setReference] = useState("");
+  const [subcategory, setSubcategory] = useState("");
+  const [materialCategory, setMaterialCategory] = useState("Tecido");
+  const [sharing, setSharing] = useState<"privado" | "parceiros" | "publico">("privado");
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
   const [savingMaterial, setSavingMaterial] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
+  const [importInfo, setImportInfo] = useState<string | null>(null);
+  const [managingMaterial, setManagingMaterial] = useState<MaterialLibraryItem | null>(null);
+  const [primaryBusy, setPrimaryBusy] = useState<string | null>(null);
+  const [addingReferences, setAddingReferences] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const referenceInputRef = useRef<HTMLInputElement>(null);
 
-  const categorias = ["Piso", "Parede", "Marcenaria", "Estofado", "Iluminação", "Decoração"];
+  const categorias = ["Tecido", "Madeira", "MDF", "Pedra", "Porcelanato", "Cerâmica", "Pintura", "Metal", "Vidro", "Concreto", "Revestimento", "Outros"];
 
   async function loadItems() {
     setLoading(true);
-    const params = new URLSearchParams({ limit: "40" });
+    const params = new URLSearchParams({ limit: "100" });
     if (search) params.set("busca", search);
     if (categoria) params.set("categoria", categoria);
     try {
-      const data = await apiGet(`/api/arch/catalogo?${params}`) as CatalogItem[];
+      const data = await apiGet(`/api/arch/materials?${params}`) as MaterialLibraryItem[];
       setItems(data);
+      if (managingMaterial) {
+        setManagingMaterial(data.find((item) => item.id === managingMaterial.id) ?? null);
+      }
     } catch {
       setItems([]);
     } finally {
@@ -168,7 +205,9 @@ export function RenderStudioMaterialLibraryModal({ isOpen, onClose, onSelect }: 
   useEffect(() => {
     function k(e: globalThis.KeyboardEvent) {
       if (e.key !== "Escape") return;
-      if (showImporter) {
+      if (managingMaterial) {
+        setManagingMaterial(null);
+      } else if (showImporter) {
         setShowImporter(false);
         setImportError(null);
       } else {
@@ -177,16 +216,21 @@ export function RenderStudioMaterialLibraryModal({ isOpen, onClose, onSelect }: 
     }
     if (isOpen) document.addEventListener("keydown", k);
     return () => document.removeEventListener("keydown", k);
-  }, [isOpen, onClose, showImporter]);
+  }, [isOpen, onClose, showImporter, managingMaterial]);
 
   function resetImporter() {
     previews.forEach((url) => URL.revokeObjectURL(url));
     setMaterialName("");
-    setMaterialCategory(categoria || "Marcenaria");
-    setSupplier("");
+    setManufacturer("");
+    setLine("");
+    setReference("");
+    setSubcategory("");
+    setMaterialCategory(categoria || "Tecido");
+    setSharing("privado");
     setFiles([]);
     setPreviews([]);
     setImportError(null);
+    setImportInfo(null);
   }
 
   function closeImporter() {
@@ -205,6 +249,7 @@ export function RenderStudioMaterialLibraryModal({ isOpen, onClose, onSelect }: 
     setFiles((current) => [...current, ...incoming].slice(0, 5));
     setPreviews((current) => [...current, ...incoming.map((file) => URL.createObjectURL(file))].slice(0, 5));
     setImportError(null);
+    setImportInfo(null);
     e.target.value = "";
   }
 
@@ -217,8 +262,10 @@ export function RenderStudioMaterialLibraryModal({ isOpen, onClose, onSelect }: 
 
   async function saveImportedMaterial() {
     const name = materialName.trim();
-    if (!name) {
-      setImportError("Informe o nome do material.");
+    const maker = manufacturer.trim();
+    const materialLine = line.trim();
+    if (!name || !maker || !materialLine || !materialCategory) {
+      setImportError("Nome, fabricante, linha e categoria são obrigatórios.");
       return;
     }
     if (!files.length) {
@@ -228,9 +275,10 @@ export function RenderStudioMaterialLibraryModal({ isOpen, onClose, onSelect }: 
 
     setSavingMaterial(true);
     setImportError(null);
+    setImportInfo(null);
     try {
       const token = localStorage.getItem("vendorai_token");
-      const createRes = await fetch("/api/arch/catalogo", {
+      const createRes = await fetch("/api/arch/materials", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -238,29 +286,87 @@ export function RenderStudioMaterialLibraryModal({ isOpen, onClose, onSelect }: 
         },
         body: JSON.stringify({
           nome: name,
+          fabricante: maker,
+          linha: materialLine,
+          referencia: reference.trim() || undefined,
           categoria: materialCategory,
-          fornecedor: supplier.trim() || undefined,
-          unidade: "un",
+          subcategoria: subcategory.trim() || undefined,
+          compartilhamento: sharing,
         }),
       });
-      if (!createRes.ok) throw new Error("Não foi possível cadastrar o material.");
-      const created = await createRes.json() as CatalogItem;
+      const created = await createRes.json() as MaterialLibraryItem & { duplicate?: boolean; error?: string };
+      if (!createRes.ok) throw new Error(created.error || "Não foi possível cadastrar o material.");
 
       const formData = new FormData();
       files.forEach((file) => formData.append("imagens", file));
-      const uploadRes = await fetch(`/api/arch/catalogo/${created.id}/imagens`, {
+      const uploadRes = await fetch(`/api/arch/materials/${created.id}/images`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
-      if (!uploadRes.ok) throw new Error("Material criado, mas o upload da imagem falhou.");
+      const uploadData = await uploadRes.json() as { error?: string };
+      if (!uploadRes.ok) throw new Error(uploadData.error || "Não foi possível importar as imagens.");
 
-      closeImporter();
+      const wasDuplicate = Boolean(created.duplicate);
+      resetImporter();
+      setShowImporter(false);
+      setImportInfo(wasDuplicate
+        ? "Material já existia. As novas imagens foram adicionadas ao mesmo cadastro."
+        : "Material cadastrado. A melhor imagem foi definida automaticamente como principal.");
       await loadItems();
     } catch (error: unknown) {
       setImportError(error instanceof Error ? error.message : "Falha ao importar material.");
     } finally {
       setSavingMaterial(false);
+    }
+  }
+
+  async function addReferenceImages(e: ChangeEvent<HTMLInputElement>) {
+    if (!managingMaterial) return;
+    const newFiles = Array.from(e.target.files ?? []).slice(0, 5);
+    e.target.value = "";
+    if (!newFiles.length) return;
+
+    const token = localStorage.getItem("vendorai_token");
+    setAddingReferences(true);
+    setImportError(null);
+    try {
+      const formData = new FormData();
+      newFiles.forEach((file) => formData.append("imagens", file));
+      const response = await fetch(`/api/arch/materials/${managingMaterial.id}/images`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      const data = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(data.error || "Não foi possível adicionar as novas imagens.");
+      setImportInfo("Novas referências adicionadas. A biblioteca reavaliou automaticamente a melhor imagem.");
+      await loadItems();
+    } catch (error: unknown) {
+      setImportError(error instanceof Error ? error.message : "Falha ao adicionar imagens.");
+    } finally {
+      setAddingReferences(false);
+    }
+  }
+
+  async function setPrimaryImage(materialId: string, imageId: string) {
+    const token = localStorage.getItem("vendorai_token");
+    setPrimaryBusy(imageId);
+    try {
+      const response = await fetch(`/api/arch/materials/${materialId}/primary-image`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ imageId }),
+      });
+      if (!response.ok) throw new Error("Não foi possível selecionar a imagem principal.");
+      await loadItems();
+    } catch (error: unknown) {
+      setImportError(error instanceof Error ? error.message : "Falha ao selecionar a imagem.");
+    } finally {
+      setPrimaryBusy(null);
     }
   }
 
@@ -270,17 +376,34 @@ export function RenderStudioMaterialLibraryModal({ isOpen, onClose, onSelect }: 
     return `${base}${url.startsWith("/") ? "" : "/"}${url}`;
   }
 
+  function primaryImage(item: MaterialLibraryItem) {
+    return item.images.find((image) => image.id === item.primaryImageId) ?? item.images[0] ?? null;
+  }
+
+  function selectMaterial(item: MaterialLibraryItem) {
+    const image = primaryImage(item);
+    onSelect({
+      id: item.id,
+      nome: item.nome,
+      categoria: item.categoria,
+      fornecedor: item.fabricante,
+      referencia: item.referencia ?? undefined,
+      imagens: image ? [image.storageUrl] : [],
+    } as CatalogItem);
+    onClose();
+  }
+
   if (!isOpen) return null;
 
   return (
     <div role="dialog" aria-modal="true" aria-label="Biblioteca de materiais"
       style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(6,9,17,0.84)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, padding: 0, width: 760, maxHeight: "86vh", display: "flex", flexDirection: "column", boxShadow: "0 24px 80px rgba(0,0,0,0.6)", overflow: "hidden" }}>
+      <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, padding: 0, width: 860, maxHeight: "88vh", display: "flex", flexDirection: "column", boxShadow: "0 24px 80px rgba(0,0,0,0.6)", overflow: "hidden" }}>
         <div style={{ padding: "14px 20px", borderBottom: `1px solid ${D.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexShrink: 0 }}>
           <div>
             <div style={{ fontSize: 14, fontWeight: 800, color: D.text }}>▦ Biblioteca de Materiais</div>
-            <div style={{ marginTop: 2, fontSize: 10, color: D.dim }}>Escolha um material existente ou cadastre um novo com imagem.</div>
+            <div style={{ marginTop: 2, fontSize: 10, color: D.dim }}>Somente materiais e texturas. Produtos e mobiliário permanecem no Catálogo.</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <button
@@ -288,7 +411,7 @@ export function RenderStudioMaterialLibraryModal({ isOpen, onClose, onSelect }: 
                 if (showImporter) closeImporter();
                 else {
                   resetImporter();
-                  setMaterialCategory(categoria || "Marcenaria");
+                  setMaterialCategory(categoria || "Tecido");
                   setShowImporter(true);
                 }
               }}
@@ -301,28 +424,26 @@ export function RenderStudioMaterialLibraryModal({ isOpen, onClose, onSelect }: 
 
         {showImporter && (
           <div style={{ padding: "14px 20px", background: D.card, borderBottom: `1px solid ${D.border}`, display: "flex", flexDirection: "column", gap: 10, flexShrink: 0 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr", gap: 8 }}>
-              <input
-                value={materialName}
-                onChange={(e) => { setMaterialName(e.target.value); setImportError(null); }}
-                placeholder="Nome do material *"
-                aria-label="Nome do material"
-                style={{ ...inputStyle, width: "100%" }}
-              />
-              <select
-                value={materialCategory}
-                onChange={(e) => setMaterialCategory(e.target.value)}
-                aria-label="Categoria do material"
-                style={{ ...inputStyle, width: "100%" }}>
-                {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
+            <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr", gap: 8 }}>
+              <input value={materialName} onChange={(e) => { setMaterialName(e.target.value); setImportError(null); }} placeholder="Nome do material *" aria-label="Nome do material" style={{ ...inputStyle, width: "100%" }} />
+              <input value={manufacturer} onChange={(e) => { setManufacturer(e.target.value); setImportError(null); }} placeholder="Fabricante *" aria-label="Fabricante" style={{ ...inputStyle, width: "100%" }} />
+              <input value={line} onChange={(e) => { setLine(e.target.value); setImportError(null); }} placeholder="Linha / coleção *" aria-label="Linha" style={{ ...inputStyle, width: "100%" }} />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8 }}>
+              <select value={materialCategory} onChange={(e) => setMaterialCategory(e.target.value)} aria-label="Categoria do material" style={{ ...inputStyle, width: "100%" }}>
+                {categorias.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
               </select>
-              <input
-                value={supplier}
-                onChange={(e) => setSupplier(e.target.value)}
-                placeholder="Fornecedor (opcional)"
-                aria-label="Fornecedor"
-                style={{ ...inputStyle, width: "100%" }}
-              />
+              <input value={subcategory} onChange={(e) => setSubcategory(e.target.value)} placeholder="Subcategoria" aria-label="Subcategoria" style={{ ...inputStyle, width: "100%" }} />
+              <input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Referência / código" aria-label="Referência" style={{ ...inputStyle, width: "100%" }} />
+              <select value={sharing} onChange={(e) => setSharing(e.target.value as typeof sharing)} aria-label="Compartilhamento" style={{ ...inputStyle, width: "100%" }}>
+                <option value="privado">Privado</option>
+                <option value="parceiros">Compartilhar com parceiros</option>
+                <option value="publico">Biblioteca compartilhada</option>
+              </select>
+            </div>
+
+            <div style={{ padding: "8px 10px", borderRadius: 8, background: D.inputBg, border: `1px solid ${D.border}`, fontSize: 9, color: D.dim, lineHeight: 1.5 }}>
+              Regra de qualidade: JPG, PNG ou WebP; mínimo 1024 px no menor lado; 2048 px ou mais recomendado. Se o material já existir, o sistema adiciona as novas imagens ao cadastro existente em vez de duplicá-lo.
             </div>
 
             <div style={{ display: "flex", gap: 10, alignItems: "stretch", flexWrap: "wrap" }}>
@@ -330,30 +451,25 @@ export function RenderStudioMaterialLibraryModal({ isOpen, onClose, onSelect }: 
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={files.length >= 5 || savingMaterial}
-                style={{ minWidth: 180, padding: "10px 12px", borderRadius: 8, border: `1px dashed ${D.borderLight}`, background: D.inputBg, color: D.text, cursor: files.length >= 5 ? "not-allowed" : "pointer", opacity: files.length >= 5 ? 0.6 : 1, textAlign: "left" }}>
-                <div style={{ fontSize: 11, fontWeight: 800 }}>↑ Upload de imagem</div>
-                <div style={{ marginTop: 2, fontSize: 9, color: D.dim }}>JPG, PNG ou WebP · até 5 imagens</div>
+                style={{ minWidth: 190, padding: "10px 12px", borderRadius: 8, border: `1px dashed ${D.borderLight}`, background: D.inputBg, color: D.text, cursor: files.length >= 5 ? "not-allowed" : "pointer", opacity: files.length >= 5 ? 0.6 : 1, textAlign: "left" }}>
+                <div style={{ fontSize: 11, fontWeight: 800 }}>↑ Upload de imagens</div>
+                <div style={{ marginTop: 2, fontSize: 9, color: D.dim }}>Até 5 por envio · novas referências podem ser adicionadas depois</div>
               </button>
               <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={handleFileChange} style={{ display: "none" }} />
 
               {previews.map((src, index) => (
                 <div key={src} style={{ width: 62, height: 62, borderRadius: 8, overflow: "hidden", border: `1px solid ${D.border}`, position: "relative", background: D.inputBg }}>
                   <img src={src} alt={`Prévia ${index + 1}`} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                  <button
-                    type="button"
-                    onClick={() => removeFile(index)}
-                    aria-label={`Remover imagem ${index + 1}`}
-                    style={{ position: "absolute", top: 3, right: 3, width: 18, height: 18, borderRadius: 9, border: "none", background: "rgba(0,0,0,0.72)", color: "#fff", fontSize: 10, lineHeight: "18px", cursor: "pointer" }}>
-                    ✕
-                  </button>
+                  <button type="button" onClick={() => removeFile(index)} aria-label={`Remover imagem ${index + 1}`}
+                    style={{ position: "absolute", top: 3, right: 3, width: 18, height: 18, borderRadius: 9, border: "none", background: "rgba(0,0,0,0.72)", color: "#fff", fontSize: 10, lineHeight: "18px", cursor: "pointer" }}>✕</button>
                 </div>
               ))}
 
               <button
                 type="button"
                 onClick={() => void saveImportedMaterial()}
-                disabled={savingMaterial || !materialName.trim() || files.length === 0}
-                style={{ marginLeft: "auto", alignSelf: "center", minWidth: 132, padding: "9px 12px", borderRadius: 8, fontSize: 10, fontWeight: 800, border: "none", background: D.purple, color: "#fff", cursor: savingMaterial ? "wait" : "pointer", opacity: savingMaterial || !materialName.trim() || files.length === 0 ? 0.55 : 1, display: "flex", justifyContent: "center", alignItems: "center", gap: 6 }}>
+                disabled={savingMaterial || !materialName.trim() || !manufacturer.trim() || !line.trim() || files.length === 0}
+                style={{ marginLeft: "auto", alignSelf: "center", minWidth: 132, padding: "9px 12px", borderRadius: 8, fontSize: 10, fontWeight: 800, border: "none", background: D.purple, color: "#fff", cursor: savingMaterial ? "wait" : "pointer", opacity: savingMaterial || !materialName.trim() || !manufacturer.trim() || !line.trim() || files.length === 0 ? 0.55 : 1, display: "flex", justifyContent: "center", alignItems: "center", gap: 6 }}>
                 {savingMaterial ? <><DkSpinner size={12} /> Importando…</> : "Salvar material"}
               </button>
             </div>
@@ -362,57 +478,120 @@ export function RenderStudioMaterialLibraryModal({ isOpen, onClose, onSelect }: 
           </div>
         )}
 
-        <div style={{ padding: "10px 20px", borderBottom: `1px solid ${D.border}`, display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar material…" aria-label="Buscar material"
-            style={{ ...inputStyle, width: 220, flexShrink: 0 }} />
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            <button onClick={() => setCategoria("")} style={{ padding: "4px 10px", borderRadius: 6, fontSize: 10, fontWeight: 700, background: !categoria ? `${D.purple}33` : D.card, color: !categoria ? D.purpleText : D.muted, border: `1px solid ${!categoria ? D.purple : D.border}`, cursor: "pointer" }}>Todos</button>
-            {categorias.map(c => (
-              <button key={c} onClick={() => setCategoria(c === categoria ? "" : c)}
-                style={{ padding: "4px 10px", borderRadius: 6, fontSize: 10, fontWeight: 700, background: categoria === c ? `${D.purple}33` : D.card, color: categoria === c ? D.purpleText : D.muted, border: `1px solid ${categoria === c ? D.purple : D.border}`, cursor: "pointer" }}>
-                {c}
-              </button>
-            ))}
+        {importInfo && (
+          <div style={{ padding: "8px 20px", borderBottom: `1px solid ${D.border}`, fontSize: 10, color: D.purpleText, background: `${D.purple}12` }}>
+            {importInfo}
           </div>
-        </div>
+        )}
 
-        <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
-          {loading && <div style={{ display: "flex", justifyContent: "center", padding: 32 }}><DkSpinner size={32} /></div>}
-          {!loading && items.length === 0 && (
-            <div style={{ textAlign: "center", padding: 32, color: D.muted }}>
-              <div style={{ fontSize: 32, marginBottom: 8, opacity: 0.3 }}>▦</div>
-              <div style={{ fontSize: 13, marginBottom: 4 }}>Nenhum material encontrado</div>
-              <div style={{ fontSize: 11, color: D.dim }}>Use “Importar material” para cadastrar diretamente nesta biblioteca.</div>
-            </div>
-          )}
-          {!loading && items.length > 0 && (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 12 }}>
-              {items.map((item) => (
-                <button key={item.id} onClick={() => { onSelect(item); onClose(); }}
-                  title={item.nome}
-                  style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 10, overflow: "hidden", cursor: "pointer", textAlign: "left", transition: "border-color 0.15s", display: "flex", flexDirection: "column" }}>
-                  <div style={{ height: 90, background: D.inputBg, position: "relative", overflow: "hidden" }}>
-                    {(item.imagens ?? [])[0] ? (
-                      <img src={imageSrc((item.imagens ?? [])[0])} alt={item.nome} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                    ) : (
-                      <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, color: D.dim }}>▦</div>
-                    )}
-                  </div>
-                  <div style={{ padding: "8px 8px 6px" }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: D.text, marginBottom: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.nome}</div>
-                    <div style={{ fontSize: 9, color: D.dim }}>{item.categoria}{item.fornecedor ? ` · ${item.fornecedor}` : ""}</div>
-                    {item.referencia && <div style={{ fontSize: 9, color: D.dim }}>Ref: {item.referencia}</div>}
-                  </div>
+        {managingMaterial ? (
+          <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: D.text }}>{managingMaterial.nome}</div>
+                <div style={{ fontSize: 10, color: D.dim }}>{managingMaterial.fabricante} · {managingMaterial.linha} · {managingMaterial.categoria}</div>
+                <div style={{ fontSize: 9, color: D.dim, marginTop: 3 }}>Selecione manualmente a melhor referência. A importação nova nunca cria outro material igual.</div>
+              </div>
+              <div style={{ display: "flex", gap: 7 }}>
+                <button onClick={() => referenceInputRef.current?.click()} disabled={addingReferences}
+                  style={{ padding: "6px 10px", borderRadius: 7, background: D.purple, color: "#fff", border: "none", cursor: addingReferences ? "wait" : "pointer", fontSize: 10, fontWeight: 800 }}>
+                  {addingReferences ? "Enviando…" : "＋ Adicionar imagens"}
                 </button>
-              ))}
+                <input ref={referenceInputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={addReferenceImages} style={{ display: "none" }} />
+                <button onClick={() => setManagingMaterial(null)} style={{ padding: "6px 10px", borderRadius: 7, background: D.card, color: D.text, border: `1px solid ${D.border}`, cursor: "pointer", fontSize: 10 }}>← Voltar</button>
+              </div>
             </div>
-          )}
-        </div>
-
-        <div style={{ padding: "10px 20px", borderTop: `1px solid ${D.border}`, flexShrink: 0 }}>
-          <div style={{ fontSize: 10, color: D.dim }}>
-            O material importado fica salvo no catálogo do tenant e pode ser reutilizado em outros renders.
+            {importError && <div role="alert" style={{ marginBottom: 10, fontSize: 10, color: D.red }}>{importError}</div>}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 12 }}>
+              {managingMaterial.images.map((image) => {
+                const isPrimary = image.id === managingMaterial.primaryImageId;
+                return (
+                  <div key={image.id} style={{ border: `1px solid ${isPrimary ? D.purple : D.border}`, borderRadius: 10, overflow: "hidden", background: D.card }}>
+                    <div style={{ height: 130, background: D.inputBg }}>
+                      <img src={imageSrc(image.storageUrl)} alt={managingMaterial.nome} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    </div>
+                    <div style={{ padding: 8 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 9, color: D.dim }}>
+                        <span>{image.width ?? "?"} × {image.height ?? "?"} px</span>
+                        <span>Qualidade {Math.round(Number(image.qualityScore ?? 0))}%</span>
+                      </div>
+                      <button
+                        onClick={() => void setPrimaryImage(managingMaterial.id, image.id)}
+                        disabled={isPrimary || primaryBusy === image.id}
+                        style={{ marginTop: 7, width: "100%", padding: "6px 8px", borderRadius: 6, fontSize: 9, fontWeight: 800, border: `1px solid ${isPrimary ? D.purple : D.border}`, background: isPrimary ? `${D.purple}22` : D.inputBg, color: isPrimary ? D.purpleText : D.text, cursor: isPrimary ? "default" : "pointer" }}>
+                        {isPrimary ? "✓ Imagem principal" : primaryBusy === image.id ? "Salvando…" : "Definir como melhor imagem"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
+        ) : (
+          <>
+            <div style={{ padding: "10px 20px", borderBottom: `1px solid ${D.border}`, display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar nome, fabricante ou linha…" aria-label="Buscar material"
+                style={{ ...inputStyle, width: 250, flexShrink: 0 }} />
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button onClick={() => setCategoria("")} style={{ padding: "4px 10px", borderRadius: 6, fontSize: 10, fontWeight: 700, background: !categoria ? `${D.purple}33` : D.card, color: !categoria ? D.purpleText : D.muted, border: `1px solid ${!categoria ? D.purple : D.border}`, cursor: "pointer" }}>Todos</button>
+                {categorias.map((cat) => (
+                  <button key={cat} onClick={() => setCategoria(cat === categoria ? "" : cat)}
+                    style={{ padding: "4px 10px", borderRadius: 6, fontSize: 10, fontWeight: 700, background: categoria === cat ? `${D.purple}33` : D.card, color: categoria === cat ? D.purpleText : D.muted, border: `1px solid ${categoria === cat ? D.purple : D.border}`, cursor: "pointer" }}>
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
+              {loading && <div style={{ display: "flex", justifyContent: "center", padding: 32 }}><DkSpinner size={32} /></div>}
+              {!loading && items.length === 0 && (
+                <div style={{ textAlign: "center", padding: 32, color: D.muted }}>
+                  <div style={{ fontSize: 32, marginBottom: 8, opacity: 0.3 }}>▦</div>
+                  <div style={{ fontSize: 13, marginBottom: 4 }}>Nenhum material encontrado</div>
+                  <div style={{ fontSize: 11, color: D.dim }}>Importe a primeira textura com fabricante, linha e categoria.</div>
+                </div>
+              )}
+              {!loading && items.length > 0 && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(155px, 1fr))", gap: 12 }}>
+                  {items.map((item) => {
+                    const image = primaryImage(item);
+                    return (
+                      <div key={item.id} style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 10, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+                        <button onClick={() => selectMaterial(item)} title={item.nome}
+                          style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer", textAlign: "left", color: "inherit" }}>
+                          <div style={{ height: 96, background: D.inputBg, position: "relative", overflow: "hidden" }}>
+                            {image ? (
+                              <img src={imageSrc(image.storageUrl)} alt={item.nome} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                            ) : (
+                              <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, color: D.dim }}>▦</div>
+                            )}
+                            <div style={{ position: "absolute", top: 6, right: 6, padding: "2px 5px", borderRadius: 5, background: "rgba(6,9,17,0.78)", color: "#fff", fontSize: 8 }}>
+                              {item.images.length} ref.
+                            </div>
+                          </div>
+                          <div style={{ padding: "8px 8px 5px" }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: D.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.nome}</div>
+                            <div style={{ fontSize: 9, color: D.dim, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.fabricante} · {item.linha}</div>
+                            <div style={{ fontSize: 9, color: D.dim }}>{item.categoria}{item.referencia ? ` · ${item.referencia}` : ""}</div>
+                          </div>
+                        </button>
+                        <button onClick={() => setManagingMaterial(item)}
+                          style={{ margin: "0 8px 8px", padding: "5px 7px", borderRadius: 6, border: `1px solid ${D.border}`, background: D.inputBg, color: D.muted, cursor: "pointer", fontSize: 9, fontWeight: 700 }}>
+                          Gerenciar imagens
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        <div style={{ padding: "9px 20px", borderTop: `1px solid ${D.border}`, flexShrink: 0, display: "flex", justifyContent: "space-between", gap: 12 }}>
+          <div style={{ fontSize: 9, color: D.dim }}>Cadastro único por fabricante + linha + referência/nome.</div>
+          <div style={{ fontSize: 9, color: D.dim }}>Novas fotos melhoram o mesmo material; a principal pode ser trocada a qualquer momento.</div>
         </div>
       </div>
     </div>
