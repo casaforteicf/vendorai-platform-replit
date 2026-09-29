@@ -1,3 +1,29 @@
+export type RenderStudioCanvasMode = "fit" | "1to1";
+
+export type RenderStudioSelectionRect = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  label: string;
+  id: string;
+};
+
+export type RenderStudioVersion = {
+  id: string;
+  url: string;
+  label: string;
+  parentVersionId?: string;
+  operationType: "initial" | "material" | "lighting" | "improve" | "approved";
+  createdAt: Date;
+  selectionLabel?: string;
+  materialId?: string;
+  materialName?: string;
+  approvedBy?: string;
+  approvedAt?: Date;
+  approvalNote?: string;
+};
+
 export type RenderStudioStep =
   | "projeto" | "ambiente" | "imagem" | "render"
   | "melhoria" | "versao" | "aprovar" | "especificacao";
