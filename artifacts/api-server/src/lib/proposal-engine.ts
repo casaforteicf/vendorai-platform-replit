@@ -2269,6 +2269,21 @@ function renderStudioOrderedProposal(args: {
   const total = orcamento?.valorTotal ? Number(orcamento.valorTotal) : calculatedTotal;
   const fmtMoney = (value: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(value || 0));
   const scheduleRows = orcamento ? buildProposalScheduleRows(groups, presentation, total) : [];
+  const earliestScheduleStart = scheduleRows
+    .map((row) => row.start)
+    .filter((value): value is Date => Boolean(value))
+    .sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
+  const latestScheduleEnd = scheduleRows
+    .map((row) => row.end)
+    .filter((value): value is Date => Boolean(value))
+    .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
+  const effectiveDeadlineDays = earliestScheduleStart && latestScheduleEnd
+    ? Math.max(1, Math.ceil((latestScheduleEnd.getTime() - earliestScheduleStart.getTime()) / 86_400_000) + 1)
+    : 0;
+  const effectiveDeadlineLabel = effectiveDeadlineDays > 0
+    ? `${effectiveDeadlineDays} dias`
+    : String(orcamento?.prazoEntrega ?? "").trim() || "A definir";
+  const monthlyPeriods = orcamento ? buildProposalMonthlyMatrix(scheduleRows, presentation, total) : [];
   const visualImages = (imagens ?? []).filter((value): value is string => typeof value === "string" && value.trim().length > 0);
 
   const moduleByKey = (key: string) => modules.find((item) => String(item.key) === key) ?? null;
@@ -2327,8 +2342,11 @@ function renderStudioOrderedProposal(args: {
     const overlay = Number.isFinite(Number(raw.overlay)) ? Math.max(0, Math.min(80, Number(raw.overlay))) : 45;
     return { url, fit, position, overlay };
   };
-  const modelImageUrl = (module: Record<string, unknown>, index: number) =>
-    moduleImage(module).url || visualImages[index] || visualImages[index % Math.max(1, visualImages.length)] || "";
+  // Imagens de páginas nunca devem ser escolhidas por posição numa lista genérica:
+  // isso fazia uma página institucional receber foto de etapa sem relação semântica.
+  // Fora da capa e das imagens de etapa, só usamos mídia explicitamente vinculada ao módulo.
+  const modelImageUrl = (module: Record<string, unknown>, _index: number) =>
+    moduleImage(module).url || "";
   const benefits = extractProposalBenefitList(
     6,
     companyInfo.highlights,
@@ -2363,71 +2381,208 @@ function renderStudioOrderedProposal(args: {
       '</div>'
     : "";
 
-  const itemTable = () => {
-    if (!items.length) return '<p class="studio-muted">Nenhum item detalhado disponível no orçamento selecionado.</p>';
-    return '<table class="studio-table"><thead><tr><th>Item</th><th class="r">Qtd.</th><th class="r">Valor unit.</th><th class="r">Subtotal</th></tr></thead><tbody>' +
-      items.slice(0, 28).map((item) =>
+  const chunk = <T,>(values: T[], size: number): T[][] => {
+    const result: T[][] = [];
+    for (let index = 0; index < values.length; index += size) result.push(values.slice(index, index + size));
+    return result;
+  };
+
+  const stageHeader = (group: typeof groups[number], value: number, suffix = "") =>
+    '<div class="studio-stage-title"><span>Etapa ' + esc(group.ordem) + ' · ' + esc(group.nome || "Entrega") +
+    (suffix ? ' <small>' + esc(suffix) + '</small>' : '') + '</span><strong>' + fmtMoney(value) + '</strong></div>';
+
+  const scopeBlock = (group: typeof groups[number], groupItems = group.itens) => {
+    const showDetail = resolveProposalTechnicalDetail(presentation, group.id);
+    if (!showDetail) {
+      return '<div class="studio-scope-hidden"><strong>Etapa ' + esc(group.ordem) + ' · ' + esc(group.nome || "Entrega") +
+        '</strong><span>Detalhamento técnico oculto conforme configuração desta etapa.</span></div>';
+    }
+    return stageHeader(
+      group,
+      group.itens.reduce((sum, item) => sum + Number(item.quantidade || 0) * Number(item.valorUnitario || 0), 0),
+    ) +
+      '<div class="studio-scope-list">' +
+      groupItems.map((item) =>
+        '<div><strong>' + esc(item.nome) + '</strong>' +
+        (item.descricao ? '<span>' + esc(item.descricao) + '</span>' : '') +
+        '</div>'
+      ).join("") +
+      '</div>';
+  };
+
+  const scopePageBodies = () => {
+    if (!groups.length) return ['<p class="studio-muted">Nenhum escopo estruturado disponível.</p>'];
+    const bodies: string[] = [];
+    for (const group of groups) {
+      const groupItems = resolveProposalTechnicalDetail(presentation, group.id) ? group.itens : [];
+      if (!groupItems.length) {
+        bodies.push(scopeBlock(group, []));
+        continue;
+      }
+      const parts = chunk(groupItems, 12);
+      parts.forEach((part, partIndex) => {
+        const suffix = parts.length > 1 ? `Parte ${partIndex + 1}/${parts.length}` : "";
+        const value = group.itens.reduce((sum, item) => sum + Number(item.quantidade || 0) * Number(item.valorUnitario || 0), 0);
+        bodies.push(stageHeader(group, value, suffix) +
+          '<div class="studio-scope-list">' +
+          part.map((item) => '<div><strong>' + esc(item.nome) + '</strong>' +
+            (item.descricao ? '<span>' + esc(item.descricao) + '</span>' : '') + '</div>').join("") +
+          '</div>');
+      });
+    }
+    if (presentation.itensNaoInclusos.length) {
+      bodies.push('<div class="studio-exclusions"><h2>Não inclusos nesta proposta</h2><ul>' +
+        presentation.itensNaoInclusos.map((item) => '<li>' + esc(item) + '</li>').join("") +
+        '</ul></div>');
+    }
+    return bodies;
+  };
+
+  const financialBlock = (group: typeof groups[number], groupItems = group.itens, continuation = "") => {
+    const mode = resolveProposalPresentationMode(presentation, group.id);
+    const value = group.itens.reduce((sum, item) => sum + Number(item.quantidade || 0) * Number(item.valorUnitario || 0), 0);
+    if (mode === "resumo_etapa") {
+      return '<div class="studio-stage-summary"><span><strong>Etapa ' + esc(group.ordem) + '</strong> · ' +
+        esc(group.nome || "Entrega") + '</span><strong>' + fmtMoney(value) + '</strong></div>';
+    }
+    if (mode === "preco_medio") {
+      return stageHeader(group, value, continuation) +
+        '<table class="studio-table"><thead><tr><th>Item</th><th class="r">Valor por item</th></tr></thead><tbody>' +
+        groupItems.map((item) => '<tr><td><strong>' + esc(item.nome) + '</strong>' +
+          (item.descricao ? '<small>' + esc(item.descricao) + '</small>' : '') +
+          '</td><td class="r">' + fmtMoney(Number(item.valorUnitario || 0)) + '</td></tr>').join("") +
+        '</tbody></table>';
+    }
+    return stageHeader(group, value, continuation) +
+      '<table class="studio-table"><thead><tr><th>Item</th><th class="r">Qtd.</th><th class="r">Valor unit.</th><th class="r">Subtotal</th></tr></thead><tbody>' +
+      groupItems.map((item) =>
         '<tr><td><strong>' + esc(item.nome) + '</strong>' +
         (item.descricao ? '<small>' + esc(item.descricao) + '</small>' : '') +
         '</td><td class="r">' + esc(item.quantidade) + '</td><td class="r">' +
         fmtMoney(Number(item.valorUnitario || 0)) + '</td><td class="r">' +
         fmtMoney(Number(item.quantidade || 0) * Number(item.valorUnitario || 0)) + '</td></tr>'
-      ).join("") +
-      '</tbody></table>' +
-      (items.length > 28 ? '<p class="studio-note">+' + (items.length - 28) + ' itens permanecem no orçamento detalhado vinculado.</p>' : '');
+      ).join("") + '</tbody></table>';
   };
 
-  const stageCards = () => {
-    if (!groups.length) return '<p class="studio-muted">Nenhuma etapa estruturada disponível.</p>';
-    return '<div class="studio-stage-grid">' +
-      groups.slice(0, 12).map((group) => {
+  const financialPageBodies = () => {
+    if (!groups.length) return ['<p class="studio-muted">Nenhuma etapa estruturada disponível.</p>'];
+    const bodies: string[] = [];
+    let summaries: string[] = [];
+    const flushSummaries = () => {
+      if (summaries.length) {
+        bodies.push('<div class="studio-stage-summary-list">' + summaries.join("") + '</div>');
+        summaries = [];
+      }
+    };
+    for (const group of groups) {
+      const mode = resolveProposalPresentationMode(presentation, group.id);
+      if (mode === "resumo_etapa") {
+        summaries.push(financialBlock(group));
+        if (summaries.length >= 8) flushSummaries();
+        continue;
+      }
+      flushSummaries();
+      const parts = chunk(group.itens, 11);
+      parts.forEach((part, partIndex) => {
+        bodies.push(financialBlock(
+          group,
+          part,
+          parts.length > 1 ? `Parte ${partIndex + 1}/${parts.length}` : "",
+        ));
+      });
+    }
+    flushSummaries();
+    return bodies;
+  };
+
+  const stageCardBodies = () => {
+    if (!groups.length) return ['<p class="studio-muted">Nenhuma etapa estruturada disponível.</p>'];
+    return chunk(groups, 8).map((groupChunk) =>
+      '<div class="studio-stage-grid">' +
+      groupChunk.map((group) => {
         const value = group.itens.reduce((sum, item) => sum + Number(item.quantidade || 0) * Number(item.valorUnitario || 0), 0);
+        const mode = resolveProposalPresentationMode(presentation, group.id);
         return '<div class="studio-stage-card"><span>Etapa ' + esc(group.ordem) + '</span><strong>' +
-          esc(group.nome || "Entrega") + '</strong><b>' + fmtMoney(value) + '</b></div>';
-      }).join("") +
-      '</div>';
+          esc(group.nome || "Entrega") + '</strong><b>' + fmtMoney(value) + '</b>' +
+          '<small>' + esc(mode === "resumo_etapa" ? "Valor macro" : mode === "preco_medio" ? "Preço por item" : "Detalhamento completo") + '</small></div>';
+      }).join("") + '</div>'
+    );
   };
 
-  const stageGallery = () => {
+  const stageGalleryBodies = () => {
     const gallery = groups
       .map((group) => ({ group, url: presentation.imagensEtapas[group.id] || "" }))
-      .filter((item) => item.url)
-      .slice(0, 8);
-    if (!gallery.length) return '<p class="studio-muted">Nenhuma imagem de etapa vinculada a esta proposta.</p>';
-    return '<div class="studio-gallery">' +
-      gallery.map(({ group, url }) =>
+      .filter((item) => item.url);
+    if (!gallery.length) return ['<p class="studio-muted">Nenhuma imagem de etapa vinculada a esta proposta.</p>'];
+    return chunk(gallery, 6).map((galleryChunk) =>
+      '<div class="studio-gallery">' +
+      galleryChunk.map(({ group, url }) =>
         '<figure><img src="' + esc(url) + '" alt="' + esc(group.nome) + '" /><figcaption>Etapa ' +
         esc(group.ordem) + ' · ' + esc(group.nome) + '</figcaption></figure>'
-      ).join("") +
-      '</div>';
+      ).join("") + '</div>'
+    );
   };
 
-  const scheduleTable = (financial = false) => {
-    if (!scheduleRows.length) return '<p class="studio-muted">Cronograma não configurado para esta proposta.</p>';
-    if (financial) {
-      return '<table class="studio-table"><thead><tr><th>Etapa</th><th class="r">Peso físico</th><th class="r">Valor</th></tr></thead><tbody>' +
-        scheduleRows.map((row) => '<tr><td>' + esc(row.nome) + '</td><td class="r">' +
-          Number(row.physicalPercent || 0).toFixed(1) + '%</td><td class="r">' + fmtMoney(Number(row.value || 0)) +
-          '</td></tr>').join("") + '</tbody></table>';
-    }
-    return '<table class="studio-table"><thead><tr><th>Etapa</th><th>Início</th><th>Duração</th><th>Término</th></tr></thead><tbody>' +
-      scheduleRows.map((row) => '<tr><td>' + esc(row.nome) + '</td><td>' +
+  const schedulePageBodies = () => {
+    if (!scheduleRows.length) return ['<p class="studio-muted">Cronograma não configurado para esta proposta.</p>'];
+    return chunk(scheduleRows, 14).map((rows) =>
+      '<table class="studio-table"><thead><tr><th>Etapa</th><th>Início</th><th>Duração</th><th>Término</th></tr></thead><tbody>' +
+      rows.map((row) => '<tr><td><strong>Etapa ' + esc(row.ordem) + '</strong> · ' + esc(row.nome) + '</td><td>' +
         proposalFormatDate(row.start) + '</td><td>' + esc(row.duration ? row.duration + " dias" : "A definir") +
-        '</td><td>' + proposalFormatDate(row.end) + '</td></tr>').join("") + '</tbody></table>';
+        '</td><td>' + proposalFormatDate(row.end) + '</td></tr>').join("") + '</tbody></table>'
+    );
   };
 
-  const genericPage = (module: Record<string, unknown>, index: number, body: string) => {
+  const monthlyFinancialPageBodies = () => {
+    if (!monthlyPeriods.length) return ['<p class="studio-muted">Cronograma físico-financeiro não configurado para esta proposta.</p>'];
+    return chunk(monthlyPeriods, 10).map((periods) =>
+      '<table class="studio-table studio-monthly"><thead><tr><th>Mês</th><th>Etapas ativas</th><th class="r">Avanço físico</th><th class="r">Medição bruta</th>' +
+      (presentation.entradaPercentual > 0 && presentation.mostrarAmortizacaoEntrada ? '<th class="r">Amortização</th><th class="r">Valor líquido</th>' : '') +
+      '</tr></thead><tbody>' +
+      periods.map((period) => {
+        const activeStages = period.stages.filter((stage) => stage.share > 0).map((stage) => stage.nome).slice(0, 4);
+        return '<tr><td><strong>' + esc(period.label) + '</strong></td><td>' + esc(activeStages.join(" · ") || "—") +
+          '</td><td class="r">' + Number(period.physical || 0).toFixed(2) + '%</td><td class="r">' + fmtMoney(period.amount) + '</td>' +
+          (presentation.entradaPercentual > 0 && presentation.mostrarAmortizacaoEntrada
+            ? '<td class="r">-' + fmtMoney(period.amortization) + '</td><td class="r"><strong>' + fmtMoney(period.netAmount) + '</strong></td>'
+            : '') +
+          '</tr>';
+      }).join("") + '</tbody></table>'
+    );
+  };
+
+  const genericPage = (
+    module: Record<string, unknown>,
+    index: number,
+    body: string,
+    partIndex = 0,
+    partCount = 1,
+    options?: { includeVisual?: boolean },
+  ) => {
     const displayTitle = moduleDisplayTitle(module);
+    const title = partCount > 1 ? displayTitle + ' · ' + (partIndex + 1) + '/' + partCount : displayTitle;
+    const visual = options?.includeVisual === false ? "" : pageVisual(module, index);
     return '<section class="studio-page" data-studio-key="' + esc(module.key) + '">' +
-      header(displayTitle) +
+      header(title) +
       '<div class="studio-page-body">' +
-        '<span class="studio-kicker">Página ' + (index + 1) + '</span>' +
-        '<h1>' + esc(displayTitle) + '</h1>' +
-        (moduleText(module, "description") ? '<p class="studio-lead">' + esc(moduleText(module, "description")) + '</p>' : '') +
-        body +
+        '<span class="studio-kicker">Página ' + (index + 1) + (partCount > 1 ? ' · continuação ' + (partIndex + 1) + '/' + partCount : '') + '</span>' +
+        '<h1>' + esc(title) + '</h1>' +
+        (moduleText(module, "description") && partIndex === 0 ? '<p class="studio-lead">' + esc(moduleText(module, "description")) + '</p>' : '') +
+        visual + body +
       '</div>' + footer() +
     '</section>';
   };
+
+  const genericPages = (
+    module: Record<string, unknown>,
+    index: number,
+    bodies: string[],
+    options?: { includeVisual?: boolean },
+  ) => bodies.map((body, partIndex) =>
+    genericPage(module, index, body, partIndex, bodies.length, {
+      includeVisual: partIndex === 0 && options?.includeVisual !== false,
+    })
+  ).join("\n");
 
   const renderModule = (module: Record<string, unknown>, index: number): string => {
     const key = String(module.key ?? "");
@@ -2442,7 +2597,7 @@ function renderStudioOrderedProposal(args: {
         || "Uma proposta comercial clara, orientada ao valor e aos próximos passos.";
       const summary = [
         total > 0 ? '<div><span>Investimento</span><strong>' + fmtMoney(total) + '</strong></div>' : '',
-        orcamento?.prazoEntrega ? '<div><span>Prazo</span><strong>' + esc(orcamento.prazoEntrega) + '</strong></div>' : '',
+        '<div><span>Prazo</span><strong>' + esc(effectiveDeadlineLabel) + '</strong></div>',
         groups.length ? '<div><span>Etapas / grupos</span><strong>' + groups.length + '</strong></div>' : '',
         presentation.areaTotalConstruida > 0 ? '<div><span>Área</span><strong>' + esc(presentation.areaTotalConstruida.toLocaleString("pt-BR")) + ' m²</strong></div>' : '',
       ].filter(Boolean).join("");
@@ -2487,7 +2642,7 @@ function renderStudioOrderedProposal(args: {
     if (key === "resumo_executivo") {
       const cards = [
         total > 0 ? ['Investimento', fmtMoney(total)] : null,
-        orcamento?.prazoEntrega ? ['Prazo', orcamento.prazoEntrega] : null,
+        ['Prazo', effectiveDeadlineLabel],
         groups.length ? ['Etapas / grupos', String(groups.length)] : null,
         presentation.previsaoInicio ? ['Início previsto', proposalFormatDate(presentation.previsaoInicio)] : null,
       ].filter(Boolean) as Array<[string, string]>;
@@ -2498,25 +2653,31 @@ function renderStudioOrderedProposal(args: {
       return genericPage(module, index, pageVisual(module, index) + metrics + (manual ? '<p class="studio-copy">' + esc(manual) + '</p>' : ''));
     }
 
-    if (key === "escopo") return genericPage(module, index, pageVisual(module, index) + itemTable());
-    if (key === "etapas_orcamento") return genericPage(module, index, stageCards());
-    if (key === "imagem_por_etapa") return genericPage(module, index, stageGallery());
-    if (key === "tabela_itens") return genericPage(module, index, itemTable());
-    if (key === "cronograma") return genericPage(module, index, scheduleTable(false));
-    if (key === "fisico_financeiro") return genericPage(module, index, scheduleTable(true));
+    if (key === "escopo") return genericPages(module, index, scopePageBodies(), { includeVisual: true });
+    if (key === "etapas_orcamento") return genericPages(module, index, financialPageBodies(), { includeVisual: false });
+    if (key === "imagem_por_etapa") return genericPages(module, index, stageGalleryBodies(), { includeVisual: false });
+    if (key === "tabela_itens") return genericPages(module, index, financialPageBodies(), { includeVisual: false });
+    if (key === "cronograma") return genericPages(module, index, schedulePageBodies(), { includeVisual: false });
+    if (key === "fisico_financeiro") return genericPages(module, index, monthlyFinancialPageBodies(), { includeVisual: false });
 
     if (key === "condicoes_comerciais") {
       const conditions = [
         total > 0 ? ['Valor da proposta', fmtMoney(total)] : null,
         orcamento?.condPagamento ? ['Condição de pagamento', orcamento.condPagamento] : null,
         orcamento?.formaPagamento ? ['Forma de pagamento', orcamento.formaPagamento] : null,
-        orcamento?.prazoEntrega ? ['Prazo / entrega', orcamento.prazoEntrega] : null,
+        ['Prazo / entrega', effectiveDeadlineLabel],
       ].filter(Boolean) as Array<[string, string]>;
       const list = '<div class="studio-conditions">' + conditions.map(([label, value]) =>
         '<div><span>' + esc(label) + '</span><strong>' + esc(value) + '</strong></div>'
       ).join("") + '</div>';
-      return genericPage(module, index, pageVisual(module, index) + list +
-        (orcamento?.observacoes ? '<p class="studio-copy">' + esc(orcamento.observacoes) + '</p>' : ''));
+      const exclusions = presentation.itensNaoInclusos.length
+        ? '<div class="studio-exclusions"><h2>Não inclusos nesta proposta</h2><ul>' +
+          presentation.itensNaoInclusos.map((item) => '<li>' + esc(item) + '</li>').join("") +
+          '</ul></div>'
+        : '';
+      return genericPage(module, index, list +
+        (orcamento?.observacoes ? '<p class="studio-copy">' + esc(orcamento.observacoes) + '</p>' : '') +
+        exclusions, 0, 1, { includeVisual: true });
     }
 
     if (key === "validade_inicio") {
@@ -2532,14 +2693,14 @@ function renderStudioOrderedProposal(args: {
     if (key === "aceite") {
       return genericPage(module, index,
         '<div class="studio-accept"><h2>Próximos passos</h2><p>' +
-        esc(content || "Revise as condições desta proposta. Após o aceite, esta versão passa a ser a referência comercial da contratação.") +
+        esc(moduleManualContent(module) || "Revise as condições desta proposta. Após o aceite, esta versão passa a ser a referência comercial da contratação.") +
         '</p><div class="studio-signatures"><div>Nome / assinatura</div><div>Data</div></div></div>');
     }
 
     if (key === "portal_cliente") {
       return genericPage(module, index,
         '<div class="studio-callout"><strong>Portal do Cliente</strong><p>' +
-        esc(content || "Após a contratação, o cliente poderá acompanhar documentos, cronograma, atualizações e informações disponibilizadas pela empresa.") +
+        esc(moduleManualContent(module) || "Após a contratação, o cliente poderá acompanhar documentos, cronograma, atualizações e informações disponibilizadas pela empresa.") +
         '</p></div>');
     }
 
@@ -2570,7 +2731,7 @@ function renderStudioOrderedProposal(args: {
     }
 
     return genericPage(module, index, pageVisual(module, index) +
-      '<p class="studio-copy">' + esc(content || moduleText(module, "description") || "Conteúdo desta página definido pelo modelo do tenant.") + '</p>');
+      '<p class="studio-copy">' + esc(moduleManualContent(module) || moduleText(module, "description") || "Conteúdo desta página definido pelo modelo do tenant.") + '</p>');
   };
 
   const pages = modules.map(renderModule).join("\n");
@@ -2581,12 +2742,13 @@ function renderStudioOrderedProposal(args: {
     '@page{size:A4;margin:0}*{box-sizing:border-box}html,body{margin:0;padding:0}body{font-family:Inter,Arial,sans-serif;background:#eef0f3;color:' + theme.ink + ';-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
     '.studio-page{width:210mm;height:297mm;min-height:297mm;margin:0 auto 12px;background:#fff;padding:13mm 15mm 11mm;page-break-after:always;display:flex;flex-direction:column;overflow:hidden;position:relative}.studio-page:last-child{page-break-after:auto}' +
     '.studio-hdr{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid ' + theme.concreteLine + ';padding-bottom:4mm;margin-bottom:7mm;font-size:7pt;text-transform:uppercase;letter-spacing:.08em;color:' + theme.navyMid + '}.studio-brand img{height:8mm;max-width:50mm;object-fit:contain}.studio-footer{margin-top:auto;border-top:1px solid ' + theme.concreteLine + ';padding-top:3mm;display:flex;justify-content:space-between;font-size:6pt;color:#8b849a}' +
-    '.studio-page-body{min-height:0;overflow:hidden}.studio-kicker{font-size:6.5pt;text-transform:uppercase;letter-spacing:.12em;color:' + theme.accent + ';font-weight:700}.studio-page h1{font-size:24pt;line-height:1.05;margin:2.5mm 0 3mm;color:' + theme.navyDeep + ';letter-spacing:-.03em}.studio-lead{font-size:10pt;line-height:1.55;color:#5b556d;margin:0 0 6mm;max-width:165mm}.studio-copy{font-size:9pt;line-height:1.6;color:#49425d;margin:4mm 0}.studio-muted,.studio-note{font-size:8pt;color:#777083}.studio-note{margin-top:2mm}' +
+    '.studio-page-body{min-height:0;overflow:visible}.studio-kicker{font-size:6.5pt;text-transform:uppercase;letter-spacing:.12em;color:' + theme.accent + ';font-weight:700}.studio-page h1{font-size:24pt;line-height:1.05;margin:2.5mm 0 3mm;color:' + theme.navyDeep + ';letter-spacing:-.03em}.studio-lead{font-size:10pt;line-height:1.55;color:#5b556d;margin:0 0 6mm;max-width:165mm}.studio-copy{font-size:9pt;line-height:1.6;color:#49425d;margin:4mm 0}.studio-muted,.studio-note{font-size:8pt;color:#777083}.studio-note{margin-top:2mm}' +
     '.studio-visual{height:58mm;width:100%;overflow:hidden;border-radius:3mm;margin:4mm 0 6mm;background:' + theme.cream2 + '}.studio-visual img{width:100%;height:100%;display:block}' +
     '.studio-benefits{display:grid;grid-template-columns:1fr 1fr;gap:3mm;margin-top:5mm}.studio-benefit{border:1px solid ' + theme.concreteLine + ';border-left:1.5mm solid ' + theme.accent + ';border-radius:2.5mm;padding:4mm;background:#fff}.studio-benefit strong{font-size:9pt;line-height:1.35;color:' + theme.navyDeep + '}' +
     '.studio-metrics{display:grid;grid-template-columns:repeat(2,1fr);gap:4mm;margin:4mm 0}.studio-metrics>div{background:' + theme.cream2 + ';border-left:1.5mm solid ' + theme.accent + ';padding:5mm}.studio-metrics span,.studio-conditions span{display:block;font-size:6pt;text-transform:uppercase;letter-spacing:.08em;color:#777083;margin-bottom:1.5mm}.studio-metrics strong{font-size:16pt;color:' + theme.navyDeep + '}' +
     '.studio-table{width:100%;border-collapse:collapse;margin-top:4mm;font-size:7.2pt}.studio-table th{background:' + theme.navyDeep + ';color:#fff;text-align:left;padding:2.6mm;border:1px solid ' + theme.navyDeep + '}.studio-table td{padding:2.5mm;border:1px solid ' + theme.concreteLine + ';vertical-align:top}.studio-table td small{display:block;color:#777083;margin-top:.8mm}.r{text-align:right!important}' +
-    '.studio-stage-grid,.studio-card-grid{display:grid;grid-template-columns:1fr 1fr;gap:3mm;margin-top:5mm}.studio-stage-card,.studio-card-grid>div{border:1px solid ' + theme.concreteLine + ';border-radius:2.5mm;padding:4mm;background:#fff}.studio-stage-card span{display:block;font-size:6pt;color:' + theme.accent + ';text-transform:uppercase;letter-spacing:.08em}.studio-stage-card strong{display:block;font-size:9pt;margin:1.3mm 0}.studio-stage-card b{font-size:11pt;color:' + theme.navyDeep + '}.studio-card-grid p{font-size:7.5pt;line-height:1.45;color:#5d566d}' +
+    '.studio-stage-grid,.studio-card-grid{display:grid;grid-template-columns:1fr 1fr;gap:3mm;margin-top:5mm}.studio-stage-card,.studio-card-grid>div{border:1px solid ' + theme.concreteLine + ';border-radius:2.5mm;padding:4mm;background:#fff}.studio-stage-card span{display:block;font-size:6pt;color:' + theme.accent + ';text-transform:uppercase;letter-spacing:.08em}.studio-stage-card strong{display:block;font-size:9pt;margin:1.3mm 0}.studio-stage-card b{font-size:11pt;color:' + theme.navyDeep + '}.studio-stage-card small{display:block;font-size:6pt;color:#777083;margin-top:1.2mm}.studio-card-grid p{font-size:7.5pt;line-height:1.45;color:#5d566d}' +
+    '.studio-stage-title{display:flex;justify-content:space-between;align-items:flex-start;gap:5mm;border-bottom:2px solid ' + theme.navyDeep + ';padding:2mm 0 3mm;margin:3mm 0}.studio-stage-title span{font-size:9pt;font-weight:700;color:' + theme.navyDeep + '}.studio-stage-title small{font-size:6pt;color:#777083;font-weight:400}.studio-stage-title strong{font-size:10pt;color:' + theme.navyDeep + '}.studio-stage-summary-list{display:grid;gap:3mm;margin-top:4mm}.studio-stage-summary{display:flex;justify-content:space-between;gap:5mm;padding:4mm;border:1px solid ' + theme.concreteLine + ';border-radius:2mm;background:#fff;font-size:8.5pt}.studio-scope-list{display:grid;gap:2.5mm}.studio-scope-list>div{border-bottom:1px solid ' + theme.concreteLine + ';padding:2.5mm 0}.studio-scope-list strong{display:block;font-size:8pt;color:' + theme.navyDeep + '}.studio-scope-list span{display:block;font-size:7pt;line-height:1.4;color:#625b70;margin-top:.7mm}.studio-scope-hidden{padding:5mm;border:1px dashed ' + theme.concreteLine + ';border-radius:2mm}.studio-scope-hidden strong,.studio-scope-hidden span{display:block}.studio-scope-hidden span{font-size:7pt;color:#777083;margin-top:1mm}.studio-exclusions{margin-top:5mm;padding:5mm;border:1px solid ' + theme.concreteLine + ';border-left:1.5mm solid ' + theme.warn + ';border-radius:2mm}.studio-exclusions h2{font-size:11pt;margin:0 0 2mm}.studio-exclusions ul{margin:0;padding-left:5mm;font-size:7.5pt;line-height:1.5}.studio-monthly td:nth-child(2){max-width:62mm;font-size:6.6pt}' +
     '.studio-gallery{display:grid;grid-template-columns:1fr 1fr;gap:4mm;margin-top:4mm}.studio-gallery figure{margin:0}.studio-gallery img{width:100%;height:55mm;object-fit:cover;border-radius:2.5mm}.studio-gallery figcaption{font-size:6.5pt;color:#686176;margin-top:1.5mm}' +
     '.studio-conditions{border-top:2px solid ' + theme.navyDeep + ';margin-top:5mm}.studio-conditions>div{display:grid;grid-template-columns:55mm 1fr;gap:5mm;padding:4.5mm 0;border-bottom:1px solid ' + theme.concreteLine + '}.studio-conditions strong{font-size:9pt;color:' + theme.navyDeep + '}' +
     '.studio-callout{margin-top:8mm;padding:7mm;border-left:2mm solid ' + theme.accent + ';background:' + theme.cream2 + ';border-radius:2mm}.studio-callout strong{font-size:14pt}.studio-callout p{font-size:9pt;line-height:1.6;color:#514a61}' +
