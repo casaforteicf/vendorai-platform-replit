@@ -3028,6 +3028,58 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
               </main>
 
               <aside className="min-h-0 overflow-y-auto border-l bg-background p-4">
+                {proposalBuilderSelectedModuleKey && (
+                  <div className="mb-4 rounded-xl border border-primary/20 bg-primary/5 p-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-primary">Bloco selecionado</p>
+                    <p className="mt-1 text-sm font-semibold">
+                      {PROPOSAL_MODULE_LABELS[proposalBuilderSelectedModuleKey] ?? proposalBuilderSelectedModuleKey}
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      <Button type="button" size="sm" variant="outline" className="h-8 text-xs" onClick={() => proposalBuilderMoveModule(proposalBuilderSelectedModuleKey, -1)}>
+                        <ChevronUp className="mr-1 h-3.5 w-3.5" /> Subir
+                      </Button>
+                      <Button type="button" size="sm" variant="outline" className="h-8 text-xs" onClick={() => proposalBuilderMoveModule(proposalBuilderSelectedModuleKey, 1)}>
+                        <ChevronDown className="mr-1 h-3.5 w-3.5" /> Descer
+                      </Button>
+                      {(() => {
+                        const selectedModule = proposalBuilderEditorModules.find((item) => item.key === proposalBuilderSelectedModuleKey);
+                        if (!selectedModule || selectedModule.required) return null;
+                        return (
+                          <>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-8 text-xs"
+                              onClick={() => toggleProposalBuilderModule(
+                                proposalBuilderEditorModules.findIndex((item) => item.key === proposalBuilderSelectedModuleKey),
+                                selectedModule.enabled === false,
+                              )}
+                            >
+                              {selectedModule.enabled === false ? "Mostrar" : "Ocultar"}
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 text-xs text-destructive"
+                              onClick={() => {
+                                removeProposalBuilderModule(proposalBuilderSelectedModuleKey);
+                                setProposalBuilderSelectedModuleKey(null);
+                              }}
+                            >
+                              <Trash2 className="mr-1 h-3.5 w-3.5" /> Remover
+                            </Button>
+                          </>
+                        );
+                      })()}
+                    </div>
+                    <p className="mt-2 text-[10px] text-muted-foreground">
+                      Clique em outro bloco na prévia para editar sua posição e visibilidade.
+                    </p>
+                  </div>
+                )}
+
                 <div>
                   <p className="text-xs font-semibold">Design do modelo</p>
                   <p className="text-[10px] text-muted-foreground">Configurações salvas para a empresa.</p>
