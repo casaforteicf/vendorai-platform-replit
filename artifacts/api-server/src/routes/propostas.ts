@@ -735,6 +735,37 @@ router.get("/propostas/:id", async (req, res) => {
 });
 
 
+
+const integrityPreviewBodySchema = z.object({
+  tenantId: z.string().min(1),
+  itens: z.array(z.any()).default([]),
+  valorTotal: z.union([z.string(), z.number()]).optional().nullable(),
+  validadeAte: z.string().optional().nullable(),
+  prazoEntrega: z.string().optional().nullable(),
+  apresentacao: z.any().optional().nullable(),
+});
+
+router.post("/propostas/integrity/preview", async (req, res) => {
+  const parsed = integrityPreviewBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== parsed.data.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  res.json(auditProposalBudget({
+    itens: parsed.data.itens as PropostaItem[],
+    valorTotal: parsed.data.valorTotal,
+    validadeAte: parsed.data.validadeAte,
+    prazoEntrega: parsed.data.prazoEntrega,
+    apresentacao: parsed.data.apresentacao,
+  }));
+});
+
 router.get("/propostas/:id/integrity", async (req, res) => {
   const [proposta] = await db
     .select()
