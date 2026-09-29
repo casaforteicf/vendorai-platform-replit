@@ -2511,6 +2511,161 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
             </div>
           </div>
 
+          <div className="mb-4 overflow-hidden rounded-xl border bg-background">
+            <button
+              type="button"
+              onClick={() => setProposalVisualCenterOpen((value) => !value)}
+              className="flex w-full items-start justify-between gap-3 p-3 text-left"
+            >
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <ImagePlus className="h-4 w-4 text-muted-foreground" />
+                  <p className="text-sm font-semibold">Central visual</p>
+                  <Badge variant="outline" className="text-[10px]">{proposalComposerCover ? "capa ✓" : "capa pendente"}</Badge>
+                  <Badge variant="outline" className="text-[10px]">{proposalComposerTemplateImageCount} imagens do modelo</Badge>
+                  <Badge variant="outline" className="text-[10px]">{proposalComposerStageImageCount}/{selectedOrcamentoStages.length || 0} etapas</Badge>
+                </div>
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  Uma única visão para capa, imagens do modelo, etapas e biblioteca de apoio. Prioridade: proposta → modelo → etapa → biblioteca.
+                </p>
+              </div>
+              {proposalVisualCenterOpen ? <ChevronUp className="mt-0.5 h-4 w-4 shrink-0" /> : <ChevronDown className="mt-0.5 h-4 w-4 shrink-0" />}
+            </button>
+
+            {proposalVisualCenterOpen && (
+              <div className="space-y-3 border-t p-3">
+                <div className="grid gap-3 lg:grid-cols-3">
+                  <div className="rounded-lg border p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-semibold">Capa da proposta</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {selectedOrcamento?.apresentacao?.imagemCapa
+                            ? "Imagem específica desta proposta"
+                            : proposalComposerTemplateCover
+                              ? "Usando capa padrão do modelo"
+                              : proposalImages[0]
+                                ? "Usando biblioteca visual como fallback"
+                                : "Sem capa definida"}
+                        </p>
+                      </div>
+                      <Badge variant={proposalComposerCover ? "secondary" : "outline"} className="text-[10px]">
+                        {proposalComposerCover ? "Pronta" : "Pendente"}
+                      </Badge>
+                    </div>
+                    {proposalComposerCover ? (
+                      <img src={normalizeTenantLogoUrl(proposalComposerCover)} alt="Capa da proposta" className="mt-2 h-28 w-full rounded-md border object-cover" />
+                    ) : (
+                      <div className="mt-2 flex h-28 items-center justify-center rounded-md border border-dashed bg-muted/20 text-[10px] text-muted-foreground">
+                        Nenhuma imagem
+                      </div>
+                    )}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="mt-2 h-9 w-full gap-1.5 text-xs"
+                      disabled={generatingCoverImage || !selectedOrcamento}
+                      onClick={() => void generatePremiumCoverImage()}
+                    >
+                      {generatingCoverImage ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                      {selectedOrcamento?.apresentacao?.imagemCapa ? "Regenerar capa desta proposta" : "Gerar capa desta proposta"}
+                    </Button>
+                  </div>
+
+                  <div className="rounded-lg border p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-semibold">Imagens do modelo</p>
+                        <p className="text-[10px] text-muted-foreground">Padrões reutilizáveis definidos no Studio.</p>
+                      </div>
+                      <Badge variant="outline" className="text-[10px]">{proposalComposerTemplateImageCount}</Badge>
+                    </div>
+                    <div className="mt-2 grid grid-cols-3 gap-1.5">
+                      {proposalComposerTemplateImageModules.slice(0, 6).map((module) => (
+                        <div key={module.key} className="overflow-hidden rounded-md border bg-muted/20">
+                          <img src={normalizeTenantLogoUrl(module.image?.url || "")} alt={module.title || PROPOSAL_MODULE_LABELS[module.key] || module.key} className="h-16 w-full object-cover" />
+                          <p className="truncate px-1.5 py-1 text-[9px]">{module.title || PROPOSAL_MODULE_LABELS[module.key] || module.key}</p>
+                        </div>
+                      ))}
+                      {proposalComposerTemplateImageCount === 0 && (
+                        <div className="col-span-3 flex h-20 items-center justify-center rounded-md border border-dashed text-[10px] text-muted-foreground">
+                          Nenhuma imagem padrão no modelo
+                        </div>
+                      )}
+                    </div>
+                    <Button type="button" size="sm" variant="outline" className="mt-2 h-9 w-full gap-1.5 text-xs" onClick={openProposalBuilderEditor} disabled={!proposalBuilderTemplates.length}>
+                      <Settings2 className="h-3.5 w-3.5" />
+                      Editar imagens no Studio
+                    </Button>
+                  </div>
+
+                  <div className="rounded-lg border p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-semibold">Imagens das etapas</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {selectedOrcamentoStages.length
+                            ? `${proposalComposerStageImageCount} de ${selectedOrcamentoStages.length} prontas`
+                            : "O orçamento não possui etapas estruturadas"}
+                        </p>
+                      </div>
+                      <Badge variant="outline" className="text-[10px]">{proposalComposerStageCoverage}%</Badge>
+                    </div>
+                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+                      <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${proposalComposerStageCoverage}%` }} />
+                    </div>
+                    <div className="mt-3 flex flex-col gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-9 w-full gap-1.5 text-xs"
+                        disabled={generatingStageImages || selectedOrcamentoStages.length === 0 || proposalComposerStageImageCount === selectedOrcamentoStages.length}
+                        onClick={() => {
+                          selectNextMissingStageImages();
+                          setProposalStagesOpen(true);
+                        }}
+                      >
+                        <ImagePlus className="h-3.5 w-3.5" />
+                        Selecionar próximas 3 sem imagem
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-9 w-full gap-1.5 text-xs"
+                        disabled={generatingStageImages || selectedStageImageIds.length === 0}
+                        onClick={() => void generateRepresentativeStageImages(false)}
+                      >
+                        {generatingStageImages ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                        Gerar {selectedStageImageIds.length || ""} selecionada{selectedStageImageIds.length === 1 ? "" : "s"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border bg-muted/20 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-semibold">Biblioteca visual de apoio</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {effectiveProposalImages.length} imagem(ns) gerais disponíveis. Elas só entram quando não houver imagem mais específica para o bloco.
+                      </p>
+                    </div>
+                    <Badge variant="outline" className="text-[10px]">fallback</Badge>
+                  </div>
+                  {effectiveProposalImages.length > 0 && (
+                    <div className="mt-2 grid grid-cols-4 gap-1.5 sm:grid-cols-6">
+                      {effectiveProposalImages.slice(0, 6).map((url, index) => (
+                        <img key={`${url}-visual-center-${index}`} src={url} alt="" className="aspect-video w-full rounded-md border object-cover" />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Seletor de orçamento a incluir */}
           {proposalBudgetOptions.length > 0 && (
             <div className="mb-4 min-w-0 space-y-1 overflow-hidden border-b pb-4">
