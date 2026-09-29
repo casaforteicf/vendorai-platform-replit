@@ -249,10 +249,17 @@ export function RenderStudioRightPanel({
                             <span style={{ fontSize: 9, fontWeight: 700, color: D.dim, textTransform: "uppercase" }}>Iluminação</span>
                             <select value={lightingProfile} onChange={(e) => setLightingProfile(e.target.value as RenderStudioLightingProfile)} style={inputStyle}>
                               <option value="natural">Natural</option>
+                              <option value="balanced">Equilibrada</option>
+                              <option value="more_light">Mais luz</option>
                               <option value="warm">Aconchegante</option>
                               <option value="editorial">Editorial</option>
                               <option value="night">Noturna</option>
                             </select>
+                            {lightingProfile === "more_light" && (
+                              <div style={{ marginTop: 4, fontSize: 9, lineHeight: 1.4, color: D.muted }}>
+                                “Mais luz” reforça a iluminação do teto com barra/perfil de LED e melhora a claridade geral sem alterar layout, móveis ou materiais.
+                              </div>
+                            )}
                           </label>
                         </div>
                         <div style={{ padding: "7px 9px", borderRadius: 7, background: `${D.purple}0D`, border: `1px solid ${D.purple}22`, fontSize: 10, lineHeight: 1.45, color: D.muted }}>
