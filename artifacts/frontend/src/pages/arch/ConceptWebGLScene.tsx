@@ -1224,7 +1224,7 @@ export default function ConceptWebGLScene({
                   texture.wrapT = THREE.RepeatWrapping;
                   if ("encoding" in texture && THREE.sRGBEncoding) texture.encoding = THREE.sRGBEncoding;
                   cloned.map = texture;
-                  if ("color" in cloned?.color && cloned.color?.setHex) cloned.color.setHex(0xffffff);
+                  if (cloned.color?.setHex) cloned.color.setHex(0xffffff);
                   if ("envMapIntensity" in cloned) cloned.envMapIntensity = 0.95;
                   cloned.needsUpdate = true;
                   sourceMaterials[index] = cloned;
