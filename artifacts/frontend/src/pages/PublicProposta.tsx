@@ -337,7 +337,6 @@ export default function PublicProposta() {
                 <CheckCircle className="mr-2 h-4 w-4" />Aceitar proposta
               </Button>
             )}
-            {portalAccessUi(true)}
           </div>
         </div>
         <iframe
