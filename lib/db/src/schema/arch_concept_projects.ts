@@ -17,6 +17,8 @@ export type ArchConceptConfiguration = {
   startWithTerrain?: boolean;
   startSourceChosen?: boolean;
   intakeStage?: "kind" | "terrain_choice" | "terrain_editor" | "source" | "complete";
+  terrainDefined?: boolean;
+  workspaceBounds?: { width: number; depth: number };
   typology?: "terrea_2q" | "terrea_3q" | "terrea_lazer" | "sobrado_3q" | "sobrado_master";
   layoutPreferences?: Record<string, boolean>;
   wallFirstFloors?: number[];
