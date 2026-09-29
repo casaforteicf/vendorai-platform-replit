@@ -311,7 +311,10 @@ export function RenderStudioRightPanel({
                     {/* P2-14: objeto selecionado */}
                     {selections.length > 0 && (
                       <div style={{ padding: "8px 10px", borderRadius: 7, background: `${D.amber}12`, border: `1px solid ${D.amber}44` }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: D.amber, marginBottom: 6 }}>⬚ REGIÃO SELECIONADA</div>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: D.amber, marginBottom: 4 }}>⬚ REGIÃO SELECIONADA</div>
+                        <div style={{ fontSize: 10, color: D.muted, lineHeight: 1.45, marginBottom: 7 }}>
+                          Antes de gerar, clique na região no canvas. Você pode mover a seleção e redimensionar pelos quatro cantos. Só a área final confirmada será alterada.
+                        </div>
                         {selections.map((sel) => (
                           <div key={sel.id} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
                             <span style={{ fontSize: 11, color: D.text, flex: 1 }}>{sel.label || "Seleção sem nome"}</span>
