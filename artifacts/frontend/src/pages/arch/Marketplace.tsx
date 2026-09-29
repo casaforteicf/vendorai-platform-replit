@@ -15,6 +15,9 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { ordenarArvoreCategorias } from "@/lib/categoriaTree";
+import { useListCategoriasProduto, getListCategoriasProdutoQueryKey } from "@workspace/api-client-react";
 import {
   Search, Image, ShoppingCart, Loader2, Store, Package,
   TrendingUp, DollarSign, ReceiptText,
@@ -73,14 +76,11 @@ const STATUS_PEDIDO: Record<string, { label: string; cls: string }> = {
   cancelado:  { label: "Cancelado",  cls: "bg-red-50 text-red-700 border-red-200" },
 };
 
-const CATEGORIAS = [
-  "Móveis", "Iluminação", "Revestimentos", "Elétrica", "Hidráulica",
-  "Marcenaria", "Acessórios", "Pintura", "Metais", "Cerâmica", "Outros",
-];
-
 // ── Main Component ─────────────────────────────────────────────────────────
 export default function Marketplace() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const tenantId = user?.tenantId ?? "";
 
   // ── Explorar state
   const [items, setItems]           = useState<MarketplaceItem[]>([]);
@@ -88,6 +88,14 @@ export default function Marketplace() {
   const [itemsLoaded, setItemsLoaded]   = useState(false);
   const [busca, setBusca]           = useState("");
   const [catFilter, setCatFilter]   = useState("__all__");
+  const { data: categoriasProduto = [] } = useListCategoriasProduto(tenantId, {
+    query: {
+      queryKey: getListCategoriasProdutoQueryKey(tenantId),
+      enabled: !!tenantId,
+      staleTime: 300_000,
+    },
+  });
+  const categoriasOrdenadas = ordenarArvoreCategorias(categoriasProduto);
 
   // ── Comprar dialog
   const [buying, setBuying]               = useState<MarketplaceItem | null>(null);
@@ -267,7 +275,11 @@ export default function Marketplace() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="__all__">Todas as categorias</SelectItem>
-                {CATEGORIAS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                {categoriasOrdenadas.map(({ categoria: c, profundidade }) => (
+                  <SelectItem key={c.id} value={c.nome}>
+                    {"　".repeat(profundidade)}{profundidade > 0 ? "↳ " : ""}{c.nome}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
