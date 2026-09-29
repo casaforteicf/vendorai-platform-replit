@@ -1131,6 +1131,22 @@ export default function ProjetoDetalhe() {
             <Button onClick={openAddItem}>
               <Plus className="h-4 w-4 mr-2" /> Adicionar item
             </Button>
+            <Button
+              variant="secondary"
+              disabled={grupos.length === 0}
+              onClick={() => {
+                const params = new URLSearchParams({
+                  new: "1",
+                  archProjectId: projetoId,
+                  returnTo: `/arch/projetos/${projetoId}`,
+                });
+                if (projeto?.leadId) params.set("leadId", projeto.leadId);
+                if (projeto?.dealId) params.set("dealId", projeto.dealId);
+                navigate(`/propostas?${params.toString()}`);
+              }}
+            >
+              <ClipboardList className="h-4 w-4 mr-2" /> Gerar proposta
+            </Button>
           </div>
 
           {orcLoading ? (
