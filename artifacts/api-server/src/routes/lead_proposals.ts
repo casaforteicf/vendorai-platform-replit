@@ -11,6 +11,7 @@ import {
   messagesTable,
   customerIntelligenceTable,
   businessProfilesTable,
+  knowledgeBaseTable,
   dealsTable,
   tenantsTable,
 } from "@workspace/db";
@@ -93,9 +94,62 @@ async function loadProposalContext(leadId: string, tenantId: string) {
       proposalTemplateUrl: businessProfilesTable.proposalTemplateUrl,
       discoveryData: businessProfilesTable.discoveryData,
       logoUrl: businessProfilesTable.logoUrl,
+      vertical: businessProfilesTable.vertical,
+      diferenciais: businessProfilesTable.diferenciais,
+      publicoAlvo: businessProfilesTable.publicoAlvo,
+      produtos: businessProfilesTable.produtos,
+      metodoVendas: businessProfilesTable.metodoVendas,
+      canaisVenda: businessProfilesTable.canaisVenda,
+      concorrentes: businessProfilesTable.concorrentes,
     })
     .from(businessProfilesTable)
     .where(eq(businessProfilesTable.tenantId, tenantId));
+
+  const knowledgeRows = await db
+    .select({
+      titulo: knowledgeBaseTable.titulo,
+      conteudo: knowledgeBaseTable.conteudo,
+      categoria: knowledgeBaseTable.categoria,
+      tags: knowledgeBaseTable.tags,
+    })
+    .from(knowledgeBaseTable)
+    .where(and(
+      eq(knowledgeBaseTable.tenantId, tenantId),
+      eq(knowledgeBaseTable.ativo, true),
+    ))
+    .orderBy(desc(knowledgeBaseTable.updatedAt))
+    .limit(12);
+
+  const discovery = (bp?.discoveryData ?? {}) as Record<string, unknown>;
+  const discoveryText = (key: string) => {
+    const value = discovery[key];
+    if (typeof value === "string") return value.replace(/\s+/g, " ").trim();
+    if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string").join("; ");
+    return "";
+  };
+  const tenantBusinessContext = [
+    bp?.vertical ? `Segmento da empresa: ${bp.vertical}` : "",
+    bp?.publicoAlvo ? `Público-alvo configurado: ${bp.publicoAlvo}` : "",
+    bp?.diferenciais ? `Diferenciais oficiais configurados:\n${bp.diferenciais}` : "",
+    bp?.metodoVendas ? `Método comercial: ${bp.metodoVendas}` : "",
+    Array.isArray(bp?.canaisVenda) && bp.canaisVenda.length ? `Canais de venda: ${bp.canaisVenda.join(", ")}` : "",
+    Array.isArray(bp?.produtos) && bp.produtos.length
+      ? `Produtos/serviços do perfil: ${bp.produtos.map((item) => item?.nome).filter(Boolean).join(", ")}`
+      : "",
+    discoveryText("posicionamento") ? `Posicionamento: ${discoveryText("posicionamento")}` : "",
+    discoveryText("mensagensChave") ? `Mensagens-chave:\n${discoveryText("mensagensChave")}` : "",
+    discoveryText("missao") ? `Missão: ${discoveryText("missao")}` : "",
+    discoveryText("visao") ? `Visão: ${discoveryText("visao")}` : "",
+    discoveryText("valores") ? `Valores: ${discoveryText("valores")}` : "",
+    discoveryText("tomVoz") ? `Tom de voz: ${discoveryText("tomVoz")}` : "",
+    discoveryText("palavrasEvitar") ? `Palavras/afirmações a evitar: ${discoveryText("palavrasEvitar")}` : "",
+    knowledgeRows.length
+      ? `Base de conhecimento ativa:\n${knowledgeRows.map((row) => {
+          const content = String(row.conteudo ?? "").replace(/\s+/g, " ").trim().slice(0, 1400);
+          return `- [${row.categoria}] ${row.titulo}: ${content}`;
+        }).join("\n")}`
+      : "",
+  ].filter(Boolean).join("\n\n").slice(0, 18000);
 
   const tenantName = bp?.nomeFantasia || bp?.razaoSocial || null;
 
@@ -105,6 +159,7 @@ async function loadProposalContext(leadId: string, tenantId: string) {
     tenantEmail: bp?.email ?? null, tenantInstagram: bp?.instagramUrl ?? null,
     proposalTemplateUrl: bp?.proposalTemplateUrl ?? null,
     discoveryData: bp?.discoveryData ?? null,
+    tenantBusinessContext,
   };
 }
 
@@ -1420,6 +1475,7 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
     conversationSamples: ctx.conversationSamples,
     tenantName: ctx.tenantName,
     tenantPhone: ctx.tenantPhone,
+    tenantBusinessContext: ctx.tenantBusinessContext,
     refinementNotes: req.body?.refinementNotes ? String(req.body.refinementNotes) : null,
     styleMemory,
     templateGuidance: await (async () => {

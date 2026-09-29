@@ -140,7 +140,7 @@ export function generateTheme(primaryHex: string): {
   return { cream, cream2, ink, navyDeep, navyMid, accent, accentSoft, secondary, secondarySoft, concrete, concreteLine, ok: "#3FAE7A", warn: "#E0793C" };
 }
 
-function extractProposalBenefits(...sources: unknown[]): string[] {
+function extractProposalBenefitList(maxItems: number, ...sources: unknown[]): string[] {
   const raw: string[] = [];
   const visit = (value: unknown) => {
     if (Array.isArray(value)) { value.forEach(visit); return; }
@@ -155,10 +155,14 @@ function extractProposalBenefits(...sources: unknown[]): string[] {
   return raw
     .flatMap((value) => value.split(/\r?\n|[•·]|\s+[—–-]\s+|;+/g))
     .map((value) => value.replace(/^\s*(?:\d+[.)]|[-*])\s*/, "").trim())
-    .filter((value) => value.length >= 4 && value.length <= 120)
+    .filter((value) => value.length >= 4 && value.length <= 160)
     .map((value) => value.replace(/[.]+$/, ""))
     .filter((value, index, list) => list.findIndex((item) => item.toLowerCase() === value.toLowerCase()) === index)
-    .slice(0, 4);
+    .slice(0, Math.max(1, maxItems));
+}
+
+function extractProposalBenefits(...sources: unknown[]): string[] {
+  return extractProposalBenefitList(4, ...sources);
 }
 
 // ── Prompt builder ───────────────────────────────────────────────────────────
@@ -255,6 +259,7 @@ export function buildProposalPrompt(ctx: {
   conversationSamples: string;
   tenantName?: string | null;
   tenantPhone?: string | null;
+  tenantBusinessContext?: string | null;
   refinementNotes?: string | null;
   styleMemory?: ProposalStyleMemory | null;
   templateGuidance?: string | null;
@@ -295,6 +300,16 @@ REGRA CRÍTICA: não invente, substitua, amplie ou remova serviços do orçament
     ? `\n## Segmento do cliente: "${ctx.mercadoSegmento}"\nIMPORTANTE: toda a proposta DEVE usar terminologia, exemplos, dores e oportunidades específicas deste segmento. Não use linguagem genérica de "empresa". Use jargão real do setor. Os problemas, implicações e módulos devem ser exemplos concretos do dia a dia de ${ctx.mercadoSegmento}. Se for varejo: fale em loja, vendedor, estoque, ticket médio, sazonalidade. Se for construção: obra, engenheiro, orçamento, cliente de obra. Se for saúde: paciente, consulta, agenda. Adapte para o segmento real.`
     : "";
 
+  const tenantBusinessContextBlock = ctx.tenantBusinessContext?.trim()
+    ? `\n━━━ CONFIGURAÇÃO OFICIAL DO TENANT — FONTE DE VERDADE DE MARCA E DIFERENCIAIS ━━━
+Use este bloco como fonte principal para apresentação institucional, proposta de valor, diferenciais, benefícios, público-alvo, tom e mensagens-chave.
+Quando o orçamento selecionado contiver um produto/sistema compatível com estes diferenciais, destaque explicitamente os benefícios relevantes para o cliente.
+NÃO substitua estes dados por texto institucional genérico e NÃO invente números, certificações, percentuais ou promessas ausentes.
+Se houver divergência entre conhecimento geral e configuração do tenant, prevalece a configuração do tenant.
+
+${ctx.tenantBusinessContext.trim().slice(0, 18000)}`
+    : "";
+
   const templateBlock = ctx.templateGuidance?.trim()
     ? `\n━━━ MODELO DE PROPOSTA DA EMPRESA (referência de estrutura e tom) ━━━\nO usuário enviou um modelo de proposta padrão da empresa. Use-o como referência para estrutura, nomenclatura de seções e tom de linguagem. Não copie o conteúdo — adapte-o ao lead atual.\n\n${ctx.templateGuidance.trim().slice(0, 8000)}`
     : "";
@@ -328,6 +343,7 @@ ${productsBlock}
 ${propostasBlock}
 ${briefingBlock}
 ${intelligenceBlock}
+${tenantBusinessContextBlock}
 
 ━━━ AMOSTRA DE CONVERSA (calibre o tom exato ao estilo do cliente) ━━━
 ${ctx.conversationSamples || "Sem conversa disponível. Use tom profissional, direto e respeitoso."}
@@ -447,6 +463,8 @@ Retorne APENAS JSON válido — sem markdown, sem \`\`\`json, sem texto antes ou
 9. Cada campo de texto: máximo 2 frases curtas e diretas. Sem padding. Seja objetivo.
 10. Retorne APENAS JSON válido. Nada antes ou depois.
 10.1. company, offer, curiosities, proof e faq formam o "breve site" comercial da proposta. Preencha somente com informações sustentadas pelo contexto fornecido; se um bloco não tiver dados confiáveis, retorne arrays vazios ou texto vazio em vez de inventar conteúdo.
+10.2. A apresentação da empresa e a página de diferenciais DEVEM priorizar a Configuração Oficial do Tenant quando disponível. Não use frases genéricas como "referência no segmento", "equipe altamente qualificada" ou "compromisso com a excelência" se existirem posicionamento, mensagens-chave, diferenciais ou benefícios específicos cadastrados.
+10.3. Quando a solução ofertada tiver benefícios técnicos cadastrados (ex.: isolamento térmico, conforto acústico, eficiência energética, velocidade de execução, durabilidade, segurança, sustentabilidade), converta-os em benefícios claros para o cliente e destaque os mais relevantes na capa, em "offer.bullets" e em "company.highlights", sem inventar métricas.
 11. NUNCA mencione valores monetários (R$, preços, custos, investimento, orçamento, "a partir de", "mensalidade") em NENHUM campo do JSON — nem no hero, nem no subheadline, nem em modules, nem em cta. Os valores financeiros serão exibidos exclusivamente na seção de orçamento, que é gerada separadamente.\n12. O orçamento selecionado é a FONTE DE VERDADE para escopo e dados comerciais. A IA pode melhorar apenas a narrativa comercial; nunca pode alterar itens, etapas, quantidades, valores, condições, cronograma, total ou especificações cadastradas no sistema.`;
 }
 
@@ -2279,6 +2297,10 @@ function renderStudioOrderedProposal(args: {
     const value = module[field];
     return typeof value === "string" && value.trim() ? value.trim() : fallback;
   };
+  const moduleDataSource = (module: Record<string, unknown>) =>
+    typeof module.dataSource === "string" ? module.dataSource : "mixed";
+  const moduleManualContent = (module: Record<string, unknown>) =>
+    moduleDataSource(module) === "manual" ? moduleText(module, "contentPrompt") : "";
   const moduleDisplayTitle = (module: Record<string, unknown>) => {
     const key = String(module.key ?? "");
     const raw = moduleText(module, "title");
@@ -2307,12 +2329,13 @@ function renderStudioOrderedProposal(args: {
   };
   const modelImageUrl = (module: Record<string, unknown>, index: number) =>
     moduleImage(module).url || visualImages[index] || visualImages[index % Math.max(1, visualImages.length)] || "";
-  const benefits = extractProposalBenefits(
-    moduleText(moduleByKey("diferenciais") ?? {}, "contentPrompt"),
-    moduleText(moduleByKey("diferenciais") ?? {}, "description"),
+  const benefits = extractProposalBenefitList(
+    6,
     companyInfo.highlights,
     offerInfo.bullets,
     solutionInfo.agents,
+    proofInfo.items,
+    moduleManualContent(moduleByKey("diferenciais") ?? {}),
   );
 
   const header = (label: string) =>
@@ -2432,7 +2455,7 @@ function renderStudioOrderedProposal(args: {
           '<div class="studio-cover-main"><span class="studio-kicker">Proposta de valor</span>' +
           '<h1>' + esc(orcamento?.titulo || hero.headline || moduleText(module, "title", "Proposta comercial")) + '</h1>' +
           '<p>' + esc(valueStatement) + '</p>' +
-          benefitsHtml(benefits) +
+          benefitsHtml(benefits.slice(0, 4)) +
           '</div>' +
           '<div class="studio-cover-bottom"><strong>Cliente: ' + esc(client) + '</strong>' +
           (summary ? '<div class="studio-cover-summary">' + summary + '</div>' : '') +
@@ -2440,20 +2463,24 @@ function renderStudioOrderedProposal(args: {
     }
 
     if (key === "apresentacao_empresa") {
-      const text = content || companyInfo.text || "Apresentação institucional da empresa.";
-      const highlights = extractProposalBenefits(companyInfo.highlights, moduleText(module, "description"));
+      const manual = moduleManualContent(module);
+      const text = manual || companyInfo.text || "Apresentação institucional da empresa.";
+      const highlights = extractProposalBenefits(companyInfo.highlights, offerInfo.bullets, moduleText(module, "description"));
       return genericPage(module, index, pageVisual(module, index) + '<p class="studio-copy">' + esc(text) + '</p>' + benefitsHtml(highlights));
     }
 
     if (key === "diferenciais") {
+      const manual = moduleManualContent(module);
+      const differentialCopy = manual || String(offerInfo.text || "").trim();
       return genericPage(module, index, pageVisual(module, index) +
-        (content ? '<p class="studio-copy">' + esc(content) + '</p>' : '') +
+        (differentialCopy ? '<p class="studio-copy">' + esc(differentialCopy) + '</p>' : '') +
         benefitsHtml(benefits));
     }
 
     if (key === "produto_servico") {
-      const text = content || offerInfo.text || "Descrição da solução ofertada.";
-      const bullets = extractProposalBenefits(offerInfo.bullets, solutionInfo.agents);
+      const manual = moduleManualContent(module);
+      const text = manual || offerInfo.text || "Descrição da solução ofertada.";
+      const bullets = extractProposalBenefits(offerInfo.bullets, companyInfo.highlights, solutionInfo.agents);
       return genericPage(module, index, pageVisual(module, index) + '<p class="studio-copy">' + esc(text) + '</p>' + benefitsHtml(bullets));
     }
 
@@ -2467,7 +2494,8 @@ function renderStudioOrderedProposal(args: {
       const metrics = '<div class="studio-metrics">' + cards.map(([label, value]) =>
         '<div><span>' + esc(label) + '</span><strong>' + esc(value) + '</strong></div>'
       ).join("") + '</div>';
-      return genericPage(module, index, pageVisual(module, index) + metrics + (content ? '<p class="studio-copy">' + esc(content) + '</p>' : ''));
+      const manual = moduleManualContent(module);
+      return genericPage(module, index, pageVisual(module, index) + metrics + (manual ? '<p class="studio-copy">' + esc(manual) + '</p>' : ''));
     }
 
     if (key === "escopo") return genericPage(module, index, pageVisual(module, index) + itemTable());
