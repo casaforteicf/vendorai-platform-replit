@@ -1,111 +1,90 @@
 import type { Logger } from "pino";
 import { toFile } from "openai";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
-import {
-  callReplicateFluxKontext,
-  callReplicateFluxUltraPro,
-  callReplicateVeo31,
-} from "../lib/arch-render-pipeline.js";
-import { callBflFlux2Pro, callBflKontextPro } from "../lib/bfl-direct.js";
+import { callReplicateVeo31 } from "../lib/arch-render-pipeline.js";
 import { callGoogleVertexVeo } from "../lib/google-veo-direct.js";
 import { resolveMediaProvider } from "./media-provider-router.js";
 
-export async function generateRenderPreserve(input: {
-  imageDataUrl: string;
-  prompt: string;
-  aspectRatio?: string;
-  logger?: Logger;
-  signal?: AbortSignal;
-  resumePredictionId?: string;
-  beforeSubmit?: () => Promise<void>;
-  onPredictionCreated?: (id: string) => Promise<void>;
-}): Promise<{ base64: string; provider: "bfl" | "replicate"; model: string }> {
-  const route = resolveMediaProvider("render_preserve");
-  if (route.provider === "bfl") {
-    try {
-      const base64 = await callBflKontextPro({
-        imageDataUrl: input.imageDataUrl,
-        prompt: input.prompt,
-        aspectRatio: input.aspectRatio,
-        logger: input.logger,
-      });
-      return { base64, provider: "bfl", model: "flux-kontext-pro" };
-    } catch (error) {
-      if (!route.route.fallbacks.includes("replicate") || !process.env["REPLICATE_API_TOKEN"]) throw error;
-      input.logger?.warn({ err: error }, "BFL direct failed; falling back to Replicate");
-    }
-  }
-
-  const base64 = await callReplicateFluxKontext({
-    imageDataUrl: input.imageDataUrl,
-    prompt: input.prompt,
-    aspectRatio: input.aspectRatio,
-    logger: input.logger,
-    signal: input.signal,
-    resumePredictionId: input.resumePredictionId,
-    beforeSubmit: input.beforeSubmit,
-    onPredictionCreated: input.onPredictionCreated,
-  });
-  return { base64, provider: "replicate", model: "black-forest-labs/flux-kontext-pro" };
+function decodeDataUrl(imageDataUrl: string, label: string): { source: Buffer; mime: string } {
+  const match = imageDataUrl.match(/^data:([^;]+);base64,(.+)$/s);
+  if (!match) throw new Error(`Imagem base inválida para ${label}`);
+  const mime = match[1] || "image/png";
+  const source = Buffer.from(match[2], "base64");
+  if (!source.length) throw new Error(`Imagem base vazia para ${label}`);
+  return { source, mime };
 }
 
+function arqdorImageModel(): string {
+  return process.env["VENDORAI_IMAGE_MODEL_PREMIUM"]?.trim() || "gpt-image-2";
+}
 
 export async function generateRenderPremiumOpenAI(input: {
   tenantId: string;
   imageDataUrl: string;
   prompt: string;
+  maskDataUrl?: string;
   logger?: Logger;
 }): Promise<{ base64: string; provider: "openai"; model: string }> {
-  const match = input.imageDataUrl.match(/^data:([^;]+);base64,(.+)$/s);
-  if (!match) throw new Error("Imagem base inválida para Render Premium");
-  const mime = match[1] || "image/png";
-  const source = Buffer.from(match[2], "base64");
-  if (!source.length) throw new Error("Imagem base vazia para Render Premium");
-
+  const { source, mime } = decodeDataUrl(input.imageDataUrl, "Render Premium");
   const openai = await getOpenAIForTenant(input.tenantId);
-  const model = process.env["VENDORAI_IMAGE_MODEL_PREMIUM"]?.trim() || "gpt-image-2";
+  const model = arqdorImageModel();
   const image = await toFile(source, "arqdor-reference.png", { type: mime });
 
-  input.logger?.info({ provider: "openai", model }, "Arqdor Premium: submitting high-fidelity image edit");
-  const result = await (openai.images.edit as Function)({
+  let mask: Awaited<ReturnType<typeof toFile>> | undefined;
+  if (input.maskDataUrl) {
+    const decodedMask = decodeDataUrl(input.maskDataUrl, "máscara do Render Premium");
+    mask = await toFile(decodedMask.source, "arqdor-mask.png", { type: decodedMask.mime });
+  }
+
+  input.logger?.info(
+    { provider: "openai", model, operation: mask ? "masked-edit" : "edit" },
+    "Arqdor Premium: submitting OpenAI image edit",
+  );
+
+  const request: Record<string, unknown> = {
     model,
     image,
     prompt: input.prompt,
     n: 1,
     size: "auto",
     quality: "high",
-    input_fidelity: "high",
+    output_format: "png",
+  };
+  if (mask) request["mask"] = mask;
+
+  // GPT Image 2 already processes image inputs at high fidelity. Do not send
+  // input_fidelity here because the model does not accept an override.
+  const result = await (openai.images.edit as Function)(request);
+  const encoded = result?.data?.[0]?.b64_json as string | undefined;
+  if (!encoded) throw new Error(`${model} não retornou imagem para o Render Premium`);
+
+  input.logger?.info({ provider: "openai", model }, "Arqdor Premium: image edit succeeded");
+  return { base64: encoded, provider: "openai", model };
+}
+
+export async function generateRenderCreateOpenAI(input: {
+  tenantId: string;
+  prompt: string;
+  logger?: Logger;
+}): Promise<{ base64: string; provider: "openai"; model: string }> {
+  const openai = await getOpenAIForTenant(input.tenantId);
+  const model = arqdorImageModel();
+
+  input.logger?.info({ provider: "openai", model }, "Arqdor Premium: submitting OpenAI image generation");
+  const result = await (openai.images.generate as Function)({
+    model,
+    prompt: input.prompt,
+    n: 1,
+    size: "1536x1024",
+    quality: "high",
     output_format: "png",
   });
 
   const encoded = result?.data?.[0]?.b64_json as string | undefined;
   if (!encoded) throw new Error(`${model} não retornou imagem para o Render Premium`);
-  input.logger?.info({ provider: "openai", model }, "Arqdor Premium: image edit succeeded");
+
+  input.logger?.info({ provider: "openai", model }, "Arqdor Premium: image generation succeeded");
   return { base64: encoded, provider: "openai", model };
-}
-
-export async function generateRenderCreate(input: {
-  prompt: string;
-  logger?: Logger;
-}): Promise<{ base64: string; provider: "bfl" | "replicate"; model: string }> {
-  const route = resolveMediaProvider("render_create");
-  if (route.provider === "bfl") {
-    try {
-      const base64 = await callBflFlux2Pro({
-        prompt: input.prompt,
-        width: 1536,
-        height: 1024,
-        logger: input.logger,
-      });
-      return { base64, provider: "bfl", model: "flux-2-pro" };
-    } catch (error) {
-      if (!route.route.fallbacks.includes("replicate") || !process.env["REPLICATE_API_TOKEN"]) throw error;
-      input.logger?.warn({ err: error }, "BFL direct failed; falling back to Replicate");
-    }
-  }
-
-  const base64 = await callReplicateFluxUltraPro({ prompt: input.prompt, logger: input.logger });
-  return { base64, provider: "replicate", model: "black-forest-labs/flux-1.1-pro-ultra" };
 }
 
 export async function generateVeoVideo(input: {
