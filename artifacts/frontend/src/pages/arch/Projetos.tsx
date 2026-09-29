@@ -23,6 +23,7 @@ function fmt(v: number) {
 
 type Projeto = {
   id: string;
+  leadId?: string | null;
   titulo: string;
   clienteNome: string | null;
   clienteEmail: string | null;
@@ -123,8 +124,12 @@ export default function Projetos() {
   const [leadEditing, setLeadEditing] = useState<Lead | null>(null);
   const [leadForm, setLeadForm] = useState({ nome: "", telefone: "", email: "" });
   const [leadSaving, setLeadSaving] = useState(false);
+  const [leadProjectId, setLeadProjectId] = useState<string | null>(null);
+  const [selectLeadAfterSave, setSelectLeadAfterSave] = useState(true);
 
-  function openCreateLead() {
+  function openCreateLead(selectAfterSave = true) {
+    setSelectLeadAfterSave(selectAfterSave);
+    setLeadProjectId(null);
     setLeadEditing(null);
     setLeadForm({
       nome: leadSearch.trim(),
@@ -134,7 +139,9 @@ export default function Projetos() {
     setLeadDialogOpen(true);
   }
 
-  function openEditLead(lead: Lead) {
+  function openEditLead(lead: Lead, projectId: string | null = null) {
+    setSelectLeadAfterSave(projectId === null);
+    setLeadProjectId(projectId);
     setLeadEditing(lead);
     setLeadForm({
       nome: lead.nome ?? "",
@@ -182,7 +189,27 @@ export default function Projetos() {
       }
 
       const savedLead: Lead = data;
-      selectLead(savedLead);
+
+      if (leadEditing && leadProjectId) {
+        const projectRes = await fetch(`/api/arch/projetos/${leadProjectId}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${getToken()}`,
+          },
+          body: JSON.stringify({
+            clienteNome: savedLead.nome,
+            clienteEmail: savedLead.email ?? null,
+            clienteTelefone: savedLead.telefone ?? null,
+          }),
+        });
+        if (!projectRes.ok) {
+          throw new Error("Lead atualizado, mas não foi possível sincronizar os dados no projeto.");
+        }
+        load();
+      }
+
+      if (selectLeadAfterSave) selectLead(savedLead);
       setLeadDialogOpen(false);
       toast({
         title: leadEditing ? "Lead atualizado" : "Lead cadastrado",
@@ -334,6 +361,12 @@ export default function Projetos() {
           <p className="text-sm text-muted-foreground mt-0.5">{projetos.length} projeto{projetos.length !== 1 ? "s" : ""} encontrado{projetos.length !== 1 ? "s" : ""}</p>
         </div>
 
+        <div className="flex items-center gap-2">
+          <Button type="button" variant="outline" onClick={() => openCreateLead(false)}>
+            <UserPlus className="h-4 w-4 mr-2" />
+            Cadastrar Lead
+          </Button>
+
         <Dialog
           open={dialogOpen}
           onOpenChange={(open) => {
@@ -476,6 +509,7 @@ export default function Projetos() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
 
@@ -483,6 +517,8 @@ export default function Projetos() {
         setLeadDialogOpen(open);
         if (!open) {
           setLeadEditing(null);
+          setLeadProjectId(null);
+          setSelectLeadAfterSave(true);
           setLeadForm({ nome: "", telefone: "", email: "" });
         }
       }}>
@@ -523,7 +559,7 @@ export default function Projetos() {
                 Cancelar
               </Button>
               <Button type="submit" disabled={leadSaving || !leadForm.nome.trim()}>
-                {leadSaving ? "Salvando..." : leadEditing ? "Salvar alterações" : "Cadastrar e selecionar"}
+                {leadSaving ? "Salvando..." : leadEditing ? "Salvar alterações" : selectLeadAfterSave ? "Cadastrar e selecionar" : "Cadastrar lead"}
               </Button>
             </div>
           </form>
@@ -616,6 +652,23 @@ export default function Projetos() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-center gap-1">
+                        {p.leadId && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 text-xs"
+                            onClick={() => openEditLead({
+                              id: p.leadId!,
+                              nome: p.clienteNome ?? "",
+                              email: p.clienteEmail,
+                              telefone: p.clienteTelefone,
+                            }, p.id)}
+                            title="Editar lead deste projeto"
+                          >
+                            <Pencil className="h-3 w-3 mr-1" />
+                            Lead
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           variant="ghost"
