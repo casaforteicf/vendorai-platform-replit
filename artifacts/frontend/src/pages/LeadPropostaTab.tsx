@@ -396,6 +396,8 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
   const [generatingCoverImage, setGeneratingCoverImage] = useState(false);
   const [selectedStageImageIds, setSelectedStageImageIds] = useState<string[]>([]);
   const [stageImageUploadTarget, setStageImageUploadTarget] = useState<string | null>(null);
+  const [stageMediaLibraryTarget, setStageMediaLibraryTarget] = useState<string | null>(null);
+  const [stageImageGeneratingTarget, setStageImageGeneratingTarget] = useState<string | null>(null);
   const [stageImageUploading, setStageImageUploading] = useState(false);
   const [coverImageUploading, setCoverImageUploading] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -1287,6 +1289,77 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
         description: error instanceof Error ? error.message : "Tente novamente.",
         variant: "destructive",
       });
+    }
+  }
+
+  async function applyStageImage(stageId: string, imageUrl: string) {
+    if (!selectedOrcamento?.id) return;
+    const response = await fetch(api(`/api/leads/${leadId}/proposals/stage-image/manual`), {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        propostaId: selectedOrcamento.id,
+        stageId,
+        imageUrl,
+      }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.error ?? "Não foi possível vincular a imagem à etapa.");
+    await queryClient.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId, { leadId }) });
+  }
+
+  function openStageMediaLibrary(stageId: string) {
+    setStageMediaLibraryTarget(stageId);
+    void fetchProposalMediaLibrary();
+  }
+
+  async function generateSingleStageImage(stageId: string) {
+    if (!selectedOrcamento?.id) return;
+    const stage = selectedOrcamentoStages.find((item) => item.id === stageId);
+    if (!stage) return;
+
+    const alreadyHasImage = Boolean(selectedStageImages[stageId]);
+    const action = alreadyHasImage ? "Regenerar" : "Gerar";
+    if (!window.confirm(`${action} imagem com IA para a etapa "${stage.nome}"? Esta ação consome 1 geração de imagem.`)) return;
+
+    const userActionId =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `stage-image-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+    setStageImageGeneratingTarget(stageId);
+    try {
+      const response = await fetch(api(`/api/leads/${leadId}/proposals/stage-images`), {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          propostaId: selectedOrcamento.id,
+          stageIds: [stageId],
+          userActionId,
+          regenerate: alreadyHasImage,
+          confirmRegenerate: alreadyHasImage,
+          estiloCasa: proposalHouseStyle,
+          padraoCasa: proposalHouseStandard,
+          tipoCasa: proposalHouseType,
+          elementosVisuais: proposalVisualElements,
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? "Não foi possível gerar a imagem da etapa.");
+      await queryClient.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId, { leadId }) });
+      await fetchProposalMediaLibrary(true);
+      toast({
+        title: alreadyHasImage ? "Imagem regenerada com IA" : "Imagem gerada com IA",
+        description: "A nova mídia foi vinculada à etapa e salva na Biblioteca de Mídias.",
+      });
+    } catch (error) {
+      toast({
+        title: "Erro ao gerar imagem",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setStageImageGeneratingTarget(null);
     }
   }
 
@@ -3033,19 +3106,88 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                         </div>
                       </div>
 
-                      <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+                      <input
+                        ref={stageImageInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (file) void handleStageImageUpload(file);
+                          event.target.value = "";
+                        }}
+                      />
+                      <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
                         {selectedOrcamentoStages.map((stage) => (
                           <div
                             key={stage.id}
                             className="grid gap-2 rounded-lg border bg-background p-2.5 lg:grid-cols-[minmax(0,1fr)_210px_170px] lg:items-center"
                           >
                             <div className="min-w-0">
-                              <p className="text-xs font-medium leading-snug whitespace-normal break-words" title={stage.nome}>
-                                {stage.nome}
-                              </p>
-                              <p className="text-[11px] text-muted-foreground">
-                                {stage.total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                              </p>
+                              <div className="flex items-start gap-2">
+                                {selectedStageImages[stage.id] ? (
+                                  <img
+                                    src={normalizeTenantLogoUrl(selectedStageImages[stage.id])}
+                                    alt={stage.nome}
+                                    className="h-14 w-16 shrink-0 rounded-md border object-cover"
+                                  />
+                                ) : (
+                                  <div className="flex h-14 w-16 shrink-0 items-center justify-center rounded-md border border-dashed bg-muted/30 text-[9px] text-muted-foreground">
+                                    sem imagem
+                                  </div>
+                                )}
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-xs font-medium leading-snug whitespace-normal break-words" title={stage.nome}>
+                                    {stage.nome}
+                                  </p>
+                                  <p className="text-[11px] text-muted-foreground">
+                                    {stage.total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                                  </p>
+                                  <div className="mt-1.5 flex flex-wrap gap-1">
+                                    <button
+                                      type="button"
+                                      className="text-[9px] font-medium text-primary hover:underline"
+                                      onClick={() => openStageMediaLibrary(stage.id)}
+                                    >
+                                      Biblioteca
+                                    </button>
+                                    <span className="text-[9px] text-muted-foreground">·</span>
+                                    <button
+                                      type="button"
+                                      className="text-[9px] font-medium text-primary hover:underline"
+                                      disabled={stageImageUploading}
+                                      onClick={() => {
+                                        setStageImageUploadTarget(stage.id);
+                                        stageImageInputRef.current?.click();
+                                      }}
+                                    >
+                                      Upload
+                                    </button>
+                                    <span className="text-[9px] text-muted-foreground">·</span>
+                                    <button
+                                      type="button"
+                                      className="inline-flex items-center gap-1 text-[9px] font-medium text-violet-700 hover:underline disabled:opacity-50"
+                                      disabled={stageImageGeneratingTarget === stage.id}
+                                      onClick={() => void generateSingleStageImage(stage.id)}
+                                    >
+                                      {stageImageGeneratingTarget === stage.id ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <Sparkles className="h-2.5 w-2.5" />}
+                                      {selectedStageImages[stage.id] ? "Regenerar IA" : "Gerar com IA"}
+                                    </button>
+                                    {selectedStageImages[stage.id] && (
+                                      <>
+                                        <span className="text-[9px] text-muted-foreground">·</span>
+                                        <button
+                                          type="button"
+                                          className="text-[9px] text-destructive hover:underline"
+                                          onClick={() => void removeManualStageImage(stage.id)}
+                                        >
+                                          Remover
+                                        </button>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
                             </div>
                             <div className="space-y-1">
                               <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Financeiro</span>
@@ -3106,7 +3248,72 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                                   <SelectItem value="ocultar">Ocultar escopo</SelectItem>
                                 </SelectContent>
                               </Select>
-                            </div>
+                              {stageMediaLibraryTarget === stage.id && (
+                              <div className="lg:col-span-3 rounded-lg border border-primary/20 bg-muted/20 p-2.5">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div>
+                                    <p className="text-[11px] font-semibold">Biblioteca de Mídias</p>
+                                    <p className="text-[9px] text-muted-foreground">Escolha uma imagem existente para esta etapa.</p>
+                                  </div>
+                                  <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-[10px]" onClick={() => setStageMediaLibraryTarget(null)}>
+                                    Fechar
+                                  </Button>
+                                </div>
+                                <Input
+                                  value={proposalMediaLibrarySearch}
+                                  onChange={(event) => setProposalMediaLibrarySearch(event.target.value)}
+                                  placeholder="Buscar mídia"
+                                  className="mt-2 h-8 text-xs"
+                                />
+                                {proposalMediaLibraryLoading ? (
+                                  <div className="flex h-24 items-center justify-center"><Loader2 className="h-4 w-4 animate-spin" /></div>
+                                ) : (
+                                  <div className="mt-2 grid max-h-44 grid-cols-3 gap-2 overflow-y-auto sm:grid-cols-5">
+                                    {proposalMediaLibraryAssets
+                                      .filter((asset) => {
+                                        const term = proposalMediaLibrarySearch.trim().toLowerCase();
+                                        if (!term) return true;
+                                        const metadata = asset.metadata ?? {};
+                                        return [
+                                          asset.originalFilename ?? "",
+                                          String(metadata["description"] ?? ""),
+                                          String(metadata["module"] ?? ""),
+                                          String(metadata["operation"] ?? ""),
+                                        ].join(" ").toLowerCase().includes(term);
+                                      })
+                                      .map((asset) => {
+                                        const url = proposalMediaLibraryUrl(asset.storageUrl);
+                                        return (
+                                          <button
+                                            key={asset.id}
+                                            type="button"
+                                            className="overflow-hidden rounded-md border bg-background hover:border-primary/60"
+                                            onClick={async () => {
+                                              try {
+                                                await applyStageImage(stage.id, url);
+                                                setStageMediaLibraryTarget(null);
+                                                toast({ title: "Imagem da biblioteca aplicada", description: `Etapa: ${stage.nome}` });
+                                              } catch (error) {
+                                                toast({
+                                                  title: "Erro ao aplicar imagem",
+                                                  description: error instanceof Error ? error.message : "Tente novamente.",
+                                                  variant: "destructive",
+                                                });
+                                              }
+                                            }}
+                                          >
+                                            <img src={url} alt="" className="aspect-[4/3] w-full object-cover" />
+                                            <span className="block truncate px-1 py-1 text-[8px] text-muted-foreground">
+                                              {asset.originalFilename || "Imagem"}
+                                            </span>
+                                          </button>
+                                        );
+                                      })}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
                           </div>
                         ))}
                       </div>
