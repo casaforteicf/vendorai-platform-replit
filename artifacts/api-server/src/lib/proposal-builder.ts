@@ -732,29 +732,41 @@ export async function ensureTenantProposalBuilderTemplate({
       const missing = presets.filter((preset) => !existingNames.has(normalizeName(preset.name)));
       if (missing.length) {
         const now = new Date().toISOString();
-        const createdPresets: ProposalBuilderTemplate[] = missing.map(({ presetKey: _presetKey, ...preset }) => ({
-          ...preset,
-          isDefault: false,
-          id: crypto.randomUUID(),
-          createdAt: now,
-          updatedAt: now,
-        }));
-        const nextTemplates = [...existingTemplates, ...createdPresets];
+        let newDefaultId: string | null = null;
+        const createdPresets: ProposalBuilderTemplate[] = missing.map(({ presetKey, ...preset }) => {
+          const isDefault = presetKey === "casa_alto_padrao";
+          const id = crypto.randomUUID();
+          if (isDefault) newDefaultId = id;
+          return {
+            ...preset,
+            isDefault,
+            id,
+            createdAt: now,
+            updatedAt: now,
+          };
+        });
+        const nextTemplates = [
+          ...existingTemplates.map((item) => newDefaultId ? { ...item, isDefault: false } : item),
+          ...createdPresets,
+        ];
+        const activeId =
+          newDefaultId
+          ?? (typeof discovery.activeProposalBuilderTemplateId === "string"
+            ? discovery.activeProposalBuilderTemplateId
+            : existingTemplates.find((item) => item.isDefault)?.id ?? existingTemplates[0]!.id);
+
         await db
           .update(businessProfilesTable)
           .set({
             discoveryData: {
               ...discovery,
               proposalBuilderTemplates: nextTemplates,
+              activeProposalBuilderTemplateId: activeId,
             },
             updatedAt: new Date(),
           })
           .where(eq(businessProfilesTable.tenantId, tenantId));
 
-        const activeId =
-          typeof discovery.activeProposalBuilderTemplateId === "string"
-            ? discovery.activeProposalBuilderTemplateId
-            : existingTemplates.find((item) => item.isDefault)?.id ?? existingTemplates[0]!.id;
         const active =
           nextTemplates.find((item) => item.id === activeId) ??
           nextTemplates.find((item) => item.isDefault) ??
