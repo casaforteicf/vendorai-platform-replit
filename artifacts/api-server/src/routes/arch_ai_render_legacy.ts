@@ -36,6 +36,7 @@ import {
 } from "../lib/arch-render-pipeline.js";
 import sharp from "sharp";
 import { generateRenderCreate, generateRenderPreserve } from "../services/media-provider-execution.js";
+import { captureGeneratedMedia } from "../services/media-library.js";
 import {
   buildArqdorFidelityBlock,
   inferArqdorRenderPresets,
@@ -783,11 +784,28 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
 
     // ── 5. Salvar resultado no storage ─────────────────────────────────────
 
-    const objPath    = await storage.savePrivateBuffer(
-      resultBuf, "image/png",
-      `arch-ai-render-${tid}-${renderId}.png`,
-    );
-    const resultUrl  = `/api/storage/objects/${objPath.replace(/^\/objects\//, "")}`;
+    const captured = await captureGeneratedMedia({
+      tenantId: tid,
+      title: `Arqdor · ${ambiente || "Render arquitetônico"}`,
+      operation: "arqdor_render",
+      buffer: resultBuf,
+      mimeType: "image/png",
+      type: "image",
+      originalFilename: `arch-ai-render-${renderId}.png`,
+      kind: "mixed",
+      metadata: {
+        module: "arqdor",
+        renderId,
+        archProjectId: params.renderId ? undefined : null,
+        ambiente: ambiente ?? null,
+        source: source ?? "render-studio",
+        renderView: renderView ?? null,
+        mode,
+        motor,
+        generatedByAi: true,
+      },
+    });
+    const resultUrl = `/api/storage/objects/${captured.storageUrl.replace(/^\/objects\//, "")}`;
 
     // ── 6. Atualizar registro ──────────────────────────────────────────────
     await db.update(archAiRendersTable)
