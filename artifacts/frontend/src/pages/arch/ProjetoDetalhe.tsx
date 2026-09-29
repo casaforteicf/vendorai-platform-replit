@@ -381,7 +381,7 @@ export default function ProjetoDetalhe() {
     byAmbiente[key].push(g);
   }
 
-  // ── Gerar com IA ───────────────────────────────────────────────────────
+  // ── Gerar orçamento a partir da especificação confirmada ───────────────
   async function gerarIA() {
     setGerandoIA(true);
     try {
@@ -389,14 +389,20 @@ export default function ProjetoDetalhe() {
         method: "POST",
         headers: authH(),
       });
+      const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err?.error ?? "Falha ao gerar orçamento.");
+        throw new Error(payload?.error ?? "Falha ao gerar orçamento.");
       }
       await Promise.all([loadOrcamento(), loadProjeto()]);
-      toast({ title: "Orçamento gerado com IA!" });
+      const semPreco = Number(payload?.semPreco ?? 0);
+      toast({
+        title: "Orçamento atualizado pela especificação",
+        description: semPreco > 0
+          ? `${semPreco} item(ns) ficaram com preço pendente, sem valor inventado.`
+          : "Todos os itens confirmados foram precificados com os dados cadastrados.",
+      });
     } catch (e: any) {
-      toast({ title: "Erro", description: e.message, variant: "destructive" });
+      toast({ title: "Não foi possível gerar o orçamento", description: e.message, variant: "destructive" });
     } finally {
       setGerandoIA(false);
     }
@@ -945,8 +951,8 @@ export default function ProjetoDetalhe() {
           <div className="flex gap-2 flex-wrap">
             <Button variant="outline" onClick={gerarIA} disabled={gerandoIA}>
               {gerandoIA
-                ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Gerando orçamento...</>
-                : <><Sparkles className="h-4 w-4 mr-2" />Gerar com IA</>}
+                ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Atualizando orçamento...</>
+                : <><Sparkles className="h-4 w-4 mr-2" />Gerar pela especificação</>}
             </Button>
             <Button onClick={openAddItem}>
               <Plus className="h-4 w-4 mr-2" /> Adicionar item
@@ -962,7 +968,7 @@ export default function ProjetoDetalhe() {
               <DollarSign className="h-10 w-10 mx-auto text-muted-foreground/40 mb-3" />
               <p className="text-muted-foreground font-medium">Nenhum item no orçamento ainda</p>
               <p className="text-sm text-muted-foreground mt-1">
-                Clique em "Gerar com IA" (recomendado: cadastre ambientes primeiro) ou "Adicionar item".
+                Primeiro confirme a especificação do projeto. Depois use "Gerar pela especificação" ou adicione um item manualmente.
               </p>
             </div>
           ) : (
