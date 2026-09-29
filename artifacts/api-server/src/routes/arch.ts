@@ -5473,6 +5473,13 @@ function normalizeBudgetCategory(value: unknown): string {
     .toLowerCase();
 }
 
+function fitBudgetDbText(value: unknown, maxLength: number): string | null {
+  if (value == null) return null;
+  const normalized = String(value).trim();
+  if (!normalized) return null;
+  return normalized.length <= maxLength ? normalized : normalized.slice(0, maxLength).trimEnd();
+}
+
 function itemMatchesBudgetScope(category: unknown, description: unknown, scopeTypes: string[]): boolean {
   if (scopeTypes.includes("completo")) return true;
   const text = `${normalizeBudgetCategory(category)} ${normalizeBudgetCategory(description)}`;
@@ -5620,13 +5627,16 @@ router.post("/arch/projetos/:id/orcamento/gerar-ia", authenticate, async (req, r
 
     return {
       projetoId,
-      categoria: item.categoria,
-      descricao: descricaoTecnica,
+      // arch_orcamento_itens ainda possui limites varchar legados.
+      // Nunca deixar uma especificação técnica válida derrubar a geração inteira
+      // por excesso de caracteres em categoria/descrição/unidade/fornecedor.
+      categoria: fitBudgetDbText(item.categoria, 50),
+      descricao: fitBudgetDbText(descricaoTecnica, 255) ?? "Item especificado",
       quantidade: String(quantidade),
-      unidade: catalogo?.unidade ?? item.unidadeQuantificacao ?? "un",
+      unidade: fitBudgetDbText(catalogo?.unidade ?? item.unidadeQuantificacao ?? "un", 20) ?? "un",
       valorUnitario: valorUnitario.toFixed(2),
       valorTotal: (quantidade * valorUnitario).toFixed(2),
-      fornecedor: catalogo?.fornecedor ?? item.fabricante ?? item.overrideFornecedor ?? null,
+      fornecedor: fitBudgetDbText(catalogo?.fornecedor ?? item.fabricante ?? item.overrideFornecedor ?? null, 255),
       produtoId: catalogo?.id ?? null,
       geradoPorIa: true,
     };
