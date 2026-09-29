@@ -305,6 +305,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const [generatingProposalBuilderTemplate, setGeneratingProposalBuilderTemplate] = useState(false);
   const [proposalBuilderEditorOpen, setProposalBuilderEditorOpen] = useState(false);
   const [proposalBuilderEditorSaving, setProposalBuilderEditorSaving] = useState(false);
+  const [proposalBuilderPreviewDevice, setProposalBuilderPreviewDevice] = useState<"desktop" | "mobile">("desktop");
   const [proposalBuilderEditorName, setProposalBuilderEditorName] = useState("");
   const [proposalBuilderEditorPreset, setProposalBuilderEditorPreset] = useState<"premium_arquitetonico" | "corporativo" | "catalogo_comercial" | "minimalista" | "tecnico">("premium_arquitetonico");
   const [proposalBuilderHeroVariant, setProposalBuilderHeroVariant] = useState<"fotografico" | "minimalista" | "institucional" | "produto">("fotografico");
@@ -1155,6 +1156,30 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
       return next.map((item, index) => ({ ...item, order: index + 1 }));
     });
   }
+
+  function addProposalBuilderModule(key: string) {
+    if (proposalBuilderEditorModules.some((item) => item.key === key)) {
+      setProposalBuilderEditorModules((prev) =>
+        prev.map((item) => item.key === key ? { ...item, enabled: true } : item),
+      );
+      return;
+    }
+    setProposalBuilderEditorModules((prev) => [
+      ...prev,
+      { key, enabled: true, order: prev.length + 1, required: key === "capa" || key === "condicoes_comerciais" || key === "aceite" },
+    ]);
+  }
+
+  function removeProposalBuilderModule(key: string) {
+    setProposalBuilderEditorModules((prev) =>
+      prev
+        .filter((item) => item.key !== key || item.required)
+        .map((item, index) => ({ ...item, order: index + 1 })),
+    );
+  }
+
+  const proposalBuilderAvailableModules = Object.entries(PROPOSAL_MODULE_LABELS)
+    .filter(([key]) => !proposalBuilderEditorModules.some((item) => item.key === key));
 
   async function saveProposalBuilderEditor() {
     const template = resolveProposalBuilderTemplateForEditor();
