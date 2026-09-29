@@ -40,6 +40,175 @@ import {
 } from "../lib/proposal-builder.js";
 const router: IRouter = Router();
 
+type BudgetSnapshotPending = {
+  code: string;
+  severity: "blocker" | "warning";
+  field?: string;
+  message: string;
+};
+
+function mergeBudgetPresentationSnapshot(
+  presentation: any,
+  snapshot: Record<string, unknown>,
+) {
+  return {
+    ...(presentation ?? {}),
+    sourceSnapshot: snapshot,
+  };
+}
+
+async function buildBudgetContextSnapshot(input: {
+  tenantId: string;
+  leadId: string;
+  origin: "manual" | "catalog" | "composition" | "revision" | "imported";
+  items: PropostaItem[];
+  presentation?: any;
+  baseBudgetId?: string;
+  baseBudgetNumber?: string;
+  revisionLabel?: string;
+}) {
+  const [lead] = await db
+    .select()
+    .from(leadsTable)
+    .where(and(eq(leadsTable.id, input.leadId), eq(leadsTable.tenantId, input.tenantId)))
+    .limit(1);
+
+  const [profile] = await db
+    .select({
+      nomeFantasia: businessProfilesTable.nomeFantasia,
+      razaoSocial: businessProfilesTable.razaoSocial,
+      vertical: businessProfilesTable.vertical,
+      logoUrl: businessProfilesTable.logoUrl,
+      diferenciais: businessProfilesTable.diferenciais,
+      publicoAlvo: businessProfilesTable.publicoAlvo,
+    })
+    .from(businessProfilesTable)
+    .where(eq(businessProfilesTable.tenantId, input.tenantId))
+    .limit(1);
+
+  const pending: BudgetSnapshotPending[] = [];
+  if (!lead) pending.push({ code: "CLIENT_MISSING", severity: "blocker", field: "leadId", message: "Cliente não encontrado." });
+  if (!profile?.nomeFantasia && !profile?.razaoSocial) {
+    pending.push({ code: "COMPANY_NAME_MISSING", severity: "warning", message: "Nome da empresa não está preenchido." });
+  }
+  if (!input.items.length) {
+    pending.push({ code: "NO_ITEMS", severity: "blocker", field: "itens", message: "O orçamento não possui itens." });
+  }
+
+  const mediaUrls = Array.from(new Set([
+    ...(input.items.flatMap((item: any) => [
+      item?.sourceSnapshot?.imagemUrl,
+      ...(Array.isArray(item?.sourceSnapshot?.imagens) ? item.sourceSnapshot.imagens : []),
+    ])),
+    ...Object.values(input.presentation?.imagensEtapas ?? {}),
+    input.presentation?.imagemCapa,
+  ].filter((value): value is string => typeof value === "string" && value.trim().length > 0)));
+
+  return {
+    schemaVersion: 1,
+    capturedAt: new Date().toISOString(),
+    immutableForVersion: true,
+    origin: input.origin,
+    ...(input.baseBudgetId ? { baseBudgetId: input.baseBudgetId } : {}),
+    ...(input.baseBudgetNumber ? { baseBudgetNumber: input.baseBudgetNumber } : {}),
+    ...(input.revisionLabel ? { revisionLabel: input.revisionLabel } : {}),
+    client: lead ? {
+      id: lead.id,
+      nome: lead.nome,
+      empresa: lead.empresa,
+      email: lead.email,
+      telefone: lead.telefone,
+      documento: lead.documento,
+      objetivo: lead.objetivo,
+      mercadoSegmento: lead.mercadoSegmento,
+    } : undefined,
+    company: profile ? {
+      nomeFantasia: profile.nomeFantasia,
+      razaoSocial: profile.razaoSocial,
+      vertical: profile.vertical,
+      logoUrl: profile.logoUrl,
+      diferenciais: profile.diferenciais,
+      publicoAlvo: profile.publicoAlvo,
+    } : undefined,
+    catalogItemIds: Array.from(new Set(input.items.map((item) => item.produtoId).filter((id): id is string => Boolean(id)))),
+    compositionIds: Array.from(new Set(input.items.map((item) => item.composicaoId).filter((id): id is string => Boolean(id)))),
+    mediaUrls,
+    pending,
+  };
+}
+
+async function enrichBudgetItemsWithCatalogSnapshot(
+  tenantId: string,
+  items: PropostaItem[],
+): Promise<PropostaItem[]> {
+  const productIds = Array.from(new Set(items.map((item) => item.produtoId).filter((id): id is string => Boolean(id))));
+  const products = productIds.length
+    ? await db.select().from(produtosCatalogoTable).where(and(
+        eq(produtosCatalogoTable.tenantId, tenantId),
+        inArray(produtosCatalogoTable.id, productIds),
+      ))
+    : [];
+  const byId = new Map(products.map((product) => [product.id, product] as const));
+  const capturedAt = new Date().toISOString();
+
+  return items.map((item) => {
+    if (item.sourceSnapshot) return item;
+    if (item.produtoId) {
+      const product = byId.get(item.produtoId);
+      if (product) {
+        return {
+          ...item,
+          sourceSnapshot: {
+            capturedAt,
+            sourceType: "catalog_product" as const,
+            sourceId: product.id,
+            nome: product.nome,
+            sku: product.sku ?? undefined,
+            descricao: product.descricao ?? undefined,
+            unidade: product.unidade ?? undefined,
+            marca: product.marca ?? undefined,
+            fornecedor: product.fornecedor ?? undefined,
+            imagemUrl: product.imagemUrl ?? undefined,
+            imagens: product.imagens ?? undefined,
+            precoCatalogo: Number(product.precoBase ?? 0),
+            precoAplicado: Number(item.valorUnitario ?? 0),
+            prazoEntregaDias: product.prazoEntregaDias ?? undefined,
+            pricingConfig: (product.pricingConfig ?? undefined) as any,
+            deliveryConfig: (product.deliveryConfig ?? undefined) as any,
+          },
+        };
+      }
+    }
+    if (item.composicaoId) {
+      return {
+        ...item,
+        sourceSnapshot: {
+          capturedAt,
+          sourceType: "composition" as const,
+          sourceId: item.composicaoId,
+          nome: item.nome,
+          sku: item.sku,
+          descricao: item.descricao,
+          unidade: item.unidade,
+          precoAplicado: Number(item.valorUnitario ?? 0),
+        },
+      };
+    }
+    return {
+      ...item,
+      sourceSnapshot: {
+        capturedAt,
+        sourceType: "manual" as const,
+        nome: item.nome,
+        sku: item.sku,
+        descricao: item.descricao,
+        unidade: item.unidade,
+        precoAplicado: Number(item.valorUnitario ?? 0),
+      },
+    };
+  });
+}
+
 router.get("/tenants/:tenantId/proposal-builder/templates", async (req, res) => {
   // tenant-audit: reviewed route tenant is immediately authorized against the authenticated tenant or Super Admin
   const tenantId = String(req.params.tenantId);
@@ -550,14 +719,23 @@ router.post("/propostas", async (req, res) => {
 
   const numero = await generateNumero(parsed.data.tenantId);
 
-  const itensNormalizados = normalizarItensExecucao((parsed.data.itens ?? []) as PropostaItem[]);
+  const itensNormalizadosBase = normalizarItensExecucao((parsed.data.itens ?? []) as PropostaItem[]);
+  const itensNormalizados = await enrichBudgetItemsWithCatalogSnapshot(parsed.data.tenantId, itensNormalizadosBase);
   const calculatedItemsTotal = itensNormalizados.length ? calculateBudgetItemsTotal(itensNormalizados) : null;
+  const sourceSnapshot = await buildBudgetContextSnapshot({
+    tenantId: parsed.data.tenantId,
+    leadId: parsed.data.leadId,
+    origin: parsed.data.arquivoImportadoUrl ? "imported" : "manual",
+    items: itensNormalizados,
+    presentation: parsed.data.apresentacao,
+  });
 
   const [proposta] = await db
     .insert(propostasTable)
     .values({
       ...parsed.data,
       itens: itensNormalizados,
+      apresentacao: mergeBudgetPresentationSnapshot(parsed.data.apresentacao, sourceSnapshot),
       ...(calculatedItemsTotal !== null
         ? { valorTotal: calculatedItemsTotal.toFixed(2) }
         : parsed.data.valorTotal !== undefined && parsed.data.valorTotal !== null
@@ -895,6 +1073,45 @@ router.get("/propostas/:id/integrity", async (req, res) => {
   }));
 });
 
+router.get("/propostas/:id/sources", async (req, res) => {
+  const [proposta] = await db
+    .select()
+    .from(propostasTable)
+    .where(eq(propostasTable.id, String(req.params.id)))
+    .limit(1);
+
+  if (!proposta) {
+    res.status(404).json({ error: "Proposta not found" });
+    return;
+  }
+  if (req.user?.platformRole !== "super_admin" && proposta.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const presentation = (proposta.apresentacao ?? {}) as any;
+  res.json({
+    budgetId: proposta.id,
+    numero: proposta.numero,
+    status: proposta.status,
+    sourceSnapshot: presentation.sourceSnapshot ?? null,
+    items: ((proposta.itens ?? []) as PropostaItem[]).map((item, index) => ({
+      index,
+      nome: item.nome,
+      produtoId: item.produtoId ?? null,
+      composicaoId: item.composicaoId ?? null,
+      sourceSnapshot: (item as any).sourceSnapshot ?? null,
+    })),
+    integrity: auditProposalBudget({
+      itens: (proposta.itens ?? []) as PropostaItem[],
+      valorTotal: proposta.valorTotal,
+      validadeAte: proposta.validadeAte,
+      prazoEntrega: proposta.prazoEntrega,
+      apresentacao: proposta.apresentacao,
+    }),
+  });
+});
+
 // ── GET /propostas/:id/pdf — capa + tabela A4 ─────────────────────────────
 router.get("/propostas/:id/pdf", async (req, res) => {
   const propostaId = String(req.params.id);
@@ -1023,16 +1240,25 @@ router.patch("/propostas/:id", async (req, res) => {
     return;
   }
 
-  const propostaAceita = existing.status === "aceita";
-  const isGerente = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
-
-  if (propostaAceita && !isGerente) {
-    res.status(403).json({ error: "Orçamento vendido. Apenas usuário gerencial pode alterar os itens." });
+  const commercialFields = [
+    "itens", "valorTotal", "validadeAte", "formaPagamento", "condPagamento",
+    "prazoEntrega", "paymentCompositions", "apresentacao", "observacoes",
+  ] as const;
+  const touchesCommercialCore = commercialFields.some((field) => Object.prototype.hasOwnProperty.call(parsed.data, field));
+  if (existing.status !== "rascunho" && touchesCommercialCore) {
+    res.status(409).json({
+      error: "Este orçamento já foi emitido e está congelado. Crie uma revisão (R1, R2...) para alterar dados comerciais.",
+      code: "BUDGET_VERSION_IMMUTABLE",
+      currentStatus: existing.status,
+    });
     return;
   }
 
-  const normalizedItems = parsed.data.itens
+  const normalizedItemsBase = parsed.data.itens
     ? normalizarItensExecucao(parsed.data.itens as PropostaItem[])
+    : null;
+  const normalizedItems = normalizedItemsBase
+    ? await enrichBudgetItemsWithCatalogSnapshot(existing.tenantId, normalizedItemsBase)
     : null;
   const calculatedUpdateTotal = normalizedItems ? calculateBudgetItemsTotal(normalizedItems) : null;
   const normalizedUpdate = {
@@ -1423,7 +1649,26 @@ router.post(
           valorUnitario,
           produtoId: produto.id,
           sku: produto.sku ?? undefined,
+          descricao: produto.descricao ?? undefined,
           unidade: produto.unidade ?? undefined,
+          sourceSnapshot: {
+            capturedAt: new Date().toISOString(),
+            sourceType: "catalog_product" as const,
+            sourceId: produto.id,
+            nome: produto.nome,
+            sku: produto.sku ?? undefined,
+            descricao: produto.descricao ?? undefined,
+            unidade: produto.unidade ?? undefined,
+            marca: produto.marca ?? undefined,
+            fornecedor: produto.fornecedor ?? undefined,
+            imagemUrl: produto.imagemUrl ?? undefined,
+            imagens: produto.imagens ?? undefined,
+            precoCatalogo: Number(produto.precoBase ?? 0),
+            precoAplicado: valorUnitario,
+            prazoEntregaDias: produto.prazoEntregaDias ?? undefined,
+            pricingConfig: (produto.pricingConfig ?? undefined) as any,
+            deliveryConfig: (produto.deliveryConfig ?? undefined) as any,
+          },
           etapaId: item.etapaId,
           etapaNome: item.etapaNome,
           etapaOrdem: item.etapaOrdem,
@@ -1447,6 +1692,16 @@ router.post(
         sku: composicao.codigo ?? undefined,
         descricao: composicao.descricao ?? undefined,
         unidade: composicao.unidade,
+        sourceSnapshot: {
+          capturedAt: new Date().toISOString(),
+          sourceType: "composition" as const,
+          sourceId: composicao.id,
+          nome: item.nome || composicao.nome,
+          sku: composicao.codigo ?? undefined,
+          descricao: composicao.descricao ?? undefined,
+          unidade: composicao.unidade,
+          precoAplicado: valorUnitario,
+        },
         etapaId: item.etapaId,
         etapaNome: item.etapaNome,
         etapaOrdem: item.etapaOrdem,
@@ -1455,6 +1710,14 @@ router.post(
     });
 
     const numero = await generateNumero(tenantId);
+    const normalizedCatalogItems = normalizarItensExecucao(propostaItens as PropostaItem[]);
+    const catalogSourceSnapshot = await buildBudgetContextSnapshot({
+      tenantId,
+      leadId,
+      origin: composicaoIds.length && produtoIds.length ? "composition" : produtoIds.length ? "catalog" : "composition",
+      items: normalizedCatalogItems,
+      presentation: apresentacao,
+    });
 
     const [proposta] = await db
       .insert(propostasTable)
@@ -1480,8 +1743,8 @@ router.post(
             comprovanteUrl: pc.comprovanteUrl ?? null,
           })),
         } : {}),
-        ...(apresentacao ? { apresentacao } : {}),
-        itens: normalizarItensExecucao(propostaItens as PropostaItem[]),
+        apresentacao: mergeBudgetPresentationSnapshot(apresentacao, catalogSourceSnapshot),
+        itens: normalizedCatalogItems,
         valorTotal: roundOrcamentoNumber(valorTotal).toFixed(2),
       })
       .returning();

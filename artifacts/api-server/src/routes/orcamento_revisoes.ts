@@ -107,6 +107,25 @@ router.post("/tenants/:tenantId/leads/:leadId/orcamento-revisoes", async (req, r
   const revisionNumero = `${baseNumero}-${revisionLabel}`;
 
   const revisionProposalId = crypto.randomUUID();
+  const basePresentation = (baseProposta.apresentacao ?? {}) as any;
+  const baseSourceSnapshot = basePresentation.sourceSnapshot && typeof basePresentation.sourceSnapshot === "object"
+    ? basePresentation.sourceSnapshot
+    : {};
+  const revisionPresentation = {
+    ...basePresentation,
+    sourceSnapshot: {
+      ...baseSourceSnapshot,
+      schemaVersion: Number(baseSourceSnapshot.schemaVersion ?? 1),
+      capturedAt: new Date().toISOString(),
+      immutableForVersion: true,
+      origin: "revision",
+      baseBudgetId: baseProposta.id,
+      baseBudgetNumber: baseNumero,
+      revisionLabel,
+      parentSnapshotCapturedAt: baseSourceSnapshot.capturedAt ?? null,
+    },
+  };
+
   const [revisionProposal] = await db
     .insert(propostasTable)
     .values({
@@ -116,7 +135,7 @@ router.post("/tenants/:tenantId/leads/:leadId/orcamento-revisoes", async (req, r
       dealId: baseProposta.dealId,
       titulo: baseProposta.titulo,
       itens: baseProposta.itens,
-      apresentacao: baseProposta.apresentacao,
+      apresentacao: revisionPresentation,
       valorTotal: baseProposta.valorTotal,
       status: "rascunho",
       validadeAte: baseProposta.validadeAte,
@@ -204,6 +223,24 @@ router.delete("/tenants/:tenantId/leads/:leadId/orcamento-revisoes/:id", async (
       ),
     );
   if (!row) return res.status(404).json({ error: "Revisão não encontrada." });
+
+  if (row.propostaRevisaoId) {
+    const [revisionProposal] = await db
+      .select({ status: propostasTable.status })
+      .from(propostasTable)
+      .where(and(
+        eq(propostasTable.id, row.propostaRevisaoId),
+        eq(propostasTable.tenantId, tenantId),
+      ))
+      .limit(1);
+
+    if (revisionProposal && revisionProposal.status !== "rascunho") {
+      return res.status(409).json({
+        error: "Uma revisão já emitida não pode ser excluída. Preserve o histórico e crie uma nova revisão/aditivo.",
+        code: "EMITTED_REVISION_IMMUTABLE",
+      });
+    }
+  }
 
   await db.delete(orcamentoRevisoesTable).where(eq(orcamentoRevisoesTable.id, row.id));
   if (row.propostaRevisaoId) {

@@ -62,6 +62,26 @@ export const propostaItemSchema = z.object({
   // Referência opcional a produtos_catalogo.id — usada pelo Revenue Scout
   // (regra "sequencia_produto") para detectar compra de um produto específico.
   produtoId: z.string().optional(),
+  // Snapshot comercial do item no momento em que entrou no orçamento.
+  // Mantém a versão histórica mesmo se catálogo, fornecedor ou preço mudarem depois.
+  sourceSnapshot: z.object({
+    capturedAt: z.string(),
+    sourceType: z.enum(["catalog_product", "composition", "manual"]),
+    sourceId: z.string().optional(),
+    nome: z.string().optional(),
+    sku: z.string().optional(),
+    descricao: z.string().optional(),
+    unidade: z.string().optional(),
+    marca: z.string().optional(),
+    fornecedor: z.string().optional(),
+    imagemUrl: z.string().optional(),
+    imagens: z.array(z.string()).optional(),
+    precoCatalogo: z.number().optional(),
+    precoAplicado: z.number().optional(),
+    prazoEntregaDias: z.number().int().optional(),
+    pricingConfig: z.record(z.string(), z.unknown()).optional(),
+    deliveryConfig: z.record(z.string(), z.unknown()).optional(),
+  }).optional(),
 });
 
 export type PropostaItem = z.infer<typeof propostaItemSchema>;
@@ -161,6 +181,28 @@ export const propostaApresentacaoSchema = z.object({
   politicaReajuste: z.string().max(3000).default(""),
   garantiasContratuais: z.string().max(5000).default(""),
   condicoesPagamentoDetalhadas: z.string().max(5000).default(""),
+  // Snapshot estrutural do orçamento. Fica dentro do JSON existente para não
+  // depender de uma nova coluna/migração e acompanha naturalmente cada revisão.
+  sourceSnapshot: z.object({
+    schemaVersion: z.number().int().positive().default(1),
+    capturedAt: z.string(),
+    immutableForVersion: z.boolean().default(true),
+    origin: z.enum(["manual", "catalog", "composition", "revision", "imported"]),
+    baseBudgetId: z.string().optional(),
+    baseBudgetNumber: z.string().optional(),
+    revisionLabel: z.string().optional(),
+    client: z.record(z.string(), z.unknown()).optional(),
+    company: z.record(z.string(), z.unknown()).optional(),
+    catalogItemIds: z.array(z.string()).default([]),
+    compositionIds: z.array(z.string()).default([]),
+    mediaUrls: z.array(z.string()).default([]),
+    pending: z.array(z.object({
+      code: z.string(),
+      severity: z.enum(["blocker", "warning"]),
+      field: z.string().optional(),
+      message: z.string(),
+    })).default([]),
+  }).optional(),
 });
 
 export type PropostaApresentacao = z.infer<typeof propostaApresentacaoSchema>;

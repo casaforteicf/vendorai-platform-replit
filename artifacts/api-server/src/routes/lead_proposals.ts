@@ -22,6 +22,7 @@ import pdfParse from "pdf-parse";
 import mammoth from "mammoth";
 import http from "node:http";
 import { auditProposalBudget } from "../lib/budget-integrity.js";
+import { loadApprovedBusinessContext } from "../services/business-plan.js";
 
 const router: IRouter = Router();
 const objectStorage = new ObjectStorageService();
@@ -1187,6 +1188,87 @@ function scheduleProposalGenerationJobCleanup(jobId: string) {
   timer.unref?.();
 }
 
+router.get("/leads/:leadId/proposal-preflight", async (req, res) => {
+  const leadId = String(req.params.leadId);
+  const tenantId = req.user?.tenantId ?? "";
+  const ctx = await loadProposalContext(leadId, tenantId);
+  if (!ctx) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+  if (req.user?.platformRole !== "super_admin" && ctx.lead.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const propostaId = typeof req.query.propostaId === "string" ? req.query.propostaId.trim() : "";
+  const pending: Array<{
+    code: string;
+    severity: "blocker" | "warning";
+    source: "business_plan" | "company" | "client" | "catalog" | "budget" | "media";
+    field?: string;
+    message: string;
+  }> = [];
+
+  let approvedBusinessPlanContext = "";
+  try {
+    approvedBusinessPlanContext = await loadApprovedBusinessContext(ctx.lead.tenantId, "closer");
+  } catch {}
+
+  if (!approvedBusinessPlanContext.trim()) {
+    pending.push({ code: "BUSINESS_PLAN_APPROVED_CONTEXT_MISSING", severity: "warning", source: "business_plan", message: "Plano de Negócios ainda não possui contexto aprovado para o Closer." });
+  }
+  if (!ctx.tenantName) {
+    pending.push({ code: "COMPANY_NAME_MISSING", severity: "warning", source: "company", message: "Nome da empresa não está preenchido." });
+  }
+  if (!ctx.briefing) {
+    pending.push({ code: "CLIENT_BRIEFING_MISSING", severity: "warning", source: "client", message: "Briefing do cliente ainda não foi preenchido." });
+  }
+
+  let budget: any = null;
+  let integrity: any = null;
+  if (!propostaId) {
+    pending.push({ code: "BUDGET_MISSING", severity: "blocker", source: "budget", field: "propostaId", message: "Selecione um orçamento/revisão antes de gerar a proposta." });
+  } else {
+    const audited = await loadBudgetIntegrityForProposal(ctx.lead.tenantId, leadId, propostaId);
+    if (!audited) {
+      pending.push({ code: "BUDGET_NOT_FOUND", severity: "blocker", source: "budget", field: "propostaId", message: "O orçamento selecionado não foi encontrado para este cliente." });
+    } else {
+      budget = audited.budget;
+      integrity = audited.integrity;
+      for (const issue of audited.integrity.issues ?? []) {
+        pending.push({
+          code: issue.code,
+          severity: issue.severity,
+          source: "budget",
+          field: issue.field,
+          message: issue.message,
+        });
+      }
+      if (!budget.formaPagamento && !budget.condPagamento && !(budget.paymentCompositions?.length)) {
+        pending.push({ code: "PAYMENT_TERMS_MISSING", severity: "warning", source: "budget", field: "condPagamento", message: "Condições de pagamento não estão preenchidas." });
+      }
+      if (!budget.prazoEntrega) {
+        pending.push({ code: "DELIVERY_TERM_MISSING", severity: "warning", source: "budget", field: "prazoEntrega", message: "Prazo de entrega/execução não está preenchido." });
+      }
+      if (!budget.validadeAte) {
+        pending.push({ code: "VALIDITY_MISSING", severity: "warning", source: "budget", field: "validadeAte", message: "Validade da proposta não está preenchida." });
+      }
+    }
+  }
+
+  const blockers = pending.filter((item) => item.severity === "blocker").length;
+  const warnings = pending.filter((item) => item.severity === "warning").length;
+  res.json({
+    ready: blockers === 0,
+    blockers,
+    warnings,
+    pending,
+    budget: budget ? { id: budget.id, numero: budget.numero, titulo: budget.titulo, status: budget.status } : null,
+    integrity,
+  });
+});
+
 router.post("/leads/:leadId/proposals/async", async (req, res) => {
   const leadId = String(req.params.leadId);
   const ctx = await loadProposalContext(leadId, req.user?.tenantId ?? "");
@@ -1427,6 +1509,13 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
   }
 
   const tenantId = ctx.lead.tenantId;
+
+  let approvedBusinessPlanContext = "";
+  try {
+    approvedBusinessPlanContext = await loadApprovedBusinessContext(tenantId, "closer");
+  } catch (err: any) {
+    req.log.warn({ tenantId, error: err?.message }, "proposal snapshot: failed to load approved PN context");
+  }
 
   // Fetch tenant's accumulated style memory
   const [tenantRow] = await db
@@ -1980,19 +2069,21 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
           : {}),
       };
 
-      // Persist presentation choices made in the proposal screen, including
-      // the manually informed total built area. This keeps the orçamento as the
-      // single source of truth for future proposal versions.
-      await db
-        .update(propostasTable)
-        .set({
-          apresentacao: {
-            ...(orc.apresentacao ?? {}),
-            ...mergedPresentation,
-          },
-          updatedAt: new Date(),
-        })
-        .where(eq(propostasTable.id, orc.id));
+      // Draft budgets may absorb presentation edits. Once emitted, the budget is
+      // immutable: proposal-specific presentation choices live only in the
+      // generated proposal snapshot and a commercial change requires R1/R2/...
+      if (orc.status === "rascunho") {
+        await db
+          .update(propostasTable)
+          .set({
+            apresentacao: {
+              ...(orc.apresentacao ?? {}),
+              ...mergedPresentation,
+            },
+            updatedAt: new Date(),
+          })
+          .where(eq(propostasTable.id, orc.id));
+      }
 
       if (builderWantsStageImages) {
         const stageImages =
@@ -2205,6 +2296,75 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
     }
   }
 
+  const proposalSourcePending: Array<{
+    code: string;
+    severity: "blocker" | "warning";
+    source: "business_plan" | "company" | "client" | "catalog" | "budget" | "media";
+    message: string;
+  }> = [];
+
+  if (!approvedBusinessPlanContext.trim()) {
+    proposalSourcePending.push({ code: "BUSINESS_PLAN_APPROVED_CONTEXT_MISSING", severity: "warning", source: "business_plan", message: "Não havia contexto aprovado do Plano de Negócios para o Closer." });
+  }
+  if (!ctx.tenantName) {
+    proposalSourcePending.push({ code: "COMPANY_NAME_MISSING", severity: "warning", source: "company", message: "Nome da empresa não estava preenchido." });
+  }
+  if (!ctx.briefing) {
+    proposalSourcePending.push({ code: "CLIENT_BRIEFING_MISSING", severity: "warning", source: "client", message: "Briefing do cliente não estava preenchido." });
+  }
+  if (!ctx.products.length && !(orcamentoEmbed?.itens?.length)) {
+    proposalSourcePending.push({ code: "CATALOG_OR_PRODUCT_SOURCE_MISSING", severity: "warning", source: "catalog", message: "Nenhum produto/serviço vinculado foi encontrado." });
+  }
+  if (!bodyPropostaId || !orcamentoEmbed) {
+    proposalSourcePending.push({ code: "BUDGET_MISSING", severity: "blocker", source: "budget", message: "Nenhum orçamento foi vinculado como fonte comercial." });
+  }
+
+  const proposalSourceSnapshot = {
+    schemaVersion: 1,
+    capturedAt: new Date().toISOString(),
+    immutableForVersion: true,
+    businessPlan: { role: "closer", approvedContext: approvedBusinessPlanContext || null },
+    company: {
+      name: ctx.tenantName ?? null,
+      phone: ctx.tenantPhone ?? null,
+      email: ctx.tenantEmail ?? null,
+      instagram: ctx.tenantInstagram ?? null,
+      logoUrl: ctx.tenantLogoUrl ?? null,
+      businessContext: ctx.tenantBusinessContext ?? null,
+      discoveryData: ctx.discoveryData ?? null,
+    },
+    client: {
+      lead: ctx.lead,
+      briefing: ctx.briefing ?? null,
+      intelligence: ctx.intelligence ?? null,
+      conversationSamples: ctx.conversationSamples || null,
+    },
+    catalog: {
+      linkedProducts: ctx.products,
+      selectedBudgetItems: orcamentoEmbed?.itens ?? selectedBudgetForAI?.itens ?? [],
+    },
+    budget: {
+      id: bodyPropostaId || null,
+      title: orcamentoEmbed?.titulo ?? selectedBudgetForAI?.titulo ?? null,
+      data: orcamentoEmbed ?? selectedBudgetForAI ?? null,
+      sourceSnapshot: (orcamentoEmbed?.apresentacao as any)?.sourceSnapshot ?? null,
+    },
+    media: {
+      clientLogoUrl: ctx.lead.logoUrl ?? null,
+      tenantLogoUrl: ctx.tenantLogoUrl ?? null,
+      proposalImages: bodyImagens,
+      attachments: proposalAttachments,
+      stageImages: (orcamentoEmbed?.apresentacao as any)?.imagensEtapas ?? {},
+    },
+    generation: {
+      provider: result.provider,
+      model: result.model,
+      refinementNotes: req.body?.refinementNotes ? String(req.body.refinementNotes) : null,
+      proposalBuilderTemplateId: requestedBuilderTemplateId ?? activeBuilderTemplateId ?? null,
+    },
+    pending: proposalSourcePending,
+  };
+
   const [proposal] = await db
     .insert(leadProposalsTable)
     .values({
@@ -2219,7 +2379,11 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
         _proposalMeta: {
           sourcePropostaId: bodyPropostaId || null,
           presentationFormat: orcamentoEmbed?.apresentacao?.formato || "site_interativo",
+          sourceSnapshotVersion: 1,
+          hasPendingSourceData: proposalSourcePending.length > 0,
+          pendingSourceCount: proposalSourcePending.length,
         },
+        _sourceSnapshot: proposalSourceSnapshot,
       }),
       status: "ready",
     })

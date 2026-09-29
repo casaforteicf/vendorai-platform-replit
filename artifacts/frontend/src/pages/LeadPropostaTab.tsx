@@ -53,6 +53,7 @@ import {
   Settings2,
   Paperclip,
   MoreHorizontal,
+  ListChecks,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -371,6 +372,9 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [activeVersion, setActiveVersion] = useState<number | null>(null);
+  const [proposalSourcesOpen, setProposalSourcesOpen] = useState(false);
+  const [proposalSourcesLoading, setProposalSourcesLoading] = useState(false);
+  const [proposalSources, setProposalSources] = useState<any>(null);
   const [showProducts, setShowProducts] = useState(false);
   const [selectedOrcamentoId, setSelectedOrcamentoId] = useState<string>("__none__");
   const [proposalPresentationFormat, setProposalPresentationFormat] =
@@ -790,6 +794,48 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
   });
 
   const selectedOrcamento = proposalBudgetOptions.find((orc) => orc.id === selectedOrcamentoId) ?? null;
+
+  type ProposalPreflightPending = {
+    code: string;
+    severity: "blocker" | "warning";
+    source: "business_plan" | "company" | "client" | "catalog" | "budget" | "media";
+    field?: string;
+    message: string;
+  };
+  type ProposalPreflight = {
+    ready: boolean;
+    blockers: number;
+    warnings: number;
+    pending: ProposalPreflightPending[];
+  };
+
+  const { data: proposalPreflight, isFetching: proposalPreflightLoading } = useQuery<ProposalPreflight>({
+    queryKey: ["proposal-preflight", leadId, selectedOrcamentoId],
+    queryFn: async () => {
+      if (!selectedOrcamentoId || selectedOrcamentoId === "__none__") {
+        return {
+          ready: false,
+          blockers: 1,
+          warnings: 0,
+          pending: [{
+            code: "BUDGET_MISSING",
+            severity: "blocker" as const,
+            source: "budget" as const,
+            message: "Selecione um orçamento/revisão antes de gerar a proposta.",
+          }],
+        };
+      }
+      const response = await fetch(
+        api(`/api/leads/${leadId}/proposal-preflight?propostaId=${encodeURIComponent(selectedOrcamentoId)}`),
+        { headers },
+      );
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error ?? "Não foi possível validar a proposta.");
+      return body as ProposalPreflight;
+    },
+    enabled: !!leadId && !!token && selectedOrcamentoId !== "__none__",
+    staleTime: 15_000,
+  });
   const selectedStageImages: Record<string, string> =
     selectedOrcamento?.apresentacao?.imagensEtapas && typeof selectedOrcamento.apresentacao.imagensEtapas === "object"
       ? selectedOrcamento.apresentacao.imagensEtapas
@@ -2289,6 +2335,12 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
     !item.ok && !proposalComposerBlockingIssues.some((blocking) => blocking.key === item.key),
   );
 
+  const proposalPreflightPending = proposalPreflight?.pending ?? [];
+  const proposalPreflightBlockers = proposalPreflightPending.filter((item) => item.severity === "blocker");
+  const proposalPreflightWarnings = proposalPreflightPending.filter((item) => item.severity === "warning");
+  const proposalGenerationBlocked =
+    proposalComposerBlockingIssues.length > 0 || proposalPreflightBlockers.length > 0;
+
 
   function openRefineDialog(fromVersion?: number) {
     setRefineNotes("");
@@ -2302,6 +2354,33 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
       toast({
         title: "Selecione o orçamento",
         description: "A proposta precisa estar vinculada a um orçamento.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const preflightResponse = await fetch(
+        api(`/api/leads/${leadId}/proposal-preflight?propostaId=${encodeURIComponent(selectedOrcamentoId)}`),
+        { headers },
+      );
+      const preflightBody = await preflightResponse.json().catch(() => null);
+      if (!preflightResponse.ok) throw new Error(preflightBody?.error ?? "Falha ao validar a proposta.");
+      const blockers = Array.isArray(preflightBody?.pending)
+        ? preflightBody.pending.filter((item: any) => item?.severity === "blocker")
+        : [];
+      if (blockers.length > 0) {
+        toast({
+          title: "Corrija as pendências antes de gerar",
+          description: blockers.map((item: any) => item.message).join(" · ").slice(0, 420),
+          variant: "destructive",
+        });
+        return;
+      }
+    } catch (error) {
+      toast({
+        title: "Não foi possível validar a proposta",
+        description: error instanceof Error ? error.message : "Tente novamente.",
         variant: "destructive",
       });
       return;
@@ -2495,6 +2574,40 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
         description: e?.message || "Não foi possível carregar a proposta.",
         variant: "destructive",
       });
+    }
+  }
+
+  async function openProposalSources() {
+    if (!activeVersion || !leadId || !token) return;
+    setProposalSourcesLoading(true);
+    setProposalSourcesOpen(true);
+    try {
+      const response = await fetch(api(`/api/leads/${leadId}/proposals/${activeVersion}`), {
+        headers,
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error ?? "Não foi possível carregar as fontes desta versão.");
+      let json: any = {};
+      try {
+        json = typeof body?.jsonContent === "string" ? JSON.parse(body.jsonContent) : body?.jsonContent ?? {};
+      } catch {
+        json = {};
+      }
+      setProposalSources({
+        version: body?.version ?? activeVersion,
+        createdAt: body?.createdAt ?? null,
+        snapshot: json?._sourceSnapshot ?? null,
+        meta: json?._proposalMeta ?? null,
+      });
+    } catch (error) {
+      setProposalSources(null);
+      toast({
+        title: "Erro ao carregar fontes",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setProposalSourcesLoading(false);
     }
   }
 
@@ -5245,6 +5358,45 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                   ))}
                 </div>
 
+                <div className="mt-3 rounded-lg border bg-background p-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] font-semibold">Dados e fontes</p>
+                    <Badge variant="outline" className={
+                      proposalPreflightBlockers.length > 0
+                        ? "border-red-200 bg-red-50 text-[10px] text-red-700"
+                        : proposalPreflightWarnings.length > 0
+                          ? "border-amber-200 bg-amber-50 text-[10px] text-amber-700"
+                          : "border-emerald-200 bg-emerald-50 text-[10px] text-emerald-700"
+                    }>
+                      {proposalPreflightLoading
+                        ? "validando…"
+                        : proposalPreflightBlockers.length > 0
+                          ? `${proposalPreflightBlockers.length} bloqueio(s)`
+                          : proposalPreflightWarnings.length > 0
+                            ? `${proposalPreflightWarnings.length} aviso(s)`
+                            : "fontes completas"}
+                    </Badge>
+                  </div>
+                  {proposalPreflightPending.length > 0 ? (
+                    <div className="mt-2 space-y-1.5">
+                      {proposalPreflightPending.slice(0, 8).map((item) => (
+                        <div
+                          key={`${item.code}-${item.field ?? "none"}`}
+                          className={`rounded-md border px-2 py-1.5 text-[10px] ${item.severity === "blocker"
+                            ? "border-red-200 bg-red-50 text-red-700"
+                            : "border-amber-200 bg-amber-50 text-amber-800"}`}
+                        >
+                          <span className="font-semibold">{item.source.replace("_", " ")}:</span> {item.message}
+                        </div>
+                      ))}
+                    </div>
+                  ) : !proposalPreflightLoading ? (
+                    <p className="mt-2 text-[10px] text-emerald-700">
+                      Cliente, orçamento e fontes essenciais validados.
+                    </p>
+                  ) : null}
+                </div>
+
                 {(proposalComposerWarnings.length > 0 || proposalComposerBlockingIssues.length > 0) && (
                   <div className="mt-3 flex flex-wrap gap-2">
                     {[...proposalComposerWarnings, ...proposalComposerBlockingIssues].some((item) => item.key === "cover" || item.key === "stages") && (
@@ -5352,7 +5504,7 @@ ${chip}`
                 variant="ghost"
                 size="sm"
                 onClick={() => generateProposal(undefined)}
-                disabled={generating || proposalComposerBlockingIssues.length > 0}
+                disabled={generating || proposalGenerationBlocked}
               >
                 {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
                 Gerar sem instruções
@@ -5362,7 +5514,7 @@ ${chip}`
               size="sm"
               className="gap-1.5 bg-violet-600 hover:bg-violet-700"
               onClick={() => generateProposal(refineNotes || undefined)}
-              disabled={generating || (refineFromVersion == null && proposalComposerBlockingIssues.length > 0)}
+              disabled={generating || (refineFromVersion == null && proposalGenerationBlocked)}
             >
               {generating ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -5370,6 +5522,102 @@ ${chip}`
                 <Sparkles className="h-3.5 w-3.5" />
               )}
               {refineFromVersion != null ? "Gerar versão melhorada" : "Gerar proposta"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={proposalSourcesOpen} onOpenChange={setProposalSourcesOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ListChecks className="h-4 w-4" />
+              Fontes utilizadas — Proposta v{proposalSources?.version ?? activeVersion}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[70vh] space-y-3 overflow-y-auto py-1">
+            {proposalSourcesLoading ? (
+              <div className="flex items-center gap-2 rounded-lg border p-3 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Carregando rastreabilidade…
+              </div>
+            ) : proposalSources?.snapshot ? (
+              <>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="rounded-lg border p-3">
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Plano de Negócios</p>
+                    <p className="mt-1 text-xs font-medium">
+                      {proposalSources.snapshot.businessPlan?.approvedContext ? "Contexto aprovado congelado" : "Sem contexto aprovado"}
+                    </p>
+                    <p className="mt-1 line-clamp-4 whitespace-pre-wrap text-[10px] text-muted-foreground">
+                      {proposalSources.snapshot.businessPlan?.approvedContext || "—"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border p-3">
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Orçamento</p>
+                    <p className="mt-1 text-xs font-medium">
+                      {proposalSources.snapshot.budget?.title || "Não vinculado"}
+                    </p>
+                    <p className="mt-1 text-[10px] text-muted-foreground">
+                      ID: {proposalSources.snapshot.budget?.id || "—"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border p-3">
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Cliente</p>
+                    <p className="mt-1 text-xs font-medium">
+                      {proposalSources.snapshot.client?.lead?.empresa || proposalSources.snapshot.client?.lead?.nome || "—"}
+                    </p>
+                    <p className="mt-1 text-[10px] text-muted-foreground">
+                      Briefing {proposalSources.snapshot.client?.briefing ? "incluído" : "não disponível"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border p-3">
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Catálogo e mídias</p>
+                    <p className="mt-1 text-xs font-medium">
+                      {(proposalSources.snapshot.catalog?.linkedProducts?.length ?? 0)} produto(s) · {(proposalSources.snapshot.media?.proposalImages?.length ?? 0)} imagem(ns)
+                    </p>
+                    <p className="mt-1 text-[10px] text-muted-foreground">
+                      {(proposalSources.snapshot.media?.attachments?.length ?? 0)} anexo(s)
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold">Snapshot histórico</p>
+                    <Badge variant="outline" className="text-[10px]">
+                      {proposalSources.snapshot.capturedAt
+                        ? new Date(proposalSources.snapshot.capturedAt).toLocaleString("pt-BR")
+                        : "data indisponível"}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    Esta versão preserva as fontes usadas na geração. Alterações futuras nos cadastros não reescrevem este registro.
+                  </p>
+                </div>
+
+                {(proposalSources.snapshot.pending?.length ?? 0) > 0 && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                    <p className="text-xs font-semibold text-amber-900">Pendências existentes na emissão</p>
+                    <div className="mt-2 space-y-1">
+                      {proposalSources.snapshot.pending.map((item: any, index: number) => (
+                        <p key={`${item.code}-${index}`} className="text-[10px] text-amber-800">
+                          • {item.message}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="rounded-lg border p-4 text-sm text-muted-foreground">
+                Esta versão é anterior à rastreabilidade completa e não possui snapshot de fontes salvo.
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setProposalSourcesOpen(false)}>
+              Fechar
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -5435,6 +5683,10 @@ ${chip}`
                   onClick={() => activeVersion && downloadProposal(activeVersion, "pdf")}>
                   <FileText className="h-3.5 w-3.5" />
                   Download PDF
+                </Button>
+                <Button variant="outline" size="sm" className="gap-1" onClick={openProposalSources}>
+                  <ListChecks className="h-3.5 w-3.5" />
+                  Fontes utilizadas
                 </Button>
               </>
             )}
