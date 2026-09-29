@@ -3583,8 +3583,8 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                 </div>
 
                 <div className="mt-4">
-                  <p className="text-xs font-semibold">Páginas e blocos</p>
-                  <p className="text-[10px] text-muted-foreground">Clique para editar. Arraste para ordenar e use o botão + para adicionar conteúdo.</p>
+                  <p className="text-xs font-semibold">Páginas da proposta</p>
+                  <p className="text-[10px] text-muted-foreground">Cada item abaixo é uma página. Clique para abrir e editar somente aquela página.</p>
                 </div>
 
                 <div className="mt-2 space-y-1.5">
@@ -3611,7 +3611,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                         {index + 1}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-[11px] font-medium">{module.title || PROPOSAL_MODULE_LABELS[module.key] || module.key}</p>
+                        <p className="truncate text-[11px] font-medium">Página {index + 1} · {module.title || PROPOSAL_MODULE_LABELS[module.key] || module.key}</p>
                       </div>
                       <PencilLine className={`h-3.5 w-3.5 shrink-0 ${proposalBuilderSelectedModuleKey === module.key ? "text-primary" : "text-muted-foreground/60 opacity-0 group-hover:opacity-100"}`} />
                       <Switch
@@ -3624,7 +3624,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                         <button
                           type="button"
                           className="hidden text-muted-foreground hover:text-destructive group-hover:block"
-                          title="Remover bloco"
+                          title="Remover página"
                           onClick={(event) => { event.stopPropagation(); removeProposalBuilderModule(module.key); }}
                         >
                           <X className="h-3.5 w-3.5" />
@@ -3635,10 +3635,10 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                 </div>
 
                 <div className="mt-4 rounded-xl border border-dashed bg-background p-3">
-                  <p className="text-xs font-semibold">Adicionar bloco</p>
+                  <p className="text-xs font-semibold">Adicionar página</p>
                   <div className="mt-2 grid gap-1.5">
                     {proposalBuilderAvailableModules.length === 0 ? (
-                      <p className="text-[10px] text-muted-foreground">Todos os blocos disponíveis já estão no modelo.</p>
+                      <p className="text-[10px] text-muted-foreground">Todas as páginas disponíveis já estão no modelo.</p>
                     ) : proposalBuilderAvailableModules.map(([key, label]) => (
                       <button
                         key={key}
@@ -3657,14 +3657,17 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
               <main className="min-h-0 overflow-auto bg-[#eceff3] p-5">
                 <div className="mb-3 flex items-center justify-between">
                   <div>
-                    <p className="text-xs font-semibold">Proposta para editar e organizar</p>
+                    <p className="text-xs font-semibold">Editor de página</p>
                     <p className="text-[10px] text-muted-foreground">
                       {proposalBuilderPreviewMode === "template"
-                        ? "Você está editando o MODELO reutilizável da empresa. Os textos e imagens são padrões; dados do cliente entram somente na geração."
-                        : "Simulação opcional usando o orçamento selecionado, sem alterar os dados do modelo."}
+                        ? "Abra uma página na coluna esquerda e edite somente o conteúdo dela. O modelo continua reutilizável para as próximas propostas."
+                        : "Simulação opcional usando o orçamento selecionado; a edição continua página por página."}
                     </p>
                   </div>
-                  <div className="flex flex-wrap gap-1">
+                  <div className="flex flex-wrap items-center gap-1">
+                    <Badge variant="outline">
+                      Página {Math.max(1, proposalBuilderEditorModules.findIndex((item) => item.key === proposalBuilderSelectedModuleKey) + 1)} de {proposalBuilderEditorModules.length}
+                    </Badge>
                     <Badge variant="outline">{proposalBuilderEditorPreset.replace(/_/g, " ")}</Badge>
                     <Badge variant="outline">{proposalBuilderPreviewClient}</Badge>
                   </div>
@@ -3675,6 +3678,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                     proposalBuilderPreviewDevice === "mobile" ? "w-[390px] rounded-[24px]" : "w-full max-w-[980px] rounded-xl"
                   }`}
                 >
+                  {proposalBuilderSelectedModuleKey === "capa" && (
                   <div
                     role="button"
                     tabIndex={0}
@@ -3742,13 +3746,14 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                       </div>
                     </div>
                   </div>
+                  )}
 
                   <div className={`space-y-3 ${
                     proposalBuilderDensity === "compacto" ? "p-4" : proposalBuilderDensity === "equilibrado" ? "p-6" : "p-8"
                   }`}>
                     {proposalBuilderEditorModules
-                      .filter((module) => module.enabled !== false && module.key !== "capa")
-                      .map((module, index) => (
+                      .filter((module) => module.enabled !== false && module.key !== "capa" && module.key === proposalBuilderSelectedModuleKey)
+                      .map((module) => (
                         <div
                           key={module.key}
                           draggable
@@ -3878,7 +3883,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                 />
                 {proposalBuilderSelectedModuleKey && (
                   <div className="mb-4 rounded-xl border border-primary/20 bg-primary/5 p-3">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-primary">Bloco selecionado</p>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-primary">Página selecionada</p>
                     <p className="mt-1 text-sm font-semibold">
                       {PROPOSAL_MODULE_LABELS[proposalBuilderSelectedModuleKey] ?? proposalBuilderSelectedModuleKey}
                     </p>
@@ -3923,7 +3928,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                       })()}
                     </div>
                     <p className="mt-2 text-[10px] text-muted-foreground">
-                      Clique em outro bloco na prévia para editar conteúdo, imagem, origem dos dados e posição.
+                      Clique em outra página na coluna esquerda para editar conteúdo, imagem, origem dos dados e posição.
                     </p>
 
                     {(() => {
@@ -3932,7 +3937,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                       return (
                         <div className="mt-4 space-y-3 border-t border-primary/15 pt-3">
                           <div className="space-y-1">
-                            <label className="text-[10px] font-medium text-muted-foreground">Título do bloco</label>
+                            <label className="text-[10px] font-medium text-muted-foreground">Título da página</label>
                             <Input
                               value={selectedModule.title ?? PROPOSAL_MODULE_LABELS[selectedModule.key] ?? selectedModule.key}
                               onChange={(e) => updateProposalBuilderModuleConfig(selectedModule.key, { title: e.target.value })}
@@ -3944,7 +3949,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                             <Textarea
                               value={selectedModule.description ?? ""}
                               onChange={(e) => updateProposalBuilderModuleConfig(selectedModule.key, { description: e.target.value })}
-                              placeholder="Explique o papel deste bloco no modelo."
+                              placeholder="Explique o objetivo desta página na proposta."
                               className="min-h-[70px] text-xs"
                             />
                           </div>
@@ -3976,7 +3981,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                           </div>
 
                           <div className="rounded-lg border bg-background p-2.5">
-                            <p className="text-[10px] font-semibold">Imagem padrão do bloco</p>
+                            <p className="text-[10px] font-semibold">Imagem da página</p>
                             {selectedModule.image?.url ? (
                               <img src={normalizeTenantLogoUrl(selectedModule.image.url)} alt="" className="mt-2 h-28 w-full rounded-md border object-cover" />
                             ) : (
