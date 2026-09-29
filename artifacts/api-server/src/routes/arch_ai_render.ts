@@ -173,28 +173,8 @@ archAiRenderRouter.post("/arch/ai-render/:id/approve", authenticate, async (req,
     const renderId = asOptionalString(body?.render_id) ?? asOptionalString(req.params["id"]);
     if (!tid || !renderId) return;
 
-    const scope = candidate.projectId
-      ? and(
-          eq(archAiRendersTable.tenantId, tid),
-          eq(archAiRendersTable.projectId, candidate.projectId),
-          eq(archAiRendersTable.ambiente, candidate.ambiente),
-          ne(archAiRendersTable.id, renderId),
-        )
-      : candidate.conceptProjectId
-        ? and(
-            eq(archAiRendersTable.tenantId, tid),
-            eq(archAiRendersTable.conceptProjectId, candidate.conceptProjectId),
-            eq(archAiRendersTable.ambiente, candidate.ambiente),
-            ne(archAiRendersTable.id, renderId),
-          )
-        : null;
-
-    if (scope) {
-      await db.update(archAiRendersTable)
-        .set({ approvedBy: null, approvedAt: null, approvalNote: null })
-        .where(scope);
-    }
-
+    // Aprovação é individual por versão. Não revogar aprovações de outras versões
+    // do mesmo projeto/ambiente: elas podem coexistir em estágios diferentes.
     await db.update(archAiRendersTable)
       .set({
         approvedBy,
