@@ -1141,10 +1141,28 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
   }
 
   function proposalImageSlotLabel(index: number) {
-    const slots = selectedOrcamentoId !== "__none__"
-      ? ["Capa", "Situação / problema", "Implicação / valor", "Solução", "Orçamento"]
-      : ["Capa", "Situação / problema", "Implicação / valor", "Solução"];
-    return slots[index] ?? `Visual extra ${index - slots.length + 1}`;
+    return `Imagem adicional ${index + 1}`;
+  }
+
+  async function setProposalCoverFromUrl(imageUrl: string) {
+    if (!selectedOrcamento?.id) return;
+    try {
+      const response = await fetch(api(`/api/leads/${leadId}/proposals/cover-image/manual`), {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ propostaId: selectedOrcamento.id, imageUrl }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? "Não foi possível definir a capa.");
+      await queryClient.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId, { leadId }) });
+      toast({ title: "Imagem definida como capa da proposta" });
+    } catch (error) {
+      toast({
+        title: "Erro ao definir capa",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    }
   }
 
   function moveProposalImage(index: number, direction: -1 | 1) {
@@ -2287,7 +2305,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                   <Badge variant="outline" className="text-[10px]">{proposalComposerStageImageCount}/{selectedOrcamentoStages.length || 0} etapas</Badge>
                 </div>
                 <p className="mt-1 text-[10px] text-muted-foreground">
-                  Único lugar para gerar, enviar, trocar e organizar as imagens desta proposta. Imagens padrão do modelo ficam no Studio.
+                  Envie várias imagens, escolha a capa, organize a galeria e mantenha as imagens das etapas no mesmo lugar.
                 </p>
               </div>
               {proposalVisualCenterOpen ? <ChevronUp className="mt-0.5 h-4 w-4 shrink-0" /> : <ChevronDown className="mt-0.5 h-4 w-4 shrink-0" />}
@@ -2296,8 +2314,30 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
             {proposalVisualCenterOpen && (
               <div className="space-y-3 border-t p-3">
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-900">
-                  <strong>Central de imagens:</strong> capa, imagens das etapas e imagens adicionais são gerenciadas somente aqui.
+                  <strong>Galeria da proposta:</strong> envie várias imagens de uma vez, reordene, remova e escolha qualquer uma como capa.
                 </div>
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(event) => {
+                    if (event.target.files?.length) void handleProposalImageUpload(event.target.files);
+                    event.target.value = "";
+                  }}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-9 w-full gap-1.5 text-xs sm:w-auto"
+                  disabled={imageUploading}
+                  onClick={() => imageInputRef.current?.click()}
+                >
+                  {imageUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                  {imageUploading ? "Enviando..." : "Adicionar várias imagens"}
+                </Button>
                 <input
                   ref={coverImageInputRef}
                   type="file"
@@ -2356,7 +2396,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                         onClick={() => coverImageInputRef.current?.click()}
                       >
                         {coverImageUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-                        Enviar imagem
+                        Enviar capa
                       </Button>
                     </div>
                     {selectedOrcamento?.apresentacao?.imagemCapa && (
@@ -2425,17 +2465,17 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                 <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-foreground">
                 <ImagePlus className="h-3.5 w-3.5 text-muted-foreground" />
-                <span>Imagens adicionais</span>
+                <span>Galeria da proposta</span>
                 <Badge
                 variant="outline"
                 className={proposalHasMinimumImages ? "border-emerald-200 bg-emerald-50 text-emerald-700" : ""}
                 >
                 {effectiveProposalImages.length} imagem(ns)
                 </Badge>
-                <Badge variant="outline" className="text-[10px]">fallback</Badge>
+                <Badge variant="outline" className="text-[10px]">múltiplas</Badge>
                 </div>
                 <p className="mt-1 text-[10px] text-muted-foreground">
-                Envie várias imagens de uma vez para usar como galeria e apoio visual da proposta.
+                Todas as imagens adicionais desta proposta. Você pode ordenar, remover ou definir uma delas como capa.
                 </p>
                 </div>
                 {proposalFallbackLibraryOpen ? <ChevronUp className="mt-0.5 h-4 w-4 shrink-0" /> : <ChevronDown className="mt-0.5 h-4 w-4 shrink-0" />}
@@ -2454,7 +2494,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                 <div className="space-y-1.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-xs text-muted-foreground font-medium">
-                Imagens adicionais da proposta:
+                Imagens da galeria:
                 </p>
                 <span className={`text-[10px] font-medium ${effectiveProposalImages.length >= proposalPrimaryPageCount ? "text-emerald-600" : "text-amber-600"}`}>
                 {effectiveProposalImages.length} imagem(ns) disponíveis
@@ -2464,7 +2504,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                 {proposalImages.map((url, idx) => (
                 <div key={`${url}-${idx}`} className="relative group rounded overflow-hidden border aspect-video bg-muted">
                 <span className="absolute top-0.5 left-0.5 z-10 max-w-[78%] truncate bg-black/75 text-white text-[9px] font-medium px-1 py-0.5 rounded">
-                {idx + 1} · {proposalImageSlotLabel(idx)}
+                {idx + 1} · {selectedOrcamento?.apresentacao?.imagemCapa === url ? "CAPA" : proposalImageSlotLabel(idx)}
                 </span>
                 <img
                 src={url}
@@ -2473,6 +2513,14 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                 onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                 />
                 <div className="absolute bottom-0.5 left-0.5 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                type="button"
+                onClick={() => void setProposalCoverFromUrl(url)}
+                className="bg-black/65 text-white rounded px-1.5 py-0.5 text-[9px]"
+                title="Usar como capa"
+                >
+                Capa
+                </button>
                 <button
                 type="button"
                 onClick={() => moveProposalImage(idx, -1)}
@@ -2546,19 +2594,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                 <p className="text-xs text-muted-foreground">
                 Estas imagens são auxiliares e não substituem capa, imagem do bloco ou imagem específica de uma etapa.
                 </p>
-                <input
-                ref={imageInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={(e) => {
-                if (e.target.files?.length) {
-                void handleProposalImageUpload(e.target.files);
-                e.target.value = "";
-                }
-                }}
-                />
+
                 <Button
                 variant="outline"
                 size="sm"
