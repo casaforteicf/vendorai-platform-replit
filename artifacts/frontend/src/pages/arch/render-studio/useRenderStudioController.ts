@@ -309,7 +309,7 @@ export function useRenderStudioController() {
         project_id: arq.projectId ?? undefined, original_image_url: imageDataUrl, mode: "preservar",
         ambiente: ambiente.toLowerCase().replace(/\s+/g, "_"),
         render_presets: [renderPreset],
-        user_notes: "Preservar absolutamente o projeto, medidas, câmera, perspectiva, layout, marcenaria, circulação, aberturas e proporções.",
+        user_notes: "Preservação rígida: manter exatamente cores, materiais, texturas-base, medidas, posição, orientação e proporções de todo mobiliário e marcenaria; manter câmera, perspectiva, layout, circulação e aberturas. Melhorar somente fotorealismo, resolução de textura, iluminação, reflexos, sombras e definição. Não adicionar decoração nem realocar objetos.",
       });
       setRenderId(render_id); setProcessingStage("Gerando render…");
       const data = await waitForRenderCompletion(render_id);
@@ -353,7 +353,7 @@ export function useRenderStudioController() {
     if (!renderId || loading) return;
 
     const automaticQualityPrompt =
-      "Re-render this image to premium photorealistic architectural-visualization quality, comparable to high-end editorial interior photography. Increase physically based material realism, fine wood/stone/textile micro-texture, accurate roughness and specular response, realistic glass and metal reflections, natural global illumination, soft contact shadows, ambient bounce, tonal separation, crisp edge definition and fine photographic detail. Remove flat CG shading, plastic-looking materials, grey haze, blur, smeared textures and low-resolution appearance. Preserve the exact architecture, geometry, layout, camera, perspective, openings, cabinetry, furniture positions, circulation, colors and proportions. Do not redesign, crop, zoom, mirror or change the composition.";
+      "STRICT PRESERVATION MODE. Treat the current render as the immutable design source. Preserve the exact count, position, XYZ placement, orientation, dimensions, proportions and visible shape of every existing furniture item, cabinet, countertop, appliance, fixture and built-in. Preserve the exact perceived colors and material identity of furniture, cabinetry, walls, floors, stone, wood, metals and fabrics. Keep wood species/color and grain direction, stone tone and veining, fabric color and weave, painted finish color and metal finish unchanged. Improve only texture resolution, micro-detail, roughness, reflectance, realistic glass/metal reflections, global illumination, bounce light, soft contact shadows, ambient occlusion, exposure, tonal separation and photographic sharpness. Preserve architecture, geometry, openings, circulation, camera, framing, perspective and field of view exactly. Do not add, remove, replace, recolor, resize, relocate, rotate, crop, zoom, mirror or redesign anything. Do not add decoration unless explicitly requested. Remove only the flat CG/plastic/low-resolution appearance while keeping the design visually identical.";
 
     const effectivePrompt = melhoriaMode === "improve"
       ? [automaticQualityPrompt, melhoriaPrompt.trim()].filter(Boolean).join(" ")
