@@ -761,6 +761,41 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     }
   }
 
+  function proposalDraftStorageKey(budgetId: string) {
+    return `vendorai:proposal-composer:${tenantId}:${leadId}:${budgetId}`;
+  }
+
+  function restoreProposalComposerDraft(budgetId: string) {
+    if (typeof window === "undefined" || budgetId === "__none__") return;
+    try {
+      const raw = window.sessionStorage.getItem(proposalDraftStorageKey(budgetId));
+      if (!raw) return;
+      const draft = JSON.parse(raw) as Record<string, any>;
+      const presentation = draft.presentation && typeof draft.presentation === "object" ? draft.presentation : null;
+      if (presentation) {
+        if (presentation.formato === "site_interativo" || presentation.formato === "documento" || presentation.formato === "hibrido") setProposalPresentationFormat(presentation.formato);
+        if (["moderna","contemporanea","minimalista","classica","industrial"].includes(String(presentation.estiloCasa))) setProposalHouseStyle(presentation.estiloCasa);
+        if (["medio","alto_padrao","luxo"].includes(String(presentation.padraoCasa))) setProposalHouseStandard(presentation.padraoCasa);
+        if (presentation.tipoCasa === "terrea" || presentation.tipoCasa === "sobrado") setProposalHouseType(presentation.tipoCasa);
+        if (Array.isArray(presentation.elementosVisuais)) setProposalVisualElements(presentation.elementosVisuais.filter((item: unknown): item is string => typeof item === "string"));
+        if (presentation.modoPadrao) setProposalPresentationDefaultMode(normalizeProposalPresentationMode(presentation.modoPadrao));
+        if (presentation.etapas && typeof presentation.etapas === "object") setProposalPresentationStageModes(presentation.etapas);
+        if (typeof presentation.mostrarDetalhamentoTecnico === "boolean") setProposalShowTechnicalDetails(presentation.mostrarDetalhamentoTecnico);
+        if (presentation.detalhamentoTecnicoEtapas && typeof presentation.detalhamentoTecnicoEtapas === "object") setProposalTechnicalDetailStages(presentation.detalhamentoTecnicoEtapas);
+        if (typeof presentation.mostrarTotalGeral === "boolean") setProposalShowGrandTotal(presentation.mostrarTotalGeral);
+        if (Number.isFinite(Number(presentation.areaTotalConstruida)) && Number(presentation.areaTotalConstruida) > 0) setProposalBuiltArea(String(presentation.areaTotalConstruida));
+        if (Array.isArray(presentation.itensNaoInclusos)) setProposalExcludedText(presentation.itensNaoInclusos.filter((item: unknown) => typeof item === "string").join("\n"));
+      }
+      if (typeof draft.builderTemplateId === "string") setSelectedProposalBuilderTemplateId(draft.builderTemplateId);
+      if (typeof draft.documentTemplateId === "string") setSelectedProposalTemplateId(draft.documentTemplateId);
+      if (Array.isArray(draft.attachments)) setProposalAttachments(draft.attachments);
+      if (Array.isArray(draft.images)) setProposalImages(draft.images.filter((item: unknown): item is string => typeof item === "string"));
+      if (typeof draft.savedAt === "string") setProposalDraftSavedAt(draft.savedAt);
+    } catch {
+      // Rascunho de sessão inválido: ignora e usa os dados persistidos do orçamento.
+    }
+  }
+
   function handleProposalBudgetChange(value: string) {
     setSelectedOrcamentoId(value);
     setProposalPresentationStageModes({});
@@ -843,6 +878,9 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
         ? presentation.itensNaoInclusos.filter((item: unknown) => typeof item === "string").join("\n")
         : "",
     );
+
+    // Se o usuário voltar/recarregar a tela durante a mesma sessão, recupera ajustes ainda não gerados.
+    queueMicrotask(() => restoreProposalComposerDraft(value));
   }
 
   function currentProposalPresentation() {
