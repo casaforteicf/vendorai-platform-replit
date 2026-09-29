@@ -521,6 +521,162 @@ export function normalizeProposalBuilderTemplate(
   };
 }
 
+function constructionProposalPresetTemplates(
+  fallback: Omit<ProposalBuilderTemplate, "id" | "createdAt" | "updatedAt">,
+): Array<Omit<ProposalBuilderTemplate, "id" | "createdAt" | "updatedAt"> & { presetKey: string }> {
+  const baseModules = fallback.modules.map((module) => ({ ...module, image: module.image ? { ...module.image } : undefined }));
+  const build = (
+    presetKey: string,
+    name: string,
+    options: {
+      preset: ProposalBuilderVisualStyle["preset"];
+      heroVariant: ProposalBuilderVisualStyle["heroVariant"];
+      stageVariant: ProposalBuilderVisualStyle["stageVariant"];
+      investmentVariant: ProposalBuilderVisualStyle["investmentVariant"];
+      density: ProposalBuilderVisualStyle["density"];
+      imageEmphasis: ProposalBuilderVisualStyle["imageEmphasis"];
+      tone: string;
+      technicalLevel: string;
+      contentRules: string[];
+      imageRules: string[];
+      avoid?: string[];
+      disabledModules?: ProposalBuilderModuleKey[];
+    },
+  ) => ({
+    ...fallback,
+    presetKey,
+    name,
+    isDefault: presetKey === "casa_alto_padrao",
+    modules: baseModules.map((module) => ({
+      ...module,
+      enabled: module.required ? true : !(options.disabledModules ?? []).includes(module.key),
+    })),
+    visualStyle: {
+      preset: options.preset,
+      heroVariant: options.heroVariant,
+      stageVariant: options.stageVariant,
+      investmentVariant: options.investmentVariant,
+      density: options.density,
+      imageEmphasis: options.imageEmphasis,
+    },
+    aiRules: {
+      ...fallback.aiRules,
+      tone: options.tone,
+      technicalLevel: options.technicalLevel,
+      contentRules: [...(fallback.aiRules.contentRules ?? []), ...options.contentRules],
+      imageRules: [...(fallback.aiRules.imageRules ?? []), ...options.imageRules],
+      avoid: [...(fallback.aiRules.avoid ?? []), ...(options.avoid ?? [])],
+    },
+    createdBy: "manual" as const,
+  });
+
+  return [
+    build("casa_alto_padrao", "Casa · Alto Padrão", {
+      preset: "premium_arquitetonico",
+      heroVariant: "fotografico",
+      stageVariant: "cards",
+      investmentVariant: "por_etapa",
+      density: "arejado",
+      imageEmphasis: "alta",
+      tone: "premium, consultivo, técnico e sofisticado",
+      technicalLevel: "explicar desempenho, conforto, arquitetura, materiais e execução com clareza, sem perder apelo comercial",
+      contentRules: [
+        "Valorizar arquitetura, conforto térmico e acústico, durabilidade, eficiência e experiência de morar.",
+        "Priorizar narrativa visual premium, diferenciais construtivos e benefícios percebidos pelo cliente final.",
+      ],
+      imageRules: ["Priorizar renders e imagens fotorealistas de arquitetura residencial de alto padrão coerentes com o projeto."],
+    }),
+    build("casa_medio_padrao", "Casa · Médio Padrão", {
+      preset: "corporativo",
+      heroVariant: "fotografico",
+      stageVariant: "cards",
+      investmentVariant: "por_etapa",
+      density: "equilibrado",
+      imageEmphasis: "media",
+      tone: "profissional, objetivo, acessível e comercial",
+      technicalLevel: "explicar escopo, etapas, prazo, desempenho e custo-benefício em linguagem fácil para o cliente",
+      contentRules: [
+        "Equilibrar benefícios, escopo, prazo e investimento sem excesso de linguagem premium.",
+        "Destacar previsibilidade, conforto, eficiência e clareza do que está incluso.",
+      ],
+      imageRules: ["Usar imagens residenciais realistas, funcionais e compatíveis com padrão médio, sem luxo artificial."],
+    }),
+    build("casa_etapa_cinza", "Casa · Etapa Cinza", {
+      preset: "tecnico",
+      heroVariant: "institucional",
+      stageVariant: "timeline",
+      investmentVariant: "por_etapa",
+      density: "compacto",
+      imageEmphasis: "media",
+      tone: "técnico, claro e objetivo",
+      technicalLevel: "detalhar estrutura, fundação, paredes ICF, lajes, cobertura e limites exatos da etapa contratada",
+      contentRules: [
+        "Deixar explícito o ponto exato de entrega da etapa cinza e o que ficará para fases posteriores.",
+        "Destacar sequência executiva, materiais estruturais e critérios de medição sem incluir acabamentos não contratados.",
+      ],
+      imageRules: ["Priorizar imagens técnicas de obra em execução, estrutura ICF, fundação, lajes e cobertura conforme o orçamento."],
+      avoid: ["Não apresentar ambientes acabados, decoração ou itens finais quando não fizerem parte do escopo."],
+      disabledModules: ["curiosidades_conteudo", "faq"],
+    }),
+    build("piscina_icf", "Piscina ICF", {
+      preset: "premium_arquitetonico",
+      heroVariant: "fotografico",
+      stageVariant: "cards",
+      investmentVariant: "por_etapa",
+      density: "arejado",
+      imageEmphasis: "alta",
+      tone: "visual, técnico e comercial",
+      technicalLevel: "explicar estrutura ICF da piscina, dimensões, impermeabilização, revestimentos, hidráulica, equipamentos e condições de entrega conforme escopo",
+      contentRules: [
+        "Organizar a proposta especificamente para piscina, sem tratar o orçamento como uma residência completa.",
+        "Destacar dimensões, sistema estrutural, impermeabilização, instalações hidráulicas, equipamentos, acabamento e itens inclusos quando existirem.",
+      ],
+      imageRules: ["Usar imagens de piscinas ICF, áreas de lazer e detalhes construtivos coerentes com o escopo real."],
+      avoid: ["Não incluir ambientes residenciais, dormitórios ou etapas de casa que não pertençam ao orçamento da piscina."],
+      disabledModules: ["fisico_financeiro"],
+    }),
+    build("somente_formas_icf", "Somente Formas ICF", {
+      preset: "catalogo_comercial",
+      heroVariant: "produto",
+      stageVariant: "lista_tecnica",
+      investmentVariant: "por_item",
+      density: "equilibrado",
+      imageEmphasis: "media",
+      tone: "comercial, técnico e direto",
+      technicalLevel: "focar especificações das formas ICF, quantidades, aplicações, logística, condições e limites de fornecimento",
+      contentRules: [
+        "Tratar como fornecimento de produto, não como execução completa de obra.",
+        "Destacar modelo de forma ICF, quantidade, metragem atendida, aplicação, logística, frete, condições comerciais e itens não inclusos.",
+      ],
+      imageRules: ["Priorizar imagens reais ou técnicas das formas ICF, montagem dos blocos e aplicação do sistema."],
+      avoid: [
+        "Não apresentar mão de obra, cronograma de obra completa ou acabamentos se não estiverem contratados.",
+        "Não sugerir que o fornecimento das formas inclui concretagem, instalações ou execução sem previsão no orçamento.",
+      ],
+      disabledModules: ["cronograma", "fisico_financeiro", "imagem_por_etapa"],
+    }),
+  ];
+}
+
+function isConstructionProposalContext(
+  profile: { vertical?: string | null; nomeFantasia?: string | null; razaoSocial?: string | null; produtos?: unknown; canaisVenda?: unknown },
+  discovery: Record<string, unknown>,
+) {
+  const text = [
+    profile.vertical,
+    profile.nomeFantasia,
+    profile.razaoSocial,
+    JSON.stringify(profile.produtos ?? []),
+    JSON.stringify(profile.canaisVenda ?? []),
+    JSON.stringify(discovery ?? {}),
+  ]
+    .join(" ")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  return /(construtora|construcao civil|execucao de obra|obra|icf|piscina)/.test(text);
+}
+
 type EnsureProposalBuilderOptions = {
   tenantId: string;
   forceNewVersion?: boolean;
@@ -558,6 +714,60 @@ export async function ensureTenantProposalBuilderTemplate({
     : [];
 
   if (existingTemplates.length && !forceNewVersion) {
+    if (isConstructionProposalContext(profile, discovery)) {
+      const fallbackForPresets = defaultProposalBuilderTemplate(profile.vertical, {
+        companyName: profile.nomeFantasia || profile.razaoSocial,
+        products: profile.produtos,
+        salesChannels: profile.canaisVenda,
+        discoveryData: discovery,
+      });
+      const presets = constructionProposalPresetTemplates(fallbackForPresets);
+      const normalizeName = (value: unknown) => String(value ?? "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
+      const existingNames = new Set(existingTemplates.map((item) => normalizeName(item.name)));
+      const missing = presets.filter((preset) => !existingNames.has(normalizeName(preset.name)));
+      if (missing.length) {
+        const now = new Date().toISOString();
+        const createdPresets: ProposalBuilderTemplate[] = missing.map(({ presetKey: _presetKey, ...preset }) => ({
+          ...preset,
+          isDefault: false,
+          id: crypto.randomUUID(),
+          createdAt: now,
+          updatedAt: now,
+        }));
+        const nextTemplates = [...existingTemplates, ...createdPresets];
+        await db
+          .update(businessProfilesTable)
+          .set({
+            discoveryData: {
+              ...discovery,
+              proposalBuilderTemplates: nextTemplates,
+            },
+            updatedAt: new Date(),
+          })
+          .where(eq(businessProfilesTable.tenantId, tenantId));
+
+        const activeId =
+          typeof discovery.activeProposalBuilderTemplateId === "string"
+            ? discovery.activeProposalBuilderTemplateId
+            : existingTemplates.find((item) => item.isDefault)?.id ?? existingTemplates[0]!.id;
+        const active =
+          nextTemplates.find((item) => item.id === activeId) ??
+          nextTemplates.find((item) => item.isDefault) ??
+          nextTemplates[0]!;
+        return {
+          template: active,
+          templates: nextTemplates,
+          activeTemplateId: active.id,
+          created: true,
+        };
+      }
+    }
+
     const activeId =
       typeof discovery.activeProposalBuilderTemplateId === "string"
         ? discovery.activeProposalBuilderTemplateId
