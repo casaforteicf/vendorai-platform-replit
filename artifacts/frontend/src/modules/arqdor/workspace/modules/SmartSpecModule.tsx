@@ -227,7 +227,6 @@ function SpecItemRow({
     })
   }, [item.id, item.larguraCm, item.alturaCm, item.profundidadeCm, item.modelo, item.fabricante, item.sku, item.configuracao, item.material, item.acabamento, item.cor, item.origemMedida, item.unidadeQuantificacao, item.notes])
 
-  const isFurniture = ['Mobiliário', 'Componente'].includes(item.categoria) || item.categoria.toLowerCase().includes('marcen')
   const isMeasuredElement = true
   const statusColors: Record<SpecItem['status'], string> = {
     pendente:           T.amber,
@@ -367,6 +366,27 @@ function SpecItemRow({
                   </select>
                 </label>
               </div>
+
+              {['Mobiliário', 'Componente'].includes(item.categoria) || item.categoria.toLowerCase().includes('marcen') ? (
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(4, minmax(0,1fr))', gap:8, marginBottom:8 }}>
+                  {[
+                    ['modulos','Módulos'],
+                    ['portas','Portas'],
+                    ['gavetas','Gavetas'],
+                    ['prateleiras','Prateleiras'],
+                  ].map(([key,label]) => (
+                    <label key={key} style={{ fontSize:9, color:T.dim }}>
+                      {label}
+                      <input
+                        type="number" min="0" step="1"
+                        value={(details as any)[key]}
+                        onChange={e => setDetails(d => ({ ...d, [key]: e.target.value }))}
+                        style={{ marginTop:4, width:'100%', boxSizing:'border-box', padding:'7px 8px', borderRadius:6, border:`1px solid ${T.border}`, background:'rgba(0,0,0,0.18)', color:'#fff', fontSize:10 }}
+                      />
+                    </label>
+                  ))}
+                </div>
+              ) : null}
 
               <label style={{ fontSize:9, color:T.dim, display:'block' }}>
                 Observações técnicas
