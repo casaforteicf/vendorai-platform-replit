@@ -199,14 +199,14 @@ const RENDER_STAGES = [
 // ─── Design tokens ─────────────────────────────────────────────────────────────
 
 const D = {
-  bg: "#060911", surface: "#0C1120", card: "#111827",
-  border: "#1E2A3A", borderLight: "#253347",
-  purple: "#7C3AED", purpleHov: "#6D28D9", purpleMid: "#9F6BF1",
-  purpleGlow: "rgba(124,58,237,0.18)", purpleText: "#A78BFA",
-  text: "#EDF2F7", muted: "#7B8EA5", dim: "#3D4F62",
-  green: "#10B981", greenDim: "rgba(16,185,129,0.15)",
+  bg: "#F7F8FA", surface: "#FFFFFF", card: "#FFFFFF",
+  border: "#E5E7EB", borderLight: "#D8DEE8",
+  purple: "#F97316", purpleHov: "#EA580C", purpleMid: "#FB923C",
+  purpleGlow: "rgba(249,115,22,0.16)", purpleText: "#C2410C",
+  text: "#172033", muted: "#64748B", dim: "#94A3B8",
+  green: "#10B981", greenDim: "rgba(16,185,129,0.12)",
   red: "#EF4444", amber: "#F59E0B",
-  inputBg: "#0B1122", overlay: "rgba(6,9,17,0.92)",
+  inputBg: "#FFFFFF", overlay: "rgba(247,248,250,0.92)",
 } as const;
 
 // ─── UI atoms ─────────────────────────────────────────────────────────────────
@@ -827,8 +827,8 @@ function Topbar({ step, projectTitle, ambiente, onNextStep, onOpenStudio, userNa
   };
   const breadcrumbs = ["Studio", ambiente || "Ambiente"].filter(Boolean);
   return (
-    <div style={{ height: 52, display: "flex", alignItems: "center", padding: "0 16px", background: D.surface, borderBottom: `1px solid ${D.border}`, flexShrink: 0, gap: 0, zIndex: 100 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginRight: 16, flexShrink: 0 }}>
+    <div className="arqdor-legacy-topbar" style={{ height: 52, display: "flex", alignItems: "center", padding: "0 16px", background: D.surface, borderBottom: `1px solid ${D.border}`, flexShrink: 0, gap: 0, zIndex: 100 }}>
+      <div className="arqdor-topbar-brand" style={{ display: "flex", alignItems: "center", gap: 8, marginRight: 16, flexShrink: 0 }}>
         <div style={{ width: 28, height: 28, borderRadius: 6, background: D.purple, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 900, color: "#fff" }}>A</div>
         <span style={{ fontSize: 12, fontWeight: 800, color: D.text, letterSpacing: "0.08em" }}>ARQDOR<span style={{ color: D.purpleMid, fontSize: 10 }}>.ai</span></span>
       </div>
@@ -869,7 +869,7 @@ const SIDEBAR_NAV = [
 function LeftSidebar({ step, projectTitle, onStepClick }: { step: Step; projectTitle: string | null; onStepClick: (s: Step) => void }) {
   const ci = stepIndex(step);
   return (
-    <div style={{ width: 220, flexShrink: 0, background: D.surface, borderRight: `1px solid ${D.border}`, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+    <div className="arqdor-legacy-sidebar" style={{ width: 220, flexShrink: 0, background: D.surface, borderRight: `1px solid ${D.border}`, display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <div style={{ padding: "10px 12px", borderBottom: `1px solid ${D.border}`, flexShrink: 0 }}>
         <div style={{ fontSize: 9, fontWeight: 700, color: D.dim, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>Projeto atual</div>
         <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 8px", background: D.card, borderRadius: 7, border: `1px solid ${D.border}` }}>
@@ -895,7 +895,7 @@ function LeftSidebar({ step, projectTitle, onStepClick }: { step: Step; projectT
                 </div>
               );
               return (
-                <button key={item.id} onClick={() => { if (stepId && isClickable) onStepClick(stepId); }} aria-current={isActive ? "step" : undefined} disabled={!isClickable}
+                <button className="arqdor-studio-step" data-step-number={String(stepIdx + 1).padStart(2, "0")} key={item.id} onClick={() => { if (stepId && isClickable) onStepClick(stepId); }} aria-current={isActive ? "step" : undefined} disabled={!isClickable}
                   title={!isClickable ? "Complete as etapas anteriores primeiro" : isDone ? `Voltar para ${item.label}` : undefined}
                   style={{ width: "100%", textAlign: "left", background: isActive ? `${D.purple}22` : "none", border: "none", borderLeft: isActive ? `2px solid ${D.purple}` : "2px solid transparent", padding: "7px 14px 7px 12px", cursor: isClickable ? "pointer" : "default", display: "flex", alignItems: "center", gap: 8, borderRadius: "0 6px 6px 0", transition: "background 0.12s", opacity: isClickable ? 1 : 0.35 }}>
                   <span style={{ fontSize: 12, color: isActive ? D.purple : isDone ? D.green : D.dim, width: 14, flexShrink: 0, textAlign: "center" }}>{isDone ? "✓" : item.icon}</span>
@@ -936,9 +936,9 @@ function CentralCanvas({ step, imageDataUrl, renderUrl, loading, isDragging, can
     : { maxWidth: "100%", maxHeight: "100%", objectFit: "contain" as const, boxShadow: "0 8px 64px rgba(0,0,0,0.6)" };
 
   return (
-    <div style={{ flex: 1, overflow: "hidden", position: "relative", background: "#03050A", display: "flex", flexDirection: "column" }}>
+    <div className="arqdor-center-panel" style={{ flex: 1, overflow: "hidden", position: "relative", background: D.bg, display: "flex", flexDirection: "column" }}>
       {/* P0-6: view controls */}
-      <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 10, display: "flex", gap: 4, background: `${D.surface}EE`, border: `1px solid ${D.border}`, borderRadius: 8, padding: "4px" }}>
+      <div className="arqdor-canvas-toolbar" style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 10, display: "flex", gap: 4, background: `${D.surface}EE`, border: `1px solid ${D.border}`, borderRadius: 8, padding: "4px" }}>
         {(["1:1", "Ajustar", "Grade"] as const).map((label) => {
           const isActive = (label === "1:1" && canvasMode === "1to1") || (label === "Ajustar" && canvasMode === "fit") || (label === "Grade" && showGrid);
           return (
@@ -1020,7 +1020,7 @@ function CentralCanvas({ step, imageDataUrl, renderUrl, loading, isDragging, can
             </div>
           )}
           {showUpload && !loading && !isDragging && (
-            <div onClick={onUpload} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop} role="button" tabIndex={0} aria-label="Carregar imagem — clique ou arraste" onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onUpload(); }}
+            <div className="arqdor-upload-card" onClick={onUpload} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop} role="button" tabIndex={0} aria-label="Carregar imagem — clique ou arraste" onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onUpload(); }}
               style={{ border: `2px dashed ${imageDataUrl ? D.purple : D.border}`, borderRadius: 16, padding: "48px 40px", cursor: "pointer", background: imageDataUrl ? `${D.purple}08` : `${D.card}88`, display: "flex", flexDirection: "column", alignItems: "center", gap: 16, transition: "all 0.2s", maxWidth: 420, width: "100%" }}>
               {imageDataUrl ? (
                 <><img src={imageDataUrl} alt="base" style={{ maxHeight: 260, maxWidth: "100%", borderRadius: 10, objectFit: "contain" }} /><span style={{ fontSize: 11, color: D.purpleText, fontWeight: 600 }}>Clique ou arraste para trocar</span></>
@@ -1063,7 +1063,7 @@ function CentralCanvas({ step, imageDataUrl, renderUrl, loading, isDragging, can
 // ─── Right Panel (P2-14/15/16/17/20/21) ──────────────────────────────────────
 
 function RightPanel({
-  step, arq, ambiente, setAmbiente, imageFile, renderUrl, versions, loading, err,
+  step, arq, ambiente, setAmbiente, imageFile, imageDataUrl, renderUrl, versions, loading, err,
   melhoriaPrompt, setMelhoriaPrompt, melhoriaMode, setMelhoriaMode,
   approved, specDone, specData,
   specificationId, enviandoOrcamento, orcamentoMsg, onEnviarOrcamento,
@@ -1077,7 +1077,7 @@ function RightPanel({
   isOpen, onToggle,
 }: {
   step: Step; arq: any; ambiente: string; setAmbiente: (v: string) => void;
-  imageFile: File | null; renderUrl: string | null;
+  imageFile: File | null; imageDataUrl: string | null; renderUrl: string | null;
   versions: RenderVersion[]; loading: boolean; err: string | null;
   melhoriaPrompt: string; setMelhoriaPrompt: (v: string) => void;
   melhoriaMode: "improve" | "change-material" | "change-lighting"; setMelhoriaMode: (v: "improve" | "change-material" | "change-lighting") => void;
@@ -1107,7 +1107,7 @@ function RightPanel({
   ];
 
   return (
-    <div style={{ display: "flex", alignItems: "stretch", position: "relative" }}>
+    <div className="arqdor-legacy-right-panel" style={{ display: "flex", alignItems: "stretch", position: "relative" }}>
       {/* P1-12: toggle */}
       <button onClick={onToggle} aria-label={isOpen ? "Recolher painel direito" : "Expandir painel direito"} style={{ position: "absolute", left: -14, top: "50%", transform: "translateY(-50%)", zIndex: 10, width: 14, height: 32, borderRadius: "4px 0 0 4px", background: D.surface, border: `1px solid ${D.border}`, borderRight: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: D.dim, fontSize: 9 }}>{isOpen ? "›" : "‹"}</button>
 
@@ -1121,7 +1121,7 @@ function RightPanel({
             ))}
           </div>
 
-          <div style={{ flex: 1, overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div className="arqdor-properties-scroll" style={{ flex: 1, overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
 
             {/* P2-15: Camadas — dados reais */}
             {tab === "camadas" && (
@@ -1207,9 +1207,9 @@ function RightPanel({
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     <PanelLabel>Imagem base</PanelLabel>
                     <InfoBox>Ambiente: <strong style={{ color: D.text }}>{ambiente}</strong></InfoBox>
-                    {imageFile && <div style={{ fontSize: 11, color: D.green, padding: "6px 8px", background: D.greenDim, borderRadius: 6 }}>✓ {imageFile.name}</div>}
-                    <DkBtn onClick={onUpload} variant={imageFile ? "secondary" : "primary"}>{imageFile ? "↺ Trocar imagem" : "⬜ Carregar imagem"}</DkBtn>
-                    {imageFile && <DkBtn onClick={onNextStep}>→ Continuar</DkBtn>}
+                    {imageDataUrl && <div style={{ fontSize: 11, color: D.green, padding: "6px 8px", background: D.greenDim, borderRadius: 6 }}>✓ {imageFile?.name ?? "Imagem base recuperada"}</div>}
+                    <DkBtn onClick={onUpload} variant={imageDataUrl ? "secondary" : "primary"}>{imageDataUrl ? "↺ Trocar imagem" : "⬜ Carregar imagem"}</DkBtn>
+                    {imageDataUrl && <DkBtn onClick={onNextStep}>→ Continuar</DkBtn>}
                   </div>
                 )}
 
@@ -1533,7 +1533,7 @@ function BottomPanel({ versions, projectId, isOpen, onToggle, eventLog, userName
   const tabLabels: Record<string, string> = { versoes: "Versões", storyboard: "Storyboard", comentarios: "Comentários", historico: "Histórico" };
 
   return (
-    <div style={{ flexShrink: 0, borderTop: `1px solid ${D.border}`, background: D.surface, display: "flex", flexDirection: "column", overflow: "hidden", transition: "height 0.2s", height: isOpen ? 188 : 36 }}>
+    <div className="arqdor-legacy-bottom-panel" style={{ flexShrink: 0, borderTop: `1px solid ${D.border}`, background: D.surface, display: "flex", flexDirection: "column", overflow: "hidden", transition: "height 0.2s", height: isOpen ? 188 : 36 }}>
       <div style={{ display: "flex", alignItems: "center", borderBottom: isOpen ? `1px solid ${D.border}` : "none", padding: "0 12px", height: 36, flexShrink: 0 }}>
         {TABS.map(t => (
           <button key={t} onClick={() => setTab(t)} aria-selected={tab === t} style={{ padding: "6px 14px", fontSize: 10, fontWeight: tab === t ? 700 : 400, color: tab === t ? D.purpleText : D.muted, background: "none", border: "none", borderBottom: tab === t ? `2px solid ${D.purple}` : "2px solid transparent", cursor: "pointer", letterSpacing: "0.03em", marginBottom: -1, whiteSpace: "nowrap" }}>
@@ -1737,7 +1737,11 @@ function RenderStudioInner() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isRecovering, setIsRecovering] = useState(false);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
-  const [bottomPanelOpen, setBottomPanelOpen] = useState(true);
+  const [bottomPanelOpen, setBottomPanelOpen] = useState(false);
+
+  useEffect(() => {
+    if (step === "versao" && !bottomPanelOpen) setBottomPanelOpen(true);
+  }, [step, bottomPanelOpen]);
 
   // P2 state
   const [selectionMode, setSelectionMode] = useState<"off" | "rect">("off");
@@ -2158,7 +2162,7 @@ function RenderStudioInner() {
   }
 
   return (
-    <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: D.bg, fontFamily: 'system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif', boxSizing: "border-box", overflow: "hidden", color: D.text }}
+    <div className="arqdor-legacy-root" data-arqdor-step={STEPS[stepIndex(step)]?.label ?? step} style={{ height: "100vh", display: "flex", flexDirection: "column", background: D.bg, fontFamily: 'system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif', boxSizing: "border-box", overflow: "hidden", color: D.text }}
       onClick={handleCanvasControlClick}>
       <style>{GLOBAL_STYLES}</style>
 
@@ -2198,7 +2202,7 @@ function RenderStudioInner() {
         <RightPanel
           step={step} arq={arq} ambiente={ambiente}
           setAmbiente={(v) => { setAmbiente(v); setSaveState("unsaved"); }}
-          imageFile={imageFile} renderUrl={renderUrl} versions={versions}
+          imageFile={imageFile} imageDataUrl={imageDataUrl} renderUrl={renderUrl} versions={versions}
           loading={loading} err={err}
           melhoriaPrompt={melhoriaPrompt} setMelhoriaPrompt={setMelhoriaPrompt}
           melhoriaMode={melhoriaMode} setMelhoriaMode={setMelhoriaMode}
