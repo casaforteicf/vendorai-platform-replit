@@ -29,6 +29,11 @@ interface SpecItem {
   origemMedida: 'projeto' | 'catalogo' | 'confirmado' | 'estimativa_ia' | 'pendente' | null
   unidadeQuantificacao: string | null
   larguraCm: string | null; alturaCm: string | null; profundidadeCm: string | null
+  comprimentoCm: string | null; espessuraCm: string | null
+  areaBrutaM2: string | null; descontoVaosM2: string | null; areaLiquidaM2: string | null
+  perimetroM: string | null; perdaPercentual: string | null; peitorilCm: string | null
+  modulos: number | null; portas: number | null; gavetas: number | null; prateleiras: number | null
+  posicaoReferencia: string | null
   notes: string | null
 }
 interface Specification {
@@ -165,6 +170,19 @@ function SpecItemRow({
     larguraCm: item.larguraCm ?? '',
     alturaCm: item.alturaCm ?? '',
     profundidadeCm: item.profundidadeCm ?? '',
+    comprimentoCm: item.comprimentoCm ?? '',
+    espessuraCm: item.espessuraCm ?? '',
+    areaBrutaM2: item.areaBrutaM2 ?? '',
+    descontoVaosM2: item.descontoVaosM2 ?? '',
+    areaLiquidaM2: item.areaLiquidaM2 ?? '',
+    perimetroM: item.perimetroM ?? '',
+    perdaPercentual: item.perdaPercentual ?? '',
+    peitorilCm: item.peitorilCm ?? '',
+    modulos: item.modulos ?? '',
+    portas: item.portas ?? '',
+    gavetas: item.gavetas ?? '',
+    prateleiras: item.prateleiras ?? '',
+    posicaoReferencia: item.posicaoReferencia ?? '',
     modelo: item.modelo ?? '',
     fabricante: item.fabricante ?? '',
     sku: item.sku ?? '',
@@ -183,6 +201,19 @@ function SpecItemRow({
       larguraCm: item.larguraCm ?? '',
       alturaCm: item.alturaCm ?? '',
       profundidadeCm: item.profundidadeCm ?? '',
+      comprimentoCm: item.comprimentoCm ?? '',
+      espessuraCm: item.espessuraCm ?? '',
+      areaBrutaM2: item.areaBrutaM2 ?? '',
+      descontoVaosM2: item.descontoVaosM2 ?? '',
+      areaLiquidaM2: item.areaLiquidaM2 ?? '',
+      perimetroM: item.perimetroM ?? '',
+      perdaPercentual: item.perdaPercentual ?? '',
+      peitorilCm: item.peitorilCm ?? '',
+      modulos: item.modulos ?? '',
+      portas: item.portas ?? '',
+      gavetas: item.gavetas ?? '',
+      prateleiras: item.prateleiras ?? '',
+      posicaoReferencia: item.posicaoReferencia ?? '',
       modelo: item.modelo ?? '',
       fabricante: item.fabricante ?? '',
       sku: item.sku ?? '',
@@ -197,6 +228,7 @@ function SpecItemRow({
   }, [item.id, item.larguraCm, item.alturaCm, item.profundidadeCm, item.modelo, item.fabricante, item.sku, item.configuracao, item.material, item.acabamento, item.cor, item.origemMedida, item.unidadeQuantificacao, item.notes])
 
   const isFurniture = ['Mobiliário', 'Componente'].includes(item.categoria) || item.categoria.toLowerCase().includes('marcen')
+  const isMeasuredElement = true
   const statusColors: Record<SpecItem['status'], string> = {
     pendente:           T.amber,
     especificado:       T.green,
@@ -259,11 +291,11 @@ function SpecItemRow({
           padding:'12px', animation:'ss-fadeIn 0.2s ease',
         }}>
           {/* Ficha técnica do mobiliário / elemento */}
-          {isFurniture && (
+          {isMeasuredElement && (
             <div style={{ marginBottom:12, padding:12, borderRadius:8, border:`1px solid ${T.border}`, background:'rgba(255,255,255,0.025)' }}>
               <div style={{ display:'flex', justifyContent:'space-between', gap:8, alignItems:'center', marginBottom:10 }}>
                 <div>
-                  <p style={{ margin:0, fontSize:11, fontWeight:800, color:'#fff' }}>Ficha técnica {item.codigo ? `· ${item.codigo}` : ''}</p>
+                  <p style={{ margin:0, fontSize:11, fontWeight:800, color:'#fff' }}>Ficha técnica do elemento {item.codigo ? `· ${item.codigo}` : ''}</p>
                   <p style={{ margin:'2px 0 0', fontSize:9, color:T.dim }}>Medidas, configuração e materiais usados no projeto e no orçamento.</p>
                 </div>
                 <span style={{ fontSize:9, color: details.origemMedida === 'confirmado' || details.origemMedida === 'projeto' || details.origemMedida === 'catalogo' ? T.green : T.amber, fontWeight:700 }}>
@@ -279,6 +311,14 @@ function SpecItemRow({
                   ['larguraCm','Largura (cm)'],
                   ['profundidadeCm','Profundidade (cm)'],
                   ['alturaCm','Altura (cm)'],
+                  ['comprimentoCm','Comprimento (cm)'],
+                  ['espessuraCm','Espessura (cm)'],
+                  ['peitorilCm','Peitoril (cm)'],
+                  ['areaBrutaM2','Área bruta (m²)'],
+                  ['descontoVaosM2','Desconto de vãos (m²)'],
+                  ['areaLiquidaM2','Área líquida (m²)'],
+                  ['perimetroM','Perímetro (m)'],
+                  ['perdaPercentual','Perda (%)'],
                 ].map(([key,label]) => (
                   <label key={key} style={{ fontSize:9, color:T.dim }}>
                     {label}
@@ -294,6 +334,7 @@ function SpecItemRow({
 
               <div style={{ display:'grid', gridTemplateColumns:'repeat(2, minmax(0,1fr))', gap:8, marginBottom:8 }}>
                 {[
+                  ['posicaoReferencia','Posição / parede / referência'],
                   ['modelo','Modelo'],
                   ['fabricante','Fabricante'],
                   ['sku','SKU / Código fabricante'],
@@ -348,6 +389,19 @@ function SpecItemRow({
                         larguraCm: details.larguraCm || null,
                         profundidadeCm: details.profundidadeCm || null,
                         alturaCm: details.alturaCm || null,
+                        comprimentoCm: details.comprimentoCm || null,
+                        espessuraCm: details.espessuraCm || null,
+                        areaBrutaM2: details.areaBrutaM2 || null,
+                        descontoVaosM2: details.descontoVaosM2 || null,
+                        areaLiquidaM2: details.areaLiquidaM2 || null,
+                        perimetroM: details.perimetroM || null,
+                        perdaPercentual: details.perdaPercentual || null,
+                        peitorilCm: details.peitorilCm || null,
+                        posicaoReferencia: details.posicaoReferencia || null,
+                        modulos: details.modulos === '' ? null : Number(details.modulos),
+                        portas: details.portas === '' ? null : Number(details.portas),
+                        gavetas: details.gavetas === '' ? null : Number(details.gavetas),
+                        prateleiras: details.prateleiras === '' ? null : Number(details.prateleiras),
                         modelo: details.modelo || null,
                         fabricante: details.fabricante || null,
                         sku: details.sku || null,
