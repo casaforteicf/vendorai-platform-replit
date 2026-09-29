@@ -6066,11 +6066,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
             {saveState !== "loading" && !startChooserDismissed && !modelGalleryOpen && !projectMaster &&
               (
                 projectScope === null ||
-                (
-                  !startSourceChosen &&
-                  safeRooms.length === 0 && safeCustomWalls.length === 0 && !referencePlan && sourceFiles.length === 0 &&
-                  (!conceptId || guestMode)
-                )
+                !startSourceChosen
               ) && (
               <div className="fixed inset-0 z-[110] flex items-end justify-center bg-slate-950/55 sm:items-center sm:p-6">
                 <div className="max-h-[92dvh] w-full max-w-3xl overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-7" role="dialog" aria-label="Iniciar pré-projeto">
