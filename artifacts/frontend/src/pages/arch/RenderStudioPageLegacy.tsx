@@ -902,7 +902,7 @@ function LeftSidebar({ step, projectTitle, onStepClick }: { step: Step; projectT
 
 // ─── Central Canvas (P0-3, P0-6, P1-8, P1-10, P2-13, P2-19) ─────────────────
 
-function CentralCanvas({ step, imageDataUrl, renderUrl, loading, isDragging, canvasMode, showGrid, processingStage, elapsedSeconds, isRecovering, onUpload, onDragOver, onDragLeave, onDrop, projectTitle, ambiente, selectionMode, selections, onSelection, onClearSelection, compareMode, compareVersionA, compareVersionB, allVersions, onCompareChangeA, onCompareChangeB }: {
+function CentralCanvas({ step, imageDataUrl, renderUrl, loading, isDragging, canvasMode, showGrid, processingStage, elapsedSeconds, isRecovering, onUpload, onDragOver, onDragLeave, onDrop, projectTitle, ambiente, selectionMode, selections, onSelection, onClearSelection, compareMode, compareVersionA, compareVersionB, allVersions, onCompareChangeA, onCompareChangeB, onRenderLoadError }: {
   step: Step; imageDataUrl: string | null; renderUrl: string | null;
   loading: boolean; isDragging: boolean; canvasMode: CanvasMode; showGrid: boolean;
   processingStage: string | null; elapsedSeconds: number; isRecovering: boolean;
@@ -911,12 +911,14 @@ function CentralCanvas({ step, imageDataUrl, renderUrl, loading, isDragging, can
   selectionMode: "off" | "rect"; selections: SelectionRect[]; onSelection: (sel: Omit<SelectionRect, "id" | "label">) => void; onClearSelection: () => void;
   compareMode: boolean; compareVersionA: RenderVersion | null; compareVersionB: RenderVersion | null;
   allVersions: RenderVersion[]; onCompareChangeA: (id: string) => void; onCompareChangeB: (id: string) => void;
+  onRenderLoadError: () => void;
 }) {
-  const showRender  = !!renderUrl;
-  const showUpload  = !imageDataUrl || step === "imagem";
-  const showImage   = showRender || (!!imageDataUrl && !renderUrl && step !== "imagem");
-  const displayUrl  = renderUrl ?? imageDataUrl;
-  const showFlowGuide = (step === "projeto" || step === "ambiente") && !imageDataUrl && !loading;
+  const beforeRenderStep = stepIndex(step) < stepIndex("render");
+  const showRender  = !beforeRenderStep && !!renderUrl;
+  const showUpload  = step === "imagem";
+  const showImage   = !beforeRenderStep && step !== "imagem" && (showRender || !!imageDataUrl);
+  const displayUrl  = showRender ? renderUrl : imageDataUrl;
+  const showFlowGuide = (step === "projeto" || step === "ambiente") && !loading;
 
   const imageStyle: React.CSSProperties = canvasMode === "1to1"
     ? { width: "auto", height: "auto", maxWidth: "none", maxHeight: "none", boxShadow: "0 8px 64px rgba(0,0,0,0.6)" }
@@ -936,7 +938,7 @@ function CentralCanvas({ step, imageDataUrl, renderUrl, loading, isDragging, can
           );
         })}
         {/* P2-13: selection mode toggle — available when render exists */}
-        {renderUrl && (
+        {showRender && (
           <button data-canvas-action="Selecionar" title={selectionMode === "rect" ? "Cancelar seleção (Esc)" : "Selecionar região para editar"} aria-pressed={selectionMode === "rect"}
             style={{ padding: "4px 10px", borderRadius: 6, fontSize: 10, fontWeight: 600, background: selectionMode === "rect" ? `${D.amber}33` : "none", color: selectionMode === "rect" ? D.amber : D.muted, border: selectionMode === "rect" ? `1px solid ${D.amber}55` : "none", cursor: "pointer" }}>
             ⬚ {selectionMode === "rect" ? "Selecionando…" : "Selecionar"}
@@ -986,6 +988,7 @@ function CentralCanvas({ step, imageDataUrl, renderUrl, loading, isDragging, can
                   const el = e.currentTarget;
                   el.style.display = "none";
                   el.parentElement?.setAttribute("data-render-load-error", "true");
+                  if (showRender) onRenderLoadError();
                 }}
               />
               {renderUrl && (
@@ -1000,7 +1003,7 @@ function CentralCanvas({ step, imageDataUrl, renderUrl, loading, isDragging, can
                   <span style={{ color: D.muted }}>O arquivo não foi encontrado no Storage.</span>
                 </div>
               )}
-              {renderUrl && (
+              {showRender && (
                 <SelectionCanvas isActive={selectionMode === "rect"} renderUrl={renderUrl} onSelection={onSelection} existingSelections={selections} onClearSelection={onClearSelection} />
               )}
             </div>
@@ -1034,7 +1037,7 @@ function CentralCanvas({ step, imageDataUrl, renderUrl, loading, isDragging, can
       )}
 
       {/* P2-22: download render button */}
-      {renderUrl && !loading && !compareMode && (
+      {showRender && !loading && !compareMode && (
         <div style={{ position: "absolute", bottom: 12, right: 12, zIndex: 30 }}>
           <a href={renderUrl} target="_blank" rel="noopener noreferrer" download="render-arqdor.jpg"
             style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", borderRadius: 8, background: `${D.surface}EE`, border: `1px solid ${D.border}`, fontSize: 10, fontWeight: 700, color: D.muted, textDecoration: "none", cursor: "pointer" }}>
@@ -2086,6 +2089,33 @@ function RenderStudioInner() {
     }
   }
 
+  function handleRenderLoadError() {
+    if (!renderUrl) return;
+    const failedUrl = normalizeRenderMediaUrl(renderUrl);
+    setRenderUrl(null);
+    setRenderId(null);
+    setApproved(false);
+    setApprovalRecord(null);
+    setCompareMode(false);
+    setSelectionMode("off");
+    setVersions(prev => prev.filter(v => normalizeRenderMediaUrl(v.url) !== failedUrl));
+    sessionStorage.removeItem(SK.renderUrl);
+    sessionStorage.removeItem(SK.renderId);
+    try {
+      const raw = sessionStorage.getItem(SK.versions);
+      if (raw) {
+        const restored = JSON.parse(raw) as RenderVersion[];
+        sessionStorage.setItem(SK.versions, JSON.stringify(
+          Array.isArray(restored) ? restored.filter(v => normalizeRenderMediaUrl(v.url) !== failedUrl) : [],
+        ));
+      }
+    } catch {
+      sessionStorage.removeItem(SK.versions);
+    }
+    setErr("A versão antiga aponta para um arquivo que não existe mais no Storage. A referência quebrada foi removida; use a imagem base para gerar uma nova versão.");
+    setSaveState("error");
+  }
+
   // P0-4 unified handleNextStep
   function handleNextStep() {
     const si = stepIndex(step); const next = STEPS[si + 1]; if (!next) return;
@@ -2148,6 +2178,7 @@ function RenderStudioInner() {
             compareMode={compareMode} compareVersionA={compareVersionA} compareVersionB={compareVersionB}
             allVersions={versions}
             onCompareChangeA={(id) => setCompareVersionAId(id)} onCompareChangeB={(id) => setCompareVersionBId(id)}
+            onRenderLoadError={handleRenderLoadError}
           />
           <BottomPanel versions={versions} projectId={arq.projectId} isOpen={bottomPanelOpen} onToggle={() => setBottomPanelOpen(o => !o)} eventLog={eventLog} userName={userName} />
         </div>
