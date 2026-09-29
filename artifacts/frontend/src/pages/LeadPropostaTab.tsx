@@ -2656,6 +2656,17 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
 
             {proposalVisualCenterOpen && (
               <div className="space-y-3 border-t p-3">
+                <input
+                  ref={coverImageInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void handleCoverImageUpload(file);
+                    event.target.value = "";
+                  }}
+                />
                 <div className="grid gap-3 lg:grid-cols-3">
                   <div className="rounded-lg border p-3">
                     <div className="flex items-center justify-between gap-2">
@@ -2682,17 +2693,41 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                         Nenhuma imagem
                       </div>
                     )}
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="mt-2 h-9 w-full gap-1.5 text-xs"
-                      disabled={generatingCoverImage || !selectedOrcamento}
-                      onClick={() => void generatePremiumCoverImage()}
-                    >
-                      {generatingCoverImage ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                      {selectedOrcamento?.apresentacao?.imagemCapa ? "Regenerar capa desta proposta" : "Gerar capa desta proposta"}
-                    </Button>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-9 w-full gap-1.5 text-xs"
+                        disabled={generatingCoverImage || !selectedOrcamento}
+                        onClick={() => void generatePremiumCoverImage()}
+                      >
+                        {generatingCoverImage ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                        Gerar com IA
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-9 w-full gap-1.5 text-xs"
+                        disabled={coverImageUploading || !selectedOrcamento}
+                        onClick={() => coverImageInputRef.current?.click()}
+                      >
+                        {coverImageUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                        Enviar imagem
+                      </Button>
+                    </div>
+                    {selectedOrcamento?.apresentacao?.imagemCapa && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="mt-1 h-8 w-full text-[11px] text-destructive"
+                        onClick={() => void removeManualCoverImage()}
+                      >
+                        Remover capa específica e usar padrão do modelo
+                      </Button>
+                    )}
                   </div>
 
                   <div className="rounded-lg border p-3">
