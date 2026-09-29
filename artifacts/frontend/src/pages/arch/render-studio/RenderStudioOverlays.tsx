@@ -443,7 +443,7 @@ export function RenderStudioMaterialLibraryModal({ isOpen, onClose, onSelect }: 
             </div>
 
             <div style={{ padding: "8px 10px", borderRadius: 8, background: D.inputBg, border: `1px solid ${D.border}`, fontSize: 9, color: D.dim, lineHeight: 1.5 }}>
-              Regra de qualidade: JPG, PNG ou WebP; mínimo 1024 px no menor lado; 2048 px ou mais recomendado. Se o material já existir, o sistema adiciona as novas imagens ao cadastro existente em vez de duplicá-lo.
+              Qualidade automática: JPG, PNG ou WebP. Imagens abaixo de 1024 px no menor lado não são bloqueadas: o sistema melhora e amplia automaticamente para uso no render, preservando proporção, cores e desenho do material. 2048 px ou mais continua recomendado.
             </div>
 
             <div style={{ display: "flex", gap: 10, alignItems: "stretch", flexWrap: "wrap" }}>
