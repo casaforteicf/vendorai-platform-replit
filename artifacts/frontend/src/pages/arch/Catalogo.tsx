@@ -400,11 +400,11 @@ export default function Catalogo() {
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Catálogo de Produtos</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Produtos e objetos do projeto. Materiais e texturas são gerenciados na Biblioteca de Materiais.</p>
+          <h1 className="text-2xl font-bold tracking-tight">Biblioteca de Projeto</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">A mesma base do Catálogo Comercial, sem duplicar produtos. Imagens, preço, dados técnicos, textura e GLB são reutilizados no projeto.</p>
         </div>
-        <Button onClick={openAdd}>
-          <Plus className="h-4 w-4 mr-2" /> Adicionar produto
+        <Button onClick={() => window.location.assign("/catalogo")}>
+          <Plus className="h-4 w-4 mr-2" /> Cadastrar no Catálogo
         </Button>
       </div>
 
@@ -442,8 +442,8 @@ export default function Catalogo() {
           <Package className="h-10 w-10 mx-auto text-muted-foreground/30 mb-3" />
           <p className="font-medium text-sm">Nenhum produto no catálogo</p>
           <p className="text-xs text-muted-foreground mt-1">Adicione mobiliário, iluminação, objetos e demais produtos usados nos projetos.</p>
-          <Button variant="outline" size="sm" className="mt-4" onClick={openAdd}>
-            <Plus className="h-4 w-4 mr-1" /> Adicionar primeiro produto
+          <Button variant="outline" size="sm" className="mt-4" onClick={() => window.location.assign("/catalogo")}>
+            <Plus className="h-4 w-4 mr-1" /> Cadastrar primeiro produto
           </Button>
         </div>
       ) : (
@@ -474,7 +474,7 @@ export default function Catalogo() {
                   <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <Button
                       size="icon" variant="secondary" className="h-7 w-7"
-                      onClick={() => openEdit(p)}
+                      onClick={() => window.location.assign("/catalogo")}
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </Button>
