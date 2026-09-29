@@ -75,6 +75,140 @@ export async function createRectMask(
  * baseada nas zonas selecionadas. Usada exclusivamente no ajuste pontual
  * via Fill Pro — não na geração inicial do Kontext.
  */
+/**
+ * Expande uma seleção parcial para a superfície/material visualmente contínuo
+ * ao redor dela. A seleção do usuário vira a semente; o algoritmo analisa
+ * cor/luminância local, cresce apenas por pixels conectados semelhantes e
+ * limita a expansão a uma vizinhança segura para não "vazar" para o ambiente.
+ *
+ * Objetivo: permitir que o usuário marque apenas parte de uma porta de armário,
+ * bancada, revestimento etc. e ainda assim editar a peça/superfície inteira.
+ */
+export async function createSmartMaterialMask(
+  imageBuf: Buffer,
+  rects: { x: number; y: number; w: number; h: number }[],
+  width: number,
+  height: number,
+): Promise<Buffer> {
+  if (!rects.length) return createRectMask(rects, width, height);
+
+  const scale = Math.min(1, 512 / Math.max(width, height));
+  const aw = Math.max(64, Math.round(width * scale));
+  const ah = Math.max(64, Math.round(height * scale));
+  const { data, info } = await sharp(imageBuf)
+    .resize({ width: aw, height: ah, fit: "fill" })
+    .removeAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const channels = info.channels;
+  const mask = Buffer.alloc(aw * ah, 0);
+
+  const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+  const colorAt = (x: number, y: number): [number, number, number] => {
+    const i = (y * aw + x) * channels;
+    return [data[i] ?? 0, data[i + 1] ?? data[i] ?? 0, data[i + 2] ?? data[i] ?? 0];
+  };
+  const colorDistance = (a: [number, number, number], b: [number, number, number]) => {
+    // Luma recebe mais peso para evitar atravessar quinas/sombras fortes,
+    // crominância mantém continuidade do material mesmo com iluminação desigual.
+    const ay = 0.299 * a[0] + 0.587 * a[1] + 0.114 * a[2];
+    const by = 0.299 * b[0] + 0.587 * b[1] + 0.114 * b[2];
+    const dr = a[0] - b[0], dg = a[1] - b[1], db = a[2] - b[2];
+    return Math.sqrt((dr * dr + dg * dg + db * db) * 0.45 + (ay - by) * (ay - by) * 0.9);
+  };
+
+  for (const rect of rects) {
+    const rx1 = clamp(Math.floor((rect.x / 100) * aw), 0, aw - 1);
+    const ry1 = clamp(Math.floor((rect.y / 100) * ah), 0, ah - 1);
+    const rx2 = clamp(Math.ceil(((rect.x + rect.w) / 100) * aw), rx1 + 1, aw);
+    const ry2 = clamp(Math.ceil(((rect.y + rect.h) / 100) * ah), ry1 + 1, ah);
+
+    // Coleta amostras da seleção e cria até 3 protótipos dominantes de cor.
+    const bins = new Map<string, { n: number; r: number; g: number; b: number }>();
+    const step = Math.max(1, Math.floor(Math.min(rx2 - rx1, ry2 - ry1) / 18));
+    for (let y = ry1; y < ry2; y += step) {
+      for (let x = rx1; x < rx2; x += step) {
+        const [r, g, b] = colorAt(x, y);
+        const key = `${Math.round(r / 32)}:${Math.round(g / 32)}:${Math.round(b / 32)}`;
+        const cur = bins.get(key) ?? { n: 0, r: 0, g: 0, b: 0 };
+        cur.n++; cur.r += r; cur.g += g; cur.b += b;
+        bins.set(key, cur);
+      }
+    }
+    const prototypes = [...bins.values()]
+      .sort((a, b) => b.n - a.n)
+      .slice(0, 3)
+      .map(v => [v.r / v.n, v.g / v.n, v.b / v.n] as [number, number, number]);
+
+    // Threshold adaptativo conforme a própria variação interna da seleção.
+    let residual = 0, samples = 0;
+    for (let y = ry1; y < ry2; y += step) {
+      for (let x = rx1; x < rx2; x += step) {
+        const c = colorAt(x, y);
+        residual += Math.min(...prototypes.map(p => colorDistance(c, p)));
+        samples++;
+      }
+    }
+    const avgResidual = samples ? residual / samples : 12;
+    const threshold = clamp(30 + avgResidual * 1.9, 34, 74);
+
+    // Limita reconhecimento à vizinhança do gesto. Isso evita selecionar, por
+    // exemplo, toda parede branca quando o usuário queria só uma porta clara.
+    const padX = Math.max(Math.round(aw * 0.06), Math.round((rx2 - rx1) * 1.25));
+    const padY = Math.max(Math.round(ah * 0.06), Math.round((ry2 - ry1) * 1.25));
+    const bx1 = clamp(rx1 - padX, 0, aw - 1);
+    const by1 = clamp(ry1 - padY, 0, ah - 1);
+    const bx2 = clamp(rx2 + padX, 1, aw);
+    const by2 = clamp(ry2 + padY, 1, ah);
+
+    const visited = new Uint8Array(aw * ah);
+    const queue: number[] = [];
+
+    // Toda a área marcada pelo usuário permanece editável e serve como semente.
+    for (let y = ry1; y < ry2; y++) {
+      for (let x = rx1; x < rx2; x++) {
+        const idx = y * aw + x;
+        visited[idx] = 1;
+        mask[idx] = 255;
+        queue.push(idx);
+      }
+    }
+
+    let head = 0;
+    const maxPixels = Math.max((rx2 - rx1) * (ry2 - ry1) * 10, Math.round(aw * ah * 0.18));
+    let grown = 0;
+    while (head < queue.length && grown < maxPixels) {
+      const idx = queue[head++]!;
+      const x = idx % aw;
+      const y = Math.floor(idx / aw);
+      const current = colorAt(x, y);
+      const neighbors = [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]] as const;
+      for (const [nx, ny] of neighbors) {
+        if (nx < bx1 || nx >= bx2 || ny < by1 || ny >= by2) continue;
+        const ni = ny * aw + nx;
+        if (visited[ni]) continue;
+        visited[ni] = 1;
+        const next = colorAt(nx, ny);
+        const prototypeDistance = Math.min(...prototypes.map(p => colorDistance(next, p)));
+        const localDistance = colorDistance(next, current);
+        if (prototypeDistance <= threshold && localDistance <= Math.max(34, threshold * 0.82)) {
+          mask[ni] = 255;
+          queue.push(ni);
+          grown++;
+        }
+      }
+    }
+  }
+
+  return sharp(mask, { raw: { width: aw, height: ah, channels: 1 } })
+    .resize(width, height, { kernel: "nearest" })
+    .blur(1.15)
+    .threshold(88)
+    .png()
+    .toBuffer();
+}
+
 export async function createZoneMask(
   zones: string[],
   width: number,
