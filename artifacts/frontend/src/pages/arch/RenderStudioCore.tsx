@@ -36,6 +36,7 @@ function RenderStudioInner() {
     setAmbiente,
     imageDataUrl,
     imageFile,
+    renderId,
     renderUrl,
     versions,
     approved,
@@ -121,6 +122,7 @@ function RenderStudioInner() {
     handleSalvarMedidasItem,
     handleEnviarOrcamento,
     handleRenderLoadError,
+    handleSelectVersion,
     handleNextStep,
     handleStepClick,
     handleCreateProject,
@@ -174,7 +176,16 @@ function RenderStudioInner() {
             onCompareChangeA={(id) => setCompareVersionAId(id)} onCompareChangeB={(id) => setCompareVersionBId(id)}
             onRenderLoadError={handleRenderLoadError}
           />
-          <BottomPanel versions={versions} projectId={arq.projectId} isOpen={bottomPanelOpen} onToggle={() => setBottomPanelOpen(o => !o)} eventLog={eventLog} userName={userName} />
+          <BottomPanel
+            versions={versions}
+            projectId={arq.projectId}
+            currentRenderId={renderId}
+            isOpen={bottomPanelOpen}
+            onToggle={() => setBottomPanelOpen(o => !o)}
+            onSelectVersion={handleSelectVersion}
+            eventLog={eventLog}
+            userName={userName}
+          />
         </div>
 
         <RightPanel
