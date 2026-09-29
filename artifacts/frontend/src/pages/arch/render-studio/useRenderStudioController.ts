@@ -322,13 +322,16 @@ export function useRenderStudioController() {
     startProgressStages();
     try {
       const renderPresets: RenderPreset[] = ["camera_perspective_lock"];
-      if (sceneType === "interior") renderPresets.push("interior_layout_preserve");
+      if (sceneType === "interior") renderPresets.push("interior_layout_preserve", "ceiling_led_linear");
       if (sceneType === "facade") renderPresets.push("facade_exterior_preserve", "roof_openings_lock");
       if (sceneType === "outdoor") renderPresets.push("facade_exterior_preserve", "landscape_controlled");
       if (sceneType === "gourmet") renderPresets.push("facade_exterior_preserve", "outdoor_gourmet_preserve");
       if (sceneType === "pool") renderPresets.push("facade_exterior_preserve", "pool_water_fidelity");
       if (renderProfile !== "technical") renderPresets.push("material_detail_enhancer", "lighting_realism");
       if (/vidro|espelho/.test(ambiente.toLowerCase())) renderPresets.push("glass_mirror_fidelity");
+      if (lightingProfile === "more_light") {
+        renderPresets.push("ceiling_led_linear", "ambient_boost", "shadow_softening", "exposure_lift_controlled");
+      }
       if (lightingProfile === "night" && sceneType !== "interior") renderPresets.push("night_lighting_exterior");
 
       const styleInstruction: Record<RenderStudioVisualStyle, string> = {
@@ -344,6 +347,8 @@ export function useRenderStudioController() {
       };
       const lightingInstruction: Record<RenderStudioLightingProfile, string> = {
         natural: "Iluminação natural suave e fisicamente plausível, mantendo as cores reais dos materiais.",
+        balanced: "Iluminação equilibrada com apoio técnico no teto e boa leitura geral do ambiente.",
+        more_light: "Aplicar versão com mais luz, reforçando iluminação arquitetônica no teto com barra/perfil de LED linear, abrindo sombras e aumentando a claridade geral sem alterar o projeto.",
         warm: "Iluminação aconchegante controlada, sem alterar a cor real dos materiais.",
         editorial: "Iluminação editorial arquitetônica equilibrada, com contraste elegante, bounce light e highlights controlados.",
         night: "Cena noturna fisicamente plausível; preservar geometria e materiais, alterando apenas a condição de iluminação.",
@@ -351,6 +356,8 @@ export function useRenderStudioController() {
 
       const lightingValue: Record<RenderStudioLightingProfile, string> = {
         natural: "day",
+        balanced: "balanced interior architectural lighting",
+        more_light: "bright interior architectural lighting with ceiling linear led",
         warm: "soft warm ambient lighting with controlled highlights",
         editorial: "premium editorial architectural lighting with soft directional contrast and realistic bounce light",
         night: "night",
@@ -366,6 +373,7 @@ export function useRenderStudioController() {
         render_presets: Array.from(new Set(renderPresets)),
         user_notes: [
           "Preservação rígida: manter exatamente cores, materiais, texturas-base, medidas, posição, orientação e proporções de todo mobiliário e marcenaria; manter câmera, perspectiva, layout, circulação e aberturas.",
+          sceneType === "interior" ? "Para interiores, considerar iluminação arquitetônica de teto com perfil/barra de LED linear como luz artificial principal, de modo coerente com o teto e sem alterar a geometria do projeto." : "",
           profileInstruction[renderProfile],
           styleInstruction[visualStyle],
           lightingInstruction[lightingProfile],
