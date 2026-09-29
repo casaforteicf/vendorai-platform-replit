@@ -27,8 +27,6 @@ export function RenderStudioTopbar({
     render: "→ Melhorar",
     melhoria: "→ Ver Versões",
     versao: "→ Aprovar",
-    aprovar: "→ Especificação",
-    especificacao: "✓ Concluído",
   };
   const breadcrumbs = ["Studio", ambiente || "Ambiente"].filter(Boolean);
 
@@ -66,13 +64,15 @@ export function RenderStudioTopbar({
         </button>
       )}
 
-      <button
-        onClick={onNextStep}
-        aria-label={nextLabels[step] ?? "Próxima Etapa"}
-        style={{ background: `linear-gradient(135deg, ${C.accent}, ${C.accentHover})`, color: "#fff", border: "none", borderRadius: 8, padding: "7px 18px", fontSize: 12, fontWeight: 700, cursor: "pointer", letterSpacing: "0.02em", boxShadow: `0 0 16px ${C.accentGlow}`, marginRight: 12 }}
-      >
-        {nextLabels[step] ?? "Próxima Etapa"}
-      </button>
+      {step !== "aprovar" && (
+        <button
+          onClick={onNextStep}
+          aria-label={nextLabels[step] ?? "Próxima Etapa"}
+          style={{ background: `linear-gradient(135deg, ${C.accent}, ${C.accentHover})`, color: "#fff", border: "none", borderRadius: 8, padding: "7px 18px", fontSize: 12, fontWeight: 700, cursor: "pointer", letterSpacing: "0.02em", boxShadow: `0 0 16px ${C.accentGlow}`, marginRight: 12 }}
+        >
+          {nextLabels[step] ?? "Próxima Etapa"}
+        </button>
+      )}
 
       <div aria-label={`Usuário: ${userName}`} style={{ width: 28, height: 28, borderRadius: "50%", background: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "#fff", flexShrink: 0 }}>
         {(userName?.[0] ?? "U").toUpperCase()}
