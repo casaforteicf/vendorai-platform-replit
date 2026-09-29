@@ -1,4 +1,4 @@
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import {
   getListActivitiesQueryKey,
@@ -85,7 +85,15 @@ export default function WorkCenterHome() {
   const deferredSearch = useDeferredValue(search);
   const [stageFilter, setStageFilter] = useState("ativos");
   const [ownerFilter, setOwnerFilter] = useState("todos");
-  const [attentionFilter, setAttentionFilter] = useState<AttentionFilter>("todos");
+  const initialParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+  const initialAttention = initialParams?.get("attention");
+  const [attentionFilter, setAttentionFilter] = useState<AttentionFilter>(
+    initialAttention === "vencidos" || initialAttention === "sem_responsavel" || initialAttention === "incompletos"
+      ? initialAttention
+      : "todos",
+  );
+  const autoOpenSingle = initialParams?.get("autoOpen") === "single";
+  const autoOpenHandled = useRef(false);
 
   const leadById = useMemo(() => new Map(leads.map((lead) => [lead.id, lead])), [leads]);
   const userById = useMemo(() => new Map(users.map((person) => [person.id, person.name || person.email || person.id])), [users]);
@@ -223,6 +231,22 @@ export default function WorkCenterHome() {
     const query = item.dealId ? "?dealId=" + item.dealId + "&from=work-center" : "?from=work-center";
     navigate("/trabalho/" + item.leadId + query);
   }
+
+  useEffect(() => {
+    if (!autoOpenSingle || loading || autoOpenHandled.current) return;
+    if (attentionFilter !== "vencidos") return;
+    autoOpenHandled.current = true;
+
+    if (visibleQueue.length === 1) {
+      openItem(visibleQueue[0]);
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    params.delete("autoOpen");
+    const nextQuery = params.toString();
+    window.history.replaceState({}, "", nextQuery ? `${window.location.pathname}?${nextQuery}` : window.location.pathname);
+  }, [attentionFilter, autoOpenSingle, loading, visibleQueue]);
 
   return <div className="space-y-6">
     <div>
