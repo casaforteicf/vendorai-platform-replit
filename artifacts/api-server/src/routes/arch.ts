@@ -10,6 +10,10 @@ import {
   archCenasTable,
   archRendersTable,
   archCatalogoTable,
+  archMaterialsTable,
+  archMaterialImagesTable,
+  archMaterialTenantAccessTable,
+  archCatalogProductMaterialsTable,
   archMarketplaceItemsTable,
   archMarketplacePedidosTable,
   archRenderVersoesTable,
@@ -30,6 +34,9 @@ import {
   updateArchOrcamentoItemSchema,
   insertArchCatalogoSchema,
   updateArchCatalogoSchema,
+  insertArchMaterialSchema,
+  updateArchMaterialSchema,
+  insertArchCatalogProductMaterialSchema,
   insertArchCenaSchema,
   updateArchCenaSchema,
   insertArchRenderSolicitacaoSchema,
@@ -4231,6 +4238,368 @@ router.patch("/arch/catalogo/:id", authenticate, async (req, res) => {
     .returning();
 
   return res.json(updated);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Material Library — materiais/texturas separados do catálogo de produtos
+// ─────────────────────────────────────────────────────────────────────────────
+
+function normalizeMaterialMasterKey(input: {
+  fabricante: string;
+  linha: string;
+  nome: string;
+  referencia?: string | null;
+}) {
+  const normalize = (value: string) =>
+    value
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  return [
+    normalize(input.fabricante),
+    normalize(input.linha),
+    normalize(input.referencia?.trim() || input.nome),
+  ].join("::");
+}
+
+function materialQualityScore(width: number, height: number) {
+  const shortSide = Math.min(width, height);
+  const longSide = Math.max(width, height);
+  const resolutionScore = Math.min(70, (shortSide / 2048) * 70);
+  const ratio = longSide / Math.max(1, shortSide);
+  const geometryScore = ratio <= 1.25 ? 30 : ratio <= 1.75 ? 24 : ratio <= 2.5 ? 16 : 8;
+  return Math.round(Math.min(100, resolutionScore + geometryScore) * 100) / 100;
+}
+
+async function materialAccessible(materialId: string, tid: string) {
+  const [material] = await db
+    .select()
+    .from(archMaterialsTable)
+    .where(and(eq(archMaterialsTable.id, materialId), eq(archMaterialsTable.ativo, true)))
+    .limit(1);
+
+  if (!material) return null;
+  if (material.ownerTenantId === tid || material.compartilhamento === "publico") return material;
+
+  const [access] = await db
+    .select({ id: archMaterialTenantAccessTable.id })
+    .from(archMaterialTenantAccessTable)
+    .where(and(
+      eq(archMaterialTenantAccessTable.materialId, materialId),
+      eq(archMaterialTenantAccessTable.tenantId, tid),
+    ))
+    .limit(1);
+
+  return access ? material : null;
+}
+
+// GET /api/arch/materials
+router.get("/arch/materials", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const { categoria, fabricante, busca, limit = "60", offset = "0" } =
+    req.query as Record<string, string | undefined>;
+
+  const conditions = [
+    eq(archMaterialsTable.ativo, true),
+    or(
+      eq(archMaterialsTable.ownerTenantId, tid),
+      eq(archMaterialsTable.compartilhamento, "publico"),
+      sql`exists (
+        select 1 from arch_material_tenant_access a
+        where a.material_id = ${archMaterialsTable.id}
+          and a.tenant_id = ${tid}
+      )`,
+    )!,
+  ];
+  if (categoria) conditions.push(eq(archMaterialsTable.categoria, categoria));
+  if (fabricante) conditions.push(ilike(archMaterialsTable.fabricante, `%${fabricante}%`));
+  if (busca) {
+    conditions.push(or(
+      ilike(archMaterialsTable.nome, `%${busca}%`),
+      ilike(archMaterialsTable.fabricante, `%${busca}%`),
+      ilike(archMaterialsTable.linha, `%${busca}%`),
+    )!);
+  }
+
+  const materials = await db
+    .select()
+    .from(archMaterialsTable)
+    .where(and(...conditions))
+    .orderBy(archMaterialsTable.categoria, archMaterialsTable.fabricante, archMaterialsTable.linha, archMaterialsTable.nome)
+    .limit(Math.min(200, Number(limit) || 60))
+    .offset(Math.max(0, Number(offset) || 0));
+
+  const ids = materials.map((m) => m.id);
+  const images = ids.length
+    ? await db.select().from(archMaterialImagesTable)
+        .where(and(inArray(archMaterialImagesTable.materialId, ids), eq(archMaterialImagesTable.status, "ativa")))
+        .orderBy(desc(archMaterialImagesTable.qualityScore), desc(archMaterialImagesTable.createdAt))
+    : [];
+
+  const imagesByMaterial = new Map<string, typeof images>();
+  for (const image of images) {
+    const current = imagesByMaterial.get(image.materialId) ?? [];
+    current.push(image);
+    imagesByMaterial.set(image.materialId, current);
+  }
+
+  return res.json(materials.map((material) => ({
+    ...material,
+    images: imagesByMaterial.get(material.id) ?? [],
+  })));
+});
+
+// POST /api/arch/materials
+// Global deduplication: fabricante + linha + referencia (ou nome) gera um único master.
+router.post("/arch/materials", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const parsed = insertArchMaterialSchema.safeParse({ ...req.body, ownerTenantId: tid });
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const masterKey = normalizeMaterialMasterKey(parsed.data);
+  const [existing] = await db
+    .select()
+    .from(archMaterialsTable)
+    .where(eq(archMaterialsTable.masterKey, masterKey))
+    .limit(1);
+
+  if (existing) {
+    await db.insert(archMaterialTenantAccessTable)
+      .values({ materialId: existing.id, tenantId: tid, role: existing.ownerTenantId === tid ? "owner" : "linked" })
+      .onConflictDoNothing();
+
+    const images = await db.select().from(archMaterialImagesTable)
+      .where(and(eq(archMaterialImagesTable.materialId, existing.id), eq(archMaterialImagesTable.status, "ativa")))
+      .orderBy(desc(archMaterialImagesTable.qualityScore), desc(archMaterialImagesTable.createdAt));
+
+    return res.status(200).json({ ...existing, images, duplicate: true });
+  }
+
+  const [material] = await db.insert(archMaterialsTable)
+    .values({ ...(parsed.data as any), masterKey })
+    .returning();
+
+  await db.insert(archMaterialTenantAccessTable)
+    .values({ materialId: material.id, tenantId: tid, role: "owner" })
+    .onConflictDoNothing();
+
+  return res.status(201).json({ ...material, images: [], duplicate: false });
+});
+
+// PATCH /api/arch/materials/:id
+router.patch("/arch/materials/:id", authenticate, async (req, res) => {
+  const id = String(req.params.id);
+  const tid = tenantId(req);
+
+  const [existing] = await db.select().from(archMaterialsTable)
+    .where(eq(archMaterialsTable.id, id)).limit(1);
+  if (!existing) return res.status(404).json({ error: "Material não encontrado." });
+  if (existing.ownerTenantId !== tid) {
+    return res.status(403).json({ error: "Somente o proprietário do material pode editar os dados mestres." });
+  }
+
+  const parsed = updateArchMaterialSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const mergedIdentity = {
+    fabricante: parsed.data.fabricante ?? existing.fabricante,
+    linha: parsed.data.linha ?? existing.linha,
+    nome: parsed.data.nome ?? existing.nome,
+    referencia: parsed.data.referencia ?? existing.referencia,
+  };
+  const masterKey = normalizeMaterialMasterKey(mergedIdentity);
+
+  const [duplicate] = await db.select({ id: archMaterialsTable.id })
+    .from(archMaterialsTable)
+    .where(and(eq(archMaterialsTable.masterKey, masterKey), ne(archMaterialsTable.id, id)))
+    .limit(1);
+  if (duplicate) {
+    return res.status(409).json({ error: "Já existe um material com este fabricante, linha e referência/nome.", existingId: duplicate.id });
+  }
+
+  const [updated] = await db.update(archMaterialsTable)
+    .set({ ...(parsed.data as any), masterKey, updatedAt: new Date() })
+    .where(eq(archMaterialsTable.id, id))
+    .returning();
+
+  return res.json(updated);
+});
+
+// POST /api/arch/materials/:id/images
+// Permite várias imagens por material. Imagem mínima: 1024px no menor lado.
+// A melhor imagem é promovida automaticamente, mas pode ser escolhida manualmente depois.
+router.post(
+  "/arch/materials/:id/images",
+  authenticate,
+  upload.array("imagens", 5),
+  async (req, res) => {
+    const id = String(req.params.id);
+    const tid = tenantId(req);
+    const material = await materialAccessible(id, tid);
+    if (!material) return res.status(404).json({ error: "Material não encontrado ou sem acesso." });
+
+    const files = req.files as Express.Multer.File[] | undefined;
+    if (!files?.length) return res.status(400).json({ error: "Nenhuma imagem enviada." });
+
+    const allowed = new Set(["image/jpeg", "image/png", "image/webp"]);
+    const privateDir = process.env.PRIVATE_OBJECT_DIR;
+    if (!privateDir) return res.status(500).json({ error: "PRIVATE_OBJECT_DIR não configurado." });
+
+    const createdImages: any[] = [];
+    for (const file of files) {
+      if (!allowed.has(file.mimetype)) {
+        return res.status(400).json({ error: `Formato inválido em ${file.originalname}. Use JPG, PNG ou WebP.` });
+      }
+
+      const metadata = await sharp(file.buffer).metadata();
+      const width = metadata.width ?? 0;
+      const height = metadata.height ?? 0;
+      if (Math.min(width, height) < 1024) {
+        return res.status(400).json({
+          error: `${file.originalname}: resolução insuficiente. O menor lado deve ter pelo menos 1024 px; 2048 px ou mais é recomendado.`,
+          width,
+          height,
+        });
+      }
+
+      const imageId = crypto.randomUUID();
+      const ext = file.mimetype === "image/png" ? "png" : file.mimetype === "image/webp" ? "webp" : "jpg";
+      const objectPath = `${privateDir}/arch-materials/${id}/${imageId}.${ext}`;
+      const parts = objectPath.replace(/^\//, "").split("/");
+      const bucketName = parts[0]!;
+      const objectName = parts.slice(1).join("/");
+      await objectStorageClient.bucket(bucketName).file(objectName).save(file.buffer, {
+        contentType: file.mimetype,
+        resumable: false,
+      });
+
+      const storageUrl = `/api/storage/objects/arch-materials/${id}/${imageId}.${ext}`;
+      const score = materialQualityScore(width, height);
+      const [imageRow] = await db.insert(archMaterialImagesTable).values({
+        id: imageId,
+        materialId: id,
+        contributorTenantId: tid,
+        storageUrl,
+        originalFilename: file.originalname,
+        mimeType: file.mimetype,
+        width,
+        height,
+        fileSize: file.size,
+        qualityScore: String(score),
+        status: "ativa",
+      }).returning();
+      createdImages.push(imageRow);
+    }
+
+    const allImages = await db.select().from(archMaterialImagesTable)
+      .where(and(eq(archMaterialImagesTable.materialId, id), eq(archMaterialImagesTable.status, "ativa")))
+      .orderBy(desc(archMaterialImagesTable.qualityScore), desc(archMaterialImagesTable.createdAt));
+
+    const best = allImages[0];
+    if (best && best.id !== material.primaryImageId) {
+      await db.update(archMaterialsTable)
+        .set({ primaryImageId: best.id, updatedAt: new Date() })
+        .where(eq(archMaterialsTable.id, id));
+    }
+
+    return res.status(201).json({
+      created: createdImages,
+      images: allImages,
+      primaryImageId: best?.id ?? material.primaryImageId ?? null,
+      qualityRule: { minimumShortSidePx: 1024, recommendedShortSidePx: 2048 },
+    });
+  },
+);
+
+// PATCH /api/arch/materials/:id/primary-image
+router.patch("/arch/materials/:id/primary-image", authenticate, async (req, res) => {
+  const id = String(req.params.id);
+  const tid = tenantId(req);
+  const material = await materialAccessible(id, tid);
+  if (!material) return res.status(404).json({ error: "Material não encontrado ou sem acesso." });
+
+  const imageId = String(req.body?.imageId ?? "");
+  const [image] = await db.select().from(archMaterialImagesTable)
+    .where(and(eq(archMaterialImagesTable.id, imageId), eq(archMaterialImagesTable.materialId, id), eq(archMaterialImagesTable.status, "ativa")))
+    .limit(1);
+  if (!image) return res.status(400).json({ error: "Imagem inválida para este material." });
+
+  const [updated] = await db.update(archMaterialsTable)
+    .set({ primaryImageId: imageId, updatedAt: new Date() })
+    .where(eq(archMaterialsTable.id, id))
+    .returning();
+
+  return res.json({ material: updated, primaryImage: image });
+});
+
+// GET /api/arch/catalogo/:id/materials — materiais/acabamentos permitidos no produto
+router.get("/arch/catalogo/:id/materials", authenticate, async (req, res) => {
+  const productId = String(req.params.id);
+  const tid = tenantId(req);
+
+  const [product] = await db.select({ id: archCatalogoTable.id })
+    .from(archCatalogoTable)
+    .where(and(eq(archCatalogoTable.id, productId), eq(archCatalogoTable.tenantId, tid), eq(archCatalogoTable.ativo, true)))
+    .limit(1);
+  if (!product) return res.status(404).json({ error: "Produto não encontrado." });
+
+  const links = await db.select()
+    .from(archCatalogProductMaterialsTable)
+    .where(and(
+      eq(archCatalogProductMaterialsTable.tenantId, tid),
+      eq(archCatalogProductMaterialsTable.productId, productId),
+      eq(archCatalogProductMaterialsTable.ativo, true),
+    ))
+    .orderBy(archCatalogProductMaterialsTable.grupo, archCatalogProductMaterialsTable.surfaceKey);
+
+  const materialIds = links.map((link) => link.materialId);
+  const materials = materialIds.length
+    ? await db.select().from(archMaterialsTable).where(inArray(archMaterialsTable.id, materialIds))
+    : [];
+  const byId = new Map(materials.map((material) => [material.id, material]));
+
+  return res.json(links.map((link) => ({ ...link, material: byId.get(link.materialId) ?? null })));
+});
+
+// POST /api/arch/catalogo/:id/materials — vincula material disponível ao produto
+router.post("/arch/catalogo/:id/materials", authenticate, async (req, res) => {
+  const productId = String(req.params.id);
+  const tid = tenantId(req);
+  const parsed = insertArchCatalogProductMaterialSchema.safeParse({ ...req.body, productId });
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const [product] = await db.select({ id: archCatalogoTable.id })
+    .from(archCatalogoTable)
+    .where(and(eq(archCatalogoTable.id, productId), eq(archCatalogoTable.tenantId, tid), eq(archCatalogoTable.ativo, true)))
+    .limit(1);
+  if (!product) return res.status(404).json({ error: "Produto não encontrado." });
+
+  const material = await materialAccessible(parsed.data.materialId, tid);
+  if (!material) return res.status(404).json({ error: "Material não encontrado ou sem acesso." });
+
+  const [link] = await db.insert(archCatalogProductMaterialsTable)
+    .values({ ...(parsed.data as any), tenantId: tid, productId })
+    .onConflictDoNothing()
+    .returning();
+
+  if (!link) {
+    const [existing] = await db.select().from(archCatalogProductMaterialsTable)
+      .where(and(
+        eq(archCatalogProductMaterialsTable.tenantId, tid),
+        eq(archCatalogProductMaterialsTable.productId, productId),
+        eq(archCatalogProductMaterialsTable.materialId, parsed.data.materialId),
+        parsed.data.surfaceKey
+          ? eq(archCatalogProductMaterialsTable.surfaceKey, parsed.data.surfaceKey)
+          : sql`${archCatalogProductMaterialsTable.surfaceKey} is null`,
+      ))
+      .limit(1);
+    return res.status(200).json({ ...existing, duplicate: true });
+  }
+
+  return res.status(201).json({ ...link, duplicate: false });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
