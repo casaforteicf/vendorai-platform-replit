@@ -36,7 +36,10 @@ const UNIVERSAL_PRESERVE = [
   "Treat the supplied image/model as the authoritative source of truth.",
   "Preserve the exact geometry, proportions, spatial relationships, openings, object positions, architectural boundaries, camera orientation and design intent.",
   "Do not redesign, reinterpret, relocate, resize, add or remove structural or fixed elements unless explicitly requested.",
-  "Any enhancement must be visual only: realism, materials, lighting, texture fidelity and photographic quality.",
+  "The target is a believable professional architectural photograph of the completed real space, not a 3D render, illustration or stylized visualization.",
+  "Any enhancement must be visual only: physically plausible materials, natural lighting, texture fidelity, realistic optical response and photographic quality.",
+  "Keep subtle real-world material variation, micro-texture, contact shadows, natural highlight roll-off and restrained imperfections that make surfaces look photographed rather than digitally perfect.",
+  "Avoid synthetic perfection: no plastic surfaces, uniform procedural textures, excessive smoothness, overly clean edges, game-engine lighting, CGI gloss or artificial HDR.",
   "When uncertain, preserve the original instead of inventing.",
 ].join(" ");
 
@@ -58,7 +61,7 @@ const NEGATIVE_QUALITY = [
 const NEGATIVE_REALISM = [
   "painting","illustration","drawing","sketch","cartoon","anime","clay model","miniature",
   "toy-like","stylized","abstract","fantasy style","low poly","hand-drawn","comic style",
-  "watercolor","oil painting",
+  "watercolor","oil painting","CGI look","3D render look","game-engine look","Unreal Engine look","plastic surfaces","overly smooth materials","procedural-looking textures","synthetic perfection","artificial HDR",
 ].join(", ");
 
 const NEGATIVE_CLUTTER = [
@@ -107,11 +110,14 @@ const PRESETS: Record<ArqdorRenderPreset, string> = {
     "Use realistic soft shadows and controlled natural light. Photorealistic architectural photography, sharp focus, professional Brazilian architecture presentation.",
   ].join(" "),
   interior_layout_preserve: [
-    "High-end interior design photography of the exact layout provided.",
+    "Professional real-estate and architectural interior photography of the exact layout provided.",
+    "The final image must read as a photograph of a physically built room, never as CGI, concept art, illustration or a game-engine render.",
     "Do not alter, move, replace, resize or reinterpret any furniture, cabinetry, wall, opening or fixed element from the original image.",
-    "Maintain strict layout fidelity, joinery alignment, proportions and exact object positions.",
-    "Enhance realistic surfaces, wood grain, fabric weave, stone and metal without changing the design.",
-    "Use soft natural ambient light, accurate contact shadows and architectural magazine photography quality.",
+    "Maintain strict layout fidelity, joinery alignment, proportions, exact object positions and original material colors.",
+    "Enhance existing surfaces with physically believable micro-texture: natural wood pores and grain variation, visible textile weave, stone depth and subtle roughness, realistic paint response, controlled metal specular highlights and glass reflections.",
+    "Use natural daylight plus plausible architectural artificial light, realistic indirect bounce, soft contact shadows, subtle ambient occlusion and restrained contrast.",
+    "Preserve realistic tonal variation and slight material irregularity; avoid uniform smooth shading, plastic finishes, excessive gloss, oversharpening, overly perfect edges and synthetic HDR.",
+    "Camera look: full-frame architectural photography, corrected verticals, natural 28–35mm perspective, realistic exposure and white balance, sharp but not digitally overprocessed.",
   ].join(" "),
   material_detail_enhancer: [
     "Macro architectural photography focusing on the material detail already shown.",
