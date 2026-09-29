@@ -8,6 +8,8 @@ export function RenderStudioTopbar({
   onNextStep,
   onOpenStudio,
   userName,
+  onHelp: _onHelp,
+  onShortcuts: _onShortcuts,
 }: {
   step: RenderStudioStep;
   projectTitle: string | null;
@@ -15,6 +17,8 @@ export function RenderStudioTopbar({
   onNextStep: () => void;
   onOpenStudio: () => void;
   userName: string;
+  onHelp?: () => void;
+  onShortcuts?: () => void;
 }) {
   const nextLabels: Partial<Record<RenderStudioStep, string>> = {
     projeto: "→ Definir Ambiente",
