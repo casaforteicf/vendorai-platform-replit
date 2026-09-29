@@ -520,6 +520,34 @@ export function useRenderStudioController() {
     }
   }
 
+  function handleSelectVersion(version: RenderVersion) {
+    const url = normalizeRenderMediaUrl(version.url);
+    setRenderId(version.id);
+    setRenderUrl(url);
+    setApproved(Boolean(version.approvedAt || version.approvedBy));
+    setApprovalRecord(
+      version.approvedAt || version.approvedBy
+        ? {
+            by: version.approvedBy ?? "usuário autenticado",
+            at: version.approvedAt ? new Date(version.approvedAt) : new Date(),
+            note: version.approvalNote ?? "",
+          }
+        : null,
+    );
+    setApprovalNote(version.approvalNote ?? "");
+    setSelectionMode("off");
+    setSelections([]);
+    setCompareMode(false);
+    setRenderVideoUrl(null);
+    setSpecDone(false);
+    setSpecData([]);
+    setSpecificationId(null);
+    setErr(null);
+    setSaveState("saved");
+    setLastSavedAt(new Date());
+    logEvent("version_selected", `${version.label} selecionada`);
+  }
+
   function handleRenderLoadError() {
     if (!renderUrl) return;
     const failedUrl = normalizeRenderMediaUrl(renderUrl);
@@ -671,6 +699,7 @@ export function useRenderStudioController() {
     handleSalvarMedidasItem,
     handleEnviarOrcamento,
     handleRenderLoadError,
+    handleSelectVersion,
     handleNextStep,
     handleStepClick,
     handleCreateProject,
