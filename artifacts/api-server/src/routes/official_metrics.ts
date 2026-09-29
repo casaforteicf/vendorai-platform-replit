@@ -188,7 +188,24 @@ router.get("/tenants/:tenantId/dashboard/command-center", async (req, res) => {
           WHERE a.tenant_id = ${tenantId}
             AND a.status IN ('pendente','planejado')
             AND a.data_vencimento IS NOT NULL
-            AND a.data_vencimento < ${periodEnd}) AS overdue_tasks
+            AND a.data_vencimento < ${periodEnd}) AS overdue_tasks,
+        (SELECT COALESCE(json_agg(json_build_object(
+            'id', overdue.id,
+            'leadId', overdue.lead_id,
+            'dealId', overdue.deal_id,
+            'title', overdue.titulo,
+            'dueAt', overdue.data_vencimento
+          ) ORDER BY overdue.data_vencimento ASC), '[]'::json)
+          FROM (
+            SELECT a.id, a.lead_id, a.deal_id, a.titulo, a.data_vencimento
+            FROM activities a
+            WHERE a.tenant_id = ${tenantId}
+              AND a.status IN ('pendente','planejado')
+              AND a.data_vencimento IS NOT NULL
+              AND a.data_vencimento < ${periodEnd}
+            ORDER BY a.data_vencimento ASC
+            LIMIT 5
+          ) overdue) AS overdue_task_items
     `),
     db.execute(sql`
       SELECT
@@ -352,6 +369,7 @@ router.get("/tenants/:tenantId/dashboard/command-center", async (req, res) => {
       supportActive: Number(o.support_active ?? 0),
       unassignedActive: Number(o.unassigned_active ?? 0),
       overdueTasks: Number(c.overdue_tasks ?? 0),
+      overdueTaskItems: Array.isArray(c.overdue_task_items) ? c.overdue_task_items : [],
     },
     intelligence: {
       customersAtRisk: Number(i.customers_at_risk ?? 0),
