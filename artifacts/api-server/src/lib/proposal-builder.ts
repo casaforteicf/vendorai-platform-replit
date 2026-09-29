@@ -428,6 +428,7 @@ export function normalizeProposalBuilderTemplate(
 type EnsureProposalBuilderOptions = {
   tenantId: string;
   forceNewVersion?: boolean;
+  customInstruction?: string;
   log?: {
     warn?: (obj: object, message?: string) => void;
     info?: (obj: object, message?: string) => void;
@@ -437,6 +438,7 @@ type EnsureProposalBuilderOptions = {
 export async function ensureTenantProposalBuilderTemplate({
   tenantId,
   forceNewVersion = false,
+  customInstruction,
   log,
 }: EnsureProposalBuilderOptions): Promise<{
   template: ProposalBuilderTemplate;
@@ -488,6 +490,7 @@ export async function ensureTenantProposalBuilderTemplate({
     const prompt = [
       "Crie um modelo modular padrão de proposta comercial para este tenant.",
       "Retorne APENAS JSON válido, sem markdown.",
+      customInstruction?.trim() ? `DIREÇÃO ESPECÍFICA DO USUÁRIO: ${customInstruction.trim().slice(0, 4000)}` : "",
       `Empresa: ${profile.nomeFantasia || profile.razaoSocial}`,
       `Vertical/segmento: ${profile.vertical || "não informado"}`,
       `Diferenciais: ${profile.diferenciais || "não informado"}`,
