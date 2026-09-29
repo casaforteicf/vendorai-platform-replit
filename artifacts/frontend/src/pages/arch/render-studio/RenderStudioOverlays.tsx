@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
 import type { RenderStudioCatalogItem as CatalogItem, RenderStudioStep as Step } from "./renderStudioModel";
 import { RENDER_STUDIO_STEPS as STEPS } from "./renderStudioModel";
 import { renderApiGet as apiGet } from "./renderStudioApi";
@@ -133,40 +133,233 @@ export function RenderStudioMaterialLibraryModal({ isOpen, onClose, onSelect }: 
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [categoria, setCategoria] = useState("");
+  const [showImporter, setShowImporter] = useState(false);
+  const [materialName, setMaterialName] = useState("");
+  const [materialCategory, setMaterialCategory] = useState("Marcenaria");
+  const [supplier, setSupplier] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
+  const [previews, setPreviews] = useState<string[]>([]);
+  const [savingMaterial, setSavingMaterial] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (!isOpen) return;
+  const categorias = ["Piso", "Parede", "Marcenaria", "Estofado", "Iluminação", "Decoração"];
+
+  async function loadItems() {
     setLoading(true);
     const params = new URLSearchParams({ limit: "40" });
     if (search) params.set("busca", search);
     if (categoria) params.set("categoria", categoria);
-    apiGet(`/api/arch/catalogo?${params}`)
-      .then((data: CatalogItem[]) => setItems(data))
-      .catch(() => setItems([]))
-      .finally(() => setLoading(false));
+    try {
+      const data = await apiGet(`/api/arch/catalogo?${params}`) as CatalogItem[];
+      setItems(data);
+    } catch {
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!isOpen) return;
+    void loadItems();
   }, [isOpen, search, categoria]);
 
   useEffect(() => {
-    function k(e: globalThis.KeyboardEvent) { if (e.key === "Escape") onClose(); }
+    function k(e: globalThis.KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      if (showImporter) {
+        setShowImporter(false);
+        setImportError(null);
+      } else {
+        onClose();
+      }
+    }
     if (isOpen) document.addEventListener("keydown", k);
     return () => document.removeEventListener("keydown", k);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, showImporter]);
+
+  useEffect(() => {
+    return () => previews.forEach((url) => URL.revokeObjectURL(url));
+  }, [previews]);
+
+  function resetImporter() {
+    previews.forEach((url) => URL.revokeObjectURL(url));
+    setMaterialName("");
+    setMaterialCategory(categoria || "Marcenaria");
+    setSupplier("");
+    setFiles([]);
+    setPreviews([]);
+    setImportError(null);
+  }
+
+  function closeImporter() {
+    resetImporter();
+    setShowImporter(false);
+  }
+
+  function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
+    const incoming = Array.from(e.target.files ?? [])
+      .filter((file) => ["image/jpeg", "image/png", "image/webp"].includes(file.type))
+      .slice(0, Math.max(0, 5 - files.length));
+    if (!incoming.length) {
+      e.target.value = "";
+      return;
+    }
+    setFiles((current) => [...current, ...incoming].slice(0, 5));
+    setPreviews((current) => [...current, ...incoming.map((file) => URL.createObjectURL(file))].slice(0, 5));
+    setImportError(null);
+    e.target.value = "";
+  }
+
+  function removeFile(index: number) {
+    const url = previews[index];
+    if (url) URL.revokeObjectURL(url);
+    setFiles((current) => current.filter((_, i) => i !== index));
+    setPreviews((current) => current.filter((_, i) => i !== index));
+  }
+
+  async function saveImportedMaterial() {
+    const name = materialName.trim();
+    if (!name) {
+      setImportError("Informe o nome do material.");
+      return;
+    }
+    if (!files.length) {
+      setImportError("Adicione pelo menos uma imagem do material.");
+      return;
+    }
+
+    setSavingMaterial(true);
+    setImportError(null);
+    try {
+      const token = localStorage.getItem("vendorai_token");
+      const createRes = await fetch("/api/arch/catalogo", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          nome: name,
+          categoria: materialCategory,
+          fornecedor: supplier.trim() || undefined,
+          unidade: "un",
+        }),
+      });
+      if (!createRes.ok) throw new Error("Não foi possível cadastrar o material.");
+      const created = await createRes.json() as CatalogItem;
+
+      const formData = new FormData();
+      files.forEach((file) => formData.append("imagens", file));
+      const uploadRes = await fetch(`/api/arch/catalogo/${created.id}/imagens`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      if (!uploadRes.ok) throw new Error("Material criado, mas o upload da imagem falhou.");
+
+      closeImporter();
+      await loadItems();
+    } catch (error: unknown) {
+      setImportError(error instanceof Error ? error.message : "Falha ao importar material.");
+    } finally {
+      setSavingMaterial(false);
+    }
+  }
 
   if (!isOpen) return null;
-
-  const categorias = ["Piso", "Parede", "Marcenaria", "Estofado", "Iluminação", "Decoração"];
 
   return (
     <div role="dialog" aria-modal="true" aria-label="Biblioteca de materiais"
       style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(6,9,17,0.84)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, padding: 0, width: 680, maxHeight: "82vh", display: "flex", flexDirection: "column", boxShadow: "0 24px 80px rgba(0,0,0,0.6)", overflow: "hidden" }}>
-        {/* Header */}
-        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${D.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 800, color: D.text }}>▦ Biblioteca de Materiais</div>
-          <button onClick={onClose} aria-label="Fechar" style={{ background: "none", border: "none", color: D.muted, cursor: "pointer", fontSize: 18, padding: 4 }}>✕</button>
+      <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, padding: 0, width: 760, maxHeight: "86vh", display: "flex", flexDirection: "column", boxShadow: "0 24px 80px rgba(0,0,0,0.6)", overflow: "hidden" }}>
+        <div style={{ padding: "14px 20px", borderBottom: `1px solid ${D.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexShrink: 0 }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 800, color: D.text }}>▦ Biblioteca de Materiais</div>
+            <div style={{ marginTop: 2, fontSize: 10, color: D.dim }}>Escolha um material existente ou cadastre um novo com imagem.</div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              onClick={() => {
+                if (showImporter) closeImporter();
+                else {
+                  resetImporter();
+                  setMaterialCategory(categoria || "Marcenaria");
+                  setShowImporter(true);
+                }
+              }}
+              style={{ padding: "7px 12px", borderRadius: 7, fontSize: 10, fontWeight: 800, background: showImporter ? D.card : D.purple, color: showImporter ? D.text : "#fff", border: `1px solid ${showImporter ? D.border : D.purple}`, cursor: "pointer" }}>
+              {showImporter ? "Cancelar importação" : "＋ Importar material"}
+            </button>
+            <button onClick={onClose} aria-label="Fechar" style={{ background: "none", border: "none", color: D.muted, cursor: "pointer", fontSize: 18, padding: 4 }}>✕</button>
+          </div>
         </div>
-        {/* Search + filter */}
+
+        {showImporter && (
+          <div style={{ padding: "14px 20px", background: D.card, borderBottom: `1px solid ${D.border}`, display: "flex", flexDirection: "column", gap: 10, flexShrink: 0 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr", gap: 8 }}>
+              <input
+                value={materialName}
+                onChange={(e) => { setMaterialName(e.target.value); setImportError(null); }}
+                placeholder="Nome do material *"
+                aria-label="Nome do material"
+                style={{ ...inputStyle, width: "100%" }}
+              />
+              <select
+                value={materialCategory}
+                onChange={(e) => setMaterialCategory(e.target.value)}
+                aria-label="Categoria do material"
+                style={{ ...inputStyle, width: "100%" }}>
+                {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <input
+                value={supplier}
+                onChange={(e) => setSupplier(e.target.value)}
+                placeholder="Fornecedor (opcional)"
+                aria-label="Fornecedor"
+                style={{ ...inputStyle, width: "100%" }}
+              />
+            </div>
+
+            <div style={{ display: "flex", gap: 10, alignItems: "stretch", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={files.length >= 5 || savingMaterial}
+                style={{ minWidth: 180, padding: "10px 12px", borderRadius: 8, border: `1px dashed ${D.borderLight}`, background: D.inputBg, color: D.text, cursor: files.length >= 5 ? "not-allowed" : "pointer", opacity: files.length >= 5 ? 0.6 : 1, textAlign: "left" }}>
+                <div style={{ fontSize: 11, fontWeight: 800 }}>↑ Upload de imagem</div>
+                <div style={{ marginTop: 2, fontSize: 9, color: D.dim }}>JPG, PNG ou WebP · até 5 imagens</div>
+              </button>
+              <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={handleFileChange} style={{ display: "none" }} />
+
+              {previews.map((src, index) => (
+                <div key={src} style={{ width: 62, height: 62, borderRadius: 8, overflow: "hidden", border: `1px solid ${D.border}`, position: "relative", background: D.inputBg }}>
+                  <img src={src} alt={`Prévia ${index + 1}`} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  <button
+                    type="button"
+                    onClick={() => removeFile(index)}
+                    aria-label={`Remover imagem ${index + 1}`}
+                    style={{ position: "absolute", top: 3, right: 3, width: 18, height: 18, borderRadius: 9, border: "none", background: "rgba(0,0,0,0.72)", color: "#fff", fontSize: 10, lineHeight: "18px", cursor: "pointer" }}>
+                    ✕
+                  </button>
+                </div>
+              ))}
+
+              <button
+                type="button"
+                onClick={() => void saveImportedMaterial()}
+                disabled={savingMaterial || !materialName.trim() || files.length === 0}
+                style={{ marginLeft: "auto", alignSelf: "center", minWidth: 132, padding: "9px 12px", borderRadius: 8, fontSize: 10, fontWeight: 800, border: "none", background: D.purple, color: "#fff", cursor: savingMaterial ? "wait" : "pointer", opacity: savingMaterial || !materialName.trim() || files.length === 0 ? 0.55 : 1, display: "flex", justifyContent: "center", alignItems: "center", gap: 6 }}>
+                {savingMaterial ? <><DkSpinner size={12} /> Importando…</> : "Salvar material"}
+              </button>
+            </div>
+
+            {importError && <div role="alert" style={{ fontSize: 10, color: D.red }}>{importError}</div>}
+          </div>
+        )}
+
         <div style={{ padding: "10px 20px", borderBottom: `1px solid ${D.border}`, display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar material…" aria-label="Buscar material"
             style={{ ...inputStyle, width: 220, flexShrink: 0 }} />
@@ -180,14 +373,14 @@ export function RenderStudioMaterialLibraryModal({ isOpen, onClose, onSelect }: 
             ))}
           </div>
         </div>
-        {/* Grid */}
+
         <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
           {loading && <div style={{ display: "flex", justifyContent: "center", padding: 32 }}><DkSpinner size={32} /></div>}
           {!loading && items.length === 0 && (
             <div style={{ textAlign: "center", padding: 32, color: D.muted }}>
               <div style={{ fontSize: 32, marginBottom: 8, opacity: 0.3 }}>▦</div>
-              <div style={{ fontSize: 13, marginBottom: 4 }}>Nenhum material no catálogo ainda</div>
-              <div style={{ fontSize: 11, color: D.dim }}>Adicione materiais em Arquivo → Catálogo ou use instrução livre abaixo.</div>
+              <div style={{ fontSize: 13, marginBottom: 4 }}>Nenhum material encontrado</div>
+              <div style={{ fontSize: 11, color: D.dim }}>Use “Importar material” para cadastrar diretamente nesta biblioteca.</div>
             </div>
           )}
           {!loading && items.length > 0 && (
@@ -213,10 +406,10 @@ export function RenderStudioMaterialLibraryModal({ isOpen, onClose, onSelect }: 
             </div>
           )}
         </div>
-        {/* Free-text option */}
+
         <div style={{ padding: "10px 20px", borderTop: `1px solid ${D.border}`, flexShrink: 0 }}>
           <div style={{ fontSize: 10, color: D.dim }}>
-            Não encontrou o material? Use instrução livre no campo de texto (sem vínculo comercial).
+            O material importado fica salvo no catálogo do tenant e pode ser reutilizado em outros renders.
           </div>
         </div>
       </div>
