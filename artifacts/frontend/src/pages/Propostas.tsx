@@ -2180,6 +2180,20 @@ interface CartLine {
 }
 interface FreeItem  { id: string; nome: string; quantidade: number; valorUnitario: number; }
 
+type ExternalBudgetSource = {
+  projectId: string;
+  projectTitle: string;
+  projectDescription?: string;
+  scopeSummary?: string;
+  areaM2?: number;
+  items: Array<{
+    id: string;
+    nome: string;
+    quantidade: number;
+    valorUnitario: number;
+  }>;
+};
+
 type ProposalPresentationMode = "completo" | "resumo_etapa" | "preco_medio";
 
 type ProposalDependencyType = "FS" | "SS" | "FF" | "SF";
@@ -2560,6 +2574,7 @@ function newFreeItem(): FreeItem {
     leadEmpresa,
     dealId: activeDealId,
     initialProductIds = [],
+    initialExternalBudget,
     editingProposta,
     onSuccess,
   }: {
@@ -2573,8 +2588,9 @@ function newFreeItem(): FreeItem {
     leadEmpresa?: string;
     dealId?: string;
     initialProductIds?: string[];
+    initialExternalBudget?: ExternalBudgetSource;
     editingProposta?: Proposta;
-    onSuccess?: () => void;
+    onSuccess?: (proposta?: Proposta) => void;
   }) {
     const { toast } = useToast();
     const qc = useQueryClient();
@@ -2626,11 +2642,12 @@ function newFreeItem(): FreeItem {
     const [contextoIA, setContextoIA] = useState("");
     const [showIAPanel, setShowIAPanel] = useState(false);
   
-    const defaultTitle = editingProposta?.titulo ?? (
-      lockedLeadId
-        ? `Orçamento - ${leadNome || "Cliente"}`
-        : ""
-    );
+    const defaultTitle = editingProposta?.titulo
+      ?? (initialExternalBudget?.projectTitle
+        ? `Proposta - ${initialExternalBudget.projectTitle}`
+        : lockedLeadId
+          ? `Orçamento - ${leadNome || "Cliente"}`
+          : "");
   
     const form = useForm<PropostaFormValues>({
       resolver: zodResolver(propostaFormSchema),
@@ -2706,6 +2723,10 @@ function newFreeItem(): FreeItem {
       }
       budgetClosingRef.current = false;
       if (editingProposta) {
+        setDraftHydrated(true);
+        return;
+      }
+      if (initialExternalBudget?.projectId) {
         setDraftHydrated(true);
         return;
       }
@@ -3020,6 +3041,58 @@ function newFreeItem(): FreeItem {
     }, [open, editingProposta?.id]);
 
     useEffect(() => {
+      if (!open || editingProposta || !initialExternalBudget?.projectId) return;
+
+      standardBudgetAppliedRef.current = true;
+      setMode("livre");
+      setCartLines([]);
+      setFreeItems(
+        initialExternalBudget.items.length
+          ? initialExternalBudget.items.map((item) => ({
+              id: item.id,
+              nome: item.nome,
+              quantidade: roundBudgetNumber(item.quantidade),
+              valorUnitario: roundBudgetNumber(item.valorUnitario),
+            }))
+          : [newFreeItem()]
+      );
+      setBuiltAreaTotal(
+        initialExternalBudget.areaM2 && initialExternalBudget.areaM2 > 0
+          ? initialExternalBudget.areaM2
+          : undefined
+      );
+      setProjectDescription(
+        [
+          initialExternalBudget.projectDescription?.trim(),
+          initialExternalBudget.scopeSummary ? `Escopo contratado: ${initialExternalBudget.scopeSummary}` : "",
+        ].filter(Boolean).join("\n\n")
+      );
+      form.reset({
+        ...form.getValues(),
+        leadId: lockedLeadId || form.getValues("leadId") || "",
+        titulo: initialExternalBudget.projectTitle
+          ? `Proposta - ${initialExternalBudget.projectTitle}`
+          : form.getValues("titulo"),
+        observacoes: initialExternalBudget.scopeSummary
+          ? `Gerada a partir do orçamento do Arqdor. Escopo: ${initialExternalBudget.scopeSummary}.`
+          : "Gerada a partir do orçamento do Arqdor.",
+      });
+      setFreeError("");
+      setCartError("");
+      setShowAllByStage({});
+    }, [
+      open,
+      editingProposta?.id,
+      initialExternalBudget?.projectId,
+      initialExternalBudget?.projectTitle,
+      initialExternalBudget?.projectDescription,
+      initialExternalBudget?.scopeSummary,
+      initialExternalBudget?.areaM2,
+      JSON.stringify(initialExternalBudget?.items ?? []),
+      lockedLeadId,
+    ]);
+
+    useEffect(() => {
       if (!open || editingProposta || initialProductIds.length === 0) return;
       standardBudgetAppliedRef.current = true;
       setMode("catalogo");
@@ -3038,7 +3111,7 @@ function newFreeItem(): FreeItem {
     }, [orcamentoEtapas, quickAddEtapaId]);
 
     useEffect(() => {
-      if (!open || editingProposta || initialProductIds.length > 0 || standardBudgetAppliedRef.current || composicoes.length === 0) return;
+      if (!open || editingProposta || initialExternalBudget?.projectId || initialProductIds.length > 0 || standardBudgetAppliedRef.current || composicoes.length === 0) return;
       standardBudgetAppliedRef.current = true;
       setMode("catalogo");
       if (constructionSystem === "icf") {
@@ -4131,7 +4204,7 @@ function newFreeItem(): FreeItem {
           } as any,
         },
         {
-          onSuccess: () => {
+          onSuccess: (createdProposta) => {
             toast({ title: "Orçamento criado com sucesso" });
             qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId) });
             if (lockedLeadId) {
@@ -4142,7 +4215,7 @@ function newFreeItem(): FreeItem {
               { data: { tenantId, titulo: vals.titulo, leadId: vals.leadId, etapa: "proposta", valor: dealValor, skipAsaasBilling: skipAsaas } },
               { onSuccess: () => qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }), onError: (error: unknown) => toast({ title: "Orçamento salvo, mas o negócio não foi criado", description: error instanceof Error ? error.message : "Tente criar o negócio manualmente.", variant: "destructive" }) }
             );
-            onSuccess?.();
+            onSuccess?.(createdProposta as Proposta);
             clearBudgetDraft();
             handleClose();
           },
@@ -4209,7 +4282,7 @@ function newFreeItem(): FreeItem {
       createLivreMut.mutate(
         { data: { tenantId, leadId: vals.leadId, dealId: activeDealId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, ...recFields, apresentacao: proposalPresentationConfig(), itens: valid.map((i) => ({ nome: i.nome, quantidade: roundBudgetNumber(i.quantidade), valorUnitario: roundBudgetNumber(i.valorUnitario) })), valorTotal: freeTotal, paymentCompositions: paymentComp2?.length ? paymentComp2.map((pc) => ({ forma: pc.forma as PaymentCompositionLineForma, valor: roundBudgetNumber(pc.valor), comprovanteUrl: pc.comprovanteUrl })) : undefined, skipAsaasBilling: skipAsaas2 } as any },
         {
-          onSuccess: () => {
+          onSuccess: (createdProposta) => {
             toast({ title: "Orçamento criado com sucesso" });
             qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId) });
             if (lockedLeadId) {
@@ -4220,7 +4293,7 @@ function newFreeItem(): FreeItem {
               { data: { tenantId, titulo: vals.titulo, leadId: vals.leadId, etapa: "proposta", valor: dealValor, skipAsaasBilling: skipAsaas2 } },
               { onSuccess: () => qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }), onError: (error: unknown) => toast({ title: "Orçamento salvo, mas o negócio não foi criado", description: error instanceof Error ? error.message : "Tente criar o negócio manualmente.", variant: "destructive" }) }
             );
-            onSuccess?.();
+            onSuccess?.(createdProposta as Proposta);
             clearBudgetDraft();
             handleClose();
           },
@@ -4273,7 +4346,7 @@ function newFreeItem(): FreeItem {
             { data: { tenantId, titulo: (proposta as { titulo?: string }).titulo ?? vals.titulo, leadId, etapa: "proposta" } },
             { onSuccess: () => qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }), onError: (error: unknown) => toast({ title: "Orçamento salvo, mas o negócio não foi criado", description: error instanceof Error ? error.message : "Tente criar o negócio manualmente.", variant: "destructive" }) }
           );
-          onSuccess?.();
+          onSuccess?.(proposta as Proposta);
           clearBudgetDraft();
           handleClose();
         },
@@ -6543,6 +6616,7 @@ export default function Propostas() {
   const urlStatus = urlParams.get("status");
   const urlLeadId = urlParams.get("leadId") ?? undefined;
   const urlDealId = urlParams.get("dealId") ?? undefined;
+  const urlArchProjectId = urlParams.get("archProjectId") ?? undefined;
   const urlEditId = urlParams.get("edit") ?? undefined;
   const returnTo = urlParams.get("returnTo") ?? undefined;
   const urlProductIds = (urlParams.get("productIds") ?? "").split(",").filter(Boolean);
@@ -6555,6 +6629,11 @@ export default function Propostas() {
   const [statusUpdatingPropostaId, setStatusUpdatingPropostaId] = useState<string | null>(null);
   const [viewProposta, setViewProposta] = useState<Proposta | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>(defaultStatus ?? "all");
+  const [archBudgetSource, setArchBudgetSource] = useState<ExternalBudgetSource | undefined>(
+    urlArchProjectId
+      ? { projectId: urlArchProjectId, projectTitle: "", items: [] }
+      : undefined
+  );
 
   const { data: propostas = [], isLoading } = useListPropostas(tenantId, undefined, {
     query: {
@@ -6590,13 +6669,82 @@ export default function Propostas() {
   const deleteMut = useDeleteProposta();
   const [, setLocation] = useLocation();
 
+  useEffect(() => {
+    if (!openNewFromUrl || !urlArchProjectId) return;
+    let cancelled = false;
+
+    async function loadArchBudgetSource() {
+      try {
+        const token = localStorage.getItem("vendorai_token");
+        const headers = { Authorization: `Bearer ${token}` };
+        const [projectRes, budgetRes] = await Promise.all([
+          fetch(`/api/arch/projetos/${urlArchProjectId}`, { headers }),
+          fetch(`/api/arch/projetos/${urlArchProjectId}/orcamento`, { headers }),
+        ]);
+        if (!projectRes.ok || !budgetRes.ok) throw new Error("Não foi possível carregar o orçamento do Arqdor.");
+
+        const projectPayload = await projectRes.json();
+        const budgetPayload = await budgetRes.json();
+        const project = projectPayload?.projeto ?? {};
+        const groups = Array.isArray(budgetPayload?.grupos) ? budgetPayload.grupos : [];
+        const scopeLabels: Record<string, string> = {
+          completo: "Projeto completo",
+          mobiliario: "Mobiliário",
+          marcenaria: "Marcenaria",
+          revestimentos: "Revestimentos",
+          reforma: "Reforma",
+          decoracao: "Decoração",
+          iluminacao: "Iluminação",
+          eletrica: "Elétrica",
+          hidraulica: "Hidráulica",
+          pintura: "Pintura",
+          outros: "Outros",
+        };
+        const scopeTypes = Array.isArray(project?.escopoOrcamento?.tipos)
+          ? project.escopoOrcamento.tipos
+          : [];
+        const items = groups.flatMap((group: any) =>
+          (Array.isArray(group?.itens) ? group.itens : []).map((item: any) => ({
+            id: String(item.id),
+            nome: String(item.descricao ?? "Item do orçamento"),
+            quantidade: roundBudgetNumber(item.quantidade ?? 1),
+            valorUnitario: roundBudgetNumber(item.valorUnitario ?? 0),
+          }))
+        );
+
+        if (cancelled) return;
+        setArchBudgetSource({
+          projectId: urlArchProjectId,
+          projectTitle: String(project?.titulo ?? "Projeto Arqdor"),
+          projectDescription: [
+            project?.descricao ? String(project.descricao) : "",
+            project?.clienteNome ? `Cliente: ${String(project.clienteNome)}` : "",
+          ].filter(Boolean).join("\n"),
+          scopeSummary: scopeTypes.map((type: string) => scopeLabels[type] ?? type).join(", "),
+          areaM2: Number(project?.areaM2 ?? 0) || undefined,
+          items,
+        });
+      } catch (error) {
+        if (cancelled) return;
+        toast({
+          title: "Não foi possível carregar o orçamento do Arqdor",
+          description: error instanceof Error ? error.message : "Tente novamente.",
+          variant: "destructive",
+        });
+      }
+    }
+
+    void loadArchBudgetSource();
+    return () => { cancelled = true; };
+  }, [openNewFromUrl, urlArchProjectId, toast]);
+
   const editTarget = urlEditId
     ? propostas.find((proposta) => proposta.id === urlEditId) ?? null
     : null;
 
   function closeBudgetModal() {
     setModalOpen(false);
-    if (urlEditId && returnTo) {
+    if ((urlEditId || openNewFromUrl) && returnTo) {
       setLocation(returnTo);
       return;
     }
@@ -6873,7 +7021,25 @@ export default function Propostas() {
         dealId={editTarget?.dealId ?? (openNewFromUrl ? urlDealId : undefined)}
         leadNome={editTarget ? (leadMap[editTarget.leadId] ?? undefined) : (openNewFromUrl && urlLeadId ? leadMap[urlLeadId] : undefined)}
         initialProductIds={editTarget ? [] : (openNewFromUrl ? urlProductIds : [])}
+        initialExternalBudget={editTarget ? undefined : (openNewFromUrl ? archBudgetSource : undefined)}
         editingProposta={editTarget ?? undefined}
+        onSuccess={async (createdProposta) => {
+          if (urlArchProjectId && createdProposta?.id) {
+            try {
+              await fetch(`/api/arch/projetos/${urlArchProjectId}`, {
+                method: "PATCH",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`,
+                },
+                body: JSON.stringify({ propostaId: createdProposta.id }),
+              });
+            } catch {
+              // A proposta já foi criada; o vínculo pode ser refeito depois sem perder o documento.
+            }
+          }
+          if (returnTo) setLocation(returnTo);
+        }}
       />
       <PropostaDetailSheet
         proposta={detailProposta}
