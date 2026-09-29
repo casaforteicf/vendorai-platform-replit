@@ -14,7 +14,11 @@ export type ArqdorRenderPreset =
   | "deck_pergola_preserve"
   | "wall_gate_fidelity"
   | "night_lighting_exterior"
-  | "guardrail_glass_precision";
+  | "guardrail_glass_precision"
+  | "ceiling_led_linear"
+  | "ambient_boost"
+  | "shadow_softening"
+  | "exposure_lift_controlled";
 
 export type ArqdorVideoMovement =
   | "zoom_in_soft"
@@ -171,6 +175,22 @@ const PRESETS: Record<ArqdorRenderPreset, string> = {
     "GUARDRAIL/GLASS PRECISION: preserve exact guardrail height, post spacing, handrail alignment, glass panel count, panel width, edges and mounting points.",
     "Glass must remain transparent with physically plausible reflections and edge thickness. Never remove posts, merge panels, bend rails, create gaps or alter safety geometry.",
   ].join(" "),
+  ceiling_led_linear: [
+    "INTERIOR CEILING LIGHT RULE: for indoor scenes, always use a realistic ceiling lighting solution as the main artificial light source.",
+    "Prefer a linear LED bar/profile on the ceiling, recessed or surface-mounted, with elegant and coherent placement.",
+    "If the scene has no visible fixture modeled, create a subtle architectural linear LED effect that fits the ceiling without changing the room geometry.",
+    "Lighting must look technically plausible and improve the readability of materials, cabinetry and furniture without redesigning the space.",
+  ].join(" "),
+  ambient_boost: [
+    "Increase ambient brightness in a controlled architectural way.",
+    "Open heavy shadows, improve bounce light and raise overall readability while preserving real material colors.",
+  ].join(" "),
+  shadow_softening: [
+    "Soften harsh shadows and improve shadow transitions while keeping natural depth and contrast.",
+  ].join(" "),
+  exposure_lift_controlled: [
+    "Lift exposure moderately with highlight control, preserving white balance, color fidelity and material texture.",
+  ].join(" "),
 };
 
 export function inferArqdorRenderPresets(input: {
@@ -194,6 +214,10 @@ export function inferArqdorRenderPresets(input: {
     result.push("camera_perspective_lock");
   }
   if (/cozinha|roupeiro|arm[aá]rio|marcenaria|cabinet|joinery/.test(text)) result.push("joinery_precision");
+  if (/cozinha|sala|quarto|banheiro|escrit[oó]rio|hall|interior/.test(text)) result.push("ceiling_led_linear");
+  if (/mais luz|mais_luz|more light|bright|brightness|claro|clarear/.test(text)) {
+    result.push("ceiling_led_linear", "ambient_boost", "shadow_softening", "exposure_lift_controlled");
+  }
   if (/piscina|pool|spa|agua|água/.test(text)) result.push("pool_water_fidelity");
   if (/jardim|paisag|landscap/.test(text)) result.push("landscape_controlled");
   if (/vidro|glass|espelho|mirror/.test(text)) result.push("glass_mirror_fidelity");

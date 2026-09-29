@@ -14,7 +14,11 @@ export type RenderStudioPreset =
   | "deck_pergola_preserve"
   | "wall_gate_fidelity"
   | "night_lighting_exterior"
-  | "guardrail_glass_precision";
+  | "guardrail_glass_precision"
+  | "ceiling_led_linear"
+  | "ambient_boost"
+  | "shadow_softening"
+  | "exposure_lift_controlled";
 
 export type RenderStudioVideoMovement =
   | "zoom_in_soft" | "zoom_out_soft" | "pan_left_soft" | "pan_right_soft"
@@ -26,7 +30,7 @@ export type RenderStudioImprovementMode = "improve" | "change-material" | "chang
 export type RenderStudioSceneType = "interior" | "facade" | "outdoor" | "gourmet" | "pool";
 export type RenderStudioProfile = "technical" | "premium" | "decorated";
 export type RenderStudioVisualStyle = "original" | "contemporary" | "minimalist" | "provencal";
-export type RenderStudioLightingProfile = "natural" | "warm" | "editorial" | "night";
+export type RenderStudioLightingProfile = "natural" | "balanced" | "more_light" | "warm" | "editorial" | "night";
 
 export type RenderStudioCatalogItem = {
   id: string;
