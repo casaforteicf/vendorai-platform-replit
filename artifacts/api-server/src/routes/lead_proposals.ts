@@ -476,6 +476,11 @@ router.post("/leads/:leadId/proposals/stage-images", async (req, res) => {
     return;
   }
 
+  const customPrompt =
+    typeof req.body?.customPrompt === "string"
+      ? req.body.customPrompt.trim().slice(0, 1800)
+      : "";
+
   const regenerate = req.body?.regenerate === true;
   if (regenerate && req.body?.confirmRegenerate !== true) {
     res.status(422).json({
@@ -547,6 +552,8 @@ router.post("/leads/:leadId/proposals/stage-images", async (req, res) => {
       technicalImageRule,
       visualDirection,
       "A imagem precisa representar o conteúdo REAL desta etapa do orçamento. Não introduza método construtivo, material ou serviço incompatível com o escopo informado.",
+      customPrompt ? `Instrução adicional do usuário para esta imagem: ${customPrompt}` : "",
+      "Quando houver conflito entre a instrução adicional e o escopo real da etapa, preserve o escopo real e adapte apenas composição, foco, ambiente e linguagem visual.",
       "A imagem é apenas representativa da etapa, não deve fingir ser foto do projeto real do cliente.",
       "Sem textos, sem letras, sem placas legíveis, sem logotipos, sem marcas d'água, sem molduras e sem antes/depois.",
     ].filter(Boolean).join("\n");
