@@ -516,15 +516,27 @@ export function CatalogoModal({
   open,
   onClose,
   tenantId,
+  initialProductId,
+  initialCreateDraft,
+  onProductSaved,
 }: {
   open: boolean;
   onClose: () => void;
   tenantId: string;
+  initialProductId?: string | null;
+  initialCreateDraft?: {
+    nome?: string;
+    unidade?: string;
+    fornecedor?: string;
+    precoBase?: number;
+  } | null;
+  onProductSaved?: (product: ProdutoCatalogo) => void;
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const requestUploadUrl = useRequestUploadUrl();
   const [editingProd, setEditingProd] = useState<ProdutoCatalogo | null>(null);
+  const catalogAutoOpenRef = useRef<string | null>(null);
   const [interactionsProd, setInteractionsProd] = useState<ProdutoCatalogo | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [categoryAiOpen, setCategoryAiOpen] = useState(false);
@@ -678,9 +690,32 @@ export function CatalogoModal({
     }
   }
 
-  function openCreate() {
+  function openCreate(draft?: typeof initialCreateDraft) {
     setEditingProd(null);
-    form.reset({ nome: "", categoriaId: "", descontoMaximoPercentual: undefined, precoBase: 0, margemPercentual: 0, fretePercentual: 0, comissaoPercentual: 0, custoFinanceiroPercentual: 0, unidade: "un", descricao: "", imagemUrl: "", imagens: [], videoUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, especificacoes: [], compatibilidadeVeicular: [], dataValidade: "" });
+    form.reset({
+      nome: draft?.nome ?? "",
+      categoriaId: "",
+      descontoMaximoPercentual: undefined,
+      precoBase: draft?.precoBase ?? 0,
+      margemPercentual: 0,
+      fretePercentual: 0,
+      comissaoPercentual: 0,
+      custoFinanceiroPercentual: 0,
+      unidade: draft?.unidade ?? "un",
+      fornecedor: draft?.fornecedor ?? "",
+      descricao: "",
+      imagemUrl: "",
+      imagens: [],
+      videoUrl: "",
+      ativo: true,
+      recorrente: false,
+      prazoContrato: undefined,
+      vendeNoPracaAi: "herda",
+      precoPracaAi: undefined,
+      especificacoes: [],
+      compatibilidadeVeicular: [],
+      dataValidade: "",
+    });
     setComposicaoItens([]);
     setFormOpen(true);
   }
@@ -743,6 +778,40 @@ export function CatalogoModal({
       .catch(() => {})
       .finally(() => setComposicaoLoading(false));
   }
+
+  useEffect(() => {
+    if (!open) {
+      catalogAutoOpenRef.current = null;
+      return;
+    }
+
+    const autoKey = initialProductId
+      ? `edit:${initialProductId}`
+      : initialCreateDraft
+        ? `create:${initialCreateDraft.nome ?? ""}:${initialCreateDraft.unidade ?? ""}:${initialCreateDraft.fornecedor ?? ""}:${initialCreateDraft.precoBase ?? ""}`
+        : null;
+
+    if (!autoKey || catalogAutoOpenRef.current === autoKey) return;
+
+    if (initialProductId) {
+      const product = catalog.find((item) => item.id === initialProductId);
+      if (!product) return;
+      catalogAutoOpenRef.current = autoKey;
+      openEdit(product);
+      return;
+    }
+
+    catalogAutoOpenRef.current = autoKey;
+    openCreate(initialCreateDraft);
+  }, [
+    open,
+    initialProductId,
+    initialCreateDraft?.nome,
+    initialCreateDraft?.unidade,
+    initialCreateDraft?.fornecedor,
+    initialCreateDraft?.precoBase,
+    catalog,
+  ]);
 
   function invalidate() {
     qc.invalidateQueries({ queryKey: getListProdutosCatalogoQueryKey(tenantId) });
@@ -817,7 +886,13 @@ export function CatalogoModal({
       updateMut.mutate(
         { id: editingProd.id, data: body },
         {
-          onSuccess: () => { toast({ title: "Produto atualizado" }); invalidate(); salvarComposicao(editingProd.id); setFormOpen(false); },
+          onSuccess: (updated: any) => {
+            toast({ title: "Produto atualizado" });
+            invalidate();
+            salvarComposicao(editingProd.id);
+            if (updated) onProductSaved?.(updated as ProdutoCatalogo);
+            setFormOpen(false);
+          },
           onError: () => toast({ title: "Erro ao atualizar", variant: "destructive" }),
         }
       );
@@ -825,7 +900,13 @@ export function CatalogoModal({
       createMut.mutate(
         { data: { ...body, tenantId } },
         {
-          onSuccess: (created: any) => { toast({ title: "Produto criado" }); invalidate(); if (created?.id) salvarComposicao(created.id); setFormOpen(false); },
+          onSuccess: (created: any) => {
+            toast({ title: "Produto criado" });
+            invalidate();
+            if (created?.id) salvarComposicao(created.id);
+            if (created) onProductSaved?.(created as ProdutoCatalogo);
+            setFormOpen(false);
+          },
           onError: () => toast({ title: "Erro ao criar produto", variant: "destructive" }),
         }
       );
