@@ -349,11 +349,20 @@ export function useRenderStudioController() {
         night: "Cena noturna fisicamente plausível; preservar geometria e materiais, alterando apenas a condição de iluminação.",
       };
 
+      const lightingValue: Record<RenderStudioLightingProfile, string> = {
+        natural: "day",
+        warm: "soft warm ambient lighting with controlled highlights",
+        editorial: "premium editorial architectural lighting with soft directional contrast and realistic bounce light",
+        night: "night",
+      };
+
       const { render_id } = await apiPost("/api/arch/ai-render", {
         project_id: arq.projectId ?? undefined,
         original_image_url: imageDataUrl,
         mode: "preservar",
         ambiente: ambiente.toLowerCase().replace(/\s+/g, "_"),
+        iluminacao: lightingValue[lightingProfile],
+        render_view: sceneType === "interior" ? "interior" : "exterior",
         render_presets: Array.from(new Set(renderPresets)),
         user_notes: [
           "Preservação rígida: manter exatamente cores, materiais, texturas-base, medidas, posição, orientação e proporções de todo mobiliário e marcenaria; manter câmera, perspectiva, layout, circulação e aberturas.",
