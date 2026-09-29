@@ -2849,11 +2849,14 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                   <p className="text-sm font-semibold">Pronto para gerar</p>
                   <Badge
                     variant="outline"
-                    className={proposalComposerReadyCount === proposalComposerChecks.length
-                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                      : "border-amber-200 bg-amber-50 text-amber-700"}
+                    className={proposalPreflightBlockers.length > 0
+                      ? "border-red-200 bg-red-50 text-red-700"
+                      : proposalComposerReadyCount === proposalComposerChecks.length
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                        : "border-amber-200 bg-amber-50 text-amber-700"}
                   >
                     {proposalComposerReadyCount}/{proposalComposerChecks.length}
+                    {proposalPreflightBlockers.length > 0 ? ` · ${proposalPreflightBlockers.length} bloqueio(s)` : ""}
                   </Badge>
                   {proposalDraftSavedAt && (
                     <span className="text-[10px] text-muted-foreground">
@@ -2881,6 +2884,58 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
               </div>
             </div>
           </div>
+
+          {proposalPreflightPending.length > 0 && (
+            <div className={`mb-4 rounded-xl border p-3 ${proposalPreflightBlockers.length > 0
+              ? "border-red-200 bg-red-50/70"
+              : "border-amber-200 bg-amber-50/70"}`}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className={`text-sm font-semibold ${proposalPreflightBlockers.length > 0 ? "text-red-900" : "text-amber-900"}`}>
+                    {proposalPreflightBlockers.length > 0 ? "Pendências que impedem a geração" : "Avisos do orçamento e da proposta"}
+                  </p>
+                  <p className={`mt-0.5 text-[11px] ${proposalPreflightBlockers.length > 0 ? "text-red-700" : "text-amber-700"}`}>
+                    {proposalPreflightBlockers.length > 0
+                      ? "Corrija os itens abaixo antes de gerar a proposta."
+                      : "Estes itens não bloqueiam a geração, mas vale revisar."}
+                  </p>
+                </div>
+                <div className="flex gap-1.5">
+                  {proposalPreflightBlockers.length > 0 && (
+                    <Badge variant="outline" className="border-red-300 bg-white text-[10px] text-red-700">
+                      {proposalPreflightBlockers.length} bloqueio(s)
+                    </Badge>
+                  )}
+                  {proposalPreflightWarnings.length > 0 && (
+                    <Badge variant="outline" className="border-amber-300 bg-white text-[10px] text-amber-700">
+                      {proposalPreflightWarnings.length} aviso(s)
+                    </Badge>
+                  )}
+                </div>
+              </div>
+              <div className="mt-3 space-y-1.5">
+                {proposalPreflightPending.slice(0, 10).map((item) => (
+                  <div
+                    key={`preflight-main-${item.code}-${item.field ?? "none"}`}
+                    className="flex items-start gap-2 rounded-lg border bg-white px-2.5 py-2"
+                  >
+                    <XCircle className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${item.severity === "blocker" ? "text-red-500" : "text-amber-500"}`} />
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-medium text-foreground">{item.message}</p>
+                      <p className="mt-0.5 text-[10px] text-muted-foreground">
+                        {item.source === "budget" ? "Orçamento" :
+                          item.source === "client" ? "Cliente" :
+                          item.source === "company" ? "Empresa" :
+                          item.source === "business_plan" ? "Plano de Negócios" :
+                          item.source === "catalog" ? "Catálogo" : "Mídia"}
+                        {item.field ? ` · Campo: ${item.field}` : ""}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="mb-4 overflow-hidden rounded-xl border bg-background">
             <button
@@ -3790,11 +3845,13 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                 <p className="text-xs font-semibold">Pronto para gerar</p>
                 <Badge
                   variant="outline"
-                  className={proposalComposerBlockingIssues.length === 0
+                  className={!proposalGenerationBlocked
                     ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                     : "border-red-200 bg-red-50 text-red-700"}
                 >
-                  {proposalComposerBlockingIssues.length === 0 ? "sem bloqueios" : String(proposalComposerBlockingIssues.length) + " bloqueio(s)"}
+                  {!proposalGenerationBlocked
+                    ? "sem bloqueios"
+                    : String(proposalComposerBlockingIssues.length + proposalPreflightBlockers.length) + " bloqueio(s)"}
                 </Badge>
               </div>
               <p className="mt-1 text-[10px] text-muted-foreground">
@@ -5334,13 +5391,15 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                   </div>
                   <Badge
                     variant="outline"
-                    className={proposalComposerBlockingIssues.length === 0 && proposalComposerWarnings.length === 0
+                    className={!proposalGenerationBlocked && proposalComposerWarnings.length === 0 && proposalPreflightWarnings.length === 0
                       ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                      : proposalComposerBlockingIssues.length > 0
+                      : proposalGenerationBlocked
                         ? "border-red-200 bg-red-50 text-red-700"
                         : "border-amber-200 bg-amber-50 text-amber-700"}
                   >
-                    {proposalComposerReadyCount}/{proposalComposerChecks.length} pronto
+                    {proposalGenerationBlocked
+                      ? `${proposalComposerBlockingIssues.length + proposalPreflightBlockers.length} bloqueio(s)`
+                      : `${proposalComposerReadyCount}/${proposalComposerChecks.length} pronto`}
                   </Badge>
                 </div>
 
@@ -5386,7 +5445,13 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                             ? "border-red-200 bg-red-50 text-red-700"
                             : "border-amber-200 bg-amber-50 text-amber-800"}`}
                         >
-                          <span className="font-semibold">{item.source.replace("_", " ")}:</span> {item.message}
+                          <span className="font-semibold">
+                            {item.source === "budget" ? "Orçamento" :
+                              item.source === "client" ? "Cliente" :
+                              item.source === "company" ? "Empresa" :
+                              item.source === "business_plan" ? "Plano de Negócios" :
+                              item.source === "catalog" ? "Catálogo" : "Mídia"}:
+                          </span>{" "}{item.message}
                         </div>
                       ))}
                     </div>
