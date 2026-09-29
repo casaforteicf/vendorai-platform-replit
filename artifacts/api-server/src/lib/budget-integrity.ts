@@ -2,6 +2,33 @@ import type { PropostaApresentacao, PropostaItem } from "@workspace/db";
 
 export type BudgetIntegritySeverity = "blocker" | "warning";
 
+export type BudgetValidatorProfile =
+  | "icf_construction"
+  | "construction"
+  | "reforma"
+  | "mobiliario"
+  | "marcenaria"
+  | "revestimentos"
+  | "decoracao"
+  | "iluminacao"
+  | "instalacoes"
+  | "interiores"
+  | "generic";
+
+const VALIDATOR_PROFILE_LABELS: Record<BudgetValidatorProfile, string> = {
+  icf_construction: "Construção em ICF",
+  construction: "Construção",
+  reforma: "Reforma",
+  mobiliario: "Mobiliário",
+  marcenaria: "Marcenaria",
+  revestimentos: "Revestimentos",
+  decoracao: "Decoração",
+  iluminacao: "Iluminação",
+  instalacoes: "Instalações",
+  interiores: "Interiores / escopo misto",
+  generic: "Comercial",
+};
+
 export type BudgetIntegrityIssue = {
   code: string;
   severity: BudgetIntegritySeverity;
@@ -14,6 +41,8 @@ export type BudgetIntegrityIssue = {
 
 export type BudgetIntegrityReport = {
   ok: boolean;
+  validatorProfile: BudgetValidatorProfile;
+  validatorLabel: string;
   blockers: number;
   warnings: number;
   calculatedTotal: number;
@@ -39,10 +68,48 @@ type AuditInput = {
   validadeAte?: Date | string | null;
   prazoEntrega?: string | null;
   apresentacao?: PropostaApresentacao | null;
+  validatorContext?: {
+    scopeTypes?: string[] | null;
+    constructionSystem?: string | null;
+  } | null;
   now?: Date;
 };
 
 const roundMoney = (value: number) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+
+function resolveValidatorProfile(input: AuditInput, presentation: PropostaApresentacao): BudgetValidatorProfile {
+  const presentationContext = (presentation as PropostaApresentacao & {
+    validatorContext?: { scopeTypes?: string[]; constructionSystem?: string };
+  }).validatorContext;
+  const context = input.validatorContext ?? presentationContext;
+  const scopeTypes = Array.from(new Set((context?.scopeTypes ?? []).map((value) => String(value).trim().toLowerCase()).filter(Boolean)));
+  const constructionSystem = String(context?.constructionSystem ?? "").trim().toLowerCase();
+
+  if (scopeTypes.length === 1) {
+    const only = scopeTypes[0];
+    if (only === "mobiliario") return "mobiliario";
+    if (only === "marcenaria") return "marcenaria";
+    if (only === "revestimentos") return "revestimentos";
+    if (only === "decoracao") return "decoracao";
+    if (only === "iluminacao") return "iluminacao";
+    if (only === "reforma") return "reforma";
+    if (only === "eletrica" || only === "hidraulica") return "instalacoes";
+    if (only === "completo") return constructionSystem === "icf" ? "icf_construction" : "construction";
+  }
+
+  if (scopeTypes.includes("completo")) return constructionSystem === "icf" ? "icf_construction" : "construction";
+  if (scopeTypes.includes("reforma")) return "reforma";
+  if (scopeTypes.some((type) => type === "eletrica" || type === "hidraulica")) return "instalacoes";
+  if (scopeTypes.length > 1) return "interiores";
+  if (constructionSystem === "icf") return "icf_construction";
+  if (constructionSystem) return "construction";
+  return "generic";
+}
+
+function isConstructionProfile(profile: BudgetValidatorProfile): boolean {
+  return profile === "icf_construction" || profile === "construction" || profile === "reforma";
+}
+
 
 function asDate(value: unknown): Date | null {
   if (!value) return null;
@@ -81,6 +148,9 @@ export function auditProposalBudget(input: AuditInput): BudgetIntegrityReport {
   const now = input.now ?? new Date();
   const calculatedTotal = calculateBudgetItemsTotal(items);
   const storedTotal = roundMoney(Number(input.valorTotal ?? 0) || 0);
+  const validatorProfile = resolveValidatorProfile(input, presentation);
+  const validatorLabel = VALIDATOR_PROFILE_LABELS[validatorProfile];
+  const constructionValidation = isConstructionProfile(validatorProfile);
 
   if (!items.length) {
     issues.push({
@@ -141,7 +211,7 @@ export function auditProposalBudget(input: AuditInput): BudgetIntegrityReport {
     const value = roundMoney(Number(item.quantidade ?? 0) * Number(item.valorUnitario ?? 0));
     const existing = stageMap.get(id);
 
-    if (!name || !Number.isInteger(order) || order <= 0) {
+    if (constructionValidation && (!name || !Number.isInteger(order) || order <= 0)) {
       issues.push({
         code: "INCOMPLETE_STAGE_REFERENCE",
         severity: "warning",
@@ -163,7 +233,7 @@ export function auditProposalBudget(input: AuditInput): BudgetIntegrityReport {
     } else {
       existing.value = roundMoney(existing.value + value);
       existing.itemIndexes.push(index);
-      if (name && existing.name !== "Etapa sem nome" && existing.name !== name) {
+      if (constructionValidation && name && existing.name !== "Etapa sem nome" && existing.name !== name) {
         issues.push({
           code: "STAGE_NAME_CONFLICT",
           severity: "blocker",
@@ -172,7 +242,7 @@ export function auditProposalBudget(input: AuditInput): BudgetIntegrityReport {
           message: `A mesma etapa possui nomes diferentes: "${existing.name}" e "${name}".`,
         });
       }
-      if (order > 0 && existing.order !== 9999 && existing.order !== order) {
+      if (constructionValidation && order > 0 && existing.order !== 9999 && existing.order !== order) {
         issues.push({
           code: "STAGE_ORDER_CONFLICT",
           severity: "blocker",
@@ -191,7 +261,7 @@ export function auditProposalBudget(input: AuditInput): BudgetIntegrityReport {
   });
 
   orderToIds.forEach((ids, order) => {
-    if (ids.size > 1) {
+    if (constructionValidation && ids.size > 1) {
       issues.push({
         code: "DUPLICATE_STAGE_ORDER",
         severity: "blocker",
@@ -222,7 +292,7 @@ export function auditProposalBudget(input: AuditInput): BudgetIntegrityReport {
     const end = asDate(stage?.fimPrevisto);
     if (start) scheduleDates.push(start);
     if (end) scheduleEndDates.push(end);
-    if (start && end && end < start) {
+    if (constructionValidation && start && end && end < start) {
       issues.push({
         code: "STAGE_END_BEFORE_START",
         severity: "blocker",
@@ -242,7 +312,7 @@ export function auditProposalBudget(input: AuditInput): BudgetIntegrityReport {
       const phaseEnd = asDate(phase.fimPrevisto);
       if (phaseStart) scheduleDates.push(phaseStart);
       if (phaseEnd) scheduleEndDates.push(phaseEnd);
-      if (phaseStart && phaseEnd && phaseEnd < phaseStart) {
+      if (constructionValidation && phaseStart && phaseEnd && phaseEnd < phaseStart) {
         issues.push({
           code: "PHASE_END_BEFORE_START",
           severity: "blocker",
@@ -270,7 +340,7 @@ export function auditProposalBudget(input: AuditInput): BudgetIntegrityReport {
     });
   }
 
-  if (earliest && earliest < todayStart) {
+  if (constructionValidation && earliest && earliest < todayStart) {
     issues.push({
       code: "SCHEDULE_START_IN_PAST",
       severity: "blocker",
@@ -280,7 +350,7 @@ export function auditProposalBudget(input: AuditInput): BudgetIntegrityReport {
     });
   }
 
-  if (proposalStart && earliest && earliest < proposalStart) {
+  if (constructionValidation && proposalStart && earliest && earliest < proposalStart) {
     issues.push({
       code: "SCHEDULE_BEFORE_PROPOSAL_START",
       severity: "blocker",
@@ -294,7 +364,7 @@ export function auditProposalBudget(input: AuditInput): BudgetIntegrityReport {
     ? Math.max(1, Math.ceil((latest.getTime() - earliest.getTime()) / 86_400_000) + 1)
     : null;
   const declaredDeadline = parseDeadlineDays(input.prazoEntrega);
-  if (effectiveScheduleDays && declaredDeadline && Math.abs(effectiveScheduleDays - declaredDeadline) > 1) {
+  if (constructionValidation && effectiveScheduleDays && declaredDeadline && Math.abs(effectiveScheduleDays - declaredDeadline) > 1) {
     issues.push({
       code: "DEADLINE_MISMATCH",
       severity: "blocker",
@@ -304,7 +374,7 @@ export function auditProposalBudget(input: AuditInput): BudgetIntegrityReport {
     });
   }
 
-  if (configuredPhysicalCount > 0) {
+  if (constructionValidation && configuredPhysicalCount > 0) {
     if (configuredPhysicalCount < stages.length) {
       issues.push({
         code: "PARTIAL_PHYSICAL_WEIGHTS",
@@ -323,84 +393,141 @@ export function auditProposalBudget(input: AuditInput): BudgetIntegrityReport {
     }
   }
 
-  if (!presentation.areaTotalConstruida) {
-    issues.push({
-      code: "MISSING_BUILT_AREA",
-      severity: "warning",
-      field: "apresentacao.areaTotalConstruida",
-      message: "Área total construída não informada.",
-    });
+  // Regras contextuais: cada tipo de orçamento valida apenas o que faz sentido
+  // para sua operação. As regras estruturais acima (itens, quantidades, valores,
+  // total e validade) continuam universais.
+  if (constructionValidation) {
+    if (!presentation.areaTotalConstruida && validatorProfile !== "reforma") {
+      issues.push({
+        code: "MISSING_BUILT_AREA",
+        severity: "warning",
+        field: "apresentacao.areaTotalConstruida",
+        message: "Área total construída não informada.",
+      });
+    }
+
+    if (!Array.isArray(presentation.itensNaoInclusos) || presentation.itensNaoInclusos.length === 0) {
+      issues.push({
+        code: "MISSING_EXCLUSIONS",
+        severity: "warning",
+        field: "apresentacao.itensNaoInclusos",
+        message: "Nenhuma exclusão comercial da obra foi informada.",
+      });
+    }
+
+    if (!presentation.descricaoProjeto?.trim()) {
+      issues.push({
+        code: "MISSING_PROJECT_DESCRIPTION",
+        severity: "warning",
+        field: "apresentacao.descricaoProjeto",
+        message: validatorProfile === "reforma"
+          ? "O escopo da reforma ainda não foi descrito."
+          : "O entendimento do projeto ainda não foi descrito.",
+      });
+    }
+
+    if (!Array.isArray(presentation.premissasObra) || presentation.premissasObra.length === 0) {
+      issues.push({
+        code: "MISSING_PROJECT_ASSUMPTIONS",
+        severity: "warning",
+        field: "apresentacao.premissasObra",
+        message: validatorProfile === "icf_construction"
+          ? "Nenhuma premissa técnica da construção em ICF foi registrada."
+          : "Nenhuma premissa técnica da obra foi registrada.",
+      });
+    }
+
+    if (!presentation.memorialDescritivo?.trim()) {
+      issues.push({
+        code: "MISSING_MEMORIAL",
+        severity: "warning",
+        field: "apresentacao.memorialDescritivo",
+        message: validatorProfile === "icf_construction"
+          ? "Memorial descritivo da construção em ICF não informado."
+          : "Memorial descritivo não informado.",
+      });
+    }
+
+    if (!presentation.politicaReajuste?.trim()) {
+      issues.push({
+        code: "MISSING_ADJUSTMENT_POLICY",
+        severity: "warning",
+        field: "apresentacao.politicaReajuste",
+        message: "Política de reajuste não informada.",
+      });
+    }
+
+    if (!presentation.garantiasContratuais?.trim()) {
+      issues.push({
+        code: "MISSING_WARRANTY",
+        severity: "warning",
+        field: "apresentacao.garantiasContratuais",
+        message: "Garantias e assistência pós-obra não informadas.",
+      });
+    }
+  } else {
+    const descriptionMessages: Partial<Record<BudgetValidatorProfile, string>> = {
+      mobiliario: "Descrição e escopo do mobiliário não informados.",
+      marcenaria: "Descrição e escopo da marcenaria não informados.",
+      revestimentos: "Descrição das áreas e revestimentos do orçamento não informada.",
+      decoracao: "Descrição do escopo de decoração não informada.",
+      iluminacao: "Descrição do escopo de iluminação não informada.",
+      instalacoes: "Descrição do escopo das instalações não informada.",
+      interiores: "Descrição do escopo de interiores não informada.",
+    };
+    const descriptionMessage = descriptionMessages[validatorProfile];
+    if (descriptionMessage && !presentation.descricaoProjeto?.trim()) {
+      issues.push({
+        code: "MISSING_SCOPE_DESCRIPTION",
+        severity: "warning",
+        field: "apresentacao.descricaoProjeto",
+        message: descriptionMessage,
+      });
+    }
+
+    if ((validatorProfile === "mobiliario" || validatorProfile === "marcenaria" || validatorProfile === "iluminacao")
+      && !presentation.garantiasContratuais?.trim()) {
+      issues.push({
+        code: "MISSING_PRODUCT_WARRANTY",
+        severity: "warning",
+        field: "apresentacao.garantiasContratuais",
+        message: validatorProfile === "marcenaria"
+          ? "Condições de garantia da marcenaria não informadas."
+          : validatorProfile === "iluminacao"
+            ? "Condições de garantia dos itens de iluminação não informadas."
+            : "Condições de garantia do mobiliário não informadas.",
+      });
+    }
   }
 
-  if (!Array.isArray(presentation.itensNaoInclusos) || presentation.itensNaoInclusos.length === 0) {
-    issues.push({
-      code: "MISSING_EXCLUSIONS",
-      severity: "warning",
-      field: "apresentacao.itensNaoInclusos",
-      message: "Nenhuma exclusão comercial foi informada.",
-    });
-  }
-
-  if (!presentation.descricaoProjeto?.trim()) {
-    issues.push({
-      code: "MISSING_PROJECT_DESCRIPTION",
-      severity: "warning",
-      field: "apresentacao.descricaoProjeto",
-      message: "O entendimento do projeto ainda não foi descrito.",
-    });
-  }
-
-  if (!Array.isArray(presentation.premissasObra) || presentation.premissasObra.length === 0) {
-    issues.push({
-      code: "MISSING_PROJECT_ASSUMPTIONS",
-      severity: "warning",
-      field: "apresentacao.premissasObra",
-      message: "Nenhuma premissa técnica da obra foi registrada.",
-    });
-  }
-
-  if (!presentation.memorialDescritivo?.trim()) {
-    issues.push({
-      code: "MISSING_MEMORIAL",
-      severity: "warning",
-      field: "apresentacao.memorialDescritivo",
-      message: "Memorial descritivo não informado.",
-    });
-  }
-
-  if (!presentation.politicaReajuste?.trim()) {
-    issues.push({
-      code: "MISSING_ADJUSTMENT_POLICY",
-      severity: "warning",
-      field: "apresentacao.politicaReajuste",
-      message: "Política de reajuste não informada.",
-    });
-  }
-
-  if (!presentation.garantiasContratuais?.trim()) {
-    issues.push({
-      code: "MISSING_WARRANTY",
-      severity: "warning",
-      field: "apresentacao.garantiasContratuais",
-      message: "Garantias e assistência pós-obra não informadas.",
-    });
-  }
-
+  // Condições comerciais são úteis em qualquer orçamento, mas a mensagem muda
+  // conforme o tipo de fornecimento.
   if (!presentation.condicoesPagamentoDetalhadas?.trim()) {
     issues.push({
       code: "MISSING_PAYMENT_MILESTONES",
       severity: "warning",
       field: "apresentacao.condicoesPagamentoDetalhadas",
-      message: "Os marcos e regras de pagamento ainda não foram detalhados.",
+      message: constructionValidation
+        ? "Os marcos e regras de pagamento da obra ainda não foram detalhados."
+        : "As condições de pagamento ainda não foram detalhadas.",
     });
   }
 
   if (!input.prazoEntrega) {
+    const deadlineMessages: Partial<Record<BudgetValidatorProfile, string>> = {
+      mobiliario: "Prazo de fornecimento/entrega do mobiliário não informado.",
+      marcenaria: "Prazo de fabricação e instalação da marcenaria não informado.",
+      revestimentos: "Prazo de fornecimento dos revestimentos não informado.",
+      decoracao: "Prazo de fornecimento dos itens de decoração não informado.",
+      iluminacao: "Prazo de fornecimento/instalação da iluminação não informado.",
+      instalacoes: "Prazo de execução das instalações não informado.",
+      interiores: "Prazo de fornecimento/execução não informado.",
+    };
     issues.push({
       code: "MISSING_DEADLINE",
       severity: "warning",
       field: "prazoEntrega",
-      message: "Prazo de entrega não informado.",
+      message: deadlineMessages[validatorProfile] ?? "Prazo de entrega não informado.",
     });
   }
 
@@ -409,6 +536,8 @@ export function auditProposalBudget(input: AuditInput): BudgetIntegrityReport {
 
   return {
     ok: blockers === 0,
+    validatorProfile,
+    validatorLabel,
     blockers,
     warnings,
     calculatedTotal,
