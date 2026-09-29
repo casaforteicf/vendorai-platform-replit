@@ -348,8 +348,23 @@ export function useRenderStudioController() {
 
   // Apply melhoria (P2-17: structured preservation; P2-18: parentVersionId)
   async function applyMelhoria() {
-    if (!renderId || !melhoriaPrompt.trim()) return;
-    if (loading) return;
+    if (!renderId || loading) return;
+
+    const automaticQualityPrompt =
+      "Refine this architectural render to premium photorealistic quality. Increase true visual definition, fine material texture, edge clarity, realistic reflections, global illumination, shadow quality, tonal range and micro-detail. Preserve the exact architecture, geometry, layout, camera, perspective, openings, cabinetry, furniture positions, circulation and proportions. Do not redesign, crop, zoom, mirror or change the composition.";
+
+    const effectivePrompt = melhoriaMode === "improve"
+      ? [automaticQualityPrompt, melhoriaPrompt.trim()].filter(Boolean).join(" ")
+      : melhoriaPrompt.trim();
+
+    if (
+      melhoriaMode !== "improve" &&
+      !effectivePrompt &&
+      !(melhoriaMode === "change-material" && selectedMaterial)
+    ) {
+      setErr("Descreva a alteração desejada ou selecione um material.");
+      return;
+    }
     setLoading(true); setErr(null); setSaveState("saving");
     startProgressStages();
     const currentRenderId = renderId;
@@ -371,11 +386,20 @@ export function useRenderStudioController() {
           melhoriaMode === "change-lighting" ? "Ajuste de iluminação." : null,
           selectedMaterial ? `Material selecionado: ${selectedMaterial.nome} (${selectedMaterial.categoria}${selectedMaterial.fornecedor ? `, ${selectedMaterial.fornecedor}` : ""}).` : null,
           selections.length > 0 ? `Aplicar somente na região selecionada: ${selections.map(s => s.label || "seleção").join(", ")}.` : null,
-          melhoriaPrompt.trim(),
+          effectivePrompt,
+          melhoriaMode === "improve"
+            ? "Executar refino global em alta qualidade sobre a imagem inteira, sem exigir máscara ou seleção."
+            : null,
           "Preservar absolutamente medidas, câmera, perspectiva, layout, marcenaria, circulação e proporções. Criar nova versão sem substituir a original.",
         ].filter(Boolean).join(" "),
-        mask_zones:       [...selections.map(s => s.label || "selecao"), melhoriaMode === "change-material" ? "material" : ""].filter(Boolean),
-        mask_coordinates: selections.length > 0 ? selections.map(s => ({ x: s.x, y: s.y, w: s.w, h: s.h })) : undefined,
+        mask_zones: melhoriaMode === "improve"
+          ? []
+          : [...selections.map(s => s.label || "selecao"), melhoriaMode === "change-material" ? "material" : ""].filter(Boolean),
+        mask_coordinates: melhoriaMode === "improve"
+          ? undefined
+          : selections.length > 0
+            ? selections.map(s => ({ x: s.x, y: s.y, w: s.w, h: s.h }))
+            : undefined,
         createNewVersion: true,
         preserveGeometry: preservationLocks.geometry,
         preserveCamera:   preservationLocks.camera,
@@ -386,7 +410,7 @@ export function useRenderStudioController() {
       const data = await waitForRenderCompletion(render_id);
       const newVersion: RenderVersion = {
         id: render_id, url: normalizeRenderMediaUrl(data.result_image_url),
-        label: `Versão ${versions.length + 1} · ${melhoriaMode === "change-material" ? selectedMaterial?.nome ?? "Material" : melhoriaMode === "change-lighting" ? "Iluminação" : "Melhoria"}`,
+        label: `Versão ${versions.length + 1} · ${melhoriaMode === "change-material" ? selectedMaterial?.nome ?? "Material" : melhoriaMode === "change-lighting" ? "Iluminação" : "Alta qualidade"}`,
         operationType: melhoriaMode === "change-material" ? "material" : melhoriaMode === "change-lighting" ? "lighting" : "improve",
         parentVersionId: currentRenderId, // P2-18: imutável, rastreável
         createdAt: new Date(),

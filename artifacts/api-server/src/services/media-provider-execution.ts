@@ -11,6 +11,7 @@ import { resolveMediaProvider } from "./media-provider-router.js";
 export async function generateRenderPreserve(input: {
   imageDataUrl: string;
   prompt: string;
+  aspectRatio?: string;
   logger?: Logger;
   signal?: AbortSignal;
   resumePredictionId?: string;
@@ -23,6 +24,7 @@ export async function generateRenderPreserve(input: {
       const base64 = await callBflKontextPro({
         imageDataUrl: input.imageDataUrl,
         prompt: input.prompt,
+        aspectRatio: input.aspectRatio,
         logger: input.logger,
       });
       return { base64, provider: "bfl", model: "flux-kontext-pro" };
@@ -35,6 +37,7 @@ export async function generateRenderPreserve(input: {
   const base64 = await callReplicateFluxKontext({
     imageDataUrl: input.imageDataUrl,
     prompt: input.prompt,
+    aspectRatio: input.aspectRatio,
     logger: input.logger,
     signal: input.signal,
     resumePredictionId: input.resumePredictionId,
