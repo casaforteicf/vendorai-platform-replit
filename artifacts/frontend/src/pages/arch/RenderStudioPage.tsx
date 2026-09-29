@@ -588,8 +588,15 @@ export default function RenderStudioPage() {
   const shellRef = useRef<HTMLDivElement>(null);
   const [, setLocation] = useLocation();
   const [freshStart] = useState(() => {
-    const requested = new URLSearchParams(window.location.search).get("new") === "1";
+    const params = new URLSearchParams(window.location.search);
+    const requested = params.get("new") === "1";
     if (requested) clearRenderDraftSession();
+
+    const requestedProjectId = params.get("project_id")?.trim();
+    const requestedAmbiente = params.get("ambiente")?.trim();
+    if (requestedProjectId) localStorage.setItem("arq_last_project_id", requestedProjectId);
+    if (requestedAmbiente) sessionStorage.setItem(SK.ambiente, requestedAmbiente);
+
     return requested;
   });
   const [projectId, setProjectId] = useState<string | null>(() => localStorage.getItem("arq_last_project_id"));
