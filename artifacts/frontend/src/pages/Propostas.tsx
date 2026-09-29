@@ -169,6 +169,15 @@ type BudgetIntegrityReport = {
   warnings: number;
   calculatedTotal: number;
   storedTotal: number;
+  stageCount?: number;
+  effectiveScheduleDays?: number | null;
+  financialWeights?: Array<{
+    stageId: string;
+    stageName: string;
+    stageOrder: number;
+    value: number;
+    financialPercent: number;
+  }>;
   issues: BudgetIntegrityIssue[];
 };
 
@@ -3194,6 +3203,21 @@ function newFreeItem(): FreeItem {
     });
 
     setProposalStageSchedule(next);
+
+    const starts = Object.values(next)
+      .map((stage) => proposalDate(stage.inicioPrevisto))
+      .filter((value): value is Date => Boolean(value));
+    const ends = Object.values(next)
+      .map((stage) => proposalDate(stage.fimPrevisto))
+      .filter((value): value is Date => Boolean(value));
+    if (starts.length && ends.length) {
+      const first = starts.sort((a, b) => a.getTime() - b.getTime())[0];
+      const last = ends.sort((a, b) => b.getTime() - a.getTime())[0];
+      if (first && last) {
+        const effectiveDays = Math.max(1, Math.ceil((last.getTime() - first.getTime()) / 86_400_000) + 1);
+        form.setValue("prazoEntrega", `${effectiveDays} dias`, { shouldDirty: true, shouldTouch: true });
+      }
+    }
   }
 
   function addProposalPhase(stageId: string) {
@@ -3272,6 +3296,10 @@ function newFreeItem(): FreeItem {
       (sum, stage) => sum + Number(proposalStageSchedule[stage.id]?.percentualFisico ?? 0),
       0,
     );
+    const totalScheduleDuration = orcamentoEtapas.reduce(
+      (sum, stage) => sum + Math.max(1, Number(proposalStageSchedule[stage.id]?.duracaoDias ?? 1)),
+      0,
+    );
 
     const addSegment = (
       label: string,
@@ -3320,7 +3348,9 @@ function newFreeItem(): FreeItem {
         ? Number(schedule.percentualFisico)
         : physicalTotalConfigured > 0
           ? 0
-          : total > 0 ? (stageValue / total) * 100 : 0;
+          : totalScheduleDuration > 0
+            ? (Math.max(1, Number(schedule.duracaoDias ?? 1)) / totalScheduleDuration) * 100
+            : 0;
       const phases = schedule.fases ?? [];
       if (phases.length) {
         const assigned = phases.reduce((sum, phase) => sum + Number(phase.percentualEtapa ?? 0), 0);
@@ -4728,7 +4758,14 @@ function newFreeItem(): FreeItem {
                             <div className="flex flex-wrap items-start justify-between gap-2">
                               <div>
                                 <p className="text-sm font-semibold">Etapa {index + 1} · {etapa.nome || `Etapa ${index + 1}`}</p>
-                                <p className="text-[11px] font-medium text-foreground/80">Valor contratado: {fmtCurrency(stageBudgetValue)}</p>
+                                <p className="text-[11px] font-medium text-foreground/80">
+                                  Valor contratado: {fmtCurrency(stageBudgetValue)}
+                                  <span className="ml-2 text-muted-foreground">
+                                    · Peso financeiro {((mode === "catalogo" ? catTotal : mode === "livre" ? freeTotal : importValorTotal) > 0
+                                      ? (stageBudgetValue / (mode === "catalogo" ? catTotal : mode === "livre" ? freeTotal : importValorTotal)) * 100
+                                      : 0).toFixed(2)}%
+                                  </span>
+                                </p>
                               </div>
                               <Button type="button" variant="outline" size="sm" onClick={() => addProposalPhase(etapa.id)}>
                                 <Plus className="mr-1 h-3.5 w-3.5" /> Adicionar fase
@@ -4821,7 +4858,7 @@ function newFreeItem(): FreeItem {
 
                             <div className="grid gap-2 md:grid-cols-[140px_1fr] md:items-end">
                               <div className="space-y-1">
-                                <Label className="text-xs">Peso físico (%)</Label>
+                                <Label className="text-xs">Avanço físico (%)</Label>
                                 <Input
                                   type="number"
                                   min="0"
