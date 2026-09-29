@@ -2745,10 +2745,12 @@ function renderStudioOrderedProposal(args: {
     }
 
     if (key === "diferenciais") {
-      // Evita repetir o mesmo texto e os mesmos bullets de "Solução proposta".
-      // Só entra conteúdo exclusivo/manual ou benefícios ainda não usados no bloco do produto.
+      // Quando já existe "Solução proposta", um segundo bloco automático de diferenciais
+      // tende a repetir exatamente os mesmos argumentos. Só preservamos este módulo
+      // quando houver conteúdo manual exclusivo.
       const manual = moduleManualContent(module);
-      const solutionBenefits = extractProposalBenefits(solutionInfo.agents, proofInfo.items);
+      if (moduleByKey("produto_servico") && !manual) return "";
+      const solutionBenefits = moduleByKey("produto_servico") ? [] : extractProposalBenefits(solutionInfo.agents, proofInfo.items);
       if (!manual && !solutionBenefits.length) return "";
       return genericPage(module, index,
         (manual ? '<p class="studio-copy">' + esc(manual) + '</p>' : '') +
@@ -2915,13 +2917,17 @@ function renderStudioOrderedProposal(args: {
       '<p class="studio-copy">' + esc(moduleManualContent(module) || moduleText(module, "description") || "Conteúdo desta página definido pelo modelo do tenant.") + '</p>');
   };
 
-  const pages = modules.map(renderModule).join("\n");
+  const renderedModules = modules
+    .map((module, index) => ({ module, html: renderModule(module, index) }))
+    .filter((entry) => entry.html.trim().length > 0);
+  const pages = renderedModules.map((entry) => entry.html).join("\n");
   const preset = String(builder.visualStyle?.preset ?? "corporativo");
   const webNav = interactive
     ? '<nav class="studio-web-nav"><div class="studio-web-nav-inner"><div class="studio-web-brand">' +
         (tenantLogoUrl ? '<img src="' + esc(tenantLogoUrl) + '" alt="' + esc(company) + '" />' : '<strong>' + esc(company) + '</strong>') +
         '</div><div class="studio-web-links">' +
-        modules
+        renderedModules
+          .map((entry) => entry.module)
           .filter((module) => !["capa","validade_inicio","imagem_por_etapa"].includes(String(module.key ?? "")))
           .slice(0, 6)
           .map((module) => '<a href="#sec-' + esc(module.key) + '-0">' + esc(moduleDisplayTitle(module)) + '</a>')
