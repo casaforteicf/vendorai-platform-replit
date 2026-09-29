@@ -13,7 +13,7 @@ export function RenderStudioFooter({ projectTitle, ambiente, saveState, lastSave
   onHelp: () => void; onShortcuts: () => void;
 }) {
   const dotColor = saveState === "saved" ? D.green : saveState === "saving" ? D.amber : saveState === "error" ? D.red : D.amber;
-  const saveLabel = saveState === "saving" ? "Salvando…" : saveState === "error" ? "Falha ao salvar" : saveState === "unsaved" ? "Alterações locais" : lastSavedAt ? `Salvo às ${lastSavedAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` : "Salvo automaticamente";
+  const saveLabel = saveState === "saving" ? "Salvando…" : saveState === "error" ? "Falha na operação" : saveState === "unsaved" ? "Alterações locais" : lastSavedAt ? `Salvo às ${lastSavedAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` : "Salvo automaticamente";
   return (
     <div style={{ height: 28, display: "flex", alignItems: "center", padding: "0 14px", background: D.bg, borderTop: `1px solid ${D.border}`, flexShrink: 0, gap: 16 }}>
       <span role="status" style={{ fontSize: 10, color: D.dim, display: "flex", alignItems: "center", gap: 4 }}>
