@@ -23,3 +23,9 @@ export const renderStudioInputStyle: CSSProperties = {
   fontFamily: "inherit",
   boxSizing: "border-box",
 };
+
+export const RENDER_STUDIO_GLOBAL_STYLES = `
+  *:focus-visible { outline: 2px solid #F97316; outline-offset: 2px; border-radius: 4px; }
+  button:disabled { pointer-events: none; }
+  [aria-disabled="true"] { pointer-events: none; }
+`;

@@ -1,3 +1,39 @@
+export type RenderStudioPreset =
+  | "facade_exterior_preserve"
+  | "interior_layout_preserve"
+  | "material_detail_enhancer"
+  | "distortion_correction"
+  | "camera_perspective_lock"
+  | "joinery_precision"
+  | "roof_openings_lock"
+  | "lighting_realism"
+  | "landscape_controlled"
+  | "pool_water_fidelity";
+
+export type RenderStudioVideoMovement =
+  | "zoom_in_soft" | "zoom_out_soft" | "pan_left_soft" | "pan_right_soft"
+  | "tilt_up_soft" | "tilt_down_soft" | "orbit_left_soft" | "orbit_right_soft"
+  | "parallax_soft" | "cinematic_micro_movement";
+
+export type RenderStudioImprovementMode = "improve" | "change-material" | "change-lighting";
+
+export type RenderStudioCatalogItem = {
+  id: string;
+  nome: string;
+  categoria: string;
+  fornecedor?: string;
+  imagens?: string[];
+  propriedades?: Record<string, string>;
+  preco?: number;
+  referencia?: string;
+};
+
+export type RenderStudioApprovalRecord = {
+  by: string;
+  at: Date;
+  note: string;
+};
+
 export type RenderStudioEventLogEntry = {
   id: string;
   type: string;
