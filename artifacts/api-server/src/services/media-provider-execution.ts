@@ -30,7 +30,7 @@ export async function generateRenderPremiumOpenAI(input: {
   const model = arqdorImageModel();
   const image = await toFile(source, "arqdor-reference.png", { type: mime });
 
-  let mask: Awaited<ReturnType<typeof toFile>> | undefined;
+  let mask: any;
   if (input.maskDataUrl) {
     const decodedMask = decodeDataUrl(input.maskDataUrl, "máscara do Render Premium");
     mask = await toFile(decodedMask.source, "arqdor-mask.png", { type: decodedMask.mime });
