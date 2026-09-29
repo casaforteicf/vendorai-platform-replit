@@ -182,20 +182,26 @@ export function useRenderStudioController() {
       const restored = JSON.parse(sv) as RenderVersion[];
       const normalized = Array.isArray(restored) ? restored.map(normalizeRenderVersion) : [];
       setVersions(normalized);
-      const approvedVersion = normalized.find((version) => Boolean(version.approvedBy && version.approvedAt) || version.operationType === "approved");
-      if (approvedVersion) {
-        const approvedAt = approvedVersion.approvedAt ? new Date(approvedVersion.approvedAt) : new Date();
-        setApproved(true);
-        setApprovalRecord({
-          by: approvedVersion.approvedBy ?? "usuário autenticado",
-          at: approvedAt,
-          note: approvedVersion.approvalNote ?? "",
-        });
-        if (ss === "aprovar") setStep("especificacao");
-      }
+
+      // Aprovação pertence à versão selecionada, nunca ao conjunto inteiro.
+      const selectedVersion = sri
+        ? normalized.find((version) => version.id === sri) ?? null
+        : normalized[0] ?? null;
+      const selectedApproved = Boolean(selectedVersion?.approvedBy || selectedVersion?.approvedAt);
+      setApproved(selectedApproved);
+      setApprovalRecord(
+        selectedApproved && selectedVersion
+          ? {
+              by: selectedVersion.approvedBy ?? "usuário autenticado",
+              at: selectedVersion.approvedAt ? new Date(selectedVersion.approvedAt) : new Date(),
+              note: selectedVersion.approvalNote ?? "",
+            }
+          : null,
+      );
+      setApprovalNote(selectedVersion?.approvalNote ?? "");
     } catch {}
     if (siu) setImageDataUrl(siu);
-    if (ss && ss !== "aprovar") setStep(ss);
+    if (ss) setStep(ss);
     // P1-11: orphan job recovery
     if (sri && !sru) {
       setIsRecovering(true);
@@ -319,6 +325,13 @@ export function useRenderStudioController() {
     const previousRenderId = renderId;
     const nextVersionNumber = versions.length + 1;
     setLoading(true); setErr(null); setRenderUrl(null); setRenderId(null); setSaveState("saving");
+    // Nova versão começa com estágio próprio e sem herdar aprovação/especificação.
+    setApproved(false);
+    setApprovalRecord(null);
+    setApprovalNote("");
+    setSpecDone(false);
+    setSpecData([]);
+    setSpecificationId(null);
     startProgressStages();
     try {
       const renderPresets: RenderPreset[] = ["camera_perspective_lock"];
@@ -496,6 +509,13 @@ export function useRenderStudioController() {
         materialName: selectedMaterial?.nome,
       };
       setRenderUrl(normalizeRenderMediaUrl(data.result_image_url)); setRenderId(render_id);
+      // Cada melhoria cria uma nova versão ainda não aprovada.
+      setApproved(false);
+      setApprovalRecord(null);
+      setApprovalNote("");
+      setSpecDone(false);
+      setSpecData([]);
+      setSpecificationId(null);
       setVersions(v => [newVersion, ...v]);
       logEvent("version_created", `${newVersion.label} criada`);
       // Update comparison B automatically
@@ -559,7 +579,7 @@ export function useRenderStudioController() {
       // P2-20: mark version as approved
       setVersions(vs => vs.map((v) => v.id === renderId
         ? { ...v, approvedBy: userName, approvedAt: record.at, approvalNote }
-        : { ...v, approvedBy: undefined, approvedAt: undefined, approvalNote: undefined }));
+        : v));
       setSaveState("saved"); setLastSavedAt(new Date()); go("especificacao");
     } catch (e: unknown) { setErr(categorizeError(e)); setSaveState("error"); }
     finally { setLoading(false); }
@@ -664,6 +684,11 @@ export function useRenderStudioController() {
     setErr(null);
     setSaveState("saved");
     setLastSavedAt(new Date());
+
+    // A tela acompanha o estágio real da versão selecionada.
+    if (version.approvedAt || version.approvedBy) go("especificacao");
+    else go("aprovar");
+
     logEvent("version_selected", `${version.label} selecionada`);
   }
 
