@@ -55,8 +55,14 @@ export const agendamentosTable = pgTable("agendamentos", {
   gerarMeet: boolean("gerar_meet").default(false),
   /** humano | agente_ia */
   criadoPor: text("criado_por").default("humano"),
-  /** [{nome, email, telefone}] — participantes extras além de responsavel e lead */
-  participantes: jsonb("participantes").$type<Array<{ nome: string; email?: string; telefone?: string }>>().default([]),
+  /** Participantes extras: equipe e/ou cliente. userId permite checar conflitos de agenda internos. */
+  participantes: jsonb("participantes").$type<Array<{
+    nome: string;
+    email?: string;
+    telefone?: string;
+    userId?: string;
+    tipo?: "equipe" | "cliente";
+  }>>().default([]),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
