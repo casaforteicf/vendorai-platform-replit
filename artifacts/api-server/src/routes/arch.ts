@@ -4644,14 +4644,35 @@ router.post(
       }
 
       const metadata = await sharp(file.buffer).metadata();
-      const width = metadata.width ?? 0;
-      const height = metadata.height ?? 0;
-      if (Math.min(width, height) < 1024) {
-        return res.status(400).json({
-          error: `${file.originalname}: resolução insuficiente. O menor lado deve ter pelo menos 1024 px; 2048 px ou mais é recomendado.`,
-          width,
-          height,
-        });
+      const sourceWidth = metadata.width ?? 0;
+      const sourceHeight = metadata.height ?? 0;
+      if (!sourceWidth || !sourceHeight) {
+        return res.status(400).json({ error: `${file.originalname}: não foi possível identificar as dimensões da imagem.` });
+      }
+
+      // Nunca bloquear o cadastro por baixa resolução. Quando necessário,
+      // fazemos uma melhoria técnica conservadora antes de salvar, preservando
+      // proporção, cores e desenho do material. O alvo de 2048 px no menor lado
+      // deixa a textura mais adequada para render sem inventar conteúdo.
+      const sourceShortSide = Math.min(sourceWidth, sourceHeight);
+      const shouldEnhance = sourceShortSide < 1024;
+      let outputBuffer = file.buffer;
+      let width = sourceWidth;
+      let height = sourceHeight;
+
+      if (shouldEnhance) {
+        const scale = 2048 / sourceShortSide;
+        width = Math.round(sourceWidth * scale);
+        height = Math.round(sourceHeight * scale);
+        outputBuffer = await sharp(file.buffer)
+          .resize({
+            width,
+            height,
+            fit: "fill",
+            kernel: sharp.kernel.lanczos3,
+          })
+          .sharpen({ sigma: 0.7 })
+          .toBuffer();
       }
 
       const imageId = crypto.randomUUID();
@@ -4660,7 +4681,7 @@ router.post(
       const parts = objectPath.replace(/^\//, "").split("/");
       const bucketName = parts[0]!;
       const objectName = parts.slice(1).join("/");
-      await objectStorageClient.bucket(bucketName).file(objectName).save(file.buffer, {
+      await objectStorageClient.bucket(bucketName).file(objectName).save(outputBuffer, {
         contentType: file.mimetype,
         resumable: false,
       });
@@ -4676,7 +4697,7 @@ router.post(
         mimeType: file.mimetype,
         width,
         height,
-        fileSize: file.size,
+        fileSize: outputBuffer.length,
         qualityScore: String(score),
         status: "ativa",
       }).returning();
@@ -4698,7 +4719,7 @@ router.post(
       created: createdImages,
       images: allImages,
       primaryImageId: best?.id ?? material.primaryImageId ?? null,
-      qualityRule: { minimumShortSidePx: 1024, recommendedShortSidePx: 2048 },
+      qualityRule: { minimumShortSidePx: 1024, recommendedShortSidePx: 2048, autoEnhanceBelowMinimum: true },
     });
   },
 );
