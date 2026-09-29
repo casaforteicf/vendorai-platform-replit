@@ -23,6 +23,14 @@ export type ConceptPlanObject = {
   supplier?: string;
   price?: number;
   model3dUrl?: string;
+  materialSelections?: Record<string, {
+    materialId: string;
+    materialName: string;
+    textureUrl?: string;
+    grupo?: string;
+    priceDelta?: number;
+  }>;
+  configuredPrice?: number;
 };
 
 type Props = {
