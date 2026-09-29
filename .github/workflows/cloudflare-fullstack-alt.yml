@@ -1,5 +1,5 @@
 name: Cloudflare Fullstack Alternative
-# Manual alternative redeploy marker: 2026-09-29-v2
+# Manual alternative redeploy marker: 2026-09-29-v3
 
 on:
   push:
