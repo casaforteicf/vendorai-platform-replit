@@ -1341,12 +1341,18 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     }
   }
 
-  const proposalBuilderPreviewTotal = Number(selectedOrcamento?.valorTotal ?? 0);
-  const proposalBuilderPreviewDeadline = String(selectedOrcamento?.prazoEntrega ?? "").trim();
+  const proposalBuilderPreviewTotal = proposalBuilderPreviewMode === "budget" ? Number(selectedOrcamento?.valorTotal ?? 0) : 1250000;
+  const proposalBuilderPreviewDeadline = proposalBuilderPreviewMode === "budget"
+    ? String(selectedOrcamento?.prazoEntrega ?? "").trim()
+    : "Prazo conforme orçamento";
   const proposalBuilderPreviewCompany = String((profileQuery.data as any)?.nomeFantasia || (profileQuery.data as any)?.razaoSocial || "Sua empresa");
   const proposalBuilderPreviewLogo = normalizeTenantLogoUrl(String((profileQuery.data as any)?.logoUrl || ""));
-  const proposalBuilderPreviewTitle = String(selectedOrcamento?.titulo || "Proposta comercial");
-  const proposalBuilderPreviewClient = String((lead as any)?.nome || "Cliente");
+  const proposalBuilderPreviewTitle = proposalBuilderPreviewMode === "budget"
+    ? String(selectedOrcamento?.titulo || "Proposta comercial")
+    : "Título da proposta";
+  const proposalBuilderPreviewClient = proposalBuilderPreviewMode === "budget"
+    ? String((lead as any)?.nome || "Cliente")
+    : "Nome do cliente";
   const proposalBuilderPreviewExcluded = Array.isArray(selectedOrcamento?.apresentacao?.itensNaoInclusos)
     ? selectedOrcamento.apresentacao.itensNaoInclusos.filter((item: unknown): item is string => typeof item === "string")
     : [];
