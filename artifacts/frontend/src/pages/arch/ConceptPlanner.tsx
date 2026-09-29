@@ -1460,11 +1460,32 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         setProjectBrief(draft.configuration?.projectBrief ?? null);
         const loadedScope = draft.configuration?.projectScope;
         if (loadedScope === "house" || loadedScope === "room") {
+          const loadedStartWithTerrain = typeof draft.configuration?.startWithTerrain === "boolean"
+            ? draft.configuration.startWithTerrain
+            : null;
+          const loadedStartSourceChosen = Boolean(draft.configuration?.startSourceChosen);
           setProjectScope(loadedScope);
-          setStartWithTerrain(typeof draft.configuration?.startWithTerrain === "boolean" ? draft.configuration.startWithTerrain : loadedScope === "house");
-          setStartSourceChosen(Boolean(draft.configuration?.startSourceChosen));
-          setStartWizardStage("source");
-          setStartChooserDismissed(Boolean(draft.configuration?.startSourceChosen));
+          setStartWithTerrain(loadedStartWithTerrain);
+          setStartSourceChosen(loadedStartSourceChosen);
+
+          if (loadedStartSourceChosen) {
+            setStartWizardStage("source");
+            setStartChooserDismissed(true);
+          } else if (loadedScope === "room") {
+            setStartWizardStage("source");
+            setStartChooserDismissed(false);
+          } else if (loadedStartWithTerrain === null) {
+            setStartWizardStage("terrain");
+            setStartChooserDismissed(false);
+          } else if (loadedStartWithTerrain === false) {
+            setStartWizardStage("source");
+            setStartChooserDismissed(false);
+          } else {
+            // O usuário escolheu começar pelo terreno. Mantém o workspace do terreno aberto;
+            // ao avançar para Projeto, goToJourneyStage reabre a escolha da origem.
+            setStartWizardStage("source");
+            setStartChooserDismissed(true);
+          }
         }
         setRooms(loadedRooms);
         setOpeningOverrides(draft.openingOverrides && typeof draft.openingOverrides === "object" ? draft.openingOverrides : {});
@@ -1567,8 +1588,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       const saved = (await response.json()) as ConceptDraftResponse;
       conceptIdRef.current = saved.id;
       setConceptId(saved.id);
-      if (!targetId && typeof window !== "undefined") {
-        // Mantém o pré-projeto recém-criado aberto se a página for recarregada.
+      if (!targetId && typeof window !== "undefined" && (startSourceChosen || (projectScope === "house" && startWithTerrain === true && startChooserDismissed))) {
+        // Só transforma a URL em projeto existente depois que o usuário concluiu uma decisão
+        // explícita de entrada. O autosave do assistente não pode pular/encerrar o intake.
         window.history.replaceState(null, "", `/arch/concept?id=${encodeURIComponent(saved.id)}`);
       }
       return saved.id;
