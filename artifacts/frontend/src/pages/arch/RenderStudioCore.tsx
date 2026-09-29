@@ -15,6 +15,17 @@ import { MediaAssetPicker, mediaAssetUrl, type MediaPickerAsset } from "@/compon
 import type { RenderStudioStep as Step } from "./render-studio/renderStudioModel";
 import { RENDER_STUDIO_STEPS as STEPS, renderStudioStepIndex as stepIndex } from "./render-studio/renderStudioModel";
 import { RenderStudioTopbar as Topbar, RenderStudioSidebar as LeftSidebar } from "./render-studio/RenderStudioNavigation";
+import {
+  RENDER_STAGES,
+  categorizeRenderError as categorizeError,
+  normalizeRenderMediaUrl,
+  renderApiGet as apiGet,
+  renderApiPatch as apiPatch,
+  renderApiPost as apiPost,
+  renderFileToDataUrl as fileToDataUrl,
+  waitForRenderCompletion,
+  waitForRenderVideoCompletion as waitForVideoCompletion,
+} from "./render-studio/renderStudioApi";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -78,109 +89,10 @@ const SK = {
 
 // ─── API helpers ───────────────────────────────────────────────────────────────
 
-function authHeader(): Record<string, string> {
-  const tok = localStorage.getItem("vendorai_token") ?? "";
-  return tok ? { Authorization: `Bearer ${tok}` } : {};
-}
-async function apiPost(path: string, body: unknown) {
-  const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", ...authHeader() } as Record<string, string>, body: JSON.stringify(body) });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error((data as any).error ?? `Erro ${res.status}`);
-  return data;
-}
-async function apiGet(path: string) {
-  const res = await fetch(path, { headers: authHeader() as HeadersInit });
-  if (!res.ok) throw new Error(`Erro ${res.status}`);
-  return res.json().catch(() => { throw new Error("Resposta inválida do servidor"); });
-}
-async function apiPatch(path: string, body: unknown) {
-  const res = await fetch(path, { method: "PATCH", headers: { "Content-Type": "application/json", ...authHeader() } as Record<string, string>, body: JSON.stringify(body) });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error((data as any).error ?? `Erro ${res.status}`);
-  return data;
-}
-
-function normalizeRenderMediaUrl(value: string | null | undefined): string {
-  const raw = (value ?? "").trim();
-  if (!raw) return "";
-  if (/^(data:|blob:)/i.test(raw)) return raw;
-
-  try {
-    const parsed = new URL(raw, window.location.origin);
-    const pathname = parsed.pathname;
-
-    if (pathname.startsWith("/api/storage/objects/")) {
-      return `${pathname}${parsed.search}`;
-    }
-    if (pathname.startsWith("/objects/")) {
-      return `/api/storage${pathname}${parsed.search}`;
-    }
-  } catch {
-    // segue para os formatos relativos legados abaixo
-  }
-
-  if (raw.startsWith("/api/storage/objects/")) return raw;
-  if (raw.startsWith("/objects/")) return `/api/storage${raw}`;
-  if (raw.startsWith("objects/")) return `/api/storage/${raw}`;
-
-  // Compatibilidade com registros antigos que salvaram apenas o nome/chave.
-  if (!raw.startsWith("/") && !/^https?:\/\//i.test(raw)) {
-    return `/api/storage/objects/${raw.replace(/^\/+/, "")}`;
-  }
-
-  return raw;
-}
-
 function normalizeRenderVersion(version: RenderVersion): RenderVersion {
   const normalized = normalizeRenderMediaUrl(version.url);
   return normalized && normalized !== version.url ? { ...version, url: normalized } : version;
 }
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result as string); r.onerror = reject; r.readAsDataURL(file); });
-}
-async function waitForVideoCompletion(jobId: string, timeoutAttempts = 120) {
-  let attempts = 0;
-  while (attempts < timeoutAttempts) {
-    await new Promise((r) => setTimeout(r, 3000));
-    const data = await apiGet(`/api/arch/ai-render-video/${jobId}`);
-    if (data.status === "done" && data.video_url) return data;
-    if (data.status === "error") throw new Error(data.error ?? "Erro ao gerar vídeo do render");
-    attempts++;
-  }
-  throw new Error("TIMEOUT");
-}
-
-async function waitForRenderCompletion(renderId: string, timeoutAttempts = 90) {
-  let attempts = 0;
-  while (attempts < timeoutAttempts) {
-    await new Promise((r) => setTimeout(r, 2000));
-    const data = await apiGet(`/api/arch/ai-render/${renderId}`);
-    if (data.status === "concluido" && data.file_available !== false && (data.display_url || data.result_image_url)) {
-      return { ...data, result_image_url: data.display_url || data.result_image_url };
-    }
-    if (data.status === "concluido" && data.file_available === false) {
-      throw new Error("O arquivo do render não está disponível no Storage. Gere uma nova versão.");
-    }
-    if (data.status === "erro") throw new Error(data.erro_msg ?? "Erro no processamento do render");
-    attempts++;
-  }
-  throw new Error("TIMEOUT");
-}
-function categorizeError(e: unknown): string {
-  const msg = e instanceof Error ? e.message : String(e);
-  if (msg === "TIMEOUT") return "O render demorou mais de 3 min. Clique em 'Tentar novamente' — a imagem e parâmetros são reutilizados.";
-  if (msg.includes("402") || msg.includes("429")) return "Limite de uso atingido. Aguarde alguns minutos e tente novamente.";
-  if (msg.includes("Failed to fetch") || msg.includes("NetworkError")) return "Sem conexão. Verifique sua internet e tente novamente.";
-  if (msg.includes("413")) return "Imagem muito grande. Reduza o tamanho e tente novamente.";
-  if (msg.includes("processamento")) return "O motor de IA encontrou um erro. Tente novamente com a mesma imagem.";
-  return msg;
-}
-
-const RENDER_STAGES = [
-  { label: "Preparando imagem e parâmetros…", afterMs: 0 },
-  { label: "Enviando para o motor de IA…",     afterMs: 3000 },
-  { label: "Gerando render…",                  afterMs: 8000 },
-];
 
 // ─── Design tokens ─────────────────────────────────────────────────────────────
 
