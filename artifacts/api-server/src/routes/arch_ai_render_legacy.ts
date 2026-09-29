@@ -36,7 +36,7 @@ import {
   bufferToDataUrl,
 } from "../lib/arch-render-pipeline.js";
 import sharp from "sharp";
-import { generateRenderCreate, generateRenderPreserve } from "../services/media-provider-execution.js";
+import { generateRenderCreate, generateRenderPreserve, generateRenderPremiumOpenAI } from "../services/media-provider-execution.js";
 import { captureGeneratedMedia } from "../services/media-library.js";
 import {
   buildArqdorFidelityBlock,
@@ -107,6 +107,7 @@ const renderBodySchema = z.object({
   concept_project_id: z.string().trim().min(1).optional(),
   source: z.enum(["facade", "model3d"]).optional(),
   render_view: z.enum(["exterior", "interior"]).optional(),
+  render_profile: z.enum(["technical", "premium", "decorated"]).optional().default("premium"),
   lead_id:           z.string().optional(),
   original_image_url: z.string().min(10, "original_image_url obrigatório"),
   mode:              z.enum(["preservar", "criar"]),
@@ -185,7 +186,7 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
   const {
     project_id, concept_project_id, lead_id, original_image_url, mode,
     ambiente, estilo, iluminacao, angulo,
-    mask_zones, user_notes, render_presets, materials, source, render_view,
+    mask_zones, user_notes, render_presets, materials, source, render_view, render_profile,
   } = parsed.data;
 
   if (project_id && concept_project_id) {
@@ -279,6 +280,7 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
     renderPresets: render_presets,
     source,
     renderView: render_view,
+    renderProfile: render_profile,
     logger:       req.log,
     retentativas: 0,
   }).catch(err => {
@@ -598,6 +600,7 @@ export interface RenderJobParams {
   renderPresets?: ArqdorRenderPreset[];
   source?: string | null;
   renderView?: string | null;
+  renderProfile?: "technical" | "premium" | "decorated";
   logger:       any;
   retentativas: number;
 }
@@ -648,7 +651,7 @@ async function enhanceFinalRender(buffer: Buffer): Promise<Buffer> {
 export async function processRenderJob(params: RenderJobParams): Promise<void> {
   const {
     renderId, tenantId: tid, mode, originalUrl, maskZones, maskFileBase64, maskCoordinates,
-    ambiente, estilo, iluminacao, angulo, materials, userNotes, renderPresets, source, renderView,
+    ambiente, estilo, iluminacao, angulo, materials, userNotes, renderPresets, source, renderView, renderProfile,
     logger, retentativas,
   } = params;
 
@@ -685,21 +688,40 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
     let maskFileUrl: string | undefined;
 
     if (mode === "preservar") {
-      // ── 3a. Kontext: edição por instrução de linguagem natural ──────────
-      // O modelo opera sobre os pixels reais da imagem — layout, cor e
-      // identidade dos objetos ficam preservados por padrão; não usa máscara.
       const originalDataUrl = bufferToDataUrl(originalBuf, originalMime);
 
-      const generated = await generateRenderPreserve({
-        imageDataUrl: originalDataUrl,
-        prompt,
-        aspectRatio: nearestRenderAspectRatio(width, height),
-        logger,
-        signal: params.signal,
-        resumePredictionId: params.resumePredictionId,
-        beforeSubmit: params.beforeProviderSubmit,
-        onPredictionCreated: params.onPredictionCreated,
-      });
+      // Técnico Fiel continua no Kontext. Premium/Premium Decorado passam
+      // a usar GPT Image Premium com alta fidelidade de entrada para buscar
+      // qualidade fotográfica superior sem tratar o Kontext como renderizador final.
+      const usePremiumImageEngine = renderProfile !== "technical" && renderView === "interior";
+      const generated = usePremiumImageEngine
+        ? await generateRenderPremiumOpenAI({
+            tenantId: tid,
+            imageDataUrl: originalDataUrl,
+            prompt: [
+              prompt,
+              "PREMIUM ARCHVIZ OUTPUT: produce a high-end photorealistic architectural interior visualization, not a lightly edited CG image.",
+              "Preserve the reference camera, architecture, cabinetry, exact visible-object inventory, furniture count/placement and the perceived base colors/material identity.",
+              "Increase realistic global illumination, material micro-detail, wood grain fidelity, fabric weave, stone depth, metal/glass reflections, soft contact shadows and photographic clarity.",
+              iluminacao?.includes("bright") || iluminacao?.includes("linear led")
+                ? "BRIGHT INTERIOR: make the room clearly brighter with realistic ceiling linear LED illumination, stronger but controlled under-cabinet lighting and soft ambient bounce light. Do not shift the underlying wood/cabinet colors."
+                : "Use balanced premium architectural lighting with readable shadow detail and controlled highlights.",
+              renderProfile === "decorated"
+                ? "DECORATED MODE: existing objects remain immutable; you may add only a few small tasteful accessories in genuinely empty areas, without covering, replacing or moving anything."
+                : "FAITHFUL MODE: do not add any new decoration or object.",
+            ].join(" "),
+            logger,
+          })
+        : await generateRenderPreserve({
+            imageDataUrl: originalDataUrl,
+            prompt,
+            aspectRatio: nearestRenderAspectRatio(width, height),
+            logger,
+            signal: params.signal,
+            resumePredictionId: params.resumePredictionId,
+            beforeSubmit: params.beforeProviderSubmit,
+            onPredictionCreated: params.onPredictionCreated,
+          });
       resultB64 = generated.base64;
       motor = `${generated.provider}-${generated.model}`;
       compositedFlag = false;
@@ -894,7 +916,7 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
         generatedByAi: true,
         finalWidth: finalMeta.width ?? null,
         finalHeight: finalMeta.height ?? null,
-        qualityPipeline: "premium-single-pass+qa+2560",
+        qualityPipeline: renderProfile === "technical" ? "technical-kontext+qa+2560" : "premium-gpt-image+qa+2560",
       },
     });
     // Persistimos a referência canônica do objeto. A API converte para display_url
