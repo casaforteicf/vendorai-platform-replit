@@ -5415,6 +5415,29 @@ router.post("/arch/orcamento/:itemId/vincular-produto", authenticate, async (req
 // IA
 // ─────────────────────────────────────────────────────────────────────────────
 
+const budgetScopeSchema = z.object({
+  tipos: z.array(z.enum([
+    "completo", "mobiliario", "marcenaria", "revestimentos", "reforma",
+    "decoracao", "iluminacao", "eletrica", "hidraulica", "pintura", "outros",
+  ])).min(1),
+  observacoes: z.string().max(2000).optional().default(""),
+  tratamentoExistentes: z.enum(["avaliar_individualmente", "manter", "substituir"]).optional().default("avaliar_individualmente"),
+});
+
+const BUDGET_SCOPE_LABELS: Record<string, string> = {
+  completo: "Projeto completo",
+  mobiliario: "Mobiliário",
+  marcenaria: "Marcenaria",
+  revestimentos: "Revestimentos e acabamentos",
+  reforma: "Reforma",
+  decoracao: "Decoração",
+  iluminacao: "Iluminação",
+  eletrica: "Elétrica",
+  hidraulica: "Hidráulica",
+  pintura: "Pintura",
+  outros: "Outros",
+};
+
 const iaItemSchema = z.object({
   ambiente:      z.string(),
   categoria:     z.string(),
@@ -5449,12 +5472,42 @@ router.post("/arch/projetos/:id/orcamento/gerar-ia", authenticate, async (req, r
     ? ambientes.map((a) => `${a.nome ?? "Sem nome"}${a.areaM2 ? ` (${a.areaM2}m²)` : ""}`).join(", ")
     : "Não especificado";
 
+  const scopeParsed = budgetScopeSchema.safeParse(projeto.escopoOrcamento ?? null);
+  if (!scopeParsed.success) {
+    return res.status(400).json({
+      error: "Defina primeiro o escopo do orçamento deste cliente.",
+      code: "ARCH_BUDGET_SCOPE_REQUIRED",
+    });
+  }
+  const budgetScope = scopeParsed.data;
+  const escopoCompleto = budgetScope.tipos.includes("completo");
+  const escopoLabels = (escopoCompleto ? ["completo"] : budgetScope.tipos)
+    .map((tipo) => BUDGET_SCOPE_LABELS[tipo] ?? tipo)
+    .join(", ");
+  const tratamentoExistentes = budgetScope.tratamentoExistentes === "manter"
+    ? "Itens existentes devem ser mantidos e NÃO devem ser orçados, salvo indicação explícita de substituição."
+    : budgetScope.tratamentoExistentes === "substituir"
+      ? "Itens existentes dentro do escopo devem ser considerados para substituição e podem entrar no orçamento."
+      : "Avalie cada item existente individualmente: se o briefing indicar manter, NÃO orce; se indicar substituir, orce; sem informação suficiente, não invente substituição.";
+
   const prompt = `Você é um especialista em orçamentos de arquitetura e design de interiores no Brasil.
 
-Gere um orçamento detalhado e realista para a seguinte obra:
-- Tipo de obra: ${projeto.tipoObra ?? "Reforma geral"}
+Gere um orçamento detalhado e realista para este cliente, respeitando RIGOROSAMENTE o escopo contratado:
+- Tipo de projeto: ${projeto.tipoObra ?? "não informado"}
 - Área total: ${projeto.areaM2 ? `${projeto.areaM2}m²` : "não informada"}
 - Ambientes: ${listaAmbientes}
+- ESCOPO CONTRATADO: ${escopoLabels}
+- Observações do cliente: ${budgetScope.observacoes?.trim() || "nenhuma observação adicional"}
+- Tratamento de elementos existentes: ${tratamentoExistentes}
+
+REGRAS OBRIGATÓRIAS:
+1. Não transforme automaticamente o projeto em uma obra completa.
+2. Se o escopo NÃO for "Projeto completo", inclua SOMENTE itens e serviços pertencentes aos escopos selecionados.
+3. Se o cliente contratou apenas Revestimentos, não inclua sofá, TV, eletrodomésticos, marcenaria, elétrica ou hidráulica, salvo se também estiverem selecionados.
+4. Em Reforma, inclua apenas serviços e materiais coerentes com a intervenção descrita; não invente demolições ou substituições.
+5. Elementos existentes a manter não entram como custo novo.
+6. O mesmo ambiente pode combinar vários escopos selecionados, como Reforma + Revestimentos + Marcenaria.
+7. Não inclua itens fora do que o cliente contratou apenas para tornar o orçamento mais completo.
 
 Retorne APENAS um array JSON válido com objetos no formato:
 [
