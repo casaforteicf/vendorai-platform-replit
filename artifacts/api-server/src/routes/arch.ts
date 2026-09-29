@@ -5595,15 +5595,32 @@ router.post("/arch/projetos/:id/orcamento/gerar-ia", authenticate, async (req, r
           ? precoOverride
           : 0;
 
+    const baseDescricao = catalogo?.nome ?? item.overrideNome ?? item.descricao;
+    const dimensoes = [item.larguraCm, item.profundidadeCm, item.alturaCm]
+      .map((value) => value != null && Number(value) > 0 ? Number(value) : null);
+    const temDimensoes = dimensoes.some((value) => value != null);
+    const descricaoTecnica = [
+      item.codigo ? `[${item.codigo}]` : null,
+      baseDescricao,
+      item.modelo ? `Modelo: ${item.modelo}` : null,
+      item.configuracao ? `Config.: ${item.configuracao}` : null,
+      temDimensoes
+        ? `Medidas (L×P×A): ${dimensoes[0] ?? "?"}×${dimensoes[1] ?? "?"}×${dimensoes[2] ?? "?"} cm`
+        : null,
+      item.material ? `Material: ${item.material}` : null,
+      item.acabamento ? `Acabamento: ${item.acabamento}` : null,
+      item.cor ? `Cor: ${item.cor}` : null,
+    ].filter(Boolean).join(" · ");
+
     return {
       projetoId,
       categoria: item.categoria,
-      descricao: catalogo?.nome ?? item.overrideNome ?? item.descricao,
+      descricao: descricaoTecnica,
       quantidade: String(quantidade),
-      unidade: catalogo?.unidade ?? "un",
+      unidade: catalogo?.unidade ?? item.unidadeQuantificacao ?? "un",
       valorUnitario: valorUnitario.toFixed(2),
       valorTotal: (quantidade * valorUnitario).toFixed(2),
-      fornecedor: catalogo?.fornecedor ?? item.overrideFornecedor ?? null,
+      fornecedor: catalogo?.fornecedor ?? item.fabricante ?? item.overrideFornecedor ?? null,
       produtoId: catalogo?.id ?? null,
       geradoPorIa: true,
     };
@@ -7594,17 +7611,39 @@ Responda SOMENTE com JSON válido, sem texto adicional:
       })
       .returning();
 
+    const prefixForCategory = (categoria: string) => {
+      const normalized = categoria.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+      if (normalized.includes("mobili")) return "MOB";
+      if (normalized.includes("marcen")) return "MAR";
+      if (normalized.includes("revest")) return "REV";
+      if (normalized.includes("ilumin")) return "IL";
+      if (normalized.includes("esquadr")) return "ESQ";
+      if (normalized.includes("lou")) return "LOU";
+      if (normalized.includes("metal")) return "MET";
+      if (normalized.includes("eletro")) return "ELE";
+      return "ESP";
+    };
+
+    const counters = new Map<string, number>();
     const items = await db
       .insert(archSpecItemsTable)
       .values(
-        aiItems.map(item => ({
-          specificationId: spec.id,
-          categoria:       item.categoria,
-          descricao:       item.descricao,
-          quantidade:      Math.max(1, Math.round(item.quantidade)),
-          confianca:       String(Math.min(1, Math.max(0.5, item.confianca)).toFixed(2)),
-          status:          "pendente",
-        }))
+        aiItems.map(item => {
+          const prefix = prefixForCategory(item.categoria);
+          const next = (counters.get(prefix) ?? 0) + 1;
+          counters.set(prefix, next);
+          return {
+            specificationId: spec.id,
+            categoria:       item.categoria,
+            descricao:       item.descricao,
+            quantidade:      Math.max(1, Math.round(item.quantidade)),
+            confianca:       String(Math.min(1, Math.max(0.5, item.confianca)).toFixed(2)),
+            status:          "pendente",
+            codigo:          `${prefix}-${String(next).padStart(2, "0")}`,
+            origemMedida:    "pendente",
+            unidadeQuantificacao: "un",
+          };
+        })
       )
       .returning();
 
