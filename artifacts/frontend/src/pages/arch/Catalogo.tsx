@@ -20,6 +20,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { ordenarArvoreCategorias } from "@/lib/categoriaTree";
+import { useListCategoriasProduto, getListCategoriasProdutoQueryKey } from "@workspace/api-client-react";
 import {
   Plus, Search, Image, X, Upload, Loader2, Package,
   Pencil, Trash2, Store,
@@ -96,11 +99,6 @@ function descontoPercentual(precoBase: string | null, precoPromocional: string |
   return Math.round((1 - promo / base) * 100);
 }
 
-const CATEGORIAS = [
-  "Estofados", "Móveis", "Iluminação", "Louças e Metais", "Eletrodomésticos",
-  "Portas e Janelas", "Marcenaria", "Acessórios", "Decoração", "Outros",
-];
-
 const EMPTY_FORM = {
   nome: "",
   descricao: "",
@@ -118,12 +116,22 @@ const EMPTY_FORM = {
 // ── Main Component ─────────────────────────────────────────────────────────
 export default function Catalogo() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const tenantId = user?.tenantId ?? "";
 
   // ── List state
   const [produtos, setProdutos]   = useState<Produto[]>([]);
   const [loading, setLoading]     = useState(true);
   const [busca, setBusca]         = useState("");
   const [categoria, setCategoria] = useState("__all__");
+  const { data: categoriasProduto = [] } = useListCategoriasProduto(tenantId, {
+    query: {
+      queryKey: getListCategoriasProdutoQueryKey(tenantId),
+      enabled: !!tenantId,
+      staleTime: 300_000,
+    },
+  });
+  const categoriasOrdenadas = ordenarArvoreCategorias(categoriasProduto);
 
   // ── Dialog state
   const [open, setOpen]         = useState(false);
@@ -425,7 +433,11 @@ export default function Catalogo() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">Todas as categorias</SelectItem>
-            {CATEGORIAS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+            {categoriasOrdenadas.map(({ categoria: c, profundidade }) => (
+              <SelectItem key={c.id} value={c.nome}>
+                {"　".repeat(profundidade)}{profundidade > 0 ? "↳ " : ""}{c.nome}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
@@ -568,7 +580,11 @@ export default function Catalogo() {
                   <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">Sem categoria</SelectItem>
-                    {CATEGORIAS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    {categoriasOrdenadas.map(({ categoria: c, profundidade }) => (
+                      <SelectItem key={c.id} value={c.nome}>
+                        {"　".repeat(profundidade)}{profundidade > 0 ? "↳ " : ""}{c.nome}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

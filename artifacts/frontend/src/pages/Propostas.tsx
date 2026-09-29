@@ -39,6 +39,8 @@ import {
   useRequestUploadUrl,
   useListCategoriasProduto,
   getListCategoriasProdutoQueryKey,
+  useCreateCategoriaProduto,
+  customFetch,
   useListComposicoes,
   getListComposicoesQueryKey,
 } from "@workspace/api-client-react";
@@ -516,17 +518,42 @@ export function CatalogoModal({
   open,
   onClose,
   tenantId,
+  initialProductId,
+  initialCreateDraft,
+  onProductSaved,
 }: {
   open: boolean;
   onClose: () => void;
   tenantId: string;
+  initialProductId?: string | null;
+  initialCreateDraft?: {
+    nome?: string;
+    unidade?: string;
+    fornecedor?: string;
+    precoBase?: number;
+  } | null;
+  onProductSaved?: (product: ProdutoCatalogo) => void;
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const requestUploadUrl = useRequestUploadUrl();
   const [editingProd, setEditingProd] = useState<ProdutoCatalogo | null>(null);
+  const catalogAutoOpenRef = useRef<string | null>(null);
   const [interactionsProd, setInteractionsProd] = useState<ProdutoCatalogo | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [categoryAiOpen, setCategoryAiOpen] = useState(false);
+  const [categoryAiInput, setCategoryAiInput] = useState("");
+  const [categoryAiLoading, setCategoryAiLoading] = useState(false);
+  const [categoryAiSuggestion, setCategoryAiSuggestion] = useState<{
+    acao: "usar_existente" | "criar";
+    existingId: string | null;
+    nome: string;
+    nivel: string;
+    parentId: string | null;
+    parentNome: string | null;
+    justificativa: string;
+    motor?: string;
+  } | null>(null);
   const [imagemUploading, setImagemUploading] = useState(false);
   const [galeriaUploading, setGaleriaUploading] = useState(false);
   const [videoUploading, setVideoUploading] = useState(false);
@@ -562,6 +589,7 @@ export function CatalogoModal({
   const updateMut = useUpdateProdutoCatalogo();
   const deleteMut = useDeleteProdutoCatalogo();
   const importMut = useImportProdutosCatalogo();
+  const createCategoryMut = useCreateCategoriaProduto();
 
   const { data: categorias = [] } = useListCategoriasProduto(tenantId, {
     query: { queryKey: getListCategoriasProdutoQueryKey(tenantId), enabled: !!tenantId },
@@ -583,6 +611,87 @@ export function CatalogoModal({
     : custoFormacao * (1 + (margemFormacao + freteFormacao + comissaoFormacao + financeiroFormacao) / 100);
   const especFieldArray = useFieldArray({ control: form.control, name: "especificacoes" });
   const compatVeicularFieldArray = useFieldArray({ control: form.control, name: "compatibilidadeVeicular" });
+
+  function openCategoryAi() {
+    const nomeProduto = form.getValues("nome")?.trim();
+    setCategoryAiInput(nomeProduto || "");
+    setCategoryAiSuggestion(null);
+    setCategoryAiOpen(true);
+  }
+
+  async function padronizarCategoriaComIa() {
+    const entrada = categoryAiInput.trim();
+    if (!entrada) {
+      toast({ title: "Descreva a categoria", description: "Ex.: porcelanato para piso interno, tinta externa, esquadria PVC." });
+      return;
+    }
+    setCategoryAiLoading(true);
+    setCategoryAiSuggestion(null);
+    try {
+      const suggestion = await customFetch<{
+        acao: "usar_existente" | "criar";
+        existingId: string | null;
+        nome: string;
+        nivel: string;
+        parentId: string | null;
+        parentNome: string | null;
+        justificativa: string;
+        motor?: string;
+      }>(`/api/tenants/${tenantId}/categorias-produto/padronizar-ia`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entrada }),
+      });
+      setCategoryAiSuggestion(suggestion);
+    } catch (error: any) {
+      toast({
+        title: "Não foi possível padronizar",
+        description: error?.message || "Tente novamente em alguns instantes.",
+        variant: "destructive",
+      });
+    } finally {
+      setCategoryAiLoading(false);
+    }
+  }
+
+  async function confirmarCategoriaIa() {
+    const suggestion = categoryAiSuggestion;
+    if (!suggestion) return;
+
+    if (suggestion.acao === "usar_existente" && suggestion.existingId) {
+      form.setValue("categoriaId", suggestion.existingId, { shouldValidate: true, shouldDirty: true });
+      setCategoryAiOpen(false);
+      toast({ title: "Categoria selecionada", description: suggestion.nome });
+      return;
+    }
+
+    if (!suggestion.parentId) {
+      toast({ title: "Categoria superior não definida", variant: "destructive" });
+      return;
+    }
+
+    try {
+      const created = await createCategoryMut.mutateAsync({
+        tenantId,
+        data: {
+          nome: suggestion.nome,
+          nivel: suggestion.nivel,
+          parentId: suggestion.parentId,
+          precisaAprovacao: false,
+        } as any,
+      });
+      await qc.invalidateQueries({ queryKey: getListCategoriasProdutoQueryKey(tenantId) });
+      form.setValue("categoriaId", created.id, { shouldValidate: true, shouldDirty: true });
+      setCategoryAiOpen(false);
+      toast({ title: "Categoria criada e selecionada", description: created.nome });
+    } catch (error: any) {
+      toast({
+        title: "Não foi possível criar a categoria",
+        description: error?.message || "Revise a sugestão e tente novamente.",
+        variant: "destructive",
+      });
+    }
+  }
 
   function openCreate() {
     setEditingProd(null);
@@ -653,6 +762,40 @@ export function CatalogoModal({
       .catch(() => {})
       .finally(() => setComposicaoLoading(false));
   }
+
+  useEffect(() => {
+    if (!open) {
+      catalogAutoOpenRef.current = null;
+      return;
+    }
+
+    const autoKey = initialProductId
+      ? `edit:${initialProductId}`
+      : initialCreateDraft
+        ? `create:${initialCreateDraft.nome ?? ""}:${initialCreateDraft.unidade ?? ""}:${initialCreateDraft.fornecedor ?? ""}:${initialCreateDraft.precoBase ?? ""}`
+        : null;
+
+    if (!autoKey || catalogAutoOpenRef.current === autoKey) return;
+
+    if (initialProductId) {
+      const product = catalog.find((item) => item.id === initialProductId);
+      if (!product) return;
+      catalogAutoOpenRef.current = autoKey;
+      openEdit(product);
+      return;
+    }
+
+    catalogAutoOpenRef.current = autoKey;
+    openCreate(initialCreateDraft);
+  }, [
+    open,
+    initialProductId,
+    initialCreateDraft?.nome,
+    initialCreateDraft?.unidade,
+    initialCreateDraft?.fornecedor,
+    initialCreateDraft?.precoBase,
+    catalog,
+  ]);
 
   function invalidate() {
     qc.invalidateQueries({ queryKey: getListProdutosCatalogoQueryKey(tenantId) });
@@ -729,7 +872,13 @@ export function CatalogoModal({
       updateMut.mutate(
         { id: editingProd.id, data: body },
         {
-          onSuccess: () => { toast({ title: "Produto atualizado" }); invalidate(); salvarComposicao(editingProd.id); setFormOpen(false); },
+          onSuccess: (updated: any) => {
+            toast({ title: "Produto atualizado" });
+            invalidate();
+            salvarComposicao(editingProd.id);
+            if (updated) onProductSaved?.(updated as ProdutoCatalogo);
+            setFormOpen(false);
+          },
           onError: () => toast({ title: "Erro ao atualizar", variant: "destructive" }),
         }
       );
@@ -737,7 +886,13 @@ export function CatalogoModal({
       createMut.mutate(
         { data: { ...body, tenantId } },
         {
-          onSuccess: (created: any) => { toast({ title: "Produto criado" }); invalidate(); if (created?.id) salvarComposicao(created.id); setFormOpen(false); },
+          onSuccess: (created: any) => {
+            toast({ title: "Produto criado" });
+            invalidate();
+            if (created?.id) salvarComposicao(created.id);
+            if (created) onProductSaved?.(created as ProdutoCatalogo);
+            setFormOpen(false);
+          },
           onError: () => toast({ title: "Erro ao criar produto", variant: "destructive" }),
         }
       );
@@ -1059,6 +1214,88 @@ export function CatalogoModal({
         </DialogContent>
       </Dialog>
 
+      <Dialog open={categoryAiOpen} onOpenChange={(open) => {
+        setCategoryAiOpen(open);
+        if (!open) setCategoryAiSuggestion(null);
+      }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5" />
+              Padronizar categoria com IA
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Descreva o produto ou a categoria</Label>
+              <Input
+                value={categoryAiInput}
+                onChange={(event) => setCategoryAiInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    void padronizarCategoriaComIa();
+                  }
+                }}
+                placeholder="Ex.: porcelanato acetinado 90x90 para piso interno"
+              />
+              <p className="text-xs text-muted-foreground">
+                A IA compara com a taxonomia existente, evita duplicações e sugere o nome e o vínculo corretos antes de cadastrar.
+              </p>
+            </div>
+
+            <Button
+              type="button"
+              onClick={() => void padronizarCategoriaComIa()}
+              disabled={categoryAiLoading || !categoryAiInput.trim()}
+            >
+              {categoryAiLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+              Analisar e padronizar
+            </Button>
+
+            {categoryAiSuggestion && (
+              <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant={categoryAiSuggestion.acao === "usar_existente" ? "secondary" : "outline"}>
+                    {categoryAiSuggestion.acao === "usar_existente" ? "Usar cadastro existente" : "Nova categoria sugerida"}
+                  </Badge>
+                  {categoryAiSuggestion.motor === "ia" && (
+                    <Badge variant="outline"><Sparkles className="mr-1 h-3 w-3" />IA</Badge>
+                  )}
+                </div>
+
+                <div>
+                  <p className="text-sm text-muted-foreground">Categoria padronizada</p>
+                  <p className="text-lg font-semibold">{categoryAiSuggestion.nome}</p>
+                  {categoryAiSuggestion.parentNome && (
+                    <p className="text-sm text-muted-foreground">
+                      Em: {categoryAiSuggestion.parentNome} → {categoryAiSuggestion.nome}
+                    </p>
+                  )}
+                </div>
+
+                <p className="text-sm">{categoryAiSuggestion.justificativa}</p>
+
+                <div className="flex justify-end gap-2">
+                  <Button type="button" variant="outline" onClick={() => setCategoryAiSuggestion(null)}>
+                    Ajustar descrição
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => void confirmarCategoriaIa()}
+                    disabled={createCategoryMut.isPending}
+                  >
+                    {createCategoryMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {categoryAiSuggestion.acao === "usar_existente" ? "Usar esta categoria" : "Criar e usar"}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <ProductInteractionsDialog
         product={interactionsProd}
         tenantId={tenantId}
@@ -1092,6 +1329,16 @@ export function CatalogoModal({
                         ))}
                       </SelectContent>
                     </Select>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="mt-1 h-8 px-2 text-xs"
+                      onClick={openCategoryAi}
+                    >
+                      <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                      Criar categoria com IA
+                    </Button>
                     <FormMessage />
                   </FormItem>
                 )} />
