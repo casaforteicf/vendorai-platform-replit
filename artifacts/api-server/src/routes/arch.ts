@@ -5446,8 +5446,12 @@ const iaItemSchema = z.object({
 });
 
 // POST /api/arch/projetos/:id/orcamento/gerar-ia
+// Compatibilidade da rota antiga: o orçamento NÃO é mais inventado pela IA.
+// Agora ele é materializado exclusivamente a partir da especificação confirmada
+// do projeto, usando catálogo/preço do tenant ou override manual. Itens sem preço
+// permanecem com R$ 0,00 para revisão/precificação, sem estimativa artificial.
 router.post("/arch/projetos/:id/orcamento/gerar-ia", authenticate, async (req, res) => {
-  const projetoId = String((req.params.id as string));
+  const projetoId = String(req.params.id as string);
 
   const [projeto] = await db
     .select()
@@ -5460,166 +5464,114 @@ router.post("/arch/projetos/:id/orcamento/gerar-ia", authenticate, async (req, r
     return res.status(403).json({ error: "Acesso negado." });
   }
 
-  const ambientes = await db
+  const [spec] = await db
     .select()
-    .from(archAmbientesTable)
-    .where(eq(archAmbientesTable.projetoId, projetoId))
-    .orderBy(archAmbientesTable.ordem);
+    .from(archSpecificationsTable)
+    .where(and(
+      eq(archSpecificationsTable.tenantId, projeto.tenantId),
+      eq(archSpecificationsTable.projetoId, projetoId),
+    ))
+    .orderBy(desc(archSpecificationsTable.createdAt))
+    .limit(1);
 
-  const listaAmbientes = ambientes.length
-    ? ambientes.map((a) => `${a.nome ?? "Sem nome"}${a.areaM2 ? ` (${a.areaM2}m²)` : ""}`).join(", ")
-    : "Não especificado";
-
-  const prompt = `Você é um especialista em orçamentos de arquitetura e design de interiores no Brasil.
-
-Gere um orçamento detalhado e realista para a seguinte obra:
-- Tipo de obra: ${projeto.tipoObra ?? "Reforma geral"}
-- Área total: ${projeto.areaM2 ? `${projeto.areaM2}m²` : "não informada"}
-- Ambientes: ${listaAmbientes}
-
-Retorne APENAS um array JSON válido com objetos no formato:
-[
-  {
-    "ambiente": "nome do ambiente",
-    "categoria": "categoria do item (ex: Piso, Revestimento, Iluminação, Marcenaria, Pintura, Hidráulica, Elétrica, Móveis)",
-    "descricao": "descrição do item",
-    "quantidade": número,
-    "unidade": "m², un, m, conjunto, etc.",
-    "valorUnitario": número em reais
-  }
-]
-
-Use preços de mercado brasileiro atuais. Seja detalhado e abrangente. Não inclua texto fora do JSON.`;
-
-  async function gerarRespostaOrcamento(instruction: string, maxTokens = 8192) {
-    return anthropic.messages.create({
-      model: "claude-sonnet-4-5",
-      max_tokens: maxTokens,
-      messages: [{ role: "user", content: instruction }],
+  if (!spec) {
+    return res.status(409).json({
+      error: "Este projeto ainda não possui especificação. Analise e confirme os itens do ambiente antes de gerar o orçamento.",
+      code: "ARCH_BUDGET_SPEC_REQUIRED",
     });
   }
 
-  function extrairItensJson(raw: string): unknown {
-    const cleaned = raw
-      .trim()
-      .replace(/^\`\`\`(?:json)?\\s*/i, "")
-      .replace(/\\s*\`\`\`$/, "")
-      .trim();
+  const specItems = await db
+    .select()
+    .from(archSpecItemsTable)
+    .where(eq(archSpecItemsTable.specificationId, spec.id));
 
-    const candidates = [
-      cleaned,
-      cleaned.match(/\[[\s\S]*\]/)?.[0],
-      cleaned.match(/\{[\s\S]*\}/)?.[0],
-    ].filter((value): value is string => Boolean(value));
-
-    for (const candidate of candidates) {
-      try {
-        const decoded = JSON.parse(candidate);
-        if (Array.isArray(decoded)) return decoded;
-        if (decoded && typeof decoded === "object") {
-          const obj = decoded as Record<string, unknown>;
-          if (Array.isArray(obj.items)) return obj.items;
-          if (Array.isArray(obj.itens)) return obj.itens;
-          if (Array.isArray(obj.orcamento)) return obj.orcamento;
-        }
-      } catch {
-        // tenta o próximo formato
-      }
-    }
-    return null;
-  }
-
-  let rawText = "";
-  let parsed: unknown = null;
-
-  try {
-    const message = await gerarRespostaOrcamento(
-      prompt + "\n\nIMPORTANTE: mantenha a resposta compacta, sem markdown e sem comentários. Limite a no máximo 40 itens para não truncar o JSON.",
-    );
-    rawText = message.content
-      .filter((c: any) => c.type === "text")
-      .map((c: any) => c.text)
-      .join("");
-    parsed = extrairItensJson(rawText);
-
-    // Uma resposta cortada ou envolta em texto não deve quebrar o fluxo.
-    // Faz uma única tentativa de correção, pedindo apenas o JSON compacto.
-    if (!parsed) {
-      const repairPrompt = `A resposta abaixo deveria ser um array JSON de orçamento, mas veio inválida ou truncada.
-Refaça do zero usando o briefing original e retorne SOMENTE um array JSON válido, compacto, com no máximo 40 itens.
-Não use markdown. Não escreva nenhuma explicação fora do JSON.
-
-BRIEFING ORIGINAL:
-${prompt}`;
-      const retry = await gerarRespostaOrcamento(repairPrompt, 8192);
-      rawText = retry.content
-        .filter((c: any) => c.type === "text")
-        .map((c: any) => c.text)
-        .join("");
-      parsed = extrairItensJson(rawText);
-    }
-  } catch (err: any) {
-    const { status, message } = sanitizeAIError(err);
-    return res.status(status).json({ error: message });
-  }
-
-  if (!parsed) {
-    return res.status(422).json({
-      error: "Não foi possível concluir a geração do orçamento. Tente novamente.",
-      code: "ARCH_BUDGET_AI_INVALID_JSON",
+  const confirmados = specItems.filter((item) => item.status === "especificado");
+  if (confirmados.length === 0) {
+    return res.status(409).json({
+      error: "Nenhum item da especificação foi confirmado ainda. Confirme os itens que realmente fazem parte do projeto.",
+      code: "ARCH_BUDGET_SPEC_ITEMS_REQUIRED",
     });
   }
 
-  let itemsRaw = z.array(iaItemSchema).safeParse(parsed);
+  const catalogoIds = confirmados
+    .map((item) => item.catalogoItemId)
+    .filter(Boolean) as string[];
 
-  // Normaliza pequenas variações comuns da IA antes de desistir.
-  if (!itemsRaw.success && Array.isArray(parsed)) {
-    const normalized = parsed.map((item: any) => ({
-      ambiente: String(item?.ambiente ?? item?.comodo ?? item?.local ?? "Sem ambiente"),
-      categoria: String(item?.categoria ?? item?.grupo ?? "Outros"),
-      descricao: String(item?.descricao ?? item?.item ?? item?.nome ?? ""),
-      quantidade: Number(item?.quantidade ?? item?.qtd ?? 1),
-      unidade: String(item?.unidade ?? item?.un ?? "un"),
-      valorUnitario: Number(item?.valorUnitario ?? item?.valor_unitario ?? item?.precoUnitario ?? item?.preco ?? 0),
-    }));
-    itemsRaw = z.array(iaItemSchema).safeParse(normalized);
-  }
+  const catalogoItens = catalogoIds.length
+    ? await db
+        .select()
+        .from(archCatalogoTable)
+        .where(and(
+          eq(archCatalogoTable.tenantId, projeto.tenantId),
+          inArray(archCatalogoTable.id, catalogoIds),
+        ))
+    : [];
 
-  if (!itemsRaw.success) {
-    return res.status(422).json({
-      error: "A IA gerou itens incompletos. Tente novamente.",
-      code: "ARCH_BUDGET_AI_SCHEMA_INVALID",
-      detail: itemsRaw.error.flatten(),
-    });
-  }
+  const catalogoMap = new Map(catalogoItens.map((item) => [item.id, item]));
 
-  // Mapear nome de ambiente para id
-  const ambienteMap = new Map(ambientes.map((a) => [a.nome?.toLowerCase(), a.id]));
+  const rows = confirmados.map((item) => {
+    const catalogo = item.catalogoItemId ? catalogoMap.get(item.catalogoItemId) : undefined;
+    const quantidade = Math.max(0, Number(item.quantidade ?? 1));
+    const precoCatalogo = catalogo?.precoBase != null ? Number(catalogo.precoBase) : null;
+    const precoOverride = item.overridePreco != null ? Number(item.overridePreco) : null;
+    const valorUnitario =
+      precoCatalogo != null && Number.isFinite(precoCatalogo)
+        ? precoCatalogo
+        : precoOverride != null && Number.isFinite(precoOverride)
+          ? precoOverride
+          : 0;
 
-  const rows = itemsRaw.data.map((item) => {
-    const ambienteId = ambienteMap.get(item.ambiente.toLowerCase()) ?? null;
-    const valorTotal = (item.quantidade * item.valorUnitario).toFixed(2);
     return {
       projetoId,
-      ambienteId,
-      categoria:     item.categoria,
-      descricao:     item.descricao,
-      quantidade:    String(item.quantidade),
-      unidade:       item.unidade,
-      valorUnitario: String(item.valorUnitario),
-      valorTotal,
-      geradoPorIa:   true,
+      categoria: item.categoria,
+      descricao: catalogo?.nome ?? item.overrideNome ?? item.descricao,
+      quantidade: String(quantidade),
+      unidade: catalogo?.unidade ?? "un",
+      valorUnitario: valorUnitario.toFixed(2),
+      valorTotal: (quantidade * valorUnitario).toFixed(2),
+      fornecedor: catalogo?.fornecedor ?? item.overrideFornecedor ?? null,
+      produtoId: catalogo?.id ?? null,
+      geradoPorIa: true,
     };
   });
 
-  const inseridos = await db
-    .insert(archOrcamentoItensTable)
-    .values(rows)
-    .returning();
+  // Regenerar substitui apenas as linhas derivadas automaticamente.
+  // Itens manuais do orçamento são preservados.
+  await db
+    .delete(archOrcamentoItensTable)
+    .where(and(
+      eq(archOrcamentoItensTable.projetoId, projetoId),
+      eq(archOrcamentoItensTable.geradoPorIa, true),
+    ));
+
+  const inseridos = rows.length
+    ? await db.insert(archOrcamentoItensTable).values(rows).returning()
+    : [];
 
   await recalcularOrcamentoTotal(projetoId);
 
-  return res.status(201).json({ count: inseridos.length, itens: inseridos });
+  const semPreco = rows.filter((item) => Number(item.valorUnitario) <= 0).length;
+
+  req.log.info(
+    {
+      tenantId: projeto.tenantId,
+      projetoId,
+      specificationId: spec.id,
+      itensConfirmados: confirmados.length,
+      itensCriados: inseridos.length,
+      semPreco,
+    },
+    "arch/orcamento: orçamento regenerado a partir da especificação confirmada",
+  );
+
+  return res.status(201).json({
+    count: inseridos.length,
+    itens: inseridos,
+    specificationId: spec.id,
+    semPreco,
+    fonte: "especificacao_confirmada",
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
