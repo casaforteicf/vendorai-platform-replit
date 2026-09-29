@@ -2288,6 +2288,8 @@ function newFreeItem(): FreeItem {
     const [entryAmortizationPercent, setEntryAmortizationPercent] = useState(0);
     const [showEntryAmortization, setShowEntryAmortization] = useState(true);
     const [showClientPortalPlan, setShowClientPortalPlan] = useState(true);
+    const [builtAreaTotal, setBuiltAreaTotal] = useState<number | undefined>(undefined);
+    const [excludedItemsText, setExcludedItemsText] = useState("");
     const [projectDescription, setProjectDescription] = useState("");
     const [projectAssumptionsText, setProjectAssumptionsText] = useState("");
     const [descriptiveMemorial, setDescriptiveMemorial] = useState("");
@@ -2360,6 +2362,8 @@ function newFreeItem(): FreeItem {
         entryAmortizationPercent,
         showEntryAmortization,
         showClientPortalPlan,
+        builtAreaTotal,
+        excludedItemsText,
         projectDescription,
         projectAssumptionsText,
         descriptiveMemorial,
@@ -2418,6 +2422,8 @@ function newFreeItem(): FreeItem {
             entryAmortizationPercent?: number;
             showEntryAmortization?: boolean;
             showClientPortalPlan?: boolean;
+            builtAreaTotal?: number;
+            excludedItemsText?: string;
             projectDescription?: string;
             projectAssumptionsText?: string;
             descriptiveMemorial?: string;
@@ -2445,6 +2451,8 @@ function newFreeItem(): FreeItem {
           if (draft.entryAmortizationPercent !== undefined) setEntryAmortizationPercent(draft.entryAmortizationPercent);
           if (draft.showEntryAmortization !== undefined) setShowEntryAmortization(draft.showEntryAmortization);
           if (draft.showClientPortalPlan !== undefined) setShowClientPortalPlan(draft.showClientPortalPlan);
+          if (draft.builtAreaTotal !== undefined) setBuiltAreaTotal(draft.builtAreaTotal);
+          if (draft.excludedItemsText !== undefined) setExcludedItemsText(draft.excludedItemsText);
           if (draft.projectDescription !== undefined) setProjectDescription(draft.projectDescription);
           if (draft.projectAssumptionsText !== undefined) setProjectAssumptionsText(draft.projectAssumptionsText);
           if (draft.descriptiveMemorial !== undefined) setDescriptiveMemorial(draft.descriptiveMemorial);
@@ -2597,6 +2605,12 @@ function newFreeItem(): FreeItem {
       setEntryAmortizationPercent(Number(currentPresentation?.amortizacaoEntradaPercentual ?? currentPresentation?.entradaPercentual ?? 0));
       setShowEntryAmortization(currentPresentation?.mostrarAmortizacaoEntrada ?? true);
       setShowClientPortalPlan(currentPresentation?.mostrarPortalCliente ?? true);
+      setBuiltAreaTotal(
+        currentPresentation?.areaTotalConstruida != null
+          ? Number(currentPresentation.areaTotalConstruida)
+          : undefined
+      );
+      setExcludedItemsText((currentPresentation?.itensNaoInclusos ?? []).join("\n"));
       setProjectDescription(currentPresentation?.descricaoProjeto ?? "");
       setProjectAssumptionsText((currentPresentation?.premissasObra ?? []).join("\n"));
       setDescriptiveMemorial(currentPresentation?.memorialDescritivo ?? "");
@@ -2813,6 +2827,8 @@ function newFreeItem(): FreeItem {
       setProposalStageSchedule({});
       setShowExecutionSchedule(true);
       setShowPhysicalFinancial(true);
+      setBuiltAreaTotal(undefined);
+      setExcludedItemsText("");
       setProjectDescription("");
       setProjectAssumptionsText("");
       setDescriptiveMemorial("");
@@ -3458,6 +3474,14 @@ function newFreeItem(): FreeItem {
       amortizacaoEntradaPercentual: Math.min(100, Math.max(0, Number(entryAmortizationPercent) || 0)),
       mostrarAmortizacaoEntrada: showEntryAmortization,
       mostrarPortalCliente: showClientPortalPlan,
+      areaTotalConstruida:
+        builtAreaTotal != null && Number.isFinite(builtAreaTotal) && builtAreaTotal > 0
+          ? builtAreaTotal
+          : undefined,
+      itensNaoInclusos: excludedItemsText
+        .split(/\r?\n/)
+        .map((item) => item.trim())
+        .filter(Boolean),
       descricaoProjeto: projectDescription.trim(),
       premissasObra: projectAssumptionsText
         .split(/\r?\n/)
@@ -3542,14 +3566,26 @@ function newFreeItem(): FreeItem {
     const named = issue.field
       ? document.querySelector<HTMLElement>(`[name="${issue.field}"]`)
       : null;
-    const fallback =
+    const itemsFallback =
       issue.field === "itens" || issue.itemIndex !== undefined
         ? document.querySelector<HTMLElement>('[data-integrity-field="itens"]')
         : null;
-    const formFallback = document.querySelector<HTMLElement>('[data-integrity-field="budget-form"]');
-    const target = explicit ?? named ?? fallback ?? formFallback;
-    target?.scrollIntoView({ behavior: "smooth", block: "center" });
-    target?.focus?.();
+    const target = explicit ?? named ?? itemsFallback;
+
+    if (!target) {
+      toast({
+        title: "Campo de correção não localizado",
+        description: issue.message,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    const focusable = target.matches("input, textarea, select, button, [tabindex]")
+      ? target
+      : target.querySelector<HTMLElement>("input, textarea, select, button, [tabindex]");
+    window.setTimeout(() => focusable?.focus(), 250);
   }
 
   const integrityPreviewPayloadJson = JSON.stringify(budgetIntegrityPreviewPayload());
@@ -4612,6 +4648,32 @@ function newFreeItem(): FreeItem {
                     </div>
 
                     <div className="grid gap-3 lg:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <Label>Área total construída (m²)</Label>
+                        <Input
+                          data-integrity-field="apresentacao.areaTotalConstruida"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={builtAreaTotal ?? ""}
+                          onChange={(event) => {
+                            const raw = event.target.value;
+                            const value = raw === "" ? undefined : Number(raw);
+                            setBuiltAreaTotal(value != null && Number.isFinite(value) ? value : undefined);
+                          }}
+                          placeholder="Ex.: 275,00"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Exclusões comerciais / itens não inclusos</Label>
+                        <Textarea
+                          data-integrity-field="apresentacao.itensNaoInclusos"
+                          value={excludedItemsText}
+                          onChange={(event) => setExcludedItemsText(event.target.value)}
+                          placeholder={"Uma exclusão por linha\nEx.: paisagismo\nMóveis soltos\nTaxas e emolumentos"}
+                          className="min-h-[90px]"
+                        />
+                      </div>
                       <div className="space-y-1.5 lg:col-span-2">
                         <Label>Entendimento do projeto</Label>
                         <Textarea
