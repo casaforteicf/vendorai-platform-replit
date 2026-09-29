@@ -907,6 +907,48 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   }
 
   useEffect(() => {
+    if (typeof window === "undefined" || selectedOrcamentoId === "__none__") return;
+    const timer = window.setTimeout(() => {
+      try {
+        const savedAt = new Date().toISOString();
+        window.sessionStorage.setItem(
+          proposalDraftStorageKey(selectedOrcamentoId),
+          JSON.stringify({
+            presentation: currentProposalPresentation(),
+            builderTemplateId: selectedProposalBuilderTemplateId,
+            documentTemplateId: selectedProposalTemplateId,
+            attachments: proposalAttachments,
+            images: proposalImages,
+            savedAt,
+          }),
+        );
+        setProposalDraftSavedAt(savedAt);
+      } catch {
+        // O rascunho local é apenas uma proteção de UX; falha nele não pode bloquear a proposta.
+      }
+    }, 650);
+    return () => window.clearTimeout(timer);
+  }, [
+    selectedOrcamentoId,
+    proposalPresentationFormat,
+    proposalHouseStyle,
+    proposalHouseStandard,
+    proposalHouseType,
+    proposalVisualElements,
+    proposalPresentationDefaultMode,
+    proposalPresentationStageModes,
+    proposalShowTechnicalDetails,
+    proposalTechnicalDetailStages,
+    proposalShowGrandTotal,
+    proposalBuiltArea,
+    proposalExcludedText,
+    selectedProposalBuilderTemplateId,
+    selectedProposalTemplateId,
+    proposalAttachments,
+    proposalImages,
+  ]);
+
+  useEffect(() => {
     const budgets = proposalBudgetOptions;
     if (loadingOrcamentos || loadingBudgetRevisions || budgets.length === 0) return;
     const selectionIsValid = budgets.some((orc) => orc.id === selectedOrcamentoId);
@@ -1447,6 +1489,57 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     }
   }
 
+  const proposalComposerTemplate = resolveProposalBuilderTemplateForEditor();
+  const proposalComposerTemplateCover = proposalComposerTemplate?.modules?.find((item) => item.key === "capa")?.image?.url ?? "";
+  const proposalComposerLogo = normalizeTenantLogoUrl(
+    String((profileQuery.data as any)?.logoUrl || logoUrl || ""),
+  );
+  const proposalComposerCover = String(
+    selectedOrcamento?.apresentacao?.imagemCapa
+      || proposalComposerTemplateCover
+      || proposalImages[0]
+      || "",
+  );
+  const proposalComposerStageImageCount = selectedOrcamentoStages.filter((stage) => Boolean(selectedStageImages[stage.id])).length;
+  const proposalComposerStageCoverage = selectedOrcamentoStages.length > 0
+    ? Math.round((proposalComposerStageImageCount / selectedOrcamentoStages.length) * 100)
+    : 100;
+  const proposalComposerChecks = [
+    {
+      key: "budget",
+      label: "Orçamento/revisão",
+      detail: selectedOrcamento ? selectedOrcamento.titulo : "Selecione a versão comercial",
+      ok: Boolean(selectedOrcamento),
+    },
+    {
+      key: "model",
+      label: "Modelo da empresa",
+      detail: proposalComposerTemplate?.name || "Modelo automático",
+      ok: Boolean(proposalComposerTemplate),
+    },
+    {
+      key: "brand",
+      label: "Marca",
+      detail: proposalComposerLogo ? "Logo disponível" : "Logo ainda não configurada",
+      ok: Boolean(proposalComposerLogo),
+    },
+    {
+      key: "cover",
+      label: "Capa",
+      detail: proposalComposerCover ? "Imagem definida" : "Pode gerar ou selecionar uma imagem",
+      ok: Boolean(proposalComposerCover),
+    },
+    {
+      key: "stages",
+      label: "Imagens das etapas",
+      detail: selectedOrcamentoStages.length
+        ? `${proposalComposerStageImageCount}/${selectedOrcamentoStages.length} prontas · ${proposalComposerStageCoverage}%`
+        : "Sem etapas estruturadas",
+      ok: selectedOrcamentoStages.length === 0 || proposalComposerStageImageCount === selectedOrcamentoStages.length,
+    },
+  ];
+  const proposalComposerReadyCount = proposalComposerChecks.filter((item) => item.ok).length;
+
   function openRefineDialog(fromVersion?: number) {
     setRefineNotes("");
     setRefineFromVersion(fromVersion ?? null);
@@ -1557,6 +1650,12 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
       }
 
       await queryClient.invalidateQueries({ queryKey: ["listLeadProposals", leadId] });
+      try {
+        window.sessionStorage.removeItem(proposalDraftStorageKey(selectedOrcamentoId));
+        setProposalDraftSavedAt(null);
+      } catch {
+        // sem impacto na geração
+      }
       setActiveVersion(generatedVersion);
       toast({ title: `Proposta v${generatedVersion} gerada com sucesso` });
       await previewProposal(generatedVersion);
