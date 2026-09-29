@@ -296,6 +296,8 @@ export function useRenderStudioController() {
 
   // Start render
   async function startRender() {
+    if (!arq.projectId) { setErr("Selecione ou crie um projeto antes de gerar. Todo render precisa ficar vinculado a um projeto."); return; }
+    if (!ambiente.trim()) { setErr("Selecione o ambiente antes de gerar o render."); return; }
     if (!imageDataUrl) { setErr("Carregue uma imagem antes de gerar o render."); return; }
     if (loading) return;
     const previousRenderId = renderId;
