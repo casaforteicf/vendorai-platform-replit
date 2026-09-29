@@ -91,7 +91,7 @@ export const RENDER_STUDIO_STEPS: { id: RenderStudioStep; label: string; icon: s
   { id: "ambiente",      label: "Ambiente",      icon: "⬡", hint: "Escolha o tipo de ambiente: sala, quarto, cozinha…" },
   { id: "imagem",        label: "Imagem base",   icon: "⬜", hint: "Carregue uma foto do ambiente real (JPG/PNG/WEBP)." },
   { id: "render",        label: "Render IA",     icon: "✦", hint: "Clique em 'Gerar Render' no painel direito." },
-  { id: "melhoria",      label: "Melhoria",      icon: "◎", hint: "Selecione uma região e descreva o ajuste." },
+  { id: "melhoria",      label: "Studio IA",     icon: "✦", hint: "Edite o prompt e solicite mudanças no render atual." },
   { id: "versao",        label: "Versões",       icon: "⧉", hint: "Compare as versões geradas e escolha qual aprovar." },
   { id: "aprovar",       label: "Aprovar",       icon: "✓", hint: "Aprove o render para liberar a especificação." },
   { id: "especificacao", label: "Especificação", icon: "≡", hint: "Extraia materiais e objetos do render aprovado." },
