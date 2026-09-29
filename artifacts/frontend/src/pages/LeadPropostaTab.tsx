@@ -306,6 +306,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const [proposalBuilderEditorOpen, setProposalBuilderEditorOpen] = useState(false);
   const [proposalBuilderEditorSaving, setProposalBuilderEditorSaving] = useState(false);
   const [proposalBuilderPreviewDevice, setProposalBuilderPreviewDevice] = useState<"desktop" | "mobile">("desktop");
+  const [proposalBuilderSelectedModuleKey, setProposalBuilderSelectedModuleKey] = useState<string | null>(null);
   const [proposalBuilderEditorName, setProposalBuilderEditorName] = useState("");
   const [proposalBuilderEditorPreset, setProposalBuilderEditorPreset] = useState<"premium_arquitetonico" | "corporativo" | "catalogo_comercial" | "minimalista" | "tecnico">("premium_arquitetonico");
   const [proposalBuilderHeroVariant, setProposalBuilderHeroVariant] = useState<"fotografico" | "minimalista" | "institucional" | "produto">("fotografico");
@@ -1133,6 +1134,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     setProposalBuilderAvoidRules((template.aiRules?.avoid ?? []).join("\n"));
     setProposalBuilderEditorModules(modules);
     setProposalBuilderDraggedIndex(null);
+    setProposalBuilderSelectedModuleKey(modules.find((item) => item.enabled !== false)?.key ?? null);
     setProposalBuilderEditorOpen(true);
   }
 
@@ -1265,6 +1267,27 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     } finally {
       setGeneratingProposalBuilderTemplate(false);
     }
+  }
+
+  const proposalBuilderPreviewTotal = Number(selectedOrcamento?.valorTotal ?? 0);
+  const proposalBuilderPreviewDeadline = String(selectedOrcamento?.prazoEntrega ?? "").trim();
+  const proposalBuilderPreviewCompany = String((profileQuery.data as any)?.nomeFantasia || (profileQuery.data as any)?.razaoSocial || "Sua empresa");
+  const proposalBuilderPreviewLogo = String((profileQuery.data as any)?.logoUrl || "");
+  const proposalBuilderPreviewTitle = String(selectedOrcamento?.titulo || "Proposta comercial");
+  const proposalBuilderPreviewClient = String((lead as any)?.nome || "Cliente");
+  const proposalBuilderPreviewExcluded = Array.isArray(selectedOrcamento?.apresentacao?.itensNaoInclusos)
+    ? selectedOrcamento.apresentacao.itensNaoInclusos.filter((item: unknown): item is string => typeof item === "string")
+    : [];
+
+  function proposalBuilderMoney(value: number) {
+    return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number.isFinite(value) ? value : 0);
+  }
+
+  function proposalBuilderMoveModule(key: string, direction: -1 | 1) {
+    const index = proposalBuilderEditorModules.findIndex((item) => item.key === key);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= proposalBuilderEditorModules.length) return;
+    reorderProposalBuilderModule(index, target);
   }
 
   async function saveLeadFields() {
