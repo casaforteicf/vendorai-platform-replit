@@ -610,6 +610,7 @@ type ProposalStageSchedule = {
   fases?: ProposalStagePhase[];
   observacao?: string;
   marcoPagamento?: string;
+  valorGlobalPrevisto?: number;
   valorReferenciaM2?: number;
   mostrarOrcamentoPrevisto?: boolean;
   reajusteSeAlteracao?: boolean;
@@ -2500,14 +2501,18 @@ function renderStudioOrderedProposal(args: {
   const stageCommercialNote = (group: typeof groups[number]) => {
     const commercial = presentation.cronogramaEtapas[group.id] ?? {};
     const notes: string[] = [];
-    if (Number(commercial.valorReferenciaM2 ?? 0) > 0) {
-      notes.push('<strong>Referência considerada:</strong> ' + fmtMoney(Number(commercial.valorReferenciaM2)) + ' / m².');
+    const stageName = String(group.nome ?? "");
+    const isWindows = /esquadr/i.test(stageName);
+    const isFinishes = /(revest|porcelanat|cer[aâ]mic)/i.test(stageName);
+
+    if (isWindows && Number(commercial.valorGlobalPrevisto ?? 0) > 0) {
+      notes.push('<strong>Valor global previsto das esquadrias:</strong> ' + fmtMoney(Number(commercial.valorGlobalPrevisto)) + '.');
+    } else if (isFinishes && Number(commercial.valorReferenciaM2 ?? 0) > 0) {
+      notes.push('<strong>Valor considerado dos revestimentos:</strong> ' + fmtMoney(Number(commercial.valorReferenciaM2)) + ' / m².');
     }
-    if (commercial.mostrarOrcamentoPrevisto) {
-      notes.push('<strong>Orçamento previsto para o projeto atual.</strong>');
-    }
-    if (commercial.reajusteSeAlteracao) {
-      notes.push('Alterações de medidas, quantitativos, materiais, ferragens, vidros, acabamentos ou especificações serão recalculadas e poderão gerar reajuste.');
+
+    if ((isWindows || isFinishes) && commercial.reajusteSeAlteracao) {
+      notes.push('Alterações de medidas, quantitativos, materiais ou especificações serão recalculadas e poderão gerar reajuste.');
     }
     return notes.length
       ? '<div class="studio-commercial-note">' + notes.map((item) => '<p>' + item + '</p>').join("") + '</div>'
