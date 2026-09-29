@@ -482,7 +482,7 @@ function MaterialLibraryModal({ isOpen, onClose, onSelect }: {
 function FlowGuide({ step, projectTitle, ambiente }: { step: Step; projectTitle: string | null; ambiente: string }) {
   const currentIdx = stepIndex(step);
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20, maxWidth: 480, padding: "0 16px" }}>
+    <div className="arqdor-flow-guide" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20, maxWidth: 480, padding: "0 16px" }}>
       <div style={{ textAlign: "center" }}>
         <div style={{ fontSize: 32, color: D.purple, marginBottom: 8, opacity: 0.7 }}>{STEPS[currentIdx].icon}</div>
         <div style={{ fontSize: 16, fontWeight: 800, color: D.text, marginBottom: 6 }}>{STEPS[currentIdx].label}</div>
@@ -756,7 +756,7 @@ function CopilotPanel({ projectId, step, selections, onTestAction }: {
   const unreadCount = history.filter(m => m.role === "assistant").length;
 
   return (
-    <div style={{ borderTop: `1px solid ${D.border}`, background: `${D.surface}F8`, flexShrink: 0 }}>
+    <div className="arqdor-copilot-strip" style={{ borderTop: `1px solid ${D.border}`, background: `${D.surface}F8`, flexShrink: 0 }}>
       <button onClick={() => setIsOpen(o => !o)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "none", border: "none", cursor: "pointer", textAlign: "left" }} aria-expanded={isOpen}>
         <span style={{ fontSize: 11, color: D.purple }}>✦</span>
         <span style={{ fontSize: 10, fontWeight: 800, color: D.purple, letterSpacing: "0.06em", flex: 1 }}>IA COPILOT</span>
@@ -1190,7 +1190,7 @@ function RightPanel({
 
                 {/* Ambiente */}
                 {step === "ambiente" && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div className="arqdor-environment-picker" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     <PanelLabel>Ambiente</PanelLabel>
                     {AMBIENTE_OPTIONS.map((opt) => (
                       <button key={opt} onClick={() => setAmbiente(opt)} style={{ padding: "7px 10px", borderRadius: 6, textAlign: "left", border: `1px solid ${ambiente === opt ? D.purple : D.border}`, background: ambiente === opt ? `${D.purple}22` : D.card, cursor: "pointer", fontSize: 11, fontWeight: ambiente === opt ? 700 : 400, color: ambiente === opt ? D.purpleText : D.text }}>
@@ -1198,7 +1198,7 @@ function RightPanel({
                       </button>
                     ))}
                     <input value={AMBIENTE_OPTIONS.includes(ambiente) ? "" : ambiente} onChange={(e) => setAmbiente(e.target.value)} placeholder="Outro ambiente…" aria-label="Tipo de ambiente personalizado" style={inputStyle} />
-                    {ambiente.trim() && <DkBtn onClick={onNextStep}>→ Continuar</DkBtn>}
+                    {ambiente.trim() && <div className="arqdor-env-cta"><DkBtn onClick={onNextStep}>→ Continuar</DkBtn></div>}
                   </div>
                 )}
 
@@ -1505,7 +1505,9 @@ function BottomPanel({ versions, projectId, isOpen, onToggle, eventLog, userName
     id: item.id, url: item.imageUrl, label: item.title,
     operationType: "initial" as const, createdAt: new Date(),
   }));
-  const allVersions: RenderVersion[] = [...versions, ...galleryVersions];
+  const allVersions: RenderVersion[] = Array.from(
+    new Map([...versions, ...galleryVersions].map((version) => [normalizeRenderMediaUrl(version.url) || version.id, version])).values(),
+  );
   const filteredVersions = search.trim()
     ? allVersions.filter(v => v.label.toLowerCase().includes(search.toLowerCase()))
     : allVersions;
