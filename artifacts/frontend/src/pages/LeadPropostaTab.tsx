@@ -296,6 +296,9 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
         url?: string;
         prompt?: string;
         aspectRatio?: "16:9" | "4:3" | "1:1";
+        fit?: "cover" | "contain";
+        position?: "center" | "top" | "bottom" | "left" | "right";
+        overlay?: number;
       };
     }>;
     visualStyle?: {
@@ -357,7 +360,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
       description?: string;
       dataSource?: "tenant" | "budget" | "client" | "catalog" | "manual" | "mixed";
       contentPrompt?: string;
-      image?: { mode?: "none" | "manual" | "library" | "ai" | "automatic"; url?: string; prompt?: string; aspectRatio?: "16:9" | "4:3" | "1:1" };
+      image?: { mode?: "none" | "manual" | "library" | "ai" | "automatic"; url?: string; prompt?: string; aspectRatio?: "16:9" | "4:3" | "1:1"; fit?: "cover" | "contain"; position?: "center" | "top" | "bottom" | "left" | "right"; overlay?: number };
     }>
   >([]);
   const [proposalBuilderDraggedIndex, setProposalBuilderDraggedIndex] = useState<number | null>(null);
@@ -1554,7 +1557,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
   ) {
     setProposalBuilderEditorModules((prev) =>
       prev.map((item) => item.key === key
-        ? { ...item, image: { mode: item.image?.mode ?? "automatic", aspectRatio: item.image?.aspectRatio ?? "16:9", ...item.image, ...patch } }
+        ? { ...item, image: { mode: item.image?.mode ?? "automatic", aspectRatio: item.image?.aspectRatio ?? "16:9", fit: item.image?.fit ?? "cover", position: item.image?.position ?? "center", overlay: Number.isFinite(Number(item.image?.overlay)) ? Number(item.image?.overlay) : 45, ...item.image, ...patch } }
         : item),
     );
   }
@@ -3754,8 +3757,8 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                     <p className="text-xs font-semibold">Editor de página</p>
                     <p className="text-[10px] text-muted-foreground">
                       {proposalBuilderPreviewMode === "template"
-                        ? "Abra uma página na coluna esquerda e edite somente o conteúdo dela. O modelo continua reutilizável para as próximas propostas."
-                        : "Simulação opcional usando o orçamento selecionado; a edição continua página por página."}
+                        ? "Preview em página fixa: imagem, conteúdo e margens ficam limitados ao canvas e não podem empurrar ou cortar o restante do layout."
+                        : "Simulação opcional usando o orçamento selecionado; a página mantém o mesmo canvas e proporção do modelo final."}
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-1">
@@ -3768,8 +3771,10 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                 </div>
 
                 <div
-                  className={`mx-auto min-h-[720px] overflow-hidden border bg-white shadow-xl transition-all ${
-                    proposalBuilderPreviewDevice === "mobile" ? "w-[390px] rounded-[24px]" : "w-full max-w-[980px] rounded-xl"
+                  className={`mx-auto aspect-[210/297] overflow-hidden border bg-white shadow-xl transition-all ${
+                    proposalBuilderPreviewDevice === "mobile"
+                      ? "w-[390px] max-w-full rounded-[24px]"
+                      : "w-full max-w-[760px] rounded-xl"
                   }`}
                 >
                   {proposalBuilderSelectedModuleKey === "capa" && (
@@ -3790,7 +3795,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                         <ImagePlus className="mr-1 h-3 w-3" /> Imagem
                       </Button>
                     </div>
-                    <div className={`relative overflow-hidden ${
+                    <div className={`relative h-full min-h-full overflow-hidden ${
                       proposalBuilderEditorPreset === "premium_arquitetonico"
                         ? "bg-slate-950 text-white"
                         : proposalBuilderEditorPreset === "corporativo"
@@ -3810,10 +3815,24 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                             || ""
                           ))}
                           alt=""
-                          className="absolute inset-0 h-full w-full object-cover opacity-45"
+                          className={`absolute inset-0 h-full w-full ${
+                            proposalBuilderEditorModules.find((item) => item.key === "capa")?.image?.fit === "contain"
+                              ? "object-contain bg-slate-950"
+                              : "object-cover"
+                          }`}
+                          style={{
+                            objectPosition: proposalBuilderEditorModules.find((item) => item.key === "capa")?.image?.position ?? "center",
+                            opacity: 1,
+                          }}
                         />
                       ) : null}
-                      <div className={`relative p-7 ${
+                      <div
+                        className="pointer-events-none absolute inset-0"
+                        style={{
+                          background: `rgba(0,0,0,${Math.max(0, Math.min(80, Number(proposalBuilderEditorModules.find((item) => item.key === "capa")?.image?.overlay ?? 45))) / 100})`,
+                        }}
+                      />
+                      <div className={`relative z-10 flex h-full min-h-full flex-col p-7 ${
                         proposalBuilderDensity === "compacto" ? "py-6" : proposalBuilderDensity === "equilibrado" ? "py-9" : "py-12"
                       }`}>
                         <div className="flex items-center justify-between gap-3 text-[10px] font-semibold uppercase tracking-[0.18em]">
@@ -3888,7 +3907,8 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                                 <img
                                   src={normalizeTenantLogoUrl(module.image.url)}
                                   alt={module.title || PROPOSAL_MODULE_LABELS[module.key] || module.key}
-                                  className="h-48 w-full object-cover"
+                                  className={`h-48 w-full ${module.image?.fit === "contain" ? "object-contain bg-muted/30" : "object-cover"}`}
+                                  style={{ objectPosition: module.image?.position ?? "center" }}
                                 />
                                 <div className="absolute inset-x-0 bottom-0 flex flex-wrap items-center gap-1.5 bg-gradient-to-t from-black/75 via-black/35 to-transparent p-2 pt-8">
                                   <Button
@@ -4167,7 +4187,12 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                               Destino: Página {Math.max(1, proposalBuilderEditorModules.findIndex((item) => item.key === selectedModule.key) + 1)} · {selectedModule.title || PROPOSAL_MODULE_LABELS[selectedModule.key] || selectedModule.key}.
                             </p>
                             {selectedModule.image?.url ? (
-                              <img src={normalizeTenantLogoUrl(selectedModule.image.url)} alt="" className="mt-2 h-28 w-full rounded-md border object-cover" />
+                              <img
+                                src={normalizeTenantLogoUrl(selectedModule.image.url)}
+                                alt=""
+                                className={`mt-2 h-28 w-full rounded-md border ${selectedModule.image?.fit === "contain" ? "object-contain bg-muted/30" : "object-cover"}`}
+                                style={{ objectPosition: selectedModule.image?.position ?? "center" }}
+                              />
                             ) : (
                               <div className="mt-2 flex h-20 items-center justify-center rounded-md border border-dashed text-[10px] text-muted-foreground">
                                 Sem imagem padrão
@@ -4199,6 +4224,57 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                                 </SelectContent>
                               </Select>
                             </div>
+                            <div className="mt-2 grid grid-cols-2 gap-2">
+                              <div className="space-y-1">
+                                <label className="text-[9px] font-medium text-muted-foreground">Enquadramento</label>
+                                <Select
+                                  value={selectedModule.image?.fit ?? "cover"}
+                                  onValueChange={(value) => updateProposalBuilderModuleImage(selectedModule.key, { fit: value as "cover" | "contain" })}
+                                >
+                                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="contain">Ajustar · imagem inteira</SelectItem>
+                                    <SelectItem value="cover">Preencher · pode cortar</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[9px] font-medium text-muted-foreground">Foco da imagem</label>
+                                <Select
+                                  value={selectedModule.image?.position ?? "center"}
+                                  onValueChange={(value) => updateProposalBuilderModuleImage(selectedModule.key, { position: value as any })}
+                                >
+                                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="center">Centro</SelectItem>
+                                    <SelectItem value="top">Topo</SelectItem>
+                                    <SelectItem value="bottom">Base</SelectItem>
+                                    <SelectItem value="left">Esquerda</SelectItem>
+                                    <SelectItem value="right">Direita</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+                            {selectedModule.key === "capa" && (
+                              <div className="mt-2 rounded-lg border bg-muted/20 p-2.5">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div>
+                                    <p className="text-[10px] font-medium">Escurecimento da capa</p>
+                                    <p className="text-[9px] text-muted-foreground">Controla a leitura do texto sem alterar a imagem original.</p>
+                                  </div>
+                                  <span className="text-[10px] font-semibold">{Math.max(0, Math.min(80, Number(selectedModule.image?.overlay ?? 45)))}%</span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max="80"
+                                  step="5"
+                                  value={Math.max(0, Math.min(80, Number(selectedModule.image?.overlay ?? 45)))}
+                                  onChange={(event) => updateProposalBuilderModuleImage(selectedModule.key, { overlay: Number(event.target.value) })}
+                                  className="mt-2 w-full"
+                                />
+                              </div>
+                            )}
                             <Input
                               value={selectedModule.image?.url ?? ""}
                               onChange={(e) => updateProposalBuilderModuleImage(selectedModule.key, { mode: "manual", url: e.target.value })}
@@ -4348,9 +4424,9 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                     onClick={() => setProposalImageBankOpen((open) => !open)}
                   >
                     <div>
-                      <p className="text-xs font-semibold">Banco de imagens da proposta</p>
+                      <p className="text-xs font-semibold">Imagens de orçamento e etapas</p>
                       <p className="mt-1 text-[10px] text-muted-foreground">
-                        Imagens vinculadas à capa e às etapas. Cada geração mostra exatamente onde será usada.
+                        Mídias do orçamento usadas pela capa e pelas etapas. A imagem específica de cada página é configurada acima.
                       </p>
                     </div>
                     {proposalImageBankOpen ? <ChevronUp className="mt-0.5 h-4 w-4 text-muted-foreground" /> : <ChevronDown className="mt-0.5 h-4 w-4 text-muted-foreground" />}
