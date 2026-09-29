@@ -2857,101 +2857,168 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
               <main className="min-h-0 overflow-auto bg-[#eceff3] p-5">
                 <div className="mb-3 flex items-center justify-between">
                   <div>
-                    <p className="text-xs font-semibold">Prévia ao vivo</p>
-                    <p className="text-[10px] text-muted-foreground">Representação do modelo. Os dados reais entram ao gerar a proposta.</p>
+                    <p className="text-xs font-semibold">Proposta para editar e organizar</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      Prévia com os dados reais do orçamento selecionado. Arraste os blocos diretamente na proposta ou use as setas.
+                    </p>
                   </div>
                   <div className="flex flex-wrap gap-1">
                     <Badge variant="outline">{proposalBuilderEditorPreset.replace(/_/g, " ")}</Badge>
-                    <Badge variant="outline">{proposalBuilderEditorModules.filter((item) => item.enabled !== false).length} blocos</Badge>
+                    <Badge variant="outline">{proposalBuilderPreviewClient}</Badge>
                   </div>
                 </div>
 
                 <div
                   className={`mx-auto min-h-[720px] overflow-hidden border bg-white shadow-xl transition-all ${
-                    proposalBuilderPreviewDevice === "mobile" ? "w-[390px] rounded-[24px]" : "w-full max-w-[920px] rounded-xl"
+                    proposalBuilderPreviewDevice === "mobile" ? "w-[390px] rounded-[24px]" : "w-full max-w-[980px] rounded-xl"
                   }`}
                 >
-                  <div className={`relative overflow-hidden ${
-                    proposalBuilderEditorPreset === "premium_arquitetonico"
-                      ? "bg-slate-950 text-white"
-                      : proposalBuilderEditorPreset === "corporativo"
-                        ? "bg-slate-900 text-white"
-                        : proposalBuilderEditorPreset === "minimalista"
-                          ? "bg-white text-slate-950"
-                          : "bg-slate-100 text-slate-950"
-                  }`}>
-                    <div className={`p-7 ${
-                      proposalBuilderDensity === "compacto" ? "py-5" : proposalBuilderDensity === "equilibrado" ? "py-7" : "py-10"
+                  <button
+                    type="button"
+                    onClick={() => setProposalBuilderSelectedModuleKey("capa")}
+                    className={`block w-full text-left ${
+                      proposalBuilderSelectedModuleKey === "capa" ? "ring-2 ring-inset ring-primary/50" : ""
+                    }`}
+                  >
+                    <div className={`relative overflow-hidden ${
+                      proposalBuilderEditorPreset === "premium_arquitetonico"
+                        ? "bg-slate-950 text-white"
+                        : proposalBuilderEditorPreset === "corporativo"
+                          ? "bg-slate-900 text-white"
+                          : proposalBuilderEditorPreset === "minimalista"
+                            ? "bg-white text-slate-950"
+                            : "bg-slate-100 text-slate-950"
                     }`}>
-                      <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-[0.18em] opacity-70">
-                        <span>{(profileQuery.data as any)?.nomeFantasia || "Sua empresa"}</span>
-                        <span>Proposta comercial</span>
-                      </div>
-                      <div className="mt-12 max-w-[650px]">
-                        <p className="text-[10px] uppercase tracking-[0.2em] opacity-60">{proposalBuilderHeroVariant}</p>
-                        <h2 className={`mt-2 font-black tracking-tight ${
-                          proposalBuilderPreviewDevice === "mobile" ? "text-4xl" : "text-6xl"
-                        }`}>
-                          {(selectedOrcamento?.titulo || "Título da proposta").replace(/^Orçamento\s*[—-]?\s*/i, "")}
-                        </h2>
-                        <p className="mt-3 max-w-xl text-sm opacity-75">
-                          Uma apresentação comercial criada com o padrão visual, conteúdo e regras desta empresa.
-                        </p>
+                      {proposalHouseStandard !== "medio" && selectedOrcamento?.apresentacao?.imagemCapa ? (
+                        <img src={selectedOrcamento.apresentacao.imagemCapa} alt="" className="absolute inset-0 h-full w-full object-cover opacity-45" />
+                      ) : null}
+                      <div className={`relative p-7 ${
+                        proposalBuilderDensity === "compacto" ? "py-6" : proposalBuilderDensity === "equilibrado" ? "py-9" : "py-12"
+                      }`}>
+                        <div className="flex items-center justify-between gap-3 text-[10px] font-semibold uppercase tracking-[0.18em]">
+                          <span className="flex items-center gap-2">
+                            {proposalBuilderPreviewLogo ? <img src={proposalBuilderPreviewLogo} alt="" className="h-7 max-w-[120px] object-contain" /> : null}
+                            {!proposalBuilderPreviewLogo ? proposalBuilderPreviewCompany : null}
+                          </span>
+                          <span>Proposta comercial</span>
+                        </div>
+                        <div className="mt-12 max-w-[700px]">
+                          <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">{proposalBuilderHeroVariant}</p>
+                          <h2 className={`mt-2 font-black tracking-tight ${
+                            proposalBuilderPreviewDevice === "mobile" ? "text-4xl" : "text-6xl"
+                          }`}>
+                            {proposalBuilderPreviewTitle.replace(/^Orçamento\s*[—-]?\s*/i, "")}
+                          </h2>
+                          <p className="mt-3 text-sm opacity-80">Cliente: {proposalBuilderPreviewClient}</p>
+                          <div className="mt-5 flex flex-wrap gap-2 text-xs">
+                            {proposalBuilderPreviewTotal > 0 && <span className="rounded-full border border-current/20 px-3 py-1.5">{proposalBuilderMoney(proposalBuilderPreviewTotal)}</span>}
+                            {proposalBuilderPreviewDeadline && <span className="rounded-full border border-current/20 px-3 py-1.5">{proposalBuilderPreviewDeadline}</span>}
+                            <span className="rounded-full border border-current/20 px-3 py-1.5">{selectedOrcamentoStages.length} etapas</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  </button>
 
                   <div className={`space-y-3 ${
                     proposalBuilderDensity === "compacto" ? "p-4" : proposalBuilderDensity === "equilibrado" ? "p-6" : "p-8"
                   }`}>
                     {proposalBuilderEditorModules
-                      .filter((module) => module.enabled !== false)
-                      .slice(1)
+                      .filter((module) => module.enabled !== false && module.key !== "capa")
                       .map((module, index) => (
-                        <div key={module.key} className="rounded-xl border bg-white p-4">
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                                Bloco {index + 2}
-                              </p>
-                              <h3 className="mt-1 text-base font-semibold">{PROPOSAL_MODULE_LABELS[module.key] ?? module.key}</h3>
-                            </div>
-                            {module.key === "etapas_orcamento" && (
-                              <Badge variant="secondary">{proposalBuilderStageVariant}</Badge>
-                            )}
-                            {(module.key === "tabela_itens" || module.key === "fisico_financeiro") && (
-                              <Badge variant="secondary">{proposalBuilderInvestmentVariant}</Badge>
-                            )}
+                        <div
+                          key={module.key}
+                          draggable
+                          onDragStart={() => setProposalBuilderDraggedIndex(proposalBuilderEditorModules.findIndex((item) => item.key === module.key))}
+                          onDragOver={(event) => event.preventDefault()}
+                          onDrop={() => {
+                            const to = proposalBuilderEditorModules.findIndex((item) => item.key === module.key);
+                            if (proposalBuilderDraggedIndex != null && to >= 0) reorderProposalBuilderModule(proposalBuilderDraggedIndex, to);
+                            setProposalBuilderDraggedIndex(null);
+                          }}
+                          onDragEnd={() => setProposalBuilderDraggedIndex(null)}
+                          onClick={() => setProposalBuilderSelectedModuleKey(module.key)}
+                          className={`group relative cursor-pointer rounded-xl border bg-white p-4 transition ${
+                            proposalBuilderSelectedModuleKey === module.key ? "border-primary ring-2 ring-primary/20" : "hover:border-slate-300"
+                          }`}
+                        >
+                          <div className="absolute right-2 top-2 z-10 hidden items-center gap-1 rounded-md border bg-white/95 p-1 shadow-sm group-hover:flex">
+                            <button type="button" className="rounded p-1 hover:bg-muted" title="Subir bloco" onClick={(e) => { e.stopPropagation(); proposalBuilderMoveModule(module.key, -1); }}><ChevronUp className="h-3.5 w-3.5" /></button>
+                            <button type="button" className="rounded p-1 hover:bg-muted" title="Descer bloco" onClick={(e) => { e.stopPropagation(); proposalBuilderMoveModule(module.key, 1); }}><ChevronDown className="h-3.5 w-3.5" /></button>
+                            <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
                           </div>
-                          <div className="mt-3 grid gap-2">
-                            {module.key === "etapas_orcamento" ? (
+
+                          <div className="pr-20">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                              {PROPOSAL_MODULE_LABELS[module.key] ?? module.key}
+                            </p>
+                          </div>
+
+                          <div className="mt-3">
+                            {module.key === "resumo_executivo" ? (
+                              <div className="grid gap-2 sm:grid-cols-3">
+                                <div className="rounded-lg bg-muted/40 p-3"><p className="text-[10px] text-muted-foreground">Investimento</p><p className="mt-1 text-sm font-bold">{proposalBuilderMoney(proposalBuilderPreviewTotal)}</p></div>
+                                <div className="rounded-lg bg-muted/40 p-3"><p className="text-[10px] text-muted-foreground">Prazo</p><p className="mt-1 text-sm font-bold">{proposalBuilderPreviewDeadline || "A definir"}</p></div>
+                                <div className="rounded-lg bg-muted/40 p-3"><p className="text-[10px] text-muted-foreground">Etapas</p><p className="mt-1 text-sm font-bold">{selectedOrcamentoStages.length}</p></div>
+                              </div>
+                            ) : module.key === "apresentacao_empresa" ? (
+                              <div><h3 className="text-lg font-semibold">{proposalBuilderPreviewCompany}</h3><p className="mt-1 text-sm text-muted-foreground">Apresentação institucional, diferenciais e posicionamento da empresa.</p></div>
+                            ) : module.key === "diferenciais" ? (
+                              <div className="grid gap-2 sm:grid-cols-2"><div className="rounded-lg bg-slate-950 p-3 text-xs text-white">Qualidade e execução</div><div className="rounded-lg bg-slate-950 p-3 text-xs text-white">Gestão e transparência</div></div>
+                            ) : module.key === "etapas_orcamento" ? (
                               <div className={`grid gap-2 ${proposalBuilderStageVariant === "cards" && proposalBuilderPreviewDevice === "desktop" ? "grid-cols-2" : "grid-cols-1"}`}>
-                                {[1, 2, 3].map((n) => (
-                                  <div key={n} className="rounded-lg bg-muted/50 p-3 text-xs">
-                                    <div className="h-20 rounded-md bg-muted" />
-                                    <p className="mt-2 font-semibold">Etapa {n}</p>
-                                    <p className="text-muted-foreground">Escopo, prazo e valor conforme orçamento.</p>
+                                {selectedOrcamentoStages.slice(0, 6).map((stage) => (
+                                  <div key={stage.id} className="overflow-hidden rounded-lg border bg-muted/20">
+                                    {selectedStageImages[stage.id] ? <img src={selectedStageImages[stage.id]} alt="" className="h-24 w-full object-cover" /> : null}
+                                    <div className="p-3 text-xs">
+                                      <p className="font-semibold">{stage.ordem}. {stage.nome}</p>
+                                      <p className="mt-1 text-muted-foreground">{proposalBuilderMoney(stage.total)}</p>
+                                    </div>
                                   </div>
                                 ))}
+                                {!selectedOrcamentoStages.length && <p className="text-xs text-muted-foreground">O orçamento selecionado ainda não possui etapas estruturadas.</p>}
                               </div>
                             ) : module.key === "imagem_por_etapa" || module.key === "cases_provas" ? (
                               <div className={`grid gap-2 ${proposalBuilderImageEmphasis === "alta" && proposalBuilderPreviewDevice === "desktop" ? "grid-cols-3" : "grid-cols-2"}`}>
-                                {[1, 2, 3].map((n) => <div key={n} className="h-24 rounded-lg bg-muted" />)}
+                                {selectedOrcamentoStages.filter((stage) => selectedStageImages[stage.id]).slice(0, 6).map((stage) => (
+                                  <div key={stage.id} className="overflow-hidden rounded-lg border"><img src={selectedStageImages[stage.id]} alt={stage.nome} className="h-28 w-full object-cover" /><p className="p-2 text-[10px] font-medium">{stage.nome}</p></div>
+                                ))}
+                                {!selectedOrcamentoStages.some((stage) => selectedStageImages[stage.id]) && <div className="col-span-full rounded-lg border border-dashed p-4 text-xs text-muted-foreground">Nenhuma imagem específica de etapa vinculada.</div>}
+                              </div>
+                            ) : module.key === "tabela_itens" ? (
+                              <div className="overflow-hidden rounded-lg border text-xs">
+                                {Array.isArray(selectedOrcamento?.itens) && selectedOrcamento.itens.slice(0, 6).map((item: any, i: number) => (
+                                  <div key={i} className="grid grid-cols-[1fr_auto] gap-3 border-b px-3 py-2 last:border-b-0"><span>{item.nome}</span><strong>{proposalBuilderMoney(Number(item.quantidade || 0) * Number(item.valorUnitario || 0))}</strong></div>
+                                ))}
                               </div>
                             ) : module.key === "cronograma" || module.key === "fisico_financeiro" ? (
                               <div className="space-y-2">
-                                {[1,2,3].map((n) => (
-                                  <div key={n} className="grid grid-cols-[90px_1fr_70px] items-center gap-2 text-[10px]">
-                                    <span>Mês {n}</span><div className="h-2 rounded-full bg-muted"><div className="h-2 rounded-full bg-primary" style={{ width: `${25 + n * 18}%` }} /></div><span className="text-right">R$ —</span>
-                                  </div>
-                                ))}
+                                {selectedOrcamentoStages.slice(0, 6).map((stage, n) => {
+                                  const pct = proposalBuilderPreviewTotal > 0 ? Math.max(4, Math.min(100, stage.total / proposalBuilderPreviewTotal * 100)) : 10 + n * 10;
+                                  return <div key={stage.id} className="grid grid-cols-[minmax(90px,180px)_1fr_100px] items-center gap-2 text-[10px]"><span className="truncate">{stage.nome}</span><div className="h-2 rounded-full bg-muted"><div className="h-2 rounded-full bg-primary" style={{ width: `${pct}%` }} /></div><span className="text-right">{proposalBuilderMoney(stage.total)}</span></div>;
+                                })}
                               </div>
+                            ) : module.key === "condicoes_comerciais" || module.key === "validade_inicio" ? (
+                              <div className="grid gap-2 sm:grid-cols-2 text-xs">
+                                <div className="rounded-lg bg-muted/40 p-3"><span className="text-muted-foreground">Valor global</span><strong className="mt-1 block">{proposalBuilderMoney(proposalBuilderPreviewTotal)}</strong></div>
+                                <div className="rounded-lg bg-muted/40 p-3"><span className="text-muted-foreground">Prazo</span><strong className="mt-1 block">{proposalBuilderPreviewDeadline || "A definir"}</strong></div>
+                              </div>
+                            ) : module.key === "escopo" ? (
+                              <div className="space-y-1 text-xs text-muted-foreground">{selectedOrcamentoStages.slice(0, 5).map((stage) => <p key={stage.id}>• {stage.nome}</p>)}</div>
+                            ) : module.key === "aceite" ? (
+                              <div className="space-y-4 text-xs"><p>Li e concordo com as condições desta proposta.</p><div className="grid grid-cols-[1fr_160px] gap-4"><div className="border-b py-3 text-muted-foreground">Nome / assinatura</div><div className="border-b py-3 text-muted-foreground">Data</div></div><Button size="sm" className="pointer-events-none">Aprovar proposta</Button></div>
+                            ) : module.key === "portal_cliente" ? (
+                              <div className="rounded-lg bg-slate-950 p-4 text-white"><p className="text-sm font-semibold">Portal do Cliente</p><p className="mt-1 text-xs text-white/70">Cronograma, documentos, acompanhamento e atualizações após a aprovação.</p></div>
+                            ) : module.key === "anexos" ? (
+                              <div className="space-y-2 text-xs">{proposalAttachments.length ? proposalAttachments.slice(0, 5).map((item) => <div key={item.url} className="rounded-lg border p-2">{item.nome}</div>) : <p className="text-muted-foreground">Nenhum anexo selecionado nesta proposta.</p>}</div>
+                            ) : module.key === "faq" ? (
+                              <div className="space-y-2 text-xs"><div className="rounded-lg border p-3"><strong>Como funciona?</strong><p className="mt-1 text-muted-foreground">Conteúdo definido pelo modelo e pela IA da empresa.</p></div><div className="rounded-lg border p-3"><strong>O que está incluso?</strong><p className="mt-1 text-muted-foreground">Informações ligadas ao orçamento selecionado.</p></div></div>
+                            ) : module.key === "produto_servico" ? (
+                              <div><h3 className="text-base font-semibold">{proposalBuilderPreviewTitle}</h3><p className="mt-1 text-xs text-muted-foreground">Produto ou serviço principal desta proposta.</p></div>
+                            ) : module.key === "curiosidades_conteudo" ? (
+                              <div className="rounded-lg bg-muted/40 p-4 text-xs text-muted-foreground">Conteúdo educativo, curiosidades e informações que ajudam o cliente a entender melhor a solução.</div>
                             ) : (
-                              <div className="space-y-2">
-                                <div className="h-2.5 w-4/5 rounded bg-muted" />
-                                <div className="h-2.5 w-full rounded bg-muted" />
-                                <div className="h-2.5 w-3/5 rounded bg-muted" />
-                              </div>
+                              <div className="space-y-2"><div className="h-2.5 w-4/5 rounded bg-muted" /><div className="h-2.5 w-full rounded bg-muted" /><div className="h-2.5 w-3/5 rounded bg-muted" /></div>
                             )}
                           </div>
                         </div>
