@@ -1790,6 +1790,7 @@ router.post("/propostas/:id/accept-manual", async (req, res) => {
 
 // ── GET /tenants/:tenantId/proposta-templates ─────────────────────────────────
 router.get("/tenants/:tenantId/proposta-templates", async (req, res) => {
+  // tenant-audit: reviewed same-tenant or super_admin guard runs before tenant-scoped data access
   const { tenantId } = req.params;
 
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
@@ -1829,6 +1830,7 @@ const fromTemplateBody = z.object({
 });
 
 router.post("/tenants/:tenantId/propostas/from-template", async (req, res) => {
+  // tenant-audit: reviewed same-tenant or super_admin guard runs before tenant-scoped data access
   const { tenantId } = req.params;
 
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
