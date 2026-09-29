@@ -363,6 +363,8 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
     }>
   >([]);
   const [proposalBuilderDraggedIndex, setProposalBuilderDraggedIndex] = useState<number | null>(null);
+  const [proposalBuilderModuleImageUploading, setProposalBuilderModuleImageUploading] = useState<string | null>(null);
+  const proposalBuilderModuleImageInputRef = useRef<HTMLInputElement>(null);
 
   // Renderizações 3D pertencem ao fluxo Arch e só devem aparecer em segmentos
   // em que esse material faz sentido. Uma flag explícita em discoveryData pode
@@ -1474,6 +1476,37 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
         ? { ...item, image: { mode: item.image?.mode ?? "automatic", aspectRatio: item.image?.aspectRatio ?? "16:9", ...item.image, ...patch } }
         : item),
     );
+  }
+
+  async function handleProposalBuilderModuleImageUpload(moduleKey: string, file: File) {
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Selecione uma imagem válida.", variant: "destructive" });
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ title: `${file.name} excede 10MB`, variant: "destructive" });
+      return;
+    }
+    setProposalBuilderModuleImageUploading(moduleKey);
+    try {
+      const imageUrl = await uploadImageFile(file);
+      updateProposalBuilderModuleImage(moduleKey, { mode: "manual", url: imageUrl });
+      toast({ title: "Imagem adicionada ao bloco", description: "Salve o modelo para reutilizar esta imagem nas próximas propostas." });
+    } catch (error) {
+      toast({
+        title: "Erro ao adicionar imagem",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setProposalBuilderModuleImageUploading(null);
+      if (proposalBuilderModuleImageInputRef.current) proposalBuilderModuleImageInputRef.current.value = "";
+    }
+  }
+
+  function chooseProposalBuilderModuleImage(moduleKey: string) {
+    setProposalBuilderSelectedModuleKey(moduleKey);
+    window.setTimeout(() => proposalBuilderModuleImageInputRef.current?.click(), 0);
   }
 
   async function generateProposalBuilderModuleImage(moduleKey: string) {
@@ -3550,8 +3583,8 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                 </div>
 
                 <div className="mt-4">
-                  <p className="text-xs font-semibold">Estrutura</p>
-                  <p className="text-[10px] text-muted-foreground">Arraste para ordenar. Desative ou remova blocos opcionais.</p>
+                  <p className="text-xs font-semibold">Páginas e blocos</p>
+                  <p className="text-[10px] text-muted-foreground">Clique para editar. Arraste para ordenar e use o botão + para adicionar conteúdo.</p>
                 </div>
 
                 <div className="mt-2 space-y-1.5">
@@ -3566,20 +3599,25 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                         setProposalBuilderDraggedIndex(null);
                       }}
                       onDragEnd={() => setProposalBuilderDraggedIndex(null)}
-                      className={`group flex items-center gap-2 rounded-lg border bg-background px-2.5 py-2 ${
-                        proposalBuilderDraggedIndex === index ? "opacity-50 ring-2 ring-primary/20" : ""
-                      }`}
+                      onClick={() => setProposalBuilderSelectedModuleKey(module.key)}
+                      className={`group flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 transition ${
+                        proposalBuilderSelectedModuleKey === module.key
+                          ? "border-primary bg-primary/5 ring-2 ring-primary/10"
+                          : "bg-background hover:border-primary/30 hover:bg-muted/30"
+                      } ${proposalBuilderDraggedIndex === index ? "opacity-50 ring-2 ring-primary/20" : ""}`}
                     >
                       <GripVertical className="h-3.5 w-3.5 shrink-0 cursor-grab text-muted-foreground" />
                       <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-muted text-[10px] font-semibold text-muted-foreground">
                         {index + 1}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-[11px] font-medium">{PROPOSAL_MODULE_LABELS[module.key] ?? module.key}</p>
+                        <p className="truncate text-[11px] font-medium">{module.title || PROPOSAL_MODULE_LABELS[module.key] || module.key}</p>
                       </div>
+                      <PencilLine className={`h-3.5 w-3.5 shrink-0 ${proposalBuilderSelectedModuleKey === module.key ? "text-primary" : "text-muted-foreground/60 opacity-0 group-hover:opacity-100"}`} />
                       <Switch
                         checked={module.required ? true : module.enabled !== false}
                         disabled={module.required}
+                        onClick={(event) => event.stopPropagation()}
                         onCheckedChange={(checked) => toggleProposalBuilderModule(index, checked)}
                       />
                       {!module.required && (
@@ -3587,7 +3625,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                           type="button"
                           className="hidden text-muted-foreground hover:text-destructive group-hover:block"
                           title="Remover bloco"
-                          onClick={() => removeProposalBuilderModule(module.key)}
+                          onClick={(event) => { event.stopPropagation(); removeProposalBuilderModule(module.key); }}
                         >
                           <X className="h-3.5 w-3.5" />
                         </button>
@@ -3637,13 +3675,23 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                     proposalBuilderPreviewDevice === "mobile" ? "w-[390px] rounded-[24px]" : "w-full max-w-[980px] rounded-xl"
                   }`}
                 >
-                  <button
-                    type="button"
+                  <div
+                    role="button"
+                    tabIndex={0}
                     onClick={() => setProposalBuilderSelectedModuleKey("capa")}
-                    className={`block w-full text-left ${
+                    onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setProposalBuilderSelectedModuleKey("capa"); }}
+                    className={`group relative block w-full cursor-pointer text-left ${
                       proposalBuilderSelectedModuleKey === "capa" ? "ring-2 ring-inset ring-primary/50" : ""
                     }`}
                   >
+                    <div className="absolute right-3 top-3 z-30 hidden items-center gap-1 rounded-lg border bg-white/95 p-1 shadow-md group-hover:flex">
+                      <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-[10px]" onClick={(e) => { e.stopPropagation(); setProposalBuilderSelectedModuleKey("capa"); }}>
+                        <PencilLine className="mr-1 h-3 w-3" /> Editar
+                      </Button>
+                      <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-[10px]" onClick={(e) => { e.stopPropagation(); chooseProposalBuilderModuleImage("capa"); }}>
+                        <ImagePlus className="mr-1 h-3 w-3" /> Imagem
+                      </Button>
+                    </div>
                     <div className={`relative overflow-hidden ${
                       proposalBuilderEditorPreset === "premium_arquitetonico"
                         ? "bg-slate-950 text-white"
@@ -3653,8 +3701,19 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                             ? "bg-white text-slate-950"
                             : "bg-slate-100 text-slate-950"
                     }`}>
-                      {proposalHouseStandard !== "medio" && selectedOrcamento?.apresentacao?.imagemCapa ? (
-                        <img src={selectedOrcamento.apresentacao.imagemCapa} alt="" className="absolute inset-0 h-full w-full object-cover opacity-45" />
+                      {proposalHouseStandard !== "medio" && (
+                        proposalBuilderEditorModules.find((item) => item.key === "capa")?.image?.url
+                        || (proposalBuilderPreviewMode === "budget" ? selectedOrcamento?.apresentacao?.imagemCapa : "")
+                      ) ? (
+                        <img
+                          src={normalizeTenantLogoUrl(String(
+                            proposalBuilderEditorModules.find((item) => item.key === "capa")?.image?.url
+                            || selectedOrcamento?.apresentacao?.imagemCapa
+                            || ""
+                          ))}
+                          alt=""
+                          className="absolute inset-0 h-full w-full object-cover opacity-45"
+                        />
                       ) : null}
                       <div className={`relative p-7 ${
                         proposalBuilderDensity === "compacto" ? "py-6" : proposalBuilderDensity === "equilibrado" ? "py-9" : "py-12"
@@ -3682,7 +3741,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                         </div>
                       </div>
                     </div>
-                  </button>
+                  </div>
 
                   <div className={`space-y-3 ${
                     proposalBuilderDensity === "compacto" ? "p-4" : proposalBuilderDensity === "equilibrado" ? "p-6" : "p-8"
@@ -3707,9 +3766,14 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                           }`}
                         >
                           <div className="absolute right-2 top-2 z-10 hidden items-center gap-1 rounded-md border bg-white/95 p-1 shadow-sm group-hover:flex">
+                            <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-[10px]" onClick={(e) => { e.stopPropagation(); setProposalBuilderSelectedModuleKey(module.key); }}>
+                              <PencilLine className="mr-1 h-3 w-3" /> Editar
+                            </Button>
+                            <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-[10px]" onClick={(e) => { e.stopPropagation(); chooseProposalBuilderModuleImage(module.key); }}>
+                              <ImagePlus className="mr-1 h-3 w-3" /> Imagem
+                            </Button>
                             <button type="button" className="rounded p-1 hover:bg-muted" title="Subir bloco" onClick={(e) => { e.stopPropagation(); proposalBuilderMoveModule(module.key, -1); }}><ChevronUp className="h-3.5 w-3.5" /></button>
                             <button type="button" className="rounded p-1 hover:bg-muted" title="Descer bloco" onClick={(e) => { e.stopPropagation(); proposalBuilderMoveModule(module.key, 1); }}><ChevronDown className="h-3.5 w-3.5" /></button>
-                            <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
                           </div>
 
                           <div className="pr-20">
@@ -3800,6 +3864,18 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
               </main>
 
               <aside className="min-h-0 overflow-y-auto border-l bg-background p-4">
+                <input
+                  ref={proposalBuilderModuleImageInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file && proposalBuilderSelectedModuleKey) {
+                      void handleProposalBuilderModuleImageUpload(proposalBuilderSelectedModuleKey, file);
+                    }
+                  }}
+                />
                 {proposalBuilderSelectedModuleKey && (
                   <div className="mb-4 rounded-xl border border-primary/20 bg-primary/5 p-3">
                     <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-primary">Bloco selecionado</p>
@@ -3946,23 +4022,52 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                               placeholder="Prompt da imagem deste bloco. Ex.: casa contemporânea brasileira de alto padrão, fotografia arquitetônica..."
                               className="mt-2 min-h-[80px] text-xs"
                             />
-                            <div className="mt-2 flex gap-2">
+                            <div className="mt-2 grid grid-cols-2 gap-2">
                               <Button
                                 type="button"
                                 size="sm"
-                                className="h-9 w-full gap-1.5 text-xs sm:h-8 sm:w-auto"
+                                variant="outline"
+                                className="h-8 gap-1.5 text-xs"
+                                disabled={proposalBuilderModuleImageUploading === selectedModule.key}
+                                onClick={() => chooseProposalBuilderModuleImage(selectedModule.key)}
+                              >
+                                {proposalBuilderModuleImageUploading === selectedModule.key ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                                Enviar imagem
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                className="h-8 gap-1.5 text-xs"
                                 disabled={proposalBuilderGeneratingModuleImage === selectedModule.key}
                                 onClick={() => void generateProposalBuilderModuleImage(selectedModule.key)}
                               >
                                 {proposalBuilderGeneratingModuleImage === selectedModule.key ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
                                 Gerar com IA
                               </Button>
-                              {selectedModule.image?.url && (
-                                <Button type="button" size="sm" variant="outline" className="h-8 text-xs" onClick={() => updateProposalBuilderModuleImage(selectedModule.key, { url: "", mode: "none" })}>
-                                  Remover imagem
-                                </Button>
-                              )}
                             </div>
+                            {effectiveProposalImages.length > 0 && (
+                              <div className="mt-3">
+                                <p className="text-[10px] font-medium text-muted-foreground">Biblioteca desta proposta</p>
+                                <div className="mt-1.5 grid grid-cols-4 gap-1.5">
+                                  {effectiveProposalImages.slice(0, 8).map((url) => (
+                                    <button
+                                      key={url}
+                                      type="button"
+                                      className={`overflow-hidden rounded border ${selectedModule.image?.url === url ? "ring-2 ring-primary" : "hover:ring-1 hover:ring-primary/40"}`}
+                                      onClick={() => updateProposalBuilderModuleImage(selectedModule.key, { mode: "library", url })}
+                                      title="Usar esta imagem no bloco"
+                                    >
+                                      <img src={normalizeTenantLogoUrl(url)} alt="" className="h-12 w-full object-cover" />
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {selectedModule.image?.url && (
+                              <Button type="button" size="sm" variant="ghost" className="mt-2 h-8 w-full text-xs text-destructive" onClick={() => updateProposalBuilderModuleImage(selectedModule.key, { url: "", mode: "none" })}>
+                                <Trash2 className="mr-1 h-3.5 w-3.5" /> Remover imagem do bloco
+                              </Button>
+                            )}
                           </div>
                         </div>
                       );
