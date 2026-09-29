@@ -3,7 +3,7 @@ import ConfiguracoesLegacy from "./ConfiguracoesLegacy";
 
 const SECTION_LABELS: Record<string, { label: string; title: string }> = {
   Perfil: { label: "Empresa", title: "Dados da empresa, marca, posicionamento e contexto institucional" },
-  Marketing: { label: "Marketing", title: "Kit da Marca e identidade central usada por conteúdo, anúncios, vídeos e agentes" },
+  Marketing: { label: "Marca e Negócio", title: "Identidade, Plano de Negócios, públicos, oportunidades e base compartilhada dos agentes" },
   "Análise": { label: "Comercial", title: "Parâmetros comerciais, análises e sinais usados pela inteligência" },
   "Calendário": { label: "Agenda e Automações", title: "Regras de agenda, disponibilidade, calendários e automações relacionadas" },
   "Integrações": { label: "Integrações", title: "WhatsApp, Meta, Google e demais conexões externas" },
@@ -15,7 +15,7 @@ const SECTION_LABELS: Record<string, { label: string; title: string }> = {
 
 const CONFIG_SEARCH_INDEX = [
   { section: "Empresa", terms: "empresa perfil razão social nome fantasia cnpj telefone email instagram endereço segmento marca logo favicon cor missão visão história público alvo diferenciais concorrentes" },
-  { section: "Marketing", terms: "marketing kit da marca marca branding identidade logo cor cores tipografia tom de voz posicionamento mensagens chave estilo visual referências cta" },
+  { section: "Marca e Negócio", terms: "marketing kit da marca plano de negócios pn swot segmentos públicos riscos oportunidades ferramentas agentes campanhas branding identidade logo cores posicionamento" },
   { section: "Comercial", terms: "comercial fechamento venda preço desconto margem comissão estoque aprovação inteligência análise regras abordagem" },
   { section: "Agenda e Automações", terms: "agenda calendário disponibilidade horário agendamento automação avaliação google pós-venda gatilho lembrete" },
   { section: "Integrações", terms: "integrações whatsapp instagram facebook meta ads google gmail smtp zapsign pagamento erp estoque ecommerce api webhook token conexão" },

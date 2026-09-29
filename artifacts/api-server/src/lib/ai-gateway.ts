@@ -3,6 +3,8 @@
  *
  * Every AI call in the system must go through this module. No direct SDK calls.
  */
+import { loadApprovedBusinessContext } from "../services/business-plan.js";
+import { roleForFeature } from "../services/business-plan-model.js";
 import { eq, sql, gte, and } from "drizzle-orm";
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
@@ -277,7 +279,12 @@ export async function callOpenAI(
 ): Promise<{ content: string; inputTokens: number; outputTokens: number; costUsd: number; usedByok: boolean }> {
   const model = resolveTextModel({ tenantId, feature, requestedModel: options.model, legacyDefault: "gpt-4o-mini" });
   const log = options.log;
-  const localizedMessages = await localizeAgentOnboardingMessages(tenantId, feature, messages);
+  const role = roleForFeature(String(feature));
+  const businessContext = role ? await loadApprovedBusinessContext(tenantId, role) : "";
+  const withBusinessContext = businessContext && !JSON.stringify(messages).includes("[VENDORAI_BUSINESS_PLAN]")
+    ? [{ role: "system" as const, content: businessContext }, ...messages]
+    : messages;
+  const localizedMessages = await localizeAgentOnboardingMessages(tenantId, feature, withBusinessContext);
 
   // 1. Estimate cost (rough pre-check based on message length)
   const estimatedInputTokens = localizedMessages.reduce((acc, m) => acc + (typeof m.content === "string" ? m.content.length : 0), 0) / 4;
@@ -395,6 +402,9 @@ export async function callAnthropic(
     log?: Logger;
   } = {},
 ): Promise<{ content: string; inputTokens: number; outputTokens: number; costUsd: number; usedByok: boolean }> {
+  const role = roleForFeature(String(feature));
+  const businessContext = role ? await loadApprovedBusinessContext(tenantId, role) : "";
+  const system = [businessContext, options.system].filter(Boolean).join("\n\n");
   const model = options.model ?? "claude-sonnet-4-6";
   const log = options.log;
 
@@ -426,7 +436,7 @@ export async function callAnthropic(
       max_tokens: options.maxTokens ?? 32000,
       stream: true,
       messages: userMessages.map((m) => ({ role: m.role, content: m.content })),
-      ...(options.system ? { system: options.system } : {}),
+      ...(system ? { system } : {}),
     });
     const chunks: string[] = [];
     let stopReason: string | null = null;

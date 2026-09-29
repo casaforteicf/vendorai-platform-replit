@@ -195,6 +195,14 @@ export default function AgentConfig() {
         </Card>
       </div>
 
+      <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6">
+        <Card className="space-y-2 p-4">
+          <h3 className="font-semibold">Conhecimento compartilhado da empresa</h3>
+          <p className="text-sm text-muted-foreground">Os blocos aprovados em Marca e Negócio complementam o conhecimento de cada agente, conforme sua função. As instruções e configurações individuais abaixo continuam editáveis.</p>
+          <a href="/configuracoes?tab=marketing" className="inline-block text-sm font-medium text-primary underline">Desenvolver o PN e visualizar a base dos agentes</a>
+        </Card>
+      </div>
+
       <LegacyAgentConfig />
 
       {guidedAgent && user?.tenantId && (
@@ -216,3 +224,4 @@ export default function AgentConfig() {
     </>
   );
 }
+
