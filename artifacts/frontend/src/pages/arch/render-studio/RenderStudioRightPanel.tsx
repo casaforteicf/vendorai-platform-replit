@@ -295,7 +295,7 @@ export function RenderStudioRightPanel({
                           </DkBtn>
                           {renderVideoUrl && <a href={renderVideoUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: D.green, textDecoration: "none" }}>✓ Abrir vídeo gerado</a>}
                         </div>
-                        <DkBtn onClick={onNextStep}>→ Melhorar</DkBtn>
+                        <DkBtn onClick={onNextStep}>→ Abrir Studio IA para melhorar</DkBtn>
                         <DkBtn variant="ghost" onClick={onNextStep} small>Ver versões →</DkBtn>
                       </div>
                     )}
@@ -305,7 +305,8 @@ export function RenderStudioRightPanel({
                 {/* Melhoria — P2-13/14/16/17 */}
                 {step === "melhoria" && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <PanelLabel>Ajustes do render</PanelLabel>
+                    <PanelLabel>Studio IA — solicitar mudanças</PanelLabel>
+                    <InfoBox>Edite o prompt abaixo e peça mudanças no render atual. A IA cria uma nova versão sem substituir a anterior e mantém a preservação do projeto.</InfoBox>
 
                     {/* P2-14: objeto selecionado */}
                     {selections.length > 0 && (
