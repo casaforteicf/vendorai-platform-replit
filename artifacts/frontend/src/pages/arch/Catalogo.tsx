@@ -36,6 +36,18 @@ type Produto = {
   precoBase: string | null;
   unidade: string | null;
   imagens: string[] | null;
+  especificacoes: {
+    model3dUrl?: string;
+    modelSurfaces?: Array<{
+      key: string;
+      label: string;
+      nodeName?: string;
+      materialName?: string;
+      meshCount?: number;
+    }>;
+    modelSurfacesDetectedAt?: string;
+    [key: string]: unknown;
+  } | null;
   ativo: boolean;
   createdAt: string;
 };
@@ -109,6 +121,8 @@ export default function Catalogo() {
   const [surfaceKey, setSurfaceKey] = useState("");
   const [materialPriceDelta, setMaterialPriceDelta] = useState("");
   const [linkingMaterial, setLinkingMaterial] = useState(false);
+
+  const modelSurfaces = editing?.especificacoes?.modelSurfaces ?? [];
 
   // ── Image upload state
   const [files, setFiles]                   = useState<File[]>([]);
@@ -577,6 +591,33 @@ export default function Catalogo() {
                   </p>
                 </div>
 
+                {editing?.especificacoes?.model3dUrl && (
+                  <div className="rounded-md border bg-muted/20 p-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-medium">Partes editáveis do modelo 3D</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {modelSurfaces.length > 0
+                            ? `${modelSurfaces.length} superfície(s) detectada(s) automaticamente no GLB.`
+                            : "As partes serão identificadas automaticamente quando este modelo for carregado no 3D."}
+                        </p>
+                      </div>
+                      {modelSurfaces.length > 0 && (
+                        <Badge variant="secondary" className="text-[10px]">GLB analisado</Badge>
+                      )}
+                    </div>
+                    {modelSurfaces.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {modelSurfaces.map(surface => (
+                          <Badge key={surface.key} variant="outline" className="text-[10px]">
+                            {surface.label}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {productMaterials.length > 0 && (
                   <div className="space-y-2">
                     {productMaterials.map(link => (
@@ -618,7 +659,21 @@ export default function Catalogo() {
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Superfície 3D</Label>
-                    <Input value={surfaceKey} onChange={e => setSurfaceKey(e.target.value)} placeholder="Ex: seat_fabric" />
+                    {modelSurfaces.length > 0 ? (
+                      <Select value={surfaceKey || "__all__"} onValueChange={value => setSurfaceKey(value === "__all__" ? "" : value)}>
+                        <SelectTrigger><SelectValue placeholder="Selecione a parte do GLB" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__all__">Produto inteiro</SelectItem>
+                          {modelSurfaces.map(surface => (
+                            <SelectItem key={surface.key} value={surface.key}>
+                              {surface.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input value={surfaceKey} onChange={e => setSurfaceKey(e.target.value)} placeholder="Será detectada automaticamente no 3D" />
+                    )}
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Acréscimo de preço (R$)</Label>
