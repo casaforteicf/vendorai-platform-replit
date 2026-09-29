@@ -38,6 +38,7 @@ const ArqHubView = lazy(() => import('../arqhub/ArqHubView').then((m) => ({ defa
 const AIEnterpriseCore = lazy(() => import('./ai-enterprise/AIEnterpriseCore'))
 const ProjectHomeV2 = lazy(() => import('./project-experience/ProjectHomeV2').then((m) => ({ default: m.ProjectHomeV2 })))
 const SmartProjectModule = lazy(() => import('./modules/SmartProjectModule').then((m) => ({ default: m.SmartProjectModule })))
+const SmartSpecModule = lazy(() => import('./modules/SmartSpecModule').then((m) => ({ default: m.SmartSpecModule })))
 const SpecificationStudio = lazy(() => import('./specification-studio/SpecificationStudio').then((m) => ({ default: m.SpecificationStudio })))
 const ProductionStudio = lazy(() => import('./production-studio/ProductionStudio'))
 const ExecutiveBudgetStudio = lazy(() => import('./executive-budget-studio/ExecutiveBudgetStudio'))
@@ -430,7 +431,7 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'home':          return <ProjectHomeV2 arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'projeto':       return <SmartProjectModule arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'biblioteca':    return <LibraryModule/>
-    case 'especificacao':
+    case 'especificacao': return <SmartSpecModule />
     case 'specification':
     case 'especificacao-produto': return <SpecificationStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'prompt':        return <PromptPlaygroundModule/>
