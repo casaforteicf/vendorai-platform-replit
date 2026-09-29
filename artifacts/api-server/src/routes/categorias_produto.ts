@@ -125,6 +125,7 @@ router.get("/tenants/:tenantId/categorias-produto/sugestao", async (req, res) =>
 // Padronização assistida por IA para o cadastro manual de categorias.
 // A IA nunca grava direto: ela devolve uma sugestão para o usuário confirmar.
 router.post("/tenants/:tenantId/categorias-produto/padronizar-ia", async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately restricted to same tenant or super admin before any tenant data access
   const { tenantId } = req.params;
   const entrada = String(req.body?.entrada ?? "").trim();
 
