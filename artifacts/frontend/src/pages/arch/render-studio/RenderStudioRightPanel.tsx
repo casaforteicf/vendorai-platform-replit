@@ -211,7 +211,7 @@ export function RenderStudioRightPanel({
                               ["pool", "Piscina / SPA"],
                             ] as const).map(([id, label]) => (
                               <button key={id} type="button" onClick={() => setSceneType(id)}
-                                style={{ padding: "7px 8px", borderRadius: 7, border: `1px solid ${sceneType === id ? D.accent : D.border}`, background: sceneType === id ? `${D.accent}12` : D.card, color: sceneType === id ? D.accentText : D.text, fontSize: 10, fontWeight: sceneType === id ? 800 : 600, cursor: "pointer", textAlign: "left" }}>
+                                style={{ padding: "7px 8px", borderRadius: 7, border: `1px solid ${sceneType === id ? D.purple : D.border}`, background: sceneType === id ? `${D.purple}12` : D.card, color: sceneType === id ? D.purpleText : D.text, fontSize: 10, fontWeight: sceneType === id ? 800 : 600, cursor: "pointer", textAlign: "left" }}>
                                 {label}
                               </button>
                             ))}
@@ -227,8 +227,8 @@ export function RenderStudioRightPanel({
                               ["decorated", "Premium decorado", "Acessórios leves, sem mover mobiliário."],
                             ] as const).map(([id, label, hint]) => (
                               <button key={id} type="button" onClick={() => setRenderProfile(id)}
-                                style={{ padding: "8px 9px", borderRadius: 7, border: `1px solid ${renderProfile === id ? D.accent : D.border}`, background: renderProfile === id ? `${D.accent}10` : D.card, cursor: "pointer", textAlign: "left" }}>
-                                <div style={{ fontSize: 11, fontWeight: 800, color: renderProfile === id ? D.accentText : D.text }}>{label}</div>
+                                style={{ padding: "8px 9px", borderRadius: 7, border: `1px solid ${renderProfile === id ? D.purple : D.border}`, background: renderProfile === id ? `${D.purple}10` : D.card, cursor: "pointer", textAlign: "left" }}>
+                                <div style={{ fontSize: 11, fontWeight: 800, color: renderProfile === id ? D.purpleText : D.text }}>{label}</div>
                                 <div style={{ marginTop: 2, fontSize: 9, color: D.muted }}>{hint}</div>
                               </button>
                             ))}
