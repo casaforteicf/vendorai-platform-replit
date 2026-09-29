@@ -413,10 +413,10 @@ export async function traceReferencePlanImage(input: {
           type: "input_text",
           text: [
             "Você é um especialista em vetorização fiel de plantas arquitetônicas residenciais brasileiras, incluindo pré-plantas e croquis desenhados à mão ou digitalizados.",
-            "Sua tarefa é reconstruir como geometria editável somente o que está visível na imagem, sem projetar, melhorar, completar ou reinterpretar a planta."
+            "Sua tarefa é reconstruir como geometria editável somente o que está visível na imagem, sem projetar, melhorar, completar ou reinterpretar a planta.",
             "NÃO invente paredes, portas, janelas, ambientes, alinhamentos ou dimensões ausentes. Se algo estiver encoberto, cortado ou ambíguo, omita e registre em warnings.",
             "Mantenha a posição dos elementos exatamente no sistema de coordenadas da IMAGEM INTEIRA, incluindo margens em branco, carimbo, textos e áreas vazias.",
-            "Esta versão gera paredes ortogonais horizontais/verticais. Em croquis, tolere pequenas inclinações de traço quando a intenção ortogonal for clara e normalize-as para horizontal/vertical; diagonais arquitetônicas reais ou curvas devem ser omitidas e citadas em warnings."
+            "Esta versão gera paredes ortogonais horizontais/verticais. Em croquis, tolere pequenas inclinações de traço quando a intenção ortogonal for clara e normalize-as para horizontal/vertical; diagonais arquitetônicas reais ou curvas devem ser omitidas e citadas em warnings.",
             "Responda SOMENTE JSON válido, sem markdown.",
           ].join(" "),
         }],
@@ -427,12 +427,12 @@ export async function traceReferencePlanImage(input: {
           {
             type: "input_text",
             text: [
-              "Identifique paredes e aberturas VISÍVEIS no croqui, pré-planta ou planta técnica e reproduza o desenho como uma planta vetorial editável sem alterar sua distribuição."
+              "Identifique paredes e aberturas VISÍVEIS no croqui, pré-planta ou planta técnica e reproduza o desenho como uma planta vetorial editável sem alterar sua distribuição.",
               "Todas as coordenadas devem ser normalizadas entre 0 e 1 em relação à imagem inteira, nunca em relação apenas ao retângulo da planta.",
               "Use x=0 na borda esquerda da imagem, x=1 na borda direita, y=0 no topo e y=1 na base. Preserve margens e deslocamentos existentes na imagem.",
               "Para cada parede informe x1,y1,x2,y2, thickness em metros e confidence 0..1.",
               "Use preferencialmente o eixo central da espessura visual da parede para x1,y1,x2,y2, mantendo encontros T e cruzamentos coincidentes.",
-              "Retorne somente paredes claramente observáveis ou claramente pretendidas como ortogonais. Ignore mobiliário, textos, hachuras, setas, rabiscos soltos e muros sem definição. Cotas legíveis podem ajudar a validar proporções, mas nunca justificam criar geometria não desenhada."
+              "Retorne somente paredes claramente observáveis ou claramente pretendidas como ortogonais. Ignore mobiliário, textos, hachuras, setas, rabiscos soltos e muros sem definição. Cotas legíveis podem ajudar a validar proporções, mas nunca justificam criar geometria não desenhada.",
               "Não redistribua cômodos e não feche automaticamente lacunas que não estejam desenhadas.",
               "Para cada porta/janela use wallIndex apontando para o índice ZERO-BASED da parede no array walls,",
               "type door|window, offset 0..1 ao longo da parede, width/height/sillHeight em metros, confidence 0..1.",
