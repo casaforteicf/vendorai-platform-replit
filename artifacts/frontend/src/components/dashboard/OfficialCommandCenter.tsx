@@ -309,7 +309,7 @@ export default function OfficialCommandCenter({ data, executive, loading, userNa
       items.push({ label: alert.mensagem, detail: "Alerta do sistema", severity: alert.severidade === "critico" ? "critical" : "warning", href: alertHref(alert.tipo) });
     }
     for (const risk of risks) {
-      items.push({ label: risk.nome, detail: risk.churnRisk != null ? `Risco de perda ${risk.churnRisk}%` : "Sem contato recente", severity: risk.churnRisk != null && risk.churnRisk >= 70 ? "critical" : "warning", href: `/leads/${risk.leadId}` });
+      items.push({ label: risk.nome, detail: risk.churnRisk != null ? `Risco de perda ${risk.churnRisk}%` : "Sem contato recente", severity: "warning", href: `/leads/${risk.leadId}` });
     }
     return items.slice(0, 5);
   }, [alerts, operation?.overdueTaskItems, operation?.overdueTasks, operation?.unassignedActive, risks]);
