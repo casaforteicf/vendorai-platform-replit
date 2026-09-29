@@ -182,16 +182,30 @@ export function useRenderStudioController() {
       const restored = JSON.parse(sv) as RenderVersion[];
       const normalized = Array.isArray(restored) ? restored.map(normalizeRenderVersion) : [];
       setVersions(normalized);
-      const approvedVersion = normalized.find((version) => Boolean(version.approvedBy && version.approvedAt) || version.operationType === "approved");
-      if (approvedVersion) {
-        const approvedAt = approvedVersion.approvedAt ? new Date(approvedVersion.approvedAt) : new Date();
-        setApproved(true);
+
+      // A aprovação pertence à versão atualmente selecionada, nunca ao conjunto inteiro.
+      // Isso evita que um render aprovado faça versões em outros estágios aparecerem como aprovadas.
+      const currentVersion = sri
+        ? normalized.find((version) => version.id === sri)
+        : normalized[0];
+      const currentApproved = Boolean(
+        currentVersion &&
+        (currentVersion.approvedAt || currentVersion.approvedBy || currentVersion.operationType === "approved")
+      );
+
+      setApproved(currentApproved);
+      if (currentApproved && currentVersion) {
+        const approvedAt = currentVersion.approvedAt ? new Date(currentVersion.approvedAt) : new Date();
         setApprovalRecord({
-          by: approvedVersion.approvedBy ?? "usuário autenticado",
+          by: currentVersion.approvedBy ?? "usuário autenticado",
           at: approvedAt,
-          note: approvedVersion.approvalNote ?? "",
+          note: currentVersion.approvalNote ?? "",
         });
+        setApprovalNote(currentVersion.approvalNote ?? "");
         if (ss === "aprovar") setStep("especificacao");
+      } else {
+        setApprovalRecord(null);
+        setApprovalNote("");
       }
     } catch {}
     if (siu) setImageDataUrl(siu);
@@ -550,7 +564,7 @@ export function useRenderStudioController() {
       // P2-20: mark version as approved
       setVersions(vs => vs.map((v) => v.id === renderId
         ? { ...v, approvedBy: userName, approvedAt: record.at, approvalNote }
-        : { ...v, approvedBy: undefined, approvedAt: undefined, approvalNote: undefined }));
+        : v));
       setSaveState("saved"); setLastSavedAt(new Date()); go("especificacao");
     } catch (e: unknown) { setErr(categorizeError(e)); setSaveState("error"); }
     finally { setLoading(false); }
