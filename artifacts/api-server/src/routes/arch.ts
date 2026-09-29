@@ -3054,6 +3054,31 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     });
   }
 
+  const configuredCatalogObjects = (Array.isArray(conceptConfiguration.objects) ? conceptConfiguration.objects : [])
+    .filter((object: any) => object && typeof object === "object" && typeof object.catalogProductId === "string")
+    .map((object: any) => {
+      const selections = object.materialSelections && typeof object.materialSelections === "object"
+        ? Object.entries(object.materialSelections as Record<string, any>).map(([surface, selection]) => ({
+            surface,
+            materialId: String(selection?.materialId ?? ""),
+            materialName: String(selection?.materialName ?? ""),
+            grupo: typeof selection?.grupo === "string" ? selection.grupo : null,
+            priceDelta: Number(selection?.priceDelta ?? 0) || 0,
+          }))
+        : [];
+      const basePrice = Number(object.price ?? 0) || 0;
+      const configuredPrice = Number(object.configuredPrice ?? basePrice) || basePrice;
+      return {
+        id: String(object.id ?? ""),
+        catalogProductId: String(object.catalogProductId),
+        label: String(object.label ?? "Produto do projeto"),
+        supplier: typeof object.supplier === "string" ? object.supplier : null,
+        basePrice,
+        configuredPrice,
+        selections,
+      };
+    });
+
   let obra: any = null;
   let obraId = String(project?.obraId ?? "");
   let createdNewObra = false;
@@ -3191,6 +3216,39 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     `);
   }
 
+  for (let index = 0; index < configuredCatalogObjects.length; index++) {
+    const product = configuredCatalogObjects[index]!;
+    const itemId = crypto.randomUUID();
+    const selectionsText = product.selections.length
+      ? product.selections.map((selection) =>
+          `${selection.grupo || selection.surface}: ${selection.materialName || selection.materialId}`
+        ).join("; ")
+      : "Acabamento padrão do produto";
+    const description = [
+      product.supplier ? `Fornecedor: ${product.supplier}` : null,
+      `Catálogo: ${product.catalogProductId}`,
+      `Acabamentos: ${selectionsText}`,
+    ].filter(Boolean).join(". ");
+    const unitPrice = Math.max(0, Number(product.configuredPrice) || 0);
+
+    await tx.execute(sql`
+      INSERT INTO arch_budget_items (
+        id, tenant_id, budget_id, project_id, item, description, type,
+        quantity, unit, material_value, labor_value, unit_total,
+        total_material, total_labor, total, composition_code,
+        visible_to_client, sort_order, created_at, updated_at
+      ) VALUES (
+        ${itemId}, ${tid}, ${preBudgetId}, ${project.id},
+        ${product.label},
+        ${description},
+        'product', 1, 'un',
+        ${unitPrice}, 0, ${unitPrice},
+        ${unitPrice}, 0, ${unitPrice}, null,
+        true, ${quantityItems.length + index + 1}, now(), now()
+      )
+    `);
+  }
+
   await tx.execute(sql`
     WITH composition_costs AS (
       SELECT c.id, c.codigo,
@@ -3262,6 +3320,7 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     facadeDesign: (concept as any).facadeDesign ?? conceptConfiguration.facadeDesign ?? undefined,
     projectBrief: conceptConfiguration.projectBrief ?? null,
     objects: Array.isArray(conceptConfiguration.objects) ? conceptConfiguration.objects : [],
+    configuredProducts: configuredCatalogObjects,
     spaceProfiles: Array.isArray(conceptConfiguration.spaceProfiles) ? conceptConfiguration.spaceProfiles : [],
     wallMaterials: conceptConfiguration.wallMaterials && typeof conceptConfiguration.wallMaterials === "object" ? conceptConfiguration.wallMaterials : {},
     acceptanceProof: {
