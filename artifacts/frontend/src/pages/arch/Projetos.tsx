@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, ExternalLink, FolderOpen, Search, UserRound, X, Loader2 } from "lucide-react";
+import { Plus, ExternalLink, FolderOpen, Search, UserRound, X, Loader2, Image } from "lucide-react";
 
 function getToken() { return localStorage.getItem("vendorai_token"); }
 
@@ -34,6 +34,8 @@ type Projeto = {
   portalAtivo: boolean;
   portalToken?: string | null;
   totalAmbientes: number;
+  totalRenders: number;
+  totalRenderAmbientes: number;
   createdAt: string;
 };
 
@@ -401,6 +403,7 @@ export default function Projetos() {
                 <th className="px-4 py-3 text-left font-medium hidden md:table-cell">Tipo</th>
                 <th className="px-4 py-3 text-right font-medium hidden lg:table-cell">Área m²</th>
                 <th className="px-4 py-3 text-left font-medium">Status</th>
+                <th className="px-4 py-3 text-center font-medium hidden lg:table-cell">Renders</th>
                 <th className="px-4 py-3 text-right font-medium hidden sm:table-cell">Orçamento</th>
                 <th className="px-4 py-3 text-center font-medium">Ações</th>
               </tr>
@@ -409,18 +412,18 @@ export default function Projetos() {
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i}>
-                    {Array.from({ length: 7 }).map((__, j) => (
+                    {Array.from({ length: 8 }).map((__, j) => (
                       <td key={j} className="px-4 py-3"><Skeleton className="h-4 w-full" /></td>
                     ))}
                   </tr>
                 ))
               ) : error ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-destructive">{error}</td>
+                  <td colSpan={8} className="px-4 py-8 text-center text-destructive">{error}</td>
                 </tr>
               ) : projetos.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center">
+                  <td colSpan={8} className="px-4 py-12 text-center">
                     <FolderOpen className="h-10 w-10 mx-auto text-muted-foreground/40 mb-3" />
                     <p className="text-muted-foreground">Nenhum projeto encontrado</p>
                   </td>
@@ -437,6 +440,18 @@ export default function Projetos() {
                       {p.areaM2 ? `${Number(p.areaM2).toFixed(0)} m²` : "—"}
                     </td>
                     <td className="px-4 py-3"><StatusBadge status={p.status} /></td>
+                    <td className="px-4 py-3 text-center hidden lg:table-cell">
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium hover:bg-muted"
+                        onClick={() => navigate(`/arch/projetos/${p.id}`)}
+                        title="Abrir renders salvos deste projeto"
+                      >
+                        <Image className="h-3.5 w-3.5" />
+                        {p.totalRenders ?? 0}
+                        {(p.totalRenderAmbientes ?? 0) > 0 && <span className="text-muted-foreground">· {p.totalRenderAmbientes} amb.</span>}
+                      </button>
+                    </td>
                     <td className="px-4 py-3 text-right font-medium text-green-700 hidden sm:table-cell">
                       {p.orcamentoTotal ? fmt(Number(p.orcamentoTotal)) : "—"}
                     </td>
