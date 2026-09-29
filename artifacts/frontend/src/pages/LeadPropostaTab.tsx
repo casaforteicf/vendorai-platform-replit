@@ -276,7 +276,22 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     name: string;
     vertical?: string;
     isDefault?: boolean;
-    modules?: Array<{ key: string; enabled?: boolean; order?: number; required?: boolean }>;
+    modules?: Array<{
+      key: string;
+      enabled?: boolean;
+      order?: number;
+      required?: boolean;
+      title?: string;
+      description?: string;
+      dataSource?: "tenant" | "budget" | "client" | "catalog" | "manual" | "mixed";
+      contentPrompt?: string;
+      image?: {
+        mode?: "none" | "manual" | "library" | "ai" | "automatic";
+        url?: string;
+        prompt?: string;
+        aspectRatio?: "16:9" | "4:3" | "1:1";
+      };
+    }>;
     visualStyle?: {
       preset?: "premium_arquitetonico" | "corporativo" | "catalogo_comercial" | "minimalista" | "tecnico";
       heroVariant?: "fotografico" | "minimalista" | "institucional" | "produto";
@@ -307,7 +322,9 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const [proposalBuilderEditorOpen, setProposalBuilderEditorOpen] = useState(false);
   const [proposalBuilderEditorSaving, setProposalBuilderEditorSaving] = useState(false);
   const [proposalBuilderPreviewDevice, setProposalBuilderPreviewDevice] = useState<"desktop" | "mobile">("desktop");
+  const [proposalBuilderPreviewMode, setProposalBuilderPreviewMode] = useState<"template" | "budget">("template");
   const [proposalBuilderSelectedModuleKey, setProposalBuilderSelectedModuleKey] = useState<string | null>(null);
+  const [proposalBuilderGeneratingModuleImage, setProposalBuilderGeneratingModuleImage] = useState<string | null>(null);
   const [proposalBuilderEditorName, setProposalBuilderEditorName] = useState("");
   const [proposalBuilderEditorPreset, setProposalBuilderEditorPreset] = useState<"premium_arquitetonico" | "corporativo" | "catalogo_comercial" | "minimalista" | "tecnico">("premium_arquitetonico");
   const [proposalBuilderHeroVariant, setProposalBuilderHeroVariant] = useState<"fotografico" | "minimalista" | "institucional" | "produto">("fotografico");
@@ -321,7 +338,17 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const [proposalBuilderContentRules, setProposalBuilderContentRules] = useState("");
   const [proposalBuilderAvoidRules, setProposalBuilderAvoidRules] = useState("");
   const [proposalBuilderEditorModules, setProposalBuilderEditorModules] = useState<
-    Array<{ key: string; enabled?: boolean; order?: number; required?: boolean }>
+    Array<{
+      key: string;
+      enabled?: boolean;
+      order?: number;
+      required?: boolean;
+      title?: string;
+      description?: string;
+      dataSource?: "tenant" | "budget" | "client" | "catalog" | "manual" | "mixed";
+      contentPrompt?: string;
+      image?: { mode?: "none" | "manual" | "library" | "ai" | "automatic"; url?: string; prompt?: string; aspectRatio?: "16:9" | "4:3" | "1:1" };
+    }>
   >([]);
   const [proposalBuilderDraggedIndex, setProposalBuilderDraggedIndex] = useState<number | null>(null);
 
@@ -1183,6 +1210,50 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
 
   const proposalBuilderAvailableModules = Object.entries(PROPOSAL_MODULE_LABELS)
     .filter(([key]) => !proposalBuilderEditorModules.some((item) => item.key === key));
+
+  function updateProposalBuilderModuleConfig(
+    key: string,
+    patch: Partial<(typeof proposalBuilderEditorModules)[number]>,
+  ) {
+    setProposalBuilderEditorModules((prev) =>
+      prev.map((item) => item.key === key ? { ...item, ...patch } : item),
+    );
+  }
+
+  function updateProposalBuilderModuleImage(
+    key: string,
+    patch: Partial<NonNullable<(typeof proposalBuilderEditorModules)[number]["image"]>>,
+  ) {
+    setProposalBuilderEditorModules((prev) =>
+      prev.map((item) => item.key === key
+        ? { ...item, image: { mode: item.image?.mode ?? "automatic", aspectRatio: item.image?.aspectRatio ?? "16:9", ...item.image, ...patch } }
+        : item),
+    );
+  }
+
+  async function generateProposalBuilderModuleImage(moduleKey: string) {
+    const template = resolveProposalBuilderTemplateForEditor();
+    const module = proposalBuilderEditorModules.find((item) => item.key === moduleKey);
+    if (!template || !tenantId || !token || !module) return;
+    if (!window.confirm(`Gerar uma imagem padrão com IA para o bloco "${module.title || PROPOSAL_MODULE_LABELS[module.key] || module.key}"? Esta ação consome 1 geração.`)) return;
+    setProposalBuilderGeneratingModuleImage(moduleKey);
+    try {
+      const response = await fetch(api(`/api/tenants/${tenantId}/proposal-builder/templates/${template.id}/modules/${moduleKey}/generate-image`), {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ prompt: module.image?.prompt || "" }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? "Não foi possível gerar a imagem do bloco.");
+      updateProposalBuilderModuleImage(moduleKey, { mode: "ai", url: body.imageUrl });
+      await fetchProposalBuilderTemplates();
+      toast({ title: "Imagem do bloco gerada", description: "A imagem foi salva no modelo da empresa." });
+    } catch (error) {
+      toast({ title: "Erro ao gerar imagem", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+    } finally {
+      setProposalBuilderGeneratingModuleImage(null);
+    }
+  }
 
   async function saveProposalBuilderEditor() {
     const template = resolveProposalBuilderTemplateForEditor();
