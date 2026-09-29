@@ -1846,8 +1846,10 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
           selectedBuilderTemplate.visualStyle && typeof selectedBuilderTemplate.visualStyle === "object"
             ? selectedBuilderTemplate.visualStyle as Record<string, unknown>
             : null,
-        modules: selectedBuilderModules.map((item) => ({
+        modules: selectedBuilderModules.map((item, index) => ({
           key: String(item.key),
+          enabled: item.enabled !== false,
+          order: Number.isFinite(Number(item.order)) ? Number(item.order) : index + 1,
           title: typeof item.title === "string" ? item.title : undefined,
           description: typeof item.description === "string" ? item.description : undefined,
           dataSource: typeof item.dataSource === "string" ? item.dataSource : undefined,
@@ -1891,25 +1893,35 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
-    const attachmentsHtml = `
-      <section class="page proposal-attachments" style="padding:48px 56px;font-family:inherit;">
-        <div style="max-width:980px;margin:0 auto;">
-          <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.65;margin-bottom:8px;">Documentos</div>
-          <h2 style="margin:0 0 18px;font-size:28px;line-height:1.15;">Anexos da proposta</h2>
-          <div style="display:grid;gap:10px;">
-            ${proposalAttachments.map((item: { nome: string; url: string }) => `
-              <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer"
-                 style="display:flex;align-items:center;gap:10px;padding:12px 14px;border:1px solid rgba(100,116,139,.25);border-radius:10px;text-decoration:none;color:inherit;">
-                <span style="font-size:18px;">📎</span>
-                <span style="font-size:14px;font-weight:600;">${escapeHtml(item.nome)}</span>
-              </a>
-            `).join("")}
+    const attachmentLinks = `
+      <div style="display:grid;gap:10px;margin-top:18px;">
+        ${proposalAttachments.map((item: { nome: string; url: string }) => `
+          <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer"
+             style="display:flex;align-items:center;gap:10px;padding:12px 14px;border:1px solid rgba(100,116,139,.25);border-radius:10px;text-decoration:none;color:inherit;">
+            <span style="font-size:18px;">📎</span>
+            <span style="font-size:14px;font-weight:600;">${escapeHtml(item.nome)}</span>
+          </a>
+        `).join("")}
+      </div>`;
+
+    if (html.includes("<!-- STUDIO_ATTACHMENTS -->")) {
+      // No Studio, anexos pertencem à página definida no modelo; nunca criamos
+      // uma página extra fora da ordem configurada.
+      html = html.replace("<!-- STUDIO_ATTACHMENTS -->", attachmentLinks);
+    } else {
+      // Compatibilidade com propostas legadas que ainda não usam o Studio.
+      const attachmentsHtml = `
+        <section class="page proposal-attachments" style="padding:48px 56px;font-family:inherit;">
+          <div style="max-width:980px;margin:0 auto;">
+            <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.65;margin-bottom:8px;">Documentos</div>
+            <h2 style="margin:0 0 18px;font-size:28px;line-height:1.15;">Anexos da proposta</h2>
+            ${attachmentLinks}
           </div>
-        </div>
-      </section>`;
-    html = html.includes("</body>")
-      ? html.replace("</body>", `${attachmentsHtml}</body>`)
-      : `${html}${attachmentsHtml}`;
+        </section>`;
+      html = html.includes("</body>")
+        ? html.replace("</body>", `${attachmentsHtml}</body>`)
+        : `${html}${attachmentsHtml}`;
+    }
   }
 
   const [proposal] = await db

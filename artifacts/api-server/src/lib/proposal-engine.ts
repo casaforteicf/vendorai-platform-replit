@@ -2174,6 +2174,361 @@ ${interactive ? `
 </html>`;
 }
 
+
+function renderStudioOrderedProposal(args: {
+  json: Record<string, any>;
+  theme: {
+    cream: string; cream2: string; ink: string;
+    navyDeep: string; navyMid: string;
+    accent: string; accentSoft: string;
+    secondary: string; secondarySoft: string;
+    concrete: string; concreteLine: string;
+    ok: string; warn: string;
+  };
+  logoUrl?: string | null;
+  clientName?: string;
+  tenantName?: string;
+  websiteUrl?: string | null;
+  tenantLogoUrl?: string | null;
+  imagens?: string[] | null;
+  orcamento?: {
+    titulo: string;
+    numero?: string | null;
+    itens: Array<{
+      nome: string;
+      quantidade: number;
+      valorUnitario: number;
+      sku?: string | null;
+      descricao?: string | null;
+      etapaId?: string | null;
+      etapaNome?: string | null;
+      etapaOrdem?: number | null;
+    }>;
+    valorTotal?: string | null;
+    observacoes?: string | null;
+    formaPagamento?: string | null;
+    condPagamento?: string | null;
+    prazoEntrega?: string | null;
+    validadeAte?: Date | string | null;
+    paymentCompositions?: Array<{ forma: string; valor: string | number; comprovanteUrl?: string | null }>;
+    apresentacao?: ProposalPresentationConfig | null;
+  } | null;
+  contact?: {
+    phone?: string | null;
+    email?: string | null;
+    instagram?: string | null;
+  } | null;
+  builder: {
+    enabledModules?: string[] | null;
+    moduleOrder?: string[] | null;
+    proposalKind?: string | null;
+    visualStyle?: Record<string, unknown> | null;
+    modules?: Array<Record<string, unknown>> | null;
+  };
+}): string {
+  const { json, theme, logoUrl, clientName, tenantName, websiteUrl, tenantLogoUrl, imagens, orcamento, contact, builder } = args;
+  const modules = Array.isArray(builder.modules)
+    ? builder.modules
+        .filter((item) => item && item.enabled !== false && typeof item.key === "string")
+        .sort((a, b) => Number(a.order ?? 999) - Number(b.order ?? 999))
+    : [];
+  if (!modules.length) return "";
+
+  const esc = (value: unknown) => escapeProposalText(String(value ?? ""));
+  const company = tenantName || json.company?.title || "Empresa";
+  const client = clientName || json.meta?.clientName || "Cliente";
+  const hero = json.hero || {};
+  const companyInfo = json.company || {};
+  const offerInfo = json.offer || {};
+  const solutionInfo = json.solution || {};
+  const curiositiesInfo = json.curiosities || {};
+  const proofInfo = json.proof || {};
+  const faqInfo = json.faq || {};
+  const presentation = normalizeProposalPresentation(orcamento?.apresentacao);
+  const items = (orcamento?.itens ?? []).filter((item) => item && item.nome);
+  const groups = groupProposalPresentationItems(items);
+  const calculatedTotal = items.reduce((sum, item) => sum + Number(item.quantidade || 0) * Number(item.valorUnitario || 0), 0);
+  const total = orcamento?.valorTotal ? Number(orcamento.valorTotal) : calculatedTotal;
+  const fmtMoney = (value: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(value || 0));
+  const scheduleRows = orcamento ? buildProposalScheduleRows(groups, presentation, total) : [];
+  const visualImages = (imagens ?? []).filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+
+  const moduleByKey = (key: string) => modules.find((item) => String(item.key) === key) ?? null;
+  const moduleText = (module: Record<string, unknown>, field: "title" | "description" | "contentPrompt", fallback = "") => {
+    const value = module[field];
+    return typeof value === "string" && value.trim() ? value.trim() : fallback;
+  };
+  const moduleImage = (module: Record<string, unknown>) => {
+    const raw = module.image && typeof module.image === "object" ? module.image as Record<string, unknown> : {};
+    const url = raw.mode !== "none" && typeof raw.url === "string" && raw.url.trim() ? raw.url.trim() : "";
+    const fit = raw.fit === "contain" ? "contain" : "cover";
+    const position = ["top", "bottom", "left", "right"].includes(String(raw.position)) ? String(raw.position) : "center";
+    const overlay = Number.isFinite(Number(raw.overlay)) ? Math.max(0, Math.min(80, Number(raw.overlay))) : 45;
+    return { url, fit, position, overlay };
+  };
+  const modelImageUrl = (module: Record<string, unknown>, index: number) =>
+    moduleImage(module).url || visualImages[index] || visualImages[index % Math.max(1, visualImages.length)] || "";
+  const benefits = extractProposalBenefits(
+    moduleText(moduleByKey("diferenciais") ?? {}, "contentPrompt"),
+    moduleText(moduleByKey("diferenciais") ?? {}, "description"),
+    companyInfo.highlights,
+    offerInfo.bullets,
+    solutionInfo.agents,
+  );
+
+  const header = (label: string) =>
+    '<div class="studio-hdr"><div class="studio-brand">' +
+    (tenantLogoUrl
+      ? '<img src="' + esc(tenantLogoUrl) + '" alt="' + esc(company) + '" />'
+      : '<strong>' + esc(company) + '</strong>') +
+    '</div><span>' + esc(label) + '</span></div>';
+
+  const footer = () =>
+    '<div class="studio-footer"><span>' + esc(company) + '</span><span>' +
+    esc(websiteUrl || "Proposta comercial") + '</span></div>';
+
+  const pageVisual = (module: Record<string, unknown>, index: number, className = "studio-visual") => {
+    const image = moduleImage(module);
+    const url = image.url || modelImageUrl(module, index);
+    if (!url) return "";
+    return '<div class="' + className + '"><img src="' + esc(url) + '" alt="" style="object-fit:' +
+      image.fit + ';object-position:' + image.position + ';" /></div>';
+  };
+
+  const benefitsHtml = (itemsToRender: string[]) => itemsToRender.length
+    ? '<div class="studio-benefits">' +
+      itemsToRender.map((item) => '<div class="studio-benefit"><strong>' + esc(item) + '</strong></div>').join("") +
+      '</div>'
+    : "";
+
+  const itemTable = () => {
+    if (!items.length) return '<p class="studio-muted">Nenhum item detalhado disponível no orçamento selecionado.</p>';
+    return '<table class="studio-table"><thead><tr><th>Item</th><th class="r">Qtd.</th><th class="r">Valor unit.</th><th class="r">Subtotal</th></tr></thead><tbody>' +
+      items.slice(0, 28).map((item) =>
+        '<tr><td><strong>' + esc(item.nome) + '</strong>' +
+        (item.descricao ? '<small>' + esc(item.descricao) + '</small>' : '') +
+        '</td><td class="r">' + esc(item.quantidade) + '</td><td class="r">' +
+        fmtMoney(Number(item.valorUnitario || 0)) + '</td><td class="r">' +
+        fmtMoney(Number(item.quantidade || 0) * Number(item.valorUnitario || 0)) + '</td></tr>'
+      ).join("") +
+      '</tbody></table>' +
+      (items.length > 28 ? '<p class="studio-note">+' + (items.length - 28) + ' itens permanecem no orçamento detalhado vinculado.</p>' : '');
+  };
+
+  const stageCards = () => {
+    if (!groups.length) return '<p class="studio-muted">Nenhuma etapa estruturada disponível.</p>';
+    return '<div class="studio-stage-grid">' +
+      groups.slice(0, 12).map((group) => {
+        const value = group.itens.reduce((sum, item) => sum + Number(item.quantidade || 0) * Number(item.valorUnitario || 0), 0);
+        return '<div class="studio-stage-card"><span>Etapa ' + esc(group.ordem) + '</span><strong>' +
+          esc(group.nome || "Entrega") + '</strong><b>' + fmtMoney(value) + '</b></div>';
+      }).join("") +
+      '</div>';
+  };
+
+  const stageGallery = () => {
+    const gallery = groups
+      .map((group) => ({ group, url: presentation.imagensEtapas[group.id] || "" }))
+      .filter((item) => item.url)
+      .slice(0, 8);
+    if (!gallery.length) return '<p class="studio-muted">Nenhuma imagem de etapa vinculada a esta proposta.</p>';
+    return '<div class="studio-gallery">' +
+      gallery.map(({ group, url }) =>
+        '<figure><img src="' + esc(url) + '" alt="' + esc(group.nome) + '" /><figcaption>Etapa ' +
+        esc(group.ordem) + ' · ' + esc(group.nome) + '</figcaption></figure>'
+      ).join("") +
+      '</div>';
+  };
+
+  const scheduleTable = (financial = false) => {
+    if (!scheduleRows.length) return '<p class="studio-muted">Cronograma não configurado para esta proposta.</p>';
+    if (financial) {
+      return '<table class="studio-table"><thead><tr><th>Etapa</th><th class="r">Peso físico</th><th class="r">Valor</th></tr></thead><tbody>' +
+        scheduleRows.map((row) => '<tr><td>' + esc(row.nome) + '</td><td class="r">' +
+          Number(row.physicalPercent || 0).toFixed(1) + '%</td><td class="r">' + fmtMoney(Number(row.value || 0)) +
+          '</td></tr>').join("") + '</tbody></table>';
+    }
+    return '<table class="studio-table"><thead><tr><th>Etapa</th><th>Início</th><th>Duração</th><th>Término</th></tr></thead><tbody>' +
+      scheduleRows.map((row) => '<tr><td>' + esc(row.nome) + '</td><td>' +
+        proposalFormatDate(row.start) + '</td><td>' + esc(row.duration ? row.duration + " dias" : "A definir") +
+        '</td><td>' + proposalFormatDate(row.end) + '</td></tr>').join("") + '</tbody></table>';
+  };
+
+  const genericPage = (module: Record<string, unknown>, index: number, body: string) =>
+    '<section class="studio-page" data-studio-key="' + esc(module.key) + '">' +
+      header(moduleText(module, "title", String(module.key ?? "Página"))) +
+      '<div class="studio-page-body">' +
+        '<span class="studio-kicker">Página ' + (index + 1) + '</span>' +
+        '<h1>' + esc(moduleText(module, "title", String(module.key ?? "Página"))) + '</h1>' +
+        (moduleText(module, "description") ? '<p class="studio-lead">' + esc(moduleText(module, "description")) + '</p>' : '') +
+        body +
+      '</div>' + footer() +
+    '</section>';
+
+  const renderModule = (module: Record<string, unknown>, index: number): string => {
+    const key = String(module.key ?? "");
+    const content = moduleText(module, "contentPrompt");
+    const img = moduleImage(module);
+
+    if (key === "capa") {
+      const coverUrl = presentation.imagemCapa || img.url || visualImages[0] || "";
+      const valueStatement = moduleText(moduleByKey("produto_servico") ?? {}, "description")
+        || moduleText(moduleByKey("diferenciais") ?? {}, "description")
+        || String(offerInfo.text || hero.subheadline || "").trim()
+        || "Uma proposta comercial clara, orientada ao valor e aos próximos passos.";
+      const summary = [
+        total > 0 ? '<div><span>Investimento</span><strong>' + fmtMoney(total) + '</strong></div>' : '',
+        orcamento?.prazoEntrega ? '<div><span>Prazo</span><strong>' + esc(orcamento.prazoEntrega) + '</strong></div>' : '',
+        groups.length ? '<div><span>Etapas / grupos</span><strong>' + groups.length + '</strong></div>' : '',
+        presentation.areaTotalConstruida > 0 ? '<div><span>Área</span><strong>' + esc(presentation.areaTotalConstruida.toLocaleString("pt-BR")) + ' m²</strong></div>' : '',
+      ].filter(Boolean).join("");
+      return '<section class="studio-page studio-cover" data-studio-key="capa">' +
+        (coverUrl ? '<img class="studio-cover-bg" src="' + esc(coverUrl) + '" alt="" style="object-fit:' + img.fit + ';object-position:' + img.position + ';" />' : '') +
+        '<div class="studio-cover-overlay" style="background:rgba(0,0,0,' + (img.overlay / 100).toFixed(2) + ');"></div>' +
+        '<div class="studio-cover-content"><div class="studio-cover-top">' +
+          (tenantLogoUrl ? '<img src="' + esc(tenantLogoUrl) + '" alt="' + esc(company) + '" />' : '<strong>' + esc(company) + '</strong>') +
+          '<span>PROPOSTA COMERCIAL</span></div>' +
+          '<div class="studio-cover-main"><span class="studio-kicker">Proposta de valor</span>' +
+          '<h1>' + esc(orcamento?.titulo || hero.headline || moduleText(module, "title", "Proposta comercial")) + '</h1>' +
+          '<p>' + esc(valueStatement) + '</p>' +
+          benefitsHtml(benefits) +
+          '</div>' +
+          '<div class="studio-cover-bottom"><strong>Cliente: ' + esc(client) + '</strong>' +
+          (summary ? '<div class="studio-cover-summary">' + summary + '</div>' : '') +
+          '</div></div></section>';
+    }
+
+    if (key === "apresentacao_empresa") {
+      const text = content || companyInfo.text || "Apresentação institucional da empresa.";
+      const highlights = extractProposalBenefits(companyInfo.highlights, moduleText(module, "description"));
+      return genericPage(module, index, pageVisual(module, index) + '<p class="studio-copy">' + esc(text) + '</p>' + benefitsHtml(highlights));
+    }
+
+    if (key === "diferenciais") {
+      return genericPage(module, index, pageVisual(module, index) +
+        (content ? '<p class="studio-copy">' + esc(content) + '</p>' : '') +
+        benefitsHtml(benefits));
+    }
+
+    if (key === "produto_servico") {
+      const text = content || offerInfo.text || "Descrição da solução ofertada.";
+      const bullets = extractProposalBenefits(offerInfo.bullets, solutionInfo.agents);
+      return genericPage(module, index, pageVisual(module, index) + '<p class="studio-copy">' + esc(text) + '</p>' + benefitsHtml(bullets));
+    }
+
+    if (key === "resumo_executivo") {
+      const cards = [
+        total > 0 ? ['Investimento', fmtMoney(total)] : null,
+        orcamento?.prazoEntrega ? ['Prazo', orcamento.prazoEntrega] : null,
+        groups.length ? ['Etapas / grupos', String(groups.length)] : null,
+        presentation.previsaoInicio ? ['Início previsto', proposalFormatDate(presentation.previsaoInicio)] : null,
+      ].filter(Boolean) as Array<[string, string]>;
+      const metrics = '<div class="studio-metrics">' + cards.map(([label, value]) =>
+        '<div><span>' + esc(label) + '</span><strong>' + esc(value) + '</strong></div>'
+      ).join("") + '</div>';
+      return genericPage(module, index, pageVisual(module, index) + metrics + (content ? '<p class="studio-copy">' + esc(content) + '</p>' : ''));
+    }
+
+    if (key === "escopo") return genericPage(module, index, pageVisual(module, index) + itemTable());
+    if (key === "etapas_orcamento") return genericPage(module, index, stageCards());
+    if (key === "imagem_por_etapa") return genericPage(module, index, stageGallery());
+    if (key === "tabela_itens") return genericPage(module, index, itemTable());
+    if (key === "cronograma") return genericPage(module, index, scheduleTable(false));
+    if (key === "fisico_financeiro") return genericPage(module, index, scheduleTable(true));
+
+    if (key === "condicoes_comerciais") {
+      const conditions = [
+        total > 0 ? ['Valor da proposta', fmtMoney(total)] : null,
+        orcamento?.condPagamento ? ['Condição de pagamento', orcamento.condPagamento] : null,
+        orcamento?.formaPagamento ? ['Forma de pagamento', orcamento.formaPagamento] : null,
+        orcamento?.prazoEntrega ? ['Prazo / entrega', orcamento.prazoEntrega] : null,
+      ].filter(Boolean) as Array<[string, string]>;
+      const list = '<div class="studio-conditions">' + conditions.map(([label, value]) =>
+        '<div><span>' + esc(label) + '</span><strong>' + esc(value) + '</strong></div>'
+      ).join("") + '</div>';
+      return genericPage(module, index, pageVisual(module, index) + list +
+        (orcamento?.observacoes ? '<p class="studio-copy">' + esc(orcamento.observacoes) + '</p>' : ''));
+    }
+
+    if (key === "validade_inicio") {
+      const values = [
+        ['Validade', orcamento?.validadeAte ? proposalFormatDate(orcamento.validadeAte) : 'A definir'],
+        ['Início previsto', presentation.previsaoInicio ? proposalFormatDate(presentation.previsaoInicio) : 'A definir'],
+      ];
+      return genericPage(module, index, '<div class="studio-conditions">' +
+        values.map(([label, value]) => '<div><span>' + esc(label) + '</span><strong>' + esc(value) + '</strong></div>').join("") +
+        '</div>');
+    }
+
+    if (key === "aceite") {
+      return genericPage(module, index,
+        '<div class="studio-accept"><h2>Próximos passos</h2><p>' +
+        esc(content || "Revise as condições desta proposta. Após o aceite, esta versão passa a ser a referência comercial da contratação.") +
+        '</p><div class="studio-signatures"><div>Nome / assinatura</div><div>Data</div></div></div>');
+    }
+
+    if (key === "portal_cliente") {
+      return genericPage(module, index,
+        '<div class="studio-callout"><strong>Portal do Cliente</strong><p>' +
+        esc(content || "Após a contratação, o cliente poderá acompanhar documentos, cronograma, atualizações e informações disponibilizadas pela empresa.") +
+        '</p></div>');
+    }
+
+    if (key === "curiosidades_conteudo") {
+      const cards = Array.isArray(curiositiesInfo.items) ? curiositiesInfo.items : [];
+      return genericPage(module, index, pageVisual(module, index) + '<div class="studio-card-grid">' +
+        cards.slice(0, 6).map((item: any) => '<div><strong>' + esc(item?.title) + '</strong><p>' + esc(item?.text) + '</p></div>').join("") +
+        '</div>');
+    }
+
+    if (key === "cases_provas") {
+      const cards = Array.isArray(proofInfo.items) ? proofInfo.items : [];
+      return genericPage(module, index, pageVisual(module, index) + '<div class="studio-card-grid">' +
+        cards.slice(0, 6).map((item: any) => '<div><strong>' + esc(item?.title) + '</strong><p>' + esc(item?.text) + '</p></div>').join("") +
+        '</div>');
+    }
+
+    if (key === "faq") {
+      const cards = Array.isArray(faqInfo.items) ? faqInfo.items : [];
+      return genericPage(module, index, '<div class="studio-faq">' +
+        cards.slice(0, 7).map((item: any) => '<div><strong>' + esc(item?.question) + '</strong><p>' + esc(item?.answer) + '</p></div>').join("") +
+        '</div>');
+    }
+
+    if (key === "anexos") {
+      return genericPage(module, index,
+        '<div class="studio-callout"><strong>Anexos</strong><p>Documentos vinculados a esta versão da proposta.</p></div><!-- STUDIO_ATTACHMENTS -->');
+    }
+
+    return genericPage(module, index, pageVisual(module, index) +
+      '<p class="studio-copy">' + esc(content || moduleText(module, "description") || "Conteúdo desta página definido pelo modelo do tenant.") + '</p>');
+  };
+
+  const pages = modules.map(renderModule).join("\n");
+  const preset = String(builder.visualStyle?.preset ?? "corporativo");
+
+  return '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">' +
+    '<title>Proposta — ' + esc(client) + '</title><style>' +
+    '@page{size:A4;margin:0}*{box-sizing:border-box}html,body{margin:0;padding:0}body{font-family:Inter,Arial,sans-serif;background:#eef0f3;color:' + theme.ink + ';-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
+    '.studio-page{width:210mm;height:297mm;min-height:297mm;margin:0 auto 12px;background:#fff;padding:13mm 15mm 11mm;page-break-after:always;display:flex;flex-direction:column;overflow:hidden;position:relative}.studio-page:last-child{page-break-after:auto}' +
+    '.studio-hdr{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid ' + theme.concreteLine + ';padding-bottom:4mm;margin-bottom:7mm;font-size:7pt;text-transform:uppercase;letter-spacing:.08em;color:' + theme.navyMid + '}.studio-brand img{height:8mm;max-width:50mm;object-fit:contain}.studio-footer{margin-top:auto;border-top:1px solid ' + theme.concreteLine + ';padding-top:3mm;display:flex;justify-content:space-between;font-size:6pt;color:#8b849a}' +
+    '.studio-page-body{min-height:0;overflow:hidden}.studio-kicker{font-size:6.5pt;text-transform:uppercase;letter-spacing:.12em;color:' + theme.accent + ';font-weight:700}.studio-page h1{font-size:24pt;line-height:1.05;margin:2.5mm 0 3mm;color:' + theme.navyDeep + ';letter-spacing:-.03em}.studio-lead{font-size:10pt;line-height:1.55;color:#5b556d;margin:0 0 6mm;max-width:165mm}.studio-copy{font-size:9pt;line-height:1.6;color:#49425d;margin:4mm 0}.studio-muted,.studio-note{font-size:8pt;color:#777083}.studio-note{margin-top:2mm}' +
+    '.studio-visual{height:58mm;width:100%;overflow:hidden;border-radius:3mm;margin:4mm 0 6mm;background:' + theme.cream2 + '}.studio-visual img{width:100%;height:100%;display:block}' +
+    '.studio-benefits{display:grid;grid-template-columns:1fr 1fr;gap:3mm;margin-top:5mm}.studio-benefit{border:1px solid ' + theme.concreteLine + ';border-left:1.5mm solid ' + theme.accent + ';border-radius:2.5mm;padding:4mm;background:#fff}.studio-benefit strong{font-size:9pt;line-height:1.35;color:' + theme.navyDeep + '}' +
+    '.studio-metrics{display:grid;grid-template-columns:repeat(2,1fr);gap:4mm;margin:4mm 0}.studio-metrics>div{background:' + theme.cream2 + ';border-left:1.5mm solid ' + theme.accent + ';padding:5mm}.studio-metrics span,.studio-conditions span{display:block;font-size:6pt;text-transform:uppercase;letter-spacing:.08em;color:#777083;margin-bottom:1.5mm}.studio-metrics strong{font-size:16pt;color:' + theme.navyDeep + '}' +
+    '.studio-table{width:100%;border-collapse:collapse;margin-top:4mm;font-size:7.2pt}.studio-table th{background:' + theme.navyDeep + ';color:#fff;text-align:left;padding:2.6mm;border:1px solid ' + theme.navyDeep + '}.studio-table td{padding:2.5mm;border:1px solid ' + theme.concreteLine + ';vertical-align:top}.studio-table td small{display:block;color:#777083;margin-top:.8mm}.r{text-align:right!important}' +
+    '.studio-stage-grid,.studio-card-grid{display:grid;grid-template-columns:1fr 1fr;gap:3mm;margin-top:5mm}.studio-stage-card,.studio-card-grid>div{border:1px solid ' + theme.concreteLine + ';border-radius:2.5mm;padding:4mm;background:#fff}.studio-stage-card span{display:block;font-size:6pt;color:' + theme.accent + ';text-transform:uppercase;letter-spacing:.08em}.studio-stage-card strong{display:block;font-size:9pt;margin:1.3mm 0}.studio-stage-card b{font-size:11pt;color:' + theme.navyDeep + '}.studio-card-grid p{font-size:7.5pt;line-height:1.45;color:#5d566d}' +
+    '.studio-gallery{display:grid;grid-template-columns:1fr 1fr;gap:4mm;margin-top:4mm}.studio-gallery figure{margin:0}.studio-gallery img{width:100%;height:55mm;object-fit:cover;border-radius:2.5mm}.studio-gallery figcaption{font-size:6.5pt;color:#686176;margin-top:1.5mm}' +
+    '.studio-conditions{border-top:2px solid ' + theme.navyDeep + ';margin-top:5mm}.studio-conditions>div{display:grid;grid-template-columns:55mm 1fr;gap:5mm;padding:4.5mm 0;border-bottom:1px solid ' + theme.concreteLine + '}.studio-conditions strong{font-size:9pt;color:' + theme.navyDeep + '}' +
+    '.studio-callout{margin-top:8mm;padding:7mm;border-left:2mm solid ' + theme.accent + ';background:' + theme.cream2 + ';border-radius:2mm}.studio-callout strong{font-size:14pt}.studio-callout p{font-size:9pt;line-height:1.6;color:#514a61}' +
+    '.studio-accept{margin-top:10mm}.studio-accept h2{font-size:18pt}.studio-accept p{font-size:9pt;line-height:1.6;max-width:165mm}.studio-signatures{display:grid;grid-template-columns:1fr 55mm;gap:12mm;margin-top:24mm}.studio-signatures>div{border-top:1px solid #999;padding-top:2mm;font-size:7pt;color:#777}' +
+    '.studio-faq{display:grid;gap:3mm;margin-top:5mm}.studio-faq>div{border:1px solid ' + theme.concreteLine + ';border-radius:2mm;padding:4mm}.studio-faq strong{font-size:9pt}.studio-faq p{font-size:7.5pt;color:#5d566d;line-height:1.45}' +
+    '.studio-cover{padding:0;color:#fff;background:#111}.studio-cover-bg{position:absolute;inset:0;width:100%;height:100%}.studio-cover-overlay{position:absolute;inset:0}.studio-cover-content{position:relative;z-index:2;height:100%;padding:16mm 15mm 14mm;display:flex;flex-direction:column}.studio-cover-top{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,.35);padding-bottom:5mm;font-size:7pt;letter-spacing:.1em}.studio-cover-top img{height:10mm;max-width:55mm;object-fit:contain;background:#fff;border-radius:2mm;padding:1.5mm}.studio-cover-main{margin-top:24mm;max-width:155mm}.studio-cover-main h1{font-size:31pt;color:#fff;margin:3mm 0 4mm}.studio-cover-main p{font-size:10.5pt;line-height:1.55;color:rgba(255,255,255,.9);max-width:125mm}.studio-cover .studio-kicker{color:#fff;opacity:.7}.studio-cover .studio-benefits{max-width:145mm}.studio-cover .studio-benefit{border-color:rgba(255,255,255,.3);background:rgba(0,0,0,.23)}.studio-cover .studio-benefit strong{color:#fff}.studio-cover-bottom{margin-top:auto;border-left:2mm solid ' + theme.accent + ';background:rgba(0,0,0,.32);padding:5mm 6mm}.studio-cover-bottom>strong{font-size:9pt}.studio-cover-summary{display:grid;grid-template-columns:repeat(2,1fr);gap:3mm 7mm;margin-top:4mm}.studio-cover-summary span{display:block;font-size:5.8pt;text-transform:uppercase;letter-spacing:.07em;opacity:.7}.studio-cover-summary strong{font-size:10pt}' +
+    '.proposal-preset-minimalista .studio-benefit,.proposal-preset-minimalista .studio-stage-card{box-shadow:none}.proposal-preset-catalogo_comercial .studio-page h1{font-size:22pt}.proposal-preset-tecnico .studio-table{font-size:6.8pt}' +
+    '@media screen{.studio-page{box-shadow:0 12px 36px rgba(15,23,42,.12)}}@media print{body{background:#fff}.studio-page{margin:0;box-shadow:none}}' +
+    '</style></head><body class="proposal-preset-' + esc(preset) + '">' + pages + '</body></html>';
+}
+
 export function renderProposalHtml(json: unknown, theme: {
   cream: string; cream2: string; ink: string;
   navyDeep: string; navyMid: string;
@@ -2271,6 +2626,27 @@ export function renderProposalHtml(json: unknown, theme: {
     ...builderVisualImages,
     ...(imagens || []).filter((url): url is string => typeof url === "string" && url.trim().length > 0),
   ];
+
+  // Studio de Propostas é a fonte de verdade quando existe um modelo modular.
+  // Cada módulo ativo gera exatamente uma página, na mesma ordem salva no Studio.
+  if (builder && Array.isArray(builder.modules) && builder.modules.length > 0) {
+    const studioHtml = renderStudioOrderedProposal({
+      json: d,
+      theme,
+      logoUrl,
+      clientName,
+      tenantName,
+      websiteUrl,
+      tenantLogoUrl,
+      imagens: visualImages,
+      orcamento,
+      contact,
+      builder,
+    });
+    if (studioHtml) return studioHtml;
+  }
+
+  // Compatibilidade para tenants antigos sem Studio configurado.
   if (builder?.proposalKind === "construction_project" && orcamento) {
     return renderConstructionProposalLayout({
       json: d,
