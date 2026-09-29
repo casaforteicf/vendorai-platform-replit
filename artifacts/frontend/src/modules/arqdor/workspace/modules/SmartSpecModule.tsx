@@ -24,6 +24,12 @@ interface SpecItem {
   quantidade: number; confianca: string; status: 'pendente' | 'especificado' | 'nao_especificado'
   catalogoItemId: string | null; overrideNome: string | null; overrideFornecedor: string | null
   overridePreco: string | null
+  codigo: string | null; modelo: string | null; fabricante: string | null; sku: string | null
+  configuracao: string | null; material: string | null; acabamento: string | null; cor: string | null
+  origemMedida: 'projeto' | 'catalogo' | 'confirmado' | 'estimativa_ia' | 'pendente' | null
+  unidadeQuantificacao: string | null
+  larguraCm: string | null; alturaCm: string | null; profundidadeCm: string | null
+  notes: string | null
 }
 interface Specification {
   id: string; projetoId: string; renderId: string | null; renderImageUrl: string | null
@@ -151,9 +157,46 @@ function SpecItemRow({
   catalogMatches: CatalogMatch[] | null
   searching: boolean
   onUseMatch: (match: CatalogMatch) => void
+  onSaveDetails: (patch: Partial<SpecItem>) => Promise<void>
 }) {
   const cc   = confColor(item.confianca)
   const pct  = Math.round(parseFloat(item.confianca) * 100)
+  const [details, setDetails] = useState({
+    larguraCm: item.larguraCm ?? '',
+    alturaCm: item.alturaCm ?? '',
+    profundidadeCm: item.profundidadeCm ?? '',
+    modelo: item.modelo ?? '',
+    fabricante: item.fabricante ?? '',
+    sku: item.sku ?? '',
+    configuracao: item.configuracao ?? '',
+    material: item.material ?? '',
+    acabamento: item.acabamento ?? '',
+    cor: item.cor ?? '',
+    origemMedida: item.origemMedida ?? 'pendente',
+    unidadeQuantificacao: item.unidadeQuantificacao ?? 'un',
+    notes: item.notes ?? '',
+  })
+  const [savingDetails, setSavingDetails] = useState(false)
+
+  useEffect(() => {
+    setDetails({
+      larguraCm: item.larguraCm ?? '',
+      alturaCm: item.alturaCm ?? '',
+      profundidadeCm: item.profundidadeCm ?? '',
+      modelo: item.modelo ?? '',
+      fabricante: item.fabricante ?? '',
+      sku: item.sku ?? '',
+      configuracao: item.configuracao ?? '',
+      material: item.material ?? '',
+      acabamento: item.acabamento ?? '',
+      cor: item.cor ?? '',
+      origemMedida: item.origemMedida ?? 'pendente',
+      unidadeQuantificacao: item.unidadeQuantificacao ?? 'un',
+      notes: item.notes ?? '',
+    })
+  }, [item.id, item.larguraCm, item.alturaCm, item.profundidadeCm, item.modelo, item.fabricante, item.sku, item.configuracao, item.material, item.acabamento, item.cor, item.origemMedida, item.unidadeQuantificacao, item.notes])
+
+  const isFurniture = ['Mobiliário', 'Componente'].includes(item.categoria) || item.categoria.toLowerCase().includes('marcen')
   const statusColors: Record<SpecItem['status'], string> = {
     pendente:           T.amber,
     especificado:       T.green,
@@ -215,6 +258,119 @@ function SpecItemRow({
           borderRadius:'0 0 8px 8px', background:'rgba(124,58,237,0.04)',
           padding:'12px', animation:'ss-fadeIn 0.2s ease',
         }}>
+          {/* Ficha técnica do mobiliário / elemento */}
+          {isFurniture && (
+            <div style={{ marginBottom:12, padding:12, borderRadius:8, border:`1px solid ${T.border}`, background:'rgba(255,255,255,0.025)' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', gap:8, alignItems:'center', marginBottom:10 }}>
+                <div>
+                  <p style={{ margin:0, fontSize:11, fontWeight:800, color:'#fff' }}>Ficha técnica {item.codigo ? `· ${item.codigo}` : ''}</p>
+                  <p style={{ margin:'2px 0 0', fontSize:9, color:T.dim }}>Medidas, configuração e materiais usados no projeto e no orçamento.</p>
+                </div>
+                <span style={{ fontSize:9, color: details.origemMedida === 'confirmado' || details.origemMedida === 'projeto' || details.origemMedida === 'catalogo' ? T.green : T.amber, fontWeight:700 }}>
+                  {details.origemMedida === 'projeto' ? 'MEDIDA DO PROJETO' :
+                   details.origemMedida === 'catalogo' ? 'MEDIDA DO CATÁLOGO' :
+                   details.origemMedida === 'confirmado' ? 'MEDIDA CONFIRMADA' :
+                   details.origemMedida === 'estimativa_ia' ? 'ESTIMATIVA IA' : 'MEDIDA PENDENTE'}
+                </span>
+              </div>
+
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(3, minmax(0,1fr))', gap:8, marginBottom:8 }}>
+                {[
+                  ['larguraCm','Largura (cm)'],
+                  ['profundidadeCm','Profundidade (cm)'],
+                  ['alturaCm','Altura (cm)'],
+                ].map(([key,label]) => (
+                  <label key={key} style={{ fontSize:9, color:T.dim }}>
+                    {label}
+                    <input
+                      type="number" min="0" step="0.1"
+                      value={(details as any)[key]}
+                      onChange={e => setDetails(d => ({ ...d, [key]: e.target.value }))}
+                      style={{ marginTop:4, width:'100%', boxSizing:'border-box', padding:'7px 8px', borderRadius:6, border:`1px solid ${T.border}`, background:'rgba(0,0,0,0.18)', color:'#fff', fontSize:10 }}
+                    />
+                  </label>
+                ))}
+              </div>
+
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(2, minmax(0,1fr))', gap:8, marginBottom:8 }}>
+                {[
+                  ['modelo','Modelo'],
+                  ['fabricante','Fabricante'],
+                  ['sku','SKU / Código fabricante'],
+                  ['configuracao','Configuração'],
+                  ['material','Material / Revestimento'],
+                  ['acabamento','Acabamento'],
+                  ['cor','Cor'],
+                ].map(([key,label]) => (
+                  <label key={key} style={{ fontSize:9, color:T.dim }}>
+                    {label}
+                    <input
+                      value={(details as any)[key]}
+                      onChange={e => setDetails(d => ({ ...d, [key]: e.target.value }))}
+                      style={{ marginTop:4, width:'100%', boxSizing:'border-box', padding:'7px 8px', borderRadius:6, border:`1px solid ${T.border}`, background:'rgba(0,0,0,0.18)', color:'#fff', fontSize:10 }}
+                    />
+                  </label>
+                ))}
+                <label style={{ fontSize:9, color:T.dim }}>
+                  Origem das medidas
+                  <select
+                    value={details.origemMedida}
+                    onChange={e => setDetails(d => ({ ...d, origemMedida: e.target.value as any }))}
+                    style={{ marginTop:4, width:'100%', padding:'7px 8px', borderRadius:6, border:`1px solid ${T.border}`, background:'#171923', color:'#fff', fontSize:10 }}
+                  >
+                    <option value="pendente">Pendente</option>
+                    <option value="projeto">Geometria do projeto</option>
+                    <option value="catalogo">Catálogo / fabricante</option>
+                    <option value="confirmado">Confirmada em projeto/obra</option>
+                    <option value="estimativa_ia">Estimativa visual da IA</option>
+                  </select>
+                </label>
+              </div>
+
+              <label style={{ fontSize:9, color:T.dim, display:'block' }}>
+                Observações técnicas
+                <textarea
+                  rows={2}
+                  value={details.notes}
+                  onChange={e => setDetails(d => ({ ...d, notes:e.target.value }))}
+                  style={{ marginTop:4, width:'100%', boxSizing:'border-box', padding:'7px 8px', borderRadius:6, border:`1px solid ${T.border}`, background:'rgba(0,0,0,0.18)', color:'#fff', fontSize:10, resize:'vertical' }}
+                />
+              </label>
+
+              <div style={{ display:'flex', justifyContent:'flex-end', marginTop:8 }}>
+                <button
+                  className="ss-btn"
+                  disabled={savingDetails}
+                  onClick={async () => {
+                    setSavingDetails(true)
+                    try {
+                      await onSaveDetails({
+                        larguraCm: details.larguraCm || null,
+                        profundidadeCm: details.profundidadeCm || null,
+                        alturaCm: details.alturaCm || null,
+                        modelo: details.modelo || null,
+                        fabricante: details.fabricante || null,
+                        sku: details.sku || null,
+                        configuracao: details.configuracao || null,
+                        material: details.material || null,
+                        acabamento: details.acabamento || null,
+                        cor: details.cor || null,
+                        origemMedida: details.origemMedida as SpecItem['origemMedida'],
+                        unidadeQuantificacao: details.unidadeQuantificacao || 'un',
+                        notes: details.notes || null,
+                      } as Partial<SpecItem>)
+                    } finally {
+                      setSavingDetails(false)
+                    }
+                  }}
+                  style={{ padding:'7px 12px', borderRadius:7, border:`1px solid ${T.green}`, background:'rgba(74,222,128,0.1)', color:T.green, cursor:'pointer', fontSize:10, fontWeight:800 }}
+                >
+                  {savingDetails ? 'Salvando…' : 'Salvar ficha técnica'}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Actions */}
           <div style={{ display:'flex', gap:6, marginBottom:12, flexWrap:'wrap' }}>
             <button className="ss-btn" onClick={onSearch} disabled={searching} style={{
@@ -794,6 +950,7 @@ export function SmartSpecModule() {
                     catalogMatches={catalogMap[item.id] ?? null}
                     searching={searchingMap[item.id] ?? false}
                     onUseMatch={match => useMatch(item, match)}
+                    onSaveDetails={patch => updateItem(item.id, patch)}
                   />
                 ))}
               </div>
