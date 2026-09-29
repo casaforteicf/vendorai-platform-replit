@@ -2,7 +2,7 @@
 // Transforma um render em especificação inicial.
 // Fluxo: selecionar render → IA identifica itens → busca catálogo → memorial.
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { T } from '../../shared/arqdor-theme'
 
 const BASE = '/api'
@@ -26,7 +26,7 @@ interface SpecItem {
   overridePreco: string | null
 }
 interface Specification {
-  id: string; projetoId: string; renderImageUrl: string | null
+  id: string; projetoId: string; renderId: string | null; renderImageUrl: string | null
   itemsCount: number; specifiedCount: number; status: string; createdAt: string
 }
 interface CatalogMatch {
@@ -162,7 +162,7 @@ function SpecItemRow({
   const statusLabels: Record<SpecItem['status'], string> = {
     pendente:           '● Pendente',
     especificado:       '✓ Especificado',
-    nao_especificado:   '✕ Ignorado',
+    nao_especificado:   '○ Referência',
   }
 
   return (
@@ -241,7 +241,7 @@ function SpecItemRow({
                 padding:'6px 12px', borderRadius:7, border:`1px solid ${T.border}`,
                 background:'transparent', color:T.dim, cursor:'pointer', fontSize:10, fontWeight:700,
               }}>
-                ✕ Ignorar
+                ○ Somente referência
               </button>
             )}
             {item.status !== 'pendente' && (
@@ -320,7 +320,7 @@ function SpecItemRow({
 function buildMemorial(items: SpecItem[]): string {
   const specified   = items.filter(i => i.status === 'especificado')
   const pending     = items.filter(i => i.status === 'pendente')
-  const ignored     = items.filter(i => i.status === 'nao_especificado')
+  const reference   = items.filter(i => i.status === 'nao_especificado')
 
   const grouped = specified.reduce<Record<string, SpecItem[]>>((acc, item) => {
     ;(acc[item.categoria] = acc[item.categoria] ?? []).push(item)
@@ -335,7 +335,7 @@ function buildMemorial(items: SpecItem[]): string {
     `  Gerado em: ${new Date().toLocaleString('pt-BR')}`,
     '════════════════════════════════════════════════════════',
     '',
-    `RESUMO: ${specified.length} especificados · ${pending.length} pendentes · ${ignored.length} ignorados`,
+    `RESUMO: ${specified.length} especificados · ${pending.length} pendentes · ${reference.length} somente referência`,
     '',
     '────────────────────────────────────────────────────────',
     '  ITENS ESPECIFICADOS POR CATEGORIA',
@@ -387,21 +387,33 @@ export function SmartSpecModule() {
   const [searchingMap, setSearchingMap] = useState<Record<string, boolean>>({})
   const [memorial,     setMemorial]     = useState<string | null>(null)
   const [error,        setError]        = useState<string | null>(null)
+  const [loadedSpecProjectId, setLoadedSpecProjectId] = useState<string | null>(null)
+  const [sendingBudget, setSendingBudget] = useState(false)
+  const [budgetMsg, setBudgetMsg] = useState<string | null>(null)
+  const [requestedRenderId] = useState(() => typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('render_id') : null)
+  const [requestedProjectId] = useState(() => typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('project_id') : null)
+  const autoAnalyzeRef = useRef<string | null>(null)
 
-  // Load renders on mount
+  // Load renders on mount. When coming from Render Studio, preserve the approved render as source.
   useEffect(() => {
-    fetch(`${BASE}/arch/renders/gallery?limit=10`, { headers: authHeaders() })
+    fetch(`${BASE}/arch/renders/gallery?limit=50`, { headers: authHeaders() })
       .then(r => r.json())
       .then((data: GalleryRender[]) => {
         setRenders(data)
-        if (data.length > 0 && !selRender) setSelRender(data[0])
+        if (data.length === 0) return
+        const preferred =
+          (requestedRenderId ? data.find(render => render.id === requestedRenderId) : undefined) ??
+          (requestedProjectId ? data.find(render => render.projetoId === requestedProjectId) : undefined) ??
+          data[0]
+        setSelRender(preferred ?? null)
       })
       .catch(() => {})
-  }, [selRender])
+  }, [requestedRenderId, requestedProjectId])
 
   // Load existing spec when render selected
   const loadExistingSpec = useCallback(async (projetoId: string) => {
     setLoadingSpec(true)
+    setLoadedSpecProjectId(null)
     try {
       const r = await fetch(`${BASE}/arch/specification/${projetoId}`, { headers: authHeaders() })
       if (r.ok) {
@@ -413,6 +425,7 @@ export function SmartSpecModule() {
         setItems([])
       }
     } finally {
+      setLoadedSpecProjectId(projetoId)
       setLoadingSpec(false)
     }
   }, [])
@@ -443,6 +456,46 @@ export function SmartSpecModule() {
       setError(e instanceof Error ? e.message : 'Erro ao analisar render')
     } finally {
       setAnalyzing(false)
+    }
+  }
+
+  // A handoff from an approved render starts specification automatically.
+  // Existing specification for the same render is reused; only a new source triggers analysis.
+  useEffect(() => {
+    if (!requestedRenderId || selRender?.id !== requestedRenderId) return
+    if (!selRender.imageUrl || loadedSpecProjectId !== selRender.projetoId) return
+    if (loadingSpec || analyzing) return
+    if (spec?.renderId === requestedRenderId) return
+    if (autoAnalyzeRef.current === requestedRenderId) return
+    autoAnalyzeRef.current = requestedRenderId
+    void analyze()
+  }, [requestedRenderId, selRender?.id, selRender?.imageUrl, selRender?.projetoId, loadedSpecProjectId, loadingSpec, analyzing, spec?.renderId])
+
+  const sendToBudget = async () => {
+    if (!spec?.id) return
+    const itemIds = items.filter(item => item.status === 'especificado').map(item => item.id)
+    if (itemIds.length === 0) {
+      setBudgetMsg('Confirme pelo menos um item antes de enviar ao orçamento.')
+      return
+    }
+    setSendingBudget(true)
+    setBudgetMsg(null)
+    try {
+      const r = await fetch(`${BASE}/arch/specification/${spec.id}/enviar-orcamento`, {
+        method: 'POST',
+        headers: authHeaders(true),
+        body: JSON.stringify({ itemIds }),
+      })
+      const data = await r.json()
+      if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`)
+      const pending = Number(data.pendentes ?? 0)
+      setBudgetMsg(pending > 0
+        ? `${data.itensCriados} item(ns) enviados ao orçamento; ${pending} pendência(s) permanecem na especificação.`
+        : `${data.itensCriados} item(ns) enviados ao orçamento.`)
+    } catch (e: unknown) {
+      setBudgetMsg(e instanceof Error ? e.message : 'Não foi possível enviar ao orçamento.')
+    } finally {
+      setSendingBudget(false)
     }
   }
 
@@ -525,7 +578,7 @@ export function SmartSpecModule() {
               ✨ Smart Specification
             </h2>
             <p style={{ margin:0, fontSize:10, color:T.dim }}>
-              Transforma um render em especificação técnica inicial
+              Módulo independente · gera a especificação automaticamente a partir do render aprovado
             </p>
           </div>
           {spec && (
@@ -614,9 +667,9 @@ export function SmartSpecModule() {
             )}
           </div>
 
-          {/* Memorial export */}
+          {/* Memorial + orçamento */}
           {items.length > 0 && (
-            <div style={{ padding:'0 12px 12px', flexShrink:0 }}>
+            <div style={{ padding:'0 12px 12px', flexShrink:0, display:'flex', flexDirection:'column', gap:7 }}>
               <button
                 onClick={() => setMemorial(buildMemorial(items))}
                 className="ss-btn"
@@ -627,6 +680,23 @@ export function SmartSpecModule() {
               >
                 📄 Gerar Memorial
               </button>
+              <button
+                onClick={() => void sendToBudget()}
+                disabled={sendingBudget || counts.especificados === 0}
+                className="ss-btn"
+                style={{
+                  width:'100%', padding:'10px', borderRadius:8, border:`1px solid ${counts.especificados > 0 ? T.green : T.border}`,
+                  background: counts.especificados > 0 ? 'rgba(74,222,128,0.12)' : 'rgba(255,255,255,0.03)',
+                  color: counts.especificados > 0 ? T.green : T.dim,
+                  cursor: counts.especificados > 0 ? 'pointer' : 'default',
+                  fontSize:11, fontWeight:800, opacity:sendingBudget ? 0.65 : 1,
+                }}
+              >
+                {sendingBudget ? 'Enviando…' : `→ Enviar ${counts.especificados} ao orçamento`}
+              </button>
+              {budgetMsg && (
+                <p style={{ margin:0, fontSize:9, lineHeight:1.45, color:T.textSub, textAlign:'center' }}>{budgetMsg}</p>
+              )}
             </div>
           )}
         </div>
@@ -682,7 +752,7 @@ export function SmartSpecModule() {
                   { id:'todos',             label:'Todos',       count:counts.todos },
                   { id:'pendentes',         label:'Pendentes',   count:counts.pendentes,         color:T.amber },
                   { id:'especificados',     label:'Especificados',count:counts.especificados,    color:T.green },
-                  { id:'nao_especificados', label:'Ignorados',   count:counts.nao_especificados, color:T.dim },
+                  { id:'nao_especificados', label:'Referência',  count:counts.nao_especificados, color:T.dim },
                 ] as const).map(tab => (
                   <button
                     key={tab.id}
