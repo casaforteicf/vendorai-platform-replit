@@ -100,6 +100,8 @@ type RoomKind =
 
 type EditorLibraryTab = "site" | "brief" | "placement" | "models" | "build" | "rooms" | "furniture" | "materials" | "outdoor";
 type EditorExperienceMode = "guided" | "professional";
+type ConceptProjectScope = "house" | "room";
+type ConceptStartWizardStage = "kind" | "terrain" | "source";
 
 const GUIDED_LIBRARY_FLOW: Array<{ id: EditorLibraryTab; label: string; helper: string }> = [
   { id: "site", label: "Terreno", helper: "Defina lote, frente e implantação." },
@@ -471,6 +473,9 @@ type ConceptDraftResponse = {
     sourceFiles?: ProjectSourceFile[];
     sitePlacement?: SitePlacement;
     projectBrief?: ProjectBriefSnapshot;
+    projectScope?: ConceptProjectScope;
+    startWithTerrain?: boolean;
+    startSourceChosen?: boolean;
     facadeDesign?: FacadeDesignState;
     projectMaster?: {
       version: number;
@@ -1044,6 +1049,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [publicLinkState, setPublicLinkState] = useState<"idle" | "loading" | "saving" | "error">("idle");
   const [publicLinkCopied, setPublicLinkCopied] = useState<"link" | "code" | null>(null);
   const [renderLightingOverride, setRenderLightingOverride] = useState<"day" | "sunset" | "night" | null>(null);
+  const [projectScope, setProjectScope] = useState<ConceptProjectScope | null>(null);
+  const [startWithTerrain, setStartWithTerrain] = useState<boolean | null>(null);
+  const [startSourceChosen, setStartSourceChosen] = useState(false);
+  const [startWizardStage, setStartWizardStage] = useState<ConceptStartWizardStage>("kind");
   const [startChooserDismissed, setStartChooserDismissed] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [projectListError, setProjectListError] = useState<string | null>(null);
@@ -1439,6 +1448,14 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         setSourceFiles(Array.isArray(draft.configuration?.sourceFiles) ? draft.configuration.sourceFiles : []);
         setSitePlacement(migrateLegacySitePlacement(draft.configuration?.sitePlacement));
         setProjectBrief(draft.configuration?.projectBrief ?? null);
+        const loadedScope = draft.configuration?.projectScope;
+        if (loadedScope === "house" || loadedScope === "room") {
+          setProjectScope(loadedScope);
+          setStartWithTerrain(typeof draft.configuration?.startWithTerrain === "boolean" ? draft.configuration.startWithTerrain : loadedScope === "house");
+          setStartSourceChosen(Boolean(draft.configuration?.startSourceChosen));
+          setStartWizardStage("source");
+          setStartChooserDismissed(Boolean(draft.configuration?.startSourceChosen));
+        }
         setRooms(loadedRooms);
         setOpeningOverrides(draft.openingOverrides && typeof draft.openingOverrides === "object" ? draft.openingOverrides : {});
         setCustomerProfile(draft.customerProfile ?? {});
@@ -1506,6 +1523,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         sourceFiles,
         sitePlacement,
         projectBrief: nextProjectBrief ?? undefined,
+        projectScope: projectScope ?? undefined,
+        startWithTerrain: startWithTerrain ?? undefined,
+        startSourceChosen,
         facadeDesign: nextFacadeDesign,
       },
       rooms: nextRooms,
@@ -1562,10 +1582,12 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const autosaveKey = useMemo(() => JSON.stringify([
     rooms, customWalls, customOpenings, objects, openingOverrides, wallMaterials,
     lotWidth, lotDepth, floors, desiredArea, typology, layoutPreferences, sitePlacement, projectBrief,
+    projectScope, startWithTerrain, startSourceChosen,
     facadePreferences, spaceProfiles, customerProfile, showDimensions, wallFirstFloors,
   ]), [
     rooms, customWalls, customOpenings, objects, openingOverrides, wallMaterials,
     lotWidth, lotDepth, floors, desiredArea, typology, layoutPreferences, sitePlacement, projectBrief,
+    projectScope, startWithTerrain, startSourceChosen,
     facadePreferences, spaceProfiles, customerProfile, showDimensions, wallFirstFloors,
   ]);
   const [lastSavedKey, setLastSavedKey] = useState<string | null>(null);
@@ -1640,6 +1662,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       setEditorView("plan");
       setEditorLibraryTab(editorExperienceMode === "professional" ? "models" : "brief");
       setLibraryOpen(true);
+      if (projectScope === "house" && startWithTerrain === true && !startSourceChosen) {
+        setStartWizardStage("source");
+        setStartChooserDismissed(false);
+      }
     } else if (index === 2) {
       setEditorView("plan");
       if (!["build", "furniture", "materials", "outdoor"].includes(editorLibraryTab)) setEditorLibraryTab("build");
