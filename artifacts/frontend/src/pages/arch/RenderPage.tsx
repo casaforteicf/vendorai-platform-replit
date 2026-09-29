@@ -250,7 +250,7 @@ export default function RenderPage() {
         ? Object.keys(rs.applied).concat(['piso', 'parede']).filter((v, i, a) => a.indexOf(v) === i)
         : []
 
-      // ── Novo pipeline assíncrono (mode=preservar usa Flux Kontext Pro) ──
+      // ── Pipeline assíncrono com motor premium oficial do Arqdor ──
       const res = await fetch(`/api/arch/ai-render`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
@@ -286,7 +286,7 @@ export default function RenderPage() {
         if (data.status === 'concluido' && data.result_image_url) {
           rs.setRenderResult(data.result_image_url)
           setVersionTag(data.version_tag ?? null)
-          const motorLabel = data.motor?.includes('flux-fill') ? ' via Flux Fill Pro' : data.motor ? ` via ${data.motor}` : ''
+          const motorLabel = data.motor ? ' · Render Premium' : ''
           const compositeLabel = data.composited ? ' + compositing' : ''
           toast({ description: `✨ Render concluído${motorLabel}${compositeLabel}` })
           return
@@ -633,7 +633,7 @@ export default function RenderPage() {
             </p>
             <p style={{ color: 'rgba(255,255,255,0.28)', fontSize: 11, margin: 0 }}>
               {renderMode === 'preservar'
-                ? 'Edição por instrução via Flux Kontext Pro — pode levar 60–120s'
+                ? 'Render Premium com preservação do projeto — pode levar alguns instantes'
                 : 'Pode levar até 60–90 segundos'}
             </p>
           </div>
@@ -990,7 +990,7 @@ export default function RenderPage() {
                 : '✨ GERAR CONCEITO'}
           </button>
           <p style={{ textAlign: 'center', fontSize: 9, color: 'rgba(255,255,255,0.25)', margin: '7px 0 0', letterSpacing: '0.04em' }}>
-            {renderMode === 'preservar' ? '🔒 Flux Kontext Pro · edição por instrução' : '✨ Geração livre via Flux ControlNet'}
+            {renderMode === 'preservar' ? '🔒 Render Premium · preservação do projeto' : '✨ Render Premium · geração arquitetônica'}
           </p>
         </div>
       </div>

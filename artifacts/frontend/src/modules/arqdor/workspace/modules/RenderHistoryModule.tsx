@@ -23,17 +23,18 @@ interface GalleryRender {
 }
 
 const MODELS: Record<string, { color: string; label: string; icon: string }> = {
-  'flux-kontext': { color: '#a78bfa', label: 'Flux Kontext', icon: '✦' },
-  'flux-ultra':   { color: '#60a5fa', label: 'Flux Ultra',   icon: '⚡' },
-  'flux-fill':    { color: '#34d399', label: 'Flux Fill',    icon: '🖌' },
-  'openai':       { color: '#4ade80', label: 'OpenAI',       icon: '🤖' },
-  'blender':      { color: '#fb923c', label: 'Blender',      icon: '🔶' },
-  'replicate':    { color: '#c084fc', label: 'Replicate',    icon: '🔁' },
+  'openai':       { color: '#4ade80', label: 'Render Premium', icon: '✨' },
+  'gpt-image':    { color: '#4ade80', label: 'Render Premium', icon: '✨' },
+  'blender':      { color: '#fb923c', label: 'Blender',        icon: '🔶' },
 }
 function modelMeta(origem: string | null) {
   if (!origem) return { color: T.dim, label: 'Render', icon: '🎬' }
-  const key = Object.keys(MODELS).find(k => origem.toLowerCase().includes(k))
-  return key ? MODELS[key] : { color: T.dim, label: origem, icon: '🎬' }
+  const normalized = origem.toLowerCase()
+  if (normalized.includes('flux') || normalized.includes('replicate') || normalized.includes('kontext')) {
+    return { color: T.dim, label: 'Render legado', icon: '🕘' }
+  }
+  const key = Object.keys(MODELS).find(k => normalized.includes(k))
+  return key ? MODELS[key] : { color: T.dim, label: 'Render', icon: '🎬' }
 }
 function fmtDate(iso: string) {
   const d = new Date(iso)
@@ -157,8 +158,8 @@ function EmptyGallery() {
 
       <div style={{ display:'flex', gap:12, marginTop:4 }}>
         {[
-          { icon:'⚡', label:'Flux Ultra', desc:'Alta resolução' },
-          { icon:'✦', label:'Flux Kontext', desc:'Edição por instrução' },
+          { icon:'✨', label:'Render Premium', desc:'Alta qualidade fotorealista' },
+          { icon:'🔒', label:'Preservação', desc:'Projeto e câmera preservados' },
           { icon:'🤖', label:'OpenAI', desc:'Criativo e rápido' },
         ].map(m => (
           <div key={m.label} style={{

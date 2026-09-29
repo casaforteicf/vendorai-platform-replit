@@ -16,10 +16,7 @@ interface AITranslator {
 }
 
 const REGISTRY: AITranslator[] = [
-  { id:'flux-kontext', name:'Flux Kontext Pro', provider:'Replicate', type:'IMAGE_GEN', state:'DECLARED', icon:'⚡', description:'Motor declarado no pipeline de preservação/edição.', capabilities:['Edição por instrução','Preservação de contexto'] },
-  { id:'flux-ultra', name:'Flux 1.1 Pro Ultra', provider:'Replicate', type:'IMAGE_GEN', state:'DECLARED', icon:'🚀', description:'Motor declarado no pipeline de criação.', capabilities:['Geração livre','Alta qualidade'] },
-  { id:'flux-fill', name:'Flux Fill Pro', provider:'Replicate', type:'CORRECTION', state:'DECLARED', icon:'🎯', description:'Motor declarado para ajuste pontual/inpainting.', capabilities:['Inpainting por zona','Correção localizada'] },
-  { id:'gpt-image', name:'GPT Image', provider:'OpenAI', type:'IMAGE_GEN', state:'DECLARED', icon:'🎨', description:'Integração declarada para geração de imagens em fluxos compatíveis.', capabilities:['Geração de imagem','Variações'] },
+  { id:'gpt-image', name:'Render Premium', provider:'OpenAI', type:'IMAGE_GEN', state:'DECLARED', icon:'✨', description:'Motor oficial do Arqdor para preservação, criação e ajustes de render.', capabilities:['Preservação arquitetônica','Geração fotorealista','Ajuste localizado'] },
   { id:'openai-prompt', name:'OpenAI via AI Gateway', provider:'OpenAI', type:'PROMPT', state:'DECLARED', icon:'📝', description:'Integração declarada para prompts, análise e Copilot conforme feature do gateway.', capabilities:['Prompt','Análise de projeto','Copilot'] },
   { id:'fidelity-review', name:'Fidelity / AI Review', provider:'AI Gateway', type:'REVIEW', state:'DECLARED', icon:'🔍', description:'Análise visual real base × versão, persistida por render.', capabilities:['Comparação visual','Evidências','Confidence por dimensão'] },
   { id:'project-memory', name:'ARQ Project Memory', provider:'Interno', type:'MEMORY', state:'DECLARED', icon:'🧠', description:'Contexto persistente do Workspace + trocas reais do Copilot.', capabilities:['Project DNA','Memória por projeto','Histórico do Copilot'] },
