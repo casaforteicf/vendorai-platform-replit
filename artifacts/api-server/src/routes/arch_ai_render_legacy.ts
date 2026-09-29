@@ -160,6 +160,9 @@ const adjustBodySchema = z.object({
   // mas a composição final continua bloqueando qualquer mudança fora dela.
   expand_selection_to_material: z.boolean().optional().default(false),
   selection_padding_percent: z.number().min(0).max(25).optional().default(10),
+  material_id: z.string().trim().min(1).optional(),
+  material_name: z.string().trim().min(1).optional(),
+  material_reference_url: z.string().trim().min(1).optional(),
 });
 
 const projectConfigBodySchema = z.object({
@@ -465,6 +468,9 @@ archAiRenderRouter.post("/arch/ai-render/:id/adjust", authenticate, async (req: 
     mask_coordinates,
     expand_selection_to_material,
     selection_padding_percent,
+    material_id,
+    material_name,
+    material_reference_url,
   } = parsed.data;
 
   // Herda mode do pai — e sanitiza zonas se mode=preservar
@@ -475,6 +481,26 @@ archAiRenderRouter.post("/arch/ai-render/:id/adjust", authenticate, async (req: 
   const baseImageUrl = parent.resultImageUrl ?? parent.originalImageUrl;
   if (!baseImageUrl) {
     return res.status(400).json({ success: false, error: "Render pai não possui imagem de resultado" });
+  }
+
+  if (material_id && (!mask_coordinates || mask_coordinates.length === 0) && !mask_file_base64) {
+    return res.status(400).json({
+      success: false,
+      error: "Selecione e confirme a região antes de aplicar um material do catálogo.",
+      code: "MATERIAL_REGION_REQUIRED",
+    });
+  }
+
+  if (material_reference_url && !(
+    material_reference_url.startsWith("/objects/") ||
+    material_reference_url.startsWith("/api/storage/objects/") ||
+    material_reference_url.startsWith("data:image/")
+  )) {
+    return res.status(400).json({
+      success: false,
+      error: "A referência visual precisa vir da Biblioteca de Materiais.",
+      code: "INVALID_MATERIAL_REFERENCE",
+    });
   }
 
   const [adjust] = await db.insert(archAiRendersTable).values({
@@ -491,7 +517,9 @@ archAiRenderRouter.post("/arch/ai-render/:id/adjust", authenticate, async (req: 
     maskZones:        safeZones,
     originalImageUrl: baseImageUrl,
     status:           "processando",
-    operationType:    ajuste_prompt?.includes("refino global em alta qualidade") ? "improve" : "adjust",
+    operationType:    material_id ? "material" : ajuste_prompt?.includes("refino global em alta qualidade") ? "improve" : "adjust",
+    materialId:        material_id,
+    materialName:      material_name,
     prompt:            ajuste_prompt,
     versionTag:       parent.versionTag,
   }).returning();
@@ -512,6 +540,8 @@ archAiRenderRouter.post("/arch/ai-render/:id/adjust", authenticate, async (req: 
     maskCoordinates: mask_coordinates,
     materialAwareSelection: expand_selection_to_material,
     selectionPaddingPercent: selection_padding_percent,
+    materialReferenceUrl: material_reference_url,
+    materialName: material_name,
     ambiente:     parent.ambiente,
     estilo:       parent.estilo,
     iluminacao:   parent.iluminacao,
@@ -606,6 +636,8 @@ export interface RenderJobParams {
   maskCoordinates?: { x: number; y: number; w: number; h: number }[];
   materialAwareSelection?: boolean;
   selectionPaddingPercent?: number;
+  materialReferenceUrl?: string;
+  materialName?: string;
   ambiente:     string | null | undefined;
   estilo:       string | null | undefined;
   iluminacao:   string | null | undefined;
@@ -648,7 +680,7 @@ async function enhanceFinalRender(buffer: Buffer): Promise<Buffer> {
 export async function processRenderJob(params: RenderJobParams): Promise<void> {
   const {
     renderId, tenantId: tid, mode, originalUrl, maskZones, maskFileBase64, maskCoordinates,
-    materialAwareSelection, selectionPaddingPercent,
+    materialAwareSelection, selectionPaddingPercent, materialReferenceUrl, materialName,
     ambiente, estilo, iluminacao, angulo, materials, userNotes, renderPresets, source, renderView, renderProfile,
     logger, retentativas,
   } = params;
@@ -726,11 +758,27 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
           "Preserve camera, geometry, object inventory, furniture placement, dimensions, seams, edges and all unrelated materials.",
         ].join(" ");
 
+        let materialReferenceDataUrl: string | undefined;
+        if (materialReferenceUrl) {
+          const reference = await fetchImageAsBuffer(materialReferenceUrl, storage);
+          materialReferenceDataUrl = bufferToDataUrl(reference.buf, reference.mime);
+        }
+
+        const finalLocalPrompt = materialReferenceDataUrl
+          ? [
+              localPrompt,
+              `MATERIAL REFERENCE LOCK: the second input image is the exact visual reference for the requested material${materialName ? ` "${materialName}"` : ""}.`,
+              "Inside the confirmed mask only, reproduce its base color, texture pattern, grain/vein direction, scale, roughness, gloss and reflectance as faithfully as possible.",
+              "Use the second image only as a material/finish reference. Never copy its object shape, scene, lighting, background or camera.",
+            ].join(" ")
+          : localPrompt;
+
         const generated = await generateRenderPremiumOpenAI({
           tenantId: tid,
           imageDataUrl: originalDataUrl,
           maskDataUrl: bufferToDataUrl(maskBuf, "image/png"),
-          prompt: localPrompt,
+          referenceImageDataUrls: materialReferenceDataUrl ? [materialReferenceDataUrl] : undefined,
+          prompt: finalLocalPrompt,
           logger,
         });
 
