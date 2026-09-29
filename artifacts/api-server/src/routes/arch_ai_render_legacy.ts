@@ -601,7 +601,7 @@ async function enhanceFinalRender(buffer: Buffer): Promise<Buffer> {
   if (!width || !height) return buffer;
 
   const longest = Math.max(width, height);
-  const targetLongest = Math.min(2048, Math.max(1536, longest));
+  const targetLongest = 2048;
   const scale = targetLongest / longest;
 
   return sharp(buffer)
@@ -1079,17 +1079,20 @@ function buildKontextPrompt(p: {
   );
 
   // Bloco de iluminação: padrão natural+brilhante, sobrescrito se informado
-  let lightingBlock = "bright, evenly distributed natural daylight filling the entire room, soft and airy, well-exposed with no dark shadows or dim corners — a bright, clean, well-lit photograph";
+  let lightingBlock = "physically plausible global illumination with soft natural daylight, realistic bounce light, controlled highlight roll-off, readable shadow detail and balanced exposure — bright but never flat or washed out";
   if (p.iluminacao && p.iluminacao !== "auto") {
     lightingBlock = LIGHTING_MAP[p.iluminacao] ?? p.iluminacao;
   }
 
   const lines: string[] = [
-    `Convert this 3D sketch render into a photorealistic photograph with natural lighting, realistic textures, and sharp photographic detail. This is currently a flat 3D model render — fully re-render it as a real photograph.`,
+    `Re-render this scene as premium photorealistic architectural visualization, comparable to high-end editorial interior photography. Replace the flat CG look with physically based materials, realistic global illumination, accurate reflections, soft contact shadows, believable depth and crisp photographic detail.`,
     ``,
     `Keep the exact same room layout and camera angle, including every architectural element visible in the original image — walls, doors, panels, trim, and mouldings — even ones partially visible at the edge of the frame. Do not omit, simplify, or crop out any element that exists in the original.`,
     ``,
     `Lit by ${lightingBlock}.`,
+    `MATERIAL REALISM TARGET: every visible surface must show physically believable scale, roughness, micro-texture and edge response — wood grain with natural variation, stone with depth, painted surfaces with subtle roughness, glass with controlled reflections, metal with realistic specular response and textiles with visible weave. Avoid smooth plastic-looking materials and flat color fills.`,
+    `LIGHTING TARGET: use natural indirect bounce, soft area shadows, subtle ambient occlusion/contact shadows at joints and corners, realistic exposure and white balance. Keep highlights controlled and blacks detailed; no grey haze, no crushed shadows, no fake bloom.`,
+    `CAMERA/DETAIL TARGET: architectural photography with straight verticals, natural 28–35mm perspective, crisp focus, high local contrast and fine detail without oversharpening. No blur, no watercolor texture, no painterly look, no low-resolution surfaces, no cartoon or game-engine appearance.`,
   ];
 
   if (preserveLines.length > 0) {
@@ -1108,7 +1111,7 @@ function buildKontextPrompt(p: {
 
   lines.push(
     ``,
-    `Shot on a professional full-frame camera, 35mm lens, f/5.6, sharp focus throughout, high dynamic range, balanced bright exposure, ultra-high resolution detail, professional real estate and architectural photography quality, no noise, no blur, no visible artifacts, no underexposed or dark areas.`,
+    `Shot on a professional full-frame camera, 35mm lens, f/5.6, sharp focus throughout, high dynamic range, realistic tonal separation, fine material detail, premium architectural-magazine quality, no noise, no blur, no visible artifacts, no smeared textures and no underexposed or clipped areas.`,
     ``,
     `Only change how the scene is rendered — realistic materials, realistic lighting and shadows, photographic depth of field — not what's in it, its layout, its colors, or any architectural element.`,
     fidelityBlock,
