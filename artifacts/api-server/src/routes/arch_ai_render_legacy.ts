@@ -133,6 +133,10 @@ const renderBodySchema = z.object({
     "wall_gate_fidelity",
     "night_lighting_exterior",
     "guardrail_glass_precision",
+    "ceiling_led_linear",
+    "ambient_boost",
+    "shadow_softening",
+    "exposure_lift_controlled",
   ])).optional().default([]),
   // materiais para modo criar (compatibilidade com o fluxo existente)
   materials: z.array(z.object({
