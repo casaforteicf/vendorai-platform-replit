@@ -11,12 +11,11 @@ import { useArqProject } from "@/modules/arqdor/hooks/useArqProject";
 import { WorkspaceProvider } from "@/modules/arqdor/workspace/WorkspaceContext";
 import { ArqdorThemeProvider } from "@/modules/arqdor/theme/ArqdorThemeProvider";
 import { useAuth } from "@/contexts/AuthContext";
+import type { RenderStudioStep as Step } from "./render-studio/renderStudioModel";
+import { RENDER_STUDIO_STEPS as STEPS, renderStudioStepIndex as stepIndex } from "./render-studio/renderStudioModel";
+import { RenderStudioTopbar as Topbar, RenderStudioSidebar as LeftSidebar } from "./render-studio/RenderStudioNavigation";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
-
-type Step =
-  | "projeto" | "ambiente" | "imagem" | "render"
-  | "melhoria" | "versao" | "aprovar" | "especificacao";
 
 type CanvasMode = "fit" | "1to1";
 type SaveState  = "saved" | "unsaved" | "saving" | "error";
@@ -67,19 +66,6 @@ type CopilotMessage = { role: "user" | "assistant"; content: string; timestamp: 
 type Comment = { id: string; text: string; author: string; timestamp: Date };
 // P3-28: event log
 type EventLogEntry = { id: string; type: string; label: string; timestamp: Date };
-
-const STEPS: { id: Step; label: string; icon: string; hint: string }[] = [
-  { id: "projeto",       label: "Projeto",       icon: "◈", hint: "Selecione ou crie um projeto no painel direito." },
-  { id: "ambiente",      label: "Ambiente",       icon: "⬡", hint: "Escolha o tipo de ambiente: sala, quarto, cozinha…" },
-  { id: "imagem",        label: "Imagem base",    icon: "⬜", hint: "Carregue uma foto do ambiente real (JPG/PNG/WEBP)." },
-  { id: "render",        label: "Render IA",      icon: "✦", hint: "Clique em 'Gerar Render' no painel direito." },
-  { id: "melhoria",      label: "Melhoria",       icon: "◎", hint: "Selecione uma região e descreva o ajuste." },
-  { id: "versao",        label: "Versões",        icon: "⧉", hint: "Compare as versões geradas e escolha qual aprovar." },
-  { id: "aprovar",       label: "Aprovar",        icon: "✓", hint: "Aprove o render para liberar a especificação." },
-  { id: "especificacao", label: "Especificação",  icon: "≡", hint: "Extraia materiais e objetos do render aprovado." },
-];
-
-function stepIndex(s: Step) { return STEPS.findIndex((x) => x.id === s); }
 
 // ─── Session persistence ───────────────────────────────────────────────────────
 
@@ -809,98 +795,6 @@ function CopilotPanel({ projectId, step, selections, onTestAction }: {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-// ─── Topbar ───────────────────────────────────────────────────────────────────
-
-function Topbar({ step, projectTitle, ambiente, onNextStep, onOpenStudio, userName, onHelp, onShortcuts }: {
-  step: Step; projectTitle: string | null; ambiente: string;
-  onNextStep: () => void; onOpenStudio: () => void; userName: string; onHelp: () => void; onShortcuts: () => void;
-}) {
-  const nextLabels: Partial<Record<Step, string>> = {
-    projeto: "→ Definir Ambiente", ambiente: "→ Carregar Imagem", imagem: "→ Gerar Render",
-    render: "→ Melhorar", melhoria: "→ Ver Versões", versao: "→ Aprovar",
-    aprovar: "→ Especificação", especificacao: "✓ Concluído",
-  };
-  const breadcrumbs = ["Studio", ambiente || "Ambiente"].filter(Boolean);
-  return (
-    <div className="arqdor-legacy-topbar" style={{ height: 52, display: "flex", alignItems: "center", padding: "0 16px", background: D.surface, borderBottom: `1px solid ${D.border}`, flexShrink: 0, gap: 0, zIndex: 100 }}>
-      <div className="arqdor-topbar-brand" style={{ display: "flex", alignItems: "center", gap: 8, marginRight: 16, flexShrink: 0 }}>
-        <div style={{ width: 28, height: 28, borderRadius: 6, background: D.purple, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 900, color: "#fff" }}>A</div>
-        <span style={{ fontSize: 12, fontWeight: 800, color: D.text, letterSpacing: "0.08em" }}>ARQDOR<span style={{ color: D.purpleMid, fontSize: 10 }}>.ai</span></span>
-      </div>
-      <div style={{ width: 1, height: 20, background: D.border, marginRight: 16 }} />
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginRight: 16 }}>
-        {projectTitle && <span style={{ fontSize: 11, fontWeight: 600, color: D.muted }}>{projectTitle}</span>}
-        {breadcrumbs.map((b, i) => (<span key={b} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 11, color: D.dim }}>›</span>
-          <span style={{ fontSize: 11, fontWeight: i === breadcrumbs.length - 1 ? 700 : 400, color: i === breadcrumbs.length - 1 ? D.purpleText : D.muted }}>{b}</span>
-        </span>))}
-      </div>
-      <div style={{ flex: 1 }} />
-      {stepIndex(step) >= stepIndex("render") && (
-        <button onClick={onOpenStudio} aria-label="Abrir Studio IA" title="Materiais, iluminação, variações e versões"
-          style={{ background: D.card, color: D.purpleText, border: `1px solid ${D.purple}55`, borderRadius: 8, padding: "7px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer", marginRight: 8 }}>
-          ✦ Studio IA
-        </button>
-      )}
-      <button onClick={onNextStep} aria-label={nextLabels[step] ?? "Próxima Etapa"} style={{ background: `linear-gradient(135deg, ${D.purple}, #6D28D9)`, color: "#fff", border: "none", borderRadius: 8, padding: "7px 18px", fontSize: 12, fontWeight: 700, cursor: "pointer", letterSpacing: "0.02em", boxShadow: `0 0 16px ${D.purpleGlow}`, marginRight: 12 }}>
-        {nextLabels[step] ?? "Próxima Etapa"}
-      </button>
-      <div aria-label={`Usuário: ${userName}`} style={{ width: 28, height: 28, borderRadius: "50%", background: D.purple, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "#fff", flexShrink: 0 }}>
-        {(userName?.[0] ?? "U").toUpperCase()}
-      </div>
-    </div>
-  );
-}
-
-// ─── Left Sidebar (P1-9: direct navigation) ───────────────────────────────────
-
-const SIDEBAR_NAV = [
-  { group: "Studio",   items: STEPS.map(s => ({ id: s.id, label: s.label, icon: s.icon })) },
-  { group: "Workspace", items: [{ id: "biblioteca", label: "Biblioteca", icon: "▦" }, { id: "especificacoes", label: "Especificações", icon: "≡" }, { id: "producao", label: "Produção", icon: "⚙" }, { id: "execucao", label: "Execução", icon: "▷" }, { id: "entrega", label: "Entrega", icon: "✈" }, { id: "evolucao", label: "Evolução", icon: "↑" }] },
-  { group: "CRM",      items: [{ id: "crm", label: "CRM", icon: "⊞" }, { id: "clientes", label: "Clientes", icon: "◉" }, { id: "propostas", label: "Propostas", icon: "◻" }, { id: "contratos", label: "Contratos", icon: "◈" }, { id: "financeiro", label: "Financeiro", icon: "₿" }, { id: "agenda", label: "Agenda", icon: "⬡" }] },
-  { group: "Gestão",   items: [{ id: "relatorios", label: "Relatórios", icon: "⊟" }, { id: "marketing", label: "Marketing", icon: "◎" }, { id: "config", label: "Configurações", icon: "⚙" }] },
-];
-
-function LeftSidebar({ step, projectTitle, onStepClick }: { step: Step; projectTitle: string | null; onStepClick: (s: Step) => void }) {
-  const ci = stepIndex(step);
-  return (
-    <div className="arqdor-legacy-sidebar" style={{ width: 220, flexShrink: 0, background: D.surface, borderRight: `1px solid ${D.border}`, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-      <div style={{ padding: "10px 12px", borderBottom: `1px solid ${D.border}`, flexShrink: 0 }}>
-        <div style={{ fontSize: 9, fontWeight: 700, color: D.dim, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>Projeto atual</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 8px", background: D.card, borderRadius: 7, border: `1px solid ${D.border}` }}>
-          <span style={{ fontSize: 12, color: D.purple }}>◈</span>
-          <span style={{ fontSize: 11, fontWeight: 600, color: D.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{projectTitle ?? "Nenhum projeto"}</span>
-        </div>
-      </div>
-      <div style={{ flex: 1, overflowY: "auto", padding: "8px 0", scrollbarWidth: "none" }}>
-        {SIDEBAR_NAV.map((group) => (
-          <div key={group.group} style={{ marginBottom: 4 }}>
-            <div style={{ padding: "6px 14px 4px", fontSize: 9, fontWeight: 700, color: D.dim, letterSpacing: "0.08em", textTransform: "uppercase" }}>{group.group}</div>
-            {group.items.map((item) => {
-              const isStudio = group.group === "Studio";
-              const stepId = isStudio ? item.id as Step : null;
-              const stepIdx = stepId ? stepIndex(stepId) : -1;
-              const isActive = isStudio && item.id === step;
-              const isDone = isStudio && stepIdx < ci;
-              const isClickable = isStudio && stepIdx <= ci;
-              if (!isStudio) return null;
-              return (
-                <button className="arqdor-studio-step" data-step-number={String(stepIdx + 1).padStart(2, "0")} key={item.id} onClick={() => { if (stepId && isClickable) onStepClick(stepId); }} aria-current={isActive ? "step" : undefined} disabled={!isClickable}
-                  title={!isClickable ? "Complete as etapas anteriores primeiro" : isDone ? `Voltar para ${item.label}` : undefined}
-                  style={{ width: "100%", textAlign: "left", background: isActive ? `${D.purple}22` : "none", border: "none", borderLeft: isActive ? `2px solid ${D.purple}` : "2px solid transparent", padding: "7px 14px 7px 12px", cursor: isClickable ? "pointer" : "default", display: "flex", alignItems: "center", gap: 8, borderRadius: "0 6px 6px 0", transition: "background 0.12s", opacity: isClickable ? 1 : 0.35 }}>
-                  <span style={{ fontSize: 12, color: isActive ? D.purple : isDone ? D.green : D.dim, width: 14, flexShrink: 0, textAlign: "center" }}>{isDone ? "✓" : item.icon}</span>
-                  <span style={{ fontSize: 11, fontWeight: isActive ? 700 : 400, color: isActive ? D.purpleText : isDone ? D.text : D.muted }}>{item.label}</span>
-                  {isActive && <span style={{ marginLeft: "auto", width: 5, height: 5, borderRadius: "50%", background: D.purple }} />}
-                </button>
-              );
-            })}
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
