@@ -1097,15 +1097,21 @@ function buildKontextPrompt(p: {
     lightingBlock = LIGHTING_MAP[p.iluminacao] ?? p.iluminacao;
   }
 
+  const hasExplicitAppearanceEdit = editZones.size > 0 || materialLines.length > 0;
   const lines: string[] = [
-    `Re-render this scene as premium photorealistic architectural visualization, comparable to high-end editorial interior photography. Replace the flat CG look with physically based materials, realistic global illumination, accurate reflections, soft contact shadows, believable depth and crisp photographic detail.`,
-    ``,
-    `Keep the exact same room layout and camera angle, including every architectural element visible in the original image — walls, doors, panels, trim, and mouldings — even ones partially visible at the edge of the frame. Do not omit, simplify, or crop out any element that exists in the original.`,
-    ``,
-    `Lit by ${lightingBlock}.`,
-    `MATERIAL REALISM TARGET: every visible surface must show physically believable scale, roughness, micro-texture and edge response — wood grain with natural variation, stone with depth, painted surfaces with subtle roughness, glass with controlled reflections, metal with realistic specular response and textiles with visible weave. Avoid smooth plastic-looking materials and flat color fills.`,
-    `LIGHTING TARGET: use natural indirect bounce, soft area shadows, subtle ambient occlusion/contact shadows at joints and corners, realistic exposure and white balance. Keep highlights controlled and blacks detailed; no grey haze, no crushed shadows, no fake bloom.`,
-    `CAMERA/DETAIL TARGET: architectural photography with straight verticals, natural 28–35mm perspective, crisp focus, high local contrast and fine detail without oversharpening. No blur, no watercolor texture, no painterly look, no low-resolution surfaces, no cartoon or game-engine appearance.`,
+    `STRICT PRESERVATION MODE — the reference image is the immutable design source. Fidelity has priority over styling, decoration and visual creativity.`,
+    `FURNITURE LOCK: preserve every existing furniture item, cabinet, countertop, appliance, fixture and built-in in the exact same position, orientation, size, proportions and visible shape. Never move, resize, rotate, replace, delete or redesign an existing item.`,
+    `COLOR LOCK: preserve the exact perceived colors of cabinetry, furniture, walls, floors, stone, wood, metals, fabrics and all existing finishes. Do not recolor, warm, cool, desaturate or reinterpret them. Lighting may affect natural highlights and shadows, but the underlying material color must remain the same.`,
+    `TEXTURE IDENTITY LOCK: keep each existing material identity, texture family, grain direction, veining direction and pattern. Improve only texture resolution, micro-detail, roughness, depth, reflectance and realism. Do not swap one wood, stone, fabric, paint or metal for another unless that exact zone was explicitly selected for a material change.`,
+    `ARCHITECTURE/CAMERA LOCK: preserve walls, openings, trim, mouldings, ceiling, floor boundaries, cabinetry geometry, circulation, camera position, framing, perspective and field of view exactly. No crop, zoom, mirror or composition change.`,
+    hasExplicitAppearanceEdit
+      ? `EDIT SCOPE: only the explicitly selected zones may change appearance. Every unselected element remains locked.`
+      : `NO REDESIGN / NO NEW OBJECTS: this pass is enhancement-only. Do not add decorative objects, plants, artwork, lamps, cushions, accessories or furniture unless the user explicitly asks for them.`,
+    `Re-render the SAME scene as premium photorealistic architectural visualization. Improve only rendering quality: physically based material response, high-resolution surface detail, realistic reflections, global illumination, contact shadows, bounce light, exposure, tonal separation and photographic clarity.`,
+    `Lighting: ${lightingBlock}.`,
+    `MATERIAL REALISM: retain the original base color and material identity while adding believable micro-texture and physically plausible response — wood grain detail without changing species/color, stone depth without changing slab tone/pattern, subtle paint roughness, controlled glass reflections, realistic metal specular response and visible textile weave.`,
+    `LIGHTING REALISM: natural indirect bounce, soft area/contact shadows, subtle ambient occlusion at joints, balanced white balance and controlled highlights. Do not use lighting as an excuse to change the apparent finish color.`,
+    `CAMERA/DETAIL: architectural photography, straight verticals, natural 28–35mm perspective, crisp focus, fine detail without oversharpening. No blur, watercolor, painterly effect, plastic surfaces, low-resolution textures, cartoon or game-engine look.`,
   ];
 
   if (preserveLines.length > 0) {
@@ -1126,7 +1132,7 @@ function buildKontextPrompt(p: {
     ``,
     `Shot on a professional full-frame camera, 35mm lens, f/5.6, sharp focus throughout, high dynamic range, realistic tonal separation, fine material detail, premium architectural-magazine quality, no noise, no blur, no visible artifacts, no smeared textures and no underexposed or clipped areas.`,
     ``,
-    `Only change how the scene is rendered — realistic materials, realistic lighting and shadows, photographic depth of field — not what's in it, its layout, its colors, or any architectural element.`,
+    `FINAL SELF-CHECK: compare against the reference before finishing. Existing furniture count, placement, dimensions, orientation, colors, material identity, architecture, camera and composition must still match. Only realism, texture fidelity, lighting and resolution may improve unless an explicit selected-zone edit was requested.`,
     fidelityBlock,
   );
 
