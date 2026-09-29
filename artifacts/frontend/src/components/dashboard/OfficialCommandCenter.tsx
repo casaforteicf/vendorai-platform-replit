@@ -46,6 +46,13 @@ export type OfficialMetrics = {
     supportActive?: number;
     unassignedActive?: number;
     overdueTasks?: number;
+    overdueTaskItems?: Array<{
+      id: string;
+      leadId?: string | null;
+      dealId?: string | null;
+      title: string;
+      dueAt?: string | null;
+    }>;
   };
   intelligence?: {
     customersAtRisk?: number;
@@ -285,7 +292,18 @@ export default function OfficialCommandCenter({ data, executive, loading, userNa
     const items: Array<{ label: string; detail: string; severity: "normal" | "warning" | "critical"; href: string }> = [];
     const overdue = operation?.overdueTasks ?? 0;
     const unassigned = operation?.unassignedActive ?? 0;
-    if (overdue > 0) items.push({ label: `${overdue} tarefa${overdue === 1 ? "" : "s"} vencida${overdue === 1 ? "" : "s"}`, detail: "Exigem ação imediata", severity: "critical", href: "/trabalho?attention=vencidos&autoOpen=single" });
+    if (overdue > 0) {
+      const firstOverdue = operation?.overdueTaskItems?.[0];
+      const href = overdue === 1 && firstOverdue?.leadId
+        ? `/leads/${firstOverdue.leadId}?activityId=${firstOverdue.id}&from=dashboard-overdue`
+        : "/trabalho?attention=vencidos";
+      items.push({
+        label: `${overdue} tarefa${overdue === 1 ? "" : "s"} vencida${overdue === 1 ? "" : "s"}`,
+        detail: overdue === 1 && firstOverdue?.title ? firstOverdue.title : "Exigem ação imediata",
+        severity: "critical",
+        href,
+      });
+    }
     if (unassigned > 0) items.push({ label: `${unassigned} operação${unassigned === 1 ? "" : "ões"} sem responsável`, detail: "Distribua a responsabilidade operacional", severity: "warning", href: "/pipeline-operacional/execucao" });
     for (const alert of alerts) {
       items.push({ label: alert.mensagem, detail: "Alerta do sistema", severity: alert.severidade === "critico" ? "critical" : "warning", href: alertHref(alert.tipo) });
@@ -294,7 +312,7 @@ export default function OfficialCommandCenter({ data, executive, loading, userNa
       items.push({ label: risk.nome, detail: risk.churnRisk != null ? `Risco de perda ${risk.churnRisk}%` : "Sem contato recente", severity: risk.churnRisk != null && risk.churnRisk >= 70 ? "critical" : "warning", href: `/leads/${risk.leadId}` });
     }
     return items.slice(0, 5);
-  }, [alerts, operation?.overdueTasks, operation?.unassignedActive, risks]);
+  }, [alerts, operation?.overdueTaskItems, operation?.overdueTasks, operation?.unassignedActive, risks]);
 
   const attentionCount = useMemo(() => {
     const overdue = operation?.overdueTasks ?? 0;
