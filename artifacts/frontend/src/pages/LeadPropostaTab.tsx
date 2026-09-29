@@ -3832,7 +3832,6 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
                           background: `rgba(0,0,0,${Math.max(0, Math.min(80, Number(proposalBuilderEditorModules.find((item) => item.key === "capa")?.image?.overlay ?? 45))) / 100})`,
                         }}
                       />
-                      ) : null}
                       <div className={`relative z-10 flex h-full min-h-full flex-col p-7 ${
                         proposalBuilderDensity === "compacto" ? "py-6" : proposalBuilderDensity === "equilibrado" ? "py-9" : "py-12"
                       }`}>
