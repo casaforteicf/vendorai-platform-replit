@@ -544,6 +544,10 @@ archProcurementRfqPublicRouter.get("/public/arqdor/rfq/:token", async (req, res,
     const pkg = bundle.package;
     const obra = bundle.obra;
     const items = Array.isArray(bundle.items) ? bundle.items : [];
+    const technicalDocs = Array.isArray(pkg.technical_documents_snapshot)
+      ? pkg.technical_documents_snapshot
+      : Array.isArray(pkg.documents) ? pkg.documents : [];
+    const responseDocs = Array.isArray(inv.response_documents) ? inv.response_documents : [];
     await pool.query(`SELECT public.arch_rfq_public_mark_viewed($1::uuid)`, [token]);
 
     const itemRows = items.map((item:any)=>`<tr>
@@ -554,6 +558,12 @@ archProcurementRfqPublicRouter.get("/public/arqdor/rfq/:token", async (req, res,
       <td><input data-id="${esc(item.id)}" data-field="notes" placeholder="observações"></td>
     </tr>`).join("");
     const itemMeta = JSON.stringify(items.map((x:any)=>({id:String(x.id),quantity:n(x.quantidade),unit:x.unidade||"un"})));
+    const technicalDocRows = technicalDocs.length
+      ? technicalDocs.map((doc:any)=>`<li><a href="${esc(doc.url)}" target="_blank" rel="noopener">${esc(doc.title || doc.name || "Documento técnico")}</a>${doc.version ? ` <small>• ${esc(doc.version)}</small>` : ""}</li>`).join("")
+      : "<li class='muted'>Nenhum arquivo técnico vinculado a este pacote.</li>";
+    const responseDocRows = responseDocs.length
+      ? responseDocs.map((doc:any)=>`<li>${esc(doc.name || "Anexo enviado")}</li>`).join("")
+      : "<li class='muted'>Nenhum anexo enviado ainda.</li>";
 
     res.type("html").send(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
     <title>${esc(pkg.code)} — Cotação</title><style>
@@ -561,15 +571,61 @@ archProcurementRfqPublicRouter.get("/public/arqdor/rfq/:token", async (req, res,
     </style></head><body><div class="wrap"><div class="card"><div class="muted">ARQDOR • Solicitação de cotação</div><h1>${esc(pkg.title)}</h1>
     <p>${esc(obra?.nome || "Obra")} • ${esc(pkg.code)} • versão ${esc(pkg.version)}</p><p class="muted">Esta página contém somente os itens direcionados ao seu escopo: ${esc(pkg.category || pkg.discipline)}.</p></div>
     <div class="card"><table><thead><tr><th>Item</th><th>Quantidade</th><th>Valor unitário</th><th>Marca/modelo</th><th>Observação</th></tr></thead><tbody>${itemRows}</tbody></table></div>
+    <div class="card"><h2>Arquivos técnicos</h2><p class="muted">Plantas, memoriais e detalhes liberados para esta cotação.</p><ul>${technicalDocRows}</ul></div>
+    <div class="card"><h2>Anexar orçamento do fornecedor</h2><p class="muted">Você pode enviar PDF, imagem, planilha, CSV, DWG ou DXF. Até 5 arquivos por envio, 12 MB cada.</p>
+      <input id="quoteFiles" type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.xlsx,.xls,.csv,.txt,.xml,.dwg,.dxf">
+      <button id="uploadFiles" type="button" style="margin-top:10px;background:#4f46e5">Enviar anexos</button>
+      <p id="uploadMsg" class="muted"></p><ul id="uploadedDocs">${responseDocRows}</ul>
+    </div>
     <div class="card"><div class="grid"><div><label>Frete</label><input id="freight" type="number" step="0.01" min="0" value="0"></div><div><label>Impostos/taxas</label><input id="taxes" type="number" step="0.01" min="0" value="0"></div>
     <div><label>Desconto</label><input id="discount" type="number" step="0.01" min="0" value="0"></div><div><label>Prazo de entrega (dias)</label><input id="leadTime" type="number" min="0"></div>
     <div><label>Validade</label><input id="validity" type="date"></div><div><label>Condição de pagamento</label><input id="payment" placeholder="Ex.: 30/60/90"></div></div>
     <label>Observações gerais</label><textarea id="supplierNotes" rows="4"></textarea><p id="msg" class="muted"></p><button id="send">Enviar cotação</button></div></div>
     <script>
     const META=${itemMeta};
+    document.getElementById('uploadFiles').onclick=async()=>{
+      const input=document.getElementById('quoteFiles');
+      const files=[...(input.files||[])];
+      const msg=document.getElementById('uploadMsg');
+      if(!files.length){msg.textContent='Selecione ao menos um arquivo.';return}
+      msg.textContent='Enviando...';
+      for(const file of files){
+        const fd=new FormData();fd.append('documento',file);
+        const r=await fetch(location.pathname+'/documents',{method:'POST',body:fd});
+        const d=await r.json().catch(()=>({}));
+        if(!r.ok){msg.textContent=d.error||'Falha ao enviar anexo.';return}
+      }
+      msg.textContent='Anexos enviados com sucesso.';input.value='';
+    };
     document.getElementById('send').onclick=async()=>{const rows=[...document.querySelectorAll('[data-id][data-field="unitValue"]')].map(el=>{const id=el.dataset.id;const q=META.find(x=>x.id===id);return{compraId:id,quantity:q?.quantity||0,unit:q?.unit||'un',unitValue:Number(el.value||0),brandModel:document.querySelector('[data-id="'+id+'"][data-field="brandModel"]').value,notes:document.querySelector('[data-id="'+id+'"][data-field="notes"]').value}});const body={items:rows,freight:Number(document.getElementById('freight').value||0),taxes:Number(document.getElementById('taxes').value||0),discount:Number(document.getElementById('discount').value||0),leadTimeDays:Number(document.getElementById('leadTime').value||0)||null,validityDate:document.getElementById('validity').value||null,paymentTerms:document.getElementById('payment').value||null,supplierNotes:document.getElementById('supplierNotes').value||null};const r=await fetch(location.pathname+'/respond',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json().catch(()=>({}));document.getElementById('msg').textContent=r.ok?'Cotação enviada com sucesso.':(d.error||'Não foi possível enviar.');if(r.ok)document.getElementById('send').disabled=true}
     </script></body></html>`);
   } catch (err) { logger.error({ err }, "public rfq page error"); next(err); }
+});
+
+archProcurementRfqPublicRouter.post("/public/arqdor/rfq/:token/documents", publicUpload.single("documento"), async (req, res, next) => {
+  try {
+    const token = String(req.params["token"] || "");
+    const file = req.file;
+    if (!file) return res.status(422).json({ error: "Selecione um arquivo." });
+    if (!allowedSupplierFile(file)) return res.status(422).json({ error: "Formato não permitido para anexo de cotação." });
+
+    const bundleResult = await pool.query(`SELECT public.arch_rfq_public_bundle($1::uuid) AS bundle`, [token]);
+    const bundle = bundleResult.rows[0]?.bundle;
+    if (!bundle) return res.status(404).json({ error: "Cotação não encontrada." });
+
+    const inv = bundle.invitation;
+    const pkg = bundle.package;
+    if (["accepted","rejected","expired"].includes(String(inv.status))) {
+      return res.status(409).json({ error: "Esta cotação já foi encerrada." });
+    }
+
+    const document = await saveSupplierDocument(String(inv.tenant_id), String(pkg.obra_id), file);
+    await pool.query(`SELECT public.arch_rfq_public_add_document($1::uuid,$2::jsonb)`, [token, JSON.stringify(document)]);
+    res.status(201).json({ document });
+  } catch (err) {
+    logger.error({ err }, "public rfq document upload error");
+    next(err);
+  }
 });
 
 archProcurementRfqPublicRouter.post("/public/arqdor/rfq/:token/respond", async (req, res, next) => {
