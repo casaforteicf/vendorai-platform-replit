@@ -2028,7 +2028,9 @@ export default function Deals() {
 
   // Fonte oficial do pipeline comercial. Kanban, seletores, SLA e responsáveis
   // devem consumir exatamente esta mesma lista, na mesma ordem.
-  const deals = useMemo(() => allDeals.filter((deal) => (deal as Deal & { relationshipStage?: string | null }).relationshipStage !== "transferido_suporte"), [allDeals]);\n\n  const { data: pipelineStages = [] } = useListPipelineStages(tenantId, {
+  const deals = useMemo(() => allDeals.filter((deal) => (deal as Deal & { relationshipStage?: string | null }).relationshipStage !== "transferido_suporte"), [allDeals]);
+
+  const { data: pipelineStages = [] } = useListPipelineStages(tenantId, {
     request: { headers: { Authorization: "Bearer " + (token ?? "") } },
     query: {
       enabled: !!tenantId && !!token,
