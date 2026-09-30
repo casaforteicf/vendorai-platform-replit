@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 type Supplier={id:string;nome:string;contato?:string|null;telefone?:string|null;email?:string|null;categorias?:string[];disciplinas?:string[];prazo_medio_dias?:number|null};
 type Package={id:string;code:string;title:string;category?:string|null;discipline?:string|null;version:number;status:string;budget_id?:string|null;sale_total_snapshot?:number|null;sale_source?:string|null;proposal_revision?:string|null;commercial_proposal_id?:string|null;arch_proposal_id?:string|null;technical_documents_snapshot?:any[];documents?:any[]};
 type Item={package_id:string;compra_id:string;descricao:string;ambiente?:string|null;quantidade:number;unidade:string;valor_total:number;valor_venda_snapshot:number;custo_estimado_snapshot:number;custo_confirmado?:number|null;cotacao_desatualizada:boolean;escopo_versao:number};
-type Invitation={id:string;package_id:string;supplier_id?:string|null;supplier_name:string;status:string;total_value?:number|null;freight_value:number;tax_value:number;discount_value:number;payment_terms?:string|null;validity_date?:string|null;lead_time_days?:number|null;public_token:string;sent_at?:string|null;responded_at?:string|null;response_documents?:any[]};
+type Invitation={id:string;package_id:string;supplier_id?:string|null;supplier_name:string;status:string;total_value?:number|null;freight_value:number;tax_value:number;discount_value:number;payment_terms?:string|null;validity_date?:string|null;lead_time_days?:number|null;public_token:string;sent_at?:string|null;responded_at?:string|null;response_documents?:any[];supplier_email?:string|null;supplier_phone?:string|null;access_mode?:"registered"|"guest"|"converted";converted_tenant_id?:string|null};
 type SupplierStat={supplier_key:string;total_orders:number;selected_orders:number;delivered_orders:number;on_time_orders:number;avg_lead_time_days?:number|null;avg_confirmed_value?:number|null};
 type Bundle={obra:any;packages:Package[];items:Item[];invitations:Invitation[];quoteItems:any[];suppliers:Supplier[];supplierStats?:SupplierStat[]};
 
@@ -37,6 +37,9 @@ export default function SupplierRfqWorkspace({arqState,onNavigate}:{arqState:any
   const [error,setError]=useState<string|null>(null);
   const [revisionSaleTotal,setRevisionSaleTotal]=useState<number|"" >("");
   const [success,setSuccess]=useState<string|null>(null);
+  const [guestName,setGuestName]=useState("");
+  const [guestEmail,setGuestEmail]=useState("");
+  const [guestPhone,setGuestPhone]=useState("");
 
   const load=useCallback(async()=>{
     if(!meta.id)return;
@@ -100,6 +103,21 @@ export default function SupplierRfqWorkspace({arqState,onNavigate}:{arqState:any
     }catch(e){setError(e instanceof Error?e.message:"Falha ao enviar cotações.")}
     finally{setBusy(null)}
   }
+  async function inviteGuest(){
+    if(!selectedPackage||!guestName.trim()||(!guestEmail.trim()&&!guestPhone.trim()))return;
+    setBusy("guest-invite");setError(null);setSuccess(null);
+    try{
+      const result=await api<any>(`/api/arch/procurement-rfq/${obraId}/packages/${selectedPackage.id}/guest-invitations`,{
+        method:"POST",
+        body:JSON.stringify({name:guestName.trim(),email:guestEmail.trim(),phone:guestPhone.trim()})
+      });
+      setSuccess(result.duplicate?"Esse fornecedor já havia recebido esta cotação. Link mantido.":"Convite enviado. O fornecedor pode responder sem criar conta.");
+      setGuestName("");setGuestEmail("");setGuestPhone("");
+      await load();
+    }catch(e){setError(e instanceof Error?e.message:"Falha ao convidar fornecedor.")}
+    finally{setBusy(null)}
+  }
+
   async function createCommercialRevision(){
     if(!selectedPackage||revisionSaleTotal===""||n(revisionSaleTotal)<=0)return;
     setBusy("revision");setError(null);setSuccess(null);
@@ -175,12 +193,20 @@ export default function SupplierRfqWorkspace({arqState,onNavigate}:{arqState:any
             </div>
           </label>)}</div>
           <button disabled={!selectedSuppliers.length||busy==="invite"} onClick={()=>void invite()} className="mt-4 rounded-2xl bg-violet-600 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">{busy==="invite"?"Enviando...":`Enviar cotação para ${selectedSuppliers.length} fornecedor(es)`}</button>
+          <div className="my-5 border-t border-slate-100"/>
+          <div><p className="text-xs font-bold uppercase tracking-wide text-slate-400">Fornecedor ainda não cadastrado</p><p className="mt-1 text-sm text-slate-500">O arquiteto pode enviar a cotação apenas com nome e telefone ou e-mail. O fornecedor responde pelo link sem precisar criar conta.</p></div>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <label className="text-xs font-semibold text-slate-600">Nome<input value={guestName} onChange={e=>setGuestName(e.target.value)} placeholder="Fornecedor / empresa" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-normal text-slate-900"/></label>
+            <label className="text-xs font-semibold text-slate-600">E-mail<input type="email" value={guestEmail} onChange={e=>setGuestEmail(e.target.value)} placeholder="fornecedor@empresa.com" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-normal text-slate-900"/></label>
+            <label className="text-xs font-semibold text-slate-600">Telefone / WhatsApp<input value={guestPhone} onChange={e=>setGuestPhone(e.target.value)} placeholder="+55 49 ..." className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-normal text-slate-900"/></label>
+          </div>
+          <button type="button" disabled={busy==="guest-invite"||!guestName.trim()||(!guestEmail.trim()&&!guestPhone.trim())} onClick={()=>void inviteGuest()} className="mt-3 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">{busy==="guest-invite"?"Enviando...":"Enviar cotação para fornecedor externo"}</button>
         </section>
 
         <section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
           <div><p className="text-xs font-bold uppercase tracking-wide text-violet-600">Mapa de cotação</p><h2 className="mt-1 text-xl font-semibold">Custo, prazo e margem</h2></div>
           <div className="mt-5 overflow-x-auto"><table className="w-full min-w-[800px] text-sm"><thead><tr className="border-b text-left text-xs uppercase text-slate-400"><th className="py-3">Fornecedor</th><th>Status</th><th>Total cotado</th><th>Prazo</th><th>Condição</th><th>Margem sobre venda</th><th></th></tr></thead><tbody>
-            {invitations.map(inv=>{const cost=n(inv.total_value);const margin=hasSaleValue?saleValue-cost:null;const marginPct=hasSaleValue&&margin!=null?(margin/saleValue)*100:null;return <tr key={inv.id} className="border-b border-slate-100"><td className="py-3 font-semibold">{inv.supplier_name}<div className="text-[11px] font-normal text-slate-400">{(inv.response_documents||[]).length} anexo(s)</div></td><td><span className={`rounded-full px-2 py-1 text-xs font-bold ${badge(inv.status)}`}>{statusLabel(inv.status)}</span></td><td>{inv.total_value!=null?money(cost):"aguardando"}</td><td>{inv.lead_time_days!=null?`${inv.lead_time_days} dias`:"—"}</td><td>{inv.payment_terms||"—"}</td><td>{inv.total_value!=null&&margin!=null?<span className={margin>=0?"font-semibold text-emerald-700":"font-semibold text-rose-700"}>{money(margin)} • {marginPct?.toFixed(1)}%</span>:"—"}</td><td>{inv.status==="responded"?<button disabled={busy===inv.id} onClick={()=>void select(inv.id)} className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-bold text-white">{busy===inv.id?"Salvando...":"Selecionar"}</button>:null}</td></tr>})}
+            {invitations.map(inv=>{const cost=n(inv.total_value);const margin=hasSaleValue?saleValue-cost:null;const marginPct=hasSaleValue&&margin!=null?(margin/saleValue)*100:null;return <tr key={inv.id} className="border-b border-slate-100"><td className="py-3 font-semibold">{inv.supplier_name}<div className="text-[11px] font-normal text-slate-400">{(inv.response_documents||[]).length} anexo(s) • {inv.access_mode==="converted"?"cliente Vendor.ai":inv.access_mode==="guest"?"convidado externo":"cadastrado"}</div></td><td><span className={`rounded-full px-2 py-1 text-xs font-bold ${badge(inv.status)}`}>{statusLabel(inv.status)}</span></td><td>{inv.total_value!=null?money(cost):"aguardando"}</td><td>{inv.lead_time_days!=null?`${inv.lead_time_days} dias`:"—"}</td><td>{inv.payment_terms||"—"}</td><td>{inv.total_value!=null&&margin!=null?<span className={margin>=0?"font-semibold text-emerald-700":"font-semibold text-rose-700"}>{money(margin)} • {marginPct?.toFixed(1)}%</span>:"—"}</td><td>{inv.status==="responded"?<button disabled={busy===inv.id} onClick={()=>void select(inv.id)} className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-bold text-white">{busy===inv.id?"Salvando...":"Selecionar"}</button>:null}</td></tr>})}
             {!invitations.length?<tr><td colSpan={7} className="py-6 text-center text-slate-500">Nenhum fornecedor convidado para este pacote.</td></tr>:null}
           </tbody></table></div>
           {hasSaleValue&&invitations.some(i=>i.total_value!=null&&n(i.total_value)>saleValue)?<div className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900"><strong>Atenção:</strong> existe cotação acima do preço de venda deste pacote. A proposta atual não será alterada automaticamente.

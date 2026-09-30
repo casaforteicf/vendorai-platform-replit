@@ -189,6 +189,7 @@ const demoSignupSchema = z.object({
   offerCode: z.string().trim().max(160).optional(),
   behaviorSessionId: z.string().trim().max(120).optional(),
   adDataConsent: z.boolean().optional(),
+  rfqToken: z.string().uuid().optional(),
   // Código de embaixador do Praça.ai (?ref=CODIGO) — se vier, dispara
   // registro de indicação de lojista pro Praça.ai depois do cadastro.
   codigoIndicacaoPraca: z.string().optional(),
@@ -209,6 +210,84 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function compactRecord(input: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined && value !== ""));
+}
+
+async function linkRfqSupplierAccount(params: {
+  rfqToken: string;
+  accountTenantId: string;
+  companyName: string;
+  personName: string;
+  email: string;
+  phone?: string;
+}): Promise<boolean> {
+  const invitationResult = await pool.query(
+    `SELECT i.*, p.category, p.discipline
+       FROM arch_rfq_invitations i
+       JOIN arch_rfq_packages p ON p.id=i.package_id
+      WHERE i.public_token=$1::uuid
+      LIMIT 1`,
+    [params.rfqToken],
+  );
+  const invitation = invitationResult.rows[0];
+  if (!invitation) return false;
+
+  const invitedEmail = String(invitation.supplier_email || "").trim().toLowerCase();
+  const invitedPhone = String(invitation.supplier_phone || "").replace(/\D/g, "");
+  const accountEmail = params.email.trim().toLowerCase();
+  const accountPhone = String(params.phone || "").replace(/\D/g, "");
+  const identityMatches =
+    (invitedEmail && invitedEmail === accountEmail)
+    || (!invitedEmail && invitedPhone && accountPhone && invitedPhone === accountPhone);
+  if (!identityMatches) return false;
+
+  const supplierExisting = await pool.query(
+    `SELECT id FROM fornecedores
+      WHERE tenant_id=$1
+        AND (
+          ($2<>'' AND lower(COALESCE(email,''))=lower($2))
+          OR ($3<>'' AND regexp_replace(COALESCE(telefone,''),'[^0-9]','','g')=$3)
+        )
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    [invitation.tenant_id, accountEmail, accountPhone],
+  );
+  let supplierId = supplierExisting.rows[0]?.id ?? null;
+  if (!supplierId) {
+    const categories = invitation.category ? [String(invitation.category)] : [];
+    const disciplines = invitation.discipline ? [String(invitation.discipline)] : [];
+    const createdSupplier = await pool.query(
+      `INSERT INTO fornecedores
+        (id,tenant_id,nome,contato,telefone,email,categorias,disciplinas,regioes,marcas,ativo,created_at,updated_at)
+       VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,'[]'::jsonb,'[]'::jsonb,true,now(),now())
+       RETURNING id`,
+      [
+        invitation.tenant_id,
+        params.companyName,
+        params.personName,
+        params.phone || invitation.supplier_phone || null,
+        accountEmail,
+        JSON.stringify(categories),
+        JSON.stringify(disciplines),
+      ],
+    );
+    supplierId = createdSupplier.rows[0]?.id ?? null;
+  }
+
+  await pool.query(
+    `UPDATE arch_rfq_invitations
+        SET access_mode='converted',
+            converted_tenant_id=$1,
+            converted_at=COALESCE(converted_at,now()),
+            supplier_id=COALESCE($2,supplier_id),
+            supplier_name=COALESCE(NULLIF($3,''),supplier_name),
+            contact_name=COALESCE(NULLIF($4,''),contact_name),
+            supplier_email=COALESCE(NULLIF($5,''),supplier_email),
+            supplier_phone=COALESCE(NULLIF($6,''),supplier_phone),
+            updated_at=now()
+      WHERE id=$7::uuid`,
+    [params.accountTenantId, supplierId, params.companyName, params.personName, accountEmail, params.phone || "", invitation.id],
+  );
+  return true;
 }
 
 function accountExistsResponse(res: import("express").Response): void {
@@ -258,12 +337,27 @@ router.post("/auth/demo-signup", async (req, res) => {
     offerCode,
     behaviorSessionId,
     adDataConsent,
+    rfqToken,
   } = parsed.data;
   const countryProfile = getTenantCountryProfile(countryCode);
 
   // Evita criar um tenant que depois ficaria órfão quando o e-mail já existe.
   const existingUser = await findUserForAuth(email);
   if (existingUser) {
+    if (rfqToken) {
+      try {
+        await linkRfqSupplierAccount({
+          rfqToken,
+          accountTenantId: existingUser.tenantId,
+          companyName: nomeEmpresa,
+          personName: nomePessoa,
+          email,
+          phone: telefone,
+        });
+      } catch (rfqLinkError) {
+        req.log?.error({ err: rfqLinkError, tenantId: existingUser.tenantId }, "auth: failed to link existing supplier account to RFQ");
+      }
+    }
     accountExistsResponse(res);
     return;
   }
@@ -480,6 +574,21 @@ router.post("/auth/demo-signup", async (req, res) => {
     } catch (pipelineError) {
       // Falha no pipeline não bloqueia o cadastro de demo, mas fica observável.
       req.log?.error({ err: pipelineError, tenantId: tenant.id }, "auth: falha ao promover lead do trial");
+    }
+
+    if (rfqToken) {
+      try {
+        await linkRfqSupplierAccount({
+          rfqToken,
+          accountTenantId: tenant.id,
+          companyName: nomeEmpresa,
+          personName: nomePessoa,
+          email,
+          phone: telefone,
+        });
+      } catch (rfqLinkError) {
+        req.log?.error({ err: rfqLinkError, tenantId: tenant.id }, "auth: failed to link RFQ supplier conversion");
+      }
     }
 
     const token = signToken({
