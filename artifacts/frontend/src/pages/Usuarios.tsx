@@ -853,7 +853,7 @@ export default function Usuarios() {
         await updateUser.mutateAsync({ id: editingUser.id, data: payload });
         toast({ title: copy.userUpdated, description: copy.userUpdatedDescription });
       } else {
-        await createUser.mutateAsync({
+        const createdUser = await createUser.mutateAsync({
           data: {
             tenantId,
             name: formData.name,
@@ -871,8 +871,14 @@ export default function Usuarios() {
             leadAssignmentRaioKm,
             ...(baseAddress ? { leadAssignmentBaseAddress: baseAddress } : {}),
           } as any,
+        }) as any;
+        toast({
+          title: copy.userCreated,
+          description: createdUser?.emailSent
+            ? (locale === "pt-BR" ? "Usuário criado e e-mail de acesso enviado." : "Usuario creado y correo de acceso enviado.")
+            : (locale === "pt-BR" ? "Usuário criado, mas o e-mail de acesso não pôde ser enviado." : "Usuario creado, pero no se pudo enviar el correo de acceso."),
+          variant: createdUser?.emailSent === false ? "destructive" : "default",
         });
-        toast({ title: copy.userCreated, description: copy.userCreatedDescription });
       }
       await queryClient.invalidateQueries({ queryKey: getListTenantUsersQueryKey(tenantId) });
       setDialogOpen(false);
