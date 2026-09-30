@@ -544,6 +544,7 @@ function readCachedVersions(targetKey: string): RenderStudioVersion[] {
         selectionLabel: version.selectionLabel,
         materialId: version.materialId,
         materialName: version.materialName,
+        surfaceKey: version.surfaceKey,
         approvedBy: version.approvedBy,
         approvedAt: reviveDate(version.approvedAt),
         approvalNote: version.approvalNote,
@@ -607,8 +608,14 @@ export default function RenderStudioPage() {
 
     return requested;
   });
-  const [projectId, setProjectId] = useState<string | null>(() => localStorage.getItem("arq_last_project_id"));
-  const [ambiente, setAmbiente] = useState(() => sessionStorage.getItem(SK.ambiente) ?? "");
+  const [projectId, setProjectId] = useState<string | null>(() => {
+    const requested = new URLSearchParams(window.location.search).get("project_id")?.trim();
+    return requested || localStorage.getItem("arq_last_project_id");
+  });
+  const [ambiente, setAmbiente] = useState(() => {
+    const requested = new URLSearchParams(window.location.search).get("ambiente")?.trim();
+    return requested || sessionStorage.getItem(SK.ambiente) || "";
+  });
   const [hydratedKey, setHydratedKey] = useState<string | null>(null);
   const targetKey = `${projectId ?? "no-project"}:${ambiente}`;
 
@@ -634,13 +641,20 @@ export default function RenderStudioPage() {
   }, [freshStart]);
 
   useEffect(() => {
-    const interval = window.setInterval(() => {
-      const nextProjectId = localStorage.getItem("arq_last_project_id");
-      const nextAmbiente = sessionStorage.getItem(SK.ambiente) ?? "";
-      setProjectId((current) => current === nextProjectId ? current : nextProjectId);
-      setAmbiente((current) => current === nextAmbiente ? current : nextAmbiente);
-    }, 400);
-    return () => window.clearInterval(interval);
+    function onProjectContext(event: Event) {
+      const project = (event as CustomEvent<{ projectId?: string | null }>).detail?.projectId ?? null;
+      setProjectId(project);
+    }
+    function onStudioContext(event: Event) {
+      const detail = (event as CustomEvent<{ ambiente?: string }>).detail;
+      if (typeof detail?.ambiente === "string") setAmbiente(detail.ambiente);
+    }
+    window.addEventListener("arqdor:project-context", onProjectContext as EventListener);
+    window.addEventListener("arqdor:render-context", onStudioContext as EventListener);
+    return () => {
+      window.removeEventListener("arqdor:project-context", onProjectContext as EventListener);
+      window.removeEventListener("arqdor:render-context", onStudioContext as EventListener);
+    };
   }, []);
 
   useEffect(() => setHydratedKey(null), [projectId, ambiente]);

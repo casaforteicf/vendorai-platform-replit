@@ -91,10 +91,12 @@ function captureJson(
 function normalizeSelectionMetadata(body: any) {
   const coordinates = Array.isArray(body?.mask_coordinates) ? body.mask_coordinates : [];
   const labels = Array.isArray(body?.mask_zones) ? body.mask_zones : [];
+  const surfaceKey = asOptionalString(body?.surface_key);
   return coordinates
     .filter((item: any) => item && [item.x, item.y, item.w, item.h].every((value) => typeof value === "number" && Number.isFinite(value)))
     .map((item: any, index: number) => ({
       label: typeof labels[index] === "string" ? labels[index] : `Região ${index + 1}`,
+      surfaceKey: asOptionalString(item?.surfaceKey) ?? surfaceKey ?? undefined,
       x: item.x,
       y: item.y,
       w: item.w,

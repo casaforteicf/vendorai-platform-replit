@@ -207,8 +207,6 @@ function UploadZone({ onNavigate, onFile }: { onNavigate: NavFn; onFile: (file: 
 
 // ─── Project selector panel ────────────────────────────────────────────────────
 function ProjectPanel({ arqState, onClose }: { arqState:ArqProjectState; onClose:()=>void }) {
-  const [newTitle, setNewTitle] = useState('')
-  const [creating, setCreating] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -216,13 +214,6 @@ function ProjectPanel({ arqState, onClose }: { arqState:ArqProjectState; onClose
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [onClose])
-
-  async function handleCreate() {
-    if (!newTitle.trim()) return
-    setCreating(true)
-    try { await arqState.createProject(newTitle.trim()); setNewTitle(''); onClose() }
-    finally { setCreating(false) }
-  }
 
   return (
     <div ref={ref} style={{
@@ -245,30 +236,20 @@ function ProjectPanel({ arqState, onClose }: { arqState:ArqProjectState; onClose
         {arqState.projects.length === 0 && (
           <div style={{ padding:'16px 14px', textAlign:'center' as const }}>
             <p style={{ margin:0, fontSize:11, color:PHX.dim }}>Nenhum projeto ainda</p>
-            <p style={{ margin:'4px 0 0', fontSize:10, color:PHX.dim }}>Crie seu primeiro abaixo</p>
+            <p style={{ margin:'4px 0 0', fontSize:10, color:PHX.dim }}>Cadastre cliente e projeto no fluxo completo</p>
           </div>
         )}
       </div>
       <div style={{ padding:'10px 12px' }}>
-        <div style={{ display:'flex', gap:6 }}>
-          <input
-            className="phx-input"
-            value={newTitle}
-            onChange={e => setNewTitle(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleCreate()}
-            placeholder="Nome do novo projeto…"
-            style={{
-              flex:1, padding:'7px 10px', borderRadius:8, border:`1px solid ${PHX.border}`,
-              background:PHX.muted, color:PHX.text, fontSize:11, outline:'none', transition:'border-color 0.15s, box-shadow 0.15s',
-            }}
-          />
-          <button onClick={handleCreate} disabled={creating || !newTitle.trim()} style={{
-            padding:'7px 12px', borderRadius:8, border:'none', background:PHX.purple,
-            color:'#fff', fontWeight:700, fontSize:11, cursor:'pointer', opacity:creating||!newTitle.trim()?0.5:1, transition:'opacity 0.15s',
-          }}>
-            {creating ? '…' : '＋'}
-          </button>
-        </div>
+        <button
+          onClick={() => window.location.assign('/arch/projetos/novo')}
+          style={{
+            width:'100%', padding:'9px 12px', borderRadius:8, border:'none',
+            background:PHX.purple, color:'#fff', fontWeight:800, fontSize:11, cursor:'pointer',
+          }}
+        >
+          ＋ Novo projeto com cliente
+        </button>
       </div>
     </div>
   )

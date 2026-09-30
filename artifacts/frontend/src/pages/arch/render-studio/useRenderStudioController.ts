@@ -230,6 +230,7 @@ export function useRenderStudioController() {
   useEffect(() => {
     if (ambiente) sessionStorage.setItem(SK.ambiente, ambiente);
     else sessionStorage.removeItem(SK.ambiente);
+    window.dispatchEvent(new CustomEvent("arqdor:render-context", { detail: { ambiente } }));
   }, [ambiente]);
   useEffect(() => {
     if (renderId) sessionStorage.setItem(SK.renderId, renderId);
@@ -542,6 +543,7 @@ export function useRenderStudioController() {
         material_id:      selectedMaterial?.id,
         material_name:    selectedMaterial?.nome,
         material_reference_url: selectedMaterial?.imagens?.[0],
+        surface_key:       selections.slice(-1)[0]?.surfaceKey,
         operation_type:   melhoriaMode === "change-material" ? "material" : melhoriaMode === "change-lighting" ? "lighting" : "improve",
         // A troca de material usa a máscara final já detectada e confirmada.
         // Não há expansão durante a geração.
@@ -558,6 +560,7 @@ export function useRenderStudioController() {
         selectionLabel: selections[0]?.label,
         materialId: selectedMaterial?.id,
         materialName: selectedMaterial?.nome,
+        surfaceKey: selections.slice(-1)[0]?.surfaceKey,
       };
       setRenderUrl(normalizeRenderMediaUrl(data.result_image_url)); setRenderId(render_id);
       setVersions(v => [newVersion, ...v]);
@@ -568,17 +571,13 @@ export function useRenderStudioController() {
       setSelections([]); setSelectionMode("off"); setSelectedMaterial(null); setMelhoriaPrompt("");
       setMaterialMaskPreviewUrl(null); setMaterialMaskDataUrl(null); setMaterialMaskConfirmed(false);
 
-      // Conecta troca de material com a especificação, se já existir uma
-      // gerada — casa a região selecionada (label) com o item de
-      // especificação correspondente (por categoria/descrição, comparação
-      // solta já que não existe vínculo direto entre seleção e item).
+      // Sincroniza com especificação SOMENTE quando existe identidade estrutural
+      // explícita da superfície. Nunca casa por texto/categoria/descrição.
       if (melhoriaMode === "change-material" && selectedMaterial && specificationId && specData.length > 0) {
-        const selecaoLabel = (selections[0]?.label ?? "").toLowerCase().trim();
-        const itemCorrespondente = selecaoLabel
+        const activeSurfaceKey = selections.slice(-1)[0]?.surfaceKey;
+        const itemCorrespondente = activeSurfaceKey
           ? specData.find((item: any) =>
-              item.categoria?.toLowerCase().includes(selecaoLabel) ||
-              item.descricao?.toLowerCase().includes(selecaoLabel) ||
-              selecaoLabel.includes(item.categoria?.toLowerCase() ?? "__none__"))
+              item.surfaceKey === activeSurfaceKey || item.renderSurfaceKey === activeSurfaceKey)
           : undefined;
 
         if (itemCorrespondente?.id) {
@@ -594,11 +593,12 @@ export function useRenderStudioController() {
               item.id === itemCorrespondente.id
                 ? { ...item, catalogoItemId: selectedMaterial.id, nome: selectedMaterial.nome, material: selectedMaterial.nome, confirmedByUser: true, status: "especificado" }
                 : item));
-            logEvent("spec_material_synced", `Item "${itemCorrespondente.descricao}" atualizado com material "${selectedMaterial.nome}"`);
+            logEvent("spec_material_synced", `Superfície ${activeSurfaceKey} vinculada ao material "${selectedMaterial.nome}"`);
           } catch {
-            // Não trava o fluxo de render por causa disso — a especificação
-            // pode ser corrigida manualmente depois se a sincronização falhar.
+            // O render permanece válido; a especificação pode ser revisada manualmente.
           }
+        } else if (activeSurfaceKey) {
+          logEvent("spec_material_pending_link", `Superfície ${activeSurfaceKey} alterada sem vínculo técnico explícito; nenhum item de especificação foi alterado por aproximação.`);
         }
       }
 
@@ -723,13 +723,25 @@ export function useRenderStudioController() {
     setSelections([]);
     setCompareMode(false);
     setRenderVideoUrl(null);
-    setSpecDone(false);
-    setSpecData([]);
-    setSpecificationId(null);
     setErr(null);
     setSaveState("saved");
     setLastSavedAt(new Date());
     logEvent("version_selected", `${version.label} selecionada`);
+
+    // A especificação pertence ao projeto e não deve desaparecer ao trocar de versão.
+    // Recarrega a fonte persistida em vez de limpar o estado local.
+    if (arq.projectId) {
+      void apiGet(`/api/arch/specification/${arq.projectId}`)
+        .then((data) => {
+          const items = Array.isArray(data?.items) ? data.items : [];
+          setSpecData(items);
+          setSpecDone(Boolean(data?.spec));
+          setSpecificationId(data?.spec?.id ?? null);
+        })
+        .catch(() => {
+          // Mantém o estado atual se a revalidação falhar temporariamente.
+        });
+    }
   }
 
   function handleRenderLoadError() {
@@ -792,14 +804,24 @@ export function useRenderStudioController() {
   }
 
   // P0-1: create project
-  async function handleCreateProject(name: string) { await arq.createProject(name); go("ambiente"); }
+  async function handleCreateProject(name: string) {
+    const params = new URLSearchParams();
+    if (name.trim()) params.set("titulo", name.trim());
+    setLocation(`/arch/projetos/novo${params.toString() ? `?${params.toString()}` : ""}`);
+  }
 
   // P2-13: handle new selection from canvas
   function handleNewSelection(sel: Omit<SelectionRect, "id" | "label">) {
     // Ajuste local padrão = UMA região final autorizada por vez.
     // Criar uma nova seleção substitui qualquer seleção anterior para impedir
     // que regiões antigas sejam reenviadas silenciosamente no próximo ajuste.
-    const newSel: SelectionRect = { ...sel, id: crypto.randomUUID(), label: "Região selecionada" };
+    const selectionId = crypto.randomUUID();
+    const newSel: SelectionRect = {
+      ...sel,
+      id: selectionId,
+      label: "Região selecionada",
+      surfaceKey: `${renderId ?? "draft"}:${selectionId}`,
+    };
     setSelections([newSel]);
     setMaterialMaskPreviewUrl(null);
     setMaterialMaskDataUrl(null);

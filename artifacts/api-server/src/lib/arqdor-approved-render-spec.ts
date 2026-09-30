@@ -22,8 +22,21 @@ function selectionLabel(metadata: unknown): string | null {
   return labels.length ? [...new Set(labels)].join(", ") : null;
 }
 
+function selectionSurfaceKey(metadata: unknown): string | null {
+  if (!Array.isArray(metadata)) return null;
+  const keys = metadata
+    .map((item) => item && typeof item === "object" && "surfaceKey" in item ? String((item as any).surfaceKey ?? "").trim() : "")
+    .filter(Boolean);
+  return keys.length ? [...new Set(keys)].join(",") : null;
+}
+
 function dedupeKey(row: RenderChainRow) {
-  return [row.material_id ?? "", row.material_name ?? "", selectionLabel(row.selection_metadata) ?? ""].join("::");
+  return [
+    selectionSurfaceKey(row.selection_metadata) ?? "",
+    row.material_id ?? "",
+    row.material_name ?? "",
+    selectionLabel(row.selection_metadata) ?? "",
+  ].join("::");
 }
 
 export async function syncApprovedRenderSpecifications(params: {
@@ -79,8 +92,13 @@ export async function syncApprovedRenderSpecifications(params: {
 
   for (const row of materialRows) {
     const region = selectionLabel(row.selection_metadata);
+    const surfaceKey = selectionSurfaceKey(row.selection_metadata);
     const name = row.material_name || "Material especificado";
-    const sourceObjectId = row.material_id ? `material:${row.material_id}` : `material-name:${name.toLowerCase()}`;
+    const sourceObjectId = surfaceKey
+      ? `surface:${surfaceKey}`
+      : row.material_id
+        ? `material:${row.material_id}`
+        : `material-name:${name.toLowerCase()}`;
 
     const existing = await pool.query(
       `SELECT id FROM arch_spec_objects

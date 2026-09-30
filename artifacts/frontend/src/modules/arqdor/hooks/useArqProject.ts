@@ -122,6 +122,7 @@ export function useArqProject(): ArqProjectState {
         }))
       )
       localStorage.setItem('arq_last_project_id', id)
+      window.dispatchEvent(new CustomEvent('arqdor:project-context', { detail: { projectId: id } }))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível carregar o projeto.')
     }
