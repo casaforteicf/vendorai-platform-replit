@@ -115,6 +115,14 @@ async function createProposalFromBudget(tId: string | null, payload: CreatePropo
   if (!budget) throw new Error("Orçamento não encontrado");
 
   const proposalId = crypto.randomUUID();
+  const previousVersion = await pool.query(
+    `SELECT COALESCE(MAX(version),0)::int AS latest
+       FROM arch_proposals
+      WHERE project_id=$1::uuid AND tenant_id::text=COALESCE($2::text,tenant_id::text) AND deleted_at IS NULL`,
+    [payload.projectId, tId],
+  );
+  const nextVersion = Number(previousVersion.rows[0]?.latest || 0) + 1;
+  const commercialTotal = budget.sale_total == null ? Number(budget.grand_total ?? 0) : Number(budget.sale_total);
 
   const proposalResult = await pool.query(
     `INSERT INTO arch_proposals (
@@ -126,8 +134,8 @@ async function createProposalFromBudget(tId: string | null, payload: CreatePropo
     ) VALUES (
       $1,$2,$3,$4,null,
       $5,$6,$7,$8,
-      'ready',1,
-      $9,$10,$11,$12,$13,
+      'ready',$9,
+      $10,$11,$12,$13,$14,
       $14,$15,$16,now(),now()
     ) RETURNING *`,
     [
@@ -136,11 +144,12 @@ async function createProposalFromBudget(tId: string | null, payload: CreatePropo
       payload.clientName ?? budget.client_name ?? null,
       payload.clientEmail ?? null,
       payload.clientPhone ?? null,
+      nextVersion,
       Number(budget.subtotal_material ?? 0),
       Number(budget.subtotal_labor ?? 0),
       Number(budget.subtotal ?? 0),
       Number(budget.discount_total ?? 0),
-      Number(budget.grand_total ?? 0),
+      commercialTotal,
       payload.expiresAt ?? null,
       budget.client_notes ?? null,
       budget.internal_notes ?? null,
@@ -165,13 +174,19 @@ async function createProposalFromBudget(tId: string | null, payload: CreatePropo
         crypto.randomUUID(), proposalId, item.id, item.spec_object_id ?? null,
         item.item, item.description ?? null,
         Number(item.quantity ?? 1), item.unit ?? "un",
-        Number(item.material_value ?? 0), Number(item.labor_value ?? 0), Number(item.total ?? 0),
+        Number(item.material_value ?? 0), Number(item.labor_value ?? 0), Number(item.sale_total ?? item.total ?? 0),
         Number(item.sort_order ?? 0),
       ],
     );
   }
 
-  await addEvent(proposalResult.rows[0].id, "created", "internal", "Proposta criada a partir do orçamento.", { budgetId: payload.budgetId });
+  await addEvent(
+    proposalResult.rows[0].id,
+    "created",
+    "internal",
+    "Proposta criada a partir do orçamento com preço comercial congelado.",
+    { budgetId: payload.budgetId, version: nextVersion, technicalCost: Number(budget.grand_total ?? 0), saleTotal: commercialTotal },
+  );
 
   return getProposalBundleById(proposalResult.rows[0].id);
 }
