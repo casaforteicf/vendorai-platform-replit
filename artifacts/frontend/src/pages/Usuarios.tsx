@@ -83,6 +83,7 @@ import {
 
 const ROLE_LABELS_PT: Record<string, string> = {
   vendedor: "Vendedor",
+  representante_comercial: "Representante Comercial",
   financeiro: "Financeiro",
   suporte: "Suporte",
   entrega: "Entrega",
@@ -92,6 +93,7 @@ const ROLE_LABELS_PT: Record<string, string> = {
 
 const ROLE_LABELS_ES: Record<string, string> = {
   vendedor: "Vendedor",
+  representante_comercial: "Representante Comercial",
   financeiro: "Finanzas",
   suporte: "Soporte",
   entrega: "Entregas",
@@ -101,6 +103,7 @@ const ROLE_LABELS_ES: Record<string, string> = {
 
 const FUNCAO_BADGES: Record<string, string> = {
   vendedor: "bg-blue-100 text-blue-800 border-blue-200",
+  representante_comercial: "bg-cyan-100 text-cyan-800 border-cyan-200",
   financeiro: "bg-emerald-100 text-emerald-800 border-emerald-200",
   suporte: "bg-amber-100 text-amber-800 border-amber-200",
   entrega: "bg-purple-100 text-purple-800 border-purple-200",
@@ -110,6 +113,7 @@ const FUNCAO_BADGES: Record<string, string> = {
 
 const STANDARD_FUNCTIONS: UserFunction[] = [
   "vendedor",
+  "representante_comercial",
   "financeiro",
   "suporte",
   "entrega",
@@ -412,7 +416,7 @@ function parseTerritories(value: string): string[] {
 function legacyCanReceiveLeads(targetUser: any): boolean {
   if (targetUser?.leadAssignmentEnabled === false) return false;
   if (targetUser?.leadAssignmentEnabled === true) return true;
-  return targetUser?.platformRole === "tenant_seller" || targetUser?.userFunction === "vendedor";
+  return targetUser?.platformRole === "tenant_seller" || targetUser?.userFunction === "vendedor" || targetUser?.userFunction === "representante_comercial";
 }
 
 function isAdministrator(targetUser: any): boolean {
@@ -643,7 +647,7 @@ export default function Usuarios() {
       userFunction,
       customFunctionId: null,
       permissions: modulesForFunction(userFunction),
-      leadAssignmentEnabled: editingUser ? current.leadAssignmentEnabled : userFunction === "vendedor",
+      leadAssignmentEnabled: editingUser ? current.leadAssignmentEnabled : (userFunction === "vendedor" || userFunction === "representante_comercial"),
     }));
   }
 
