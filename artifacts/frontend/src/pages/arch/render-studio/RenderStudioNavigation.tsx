@@ -53,7 +53,7 @@ export function RenderStudioTopbar({
 
       <div style={{ flex: 1 }} />
 
-      {renderStudioStepIndex(step) >= renderStudioStepIndex("render") && (
+      {(step === "versao" || step === "aprovar") && (
         <button
           onClick={onOpenStudio}
           aria-label="Melhorar render"
