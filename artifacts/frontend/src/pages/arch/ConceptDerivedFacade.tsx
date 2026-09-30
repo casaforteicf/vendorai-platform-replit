@@ -514,7 +514,7 @@ export default function ConceptDerivedFacade({
             <text x={levelLabelX - 0.8} y={y + 0.35} textAnchor="end" fontSize="1.0" fill="#64748b">+{level.toFixed(2).replace(".", ",")}</text>
           </g>;
         })}
-      </g>
+      </g>}
 
       {/* Paisagismo atrás da casa (árvores de fundo) */}
       {showTrees && !lineMode && trees.filter((tree) => tree.back).map((tree) => (
