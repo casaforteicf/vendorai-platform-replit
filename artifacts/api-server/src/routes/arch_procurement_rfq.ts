@@ -1,12 +1,172 @@
 import { Router, type IRouter } from "express";
 import { createHash } from "node:crypto";
+import multer from "multer";
 import { pool } from "@workspace/db";
+import { objectStorageClient } from "../lib/objectStorage.js";
 import { logger } from "../lib/logger.js";
 import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 import { sendJarvisEmail } from "../services/jarvis-email-provider.js";
 
 export const archProcurementRfqRouter: IRouter = Router();
 export const archProcurementRfqPublicRouter: IRouter = Router();
+const publicUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024, files: 5 } });
+
+function safeFilename(name: string) {
+  return name.normalize("NFKD").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/-+/g, "-").slice(0, 120) || "documento";
+}
+
+async function saveSupplierDocument(tid: string, obraId: string, file: Express.Multer.File) {
+  const privateDir = process.env["PRIVATE_OBJECT_DIR"] || "/app-uploads/private";
+  const storedName = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}-${safeFilename(file.originalname)}`;
+  const fullPath = `${privateDir}/procurement/rfq/${tid}/${obraId}/${storedName}`;
+  const parts = fullPath.split("/").filter(Boolean);
+  const bucketName = parts.shift();
+  if (!bucketName || !parts.length) throw new Error("PRIVATE_OBJECT_DIR inválido");
+  const objectName = parts.join("/");
+  await objectStorageClient.bucket(bucketName).file(objectName).save(file.buffer, { contentType: file.mimetype, resumable: false });
+  return {
+    name: file.originalname,
+    storedName,
+    mimeType: file.mimetype,
+    size: file.size,
+    url: `/api/storage/objects/procurement/rfq/${tid}/${obraId}/${storedName}`,
+    uploadedAt: new Date().toISOString(),
+  };
+}
+
+function allowedSupplierFile(file: Express.Multer.File) {
+  const lower = file.originalname.toLowerCase();
+  return file.mimetype === "application/pdf"
+    || file.mimetype.startsWith("image/")
+    || /\.(xlsx|xls|csv|txt|xml|dwg|dxf)$/i.test(lower);
+}
+
+async function technicalDocuments(tid: string, obraId: string, category: string) {
+  const result = await pool.query(
+    `SELECT id,categoria,titulo,descricao,url,mime_type,versao,created_at
+       FROM obra_portal_documents
+      WHERE tenant_id=$1 AND obra_id=$2
+        AND lower(categoria) = ANY($3::text[])
+      ORDER BY created_at DESC
+      LIMIT 30`,
+    [tid, obraId, ["projeto","planta","desenho","detalhe","memorial","especificacao","arquivo_tecnico","levantamento"]],
+  ).catch(() => ({ rows: [] as any[] }));
+
+  const normalizedCategory = normalizeText(category);
+  const rows = (result as any).rows as any[];
+  const direct = rows.filter((doc: any) => {
+    const hay = normalizeText([doc.categoria, doc.titulo, doc.descricao].filter(Boolean).join(" "));
+    return !normalizedCategory || hay.includes(normalizedCategory);
+  });
+  const chosen = direct.length ? direct : rows;
+  return chosen.map((doc: any) => ({
+    id: doc.id,
+    category: doc.categoria,
+    title: doc.titulo,
+    description: doc.descricao,
+    url: doc.url,
+    mimeType: doc.mime_type,
+    version: doc.versao,
+  }));
+}
+
+async function commercialContext(tid: string, projectId: string, budgetId: string) {
+  const [budgetResult, linkedResult, archProposalResult] = await Promise.all([
+    pool.query(`SELECT sale_total,sale_source,grand_total,version FROM arch_budgets WHERE id=$1::uuid AND tenant_id::text=$2 LIMIT 1`, [budgetId, tid]),
+    pool.query(
+      `SELECT p.id,p.numero,p.valor_total,p.status,p.updated_at
+         FROM arch_projetos ap
+         JOIN propostas p ON p.id=ap.proposta_id
+        WHERE ap.id=$1::text AND ap.tenant_id=$2 AND p.tenant_id=$2
+        LIMIT 1`,
+      [projectId, tid],
+    ).catch(() => ({ rows: [] as any[] })),
+    pool.query(
+      `SELECT id,version,grand_total,status,updated_at
+         FROM arch_proposals
+        WHERE project_id=$1::uuid AND budget_id=$2::uuid AND tenant_id::text=$3 AND deleted_at IS NULL
+        ORDER BY version DESC,updated_at DESC LIMIT 1`,
+      [projectId, budgetId, tid],
+    ).catch(() => ({ rows: [] as any[] })),
+  ]);
+  const budget = budgetResult.rows[0] ?? {};
+  const linked = (linkedResult as any).rows?.[0] ?? null;
+  const archProposal = (archProposalResult as any).rows?.[0] ?? null;
+
+  if (linked && n(linked.valor_total) > 0) {
+    return {
+      saleTotal: n(linked.valor_total),
+      saleSource: "commercial_proposal",
+      commercialProposalId: String(linked.id),
+      archProposalId: archProposal?.id ? String(archProposal.id) : null,
+      revision: linked.numero || (archProposal ? `R${archProposal.version}` : null),
+    };
+  }
+  if (budget.sale_total != null && n(budget.sale_total) > 0) {
+    return {
+      saleTotal: n(budget.sale_total),
+      saleSource: String(budget.sale_source || "budget"),
+      commercialProposalId: null,
+      archProposalId: archProposal?.id ? String(archProposal.id) : null,
+      revision: archProposal ? `R${archProposal.version}` : `B${budget.version || 1}`,
+    };
+  }
+  return {
+    saleTotal: null,
+    saleSource: null,
+    commercialProposalId: null,
+    archProposalId: archProposal?.id ? String(archProposal.id) : null,
+    revision: archProposal ? `R${archProposal.version}` : `B${budget.version || 1}`,
+  };
+}
+
+async function assertPackageStillCurrent(tid: string, obraId: string, packageId: string) {
+  const packageResult = await pool.query(
+    `SELECT * FROM arch_rfq_packages WHERE id=$1::uuid AND tenant_id=$2 AND obra_id=$3 LIMIT 1`,
+    [packageId, tid, obraId],
+  );
+  const pkg = packageResult.rows[0];
+  if (!pkg) return { ok: false as const, reason: "Pacote de cotação não encontrado." };
+
+  const snapshot = pkg.scope_snapshot || {};
+  const snapshotItems = Array.isArray(snapshot.items) ? snapshot.items : [];
+  for (const snap of snapshotItems) {
+    const currentResult = await pool.query(
+      `SELECT abi.*,aso.category AS spec_category,aso.region AS spec_region,aa.nome AS ambiente_nome
+         FROM arch_budget_items abi
+         LEFT JOIN arch_spec_objects aso ON aso.id=abi.spec_object_id
+         LEFT JOIN arch_ambientes aa ON aa.id::text=abi.ambiente_id::text
+        WHERE abi.id=$1::uuid AND abi.budget_id=$2::uuid AND abi.tenant_id::text=$3 AND abi.deleted_at IS NULL
+        LIMIT 1`,
+      [snap.budgetItemId, pkg.budget_id, tid],
+    );
+    const row = currentResult.rows[0];
+    if (!row) return { ok: false as const, reason: `Item removido do orçamento: ${snap.item || snap.budgetItemId}` };
+    const scope = inferScope(row);
+    const currentSnapshot = {
+      budgetItemId: row.id,
+      specObjectId: row.spec_object_id,
+      item: row.item,
+      description: row.description,
+      ambienteId: row.ambiente_id,
+      ambiente: row.ambiente_nome || null,
+      region: row.spec_region || null,
+      quantity: n(row.quantity, 1),
+      unit: row.unit || "un",
+      productName: row.product_name,
+      materialName: row.material_name,
+      manufacturerName: row.manufacturer_name,
+      total: n(row.total),
+      category: scope.category,
+      discipline: scope.discipline,
+    };
+    if (scopeHash(currentSnapshot) !== snap.scopeHash) {
+      return { ok: false as const, reason: `Escopo alterado após o envio: ${row.item}` };
+    }
+  }
+  return { ok: true as const, pkg };
+}
+
 
 function tenantId(req: any): string | null {
   return req?.user?.tenantId ?? req?.tenantId ?? null;
