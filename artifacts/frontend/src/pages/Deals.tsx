@@ -1225,9 +1225,51 @@ function EditSaasDealSheet({
               )}
             />
 
+            <div className="pt-2 border-t">
+              <Button type="button" variant="outline" className="w-full" onClick={() => {
+                setTransferResponsibleId(deal.assignedTo ?? "");
+                setTransferOpen(true);
+              }}>
+                Transferir para Suporte
+              </Button>
+            </div>
+
             <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700" disabled={updateDeal.isPending}>
               {updateDeal.isPending ? "Salvando..." : "Salvar alterações"}
             </Button>
+
+            <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Transferir para Suporte</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Responsável no suporte</label>
+                    <Select value={transferResponsibleId} onValueChange={setTransferResponsibleId}>
+                      <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                      <SelectContent>
+                        {transferUsers.map((u) => (
+                          <SelectItem key={u.id} value={u.id}>{u.name || u.email || u.id}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Motivo / observação</label>
+                    <textarea
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-24"
+                      value={transferNote}
+                      onChange={(e) => setTransferNote(e.target.value)}
+                      placeholder="Contexto para a equipe de suporte..."
+                    />
+                  </div>
+                  <Button type="button" className="w-full" onClick={transferToSupport} disabled={transferring || !transferResponsibleId}>
+                    {transferring ? "Transferindo..." : "Confirmar transferência"}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
           </form>
         </Form>
       </SheetContent>
@@ -1288,6 +1330,42 @@ function EditDealSheet({
   const [quoteFileUrl, setQuoteFileUrl] = useState<string | null>(deal?.quoteFileUrl ?? null);
   const [quoteFileName, setQuoteFileName] = useState<string | null>(null);
   const quoteFileRef = useRef<HTMLInputElement>(null);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferResponsibleId, setTransferResponsibleId] = useState("");
+  const [transferNote, setTransferNote] = useState("");
+  const [transferring, setTransferring] = useState(false);
+  const { data: transferUsers = [] } = useListTenantUsers(tenantId, {
+    request: { headers: { Authorization: "Bearer " + (token ?? "") } },
+    query: { enabled: !!tenantId && transferOpen, queryKey: getListTenantUsersQueryKey(tenantId) },
+  });
+
+  async function transferToSupport() {
+    if (!deal || !transferResponsibleId) {
+      toast({ title: "Selecione o responsável do suporte.", variant: "destructive" });
+      return;
+    }
+    setTransferring(true);
+    try {
+      const response = await fetch(`/api/deals/${deal.id}/transfer-pipeline`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + (token ?? "") },
+        body: JSON.stringify({ targetPipeline: "suporte", responsavelId: transferResponsibleId, observacao: transferNote.trim() || undefined }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || "Falha ao transferir");
+      toast({ title: "Lead transferido para Suporte", description: "Chamado criado em “Chamado cliente” e histórico preservado." });
+      queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
+      queryClient.invalidateQueries({ queryKey: ["work-cards", tenantId, "suporte"] });
+      setTransferOpen(false);
+      setTransferNote("");
+      onClose();
+    } catch (error) {
+      toast({ title: "Não foi possível transferir", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+    } finally {
+      setTransferring(false);
+    }
+  }
+
 
   async function handleQuoteUpload(file: File) {
     setExtracting(true);
@@ -1939,7 +2017,7 @@ export default function Deals() {
   } | null>(null);
   const createQuoteFileRef = useRef<HTMLInputElement>(null);
 
-  const { data: deals = [], isLoading } = useListDeals(tenantId, undefined, {
+  const { data: allDeals = [], isLoading } = useListDeals(tenantId, undefined, {
     query: {
       enabled: !!tenantId,
       queryKey: getListDealsQueryKey(tenantId),
@@ -1950,7 +2028,7 @@ export default function Deals() {
 
   // Fonte oficial do pipeline comercial. Kanban, seletores, SLA e responsáveis
   // devem consumir exatamente esta mesma lista, na mesma ordem.
-  const { data: pipelineStages = [] } = useListPipelineStages(tenantId, {
+  const deals = useMemo(() => allDeals.filter((deal) => (deal as Deal & { relationshipStage?: string | null }).relationshipStage !== "transferido_suporte"), [allDeals]);\n\n  const { data: pipelineStages = [] } = useListPipelineStages(tenantId, {
     request: { headers: { Authorization: "Bearer " + (token ?? "") } },
     query: {
       enabled: !!tenantId && !!token,
