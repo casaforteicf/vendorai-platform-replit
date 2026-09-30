@@ -38,6 +38,7 @@ type Props = {
   rooms: ConceptRoomShape[];
   lotWidth: number;
   lotDepth: number;
+  showLotBoundary?: boolean;
   activeFloor?: number;
   geometry: ConceptGeometry;
   closedSpaces?: ClosedSpace[];
@@ -357,6 +358,7 @@ export default function ConceptPlan2D({
   rooms,
   lotWidth,
   lotDepth,
+  showLotBoundary = true,
   activeFloor = 0,
   geometry,
   closedSpaces = [],
@@ -1317,7 +1319,13 @@ export default function ConceptPlan2D({
           </pattern>
         </defs>
 
-        <rect x="0" y="0" width={lotWidth} height={lotDepth} fill="#fcfcfd" />
+        <rect
+          x={showLotBoundary ? 0 : view.x - view.width}
+          y={showLotBoundary ? 0 : view.y - view.height}
+          width={showLotBoundary ? lotWidth : view.width * 3}
+          height={showLotBoundary ? lotDepth : view.height * 3}
+          fill="#fcfcfd"
+        />
         {referenceImage?.url ? (
           <image
             href={referenceImage.url}
@@ -1330,7 +1338,14 @@ export default function ConceptPlan2D({
             pointerEvents="none"
           />
         ) : null}
-        <rect x="0" y="0" width={lotWidth} height={lotDepth} fill="url(#concept-grid)" opacity={referenceImage?.url ? 0.34 : 0.72} />
+        <rect
+          x={showLotBoundary ? 0 : view.x - view.width}
+          y={showLotBoundary ? 0 : view.y - view.height}
+          width={showLotBoundary ? lotWidth : view.width * 3}
+          height={showLotBoundary ? lotDepth : view.height * 3}
+          fill="url(#concept-grid)"
+          opacity={referenceImage?.url ? 0.34 : 0.72}
+        />
         {(previewWalls.length > 0 || previewOpenings.length > 0) && (
           <g pointerEvents="none" aria-label="Prévia do traçado sugerido pela IA">
             {previewWalls
@@ -1389,17 +1404,19 @@ export default function ConceptPlan2D({
               })}
           </g>
         )}
-        <rect
-          x="0"
-          y="0"
-          width={lotWidth}
-          height={lotDepth}
-          fill="none"
-          stroke="#94a3b8"
-          strokeWidth="0.08"
-          strokeDasharray="0.22 0.14"
-          pointerEvents="none"
-        />
+        {showLotBoundary && (
+          <rect
+            x="0"
+            y="0"
+            width={lotWidth}
+            height={lotDepth}
+            fill="none"
+            stroke="#94a3b8"
+            strokeWidth="0.08"
+            strokeDasharray="0.22 0.14"
+            pointerEvents="none"
+          />
+        )}
 
         {snapGuides.x != null && (
           <g pointerEvents="none">
@@ -1432,7 +1449,7 @@ export default function ConceptPlan2D({
           </g>
         )}
 
-        {showDimensions && (
+        {showLotBoundary && showDimensions && (
           <g pointerEvents="none">
             <text x={lotWidth / 2} y="-0.82" textAnchor="middle" fontSize="0.28" fontWeight="700" fill="#64748b">
               {formatMeters(lotWidth)} m
@@ -1451,13 +1468,15 @@ export default function ConceptPlan2D({
           </g>
         )}
 
-        <g>
-          <line x1={lotWidth - 0.9} y1="-1.65" x2={lotWidth - 0.9} y2="-0.75" stroke="#0f172a" strokeWidth="0.07" />
-          <path d={`M ${lotWidth - 0.9} -1.9 L ${lotWidth - 1.12} -1.45 L ${lotWidth - 0.68} -1.45 Z`} fill="#0f172a" />
-          <text x={lotWidth - 0.9} y="-2.02" textAnchor="middle" fontSize="0.34" fontWeight="800" fill="#0f172a">N</text>
-        </g>
+        {showLotBoundary && (
+          <g>
+            <line x1={lotWidth - 0.9} y1="-1.65" x2={lotWidth - 0.9} y2="-0.75" stroke="#0f172a" strokeWidth="0.07" />
+            <path d={`M ${lotWidth - 0.9} -1.9 L ${lotWidth - 1.12} -1.45 L ${lotWidth - 0.68} -1.45 Z`} fill="#0f172a" />
+            <text x={lotWidth - 0.9} y="-2.02" textAnchor="middle" fontSize="0.34" fontWeight="800" fill="#0f172a">N</text>
+          </g>
+        )}
 
-        {showDimensions && (
+        {showLotBoundary && showDimensions && (
           <g pointerEvents="none">
             <text x={lotWidth / 2} y="-1.55" textAnchor="middle" fontSize="0.23" fontWeight="800" fill="#c2410c" letterSpacing="0.05">
               FRENTE / ACESSO
