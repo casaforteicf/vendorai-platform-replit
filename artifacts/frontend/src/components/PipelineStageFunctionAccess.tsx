@@ -51,13 +51,26 @@ export function PipelineStageFunctionAccess({
   className,
 }: Props) {
   const queryClient = useQueryClient();
-  const [selected, setSelected] = useState<string[]>(Array.isArray(value) ? value : []);
+  const initialFunctions = Array.isArray(value) ? value : [];
+  const [selected, setSelected] = useState<string[]>(initialFunctions);
+  const [savedSelected, setSavedSelected] = useState<string[]>(initialFunctions);
+  const [functionsDirty, setFunctionsDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(agentValue ?? null);
 
   useEffect(() => {
-    setSelected(Array.isArray(value) ? value : []);
-  }, [stageId, value]);
+    const next = Array.isArray(value) ? value : [];
+    setSelected(next);
+    setSavedSelected(next);
+    setFunctionsDirty(false);
+  }, [stageId]);
+
+  useEffect(() => {
+    if (functionsDirty) return;
+    const next = Array.isArray(value) ? value : [];
+    setSelected(next);
+    setSavedSelected(next);
+  }, [value, functionsDirty]);
 
   useEffect(() => {
     setSelectedAgent(agentValue ?? null);
@@ -135,23 +148,25 @@ export function PipelineStageFunctionAccess({
     }
   }
 
-  async function persist(next: string[]) {
-    if (!stageId) return;
-    const previous = selected;
-    setSelected(next);
+  async function persistFunctions() {
+    if (!stageId || !functionsDirty) return;
+    const previous = savedSelected;
     setSaving(true);
     try {
       await customFetch(`/api/tenants/${tenantId}/pipeline-stages/${stageId}`, {
         method: "PATCH",
-        body: JSON.stringify({ responsaveisFuncoes: next }),
+        body: JSON.stringify({ responsaveisFuncoes: selected }),
         responseType: "json",
       });
+      setSavedSelected(selected);
+      setFunctionsDirty(false);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["pipeline-stages", tenantId, pipeline] }),
         queryClient.invalidateQueries({ queryKey: getListPipelineStagesQueryKey(tenantId) }),
       ]);
     } catch (error) {
       setSelected(previous);
+      setFunctionsDirty(false);
       console.error("Falha ao salvar funções responsáveis da etapa", error);
     } finally {
       setSaving(false);
@@ -162,7 +177,15 @@ export function PipelineStageFunctionAccess({
     const next = checked
       ? [...new Set([...selected, valueToToggle])]
       : selected.filter((item) => item !== valueToToggle);
-    void persist(next);
+    setSelected(next);
+    setFunctionsDirty(
+      next.length !== savedSelected.length || next.some((item) => !savedSelected.includes(item)),
+    );
+  }
+
+  function clearFunctions() {
+    setSelected([]);
+    setFunctionsDirty(savedSelected.length > 0);
   }
 
   return (
@@ -184,7 +207,7 @@ export function PipelineStageFunctionAccess({
         <div className="space-y-1">
           <p className="text-sm font-semibold">Funções responsáveis</p>
           <p className="text-xs text-muted-foreground">
-            Defina quais funções podem executar esta etapa. Não é necessário escolher uma pessoa.
+            Selecione uma ou várias funções que podem executar esta etapa. Depois clique em Salvar funções.
           </p>
         </div>
 
@@ -259,19 +282,29 @@ export function PipelineStageFunctionAccess({
           })}
         </div>
 
-        <div className="mt-3 border-t pt-3">
+        <div className="mt-3 space-y-2 border-t pt-3">
+          <Button
+            type="button"
+            size="sm"
+            className="w-full justify-center text-xs"
+            disabled={saving || !functionsDirty}
+            onClick={() => void persistFunctions()}
+          >
+            {saving ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Check className="mr-1.5 h-3.5 w-3.5" />}
+            Salvar funções{selected.length > 0 ? ` (${selected.length})` : ""}
+          </Button>
           <Button
             type="button"
             variant="ghost"
             size="sm"
             className="w-full justify-center text-xs"
             disabled={saving || selected.length === 0}
-            onClick={() => void persist([])}
+            onClick={clearFunctions}
           >
             Liberar para todas as funções
           </Button>
-          <p className="mt-1 text-center text-[11px] text-muted-foreground">
-            Sem seleção = etapa sem restrição por função.
+          <p className="text-center text-[11px] text-muted-foreground">
+            Você pode marcar várias funções. Sem seleção = etapa sem restrição por função.
           </p>
         </div>
       </PopoverContent>
