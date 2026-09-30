@@ -159,16 +159,16 @@ export function SocialIntegrationsPanel({ providers: providersFilter, mode = "co
     }
     setUploading(item.provider);
     try {
-      const metaRes = await fetch("/api/storage/uploads/request-url", {
+      const response = await fetch("/api/storage/uploads/request-url", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
       });
-      if (!metaRes.ok) throw new Error("Falha ao obter URL de upload");
-      const { uploadURL, objectPath } = (await metaRes.json()) as { uploadURL: string; objectPath: string };
+      if (!response.ok) throw new Error("Falha ao obter URL de upload");
+      const { uploadURL, objectPath } = (await response.json()) as { uploadURL: string; objectPath: string };
 
-      const putRes = await fetch(uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
-      if (!putRes.ok) throw new Error("Falha ao enviar arquivo");
+      const result = await fetch(uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+      if (!result.ok) throw new Error("Falha ao enviar arquivo");
 
       const mediaUrl = `${window.location.origin}/api/storage${objectPath}`;
       setPublishMediaUrl(mediaUrl);
