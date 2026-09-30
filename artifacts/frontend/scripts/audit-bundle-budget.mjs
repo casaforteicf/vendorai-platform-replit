@@ -7,7 +7,7 @@ if (!fs.existsSync(assetsDir)) {
   process.exit(1);
 }
 
-const chunkPattern = (name) => new RegExp("^" + name + "(?:-[A-Za-z0-9_]+)+\\.js$");
+const chunkPattern = (name) => new RegExp("^" + name + "(?:-[A-Za-z0-9_-]+)+\\.js$");
 
 const budgets = [
   { label: "main index", pattern: chunkPattern("index"), maxKb: 120, pick: "largest" },
