@@ -127,7 +127,7 @@ export async function extractLancamentoData(
       { role: "system", content: LANCAMENTO_EXTRACTION_SYSTEM_PROMPT },
       { role: "user", content: combinedText },
     ],
-    { model: "gpt-4o-mini", responseFormat: { type: "json_object" }, maxTokens: 3500, temperature: 0.1 },
+    { model: "gpt-4o-mini", responseFormat: { type: "json_object" }, maxTokens: 1500, temperature: 0.1 },
   );
 
   const raw = aiResult.content || "{}";
@@ -236,7 +236,7 @@ export async function extractQuoteData(
       { role: "system", content: QUOTE_EXTRACTION_SYSTEM_PROMPT },
       { role: "user", content: combinedText },
     ],
-    { model: "gpt-4o-mini", responseFormat: { type: "json_object" }, maxTokens: 1500, temperature: 0.1 },
+    { model: "gpt-4o-mini", responseFormat: { type: "json_object" }, maxTokens: 3500, temperature: 0.1 },
   );
 
   const raw = aiResult.content || "{}";
