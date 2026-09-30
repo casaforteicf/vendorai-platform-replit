@@ -787,15 +787,16 @@ export default function Projetos() {
                         >
                           Abrir
                         </Button>
-                        {p.portalAtivo && p.id && (
+                        {p.portalAtivo && p.portalToken && (
                           <Button
                             size="sm"
                             variant="ghost"
                             className="h-7 text-xs text-blue-600"
                             onClick={() => {
                               const base = window.location.origin;
-                              window.open(`${base}/arch/portal/${p.id}`, "_blank");
+                              window.open(`${base}/arch/portal/${encodeURIComponent(p.portalToken!)}`, "_blank", "noopener,noreferrer");
                             }}
+                            title="Abrir portal do cliente"
                           >
                             <ExternalLink className="h-3 w-3 mr-1" /> Portal
                           </Button>
