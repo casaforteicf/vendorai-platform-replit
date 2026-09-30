@@ -1081,6 +1081,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [furnitureSearch, setFurnitureSearch] = useState("");
   const [furnitureCategory, setFurnitureCategory] = useState<"Todos" | "Sala" | "Quarto" | "Jantar" | "Cozinha" | "Escritório" | "Decoração" | "Iluminação" | "Exterior">("Todos");
   const [libraryMode, setLibraryMode] = useState<"all" | "favorites" | "recent">("all");
+  const [itemLibrarySection, setItemLibrarySection] = useState<"products" | "materials">("products");
   const [favoriteItemIds, setFavoriteItemIds] = useState<string[]>(() => {
     if (typeof window === "undefined") return [];
     try {
@@ -7200,7 +7201,32 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Biblioteca de itens</div>
                           <div className="mt-0.5 text-[10px] text-slate-400">{editorView === "model3d" ? "Clique para inserir sem sair do 3D" : "Arraste para posicionar ou clique para inserir"}</div>
                         </div>
-                        <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">{visibleRealCatalogProducts.length + filteredFurniture.length + visibleLibraryMaterials.length}</span>
+                        <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">
+                          {itemLibrarySection === "products"
+                            ? visibleRealCatalogProducts.length + filteredFurniture.length
+                            : visibleLibraryMaterials.length}
+                        </span>
+                      </div>
+
+                      <div className="mb-3 grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1">
+                        <button
+                          type="button"
+                          onClick={() => setItemLibrarySection("products")}
+                          className={itemLibrarySection === "products"
+                            ? "h-9 rounded-lg bg-white text-xs font-bold text-slate-950 shadow-sm"
+                            : "h-9 rounded-lg text-xs font-semibold text-slate-500 hover:text-slate-800"}
+                        >
+                          Produtos
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setItemLibrarySection("materials")}
+                          className={itemLibrarySection === "materials"
+                            ? "h-9 rounded-lg bg-white text-xs font-bold text-slate-950 shadow-sm"
+                            : "h-9 rounded-lg text-xs font-semibold text-slate-500 hover:text-slate-800"}
+                        >
+                          Materiais
+                        </button>
                       </div>
 
                       <label className="mb-3 flex h-10 items-center gap-2 rounded-xl border bg-white px-3">
@@ -7213,30 +7239,33 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         />
                       </label>
 
-                      <div className="mb-3 grid grid-cols-3 gap-2">
-                        {([
-                          ["all", LayoutGrid, "Todos"],
-                          ["favorites", Heart, "Favoritos"],
-                          ["recent", Clock3, "Recentes"],
-                        ] as const).map(([mode, Icon, label]) => (
-                          <button
-                            key={mode}
-                            type="button"
-                            onClick={() => {
-                              setLibraryMode(mode);
-                              if (mode !== "all") setFurnitureCategory("Todos");
-                            }}
-                            className={libraryMode === mode
-                              ? "flex h-9 items-center justify-center gap-1.5 rounded-xl bg-slate-950 px-2 text-[11px] font-bold text-white"
-                              : "flex h-9 items-center justify-center gap-1.5 rounded-xl border bg-white px-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"}
-                          >
-                            <Icon className="h-3.5 w-3.5" />
-                            {label}
-                          </button>
-                        ))}
-                      </div>
+                      {itemLibrarySection === "products" && (
+                        <>
+                        <div className="mb-3 grid grid-cols-3 gap-2">
+                          {([
+                            ["all", LayoutGrid, "Todos"],
+                            ["favorites", Heart, "Favoritos"],
+                            ["recent", Clock3, "Recentes"],
+                          ] as const).map(([mode, Icon, label]) => (
+                            <button
+                              key={mode}
+                              type="button"
+                              onClick={() => {
+                                setLibraryMode(mode);
+                                if (mode !== "all") setFurnitureCategory("Todos");
+                              }}
+                              className={libraryMode === mode
+                                ? "flex h-9 items-center justify-center gap-1.5 rounded-xl bg-slate-950 px-2 text-[11px] font-bold text-white"
+                                : "flex h-9 items-center justify-center gap-1.5 rounded-xl border bg-white px-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"}
+                            >
+                              <Icon className="h-3.5 w-3.5" />
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+  
+                        <div className="mb-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
 
-                      <div className="mb-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                         {(["Todos", "Sala", "Quarto", "Jantar", "Cozinha", "Escritório", "Decoração", "Iluminação", "Exterior"] as const).map((category) => (
                           <button
                             key={category}
@@ -7251,7 +7280,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         ))}
                       </div>
 
-                      {visibleLibraryMaterials.length > 0 && (
+                        </>
+                      )}
+
+                      {itemLibrarySection === "materials" && visibleLibraryMaterials.length > 0 && (
                         <div className="mb-5">
                           <div className="mb-3 flex items-center justify-between gap-2">
                             <div>
@@ -7297,6 +7329,14 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         </div>
                       )}
 
+                      {itemLibrarySection === "materials" && visibleLibraryMaterials.length === 0 && (
+                        <div className="rounded-xl border border-dashed p-4 text-center text-xs text-slate-500">
+                          Nenhum material encontrado para esta busca ou seleção.
+                        </div>
+                      )}
+
+                      {itemLibrarySection === "products" && (
+                        <>
                       {(polyHavenLoading || polyHavenModels.length > 0) && (
                         <div className="mb-5">
                           <div className="mb-3 flex items-center justify-between gap-2">
@@ -7666,6 +7706,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                               ? "Nenhum item recente ainda. Os últimos itens inseridos aparecerão aqui."
                               : "Nenhum item encontrado nessa categoria."}
                         </div>
+                      )}
+                        </>
                       )}
                     </>
                   )}
