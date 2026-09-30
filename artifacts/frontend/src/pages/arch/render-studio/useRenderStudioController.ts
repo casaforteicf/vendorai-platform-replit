@@ -153,7 +153,12 @@ export function useRenderStudioController() {
 
       setMaterialMaskPreviewUrl(data.preview_data_url ?? null);
       setMaterialMaskDataUrl(data.mask_file_base64 ?? null);
-      logEvent("material_surface_detected", `Superfície detectada · cobertura ${Math.round(Number(data.coverage ?? 0) * 1000) / 10}%`);
+      setSelections(prev => prev.map((sel, index) =>
+        index === prev.length - 1
+          ? { ...sel, label: "Face detectada automaticamente" }
+          : sel
+      ));
+      logEvent("material_surface_detected", `Face detectada automaticamente · cobertura ${Math.round(Number(data.coverage ?? 0) * 1000) / 10}%`);
     } catch (e: unknown) {
       if (requestSeq !== materialMaskRequestSeqRef.current) return;
       setMaterialMaskPreviewUrl(null);
@@ -183,7 +188,7 @@ export function useRenderStudioController() {
     const snapshot = selections.map(s => ({ ...s }));
     const timer = window.setTimeout(() => {
       void detectMaterialSurfaceFor(snapshot);
-    }, 450);
+    }, 180);
 
     return () => window.clearTimeout(timer);
   }, [selections, melhoriaMode, renderId]);
