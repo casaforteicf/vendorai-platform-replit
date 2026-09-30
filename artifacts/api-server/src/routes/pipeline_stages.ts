@@ -6,6 +6,7 @@ import {
   SYSTEM_PIPELINE_STAGES,
   updatePipelineStageSchema,
   tenantUserFunctionsTable,
+  tenantsTable,
 } from "@workspace/db";
 import { z } from "zod/v4";
 import { logger } from "../lib/logger.js";
@@ -195,11 +196,37 @@ async function listPipelineStages(tenantId: string, pipeline: PipelineKey) {
     .orderBy(asc(pipelineStagesTable.ordem));
 }
 
+async function systemStagesForTenant(tenantId: string, pipeline: PipelineKey): Promise<SystemStage[]> {
+  const defaults = SYSTEM_STAGES_BY_PIPELINE[pipeline];
+  if (pipeline !== "comercial") return defaults;
+
+  const [tenant] = await db
+    .select({ confirmarEstoqueAntesFinanceiro: tenantsTable.confirmarEstoqueAntesFinanceiro })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId));
+
+  // Conferência de estoque é uma etapa opcional. Quando o tenant não usa
+  // essa trava, ela não deve aparecer no funil nem na gestão de etapas.
+  if (!tenant?.confirmarEstoqueAntesFinanceiro) {
+    return defaults.filter((stage) => stage.key !== "conferencia_estoque");
+  }
+
+  return defaults;
+}
+
 async function ensureSystemStages(tenantId: string, pipeline: PipelineKey) {
   let stages = await listPipelineStages(tenantId, pipeline);
+  const desiredSystemStages = await systemStagesForTenant(tenantId, pipeline);
+  const desiredKeys = new Set(desiredSystemStages.map((stage) => stage.key));
+
+  // Linhas antigas continuam preservadas no banco para não perder histórico,
+  // mas etapas opcionais desativadas não são expostas ao tenant.
+  const visibleStages = () =>
+    stages.filter((stage) => !stage.isSystem || desiredKeys.has(stage.key));
+
   const existingKeys = new Set(stages.map((stage) => stage.key));
-  const missing = SYSTEM_STAGES_BY_PIPELINE[pipeline].filter((stage) => !existingKeys.has(stage.key));
-  if (missing.length === 0) return stages;
+  const missing = desiredSystemStages.filter((stage) => !existingKeys.has(stage.key));
+  if (missing.length === 0) return visibleStages();
 
   try {
     await db
@@ -219,7 +246,7 @@ async function ensureSystemStages(tenantId: string, pipeline: PipelineKey) {
   }
 
   stages = await listPipelineStages(tenantId, pipeline);
-  return stages;
+  return visibleStages();
 }
 
 // GET — lista/configura apenas a pipeline solicitada. Sem query mantém
