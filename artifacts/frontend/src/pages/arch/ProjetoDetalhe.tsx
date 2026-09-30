@@ -319,6 +319,7 @@ export default function ProjetoDetalhe() {
   const [catalogBusca, setCatalogBusca]     = useState("");
   const [catalogCenas, setCatalogCenas]     = useState<CatalogoProduto[]>([]);
   const pollIntervalsRef = useRef<Record<string, ReturnType<typeof setInterval>>>({});
+  const syncingRenderAmbientesRef = useRef(false);
 
   // ── Portal state
   const [portalUrl, setPortalUrl]           = useState<string | null>(null);
@@ -340,10 +341,67 @@ export default function ProjetoDetalhe() {
       headers: { Authorization: `Bearer ${getToken()}` },
     });
     if (!res.ok) return;
+
     const data = await res.json();
+    const nextAmbientes: Ambiente[] = Array.isArray(data.ambientes) ? data.ambientes : [];
+    const nextRenders: ProjetoRender[] = Array.isArray(data.renders) ? data.renders : [];
+
     setProjeto(data.projeto ?? null);
-    setAmbientes(data.ambientes ?? []);
-    setRenders(Array.isArray(data.renders) ? data.renders : []);
+    setAmbientes(nextAmbientes);
+    setRenders(nextRenders);
+
+    // Render e Ambiente representam o mesmo cômodo do projeto. Se um render antigo
+    // possui o ambiente preenchido, mas o cadastro de Ambientes ainda não existe,
+    // materializamos esse ambiente automaticamente para manter orçamento,
+    // especificação e galeria trabalhando sobre a mesma fonte de verdade.
+    if (!syncingRenderAmbientesRef.current && nextRenders.length > 0) {
+      const normalize = (value: string) =>
+        value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+
+      const existing = new Set(nextAmbientes.map((amb) => normalize(amb.nome)));
+      const missingLabels = Array.from(
+        new Map(
+          nextRenders
+            .map((render) => ambienteRenderLabel(render.ambiente))
+            .filter((label) => label && label !== "Sem ambiente")
+            .map((label) => [normalize(label), label] as const),
+        ).entries(),
+      )
+        .filter(([key]) => !existing.has(key))
+        .map(([, label]) => label);
+
+      if (missingLabels.length > 0) {
+        syncingRenderAmbientesRef.current = true;
+        try {
+          let createdAny = false;
+          for (const nome of missingLabels) {
+            const createRes = await fetch(`/api/arch/projetos/${projetoId}/ambientes`, {
+              method: "POST",
+              headers: authH(),
+              body: JSON.stringify({
+                nome,
+                descricao: "Ambiente identificado automaticamente a partir dos renders do projeto.",
+              }),
+            });
+            if (createRes.ok || createRes.status === 409) createdAny = true;
+          }
+
+          if (createdAny) {
+            const refresh = await fetch(`/api/arch/projetos/${projetoId}`, {
+              headers: { Authorization: `Bearer ${getToken()}` },
+            });
+            if (refresh.ok) {
+              const refreshed = await refresh.json();
+              setProjeto(refreshed.projeto ?? data.projeto ?? null);
+              setAmbientes(Array.isArray(refreshed.ambientes) ? refreshed.ambientes : nextAmbientes);
+              setRenders(Array.isArray(refreshed.renders) ? refreshed.renders : nextRenders);
+            }
+          }
+        } finally {
+          syncingRenderAmbientesRef.current = false;
+        }
+      }
+    }
   }, [projetoId]);
 
   const loadOrcamento = useCallback(async () => {
