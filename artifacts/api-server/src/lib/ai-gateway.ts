@@ -125,7 +125,12 @@ export type QuotaResult = QuotaCheck | QuotaBlocked;
 
 const MONTHLY_SPEND_CEILING_USD = Number(process.env["AI_MONTHLY_SPEND_CEILING_USD"] ?? 30);
 
-export async function checkQuota(tenantId: string, estimatedCost: number, log?: Logger): Promise<QuotaResult> {
+export async function checkQuota(
+  tenantId: string,
+  estimatedCost: number,
+  log?: Logger,
+  options: { bypassTenantPlanQuota?: boolean } = {},
+): Promise<QuotaResult> {
   const [tenant] = await db.select({
     planId: tenantsTable.planId,
     aiCreditsUsd: tenantsTable.aiCreditsUsd,
@@ -166,6 +171,23 @@ export async function checkQuota(tenantId: string, estimatedCost: number, log?: 
   }
 
   const creditsUsd = Number(tenant.aiCreditsUsd ?? 0);
+
+  // Internal platform runtimes (for example Browser Agent) are operational
+  // infrastructure, not a tenant credit purchase. They still respect the
+  // platform monthly spend ceiling above and usage remains tenant-attributed,
+  // but they must not stop when the tenant's commercial AI allowance is empty.
+  if (options.bypassTenantPlanQuota) {
+    log?.debug({ tenantId }, "ai-gateway: platform runtime bypassing tenant plan quota");
+    return {
+      ok: true,
+      usedByok: false,
+      quotaUsd,
+      creditsUsd,
+      spentThisMonthUsd,
+      remainingUsd: Infinity,
+    };
+  }
+
   if (quotaUsd === null && creditsUsd === 0) {
     const hasPlatformKey = Boolean(process.env["OPENAI_API_KEY"] || process.env["ANTHROPIC_API_KEY"]);
     if (hasPlatformKey) {
@@ -275,6 +297,7 @@ export async function callOpenAI(
     maxTokens?: number;
     responseFormat?: OpenAI.Chat.Completions.ChatCompletionCreateParams["response_format"];
     log?: Logger;
+    billingScope?: "tenant" | "platform_runtime";
   } = {},
 ): Promise<{ content: string; inputTokens: number; outputTokens: number; costUsd: number; usedByok: boolean }> {
   const model = resolveTextModel({ tenantId, feature, requestedModel: options.model, legacyDefault: "gpt-4o-mini" });
@@ -291,7 +314,12 @@ export async function callOpenAI(
   const estimatedCost = estimateCost((model ?? "unknown"), Math.ceil(estimatedInputTokens), options.maxTokens ?? 600);
 
   // 2. Check quota
-  const quota = await checkQuota(tenantId, estimatedCost, log);
+  const quota = await checkQuota(
+    tenantId,
+    estimatedCost,
+    log,
+    { bypassTenantPlanQuota: options.billingScope === "platform_runtime" },
+  );
   if (!quota.ok) {
     throw new AiGatewayError(quota.reason, quota.httpStatus, quota.details);
   }
