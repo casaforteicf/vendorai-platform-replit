@@ -287,6 +287,7 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async
     const budgetResult = await client.query(`SELECT * FROM arch_budgets WHERE id=$1::uuid AND tenant_id::text=$2 AND deleted_at IS NULL LIMIT 1`, [budgetId, tid]);
     const budget = budgetResult.rows[0];
     if (!budget) return res.status(404).json({ error: "Orçamento não encontrado." });
+    const commercial = await commercialContext(tid, String(budget.project_id), budgetId);
 
     const selectedIds = Array.isArray(req.body?.budgetItemIds) ? req.body.budgetItemIds.map(String) : [];
     const params: any[] = [budgetId, tid];
@@ -312,15 +313,22 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async
       const snapshotItems: any[] = [];
       const requestIds: string[] = [];
       let saleValue = 0;
+      const budgetCostBase = Math.max(0, n(budget.subtotal) || itemResult.rows.reduce((sum: number, item: any) => sum + n(item.total), 0));
+      const docs = await technicalDocuments(tid, obraId, group.category);
       for (const row of group.rows) {
         const requestId = crypto.randomUUID();
         const total = n(row.total);
-        saleValue += total;
+        const rowSale = row.sale_total != null
+          ? n(row.sale_total)
+          : commercial.saleTotal != null && budgetCostBase > 0
+            ? commercial.saleTotal * (total / budgetCostBase)
+            : 0;
+        saleValue += rowSale;
         const snapshot = {
           budgetItemId: row.id, specObjectId: row.spec_object_id, item: row.item, description: row.description,
           ambienteId: row.ambiente_id, ambiente: row.ambiente_nome || null, region: row.spec_region || null, quantity: n(row.quantity, 1), unit: row.unit || "un",
           productName: row.product_name, materialName: row.material_name, manufacturerName: row.manufacturer_name,
-          total, category: group.category, discipline: group.discipline,
+          total, saleTotal: rowSale || null, category: group.category, discipline: group.discipline,
         };
         const hash = scopeHash(snapshot);
         const existing = await client.query(
@@ -332,12 +340,12 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async
           const changed = existing.rows[0].escopo_hash && existing.rows[0].escopo_hash !== hash;
           await client.query(
             `UPDATE compras_obras SET descricao=$1,ambiente=$2,disciplina=$3,categoria=$4,quantidade=$5,unidade=$6,
-               valor_total=$7,valor_venda_snapshot=$7,custo_estimado_snapshot=$8,escopo_snapshot=$9::jsonb,
+               valor_total=$7,valor_venda_snapshot=$8,custo_estimado_snapshot=$7,escopo_snapshot=$9::jsonb,
                escopo_hash=$10,cotacao_desatualizada=CASE WHEN $11 THEN true ELSE cotacao_desatualizada END,
                escopo_versao=CASE WHEN $11 THEN escopo_versao+1 ELSE escopo_versao END,updated_at=now()
              WHERE id=$12 AND tenant_id=$13`,
             [row.item, row.ambiente_nome || (row.ambiente_id ? String(row.ambiente_id) : null), group.discipline, group.category,
-             String(n(row.quantity,1)), row.unit || "un", String(total), String(total), JSON.stringify(snapshot), hash, Boolean(changed), finalRequestId, tid],
+             String(n(row.quantity,1)), row.unit || "un", String(total), String(rowSale), JSON.stringify(snapshot), hash, Boolean(changed), finalRequestId, tid],
           );
         } else {
           finalRequestId = requestId;
@@ -350,7 +358,7 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async
                     $13::uuid,$14::uuid,$15::uuid,1,$16,$17::jsonb,$18,$19,now(),now())`,
             [finalRequestId,tid,obraId,`BUD-${String(row.id).slice(0,8).toUpperCase()}`,row.item,row.ambiente_nome||(row.ambiente_id?String(row.ambiente_id):null),
              group.discipline,group.category,String(n(row.quantity,1)),row.unit||"un",String(n(row.unit_total)),String(total),
-             budgetId,row.id,row.spec_object_id||null,hash,JSON.stringify(snapshot),String(total),String(total)],
+             budgetId,row.id,row.spec_object_id||null,hash,JSON.stringify(snapshot),String(rowSale),String(total)],
           );
         }
         requestIds.push(finalRequestId);
@@ -368,14 +376,20 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async
       const packageHash = scopeHash(packageSnapshot);
       const pkg = await client.query(
         `INSERT INTO arch_rfq_packages
-         (tenant_id,obra_id,project_id,budget_id,code,title,category,discipline,version,status,scope_hash,scope_snapshot,documents,created_by,created_at,updated_at)
-         VALUES($1,$2,$3::uuid,$4::uuid,$5,$6,$7,$8,$9,'draft',$10,$11::jsonb,'[]'::jsonb,$12,now(),now()) RETURNING *`,
-        [tid,obraId,budget.project_id,budgetId,codeFor(group.category),`Cotação — ${group.category}`,group.category,group.discipline,packageVersion,packageHash,JSON.stringify(packageSnapshot),req.user?.sub??null],
+         (tenant_id,obra_id,project_id,budget_id,code,title,category,discipline,version,status,scope_hash,scope_snapshot,documents,
+          arch_proposal_id,commercial_proposal_id,proposal_revision,sale_total_snapshot,sale_source,technical_documents_snapshot,
+          created_by,created_at,updated_at)
+         VALUES($1,$2,$3::uuid,$4::uuid,$5,$6,$7,$8,$9,'draft',$10,$11::jsonb,$12::jsonb,
+                $13::uuid,$14,$15,$16,$17,$12::jsonb,$18,now(),now()) RETURNING *`,
+        [tid,obraId,budget.project_id,budgetId,codeFor(group.category),`Cotação — ${group.category}`,group.category,group.discipline,
+         packageVersion,packageHash,JSON.stringify(packageSnapshot),JSON.stringify(docs),
+         commercial.archProposalId,commercial.commercialProposalId,commercial.revision,String(saleValue || 0),commercial.saleSource,
+         req.user?.sub??null],
       );
       for (let i=0;i<requestIds.length;i++) {
         await client.query(`INSERT INTO arch_rfq_package_items(package_id,compra_id,sort_order) VALUES($1::uuid,$2,$3) ON CONFLICT DO NOTHING`, [pkg.rows[0].id,requestIds[i],i]);
       }
-      created.push({ ...pkg.rows[0], itemCount: requestIds.length, saleValue });
+      created.push({ ...pkg.rows[0], itemCount: requestIds.length, saleValue, commercialSource: commercial.saleSource });
     }
     await client.query("COMMIT");
     res.status(201).json({ packages: created });
