@@ -30,3 +30,14 @@ COMMENT ON COLUMN tenant_user_functions.linked_tenant_id IS
   'Tenant externo que atua como representante desta função. As permissões da função valem somente no tenant representado.';
 COMMENT ON COLUMN tenant_user_functions.lead_access_scope IS
   'Escopo de leads da representada: assigned, territory ou all_authorized.';
+
+ALTER TABLE leads
+  ADD COLUMN IF NOT EXISTS representative_function_id TEXT
+  REFERENCES tenant_user_functions(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS leads_representative_function_idx
+  ON leads(tenant_id, representative_function_id)
+  WHERE representative_function_id IS NOT NULL;
+
+COMMENT ON COLUMN leads.representative_function_id IS
+  'Função externa/empresa representante responsável pelo lead no tenant representado.';
