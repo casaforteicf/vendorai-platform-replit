@@ -221,7 +221,7 @@ async function ownedObra(tid: string, obraId: string) {
   return result.rows[0] ?? null;
 }
 async function packageBundle(tid: string, obraId: string) {
-  const [packages, items, invitations, quoteItems, suppliers] = await Promise.all([
+  const [packages, items, invitations, quoteItems, suppliers, supplierStats] = await Promise.all([
     pool.query(`SELECT * FROM arch_rfq_packages WHERE tenant_id=$1 AND obra_id=$2 ORDER BY created_at DESC`, [tid, obraId]),
     pool.query(`SELECT pi.*, c.descricao, c.ambiente, c.disciplina, c.categoria, c.quantidade, c.unidade,
                        c.valor_total, c.valor_venda_snapshot, c.custo_estimado_snapshot, c.custo_confirmado,
@@ -239,8 +239,18 @@ async function packageBundle(tid: string, obraId: string) {
                  WHERE i.tenant_id=$1 AND p.obra_id=$2`, [tid, obraId]),
     pool.query(`SELECT id,nome,contato,telefone,email,categorias,disciplinas,regioes,marcas,prazo_medio_dias
                    FROM fornecedores WHERE tenant_id=$1 AND ativo=true ORDER BY nome`, [tid]),
+    pool.query(`SELECT lower(supplier_name) AS supplier_key,
+                       COUNT(*)::int AS total_orders,
+                       COUNT(*) FILTER (WHERE status IN ('approved','ordered','partial','delivered'))::int AS selected_orders,
+                       COUNT(*) FILTER (WHERE status='delivered')::int AS delivered_orders,
+                       COUNT(*) FILTER (WHERE delivered_at IS NOT NULL AND expected_delivery IS NOT NULL AND delivered_at::date <= expected_delivery)::int AS on_time_orders,
+                       AVG(lead_time_days)::numeric AS avg_lead_time_days,
+                       AVG(confirmed_value)::numeric AS avg_confirmed_value
+                  FROM arch_supplier_orders
+                 WHERE tenant_id::text=$1 AND deleted_at IS NULL
+                 GROUP BY lower(supplier_name)`, [tid]),
   ]);
-  return { packages: packages.rows, items: items.rows, invitations: invitations.rows, quoteItems: quoteItems.rows, suppliers: suppliers.rows };
+  return { packages: packages.rows, items: items.rows, invitations: invitations.rows, quoteItems: quoteItems.rows, suppliers: suppliers.rows, supplierStats: supplierStats.rows };
 }
 
 archProcurementRfqRouter.get("/arch/procurement-rfq/:obraId", async (req, res, next) => {
