@@ -1058,6 +1058,8 @@ export default function LeadDetail() {
   const [activityStatusEditId, setActivityStatusEditId] = useState<string | null>(null);
   const [activityStatusDraft, setActivityStatusDraft] = useState<string>("");
   const [activityResultadoDraft, setActivityResultadoDraft] = useState("");
+  const [activityDueEditId, setActivityDueEditId] = useState<string | null>(null);
+  const [activityDueDateDraft, setActivityDueDateDraft] = useState("");
 
   const { mutate: updateActivity, isPending: isUpdatingActivity } = useUpdateActivity({
     mutation: {
@@ -1065,7 +1067,9 @@ export default function LeadDetail() {
         void queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey(tenantId, { leadId: id }) });
         setActivityStatusEditId(null);
         setActivityResultadoDraft("");
-        toast({ title: "Status da atividade atualizado." });
+        setActivityDueEditId(null);
+        setActivityDueDateDraft("");
+        toast({ title: "Atividade atualizada." });
       },
       onError: () => {
         toast({ title: "Erro ao atualizar atividade", variant: "destructive" });
@@ -1090,6 +1094,33 @@ export default function LeadDetail() {
         status: "concluida",
         resultadoExecucao: activityResultadoDraft.trim() || undefined,
       },
+    });
+  }
+
+  function openActivityDueDateEdit(activityId: string, currentValue?: string | null) {
+    let nextValue = "";
+    if (currentValue) {
+      if (currentValue.length === 10) nextValue = currentValue;
+      else {
+        const date = new Date(currentValue);
+        if (!Number.isNaN(date.getTime())) {
+          date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+          nextValue = date.toISOString().slice(0, 10);
+        }
+      }
+    }
+    setActivityDueDateDraft(nextValue);
+    setActivityDueEditId(activityId);
+  }
+
+  function saveActivityDueDate(activityId: string) {
+    if (!activityDueDateDraft) {
+      toast({ title: "Selecione a nova data da tarefa.", variant: "destructive" });
+      return;
+    }
+    updateActivity({
+      id: activityId,
+      data: { dataVencimento: new Date(activityDueDateDraft + "T12:00:00") },
     });
   }
 
@@ -2555,10 +2586,27 @@ export default function LeadDetail() {
                                 <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Criado em</span>
                                 <span className="text-foreground">{formatDateTime(activity.createdAt)}</span>
                               </div>
-                              {activity.dataVencimento && (
+                              {activity.tipo !== "reuniao" && (
                                 <div className="flex items-center justify-between gap-2">
                                   <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Vencimento</span>
-                                  <span className="text-foreground">{formatDate(activity.dataVencimento)}</span>
+                                  {activityDueEditId === activity.id ? (
+                                    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                                      <Input type="date" value={activityDueDateDraft} onChange={(e) => setActivityDueDateDraft(e.target.value)} className="h-8 w-[155px] text-sm" autoFocus />
+                                      <Button type="button" size="sm" className="h-8 px-2" disabled={isUpdatingActivity || !activityDueDateDraft} onClick={(e) => { e.stopPropagation(); saveActivityDueDate(activity.id); }} aria-label="Salvar nova data da tarefa">
+                                        {isUpdatingActivity ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                                      </Button>
+                                      <Button type="button" size="sm" variant="ghost" className="h-8 px-2" disabled={isUpdatingActivity} onClick={(e) => { e.stopPropagation(); setActivityDueEditId(null); setActivityDueDateDraft(""); }} aria-label="Cancelar alteração da data">
+                                        <X className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-foreground">{activity.dataVencimento ? formatDate(activity.dataVencimento) : "Sem prazo definido"}</span>
+                                      <button type="button" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground" title="Editar vencimento" aria-label="Editar vencimento da tarefa" onClick={(e) => { e.stopPropagation(); openActivityDueDateEdit(activity.id, activity.dataVencimento); }}>
+                                        <Pencil className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
                               )}
                               {activity.dataHoraInicio && (
