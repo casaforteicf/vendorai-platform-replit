@@ -449,7 +449,12 @@ export function useRenderStudioController() {
   }, [showCreateModal, showHelp, showShortcuts, showMaterialLib]);
 
   const go = useCallback((s: Step) => { setErr(null); setStep(s); }, []);
-  useEffect(() => { if (arq.projectId && step === "projeto") go("ambiente"); }, [arq.projectId]);
+  // Invariante do fluxo: projeto ativo nunca pode permanecer preso na etapa "projeto".
+  // Incluímos `step` nas dependências porque a restauração da sessão pode reidratar
+  // "projeto" depois que o projectId já foi carregado; sem isso o efeito não roda de novo.
+  useEffect(() => {
+    if (arq.projectId && step === "projeto") go("ambiente");
+  }, [arq.projectId, step, go]);
 
   // Canvas control clicks (event delegation)
   function handleCanvasControlClick(e: MouseEvent<HTMLDivElement>) {
