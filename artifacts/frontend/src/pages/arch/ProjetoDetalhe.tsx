@@ -255,6 +255,7 @@ export default function ProjetoDetalhe() {
   const [ambientes, setAmbientes] = useState<Ambiente[]>([]);
   const [renders, setRenders]     = useState<ProjetoRender[]>([]);
   const [loading, setLoading]     = useState(true);
+  const [projectTab, setProjectTab] = useState("orcamento");
 
   // ── Orçamento data
   const [grupos, setGrupos]         = useState<OrcamentoGrupo[]>([]);
@@ -1013,10 +1014,7 @@ export default function ProjetoDetalhe() {
           type="button"
           size="sm"
           variant="outline"
-          onClick={() => {
-            const budgetTab = document.querySelector('[value="orcamento"]') as HTMLElement | null;
-            budgetTab?.click();
-          }}
+          onClick={() => setProjectTab("orcamento")}
         >
           <DollarSign className="mr-1.5 h-4 w-4" /> Orçamento
         </Button>
@@ -1111,7 +1109,7 @@ export default function ProjetoDetalhe() {
       </Card>
 
       {/* ── Tabs ─────────────────────────────────────────────────────── */}
-      <Tabs defaultValue="orcamento">
+      <Tabs value={projectTab} onValueChange={setProjectTab}>
         <TabsList>
           <TabsTrigger value="orcamento">Orçamento</TabsTrigger>
           <TabsTrigger value="ambientes">Ambientes</TabsTrigger>
