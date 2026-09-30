@@ -307,8 +307,16 @@ export default function ConceptDerivedFacade({
     </g>;
   };
 
-  const facadeViewY = roofY - Math.max(1.05 * scaleX, facade.roof === "platibanda" ? 0 : Math.min(1.8 * scaleX, roofW * 0.2)) - 3;
-  const facadeViewHeight = groundY + 0.45 * scaleX + 7 - facadeViewY;
+  const facadeViewY = roofY - Math.max(1.05 * scaleX, facade.roof === "platibanda" ? 0 : Math.min(1.8 * scaleX, roofW * 0.2)) - 5;
+  const facadeViewHeight = groundY + 0.45 * scaleX + 12 - facadeViewY;
+  const dimensionY = groundY + 4.2;
+  const levelLabelX = Math.max(12, baseX - 7);
+  const openingLabelOffset = 1.15;
+  const facadeTitle = facade.style === "classico_contemporaneo"
+    ? "Elevação frontal · clássico contemporâneo"
+    : facade.style === "rustico_contemporaneo"
+      ? "Elevação frontal · rústico contemporâneo"
+      : `Elevação frontal · ${facade.style.replaceAll("_", " ")}`;
 
   return (
     <svg
@@ -466,6 +474,16 @@ export default function ConceptDerivedFacade({
       </g>}
       {sunset && <circle cx="120" cy={groundY - 6} r="7" fill="#ffd8a8" fillOpacity="0.55" pointerEvents="none" />}
 
+      {lineMode && <g data-render-ignore="true" pointerEvents="none">
+        <text x={baseX} y={facadeViewY + 2.2} fontSize="1.85" fontWeight="700" fill="#0f172a">
+          {facadeTitle}
+        </text>
+        <text x={baseX} y={facadeViewY + 4.3} fontSize="1.15" fill="#64748b">
+          Derivada automaticamente da planta baixa · aberturas e pavimentos bloqueados pelo Projeto Mestre
+        </text>
+        <line x1={baseX} y1={facadeViewY + 5.4} x2={buildingRight} y2={facadeViewY + 5.4} stroke="#cbd5e1" strokeWidth="0.28" />
+      </g>}
+
       {/* Calçada e linha do terreno */}
       <rect x="0" y={groundY} width="140" height={0.45 * scaleX} fill={lineMode ? "url(#technical-paving)" : pavingFill} />
       {!lineMode && <g pointerEvents="none">
@@ -481,6 +499,22 @@ export default function ConceptDerivedFacade({
         {night && <rect x="0" y={groundY} width="140" height={0.45 * scaleX} fill="#0b1220" fillOpacity="0.45" />}
       </g>}
       <path d={`M0 ${groundY} H140`} stroke="#64748b" strokeWidth="0.35" />
+
+
+      {lineMode && <g data-render-ignore="true" pointerEvents="none">
+        {/* Níveis arquitetônicos */}
+        <line x1={levelLabelX} y1={groundY} x2={buildingRight + 2} y2={groundY} stroke="#94a3b8" strokeDasharray="1 1.2" strokeWidth="0.2" />
+        <text x={levelLabelX - 0.8} y={groundY + 0.4} textAnchor="end" fontSize="1.05" fontWeight="700" fill="#475569">±0,00</text>
+        {derivedFacade.stories.map((story) => {
+          const y = groundY - (story.floor + 1) * storyHeight;
+          const level = (story.floor + 1) * 2.96;
+          return <g key={`level-${story.floor}`}>
+            <line x1={levelLabelX} y1={y} x2={buildingRight + 2} y2={y} stroke="#cbd5e1" strokeDasharray="1 1.4" strokeWidth="0.18" />
+            <circle cx={levelLabelX} cy={y} r="0.42" fill="#fff" stroke="#64748b" strokeWidth="0.2" />
+            <text x={levelLabelX - 0.8} y={y + 0.35} textAnchor="end" fontSize="1.0" fill="#64748b">+{level.toFixed(2).replace(".", ",")}</text>
+          </g>;
+        })}
+      </g>
 
       {/* Paisagismo atrás da casa (árvores de fundo) */}
       {showTrees && !lineMode && trees.filter((tree) => tree.back).map((tree) => (
@@ -618,6 +652,22 @@ export default function ConceptDerivedFacade({
       })}
 
 
+      {lineMode && <g data-render-ignore="true" pointerEvents="none">
+        {/* Identificação técnica das aberturas, sem alterar a geometria */}
+        {frontOpenings.map((opening, index) => {
+          const x = mapX(opening.axis);
+          const base = groundY - opening.floor * storyHeight;
+          const y = base - (opening.sillHeight + opening.height) * scaleX - openingLabelOffset;
+          const code = `${opening.type === "door" ? "P" : "J"}${String(index + 1).padStart(2, "0")}`;
+          const size = `${opening.width.toFixed(2).replace(".", ",")} × ${opening.height.toFixed(2).replace(".", ",")} m`;
+          return <g key={`opening-tag-${opening.id}`}>
+            <line x1={x} y1={y + 0.3} x2={x} y2={y + 1.2} stroke="#94a3b8" strokeWidth="0.18" />
+            <rect x={x - 4.2} y={y - 1.6} width="8.4" height="1.65" rx="0.35" fill="#fff" stroke="#cbd5e1" strokeWidth="0.18" />
+            <text x={x} y={y - 0.55} textAnchor="middle" fontSize="0.9" fontWeight="700" fill="#334155">{code} · {size}</text>
+          </g>;
+        })}
+      </g>}
+
       {night && <g pointerEvents="none">
         {entranceOpening && (() => {
           const cx = mapX(entranceOpening.axis);
@@ -638,9 +688,27 @@ export default function ConceptDerivedFacade({
         <Tree key={`front-${tree.x}`} x={tree.x} ground={groundY} scale={scaleX} height={tree.height} line={lineMode} night={night} />
       ))}
 
-      <text data-render-ignore="true" x="70" y={groundY + 0.45 * scaleX + 4} textAnchor="middle" fontSize="1.65" fill="#667085">
-        {derivedFacade.width.toFixed(1)} m de frente construída · lote {lotWidth.toFixed(1)} m
-      </text>
+      {lineMode ? (
+        <g data-render-ignore="true" pointerEvents="none">
+          {/* Cota geral da fachada */}
+          <line x1={buildingLeft} y1={dimensionY} x2={buildingRight} y2={dimensionY} stroke="#475569" strokeWidth="0.25" />
+          <line x1={buildingLeft} y1={groundY + 0.8} x2={buildingLeft} y2={dimensionY + 0.8} stroke="#94a3b8" strokeWidth="0.18" />
+          <line x1={buildingRight} y1={groundY + 0.8} x2={buildingRight} y2={dimensionY + 0.8} stroke="#94a3b8" strokeWidth="0.18" />
+          <path d={`M${buildingLeft} ${dimensionY} l1 -0.55 M${buildingLeft} ${dimensionY} l1 0.55 M${buildingRight} ${dimensionY} l-1 -0.55 M${buildingRight} ${dimensionY} l-1 0.55`}
+            stroke="#475569" strokeWidth="0.25" fill="none" />
+          <rect x={70 - 7.5} y={dimensionY - 1.15} width="15" height="1.8" rx="0.35" fill="#fff" />
+          <text x="70" y={dimensionY + 0.05} textAnchor="middle" fontSize="1.2" fontWeight="700" fill="#334155">
+            {derivedFacade.width.toFixed(2).replace(".", ",")} m
+          </text>
+          <text x="70" y={dimensionY + 3.2} textAnchor="middle" fontSize="1.2" fill="#64748b">
+            Planta baixa → elevação frontal · lote {lotWidth.toFixed(1).replace(".", ",")} m
+          </text>
+        </g>
+      ) : (
+        <text data-render-ignore="true" x="70" y={groundY + 0.45 * scaleX + 4} textAnchor="middle" fontSize="1.65" fill="#667085">
+          {derivedFacade.width.toFixed(1)} m de frente construída · lote {lotWidth.toFixed(1)} m
+        </text>
+      )}
     </svg>
   );
 }
