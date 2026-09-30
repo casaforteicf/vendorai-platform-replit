@@ -33,6 +33,8 @@ export type Budget = {
   discountValue: number;
   discountTotal: number;
   grandTotal: number;
+  saleTotal?: number | null;
+  saleSource?: "manual" | "proposal" | "imported" | "calculated";
   notes?: string | null;
   clientNotes?: string | null;
   internalNotes?: string | null;
@@ -58,6 +60,7 @@ export type BudgetItem = {
   totalMaterial: number;
   totalLabor: number;
   total: number;
+  saleTotal?: number | null;
   supplierName?: string | null;
   manufacturerName?: string | null;
   productName?: string | null;
@@ -85,6 +88,8 @@ export type BudgetPayload = {
   status?: BudgetStatus;
   discountType?: "percent" | "fixed";
   discountValue?: number;
+  saleTotal?: number | null;
+  saleSource?: "manual" | "proposal" | "imported" | "calculated";
   notes?: string | null;
   clientNotes?: string | null;
   internalNotes?: string | null;
