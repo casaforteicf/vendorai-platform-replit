@@ -3182,12 +3182,50 @@ function newFreeItem(): FreeItem {
       }
     }, [orcamentoEtapas, quickAddEtapaId]);
 
+    // Migra rascunhos antigos que receberam automaticamente o modelo de obra
+    // em tenants que não são construtoras. Preserva produtos escolhidos pelo
+    // usuário e remove apenas composições do pacote padrão ICF.
+    useEffect(() => {
+      if (!open || editingProposta || initialExternalBudget?.projectId || businessProfileLoading || isConstructionTenant) return;
+      const constructionStageNames = new Set(ETAPAS_OBRA_SUGERIDAS.map((name) => normalizeBudgetVertical(name)));
+      const looksLikeConstructionDraft =
+        constructionSystem === "icf"
+        || orcamentoEtapas.some((etapa) => constructionStageNames.has(normalizeBudgetVertical(etapa.nome)));
+      if (!looksLikeConstructionDraft) return;
+
+      setConstructionSystem("outro");
+      setOrcamentoEtapas([{ id: DEFAULT_ETAPA_ID, nome: genericBudgetGroups[0] ?? "Produtos" }]);
+      setCartLines((current) => {
+        const migrated = current
+          .filter((line) => {
+            if (line.tipo !== "composicao" || !line.composicaoId) return true;
+            const composicao = composicoes.find((item) => item.id === line.composicaoId);
+            return !composicao?.codigo || !ICF_DEFAULT_COMPOSITION_CODES.has(String(composicao.codigo));
+          })
+          .map((line) => ({ ...line, etapaId: DEFAULT_ETAPA_ID }));
+        return migrated.length ? migrated : [{ etapaId: DEFAULT_ETAPA_ID, tipo: "produto", quantidade: 1 }];
+      });
+      setQuickAddEtapaId(DEFAULT_ETAPA_ID);
+      setShowAllByStage({ [DEFAULT_ETAPA_ID]: true });
+      standardBudgetAppliedRef.current = true;
+    }, [
+      open,
+      editingProposta?.id,
+      initialExternalBudget?.projectId,
+      businessProfileLoading,
+      isConstructionTenant,
+      constructionSystem,
+      orcamentoEtapas,
+      composicoes,
+      tenantBusinessProfile?.vertical,
+    ]);
+
     useEffect(() => {
       if (!open || editingProposta || initialExternalBudget?.projectId || initialProductIds.length > 0 || standardBudgetAppliedRef.current || businessProfileLoading) return;
-      standardBudgetAppliedRef.current = true;
       setMode("catalogo");
 
       if (!isConstructionTenant) {
+        standardBudgetAppliedRef.current = true;
         setConstructionSystem("outro");
         setOrcamentoEtapas([{ id: DEFAULT_ETAPA_ID, nome: genericBudgetGroups[0] ?? "Produtos" }]);
         setCartLines([{ etapaId: DEFAULT_ETAPA_ID, tipo: "produto", quantidade: 1 }]);
@@ -3196,6 +3234,7 @@ function newFreeItem(): FreeItem {
       }
 
       if (composicoes.length === 0) return;
+      standardBudgetAppliedRef.current = true;
       if (constructionSystem === "icf") {
         const standard = buildStandardIcfBudget(composicoes);
         setOrcamentoEtapas(standard.etapas);
@@ -5000,15 +5039,17 @@ function newFreeItem(): FreeItem {
                                 ? `Exibindo catálogo completo · ${activeCatalog.length} produtos · ${composicoes.length} composições`
                                 : `${produtosEtapa.length} produtos · ${composicoesEtapa.length} composições compatíveis`}
                             </span>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 px-2 text-[11px]"
-                              onClick={() => setShowAllByStage((prev) => ({ ...prev, [etapa.id]: !showAllForStage }))}
-                            >
-                              {isConstructionTenant ? (showAllForStage ? "Filtrar pela etapa" : "Mostrar todos") : "Catálogo completo"}
-                            </Button>
+                            {isConstructionTenant && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-[11px]"
+                                onClick={() => setShowAllByStage((prev) => ({ ...prev, [etapa.id]: !showAllForStage }))}
+                              >
+                                {showAllForStage ? "Filtrar pela etapa" : "Mostrar todos"}
+                              </Button>
+                            )}
                           </div>
                         </div>
                       </CardHeader>
