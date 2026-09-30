@@ -7,21 +7,43 @@ import { z } from "zod/v4";
 
 export const quoteExtractionResultSchema = z.object({
   titulo: z.string().nullable().optional(),
+  numeroDocumento: z.string().nullable().optional(),
+  dataEmissao: z.string().nullable().optional(),
   valorTotal: z.number().nullable().optional(),
   cliente: z.string().nullable().optional(),
+  clienteDocumento: z.string().nullable().optional(),
+  clienteEndereco: z.string().nullable().optional(),
   fornecedor: z.string().nullable().optional(),
+  fornecedorDocumento: z.string().nullable().optional(),
+  fornecedorEndereco: z.string().nullable().optional(),
   validade: z.string().nullable().optional(),
+  desconto: z.number().nullable().optional(),
+  acrescimos: z.number().nullable().optional(),
+  frete: z.number().nullable().optional(),
+  impostos: z.number().nullable().optional(),
+  formaPagamento: z.string().nullable().optional(),
+  condPagamento: z.string().nullable().optional(),
+  prazoEntrega: z.string().nullable().optional(),
   itens: z
     .array(
       z.object({
+        codigo: z.string().nullable().optional(),
         descricao: z.string(),
+        unidade: z.string().nullable().optional(),
         quantidade: z.number().nullable().optional(),
         valorUnitario: z.number().nullable().optional(),
         valorTotal: z.number().nullable().optional(),
+        grupo: z.string().nullable().optional(),
+        etapa: z.string().nullable().optional(),
+        observacoes: z.string().nullable().optional(),
       })
     )
     .nullable()
     .optional(),
+  inclusoes: z.array(z.string()).nullable().optional(),
+  exclusoes: z.array(z.string()).nullable().optional(),
+  clausulas: z.array(z.string()).nullable().optional(),
+  informacoesAdicionais: z.array(z.string()).nullable().optional(),
   observacoes: z.string().nullable().optional(),
   confianca: z.number().nullable().optional(),
 });
@@ -105,7 +127,7 @@ export async function extractLancamentoData(
       { role: "system", content: LANCAMENTO_EXTRACTION_SYSTEM_PROMPT },
       { role: "user", content: combinedText },
     ],
-    { model: "gpt-4o-mini", responseFormat: { type: "json_object" }, maxTokens: 1500, temperature: 0.1 },
+    { model: "gpt-4o-mini", responseFormat: { type: "json_object" }, maxTokens: 3500, temperature: 0.1 },
   );
 
   const raw = aiResult.content || "{}";
@@ -118,33 +140,70 @@ export async function extractLancamentoData(
 }
 
 
-const QUOTE_EXTRACTION_SYSTEM_PROMPT = `Você é um analisador especializado em orçamentos, propostas comerciais e cotações.
-Analise o documento fornecido e extraia as informações do orçamento/proposta.
-Retorne APENAS um JSON válido (sem texto extra) com os campos abaixo. Omita ou deixe null campos não encontrados.
+const QUOTE_EXTRACTION_SYSTEM_PROMPT = `Você é um analisador especializado em orçamentos, propostas comerciais, cotações e contratos.
+Sua tarefa é RECONSTRUIR fielmente o documento para que ele possa virar um orçamento editável no Vendor.ai.
 
+Regras obrigatórias:
+- NÃO resuma itens.
+- NÃO agrupe linhas diferentes em um item genérico.
+- NÃO invente valores, quantidades, códigos, unidades, condições ou cláusulas.
+- Preserve a descrição dos itens com o máximo de fidelidade possível.
+- Extraia TODAS as linhas comerciais identificáveis do documento.
+- Se o documento tiver grupos, capítulos, etapas ou seções, preserve essa hierarquia em "grupo" e/ou "etapa".
+- Quando houver valor total da linha, preserve-o. Quando houver quantidade e valor unitário, preserve ambos.
+- Extraia também as informações comerciais e contratuais disponíveis.
+- Campos não encontrados devem ser omitidos ou null.
+- Datas devem usar YYYY-MM-DD quando for possível determinar a data com segurança.
+- Retorne SOMENTE JSON válido, sem texto fora dele.
+
+Formato:
 {
-  "titulo": "assunto ou descrição resumida do orçamento (ex: 'Orçamento - Instalação de Energia Solar')",
-  "valorTotal": número_decimal_sem_símbolo_ou_null,
-  "cliente": "nome do cliente ou empresa compradora",
-  "fornecedor": "nome do fornecedor ou empresa vendedora",
-  "validade": "data de validade do orçamento em formato YYYY-MM-DD ou null",
+  "titulo": "título/objeto do documento",
+  "numeroDocumento": "número do orçamento/proposta/contrato",
+  "dataEmissao": "YYYY-MM-DD ou null",
+  "valorTotal": 0,
+  "cliente": "nome/razão social do cliente",
+  "clienteDocumento": "CPF/CNPJ/documento",
+  "clienteEndereco": "endereço do cliente",
+  "fornecedor": "nome/razão social do fornecedor",
+  "fornecedorDocumento": "CPF/CNPJ/documento",
+  "fornecedorEndereco": "endereço do fornecedor",
+  "validade": "YYYY-MM-DD ou null",
+  "desconto": 0,
+  "acrescimos": 0,
+  "frete": 0,
+  "impostos": 0,
+  "formaPagamento": "forma de pagamento",
+  "condPagamento": "condições de pagamento completas",
+  "prazoEntrega": "prazo de entrega/execução",
   "itens": [
     {
-      "descricao": "descrição do item ou serviço",
-      "quantidade": número_ou_null,
-      "valorUnitario": número_decimal_ou_null,
-      "valorTotal": número_decimal_ou_null
+      "codigo": "código/referência/SKU ou null",
+      "descricao": "descrição completa do item/serviço",
+      "unidade": "unidade original, ex.: un, m², m, kg, serviço",
+      "quantidade": 0,
+      "valorUnitario": 0,
+      "valorTotal": 0,
+      "grupo": "grupo/categoria/seção do documento ou null",
+      "etapa": "etapa/fase quando existir ou null",
+      "observacoes": "observação específica da linha ou null"
     }
   ],
-  "observacoes": "condições comerciais, prazo de entrega, forma de pagamento ou observações relevantes (máx 300 chars)",
+  "inclusoes": ["itens/serviços expressamente inclusos"],
+  "exclusoes": ["itens/serviços expressamente não inclusos"],
+  "clausulas": ["cláusulas e condições contratuais relevantes, preservando o conteúdo"],
+  "informacoesAdicionais": ["outras informações relevantes que não se encaixem nos campos acima"],
+  "observacoes": "observações gerais do documento",
   "confianca": 0.0
 }
 
-Instruções:
-- valorTotal: use SOMENTE o valor numérico (ex: 15000.00), sem R$, sem pontos de milhar
-- Se houver desconto, use o valor final com desconto
-- confianca: número entre 0 e 1 indicando sua confiança na extração
-- Retorne SOMENTE o JSON, nenhum texto fora dele`;
+Validação:
+- valorTotal e demais valores monetários devem ser números sem símbolo de moeda e sem separador de milhar.
+- Se houver desconto, valorTotal deve refletir o total final apresentado no documento.
+- Se valorUnitario estiver ausente mas quantidade e valorTotal existirem, não invente o unitário.
+- Se quantidade estiver ausente, deixe null em vez de assumir 1.
+- confianca deve ser um número entre 0 e 1 indicando a confiança geral da reconstrução.
+`;
 
 export async function extractQuoteData(
   files: Array<{ buffer: Buffer; mimeType: string; originalName: string }>,
@@ -189,7 +248,7 @@ export async function extractQuoteData(
   }
 }
 
-const MAX_TEXT_LENGTH = 15_000;
+const MAX_TEXT_LENGTH = 30_000;
 
 export const documentExtractionResultSchema = z.object({
   nomeFantasia: z.string().nullable().optional(),
