@@ -110,9 +110,10 @@ export default function Projetos() {
   const [filterBuscaDebounced, setFilterBuscaDebounced] = useState("");
 
   // Dialog
-  const autoOpen = location.endsWith("/novo");
+  const autoOpen = location.split("?")[0].endsWith("/novo");
+  const requestedTitle = new URLSearchParams(window.location.search).get("titulo")?.trim() ?? "";
   const [dialogOpen, setDialogOpen] = useState(autoOpen);
-  const [form, setForm]             = useState<FormData>(EMPTY_FORM);
+  const [form, setForm]             = useState<FormData>(() => ({ ...EMPTY_FORM, titulo: requestedTitle }));
   const [saving, setSaving]         = useState(false);
 
   // Cliente / lead existente
