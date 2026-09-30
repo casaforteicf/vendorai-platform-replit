@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -78,8 +78,9 @@ async function fetchConnections(): Promise<Connection[]> {
 
 async function fetchLiveScreenshot(sessionId: string): Promise<LiveSession> {
   const res = await fetch(`/api/browser-agent/live/${sessionId}/screenshot`, { headers: headers() });
-  if (!res.ok) throw new Error("Sessão ao vivo indisponível");
-  return res.json();
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || "Sessão ao vivo indisponível");
+  return body;
 }
 
 export default function BrowserAgentPanel() {
@@ -93,8 +94,8 @@ export default function BrowserAgentPanel() {
   const [selectedId, setSelectedId] = useState("");
   const [goal, setGoal] = useState("");
   const [allowWrite, setAllowWrite] = useState(false);
-  const [liveSessionId, setLiveSessionId] = useState("");
-  const [manualMode, setManualMode] = useState(false);
+  const [liveSessionId, setLiveSessionId] = useState(() => new URLSearchParams(window.location.search).get("browserSession") || sessionStorage.getItem("vendi_live_session") || "");
+  const [requestedManual, setManualMode] = useState(false);
   const [manualText, setManualText] = useState("");
   const [manualUrl, setManualUrl] = useState("");
 
@@ -103,7 +104,7 @@ export default function BrowserAgentPanel() {
     queryFn: fetchConnections,
   });
 
-  const { data: liveSession } = useQuery<LiveSession>({
+  const { data: liveSession, error: liveError } = useQuery<LiveSession>({
     queryKey: ["browser-agent-live", liveSessionId],
     queryFn: () => fetchLiveScreenshot(liveSessionId),
     enabled: Boolean(liveSessionId),
@@ -113,6 +114,12 @@ export default function BrowserAgentPanel() {
     },
     retry: 1,
   });
+
+  const manualMode = requestedManual || liveSession?.status === "paused";
+  useEffect(() => {
+    if (liveSessionId) sessionStorage.setItem("vendi_live_session", liveSessionId);
+    else sessionStorage.removeItem("vendi_live_session");
+  }, [liveSessionId]);
 
   const selected = useMemo(
     () => connections.find((connection) => connection.id === selectedId) ?? connections[0] ?? null,
@@ -165,6 +172,7 @@ export default function BrowserAgentPanel() {
       const session = await createRes.json().catch(() => ({}));
       if (!createRes.ok) throw new Error(session?.error ?? "Não foi possível abrir a sessão");
 
+      setLiveSessionId(session.id);
       const missionRes = await fetch(`/api/browser-agent/live/${session.id}/mission`, {
         method: "POST",
         headers: headers(),
@@ -198,6 +206,7 @@ export default function BrowserAgentPanel() {
       setManualMode(paused);
       void queryClient.invalidateQueries({ queryKey: ["browser-agent-live", liveSessionId] });
     },
+    onError: (error: Error) => toast({ title: "Retomada do Vendi", description: error.message, variant: "destructive" }),
   });
 
   const controlMutation = useMutation({
@@ -219,18 +228,23 @@ export default function BrowserAgentPanel() {
   const closeMutation = useMutation({
     mutationFn: async () => {
       if (!liveSessionId) return;
-      await fetch(`/api/browser-agent/live/${liveSessionId}`, { method: "DELETE", headers: headers() });
+      const res = await fetch(`/api/browser-agent/live/${liveSessionId}`, { method: "DELETE", headers: headers() });
+      if (!res.ok && res.status !== 404) throw new Error("Não foi possível encerrar a sessão");
     },
     onSuccess: () => {
       setLiveSessionId("");
       setManualMode(false);
       setManualText("");
       setManualUrl("");
+      const url = new URL(window.location.href);
+      url.searchParams.delete("browserSession");
+      window.history.replaceState(null, "", url);
     },
+    onError: (error: Error) => toast({ title: "Sessão", description: error.message, variant: "destructive" }),
   });
 
   function handleScreenshotClick(event: React.MouseEvent<HTMLImageElement>) {
-    if (!manualMode || !liveSession?.screenshotDataUrl) return;
+    if (!manualMode || pauseMutation.isPending || controlMutation.isPending || !liveSession?.screenshotDataUrl) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const naturalWidth = event.currentTarget.naturalWidth || 1365;
     const naturalHeight = event.currentTarget.naturalHeight || 768;
@@ -240,7 +254,7 @@ export default function BrowserAgentPanel() {
   }
 
   const liveStatusLabel: Record<LiveSession["status"], string> = {
-    idle: "Pronto",
+    idle: "Aguardando missão",
     running: "Agente navegando",
     paused: "Controle manual",
     completed: "Concluído",
@@ -257,7 +271,7 @@ export default function BrowserAgentPanel() {
           </div>
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="font-semibold">Agente Navegador</h3>
+              <h3 className="font-semibold">Vendi — Agente Navegador</h3>
               <Badge variant="secondary">Browser Agent</Badge>
               {liveSession && <Badge variant="outline">{liveStatusLabel[liveSession.status]}</Badge>}
             </div>
@@ -350,11 +364,11 @@ export default function BrowserAgentPanel() {
             <>
               <div className="flex flex-wrap items-center gap-2">
                 {!manualMode ? (
-                  <Button variant="outline" onClick={() => pauseMutation.mutate(true)} disabled={pauseMutation.isPending}>
+                  <Button variant="outline" onClick={() => pauseMutation.mutate(true)} disabled={pauseMutation.isPending || Boolean(liveError)}>
                     <Pause className="mr-2 h-4 w-4" />Assumir controle
                   </Button>
                 ) : (
-                  <Button onClick={() => pauseMutation.mutate(false)} disabled={pauseMutation.isPending || liveSession?.status === "completed"}>
+                  <Button onClick={() => pauseMutation.mutate(false)} disabled={pauseMutation.isPending || controlMutation.isPending || liveSession?.status !== "paused"}>
                     <Bot className="mr-2 h-4 w-4" />Devolver para IA
                   </Button>
                 )}
@@ -369,6 +383,8 @@ export default function BrowserAgentPanel() {
                 </Button>
               </div>
 
+              {liveError && <p role="alert" className="text-sm text-destructive">{liveError.message}. Encerre esta sessão e abra uma nova.</p>}
+              {liveSession?.status === "paused" && <p role="status" className="rounded-lg border p-3 text-sm">O Vendi está pausado. Faça a verificação na tela abaixo e clique em “Devolver para IA” para continuar na mesma sessão.</p>}
               <div className="overflow-hidden rounded-xl border bg-black">
                 {liveSession?.screenshotDataUrl ? (
                   <img
@@ -446,3 +462,4 @@ export default function BrowserAgentPanel() {
     </Card>
   );
 }
+

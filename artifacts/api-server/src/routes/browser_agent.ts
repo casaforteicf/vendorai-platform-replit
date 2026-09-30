@@ -7,7 +7,7 @@ import {
 } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { encrypt, decrypt } from "../lib/crypto.js";
-import { runBrowserAgent } from "../services/browser-agent.js";
+import { runBrowserAgent, type BrowserAgentInput } from "../services/browser-agent.js";
 import {
   captureLiveBrowserSession,
   closeLiveBrowserSession,
@@ -485,7 +485,7 @@ router.post("/browser-agent/run", async (req, res) => {
       ? JSON.parse(decrypt(connection.cookiesEncrypted))
       : undefined;
 
-    const result = await runBrowserAgent({
+    const agentInput: BrowserAgentInput = {
       tenantId,
       goal: parsed.data.goal,
       startUrl,
@@ -511,11 +511,25 @@ router.post("/browser-agent/run", async (req, res) => {
             eq(browserAgentConnectionsTable.tenantId, tenantId),
           ));
       } : undefined,
-    });
+    };
+    agentInput.onHumanVerification = async (browser, page) => {
+      const session = await createLiveBrowserSession({ ...agentInput,
+        connectionId: connection?.id, existing: { browser, page },
+        onMissionResult: async (result) => {
+          if (audit?.id) await db.update(agentActionsLogTable)
+            .set({ status: result.ok ? "executed" : "rejected", payload: { ...(audit.payload ?? {}), result } })
+            .where(eq(agentActionsLogTable.id, audit.id));
+        },
+      });
+      startLiveBrowserMission(tenantId, session.id, agentInput.goal, agentInput.maxSteps, true);
+      return { sessionId: session.id,
+        controlUrl: `https://app.appvendorai.com/agents/config?browserSession=${encodeURIComponent(session.id)}` };
+    };
+    const result = await runBrowserAgent(agentInput);
 
     if (audit?.id) {
       await db.update(agentActionsLogTable)
-        .set({ status: "executed", payload: { ...(audit.payload ?? {}), result } })
+        .set({ status: result.ok ? "executed" : ("status" in result && result.status === "awaiting_human" ? "pending" : "rejected"), payload: { ...(audit.payload ?? {}), result } })
         .where(eq(agentActionsLogTable.id, audit.id));
     }
 
@@ -540,3 +554,4 @@ router.post("/browser-agent/run", async (req, res) => {
 });
 
 export default router;
+
