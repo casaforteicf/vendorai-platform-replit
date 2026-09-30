@@ -8,6 +8,15 @@ import {
 import { and, eq } from "drizzle-orm";
 import { encrypt, decrypt } from "../lib/crypto.js";
 import { runBrowserAgent } from "../services/browser-agent.js";
+import {
+  captureLiveBrowserSession,
+  closeLiveBrowserSession,
+  controlLiveBrowserSession,
+  createLiveBrowserSession,
+  getLiveBrowserSession,
+  setLiveBrowserPaused,
+  startLiveBrowserMission,
+} from "../services/browser-live-session.js";
 
 const router: IRouter = Router();
 
@@ -22,6 +31,30 @@ const connectionSchema = z.object({
 const connectionPatchSchema = connectionSchema.partial().extend({
   clearSession: z.boolean().optional(),
 });
+
+const liveCreateSchema = z.object({
+  connectionId: z.string().min(1),
+  allowWrite: z.boolean().default(false),
+  tenantId: z.string().optional(),
+});
+
+const liveMissionSchema = z.object({
+  goal: z.string().min(3).max(4000),
+  maxSteps: z.number().int().min(1).max(40).default(20),
+});
+
+const livePauseSchema = z.object({
+  paused: z.boolean(),
+});
+
+const liveControlSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("click"), x: z.number().min(0).max(5000), y: z.number().min(0).max(5000) }),
+  z.object({ action: z.literal("type"), text: z.string().max(4000) }),
+  z.object({ action: z.literal("key"), key: z.string().min(1).max(50) }),
+  z.object({ action: z.literal("navigate"), url: z.string().url() }),
+  z.object({ action: z.literal("back") }),
+  z.object({ action: z.literal("reload") }),
+]);
 
 const runSchema = z.object({
   goal: z.string().min(3).max(4000),
@@ -186,6 +219,219 @@ router.delete("/browser-agent/connections/:id", async (req, res) => {
   }
 
   res.json({ success: true, id: deleted.id });
+});
+
+router.post("/browser-agent/live", async (req, res) => {
+  const parsed = liveCreateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.flatten() });
+    return;
+  }
+
+  const tenantId = resolveTenant(req, parsed.data.tenantId);
+  if (!tenantId) {
+    res.status(401).json({ error: "Tenant não resolvido" });
+    return;
+  }
+
+  const [connection] = await db
+    .select()
+    .from(browserAgentConnectionsTable)
+    .where(and(
+      eq(browserAgentConnectionsTable.id, parsed.data.connectionId),
+      eq(browserAgentConnectionsTable.tenantId, tenantId),
+    ));
+
+  if (!connection) {
+    res.status(404).json({ error: "Conexão do navegador não encontrada" });
+    return;
+  }
+
+  const sessionCookies = connection.cookiesEncrypted
+    ? JSON.parse(decrypt(connection.cookiesEncrypted))
+    : undefined;
+
+  const session = await createLiveBrowserSession({
+    tenantId,
+    connectionId: connection.id,
+    startUrl: connection.startUrl,
+    allowedHosts: connection.allowedHosts ?? [],
+    allowWrite: parsed.data.allowWrite,
+    secrets: {
+      login: connection.usernameEncrypted ? decrypt(connection.usernameEncrypted) : undefined,
+      passcode: connection.passwordEncrypted ? decrypt(connection.passwordEncrypted) : undefined,
+    },
+    sessionCookies,
+    onSessionPersist: async (cookies) => {
+      await db
+        .update(browserAgentConnectionsTable)
+        .set({
+          cookiesEncrypted: encrypt(JSON.stringify(cookies)),
+          lastUsedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(and(
+          eq(browserAgentConnectionsTable.id, connection.id),
+          eq(browserAgentConnectionsTable.tenantId, tenantId),
+        ));
+    },
+  });
+
+  await db.insert(agentActionsLogTable).values({
+    tenantId,
+    agentName: "browser",
+    actionType: "browser_live_session_started",
+    status: "executed",
+    payload: {
+      sessionId: session.id,
+      connectionId: connection.id,
+      allowWrite: parsed.data.allowWrite,
+    },
+  });
+
+  res.status(201).json(session);
+});
+
+router.get("/browser-agent/live/:sessionId", async (req, res) => {
+  const tenantId = resolveTenant(req, String(req.query["tenantId"] ?? ""));
+  if (!tenantId) {
+    res.status(401).json({ error: "Tenant não resolvido" });
+    return;
+  }
+
+  try {
+    res.json(await getLiveBrowserSession(tenantId, String(req.params.sessionId)));
+  } catch (error: any) {
+    res.status(404).json({ error: error?.message ?? "Sessão não encontrada" });
+  }
+});
+
+router.get("/browser-agent/live/:sessionId/screenshot", async (req, res) => {
+  const tenantId = resolveTenant(req, String(req.query["tenantId"] ?? ""));
+  if (!tenantId) {
+    res.status(401).json({ error: "Tenant não resolvido" });
+    return;
+  }
+
+  try {
+    res.json(await captureLiveBrowserSession(tenantId, String(req.params.sessionId)));
+  } catch (error: any) {
+    res.status(404).json({ error: error?.message ?? "Sessão não encontrada" });
+  }
+});
+
+router.post("/browser-agent/live/:sessionId/mission", async (req, res) => {
+  const parsed = liveMissionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.flatten() });
+    return;
+  }
+
+  const tenantId = resolveTenant(req, String(req.body?.tenantId ?? ""));
+  if (!tenantId) {
+    res.status(401).json({ error: "Tenant não resolvido" });
+    return;
+  }
+
+  try {
+    const session = startLiveBrowserMission(
+      tenantId,
+      String(req.params.sessionId),
+      parsed.data.goal,
+      parsed.data.maxSteps,
+    );
+
+    await db.insert(agentActionsLogTable).values({
+      tenantId,
+      agentName: "browser",
+      actionType: "browser_live_mission_started",
+      status: "executed",
+      payload: { sessionId: session.id, goal: parsed.data.goal },
+    });
+
+    res.status(202).json(session);
+  } catch (error: any) {
+    res.status(409).json({ error: error?.message ?? "Não foi possível iniciar a missão" });
+  }
+});
+
+router.post("/browser-agent/live/:sessionId/pause", async (req, res) => {
+  const parsed = livePauseSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.flatten() });
+    return;
+  }
+
+  const tenantId = resolveTenant(req, String(req.body?.tenantId ?? ""));
+  if (!tenantId) {
+    res.status(401).json({ error: "Tenant não resolvido" });
+    return;
+  }
+
+  try {
+    res.json(await setLiveBrowserPaused(tenantId, String(req.params.sessionId), parsed.data.paused));
+  } catch (error: any) {
+    res.status(404).json({ error: error?.message ?? "Sessão não encontrada" });
+  }
+});
+
+router.post("/browser-agent/live/:sessionId/control", async (req, res) => {
+  const parsed = liveControlSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.flatten() });
+    return;
+  }
+
+  const tenantId = resolveTenant(req, String(req.body?.tenantId ?? ""));
+  if (!tenantId) {
+    res.status(401).json({ error: "Tenant não resolvido" });
+    return;
+  }
+
+  try {
+    const result = await controlLiveBrowserSession(
+      tenantId,
+      String(req.params.sessionId),
+      parsed.data,
+    );
+
+    await db.insert(agentActionsLogTable).values({
+      tenantId,
+      agentName: "browser",
+      actionType: "browser_manual_control",
+      status: "executed",
+      payload: {
+        sessionId: String(req.params.sessionId),
+        action: parsed.data.action,
+      },
+    });
+
+    res.json(result);
+  } catch (error: any) {
+    res.status(409).json({ error: error?.message ?? "Controle manual falhou" });
+  }
+});
+
+router.delete("/browser-agent/live/:sessionId", async (req, res) => {
+  const tenantId = resolveTenant(req, String(req.query["tenantId"] ?? ""));
+  if (!tenantId) {
+    res.status(401).json({ error: "Tenant não resolvido" });
+    return;
+  }
+
+  try {
+    const result = await closeLiveBrowserSession(tenantId, String(req.params.sessionId));
+    await db.insert(agentActionsLogTable).values({
+      tenantId,
+      agentName: "browser",
+      actionType: "browser_live_session_closed",
+      status: "executed",
+      payload: { sessionId: String(req.params.sessionId) },
+    });
+    res.json(result);
+  } catch (error: any) {
+    res.status(404).json({ error: error?.message ?? "Sessão não encontrada" });
+  }
 });
 
 router.post("/browser-agent/run", async (req, res) => {
