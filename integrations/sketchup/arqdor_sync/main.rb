@@ -6,6 +6,7 @@ require "net/http"
 require "uri"
 require "tempfile"
 require "securerandom"
+require "time"
 
 module Arqdor
   module Sync
