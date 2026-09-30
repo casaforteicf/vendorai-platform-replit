@@ -34,6 +34,7 @@ import {
   veiculosTestDrivesTable,
   adCampaignsTable,
   leadResponsavelHistoricoTable,
+  tenantUserFunctionsTable,
 } from "@workspace/db";
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { buildUserFunctionFilter, requireAdminOrUserFunction, type UserFunction } from "../middlewares/auth.js";
@@ -48,6 +49,44 @@ import { reserveUniqueItem } from "../services/item-reservation.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 
 const router: IRouter = Router();
+
+async function validateRepresentativeFunction(tenantId: string, functionId: string | null | undefined) {
+  if (!functionId) return null;
+  const [representativeFunction] = await db
+    .select()
+    .from(tenantUserFunctionsTable)
+    .where(and(
+      eq(tenantUserFunctionsTable.id, functionId),
+      eq(tenantUserFunctionsTable.tenantId, tenantId),
+      eq(tenantUserFunctionsTable.kind, "external_company"),
+    ))
+    .limit(1);
+  return representativeFunction ?? null;
+}
+
+async function findRepresentativeLeadAccess(req: any, targetTenantId: string, functionId?: string | null) {
+  const sourceTenantId = req.user?.tenantId;
+  if (!sourceTenantId || sourceTenantId === targetTenantId) return null;
+
+  const conditions = [
+    eq(tenantUserFunctionsTable.tenantId, targetTenantId),
+    eq(tenantUserFunctionsTable.linkedTenantId, sourceTenantId),
+    eq(tenantUserFunctionsTable.kind, "external_company"),
+  ];
+  if (functionId) conditions.push(eq(tenantUserFunctionsTable.id, functionId));
+
+  const [link] = await db
+    .select()
+    .from(tenantUserFunctionsTable)
+    .where(and(...conditions))
+    .limit(1);
+
+  if (!link || !Array.isArray(link.permissions) || !link.permissions.includes("leads")) return null;
+
+  const allowedUsers = Array.isArray(link.representativeUserIds) ? link.representativeUserIds : [];
+  if (allowedUsers.length > 0 && req.user?.sub && !allowedUsers.includes(req.user.sub)) return null;
+  return link;
+}
 
 router.get("/leads", async (req, res) => {
   const conditions: ReturnType<typeof eq>[] = [];
@@ -99,6 +138,19 @@ router.post("/leads", async (req, res) => {
 
   const data = parsed.data;
 
+  if (data.representativeFunctionId) {
+    const representativeFunction = await validateRepresentativeFunction(data.tenantId, data.representativeFunctionId);
+    if (!representativeFunction) {
+      res.status(422).json({ error: "Empresa representante inválida para este tenant." });
+      return;
+    }
+    const isAdminCreator = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+    if (!isAdminCreator) {
+      res.status(403).json({ error: "Apenas administradores podem atribuir uma empresa representante." });
+      return;
+    }
+  }
+
   // Dedup check
   const match = await findLeadByDedup(data.tenantId, data.telefone ?? null, data.documento ?? null, data.nome);
 
@@ -130,7 +182,9 @@ router.post("/leads", async (req, res) => {
   const isSellerCreator = !isAdminCreator && (req.user?.platformRole === "tenant_seller" || (req.user?.userFunction as string) === "vendedor");
   let resolvedAssignedTo: string | null;
   let geocoded: { lat: number; lng: number } | null = null;
-  if (isSellerCreator) {
+  if (data.representativeFunctionId) {
+    resolvedAssignedTo = null;
+  } else if (isSellerCreator) {
     resolvedAssignedTo = req.user?.sub ?? null;
   } else if (data.assignedTo) {
     resolvedAssignedTo = data.assignedTo;
@@ -351,10 +405,26 @@ router.post("/tenants/:tenantId/leads/import", async (req, res) => {
 
 router.get("/tenants/:tenantId/leads", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
+  const isOwnTenant = req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId;
+  const requestedFunctionId = typeof req.query["representationFunctionId"] === "string"
+    ? String(req.query["representationFunctionId"])
+    : null;
+  const representativeAccess = isOwnTenant
+    ? null
+    : await findRepresentativeLeadAccess(req, tenantId, requestedFunctionId);
+
+  if (!isOwnTenant && !representativeAccess) {
+    res.status(403).json({ error: "Acesso negado à base desta empresa." });
+    return;
+  }
+
   const conditions = [
     eq(leadsTable.tenantId, tenantId),
     eq(leadsTable.possivelDuplicata, false),
   ];
+  if (representativeAccess) {
+    conditions.push(eq(leadsTable.representativeFunctionId, representativeAccess.id));
+  }
   // Padrão: só leads ativos. incluirExcluidos=apenas mostra só os
   // excluídos (aba "Excluídos"); incluirExcluidos=incluir traz os dois
   // juntos. Sem o parâmetro, exclusão lógica fica invisível em todo o
@@ -375,7 +445,9 @@ router.get("/tenants/:tenantId/leads", async (req, res) => {
   } else if (incluirNaoLeads !== "incluir") {
     conditions.push(isNull(leadsTable.naoLeadTipo));
   }
-  conditions.push(...buildUserFunctionFilter(req, leadsTable));
+  if (!representativeAccess) {
+    conditions.push(...buildUserFunctionFilter(req, leadsTable));
+  }
 
   const leads = await db
     .select()
@@ -471,16 +543,23 @@ router.get("/leads/:id", async (req, res) => {
     return;
   }
 
-  if (req.user?.platformRole !== "super_admin" && lead.tenantId !== req.user?.tenantId) {
-    res.status(403).json({ error: "Access denied to this tenant" });
+  const isOwnTenant = req.user?.platformRole === "super_admin" || lead.tenantId === req.user?.tenantId;
+  const representativeAccess = isOwnTenant
+    ? null
+    : await findRepresentativeLeadAccess(req, lead.tenantId, lead.representativeFunctionId);
+
+  if (!isOwnTenant && (!representativeAccess || lead.representativeFunctionId !== representativeAccess.id)) {
+    res.status(403).json({ error: "Access denied to this lead" });
     return;
   }
 
-  const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
-  const userFn = req.user?.userFunction as UserFunction | undefined;
-  if (!isAdmin && userFn === "vendedor" && lead.assignedTo !== req.user?.sub) {
-    res.status(403).json({ error: "Access denied to this lead" });
-    return;
+  if (!representativeAccess) {
+    const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+    const userFn = req.user?.userFunction as UserFunction | undefined;
+    if (!isAdmin && userFn === "vendedor" && lead.assignedTo !== req.user?.sub) {
+      res.status(403).json({ error: "Access denied to this lead" });
+      return;
+    }
   }
 
   res.json(lead);
@@ -494,7 +573,7 @@ router.patch("/leads/:id", async (req, res) => {
   }
 
   const [existing] = await db
-    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, assignedTo: leadsTable.assignedTo })
+    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, assignedTo: leadsTable.assignedTo, representativeFunctionId: leadsTable.representativeFunctionId })
     .from(leadsTable)
     .where(eq(leadsTable.id, req.params.id));
 
@@ -503,16 +582,38 @@ router.patch("/leads/:id", async (req, res) => {
     return;
   }
 
-  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
-    res.status(403).json({ error: "Access denied to this tenant" });
+  const isOwnTenant2 = req.user?.platformRole === "super_admin" || existing.tenantId === req.user?.tenantId;
+  const representativeAccess2 = isOwnTenant2
+    ? null
+    : await findRepresentativeLeadAccess(req, existing.tenantId, existing.representativeFunctionId);
+
+  if (!isOwnTenant2 && (!representativeAccess2 || existing.representativeFunctionId !== representativeAccess2.id)) {
+    res.status(403).json({ error: "Access denied to this lead" });
     return;
   }
 
-  const isAdmin2 = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
-  const userFn2 = req.user?.userFunction as UserFunction | undefined;
-  if (!isAdmin2 && userFn2 === "vendedor" && existing.assignedTo !== req.user?.sub) {
-    res.status(403).json({ error: "Access denied to this lead" });
-    return;
+  if (!representativeAccess2) {
+    const isAdmin2 = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+    const userFn2 = req.user?.userFunction as UserFunction | undefined;
+    if (!isAdmin2 && userFn2 === "vendedor" && existing.assignedTo !== req.user?.sub) {
+      res.status(403).json({ error: "Access denied to this lead" });
+      return;
+    }
+  }
+
+  if (parsed.data.representativeFunctionId !== undefined) {
+    const isAdmin2 = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+    if (!isOwnTenant2 || !isAdmin2) {
+      res.status(403).json({ error: "Apenas administradores da empresa podem alterar a representação responsável." });
+      return;
+    }
+    if (parsed.data.representativeFunctionId) {
+      const representativeFunction = await validateRepresentativeFunction(existing.tenantId, parsed.data.representativeFunctionId);
+      if (!representativeFunction) {
+        res.status(422).json({ error: "Empresa representante inválida para este tenant." });
+        return;
+      }
+    }
   }
 
   // Reatribuir o responsável do lead (do início ao fim, salvo intervenção)

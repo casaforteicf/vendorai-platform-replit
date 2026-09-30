@@ -8,6 +8,7 @@ import {
   updateUserSchema,
   archPromptVariationsTable,
   tenantUserFunctionsTable,
+  tenantsTable,
   createTenantUserFunctionSchema,
 } from "@workspace/db";
 import { requireRole } from "../middlewares/auth.js";
@@ -112,6 +113,76 @@ async function findTenantUserFunction(id: string, tenantId: string) {
   return customFunction;
 }
 
+async function resolveRepresentativeTenant(
+  input: { kind?: "internal" | "external_company"; linkedTenantCode?: string | null },
+  ownerTenantId: string,
+) {
+  if (input.kind !== "external_company") {
+    return { linkedTenantId: null, linkedTenantCode: null };
+  }
+  const code = input.linkedTenantCode?.trim().toUpperCase();
+  if (!code) {
+    throw new Error("REPRESENTATIVE_TENANT_CODE_REQUIRED");
+  }
+  const [linked] = await db
+    .select({ id: tenantsTable.id, tenantCode: tenantsTable.tenantCode, status: tenantsTable.status })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.tenantCode, code))
+    .limit(1);
+  if (!linked || linked.status !== "active") {
+    throw new Error("REPRESENTATIVE_TENANT_NOT_FOUND");
+  }
+  if (linked.id === ownerTenantId) {
+    throw new Error("REPRESENTATIVE_TENANT_SAME_AS_OWNER");
+  }
+  return { linkedTenantId: linked.id, linkedTenantCode: linked.tenantCode };
+}
+
+router.get(
+  "/representation-access",
+  requireRole("super_admin", "tenant_admin", "tenant_seller", "member"),
+  async (req, res) => {
+    const sourceTenantId = req.user?.tenantId;
+    if (!sourceTenantId && req.user?.platformRole !== "super_admin") {
+      res.status(403).json({ error: "Tenant não identificado." });
+      return;
+    }
+
+    const links = sourceTenantId
+      ? await db
+          .select()
+          .from(tenantUserFunctionsTable)
+          .where(
+            and(
+              eq(tenantUserFunctionsTable.kind, "external_company"),
+              eq(tenantUserFunctionsTable.linkedTenantId, sourceTenantId),
+            ),
+          )
+          .orderBy(asc(tenantUserFunctionsTable.name))
+      : [];
+
+    const response = await Promise.all(
+      links.map(async (link) => {
+        const [represented] = await db
+          .select({ id: tenantsTable.id, tenantCode: tenantsTable.tenantCode, name: tenantsTable.name, slug: tenantsTable.slug })
+          .from(tenantsTable)
+          .where(eq(tenantsTable.id, link.tenantId))
+          .limit(1);
+        return {
+          functionId: link.id,
+          functionName: link.name,
+          representedTenant: represented ?? null,
+          permissions: link.permissions,
+          leadAccessScope: link.leadAccessScope,
+          representativeUserIds: link.representativeUserIds,
+        };
+      }),
+    );
+
+    res.json(response);
+  },
+);
+
 router.get(
   "/tenants/:tenantId/user-functions",
   requireRole("super_admin", "tenant_admin"),
@@ -150,6 +221,21 @@ router.post(
       return;
     }
 
+    let representativeLink: { linkedTenantId: string | null; linkedTenantCode: string | null };
+    try {
+      representativeLink = await resolveRepresentativeTenant(parsed.data, tenantId);
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "";
+      const message =
+        code === "REPRESENTATIVE_TENANT_CODE_REQUIRED"
+          ? "Informe o código Vendor.ai da empresa representante."
+          : code === "REPRESENTATIVE_TENANT_SAME_AS_OWNER"
+            ? "A empresa representante precisa ser diferente da empresa representada."
+            : "Empresa representante não encontrada ou inativa.";
+      res.status(422).json({ error: message });
+      return;
+    }
+
     const permissions = [...new Set(parsed.data.permissions)];
     const invalidPermission = permissions.find((permission) => !USER_MODULE_KEYS.has(permission));
     if (invalidPermission) {
@@ -164,6 +250,11 @@ router.post(
           tenantId,
           name: parsed.data.name.trim(),
           permissions,
+          kind: parsed.data.kind,
+          linkedTenantId: representativeLink.linkedTenantId,
+          linkedTenantCode: representativeLink.linkedTenantCode,
+          leadAccessScope: parsed.data.leadAccessScope,
+          representativeUserIds: parsed.data.representativeUserIds,
         })
         .returning();
 
@@ -203,6 +294,21 @@ router.patch(
       return;
     }
 
+    let representativeLink: { linkedTenantId: string | null; linkedTenantCode: string | null };
+    try {
+      representativeLink = await resolveRepresentativeTenant(parsed.data, tenantId);
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "";
+      const message =
+        code === "REPRESENTATIVE_TENANT_CODE_REQUIRED"
+          ? "Informe o código Vendor.ai da empresa representante."
+          : code === "REPRESENTATIVE_TENANT_SAME_AS_OWNER"
+            ? "A empresa representante precisa ser diferente da empresa representada."
+            : "Empresa representante não encontrada ou inativa.";
+      res.status(422).json({ error: message });
+      return;
+    }
+
     const permissions = [...new Set(parsed.data.permissions)];
     const invalidPermission = permissions.find((permission) => !USER_MODULE_KEYS.has(permission));
     if (invalidPermission) {
@@ -216,6 +322,11 @@ router.patch(
         .set({
           name: parsed.data.name.trim(),
           permissions,
+          kind: parsed.data.kind,
+          linkedTenantId: representativeLink.linkedTenantId,
+          linkedTenantCode: representativeLink.linkedTenantCode,
+          leadAccessScope: parsed.data.leadAccessScope,
+          representativeUserIds: parsed.data.representativeUserIds,
           updatedAt: new Date(),
         })
         .where(

@@ -11,6 +11,11 @@ export const tenantUserFunctionsTable = pgTable("tenant_user_functions", {
     .references(() => tenantsTable.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   permissions: jsonb("permissions").$type<string[]>().notNull().default([]),
+  kind: text("kind").$type<"internal" | "external_company">().notNull().default("internal"),
+  linkedTenantId: text("linked_tenant_id").references(() => tenantsTable.id, { onDelete: "set null" }),
+  linkedTenantCode: text("linked_tenant_code"),
+  leadAccessScope: text("lead_access_scope").$type<"assigned" | "territory" | "all_authorized">().notNull().default("assigned"),
+  representativeUserIds: jsonb("representative_user_ids").$type<string[]>().notNull().default([]),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -18,6 +23,14 @@ export const tenantUserFunctionsTable = pgTable("tenant_user_functions", {
 export const createTenantUserFunctionSchema = z.object({
   name: z.string().trim().min(2).max(60),
   permissions: z.array(z.string()).min(1),
+  kind: z.enum(["internal", "external_company"]).default("internal"),
+  linkedTenantCode: z.string().trim().min(3).max(32).nullable().optional(),
+  leadAccessScope: z.enum(["assigned", "territory", "all_authorized"]).default("assigned"),
+  representativeUserIds: z.array(z.string()).max(200).default([]),
+}).superRefine((value, ctx) => {
+  if (value.kind === "external_company" && !value.linkedTenantCode) {
+    ctx.addIssue({ code: "custom", path: ["linkedTenantCode"], message: "Informe o código Vendor.ai da empresa representante." });
+  }
 });
 
 export type TenantUserFunction = typeof tenantUserFunctionsTable.$inferSelect;

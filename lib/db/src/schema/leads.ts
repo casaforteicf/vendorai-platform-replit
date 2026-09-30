@@ -3,6 +3,7 @@ import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 import { usersTable } from "./users";
+import { tenantUserFunctionsTable } from "./tenant_user_functions";
 
 export const leadsTable = pgTable("leads", {
   id: text("id")
@@ -51,6 +52,10 @@ export const leadsTable = pgTable("leads", {
   // roteamento normal de agentes até ser resolvida). Sem FK para evitar import circular.
   pendingSequenceOportunidadeId: text("pending_sequence_oportunidade_id"),
   assignedTo: text("assigned_to").references(() => usersTable.id, { onDelete: "set null" }),
+  // Empresa representante tratada como responsável comercial externo.
+  // Aponta para uma função do tenant representado (ex.: Krafht -> Windoor),
+  // sem transformar os usuários da representante em usuários internos.
+  representativeFunctionId: text("representative_function_id").references(() => tenantUserFunctionsTable.id, { onDelete: "set null" }),
   instagramScopedId: text("instagram_scoped_id"),
   // PSID (page-scoped ID) do Messenger — mesmo conceito do Instagram
   // Scoped ID, mas namespace separado (Messenger e Instagram Direct têm
