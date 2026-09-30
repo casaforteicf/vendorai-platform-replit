@@ -23,6 +23,7 @@ async function waitForStatus(id: string, status: string) {
   await vi.waitFor(async () => expect((await getLiveBrowserSession("tenant-a", id)).status).toBe(status));
 }
 beforeEach(() => {
+  vi.stubEnv("BROWSER_CDP_URL", "ws://test-runtime");
   runtime.blocked = false;
   runtime.plan.mockReset().mockResolvedValue({ action: "finish", outcome: "completed", answer: "Verified" });
   const context = { close: vi.fn(async () => {}) };
@@ -35,6 +36,7 @@ beforeEach(() => {
   runtime.browser = { disconnect: vi.fn() };
 });
 afterEach(async () => {
+  vi.unstubAllEnvs();
   for (const id of ids.splice(0)) await closeLiveBrowserSession("tenant-a", id);
 });
 describe("human handoff", () => {
