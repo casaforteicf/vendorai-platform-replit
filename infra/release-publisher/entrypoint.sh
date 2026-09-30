@@ -108,12 +108,8 @@ for attempt in {1..24}; do
     exec tail -f /dev/null
   fi
 
-  # Fallback success: Railway carries the exact revision when Cloudflare route is unavailable.
   if [ "$cloudflare_ok" != true ] && [ "$railway_ok" = true ]; then
-    echo "✅ CONCLUÍDO — revisão $REVISION validada pela rota fallback Railway."
-    github_status success "CONCLUÍDO — fallback Railway validado"
-    trap - EXIT
-    exec tail -f /dev/null
+    echo "Fallback Railway carries revision $REVISION, but public production domain is not yet validated."
   fi
 
   sleep 10
