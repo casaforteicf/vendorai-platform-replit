@@ -14,6 +14,8 @@ import { createLiveBrowserSession, startLiveBrowserMission } from "../services/b
 
 const router: IRouter = Router();
 
+const vendiAutonomyEnabled = () => String(process.env["VENDI_AUTONOMY_ENABLED"] ?? "").toLowerCase() === "true";
+
 function authorized(req: any): boolean {
   const expected = process.env["BROWSER_MCP_ACCESS_TOKEN"]?.trim();
   if (!expected) return false;
@@ -67,6 +69,7 @@ router.get("/internal/browser-mcp/status", (_req, res) => {
     runtime: "cdp",
     secureSecretInjection: true,
     persistentConnections: true,
+    vendiAutonomyEnabled: vendiAutonomyEnabled(),
   });
 });
 
@@ -119,8 +122,9 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
     .where(eq(tenantsTable.id, tenantId))
     .limit(1);
   const autonomyEnabled = Boolean(tenantAutonomy?.autonomyEnabledAt);
-  const mode = parsed.data.mode ?? (autonomyEnabled ? "autonomo" : "assistido");
-  const allowWrite = parsed.data.allowWrite ?? autonomyEnabled;
+  const globalVendiAutonomy = vendiAutonomyEnabled();
+  const mode = globalVendiAutonomy ? "autonomo" : (parsed.data.mode ?? (autonomyEnabled ? "autonomo" : "assistido"));
+  const allowWrite = globalVendiAutonomy ? true : (parsed.data.allowWrite ?? autonomyEnabled);
 
   let connection: typeof browserAgentConnectionsTable.$inferSelect | undefined;
   if (parsed.data.connectionId) {
