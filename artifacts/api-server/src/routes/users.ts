@@ -185,6 +185,88 @@ router.get(
 );
 
 router.get(
+  "/tenants/:tenantId/representative-tenants",
+  requireRole("super_admin", "tenant_admin"),
+  async (req, res) => {
+    const tenantId = String(req.params["tenantId"]);
+    if (!canManageTenant(req, tenantId)) {
+      res.status(403).json({ error: "Access denied to this tenant" });
+      return;
+    }
+
+    const search = String(req.query["search"] ?? "").trim().toLowerCase();
+    if (search.length < 2) {
+      res.json([]);
+      return;
+    }
+
+    const candidates = await db
+      .select({
+        id: tenantsTable.id,
+        name: tenantsTable.name,
+        tenantCode: tenantsTable.tenantCode,
+        status: tenantsTable.status,
+      })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.status, "active"))
+      .orderBy(asc(tenantsTable.name));
+
+    const matches = candidates
+      .filter((tenant) => tenant.id !== tenantId)
+      .filter((tenant) => {
+        const haystack = `${tenant.name ?? ""} ${tenant.tenantCode ?? ""}`.toLowerCase();
+        return haystack.includes(search);
+      })
+      .slice(0, 20)
+      .map(({ id, name, tenantCode }) => ({ id, name, tenantCode }));
+
+    res.json(matches);
+  },
+);
+
+router.get(
+  "/tenants/:tenantId/representative-tenants/:representativeTenantId/users",
+  requireRole("super_admin", "tenant_admin"),
+  async (req, res) => {
+    const tenantId = String(req.params["tenantId"]);
+    const representativeTenantId = String(req.params["representativeTenantId"]);
+
+    if (!canManageTenant(req, tenantId)) {
+      res.status(403).json({ error: "Access denied to this tenant" });
+      return;
+    }
+    if (tenantId === representativeTenantId) {
+      res.status(422).json({ error: "A empresa representante precisa ser diferente da empresa representada." });
+      return;
+    }
+
+    const [representativeTenant] = await db
+      .select({ id: tenantsTable.id, status: tenantsTable.status })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, representativeTenantId))
+      .limit(1);
+
+    if (!representativeTenant || representativeTenant.status !== "active") {
+      res.status(404).json({ error: "Empresa representante não encontrada ou inativa." });
+      return;
+    }
+
+    const representativeUsers = await db
+      .select({
+        id: usersTable.id,
+        name: usersTable.name,
+        active: usersTable.active,
+        userFunction: usersTable.userFunction,
+      })
+      .from(usersTable)
+      .where(and(eq(usersTable.tenantId, representativeTenantId), eq(usersTable.active, true)))
+      .orderBy(asc(usersTable.name));
+
+    res.json(representativeUsers);
+  },
+);
+
+router.get(
   "/tenants/:tenantId/user-functions",
   requireRole("super_admin", "tenant_admin"),
   async (req, res) => {
