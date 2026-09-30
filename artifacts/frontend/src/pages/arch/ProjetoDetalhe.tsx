@@ -995,6 +995,41 @@ export default function ProjetoDetalhe() {
         <StatusBadge status={projeto.status} />
       </div>
 
+      {/* Atalhos principais do projeto — mantém o usuário dentro do mesmo contexto */}
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-muted/20 p-3">
+        <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Continuar projeto</span>
+        <Button type="button" size="sm" onClick={() => abrirRenderStudio(null)}>
+          <Sparkles className="mr-1.5 h-4 w-4" /> Render
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => navigate(`/arch/studio?module=especificacao&project_id=${encodeURIComponent(projetoId)}`)}
+        >
+          <ClipboardList className="mr-1.5 h-4 w-4" /> Especificação
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            const budgetTab = document.querySelector('[value="orcamento"]') as HTMLElement | null;
+            budgetTab?.click();
+          }}
+        >
+          <DollarSign className="mr-1.5 h-4 w-4" /> Orçamento
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => navigate(`/propostas?archProjectId=${encodeURIComponent(projetoId)}&returnTo=${encodeURIComponent(`/arch/projetos/${projetoId}`)}`)}
+        >
+          <ExternalLink className="mr-1.5 h-4 w-4" /> Proposta
+        </Button>
+      </div>
+
       {/* Fluxo integrado Vendor.ai */}
       <Card>
         <CardHeader className="pb-3">
