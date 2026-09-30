@@ -12,5 +12,8 @@ export async function isAgentActive(tenantId: string, runtimeName: string): Prom
       .where(eq(agentConfigsTable.tenantId, tenantId)).limit(1),
   ]);
   const entries = legacy?.agents as Record<string, { enabled?: boolean }> | undefined;
-  return resolveActivation(modern?.ativo, entries?.[runtimeName]?.enabled ?? entries?.[primaryRuntimeForKey(agentKey)]?.enabled);
+  const primary = primaryRuntimeForKey(agentKey);
+  // Aliases retain their own legacy opt-out in addition to the Hub master switch.
+  if (runtimeName !== primary && entries?.[runtimeName]?.enabled === false) return false;
+  return resolveActivation(modern?.ativo, entries?.[runtimeName]?.enabled ?? entries?.[primary]?.enabled);
 }
