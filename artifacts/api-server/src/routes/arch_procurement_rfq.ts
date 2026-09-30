@@ -441,11 +441,11 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
       }
       const inviteResult = await pool.query(
         `INSERT INTO arch_rfq_invitations
-         (tenant_id,package_id,supplier_id,supplier_name,contact_name,channel,destination,status,created_at,updated_at)
-         VALUES($1,$2::uuid,$3,$4,$5,$6,$7,'draft',now(),now())
+         (tenant_id,package_id,supplier_id,supplier_name,contact_name,channel,destination,supplier_email,supplier_phone,access_mode,status,created_at,updated_at)
+         VALUES($1,$2::uuid,$3,$4,$5,$6,$7,$8,$9,'registered','draft',now(),now())
          ON CONFLICT DO NOTHING
          RETURNING *`,
-        [tid,packageId,supplier.id,supplier.nome,supplier.contato||null,channel,destination],
+        [tid,packageId,supplier.id,supplier.nome,supplier.contato||null,channel,destination,supplier.email||null,supplier.telefone||null],
       );
       const invite = inviteResult.rows[0];
       if (!invite) continue;
@@ -475,6 +475,108 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
     await pool.query(`UPDATE arch_rfq_packages SET status=$1,updated_at=now() WHERE id=$2::uuid`, [packageStatus, packageId]);
     res.status(201).json({ invitations: created, skipped: supplierIds.length - created.length, packageStatus });
   } catch (err) { logger.error({ err }, "rfq invitations error"); next(err); }
+});
+
+
+archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId/guest-invitations", async (req, res, next) => {
+  try {
+    const tid = requireTenant(req, res); if (!tid) return;
+    const obraId = String(req.params["obraId"] || "");
+    const packageId = String(req.params["packageId"] || "");
+    const name = String(req.body?.name || "").trim();
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    const phone = String(req.body?.phone || "").trim();
+    if (!name) return res.status(422).json({ error: "Informe o nome do fornecedor." });
+    if (!email && !phone) return res.status(422).json({ error: "Informe telefone ou e-mail." });
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(422).json({ error: "E-mail inválido." });
+
+    const pkgResult = await pool.query(
+      `SELECT * FROM arch_rfq_packages WHERE id=$1::uuid AND obra_id=$2 AND tenant_id=$3 LIMIT 1`,
+      [packageId,obraId,tid],
+    );
+    const pkg = pkgResult.rows[0];
+    if (!pkg) return res.status(404).json({ error: "Pacote de cotação não encontrado." });
+
+    const phoneDigits = phone.replace(/\D/g, "");
+    const existing = await pool.query(
+      `SELECT * FROM arch_rfq_invitations
+        WHERE tenant_id=$1 AND package_id=$2::uuid AND supplier_id IS NULL
+          AND (
+            ($3<>'' AND lower(COALESCE(supplier_email,''))=lower($3))
+            OR ($4<>'' AND regexp_replace(COALESCE(supplier_phone,''),'[^0-9]','','g')=$4)
+          )
+        LIMIT 1`,
+      [tid, packageId, email, phoneDigits],
+    );
+    if (existing.rows[0]) {
+      const inv = existing.rows[0];
+      return res.status(200).json({
+        invitation: inv,
+        duplicate: true,
+        publicUrl: `${req.protocol}://${req.get("host")}/api/public/arqdor/rfq/${inv.public_token}`,
+      });
+    }
+
+    const primaryChannel = email ? "email" : "whatsapp";
+    const destination = email || phone;
+    const inviteResult = await pool.query(
+      `INSERT INTO arch_rfq_invitations
+       (tenant_id,package_id,supplier_id,supplier_name,contact_name,channel,destination,
+        supplier_email,supplier_phone,access_mode,status,created_at,updated_at)
+       VALUES($1,$2::uuid,NULL,$3,$3,$4,$5,$6,$7,'guest','draft',now(),now())
+       RETURNING *`,
+      [tid,packageId,name,primaryChannel,destination,email||null,phone||null],
+    );
+    const invite = inviteResult.rows[0];
+    const publicUrl = `${req.protocol}://${req.get("host")}/api/public/arqdor/rfq/${invite.public_token}`;
+    const message = [
+      `Solicitação de cotação: ${pkg.title}`,
+      `Código: ${pkg.code} • versão ${pkg.version}`,
+      "Você não precisa criar conta para responder. O link contém somente os itens do seu escopo.",
+      publicUrl,
+    ].join("\\n\\n");
+
+    let emailSent = false;
+    let whatsappSent = false;
+    const errors: string[] = [];
+    if (email) {
+      try {
+        await sendJarvisEmail({ to: email, subject: `Cotação ${pkg.code} — ${pkg.title}`, body: message });
+        emailSent = true;
+      } catch (err) { errors.push(`e-mail: ${err instanceof Error ? err.message : "falha"}`); }
+    }
+    if (phone) {
+      try {
+        await sendDirectWhatsAppMessage(tid, phone, message, logger);
+        whatsappSent = true;
+      } catch (err) { errors.push(`WhatsApp: ${err instanceof Error ? err.message : "falha"}`); }
+    }
+
+    const sent = emailSent || whatsappSent;
+    await pool.query(
+      `UPDATE arch_rfq_invitations
+          SET status=$1,sent_at=CASE WHEN $1='sent' THEN now() ELSE sent_at END,updated_at=now()
+        WHERE id=$2::uuid`,
+      [sent ? "sent" : "failed", invite.id],
+    );
+    if (sent) {
+      await pool.query(
+        `UPDATE arch_rfq_packages SET status=CASE WHEN status='draft' THEN 'sent' ELSE status END,updated_at=now()
+          WHERE id=$1::uuid`,
+        [packageId],
+      );
+    }
+
+    res.status(201).json({
+      invitation: { ...invite, status: sent ? "sent" : "failed" },
+      publicUrl,
+      delivery: { email: email ? emailSent : null, whatsapp: phone ? whatsappSent : null },
+      errors,
+    });
+  } catch (err) {
+    logger.error({ err }, "guest rfq invitation error");
+    next(err);
+  }
 });
 
 archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId/select/:invitationId", async (req, res, next) => {
