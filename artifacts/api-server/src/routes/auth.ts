@@ -487,7 +487,7 @@ router.post("/auth/demo-signup", async (req, res) => {
     if (rfqToken) {
       try {
         const invitationResult = await pool.query(
-          \`SELECT * FROM arch_rfq_invitations WHERE public_token=$1::uuid LIMIT 1\`,
+          `SELECT * FROM arch_rfq_invitations WHERE public_token=$1::uuid LIMIT 1`,
           [rfqToken],
         );
         const invitation = invitationResult.rows[0];
@@ -501,30 +501,30 @@ router.post("/auth/demo-signup", async (req, res) => {
 
           if (identityMatches) {
             const supplierExisting = await pool.query(
-              \`SELECT id FROM fornecedores
+              `SELECT id FROM fornecedores
                 WHERE tenant_id=$1
                   AND (
                     ($2<>'' AND lower(COALESCE(email,''))=lower($2))
                     OR ($3<>'' AND regexp_replace(COALESCE(telefone,''),'[^0-9]','','g')=$3)
                   )
                 ORDER BY created_at DESC
-                LIMIT 1\`,
+                LIMIT 1`,
               [invitation.tenant_id, email.trim().toLowerCase(), signupPhone],
             );
             let supplierId = supplierExisting.rows[0]?.id ?? null;
             if (!supplierId) {
               const createdSupplier = await pool.query(
-                \`INSERT INTO fornecedores
+                `INSERT INTO fornecedores
                   (id,tenant_id,nome,contato,telefone,email,categorias,disciplinas,regioes,marcas,ativo,created_at,updated_at)
                  VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,'[]'::jsonb,'[]'::jsonb,'[]'::jsonb,'[]'::jsonb,true,now(),now())
-                 RETURNING id\`,
+                 RETURNING id`,
                 [invitation.tenant_id, nomeEmpresa, nomePessoa, telefone || invitation.supplier_phone || null, email],
               );
               supplierId = createdSupplier.rows[0]?.id ?? null;
             }
 
             await pool.query(
-              \`UPDATE arch_rfq_invitations
+              `UPDATE arch_rfq_invitations
                   SET access_mode='converted',
                       converted_tenant_id=$1,
                       converted_at=now(),
@@ -533,7 +533,7 @@ router.post("/auth/demo-signup", async (req, res) => {
                       supplier_email=COALESCE(NULLIF($4,''),supplier_email),
                       supplier_phone=COALESCE(NULLIF($5,''),supplier_phone),
                       updated_at=now()
-                WHERE id=$6::uuid\`,
+                WHERE id=$6::uuid`,
               [tenant.id, supplierId, nomeEmpresa, email, telefone || "", invitation.id],
             );
           }
