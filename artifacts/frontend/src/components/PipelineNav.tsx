@@ -11,7 +11,7 @@ import {
   ShieldCheck,
   Trash2,
 } from "lucide-react";
-import { customFetch } from "@workspace/api-client-react";
+import { customFetch, getListPipelineStagesQueryKey } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -201,8 +201,12 @@ function PipelineStageManager({
   const [editLabel, setEditLabel] = useState("");
   const [editSla, setEditSla] = useState("");
 
-  const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: ["pipeline-stages", tenantId, pipeline] });
+  const invalidate = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["pipeline-stages", tenantId, pipeline] }),
+      queryClient.invalidateQueries({ queryKey: getListPipelineStagesQueryKey(tenantId) }),
+    ]);
+  };
 
   async function createStage() {
     const label = newLabel.trim();
