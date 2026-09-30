@@ -97,7 +97,8 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
     goal: z.string().min(3).max(4000),
     connectionId: z.string().min(1).optional(),
     startUrl: z.string().url().optional(),
-    allowWrite: z.boolean().default(false),
+    mode: z.enum(["assistido", "autonomo"]).optional(),
+    allowWrite: z.boolean().optional(),
     maxSteps: z.number().int().min(1).max(30).default(12),
   }).safeParse(req.body);
 
@@ -111,6 +112,15 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
     res.status(404).json({ error: "tenant_not_found" });
     return;
   }
+
+  const [tenantAutonomy] = await db
+    .select({ autonomyEnabledAt: tenantsTable.autonomyEnabledAt })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId))
+    .limit(1);
+  const autonomyEnabled = Boolean(tenantAutonomy?.autonomyEnabledAt);
+  const mode = parsed.data.mode ?? (autonomyEnabled ? "autonomo" : "assistido");
+  const allowWrite = parsed.data.allowWrite ?? autonomyEnabled;
 
   let connection: typeof browserAgentConnectionsTable.$inferSelect | undefined;
   if (parsed.data.connectionId) {
@@ -142,12 +152,13 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
       tenantId,
       agentName: "browser_mcp",
       actionType: "browser_mcp_run",
-      status: parsed.data.allowWrite ? "approved" : "pending",
+      status: allowWrite ? "approved" : "pending",
       payload: {
         goal: parsed.data.goal,
         startUrl,
         connectionId: connection?.id ?? null,
-        allowWrite: parsed.data.allowWrite,
+        mode,
+        allowWrite,
       },
     })
     .returning();
@@ -161,8 +172,8 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
       tenantId,
       goal: parsed.data.goal,
       startUrl,
-      mode: "assistido",
-      allowWrite: parsed.data.allowWrite,
+      mode,
+      allowWrite,
       maxSteps: parsed.data.maxSteps,
       allowedHosts: connection?.allowedHosts ?? [],
       secrets: connection

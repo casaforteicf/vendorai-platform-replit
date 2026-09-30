@@ -248,21 +248,22 @@ function createCloudflareMcpServer() {
   server.registerTool(
     "browser_agent_run",
     {
-      description: "Executa uma missão usando o Browser Agent próprio do VendorAI em Chromium remoto. Pode usar uma conexão salva ou uma URL inicial. Ações sensíveis exigem allowWrite=true.",
+      description: "Executa uma missão usando o Browser Agent próprio do VendorAI em Chromium remoto. Pode usar uma conexão salva ou uma URL inicial. Tenants com autonomia habilitada executam ações rotineiras automaticamente; ações de alto risco continuam protegidas.",
       inputSchema: z.object({
         tenantKey: z.string().min(1),
         goal: z.string().min(3).max(4000),
         connectionId: z.string().min(1).optional(),
         startUrl: z.string().url().optional(),
-        allowWrite: z.boolean().default(false),
+        mode: z.enum(["assistido", "autonomo"]).optional(),
+        allowWrite: z.boolean().optional(),
         maxSteps: z.number().int().min(1).max(30).default(12),
       }),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     },
-    async ({ tenantKey, goal, connectionId, startUrl, allowWrite, maxSteps }) => {
+    async ({ tenantKey, goal, connectionId, startUrl, mode, allowWrite, maxSteps }) => {
       const result = await vendorApi<unknown>("/internal/browser-mcp/run", {
         method: "POST",
-        body: JSON.stringify({ tenantKey, goal, connectionId, startUrl, allowWrite, maxSteps }),
+        body: JSON.stringify({ tenantKey, goal, connectionId, startUrl, mode, allowWrite, maxSteps }),
       });
       return toolText(result);
     },

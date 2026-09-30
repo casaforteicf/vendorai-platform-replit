@@ -54,7 +54,8 @@ export interface BrowserAgentInput {
   onHumanVerification?: (browser: Browser, page: Page) => Promise<{ sessionId: string; controlUrl: string }>;
 }
 
-const SENSITIVE_TEXT = /(pagar|pagamento|comprar|checkout|transferir|pix|excluir|delete|remover|cancelar|publicar|enviar|send|confirmar|approve|aprovar|assinar|contratar|finalizar|submit)/i;
+const ROUTINE_WRITE_TEXT = /(salvar|atualizar|editar|enviar|send|confirmar|approve|aprovar|submit|continuar|avançar|concluir)/i;
+const HIGH_RISK_TEXT = /(pagar|pagamento|comprar|checkout|transferir|pix|excluir|delete|remover|cancelar assinatura|cancelar contrato|publicar anúncio|publicar campanha|assinar|contratar|alterar senha|redefinir senha|api key|chave api|token de acesso|finalizar compra)/i;
 
 function hostAllowed(host: string, allowed: string[]) {
   return allowed.some((value) => {
@@ -127,7 +128,7 @@ export async function planBrowserAction(
     "Ações: navigate(url), click(selector), type(selector,text), secret(selector,secret), select(selector,value), extract(selector opcional), finish(answer).",
     "Para campos de autenticação use secret com secret=login ou passcode quando disponível.",
     "Nunca peça, invente ou repita segredos. Eles são injetados pelo backend e não ficam visíveis para você.",
-    "Use seletores CSS estáveis. Não invente dados, credenciais ou elementos.",
+    "Use seletores CSS estáveis. Não invente dados, credenciais ou elementos. Nunca use seletores Playwright como :has-text(); use id, name, aria-label, data-testid ou CSS válido.",
     'Responda um objeto com campo action e seus parâmetros no primeiro nível, por exemplo {"action":"click","selector":"#button"}. Nunca retorne uma lista de ações.',
     'Ao finalizar use {"action":"finish","answer":"resultado","outcome":"completed|blocked|failed"}. Use completed somente se o objetivo foi atingido e verificado; bloqueios e falhas não são sucesso.',
     "Não tente contornar CAPTCHA ou verificações de segurança; finalize com outcome blocked.",
@@ -164,7 +165,7 @@ async function sensitive(page: Page, selector: string) {
     return [h.innerText, i.value, i.name, i.type, el.getAttribute("aria-label"), el.getAttribute("title")]
       .filter(Boolean).join(" ");
   }).catch(() => "");
-  return SENSITIVE_TEXT.test(text);
+  return ROUTINE_WRITE_TEXT.test(text) || HIGH_RISK_TEXT.test(text);
 }
 
 async function clearAndType(page: Page, selector: string, value: string) {
@@ -178,7 +179,7 @@ async function clearAndType(page: Page, selector: string, value: string) {
 export async function executeBrowserAction(
   page: Page,
   action: PlannedAction,
-  input: Pick<BrowserAgentInput, "allowWrite" | "allowedHosts" | "secrets">,
+  input: Pick<BrowserAgentInput, "mode" | "allowWrite" | "allowedHosts" | "secrets">,
 ): Promise<string | undefined> {
   if (action.action === "finish") return action.answer;
 
@@ -199,9 +200,21 @@ export async function executeBrowserAction(
   }
 
   if (action.action === "click") {
-    if (!input.allowWrite && await sensitive(page, action.selector)) {
-      throw new Error("APPROVAL_REQUIRED: ação sensível bloqueada");
+    const label = await page.$eval(action.selector, el => {
+      const h = el as HTMLElement;
+      const i = el as HTMLInputElement;
+      return [h.innerText, i.value, i.name, i.type, el.getAttribute("aria-label"), el.getAttribute("title")]
+        .filter(Boolean).join(" ");
+    }).catch(() => "");
+
+    if (HIGH_RISK_TEXT.test(label)) {
+      throw new Error("APPROVAL_REQUIRED: ação de alto risco exige confirmação explícita");
     }
+
+    if (!input.allowWrite && (ROUTINE_WRITE_TEXT.test(label) || await sensitive(page, action.selector))) {
+      throw new Error("APPROVAL_REQUIRED: execução está em modo somente leitura");
+    }
+
     await page.click(action.selector);
   }
 
