@@ -14,9 +14,11 @@ const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("finish"), answer: z.string().min(1), outcome: z.enum(["completed", "blocked", "failed"]), reason: z.string().optional() }),
 ]);
 
-export function assertBrowserPageAccessible(state: { title: string; text: string }) {
+export function assertBrowserPageAccessible(state: { title: string; text: string; url?: string }) {
   const content = `${state.title} ${state.text}`;
-  if (/verify you are human|verifying you are human|checking your browser|verificação de segurança|verifique que você é humano/i.test(content)
+  if (/(?:[?&])__cf_chl_(?:rt_tk|tk)=|\/cdn-cgi\/challenge-platform\//i.test(state.url ?? "")
+      || /just a moment|um momento/i.test(state.title)
+      || /verify you are human|verifying you are human|checking your browser|verificação de segurança|verifique que você é humano/i.test(content)
       || (/just a moment|um momento/i.test(state.title) && /cloudflare|verify|verifica/i.test(content))) {
     throw new Error("BROWSER_BLOCKED: o site exige verificação humana. A tarefa não foi concluída.");
   }
@@ -278,4 +280,3 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
     if (!transferred && browser) browser.disconnect();
   }
 }
-

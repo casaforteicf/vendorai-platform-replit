@@ -7,6 +7,7 @@ vi.mock("./browser-agent.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./browser-agent.js")>()),
   planBrowserAction: runtime.plan,
 }));
+import { assertBrowserPageAccessible } from "./browser-agent.js";
 import {
   createLiveBrowserSession, getLiveBrowserSession, setLiveBrowserPaused,
   startLiveBrowserMission, closeLiveBrowserSession,
@@ -40,6 +41,10 @@ afterEach(async () => {
   for (const id of ids.splice(0)) await closeLiveBrowserSession("tenant-a", id);
 });
 describe("human handoff", () => {
+  it("detects a Cloudflare challenge URL before its text renders", () => {
+    expect(() => assertBrowserPageAccessible({ title: "", text: "", url: "https://chatgpt.com/?__cf_chl_rt_tk=test" })).toThrow("BROWSER_BLOCKED");
+    expect(() => assertBrowserPageAccessible({ title: "ChatGPT", text: "Ready", url: "https://chatgpt.com/" })).not.toThrow();
+  });
   it("pauses without asking AI to solve the challenge and resumes on the same page", async () => {
     runtime.blocked = true;
     const onResult = vi.fn(async () => {});
