@@ -351,15 +351,42 @@ export default function Projetos() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!selectedLead) {
-      toast({ title: "Selecione um lead cadastrado", description: "Busque o cliente na base antes de criar o projeto.", variant: "destructive" });
+    if (!selectedLead && !form.clienteNome.trim()) {
+      toast({ title: "Informe o cliente", description: "Selecione um cliente existente ou informe o nome para cadastrá-lo automaticamente.", variant: "destructive" });
       return;
     }
 
     setSaving(true);
     try {
+      let projectLead = selectedLead;
+
+      if (!projectLead) {
+        const leadRes = await fetch("/api/leads", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${getToken()}`,
+          },
+          body: JSON.stringify({
+            tenantId,
+            nome: form.clienteNome.trim(),
+            telefone: form.clienteTelefone.trim() || null,
+            email: form.clienteEmail.trim() || null,
+            source: "manual",
+          }),
+        });
+        const leadData = await leadRes.json().catch(() => ({}));
+        if (leadRes.status === 409 && leadData?.lead) {
+          projectLead = leadData.lead as Lead;
+        } else if (!leadRes.ok) {
+          throw new Error(leadData?.error ?? "Não foi possível cadastrar o cliente.");
+        } else {
+          projectLead = leadData as Lead;
+        }
+      }
+
       const body: Record<string, unknown> = {
-        leadId:    selectedLead.id,
+        leadId:    projectLead.id,
         titulo:    form.titulo,
         tipoObra:  form.tipoObra,
       };
@@ -431,7 +458,7 @@ export default function Projetos() {
             <form onSubmit={handleCreate} className="space-y-4 mt-2">
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2 space-y-1.5">
-                  <Label>Cliente / lead cadastrado *</Label>
+                  <Label>Cliente *</Label>
 
                   {selectedLead ? (
                     <div className="rounded-lg border bg-muted/30 px-3 py-3 flex items-start gap-3">
@@ -517,14 +544,40 @@ export default function Projetos() {
                     </div>
                   )}
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs text-muted-foreground">O projeto usa os dados do lead já cadastrado na base do tenant.</p>
-                    {!selectedLead && (
-                      <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs" onClick={openCreateLead}>
-                        <UserPlus className="h-3.5 w-3.5 mr-1" />
-                        Cadastrar lead
-                      </Button>
-                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Busque um cliente existente. Se for novo, informe os dados abaixo e o VendorAI cadastra automaticamente ao criar o projeto.
+                    </p>
                   </div>
+
+                  {!selectedLead && (
+                    <div className="grid grid-cols-2 gap-3 rounded-lg border bg-muted/20 p-3">
+                      <div className="col-span-2 space-y-1">
+                        <Label>Nome do cliente *</Label>
+                        <Input
+                          value={form.clienteNome}
+                          onChange={(e) => setF("clienteNome", e.target.value)}
+                          placeholder="Nome do cliente"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Telefone</Label>
+                        <Input
+                          value={form.clienteTelefone}
+                          onChange={(e) => setF("clienteTelefone", e.target.value)}
+                          placeholder="(49) 99999-9999"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>E-mail</Label>
+                        <Input
+                          type="email"
+                          value={form.clienteEmail}
+                          onChange={(e) => setF("clienteEmail", e.target.value)}
+                          placeholder="cliente@email.com"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="col-span-2 space-y-1">
@@ -559,8 +612,8 @@ export default function Projetos() {
 
               <div className="flex justify-end gap-2 pt-2">
                 <Button type="button" variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>Cancelar</Button>
-                <Button type="submit" disabled={saving || !form.titulo || !selectedLead}>
-                  {saving ? "Criando..." : "Criar Projeto"}
+                <Button type="submit" disabled={saving || !form.titulo || (!selectedLead && !form.clienteNome.trim())}>
+                  {saving ? "Criando..." : "Criar e abrir projeto"}
                 </Button>
               </div>
             </form>
