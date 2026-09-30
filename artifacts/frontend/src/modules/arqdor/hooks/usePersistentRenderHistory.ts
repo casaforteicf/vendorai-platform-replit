@@ -5,6 +5,7 @@ export type PersistentRenderOperationType = "initial" | "material" | "lighting" 
 export type PersistentRenderSelection = {
   id?: string;
   label?: string;
+  surfaceKey?: string;
   x: number;
   y: number;
   w: number;
