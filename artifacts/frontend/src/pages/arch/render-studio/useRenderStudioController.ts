@@ -489,8 +489,10 @@ export function useRenderStudioController() {
         material_name:    selectedMaterial?.nome,
         material_reference_url: selectedMaterial?.imagens?.[0],
         operation_type:   melhoriaMode === "change-material" ? "material" : melhoriaMode === "change-lighting" ? "lighting" : "improve",
-        // A região editável é definida e confirmada pelo usuário antes da geração.
-        expand_selection_to_material: false,
+        // Em troca de material, a seleção é tratada como envelope/seed:
+        // o backend segmenta apenas a superfície conectada dentro dela.
+        // Nunca expande para fora da área confirmada pelo usuário.
+        expand_selection_to_material: melhoriaMode === "change-material",
         selection_padding_percent: 0,
       });
       const data = await waitForRenderCompletion(render_id);
