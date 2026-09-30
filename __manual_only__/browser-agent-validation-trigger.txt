@@ -1,3 +1,3 @@
 Browser Agent validation trigger
-commit=b19cb99803fdafeb400e5b23931afc7cba2077d1
-purpose=stable-selector-recovery
+commit=c37cb1681061e1a549be1a22f1da3486bbff6fad
+purpose=persistent-session-on-return
