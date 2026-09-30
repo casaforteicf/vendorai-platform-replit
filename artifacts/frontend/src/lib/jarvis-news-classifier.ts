@@ -9,6 +9,9 @@ export type JarvisNewsSection =
   | "Saúde"
   | "Tecnologia"
   | "Infraestrutura"
+  | "Arquitetura & Design"
+  | "Construção"
+  | "Inspirações"
   | "Agro & Ambiente"
   | "Internacional"
   | "Geral";
@@ -66,6 +69,9 @@ export function primaryJarvisNewsSection(item: JarvisNewsClassificationItem): Ja
   if (hasCategory(categories, "politica", "política", "eleitoral")) return "Política";
   if (hasCategory(categories, "saude", "saúde")) return "Saúde";
   if (hasCategory(categories, "ciencia", "ciência", "tecnologia", "inovacao", "inovação")) return "Tecnologia";
+  if (hasCategory(categories, "inspiracoes-projetos", "inspirações-projetos", "inspiracao", "inspiração")) return "Inspirações";
+  if (hasCategory(categories, "arquitetura-design", "arquitetura", "design", "design-interiores", "interiores")) return "Arquitetura & Design";
+  if (hasCategory(categories, "construcao", "construção", "construcao-civil", "construção-civil", "engenharia-civil", "obras")) return "Construção";
   if (hasCategory(categories, "infraestrutura", "transporte", "transito", "trânsito", "logistica", "logística")) return "Infraestrutura";
   if (hasCategory(categories, "agropecuaria", "agropecuária", "agronegocio", "agronegócio", "meio-ambiente", "sustentabilidade")) return "Agro & Ambiente";
   if (hasCategory(categories, "internacional", "geopolitica", "geopolítica", "comercio-exterior", "comércio exterior")) return "Internacional";
@@ -94,6 +100,17 @@ export function primaryJarvisNewsSection(item: JarvisNewsClassificationItem): Ja
 
   if (hasPhrase(text, "saúde", "saude", "sus", "médico", "medico", "hospital", "clínica", "clinica")) return "Saúde";
   if (hasPhrase(text, "ciência", "ciencia", "tecnologia", "inovação", "inovacao", "digital", "inteligência artificial", "inteligencia artificial")) return "Tecnologia";
+  if (hasPhrase(text,
+    "arquitetura", "arquitetônico", "arquitetonico", "arquiteto", "arquitetos", "design de interiores",
+    "interiores", "paisagismo", "urbanismo", "mostra de arquitetura", "casa cor",
+  )) return "Arquitetura & Design";
+
+  if (hasPhrase(text,
+    "construção civil", "construcao civil", "mercado da construção", "mercado da construcao",
+    "construtora", "construtoras", "canteiro de obras", "material de construção", "material de construcao",
+    "engenharia civil", "incorporação imobiliária", "incorporacao imobiliaria", "obra residencial",
+  )) return "Construção";
+
   if (hasPhrase(text, "infraestrutura", "transporte", "trânsito", "transito", "logística", "logistica", "rodovia", "obra", "obras")) return "Infraestrutura";
   if (hasPhrase(text, "agropecuária", "agropecuaria", "agronegócio", "agronegocio", "agro", "meio ambiente", "sustentabilidade", "clima")) return "Agro & Ambiente";
   if (hasPhrase(text, "internacional", "geopolítica", "geopolitica", "comércio exterior", "comercio exterior")) return "Internacional";

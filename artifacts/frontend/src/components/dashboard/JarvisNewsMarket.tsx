@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Building2, ExternalLink, Newspaper, RefreshCw, Sparkles } from "lucide-react";
+import { AlertTriangle, Building2, ExternalLink, Lightbulb, Newspaper, RefreshCw, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -71,6 +71,9 @@ const NEWS_SECTIONS: Array<"Todos" | JarvisNewsSection> = [
   "Saúde",
   "Tecnologia",
   "Infraestrutura",
+  "Arquitetura & Design",
+  "Construção",
+  "Inspirações",
   "Agro & Ambiente",
   "Internacional",
   "Geral",
@@ -300,6 +303,10 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
   }, [allNewsItems, newsFilter]);
 
   const visibleFeed = filteredFeed.slice(0, visibleCount);
+  const inspirationItems = useMemo(
+    () => allNewsItems.filter((item) => primaryJarvisNewsSection(item) === "Inspirações").slice(0, 6),
+    [allNewsItems],
+  );
 
   return (
     <section className="mx-auto w-full max-w-[1600px] space-y-4 px-4 pb-8 sm:px-6 lg:px-8">
@@ -322,7 +329,7 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
           <Button
             variant="outline"
             onClick={() => window.dispatchEvent(new CustomEvent("vendorai:open-support", {
-              detail: { question: "JARVIS, resuma as informações mais importantes de hoje, incluindo política, bolsa, criptomoedas e acontecimentos locais relevantes para o meu negócio." },
+              detail: { question: "JARVIS, resuma as informações mais importantes de hoje, incluindo arquitetura e design, construção, inspirações para projetos, economia e acontecimentos locais relevantes para o meu negócio." },
             }))}
           >
             <Sparkles className="mr-2 h-4 w-4" /> Resumir com JARVIS
@@ -373,6 +380,57 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
                   </article>
                 );
               })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+
+      {inspirationItems.length > 0 && (
+        <Card className="overflow-hidden border-primary/20">
+          <CardContent className="p-5 md:p-6">
+            <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Lightbulb className="h-5 w-5 text-primary" />
+                  <h3 className="text-base font-semibold">Inspirações para projetos</h3>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Referências recentes de arquitetura, interiores, fachadas, materiais e tendências para usar nos projetos.
+                </p>
+              </div>
+              <Button type="button" variant="outline" size="sm" onClick={() => setNewsFilter("Inspirações")}>
+                Ver todas as inspirações
+              </Button>
+            </div>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {inspirationItems.map((item) => (
+                <article key={`inspiration-${item.id}`} className="rounded-xl border bg-background p-4 transition-shadow hover:shadow-sm">
+                  <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                    <Badge variant="outline">Inspiração</Badge>
+                    <span>{formatTime(item.publishedAt ?? item.collectedAt)}</span>
+                  </div>
+                  <h4 className="mt-3 text-sm font-semibold leading-5">{item.title}</h4>
+                  {item.excerpt && <p className="mt-2 line-clamp-3 text-xs leading-5 text-muted-foreground">{item.excerpt}</p>}
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-3">
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-primary hover:underline"
+                      onClick={() => window.dispatchEvent(new CustomEvent("vendorai:open-support", {
+                        detail: { question: `JARVIS, transforme esta referência em ideias aplicáveis a um projeto de arquitetura, sem copiar o projeto original: ${item.title}` },
+                      }))}
+                    >
+                      Extrair ideias com JARVIS
+                    </button>
+                    {item.url ? (
+                      <a href={item.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+                        Abrir referência <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    ) : null}
+                  </div>
+                </article>
+              ))}
             </div>
           </CardContent>
         </Card>
