@@ -35,14 +35,14 @@ jobs:
       - name: Guard confirmation
         run: |
           set -euo pipefail
-          test "\${{ inputs.confirmation }}" = "PUBLICAR"
+          test "${{ inputs.confirmation }}" = "PUBLICAR"
 
       - name: Inspect PR
         id: pr
         env:
-          GH_TOKEN: \${{ github.token }}
-          PR: \${{ inputs.pr_number }}
-          REPO: \${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr_number }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           [[ "$PR" =~ ^[0-9]+$ ]]
@@ -73,9 +73,9 @@ jobs:
 
       - name: Confirm mergeability
         env:
-          GH_TOKEN: \${{ github.token }}
-          PR: \${{ inputs.pr_number }}
-          REPO: \${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr_number }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           for n in {1..12}; do
@@ -91,14 +91,14 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
-          ref: \${{ steps.pr.outputs.head_sha }}
+          ref: ${{ steps.pr.outputs.head_sha }}
           fetch-depth: 0
 
       - name: Guard against main race
         env:
-          GH_TOKEN: \${{ github.token }}
-          REPO: \${{ github.repository }}
-          HEAD: \${{ steps.pr.outputs.head_sha }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD: ${{ steps.pr.outputs.head_sha }}
         run: |
           set -euo pipefail
           main="$(gh api "repos/$REPO/commits/main" --jq .sha)"
@@ -128,15 +128,15 @@ jobs:
       - name: Validate frontend build
         if: steps.pr.outputs.publish == 'true'
         env:
-          VENDOR_BUILD_ID: \${{ steps.pr.outputs.head_sha }}
+          VENDOR_BUILD_ID: ${{ steps.pr.outputs.head_sha }}
         run: pnpm --filter @workspace/frontend build
 
       - name: Recheck exact PR head
         env:
-          GH_TOKEN: \${{ github.token }}
-          PR: \${{ inputs.pr_number }}
-          REPO: \${{ github.repository }}
-          EXPECTED: \${{ steps.pr.outputs.head_sha }}
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr_number }}
+          REPO: ${{ github.repository }}
+          EXPECTED: ${{ steps.pr.outputs.head_sha }}
         run: |
           set -euo pipefail
           data="$(gh api "repos/$REPO/pulls/$PR")"
@@ -149,10 +149,10 @@ jobs:
       - name: Squash merge
         id: merge
         env:
-          GH_TOKEN: \${{ github.token }}
-          PR: \${{ inputs.pr_number }}
-          REPO: \${{ github.repository }}
-          EXPECTED: \${{ steps.pr.outputs.head_sha }}
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr_number }}
+          REPO: ${{ github.repository }}
+          EXPECTED: ${{ steps.pr.outputs.head_sha }}
         run: |
           set -euo pipefail
           result="$(gh api --method PUT "repos/$REPO/pulls/$PR/merge" -f merge_method=squash -f sha="$EXPECTED")"
@@ -164,7 +164,7 @@ jobs:
       - name: Verify Railway revision
         if: steps.pr.outputs.backend == 'true'
         env:
-          EXPECTED: \${{ steps.merge.outputs.sha }}
+          EXPECTED: ${{ steps.merge.outputs.sha }}
         run: |
           set -euo pipefail
           for n in {1..36}; do
@@ -183,9 +183,9 @@ jobs:
       - name: Verify Cloudflare publication
         if: steps.pr.outputs.publish == 'true'
         env:
-          GH_TOKEN: \${{ github.token }}
-          REPO: \${{ github.repository }}
-          EXPECTED: \${{ steps.merge.outputs.sha }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EXPECTED: ${{ steps.merge.outputs.sha }}
         run: |
           set -euo pipefail
           for n in {1..30}; do
@@ -210,19 +210,19 @@ jobs:
       - name: Record success
         if: success()
         env:
-          GH_TOKEN: \${{ github.token }}
-          PR: \${{ inputs.pr_number }}
-          REPO: \${{ github.repository }}
-          SHA: \${{ steps.merge.outputs.sha }}
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr_number }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ steps.merge.outputs.sha }}
         run: |
           gh pr comment "$PR" --repo "$REPO" --body "✅ Merge & Publish Agent: merge concluído em $SHA e produção validada por health checks."
 
       - name: Record post-merge failure
         if: failure() && steps.merge.outputs.sha != ''
         env:
-          GH_TOKEN: \${{ github.token }}
-          PR: \${{ inputs.pr_number }}
-          REPO: \${{ github.repository }}
-          SHA: \${{ steps.merge.outputs.sha }}
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr_number }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ steps.merge.outputs.sha }}
         run: |
           gh pr comment "$PR" --repo "$REPO" --body "⚠️ Merge & Publish Agent: o merge $SHA entrou na main, mas a publicação não foi validada. Rollback automático foi bloqueado por segurança."
