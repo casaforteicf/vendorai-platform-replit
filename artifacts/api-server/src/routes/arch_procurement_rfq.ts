@@ -192,6 +192,44 @@ function codeFor(category: string) {
   const date = new Date().toISOString().slice(0, 10).replaceAll("-", "");
   return `RFQ-${category.toUpperCase().replace(/[^A-Z0-9]+/g, "-").slice(0, 12)}-${date}-${crypto.randomUUID().slice(0, 5).toUpperCase()}`;
 }
+async function ensureArchitectReferralPartner(tid: string, userId: string | null | undefined) {
+  if (!userId) return null;
+  const existing = await pool.query(
+    `SELECT id FROM partners WHERE user_id=$1 AND status='ativo' ORDER BY created_at ASC LIMIT 1`,
+    [userId],
+  );
+  if (existing.rows[0]) return String(existing.rows[0].id);
+
+  const user = await pool.query(
+    `SELECT id,name,email,telefone FROM users WHERE id=$1 AND tenant_id=$2 LIMIT 1`,
+    [userId, tid],
+  );
+  const row = user.rows[0];
+  if (!row?.email) return null;
+
+  const byEmail = await pool.query(
+    `SELECT id FROM partners WHERE lower(email)=lower($1) ORDER BY created_at ASC LIMIT 1`,
+    [row.email],
+  );
+  if (byEmail.rows[0]) {
+    await pool.query(
+      `UPDATE partners SET user_id=COALESCE(user_id,$1),tenant_id=COALESCE(tenant_id,$2),tipo_parceiro='arquiteto'
+        WHERE id=$3`,
+      [userId, tid, byEmail.rows[0].id],
+    );
+    return String(byEmail.rows[0].id);
+  }
+
+  const created = await pool.query(
+    `INSERT INTO partners
+      (id,name,user_id,tenant_id,nome_fantasia,email,telefone,phone,status,tipo_parceiro,created_at,data_cadastro)
+     VALUES(gen_random_uuid()::text,$1,$2,$3,$1,$4,$5,$5,'ativo','arquiteto',now(),now())
+     RETURNING id`,
+    [row.name || row.email, userId, tid, row.email, row.telefone || null],
+  );
+  return created.rows[0]?.id ? String(created.rows[0].id) : null;
+}
+
 function normalizeText(value: unknown) {
   return String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
@@ -519,13 +557,16 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
 
     const primaryChannel = email ? "email" : "whatsapp";
     const destination = email || phone;
+    const referrerUserId = req.user?.sub ? String(req.user.sub) : null;
+    const referrerPartnerId = await ensureArchitectReferralPartner(tid, referrerUserId);
     const inviteResult = await pool.query(
       `INSERT INTO arch_rfq_invitations
        (tenant_id,package_id,supplier_id,supplier_name,contact_name,channel,destination,
-        supplier_email,supplier_phone,access_mode,status,created_at,updated_at)
-       VALUES($1,$2::uuid,NULL,$3,$3,$4,$5,$6,$7,'guest','draft',now(),now())
+        supplier_email,supplier_phone,access_mode,referrer_user_id,referrer_partner_id,referral_attributed_at,
+        status,created_at,updated_at)
+       VALUES($1,$2::uuid,NULL,$3,$3,$4,$5,$6,$7,'guest',$8,$9,now(),'draft',now(),now())
        RETURNING *`,
-      [tid,packageId,name,primaryChannel,destination,email||null,phone||null],
+      [tid,packageId,name,primaryChannel,destination,email||null,phone||null,referrerUserId,referrerPartnerId],
     );
     const invite = inviteResult.rows[0];
     const publicUrl = `${req.protocol}://${req.get("host")}/api/public/arqdor/rfq/${invite.public_token}`;

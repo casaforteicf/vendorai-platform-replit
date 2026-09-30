@@ -273,6 +273,54 @@ async function linkRfqSupplierAccount(params: {
     supplierId = createdSupplier.rows[0]?.id ?? null;
   }
 
+  let activationCommissionId: string | null = null;
+  if (invitation.referrer_partner_id) {
+    const tenantAttribution = await pool.query(
+      `UPDATE tenants
+          SET partner_id=COALESCE(partner_id,$2),
+              indicado_por=COALESCE(indicado_por,$2),
+              origem_cliente=COALESCE(origem_cliente,'rfq_supplier_referral'),
+              updated_at=now()
+        WHERE id=$1
+        RETURNING partner_id,taxa_implantacao_valor`,
+      [params.accountTenantId, invitation.referrer_partner_id],
+    );
+    const attributedTenant = tenantAttribution.rows[0];
+    if (String(attributedTenant?.partner_id || "") === String(invitation.referrer_partner_id)) {
+      const existingCommission = await pool.query(
+        `SELECT id FROM partner_commissions
+          WHERE partner_id=$1 AND tenant_id=$2 AND tipo='rfq_supplier_activation'
+          ORDER BY created_at ASC LIMIT 1`,
+        [invitation.referrer_partner_id, params.accountTenantId],
+      );
+      activationCommissionId = existingCommission.rows[0]?.id ? String(existingCommission.rows[0].id) : null;
+
+      if (!activationCommissionId) {
+        const partnerResult = await pool.query(
+          `SELECT comissao_percentual FROM partners WHERE id=$1 LIMIT 1`,
+          [invitation.referrer_partner_id],
+        );
+        const baseValue = Number(attributedTenant?.taxa_implantacao_valor ?? 0);
+        const percent = Number(partnerResult.rows[0]?.comissao_percentual ?? 0);
+        const commissionValue = baseValue > 0 && percent > 0 ? (baseValue * percent) / 100 : null;
+        const createdCommission = await pool.query(
+          `INSERT INTO partner_commissions
+            (id,partner_id,tenant_id,tipo,valor_base,percentual,valor,data_referencia,status,created_at)
+           VALUES(gen_random_uuid()::text,$1,$2,'rfq_supplier_activation',$3,$4,$5,CURRENT_DATE,'pendente',now())
+           RETURNING id`,
+          [
+            invitation.referrer_partner_id,
+            params.accountTenantId,
+            baseValue > 0 ? String(baseValue) : null,
+            percent > 0 ? String(percent) : null,
+            commissionValue == null ? null : String(commissionValue),
+          ],
+        );
+        activationCommissionId = createdCommission.rows[0]?.id ? String(createdCommission.rows[0].id) : null;
+      }
+    }
+  }
+
   await pool.query(
     `UPDATE arch_rfq_invitations
         SET access_mode='converted',
@@ -283,9 +331,10 @@ async function linkRfqSupplierAccount(params: {
             contact_name=COALESCE(NULLIF($4,''),contact_name),
             supplier_email=COALESCE(NULLIF($5,''),supplier_email),
             supplier_phone=COALESCE(NULLIF($6,''),supplier_phone),
+            activation_commission_id=COALESCE($7,activation_commission_id),
             updated_at=now()
-      WHERE id=$7::uuid`,
-    [params.accountTenantId, supplierId, params.companyName, params.personName, accountEmail, params.phone || "", invitation.id],
+      WHERE id=$8::uuid`,
+    [params.accountTenantId, supplierId, params.companyName, params.personName, accountEmail, params.phone || "", activationCommissionId, invitation.id],
   );
   return true;
 }
