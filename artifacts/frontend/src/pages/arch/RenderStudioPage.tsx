@@ -544,6 +544,7 @@ function readCachedVersions(targetKey: string): RenderStudioVersion[] {
         selectionLabel: version.selectionLabel,
         materialId: version.materialId,
         materialName: version.materialName,
+        surfaceKey: version.surfaceKey,
         approvedBy: version.approvedBy,
         approvedAt: reviveDate(version.approvedAt),
         approvalNote: version.approvalNote,
