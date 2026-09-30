@@ -16,6 +16,7 @@ import {
 import { Bot, CheckCircle2, Sparkles, Users } from "lucide-react";
 import LegacyAgentConfig from "./AgentConfigLegacy";
 import AgentGuidedSetup, { type GuidedAgentData } from "./AgentGuidedSetup";
+import BrowserAgentPanel from "./BrowserAgentPanel";
 
 const FLOW_ORDER = [
   "prospector",
@@ -201,6 +202,10 @@ export default function AgentConfig() {
           <p className="text-sm text-muted-foreground">Os blocos aprovados em Marca e Negócio complementam o conhecimento de cada agente, conforme sua função. As instruções e configurações individuais abaixo continuam editáveis.</p>
           <a href="/configuracoes?tab=marketing" className="inline-block text-sm font-medium text-primary underline">Desenvolver o PN e visualizar a base dos agentes</a>
         </Card>
+      </div>
+
+      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+        <BrowserAgentPanel />
       </div>
 
       <LegacyAgentConfig />
