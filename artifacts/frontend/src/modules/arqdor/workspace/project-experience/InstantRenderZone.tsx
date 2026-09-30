@@ -136,6 +136,7 @@ function buildRenderBody(
   estilo:     string,
   selections: Selections,
   adjustType: AdjustType | null,
+  projectId?: string | null,
 ) {
   const materials: { zone: string; promptFragment: string }[] = []
   const notes: string[] = []
@@ -174,6 +175,7 @@ function buildRenderBody(
   }
 
   return {
+    project_id:         projectId || undefined,
     original_image_url: imageUrl,
     mode:               'preservar',
     ambiente,
@@ -314,12 +316,14 @@ export function InstantRenderZone({ arqState }: Props) {
 
   // ── Start render ──────────────────────────────────────────────────────────
   async function startRender(body: Record<string, unknown>, isReRender = false) {
+    if (!arqState.projectId) {
+      setErrorMsg('Selecione ou crie um projeto com cliente antes de gerar o render.')
+      window.location.assign('/arch/projetos/novo')
+      return
+    }
+
     if (isReRender) setReRendering(true)
     else { setPhase('rendering'); setStepIdx(0) }
-
-    // Auto-criar projeto em background
-    arqState.createProject(`Render ${new Date().toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' })}`, 'interiores')
-      .catch(() => {})
 
     // Cosmetic steps (only for first render)
     if (!isReRender) {
@@ -380,12 +384,12 @@ export function InstantRenderZone({ arqState }: Props) {
   // ── Actions ────────────────────────────────────────────────────────────────
   function onGerar() {
     if (!imageDataUrl) return
-    startRender(buildRenderBody(imageDataUrl, ambiente, estilo, { materiais:{}, cor:null, iluminacao:null, movel:null, itens:'' }, null))
+    startRender(buildRenderBody(imageDataUrl, ambiente, estilo, { materiais:{}, cor:null, iluminacao:null, movel:null, itens:'' }, null, arqState.projectId))
   }
 
   function onAplicar(adj: AdjustType) {
     const src = adj === 'melhorar' ? (currentRender ?? imageDataUrl!) : imageDataUrl!
-    startRender(buildRenderBody(src, ambiente, estilo, selections, adj), true)
+    startRender(buildRenderBody(src, ambiente, estilo, selections, adj, arqState.projectId), true)
     setActiveAdj(null)
   }
 
