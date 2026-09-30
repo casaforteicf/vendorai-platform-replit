@@ -1900,7 +1900,7 @@ function EditDealSheet({
 // ─── Main Board ───────────────────────────────────────────────────────────────
 
 export default function Deals() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const tenantId = user?.tenantId ?? "";
   const queryClient = useQueryClient();
   const { toast } = useToast();
