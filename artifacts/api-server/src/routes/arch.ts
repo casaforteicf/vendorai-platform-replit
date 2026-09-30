@@ -3651,18 +3651,20 @@ router.get("/arch/projetos", authenticate, async (req, res) => {
   const tid = tenantId(req);
   const { status, clienteNome } = req.query as Record<string, string | undefined>;
 
+  const resolvedClientName = sql<string>`coalesce(nullif(trim(${leadsTable.nome}), ''), nullif(trim(${archProjetosTable.clienteNome}), ''))`;
   const conditions = [eq(archProjetosTable.tenantId, tid)];
   if (status) conditions.push(eq(archProjetosTable.status, status));
   if (clienteNome)
-    conditions.push(ilike(archProjetosTable.clienteNome, `%${clienteNome}%`));
+    conditions.push(ilike(resolvedClientName, `%${clienteNome}%`));
 
   const projetos = await db
     .select({
       id:              archProjetosTable.id,
+      leadId:          archProjetosTable.leadId,
       titulo:          archProjetosTable.titulo,
-      clienteNome:     archProjetosTable.clienteNome,
-      clienteEmail:    archProjetosTable.clienteEmail,
-      clienteTelefone: archProjetosTable.clienteTelefone,
+      clienteNome:     resolvedClientName,
+      clienteEmail:    sql<string>`coalesce(nullif(trim(${leadsTable.email}), ''), ${archProjetosTable.clienteEmail})`,
+      clienteTelefone: sql<string>`coalesce(nullif(trim(${leadsTable.telefone}), ''), ${archProjetosTable.clienteTelefone})`,
       status:          archProjetosTable.status,
       tipoObra:        archProjetosTable.tipoObra,
       areaM2:          archProjetosTable.areaM2,
@@ -3687,6 +3689,10 @@ router.get("/arch/projetos", authenticate, async (req, res) => {
       )`.mapWith(Number),
     })
     .from(archProjetosTable)
+    .leftJoin(leadsTable, and(
+      eq(leadsTable.id, archProjetosTable.leadId),
+      eq(leadsTable.tenantId, archProjetosTable.tenantId),
+    ))
     .where(and(...conditions))
     .orderBy(desc(archProjetosTable.createdAt));
 
