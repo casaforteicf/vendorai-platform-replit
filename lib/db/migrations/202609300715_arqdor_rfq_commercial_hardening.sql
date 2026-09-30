@@ -16,6 +16,34 @@ ALTER TABLE public.arch_rfq_packages
   ADD COLUMN IF NOT EXISTS sale_source text,
   ADD COLUMN IF NOT EXISTS technical_documents_snapshot jsonb NOT NULL DEFAULT '[]'::jsonb;
 
+-- Clean up any legacy duplicate invitations before enforcing uniqueness.
+-- Preserve the most advanced response first, then the most recently updated row.
+WITH ranked_invites AS (
+  SELECT id,
+         ROW_NUMBER() OVER (
+           PARTITION BY package_id, supplier_id
+           ORDER BY
+             CASE status
+               WHEN 'accepted' THEN 1
+               WHEN 'responded' THEN 2
+               WHEN 'viewed' THEN 3
+               WHEN 'sent' THEN 4
+               WHEN 'draft' THEN 5
+               WHEN 'failed' THEN 6
+               WHEN 'rejected' THEN 7
+               WHEN 'expired' THEN 8
+               ELSE 9
+             END,
+             updated_at DESC,
+             created_at DESC
+         ) AS rn
+    FROM public.arch_rfq_invitations
+   WHERE supplier_id IS NOT NULL
+)
+DELETE FROM public.arch_rfq_invitations i
+USING ranked_invites r
+WHERE i.id=r.id AND r.rn>1;
+
 CREATE UNIQUE INDEX IF NOT EXISTS uq_arch_rfq_invitation_package_supplier
   ON public.arch_rfq_invitations(package_id, supplier_id)
   WHERE supplier_id IS NOT NULL;
@@ -46,6 +74,9 @@ BEGIN
   END IF;
   IF v_inv.status IN ('accepted','rejected','expired') THEN
     RAISE EXCEPTION 'Cotação encerrada';
+  END IF;
+  IF jsonb_array_length(COALESCE(v_inv.response_documents,'[]'::jsonb)) >= 10 THEN
+    RAISE EXCEPTION 'Limite de anexos atingido';
   END IF;
 
   UPDATE public.arch_rfq_invitations
