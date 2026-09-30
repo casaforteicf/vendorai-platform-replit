@@ -165,7 +165,7 @@ async function sensitive(page: Page, selector: string) {
     return [h.innerText, i.value, i.name, i.type, el.getAttribute("aria-label"), el.getAttribute("title")]
       .filter(Boolean).join(" ");
   }).catch(() => "");
-  return SENSITIVE_TEXT.test(text);
+  return ROUTINE_WRITE_TEXT.test(text) || HIGH_RISK_TEXT.test(text);
 }
 
 async function clearAndType(page: Page, selector: string, value: string) {
