@@ -249,6 +249,7 @@ router.post(
         .values({
           tenantId,
           name: parsed.data.name.trim(),
+          systemKey: parsed.data.systemKey ?? null,
           permissions,
           kind: parsed.data.kind,
           linkedTenantId: representativeLink.linkedTenantId,
@@ -321,6 +322,7 @@ router.patch(
         .update(tenantUserFunctionsTable)
         .set({
           name: parsed.data.name.trim(),
+          systemKey: parsed.data.systemKey ?? null,
           permissions,
           kind: parsed.data.kind,
           linkedTenantId: representativeLink.linkedTenantId,
