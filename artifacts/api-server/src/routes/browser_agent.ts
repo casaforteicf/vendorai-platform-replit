@@ -35,7 +35,6 @@ const connectionPatchSchema = connectionSchema.partial().extend({
 const liveCreateSchema = z.object({
   connectionId: z.string().min(1),
   allowWrite: z.boolean().default(false),
-  tenantId: z.string().optional(),
 });
 
 const liveMissionSchema = z.object({
@@ -65,13 +64,10 @@ const runSchema = z.object({
   mode: z.enum(["assistido", "autonomo"]).default("assistido"),
   allowWrite: z.boolean().default(false),
   maxSteps: z.number().int().min(1).max(30).default(12),
-  tenantId: z.string().optional(),
 });
 
-function resolveTenant(req: any, explicitTenantId?: string) {
-  const ownTenantId = req.user?.tenantId;
-  const isSuperAdmin = req.user?.platformRole === "super_admin";
-  return ownTenantId ?? (isSuperAdmin ? explicitTenantId : undefined);
+function resolveTenant(req: any) {
+  return req.user?.tenantId;
 }
 
 function safeConnection(connection: typeof browserAgentConnectionsTable.$inferSelect) {
@@ -100,7 +96,7 @@ router.get("/browser-agent/status", (_req, res) => {
 });
 
 router.get("/browser-agent/connections", async (req, res) => {
-  const tenantId = resolveTenant(req, String(req.query["tenantId"] ?? ""));
+  const tenantId = resolveTenant(req);
   if (!tenantId) {
     res.status(401).json({ error: "Tenant não resolvido" });
     return;
@@ -121,7 +117,7 @@ router.post("/browser-agent/connections", async (req, res) => {
     return;
   }
 
-  const tenantId = resolveTenant(req, String(req.body?.tenantId ?? ""));
+  const tenantId = resolveTenant(req);
   if (!tenantId) {
     res.status(401).json({ error: "Tenant não resolvido" });
     return;
@@ -153,7 +149,7 @@ router.patch("/browser-agent/connections/:id", async (req, res) => {
     return;
   }
 
-  const tenantId = resolveTenant(req, String(req.body?.tenantId ?? ""));
+  const tenantId = resolveTenant(req);
   if (!tenantId) {
     res.status(401).json({ error: "Tenant não resolvido" });
     return;
@@ -199,7 +195,7 @@ router.patch("/browser-agent/connections/:id", async (req, res) => {
 });
 
 router.delete("/browser-agent/connections/:id", async (req, res) => {
-  const tenantId = resolveTenant(req, String(req.query["tenantId"] ?? ""));
+  const tenantId = resolveTenant(req);
   if (!tenantId) {
     res.status(401).json({ error: "Tenant não resolvido" });
     return;
@@ -228,7 +224,7 @@ router.post("/browser-agent/live", async (req, res) => {
     return;
   }
 
-  const tenantId = resolveTenant(req, parsed.data.tenantId);
+  const tenantId = resolveTenant(req);
   if (!tenantId) {
     res.status(401).json({ error: "Tenant não resolvido" });
     return;
@@ -293,7 +289,7 @@ router.post("/browser-agent/live", async (req, res) => {
 });
 
 router.get("/browser-agent/live/:sessionId", async (req, res) => {
-  const tenantId = resolveTenant(req, String(req.query["tenantId"] ?? ""));
+  const tenantId = resolveTenant(req);
   if (!tenantId) {
     res.status(401).json({ error: "Tenant não resolvido" });
     return;
@@ -307,7 +303,7 @@ router.get("/browser-agent/live/:sessionId", async (req, res) => {
 });
 
 router.get("/browser-agent/live/:sessionId/screenshot", async (req, res) => {
-  const tenantId = resolveTenant(req, String(req.query["tenantId"] ?? ""));
+  const tenantId = resolveTenant(req);
   if (!tenantId) {
     res.status(401).json({ error: "Tenant não resolvido" });
     return;
@@ -327,7 +323,7 @@ router.post("/browser-agent/live/:sessionId/mission", async (req, res) => {
     return;
   }
 
-  const tenantId = resolveTenant(req, String(req.body?.tenantId ?? ""));
+  const tenantId = resolveTenant(req);
   if (!tenantId) {
     res.status(401).json({ error: "Tenant não resolvido" });
     return;
@@ -362,7 +358,7 @@ router.post("/browser-agent/live/:sessionId/pause", async (req, res) => {
     return;
   }
 
-  const tenantId = resolveTenant(req, String(req.body?.tenantId ?? ""));
+  const tenantId = resolveTenant(req);
   if (!tenantId) {
     res.status(401).json({ error: "Tenant não resolvido" });
     return;
@@ -382,7 +378,7 @@ router.post("/browser-agent/live/:sessionId/control", async (req, res) => {
     return;
   }
 
-  const tenantId = resolveTenant(req, String(req.body?.tenantId ?? ""));
+  const tenantId = resolveTenant(req);
   if (!tenantId) {
     res.status(401).json({ error: "Tenant não resolvido" });
     return;
@@ -413,7 +409,7 @@ router.post("/browser-agent/live/:sessionId/control", async (req, res) => {
 });
 
 router.delete("/browser-agent/live/:sessionId", async (req, res) => {
-  const tenantId = resolveTenant(req, String(req.query["tenantId"] ?? ""));
+  const tenantId = resolveTenant(req);
   if (!tenantId) {
     res.status(401).json({ error: "Tenant não resolvido" });
     return;
@@ -441,7 +437,7 @@ router.post("/browser-agent/run", async (req, res) => {
     return;
   }
 
-  const tenantId = resolveTenant(req, parsed.data.tenantId);
+  const tenantId = resolveTenant(req);
   if (!tenantId) {
     res.status(422).json({ error: "tenantId não resolvido" });
     return;
