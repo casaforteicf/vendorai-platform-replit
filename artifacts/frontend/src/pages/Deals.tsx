@@ -1993,7 +1993,7 @@ export default function Deals() {
 
   const visibleEtapas = useMemo(() => {
     const base = ETAPAS
-      .filter((stage) => !stageConfig[stage.value]?.hidden)
+      .filter((stage) => (stage.value !== "conferencia_estoque" || !!stagesByKey[stage.value]) && !stageConfig[stage.value]?.hidden)
       .map((stage) => {
         const serverStage = stagesByKey[stage.value];
         return {
@@ -2015,7 +2015,7 @@ export default function Deals() {
 
   const kanbanColumns = useMemo(() => {
     const baseColumns = KANBAN_COLUMNS
-      .filter((column) => !stageConfig[column.onDrop.etapa]?.hidden)
+      .filter((column) => (column.onDrop.etapa !== "conferencia_estoque" || !!stagesByKey[column.onDrop.etapa]) && !stageConfig[column.onDrop.etapa]?.hidden)
       .map((column) => {
         const serverStage = stagesByKey[column.onDrop.etapa];
         const customLabel = stageConfig[column.onDrop.etapa]?.label;
@@ -2550,7 +2550,7 @@ export default function Deals() {
             <DialogHeader><DialogTitle>Gerenciar etapas da pipeline</DialogTitle></DialogHeader>
             <p className="text-sm text-muted-foreground">Edite o nome exibido, o tempo máximo em dias (SLA) que um negócio pode ficar parado na etapa antes do card ficar vermelho, ou remova etapas vazias. Etapas do sistema (com automação de contrato/cobrança) não podem ser excluídas.</p>
             <div className="space-y-2">
-              {ETAPAS.map((stage) => {
+              {ETAPAS.filter((stage) => stage.value !== "conferencia_estoque" || !!stagesByKey[stage.value]).map((stage) => {
                 const count = deals.filter((deal) => deal.etapa === stage.value).length;
                 const hidden = !!stageConfig[stage.value]?.hidden;
                 const serverStage = stagesByKey[stage.value];
