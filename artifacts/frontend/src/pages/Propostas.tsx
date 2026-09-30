@@ -2333,7 +2333,7 @@ function isConstructionBudgetProfile(profile: any) {
     profile?.nomeFantasia,
     profile?.razaoSocial,
   ].filter(Boolean).join(" "));
-  return /(construtora|construcao civil|execucao de obra|empreiteira|builder|construction|casa ?forte|icf)/.test(context);
+  return /(construtora|construcao civil|execucao de obra|empreiteira|engenharia civil|reformas?|builder|construction|casa ?forte|icf)/.test(context);
 }
 
 function getGenericBudgetGroups(verticalRaw: unknown) {
@@ -3197,11 +3197,7 @@ function newFreeItem(): FreeItem {
       setOrcamentoEtapas([{ id: DEFAULT_ETAPA_ID, nome: genericBudgetGroups[0] ?? "Produtos" }]);
       setCartLines((current) => {
         const migrated = current
-          .filter((line) => {
-            if (line.tipo !== "composicao" || !line.composicaoId) return true;
-            const composicao = composicoes.find((item) => item.id === line.composicaoId);
-            return !composicao?.codigo || !ICF_DEFAULT_COMPOSITION_CODES.has(String(composicao.codigo));
-          })
+          .filter((line) => line.tipo !== "composicao")
           .map((line) => ({ ...line, etapaId: DEFAULT_ETAPA_ID }));
         return migrated.length ? migrated : [{ etapaId: DEFAULT_ETAPA_ID, tipo: "produto", quantidade: 1 }];
       });
@@ -5371,7 +5367,10 @@ function newFreeItem(): FreeItem {
                   </div>
 
                   <div className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-                    <strong>Padrão recomendado:</strong> apresentar o valor macro por etapa, manter o escopo técnico visível e ocultar quantidade/preço unitário quando não forem necessários. As fases continuam completas para cronograma e medição, mesmo quando o cliente vê apenas o resumo comercial.
+                    <strong>Padrão recomendado:</strong>{" "}
+                    {isConstructionTenant
+                      ? "apresentar o valor macro por etapa, manter o escopo técnico visível e ocultar quantidade/preço unitário quando não forem necessários. As fases continuam completas para cronograma e medição, mesmo quando o cliente vê apenas o resumo comercial."
+                      : "organizar a oferta por grupos comerciais, manter o escopo e os entregáveis claros e mostrar apenas o nível de detalhe necessário para a decisão do cliente."}
                   </div>
 
                   <Separator />
@@ -5385,22 +5384,24 @@ function newFreeItem(): FreeItem {
                     </div>
 
                     <div className="grid gap-3 lg:grid-cols-2">
-                      <div className="space-y-1.5">
-                        <Label>Área total construída (m²)</Label>
-                        <Input
-                          data-integrity-field="apresentacao.areaTotalConstruida"
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={builtAreaTotal ?? ""}
-                          onChange={(event) => {
-                            const raw = event.target.value;
-                            const value = raw === "" ? undefined : Number(raw);
-                            setBuiltAreaTotal(value != null && Number.isFinite(value) ? value : undefined);
-                          }}
-                          placeholder="Ex.: 275,00"
-                        />
-                      </div>
+                      {isConstructionTenant && (
+                        <div className="space-y-1.5">
+                          <Label>Área total construída (m²)</Label>
+                          <Input
+                            data-integrity-field="apresentacao.areaTotalConstruida"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={builtAreaTotal ?? ""}
+                            onChange={(event) => {
+                              const raw = event.target.value;
+                              const value = raw === "" ? undefined : Number(raw);
+                              setBuiltAreaTotal(value != null && Number.isFinite(value) ? value : undefined);
+                            }}
+                            placeholder="Ex.: 275,00"
+                          />
+                        </div>
+                      )}
                       <div className="space-y-1.5">
                         <Label>Exclusões comerciais / itens não inclusos</Label>
                         <Textarea
@@ -5412,12 +5413,14 @@ function newFreeItem(): FreeItem {
                         />
                       </div>
                       <div className="space-y-1.5 lg:col-span-2">
-                        <Label>Entendimento do projeto</Label>
+                        <Label>{isConstructionTenant ? "Entendimento do projeto" : "Entendimento da proposta"}</Label>
                         <Textarea
                           data-integrity-field="apresentacao.descricaoProjeto"
                           value={projectDescription}
                           onChange={(event) => setProjectDescription(event.target.value)}
-                          placeholder="Ex.: residência de 250 m², 2 pavimentos, 3 suítes, área gourmet, padrão alto, sistema ICF..."
+                          placeholder={isConstructionTenant
+                            ? "Ex.: residência de 250 m², 2 pavimentos, 3 suítes, área gourmet, padrão alto, sistema ICF..."
+                            : "Resuma a necessidade do cliente, o objetivo da contratação e o resultado esperado."}
                           className="min-h-[90px]"
                         />
                       </div>
@@ -5427,17 +5430,21 @@ function newFreeItem(): FreeItem {
                           data-integrity-field="apresentacao.premissasObra"
                           value={projectAssumptionsText}
                           onChange={(event) => setProjectAssumptionsText(event.target.value)}
-                          placeholder={"Uma premissa por linha\nEx.: terreno com acesso para betoneira\nSPT compatível com a solução prevista"}
+                          placeholder={isConstructionTenant
+                            ? "Uma premissa por linha\nEx.: terreno com acesso para betoneira\nSPT compatível com a solução prevista"
+                            : "Uma premissa por linha\nEx.: informações fornecidas pelo cliente\nDependências, limites ou condições para execução do serviço"}
                           className="min-h-[120px]"
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <Label>Memorial descritivo resumido</Label>
+                        <Label>{isConstructionTenant ? "Memorial descritivo resumido" : "Descrição do escopo / entregáveis"}</Label>
                         <Textarea
                           data-integrity-field="apresentacao.memorialDescritivo"
                           value={descriptiveMemorial}
                           onChange={(event) => setDescriptiveMemorial(event.target.value)}
-                          placeholder="Materiais, padrões, marcas de referência, normas e nível de acabamento."
+                          placeholder={isConstructionTenant
+                            ? "Materiais, padrões, marcas de referência, normas e nível de acabamento."
+                            : "Descreva serviços, produtos, entregáveis, especificações e critérios aplicáveis."}
                           className="min-h-[120px]"
                         />
                       </div>
@@ -5447,7 +5454,9 @@ function newFreeItem(): FreeItem {
                           data-integrity-field="apresentacao.condicoesPagamentoDetalhadas"
                           value={detailedPaymentTerms}
                           onChange={(event) => setDetailedPaymentTerms(event.target.value)}
-                          placeholder="Ex.: 10% na contratação; medições mensais por avanço; vencimento em 5 dias após medição aprovada."
+                          placeholder={isConstructionTenant
+                            ? "Ex.: 10% na contratação; medições mensais por avanço; vencimento em 5 dias após medição aprovada."
+                            : "Ex.: 30% na contratação e saldo na entrega; ou mensalidade com vencimento todo dia 10."}
                           className="min-h-[110px]"
                         />
                       </div>
@@ -5457,12 +5466,14 @@ function newFreeItem(): FreeItem {
                           data-integrity-field="apresentacao.politicaReajuste"
                           value={adjustmentPolicy}
                           onChange={(event) => setAdjustmentPolicy(event.target.value)}
-                          placeholder="Ex.: reajuste pelo INCC após 12 meses, conforme contrato."
+                          placeholder={isConstructionTenant
+                            ? "Ex.: reajuste pelo INCC após 12 meses, conforme contrato."
+                            : "Informe índice, periodicidade ou regra de reajuste quando aplicável."}
                           className="min-h-[110px]"
                         />
                       </div>
                       <div className="space-y-1.5 lg:col-span-2">
-                        <Label>Garantias e assistência pós-obra</Label>
+                        <Label>{isConstructionTenant ? "Garantias e assistência pós-obra" : "Garantias e suporte"}</Label>
                         <Textarea
                           data-integrity-field="apresentacao.garantiasContratuais"
                           value={warrantyTerms}
@@ -5474,9 +5485,11 @@ function newFreeItem(): FreeItem {
                     </div>
                   </div>
 
-                  <Separator />
+                  {isConstructionTenant && (
+                    <>
+                      <Separator />
 
-                  <div className="space-y-4" data-integrity-field="apresentacao.cronogramaEtapas">
+                      <div className="space-y-4" data-integrity-field="apresentacao.cronogramaEtapas">
                     <div>
                       <p className="text-sm font-semibold">Cronograma executivo e fluxo financeiro</p>
                       <p className="text-xs text-muted-foreground">
@@ -5892,10 +5905,12 @@ function newFreeItem(): FreeItem {
                       );
                     })()}
 
-                    <div className="rounded-md border border-dashed bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
-                      A proposta aprovada vira a <strong>linha-base da obra</strong>. O mesmo cronograma será usado na execução e no Portal do Cliente para comparar previsto × executado × medido × financeiro, preservando revisões e aditivos.
-                    </div>
-                  </div>
+                        <div className="rounded-md border border-dashed bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
+                          A proposta aprovada vira a <strong>linha-base da obra</strong>. O mesmo cronograma será usado na execução e no Portal do Cliente para comparar previsto × executado × medido × financeiro, preservando revisões e aditivos.
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </CardContent>
               </Card>
             )}
