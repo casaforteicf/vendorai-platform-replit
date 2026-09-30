@@ -204,6 +204,8 @@ jobs:
         run: pnpm --filter @workspace/frontend build
 
       - name: Publish frontend directly to Cloudflare Pages
+        id: primary_frontend_publish
+        continue-on-error: true
         if: steps.pr.outputs.app == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -227,13 +229,13 @@ jobs:
           for n in {1..24}; do
             html="$(curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$FRONTEND_URL/?__vendorai_release=$RANDOM" || true)"
             if grep -F -- "-$prefix-" <<<"$html" >/dev/null; then
-              echo "Cloudflare frontend matches merged revision $EXPECTED"
+              echo "Cloudflare frontend matches merged revision $EXPECTED (primary or Railway fallback route)"
               exit 0
             fi
             echo "Waiting for Cloudflare frontend revision $prefix (attempt $n)"
             sleep 10
           done
-          echo "Published frontend did not expose expected revision $prefix."
+          echo "Neither primary publish nor Railway fallback exposed expected frontend revision $prefix."
           exit 1
 
       - name: Build website
@@ -241,6 +243,8 @@ jobs:
         run: pnpm --filter @workspace/website build
 
       - name: Publish website directly to Cloudflare Pages
+        id: primary_website_publish
+        continue-on-error: true
         if: steps.pr.outputs.website == 'true' && steps.pr.outputs.mobile != 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -421,6 +425,8 @@ jobs:
         run: pnpm --filter @workspace/frontend build
 
       - name: Publish app frontend
+        id: push_primary_frontend_publish
+        continue-on-error: true
         if: steps.release.outputs.app == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -446,7 +452,7 @@ jobs:
             if grep -F -- "-$prefix-" <<<"$html" >/dev/null; then exit 0; fi
             sleep 10
           done
-          echo "::error::App frontend does not expose revision $prefix"
+          echo "::error::Neither primary publish nor Railway fallback exposed app revision $prefix"
           exit 1
 
       - name: Build public website
@@ -454,6 +460,8 @@ jobs:
         run: pnpm --filter @workspace/website build
 
       - name: Publish public website
+        id: push_primary_website_publish
+        continue-on-error: true
         if: steps.release.outputs.website == 'true' && steps.release.outputs.mobile != 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
