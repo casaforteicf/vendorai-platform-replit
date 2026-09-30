@@ -4,6 +4,7 @@ import {
   db,
   agentActionsLogTable,
   browserAgentConnectionsTable,
+  tenantsTable,
 } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { encrypt, decrypt } from "../lib/crypto.js";
@@ -61,8 +62,8 @@ const runSchema = z.object({
   connectionId: z.string().optional(),
   agentName: z.string().min(1).default("browser"),
   leadId: z.string().optional(),
-  mode: z.enum(["assistido", "autonomo"]).default("assistido"),
-  allowWrite: z.boolean().default(false),
+  mode: z.enum(["assistido", "autonomo"]).optional(),
+  allowWrite: z.boolean().optional(),
   maxSteps: z.number().int().min(1).max(30).default(12),
 });
 
@@ -443,6 +444,15 @@ router.post("/browser-agent/run", async (req, res) => {
     return;
   }
 
+  const [tenantAutonomy] = await db
+    .select({ autonomyEnabledAt: tenantsTable.autonomyEnabledAt })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId))
+    .limit(1);
+  const autonomyEnabled = Boolean(tenantAutonomy?.autonomyEnabledAt);
+  const mode = parsed.data.mode ?? (autonomyEnabled ? "autonomo" : "assistido");
+  const allowWrite = parsed.data.allowWrite ?? autonomyEnabled;
+
   let connection: typeof browserAgentConnectionsTable.$inferSelect | undefined;
   if (parsed.data.connectionId) {
     [connection] = await db
@@ -470,13 +480,13 @@ router.post("/browser-agent/run", async (req, res) => {
     leadId: parsed.data.leadId ?? null,
     agentName: parsed.data.agentName,
     actionType: "browser_run",
-    status: parsed.data.allowWrite ? "approved" : "pending",
+    status: allowWrite ? "approved" : "pending",
     payload: {
       goal: parsed.data.goal,
       startUrl,
       connectionId: connection?.id ?? null,
-      mode: parsed.data.mode,
-      allowWrite: parsed.data.allowWrite,
+      mode,
+      allowWrite,
     },
   }).returning();
 
@@ -489,8 +499,8 @@ router.post("/browser-agent/run", async (req, res) => {
       tenantId,
       goal: parsed.data.goal,
       startUrl,
-      mode: parsed.data.mode,
-      allowWrite: parsed.data.allowWrite,
+      mode,
+      allowWrite,
       maxSteps: parsed.data.maxSteps,
       allowedHosts: connection?.allowedHosts ?? [],
       secrets: connection ? {
