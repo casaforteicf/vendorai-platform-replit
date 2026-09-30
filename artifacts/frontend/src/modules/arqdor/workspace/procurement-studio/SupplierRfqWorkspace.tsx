@@ -34,6 +34,8 @@ export default function SupplierRfqWorkspace({arqState,onNavigate}:{arqState:any
   const [selectedSuppliers,setSelectedSuppliers]=useState<string[]>([]);
   const [busy,setBusy]=useState<string|null>(null);
   const [error,setError]=useState<string|null>(null);
+  const [revisionSaleTotal,setRevisionSaleTotal]=useState<number|"" >("");
+  const [success,setSuccess]=useState<string|null>(null);
 
   const load=useCallback(async()=>{
     if(!meta.id)return;
@@ -63,6 +65,9 @@ export default function SupplierRfqWorkspace({arqState,onNavigate}:{arqState:any
   const estimatedCost=items.reduce((sum,i)=>sum+n(i.custo_estimado_snapshot),0);
   const confirmedCost=items.reduce((sum,i)=>sum+n(i.custo_confirmado),0);
   const stale=items.filter(i=>i.cotacao_desatualizada).length;
+  const highestQuote=invitations.reduce((max,inv)=>Math.max(max,n(inv.total_value)),0);
+  const plannedMarginPct=hasSaleValue&&saleValue>0?(saleValue-estimatedCost)/saleValue:0;
+  const suggestedSale=highestQuote>0&&plannedMarginPct<1?highestQuote/Math.max(0.01,1-plannedMarginPct):saleValue;
 
   async function generate(){
     if(!obraId||!budgetId)return;
@@ -94,6 +99,18 @@ export default function SupplierRfqWorkspace({arqState,onNavigate}:{arqState:any
     }catch(e){setError(e instanceof Error?e.message:"Falha ao enviar cotações.")}
     finally{setBusy(null)}
   }
+  async function createCommercialRevision(){
+    if(!selectedPackage||revisionSaleTotal===""||n(revisionSaleTotal)<=0)return;
+    setBusy("revision");setError(null);setSuccess(null);
+    try{
+      const result=await api<any>(`/api/arch/procurement-rfq/${obraId}/packages/${selectedPackage.id}/commercial-revision`,{method:"POST",body:JSON.stringify({saleTotal:n(revisionSaleTotal)})});
+      setSuccess(`Revisão ${result.revisionNumero||result.revisionLabel||""} criada como rascunho. A proposta anterior foi preservada.`);
+      setRevisionSaleTotal("");
+      await load();
+    }catch(e){setError(e instanceof Error?e.message:"Falha ao criar revisão comercial.")}
+    finally{setBusy(null)}
+  }
+
   async function select(invitationId:string){
     if(!selectedPackage)return;
     setBusy(invitationId);setError(null);
@@ -116,7 +133,7 @@ export default function SupplierRfqWorkspace({arqState,onNavigate}:{arqState:any
       </div>
     </header>
 
-    {error?<div className="rounded-3xl border border-rose-100 bg-rose-50 p-4 text-sm font-semibold text-rose-700">{error}</div>:null}
+    {error?<div className="rounded-3xl border border-rose-100 bg-rose-50 p-4 text-sm font-semibold text-rose-700">{error}</div>:null}{success?<div className="rounded-3xl border border-emerald-100 bg-emerald-50 p-4 text-sm font-semibold text-emerald-700">{success}</div>:null}
 
     <div className="grid gap-4 md:grid-cols-4">
       <Metric label="Preço de venda" value={hasSaleValue?money(saleValue):"Não definido"} hint={selectedPackage?.proposal_revision?`Referência ${selectedPackage.proposal_revision}`:"Defina no orçamento/proposta"}/>
@@ -165,7 +182,9 @@ export default function SupplierRfqWorkspace({arqState,onNavigate}:{arqState:any
             {invitations.map(inv=>{const cost=n(inv.total_value);const margin=hasSaleValue?saleValue-cost:null;const marginPct=hasSaleValue&&margin!=null?(margin/saleValue)*100:null;return <tr key={inv.id} className="border-b border-slate-100"><td className="py-3 font-semibold">{inv.supplier_name}<div className="text-[11px] font-normal text-slate-400">{(inv.response_documents||[]).length} anexo(s)</div></td><td><span className={`rounded-full px-2 py-1 text-xs font-bold ${badge(inv.status)}`}>{statusLabel(inv.status)}</span></td><td>{inv.total_value!=null?money(cost):"aguardando"}</td><td>{inv.lead_time_days!=null?`${inv.lead_time_days} dias`:"—"}</td><td>{inv.payment_terms||"—"}</td><td>{inv.total_value!=null&&margin!=null?<span className={margin>=0?"font-semibold text-emerald-700":"font-semibold text-rose-700"}>{money(margin)} • {marginPct?.toFixed(1)}%</span>:"—"}</td><td>{inv.status==="responded"?<button disabled={busy===inv.id} onClick={()=>void select(inv.id)} className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-bold text-white">{busy===inv.id?"Salvando...":"Selecionar"}</button>:null}</td></tr>})}
             {!invitations.length?<tr><td colSpan={7} className="py-6 text-center text-slate-500">Nenhum fornecedor convidado para este pacote.</td></tr>:null}
           </tbody></table></div>
-          {hasSaleValue&&invitations.some(i=>i.total_value!=null&&n(i.total_value)>saleValue)?<div className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-800"><strong>Atenção:</strong> existe cotação acima do preço de venda deste pacote. O sistema não altera a proposta automaticamente; crie uma revisão comercial se necessário.</div>:null}{!hasSaleValue?<div className="mt-4 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600"><strong>Margem indisponível:</strong> defina o preço de venda no orçamento ou vincule uma proposta comercial. O custo cotado continua disponível normalmente.</div>:null}
+          {hasSaleValue&&invitations.some(i=>i.total_value!=null&&n(i.total_value)>saleValue)?<div className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900"><strong>Atenção:</strong> existe cotação acima do preço de venda deste pacote. A proposta atual não será alterada automaticamente.
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end"><label className="flex-1"><span className="block text-[11px] font-bold uppercase">Novo preço comercial</span><input type="number" min={0} step="0.01" value={revisionSaleTotal} onFocus={()=>{if(revisionSaleTotal==="")setRevisionSaleTotal(Number(suggestedSale.toFixed(2)))}} onChange={e=>setRevisionSaleTotal(e.target.value===""?"":Number(e.target.value))} placeholder={suggestedSale>0?`Sugestão: ${money(suggestedSale)}`:"Informe o novo valor"} className="mt-1 w-full rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm text-slate-900"/></label><button type="button" disabled={busy==="revision"||revisionSaleTotal===""||!selectedPackage.commercial_proposal_id} onClick={()=>void createCommercialRevision()} className="rounded-xl bg-amber-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{busy==="revision"?"Criando...":"Criar revisão comercial"}</button></div>
+            {!selectedPackage.commercial_proposal_id?<p className="mt-2 text-xs">Ainda não existe proposta comercial vinculada. Defina o preço no orçamento e gere a proposta antes de criar a revisão.</p>:null}</div>:null}{!hasSaleValue?<div className="mt-4 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600"><strong>Margem indisponível:</strong> defina o preço de venda no orçamento ou vincule uma proposta comercial. O custo cotado continua disponível normalmente.</div>:null}
         </section>
 
         {invitations.some(inv=>["responded","accepted"].includes(inv.status))?<section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
