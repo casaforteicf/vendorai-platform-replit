@@ -1034,6 +1034,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [referenceTraceState, setReferenceTraceState] = useState<"idle" | "loading" | "error" | "ready" | "applied">("idle");
   const [referenceDisplayMode, setReferenceDisplayMode] = useState<"reference" | "vector" | "overlay">("overlay");
   const [referenceTracePreview, setReferenceTracePreview] = useState<ReferenceTracePreview | null>(null);
+  const resumedReferenceTraceRef = useRef<string | null>(null);
   const [selectedTraceElement, setSelectedTraceElement] = useState<{ kind: "wall" | "opening"; id: string } | null>(null);
   const [sourceFiles, setSourceFiles] = useState<ProjectSourceFile[]>([]);
   const [sourceFileState, setSourceFileState] = useState<"idle" | "uploading" | "error" | "success">("idle");
@@ -4547,6 +4548,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
     setReferenceTraceState("applied");
     setReferenceDisplayMode("vector");
+    setLibraryOpen(false);
     setReferencePlanMessage(
       `Planta editável gerada: ${importedWalls.length} paredes e ${importedOpenings.length} aberturas. Revise medidas e conexões antes de seguir.`,
     );
@@ -4558,6 +4560,69 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     if (!preview) return;
     await applyReferenceTracePreview(preview, { confirm: true });
   };
+
+  useEffect(() => {
+    const id = conceptIdRef.current ?? conceptId;
+    if (
+      !id ||
+      referencePlan?.kind !== "image" ||
+      referenceTraceState !== "idle" ||
+      saveState === "loading" ||
+      projectMaster ||
+      safeRooms.length > 0 ||
+      safeCustomWalls.length > 0
+    ) return;
+
+    const traceKey = `${id}:${referencePlan.url}`;
+    if (resumedReferenceTraceRef.current === traceKey) return;
+    resumedReferenceTraceRef.current = traceKey;
+
+    setReferenceTraceState("loading");
+    setReferenceDisplayMode("reference");
+    setReferencePlanMessage("Retomando análise da planta importada...");
+    const token = typeof window !== "undefined" ? localStorage.getItem("vendorai_token") : null;
+
+    void fetch(`/api/arch/concept-projects/${encodeURIComponent(id)}/reference-plan/trace`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({})) as ReferenceTracePreview & { error?: string };
+        if (!response.ok) throw new Error(payload.error ?? "Não foi possível interpretar a planta com IA.");
+        setReferenceTracePreview(payload);
+        setSelectedTraceElement(null);
+
+        if (payload.canApply && payload.walls.length > 0) {
+          const applied = await applyReferenceTracePreview(payload, {
+            confirm: false,
+            referencePlanOverride: referencePlan,
+          });
+          if (!applied) {
+            setReferenceTraceState("ready");
+            setReferenceDisplayMode("overlay");
+          }
+        } else {
+          setReferenceTraceState("ready");
+          setReferenceDisplayMode("overlay");
+          setReferencePlanMessage(
+            "A imagem foi analisada, mas falta confiança suficiente para gerar a planta automaticamente. Calibre uma medida e tente novamente.",
+          );
+        }
+      })
+      .catch((error) => {
+        setReferenceTraceState("error");
+        setReferencePlanMessage(error instanceof Error ? error.message : "Falha ao retomar a leitura da planta.");
+      });
+  }, [
+    conceptId,
+    referencePlan?.kind,
+    referencePlan?.url,
+    referenceTraceState,
+    saveState,
+    projectMaster,
+    safeRooms.length,
+    safeCustomWalls.length,
+  ]);
 
   const uploadReferencePlan = async (file: File) => {
     if (referencePlanState === "uploading") return;
@@ -5923,7 +5988,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
         {step === 4 && (
           <section className="min-h-screen overflow-hidden bg-[#eef1f4] arq-workspace-stage">
-            <div className="arq-app-bar relative flex min-h-14 flex-wrap items-center justify-between gap-2 border-b border-slate-800 bg-slate-950 px-2 py-1.5 text-white shadow-[0_8px_30px_rgba(15,23,42,0.14)] sm:px-4 lg:h-14 lg:flex-nowrap lg:py-0">
+            <div className="arq-app-bar relative flex min-h-12 flex-wrap items-center justify-between gap-1.5 border-b border-slate-200 bg-white px-2 py-1 text-slate-900 shadow-sm sm:px-3 lg:h-12 lg:flex-nowrap lg:py-0">
               <div className="flex min-w-0 items-center gap-2">
                 {!guestMode && <a
                   href="/arch"
@@ -6365,7 +6430,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
               </div>
             )}
 
-            <div className="arq-journey-row flex flex-wrap items-center gap-2 border-b bg-white px-3 py-2 sm:px-4">
+            <div className="arq-journey-row flex min-h-11 flex-wrap items-center gap-2 border-b bg-white px-3 py-1.5 sm:px-3">
               <div className="min-w-0 flex-1">
                 <div className="text-xs font-bold text-slate-950">
                   <span className="sm:hidden">{journeyIndex + 1}/{journeyStages.length} · </span>
@@ -6618,7 +6683,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       <div className="my-1 h-px w-8 bg-slate-200" />
                     </div>
                   </div>
-                  <div className={libraryOpen ? "fixed inset-x-2 bottom-20 z-40 max-h-[68vh] overflow-y-auto rounded-3xl border bg-white shadow-2xl md:static md:inset-auto md:z-auto md:max-h-none md:w-[300px] md:overflow-visible md:rounded-none md:border-0 md:shadow-none" : "hidden"}>
+                  <div className={libraryOpen ? "fixed inset-x-2 bottom-20 z-40 max-h-[68vh] overflow-y-auto rounded-3xl border bg-white shadow-2xl md:static md:inset-auto md:z-auto md:max-h-none md:w-[260px] md:overflow-visible md:rounded-none md:border-0 md:shadow-none" : "hidden"}>
                 <div className="sticky top-0 z-10 rounded-t-3xl border-b bg-white px-4 py-3 md:rounded-none md:px-5 md:py-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -7785,6 +7850,41 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
               </aside>
 
               <div className="arq-workspace-center arq-canvas relative min-h-[calc(100dvh-56px)] overflow-hidden bg-[#f6f7f8]">
+                  {editorView === "plan" && referencePlan?.kind === "image" && referenceTraceState !== "applied" && (
+                    <div className="absolute left-1/2 top-3 z-[70] w-[min(620px,calc(100%-32px))] -translate-x-1/2 rounded-2xl border border-blue-200 bg-white/95 px-4 py-3 shadow-xl backdrop-blur">
+                      <div className="flex items-center gap-3">
+                        <div className={referenceTraceState === "error"
+                          ? "grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-red-50 text-red-600"
+                          : "grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-700"}>
+                          {referenceTraceState === "loading" ? <Sparkles className="h-4 w-4 animate-pulse" /> : <Ruler className="h-4 w-4" />}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-bold text-slate-950">
+                            {referenceTraceState === "loading"
+                              ? "Gerando planta editável..."
+                              : referenceTraceState === "ready"
+                                ? "Planta reconhecida — revisar"
+                                : referenceTraceState === "error"
+                                  ? "A leitura da planta precisa de atenção"
+                                  : "Imagem importada — preparando leitura"}
+                          </div>
+                          <div className="mt-0.5 truncate text-[11px] text-slate-500">
+                            {referencePlanMessage ?? "A imagem será convertida em paredes e aberturas editáveis."}
+                          </div>
+                        </div>
+                        {referenceTraceState === "error" && (
+                          <button
+                            type="button"
+                            onClick={() => void traceReferencePlanWithAi()}
+                            className="shrink-0 rounded-xl bg-slate-950 px-3 py-2 text-[11px] font-bold text-white"
+                          >
+                            Tentar novamente
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   {editorView === "plan" && !terrainOnly && (
                       <div className={`absolute top-3 z-30 flex snap-x items-center gap-1.5 overflow-x-auto rounded-2xl border border-slate-200 bg-white/96 p-1.5 shadow-md backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
                         left-16 right-3 md:right-auto
@@ -7889,7 +7989,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       <div
                         className={`absolute bottom-0 top-0 z-10
                           left-14 right-0 sm:left-16
-                          ${libraryOpen ? "md:left-[364px]" : "md:left-16"}
+                          ${libraryOpen ? "md:left-[324px]" : "md:left-16"}
                           ${hasEditorSelection ? "md:right-[364px]" : "md:right-0"}
                         `}
                       >
