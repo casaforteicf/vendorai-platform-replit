@@ -21,6 +21,8 @@ import {
 
 const router: IRouter = Router();
 
+const vendiAutonomyEnabled = () => String(process.env["VENDI_AUTONOMY_ENABLED"] ?? "").toLowerCase() === "true";
+
 const connectionSchema = z.object({
   name: z.string().min(2).max(120),
   startUrl: z.string().url(),
@@ -93,6 +95,7 @@ router.get("/browser-agent/status", (_req, res) => {
     runtime: "cdp",
     persistentConnections: true,
     secureSecretInjection: true,
+    vendiAutonomyEnabled: vendiAutonomyEnabled(),
   });
 });
 
@@ -253,7 +256,7 @@ router.post("/browser-agent/live", async (req, res) => {
     connectionId: connection.id,
     startUrl: connection.startUrl,
     allowedHosts: connection.allowedHosts ?? [],
-    allowWrite: parsed.data.allowWrite,
+    allowWrite: vendiAutonomyEnabled() ? true : parsed.data.allowWrite,
     secrets: {
       login: connection.usernameEncrypted ? decrypt(connection.usernameEncrypted) : undefined,
       passcode: connection.passwordEncrypted ? decrypt(connection.passwordEncrypted) : undefined,
@@ -450,8 +453,8 @@ router.post("/browser-agent/run", async (req, res) => {
     .where(eq(tenantsTable.id, tenantId))
     .limit(1);
   const autonomyEnabled = Boolean(tenantAutonomy?.autonomyEnabledAt);
-  const mode = parsed.data.mode ?? (autonomyEnabled ? "autonomo" : "assistido");
-  const allowWrite = parsed.data.allowWrite ?? autonomyEnabled;
+  const mode = vendiAutonomyEnabled() ? "autonomo" : (parsed.data.mode ?? (autonomyEnabled ? "autonomo" : "assistido"));
+  const allowWrite = vendiAutonomyEnabled() ? true : (parsed.data.allowWrite ?? autonomyEnabled);
 
   let connection: typeof browserAgentConnectionsTable.$inferSelect | undefined;
   if (parsed.data.connectionId) {
