@@ -420,13 +420,26 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
       if (!compatible) continue;
       const channel = supplier.email ? "email" : supplier.telefone ? "whatsapp" : "link";
       const destination = supplier.email || supplier.telefone || null;
+      const existingInvite = await pool.query(
+        `SELECT * FROM arch_rfq_invitations
+          WHERE tenant_id=$1 AND package_id=$2::uuid AND supplier_id=$3
+          LIMIT 1`,
+        [tid, packageId, supplier.id],
+      );
+      if (existingInvite.rows[0]) {
+        created.push({ ...existingInvite.rows[0], duplicate: true, publicUrl: `${req.protocol}://${req.get("host")}/api/public/arqdor/rfq/${existingInvite.rows[0].public_token}` });
+        continue;
+      }
       const inviteResult = await pool.query(
         `INSERT INTO arch_rfq_invitations
          (tenant_id,package_id,supplier_id,supplier_name,contact_name,channel,destination,status,created_at,updated_at)
-         VALUES($1,$2::uuid,$3,$4,$5,$6,$7,'draft',now(),now()) RETURNING *`,
+         VALUES($1,$2::uuid,$3,$4,$5,$6,$7,'draft',now(),now())
+         ON CONFLICT DO NOTHING
+         RETURNING *`,
         [tid,packageId,supplier.id,supplier.nome,supplier.contato||null,channel,destination],
       );
       const invite = inviteResult.rows[0];
+      if (!invite) continue;
       const publicUrl = `${req.protocol}://${req.get("host")}/api/public/arqdor/rfq/${invite.public_token}`;
       const message = [
         `Solicitação de cotação: ${pkg.title}`,
@@ -447,8 +460,11 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
         created.push({ ...invite, status: "failed", publicUrl, error: sendErr instanceof Error ? sendErr.message : "Falha no envio" });
       }
     }
-    await pool.query(`UPDATE arch_rfq_packages SET status='sent',updated_at=now() WHERE id=$1::uuid`, [packageId]);
-    res.status(201).json({ invitations: created, skipped: supplierIds.length - created.length });
+    const sentCount = created.filter((item: any) => item.status === "sent" || item.status === "viewed" || item.status === "responded" || item.status === "accepted").length;
+    const failedCount = created.filter((item: any) => item.status === "failed").length;
+    const packageStatus = sentCount === 0 ? "draft" : failedCount > 0 ? "partial" : "sent";
+    await pool.query(`UPDATE arch_rfq_packages SET status=$1,updated_at=now() WHERE id=$2::uuid`, [packageStatus, packageId]);
+    res.status(201).json({ invitations: created, skipped: supplierIds.length - created.length, packageStatus });
   } catch (err) { logger.error({ err }, "rfq invitations error"); next(err); }
 });
 
@@ -465,7 +481,24 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
     );
     const inv = invResult.rows[0];
     if (!inv || inv.status !== "responded") return res.status(409).json({ error: "A cotação precisa estar respondida antes da seleção." });
+
+    const freshness = await assertPackageStillCurrent(tid, obraId, packageId);
+    if (!freshness.ok) {
+      await client.query(
+        `UPDATE compras_obras c
+            SET cotacao_desatualizada=true, updated_at=now()
+           FROM arch_rfq_package_items pi
+          WHERE pi.package_id=$1::uuid AND pi.compra_id=c.id AND c.tenant_id=$2 AND c.obra_id=$3`,
+        [packageId, tid, obraId],
+      );
+      return res.status(409).json({ error: freshness.reason, code: "RFQ_SCOPE_STALE" });
+    }
+
     const items = await client.query(`SELECT * FROM arch_rfq_quote_items WHERE invitation_id=$1::uuid`, [invitationId]);
+    const expected = await client.query(`SELECT COUNT(*)::int AS count FROM arch_rfq_package_items WHERE package_id=$1::uuid`, [packageId]);
+    if (items.rows.length !== Number(expected.rows[0]?.count || 0) || items.rows.some((item: any) => n(item.unit_value) <= 0 && n(item.quantity) > 0)) {
+      return res.status(409).json({ error: "A cotação está incompleta. Todos os itens precisam ter preço antes da contratação.", code: "RFQ_INCOMPLETE" });
+    }
     const lineTotal = items.rows.reduce((sum: number, qi: any) => sum + n(qi.total_value), 0);
     const netExtras = n(inv.freight_value) + n(inv.tax_value) - n(inv.discount_value);
     await client.query("BEGIN");
