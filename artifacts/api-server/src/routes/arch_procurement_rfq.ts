@@ -946,7 +946,14 @@ archProcurementRfqPublicRouter.get("/public/arqdor/rfq/:token", async (req, res,
         nomeEmpresa:company,nomePessoa:name,email,telefone:phone||undefined,senha:password,segmento:'fornecedor',nicho:'fornecedor de arquitetura e construção',rfqToken
       })});
       const d=await r.json().catch(()=>({}));
-      if(!r.ok){signupButton.disabled=false;msg.textContent=d.error||'Não foi possível criar a conta.';return}
+      if(!r.ok){
+        signupButton.disabled=false;
+        if(d.code==='ACCOUNT_EXISTS'){
+          msg.innerHTML='Este e-mail já possui conta Vendor.ai e o convite foi vinculado. <a href="/login">Entrar na conta</a>.';
+          return;
+        }
+        msg.textContent=d.error||'Não foi possível criar a conta.';return
+      }
       if(d.token)localStorage.setItem('vendorai_token',d.token);
       msg.textContent='Conta criada e vinculada a esta cotação. Abrindo o Vendor.ai...';
       setTimeout(()=>{location.href=d.demoUrl||'/app'},700);
