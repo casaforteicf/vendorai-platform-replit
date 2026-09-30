@@ -880,6 +880,22 @@ archProcurementRfqPublicRouter.get("/public/arqdor/rfq/:token", async (req, res,
     const responseDocRows = responseDocs.length
       ? responseDocs.map((doc:any)=>`<li>${esc(doc.name || "Anexo enviado")}</li>`).join("")
       : "<li class='muted'>Nenhum anexo enviado ainda.</li>";
+    const supplierAccountCard = inv.access_mode === "guest"
+      ? `<div class="card" id="vendorAccount"><div class="muted">Opcional</div><h2>Quer usar o Vendor.ai como fornecedor?</h2>
+          <p class="muted">Você pode responder esta cotação sem cadastro. Se quiser, crie sua conta e passe a ter seu próprio ambiente, histórico de cotações e recursos do sistema.</p>
+          <div class="grid">
+            <div><label>Empresa</label><input id="signupCompany" value="${esc(inv.supplier_name || "")}"></div>
+            <div><label>Responsável</label><input id="signupName" value="${esc(inv.contact_name || inv.supplier_name || "")}"></div>
+            <div><label>E-mail</label><input id="signupEmail" type="email" value="${esc(inv.supplier_email || "")}"></div>
+            <div><label>Telefone</label><input id="signupPhone" value="${esc(inv.supplier_phone || "")}"></div>
+            <div style="grid-column:1/-1"><label>Senha</label><input id="signupPassword" type="password" minlength="8" placeholder="Mínimo 8 caracteres"></div>
+          </div>
+          <p id="signupMsg" class="muted"></p>
+          <button id="signupVendor" type="button" style="background:#4f46e5">Criar minha conta Vendor.ai</button>
+        </div>`
+      : inv.access_mode === "converted"
+        ? `<div class="card"><div class="muted">Conta Vendor.ai vinculada</div><h2>Este fornecedor já possui acesso ao sistema</h2><p class="muted">O histórico desta cotação continua vinculado à conta. <a href="/login">Entrar no Vendor.ai</a>.</p></div>`
+        : "";
 
     res.type("html").send(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
     <title>${esc(pkg.code)} — Cotação</title><style>
@@ -896,7 +912,8 @@ archProcurementRfqPublicRouter.get("/public/arqdor/rfq/:token", async (req, res,
     <div class="card"><div class="grid"><div><label>Frete</label><input id="freight" type="number" step="0.01" min="0" value="0"></div><div><label>Impostos/taxas</label><input id="taxes" type="number" step="0.01" min="0" value="0"></div>
     <div><label>Desconto</label><input id="discount" type="number" step="0.01" min="0" value="0"></div><div><label>Prazo de entrega (dias)</label><input id="leadTime" type="number" min="0"></div>
     <div><label>Validade</label><input id="validity" type="date"></div><div><label>Condição de pagamento</label><input id="payment" placeholder="Ex.: 30/60/90"></div></div>
-    <label>Observações gerais</label><textarea id="supplierNotes" rows="4"></textarea><p id="msg" class="muted"></p><button id="send">Enviar cotação</button></div></div>
+    <label>Observações gerais</label><textarea id="supplierNotes" rows="4"></textarea><p id="msg" class="muted"></p><button id="send">Enviar cotação</button></div>
+    ${supplierAccountCard}</div>
     <script>
     const META=${itemMeta};
     document.getElementById('uploadFiles').onclick=async()=>{
@@ -914,6 +931,26 @@ archProcurementRfqPublicRouter.get("/public/arqdor/rfq/:token", async (req, res,
       msg.textContent='Anexos enviados com sucesso.';input.value='';
     };
     document.getElementById('send').onclick=async()=>{const rows=[...document.querySelectorAll('[data-id][data-field="unitValue"]')].map(el=>{const id=el.dataset.id;const q=META.find(x=>x.id===id);return{compraId:id,quantity:q?.quantity||0,unit:q?.unit||'un',unitValue:Number(el.value||0),brandModel:document.querySelector('[data-id="'+id+'"][data-field="brandModel"]').value,notes:document.querySelector('[data-id="'+id+'"][data-field="notes"]').value}});const body={items:rows,freight:Number(document.getElementById('freight').value||0),taxes:Number(document.getElementById('taxes').value||0),discount:Number(document.getElementById('discount').value||0),leadTimeDays:Number(document.getElementById('leadTime').value||0)||null,validityDate:document.getElementById('validity').value||null,paymentTerms:document.getElementById('payment').value||null,supplierNotes:document.getElementById('supplierNotes').value||null};const r=await fetch(location.pathname+'/respond',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json().catch(()=>({}));document.getElementById('msg').textContent=r.ok?'Cotação enviada com sucesso.':(d.error||'Não foi possível enviar.');if(r.ok)document.getElementById('send').disabled=true}
+    const signupButton=document.getElementById('signupVendor');
+    if(signupButton)signupButton.onclick=async()=>{
+      const msg=document.getElementById('signupMsg');
+      const company=document.getElementById('signupCompany').value.trim();
+      const name=document.getElementById('signupName').value.trim();
+      const email=document.getElementById('signupEmail').value.trim();
+      const phone=document.getElementById('signupPhone').value.trim();
+      const password=document.getElementById('signupPassword').value;
+      if(!company||!name||!email||password.length<8){msg.textContent='Preencha empresa, responsável, e-mail e uma senha com pelo menos 8 caracteres.';return}
+      signupButton.disabled=true;msg.textContent='Criando sua conta...';
+      const rfqToken=location.pathname.split('/').filter(Boolean).pop();
+      const r=await fetch('/api/auth/demo-signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        nomeEmpresa:company,nomePessoa:name,email,telefone:phone||undefined,senha:password,segmento:'fornecedor',nicho:'fornecedor de arquitetura e construção',rfqToken
+      })});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok){signupButton.disabled=false;msg.textContent=d.error||'Não foi possível criar a conta.';return}
+      if(d.token)localStorage.setItem('vendorai_token',d.token);
+      msg.textContent='Conta criada e vinculada a esta cotação. Abrindo o Vendor.ai...';
+      setTimeout(()=>{location.href=d.demoUrl||'/app'},700);
+    };
     </script></body></html>`);
   } catch (err) { logger.error({ err }, "public rfq page error"); next(err); }
 });
