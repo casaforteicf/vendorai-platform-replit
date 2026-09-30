@@ -1,3 +1,4 @@
+import { assertAutomatedSendAllowed } from "../lib/agent-send-guard.js";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import {
   db,
@@ -749,6 +750,11 @@ export async function sendOutgoingMessage(
     .limit(1);
 
   if (!lead) throw new LeadNotFoundError(leadId);
+
+  // All AI-labelled sends must pass this check before invoking a channel provider.
+  await assertAutomatedSendAllowed({
+    tenantId, agentName, humanLock: lead.activeAgentLock, disabled: lead.agenteDesativado,
+  });
 
   let selectedWhatsappConnection: typeof whatsappConnectionsTable.$inferSelect | null = null;
   if (canal === "whatsapp") {
