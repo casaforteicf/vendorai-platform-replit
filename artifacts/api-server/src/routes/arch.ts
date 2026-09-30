@@ -1271,9 +1271,12 @@ router.post("/arch/concept-projects/:id/source-file", authenticate, upload.singl
 
   const originalName = req.file.originalname || "arquivo-projeto";
   const extension = originalName.split(".").pop()?.toLowerCase() ?? "";
-  const allowedExtensions = new Set(["ifc", "dwg", "rvt", "skp"]);
+  const allowedExtensions = new Set(["ifc", "dwg", "rvt", "skp", "glb", "gltf"]);
   if (!allowedExtensions.has(extension)) {
-    return res.status(415).json({ error: "Formato não suportado neste upload. Use IFC, DWG, RVT ou SKP." });
+    return res.status(415).json({ error: "Formato não suportado neste upload. Use IFC, DWG, RVT, SKP, GLB ou GLTF." });
+  }
+  if (extension === "glb" && req.file.buffer.subarray(0, 4).toString("ascii") !== "glTF") {
+    return res.status(415).json({ error: "Arquivo GLB inválido. O cabeçalho binário glTF não foi encontrado." });
   }
 
   const [concept] = await db
@@ -1307,7 +1310,11 @@ router.post("/arch/concept-projects/:id/source-file", authenticate, upload.singl
       originalName,
     );
     const url = `/api/storage/objects${storagePath.replace(/^\/objects/, "")}`;
-    const kind = extension === "ifc" || extension === "rvt" ? "bim" : "cad";
+    const kind = extension === "ifc" || extension === "rvt"
+      ? "bim"
+      : extension === "glb" || extension === "gltf"
+        ? "model3d"
+        : "cad";
     const sourceFile = {
       id: crypto.randomUUID(),
       storagePath,
@@ -1317,13 +1324,28 @@ router.post("/arch/concept-projects/:id/source-file", authenticate, upload.singl
       extension,
       kind,
       uploadedAt: new Date().toISOString(),
-      status: "stored_only",
-      parserStatus: extension === "ifc" ? "pending_ifc_parser" : "conversion_required",
+      status: extension === "glb" || extension === "gltf" ? "converted" : "stored_only",
+      parserStatus: extension === "ifc"
+        ? "pending_ifc_parser"
+        : extension === "glb" || extension === "gltf"
+          ? "ready_model3d"
+          : "conversion_required",
+      ...(extension === "glb" || extension === "gltf"
+        ? {
+            convertedAt: new Date().toISOString(),
+            conversionEngine: "direct-upload",
+            model3d: {
+              storagePath,
+              url,
+              format: extension,
+            },
+          }
+        : {}),
     };
 
     const currentConfig = (concept.configuration ?? {}) as Record<string, unknown>;
     const currentSources = Array.isArray(currentConfig.sourceFiles)
-      ? currentConfig.sourceFiles.filter((item) => item && typeof item === "object").slice(-9)
+      ? currentConfig.sourceFiles.filter((item) => item && typeof item === "object")
       : [];
 
     await db
