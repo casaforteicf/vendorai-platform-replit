@@ -1,4 +1,4 @@
-type UserFunction = "vendedor" | "financeiro" | "suporte" | "entrega" | "administrador" | "outro";
+type UserFunction = "vendedor" | "representante_comercial" | "financeiro" | "suporte" | "entrega" | "administrador" | "outro";
 
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
