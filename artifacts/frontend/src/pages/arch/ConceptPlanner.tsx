@@ -7950,6 +7950,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       `}>
                         <button
                           type="button"
+                          title="Selecionar e editar paredes, ambientes, portas e janelas"
                           onClick={() => {
                             setInteractionMode("navigate");
                             setSelectedId(null);
@@ -7962,7 +7963,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                             ? "shrink-0 rounded-xl bg-foreground px-3 py-2 text-xs font-semibold text-background"
                             : "shrink-0 rounded-xl border bg-background px-3 py-2 text-xs font-semibold"}
                         >
-                          Selecionar
+                          Selecionar / editar
                         </button>
                         <button
                           type="button"
@@ -8010,6 +8011,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         </button>
                         <button
                           type="button"
+                          title="Mostrar cotas principais; medidas detalhadas aparecem ao selecionar um elemento"
                           onClick={() => setShowDimensions((value) => !value)}
                           className={showDimensions
                             ? "rounded-xl border border-sky-300 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-800"
