@@ -413,10 +413,13 @@ const CSS = `
 // The experimental SmartRenderEngine still exists in the codebase, but it only
 // creates local UI versions. Tenant-facing render actions must use the real
 // RenderStudio route until the new Studio is wired to the production engine.
-function RenderStudioRouteBridge() {
+function RenderStudioRouteBridge({ projectId }: { projectId: string | null }) {
   useEffect(() => {
-    window.location.assign('/arch/render')
-  }, [])
+    const params = new URLSearchParams()
+    if (projectId) params.set('project_id', projectId)
+    const query = params.toString()
+    window.location.assign(`/arch/render${query ? `?${query}` : ''}`)
+  }, [projectId])
 
   return (
     <div style={{ minHeight: 360, display: 'grid', placeItems: 'center', color: PHX.textSub }}>
@@ -436,7 +439,7 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'especificacao-produto': return <SpecificationStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'prompt':        return <PromptPlaygroundModule/>
     case 'render':
-    case 'renders':       return <RenderStudioRouteBridge />
+    case 'renders':       return <RenderStudioRouteBridge projectId={arqState.projectId} />
     case 'ai-review':     return <AIReviewModule/>
     case 'correcoes':     return <AICorrectionsModule/>
     case 'memoria':       return <AIMemoryModule/>
@@ -557,9 +560,7 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
 
 // ─── Project selector compact ────────────────────────────────────────────────
 function ProjectSelectorBar({ arqState }: { arqState: ArqProjectState }) {
-  const [open, setOpen]       = useState(false)
-  const [newTitle, setNewTitle] = useState('')
-  const [creating, setCreating] = useState(false)
+  const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -570,13 +571,6 @@ function ProjectSelectorBar({ arqState }: { arqState: ArqProjectState }) {
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
-
-  async function handleCreate() {
-    if (!newTitle.trim()) return
-    setCreating(true)
-    try { await arqState.createProject(newTitle.trim()); setNewTitle(''); setOpen(false) }
-    finally { setCreating(false) }
-  }
 
   const projectName = arqState.loading ? 'Carregando…' : (arqState.projectMeta?.titulo ?? 'Selecionar projeto')
 
@@ -621,27 +615,17 @@ function ProjectSelectorBar({ arqState }: { arqState: ArqProjectState }) {
               <p style={{ margin:0, padding:'12px 14px', fontSize:10, color:PHX.dim }}>Nenhum projeto ainda</p>
             )}
           </div>
-          {/* Create new */}
+          {/* Criação canônica: cliente/lead e projeto no mesmo fluxo */}
           <div style={{ borderTop:`1px solid ${PHX.border}`, padding:'10px' }}>
-            <div style={{ display:'flex', gap:6 }}>
-              <input
-                value={newTitle}
-                onChange={e => setNewTitle(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleCreate()}
-                placeholder="Novo projeto…"
-                style={{
-                  flex:1, padding:'6px 10px', borderRadius:7, border:`1px solid ${PHX.border}`,
-                  background:PHX.muted, color:PHX.text, fontSize:11, outline:'none',
-                  transition:'border-color 0.15s',
-                }}
-              />
-              <button onClick={handleCreate} disabled={creating || !newTitle.trim()} style={{
-                padding:'6px 12px', borderRadius:7, border:'none', background:PHX.purple,
-                color:'#fff', cursor:'pointer', fontSize:10, fontWeight:700, opacity:creating||!newTitle.trim()?0.5:1,
-              }}>
-                {creating ? '…' : '＋'}
-              </button>
-            </div>
+            <button
+              onClick={() => window.location.assign('/arch/projetos/novo')}
+              style={{
+                width:'100%', padding:'8px 12px', borderRadius:8, border:'none',
+                background:PHX.purple, color:'#fff', cursor:'pointer', fontSize:11, fontWeight:800,
+              }}
+            >
+              ＋ Novo projeto com cliente
+            </button>
           </div>
         </div>
       )}
