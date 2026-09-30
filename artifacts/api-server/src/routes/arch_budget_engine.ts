@@ -153,9 +153,14 @@ async function recalculateBudget(budgetId: string) {
     );
   }
 
+  const refreshedItems = await pool.query(
+    `SELECT * FROM arch_budget_items WHERE budget_id = $1 AND deleted_at IS NULL ORDER BY sort_order, created_at`,
+    [budgetId],
+  );
+
   return {
     budget: updated.rows[0],
-    items: itemsResult.rows,
+    items: refreshedItems.rows,
     totals: { subtotalMaterial, subtotalLabor, subtotal, discountTotal, grandTotal },
   };
 }
