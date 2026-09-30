@@ -270,13 +270,14 @@ function ComparisonView({ versionA, versionB, allVersions, onChangeA, onChangeB 
 
 // ─── Central Canvas (P0-3, P0-6, P1-8, P1-10, P2-13, P2-19) ─────────────────
 
-export function RenderStudioCanvas({ step, imageDataUrl, renderUrl, loading, isDragging, canvasMode, showGrid, processingStage, elapsedSeconds, isRecovering, onUpload, onDragOver, onDragLeave, onDrop, projectTitle, ambiente, selectionMode, selections, onSelection, onUpdateSelection, onClearSelection, compareMode, compareVersionA, compareVersionB, allVersions, onCompareChangeA, onCompareChangeB, onRenderLoadError }: {
+export function RenderStudioCanvas({ step, imageDataUrl, renderUrl, loading, isDragging, canvasMode, showGrid, processingStage, elapsedSeconds, isRecovering, onUpload, onDragOver, onDragLeave, onDrop, projectTitle, ambiente, selectionMode, selections, onSelection, onUpdateSelection, onClearSelection, materialMaskPreviewUrl, compareMode, compareVersionA, compareVersionB, allVersions, onCompareChangeA, onCompareChangeB, onRenderLoadError }: {
   step: Step; imageDataUrl: string | null; renderUrl: string | null;
   loading: boolean; isDragging: boolean; canvasMode: CanvasMode; showGrid: boolean;
   processingStage: string | null; elapsedSeconds: number; isRecovering: boolean;
   onUpload: () => void; onDragOver: (e: React.DragEvent) => void; onDragLeave: () => void; onDrop: (e: React.DragEvent) => void;
   projectTitle: string | null; ambiente: string;
   selectionMode: "off" | "rect"; selections: SelectionRect[]; onSelection: (sel: Omit<SelectionRect, "id" | "label">) => void; onUpdateSelection: (id: string, patch: Partial<Pick<SelectionRect, "x" | "y" | "w" | "h">>) => void; onClearSelection: () => void;
+  materialMaskPreviewUrl?: string | null;
   compareMode: boolean; compareVersionA: RenderVersion | null; compareVersionB: RenderVersion | null;
   allVersions: RenderVersion[]; onCompareChangeA: (id: string) => void; onCompareChangeB: (id: string) => void;
   onRenderLoadError: () => void;
@@ -372,6 +373,16 @@ export function RenderStudioCanvas({ step, imageDataUrl, renderUrl, loading, isD
                   <strong>Imagem do render indisponível</strong>
                   <span style={{ color: D.muted }}>O arquivo não foi encontrado no Storage.</span>
                 </div>
+              )}
+              {showRender && materialMaskPreviewUrl && (
+                <img
+                  src={materialMaskPreviewUrl}
+                  alt="Máscara detectada da superfície"
+                  style={canvasMode === "1to1"
+                    ? { position: "absolute", left: 0, top: 0, width: "auto", height: "auto", maxWidth: "none", maxHeight: "none", pointerEvents: "none", zIndex: 6 }
+                    : { position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)", maxWidth: "100%", maxHeight: "100%", objectFit: "contain", pointerEvents: "none", zIndex: 6 }
+                  }
+                />
               )}
               {showRender && (
                 <SelectionCanvas

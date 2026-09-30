@@ -148,6 +148,15 @@ const renderBodySchema = z.object({
   })).optional().default([]),
 });
 
+const materialMaskPreviewBodySchema = z.object({
+  mask_coordinates: z.array(z.object({
+    x: z.number().min(0).max(100),
+    y: z.number().min(0).max(100),
+    w: z.number().positive().max(100),
+    h: z.number().positive().max(100),
+  })).min(1),
+});
+
 const adjustBodySchema = z.object({
   mask_zones:      z.array(z.string()).optional().default([]),
   ajuste_prompt:   z.string().optional(),
@@ -434,6 +443,91 @@ archAiRenderRouter.post("/arch/ai-render/:id/approve", authenticate, async (req:
     approved_by:      updated?.approvedBy ?? approvedBy,
     approved_at:      updated?.approvedAt ?? approvedAt,
   });
+});
+
+// ── POST /api/arch/ai-render/:id/material-mask-preview ───────────────────────
+// Detecta a superfície por cor + conectividade + perímetro ANTES de gastar uma
+// geração. O frontend exibe a máscara e exige confirmação explícita do usuário.
+archAiRenderRouter.post("/arch/ai-render/:id/material-mask-preview", authenticate, async (req: Request, res: Response) => {
+  const tid = tenantId(req);
+  if (!tid) return res.status(403).json({ success: false, error: "Tenant não identificado" });
+
+  const parsed = materialMaskPreviewBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      success: false,
+      error: "Seleção inválida",
+      details: parsed.error.issues.map(i => i.message).join("; "),
+    });
+  }
+
+  const [parent] = await (db as any)
+    .select()
+    .from(archAiRendersTable)
+    .where(and(
+      eq(archAiRendersTable.id, req.params["id"] as string),
+      eq(archAiRendersTable.tenantId, tid as string),
+    ))
+    .limit(1);
+
+  if (!parent) return res.status(404).json({ success: false, error: "Render não encontrado" });
+  if (parent.status !== "concluido") {
+    return res.status(409).json({ success: false, error: "Finalize o render antes de detectar a superfície" });
+  }
+
+  const baseImageUrl = parent.resultImageUrl ?? parent.originalImageUrl;
+  if (!baseImageUrl) {
+    return res.status(400).json({ success: false, error: "Render sem imagem disponível" });
+  }
+
+  try {
+    const storage = new ObjectStorageService();
+    const { buf: imageBuf } = await fetchImageAsBuffer(baseImageUrl, storage);
+    const meta = await sharp(imageBuf).metadata();
+    const width = meta.width ?? 1024;
+    const height = meta.height ?? 768;
+
+    const maskBuf = await createMaterialSurfaceMask(
+      imageBuf,
+      parsed.data.mask_coordinates,
+      width,
+      height,
+    );
+
+    const { data: gray } = await sharp(maskBuf).greyscale().raw().toBuffer({ resolveWithObject: true });
+    let selectedPixels = 0;
+    for (const value of gray) if (value > 127) selectedPixels++;
+    const coverage = selectedPixels / Math.max(1, width * height);
+
+    // Preview transparente: âmbar apenas onde a superfície foi detectada.
+    const rgba = Buffer.alloc(width * height * 4);
+    for (let i = 0; i < width * height; i++) {
+      const alpha = gray[i] ?? 0;
+      const p = i * 4;
+      rgba[p] = 245;
+      rgba[p + 1] = 158;
+      rgba[p + 2] = 11;
+      rgba[p + 3] = Math.round(alpha * 0.48);
+    }
+    const previewBuf = await sharp(rgba, { raw: { width, height, channels: 4 } }).png().toBuffer();
+
+    return res.json({
+      success: true,
+      width,
+      height,
+      coverage,
+      mask_file_base64: `data:image/png;base64,${maskBuf.toString("base64")}`,
+      preview_data_url: `data:image/png;base64,${previewBuf.toString("base64")}`,
+      detection: "color+perimeter+connectivity",
+    });
+  } catch (error: any) {
+    req.log?.warn?.({ err: error, renderId: req.params["id"] }, "arch/material-mask-preview: detecção falhou");
+    return res.status(422).json({
+      success: false,
+      error: error?.message ?? "Não foi possível detectar a superfície. Refine a seleção e tente novamente.",
+      code: "SURFACE_DETECTION_FAILED",
+    });
+  }
 });
 
 // ── POST /api/arch/ai-render/:id/adjust — Ajuste pós-geração ─────────────────

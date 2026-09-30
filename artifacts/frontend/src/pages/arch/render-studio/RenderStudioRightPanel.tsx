@@ -35,6 +35,7 @@ export function RenderStudioRightPanel({
   videoMovement, setVideoMovement, videoGenerating, renderVideoUrl, onGenerateVideo5s,
   onShowCreateModal, onUpload, onOpenMediaLibrary, mediaLibraryAvailable,
   selections, selectedMaterial, onOpenMaterialLib, onClearSelection, onRemoveSelection,
+  materialMaskPreviewUrl, materialMaskConfirmed, materialMaskDetecting, onDetectMaterialSurface, onConfirmMaterialSurface,
   approvalRecord, approvalNote, setApprovalNote,
   onOpenSpecification,
   onTestCopilotAction,
@@ -57,6 +58,8 @@ export function RenderStudioRightPanel({
   onShowCreateModal: () => void; onUpload: () => void; onOpenMediaLibrary: () => void; mediaLibraryAvailable: boolean;
   selections: SelectionRect[]; selectedMaterial: CatalogItem | null;
   onOpenMaterialLib: () => void; onClearSelection: () => void; onRemoveSelection: (id: string) => void;
+  materialMaskPreviewUrl: string | null; materialMaskConfirmed: boolean; materialMaskDetecting: boolean;
+  onDetectMaterialSurface: () => void; onConfirmMaterialSurface: () => void;
   approvalRecord: ApprovalRecord | null; approvalNote: string; setApprovalNote: (v: string) => void;
   onOpenSpecification: () => void;
   onTestCopilotAction: (prompt: string) => void;
@@ -343,8 +346,25 @@ export function RenderStudioRightPanel({
                         </div>
 
                         {melhoriaMode === "change-material" && selections.length > 0 && (
-                          <div style={{ padding: "7px 9px", borderRadius: 7, background: `${D.amber}0D`, border: `1px solid ${D.amber}33`, fontSize: 10, lineHeight: 1.45, color: D.muted }}>
-                            ◉ Região sob controle do usuário: clique na seleção no canvas para mover ou redimensionar. A troca será aplicada somente dentro da área final confirmada.
+                          <div style={{ padding: "8px 9px", borderRadius: 7, background: `${D.amber}0D`, border: `1px solid ${D.amber}33`, fontSize: 10, lineHeight: 1.45, color: D.muted, display: "flex", flexDirection: "column", gap: 7 }}>
+                            <div>◉ A seleção é apenas a semente. O Arqdor detecta os limites da peça por <strong style={{ color: D.text }}>cor + perímetro + conectividade</strong> antes de aplicar.</div>
+                            <DkBtn variant="secondary" small onClick={onDetectMaterialSurface} disabled={materialMaskDetecting}>
+                              {materialMaskDetecting ? "Detectando superfície…" : materialMaskPreviewUrl ? "↺ Detectar novamente" : "◎ Detectar superfície"}
+                            </DkBtn>
+                            {materialMaskPreviewUrl && !materialMaskConfirmed && (
+                              <>
+                                <div style={{ color: D.amber }}>A área âmbar sobre o render é a máscara detectada. Confirme somente se ela corresponder à peça correta.</div>
+                                <DkBtn small onClick={onConfirmMaterialSurface}>✓ Confirmar superfície</DkBtn>
+                              </>
+                            )}
+                            {materialMaskConfirmed && (
+                              <div style={{ padding: "5px 7px", borderRadius: 6, background: D.greenDim, border: `1px solid ${D.green}44`, color: D.green, fontWeight: 700 }}>
+                                ✓ Superfície confirmada. Somente esta máscara poderá mudar.
+                              </div>
+                            )}
+                            {!materialMaskConfirmed && materialMaskPreviewUrl && (
+                              <div style={{ color: D.dim }}>Se estiver incorreta, mova/redimensione a seleção e clique em Detectar novamente.</div>
+                            )}
                           </div>
                         )}
 
@@ -400,6 +420,7 @@ export function RenderStudioRightPanel({
                             !renderUrl ||
                             (melhoriaMode === "change-material" && (
                               selections.length === 0 ||
+                              !materialMaskConfirmed ||
                               (selectedMaterial ? !selectedMaterial.imagens?.[0] : !melhoriaPrompt.trim())
                             )) ||
                             (melhoriaMode === "change-lighting" && !melhoriaPrompt.trim())
@@ -410,7 +431,7 @@ export function RenderStudioRightPanel({
                         </DkBtn>
                         {melhoriaMode === "change-material" && selections.length === 0 && (
                           <div style={{ padding: "7px 9px", borderRadius: 7, background: `${D.amber}0D`, border: `1px solid ${D.amber}33`, color: D.amber, fontSize: 10, lineHeight: 1.4 }}>
-                            1. Selecione a região · 2. ajuste tamanho/posição · 3. escolha o material · 4. aplique.
+                            1. Selecione uma parte da peça · 2. Detectar superfície · 3. Confirmar máscara · 4. Escolher material · 5. Aplicar.
                           </div>
                         )}
                         {!loading && <DkBtn variant="ghost" small onClick={onNextStep}>Ver versões →</DkBtn>}

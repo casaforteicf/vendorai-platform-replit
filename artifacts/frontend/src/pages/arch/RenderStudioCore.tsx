@@ -88,6 +88,11 @@ function RenderStudioInner() {
     setShowMaterialLib,
     showMediaLibrary,
     setShowMediaLibrary,
+    materialMaskPreviewUrl,
+    materialMaskConfirmed,
+    materialMaskDetecting,
+    detectMaterialSurface,
+    confirmMaterialSurface,
     compareMode,
     compareVersionA,
     compareVersionB,
@@ -180,6 +185,7 @@ function RenderStudioInner() {
             projectTitle={arq.projectMeta?.titulo ?? null} ambiente={ambiente}
             selectionMode={selectionMode} selections={selections}
             onSelection={handleNewSelection} onUpdateSelection={handleUpdateSelection} onClearSelection={() => setSelections([])}
+            materialMaskPreviewUrl={materialMaskPreviewUrl}
             compareMode={compareMode} compareVersionA={compareVersionA} compareVersionB={compareVersionB}
             allVersions={versions}
             onCompareChangeA={(id) => setCompareVersionAId(id)} onCompareChangeB={(id) => setCompareVersionBId(id)}
@@ -218,6 +224,11 @@ function RenderStudioInner() {
           onOpenMaterialLib={() => setShowMaterialLib(true)}
           onClearSelection={() => setSelections([])}
           onRemoveSelection={(id) => setSelections(prev => prev.filter(s => s.id !== id))}
+          materialMaskPreviewUrl={materialMaskPreviewUrl}
+          materialMaskConfirmed={materialMaskConfirmed}
+          materialMaskDetecting={materialMaskDetecting}
+          onDetectMaterialSurface={detectMaterialSurface}
+          onConfirmMaterialSurface={confirmMaterialSurface}
           approvalRecord={approvalRecord} approvalNote={approvalNote} setApprovalNote={setApprovalNote}
           onOpenSpecification={handleOpenSpecification}
           isOpen={rightPanelOpen} onToggle={() => setRightPanelOpen(o => !o)}

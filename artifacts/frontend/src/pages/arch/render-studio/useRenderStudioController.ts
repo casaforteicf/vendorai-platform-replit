@@ -123,11 +123,22 @@ export function useRenderStudioController() {
   const [selectedMaterial, setSelectedMaterial] = useState<CatalogItem | null>(null);
   const [showMaterialLib, setShowMaterialLib] = useState(false);
   const [showMediaLibrary, setShowMediaLibrary] = useState(false);
+  const [materialMaskPreviewUrl, setMaterialMaskPreviewUrl] = useState<string | null>(null);
+  const [materialMaskDataUrl, setMaterialMaskDataUrl] = useState<string | null>(null);
+  const [materialMaskConfirmed, setMaterialMaskConfirmed] = useState(false);
+  const [materialMaskDetecting, setMaterialMaskDetecting] = useState(false);
   const [compareMode, setCompareMode] = useState(false);
   const [compareVersionAId, setCompareVersionAId] = useState<string | null>(null);
   const [compareVersionBId, setCompareVersionBId] = useState<string | null>(null);
   const [approvalNote, setApprovalNote] = useState("");
   const [approvalRecord, setApprovalRecord] = useState<ApprovalRecord | null>(null);
+
+  useEffect(() => {
+    // Qualquer mudança na seleção invalida a máscara já detectada/confirmada.
+    setMaterialMaskPreviewUrl(null);
+    setMaterialMaskDataUrl(null);
+    setMaterialMaskConfirmed(false);
+  }, [selections]);
 
   // P3-28: event log
   const [eventLog, setEventLog] = useState<EventLogEntry[]>([]);
@@ -415,6 +426,44 @@ export function useRenderStudioController() {
     }
   }
 
+  async function detectMaterialSurface() {
+    if (!renderId) { setErr("Gere ou selecione um render antes de detectar a superfície."); return; }
+    if (selections.length === 0) {
+      setErr("Selecione uma área da peça para detectar a superfície.");
+      setSelectionMode("rect");
+      return;
+    }
+    setMaterialMaskDetecting(true);
+    setMaterialMaskConfirmed(false);
+    setErr(null);
+    try {
+      const data = await apiPost(`/api/arch/ai-render/${renderId}/material-mask-preview`, {
+        mask_coordinates: selections.map(s => ({ x: s.x, y: s.y, w: s.w, h: s.h })),
+      });
+      setMaterialMaskPreviewUrl(data.preview_data_url ?? null);
+      setMaterialMaskDataUrl(data.mask_file_base64 ?? null);
+      logEvent("material_surface_detected", `Superfície detectada · cobertura ${Math.round(Number(data.coverage ?? 0) * 1000) / 10}%`);
+    } catch (e: unknown) {
+      setMaterialMaskPreviewUrl(null);
+      setMaterialMaskDataUrl(null);
+      setMaterialMaskConfirmed(false);
+      setErr(categorizeError(e));
+    } finally {
+      setMaterialMaskDetecting(false);
+    }
+  }
+
+  function confirmMaterialSurface() {
+    if (!materialMaskDataUrl || !materialMaskPreviewUrl) {
+      setErr("Detecte a superfície antes de confirmar.");
+      return;
+    }
+    setMaterialMaskConfirmed(true);
+    setSelectionMode("off");
+    setErr(null);
+    logEvent("material_surface_confirmed", "Máscara de material confirmada pelo usuário");
+  }
+
   // Apply melhoria (P2-17: structured preservation; P2-18: parentVersionId)
   async function applyMelhoria() {
     if (!renderId || loading) return;
@@ -435,8 +484,12 @@ export function useRenderStudioController() {
       return;
     }
     if (melhoriaMode === "change-material" && selections.length === 0) {
-      setErr("Selecione e confirme a região no render antes de trocar o material.");
+      setErr("Selecione uma área da peça antes de trocar o material.");
       setSelectionMode("rect");
+      return;
+    }
+    if (melhoriaMode === "change-material" && (!materialMaskDataUrl || !materialMaskConfirmed)) {
+      setErr("Detecte a superfície e confirme a máscara antes de aplicar o material.");
       return;
     }
     if (melhoriaMode === "change-material" && selectedMaterial && !selectedMaterial.imagens?.[0]) {
@@ -475,6 +528,7 @@ export function useRenderStudioController() {
         mask_zones: melhoriaMode === "improve"
           ? []
           : [...selections.map(s => s.label || "selecao"), melhoriaMode === "change-material" ? "material" : ""].filter(Boolean),
+        mask_file_base64: melhoriaMode === "change-material" ? materialMaskDataUrl ?? undefined : undefined,
         mask_coordinates: melhoriaMode === "improve"
           ? undefined
           : selections.length > 0
@@ -489,10 +543,9 @@ export function useRenderStudioController() {
         material_name:    selectedMaterial?.nome,
         material_reference_url: selectedMaterial?.imagens?.[0],
         operation_type:   melhoriaMode === "change-material" ? "material" : melhoriaMode === "change-lighting" ? "lighting" : "improve",
-        // Em troca de material, a seleção é tratada como envelope/seed:
-        // o backend segmenta apenas a superfície conectada dentro dela.
-        // Nunca expande para fora da área confirmada pelo usuário.
-        expand_selection_to_material: melhoriaMode === "change-material",
+        // A troca de material usa a máscara final já detectada e confirmada.
+        // Não há expansão durante a geração.
+        expand_selection_to_material: false,
         selection_padding_percent: 0,
       });
       const data = await waitForRenderCompletion(render_id);
@@ -513,6 +566,7 @@ export function useRenderStudioController() {
       if (compareMode) setCompareVersionBId(render_id);
       setSaveState("saved"); setLastSavedAt(new Date());
       setSelections([]); setSelectionMode("off"); setSelectedMaterial(null); setMelhoriaPrompt("");
+      setMaterialMaskPreviewUrl(null); setMaterialMaskDataUrl(null); setMaterialMaskConfirmed(false);
 
       // Conecta troca de material com a especificação, se já existir uma
       // gerada — casa a região selecionada (label) com o item de
@@ -822,6 +876,12 @@ export function useRenderStudioController() {
     setShowMaterialLib,
     showMediaLibrary,
     setShowMediaLibrary,
+    materialMaskPreviewUrl,
+    materialMaskConfirmed,
+    materialMaskDetecting,
+    detectMaterialSurface,
+    confirmMaterialSurface,
+    setMaterialMaskConfirmed,
     compareMode,
     compareVersionA,
     compareVersionB,
