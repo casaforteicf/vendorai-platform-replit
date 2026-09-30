@@ -1,0 +1,3 @@
+Browser Agent validation trigger
+commit=b19cb99803fdafeb400e5b23931afc7cba2077d1
+purpose=stable-selector-recovery
