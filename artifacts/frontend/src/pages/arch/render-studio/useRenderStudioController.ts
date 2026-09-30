@@ -336,7 +336,7 @@ export function useRenderStudioController() {
 
           // Render existente abre na execução/edição do próprio render, nunca
           // na etapa de selecionar/criar projeto e nunca inicia uma nova geração.
-          setStep(current.approved_at ? "aprovar" : "melhoria");
+          setStep("melhoria");
           setBottomPanelOpen(loadedVersions.length > 1);
           setSaveState("saved");
           setLastSavedAt(new Date());
@@ -345,7 +345,7 @@ export function useRenderStudioController() {
           sessionStorage.setItem(SK.renderUrl, currentUrl);
           sessionStorage.setItem(SK.imageUrl, normalizeRenderMediaUrl(current.original_image_url || currentUrl));
           sessionStorage.setItem(SK.versions, JSON.stringify(loadedVersions.length ? loadedVersions : [currentVersion]));
-          sessionStorage.setItem(SK.step, current.approved_at ? "aprovar" : "melhoria");
+          sessionStorage.setItem(SK.step, "melhoria");
         } catch (e: unknown) {
           if (!cancelled) setErr(categorizeError(e));
         } finally {
