@@ -210,10 +210,36 @@ function refineWallTopology(
   return { walls: next, repairs };
 }
 
-export function normalizeReferenceTrace(raw: unknown, bounds: ReferenceTraceBounds, sourceModel = "test"): ReferenceTraceResult {
+export function normalizeReferenceTrace(
+  raw: unknown,
+  bounds: ReferenceTraceBounds,
+  sourceModel = "test",
+  options?: { sourceAspectRatio?: number; preserveImageAspect?: boolean },
+): ReferenceTraceResult {
   const parsed = asRecord(raw);
   const rawWalls = Array.isArray(parsed.walls) ? parsed.walls.slice(0, 500) : [];
   const walls: ReferenceTraceWall[] = [];
+
+  // Coordenadas da IA são relativas aos pixels da imagem. Mapear X pela largura
+  // do lote e Y pela profundidade distorce a planta quando o lote e a foto têm
+  // proporções diferentes. No fluxo de imagem preservamos a mesma escala nos
+  // dois eixos e apenas encaixamos/centralizamos a folha dentro da área útil.
+  const sourceAspectRatio = Number(options?.sourceAspectRatio);
+  const preserveImageAspect =
+    options?.preserveImageAspect === true
+    && Number.isFinite(sourceAspectRatio)
+    && sourceAspectRatio > 0.05
+    && sourceAspectRatio < 20;
+  let imageSpanX = bounds.width;
+  let imageSpanY = bounds.depth;
+  let imageOffsetX = bounds.x;
+  let imageOffsetY = bounds.y;
+  if (preserveImageAspect) {
+    imageSpanX = Math.min(bounds.width, bounds.depth * sourceAspectRatio);
+    imageSpanY = imageSpanX / sourceAspectRatio;
+    imageOffsetX = bounds.x + (bounds.width - imageSpanX) / 2;
+    imageOffsetY = bounds.y + (bounds.depth - imageSpanY) / 2;
+  }
   const wallIndexMap = new Map<number, string>();
   let skippedWalls = 0;
 
@@ -228,10 +254,10 @@ export function normalizeReferenceTrace(raw: unknown, bounds: ReferenceTraceBoun
       return;
     }
 
-    let x1 = bounds.x + nx1 * bounds.width;
-    let y1 = bounds.y + ny1 * bounds.depth;
-    let x2 = bounds.x + nx2 * bounds.width;
-    let y2 = bounds.y + ny2 * bounds.depth;
+    let x1 = imageOffsetX + nx1 * imageSpanX;
+    let y1 = imageOffsetY + ny1 * imageSpanY;
+    let x2 = imageOffsetX + nx2 * imageSpanX;
+    let y2 = imageOffsetY + ny2 * imageSpanY;
     const dx = x2 - x1;
     const dy = y2 - y1;
     const major = Math.max(Math.abs(dx), Math.abs(dy));
@@ -423,10 +449,16 @@ export async function traceReferencePlanImage(input: {
   bounds: ReferenceTraceBounds;
 }): Promise<ReferenceTraceResult> {
   const normalized = await sharp(input.buffer)
+    .rotate()
     .flatten({ background: "#ffffff" })
     .resize({ width: 1800, height: 1800, fit: "inside", withoutEnlargement: true })
-    .jpeg({ quality: 90 })
+    .jpeg({ quality: 92 })
     .toBuffer();
+  const normalizedMeta = await sharp(normalized).metadata();
+  const normalizedAspectRatio =
+    Number(normalizedMeta.width) > 0 && Number(normalizedMeta.height) > 0
+      ? Number(normalizedMeta.width) / Number(normalizedMeta.height)
+      : undefined;
   const dataUrl = `data:image/jpeg;base64,${normalized.toString("base64")}`;
   const openai = await getOpenAIForTenant(input.tenantId);
   const model = process.env["ARQDOR_PLAN_VISION_MODEL"]?.trim()
@@ -436,6 +468,8 @@ export async function traceReferencePlanImage(input: {
   const systemPrompt = [
     "Você é um especialista em vetorização fiel de plantas arquitetônicas residenciais brasileiras, incluindo pré-plantas e croquis desenhados à mão ou digitalizados.",
     "Sua tarefa é reconstruir como geometria editável somente o que está visível na imagem, sem projetar, melhorar, completar ou reinterpretar a planta.",
+    "FIDELIDADE É A PRIORIDADE ABSOLUTA: a geometria vetorial deve coincidir com o croqui quando sobreposta à imagem. Não reorganize cômodos, não simplifique o perímetro e não substitua o desenho por uma planta 'parecida'.",
+    "Trace todos os segmentos arquitetônicos claramente visíveis, inclusive recuos, anexos, garagem, lavanderia, banheiros e pequenos nichos. Preserve o número, a ordem e a posição relativa de cada ambiente.",
     "NÃO invente paredes, portas, janelas, ambientes, alinhamentos ou dimensões ausentes. Se algo estiver encoberto, cortado ou ambíguo, omita e registre em warnings.",
     "Mantenha a posição dos elementos exatamente no sistema de coordenadas da IMAGEM INTEIRA, incluindo margens em branco, carimbo, textos e áreas vazias.",
     "Esta versão gera paredes ortogonais horizontais/verticais. Em croquis, tolere pequenas inclinações de traço quando a intenção ortogonal for clara e normalize-as para horizontal/vertical; diagonais arquitetônicas reais ou curvas devem ser omitidas e citadas em warnings.",
@@ -447,8 +481,9 @@ export async function traceReferencePlanImage(input: {
     "Use x=0 na borda esquerda da imagem, x=1 na borda direita, y=0 no topo e y=1 na base. Preserve margens e deslocamentos existentes na imagem.",
     "Para cada parede informe x1,y1,x2,y2, thickness em metros e confidence 0..1.",
     "Use preferencialmente o eixo central da espessura visual da parede para x1,y1,x2,y2, mantendo encontros T e cruzamentos coincidentes.",
-    "Retorne somente paredes claramente observáveis ou claramente pretendidas como ortogonais. Ignore mobiliário, textos, hachuras, setas, rabiscos soltos e muros sem definição. Cotas legíveis podem ajudar a validar proporções, mas nunca justificam criar geometria não desenhada.",
-    "Não redistribua cômodos e não feche automaticamente lacunas que não estejam desenhadas.",
+    "Retorne somente paredes claramente observáveis ou claramente pretendidas como ortogonais. Ignore mobiliário, textos, hachuras, setas, rabiscos soltos e muros sem definição. Cotas legíveis devem ser usadas para conferir proporções e comprimentos do que já está desenhado, mas nunca para criar geometria inexistente.",
+    "Antes de responder, faça uma conferência visual interna: conte os blocos/ambientes desenhados e verifique se garagem, lavanderia, quartos, banheiros e o espaço social continuam nas mesmas posições relativas da imagem.",
+    "Não redistribua cômodos, não espelhe, não rotacione, não recorte a planta e não feche automaticamente lacunas que não estejam desenhadas.",
     "Para cada porta/janela use wallIndex apontando para o índice ZERO-BASED da parede no array walls,",
     "type door|window, offset 0..1 ao longo da parede, width/height/sillHeight em metros, confidence 0..1.",
     "JSON: {summary:string, confidence:number, walls:[{x1,y1,x2,y2,thickness,confidence}], openings:[{wallIndex,type,offset,width,height,sillHeight,confidence}], warnings:string[]}.",
@@ -513,7 +548,12 @@ export async function traceReferencePlanImage(input: {
     throw new Error("A IA retornou um formato inválido ao interpretar a planta.");
   }
   const registration = await registerTraceToImage(parsed, normalized);
-  const result = normalizeReferenceTrace(registration.raw, input.bounds, effectiveModel);
+  const result = normalizeReferenceTrace(
+    registration.raw,
+    input.bounds,
+    effectiveModel,
+    { sourceAspectRatio: normalizedAspectRatio, preserveImageAspect: true },
+  );
   const correctionMagnitude =
     Math.abs(registration.correction.scale - 1)
     + Math.abs(registration.correction.translateX)
