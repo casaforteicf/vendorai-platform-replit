@@ -189,6 +189,7 @@ const demoSignupSchema = z.object({
   offerCode: z.string().trim().max(160).optional(),
   behaviorSessionId: z.string().trim().max(120).optional(),
   adDataConsent: z.boolean().optional(),
+  rfqToken: z.string().uuid().optional(),
   // Código de embaixador do Praça.ai (?ref=CODIGO) — se vier, dispara
   // registro de indicação de lojista pro Praça.ai depois do cadastro.
   codigoIndicacaoPraca: z.string().optional(),
@@ -258,6 +259,7 @@ router.post("/auth/demo-signup", async (req, res) => {
     offerCode,
     behaviorSessionId,
     adDataConsent,
+    rfqToken,
   } = parsed.data;
   const countryProfile = getTenantCountryProfile(countryCode);
 
@@ -480,6 +482,65 @@ router.post("/auth/demo-signup", async (req, res) => {
     } catch (pipelineError) {
       // Falha no pipeline não bloqueia o cadastro de demo, mas fica observável.
       req.log?.error({ err: pipelineError, tenantId: tenant.id }, "auth: falha ao promover lead do trial");
+    }
+
+    if (rfqToken) {
+      try {
+        const invitationResult = await pool.query(
+          \`SELECT * FROM arch_rfq_invitations WHERE public_token=$1::uuid LIMIT 1\`,
+          [rfqToken],
+        );
+        const invitation = invitationResult.rows[0];
+        if (invitation) {
+          const invitedEmail = String(invitation.supplier_email || "").trim().toLowerCase();
+          const invitedPhone = String(invitation.supplier_phone || "").replace(/\D/g, "");
+          const signupPhone = String(telefone || "").replace(/\D/g, "");
+          const identityMatches =
+            (invitedEmail && invitedEmail === email.trim().toLowerCase())
+            || (!invitedEmail && invitedPhone && signupPhone && invitedPhone === signupPhone);
+
+          if (identityMatches) {
+            const supplierExisting = await pool.query(
+              \`SELECT id FROM fornecedores
+                WHERE tenant_id=$1
+                  AND (
+                    ($2<>'' AND lower(COALESCE(email,''))=lower($2))
+                    OR ($3<>'' AND regexp_replace(COALESCE(telefone,''),'[^0-9]','','g')=$3)
+                  )
+                ORDER BY created_at DESC
+                LIMIT 1\`,
+              [invitation.tenant_id, email.trim().toLowerCase(), signupPhone],
+            );
+            let supplierId = supplierExisting.rows[0]?.id ?? null;
+            if (!supplierId) {
+              const createdSupplier = await pool.query(
+                \`INSERT INTO fornecedores
+                  (id,tenant_id,nome,contato,telefone,email,categorias,disciplinas,regioes,marcas,ativo,created_at,updated_at)
+                 VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,'[]'::jsonb,'[]'::jsonb,'[]'::jsonb,'[]'::jsonb,true,now(),now())
+                 RETURNING id\`,
+                [invitation.tenant_id, nomeEmpresa, nomePessoa, telefone || invitation.supplier_phone || null, email],
+              );
+              supplierId = createdSupplier.rows[0]?.id ?? null;
+            }
+
+            await pool.query(
+              \`UPDATE arch_rfq_invitations
+                  SET access_mode='converted',
+                      converted_tenant_id=$1,
+                      converted_at=now(),
+                      supplier_id=COALESCE($2,supplier_id),
+                      supplier_name=COALESCE(NULLIF($3,''),supplier_name),
+                      supplier_email=COALESCE(NULLIF($4,''),supplier_email),
+                      supplier_phone=COALESCE(NULLIF($5,''),supplier_phone),
+                      updated_at=now()
+                WHERE id=$6::uuid\`,
+              [tenant.id, supplierId, nomeEmpresa, email, telefone || "", invitation.id],
+            );
+          }
+        }
+      } catch (rfqLinkError) {
+        req.log?.error({ err: rfqLinkError, tenantId: tenant.id }, "auth: failed to link RFQ supplier conversion");
+      }
     }
 
     const token = signToken({
