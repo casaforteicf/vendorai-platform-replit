@@ -191,7 +191,12 @@ export async function setLiveBrowserPaused(tenantId: string, sessionId: string, 
   if (paused) await session.actionInFlight;
   if (session.closed) throw new Error("Sessão encerrada");
   if (session.missionActive) session.status = paused ? "paused" : "running";
-  if (!paused) session.error = null;
+  if (!paused) {
+    session.error = null;
+    if (session.onSessionPersist) {
+      await session.onSessionPersist(await session.page.cookies());
+    }
+  }
   session.lastActivityAt = new Date();
   return publicSession(session);
 }
