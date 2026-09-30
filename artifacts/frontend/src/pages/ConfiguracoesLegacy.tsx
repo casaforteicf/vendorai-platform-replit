@@ -1588,9 +1588,16 @@ export default function Configuracoes() {
   useEffect(() => {
     const url = new URL(window.location.href);
     const connected = url.searchParams.get("instagramConnected");
+    const temporary = url.searchParams.get("instagramTemporary");
     const error = url.searchParams.get("instagramError");
     if (connected === "1") {
-      toast({ title: "Instagram conectado com sucesso!" });
+      toast({
+        title: temporary === "1" ? "Instagram conectado temporariamente" : "Instagram conectado com sucesso!",
+        description:
+          temporary === "1"
+            ? "A Meta autorizou o login, mas bloqueou o token de longa duração. A conexão está ativa com token temporário e precisará ser reconectada até a autorização do app ser regularizada."
+            : undefined,
+      });
       igConnection.refetch();
       window.history.replaceState({}, "", window.location.pathname);
     }

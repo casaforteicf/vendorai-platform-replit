@@ -136,8 +136,12 @@ router.get("/auth/instagram/callback", async (req, res) => {
       actor: auditActor(req, userId),
     });
     if (!audited) logger.warn({ tenantId }, "configuracoes: falha ao auditar conexão do Instagram");
-    logger.info({ tenantId, username: directAccount.username }, "Instagram conectado com sucesso");
-    return res.redirect(`${appUrl}/configuracoes?tab=integracoes&instagramConnected=1`);
+    logger.info(
+      { tenantId, username: directAccount.username, tokenMode: tokenResponse.token_mode ?? "long_lived" },
+      "Instagram conectado com sucesso",
+    );
+    const temporary = tokenResponse.token_mode === "short_lived_fallback" ? "&instagramTemporary=1" : "";
+    return res.redirect(`${appUrl}/configuracoes?tab=integracoes&instagramConnected=1${temporary}`);
 
     /* Fluxo legado Facebook Pages removido em favor do Instagram Login.
     const pages = await fetchUserPages(tokenResponse.access_token);

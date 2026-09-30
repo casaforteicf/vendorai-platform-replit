@@ -69,6 +69,7 @@ interface TokenExchangeResponse {
 interface LongLivedTokenResponse {
   access_token: string;
   expires_in?: number;
+  token_mode?: "long_lived" | "short_lived_fallback";
 }
 
 interface PageAccount {
@@ -202,7 +203,30 @@ export async function exchangeShortCodeForToken(
   const short = (await res.json()) as TokenExchangeResponse;
   logger.info("Short-lived token recebido");
 
-  return exchangeForLongLivedToken(short.access_token);
+  try {
+    return await exchangeForLongLivedToken(short.access_token);
+  } catch (err) {
+    const unsupportedByMeta =
+      err instanceof Error &&
+      err.message.startsWith("Instagram long-lived token exchange failed:") &&
+      err.message.includes("Unsupported request - method type");
+
+    if (!unsupportedByMeta) throw err;
+
+    // Meta pode emitir o token curto e ainda bloquear a conversão para long-lived
+    // quando a conta/app não possui acesso avançado/tester aprovado. Não abortamos
+    // o OAuth inteiro: mantemos a conexão temporária e deixamos a expiração real
+    // forçar uma reconexão até a autorização da Meta ser regularizada.
+    logger.warn(
+      { expiresIn: 3600 },
+      "Meta bloqueou long-lived token; usando short-lived token temporariamente",
+    );
+    return {
+      access_token: short.access_token,
+      expires_in: 3600,
+      token_mode: "short_lived_fallback",
+    };
+  }
 }
 
 async function exchangeForLongLivedToken(shortToken: string): Promise<LongLivedTokenResponse> {
@@ -231,7 +255,7 @@ async function exchangeForLongLivedToken(shortToken: string): Promise<LongLivedT
   if (primary.response.ok) {
     const data = JSON.parse(primary.body) as LongLivedTokenResponse;
     logger.info({ expiresIn: data.expires_in }, "Long-lived token obtido");
-    return data;
+    return { ...data, token_mode: "long_lived" };
   }
 
   const shouldRetryWithPost =
@@ -247,7 +271,7 @@ async function exchangeForLongLivedToken(shortToken: string): Promise<LongLivedT
     if (fallback.response.ok) {
       const data = JSON.parse(fallback.body) as LongLivedTokenResponse;
       logger.info({ expiresIn: data.expires_in, method: "POST" }, "Long-lived token obtido");
-      return data;
+      return { ...data, token_mode: "long_lived" };
     }
 
     logger.error(
