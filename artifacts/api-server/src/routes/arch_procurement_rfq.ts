@@ -750,7 +750,7 @@ archProcurementRfqPublicRouter.post("/public/arqdor/rfq/:token/respond", async (
   } catch (err) {
     logger.error({ err }, "public rfq response error");
     const message = err instanceof Error ? err.message : "Não foi possível registrar a cotação.";
-    if (/Cotação não encontrada|Cotação encerrada|Informe os itens|Item fora do escopo/i.test(message)) {
+    if (/Cotação não encontrada|Cotação encerrada|Informe os itens|Item fora do escopo|todos os itens do escopo|todos os itens precisam ter preço/i.test(message)) {
       return res.status(400).json({ error: message.replace(/^.*?:\s*/, "") });
     }
     next(err);
