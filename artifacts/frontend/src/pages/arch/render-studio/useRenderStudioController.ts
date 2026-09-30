@@ -231,6 +231,18 @@ export function useRenderStudioController() {
     prevSavingRef.current = arq.saving;
   }, [arq.saving]);
 
+  async function withRecoveryTimeout<T>(promise: Promise<T>, timeoutMs = 8000): Promise<T> {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const timeout = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error("Tempo limite ao recuperar o render.")), timeoutMs);
+    });
+    try {
+      return await Promise.race([promise, timeout]);
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+    }
+  }
+
   // Session restore / deep-link bootstrap.
   // IMPORTANT: an explicit render_id in the URL is authoritative. This prevents
   // a previously opened session (or another project in localStorage) from
@@ -243,6 +255,14 @@ export function useRenderStudioController() {
     const isNewRender = params.get("new") === "1";
 
     if (requestedAmbiente) setAmbiente(requestedAmbiente);
+
+    // Um deep-link de projeto deve restaurar o contexto mesmo sem render_id.
+    // Isso evita abrir o Studio com ambiente conhecido e "Nenhum projeto".
+    if (requestedProjectId && arq.projectId !== requestedProjectId) {
+      void withRecoveryTimeout(arq.selectProject(requestedProjectId), 8000).catch((e: unknown) => {
+        setErr(categorizeError(e));
+      });
+    }
 
     if (isNewRender) {
       setRenderId(null);
@@ -264,7 +284,10 @@ export function useRenderStudioController() {
 
       const openExistingRender = async () => {
         try {
-          const current = await apiGet(`/api/arch/ai-render/${encodeURIComponent(requestedRenderId)}`);
+          const current = await withRecoveryTimeout(
+            apiGet(`/api/arch/ai-render/${encodeURIComponent(requestedRenderId)}`),
+            8000,
+          );
           if (cancelled) return;
 
           const projectId = String(current.project_id ?? requestedProjectId ?? "").trim();
@@ -272,7 +295,7 @@ export function useRenderStudioController() {
           if (ambienteValue) setAmbiente(ambienteValue);
 
           if (projectId && arq.projectId !== projectId) {
-            await arq.selectProject(projectId);
+            await withRecoveryTimeout(arq.selectProject(projectId), 8000);
             if (cancelled) return;
           }
 
@@ -385,21 +408,59 @@ export function useRenderStudioController() {
     if (siu) setImageDataUrl(siu);
     if (ss === "especificacao") setStep("aprovar");
     else if (ss && STEPS.some((item) => item.id === ss)) setStep(ss as Step);
-    // P1-11: orphan job recovery
+    // P1-11: orphan job recovery.
+    // Nunca bloqueia a interface indefinidamente: a consulta tem timeout e,
+    // quando encontra o render, também restaura projeto + ambiente.
     if (sri && !sru) {
+      let recoveryCancelled = false;
       setIsRecovering(true);
-      apiGet(`/api/arch/ai-render/${sri}`)
-        .then((data) => {
+
+      void withRecoveryTimeout(apiGet(`/api/arch/ai-render/${encodeURIComponent(sri)}`), 8000)
+        .then(async (data) => {
+          if (recoveryCancelled) return;
+
+          const recoveredProjectId = String(data.project_id ?? requestedProjectId ?? "").trim();
+          const recoveredAmbiente = requestedAmbiente || String(data.ambiente ?? "").trim().replace(/_/g, " ");
+
+          if (recoveredAmbiente) setAmbiente(recoveredAmbiente);
+
+          if (recoveredProjectId && arq.projectId !== recoveredProjectId) {
+            try {
+              await withRecoveryTimeout(arq.selectProject(recoveredProjectId), 8000);
+            } catch {
+              // Falha ao selecionar o projeto não pode manter o Studio travado.
+            }
+          }
+
+          if (recoveryCancelled) return;
+
           if (data.status === "concluido" && data.file_available !== false && (data.display_url || data.result_image_url)) {
-            const recoveredUrl = data.display_url || data.result_image_url;
-            setRenderUrl(normalizeRenderMediaUrl(recoveredUrl));
-            const v: RenderVersion = { id: sri, url: normalizeRenderMediaUrl(recoveredUrl), label: "Versão 1 · Original", operationType: "initial", createdAt: new Date() };
+            const recoveredUrl = normalizeRenderMediaUrl(data.display_url || data.result_image_url);
+            setRenderUrl(recoveredUrl);
+            const v: RenderVersion = { id: sri, url: recoveredUrl, label: "Versão 1 · Original", operationType: "initial", createdAt: new Date() };
             setVersions([v]);
-            sessionStorage.setItem(SK.renderUrl, normalizeRenderMediaUrl(recoveredUrl));
-            setSaveState("saved"); setLastSavedAt(new Date());
+            sessionStorage.setItem(SK.renderUrl, recoveredUrl);
+            setSaveState("saved");
+            setLastSavedAt(new Date());
+            setStep("melhoria");
+          } else {
+            // O job não está utilizável: limpa somente a referência órfã e libera o fluxo.
+            setRenderId(null);
+            sessionStorage.removeItem(SK.renderId);
           }
         })
-        .catch(() => {}).finally(() => setIsRecovering(false));
+        .catch(() => {
+          if (recoveryCancelled) return;
+          setRenderId(null);
+          sessionStorage.removeItem(SK.renderId);
+        })
+        .finally(() => {
+          if (!recoveryCancelled) setIsRecovering(false);
+        });
+
+      return () => {
+        recoveryCancelled = true;
+      };
     }
   }, []);
 
