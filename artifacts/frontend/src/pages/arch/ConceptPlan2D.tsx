@@ -1612,7 +1612,7 @@ export default function ConceptPlan2D({
               pointerEvents={interactionMode === "space" ? "none" : undefined}
               tabIndex={0}
               onPointerDown={(event) => {
-                if (interactionMode !== "room") return;
+                if (interactionMode !== "room" && interactionMode !== "navigate") return;
                 if (paintTarget === "floor") {
                   event.stopPropagation();
                   onSelect(room.id);
@@ -1635,10 +1635,10 @@ export default function ConceptPlan2D({
                 });
               }}
               onClick={() => {
-                if (interactionMode === "room") onSelect(room.id);
+                if (interactionMode === "room" || interactionMode === "navigate") onSelect(room.id);
               }}
               onKeyDown={(event) => {
-                if (interactionMode === "room" && (event.key === "Enter" || event.key === " ")) onSelect(room.id);
+                if ((interactionMode === "room" || interactionMode === "navigate") && (event.key === "Enter" || event.key === " ")) onSelect(room.id);
               }}
               className="cursor-pointer"
             >
@@ -1723,7 +1723,7 @@ export default function ConceptPlan2D({
                   )}
                 </>
               )}
-              {interactionMode === "room" && selected && onRoomChange && !room.locked && (
+              {(interactionMode === "room" || interactionMode === "navigate") && selected && onRoomChange && !room.locked && (
                 <>
                   {([
                     ["resize-nw", room.x, room.y, "cursor-nwse-resize"],
@@ -1771,7 +1771,7 @@ export default function ConceptPlan2D({
 
                 </>
               )}
-              {selected && interactionMode === "room" && (
+              {selected && (interactionMode === "room" || interactionMode === "navigate") && (
                 <g transform={`translate(${room.x + room.width / 2 - 1.05} ${Math.max(-0.75, room.y - 0.82)})`}>
                   <rect width="2.10" height="0.56" rx="0.18" fill="#0f172a" opacity="0.96" />
                   <g
@@ -2288,15 +2288,15 @@ export default function ConceptPlan2D({
           return (
             <g
               key={wall.id}
-              className={interactionMode === "wall" ? "cursor-pointer" : ""}
+              className={(interactionMode === "wall" || interactionMode === "navigate") ? "cursor-pointer" : ""}
               onPointerDown={(event) => {
-                if (interactionMode !== "wall" || !onSelectCustomWall) return;
+                if ((interactionMode !== "wall" && interactionMode !== "navigate") || !onSelectCustomWall) return;
                 event.stopPropagation();
                 onSelectCustomWall(wall.id);
                 if (paintTarget === "wall") return;
               }}
               onClick={(event) => {
-                if (interactionMode !== "wall" || !onSelectCustomWall) return;
+                if ((interactionMode !== "wall" && interactionMode !== "navigate") || !onSelectCustomWall) return;
                 event.stopPropagation();
                 onSelectCustomWall(wall.id);
               }}
@@ -2322,7 +2322,7 @@ export default function ConceptPlan2D({
                       key={mode}
                       className="cursor-crosshair"
                       onPointerDown={(event) => {
-                        if (interactionMode !== "wall" || !onUpdateCustomWall) return;
+                        if ((interactionMode !== "wall" && interactionMode !== "navigate") || !onUpdateCustomWall) return;
                         event.stopPropagation();
                         onEditStart?.();
                         const point = toSvgPoint(event.clientX, event.clientY);
@@ -2356,7 +2356,7 @@ export default function ConceptPlan2D({
                         <g
                           className={horizontal ? "cursor-ns-resize" : "cursor-ew-resize"}
                         onPointerDown={(event) => {
-                          if (interactionMode !== "wall" || !onUpdateCustomWall) return;
+                          if ((interactionMode !== "wall" && interactionMode !== "navigate") || !onUpdateCustomWall) return;
                           event.stopPropagation();
                           onEditStart?.();
                           const point = toSvgPoint(event.clientX, event.clientY);
@@ -2500,7 +2500,7 @@ export default function ConceptPlan2D({
           );
         })}
 
-        {interactionMode === "wall" && topologyNodes
+        {(interactionMode === "wall" || interactionMode === "navigate") && topologyNodes
           .filter((node) => node.segmentIds.length >= 3 || node.endpointRefs.length >= 2)
           .map((node) => {
             const editable = node.endpointRefs.length >= 2;
@@ -2594,9 +2594,9 @@ export default function ConceptPlan2D({
           return (
             <g
               key={wall.id}
-              className={interactionMode === "wall" ? (vertical ? "cursor-ew-resize" : "cursor-ns-resize") : ""}
+              className={(interactionMode === "wall" || interactionMode === "navigate") ? (vertical ? "cursor-ew-resize" : "cursor-ns-resize") : ""}
               onPointerDown={(event) => {
-                if (interactionMode !== "wall" || !onSelectWall || !onWallMove) return;
+                if ((interactionMode !== "wall" && interactionMode !== "navigate") || !onSelectWall || !onWallMove) return;
                 event.stopPropagation();
                 onEditStart?.();
                 const point = toSvgPoint(event.clientX, event.clientY);
@@ -2615,7 +2615,7 @@ export default function ConceptPlan2D({
                 });
               }}
               onClick={(event) => {
-                if (interactionMode !== "wall" || !onSelectWall) return;
+                if ((interactionMode !== "wall" && interactionMode !== "navigate") || !onSelectWall) return;
                 event.stopPropagation();
                 onSelectWall(wall.id);
               }}
@@ -2794,7 +2794,7 @@ export default function ConceptPlan2D({
             })()}
 
             {customWalls
-              .filter((wall) => wallLength(wall) >= 0.5)
+              .filter((wall) => wall.id === selectedCustomWallId && wallLength(wall) >= 0.5)
               .map((wall) => {
                 const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
                 const length = wallLength(wall);
@@ -2829,9 +2829,9 @@ export default function ConceptPlan2D({
           return (
             <g
               key={opening.id}
-              className={interactionMode === "opening" ? "cursor-grab" : ""}
+              className={(interactionMode === "opening" || interactionMode === "navigate") ? "cursor-grab" : ""}
               onPointerDown={(event) => {
-                if (interactionMode !== "opening" || !onSelectOpening || !onOpeningChange) return;
+                if ((interactionMode !== "opening" && interactionMode !== "navigate") || !onSelectOpening || !onOpeningChange) return;
                 event.stopPropagation();
                 onEditStart?.();
                 onSelectOpening(opening.id);
@@ -2849,7 +2849,7 @@ export default function ConceptPlan2D({
                 });
               }}
               onClick={(event) => {
-                if (interactionMode !== "opening" || !onSelectOpening) return;
+                if ((interactionMode !== "opening" && interactionMode !== "navigate") || !onSelectOpening) return;
                 event.stopPropagation();
                 onSelectOpening(opening.id);
               }}
