@@ -347,10 +347,15 @@ export function RenderStudioRightPanel({
 
                         {melhoriaMode === "change-material" && selections.length > 0 && (
                           <div style={{ padding: "8px 9px", borderRadius: 7, background: `${D.amber}0D`, border: `1px solid ${D.amber}33`, fontSize: 10, lineHeight: 1.45, color: D.muted, display: "flex", flexDirection: "column", gap: 7 }}>
-                            <div>◉ A seleção é apenas a semente. O Arqdor detecta os limites da peça por <strong style={{ color: D.text }}>cor + perímetro + conectividade</strong> antes de aplicar.</div>
-                            <DkBtn variant="secondary" small onClick={onDetectMaterialSurface} disabled={materialMaskDetecting}>
-                              {materialMaskDetecting ? "Detectando superfície…" : materialMaskPreviewUrl ? "↺ Detectar novamente" : "◎ Detectar superfície"}
-                            </DkBtn>
+                            <div>◉ A seleção é apenas a semente. Ao soltar o mouse, o Arqdor detecta automaticamente os limites da peça por <strong style={{ color: D.text }}>cor + perímetro + conectividade</strong>.</div>
+                            {materialMaskDetecting && (
+                              <div style={{ color: D.amber, fontWeight: 700 }}>⏳ Detectando superfície automaticamente…</div>
+                            )}
+                            {!materialMaskDetecting && (
+                              <DkBtn variant="secondary" small onClick={onDetectMaterialSurface}>
+                                {materialMaskPreviewUrl ? "↺ Detectar novamente" : "◎ Tentar detecção novamente"}
+                              </DkBtn>
+                            )}
                             {materialMaskPreviewUrl && !materialMaskConfirmed && (
                               <>
                                 <div style={{ color: D.amber }}>A área âmbar sobre o render é a máscara detectada. Confirme somente se ela corresponder à peça correta.</div>
@@ -363,7 +368,7 @@ export function RenderStudioRightPanel({
                               </div>
                             )}
                             {!materialMaskConfirmed && materialMaskPreviewUrl && (
-                              <div style={{ color: D.dim }}>Se estiver incorreta, mova/redimensione a seleção e clique em Detectar novamente.</div>
+                              <div style={{ color: D.dim }}>Se estiver incorreta, mova ou redimensione a seleção. A detecção será refeita automaticamente.</div>
                             )}
                           </div>
                         )}
@@ -431,7 +436,7 @@ export function RenderStudioRightPanel({
                         </DkBtn>
                         {melhoriaMode === "change-material" && selections.length === 0 && (
                           <div style={{ padding: "7px 9px", borderRadius: 7, background: `${D.amber}0D`, border: `1px solid ${D.amber}33`, color: D.amber, fontSize: 10, lineHeight: 1.4 }}>
-                            1. Selecione uma parte da peça · 2. Detectar superfície · 3. Confirmar máscara · 4. Escolher material · 5. Aplicar.
+                            1. Selecione uma parte da peça · 2. Aguarde a detecção automática · 3. Confirme a máscara · 4. Escolha o material · 5. Aplique.
                           </div>
                         )}
                         {!loading && <DkBtn variant="ghost" small onClick={onNextStep}>Ver versões →</DkBtn>}

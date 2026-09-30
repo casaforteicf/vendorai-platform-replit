@@ -133,12 +133,60 @@ export function useRenderStudioController() {
   const [approvalNote, setApprovalNote] = useState("");
   const [approvalRecord, setApprovalRecord] = useState<ApprovalRecord | null>(null);
 
+  const materialMaskRequestSeqRef = useRef(0);
+
+  async function detectMaterialSurfaceFor(rects: SelectionRect[]) {
+    if (!renderId || rects.length === 0) return;
+
+    const requestSeq = ++materialMaskRequestSeqRef.current;
+    setMaterialMaskDetecting(true);
+    setMaterialMaskConfirmed(false);
+    setErr(null);
+
+    try {
+      const data = await apiPost(`/api/arch/ai-render/${renderId}/material-mask-preview`, {
+        mask_coordinates: rects.slice(-1).map(s => ({ x: s.x, y: s.y, w: s.w, h: s.h })),
+      });
+
+      // Se a seleção mudou durante a detecção, ignora a resposta antiga.
+      if (requestSeq !== materialMaskRequestSeqRef.current) return;
+
+      setMaterialMaskPreviewUrl(data.preview_data_url ?? null);
+      setMaterialMaskDataUrl(data.mask_file_base64 ?? null);
+      logEvent("material_surface_detected", `Superfície detectada · cobertura ${Math.round(Number(data.coverage ?? 0) * 1000) / 10}%`);
+    } catch (e: unknown) {
+      if (requestSeq !== materialMaskRequestSeqRef.current) return;
+      setMaterialMaskPreviewUrl(null);
+      setMaterialMaskDataUrl(null);
+      setMaterialMaskConfirmed(false);
+      setErr(categorizeError(e));
+    } finally {
+      if (requestSeq === materialMaskRequestSeqRef.current) {
+        setMaterialMaskDetecting(false);
+      }
+    }
+  }
+
   useEffect(() => {
-    // Qualquer mudança na seleção invalida a máscara já detectada/confirmada.
+    // Qualquer mudança na seleção invalida a máscara já detectada/confirmada
+    // e também invalida imediatamente qualquer resposta de detecção em voo.
+    materialMaskRequestSeqRef.current += 1;
     setMaterialMaskPreviewUrl(null);
     setMaterialMaskDataUrl(null);
     setMaterialMaskConfirmed(false);
-  }, [selections]);
+
+    // Troca de material: terminou de marcar/mover/redimensionar a semente,
+    // detecta a superfície automaticamente. O debounce evita chamadas durante
+    // o arraste e deixa somente a posição final da seleção chegar ao backend.
+    if (melhoriaMode !== "change-material" || !renderId || selections.length === 0) return;
+
+    const snapshot = selections.map(s => ({ ...s }));
+    const timer = window.setTimeout(() => {
+      void detectMaterialSurfaceFor(snapshot);
+    }, 450);
+
+    return () => window.clearTimeout(timer);
+  }, [selections, melhoriaMode, renderId]);
 
   // P3-28: event log
   const [eventLog, setEventLog] = useState<EventLogEntry[]>([]);
@@ -434,24 +482,7 @@ export function useRenderStudioController() {
       setSelectionMode("rect");
       return;
     }
-    setMaterialMaskDetecting(true);
-    setMaterialMaskConfirmed(false);
-    setErr(null);
-    try {
-      const data = await apiPost(`/api/arch/ai-render/${renderId}/material-mask-preview`, {
-        mask_coordinates: selections.slice(-1).map(s => ({ x: s.x, y: s.y, w: s.w, h: s.h })),
-      });
-      setMaterialMaskPreviewUrl(data.preview_data_url ?? null);
-      setMaterialMaskDataUrl(data.mask_file_base64 ?? null);
-      logEvent("material_surface_detected", `Superfície detectada · cobertura ${Math.round(Number(data.coverage ?? 0) * 1000) / 10}%`);
-    } catch (e: unknown) {
-      setMaterialMaskPreviewUrl(null);
-      setMaterialMaskDataUrl(null);
-      setMaterialMaskConfirmed(false);
-      setErr(categorizeError(e));
-    } finally {
-      setMaterialMaskDetecting(false);
-    }
+    await detectMaterialSurfaceFor(selections.map(s => ({ ...s })));
   }
 
   function confirmMaterialSurface() {
