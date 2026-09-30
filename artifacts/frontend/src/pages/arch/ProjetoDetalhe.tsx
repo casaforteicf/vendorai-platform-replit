@@ -31,7 +31,7 @@ import {
   Search, LayoutGrid, DollarSign, Clock, Eye, ExternalLink,
   Copy, CheckCircle, XCircle, RefreshCw, Globe, Image,
   Download, AlertCircle, ClipboardList, Package, FileText, Upload,
-  FolderOpen, Ruler, FileCode2, Camera,
+  FolderOpen, Ruler, Camera,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -2262,7 +2262,7 @@ export default function ProjetoDetalhe() {
                         <div className="grid gap-2 sm:grid-cols-2">
                           {ambArquivos.map((arquivo) => (
                             <a key={arquivo.id} href={arquivo.url} target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-lg border p-3 hover:bg-muted/30">
-                              {arquivo.tipo === "foto" || arquivo.tipo === "imagem" ? <Camera className="h-5 w-5 text-muted-foreground" /> : arquivo.tipo === "skp" || arquivo.tipo === "dxf" || arquivo.tipo === "ifc" ? <FileCode2 className="h-5 w-5 text-muted-foreground" /> : <FileText className="h-5 w-5 text-muted-foreground" />}
+                              {arquivo.tipo === "foto" || arquivo.tipo === "imagem" ? <Camera className="h-5 w-5 text-muted-foreground" /> : arquivo.tipo === "skp" || arquivo.tipo === "dxf" || arquivo.tipo === "ifc" ? <FileText className="h-5 w-5 text-muted-foreground" /> : <FileText className="h-5 w-5 text-muted-foreground" />}
                               <div className="min-w-0 flex-1">
                                 <p className="truncate text-sm font-medium">{arquivo.nome}</p>
                                 <p className="text-[11px] uppercase text-muted-foreground">{arquivo.tipo}{arquivo.size ? ` · ${(arquivo.size / 1024 / 1024).toFixed(1)} MB` : ""}</p>
