@@ -6,6 +6,8 @@ import {
   SYSTEM_PIPELINE_STAGES,
   updatePipelineStageSchema,
   tenantUserFunctionsTable,
+  tenantAgentConfigsTable,
+  agentDefaultsTable,
   tenantsTable,
 } from "@workspace/db";
 import { z } from "zod/v4";
@@ -173,6 +175,38 @@ async function validateResponsibleFunctions(
   return { values: unique };
 }
 
+async function validateResponsibleAgent(
+  tenantId: string,
+  agentKey: string | null | undefined,
+): Promise<{ value: string | null } | { error: string }> {
+  if (agentKey === undefined || agentKey === null || String(agentKey).trim() === "") {
+    return { value: null };
+  }
+
+  const key = String(agentKey).trim();
+  const [agent] = await db
+    .select({
+      agentKey: agentDefaultsTable.agentKey,
+      tenantActive: tenantAgentConfigsTable.ativo,
+    })
+    .from(agentDefaultsTable)
+    .leftJoin(
+      tenantAgentConfigsTable,
+      and(
+        eq(tenantAgentConfigsTable.agentKey, agentDefaultsTable.agentKey),
+        eq(tenantAgentConfigsTable.tenantId, tenantId),
+      ),
+    )
+    .where(eq(agentDefaultsTable.agentKey, key));
+
+  if (!agent) return { error: "Agente IA não encontrado." };
+  if (agent.tenantActive !== true) {
+    return { error: "O Agente IA precisa estar ativo nesta empresa antes de assumir uma etapa." };
+  }
+
+  return { value: key };
+}
+
 function slugifyStageKey(label: string): string {
   return label
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -272,6 +306,7 @@ router.post("/tenants/:tenantId/pipeline-stages", async (req, res) => {
     bg: z.string().optional(),
     slaMinutos: z.number().int().positive().nullable().optional(),
     responsaveisFuncoes: z.array(z.string()).optional(),
+    responsavelAgenteKey: z.string().min(1).nullable().optional(),
   });
   const parsed = bodySchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
@@ -279,6 +314,11 @@ router.post("/tenants/:tenantId/pipeline-stages", async (req, res) => {
   const validatedFunctions = await validateResponsibleFunctions(tenantId, parsed.data.responsaveisFuncoes);
   if ("error" in validatedFunctions) {
     return res.status(422).json({ error: validatedFunctions.error });
+  }
+
+  const validatedAgent = await validateResponsibleAgent(tenantId, parsed.data.responsavelAgenteKey);
+  if ("error" in validatedAgent) {
+    return res.status(422).json({ error: validatedAgent.error });
   }
 
   const existing = await ensureSystemStages(tenantId, pipeline);
@@ -304,6 +344,7 @@ router.post("/tenants/:tenantId/pipeline-stages", async (req, res) => {
       isSystem: false,
       slaMinutos: parsed.data.slaMinutos ?? null,
       responsaveisFuncoes: validatedFunctions.values,
+      responsavelAgenteKey: validatedAgent.value,
     })
     .returning();
 
@@ -327,9 +368,18 @@ router.patch("/tenants/:tenantId/pipeline-stages/:id", async (req, res) => {
     responsaveisFuncoes = validatedFunctions.values;
   }
 
+  let responsavelAgenteKey = parsed.data.responsavelAgenteKey;
+  if (responsavelAgenteKey !== undefined) {
+    const validatedAgent = await validateResponsibleAgent(tenantId, responsavelAgenteKey);
+    if ("error" in validatedAgent) {
+      return res.status(422).json({ error: validatedAgent.error });
+    }
+    responsavelAgenteKey = validatedAgent.value;
+  }
+
   const [updated] = await db
     .update(pipelineStagesTable)
-    .set({ ...parsed.data, responsaveisFuncoes, updatedAt: new Date() })
+    .set({ ...parsed.data, responsaveisFuncoes, responsavelAgenteKey, updatedAt: new Date() })
     .where(and(eq(pipelineStagesTable.id, String(req.params.id)), eq(pipelineStagesTable.tenantId, tenantId)))
     .returning();
 
