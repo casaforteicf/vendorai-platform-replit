@@ -1948,10 +1948,8 @@ export default function Deals() {
     },
   });
 
-  // Etapas do pipeline vindas do backend (controladas por admin — SLA de
-  // tempo, criação de etapas novas). Sobrepõe label/cor/SLA nas colunas
-  // estáticas (que definem a estrutura/ordem/splits virtuais) e adiciona
-  // etapas customizadas (is_system=false) como colunas extras no fim.
+  // Fonte oficial do pipeline comercial. Kanban, seletores, SLA e responsáveis
+  // devem consumir exatamente esta mesma lista, na mesma ordem.
   const { data: pipelineStages = [] } = useListPipelineStages(tenantId, {
     query: { enabled: !!tenantId, queryKey: getListPipelineStagesQueryKey(tenantId), staleTime: 60_000, refetchOnWindowFocus: false },
   });
@@ -1972,67 +1970,42 @@ export default function Deals() {
     return elapsedMin > stage.slaMinutos;
   }
 
-  const visibleEtapas = useMemo(() => {
-    const knownKeys = new Set(ETAPAS.map((s) => s.value));
+  // Fonte única: a lista configurada no backend é a própria estrutura visual
+  // da pipeline. Não misture com ETAPAS/KANBAN_COLUMNS fixos, pois isso cria
+  // colunas órfãs (ex.: "Contrato") e faz "Responsáveis por etapa" divergir.
+  const visibleEtapas = useMemo(
+    () =>
+      [...pipelineStages]
+        .sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))
+        .map((stage) => ({
+          value: stage.key,
+          label: stage.label,
+          color: stage.color ?? "text-gray-600",
+          bg: stage.bg ?? "bg-gray-100",
+        })),
+    [pipelineStages],
+  );
 
-    const base = ETAPAS
-      .filter((stage) => stage.value !== "conferencia_estoque" || !!stagesByKey[stage.value])
+  const kanbanColumns = useMemo<KanbanColumnDef[]>(() => {
+    const staticByKey = new Map(
+      KANBAN_COLUMNS.map((column) => [column.onDrop.etapa, column] as const),
+    );
+
+    return [...pipelineStages]
+      .sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))
       .map((stage) => {
-        const serverStage = stagesByKey[stage.value];
+        const fallback = staticByKey.get(stage.key);
         return {
-          value: stage.value,
-          label: serverStage?.label || stage.label,
-          color: serverStage?.color || stage.color,
-          bg: serverStage?.bg || stage.bg,
-          ordem: serverStage?.ordem ?? Number.MAX_SAFE_INTEGER,
+          dropId: stage.key,
+          label: stage.label,
+          color: stage.color ?? fallback?.color ?? "text-gray-600",
+          bg: stage.bg ?? fallback?.bg ?? "bg-gray-100",
+          order: stage.ordem,
+          isSpecial: fallback?.isSpecial ?? ["perdido", "entregue"].includes(stage.key),
+          onDrop: { etapa: stage.key },
         };
       });
-
-    const customEtapas = pipelineStages
-      .filter((s) => !s.isSystem && !knownKeys.has(s.key))
-      .map((s) => ({
-        value: s.key,
-        label: s.label,
-        color: s.color ?? "text-gray-600",
-        bg: s.bg ?? "bg-gray-100",
-        ordem: s.ordem,
-      }));
-
-    return [...base, ...customEtapas]
-      .sort((a, b) => a.ordem - b.ordem)
-      .map(({ ordem: _ordem, ...stage }) => stage);
-  }, [stagesByKey, pipelineStages]);
-
-  const kanbanColumns = useMemo(() => {
-    const knownKeys = new Set(KANBAN_COLUMNS.map((c) => c.onDrop.etapa));
-
-    const baseColumns: KanbanColumnDef[] = KANBAN_COLUMNS
-      .filter((column) => column.onDrop.etapa !== "conferencia_estoque" || !!stagesByKey[column.onDrop.etapa])
-      .map((column) => {
-        const serverStage = stagesByKey[column.onDrop.etapa];
-        return {
-          ...column,
-          label: serverStage?.label || column.label,
-          color: serverStage?.color || column.color,
-          bg: serverStage?.bg || column.bg,
-          order: serverStage?.ordem ?? column.order,
-        };
-      });
-
-    const customColumns: KanbanColumnDef[] = pipelineStages
-      .filter((s) => !s.isSystem && !knownKeys.has(s.key))
-      .map((s) => ({
-        dropId: s.key,
-        label: s.label,
-        color: s.color ?? "text-gray-600",
-        bg: s.bg ?? "bg-gray-100",
-        order: s.ordem,
-        isSpecial: false,
-        onDrop: { etapa: s.key },
-      }));
-
-    return [...baseColumns, ...customColumns].sort((a, b) => a.order - b.order);
-  }, [stagesByKey, pipelineStages]);
+  }, [pipelineStages]);
 
   useEffect(() => {
     if (kanbanColumns.length > 0 && !kanbanColumns.some((column) => column.dropId === mobileCol)) {
