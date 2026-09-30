@@ -14,6 +14,7 @@ export type UserFunction = typeof UserFunction[keyof typeof UserFunction];
 
 export const UserFunction = {
   vendedor: 'vendedor',
+  representante_comercial: 'representante_comercial',
   financeiro: 'financeiro',
   suporte: 'suporte',
   entrega: 'entrega',
