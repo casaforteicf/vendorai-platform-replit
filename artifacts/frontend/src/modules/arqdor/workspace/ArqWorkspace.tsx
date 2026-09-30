@@ -137,14 +137,14 @@ interface FlowStep {
 }
 
 const FLOW_STEPS: FlowStep[] = [
-  { id:'criar',       icon:'✦',  label:'Criar',       sublabel:'Projeto',         primary:'home',          extras:['projeto'],                          color: PHX.purple },
-  { id:'inspirar',    icon:'🖼️', label:'Inspirar',    sublabel:'Biblioteca',      primary:'biblioteca',    extras:[],                                   color: PHX.blue   },
-  { id:'renderizar',  icon:'✨', label:'Renderizar',   sublabel:'Visualização IA', primary:'renders',       extras:['prompt'],                           color: PHX.purple },
-  { id:'melhorar',    icon:'🔄', label:'Melhorar',    sublabel:'Ajustes IA',      primary:'correcoes',     extras:['ai-review','memoria'],              color: PHX.amber  },
-  { id:'especificar', icon:'📋', label:'Especificar', sublabel:'Memorial',        primary:'especificacao', extras:[],                                   color: '#16a34a'  },
-  { id:'apresentar',  icon:'👤', label:'Apresentar',  sublabel:'Portal cliente',  primary:'cliente',       extras:[],                                   color: PHX.cyan   },
-  { id:'orcamento',   icon:'💰', label:'Orçamento',   sublabel:'Budget executivo',primary:'orcamento',     extras:['orcamento-pro'],                    color: '#0369a1'  },
-  { id:'entregar',    icon:'📦', label:'Entregar',    sublabel:'Finalizar',       primary:'office',        extras:[],                                   color: '#0d9488'  },
+  { id:'criar',       icon:'✦',  label:'Projeto',      sublabel:'Cliente e projeto', primary:'home',          extras:['projeto'],                          color: PHX.purple },
+  { id:'inspirar',    icon:'🖼️', label:'Inspirar',    sublabel:'Biblioteca',        primary:'biblioteca',    extras:[],                                   color: PHX.blue   },
+  { id:'renderizar',  icon:'✨', label:'Renderizar',   sublabel:'Visualização IA',   primary:'renders',       extras:['prompt'],                           color: PHX.purple },
+  { id:'melhorar',    icon:'🔄', label:'Melhorar',    sublabel:'Versões e aprovação',primary:'correcoes',     extras:['ai-review','memoria'],              color: PHX.amber  },
+  { id:'especificar', icon:'📋', label:'Especificar', sublabel:'Memorial técnico',  primary:'especificacao', extras:[],                                   color: '#16a34a'  },
+  { id:'orcamento',   icon:'💰', label:'Orçamento',   sublabel:'Budget executivo',  primary:'orcamento',     extras:['orcamento-pro'],                    color: '#0369a1'  },
+  { id:'apresentar',  icon:'👤', label:'Proposta',    sublabel:'Apresentar ao cliente',primary:'cliente',     extras:[],                                   color: PHX.cyan   },
+  { id:'entregar',    icon:'📦', label:'Entregar',    sublabel:'Obra e entrega',    primary:'office',        extras:[],                                   color: '#0d9488'  },
 ]
 
 // Legado — mantido para keyboard shortcuts e command palette
