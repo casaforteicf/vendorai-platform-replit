@@ -534,6 +534,120 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
   } finally { client.release(); }
 });
 
+
+archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId/commercial-revision", async (req, res, next) => {
+  const client = await pool.connect();
+  try {
+    const tid = requireTenant(req, res); if (!tid) return;
+    const obraId = String(req.params["obraId"] || "");
+    const packageId = String(req.params["packageId"] || "");
+    const saleTotal = Math.max(0, n(req.body?.saleTotal));
+    if (saleTotal <= 0) return res.status(422).json({ error: "Informe um novo preço de venda válido." });
+
+    const pkgResult = await client.query(
+      `SELECT * FROM arch_rfq_packages WHERE id=$1::uuid AND obra_id=$2 AND tenant_id=$3 LIMIT 1`,
+      [packageId, obraId, tid],
+    );
+    const pkg = pkgResult.rows[0];
+    if (!pkg) return res.status(404).json({ error: "Pacote não encontrado." });
+    if (!pkg.commercial_proposal_id) {
+      return res.status(409).json({ error: "Não existe proposta comercial vinculada. Defina o preço no orçamento e gere a proposta primeiro." });
+    }
+
+    const baseResult = await client.query(
+      `SELECT * FROM propostas WHERE id=$1 AND tenant_id=$2 LIMIT 1`,
+      [pkg.commercial_proposal_id, tid],
+    );
+    const base = baseResult.rows[0];
+    if (!base) return res.status(404).json({ error: "Proposta comercial base não encontrada." });
+
+    const baseNumero = String(base.numero || base.id);
+    const countResult = await client.query(
+      `SELECT COUNT(*)::int AS count
+         FROM orcamento_revisoes
+        WHERE tenant_id=$1 AND lead_id=$2
+          AND (base_proposta_id=$3 OR numero_orcamento=$4 OR numero_orcamento LIKE $5)`,
+      [tid, base.lead_id, base.id, baseNumero, `${baseNumero}-R%`],
+    );
+    const revisionNumber = Number(countResult.rows[0]?.count || 0) + 1;
+    const addendum = String(base.status) === "aceita";
+    const revisionLabel = `${addendum ? "A" : "R"}${revisionNumber}`;
+    const revisionNumero = `${baseNumero}-${revisionLabel}`;
+    const revisionId = crypto.randomUUID();
+    const reviewId = crypto.randomUUID();
+    const nowIso = new Date().toISOString();
+
+    await client.query("BEGIN");
+    const revisionResult = await client.query(
+      `INSERT INTO propostas (
+        id,tenant_id,lead_id,deal_id,titulo,itens,apresentacao,valor_total,status,validade_ate,observacoes,
+        forma_pagamento,cond_pagamento,prazo_entrega,forma_pagamento_mensalidade,cond_pagamento_mensalidade,
+        numero,arquivo_importado_url,arquivo_importado_nome,recorrente,valor_mensal,prazo_contrato_meses,num_parcelas,
+        auto_generated,public_token,accepted_at,accepted_via,accepted_by,acceptance_metadata,payment_compositions,created_at,updated_at
+      )
+      SELECT
+        $1,tenant_id,lead_id,deal_id,titulo,itens,
+        COALESCE(apresentacao,'{}'::jsonb) || jsonb_build_object(
+          'sourceSnapshot',
+          COALESCE(apresentacao->'sourceSnapshot','{}'::jsonb) || jsonb_build_object(
+            'schemaVersion',1,
+            'capturedAt',$2,
+            'immutableForVersion',true,
+            'origin','revision',
+            'changeType',$3,
+            'baseBudgetId',id,
+            'baseBudgetNumber',$4,
+            'revisionLabel',$5
+          )
+        ),
+        $6,'rascunho',validade_ate,observacoes,
+        forma_pagamento,cond_pagamento,prazo_entrega,forma_pagamento_mensalidade,cond_pagamento_mensalidade,
+        $7,arquivo_importado_url,arquivo_importado_nome,recorrente,valor_mensal,prazo_contrato_meses,num_parcelas,
+        false,$8,null,null,null,null,payment_compositions,now(),now()
+      FROM propostas
+      WHERE id=$9 AND tenant_id=$10
+      RETURNING *`,
+      [revisionId, nowIso, addendum ? "contract_addendum" : "commercial_revision", baseNumero, revisionLabel, String(saleTotal),
+       revisionNumero, crypto.randomUUID().replace(/-/g, ""), base.id, tid],
+    );
+    const revision = revisionResult.rows[0];
+    if (!revision) throw new Error("Não foi possível criar a revisão comercial.");
+
+    await client.query(
+      `INSERT INTO orcamento_revisoes
+        (id,tenant_id,lead_id,deal_id,base_proposta_id,proposta_revisao_id,revisao_numero,numero_orcamento,
+         data_orcamento,apresentacao,observacao,anexos,created_by,created_at,updated_at)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,CURRENT_DATE,$9,$10,'[]'::jsonb,$11,now(),now())`,
+      [reviewId, tid, base.lead_id, base.deal_id, base.id, revisionId, revisionLabel, revisionNumero,
+       "Revisão gerada a partir da análise de cotação de fornecedores",
+       `Custo de fornecedor alterou a margem do pacote ${pkg.code}. Novo preço comercial sugerido/definido pelo usuário.`,
+       req.user?.sub ?? null],
+    );
+
+    await client.query(
+      `UPDATE arch_projetos SET proposta_id=$1,updated_at=now() WHERE id=$2::text AND tenant_id=$3`,
+      [revisionId, pkg.project_id, tid],
+    );
+    await client.query(
+      `UPDATE arch_budgets SET sale_total=$1,sale_source='proposal',updated_at=now() WHERE id=$2::uuid AND tenant_id::text=$3`,
+      [String(saleTotal), pkg.budget_id, tid],
+    );
+    await client.query(
+      `UPDATE arch_budget_items
+          SET sale_total=CASE WHEN $2::numeric > 0 THEN ROUND(($1::numeric * total::numeric / $2::numeric),2) ELSE 0 END,
+              updated_at=now()
+        WHERE budget_id=$3::uuid AND tenant_id::text=$4 AND deleted_at IS NULL`,
+      [String(saleTotal), String(n((await client.query(`SELECT subtotal FROM arch_budgets WHERE id=$1::uuid`, [pkg.budget_id])).rows[0]?.subtotal)), pkg.budget_id, tid],
+    );
+    await client.query("COMMIT");
+    res.status(201).json({ revision, revisionLabel, revisionNumero, saleTotal });
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    logger.error({ err }, "rfq commercial revision error");
+    next(err);
+  } finally { client.release(); }
+});
+
 archProcurementRfqPublicRouter.get("/public/arqdor/rfq/:token", async (req, res, next) => {
   try {
     const token = String(req.params["token"] || "");
