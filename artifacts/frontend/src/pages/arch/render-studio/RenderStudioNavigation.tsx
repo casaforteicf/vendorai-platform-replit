@@ -56,11 +56,11 @@ export function RenderStudioTopbar({
       {renderStudioStepIndex(step) >= renderStudioStepIndex("render") && (
         <button
           onClick={onOpenStudio}
-          aria-label="Abrir Studio IA"
-          title="Materiais, iluminação, variações e versões"
+          aria-label="Melhorar render"
+          title="Materiais, iluminação, ajustes e versões"
           style={{ background: C.card, color: C.accentText, border: `1px solid ${C.accent}55`, borderRadius: 8, padding: "7px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer", marginRight: 8 }}
         >
-          ✦ Studio IA
+          ✦ Melhorar render
         </button>
       )}
 
