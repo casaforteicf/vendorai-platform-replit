@@ -93,7 +93,10 @@ const PROPOSTA_EDIT_SCRIPT = `<script id="__proposta_editor__">
 
   var sendTimer=null;
   function send(){
-    window.parent.postMessage({type:'proposta-edit',html:'<!DOCTYPE html>'+document.documentElement.outerHTML},'*');
+    // Only notify the parent that the document changed. Sending the whole HTML
+    // here made React replace iframe.srcDoc on every keystroke, which reloaded
+    // the preview and kicked the user back to the top.
+    window.parent.postMessage({type:'proposta-edit-dirty'},'*');
   }
   function scheduleSend(){
     if(sendTimer)clearTimeout(sendTimer);
@@ -1281,8 +1284,9 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
       // srcDoc/about:srcdoc can report an opaque "null" origin in desktop/webview
       // contexts. Source validation above ties the message to this exact preview iframe.
       if (e.origin !== window.location.origin && e.origin !== "null") return;
-      if (e.data?.type === "proposta-edit" && typeof e.data.html === "string") {
-        setEditableHtml(e.data.html);
+      if (e.data?.type === "proposta-edit-dirty") {
+        // Do not update editableHtml while typing: editableHtml feeds iframe.srcDoc,
+        // so changing it would remount/reload the iframe and reset scroll/focus.
         setEditDirty(true);
       }
     };
