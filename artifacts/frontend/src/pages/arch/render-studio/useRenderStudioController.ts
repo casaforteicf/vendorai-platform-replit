@@ -168,7 +168,9 @@ export function useRenderStudioController() {
   }
 
   useEffect(() => {
-    // Qualquer mudança na seleção invalida a máscara já detectada/confirmada.
+    // Qualquer mudança na seleção invalida a máscara já detectada/confirmada
+    // e também invalida imediatamente qualquer resposta de detecção em voo.
+    materialMaskRequestSeqRef.current += 1;
     setMaterialMaskPreviewUrl(null);
     setMaterialMaskDataUrl(null);
     setMaterialMaskConfirmed(false);
