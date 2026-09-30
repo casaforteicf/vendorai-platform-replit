@@ -570,16 +570,30 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
     const base = baseResult.rows[0];
     if (!base) return res.status(404).json({ error: "Proposta comercial base não encontrada." });
 
-    const baseNumero = String(base.numero || base.id);
+    const ancestryResult = await client.query(
+      `SELECT base_proposta_id
+         FROM orcamento_revisoes
+        WHERE tenant_id=$1 AND proposta_revisao_id=$2
+        ORDER BY created_at ASC
+        LIMIT 1`,
+      [tid, base.id],
+    );
+    const rootBaseId = String(ancestryResult.rows[0]?.base_proposta_id || base.id);
+    const rootResult = rootBaseId === String(base.id)
+      ? { rows: [base] }
+      : await client.query(`SELECT * FROM propostas WHERE id=$1 AND tenant_id=$2 LIMIT 1`, [rootBaseId, tid]);
+    const rootBase = rootResult.rows[0] || base;
+    const baseNumero = String(rootBase.numero || rootBase.id);
+
     const countResult = await client.query(
       `SELECT COUNT(*)::int AS count
          FROM orcamento_revisoes
         WHERE tenant_id=$1 AND lead_id=$2
-          AND (base_proposta_id=$3 OR numero_orcamento=$4 OR numero_orcamento LIKE $5)`,
-      [tid, base.lead_id, base.id, baseNumero, `${baseNumero}-R%`],
+          AND (base_proposta_id=$3 OR numero_orcamento=$4 OR numero_orcamento LIKE $5 OR numero_orcamento LIKE $6)`,
+      [tid, base.lead_id, rootBaseId, baseNumero, `${baseNumero}-R%`, `${baseNumero}-A%`],
     );
     const revisionNumber = Number(countResult.rows[0]?.count || 0) + 1;
-    const addendum = String(base.status) === "aceita";
+    const addendum = String(rootBase.status) === "aceita" || String(base.status) === "aceita";
     const revisionLabel = `${addendum ? "A" : "R"}${revisionNumber}`;
     const revisionNumero = `${baseNumero}-${revisionLabel}`;
     const revisionId = crypto.randomUUID();
@@ -647,7 +661,7 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
         (id,tenant_id,lead_id,deal_id,base_proposta_id,proposta_revisao_id,revisao_numero,numero_orcamento,
          data_orcamento,apresentacao,observacao,anexos,created_by,created_at,updated_at)
        VALUES($1,$2,$3,$4,$5,$6,$7,$8,CURRENT_DATE,$9,$10,'[]'::jsonb,$11,now(),now())`,
-      [reviewId, tid, base.lead_id, base.deal_id, base.id, revisionId, revisionLabel, revisionNumero,
+      [reviewId, tid, base.lead_id, base.deal_id, rootBaseId, revisionId, revisionLabel, revisionNumero,
        "Revisão gerada a partir da análise de cotação de fornecedores",
        `Custo de fornecedor alterou a margem do pacote ${pkg.code}. Novo preço comercial sugerido/definido pelo usuário.`,
        req.user?.sub ?? null],
