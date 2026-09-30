@@ -203,7 +203,7 @@ export function PipelineStageFunctionAccess({
           <span className="truncate">{buttonLabel}</span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-80 p-3">
+      <PopoverContent\n        align="end"\n        sideOffset={8}\n        collisionPadding={12}\n        className="w-80 max-h-[var(--radix-popover-content-available-height)] overflow-y-auto overscroll-contain p-3"\n      >
         <div className="space-y-1">
           <p className="text-sm font-semibold">Funções responsáveis</p>
           <p className="text-xs text-muted-foreground">
