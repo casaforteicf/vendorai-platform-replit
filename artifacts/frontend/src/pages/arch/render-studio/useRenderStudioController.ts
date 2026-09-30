@@ -804,7 +804,11 @@ export function useRenderStudioController() {
   }
 
   // P0-1: create project
-  async function handleCreateProject(name: string) { await arq.createProject(name); go("ambiente"); }
+  async function handleCreateProject(name: string) {
+    const params = new URLSearchParams();
+    if (name.trim()) params.set("titulo", name.trim());
+    setLocation(`/arch/projetos/novo${params.toString() ? `?${params.toString()}` : ""}`);
+  }
 
   // P2-13: handle new selection from canvas
   function handleNewSelection(sel: Omit<SelectionRect, "id" | "label">) {
