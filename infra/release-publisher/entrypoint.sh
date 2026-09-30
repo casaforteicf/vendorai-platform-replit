@@ -20,6 +20,21 @@ fi
 
 echo "Publishing VendorAI revision $REVISION via Railway release publisher"
 
+# Idempotency guard: if the primary route already published this exact revision
+# and the public site is healthy, do not create a duplicate production deploy.
+if [ "$REVISION" != "unknown" ]; then
+  prefix="${REVISION:0:12}"
+  current_app="$(curl -fsSL --connect-timeout 5 --max-time 15 "https://app.appvendorai.com/?__vendorai_probe=$RANDOM" || true)"
+  site_healthy=false
+  if curl -fsSL --connect-timeout 5 --max-time 15 "https://appvendorai.com/?__vendorai_probe=$RANDOM" >/dev/null; then
+    site_healthy=true
+  fi
+  if grep -F -- "-$prefix-" <<<"$current_app" >/dev/null && [ "$site_healthy" = true ]; then
+    echo "Revision $REVISION is already live. Fallback publisher will not duplicate deployment."
+    exec tail -f /dev/null
+  fi
+fi
+
 export VENDOR_BUILD_ID="$REVISION"
 
 pnpm --filter @workspace/frontend build
