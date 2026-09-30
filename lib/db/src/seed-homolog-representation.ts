@@ -74,23 +74,17 @@ await pool.query(`
 
 await pool.query(`
   INSERT INTO tenants (
-    id, tenant_code, name, slug, status, vertical, country_code, default_locale,
-    timezone, default_currency, supported_currencies, agents_enabled,
-    tokens_used_current_month, messages_sent_today, horario_comercial_inicio,
-    horario_comercial_fim, token_credits, ai_credits_usd, ai_daily_spend_usd,
-    prospect_status, extra_user_slots, onboarding_concluido, integracoes_concluido,
-    integracoes_step, confirmar_estoque_antes_financeiro, vende_no_praca_ai,
-    parceiro_rede_ativo, white_label_completo, renovacao_automatica, is_demo,
-    demo_seeded, created_at, updated_at
+    id, tenant_code, name, slug, status, vertical,
+    country_code, default_locale, timezone, default_currency,
+    supported_currencies, is_demo, onboarding_concluido,
+    integracoes_concluido, integracoes_step, created_at, updated_at
   ) VALUES
     ($1, 'VAI-H00035', 'Krafht esquadrias de PVC', 'krafht-homolog', 'active',
-     'Esquadrias', 'BR', 'pt-BR', 'America/Sao_Paulo', 'BRL', '["BRL"]'::json,
-     '{}'::json, 0, 0, 8, 18, 0, 0, 0, 'learning', 0, true, true, 0, false,
-     false, false, false, false, false, false, now(), now()),
+     'Esquadrias', 'BR', 'pt-BR', 'America/Sao_Paulo', 'BRL',
+     '["BRL"]'::json, false, true, true, 0, now(), now()),
     ($2, 'VAI-H00007', 'Windoor Representações', 'windoor-homolog', 'active',
-     'Representação Comercial', 'BR', 'pt-BR', 'America/Sao_Paulo', 'BRL', '["BRL"]'::json,
-     '{}'::json, 0, 0, 8, 18, 0, 0, 0, 'learning', 0, true, true, 0, false,
-     false, false, false, false, false, false, now(), now())
+     'Representação Comercial', 'BR', 'pt-BR', 'America/Sao_Paulo', 'BRL',
+     '["BRL"]'::json, false, true, true, 0, now(), now())
   ON CONFLICT (id) DO UPDATE SET
     name = EXCLUDED.name, status = 'active', updated_at = now()
 `, [KRAFHT_ID, WINDOOR_ID]);
