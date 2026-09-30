@@ -81,7 +81,9 @@ export async function createRectMask(
  * que TV, parede, nicho, puxadores ou outra peça dentro do mesmo retângulo sejam
  * alterados junto com o MDF/revestimento alvo.
  *
- * A máscara NUNCA cresce além do retângulo confirmado pelo usuário.
+ * O retângulo funciona apenas como semente. A máscara pode crescer além dele
+ * até o perímetro real da peça, mas não atravessa bordas fortes ou mudança
+ * incompatível de cor/material.
  */
 export async function createMaterialSurfaceMask(
   imageBuf: Buffer,
@@ -204,14 +206,18 @@ export async function createMaterialSurfaceMask(
     // mesmo quando o contorno é pouco contrastado em luminância.
     const neighborColorJumpThreshold = Math.max(34, Math.min(70, threshold * 0.72));
 
-    const visited = new Uint8Array(rw * rh);
-    const qx = new Int32Array(rw * rh);
-    const qy = new Int32Array(rw * rh);
+    // IMPORTANTE: o retângulo é apenas a SEMENTE, não o limite final.
+    // A partir do ponto representativo, a busca pode crescer pela imagem até
+    // encontrar o perímetro real da superfície. Cor/textura e bordas físicas
+    // continuam funcionando como barreiras.
+    const visited = new Uint8Array(width * height);
+    const qx = new Int32Array(width * height);
+    const qy = new Int32Array(width * height);
     let head = 0, tail = 0, accepted = 0;
 
     const enqueue = (x: number, y: number) => {
-      if (x < x1 || x > x2 || y < y1 || y > y2) return;
-      const li = (y - y1) * rw + (x - x1);
+      if (x < 0 || x >= width || y < 0 || y >= height) return;
+      const li = y * width + x;
       if (visited[li]) return;
       visited[li] = 1;
       qx[tail] = x;
@@ -233,15 +239,19 @@ export async function createMaterialSurfaceMask(
       accepted++;
 
       const tryNeighbor = (nx: number, ny: number) => {
-        if (nx < x1 || nx > x2 || ny < y1 || ny > y2) return;
+        if (nx < 0 || nx >= width || ny < 0 || ny >= height) return;
         const next = pixel(nx, ny);
 
-        // Não cruza perímetro físico forte.
+        // Não cruza perímetro físico forte (quina, fresta, junta, contorno).
         const boundaryEdge = Math.max(edgeStrength(x, y), edgeStrength(nx, ny));
         if (boundaryEdge > edgeBarrierThreshold) return;
 
-        // Não cruza mudança abrupta de acabamento/cor entre peças adjacentes.
+        // Não cruza troca brusca de cor/acabamento entre superfícies.
         if (colorDistance(current, next) > neighborColorJumpThreshold) return;
+
+        // O pixel vizinho também precisa continuar compatível com o material
+        // amostrado na semente, evitando deriva progressiva para outra peça.
+        if (colorDistance(next, seed) > threshold) return;
 
         enqueue(nx, ny);
       };
@@ -253,13 +263,21 @@ export async function createMaterialSurfaceMask(
     }
 
     const rectArea = rw * rh;
-    const coverage = accepted / Math.max(1, rectArea);
+    const imageArea = width * height;
+    const seedCoverage = accepted / Math.max(1, rectArea);
+    const imageCoverage = accepted / Math.max(1, imageArea);
 
-    // Se o alvo ficou minúsculo, a seleção provavelmente caiu em uma borda,
-    // puxador ou objeto sem superfície útil. Melhor falhar do que alterar o
-    // retângulo inteiro e contaminar elementos vizinhos.
-    if (coverage < 0.035) {
-      throw new Error("Não foi possível identificar com segurança a superfície do material dentro da seleção. Selecione uma área um pouco maior no centro da peça e tente novamente.");
+    // Se o alvo ficou minúsculo, a semente provavelmente caiu em puxador,
+    // fresta/reflexo ou outro detalhe sem superfície útil.
+    if (accepted < 24 || seedCoverage < 0.035) {
+      throw new Error("Não foi possível identificar com segurança a superfície. Selecione uma pequena área no centro da peça e tente novamente.");
+    }
+
+    // Proteção contra vazamento: se a região crescer demais pela cena, não
+    // aceitamos a máscara automaticamente. É melhor pedir nova semente do que
+    // trocar material de parede, piso ou mobiliário inteiro por engano.
+    if (imageCoverage > 0.60) {
+      throw new Error("A detecção ultrapassou uma área segura da imagem. Faça uma seleção menor e mais centralizada na peça desejada.");
     }
   }
 
