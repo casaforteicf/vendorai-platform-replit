@@ -243,3 +243,5 @@ export * from "./commercial_usage";
 export * from "./lead_capture";
 
 export * from "./tenant_expansion_recommendations";
+
+export * from "./browser_agent_connections";
