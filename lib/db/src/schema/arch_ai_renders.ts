@@ -21,6 +21,7 @@ export type ArchRenderSelection = {
   w: number;
   h: number;
   label?: string;
+  surfaceKey?: string;
 };
 
 export const archAiRendersTable = pgTable("arch_ai_renders", {
@@ -96,6 +97,7 @@ export const insertArchAiRenderSchema = createInsertSchema(archAiRendersTable, {
     w: z.number(),
     h: z.number(),
     label: z.string().optional(),
+    surfaceKey: z.string().optional(),
   })).optional(),
   segmentationConfidence: z.record(z.string(), z.number()).optional(),
 }).omit({ id: true, createdAt: true, isPrimary: true, jobInput: true, jobLeaseToken: true, jobLeaseUntil: true, jobAttempts: true, providerPredictionId: true, providerSubmissionStartedAt: true });
@@ -108,6 +110,7 @@ export const updateArchAiRenderSchema = createSelectSchema(archAiRendersTable, {
     w: z.number(),
     h: z.number(),
     label: z.string().optional(),
+    surfaceKey: z.string().optional(),
   })).optional(),
   segmentationConfidence: z.record(z.string(), z.number()).optional(),
 })
