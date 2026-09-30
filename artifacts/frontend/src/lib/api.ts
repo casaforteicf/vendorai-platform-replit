@@ -87,7 +87,9 @@ export function setupApiClient() {
   bootstrapAuthenticatedUserCache();
 
   const apiUrl = import.meta.env.VITE_API_URL;
-  const isHomologationWeb = window.location.hostname === "homolog.appvendorai.com";
+  const isHomologationWeb =
+    window.location.hostname === "homolog.appvendorai.com" ||
+    /^vendorai-homolog-[a-z0-9-]+\.up\.railway\.app$/i.test(window.location.hostname);
   const isHostedProductionWeb =
     import.meta.env.PROD &&
     !isHomologationWeb &&
