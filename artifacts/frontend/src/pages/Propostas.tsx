@@ -3161,28 +3161,191 @@ function newFreeItem(): FreeItem {
     // ── Importar orçamento de outro sistema ──────────────────────────────
     const [importValorTotal, setImportValorTotal] = useState<number>(0);
     const [importArquivo, setImportArquivo] = useState<{ url: string; nome: string } | null>(null);
+    const [importItens, setImportItens] = useState<Array<{
+      codigo?: string;
+      nome: string;
+      descricao?: string;
+      unidade?: string;
+      quantidade: number;
+      valorUnitario: number;
+      valorTotal?: number;
+      etapaNome?: string;
+      observacoes?: string;
+    }>>([]);
     const [importUploading, setImportUploading] = useState(false);
+    const [importAnalyzing, setImportAnalyzing] = useState(false);
+    const [importConfidence, setImportConfidence] = useState<number | null>(null);
     const [importError, setImportError] = useState("");
     const importFileInputRef = useRef<HTMLInputElement>(null);
 
     async function uploadImportFile(file: File) {
       setImportUploading(true);
+      setImportAnalyzing(true);
+      setImportError("");
+      setImportItens([]);
+      setImportConfidence(null);
       try {
-        const metaRes = await fetch("/api/storage/uploads/request-url", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
-          body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type || "application/octet-stream" }),
-        });
+        const [metaRes, extractRes] = await Promise.all([
+          fetch("/api/storage/uploads/request-url", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+            body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type || "application/octet-stream" }),
+          }),
+          (() => {
+            const body = new FormData();
+            body.append("file", file, file.name);
+            return fetch(`/api/tenants/${encodeURIComponent(tenantId)}/deals/extract-quote`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+              body,
+            });
+          })(),
+        ]);
+
         if (!metaRes.ok) throw new Error("Falha ao obter URL de upload");
         const { uploadURL, objectPath } = (await metaRes.json()) as { uploadURL: string; objectPath: string };
         const putRes = await fetch(uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } });
         if (!putRes.ok) throw new Error("Falha ao enviar arquivo");
         setImportArquivo({ url: `${window.location.origin}/api/storage${objectPath}`, nome: file.name });
-      } catch {
-        toast({ title: "Erro no upload do arquivo", variant: "destructive" });
+
+        if (!extractRes.ok) throw new Error("Arquivo salvo, mas a leitura automática falhou");
+        const extracted = await extractRes.json() as {
+          titulo?: string | null;
+          numeroDocumento?: string | null;
+          dataEmissao?: string | null;
+          valorTotal?: number | null;
+          cliente?: string | null;
+          clienteDocumento?: string | null;
+          clienteEndereco?: string | null;
+          fornecedor?: string | null;
+          fornecedorDocumento?: string | null;
+          fornecedorEndereco?: string | null;
+          validade?: string | null;
+          desconto?: number | null;
+          acrescimos?: number | null;
+          frete?: number | null;
+          impostos?: number | null;
+          formaPagamento?: string | null;
+          condPagamento?: string | null;
+          prazoEntrega?: string | null;
+          itens?: Array<{
+            codigo?: string | null;
+            descricao?: string | null;
+            unidade?: string | null;
+            quantidade?: number | null;
+            valorUnitario?: number | null;
+            valorTotal?: number | null;
+            grupo?: string | null;
+            etapa?: string | null;
+            observacoes?: string | null;
+          }> | null;
+          inclusoes?: string[] | null;
+          exclusoes?: string[] | null;
+          clausulas?: string[] | null;
+          informacoesAdicionais?: string[] | null;
+          observacoes?: string | null;
+          confianca?: number | null;
+        };
+
+        const normalizedItems = (extracted.itens ?? [])
+          .filter((item) => item.descricao?.trim())
+          .map((item) => {
+            const quantidade = Number(item.quantidade);
+            const valorLinha = Number(item.valorTotal);
+            const valorUnitarioOriginal = Number(item.valorUnitario);
+            const safeQuantidade = Number.isFinite(quantidade) && quantidade > 0 ? quantidade : 1;
+            const safeUnitario = Number.isFinite(valorUnitarioOriginal) && valorUnitarioOriginal >= 0
+              ? valorUnitarioOriginal
+              : Number.isFinite(valorLinha) && valorLinha >= 0
+                ? valorLinha / safeQuantidade
+                : 0;
+            return {
+              codigo: item.codigo?.trim() || undefined,
+              nome: item.descricao!.trim(),
+              descricao: item.descricao!.trim(),
+              unidade: item.unidade?.trim() || undefined,
+              quantidade: roundBudgetNumber(safeQuantidade),
+              valorUnitario: roundBudgetNumber(safeUnitario),
+              valorTotal: Number.isFinite(valorLinha) && valorLinha >= 0 ? roundBudgetNumber(valorLinha) : undefined,
+              etapaNome: item.etapa?.trim() || item.grupo?.trim() || undefined,
+              observacoes: item.observacoes?.trim() || undefined,
+            };
+          });
+
+        setImportItens(normalizedItems);
+        setImportConfidence(typeof extracted.confianca === "number" ? extracted.confianca : null);
+
+        const itemSubtotal = roundBudgetNumber(normalizedItems.reduce(
+          (sum, item) => sum + item.quantidade * item.valorUnitario,
+          0,
+        ));
+        const extractedTotal = Number(extracted.valorTotal);
+        setImportValorTotal(Number.isFinite(extractedTotal) && extractedTotal > 0 ? extractedTotal : itemSubtotal);
+
+        if (extracted.titulo?.trim()) form.setValue("titulo", extracted.titulo.trim(), { shouldDirty: true });
+        if (extracted.validade && /^\d{4}-\d{2}-\d{2}$/.test(extracted.validade)) {
+          form.setValue("validadeAte", extracted.validade, { shouldDirty: true });
+        }
+        if (extracted.condPagamento?.trim()) form.setValue("condPagamento", extracted.condPagamento.trim(), { shouldDirty: true });
+        if (extracted.prazoEntrega?.trim()) form.setValue("prazoEntrega", extracted.prazoEntrega.trim(), { shouldDirty: true });
+
+        const additionalDetails = [
+          extracted.numeroDocumento ? `Documento: ${extracted.numeroDocumento}` : "",
+          extracted.dataEmissao ? `Emissão: ${extracted.dataEmissao}` : "",
+          extracted.cliente ? `Cliente: ${extracted.cliente}` : "",
+          extracted.clienteDocumento ? `Documento do cliente: ${extracted.clienteDocumento}` : "",
+          extracted.clienteEndereco ? `Endereço do cliente: ${extracted.clienteEndereco}` : "",
+          extracted.fornecedor ? `Fornecedor: ${extracted.fornecedor}` : "",
+          extracted.fornecedorDocumento ? `Documento do fornecedor: ${extracted.fornecedorDocumento}` : "",
+          extracted.fornecedorEndereco ? `Endereço do fornecedor: ${extracted.fornecedorEndereco}` : "",
+          typeof extracted.desconto === "number" ? `Desconto: R$ ${extracted.desconto.toFixed(2)}` : "",
+          typeof extracted.acrescimos === "number" ? `Acréscimos: R$ ${extracted.acrescimos.toFixed(2)}` : "",
+          typeof extracted.frete === "number" ? `Frete: R$ ${extracted.frete.toFixed(2)}` : "",
+          typeof extracted.impostos === "number" ? `Impostos: R$ ${extracted.impostos.toFixed(2)}` : "",
+          extracted.formaPagamento ? `Forma de pagamento: ${extracted.formaPagamento}` : "",
+          extracted.observacoes?.trim() || "",
+          ...(extracted.inclusoes ?? []).map((value) => `Incluso: ${value}`),
+          ...(extracted.exclusoes ?? []).map((value) => `Não incluso: ${value}`),
+          ...(extracted.clausulas ?? []).map((value) => `Cláusula/condição: ${value}`),
+          ...(extracted.informacoesAdicionais ?? []),
+        ].filter(Boolean).join("\n");
+
+        if (additionalDetails) {
+          const current = form.getValues("observacoes")?.trim() ?? "";
+          form.setValue("observacoes", current ? `${current}\n\n${additionalDetails}` : additionalDetails, { shouldDirty: true });
+        }
+
+        if (normalizedItems.length === 0) {
+          setImportError("O arquivo foi lido, mas nenhum item estruturado foi identificado. Revise o documento antes de confirmar.");
+        } else {
+          toast({
+            title: `${normalizedItems.length} item${normalizedItems.length === 1 ? "" : "s"} reconstruído${normalizedItems.length === 1 ? "" : "s"} do documento`,
+            description: "Confira a prévia antes de criar o orçamento.",
+          });
+        }
+      } catch (error) {
+        setImportError(error instanceof Error ? error.message : "Não foi possível importar o orçamento.");
+        toast({ title: "Importação incompleta", description: error instanceof Error ? error.message : "Revise o arquivo e tente novamente.", variant: "destructive" });
       } finally {
         setImportUploading(false);
+        setImportAnalyzing(false);
       }
+    }
+
+    function updateImportedItem(index: number, patch: Partial<(typeof importItens)[number]>) {
+      setImportItens((current) => {
+        const next = current.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item);
+        setImportValorTotal(roundBudgetNumber(next.reduce((sum, item) => sum + item.quantidade * item.valorUnitario, 0)));
+        return next;
+      });
+    }
+
+    function removeImportedItem(index: number) {
+      setImportItens((current) => {
+        const next = current.filter((_, itemIndex) => itemIndex !== index);
+        setImportValorTotal(roundBudgetNumber(next.reduce((sum, item) => sum + item.quantidade * item.valorUnitario, 0)));
+        return next;
+      });
     }
 
     function saveDraftAndContinue() {
@@ -3244,6 +3407,12 @@ function newFreeItem(): FreeItem {
       setDraftHydrated(false);
       setFreeItems([newFreeItem()]);
       setFreeError("");
+      setImportValorTotal(0);
+      setImportArquivo(null);
+      setImportItens([]);
+      setImportAnalyzing(false);
+      setImportConfidence(null);
+      setImportError("");
       setContextoIA("");
       setShowIAPanel(false);
       onClose();
@@ -3911,7 +4080,18 @@ function newFreeItem(): FreeItem {
     let itens: Array<Record<string, unknown>> = [];
 
     if (mode === "importar") {
-      if (importValorTotal && importValorTotal > 0) {
+      if (importItens.length > 0) {
+        itens = importItens.map((item, index) => ({
+          nome: item.nome,
+          descricao: item.descricao,
+          sku: item.codigo,
+          unidade: item.unidade,
+          quantidade: roundBudgetNumber(item.quantidade),
+          valorUnitario: roundBudgetNumber(item.valorUnitario),
+          etapaNome: item.etapaNome,
+          etapaOrdem: item.etapaNome ? index + 1 : undefined,
+        }));
+      } else if (importValorTotal && importValorTotal > 0) {
         itens = [{
           nome: "Orçamento importado de outro sistema",
           quantidade: 1,
@@ -4082,7 +4262,27 @@ function newFreeItem(): FreeItem {
             formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined,
             condPagamento: vals.condPagamento || undefined,
             prazoEntrega: vals.prazoEntrega || undefined,
-            itens: [{ nome: "Orçamento importado de outro sistema", quantidade: 1, valorUnitario: importValorTotal }],
+            itens: importItens.length > 0
+              ? importItens.map((item, index) => ({
+                  nome: item.nome,
+                  descricao: item.descricao || undefined,
+                  sku: item.codigo || undefined,
+                  unidade: item.unidade || undefined,
+                  quantidade: roundBudgetNumber(item.quantidade),
+                  valorUnitario: roundBudgetNumber(item.valorUnitario),
+                  etapaNome: item.etapaNome || undefined,
+                  etapaOrdem: item.etapaNome ? index + 1 : undefined,
+                  sourceSnapshot: {
+                    capturedAt: new Date().toISOString(),
+                    sourceType: "manual" as const,
+                    nome: item.nome,
+                    sku: item.codigo || undefined,
+                    descricao: item.descricao || undefined,
+                    unidade: item.unidade || undefined,
+                    precoAplicado: roundBudgetNumber(item.valorUnitario),
+                  },
+                }))
+              : [{ nome: "Orçamento importado de outro sistema", quantidade: 1, valorUnitario: importValorTotal }],
             valorTotal: importValorTotal,
             apresentacao: proposalPresentationConfig(),
             paymentCompositions: paymentCompImport?.length
@@ -5690,8 +5890,9 @@ function newFreeItem(): FreeItem {
             {mode === "importar" && (
               <div className="space-y-3">
                 <div className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
-                  Anexe o orçamento gerado em outro sistema (PDF, planilha, imagem etc.) e informe o valor total.
-                  O arquivo original fica salvo aqui pra consulta — os itens não precisam ser detalhados linha a linha.
+                  Anexe o orçamento, proposta ou contrato de outro sistema. O Vendor.ai reconstrói os itens, descrições,
+                  quantidades, unidades, valores e condições encontradas no documento para você revisar antes de confirmar.
+                  O arquivo original permanece anexado para conferência.
                 </div>
 
                 <div className="grid gap-1.5">
@@ -5724,15 +5925,89 @@ function newFreeItem(): FreeItem {
                   )}
                 </div>
 
+                {importAnalyzing && (
+                  <div className="flex items-center gap-2 rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Reconstruindo itens, valores, descrições e condições do documento…
+                  </div>
+                )}
+
+                {importItens.length > 0 && (
+                  <div className="space-y-2" data-integrity-field="itens">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium">Prévia da reconstrução</p>
+                        <p className="text-xs text-muted-foreground">
+                          {importItens.length} item{importItens.length === 1 ? "" : "s"} identificado{importItens.length === 1 ? "" : "s"}
+                          {importConfidence !== null ? ` · confiança ${Math.round(importConfidence * 100)}%` : ""}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="rounded-lg border overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="min-w-[280px]">Descrição</TableHead>
+                            <TableHead className="w-24">Un.</TableHead>
+                            <TableHead className="w-28">Qtd.</TableHead>
+                            <TableHead className="w-40">Valor unit.</TableHead>
+                            <TableHead className="w-24"></TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {importItens.map((item, index) => (
+                            <TableRow key={`${item.codigo ?? "item"}-${index}`}>
+                              <TableCell>
+                                <Input
+                                  value={item.nome}
+                                  onChange={(event) => updateImportedItem(index, { nome: event.target.value, descricao: event.target.value })}
+                                />
+                                {(item.etapaNome || item.codigo) && (
+                                  <p className="mt-1 text-[11px] text-muted-foreground">
+                                    {[item.codigo ? `Cód. ${item.codigo}` : "", item.etapaNome || ""].filter(Boolean).join(" · ")}
+                                  </p>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <Input value={item.unidade ?? ""} onChange={(event) => updateImportedItem(index, { unidade: event.target.value })} />
+                              </TableCell>
+                              <TableCell>
+                                <BudgetQuantityInput
+                                  value={item.quantidade}
+                                  onChange={(value) => updateImportedItem(index, { quantidade: value ?? 1 })}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <BudgetMoneyInput
+                                  value={item.valorUnitario}
+                                  onChange={(value) => updateImportedItem(index, { valorUnitario: value ?? 0 })}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <Button type="button" variant="ghost" size="sm" onClick={() => removeImportedItem(index)}>
+                                  Excluir
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid gap-1.5 max-w-xs">
-                  <FormLabel>Valor total (R$)</FormLabel>
+                  <FormLabel>Valor total do documento (R$)</FormLabel>
                   <BudgetMoneyInput
                     value={importValorTotal || undefined}
                     onChange={(value) => setImportValorTotal(value ?? 0)}
                   />
+                  <p className="text-[11px] text-muted-foreground">
+                    O total permanece editável para preservar descontos, frete, impostos ou ajustes existentes no documento original.
+                  </p>
                 </div>
 
-                {importError && <p className="text-sm text-destructive">{importError}</p>}
+                {importError && <p className="text-sm text-destructive">{importError}</p>
               </div>
             )}
 
