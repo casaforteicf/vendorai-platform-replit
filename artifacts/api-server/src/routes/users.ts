@@ -182,6 +182,7 @@ router.patch(
   "/tenants/:tenantId/user-functions/:functionId",
   requireRole("super_admin", "tenant_admin"),
   async (req, res) => {
+    // tenant-audit: reviewed requireRole and canManageTenant enforce authenticated same-tenant/Super Admin access before queries.
     const tenantId = String(req.params["tenantId"]);
     const functionId = String(req.params["functionId"]);
 
@@ -240,6 +241,7 @@ router.delete(
   "/tenants/:tenantId/user-functions/:functionId",
   requireRole("super_admin", "tenant_admin"),
   async (req, res) => {
+    // tenant-audit: reviewed requireRole and canManageTenant enforce authenticated same-tenant/Super Admin access before queries.
     const tenantId = String(req.params["tenantId"]);
     const functionId = String(req.params["functionId"]);
 
