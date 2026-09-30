@@ -314,7 +314,54 @@ export async function createMaterialSurfaceMask(
     }
   }
 
-  return sharp(mask, { raw: { width, height, channels: 1 } })
+  // Fecha pequenos buracos internos (puxadores, reflexos, veios) sem
+  // transformar a seleção em retângulo. O blur é mínimo e a binarização
+  // mantém o contorno da superfície detectada.
+  const refined = await sharp(mask, { raw: { width, height, channels: 1 } })
+    .blur(0.8)
+    .threshold(118)
+    .raw()
+    .toBuffer();
+
+  // Mantém apenas componentes conectados que intersectam a região detectada
+  // original. Isso remove ruído isolado criado pelo fechamento morfológico.
+  const visited = new Uint8Array(width * height);
+  const output = Buffer.alloc(width * height, 0);
+  const queue = new Int32Array(width * height);
+
+  for (let start = 0; start < refined.length; start++) {
+    if ((refined[start] ?? 0) < 128 || visited[start]) continue;
+    let head = 0, tail = 0;
+    queue[tail++] = start;
+    visited[start] = 1;
+    const component: number[] = [];
+    let intersectsOriginal = false;
+
+    while (head < tail) {
+      const idx = queue[head++]!;
+      component.push(idx);
+      if ((mask[idx] ?? 0) >= 128) intersectsOriginal = true;
+      const x = idx % width;
+      const y = Math.floor(idx / width);
+      const neighbors = [
+        x > 0 ? idx - 1 : -1,
+        x < width - 1 ? idx + 1 : -1,
+        y > 0 ? idx - width : -1,
+        y < height - 1 ? idx + width : -1,
+      ];
+      for (const next of neighbors) {
+        if (next < 0 || visited[next] || (refined[next] ?? 0) < 128) continue;
+        visited[next] = 1;
+        queue[tail++] = next;
+      }
+    }
+
+    if (intersectsOriginal) {
+      for (const idx of component) output[idx] = 255;
+    }
+  }
+
+  return sharp(output, { raw: { width, height, channels: 1 } })
     .png()
     .toBuffer();
 }
