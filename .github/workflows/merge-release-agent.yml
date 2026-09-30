@@ -488,3 +488,31 @@ jobs:
       - name: Report critical direct-main change
         if: steps.release.outputs.critical == 'true'
         run: echo "::warning::Critical files reached main outside guarded Merge & Publish; relevant publication checks were still applied."
+
+      - name: Confirm release success
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          gh api --method POST "repos/$REPO/statuses/$SHA" \
+            -f state=success \
+            -f context='vendorai/merge-publish' \
+            -f description='CONCLUÍDO — publicado e validado em produção' >/dev/null
+          echo "✅ CONCLUÍDO — publicado e validado em produção."
+
+      - name: Confirm release failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          gh api --method POST "repos/$REPO/statuses/$SHA" \
+            -f state=failure \
+            -f context='vendorai/merge-publish' \
+            -f description='FALHOU — publicação não validada em produção' >/dev/null || true
+          echo "❌ FALHOU — publicação não validada em produção."
