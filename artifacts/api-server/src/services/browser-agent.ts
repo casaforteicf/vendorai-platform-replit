@@ -1,7 +1,26 @@
 import puppeteer, { type Browser, type CookieData, type Page } from "puppeteer-core";
+import { z } from "zod";
 import { callOpenAI } from "../lib/ai-gateway.js";
 
 export type BrowserAgentMode = "assistido" | "autonomo";
+
+const actionSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("navigate"), url: z.string().url(), reason: z.string().optional() }),
+  z.object({ action: z.literal("click"), selector: z.string().min(1), reason: z.string().optional() }),
+  z.object({ action: z.literal("type"), selector: z.string().min(1), text: z.string(), reason: z.string().optional() }),
+  z.object({ action: z.literal("secret"), selector: z.string().min(1), secret: z.enum(["login", "passcode"]), reason: z.string().optional() }),
+  z.object({ action: z.literal("select"), selector: z.string().min(1), value: z.string(), reason: z.string().optional() }),
+  z.object({ action: z.literal("extract"), selector: z.string().min(1).optional(), reason: z.string().optional() }),
+  z.object({ action: z.literal("finish"), answer: z.string().min(1), outcome: z.enum(["completed", "blocked", "failed"]), reason: z.string().optional() }),
+]);
+
+export function assertBrowserPageAccessible(state: { title: string; text: string }) {
+  const content = `${state.title} ${state.text}`;
+  if (/verify you are human|verifying you are human|checking your browser|verificação de segurança|verifique que você é humano/i.test(content)
+      || (/just a moment|um momento/i.test(state.title) && /cloudflare|verify|verifica/i.test(content))) {
+    throw new Error("BROWSER_BLOCKED: o site exige verificação humana. A tarefa não foi concluída.");
+  }
+}
 
 export type PlannedAction =
   | { action: "navigate"; url: string; reason?: string }
@@ -10,7 +29,7 @@ export type PlannedAction =
   | { action: "secret"; selector: string; secret: "login" | "passcode"; reason?: string }
   | { action: "select"; selector: string; value: string; reason?: string }
   | { action: "extract"; selector?: string; reason?: string }
-  | { action: "finish"; answer: string; reason?: string };
+  | { action: "finish"; answer: string; outcome: "completed" | "blocked" | "failed"; reason?: string };
 
 export interface BrowserAgentStep {
   index: number;
@@ -106,22 +125,28 @@ export async function planBrowserAction(
     "Para campos de autenticação use secret com secret=login ou passcode quando disponível.",
     "Nunca peça, invente ou repita segredos. Eles são injetados pelo backend e não ficam visíveis para você.",
     "Use seletores CSS estáveis. Não invente dados, credenciais ou elementos.",
-    "Se o objetivo foi atingido, use finish.",
+    'Responda um objeto com campo action e seus parâmetros no primeiro nível, por exemplo {"action":"click","selector":"#button"}. Nunca retorne uma lista de ações.',
+    'Ao finalizar use {"action":"finish","answer":"resultado","outcome":"completed|blocked|failed"}. Use completed somente se o objetivo foi atingido e verificado; bloqueios e falhas não são sucesso.',
+    "Não tente contornar CAPTCHA ou verificações de segurança; finalize com outcome blocked.",
   ].join("\n");
 
+  for (let attempt = 0; attempt < 2; attempt++) {
   const result = await callOpenAI(
     tenantId,
     "agent_runtime" as any,
     [
       { role: "system", content: system },
-      { role: "user", content: JSON.stringify({ goal, page: state, recentSteps: steps.slice(-6), secretsAvailable }) },
+      { role: "user", content: JSON.stringify({ goal, page: state, recentSteps: steps.slice(-6), secretsAvailable, ...(attempt ? { correction: "A resposta anterior era inválida. Retorne uma única ação no formato indicado, com todos os campos obrigatórios." } : {}) }) },
     ],
     { temperature: 0, maxTokens: 600, responseFormat: { type: "json_object" } },
   );
 
-  const parsed = JSON.parse(result.content);
-  if (!parsed?.action) throw new Error("Plano inválido do Browser Agent");
-  return parsed as PlannedAction;
+  try {
+    const parsed = actionSchema.safeParse(JSON.parse(result.content));
+    if (parsed.success) return parsed.data as PlannedAction;
+  } catch { /* Retry malformed JSON once, without executing it. */ }
+  }
+  throw new Error("BROWSER_PLAN_INVALID: a IA não retornou uma ação válida após duas tentativas.");
 }
 
 async function sensitive(page: Page, selector: string) {
@@ -206,10 +231,12 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
 
     for (let index = 1; index <= maxSteps; index++) {
       const state = await snapshotBrowserPage(page);
+      assertBrowserPageAccessible(state);
       const action = await planBrowserAction(input.tenantId, input.goal, state, steps, secretsAvailable);
       steps.push({ index, action: action.action, url: state.url, detail: "reason" in action ? action.reason : undefined });
 
       if (action.action === "finish") {
+        if (action.outcome !== "completed") throw new Error(`BROWSER_${action.outcome.toUpperCase()}: ${action.answer}`);
         if (input.onSessionPersist) await input.onSessionPersist(await page.cookies());
         return { ok: true, finalUrl: state.url, answer: action.answer, steps };
       }
@@ -217,6 +244,7 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
       const extracted = await executeBrowserAction(page, action, input);
       if (action.action === "extract" && extracted) {
         const state2 = await snapshotBrowserPage(page);
+        assertBrowserPageAccessible(state2);
         const next = await planBrowserAction(
           input.tenantId,
           input.goal + "\nDados extraídos:\n" + extracted.slice(0, 12000),
@@ -225,6 +253,7 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
           secretsAvailable,
         );
         if (next.action === "finish") {
+          if (next.outcome !== "completed") throw new Error(`BROWSER_${next.outcome.toUpperCase()}: ${next.answer}`);
           if (input.onSessionPersist) await input.onSessionPersist(await page.cookies());
           return { ok: true, finalUrl: page.url(), answer: next.answer, steps };
         }
