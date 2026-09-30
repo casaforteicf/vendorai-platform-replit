@@ -10,6 +10,7 @@ export const tenantUserFunctionsTable = pgTable("tenant_user_functions", {
     .notNull()
     .references(() => tenantsTable.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
+  systemKey: text("system_key").$type<"vendedor" | "representante_comercial" | "financeiro" | "suporte" | "entrega" | "administrador" | "outro">(),
   permissions: jsonb("permissions").$type<string[]>().notNull().default([]),
   kind: text("kind").$type<"internal" | "external_company">().notNull().default("internal"),
   linkedTenantId: text("linked_tenant_id").references(() => tenantsTable.id, { onDelete: "set null" }),
@@ -22,6 +23,7 @@ export const tenantUserFunctionsTable = pgTable("tenant_user_functions", {
 
 export const createTenantUserFunctionSchema = z.object({
   name: z.string().trim().min(2).max(60),
+  systemKey: z.enum(["vendedor", "representante_comercial", "financeiro", "suporte", "entrega", "administrador", "outro"]).nullable().optional(),
   permissions: z.array(z.string()).min(1),
   kind: z.enum(["internal", "external_company"]).default("internal"),
   linkedTenantCode: z.string().trim().min(3).max(32).nullable().optional(),
