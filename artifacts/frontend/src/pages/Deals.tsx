@@ -993,7 +993,7 @@ function EditSaasDealSheet({
   const { toast } = useToast();
   const updateDeal = useUpdateDeal();
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const tenantId = user?.tenantId ?? "";
 
   type SaasFormValues = z.infer<typeof saasDealSchema>;
@@ -1951,7 +1951,13 @@ export default function Deals() {
   // Fonte oficial do pipeline comercial. Kanban, seletores, SLA e responsáveis
   // devem consumir exatamente esta mesma lista, na mesma ordem.
   const { data: pipelineStages = [] } = useListPipelineStages(tenantId, {
-    query: { enabled: !!tenantId, queryKey: getListPipelineStagesQueryKey(tenantId), staleTime: 60_000, refetchOnWindowFocus: false },
+    request: { headers: { Authorization: "Bearer " + (token ?? "") } },
+    query: {
+      enabled: !!tenantId && !!token,
+      queryKey: getListPipelineStagesQueryKey(tenantId),
+      staleTime: 60_000,
+      refetchOnWindowFocus: false,
+    },
   });
   const stagesByKey = useMemo(
     () => Object.fromEntries(pipelineStages.map((s) => [s.key, s])) as Record<string, PipelineStage>,
@@ -1973,23 +1979,37 @@ export default function Deals() {
   // Fonte única: a lista configurada no backend é a própria estrutura visual
   // da pipeline. Não misture com ETAPAS/KANBAN_COLUMNS fixos, pois isso cria
   // colunas órfãs (ex.: "Contrato") e faz "Responsáveis por etapa" divergir.
-  const visibleEtapas = useMemo(
-    () =>
-      [...pipelineStages]
-        .sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))
-        .map((stage) => ({
-          value: stage.key,
-          label: stage.label,
-          color: stage.color ?? "text-gray-600",
-          bg: stage.bg ?? "bg-gray-100",
-        })),
-    [pipelineStages],
-  );
+  const visibleEtapas = useMemo(() => {
+    if (pipelineStages.length === 0) {
+      return ETAPAS
+        .filter((stage) => stage.value !== "conferencia_estoque")
+        .map((stage) => ({ ...stage }));
+    }
+
+    return [...pipelineStages]
+      .sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))
+      .map((stage) => ({
+        value: stage.key,
+        label: stage.label,
+        color: stage.color ?? "text-gray-600",
+        bg: stage.bg ?? "bg-gray-100",
+      }));
+  }, [pipelineStages]);
 
   const kanbanColumns = useMemo<KanbanColumnDef[]>(() => {
     const staticByKey = new Map(
       KANBAN_COLUMNS.map((column) => [column.onDrop.etapa, column] as const),
     );
+
+    // Nunca deixe o quadro sem colunas enquanto a configuração ainda carrega
+    // ou se houver falha transitória na consulta. Assim que a API responder,
+    // a configuração oficial do tenant substitui este fallback integralmente.
+    if (pipelineStages.length === 0) {
+      return KANBAN_COLUMNS
+        .filter((column) => column.onDrop.etapa !== "conferencia_estoque")
+        .map((column) => ({ ...column }))
+        .sort((a, b) => a.order - b.order);
+    }
 
     return [...pipelineStages]
       .sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))
