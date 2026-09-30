@@ -1365,11 +1365,19 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
   const visibleLibraryMaterials = useMemo(() => {
     const query = furnitureSearch.trim().toLocaleLowerCase("pt-BR");
-    const merged = mergeMaterialOptions(
+    const allMaterials = mergeMaterialOptions(
       [...CONCEPT_OBJECT_MATERIALS, ...CONCEPT_WALL_MATERIALS, ...CONCEPT_FLOOR_MATERIALS],
       catalogMaterialOptions,
     );
-    return merged
+    const compatible = selectedObject
+      ? objectMaterialOptions
+      : selectedCustomWall || selectedWall
+        ? wallMaterialOptions
+        : selected || selectedClosedSpace
+          ? floorMaterialOptions
+          : allMaterials;
+
+    return compatible
       .filter((material) => {
         if (!query) return true;
         return `${material.name} ${material.category} ${material.source ?? ""}`
@@ -1377,7 +1385,18 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
           .includes(query);
       })
       .slice(0, 24);
-  }, [catalogMaterialOptions, furnitureSearch]);
+  }, [
+    catalogMaterialOptions,
+    floorMaterialOptions,
+    furnitureSearch,
+    objectMaterialOptions,
+    selected,
+    selectedClosedSpace,
+    selectedCustomWall,
+    selectedObject,
+    selectedWall,
+    wallMaterialOptions,
+  ]);
 
   useEffect(() => {
     roomsRef.current = Array.isArray(rooms) ? rooms : [];
