@@ -1035,6 +1035,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [referenceDisplayMode, setReferenceDisplayMode] = useState<"reference" | "vector" | "overlay">("overlay");
   const [referenceTracePreview, setReferenceTracePreview] = useState<ReferenceTracePreview | null>(null);
   const resumedReferenceTraceRef = useRef<string | null>(null);
+  const referenceTracePromiseRef = useRef<Promise<ReferenceTracePreview> | null>(null);
+  const referenceTracePromiseKeyRef = useRef<string | null>(null);
   const [selectedTraceElement, setSelectedTraceElement] = useState<{ kind: "wall" | "opening"; id: string } | null>(null);
   const [sourceFiles, setSourceFiles] = useState<ProjectSourceFile[]>([]);
   const [sourceFileState, setSourceFileState] = useState<"idle" | "uploading" | "error" | "success">("idle");
@@ -4413,6 +4415,35 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     setReferencePlanMessage(saved ? "Calibração da referência salva." : "Não foi possível salvar a calibração.");
   };
 
+  const requestReferenceTrace = async (id: string, plan: ReferencePlan) => {
+    const traceKey = `${id}:${plan.url}`;
+    if (referenceTracePromiseRef.current && referenceTracePromiseKeyRef.current === traceKey) {
+      return referenceTracePromiseRef.current;
+    }
+
+    const token = typeof window !== "undefined" ? localStorage.getItem("vendorai_token") : null;
+    const request = (async () => {
+      const response = await fetch(`/api/arch/concept-projects/${encodeURIComponent(id)}/reference-plan/trace`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      const payload = await response.json().catch(() => ({})) as ReferenceTracePreview & { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "Não foi possível interpretar a planta com IA.");
+      return payload;
+    })();
+
+    referenceTracePromiseRef.current = request;
+    referenceTracePromiseKeyRef.current = traceKey;
+    try {
+      return await request;
+    } finally {
+      if (referenceTracePromiseRef.current === request) {
+        referenceTracePromiseRef.current = null;
+        referenceTracePromiseKeyRef.current = null;
+      }
+    }
+  };
+
   const traceReferencePlanWithAi = async () => {
     if (referenceTraceState === "loading") return;
     const id = conceptIdRef.current ?? conceptId;
@@ -4425,13 +4456,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     setReferenceTracePreview(null);
     setReferencePlanMessage(null);
     try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("vendorai_token") : null;
-      const response = await fetch(`/api/arch/concept-projects/${encodeURIComponent(id)}/reference-plan/trace`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      });
-      const payload = await response.json().catch(() => ({})) as ReferenceTracePreview & { error?: string };
-      if (!response.ok) throw new Error(payload.error ?? "Não foi possível interpretar a planta com IA.");
+      const payload = await requestReferenceTrace(id, referencePlan);
       setReferenceTracePreview(payload);
       setSelectedTraceElement(null);
       setReferenceTraceState("ready");
@@ -4580,15 +4605,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     setReferenceTraceState("loading");
     setReferenceDisplayMode("reference");
     setReferencePlanMessage("Retomando análise da planta importada...");
-    const token = typeof window !== "undefined" ? localStorage.getItem("vendorai_token") : null;
 
-    void fetch(`/api/arch/concept-projects/${encodeURIComponent(id)}/reference-plan/trace`, {
-      method: "POST",
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    })
-      .then(async (response) => {
-        const payload = await response.json().catch(() => ({})) as ReferenceTracePreview & { error?: string };
-        if (!response.ok) throw new Error(payload.error ?? "Não foi possível interpretar a planta com IA.");
+    void (async () => {
+      try {
+        const payload = await requestReferenceTrace(id, referencePlan);
         setReferenceTracePreview(payload);
         setSelectedTraceElement(null);
 
@@ -4608,11 +4628,11 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
             "A imagem foi analisada, mas falta confiança suficiente para gerar a planta automaticamente. Calibre uma medida e tente novamente.",
           );
         }
-      })
-      .catch((error) => {
+      } catch (error) {
         setReferenceTraceState("error");
         setReferencePlanMessage(error instanceof Error ? error.message : "Falha ao retomar a leitura da planta.");
-      });
+      }
+    })();
   }, [
     conceptId,
     referencePlan?.kind,
@@ -4653,15 +4673,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         setReferenceTraceState("loading");
         setReferencePlanMessage("Imagem recebida. A IA está reconstruindo paredes e aberturas para gerar a planta editável...");
         try {
-          const traceResponse = await fetch(
-            `/api/arch/concept-projects/${encodeURIComponent(id)}/reference-plan/trace`,
-            {
-              method: "POST",
-              headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-            },
-          );
-          const tracePayload = await traceResponse.json().catch(() => ({})) as ReferenceTracePreview & { error?: string };
-          if (!traceResponse.ok) throw new Error(tracePayload.error ?? "Não foi possível interpretar a planta com IA.");
+          const tracePayload = await requestReferenceTrace(id, payload);
           setReferenceTracePreview(tracePayload);
           setSelectedTraceElement(null);
 
