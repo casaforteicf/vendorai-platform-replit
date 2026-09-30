@@ -179,7 +179,7 @@ router.post("/leads", async (req, res) => {
   // 2. If admin/no explicit assignedTo → round-robin to next active vendedor
   // 3. If admin set assignedTo explicitly → use that value
   const isAdminCreator = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
-  const isSellerCreator = !isAdminCreator && (req.user?.platformRole === "tenant_seller" || (req.user?.userFunction as string) === "vendedor");
+  const isSellerCreator = !isAdminCreator && (req.user?.platformRole === "tenant_seller" || (req.user?.userFunction as string) === "vendedor" || (req.user?.userFunction as string) === "representante_comercial");
   let resolvedAssignedTo: string | null;
   let geocoded: { lat: number; lng: number } | null = null;
   if (data.representativeFunctionId) {
