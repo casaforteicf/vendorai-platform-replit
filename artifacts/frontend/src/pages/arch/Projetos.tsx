@@ -233,13 +233,17 @@ export default function Projetos() {
   function load() {
     if (!tenantId) return;
     setLoading(true);
+    setError(null);
     const params = new URLSearchParams();
     if (filterStatus && filterStatus !== "all") params.set("status", filterStatus);
     if (filterBuscaDebounced) params.set("clienteNome", filterBuscaDebounced);
     fetch(`/api/arch/projetos?${params}`, {
       headers: { Authorization: `Bearer ${getToken()}` },
     })
-      .then((r) => r.json())
+      .then(async (r) => {
+        if (!r.ok) throw new Error("Erro ao carregar projetos.");
+        return r.json();
+      })
       .then((data) => { setProjetos(Array.isArray(data) ? data : []); setLoading(false); })
       .catch(() => { setError("Erro ao carregar projetos."); setLoading(false); });
   }
@@ -436,11 +440,6 @@ export default function Projetos() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button type="button" variant="outline" onClick={() => openCreateLead(false)}>
-            <UserPlus className="h-4 w-4 mr-2" />
-            Cadastrar Lead
-          </Button>
-
         <Dialog
           open={dialogOpen}
           onOpenChange={(open) => {
