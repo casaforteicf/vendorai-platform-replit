@@ -59,6 +59,7 @@ type LiveSession = {
   url: string;
   title: string | null;
   screenshotDataUrl?: string;
+  pauseReason: "manual" | "human_verification" | "approval_required" | null;
   steps: Array<{ index: number; action: string; url: string; detail?: string }>;
 };
 
@@ -116,6 +117,7 @@ export default function BrowserAgentPanel() {
   });
 
   const manualMode = requestedManual || liveSession?.status === "paused";
+  const humanVerification = liveSession?.status === "paused" && liveSession.pauseReason === "human_verification";
   useEffect(() => {
     if (liveSessionId) sessionStorage.setItem("vendi_live_session", liveSessionId);
     else sessionStorage.removeItem("vendi_live_session");
@@ -256,7 +258,7 @@ export default function BrowserAgentPanel() {
   const liveStatusLabel: Record<LiveSession["status"], string> = {
     idle: "Aguardando missão",
     running: "Agente navegando",
-    paused: "Controle manual",
+    paused: "Pausado",
     completed: "Concluído",
     error: "Erro",
     closed: "Encerrado",
@@ -369,7 +371,7 @@ export default function BrowserAgentPanel() {
                   </Button>
                 ) : (
                   <Button onClick={() => pauseMutation.mutate(false)} disabled={pauseMutation.isPending || controlMutation.isPending || liveSession?.status !== "paused"}>
-                    <Bot className="mr-2 h-4 w-4" />Devolver para IA
+                    <Bot className="mr-2 h-4 w-4" />{humanVerification ? "Concluir verificação e devolver ao Vendi" : "Devolver para IA"}
                   </Button>
                 )}
                 <Button variant="outline" size="icon" onClick={() => controlMutation.mutate({ action: "back" })} disabled={!manualMode}>
@@ -384,7 +386,15 @@ export default function BrowserAgentPanel() {
               </div>
 
               {liveError && <p role="alert" className="text-sm text-destructive">{liveError.message}. Encerre esta sessão e abra uma nova.</p>}
-              {liveSession?.status === "paused" && <p role="status" className="rounded-lg border p-3 text-sm">O Vendi está pausado. Faça a verificação na tela abaixo e clique em “Devolver para IA” para continuar na mesma sessão.</p>}
+              {liveSession?.status === "paused" && (
+                <p role="status" className="rounded-lg border p-3 text-sm">
+                  {humanVerification
+                    ? "Verificação humana necessária. Resolva o CAPTCHA/2FA na tela abaixo e depois devolva o controle ao Vendi. Ele continuará a mesma missão do ponto onde parou."
+                    : liveSession.pauseReason === "approval_required"
+                      ? "A missão chegou a uma ação protegida. Revise a tela antes de devolver o controle ao Vendi."
+                      : "O Vendi está pausado. Você pode controlar a sessão manualmente e depois devolver para a IA."}
+                </p>
+              )}
               <div className="overflow-hidden rounded-xl border bg-black">
                 {liveSession?.screenshotDataUrl ? (
                   <img
