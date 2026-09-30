@@ -31,6 +31,7 @@ import { ObjectStorageService } from "../lib/objectStorage.js";
 import {
   createZoneMask,
   createRectMask,
+  createMaterialSurfaceMask,
   compositeWithOriginal,
   validateEdgeIntegrity,
   validateArchitecturalStructure,
@@ -836,7 +837,9 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
 
         const maskBuf = maskFileBase64
           ? Buffer.from(maskFileBase64.replace(/^data:image\/\w+;base64,/, ""), "base64")
-          : await createRectMask(expandedCoordinates ?? maskCoordinates ?? [], width, height);
+          : materialAwareSelection
+            ? await createMaterialSurfaceMask(originalBuf, expandedCoordinates ?? maskCoordinates ?? [], width, height)
+            : await createRectMask(expandedCoordinates ?? maskCoordinates ?? [], width, height);
 
         const maskPath = await storage.savePrivateBuffer(
           maskBuf, "image/png",
@@ -848,7 +851,7 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
           prompt,
           "LOCAL EDIT MODE. The mask is an editable candidate area, not permission to redesign it.",
           materialAwareSelection
-            ? "MATERIAL-AWARE SELECTION: infer the contiguous surface/material that contains the user's seed selection. Apply the requested change only to that connected surface inside the mask context. Do not spill onto adjacent materials, objects, joints, trim, furniture, openings or disconnected surfaces."
+            ? "MATERIAL-SURFACE LOCK: the supplied mask has already been segmented to the connected material surface selected by the user. Change the finish only on white mask pixels. Do not reinterpret, enlarge, bridge gaps, cross seams or include adjacent panels, TV screens, walls, niches, appliances, trim, furniture, openings or disconnected surfaces."
             : "Change only the explicitly selected region.",
           "Everything outside the intended selected surface must remain visually identical to the source.",
           "Preserve camera, geometry, object inventory, furniture placement, dimensions, seams, edges and all unrelated materials.",
