@@ -45,6 +45,10 @@ test('private OAuth: discovery, redirect restrictions, consent, PKCE, replay, re
     assert.equal((await form({ resource: 'https://attacker.example' })).response.status, 400);
     assert.equal((await form({ code_challenge_method: 'plain' })).response.status, 400);
     let f = await form();
+    assert.equal(f.response.headers.get("referrer-policy"), "same-origin");
+    const nullOrigin = await post("/oauth/approve", { csrf: f.csrf, decision: "deny" }, { Origin: "null" });
+    assert.equal(nullOrigin.status, 400);
+    assert.equal((await nullOrigin.json()).reason, "invalid_origin");
     assert.equal((await post('/oauth/approve', { csrf: f.csrf, credential: process.env.MCP_ACCESS_TOKEN, decision: 'approve' })).status, 400);
     f = await form();
     assert.equal((await post('/oauth/approve', { csrf: f.csrf, credential: 'wrong', decision: 'approve' }, { Origin: base })).status, 403);

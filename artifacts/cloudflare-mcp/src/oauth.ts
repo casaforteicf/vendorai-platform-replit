@@ -100,15 +100,16 @@ export async function handleOAuth(req: IncomingMessage, res: ServerResponse, url
       if (forms.size >= 1000) { fail(res, "temporarily_unavailable", 503); return true; }
       const csrf = nonce();
       forms.set(csrf, { grant: { client, redirect, challenge: p.get("code_challenge")!, resource: resource(), scope, family: nonce(), exp: now() + 300 }, state: p.get("state") || "", exp: now() + 300 });
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Frame-Options": "DENY", "Content-Security-Policy": "default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" });
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Referrer-Policy": "same-origin", "X-Frame-Options": "DENY", "Content-Security-Policy": "default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" });
       res.end(`<!doctype html><html lang="pt-BR"><meta charset="utf-8"><title>Autorizar Vendor.ai</title><body><h1>Conectar Vendor.ai ao ChatGPT</h1><p>Esta integração administrativa permite consultar e alterar Cloudflare e executar missões no navegador do Vendor.ai. Autorize somente na sua conta.</p><form method="post" action="/oauth/approve"><input type="hidden" name="csrf" value="${csrf}"><label>Chave privada MCP do administrador <input type="password" name="credential" autocomplete="off" required></label><p>Use o valor de MCP_ACCESS_TOKEN do serviço cloudflare-mcp-v2 no Railway. A chave fica neste servidor e não é enviada ao ChatGPT.</p><button name="decision" value="approve">Autorizar acesso administrativo</button><button name="decision" value="deny" formnovalidate>Cancelar</button></form></body></html>`);
     } else if (req.method === "POST" && path === "/oauth/approve") {
-      if (req.headers.origin !== issuer() || !req.headers["content-type"]?.startsWith("application/x-www-form-urlencoded")) { fail(res); return true; }
+      if (req.headers.origin !== issuer()) { json(res, 400, { error: "invalid_request", error_description: "Origem inválida. Abra uma nova autorização pelo ChatGPT.", reason: "invalid_origin" }); return true; }
+      if (!req.headers["content-type"]?.startsWith("application/x-www-form-urlencoded")) { fail(res); return true; }
       const p = new URLSearchParams(await body(req));
       const csrf = p.get("csrf") || "";
       const pending = forms.get(csrf);
       forms.delete(csrf);
-      if (!pending || pending.exp < now()) { fail(res); return true; }
+      if (!pending || pending.exp < now()) { json(res, 400, { error: "invalid_request", error_description: "Autorização expirada. Abra uma nova autorização pelo ChatGPT.", reason: "expired_consent" }); return true; }
       const redirect = new URL(pending.grant.redirect);
       redirect.searchParams.set("state", pending.state);
       redirect.searchParams.set("iss", issuer());
