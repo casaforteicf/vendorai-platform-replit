@@ -458,22 +458,44 @@ export async function compositeWithOriginal(
   const meta = await sharp(originalBuf).metadata();
   const { width = 1024, height = 768 } = meta;
 
-  const invertedMask = await sharp(maskBuf).negate().png().toBuffer();
+  // REGRA RÍGIDA DE EDIÇÃO LOCAL:
+  // A máscara do Arqdor é grayscale (branco=editar, preto=preservar).
+  // Não usar blend dest-in diretamente com esse PNG: dest-in considera o
+  // canal alpha do arquivo, e uma máscara grayscale totalmente opaca pode
+  // deixar passar a imagem gerada inteira. Aqui a decisão é pixel a pixel:
+  //   mask >= 128 → pixel gerado
+  //   mask < 128  → pixel ORIGINAL
+  // Assim é matematicamente impossível alterar qualquer pixel fora da seleção.
+  const [originalRaw, generatedRaw, maskRaw] = await Promise.all([
+    sharp(originalBuf)
+      .resize(width, height, { fit: "fill" })
+      .ensureAlpha()
+      .raw()
+      .toBuffer(),
+    sharp(generatedBuf)
+      .resize(width, height, { fit: "fill" })
+      .ensureAlpha()
+      .raw()
+      .toBuffer(),
+    sharp(maskBuf)
+      .resize(width, height, { fit: "fill", kernel: "nearest" })
+      .greyscale()
+      .raw()
+      .toBuffer(),
+  ]);
 
-  const maskedGenerated = await sharp(generatedBuf)
-    .resize(width, height, { fit: "fill" })
-    .composite([{ input: maskBuf, blend: "dest-in" }])
-    .png()
-    .toBuffer();
+  const output = Buffer.alloc(width * height * 4);
+  for (let i = 0; i < width * height; i += 1) {
+    const edit = (maskRaw[i] ?? 0) >= 128;
+    const source = edit ? generatedRaw : originalRaw;
+    const offset = i * 4;
+    output[offset] = source[offset] ?? 0;
+    output[offset + 1] = source[offset + 1] ?? 0;
+    output[offset + 2] = source[offset + 2] ?? 0;
+    output[offset + 3] = source[offset + 3] ?? 255;
+  }
 
-  const maskedOriginal = await sharp(originalBuf)
-    .resize(width, height, { fit: "fill" })
-    .composite([{ input: invertedMask, blend: "dest-in" }])
-    .png()
-    .toBuffer();
-
-  return sharp(maskedOriginal)
-    .composite([{ input: maskedGenerated, blend: "over" }])
+  return sharp(output, { raw: { width, height, channels: 4 } })
     .png()
     .toBuffer();
 }
@@ -707,14 +729,16 @@ export async function validateEdgeIntegrity(
     }
 
     const divergenceScore = totalPixels > 0 ? divergentPixels / totalPixels : 0;
-    const valid = divergenceScore < 0.15;
+    // Após o composite rígido, qualquer divergência relevante fora da máscara
+    // é bug e não variação aceitável do modelo.
+    const valid = divergenceScore <= 0.001;
 
     return {
       valid,
       divergenceScore,
       details: valid
-        ? `OK — ${(divergenceScore * 100).toFixed(1)}% divergência nas áreas preservadas`
-        : `REJEIÇÃO — ${(divergenceScore * 100).toFixed(1)}% divergência (limite: 15%)`,
+        ? `OK — ${(divergenceScore * 100).toFixed(3)}% divergência nas áreas preservadas`
+        : `REJEIÇÃO — ${(divergenceScore * 100).toFixed(3)}% divergência fora da seleção (limite: 0.1%)`,
     };
   } catch (err: any) {
     return { valid: true, divergenceScore: 0, details: `validação ignorada: ${err?.message}` };
