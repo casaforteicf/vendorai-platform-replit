@@ -456,26 +456,13 @@ export async function traceReferencePlanImage(input: {
   ].join(" ");
 
   let text = "";
-  let effectiveModel = model;
+  const anthropicModel = process.env["ARQDOR_PLAN_VISION_MODEL"]?.trim()
+    || process.env["ARQDOR_PLAN_VISION_FALLBACK_MODEL"]?.trim()
+    || "claude-sonnet-4-6";
+  let effectiveModel = anthropicModel;
+
   try {
-    const response = await withTransientRateLimitRetry(() => (openai.responses.create as any)({
-      model,
-      input: [
-        { role: "system", content: [{ type: "input_text", text: systemPrompt }] },
-        {
-          role: "user",
-          content: [
-            { type: "input_text", text: userPrompt },
-            { type: "input_image", image_url: dataUrl, detail: "high" },
-          ],
-        },
-      ],
-    }));
-    text = responseText(response);
-  } catch (openAiError) {
-    if (!isRetryableRateLimit(openAiError)) throw openAiError;
-    const anthropicModel = process.env["ARQDOR_PLAN_VISION_FALLBACK_MODEL"]?.trim() || "claude-sonnet-4-6";
-    const message = await anthropic.messages.create({
+    const message = await withTransientRateLimitRetry(() => anthropic.messages.create({
       model: anthropicModel,
       max_tokens: 7000,
       system: systemPrompt,
@@ -493,13 +480,29 @@ export async function traceReferencePlanImage(input: {
           { type: "text", text: userPrompt },
         ],
       }],
-    } as any);
+    } as any));
+
     text = message.content
       .filter((item: any) => item?.type === "text")
       .map((item: any) => String(item.text ?? ""))
       .join("\n")
       .trim();
-    effectiveModel = anthropicModel;
+  } catch (anthropicError) {
+    const response = await withTransientRateLimitRetry(() => (openai.responses.create as any)({
+      model,
+      input: [
+        { role: "system", content: [{ type: "input_text", text: systemPrompt }] },
+        {
+          role: "user",
+          content: [
+            { type: "input_text", text: userPrompt },
+            { type: "input_image", image_url: dataUrl, detail: "high" },
+          ],
+        },
+      ],
+    }));
+    text = responseText(response);
+    effectiveModel = model;
   }
 
   if (!text) throw new Error("A IA não retornou um traçado utilizável.");
