@@ -52,6 +52,30 @@ function toolText(value: unknown) {
   };
 }
 
+
+async function vendorApi<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const base = (process.env["VENDORAI_API_BASE"] || "https://vendorai-platform-replit-production.up.railway.app").replace(/\/$/, "");
+  const token = requiredEnv("BROWSER_MCP_ACCESS_TOKEN");
+  const response = await fetch(`${base}${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      ...(init.headers ?? {}),
+    },
+  });
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const detail =
+      payload && typeof payload === "object"
+        ? JSON.stringify(payload)
+        : response.statusText;
+    throw new Error(`VendorAI API ${response.status}: ${detail}`);
+  }
+  return payload as T;
+}
+
 function createCloudflareMcpServer() {
   const server = new McpServer(
     { name: "vendorai-cloudflare", version: "0.1.0" },
@@ -189,6 +213,61 @@ function createCloudflareMcpServer() {
       const query = new URLSearchParams({ "account.id": accountId(), per_page: "50" });
       if (name) query.set("name", name);
       const result = await cloudflare<unknown[]>(`/zones?${query.toString()}`);
+      return toolText(result);
+    },
+  );
+
+
+  server.registerTool(
+    "browser_agent_status",
+    {
+      description: "Verifica se o Browser Agent próprio do VendorAI está disponível. Não usa TinyFish.",
+      inputSchema: z.object({}),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    },
+    async () => {
+      const result = await vendorApi<unknown>("/internal/browser-mcp/status");
+      return toolText(result);
+    },
+  );
+
+  server.registerTool(
+    "browser_agent_connections",
+    {
+      description: "Lista as conexões de navegador salvas de um tenant VendorAI. Use tenantKey como ID, slug ou subdomínio.",
+      inputSchema: z.object({
+        tenantKey: z.string().min(1),
+      }),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    },
+    async ({ tenantKey }) => {
+      const result = await vendorApi<unknown>("/internal/browser-mcp/connections", {
+        method: "POST",
+        body: JSON.stringify({ tenantKey }),
+      });
+      return toolText(result);
+    },
+  );
+
+  server.registerTool(
+    "browser_agent_run",
+    {
+      description: "Executa uma missão usando o Browser Agent próprio do VendorAI em Chromium remoto. Pode usar uma conexão salva ou uma URL inicial. Ações sensíveis exigem allowWrite=true.",
+      inputSchema: z.object({
+        tenantKey: z.string().min(1),
+        goal: z.string().min(3).max(4000),
+        connectionId: z.string().min(1).optional(),
+        startUrl: z.string().url().optional(),
+        allowWrite: z.boolean().default(false),
+        maxSteps: z.number().int().min(1).max(30).default(12),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    },
+    async ({ tenantKey, goal, connectionId, startUrl, allowWrite, maxSteps }) => {
+      const result = await vendorApi<unknown>("/internal/browser-mcp/run", {
+        method: "POST",
+        body: JSON.stringify({ tenantKey, goal, connectionId, startUrl, allowWrite, maxSteps }),
+      });
       return toolText(result);
     },
   );
