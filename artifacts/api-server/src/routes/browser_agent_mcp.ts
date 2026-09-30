@@ -142,9 +142,34 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
       res.status(404).json({ error: "browser_connection_not_found" });
       return;
     }
+  } else if (parsed.data.startUrl) {
+    const start = new URL(parsed.data.startUrl);
+    const normalizedStartUrl = start.origin + "/";
+    [connection] = await db
+      .select()
+      .from(browserAgentConnectionsTable)
+      .where(
+        and(
+          eq(browserAgentConnectionsTable.tenantId, tenantId),
+          eq(browserAgentConnectionsTable.startUrl, normalizedStartUrl),
+        ),
+      )
+      .limit(1);
+
+    if (!connection) {
+      [connection] = await db
+        .insert(browserAgentConnectionsTable)
+        .values({
+          tenantId,
+          name: `Auto — ${start.hostname}`,
+          startUrl: normalizedStartUrl,
+          allowedHosts: [start.hostname.toLowerCase()],
+        })
+        .returning();
+    }
   }
 
-  const startUrl = connection?.startUrl ?? parsed.data.startUrl;
+  const startUrl = parsed.data.startUrl ?? connection?.startUrl;
   if (!startUrl) {
     res.status(422).json({ error: "connectionId_or_startUrl_required" });
     return;
