@@ -139,6 +139,26 @@ async function resolveRepresentativeTenant(
   return { linkedTenantId: linked.id, linkedTenantCode: linked.tenantCode };
 }
 
+async function validateRepresentativeUsers(
+  representativeTenantId: string | null,
+  representativeUserIds: string[],
+) {
+  if (!representativeTenantId || representativeUserIds.length === 0) return true;
+
+  const activeUsers = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(
+      and(
+        eq(usersTable.tenantId, representativeTenantId),
+        eq(usersTable.active, true),
+      ),
+    );
+
+  const allowedIds = new Set(activeUsers.map((user) => user.id));
+  return representativeUserIds.every((userId) => allowedIds.has(userId));
+}
+
 router.get(
   "/representation-access",
   requireRole("super_admin", "tenant_admin", "tenant_seller", "member"),
@@ -326,6 +346,13 @@ router.post(
       return;
     }
 
+    const representativeUserIds =
+      parsed.data.kind === "external_company" ? [...new Set(parsed.data.representativeUserIds)] : [];
+    if (!(await validateRepresentativeUsers(representativeLink.linkedTenantId, representativeUserIds))) {
+      res.status(422).json({ error: "Um ou mais usuários selecionados não pertencem à empresa representante ou estão inativos." });
+      return;
+    }
+
     try {
       const [created] = await db
         .insert(tenantUserFunctionsTable)
@@ -338,7 +365,7 @@ router.post(
           linkedTenantId: representativeLink.linkedTenantId,
           linkedTenantCode: representativeLink.linkedTenantCode,
           leadAccessScope: parsed.data.leadAccessScope,
-          representativeUserIds: parsed.data.representativeUserIds,
+          representativeUserIds,
         })
         .returning();
 
@@ -400,6 +427,13 @@ router.patch(
       return;
     }
 
+    const representativeUserIds =
+      parsed.data.kind === "external_company" ? [...new Set(parsed.data.representativeUserIds)] : [];
+    if (!(await validateRepresentativeUsers(representativeLink.linkedTenantId, representativeUserIds))) {
+      res.status(422).json({ error: "Um ou mais usuários selecionados não pertencem à empresa representante ou estão inativos." });
+      return;
+    }
+
     try {
       const [updated] = await db
         .update(tenantUserFunctionsTable)
@@ -411,7 +445,7 @@ router.patch(
           linkedTenantId: representativeLink.linkedTenantId,
           linkedTenantCode: representativeLink.linkedTenantCode,
           leadAccessScope: parsed.data.leadAccessScope,
-          representativeUserIds: parsed.data.representativeUserIds,
+          representativeUserIds,
           updatedAt: new Date(),
         })
         .where(
