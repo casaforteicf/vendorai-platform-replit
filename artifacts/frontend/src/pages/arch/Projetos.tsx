@@ -107,6 +107,7 @@ export default function Projetos() {
   // Filters
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterBusca,  setFilterBusca]  = useState("");
+  const [filterBuscaDebounced, setFilterBuscaDebounced] = useState("");
 
   // Dialog
   const autoOpen = location.endsWith("/novo");
@@ -234,7 +235,7 @@ export default function Projetos() {
     setLoading(true);
     const params = new URLSearchParams();
     if (filterStatus && filterStatus !== "all") params.set("status", filterStatus);
-    if (filterBusca) params.set("clienteNome", filterBusca);
+    if (filterBuscaDebounced) params.set("clienteNome", filterBuscaDebounced);
     fetch(`/api/arch/projetos?${params}`, {
       headers: { Authorization: `Bearer ${getToken()}` },
     })
@@ -243,7 +244,12 @@ export default function Projetos() {
       .catch(() => { setError("Erro ao carregar projetos."); setLoading(false); });
   }
 
-  useEffect(() => { load(); }, [tenantId, filterStatus, filterBusca]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setFilterBuscaDebounced(filterBusca.trim()), 350);
+    return () => window.clearTimeout(timer);
+  }, [filterBusca]);
+
+  useEffect(() => { load(); }, [tenantId, filterStatus, filterBuscaDebounced]);
 
   useEffect(() => {
     if (!dialogOpen || !tenantId) {
