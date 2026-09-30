@@ -46,6 +46,7 @@ test('private OAuth: discovery, redirect restrictions, consent, PKCE, replay, re
     assert.equal((await form({ code_challenge_method: 'plain' })).response.status, 400);
     let f = await form();
     assert.equal(f.response.headers.get("referrer-policy"), "same-origin");
+    assert.match(f.response.headers.get("content-security-policy"), /form-action 'self' https:\/\/chatgpt\.com;/);
     const nullOrigin = await post("/oauth/approve", { csrf: f.csrf, decision: "deny" }, { Origin: "null" });
     assert.equal(nullOrigin.status, 400);
     assert.equal((await nullOrigin.json()).reason, "invalid_origin");
