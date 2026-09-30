@@ -7,16 +7,7 @@ if (!fs.existsSync(assetsDir)) {
   process.exit(1);
 }
 
-const chunkPattern = (name) => new RegExp(`^${name}(?:-[A-Za-z0-9_]+)+\\.jsimport fs from "node:fs";
-import path from "node:path";
-
-const assetsDir = path.resolve(process.cwd(), "dist/public/assets");
-if (!fs.existsSync(assetsDir)) {
-  console.error("[bundle-budget] dist/public/assets não encontrado. Rode o build antes.");
-  process.exit(1);
-}
-
-);
+const chunkPattern = (name) => new RegExp("^" + name + "(?:-[A-Za-z0-9_]+)+\\.js$");
 
 const budgets = [
   { label: "main index", pattern: chunkPattern("index"), maxKb: 120, pick: "largest" },
@@ -47,7 +38,7 @@ for (const budget of budgets) {
     .map((name) => ({ name, kb: fs.statSync(path.join(assetsDir, name)).size / 1024 }))
     .sort((a, b) => b.kb - a.kb);
 
-  const target = budget.pick === "largest" ? measured[0] : measured[0];
+  const target = measured[0];
   const status = target.kb <= budget.maxKb ? "OK" : "FAIL";
   console.log(`[bundle-budget] ${status} ${budget.label}: ${target.kb.toFixed(2)} kB / ${budget.maxKb} kB (${target.name})`);
 
