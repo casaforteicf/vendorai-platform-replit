@@ -75,9 +75,10 @@ function ProgressOverlay({ stage, elapsedSeconds, isRecovering }: { stage: strin
 
 // ─── P2-13: SelectionCanvas overlay ──────────────────────────────────────────
 
-function SelectionCanvas({ isActive, renderUrl, onSelection, onUpdateSelection, existingSelections, onClearSelection }: {
+function SelectionCanvas({ isActive, renderUrl, targetImageRef, onSelection, onUpdateSelection, existingSelections, onClearSelection }: {
   isActive: boolean;
   renderUrl: string;
+  targetImageRef: React.RefObject<HTMLImageElement>;
   onSelection: (sel: Omit<SelectionRect, "id" | "label">) => void;
   onUpdateSelection?: (id: string, patch: Partial<Pick<SelectionRect, "x" | "y" | "w" | "h">>) => void;
   existingSelections: SelectionRect[];
@@ -87,6 +88,7 @@ function SelectionCanvas({ isActive, renderUrl, onSelection, onUpdateSelection, 
   const containerRef = useRef<HTMLDivElement>(null);
   const [currentRect, setCurrentRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [activeSelectionId, setActiveSelectionId] = useState<string | null>(null);
+  const [imageBounds, setImageBounds] = useState({ left: 0, top: 0, width: 0, height: 0 });
   type DragMode = "create" | "move" | "nw" | "ne" | "sw" | "se";
   const dragRef = useRef<{ active: boolean; mode: DragMode; startX: number; startY: number; selection?: SelectionRect }>({ active: false, mode: "create", startX: 0, startY: 0 });
   const clamp = (v: number, min = 0, max = 100) => Math.max(min, Math.min(max, v));
@@ -163,9 +165,56 @@ function SelectionCanvas({ isActive, renderUrl, onSelection, onUpdateSelection, 
     if(!isActive||!dragRef.current.active) return; const p=coords(e),d=dragRef.current;dragRef.current.active=false;
     if(d.mode==="create"){const w=Math.abs(p.x-d.startX),h=Math.abs(p.y-d.startY);if(w>2&&h>2)onSelection({x:Math.min(d.startX,p.x),y:Math.min(d.startY,p.y),w,h});setCurrentRect(null);}
   }
-  useEffect(()=>{const container=containerRef.current,canvas=canvasRef.current;if(!container||!canvas)return;const ro=new ResizeObserver(([entry])=>{canvas.width=entry.contentRect.width;canvas.height=entry.contentRect.height;});ro.observe(container);return()=>ro.disconnect();},[]);
-  return <div ref={containerRef} style={{position:"absolute",inset:0,pointerEvents:isActive?"auto":"none"}}>
-    <canvas ref={canvasRef} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} style={{position:"absolute",inset:0,width:"100%",height:"100%",cursor:isActive?"crosshair":"default"}}/>
+  useEffect(() => {
+    const container = containerRef.current;
+    const canvas = canvasRef.current;
+    const image = targetImageRef.current;
+    if (!container || !canvas || !image) return;
+
+    const syncBounds = () => {
+      const containerRect = container.getBoundingClientRect();
+      const imageRect = image.getBoundingClientRect();
+      const width = Math.max(1, imageRect.width);
+      const height = Math.max(1, imageRect.height);
+      setImageBounds({
+        left: imageRect.left - containerRect.left,
+        top: imageRect.top - containerRect.top,
+        width,
+        height,
+      });
+      canvas.width = Math.max(1, Math.round(width));
+      canvas.height = Math.max(1, Math.round(height));
+    };
+
+    syncBounds();
+    const ro = new ResizeObserver(syncBounds);
+    ro.observe(container);
+    ro.observe(image);
+    image.addEventListener("load", syncBounds);
+    window.addEventListener("resize", syncBounds);
+    return () => {
+      ro.disconnect();
+      image.removeEventListener("load", syncBounds);
+      window.removeEventListener("resize", syncBounds);
+    };
+  }, [renderUrl, targetImageRef]);
+
+  return <div ref={containerRef} style={{position:"absolute",inset:0,pointerEvents:"none"}}>
+    <canvas
+      ref={canvasRef}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      style={{
+        position:"absolute",
+        left:imageBounds.left,
+        top:imageBounds.top,
+        width:imageBounds.width,
+        height:imageBounds.height,
+        cursor:isActive?"crosshair":"default",
+        pointerEvents:isActive?"auto":"none",
+      }}
+    />
     {isActive&&!currentRect&&<div style={{position:"absolute",bottom:16,left:"50%",transform:"translateX(-50%)",padding:"6px 14px",borderRadius:20,background:`${D.surface}EE`,border:`1px solid ${activeSelectionId?D.amber:D.purple}`,fontSize:11,color:activeSelectionId?D.amber:D.purpleText,pointerEvents:"none",whiteSpace:"nowrap"}}>
       {activeSelectionId?"Região selecionada — arraste para mover ou use os cantos para redimensionar":existingSelections.length?"Clique numa região para editar ou arraste para criar outra":"Arraste para selecionar a região a alterar"}
     </div>}
@@ -232,6 +281,7 @@ export function RenderStudioCanvas({ step, imageDataUrl, renderUrl, loading, isD
   allVersions: RenderVersion[]; onCompareChangeA: (id: string) => void; onCompareChangeB: (id: string) => void;
   onRenderLoadError: () => void;
 }) {
+  const imageRef = useRef<HTMLImageElement>(null);
   const beforeRenderStep = stepIndex(step) < stepIndex("render");
   const showRender  = !beforeRenderStep && !!renderUrl;
   const showUpload  = step === "imagem";
@@ -300,6 +350,7 @@ export function RenderStudioCanvas({ step, imageDataUrl, renderUrl, loading, isD
           {showImage && displayUrl && !isDragging && (
             <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", width: canvasMode === "1to1" ? "auto" : "100%", height: canvasMode === "1to1" ? "auto" : "100%" }}>
               <img
+                ref={imageRef}
                 src={normalizeRenderMediaUrl(displayUrl)}
                 alt={renderUrl ? "render gerado" : "imagem base"}
                 style={imageStyle}
@@ -326,6 +377,7 @@ export function RenderStudioCanvas({ step, imageDataUrl, renderUrl, loading, isD
                 <SelectionCanvas
                   isActive={selectionMode === "rect"}
                   renderUrl={renderUrl}
+                  targetImageRef={imageRef}
                   onSelection={onSelection}
                   onUpdateSelection={onUpdateSelection}
                   existingSelections={selections}
