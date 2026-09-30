@@ -95,8 +95,17 @@ router.get("/auth/instagram/callback", async (req, res) => {
     } catch (err) {
       logger.error({ err, tenantId }, "Erro ao trocar código OAuth do Instagram");
       const longLivedFailed = err instanceof Error && err.message.startsWith("Instagram long-lived");
+      const accountNotAuthorized =
+        longLivedFailed &&
+        err instanceof Error &&
+        err.message.includes("Unsupported request - method type");
+      const errorCode = accountNotAuthorized
+        ? "account_not_authorized"
+        : longLivedFailed
+          ? "long_token_exchange"
+          : "short_token_exchange";
       return res.redirect(
-        `${appUrl}/configuracoes?tab=integracoes&instagramError=${longLivedFailed ? "long_token_exchange" : "short_token_exchange"}`,
+        `${appUrl}/configuracoes?tab=integracoes&instagramError=${errorCode}`,
       );
     }
 
