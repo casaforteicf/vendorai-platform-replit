@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, BookOpen, CheckCircle2, FilePlus2, Image as ImageIcon, Loader2, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { MediaAssetPicker, mediaAssetUrl, type MediaPickerAsset } from "./MediaAssetPicker";
+import { toast } from "sonner";
 
 const USER_CACHE_KEY = "vendorai_user_cache";
 const OVERRIDE_KEY = "vendorai_sa_tenant_override";
@@ -186,7 +187,10 @@ export function MediaContextLibrary() {
   const remove = async (entry: Entry) => {
     if (!window.confirm(`Excluir “${entry.title}” da Biblioteca de Informações?`)) return;
     const response = await fetch(`/api/tenants/${tenantId}/context-library/${entry.id}`, { method: "DELETE", headers: headers() });
-    if (!response.ok) { window.alert("Não foi possível excluir."); return; }
+    if (!response.ok) {
+      toast("Não foi possível excluir a informação da Biblioteca.");
+      return;
+    }
     setEntries((current) => current.filter((item) => item.id !== entry.id));
     if (editingId === entry.id) reset();
   };
