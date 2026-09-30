@@ -30,16 +30,41 @@ import {
   ArrowLeft, Plus, Sparkles, Loader2, Pencil, Trash2, Link2,
   Search, LayoutGrid, DollarSign, Clock, Eye, ExternalLink,
   Copy, CheckCircle, XCircle, RefreshCw, Globe, Image,
-  Download, AlertCircle, ClipboardList, Package,
+  Download, AlertCircle, ClipboardList, Package, FileText, Upload,
+  FolderOpen, Ruler, Camera,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
+type ProjetoArquivo = {
+  id: string;
+  nome: string;
+  url: string;
+  tipo: "skp" | "dxf" | "ifc" | "pdf" | "foto" | "imagem" | "documento" | "outro";
+  mimeType?: string;
+  size?: number;
+  ambienteId?: string | null;
+  createdAt?: string;
+};
+
+type ProjetoDossie = {
+  briefing?: string;
+  medidas?: Array<{
+    id?: string;
+    label: string;
+    value: string;
+    unit?: string;
+    ambienteId?: string | null;
+  }>;
+  arquivos?: ProjetoArquivo[];
+};
+
 type Projeto = {
   id: string;
   titulo: string;
   clienteNome: string | null;
   status: string;
   tipoObra: string | null;
+  descricao?: string | null;
   areaM2: string | null;
   orcamentoTotal: string | null;
   portalAtivo: boolean;
@@ -48,6 +73,7 @@ type Projeto = {
   dealId: string | null;
   propostaId: string | null;
   obraId: string | null;
+  dossieProjeto?: ProjetoDossie | null;
   escopoOrcamento?: {
     tipos: string[];
     observacoes?: string;
@@ -305,6 +331,9 @@ export default function ProjetoDetalhe() {
   const [ambienteForm, setAmbienteForm]           = useState({ ...EMPTY_AMB });
   const [savingAmbiente, setSavingAmbiente]       = useState(false);
   const [deletingAmbienteId, setDeletingAmbienteId] = useState<string | null>(null);
+  const [viewingAmbiente, setViewingAmbiente]         = useState<Ambiente | null>(null);
+  const [uploadingDossier, setUploadingDossier]       = useState(false);
+  const dossierFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // ── Cenas state
   const [cenas, setCenas]                   = useState<Cena[]>([]);
@@ -481,6 +510,101 @@ export default function ProjetoDetalhe() {
     acc[key].push(render);
     return acc;
   }, {});
+
+  function normalizeAmbienteName(value: string | null | undefined): string {
+    return String(value ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLowerCase()
+      .replace(/_/g, " ");
+  }
+
+  function rendersDoAmbiente(amb: Ambiente): ProjetoRender[] {
+    const target = normalizeAmbienteName(amb.nome);
+    return renders.filter((render) => normalizeAmbienteName(ambienteRenderLabel(render.ambiente)) === target);
+  }
+
+  function arquivosDoAmbiente(amb: Ambiente): ProjetoArquivo[] {
+    const arquivos = projeto?.dossieProjeto?.arquivos ?? [];
+    return arquivos.filter((arquivo) => !arquivo.ambienteId || arquivo.ambienteId === amb.id);
+  }
+
+  function medidasDoAmbiente(amb: Ambiente) {
+    const medidas = projeto?.dossieProjeto?.medidas ?? [];
+    return medidas.filter((medida) => !medida.ambienteId || medida.ambienteId === amb.id);
+  }
+
+  function classificarArquivo(file: File): ProjetoArquivo["tipo"] {
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+    if (ext === "skp") return "skp";
+    if (ext === "dxf" || ext === "dwg") return "dxf";
+    if (ext === "ifc") return "ifc";
+    if (ext === "pdf") return "pdf";
+    if (file.type.startsWith("image/")) return "foto";
+    if (["doc", "docx", "xls", "xlsx", "txt", "rtf"].includes(ext)) return "documento";
+    return "outro";
+  }
+
+  async function handleDossierUpload(files: FileList | null, ambienteId?: string) {
+    const selected = Array.from(files ?? []);
+    if (!selected.length || !projeto) return;
+    setUploadingDossier(true);
+    try {
+      const novos: ProjetoArquivo[] = [];
+      for (const file of selected) {
+        const request = await fetch("/api/storage/uploads/request-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type || "application/octet-stream" }),
+        });
+        if (!request.ok) throw new Error(`Não foi possível preparar o upload de ${file.name}.`);
+        const { uploadURL, objectPath } = await request.json() as { uploadURL: string; objectPath: string };
+        const upload = await fetch(uploadURL, {
+          method: "PUT",
+          body: file,
+          headers: { "Content-Type": file.type || "application/octet-stream" },
+        });
+        if (!upload.ok) throw new Error(`Falha ao enviar ${file.name}.`);
+        novos.push({
+          id: crypto.randomUUID(),
+          nome: file.name,
+          url: `${window.location.origin}/api/storage${objectPath}`,
+          tipo: classificarArquivo(file),
+          mimeType: file.type || undefined,
+          size: file.size,
+          ambienteId: ambienteId ?? null,
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      const currentDossie = projeto.dossieProjeto ?? {};
+      const nextDossie: ProjetoDossie = {
+        ...currentDossie,
+        arquivos: [...(currentDossie.arquivos ?? []), ...novos],
+      };
+      const save = await fetch(`/api/arch/projetos/${projetoId}`, {
+        method: "PATCH",
+        headers: authH(),
+        body: JSON.stringify({ dossieProjeto: nextDossie }),
+      });
+      if (!save.ok) throw new Error("Arquivos enviados, mas não foi possível vinculá-los ao projeto.");
+      await loadProjeto();
+      toast({
+        title: selected.length === 1 ? "Arquivo adicionado ao projeto" : "Arquivos adicionados ao projeto",
+        description: "Eles ficam disponíveis dentro do ambiente e no dossiê central do projeto.",
+      });
+    } catch (error) {
+      toast({
+        title: "Não foi possível salvar os arquivos",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setUploadingDossier(false);
+      if (dossierFileInputRef.current) dossierFileInputRef.current.value = "";
+    }
+  }
 
   // Group orcamento itens by ambienteId
   const byAmbiente: Record<string, OrcamentoGrupo[]> = {};
@@ -1417,16 +1541,26 @@ export default function ProjetoDetalhe() {
                         </div>
                       </div>
                     </CardHeader>
-                    <CardContent className="space-y-1">
-                      {amb.areaM2 && (
-                        <p className="text-sm text-muted-foreground">📐 {Number(amb.areaM2).toFixed(1)} m²</p>
-                      )}
-                      <p className="text-sm text-muted-foreground">
-                        {n} {n === 1 ? "item" : "itens"} no orçamento
-                      </p>
-                      {amb.descricao && (
-                        <p className="text-sm text-muted-foreground line-clamp-2 mt-1">{amb.descricao}</p>
-                      )}
+                    <CardContent className="space-y-3">
+                      <div className="space-y-1">
+                        {amb.areaM2 && (
+                          <p className="text-sm text-muted-foreground">📐 {Number(amb.areaM2).toFixed(1)} m²</p>
+                        )}
+                        <p className="text-sm text-muted-foreground">
+                          {n} {n === 1 ? "item" : "itens"} no orçamento
+                        </p>
+                        {amb.descricao && (
+                          <p className="text-sm text-muted-foreground line-clamp-2 mt-1">{amb.descricao}</p>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">
+                        <span className="rounded-full border px-2 py-1">{rendersDoAmbiente(amb).length} renders</span>
+                        <span className="rounded-full border px-2 py-1">{arquivosDoAmbiente(amb).length} arquivos</span>
+                        {projeto?.dossieProjeto?.briefing || projeto?.descricao ? <span className="rounded-full border px-2 py-1">Briefing</span> : null}
+                      </div>
+                      <Button variant="outline" size="sm" className="w-full" onClick={() => setViewingAmbiente(amb)}>
+                        <FolderOpen className="mr-2 h-4 w-4" /> Abrir ambiente
+                      </Button>
                     </CardContent>
                   </Card>
                 );
@@ -2038,6 +2172,135 @@ export default function ProjetoDetalhe() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!viewingAmbiente} onOpenChange={(open) => { if (!open) setViewingAmbiente(null); }}>
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+          {viewingAmbiente ? (() => {
+            const ambRenders = rendersDoAmbiente(viewingAmbiente);
+            const ambArquivos = arquivosDoAmbiente(viewingAmbiente);
+            const ambMedidas = medidasDoAmbiente(viewingAmbiente);
+            const briefing = projeto?.dossieProjeto?.briefing || projeto?.descricao || viewingAmbiente.descricao;
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center justify-between gap-3 pr-8">
+                    <span>{viewingAmbiente.nome}</span>
+                    {viewingAmbiente.areaM2 ? <span className="text-sm font-normal text-muted-foreground">{Number(viewingAmbiente.areaM2).toFixed(1)} m²</span> : null}
+                  </DialogTitle>
+                </DialogHeader>
+
+                <div className="grid gap-4 lg:grid-cols-[1.35fr_.65fr]">
+                  <div className="space-y-4">
+                    <section className="rounded-xl border p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="font-semibold">Projeto Arqdor</p>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            A abertura e edição do projeto começa por este ambiente, mantendo o mesmo projeto mestre.
+                          </p>
+                        </div>
+                        <Button onClick={() => navigate(`/arch/studio?project_id=${encodeURIComponent(projetoId)}&ambiente_id=${encodeURIComponent(viewingAmbiente.id)}`)}>
+                          <ExternalLink className="mr-2 h-4 w-4" /> Abrir projeto
+                        </Button>
+                      </div>
+                    </section>
+
+                    <section className="rounded-xl border p-4">
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <div>
+                          <p className="font-semibold">Renders do ambiente</p>
+                          <p className="text-xs text-muted-foreground">As versões já geradas aparecem aqui automaticamente.</p>
+                        </div>
+                        <Button size="sm" variant="outline" onClick={() => abrirRenderStudio(viewingAmbiente.nome)}>
+                          <Sparkles className="mr-2 h-4 w-4" /> Novo render
+                        </Button>
+                      </div>
+                      {ambRenders.length ? (
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                          {ambRenders.map((render) => {
+                            const src = normalizeRenderMediaUrl(render.resultImageUrl ?? render.originalImageUrl);
+                            return (
+                              <button key={render.id} type="button" onClick={() => abrirRenderExistente(render)} className="overflow-hidden rounded-lg border bg-muted/20 text-left hover:border-primary/40">
+                                {src ? <img src={src} alt={viewingAmbiente.nome} className="aspect-[4/3] w-full object-cover" /> : <div className="flex aspect-[4/3] items-center justify-center text-muted-foreground"><Image className="h-8 w-8" /></div>}
+                                <div className="p-2">
+                                  <p className="text-xs font-medium">{render.versionTag || "Render"}</p>
+                                  <p className="text-[11px] text-muted-foreground">{render.status}</p>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">Nenhum render vinculado a este ambiente.</div>
+                      )}
+                    </section>
+
+                    <section className="rounded-xl border p-4">
+                      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="font-semibold">Arquivos e anexos do projeto</p>
+                          <p className="text-xs text-muted-foreground">SKP, DXF/DWG, IFC, PDF, fotos, documentos e outros arquivos ficam centralizados aqui.</p>
+                        </div>
+                        <div>
+                          <input
+                            ref={dossierFileInputRef}
+                            type="file"
+                            multiple
+                            className="hidden"
+                            accept=".skp,.dxf,.dwg,.ifc,.pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.txt"
+                            onChange={(event) => void handleDossierUpload(event.target.files, viewingAmbiente.id)}
+                          />
+                          <Button size="sm" variant="outline" disabled={uploadingDossier} onClick={() => dossierFileInputRef.current?.click()}>
+                            {uploadingDossier ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+                            Adicionar arquivos
+                          </Button>
+                        </div>
+                      </div>
+                      {ambArquivos.length ? (
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {ambArquivos.map((arquivo) => (
+                            <a key={arquivo.id} href={arquivo.url} target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-lg border p-3 hover:bg-muted/30">
+                              {arquivo.tipo === "foto" || arquivo.tipo === "imagem" ? <Camera className="h-5 w-5 text-muted-foreground" /> : arquivo.tipo === "skp" || arquivo.tipo === "dxf" || arquivo.tipo === "ifc" ? <FileText className="h-5 w-5 text-muted-foreground" /> : <FileText className="h-5 w-5 text-muted-foreground" />}
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-medium">{arquivo.nome}</p>
+                                <p className="text-[11px] uppercase text-muted-foreground">{arquivo.tipo}{arquivo.size ? ` · ${(arquivo.size / 1024 / 1024).toFixed(1)} MB` : ""}</p>
+                              </div>
+                              <ExternalLink className="h-4 w-4 text-muted-foreground" />
+                            </a>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">Ainda não há arquivos anexados a este projeto/ambiente.</div>
+                      )}
+                    </section>
+                  </div>
+
+                  <div className="space-y-4">
+                    <section className="rounded-xl border p-4">
+                      <div className="mb-2 flex items-center gap-2"><ClipboardList className="h-4 w-4" /><p className="font-semibold">Briefing</p></div>
+                      <p className="whitespace-pre-wrap text-sm text-muted-foreground">{briefing || "Briefing ainda não preenchido."}</p>
+                    </section>
+                    <section className="rounded-xl border p-4">
+                      <div className="mb-2 flex items-center gap-2"><Ruler className="h-4 w-4" /><p className="font-semibold">Medidas</p></div>
+                      <div className="space-y-2 text-sm">
+                        {viewingAmbiente.areaM2 ? <div className="flex justify-between gap-3"><span className="text-muted-foreground">Área</span><strong>{Number(viewingAmbiente.areaM2).toFixed(2)} m²</strong></div> : null}
+                        {ambMedidas.map((medida, index) => <div key={medida.id || `${medida.label}-${index}`} className="flex justify-between gap-3"><span className="text-muted-foreground">{medida.label}</span><strong>{medida.value}{medida.unit ? ` ${medida.unit}` : ""}</strong></div>)}
+                        {!viewingAmbiente.areaM2 && ambMedidas.length === 0 ? <p className="text-muted-foreground">Nenhuma medida registrada.</p> : null}
+                      </div>
+                    </section>
+                    <section className="rounded-xl border p-4">
+                      <p className="font-semibold">Tudo do projeto, no mesmo lugar</p>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                        Arquivos gerais do projeto aparecem em todos os ambientes; arquivos enviados daqui ficam vinculados a este ambiente. Renders são associados automaticamente pelo nome do ambiente.
+                      </p>
+                    </section>
+                  </div>
+                </div>
+              </>
+            );
+          })() : null}
         </DialogContent>
       </Dialog>
 
