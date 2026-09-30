@@ -832,6 +832,10 @@ archProcurementRfqPublicRouter.post("/public/arqdor/rfq/:token/documents", publi
     if (["accepted","rejected","expired"].includes(String(inv.status))) {
       return res.status(409).json({ error: "Esta cotação já foi encerrada." });
     }
+    const existingDocuments = Array.isArray(inv.response_documents) ? inv.response_documents : [];
+    if (existingDocuments.length >= 10) {
+      return res.status(422).json({ error: "Limite de 10 anexos por cotação atingido." });
+    }
 
     const document = await saveSupplierDocument(String(inv.tenant_id), String(pkg.obra_id), file);
     await pool.query(`SELECT public.arch_rfq_public_add_document($1::uuid,$2::jsonb)`, [token, JSON.stringify(document)]);
