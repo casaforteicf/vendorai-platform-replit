@@ -168,17 +168,22 @@ export async function createMaterialSurfaceMask(
     const qy = new Int32Array(rw * rh);
     let head = 0, tail = 0, accepted = 0;
 
-    qx[tail] = seedX; qy[tail] = seedY; tail++;
+    const enqueue = (x: number, y: number) => {
+      if (x < x1 || x > x2 || y < y1 || y > y2) return;
+      const li = (y - y1) * rw + (x - x1);
+      if (visited[li]) return;
+      visited[li] = 1;
+      qx[tail] = x;
+      qy[tail] = y;
+      tail++;
+    };
+
+    enqueue(seedX, seedY);
 
     while (head < tail) {
       const x = qx[head]!;
       const y = qy[head]!;
       head++;
-
-      if (x < x1 || x > x2 || y < y1 || y > y2) continue;
-      const li = (y - y1) * rw + (x - x1);
-      if (visited[li]) continue;
-      visited[li] = 1;
 
       const current = pixel(x, y);
       if (colorDistance(current, seed) > threshold) continue;
@@ -186,10 +191,10 @@ export async function createMaterialSurfaceMask(
       mask[y * width + x] = 255;
       accepted++;
 
-      if (x > x1) { qx[tail] = x - 1; qy[tail] = y; tail++; }
-      if (x < x2) { qx[tail] = x + 1; qy[tail] = y; tail++; }
-      if (y > y1) { qx[tail] = x; qy[tail] = y - 1; tail++; }
-      if (y < y2) { qx[tail] = x; qy[tail] = y + 1; tail++; }
+      enqueue(x - 1, y);
+      enqueue(x + 1, y);
+      enqueue(x, y - 1);
+      enqueue(x, y + 1);
     }
 
     const rectArea = rw * rh;
