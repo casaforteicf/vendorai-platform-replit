@@ -819,6 +819,7 @@ export default function Usuarios() {
       return;
     }
     if (!editingUser && !formData.password) {
+      setDialogTab("dados");
       toast({ title: copy.passwordRequired, description: copy.passwordRequiredDescription, variant: "destructive" });
       return;
     }
@@ -1197,11 +1198,11 @@ export default function Usuarios() {
           </DialogHeader>
 
           <Tabs value={dialogTab} onValueChange={setDialogTab} className="mt-2">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className={`grid w-full ${editingUser ? "grid-cols-4" : "grid-cols-3"}`}>
               <TabsTrigger value="dados">{copy.tabData}</TabsTrigger>
               <TabsTrigger value="acessos">{copy.tabAccess}</TabsTrigger>
               <TabsTrigger value="distribuicao">{copy.tabDistribution}</TabsTrigger>
-              <TabsTrigger value="seguranca">{copy.tabSecurity}</TabsTrigger>
+              {editingUser && <TabsTrigger value="seguranca">{copy.tabSecurity}</TabsTrigger>}
             </TabsList>
 
             <TabsContent value="dados" className="space-y-4 pt-4">
@@ -1231,6 +1232,18 @@ export default function Usuarios() {
                     placeholder={copy.phonePlaceholder}
                   />
                 </div>
+                {!editingUser && (
+                  <div>
+                    <Label>{copy.password}</Label>
+                    <Input
+                      type="password"
+                      value={formData.password}
+                      onChange={(event) => setFormData((current) => ({ ...current, password: event.target.value }))}
+                      placeholder={copy.passwordPlaceholder}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">{copy.passwordRequiredDescription}</p>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-3">
                     <Label>{copy.role}</Label>
