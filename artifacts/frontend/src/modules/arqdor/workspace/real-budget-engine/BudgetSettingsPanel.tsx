@@ -14,6 +14,7 @@ export function BudgetSettingsPanel({
   const [clientName, setClientName] = useState("");
   const [discountType, setDiscountType] = useState<"percent" | "fixed">("fixed");
   const [discountValue, setDiscountValue] = useState(0);
+  const [saleTotal, setSaleTotal] = useState<number | "">("");
   const [clientNotes, setClientNotes] = useState("");
   const [internalNotes, setInternalNotes] = useState("");
 
@@ -22,6 +23,7 @@ export function BudgetSettingsPanel({
     setClientName(budget?.clientName || "");
     setDiscountType(budget?.discountType || "fixed");
     setDiscountValue(Number(budget?.discountValue || 0));
+    setSaleTotal(budget?.saleTotal == null ? "" : Number(budget.saleTotal));
     setClientNotes(budget?.clientNotes || "");
     setInternalNotes(budget?.internalNotes || "");
   }, [budget]);
@@ -45,6 +47,20 @@ export function BudgetSettingsPanel({
             <option value="fixed">Valor fixo</option>
             <option value="percent">Percentual</option>
           </select>
+        </label>
+
+        <label className="block">
+          <span className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-muted)]">Preço de venda comercial</span>
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            value={saleTotal}
+            onChange={(event) => setSaleTotal(event.target.value === "" ? "" : Number(event.target.value))}
+            placeholder="Defina o preço que será apresentado ao cliente"
+            className="mt-2 w-full rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
+          />
+          <span className="mt-1 block text-[11px] text-[var(--arq-muted)]">Separado do custo técnico. Esse valor alimenta margem e proposta.</span>
         </label>
 
         <label className="block">
@@ -81,7 +97,7 @@ export function BudgetSettingsPanel({
       <button
         type="button"
         disabled={saving}
-        onClick={() => onSave({ title, clientName, discountType, discountValue, clientNotes, internalNotes })}
+        onClick={() => onSave({ title, clientName, discountType, discountValue, saleTotal: saleTotal === "" ? null : saleTotal, saleSource: "manual", clientNotes, internalNotes })}
         className="mt-5 w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {saving ? "Salvando..." : "Salvar orçamento"}
