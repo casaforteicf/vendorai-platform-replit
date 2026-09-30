@@ -688,8 +688,8 @@ export default function RenderStudioPage() {
   }
 
   function handleBack() {
-    if (window.history.length > 1) {
-      window.history.back();
+    if (projectId) {
+      setLocation(`/arch/projetos/${projectId}`);
       return;
     }
     setLocation("/arch/projetos");
