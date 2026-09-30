@@ -272,7 +272,7 @@ export const blockPartnerFromCRM: RequestHandler = (req, res, next) => {
   next();
 };
 
-export type UserFunction = "vendedor" | "financeiro" | "suporte" | "entrega" | "administrador" | "outro";
+export type UserFunction = "vendedor" | "representante_comercial" | "financeiro" | "suporte" | "entrega" | "administrador" | "outro";
 
 export function requireUserFunction(...functions: UserFunction[]): RequestHandler {
   return (req, res, next) => {
@@ -517,7 +517,7 @@ export function buildUserFunctionFilter(req: Express.Request, table: { tenantId:
   const isSeller = req.user?.platformRole === "tenant_seller";
   const userId = req.user?.sub;
 
-  if (!isAdmin && userId && (userFn === "vendedor" || userFn === "entrega" || isSeller)) {
+  if (!isAdmin && userId && (userFn === "vendedor" || userFn === "representante_comercial" || userFn === "entrega" || isSeller)) {
     conditions.push(eq(table.assignedTo, userId));
   }
 
