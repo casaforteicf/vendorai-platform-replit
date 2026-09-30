@@ -438,7 +438,7 @@ export function useRenderStudioController() {
     setErr(null);
     try {
       const data = await apiPost(`/api/arch/ai-render/${renderId}/material-mask-preview`, {
-        mask_coordinates: selections.map(s => ({ x: s.x, y: s.y, w: s.w, h: s.h })),
+        mask_coordinates: selections.slice(-1).map(s => ({ x: s.x, y: s.y, w: s.w, h: s.h })),
       });
       setMaterialMaskPreviewUrl(data.preview_data_url ?? null);
       setMaterialMaskDataUrl(data.mask_file_base64 ?? null);
@@ -517,7 +517,7 @@ export function useRenderStudioController() {
           melhoriaMode === "change-lighting" ? "Ajuste de iluminação." : null,
           selectedMaterial ? `Material selecionado: ${selectedMaterial.nome} (${selectedMaterial.categoria}${selectedMaterial.fornecedor ? `, ${selectedMaterial.fornecedor}` : ""}).` : null,
           selections.length > 0
-            ? `Aplicar somente dentro da região final confirmada pelo usuário: ${selections.map(s => s.label || "seleção").join(", ")}. Não ampliar automaticamente para toda a peça ou material.`
+            ? `Aplicar somente dentro da região final confirmada pelo usuário: ${selections.slice(-1).map(s => s.label || "seleção").join(", ")}. Não ampliar automaticamente para toda a peça ou material.`
             : null,
           effectivePrompt,
           melhoriaMode === "improve"
@@ -532,7 +532,7 @@ export function useRenderStudioController() {
         mask_coordinates: melhoriaMode === "improve"
           ? undefined
           : selections.length > 0
-            ? selections.map(s => ({ x: s.x, y: s.y, w: s.w, h: s.h }))
+            ? selections.slice(-1).map(s => ({ x: s.x, y: s.y, w: s.w, h: s.h }))
             : undefined,
         createNewVersion: true,
         preserveGeometry: preservationLocks.geometry,
@@ -796,8 +796,14 @@ export function useRenderStudioController() {
 
   // P2-13: handle new selection from canvas
   function handleNewSelection(sel: Omit<SelectionRect, "id" | "label">) {
-    const newSel: SelectionRect = { ...sel, id: crypto.randomUUID(), label: `Região ${selections.length + 1}` };
-    setSelections(prev => [...prev, newSel]);
+    // Ajuste local padrão = UMA região final autorizada por vez.
+    // Criar uma nova seleção substitui qualquer seleção anterior para impedir
+    // que regiões antigas sejam reenviadas silenciosamente no próximo ajuste.
+    const newSel: SelectionRect = { ...sel, id: crypto.randomUUID(), label: "Região selecionada" };
+    setSelections([newSel]);
+    setMaterialMaskPreviewUrl(null);
+    setMaterialMaskDataUrl(null);
+    setMaterialMaskConfirmed(false);
     if (step !== "melhoria") go("melhoria");
   }
 

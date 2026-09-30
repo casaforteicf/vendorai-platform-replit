@@ -174,11 +174,38 @@ function SelectionCanvas({ isActive, renderUrl, targetImageRef, onSelection, onU
     const syncBounds = () => {
       const containerRect = container.getBoundingClientRect();
       const imageRect = image.getBoundingClientRect();
-      const width = Math.max(1, imageRect.width);
-      const height = Math.max(1, imageRect.height);
+
+      // Usa o retângulo REAL do conteúdo visível da imagem.
+      // Se algum CSS aplicar object-fit: contain em uma caixa maior que a imagem,
+      // remove matematicamente as faixas vazias antes de converter a seleção em %.
+      const naturalWidth = Math.max(1, image.naturalWidth || imageRect.width || 1);
+      const naturalHeight = Math.max(1, image.naturalHeight || imageRect.height || 1);
+      const boxWidth = Math.max(1, imageRect.width);
+      const boxHeight = Math.max(1, imageRect.height);
+      const naturalAspect = naturalWidth / naturalHeight;
+      const boxAspect = boxWidth / boxHeight;
+
+      let contentWidth = boxWidth;
+      let contentHeight = boxHeight;
+      let contentOffsetX = 0;
+      let contentOffsetY = 0;
+
+      const objectFit = window.getComputedStyle(image).objectFit;
+      if (objectFit === "contain") {
+        if (boxAspect > naturalAspect) {
+          contentWidth = boxHeight * naturalAspect;
+          contentOffsetX = (boxWidth - contentWidth) / 2;
+        } else if (boxAspect < naturalAspect) {
+          contentHeight = boxWidth / naturalAspect;
+          contentOffsetY = (boxHeight - contentHeight) / 2;
+        }
+      }
+
+      const width = Math.max(1, contentWidth);
+      const height = Math.max(1, contentHeight);
       setImageBounds({
-        left: imageRect.left - containerRect.left,
-        top: imageRect.top - containerRect.top,
+        left: imageRect.left - containerRect.left + contentOffsetX,
+        top: imageRect.top - containerRect.top + contentOffsetY,
         width,
         height,
       });
