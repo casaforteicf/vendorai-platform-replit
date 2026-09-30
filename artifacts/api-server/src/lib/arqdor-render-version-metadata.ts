@@ -11,6 +11,7 @@ export const renderOperationTypeSchema = z.enum([
 export const renderSelectionMetadataSchema = z.array(z.object({
   id: z.string().optional(),
   label: z.string().optional(),
+  surfaceKey: z.string().optional(),
   x: z.number(),
   y: z.number(),
   w: z.number(),
@@ -48,7 +49,7 @@ export function normalizeRenderVersionMetadata(
   operationType?: string;
   materialId?: string | null;
   materialName?: string | null;
-  selectionMetadata?: Array<{ id?: string; label?: string; x: number; y: number; w: number; h: number }>;
+  selectionMetadata?: Array<{ id?: string; label?: string; surfaceKey?: string; x: number; y: number; w: number; h: number }>;
   costEstimateUsd?: string | null;
   approvalNote?: string | null;
 } {
