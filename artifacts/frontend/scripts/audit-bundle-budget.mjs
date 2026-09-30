@@ -7,15 +7,26 @@ if (!fs.existsSync(assetsDir)) {
   process.exit(1);
 }
 
+const chunkPattern = (name) => new RegExp(`^${name}(?:-[A-Za-z0-9_]+)+\\.jsimport fs from "node:fs";
+import path from "node:path";
+
+const assetsDir = path.resolve(process.cwd(), "dist/public/assets");
+if (!fs.existsSync(assetsDir)) {
+  console.error("[bundle-budget] dist/public/assets não encontrado. Rode o build antes.");
+  process.exit(1);
+}
+
+);
+
 const budgets = [
-  { label: "main index", pattern: /^index-local-.*\.js$/, maxKb: 120, pick: "largest" },
-  { label: "Dashboard", pattern: /^Dashboard-local-.*\.js$/, maxKb: 50 },
-  { label: "Leads", pattern: /^Leads-local-.*\.js$/, maxKb: 50 },
-  { label: "LeadWorkspace", pattern: /^LeadWorkspace-local-.*\.js$/, maxKb: 50 },
-  { label: "SidebarLayout", pattern: /^SidebarLayout-local-.*\.js$/, maxKb: 30 },
-  { label: "AppLegacy", pattern: /^AppLegacy-local-.*\.js$/, maxKb: 80 },
-  { label: "ArqWorkspace", pattern: /^ArqWorkspace-local-.*\.js$/, maxKb: 150, optional: true },
-  { label: "ConceptPlanner", pattern: /^ConceptPlanner-local-.*\.js$/, maxKb: 350 },
+  { label: "main index", pattern: chunkPattern("index"), maxKb: 120, pick: "largest" },
+  { label: "Dashboard", pattern: chunkPattern("Dashboard"), maxKb: 50 },
+  { label: "Leads", pattern: chunkPattern("Leads"), maxKb: 50 },
+  { label: "LeadWorkspace", pattern: chunkPattern("LeadWorkspace"), maxKb: 50 },
+  { label: "SidebarLayout", pattern: chunkPattern("SidebarLayout"), maxKb: 30 },
+  { label: "AppLegacy", pattern: chunkPattern("AppLegacy"), maxKb: 80 },
+  { label: "ArqWorkspace", pattern: chunkPattern("ArqWorkspace"), maxKb: 150, optional: true },
+  { label: "ConceptPlanner", pattern: chunkPattern("ConceptPlanner"), maxKb: 350 },
 ];
 
 const files = fs.readdirSync(assetsDir).filter((name) => name.endsWith(".js"));
