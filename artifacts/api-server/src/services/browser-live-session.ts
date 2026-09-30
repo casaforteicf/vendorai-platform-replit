@@ -40,6 +40,7 @@ type LiveBrowserSession = {
   closed: boolean;
   missionActive: boolean;
   revision: number;
+  pauseReason: "manual" | "human_verification" | "approval_required" | null;
   actionInFlight?: Promise<unknown>;
   onMissionResult?: PersistMissionResult;
   onSessionPersist?: PersistSession;
@@ -60,6 +61,7 @@ function publicSession(session: LiveBrowserSession) {
     url: session.page.url(),
     title: null as string | null,
     steps: session.steps,
+    pauseReason: session.pauseReason,
     createdAt: session.createdAt,
     lastActivityAt: session.lastActivityAt,
   };
@@ -140,6 +142,7 @@ export async function createLiveBrowserSession(input: {
     closed: false,
     missionActive: false,
     revision: 0,
+    pauseReason: null,
     onSessionPersist: input.onSessionPersist,
     onMissionResult: input.onMissionResult,
   };
@@ -183,6 +186,7 @@ export async function setLiveBrowserPaused(tenantId: string, sessionId: string, 
     assertBrowserPageAccessible(await snapshotBrowserPage(session.page));
   }
   session.paused = paused;
+  session.pauseReason = paused ? (session.pauseReason ?? "manual") : null;
   session.revision++;
   if (paused) await session.actionInFlight;
   if (session.closed) throw new Error("Sessão encerrada");
@@ -238,9 +242,10 @@ export function startLiveBrowserMission(
   if (session.missionActive) throw new Error("Já existe uma missão em execução nesta sessão");
   session.goal = goal;
   session.answer = null;
-  session.error = startPaused ? "Verificação humana necessária. Assuma o controle e depois devolva para o Vendi." : null;
+  session.error = startPaused ? "Verificação humana necessária. Resolva a verificação e devolva o controle para o Vendi." : null;
   session.steps = [];
   session.paused = startPaused;
+  session.pauseReason = startPaused ? "human_verification" : null;
   session.status = startPaused ? "paused" : "running";
   session.missionActive = true;
 
@@ -265,6 +270,7 @@ export function startLiveBrowserMission(
         catch (error: any) {
           session.error = error.message;
           session.paused = true;
+          session.pauseReason = "human_verification";
           session.status = "paused";
           continue;
         }
@@ -276,6 +282,7 @@ export function startLiveBrowserMission(
           if (action.outcome === "blocked") {
             session.error = action.answer;
             session.paused = true;
+            session.pauseReason = "human_verification";
             session.status = "paused";
             continue;
           }
@@ -295,6 +302,7 @@ export function startLiveBrowserMission(
           if (!String(error?.message).startsWith("APPROVAL_REQUIRED:")) throw error;
           session.error = error.message;
           session.paused = true;
+          session.pauseReason = "approval_required";
           session.status = "paused";
           continue;
         } finally { session.actionInFlight = undefined; }
