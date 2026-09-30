@@ -49,6 +49,7 @@ export interface BrowserAgentInput {
   secrets?: { login?: string; passcode?: string };
   sessionCookies?: CookieData[];
   onSessionPersist?: (cookies: CookieData[]) => Promise<void>;
+  onHumanVerification?: (browser: Browser, page: Page) => Promise<{ sessionId: string; controlUrl: string }>;
 }
 
 const SENSITIVE_TEXT = /(pagar|pagamento|comprar|checkout|transferir|pix|excluir|delete|remover|cancelar|publicar|enviar|send|confirmar|approve|aprovar|assinar|contratar|finalizar|submit)/i;
@@ -215,10 +216,11 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
   };
   let browser: Browser | undefined;
   let page: Page | undefined;
+  let transferred = false;
 
   try {
     browser = await puppeteer.connect({ browserWSEndpoint: cdpUrl });
-    page = await browser.newPage();
+    page = await (await browser.createBrowserContext()).newPage();
 
     if (input.sessionCookies?.length) {
       await page.setCookie(...input.sessionCookies).catch(() => undefined);
@@ -262,8 +264,18 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
 
     if (input.onSessionPersist) await input.onSessionPersist(await page.cookies());
     return { ok: false, finalUrl: page.url(), answer: "Limite de passos atingido.", steps };
+  } catch (error: any) {
+    if (String(error?.message).startsWith("BROWSER_BLOCKED:") && input.onHumanVerification && browser && page) {
+      const handoff = await input.onHumanVerification(browser, page);
+      transferred = true;
+      return { ok: false, status: "awaiting_human" as const, finalUrl: page.url(),
+        answer: "Verificação humana necessária. Abra o controle ao vivo, faça a verificação e devolva para o Vendi.",
+        steps, ...handoff };
+    }
+    throw error;
   } finally {
-    if (page) await page.close().catch(() => undefined);
-    if (browser) browser.disconnect();
+    if (!transferred && page) await page.browserContext().close().catch(() => undefined);
+    if (!transferred && browser) browser.disconnect();
   }
 }
+
