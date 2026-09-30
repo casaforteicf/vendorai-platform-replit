@@ -218,6 +218,7 @@ type RealCatalogProduct = {
   imagens?: string[] | null;
   textureUrl?: string | null;
   model3dUrl?: string | null;
+  projectLibraryEnabled?: boolean;
   especificacoes?: Record<string, unknown> | null;
 };
 
@@ -1265,6 +1266,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       Exterior: /extern|outdoor|jardim|garden|espreguiçadeira|paisag|varanda|deck/,
     };
     return realCatalogProducts.filter((item) => {
+      if (item.projectLibraryEnabled === false) return false;
       if (!inferCatalogFurniturePreset(item)) return false;
       const text = `${item.nome} ${item.categoria ?? ""} ${item.subcategoria ?? ""} ${item.fornecedor ?? ""}`
         .toLocaleLowerCase("pt-BR");
@@ -1360,6 +1362,22 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     );
     return mergeMaterialOptions(CONCEPT_FLOOR_MATERIALS, compatible);
   }, [catalogMaterialOptions]);
+
+  const visibleLibraryMaterials = useMemo(() => {
+    const query = furnitureSearch.trim().toLocaleLowerCase("pt-BR");
+    const merged = mergeMaterialOptions(
+      [...CONCEPT_OBJECT_MATERIALS, ...CONCEPT_WALL_MATERIALS, ...CONCEPT_FLOOR_MATERIALS],
+      catalogMaterialOptions,
+    );
+    return merged
+      .filter((material) => {
+        if (!query) return true;
+        return `${material.name} ${material.category} ${material.source ?? ""}`
+          .toLocaleLowerCase("pt-BR")
+          .includes(query);
+      })
+      .slice(0, 24);
+  }, [catalogMaterialOptions, furnitureSearch]);
 
   useEffect(() => {
     roomsRef.current = Array.isArray(rooms) ? rooms : [];
@@ -7163,7 +7181,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Biblioteca de itens</div>
                           <div className="mt-0.5 text-[10px] text-slate-400">{editorView === "model3d" ? "Clique para inserir sem sair do 3D" : "Arraste para posicionar ou clique para inserir"}</div>
                         </div>
-                        <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">{visibleRealCatalogProducts.length + filteredFurniture.length}</span>
+                        <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">{visibleRealCatalogProducts.length + filteredFurniture.length + visibleLibraryMaterials.length}</span>
                       </div>
 
                       <label className="mb-3 flex h-10 items-center gap-2 rounded-xl border bg-white px-3">
@@ -7213,6 +7231,52 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           </button>
                         ))}
                       </div>
+
+                      {visibleLibraryMaterials.length > 0 && (
+                        <div className="mb-5">
+                          <div className="mb-3 flex items-center justify-between gap-2">
+                            <div>
+                              <div className="text-xs font-bold text-slate-900">Materiais da biblioteca</div>
+                              <div className="text-[10px] text-slate-500">Mesma fonte usada no projeto e no render · clique para aplicar ao elemento selecionado</div>
+                            </div>
+                            <span className="text-[10px] font-semibold text-slate-400">{visibleLibraryMaterials.length}</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            {visibleLibraryMaterials.map((material) => (
+                              <button
+                                key={`library-material-${material.id}`}
+                                type="button"
+                                onClick={() => {
+                                  if (selectedObject) {
+                                    applyObjectMaterialToId(selectedObject.id, material.id);
+                                    armPaintTool("object", material);
+                                    return;
+                                  }
+                                  if (selectedCustomWall || selectedWall) {
+                                    setSelectedWallMaterial(material.id);
+                                    armPaintTool("wall", material);
+                                    return;
+                                  }
+                                  if (selected || selectedClosedSpace) {
+                                    setSelectedSurfaceMaterial(material.id);
+                                    armPaintTool("floor", material);
+                                    return;
+                                  }
+                                  setEditorLibraryTab("materials");
+                                }}
+                                className="overflow-hidden rounded-xl border bg-white text-left transition hover:border-orange-300 hover:shadow-sm"
+                              >
+                                <div className="h-16 border-b" style={{ background: material.swatch }} />
+                                <div className="p-2.5">
+                                  <div className="truncate text-xs font-semibold text-slate-900">{material.name}</div>
+                                  <div className="mt-0.5 truncate text-[9px] text-slate-500">{material.category}</div>
+                                  {material.source && <div className="mt-1 truncate text-[9px] font-medium text-slate-400">{material.source}</div>}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
                       {(polyHavenLoading || polyHavenModels.length > 0) && (
                         <div className="mb-5">
@@ -7294,8 +7358,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         <div className="mb-5">
                           <div className="mb-3 flex items-center justify-between gap-2">
                             <div>
-                              <div className="text-xs font-bold text-slate-900">Famílias e produtos do catálogo</div>
-                              <div className="text-[10px] text-slate-500">Base Arqdor + produtos do tenant · clique para inserir no ambiente ativo</div>
+                              <div className="text-xs font-bold text-slate-900">Itens do catálogo para render</div>
+                              <div className="text-[10px] text-slate-500">Produto mestre do tenant · mesmo cadastro usado no projeto, render, orçamento e proposta</div>
                             </div>
                             {realCatalogLoading && <span className="text-[10px] font-semibold text-orange-600">Carregando...</span>}
                           </div>
