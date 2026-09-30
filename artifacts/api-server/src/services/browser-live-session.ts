@@ -246,6 +246,13 @@ export function startLiveBrowserMission(
         });
         session.lastActivityAt = new Date();
 
+        // Se o usuário assumir o controle enquanto a IA está planejando,
+        // não execute a ação recém-planejada até ele devolver o controle.
+        while (session.paused && !session.closed) {
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+        if (session.closed) return;
+
         if (action.action === "finish") {
           session.answer = action.answer;
           session.status = "completed";
