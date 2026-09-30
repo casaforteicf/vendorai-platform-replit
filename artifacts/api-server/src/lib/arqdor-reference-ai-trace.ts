@@ -1,5 +1,6 @@
 import sharp from "sharp";
 import { getOpenAIForTenant } from "./agent-engine.js";
+import { anthropic } from "@workspace/integrations-anthropic-ai";
 
 export type ReferenceTraceBounds = {
   x: number;
@@ -432,49 +433,75 @@ export async function traceReferencePlanImage(input: {
     || process.env["VENDORAI_VISION_MODEL"]?.trim()
     || "gpt-5.6-luna";
 
-  const response = await withTransientRateLimitRetry(() => (openai.responses.create as any)({
-    model,
-    input: [
-      {
-        role: "system",
-        content: [{
-          type: "input_text",
-          text: [
-            "Você é um especialista em vetorização fiel de plantas arquitetônicas residenciais brasileiras, incluindo pré-plantas e croquis desenhados à mão ou digitalizados.",
-            "Sua tarefa é reconstruir como geometria editável somente o que está visível na imagem, sem projetar, melhorar, completar ou reinterpretar a planta.",
-            "NÃO invente paredes, portas, janelas, ambientes, alinhamentos ou dimensões ausentes. Se algo estiver encoberto, cortado ou ambíguo, omita e registre em warnings.",
-            "Mantenha a posição dos elementos exatamente no sistema de coordenadas da IMAGEM INTEIRA, incluindo margens em branco, carimbo, textos e áreas vazias.",
-            "Esta versão gera paredes ortogonais horizontais/verticais. Em croquis, tolere pequenas inclinações de traço quando a intenção ortogonal for clara e normalize-as para horizontal/vertical; diagonais arquitetônicas reais ou curvas devem ser omitidas e citadas em warnings.",
-            "Responda SOMENTE JSON válido, sem markdown.",
-          ].join(" "),
-        }],
-      },
-      {
+  const systemPrompt = [
+    "Você é um especialista em vetorização fiel de plantas arquitetônicas residenciais brasileiras, incluindo pré-plantas e croquis desenhados à mão ou digitalizados.",
+    "Sua tarefa é reconstruir como geometria editável somente o que está visível na imagem, sem projetar, melhorar, completar ou reinterpretar a planta.",
+    "NÃO invente paredes, portas, janelas, ambientes, alinhamentos ou dimensões ausentes. Se algo estiver encoberto, cortado ou ambíguo, omita e registre em warnings.",
+    "Mantenha a posição dos elementos exatamente no sistema de coordenadas da IMAGEM INTEIRA, incluindo margens em branco, carimbo, textos e áreas vazias.",
+    "Esta versão gera paredes ortogonais horizontais/verticais. Em croquis, tolere pequenas inclinações de traço quando a intenção ortogonal for clara e normalize-as para horizontal/vertical; diagonais arquitetônicas reais ou curvas devem ser omitidas e citadas em warnings.",
+    "Responda SOMENTE JSON válido, sem markdown.",
+  ].join(" ");
+  const userPrompt = [
+    "Identifique paredes e aberturas VISÍVEIS no croqui, pré-planta ou planta técnica e reproduza o desenho como uma planta vetorial editável sem alterar sua distribuição.",
+    "Todas as coordenadas devem ser normalizadas entre 0 e 1 em relação à imagem inteira, nunca em relação apenas ao retângulo da planta.",
+    "Use x=0 na borda esquerda da imagem, x=1 na borda direita, y=0 no topo e y=1 na base. Preserve margens e deslocamentos existentes na imagem.",
+    "Para cada parede informe x1,y1,x2,y2, thickness em metros e confidence 0..1.",
+    "Use preferencialmente o eixo central da espessura visual da parede para x1,y1,x2,y2, mantendo encontros T e cruzamentos coincidentes.",
+    "Retorne somente paredes claramente observáveis ou claramente pretendidas como ortogonais. Ignore mobiliário, textos, hachuras, setas, rabiscos soltos e muros sem definição. Cotas legíveis podem ajudar a validar proporções, mas nunca justificam criar geometria não desenhada.",
+    "Não redistribua cômodos e não feche automaticamente lacunas que não estejam desenhadas.",
+    "Para cada porta/janela use wallIndex apontando para o índice ZERO-BASED da parede no array walls,",
+    "type door|window, offset 0..1 ao longo da parede, width/height/sillHeight em metros, confidence 0..1.",
+    "JSON: {summary:string, confidence:number, walls:[{x1,y1,x2,y2,thickness,confidence}], openings:[{wallIndex,type,offset,width,height,sillHeight,confidence}], warnings:string[]}.",
+    "Se houver dúvida relevante, omita o elemento e explique em warnings.",
+  ].join(" ");
+
+  let text = "";
+  let effectiveModel = model;
+  try {
+    const response = await withTransientRateLimitRetry(() => (openai.responses.create as any)({
+      model,
+      input: [
+        { role: "system", content: [{ type: "input_text", text: systemPrompt }] },
+        {
+          role: "user",
+          content: [
+            { type: "input_text", text: userPrompt },
+            { type: "input_image", image_url: dataUrl, detail: "high" },
+          ],
+        },
+      ],
+    }));
+    text = responseText(response);
+  } catch (openAiError) {
+    if (!isRetryableRateLimit(openAiError)) throw openAiError;
+    const anthropicModel = process.env["ARQDOR_PLAN_VISION_FALLBACK_MODEL"]?.trim() || "claude-sonnet-4-6";
+    const message = await anthropic.messages.create({
+      model: anthropicModel,
+      max_tokens: 7000,
+      system: systemPrompt,
+      messages: [{
         role: "user",
         content: [
           {
-            type: "input_text",
-            text: [
-              "Identifique paredes e aberturas VISÍVEIS no croqui, pré-planta ou planta técnica e reproduza o desenho como uma planta vetorial editável sem alterar sua distribuição.",
-              "Todas as coordenadas devem ser normalizadas entre 0 e 1 em relação à imagem inteira, nunca em relação apenas ao retângulo da planta.",
-              "Use x=0 na borda esquerda da imagem, x=1 na borda direita, y=0 no topo e y=1 na base. Preserve margens e deslocamentos existentes na imagem.",
-              "Para cada parede informe x1,y1,x2,y2, thickness em metros e confidence 0..1.",
-              "Use preferencialmente o eixo central da espessura visual da parede para x1,y1,x2,y2, mantendo encontros T e cruzamentos coincidentes.",
-              "Retorne somente paredes claramente observáveis ou claramente pretendidas como ortogonais. Ignore mobiliário, textos, hachuras, setas, rabiscos soltos e muros sem definição. Cotas legíveis podem ajudar a validar proporções, mas nunca justificam criar geometria não desenhada.",
-              "Não redistribua cômodos e não feche automaticamente lacunas que não estejam desenhadas.",
-              "Para cada porta/janela use wallIndex apontando para o índice ZERO-BASED da parede no array walls,",
-              "type door|window, offset 0..1 ao longo da parede, width/height/sillHeight em metros, confidence 0..1.",
-              "JSON: {summary:string, confidence:number, walls:[{x1,y1,x2,y2,thickness,confidence}], openings:[{wallIndex,type,offset,width,height,sillHeight,confidence}], warnings:string[]}.",
-              "Se houver dúvida relevante, omita o elemento e explique em warnings.",
-            ].join(" "),
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: "image/jpeg",
+              data: normalized.toString("base64"),
+            },
           },
-          { type: "input_image", image_url: dataUrl, detail: "high" },
+          { type: "text", text: userPrompt },
         ],
-      },
-    ],
-  }));
+      }],
+    } as any);
+    text = message.content
+      .filter((item: any) => item?.type === "text")
+      .map((item: any) => String(item.text ?? ""))
+      .join("\n")
+      .trim();
+    effectiveModel = anthropicModel;
+  }
 
-  const text = responseText(response);
   if (!text) throw new Error("A IA não retornou um traçado utilizável.");
   let parsed: JsonRecord;
   try {
@@ -483,7 +510,7 @@ export async function traceReferencePlanImage(input: {
     throw new Error("A IA retornou um formato inválido ao interpretar a planta.");
   }
   const registration = await registerTraceToImage(parsed, normalized);
-  const result = normalizeReferenceTrace(registration.raw, input.bounds, model);
+  const result = normalizeReferenceTrace(registration.raw, input.bounds, effectiveModel);
   const correctionMagnitude =
     Math.abs(registration.correction.scale - 1)
     + Math.abs(registration.correction.translateX)
