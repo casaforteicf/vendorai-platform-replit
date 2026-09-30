@@ -88,10 +88,16 @@ const PROPOSTA_EDIT_SCRIPT = `<script id="__proposta_editor__">
     '.__pe_btn:hover{background:rgba(255,255,255,.18);}'+
     '.__pe_sep{width:1px;height:18px;background:rgba(255,255,255,.2);margin:0 3px;}'+
     '.__pe_clr{width:26px;height:22px;padding:0;border:1px solid rgba(255,255,255,.2);border-radius:4px;cursor:pointer;background:transparent;}';
+  css.id='__proposta_editor_style__';
   document.head.appendChild(css);
 
+  var sendTimer=null;
   function send(){
-    window.parent.postMessage({type:'proposta-edit',html:'<!DOCTYPE html>'+document.documentElement.outerHTML},window.location.origin);
+    window.parent.postMessage({type:'proposta-edit',html:'<!DOCTYPE html>'+document.documentElement.outerHTML},'*');
+  }
+  function scheduleSend(){
+    if(sendTimer)clearTimeout(sendTimer);
+    sendTimer=setTimeout(send,120);
   }
 
   var bar=null;
@@ -139,6 +145,7 @@ const PROPOSTA_EDIT_SCRIPT = `<script id="__proposta_editor__">
     if((el.tagName==='DIV'||el.tagName==='SPAN')&&Array.from(el.children).some(function(c){return blockTags.test(c.tagName);}))return;
     el.setAttribute('data-pe','1');
     el.addEventListener('click',function(e){e.stopPropagation();el.contentEditable='true';el.focus();getBar().style.display='flex';});
+    el.addEventListener('input',scheduleSend);
     el.addEventListener('blur',function(){
       setTimeout(function(){
         var a=document.activeElement;
@@ -1271,7 +1278,9 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
   useEffect(() => {
     const handler = (e: MessageEvent) => {
       if (e.source !== iframeRef.current?.contentWindow) return;
-      if (e.origin !== window.location.origin) return;
+      // srcDoc/about:srcdoc can report an opaque "null" origin in desktop/webview
+      // contexts. Source validation above ties the message to this exact preview iframe.
+      if (e.origin !== window.location.origin && e.origin !== "null") return;
       if (e.data?.type === "proposta-edit" && typeof e.data.html === "string") {
         setEditableHtml(e.data.html);
         setEditDirty(true);
@@ -1294,7 +1303,21 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
   }
 
   function stripEditScript(html: string): string {
-    return html.replace(/<script id="__proposta_editor__">[\s\S]*?<\/script>/g, "");
+    if (typeof DOMParser === "undefined") {
+      return html
+        .replace(/<script id="__proposta_editor__">[\s\S]*?<\/script>/g, "")
+        .replace(/<style id="__proposta_editor_style__">[\s\S]*?<\/style>/g, "")
+        .replace(/<div id="__pe_bar__"[\s\S]*?<\/div>/g, "");
+    }
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    doc.getElementById("__proposta_editor__")?.remove();
+    doc.getElementById("__proposta_editor_style__")?.remove();
+    doc.getElementById("__pe_bar__")?.remove();
+    doc.querySelectorAll("[data-pe]").forEach((el) => {
+      el.removeAttribute("data-pe");
+      el.removeAttribute("contenteditable");
+    });
+    return "<!DOCTYPE html>" + doc.documentElement.outerHTML;
   }
 
   function enterEditMode() {
@@ -1311,7 +1334,13 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
   }
 
   async function saveEditedHtml() {
-    const html = editableHtml ? stripEditScript(editableHtml) : previewHtml;
+    // Read directly from the same-origin srcDoc iframe so saving does not depend
+    // on blur/postMessage timing. This also captures the text still being edited.
+    const frameDocument = iframeRef.current?.contentDocument;
+    const frameHtml = frameDocument?.documentElement?.outerHTML
+      ? "<!DOCTYPE html>" + frameDocument.documentElement.outerHTML
+      : null;
+    const html = stripEditScript(frameHtml || editableHtml || previewHtml || "");
     if (!html || !activeVersion) return;
     setEditSaving(true);
     try {
@@ -5757,7 +5786,7 @@ ${chip}`
                     <XCircle className="h-3.5 w-3.5" />
                     Cancelar
                   </Button>
-                  <Button size="sm" className="h-7 text-xs gap-1" onClick={saveEditedHtml} disabled={editSaving || !editDirty}>
+                  <Button size="sm" className="h-7 text-xs gap-1" onClick={saveEditedHtml} disabled={editSaving}>
                     {editSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
                     {editSaving ? "Salvando…" : "Salvar como nova revisão"}
                   </Button>
