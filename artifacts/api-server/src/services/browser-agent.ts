@@ -3,7 +3,7 @@ import { callOpenAI } from "../lib/ai-gateway.js";
 
 export type BrowserAgentMode = "assistido" | "autonomo";
 
-type PlannedAction =
+export type PlannedAction =
   | { action: "navigate"; url: string; reason?: string }
   | { action: "click"; selector: string; reason?: string }
   | { action: "type"; selector: string; text: string; reason?: string }
@@ -41,7 +41,7 @@ function hostAllowed(host: string, allowed: string[]) {
   });
 }
 
-function safeUrl(raw: string, connectionAllowedHosts: string[] = []): string {
+export function validateBrowserUrl(raw: string, connectionAllowedHosts: string[] = []): string {
   const url = new URL(raw);
   if (!["http:", "https:"].includes(url.protocol)) throw new Error("URL não permitida");
   const host = url.hostname.toLowerCase();
@@ -63,7 +63,7 @@ function safeUrl(raw: string, connectionAllowedHosts: string[] = []): string {
   return url.toString();
 }
 
-async function snapshot(page: Page) {
+export async function snapshotBrowserPage(page: Page) {
   return page.evaluate(() => {
     const clean = (v: string | null | undefined) => (v ?? "").replace(/\s+/g, " ").trim();
     const interactive = Array.from(document.querySelectorAll("a,button,input,textarea,select,[role='button']"))
@@ -92,7 +92,7 @@ async function snapshot(page: Page) {
   });
 }
 
-async function plan(
+export async function planBrowserAction(
   tenantId: string,
   goal: string,
   state: unknown,
@@ -142,7 +142,7 @@ async function clearAndType(page: Page, selector: string, value: string) {
   await page.type(selector, value, { delay: 20 });
 }
 
-async function execute(
+export async function executeBrowserAction(
   page: Page,
   action: PlannedAction,
   input: Pick<BrowserAgentInput, "allowWrite" | "allowedHosts" | "secrets">,
@@ -150,7 +150,7 @@ async function execute(
   if (action.action === "finish") return action.answer;
 
   if (action.action === "navigate") {
-    await page.goto(safeUrl(action.url, input.allowedHosts), { waitUntil: "domcontentloaded", timeout: 30000 });
+    await page.goto(validateBrowserUrl(action.url, input.allowedHosts), { waitUntil: "domcontentloaded", timeout: 30000 });
     return;
   }
 
@@ -199,14 +199,14 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
       await page.setCookie(...input.sessionCookies).catch(() => undefined);
     }
 
-    await page.goto(safeUrl(input.startUrl, input.allowedHosts), {
+    await page.goto(validateBrowserUrl(input.startUrl, input.allowedHosts), {
       waitUntil: "domcontentloaded",
       timeout: 30000,
     });
 
     for (let index = 1; index <= maxSteps; index++) {
-      const state = await snapshot(page);
-      const action = await plan(input.tenantId, input.goal, state, steps, secretsAvailable);
+      const state = await snapshotBrowserPage(page);
+      const action = await planBrowserAction(input.tenantId, input.goal, state, steps, secretsAvailable);
       steps.push({ index, action: action.action, url: state.url, detail: "reason" in action ? action.reason : undefined });
 
       if (action.action === "finish") {
@@ -214,10 +214,10 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
         return { ok: true, finalUrl: state.url, answer: action.answer, steps };
       }
 
-      const extracted = await execute(page, action, input);
+      const extracted = await executeBrowserAction(page, action, input);
       if (action.action === "extract" && extracted) {
-        const state2 = await snapshot(page);
-        const next = await plan(
+        const state2 = await snapshotBrowserPage(page);
+        const next = await planBrowserAction(
           input.tenantId,
           input.goal + "\nDados extraídos:\n" + extracted.slice(0, 12000),
           state2,
