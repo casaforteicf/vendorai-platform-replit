@@ -137,13 +137,15 @@ const PT_COPY = {
   functionUpdatedDescription: "Nome e acessos padrão foram atualizados.",
   functionDeleted: "Função excluída",
   functionDeletedDescription: "A função personalizada foi removida.",
+  nativeFunctionRestored: "Função nativa restaurada",
+  nativeFunctionRestoredDescription: "A função continua disponível com o nome e acessos padrão do sistema.",
   functionSelected: (name: string) => `${name} já foi selecionada para este usuário.`,
   functionCreateError: "Erro ao criar função",
   functionUpdateError: "Erro ao atualizar função",
   functionDeleteError: "Erro ao excluir função",
   manageFunctions: "Gerenciar",
   manageFunctionsTitle: "Gerenciar funções",
-  manageFunctionsDescription: "Edite ou exclua funções personalizadas da empresa.",
+  manageFunctionsDescription: "Gerencie funções nativas e personalizadas da empresa. Funções nativas podem ser editadas e restauradas ao padrão.",
   noCustomFunctions: "Nenhuma função personalizada criada.",
   editFunction: "Editar função",
   deleteFunction: "Excluir função",
@@ -271,13 +273,15 @@ const ES_COPY = {
   functionUpdatedDescription: "El nombre y los accesos predeterminados fueron actualizados.",
   functionDeleted: "Función eliminada",
   functionDeletedDescription: "La función personalizada fue eliminada.",
+  nativeFunctionRestored: "Función nativa restaurada",
+  nativeFunctionRestoredDescription: "La función sigue disponible con el nombre y los accesos predeterminados del sistema.",
   functionSelected: (name: string) => `${name} ya fue seleccionada para este usuario.`,
   functionCreateError: "Error al crear la función",
   functionUpdateError: "Error al actualizar la función",
   functionDeleteError: "Error al eliminar la función",
   manageFunctions: "Gestionar",
   manageFunctionsTitle: "Gestionar funciones",
-  manageFunctionsDescription: "Edita o elimina funciones personalizadas de la empresa.",
+  manageFunctionsDescription: "Gestiona funciones nativas y personalizadas de la empresa. Las funciones nativas se pueden editar y restaurar al valor predeterminado.",
   noCustomFunctions: "No hay funciones personalizadas creadas.",
   editFunction: "Editar función",
   deleteFunction: "Eliminar función",
@@ -399,6 +403,7 @@ interface TenantUserFunction {
   id: string;
   tenantId: string;
   name: string;
+  systemKey?: UserFunction | null;
   permissions: string[];
   kind?: "internal" | "external_company";
   linkedTenantId?: string | null;
@@ -445,6 +450,7 @@ export default function Usuarios() {
   const [functionDialogOpen, setFunctionDialogOpen] = useState(false);
   const [manageFunctionsOpen, setManageFunctionsOpen] = useState(false);
   const [editingFunction, setEditingFunction] = useState<TenantUserFunction | null>(null);
+  const [editingStandardFunction, setEditingStandardFunction] = useState<UserFunction | null>(null);
   const [deleteFunctionTarget, setDeleteFunctionTarget] = useState<TenantUserFunction | null>(null);
   const [newFunctionName, setNewFunctionName] = useState("");
   const [newFunctionPermissions, setNewFunctionPermissions] = useState<UserModuleKey[]>([]);
@@ -484,13 +490,32 @@ export default function Usuarios() {
 
   function getCustomFunction(customFunctionId?: string | null) {
     if (!customFunctionId) return undefined;
-    return tenantFunctions.find((item) => item.id === customFunctionId);
+    return tenantFunctions.find((item) => item.id === customFunctionId && !item.systemKey);
   }
+
+  function getStandardFunctionOverride(userFunction: UserFunction) {
+    return tenantFunctions.find((item) => item.systemKey === userFunction);
+  }
+
+  function getStandardFunctionLabel(userFunction: UserFunction) {
+    return getStandardFunctionOverride(userFunction)?.name ?? roleLabels[userFunction] ?? roleLabels.outro;
+  }
+
+  function permissionsForStandardFunction(userFunction: UserFunction) {
+    const override = getStandardFunctionOverride(userFunction);
+    return override
+      ? override.permissions.filter((permission): permission is UserModuleKey =>
+          USER_MODULES.some((module) => module.key === permission),
+        )
+      : modulesForFunction(userFunction);
+  }
+
+  const customTenantFunctions = tenantFunctions.filter((item) => !item.systemKey);
 
   function getFunctionLabel(targetUser: any) {
     const customFunction = getCustomFunction(targetUser.customFunctionId);
     if (customFunction) return customFunction.name;
-    return roleLabels[targetUser.userFunction ?? "outro"] ?? roleLabels.outro;
+    return getStandardFunctionLabel((targetUser.userFunction ?? "outro") as UserFunction);
   }
 
   function getFunctionFilterValue(targetUser: any) {
@@ -556,7 +581,7 @@ export default function Usuarios() {
       telefone: "",
       userFunction: "outro",
       customFunctionId: null,
-      permissions: modulesForFunction("outro"),
+      permissions: permissionsForStandardFunction("outro"),
       password: "",
       active: true,
       leadAssignmentEnabled: false,
@@ -603,6 +628,7 @@ export default function Usuarios() {
 
   function openNewFunctionDialog() {
     setEditingFunction(null);
+    setEditingStandardFunction(null);
     setNewFunctionName("");
     setNewFunctionPermissions([]);
     setNewFunctionKind("internal");
@@ -612,6 +638,7 @@ export default function Usuarios() {
   }
 
   function openEditFunction(customFunction: TenantUserFunction) {
+    setEditingStandardFunction(null);
     setEditingFunction(customFunction);
     setNewFunctionName(customFunction.name);
     setNewFunctionPermissions(
@@ -622,6 +649,18 @@ export default function Usuarios() {
     setNewFunctionKind(customFunction.kind ?? "internal");
     setNewFunctionLinkedTenantCode(customFunction.linkedTenantCode ?? "");
     setNewFunctionLeadAccessScope(customFunction.leadAccessScope ?? "assigned");
+    setFunctionDialogOpen(true);
+  }
+
+  function openEditStandardFunction(userFunction: UserFunction) {
+    const override = getStandardFunctionOverride(userFunction);
+    setEditingStandardFunction(userFunction);
+    setEditingFunction(override ?? null);
+    setNewFunctionName(override?.name ?? roleLabels[userFunction] ?? roleLabels.outro);
+    setNewFunctionPermissions(permissionsForStandardFunction(userFunction));
+    setNewFunctionKind("internal");
+    setNewFunctionLinkedTenantCode("");
+    setNewFunctionLeadAccessScope("assigned");
     setFunctionDialogOpen(true);
   }
 
@@ -646,7 +685,7 @@ export default function Usuarios() {
       ...current,
       userFunction,
       customFunctionId: null,
-      permissions: modulesForFunction(userFunction),
+      permissions: permissionsForStandardFunction(userFunction),
       leadAssignmentEnabled: editingUser ? current.leadAssignmentEnabled : (userFunction === "vendedor" || userFunction === "representante_comercial"),
     }));
   }
@@ -676,8 +715,9 @@ export default function Usuarios() {
           method: editingFunction ? "PATCH" : "POST",
           body: JSON.stringify({
             name,
+            systemKey: editingStandardFunction ?? editingFunction?.systemKey ?? null,
             permissions: newFunctionPermissions,
-            kind: newFunctionKind,
+            kind: editingStandardFunction ? "internal" : newFunctionKind,
             linkedTenantCode: newFunctionKind === "external_company" ? newFunctionLinkedTenantCode.trim().toUpperCase() : null,
             leadAccessScope: newFunctionLeadAccessScope,
             representativeUserIds: [],
@@ -688,7 +728,16 @@ export default function Usuarios() {
       queryClient.setQueryData<TenantUserFunction[]>(userFunctionsQueryKey, (current = []) =>
         [...current.filter((item) => item.id !== saved.id), saved].sort((a, b) => a.name.localeCompare(b.name, locale)),
       );
-      if (!editingFunction) {
+      if (editingStandardFunction) {
+        if (!formData.customFunctionId && formData.userFunction === editingStandardFunction) {
+          setFormData((current) => ({
+            ...current,
+            permissions: saved.permissions.filter((permission): permission is UserModuleKey =>
+              USER_MODULES.some((module) => module.key === permission),
+            ),
+          }));
+        }
+      } else if (!editingFunction) {
         setFormData((current) => ({
           ...current,
           userFunction: "outro",
@@ -707,6 +756,7 @@ export default function Usuarios() {
       }
       setFunctionDialogOpen(false);
       setEditingFunction(null);
+      setEditingStandardFunction(null);
       setNewFunctionName("");
       setNewFunctionPermissions([]);
       setNewFunctionKind("internal");
@@ -742,14 +792,22 @@ export default function Usuarios() {
           ...current,
           userFunction: "outro",
           customFunctionId: null,
-          permissions: modulesForFunction("outro"),
+          permissions: permissionsForStandardFunction("outro"),
+        }));
+      }
+      if (deleteFunctionTarget.systemKey && !formData.customFunctionId && formData.userFunction === deleteFunctionTarget.systemKey) {
+        setFormData((current) => ({
+          ...current,
+          permissions: modulesForFunction(deleteFunctionTarget.systemKey as UserFunction),
         }));
       }
       if (functionFilter === `${CUSTOM_FUNCTION_PREFIX}${deleteFunctionTarget.id}`) {
         setFunctionFilter("all");
       }
       setDeleteFunctionTarget(null);
-      toast({ title: copy.functionDeleted, description: copy.functionDeletedDescription });
+      toast(deleteFunctionTarget.systemKey
+        ? { title: copy.nativeFunctionRestored, description: copy.nativeFunctionRestoredDescription }
+        : { title: copy.functionDeleted, description: copy.functionDeletedDescription });
     } catch (err: any) {
       toast({ title: copy.functionDeleteError, description: err?.message || copy.tryAgain, variant: "destructive" });
     }
@@ -969,10 +1027,10 @@ export default function Usuarios() {
                   <SelectItem value="all">{copy.allFunctions}</SelectItem>
                   {STANDARD_FUNCTIONS.map((standardFunction) => (
                     <SelectItem key={standardFunction} value={`${STANDARD_FUNCTION_PREFIX}${standardFunction}`}>
-                      {roleLabels[standardFunction]}
+                      {getStandardFunctionLabel(standardFunction)}
                     </SelectItem>
                   ))}
-                  {tenantFunctions.map((customFunction) => (
+                  {customTenantFunctions.map((customFunction) => (
                     <SelectItem key={customFunction.id} value={`${CUSTOM_FUNCTION_PREFIX}${customFunction.id}`}>
                       {customFunction.name}
                     </SelectItem>
@@ -1189,9 +1247,9 @@ export default function Usuarios() {
                     <SelectTrigger><SelectValue placeholder={copy.selectFunction} /></SelectTrigger>
                     <SelectContent>
                       {STANDARD_FUNCTIONS.map((standardFunction) => (
-                        <SelectItem key={standardFunction} value={standardFunction}>{roleLabels[standardFunction]}</SelectItem>
+                        <SelectItem key={standardFunction} value={standardFunction}>{getStandardFunctionLabel(standardFunction)}</SelectItem>
                       ))}
-                      {tenantFunctions.map((customFunction) => (
+                      {customTenantFunctions.map((customFunction) => (
                         <SelectItem key={customFunction.id} value={`${CUSTOM_FUNCTION_PREFIX}${customFunction.id}`}>
                           {customFunction.name}
                         </SelectItem>
@@ -1372,8 +1430,8 @@ export default function Usuarios() {
       <Dialog open={functionDialogOpen} onOpenChange={setFunctionDialogOpen}>
         <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingFunction ? copy.editFunction : copy.newFunction}</DialogTitle>
-            <DialogDescription>{editingFunction ? copy.manageFunctionsDescription : copy.newFunctionDescription}</DialogDescription>
+            <DialogTitle>{editingFunction || editingStandardFunction ? copy.editFunction : copy.newFunction}</DialogTitle>
+            <DialogDescription>{editingFunction || editingStandardFunction ? copy.manageFunctionsDescription : copy.newFunctionDescription}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
@@ -1390,6 +1448,7 @@ export default function Usuarios() {
                 <Switch
                   checked={newFunctionKind === "external_company"}
                   onCheckedChange={(checked) => setNewFunctionKind(checked ? "external_company" : "internal")}
+                  disabled={Boolean(editingStandardFunction)}
                 />
                 <span>
                   <span className="block text-sm font-medium">{copy.representativeCompany}</span>
@@ -1461,7 +1520,7 @@ export default function Usuarios() {
             </Button>
             <Button type="button" onClick={handleSaveFunction} disabled={creatingFunction}>
               {creatingFunction && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {editingFunction ? copy.saveFunction : copy.createFunction}
+              {editingFunction || editingStandardFunction ? copy.saveFunction : copy.createFunction}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1473,49 +1532,98 @@ export default function Usuarios() {
             <DialogTitle>{copy.manageFunctionsTitle}</DialogTitle>
             <DialogDescription>{copy.manageFunctionsDescription}</DialogDescription>
           </DialogHeader>
-          <div className="space-y-2 py-2">
-            {tenantFunctions.length === 0 ? (
-              <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-                {copy.noCustomFunctions}
-              </div>
-            ) : tenantFunctions.map((customFunction) => (
-              <div key={customFunction.id} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
-                <div className="min-w-0">
-                  <p className="font-medium text-sm truncate">{customFunction.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {customFunction.permissions.length} {copy.defaultAccess.toLowerCase()}
-                    {customFunction.kind === "external_company" && customFunction.linkedTenantCode
-                      ? ` · ${copy.representativeCompany}: ${customFunction.linkedTenantCode}`
-                      : ""}
-                  </p>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Funções nativas</p>
+              {STANDARD_FUNCTIONS.map((standardFunction) => {
+                const override = getStandardFunctionOverride(standardFunction);
+                const permissions = override?.permissions ?? modulesForFunction(standardFunction);
+                return (
+                  <div key={standardFunction} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
+                    <div className="min-w-0">
+                      <p className="font-medium text-sm truncate">{override?.name ?? roleLabels[standardFunction]}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {permissions.length} {copy.defaultAccess.toLowerCase()}
+                        {override ? " · personalizado" : " · padrão do sistema"}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        aria-label={copy.editFunction}
+                        onClick={() => {
+                          setManageFunctionsOpen(false);
+                          openEditStandardFunction(standardFunction);
+                        }}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      {override && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-destructive hover:text-destructive"
+                          aria-label={copy.deleteFunction}
+                          onClick={() => setDeleteFunctionTarget(override)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Funções personalizadas</p>
+              {customTenantFunctions.length === 0 ? (
+                <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
+                  {copy.noCustomFunctions}
                 </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    aria-label={copy.editFunction}
-                    onClick={() => {
-                      setManageFunctionsOpen(false);
-                      openEditFunction(customFunction);
-                    }}
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-destructive hover:text-destructive"
-                    aria-label={copy.deleteFunction}
-                    onClick={() => setDeleteFunctionTarget(customFunction)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+              ) : customTenantFunctions.map((customFunction) => (
+                <div key={customFunction.id} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
+                  <div className="min-w-0">
+                    <p className="font-medium text-sm truncate">{customFunction.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {customFunction.permissions.length} {copy.defaultAccess.toLowerCase()}
+                      {customFunction.kind === "external_company" && customFunction.linkedTenantCode
+                        ? ` · ${copy.representativeCompany}: ${customFunction.linkedTenantCode}`
+                        : ""}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      aria-label={copy.editFunction}
+                      onClick={() => {
+                        setManageFunctionsOpen(false);
+                        openEditFunction(customFunction);
+                      }}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-destructive hover:text-destructive"
+                      aria-label={copy.deleteFunction}
+                      onClick={() => setDeleteFunctionTarget(customFunction)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setManageFunctionsOpen(false)}>
@@ -1537,7 +1645,11 @@ export default function Usuarios() {
           <AlertDialogHeader>
             <AlertDialogTitle>{copy.deleteFunctionTitle}</AlertDialogTitle>
             <AlertDialogDescription>
-              {copy.deleteFunctionDescription(deleteFunctionTarget?.name ?? "")}
+              {deleteFunctionTarget?.systemKey
+                ? (locale === "pt-BR"
+                    ? `Restaurar ${deleteFunctionTarget.name} ao padrão do sistema? A função nativa continuará disponível.`
+                    : `¿Restaurar ${deleteFunctionTarget.name} al valor predeterminado del sistema? La función nativa seguirá disponible.`)
+                : copy.deleteFunctionDescription(deleteFunctionTarget?.name ?? "")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

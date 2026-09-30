@@ -22,6 +22,7 @@ type TenantUserFunction = {
   tenantId: string;
   name: string;
   permissions: string[];
+  systemKey?: string | null;
 };
 
 type AgentOption = {
@@ -82,13 +83,22 @@ export function PipelineStageFunctionAccess({
 
   const activeAgents = useMemo(() => agents.filter((agent) => agent.ativo), [agents]);
 
-  const options = useMemo(
-    () => [
-      ...BUILTIN_FUNCTIONS,
-      ...customFunctions.map((fn) => ({ value: `custom:${fn.id}`, label: fn.name })),
-    ],
-    [customFunctions],
-  );
+  const options = useMemo(() => {
+    const overrides = new Map(
+      customFunctions
+        .filter((fn) => Boolean(fn.systemKey))
+        .map((fn) => [fn.systemKey as string, fn.name]),
+    );
+    return [
+      ...BUILTIN_FUNCTIONS.map((fn) => ({
+        ...fn,
+        label: overrides.get(fn.value.replace("builtin:", "")) ?? fn.label,
+      })),
+      ...customFunctions
+        .filter((fn) => !fn.systemKey)
+        .map((fn) => ({ value: `custom:${fn.id}`, label: fn.name })),
+    ];
+  }, [customFunctions]);
 
   const selectedLabels = useMemo(
     () => options.filter((option) => selected.includes(option.value)).map((option) => option.label),
