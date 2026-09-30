@@ -56,10 +56,9 @@ async function technicalDocuments(tid: string, obraId: string, category: string)
   const rows = (result as any).rows as any[];
   const direct = rows.filter((doc: any) => {
     const hay = normalizeText([doc.categoria, doc.titulo, doc.descricao].filter(Boolean).join(" "));
-    return !normalizedCategory || hay.includes(normalizedCategory);
+    return Boolean(normalizedCategory) && hay.includes(normalizedCategory);
   });
-  const chosen = direct.length ? direct : rows;
-  return chosen.map((doc: any) => ({
+  return direct.map((doc: any) => ({
     id: doc.id,
     category: doc.categoria,
     title: doc.titulo,
