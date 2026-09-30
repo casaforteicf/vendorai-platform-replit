@@ -14,6 +14,8 @@ interface BudgetPayload {
   status?: BudgetStatus;
   discountType?: "percent" | "fixed";
   discountValue?: number;
+  saleTotal?: number | null;
+  saleSource?: "manual" | "proposal" | "imported" | "calculated";
   notes?: string | null;
   clientNotes?: string | null;
   internalNotes?: string | null;
@@ -123,6 +125,7 @@ async function recalculateBudget(budgetId: string) {
     : discountValue;
   const grandTotal = Math.max(0, subtotal - discountTotal);
 
+  const saleTotal = budget?.sale_total == null ? null : Number(budget.sale_total);
   const updated = await pool.query(
     `UPDATE arch_budgets
      SET subtotal_material = $2, subtotal_labor = $3, subtotal = $4,
@@ -130,6 +133,25 @@ async function recalculateBudget(budgetId: string) {
      WHERE id = $1 RETURNING *`,
     [budgetId, subtotalMaterial, subtotalLabor, subtotal, discountTotal, grandTotal],
   );
+
+  if (saleTotal != null && saleTotal >= 0) {
+    await pool.query(
+      `UPDATE arch_budget_items
+          SET sale_total = CASE
+            WHEN $2::numeric > 0 THEN ROUND(($3::numeric * total::numeric / $2::numeric), 2)
+            ELSE 0
+          END,
+          updated_at = now()
+        WHERE budget_id = $1 AND deleted_at IS NULL`,
+      [budgetId, subtotal, saleTotal],
+    );
+  } else {
+    await pool.query(
+      `UPDATE arch_budget_items SET sale_total = NULL, updated_at = now()
+        WHERE budget_id = $1 AND deleted_at IS NULL`,
+      [budgetId],
+    );
+  }
 
   return {
     budget: updated.rows[0],
@@ -168,18 +190,21 @@ async function createBudget(tId: string | null, payload: BudgetPayload) {
       title, client_name, status, version,
       discount_type, discount_value, discount_total,
       subtotal_material, subtotal_labor, subtotal, grand_total,
+      sale_total, sale_source,
       notes, client_notes, internal_notes, created_at, updated_at
     ) VALUES (
       $1,$2,$3,$4,$5,
       $6,$7,$8,$9,
       $10,$11,0,
       0,0,0,0,
-      $12,$13,$14,now(),now()
+      $12,$13,
+      $14,$15,$16,now(),now()
     ) RETURNING *`,
     [
       id, tId, payload.projectId, payload.ambienteId ?? null, payload.renderId ?? null,
       payload.title, payload.clientName ?? null, payload.status ?? "draft", 1,
       payload.discountType ?? "fixed", Number(payload.discountValue ?? 0),
+      payload.saleTotal == null ? null : Number(payload.saleTotal), payload.saleSource ?? "manual",
       payload.notes ?? null, payload.clientNotes ?? null, payload.internalNotes ?? null,
     ],
   );
@@ -191,6 +216,7 @@ async function updateBudget(id: string, tId: string | null, payload: Partial<Bud
   const allowed: Record<string, string> = {
     title: "title", clientName: "client_name", status: "status",
     discountType: "discount_type", discountValue: "discount_value",
+    saleTotal: "sale_total", saleSource: "sale_source",
     notes: "notes", clientNotes: "client_notes", internalNotes: "internal_notes",
   };
 
