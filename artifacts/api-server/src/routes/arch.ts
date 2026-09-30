@@ -162,6 +162,29 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 
 
 const router: IRouter = Router();
 
+const referencePlanTraceFlights = new Map<
+  string,
+  Promise<Awaited<ReturnType<typeof traceReferencePlanImage>>>
+>();
+
+async function runReferencePlanTraceSingleFlight(
+  key: string,
+  work: () => Promise<Awaited<ReturnType<typeof traceReferencePlanImage>>>,
+) {
+  const active = referencePlanTraceFlights.get(key);
+  if (active) return active;
+
+  const promise = work();
+  referencePlanTraceFlights.set(key, promise);
+  try {
+    return await promise;
+  } finally {
+    if (referencePlanTraceFlights.get(key) === promise) {
+      referencePlanTraceFlights.delete(key);
+    }
+  }
+}
+
 const developConceptWithAiSchema = z.object({
   mode: z.enum(["assistido", "automatico", "preservacao_maxima"]).default("assistido"),
   preserveLayout: z.boolean().default(true),
@@ -1372,14 +1395,25 @@ router.post("/arch/concept-projects/:id/reference-plan/trace", authenticate, asy
       return res.status(422).json({ error: "A planta de referência precisa de calibração válida antes da leitura por IA." });
     }
 
-    const storage = new ObjectStorageService();
-    const file = await storage.getObjectEntityFile(storagePath);
-    const [buffer] = await file.download();
-    const result = await traceReferencePlanImage({
-      tenantId: tid,
-      buffer,
-      mimeType: typeof referencePlan.mimeType === "string" ? referencePlan.mimeType : "image/jpeg",
-      bounds,
+    const traceKey = [
+      tid,
+      id,
+      storagePath,
+      bounds.x,
+      bounds.y,
+      bounds.width,
+      bounds.depth,
+    ].join(":");
+    const result = await runReferencePlanTraceSingleFlight(traceKey, async () => {
+      const storage = new ObjectStorageService();
+      const file = await storage.getObjectEntityFile(storagePath);
+      const [buffer] = await file.download();
+      return traceReferencePlanImage({
+        tenantId: tid,
+        buffer,
+        mimeType: typeof referencePlan.mimeType === "string" ? referencePlan.mimeType : "image/jpeg",
+        bounds,
+      });
     });
 
     return res.json({
