@@ -1700,9 +1700,22 @@ router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
     delete incoming.publicTourToken;
     delete incoming.publicTourEnabled;
     delete incoming.publicTourUpdatedAt;
-    for (const key of ["publicTourToken", "publicTourEnabled", "publicTourUpdatedAt"]) {
-      if (key in currentConfig) incoming[key] = currentConfig[key];
+
+    // Alguns dados são gravados por rotas especializadas (upload de planta, BIM/CAD e link público).
+    // Um autosave do editor pode carregar um snapshot anterior e chegar depois do upload.
+    // Nunca deixe esse autosave apagar dados server-owned que ele não enviou explicitamente.
+    for (const key of ["publicTourToken", "publicTourEnabled", "publicTourUpdatedAt", "referencePlan"]) {
+      if (!(key in incoming) && key in currentConfig) incoming[key] = currentConfig[key];
     }
+
+    // sourceFiles é enviado pelo editor, mas pode estar defasado durante um upload em paralelo.
+    // Mantemos o conjunto mais recente do servidor quando o cliente envia vazio/ausente e já há fontes salvas.
+    const currentSources = Array.isArray(currentConfig.sourceFiles) ? currentConfig.sourceFiles : [];
+    const incomingSources = Array.isArray(incoming.sourceFiles) ? incoming.sourceFiles : [];
+    if (currentSources.length > 0 && incomingSources.length === 0) {
+      incoming.sourceFiles = currentSources;
+    }
+
     (safeUpdates as Record<string, unknown>).configuration = incoming;
   }
 
