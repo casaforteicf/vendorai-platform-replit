@@ -10,6 +10,7 @@ export type RenderStudioVersion = {
   selectionLabel?: string;
   materialId?: string;
   materialName?: string;
+  surfaceKey?: string;
   approvedBy?: string;
   approvedAt?: Date;
   approvalNote?: string;
@@ -64,7 +65,9 @@ export function mapPersistentVersionToStudio(version: PersistentRenderVersion): 
     && (version.versionTag === "aprovado" || version.operationType === "approved");
   const approved = Boolean(version.approvedAt || version.approvedBy || legacyApproved);
   const operationType = normalizeOperationType(version.operationType, version.parentRenderId);
-  const selectionLabel = version.selectionMetadata.find(selection => Boolean(selection.label?.trim()))?.label;
+  const selection = version.selectionMetadata.find(selection => Boolean(selection.surfaceKey || selection.label?.trim()));
+  const selectionLabel = selection?.label;
+  const surfaceKey = selection?.surfaceKey;
 
   return {
     id: version.id,
@@ -76,6 +79,7 @@ export function mapPersistentVersionToStudio(version: PersistentRenderVersion): 
     selectionLabel: selectionLabel || undefined,
     materialId: version.materialId || undefined,
     materialName: version.materialName || undefined,
+    surfaceKey: surfaceKey || undefined,
     approvedBy: version.approvedBy || (legacyApproved ? "usuário autenticado" : undefined),
     approvedAt: version.approvedAt || undefined,
     approvalNote: version.approvalNote || undefined,
@@ -137,6 +141,7 @@ export function mergeRecoveryCache(
       selectionLabel: version.selectionLabel,
       materialId: version.materialId,
       materialName: version.materialName,
+      surfaceKey: version.surfaceKey,
       approvedBy: version.approvedBy,
       approvedAt: version.approvedAt ? new Date(version.approvedAt) : undefined,
       approvalNote: version.approvalNote,
