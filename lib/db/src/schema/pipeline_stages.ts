@@ -27,6 +27,9 @@ export const pipelineStagesTable = pgTable("pipeline_stages", {
   // Formato: `builtin:vendedor` ou `custom:<tenant_user_functions.id>`.
   // Vazio = etapa sem restrição por função (compatibilidade).
   responsaveisFuncoes: text("responsaveis_funcoes").array().notNull().default([]),
+  // Agente IA responsável operacional pela etapa. Usa agentKey de agent_defaults/tenant_agent_configs.
+  // Null = etapa sem agente IA responsável automático.
+  responsavelAgenteKey: text("responsavel_agente_key"),
   // Perguntas-chave/playbook. Hoje são usadas principalmente na pipeline comercial.
   perguntas: jsonb("perguntas").$type<{ id: string; texto: string }[]>().notNull().default([]),
   createdAt: timestamp("created_at").notNull().defaultNow(),

@@ -8,7 +8,6 @@ import {
   Pencil,
   Plus,
   Settings2,
-  ShieldCheck,
   Trash2,
 } from "lucide-react";
 import { customFetch, getListPipelineStagesQueryKey } from "@workspace/api-client-react";
@@ -39,6 +38,7 @@ type PipelineStageSummary = {
   isSystem: boolean;
   slaMinutos?: number | null;
   responsaveisFuncoes?: string[] | null;
+  responsavelAgenteKey?: string | null;
 };
 
 const TABS: Array<{ key: PipelineTab; label: string; href: string }> = [
@@ -61,7 +61,6 @@ export function PipelineNav({ active }: { active: PipelineTab }) {
   const isAdmin = user?.platformRole === "super_admin"
     || user?.platformRole === "tenant_admin"
     || user?.userFunction === "administrador";
-  const [responsibilityOpen, setResponsibilityOpen] = useState(false);
   const [stagesOpen, setStagesOpen] = useState(false);
 
   const { data: stages = [] } = useQuery<PipelineStageSummary[]>({
@@ -111,7 +110,7 @@ export function PipelineNav({ active }: { active: PipelineTab }) {
                   Etapas — {TABS.find((tab) => tab.key === active)?.label ?? "Pipeline"}
                 </DialogTitle>
                 <DialogDescription>
-                  Crie, renomeie, ordene e defina SLA das etapas desta pipeline. A configuração é independente em Comercial, Execução, Suporte, Aquecimento, Parceiros e Scout.
+                  Crie, renomeie, ordene, defina SLA e escolha os responsáveis de cada etapa — incluindo Agentes IA. Esta é a única configuração oficial das etapas da pipeline.
                 </DialogDescription>
               </DialogHeader>
               <PipelineStageManager
@@ -122,60 +121,6 @@ export function PipelineNav({ active }: { active: PipelineTab }) {
             </DialogContent>
           </Dialog>
 
-          <Dialog open={responsibilityOpen} onOpenChange={setResponsibilityOpen}>
-            <DialogTrigger asChild>
-              <Button type="button" size="sm" variant="outline" className="gap-1.5">
-                <ShieldCheck className="h-4 w-4" />
-                Responsáveis por etapa
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2">
-                  <Settings2 className="h-5 w-5" />
-                  Responsáveis — {TABS.find((tab) => tab.key === active)?.label ?? "Pipeline"}
-                </DialogTitle>
-                <DialogDescription>
-                  Cadastre a função responsável pela execução de cada etapa desta pipeline. A configuração é por função, nunca por pessoa.
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="space-y-2 py-2">
-                {orderedStages.length === 0 ? (
-                  <p className="py-8 text-center text-sm text-muted-foreground">Carregando etapas...</p>
-                ) : (
-                  orderedStages.map((stage) => {
-                    const responsaveis = stage.responsaveisFuncoes ?? [];
-                    return (
-                      <div
-                        key={stage.id}
-                        className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <p className="truncate text-sm font-medium">{stage.label}</p>
-                            {stage.isSystem && <Badge variant="secondary" className="text-[10px]">Sistema</Badge>}
-                          </div>
-                          <p className="mt-0.5 text-xs text-muted-foreground">
-                            {responsaveis.length === 0
-                              ? "Sem restrição: qualquer função com acesso à pipeline pode atuar."
-                              : `${responsaveis.length} função(ões) responsável(is).`}
-                          </p>
-                        </div>
-                        <PipelineStageFunctionAccess
-                          tenantId={tenantId}
-                          pipeline={active}
-                          stageId={stage.id}
-                          value={responsaveis}
-                          className="w-full sm:w-48"
-                        />
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </DialogContent>
-          </Dialog>
         </div>
       )}
     </div>
@@ -406,6 +351,16 @@ function PipelineStageManager({
                       <p className="mt-1 text-xs text-muted-foreground">
                         {stage.slaMinutos ? `SLA: ${stage.slaMinutos} min` : "Sem SLA definido"}
                       </p>
+                      <div className="mt-2">
+                        <PipelineStageFunctionAccess
+                          tenantId={tenantId}
+                          pipeline={pipeline}
+                          stageId={stage.id}
+                          value={stage.responsaveisFuncoes ?? []}
+                          agentValue={stage.responsavelAgenteKey ?? null}
+                          className="w-full sm:w-64"
+                        />
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-1">

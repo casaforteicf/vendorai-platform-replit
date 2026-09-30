@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Loader2, ShieldCheck } from "lucide-react";
+import { Bot, Check, Loader2, ShieldCheck } from "lucide-react";
 import { customFetch, getListPipelineStagesQueryKey } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -23,11 +23,18 @@ type TenantUserFunction = {
   permissions: string[];
 };
 
+type AgentOption = {
+  agentKey: string;
+  nome: string;
+  ativo: boolean;
+};
+
 type Props = {
   tenantId: string;
   pipeline: string;
   stageId?: string | null;
   value?: string[] | null;
+  agentValue?: string | null;
   disabled?: boolean;
   className?: string;
 };
@@ -37,16 +44,22 @@ export function PipelineStageFunctionAccess({
   pipeline,
   stageId,
   value,
+  agentValue,
   disabled = false,
   className,
 }: Props) {
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<string[]>(Array.isArray(value) ? value : []);
   const [saving, setSaving] = useState(false);
+  const [selectedAgent, setSelectedAgent] = useState<string | null>(agentValue ?? null);
 
   useEffect(() => {
     setSelected(Array.isArray(value) ? value : []);
   }, [stageId, value]);
+
+  useEffect(() => {
+    setSelectedAgent(agentValue ?? null);
+  }, [stageId, agentValue]);
 
   const { data: customFunctions = [] } = useQuery({
     queryKey: ["tenant-user-functions", tenantId],
@@ -56,6 +69,17 @@ export function PipelineStageFunctionAccess({
         responseType: "json",
       }),
   });
+
+  const { data: agents = [] } = useQuery({
+    queryKey: ["agent-configs", tenantId],
+    enabled: Boolean(tenantId),
+    queryFn: () =>
+      customFetch<AgentOption[]>("/api/agent-configs", {
+        responseType: "json",
+      }),
+  });
+
+  const activeAgents = useMemo(() => agents.filter((agent) => agent.ativo), [agents]);
 
   const options = useMemo(
     () => [
@@ -76,6 +100,29 @@ export function PipelineStageFunctionAccess({
       : selectedLabels.length === 1
         ? selectedLabels[0]
         : `${selected.length} funções`;
+
+  async function persistAgent(next: string | null) {
+    if (!stageId) return;
+    const previous = selectedAgent;
+    setSelectedAgent(next);
+    setSaving(true);
+    try {
+      await customFetch(`/api/tenants/${tenantId}/pipeline-stages/${stageId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ responsavelAgenteKey: next }),
+        responseType: "json",
+      });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["pipeline-stages", tenantId, pipeline] }),
+        queryClient.invalidateQueries({ queryKey: getListPipelineStagesQueryKey(tenantId) }),
+      ]);
+    } catch (error) {
+      setSelectedAgent(previous);
+      console.error("Falha ao salvar Agente IA responsável da etapa", error);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function persist(next: string[]) {
     if (!stageId) return;
@@ -130,7 +177,58 @@ export function PipelineStageFunctionAccess({
           </p>
         </div>
 
-        <div className="mt-3 max-h-72 space-y-1 overflow-y-auto pr-1">
+        <div className="mt-3 rounded-md border p-2">
+          <div className="mb-2 flex items-center gap-2">
+            <Bot className="h-4 w-4 text-primary" />
+            <div>
+              <p className="text-xs font-semibold">Agente IA responsável</p>
+              <p className="text-[11px] text-muted-foreground">Executa automaticamente o trabalho operacional desta etapa.</p>
+            </div>
+          </div>
+          <div className="max-h-40 space-y-1 overflow-y-auto">
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => void persistAgent(null)}
+              className={cn(
+                "flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-xs hover:bg-muted",
+                selectedAgent === null && "bg-muted font-medium",
+              )}
+            >
+              <span>Sem Agente IA</span>
+              {selectedAgent === null && <Check className="h-3.5 w-3.5 text-primary" />}
+            </button>
+            {activeAgents.map((agent) => (
+              <button
+                key={agent.agentKey}
+                type="button"
+                disabled={saving}
+                onClick={() => void persistAgent(agent.agentKey)}
+                className={cn(
+                  "flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-xs hover:bg-muted",
+                  selectedAgent === agent.agentKey && "bg-muted font-medium",
+                )}
+              >
+                <span className="truncate">{agent.nome}</span>
+                {selectedAgent === agent.agentKey && <Check className="h-3.5 w-3.5 text-primary" />}
+              </button>
+            ))}
+          </div>
+          {activeAgents.length === 0 && (
+            <p className="px-2 py-1 text-[11px] text-muted-foreground">
+              Ative um agente em Agentes IA para vinculá-lo à etapa.
+            </p>
+          )}
+        </div>
+
+        <div className="mt-3">
+          <p className="text-xs font-semibold">Funções humanas / supervisão</p>
+          <p className="text-[11px] text-muted-foreground">
+            Defina quem pode acompanhar ou executar a etapa junto com a IA.
+          </p>
+        </div>
+
+        <div className="mt-2 max-h-72 space-y-1 overflow-y-auto pr-1">
           {options.map((option) => {
             const checked = selected.includes(option.value);
             return (
