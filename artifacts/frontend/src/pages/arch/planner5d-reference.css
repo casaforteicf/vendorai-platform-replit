@@ -13,9 +13,9 @@
   --arq-surface: #ffffff;
   --arq-canvas: #f4f6f8;
   --arq-soft: #f8fafc;
-  --arq-chrome-height: 56px;
-  --arq-sidebar-width: 300px;
-  --arq-inspector-width: 320px;
+  --arq-chrome-height: 48px;
+  --arq-sidebar-width: 260px;
+  --arq-inspector-width: 300px;
   font-family: Inter, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   color: var(--arq-ink);
   letter-spacing: -0.008em;
