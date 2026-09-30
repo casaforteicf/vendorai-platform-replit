@@ -1754,6 +1754,13 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
           ? "Salvo"
           : "";
 
+  const savePlanNow = async () => {
+    const keyBeingSaved = autosaveKey;
+    const savedId = await saveConcept(4);
+    if (savedId) setLastSavedKey(keyBeingSaved);
+    return savedId;
+  };
+
   const startContactValid =
     (customerProfile.name ?? "").trim().length >= 2 &&
     (
@@ -6120,11 +6127,13 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
                 <button
                   type="button"
-                  onClick={() => void saveConcept(4)}
-                  className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10 hover:text-white"
-                  title="Salvar projeto"
+                  onClick={() => void savePlanNow()}
+                  disabled={saveState === "saving" || saveState === "loading"}
+                  className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-emerald-400/30 bg-emerald-500/15 px-3 text-xs font-bold text-emerald-100 transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+                  title="Salvar a planta e todas as edições atuais"
                 >
                   <Check className="h-4 w-4" />
+                  <span>{saveState === "saving" ? "Salvando planta..." : "Salvar planta"}</span>
                 </button>
                 {saveStatusLabel && (
                   <span
