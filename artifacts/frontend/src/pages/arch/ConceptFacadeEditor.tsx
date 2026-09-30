@@ -359,6 +359,24 @@ export default function ConceptFacadeEditor({
     return params.get("conceptProjectId") ?? params.get("concept_project_id") ?? params.get("id");
   }, [conceptProjectId]);
 
+  const facadeGeometryContract = useMemo(
+    () => buildFacadeGeometryContract({
+      levels,
+      rooms,
+      placement: sitePlacement,
+      roof: facade.roof,
+    }),
+    [levels, rooms, sitePlacement, facade.roof],
+  );
+
+  const facadeArchitectureStats = useMemo(() => ({
+    openings: facadeGeometryContract.openings.length,
+    windows: facadeGeometryContract.openings.filter((opening) => opening.type === "window").length,
+    doors: facadeGeometryContract.openings.filter((opening) => opening.type === "door").length,
+    floors: Math.max(1, facadeGeometryContract.derivedFacade.floors),
+    width: facadeGeometryContract.derivedFacade.width,
+  }), [facadeGeometryContract]);
+
   const selectedVolume = useMemo(
     () => design.volumes.find((volume) => volume.id === selectedVolumeId) ?? null,
     [design.volumes, selectedVolumeId],
@@ -473,12 +491,7 @@ export default function ConceptFacadeEditor({
           intervention: facadeIntervention,
           facade,
           facadeDesign: design,
-          geometryContract: buildFacadeGeometryContract({
-            levels,
-            rooms,
-            placement: sitePlacement,
-            roof: facade.roof,
-          }),
+          geometryContract: facadeGeometryContract,
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -1025,12 +1038,23 @@ export default function ConceptFacadeEditor({
 
         {panel === "style" && (
           <div className="p-4 pt-11">
-            <div className="text-sm font-semibold">Escolha o estilo</div>
+            <div className="text-sm font-semibold">Estudos arquitetônicos de fachada</div>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
-              Cada estilo já aplica cobertura, materiais e esquadrias na sua casa. Depois ajuste o que quiser e gere a imagem realista.
+              Compare linguagens diferentes sobre a mesma arquitetura. As opções mudam composição, materiais e cobertura, mas preservam a geometria da planta e todas as aberturas cadastradas.
             </p>
+
+            <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+              <div className="flex items-center gap-2 text-[10px] font-bold text-emerald-800">
+                <Lock className="h-3.5 w-3.5" />
+                Projeto Mestre protegido
+              </div>
+              <div className="mt-1 text-[9px] leading-4 text-emerald-700">
+                {facadeArchitectureStats.floors} pavimento{facadeArchitectureStats.floors > 1 ? "s" : ""} · {facadeArchitectureStats.width.toFixed(1)} m de frente construída · {facadeArchitectureStats.openings} abertura{facadeArchitectureStats.openings !== 1 ? "s" : ""} ({facadeArchitectureStats.windows} janela{facadeArchitectureStats.windows !== 1 ? "s" : ""} + {facadeArchitectureStats.doors} porta{facadeArchitectureStats.doors !== 1 ? "s" : ""})
+              </div>
+            </div>
+
             <div className="mt-4 flex snap-x gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:grid md:grid-cols-2 md:overflow-visible md:pb-0">
-              {STYLE_LABELS.map(([value, label]) => (
+              {STYLE_LABELS.map(([value, label], index) => (
                 <button
                   key={value}
                   type="button"
@@ -1061,10 +1085,11 @@ export default function ConceptFacadeEditor({
                     )}
                   </div>
                   <div className="p-2.5">
-                    <div className="text-[11px] font-bold text-slate-800">{label}</div>
+                    <div className="text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">Opção {String(index + 1).padStart(2, "0")}</div>
+                    <div className="mt-0.5 text-[11px] font-bold text-slate-800">{label}</div>
                     <div className="mt-1 min-h-[32px] text-[9px] leading-4 text-slate-500">{STYLE_DESCRIPTIONS[value]}</div>
                     <div className={facade.style === value ? "mt-2 text-[9px] font-bold text-orange-600" : "mt-2 text-[9px] font-bold text-slate-400"}>
-                      {facade.style === value ? "Estilo aplicado" : "Aplicar estilo"}
+                      {facade.style === value ? "Opção em estudo" : "Comparar esta opção"}
                     </div>
                   </div>
                 </button>
@@ -1308,8 +1333,8 @@ export default function ConceptFacadeEditor({
         <aside className="hidden min-w-0 flex-col bg-slate-950 xl:flex">
           <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
             <div>
-              <div className="text-sm font-bold text-white">Visual realista</div>
-              <div className="mt-0.5 text-[11px] text-slate-400">Comparação direta com a composição arquitetônica</div>
+              <div className="text-sm font-bold text-white">Estudo arquitetônico</div>
+              <div className="mt-0.5 text-[11px] text-slate-400">Elevação fiel à planta + visualização fotorealista</div>
             </div>
             {realisticPreviewLoading && (
               <span className="rounded-full bg-orange-500/15 px-2.5 py-1 text-[10px] font-bold text-orange-300">Gerando...</span>
@@ -1330,12 +1355,25 @@ export default function ConceptFacadeEditor({
                 <div className="flex items-center gap-2">
                   <Sparkles className="h-5 w-5 text-orange-400" />
                   <div>
-                    <div className="text-sm font-bold text-white">Sua opção de fachada</div>
-                    <div className="text-[11px] text-slate-400">Revise a composição antes do render realista.</div>
+                    <div className="text-sm font-bold text-white">Composição vinculada à planta</div>
+                    <div className="text-[11px] text-slate-400">Volumes e acabamentos podem evoluir sem deslocar portas, janelas ou paredes.</div>
                   </div>
                 </div>
 
-                <div className="mt-5 grid gap-2">
+                <div className="mt-4 grid grid-cols-3 gap-2">
+                  {[
+                    ["Pavimentos", facadeArchitectureStats.floors],
+                    ["Janelas", facadeArchitectureStats.windows],
+                    ["Portas", facadeArchitectureStats.doors],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-2 py-2 text-center">
+                      <div className="text-[13px] font-bold text-emerald-300">{value}</div>
+                      <div className="text-[8px] font-semibold uppercase tracking-[0.08em] text-emerald-200/70">{label}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 grid gap-2">
                   {[
                     ["Estilo", STYLE_LABELS.find(([value]) => value === facade.style)?.[1] ?? facade.style],
                     ["Cobertura", facade.roof === "platibanda" ? "Platibanda" : facade.roof === "aparente" ? "Telhado aparente" : "Mista"],
@@ -1358,7 +1396,7 @@ export default function ConceptFacadeEditor({
               disabled={realisticPreviewLoading || !onOpenRender}
                   className="mt-5 w-full rounded-xl bg-orange-500 px-4 py-3 text-xs font-bold text-white disabled:opacity-50"
                 >
-                  {realisticPreviewLoading ? "Gerando..." : "Gerar fachada realista"}
+                  {realisticPreviewLoading ? "Gerando..." : "Gerar visualização fotorealista"}
                 </button>
               </div>
             )}
@@ -1484,4 +1522,3 @@ export default function ConceptFacadeEditor({
     </div>
   );
 }
-
