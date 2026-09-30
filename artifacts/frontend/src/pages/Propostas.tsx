@@ -2317,6 +2317,51 @@ function getStageNamesForSystem(system: ConstructionSystem) {
 
 const ETAPAS_OBRA_SUGERIDAS = getStageNamesForSystem("icf");
 
+const GENERIC_BUDGET_GROUPS = ["Produtos", "Serviços", "Pacotes", "Adicionais"];
+
+function normalizeBudgetVertical(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function isConstructionBudgetProfile(profile: any) {
+  const context = normalizeBudgetVertical([
+    profile?.vertical,
+    profile?.nomeFantasia,
+    profile?.razaoSocial,
+  ].filter(Boolean).join(" "));
+  return /(construtora|construcao civil|execucao de obra|empreiteira|builder|construction|casa ?forte|icf)/.test(context);
+}
+
+function getGenericBudgetGroups(verticalRaw: unknown) {
+  const vertical = normalizeBudgetVertical(verticalRaw);
+  if (/(odont|clinica|fisi|estetic|nutri|psico|saude)/.test(vertical)) {
+    return ["Procedimentos", "Serviços", "Produtos", "Adicionais"];
+  }
+  if (/(arquitet|design de interiores|interiores)/.test(vertical)) {
+    return ["Projeto", "Entregáveis", "Serviços", "Adicionais"];
+  }
+  if (/(esquadr|moveis|marcenaria|serralheria)/.test(vertical)) {
+    return ["Produtos", "Instalação", "Acessórios", "Adicionais"];
+  }
+  if (/(piscina)/.test(vertical)) {
+    return ["Piscina", "Equipamentos", "Instalação", "Opcionais"];
+  }
+  if (/(advoc|contab|consult|agencia|software|saas|tecnologia)/.test(vertical)) {
+    return ["Serviços", "Implantação", "Recorrências", "Adicionais"];
+  }
+  if (/(seguro|corretora)/.test(vertical)) {
+    return ["Coberturas", "Serviços", "Condições", "Adicionais"];
+  }
+  if (/(veiculo|automovel|carro|moto|concessionaria)/.test(vertical)) {
+    return ["Veículo", "Opcionais", "Serviços", "Adicionais"];
+  }
+  return GENERIC_BUDGET_GROUPS;
+}
+
 // Pacote inicial de uma obra residencial ICF. O objetivo é abrir o orçamento
 // já com a sequência executiva e as composições principais, sem forçar opcionais
 // como piscina, climatização, cisterna ou energia solar. Esses continuam
@@ -2598,6 +2643,18 @@ function newFreeItem(): FreeItem {
   }) {
     const { toast } = useToast();
     const qc = useQueryClient();
+    const { data: businessProfile, isLoading: businessProfileLoading } = useGetBusinessProfileByTenant(tenantId, {
+      query: {
+        queryKey: getGetBusinessProfileByTenantQueryKey(tenantId),
+        enabled: !!tenantId,
+        retry: false,
+      },
+    });
+    const tenantBusinessProfile = businessProfile as any;
+    const isConstructionTenant = isConstructionBudgetProfile(tenantBusinessProfile);
+    const genericBudgetGroups = getGenericBudgetGroups(tenantBusinessProfile?.vertical);
+    const budgetSectionLabel = isConstructionTenant ? "Etapa" : "Grupo";
+    const budgetSectionLabelPlural = isConstructionTenant ? "Etapas" : "Grupos";
   
     // mode
     const [mode, setMode] = useState<"catalogo" | "livre" | "template" | "importar">("catalogo");
@@ -2609,9 +2666,11 @@ function newFreeItem(): FreeItem {
     const validatorScopeTypes = initialExternalBudget?.scopeTypes
       ?? persistedValidatorContext?.scopeTypes
       ?? [];
-    const showConstructionSystem = !initialExternalBudget?.projectId
+    const showConstructionSystem = isConstructionTenant && (
+      !initialExternalBudget?.projectId
       || !validatorScopeTypes.length
-      || validatorScopeTypes.some((type) => type === "completo" || type === "reforma");
+      || validatorScopeTypes.some((type) => type === "completo" || type === "reforma")
+    );
   
     // catálogo + composições organizados por grupos de etapa
     const [orcamentoEtapas, setOrcamentoEtapas] = useState<OrcamentoEtapaDraft[]>([
@@ -3124,9 +3183,19 @@ function newFreeItem(): FreeItem {
     }, [orcamentoEtapas, quickAddEtapaId]);
 
     useEffect(() => {
-      if (!open || editingProposta || initialExternalBudget?.projectId || initialProductIds.length > 0 || standardBudgetAppliedRef.current || composicoes.length === 0) return;
+      if (!open || editingProposta || initialExternalBudget?.projectId || initialProductIds.length > 0 || standardBudgetAppliedRef.current || businessProfileLoading) return;
       standardBudgetAppliedRef.current = true;
       setMode("catalogo");
+
+      if (!isConstructionTenant) {
+        setConstructionSystem("outro");
+        setOrcamentoEtapas([{ id: DEFAULT_ETAPA_ID, nome: genericBudgetGroups[0] ?? "Produtos" }]);
+        setCartLines([{ etapaId: DEFAULT_ETAPA_ID, tipo: "produto", quantidade: 1 }]);
+        setShowAllByStage({ [DEFAULT_ETAPA_ID]: true });
+        return;
+      }
+
+      if (composicoes.length === 0) return;
       if (constructionSystem === "icf") {
         const standard = buildStandardIcfBudget(composicoes);
         setOrcamentoEtapas(standard.etapas);
@@ -3136,7 +3205,15 @@ function newFreeItem(): FreeItem {
         setCartLines([]);
       }
       setShowAllByStage({});
-    }, [open, composicoes, constructionSystem, initialProductIds.join(",")]);
+    }, [
+      open,
+      composicoes,
+      constructionSystem,
+      initialProductIds.join(","),
+      businessProfileLoading,
+      isConstructionTenant,
+      tenantBusinessProfile?.vertical,
+    ]);
   
     // totals
     const catTotal = roundBudgetNumber(cartLines.reduce((sum, line) => {
@@ -3445,7 +3522,8 @@ function newFreeItem(): FreeItem {
     const id = `etapa-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     setOrcamentoEtapas((prev) => {
       const ordem = prev.length;
-      const nome = ETAPAS_OBRA_SUGERIDAS[ordem] ?? `Etapa ${ordem + 1}`;
+      const suggestions = isConstructionTenant ? ETAPAS_OBRA_SUGERIDAS : genericBudgetGroups;
+      const nome = suggestions[ordem] ?? `${budgetSectionLabel} ${ordem + 1}`;
       return [...prev, { id, nome }];
     });
     setQuickAddEtapaId(id);
@@ -4042,8 +4120,8 @@ function newFreeItem(): FreeItem {
         && typeof (editingProposta as any).apresentacao.imagensEtapas === "object"
           ? (editingProposta as any).apresentacao.imagensEtapas
           : {},
-      mostrarCronogramaExecucao: showExecutionSchedule,
-      mostrarFisicoFinanceiro: showPhysicalFinancial,
+      mostrarCronogramaExecucao: isConstructionTenant ? showExecutionSchedule : false,
+      mostrarFisicoFinanceiro: isConstructionTenant ? showPhysicalFinancial : false,
       entradaPercentual: Math.min(100, Math.max(0, Number(entryPercent) || 0)),
       amortizacaoEntradaPercentual: Math.min(100, Math.max(0, Number(entryAmortizationPercent) || 0)),
       mostrarAmortizacaoEntrada: showEntryAmortization,
@@ -4065,12 +4143,14 @@ function newFreeItem(): FreeItem {
       politicaReajuste: adjustmentPolicy.trim(),
       garantiasContratuais: warrantyTerms.trim(),
       condicoesPagamentoDetalhadas: detailedPaymentTerms.trim(),
-      validatorContext: {
-        scopeTypes: validatorScopeTypes,
-        constructionSystem: showConstructionSystem
-          ? constructionSystem
-          : undefined,
-      },
+      validatorContext: isConstructionTenant
+        ? {
+            scopeTypes: validatorScopeTypes,
+            constructionSystem: showConstructionSystem
+              ? constructionSystem
+              : undefined,
+          }
+        : undefined,
     };
   }
 
@@ -4775,12 +4855,12 @@ function newFreeItem(): FreeItem {
                   <span className="text-xs font-medium text-muted-foreground">Adicionar em</span>
                   <Select value={quickAddEtapaId} onValueChange={setQuickAddEtapaId}>
                     <SelectTrigger className="h-8 w-[220px]">
-                      <SelectValue placeholder="Selecione a etapa" />
+                      <SelectValue placeholder={`Selecione ${budgetSectionLabel.toLowerCase()}`} />
                     </SelectTrigger>
                     <SelectContent>
                       {orcamentoEtapas.map((etapa, index) => (
                         <SelectItem key={etapa.id} value={etapa.id}>
-                          Etapa {index + 1} · {etapa.nome || `Etapa ${index + 1}`}
+                          {budgetSectionLabel} {index + 1} · {etapa.nome || `${budgetSectionLabel} ${index + 1}`}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -4792,22 +4872,24 @@ function newFreeItem(): FreeItem {
                     <Plus className="h-3.5 w-3.5 mr-1" /> Nova composição
                   </Button>
                   <Button type="button" variant="outline" size="sm" onClick={addEtapaDraft}>
-                    <Plus className="h-3.5 w-3.5 mr-1" /> Nova etapa
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Novo {budgetSectionLabel.toLowerCase()}
                   </Button>
                   <span className="ml-auto text-[11px] text-muted-foreground">Rascunho salvo automaticamente</span>
                 </div>
 
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold">Etapas do Orçamento</p>
+                    <p className="text-sm font-semibold">{budgetSectionLabelPlural} do Orçamento</p>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      {constructionSystem === "icf"
-                        ? "O orçamento ICF inicia com as etapas e composições principais. Remova o que não se aplica, ajuste quantidades e adicione opcionais dentro da etapa correspondente."
-                        : "As etapas seguem a sequência executiva do sistema escolhido. Adicione somente as composições compatíveis com esse método construtivo."}
+                      {!isConstructionTenant
+                        ? "Organize produtos, serviços, pacotes e adicionais em grupos comerciais. O catálogo permanece completo e o Gerador de Propostas reutiliza estes dados no modelo do tenant."
+                        : constructionSystem === "icf"
+                          ? "O orçamento ICF inicia com as etapas e composições principais. Remova o que não se aplica, ajuste quantidades e adicione opcionais dentro da etapa correspondente."
+                          : "As etapas seguem a sequência executiva do sistema escolhido. Adicione somente as composições compatíveis com esse método construtivo."}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {constructionSystem === "icf" && (
+                    {isConstructionTenant && constructionSystem === "icf" && (
                       <Button type="button" variant="outline" size="sm" onClick={addMissingStandardIcfItems}>
                         <Package className="h-3.5 w-3.5 mr-1" /> Completar pacote padrão ICF
                       </Button>
@@ -4816,7 +4898,8 @@ function newFreeItem(): FreeItem {
                 </div>
 
                 <datalist id="etapas-obras-sugeridas">
-                  {getStageNamesForSystem(constructionSystem).map((nome) => <option key={nome} value={nome} />)}
+                  {(isConstructionTenant ? getStageNamesForSystem(constructionSystem) : genericBudgetGroups)
+                    .map((nome) => <option key={nome} value={nome} />)}
                 </datalist>
 
                 {orcamentoEtapas.map((etapa, etapaIndex) => {
@@ -4826,7 +4909,7 @@ function newFreeItem(): FreeItem {
 
                   const selectedProductIds = new Set(stageEntries.map(({ line }) => line.produtoId).filter(Boolean) as string[]);
                   const selectedComposicaoIds = new Set(stageEntries.map(({ line }) => line.composicaoId).filter(Boolean) as string[]);
-                  const showAllForStage = Boolean(showAllByStage[etapa.id]);
+                  const showAllForStage = !isConstructionTenant || Boolean(showAllByStage[etapa.id]);
                   const produtosEtapa = activeCatalog.filter((item) =>
                     showAllForStage || selectedProductIds.has(item.id) || produtoMatchesStage(item, etapa.nome)
                   );
@@ -4852,14 +4935,14 @@ function newFreeItem(): FreeItem {
                       <CardHeader className="p-3 bg-muted/30 border-b">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="rounded-md bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary whitespace-nowrap">
-                            Etapa {etapaIndex + 1}
+                            {budgetSectionLabel} {etapaIndex + 1}
                           </span>
                           <Input
                             list="etapas-obras-sugeridas"
                             className="h-8 min-w-[220px] flex-1 font-medium"
                             value={etapa.nome}
                             onChange={(e) => updateEtapaDraft(etapa.id, e.target.value)}
-                            placeholder="Nome da etapa"
+                            placeholder={`Nome do ${budgetSectionLabel.toLowerCase()}`}
                           />
                           <div className="text-right min-w-[120px]">
                             <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Subtotal</p>
@@ -4873,7 +4956,7 @@ function newFreeItem(): FreeItem {
                               className="h-8 w-8"
                               disabled={etapaIndex === 0}
                               onClick={() => moveEtapaDraft(etapaIndex, -1)}
-                              title="Mover etapa para cima"
+                              title={`Mover ${budgetSectionLabel.toLowerCase()} para cima`}
                             >
                               <ArrowUp className="h-4 w-4" />
                             </Button>
@@ -4884,7 +4967,7 @@ function newFreeItem(): FreeItem {
                               className="h-8 w-8"
                               disabled={etapaIndex === orcamentoEtapas.length - 1}
                               onClick={() => moveEtapaDraft(etapaIndex, 1)}
-                              title="Mover etapa para baixo"
+                              title={`Mover ${budgetSectionLabel.toLowerCase()} para baixo`}
                             >
                               <ArrowDown className="h-4 w-4" />
                             </Button>
@@ -4895,7 +4978,7 @@ function newFreeItem(): FreeItem {
                               className="h-8 w-8 text-muted-foreground hover:text-destructive"
                               disabled={orcamentoEtapas.length <= 1 || stageEntries.length > 0}
                               onClick={() => removeEtapaDraft(etapa.id)}
-                              title={stageEntries.length > 0 ? "Remova os itens antes de excluir a etapa" : "Excluir etapa"}
+                              title={stageEntries.length > 0 ? `Remova os itens antes de excluir o ${budgetSectionLabel.toLowerCase()}` : `Excluir ${budgetSectionLabel.toLowerCase()}`}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -4924,7 +5007,7 @@ function newFreeItem(): FreeItem {
                               className="h-7 px-2 text-[11px]"
                               onClick={() => setShowAllByStage((prev) => ({ ...prev, [etapa.id]: !showAllForStage }))}
                             >
-                              {showAllForStage ? "Filtrar pela etapa" : "Mostrar todos"}
+                              {isConstructionTenant ? (showAllForStage ? "Filtrar pela etapa" : "Mostrar todos") : "Catálogo completo"}
                             </Button>
                           </div>
                         </div>
@@ -4933,7 +5016,7 @@ function newFreeItem(): FreeItem {
                       <CardContent className="p-0">
                         {stageEntries.length === 0 ? (
                           <div className="p-4 text-center text-xs text-muted-foreground">
-                            Nenhum item nesta etapa. Adicione produtos ou composições.
+                            Nenhum item neste {budgetSectionLabel.toLowerCase()}. Adicione produtos ou composições.
                           </div>
                         ) : (
                           <div className="overflow-x-auto">
