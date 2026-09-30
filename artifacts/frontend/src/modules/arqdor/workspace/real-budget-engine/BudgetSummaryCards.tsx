@@ -11,16 +11,22 @@ export function BudgetSummaryCards({
   totals: BudgetTotals;
   itemCount: number;
 }) {
+  const saleTotal = budget?.saleTotal == null ? null : Number(budget.saleTotal);
+  const technicalCost = Number(totals.grandTotal || 0);
+  const margin = saleTotal == null ? null : saleTotal - technicalCost;
+  const marginPercent = saleTotal && margin != null ? (margin / saleTotal) * 100 : null;
+
   const cards = [
     { label: "Itens", value: String(itemCount), description: "Itens do orçamento." },
-    { label: "Material", value: money(totals.subtotalMaterial), description: "Subtotal de materiais." },
-    { label: "Mão de obra", value: money(totals.subtotalLabor), description: "Subtotal de mão de obra." },
-    { label: "Desconto", value: money(totals.discountTotal), description: "Desconto aplicado." },
-    { label: "Total geral", value: money(totals.grandTotal), description: "Valor final." },
+    { label: "Custo material", value: money(totals.subtotalMaterial), description: "Custo técnico de materiais." },
+    { label: "Custo mão de obra", value: money(totals.subtotalLabor), description: "Custo técnico de mão de obra." },
+    { label: "Custo técnico", value: money(technicalCost), description: "Custo estimado após desconto técnico." },
+    { label: "Preço de venda", value: saleTotal == null ? "Não definido" : money(saleTotal), description: "Preço comercial apresentado ao cliente." },
+    { label: "Margem prevista", value: margin == null ? "—" : `${money(margin)} • ${marginPercent?.toFixed(1)}%`, description: "Preço de venda menos custo técnico." },
   ];
 
   return (
-    <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+    <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
       {cards.map((card) => (
         <div key={card.label} className="rounded-[28px] border border-[var(--arq-border)] bg-[var(--arq-card)] p-5 shadow-sm">
           <div className="flex items-start justify-between gap-3">
