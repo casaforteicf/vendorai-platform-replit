@@ -231,8 +231,132 @@ export function useRenderStudioController() {
     prevSavingRef.current = arq.saving;
   }, [arq.saving]);
 
-  // Session restore
+  // Session restore / deep-link bootstrap.
+  // IMPORTANT: an explicit render_id in the URL is authoritative. This prevents
+  // a previously opened session (or another project in localStorage) from
+  // replacing the render the user clicked in the project gallery.
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const requestedRenderId = params.get("render_id")?.trim() || null;
+    const requestedProjectId = params.get("project_id")?.trim() || null;
+    const requestedAmbiente = params.get("ambiente")?.trim() || "";
+    const isNewRender = params.get("new") === "1";
+
+    if (requestedAmbiente) setAmbiente(requestedAmbiente);
+
+    if (isNewRender) {
+      setRenderId(null);
+      setRenderUrl(null);
+      setVersions([]);
+      setApproved(false);
+      setApprovalRecord(null);
+      setImageDataUrl(null);
+      sessionStorage.removeItem(SK.renderId);
+      sessionStorage.removeItem(SK.renderUrl);
+      sessionStorage.removeItem(SK.versions);
+      sessionStorage.removeItem(SK.imageUrl);
+    }
+
+    if (requestedRenderId && !isNewRender) {
+      let cancelled = false;
+      setIsRecovering(true);
+      setErr(null);
+
+      const openExistingRender = async () => {
+        try {
+          const current = await apiGet(`/api/arch/ai-render/${encodeURIComponent(requestedRenderId)}`);
+          if (cancelled) return;
+
+          const projectId = String(current.project_id ?? requestedProjectId ?? "").trim();
+          const ambienteValue = requestedAmbiente || String(current.ambiente ?? "").trim().replace(/_/g, " ");
+          if (ambienteValue) setAmbiente(ambienteValue);
+
+          if (projectId && arq.projectId !== projectId) {
+            await arq.selectProject(projectId);
+            if (cancelled) return;
+          }
+
+          const currentUrl = normalizeRenderMediaUrl(current.display_url || current.result_image_url || current.original_image_url || "");
+          if (!currentUrl) throw new Error("Este render não possui imagem disponível.");
+
+          let loadedVersions: RenderVersion[] = [];
+          if (projectId) {
+            try {
+              const history = await apiGet(
+                `/api/arch/ai-renders?project_id=${encodeURIComponent(projectId)}${current.ambiente ? `&ambiente=${encodeURIComponent(String(current.ambiente))}` : ""}`,
+              );
+              const rows = Array.isArray(history?.versions) ? history.versions : [];
+              loadedVersions = rows
+                .filter((item: any) => item?.result_image_url || item?.original_image_url)
+                .map((item: any, index: number): RenderVersion => ({
+                  id: String(item.id),
+                  url: normalizeRenderMediaUrl(item.result_image_url || item.original_image_url),
+                  label: `Versão ${Number(item.version_number ?? index + 1)}${item.approved_at ? " · Aprovada" : ""}`,
+                  parentVersionId: item.parent_render_id ?? undefined,
+                  operationType: item.approved_at ? "approved" : (item.parent_render_id ? "improve" : "initial"),
+                  createdAt: item.created_at ? new Date(item.created_at) : new Date(),
+                  approvedBy: item.approved_by ?? undefined,
+                  approvedAt: item.approved_at ? new Date(item.approved_at) : undefined,
+                }))
+                .reverse();
+            } catch {
+              // O render atual continua abrindo mesmo que o histórico esteja indisponível.
+            }
+          }
+
+          const currentVersion: RenderVersion = {
+            id: requestedRenderId,
+            url: currentUrl,
+            label: current.approved_at ? "Versão selecionada · Aprovada" : "Versão selecionada",
+            parentVersionId: current.parent_render_id ?? undefined,
+            operationType: current.approved_at ? "approved" : (current.parent_render_id ? "improve" : "initial"),
+            createdAt: current.created_at ? new Date(current.created_at) : new Date(),
+            approvedBy: current.approved_by ?? undefined,
+            approvedAt: current.approved_at ? new Date(current.approved_at) : undefined,
+          };
+
+          if (!loadedVersions.some((item) => item.id === requestedRenderId)) {
+            loadedVersions = [currentVersion, ...loadedVersions];
+          }
+
+          setRenderId(requestedRenderId);
+          setRenderUrl(currentUrl);
+          setImageDataUrl(normalizeRenderMediaUrl(current.original_image_url || currentUrl));
+          setVersions(loadedVersions.length ? loadedVersions : [currentVersion]);
+          setApproved(Boolean(current.approved_at || current.approved_by));
+          setApprovalRecord(
+            current.approved_at || current.approved_by
+              ? {
+                  by: current.approved_by ?? "usuário autenticado",
+                  at: current.approved_at ? new Date(current.approved_at) : new Date(),
+                  note: "",
+                }
+              : null,
+          );
+
+          // Render existente abre na execução/edição do próprio render, nunca
+          // na etapa de selecionar/criar projeto e nunca inicia uma nova geração.
+          setStep("melhoria");
+          setBottomPanelOpen(loadedVersions.length > 1);
+          setSaveState("saved");
+          setLastSavedAt(new Date());
+
+          sessionStorage.setItem(SK.renderId, requestedRenderId);
+          sessionStorage.setItem(SK.renderUrl, currentUrl);
+          sessionStorage.setItem(SK.imageUrl, normalizeRenderMediaUrl(current.original_image_url || currentUrl));
+          sessionStorage.setItem(SK.versions, JSON.stringify(loadedVersions.length ? loadedVersions : [currentVersion]));
+          sessionStorage.setItem(SK.step, "melhoria");
+        } catch (e: unknown) {
+          if (!cancelled) setErr(categorizeError(e));
+        } finally {
+          if (!cancelled) setIsRecovering(false);
+        }
+      };
+
+      void openExistingRender();
+      return () => { cancelled = true; };
+    }
+
     const ss = sessionStorage.getItem(SK.step);
     const sa = sessionStorage.getItem(SK.ambiente);
     const sri = sessionStorage.getItem(SK.renderId);

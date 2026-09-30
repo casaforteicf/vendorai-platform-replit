@@ -131,9 +131,15 @@ export function useArqProject(): ArqProjectState {
 
   useEffect(() => {
     const stored = localStorage.getItem('arq_last_project_id')
+    const requestedProjectId = new URLSearchParams(window.location.search).get('project_id')?.trim() || null
     fetchProjects().then(list => {
       if (list.length === 0) return
-      const target = stored && list.find(p => p.id === stored) ? stored : list[0].id
+      const target =
+        requestedProjectId && list.find(p => p.id === requestedProjectId)
+          ? requestedProjectId
+          : stored && list.find(p => p.id === stored)
+            ? stored
+            : list[0].id
       loadProject(target)
     })
   }, [])
