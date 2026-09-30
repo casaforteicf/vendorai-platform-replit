@@ -12,7 +12,7 @@ import {
   useCreateLead,
   useListTenantUsers,
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -85,6 +85,20 @@ type AssignmentUser = {
   leadAssignmentRegions?: string[] | null;
   leadAssignmentSegments?: string[] | null;
 };
+
+type RepresentativeFunction = {
+  id: string;
+  name: string;
+  kind?: "internal" | "external_company";
+  linkedTenantCode?: string | null;
+  permissions: string[];
+};
+
+const REPRESENTATIVE_PREFIX = "__representative__:";
+
+function representativeFunctionId(value?: string | null) {
+  return value?.startsWith(REPRESENTATIVE_PREFIX) ? value.slice(REPRESENTATIVE_PREFIX.length) : null;
+}
 
 type CouponValidation = {
   valid: true;
@@ -250,7 +264,25 @@ export function NewLeadDialog({
     [tenantUsers],
   );
 
+  const { data: representativeFunctions = [] } = useQuery({
+    queryKey: ["tenant-user-functions", tenantId, "lead-assignment"],
+    enabled: !!tenantId && open && isAdmin,
+    queryFn: async () => {
+      const response = await fetch(`/api/tenants/${tenantId}/user-functions`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!response.ok) throw new Error("Não foi possível carregar as empresas representantes.");
+      const functions = await response.json() as RepresentativeFunction[];
+      return functions.filter((item) =>
+        item.kind === "external_company" && Array.isArray(item.permissions) && item.permissions.includes("leads"),
+      );
+    },
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+
   function resolveAutomaticAssignee(values: NewLeadValues): string | undefined {
+    if (representativeFunctionId(values.assignedTo)) return undefined;
     if (values.assignedTo !== "__auto__") return values.assignedTo;
     if (!assignableUsers.length || !values.endereco.trim()) return undefined;
 
@@ -347,7 +379,7 @@ export function NewLeadDialog({
           titulo: defaultDealTitle(values),
           etapa: values.dealStage,
           valor: normalizeDealValue(values.dealValue),
-          assignedTo: values.assignedTo === "__auto__" ? undefined : values.assignedTo,
+          assignedTo: values.assignedTo === "__auto__" || representativeFunctionId(values.assignedTo) ? undefined : values.assignedTo,
         },
       });
     }
@@ -436,10 +468,11 @@ export function NewLeadDialog({
         }
       }
 
+      const selectedRepresentativeFunctionId = representativeFunctionId(values.assignedTo);
       const resolvedAssignee = resolveAutomaticAssignee(values);
       const submissionValues: NewLeadValues = {
         ...values,
-        assignedTo: resolvedAssignee ?? values.assignedTo,
+        assignedTo: selectedRepresentativeFunctionId ? values.assignedTo : (resolvedAssignee ?? values.assignedTo),
       };
 
       const newLead = await createLead.mutateAsync({
@@ -452,7 +485,8 @@ export function NewLeadDialog({
           objetivo: submissionValues.objetivo || null,
           source: coupon ? "indicacao" : submissionValues.source,
           indicadoPor: coupon?.partnerId,
-          assignedTo: submissionValues.assignedTo === "__auto__" ? undefined : submissionValues.assignedTo,
+          assignedTo: submissionValues.assignedTo === "__auto__" || selectedRepresentativeFunctionId ? undefined : submissionValues.assignedTo,
+          representativeFunctionId: selectedRepresentativeFunctionId ?? undefined,
           instagramHandle: submissionValues.instagramHandle || null,
           profissao: submissionValues.profissao || null,
           endereco: submissionValues.endereco || null,
@@ -702,13 +736,18 @@ export function NewLeadDialog({
                           {assignableUsers.map((user) => (
                             <SelectItem key={user.id} value={user.id}>{user.name || user.email || user.id}</SelectItem>
                           ))}
-                          {assignableUsers.length === 0 && (
+                          {representativeFunctions.map((representative) => (
+                            <SelectItem key={representative.id} value={`${REPRESENTATIVE_PREFIX}${representative.id}`}>
+                              {representative.name} · empresa representante
+                            </SelectItem>
+                          ))}
+                          {assignableUsers.length === 0 && representativeFunctions.length === 0 && (
                             <SelectItem value="__none_available__" disabled>Nenhum responsável habilitado</SelectItem>
                           )}
                         </SelectContent>
                       </Select>
                       <p className="text-[11px] leading-relaxed text-muted-foreground">
-                        Automático: prioriza cidade e região configuradas para cada responsável; sem regra territorial, usa o rodízio geral. Usuários não habilitados para atendimento não aparecem aqui.
+                        Automático: prioriza cidade e região configuradas para cada responsável; sem regra territorial, usa o rodízio geral. Empresas representantes autorizadas aparecem junto dos vendedores.
                       </p>
                     </FormItem>
                   )}
