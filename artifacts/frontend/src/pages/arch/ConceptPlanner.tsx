@@ -1364,41 +1364,6 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     return mergeMaterialOptions(CONCEPT_FLOOR_MATERIALS, compatible);
   }, [catalogMaterialOptions]);
 
-  const visibleLibraryMaterials = useMemo(() => {
-    const query = furnitureSearch.trim().toLocaleLowerCase("pt-BR");
-    const allMaterials = mergeMaterialOptions(
-      [...CONCEPT_OBJECT_MATERIALS, ...CONCEPT_WALL_MATERIALS, ...CONCEPT_FLOOR_MATERIALS],
-      catalogMaterialOptions,
-    );
-    const compatible = selectedObject
-      ? objectMaterialOptions
-      : selectedCustomWall || selectedWall
-        ? wallMaterialOptions
-        : selected || selectedClosedSpace
-          ? floorMaterialOptions
-          : allMaterials;
-
-    return compatible
-      .filter((material) => {
-        if (!query) return true;
-        return `${material.name} ${material.category} ${material.source ?? ""}`
-          .toLocaleLowerCase("pt-BR")
-          .includes(query);
-      })
-      .slice(0, 24);
-  }, [
-    catalogMaterialOptions,
-    floorMaterialOptions,
-    furnitureSearch,
-    objectMaterialOptions,
-    selected,
-    selectedClosedSpace,
-    selectedCustomWall,
-    selectedObject,
-    selectedWall,
-    wallMaterialOptions,
-  ]);
-
   useEffect(() => {
     roomsRef.current = Array.isArray(rooms) ? rooms : [];
   }, [rooms]);
@@ -3466,6 +3431,42 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   };
 
   const selectedCustomWall = safeCustomWalls.find((wall) => wall.id === selectedCustomWallId) ?? null;
+
+  const visibleLibraryMaterials = useMemo(() => {
+    const query = furnitureSearch.trim().toLocaleLowerCase("pt-BR");
+    const allMaterials = mergeMaterialOptions(
+      [...CONCEPT_OBJECT_MATERIALS, ...CONCEPT_WALL_MATERIALS, ...CONCEPT_FLOOR_MATERIALS],
+      catalogMaterialOptions,
+    );
+    const compatible = selectedObject
+      ? objectMaterialOptions
+      : selectedCustomWall || selectedWall
+        ? wallMaterialOptions
+        : selected || selectedClosedSpace
+          ? floorMaterialOptions
+          : allMaterials;
+
+    return compatible
+      .filter((material) => {
+        if (!query) return true;
+        return `${material.name} ${material.category} ${material.source ?? ""}`
+          .toLocaleLowerCase("pt-BR")
+          .includes(query);
+      })
+      .slice(0, 24);
+  }, [
+    catalogMaterialOptions,
+    floorMaterialOptions,
+    furnitureSearch,
+    objectMaterialOptions,
+    selected,
+    selectedClosedSpace,
+    selectedCustomWall,
+    selectedObject,
+    selectedWall,
+    wallMaterialOptions,
+  ]);
+
   const customWallTopology = useMemo(
     () =>
       buildOrthogonalWallTopology(
