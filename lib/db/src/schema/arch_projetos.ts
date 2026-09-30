@@ -43,6 +43,28 @@ export const archProjetosTable = pgTable("arch_projetos", {
     observacoes?: string;
     tratamentoExistentes?: "avaliar_individualmente" | "manter" | "substituir";
   }>(),
+  // Dossiê central do projeto. É exibido dentro de cada ambiente para que o
+  // usuário encontre briefing, medidas e todos os arquivos sem duplicar dados.
+  dossieProjeto: jsonb("dossie_projeto").$type<{
+    briefing?: string;
+    medidas?: Array<{
+      id?: string;
+      label: string;
+      value: string;
+      unit?: string;
+      ambienteId?: string | null;
+    }>;
+    arquivos?: Array<{
+      id: string;
+      nome: string;
+      url: string;
+      tipo: "skp" | "dxf" | "ifc" | "pdf" | "foto" | "imagem" | "documento" | "outro";
+      mimeType?: string;
+      size?: number;
+      ambienteId?: string | null;
+      createdAt?: string;
+    }>;
+  }>().default({}),
   areaM2:                numeric("area_m2",                { precision: 8,  scale: 2 }),
   orcamentoTotal:        numeric("orcamento_total",        { precision: 12, scale: 2 }),
   prazoEstimado:         integer("prazo_estimado"),
