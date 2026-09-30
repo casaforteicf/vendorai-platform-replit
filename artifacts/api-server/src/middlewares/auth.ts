@@ -303,8 +303,8 @@ export function requireAdminOrUserFunction(...functions: UserFunction[]): Reques
       next();
       return;
     }
-    const isAdmin = req.user.platformRole === "super_admin" || req.user.platformRole === "tenant_admin";
     const userFn = req.user.userFunction as UserFunction | undefined;
+    const isAdmin = isConfigurationAdmin(req.user);
     if (isAdmin || (userFn && functions.includes(userFn))) {
       next();
       return;
@@ -512,12 +512,14 @@ export function buildUserFunctionFilter(req: Express.Request, table: { tenantId:
   const conditions: any[] = [];
   if (isTrustedInternalActor(req.user)) return conditions;
 
-  const userFn = req.user?.userFunction as UserFunction | undefined;
-  const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
-  const isSeller = req.user?.platformRole === "tenant_seller";
+  const isAdmin = isConfigurationAdmin(req.user);
   const userId = req.user?.sub;
 
-  if (!isAdmin && userId && (userFn === "vendedor" || userFn === "representante_comercial" || userFn === "entrega" || isSeller)) {
+  // Regra oficial de visibilidade: somente administrador enxerga toda a base.
+  // Qualquer outra função humana recebe apenas registros explicitamente
+  // atribuídos ao próprio usuário. Superadmin e atores internos continuam
+  // como exceções técnicas da plataforma.
+  if (!isAdmin && userId) {
     conditions.push(eq(table.assignedTo, userId));
   }
 
