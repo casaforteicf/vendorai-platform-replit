@@ -236,21 +236,6 @@ router.post(
       return;
     }
 
-    let representativeLink: { linkedTenantId: string | null; linkedTenantCode: string | null };
-    try {
-      representativeLink = await resolveRepresentativeTenant(parsed.data, tenantId);
-    } catch (error) {
-      const code = error instanceof Error ? error.message : "";
-      const message =
-        code === "REPRESENTATIVE_TENANT_CODE_REQUIRED"
-          ? "Informe o código Vendor.ai da empresa representante."
-          : code === "REPRESENTATIVE_TENANT_SAME_AS_OWNER"
-            ? "A empresa representante precisa ser diferente da empresa representada."
-            : "Empresa representante não encontrada ou inativa.";
-      res.status(422).json({ error: message });
-      return;
-    }
-
     const permissions = [...new Set(parsed.data.permissions)];
     const invalidPermission = permissions.find((permission) => !USER_MODULE_KEYS.has(permission));
     if (invalidPermission) {
@@ -306,6 +291,21 @@ router.patch(
     const existing = await findTenantUserFunction(functionId, tenantId);
     if (!existing) {
       res.status(404).json({ error: "Função não encontrada." });
+      return;
+    }
+
+    let representativeLink: { linkedTenantId: string | null; linkedTenantCode: string | null };
+    try {
+      representativeLink = await resolveRepresentativeTenant(parsed.data, tenantId);
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "";
+      const message =
+        code === "REPRESENTATIVE_TENANT_CODE_REQUIRED"
+          ? "Informe o código Vendor.ai da empresa representante."
+          : code === "REPRESENTATIVE_TENANT_SAME_AS_OWNER"
+            ? "A empresa representante precisa ser diferente da empresa representada."
+            : "Empresa representante não encontrada ou inativa.";
+      res.status(422).json({ error: message });
       return;
     }
 
