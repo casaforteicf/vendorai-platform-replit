@@ -185,7 +185,7 @@ export async function createMaterialSurfaceMask(
       }
     }
     const std = Math.sqrt(variance / Math.max(1, varianceCount));
-    const threshold = Math.max(42, Math.min(88, 38 + std * 0.85));
+    const threshold = Math.max(42, Math.min(96, 40 + std * 0.95));
 
     // Limiar de perímetro adaptativo. Amostramos o gradiente na seleção e
     // usamos um percentil alto: textura natural da madeira/pedra continua
@@ -225,7 +225,40 @@ export async function createMaterialSurfaceMask(
       tail++;
     };
 
-    enqueue(seedX, seedY);
+    // Madeira, pedra e tecidos podem ter veios/sombras que isolam uma única
+    // semente. Usamos uma pequena paleta de sementes representativas dentro
+    // do miolo selecionado, sempre próximas da cor dominante e longe de bordas.
+    const seedPoints: Array<{ x: number; y: number; color: [number, number, number] }> = [
+      { x: seedX, y: seedY, color: seed },
+    ];
+    const minSeedSpacing = Math.max(4, Math.floor(Math.min(rw, rh) * 0.12));
+    const candidates: Array<{ x: number; y: number; score: number }> = [];
+    for (let y = cy1; y <= cy2; y += 2) {
+      for (let x = cx1; x <= cx2; x += 2) {
+        const d = colorDistance(pixel(x, y), mean);
+        const e = edgeStrength(x, y);
+        if (d <= threshold * 0.72 && e <= edgeBarrierThreshold * 0.75) {
+          candidates.push({ x, y, score: d + e * 0.08 });
+        }
+      }
+    }
+    candidates.sort((a, b) => a.score - b.score);
+    for (const candidate of candidates) {
+      if (seedPoints.length >= 7) break;
+      const farEnough = seedPoints.every(s =>
+        Math.hypot(candidate.x - s.x, candidate.y - s.y) >= minSeedSpacing
+      );
+      if (farEnough) seedPoints.push({
+        x: candidate.x,
+        y: candidate.y,
+        color: pixel(candidate.x, candidate.y),
+      });
+    }
+
+    const distanceToSeedPalette = (value: [number, number, number]) =>
+      seedPoints.reduce((best, s) => Math.min(best, colorDistance(value, s.color)), Number.POSITIVE_INFINITY);
+
+    for (const s of seedPoints) enqueue(s.x, s.y);
 
     while (head < tail) {
       const x = qx[head]!;
@@ -233,7 +266,7 @@ export async function createMaterialSurfaceMask(
       head++;
 
       const current = pixel(x, y);
-      if (colorDistance(current, seed) > threshold) continue;
+      if (distanceToSeedPalette(current) > threshold) continue;
 
       mask[y * width + x] = 255;
       accepted++;
@@ -251,7 +284,7 @@ export async function createMaterialSurfaceMask(
 
         // O pixel vizinho também precisa continuar compatível com o material
         // amostrado na semente, evitando deriva progressiva para outra peça.
-        if (colorDistance(next, seed) > threshold) return;
+        if (distanceToSeedPalette(next) > threshold) return;
 
         enqueue(nx, ny);
       };
