@@ -1274,7 +1274,7 @@ function EditDealSheet({
   const { toast } = useToast();
   const updateDeal = useUpdateDeal();
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const tenantId = user?.tenantId ?? "";
   const [agendarOpen, setAgendarOpen] = useState(false);
   const [copied, setCopied] = useState(false);
