@@ -83,7 +83,7 @@ router.get("/leads", async (req, res) => {
     }
     conditions.push(eq(leadsTable.tenantId, req.user.tenantId));
   }
-  if (!representativeAccess) conditions.push(...buildUserFunctionFilter(req, leadsTable));
+  conditions.push(...buildUserFunctionFilter(req, leadsTable));
 
   const leads = await db
     .select()
@@ -416,7 +416,9 @@ router.get("/tenants/:tenantId/leads", async (req, res) => {
   } else if (incluirNaoLeads !== "incluir") {
     conditions.push(isNull(leadsTable.naoLeadTipo));
   }
-  conditions.push(...buildUserFunctionFilter(req, leadsTable));
+  if (!representativeAccess) {
+    conditions.push(...buildUserFunctionFilter(req, leadsTable));
+  }
 
   const leads = await db
     .select()
