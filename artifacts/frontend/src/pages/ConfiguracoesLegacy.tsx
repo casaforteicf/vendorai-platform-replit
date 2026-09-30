@@ -2,7 +2,7 @@ import { lazy, Suspense, useState, useRef, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useForm } from "react-hook-form";
 
-type UserFunction = "vendedor" | "financeiro" | "suporte" | "entrega" | "administrador" | "outro";
+type UserFunction = "vendedor" | "representante_comercial" | "financeiro" | "suporte" | "entrega" | "administrador" | "outro";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
