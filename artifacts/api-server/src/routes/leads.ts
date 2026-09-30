@@ -50,6 +50,20 @@ import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 
 const router: IRouter = Router();
 
+async function validateRepresentativeFunction(tenantId: string, functionId: string | null | undefined) {
+  if (!functionId) return null;
+  const [representativeFunction] = await db
+    .select()
+    .from(tenantUserFunctionsTable)
+    .where(and(
+      eq(tenantUserFunctionsTable.id, functionId),
+      eq(tenantUserFunctionsTable.tenantId, tenantId),
+      eq(tenantUserFunctionsTable.kind, "external_company"),
+    ))
+    .limit(1);
+  return representativeFunction ?? null;
+}
+
 async function findRepresentativeLeadAccess(req: any, targetTenantId: string, functionId?: string | null) {
   const sourceTenantId = req.user?.tenantId;
   if (!sourceTenantId || sourceTenantId === targetTenantId) return null;
@@ -124,6 +138,19 @@ router.post("/leads", async (req, res) => {
 
   const data = parsed.data;
 
+  if (data.representativeFunctionId) {
+    const representativeFunction = await validateRepresentativeFunction(data.tenantId, data.representativeFunctionId);
+    if (!representativeFunction) {
+      res.status(422).json({ error: "Empresa representante inválida para este tenant." });
+      return;
+    }
+    const isAdminCreator = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+    if (!isAdminCreator) {
+      res.status(403).json({ error: "Apenas administradores podem atribuir uma empresa representante." });
+      return;
+    }
+  }
+
   // Dedup check
   const match = await findLeadByDedup(data.tenantId, data.telefone ?? null, data.documento ?? null, data.nome);
 
@@ -155,7 +182,9 @@ router.post("/leads", async (req, res) => {
   const isSellerCreator = !isAdminCreator && (req.user?.platformRole === "tenant_seller" || (req.user?.userFunction as string) === "vendedor");
   let resolvedAssignedTo: string | null;
   let geocoded: { lat: number; lng: number } | null = null;
-  if (isSellerCreator) {
+  if (data.representativeFunctionId) {
+    resolvedAssignedTo = null;
+  } else if (isSellerCreator) {
     resolvedAssignedTo = req.user?.sub ?? null;
   } else if (data.assignedTo) {
     resolvedAssignedTo = data.assignedTo;
@@ -569,6 +598,21 @@ router.patch("/leads/:id", async (req, res) => {
     if (!isAdmin2 && userFn2 === "vendedor" && existing.assignedTo !== req.user?.sub) {
       res.status(403).json({ error: "Access denied to this lead" });
       return;
+    }
+  }
+
+  if (parsed.data.representativeFunctionId !== undefined) {
+    const isAdmin2 = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+    if (!isOwnTenant2 || !isAdmin2) {
+      res.status(403).json({ error: "Apenas administradores da empresa podem alterar a representação responsável." });
+      return;
+    }
+    if (parsed.data.representativeFunctionId) {
+      const representativeFunction = await validateRepresentativeFunction(existing.tenantId, parsed.data.representativeFunctionId);
+      if (!representativeFunction) {
+        res.status(422).json({ error: "Empresa representante inválida para este tenant." });
+        return;
+      }
     }
   }
 
