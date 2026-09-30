@@ -15,7 +15,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
-  actions: read
+  actions: write
   checks: read
   statuses: read
 
@@ -26,6 +26,7 @@ concurrency:
 env:
   API_HEALTH_URL: https://vendorai-platform-replit-production.up.railway.app/api/auth/healthz
   FRONTEND_URL: https://app.appvendorai.com
+  WEBSITE_URL: https://appvendorai.com
 
 jobs:
   merge-publish:
@@ -55,7 +56,7 @@ jobs:
           head_sha="$(jq -r .head.sha <<<"$data")"
           gh api --paginate "repos/$REPO/pulls/$PR/files?per_page=100" --jq '.[].filename' > /tmp/files
 
-          critical='(^|/)(migrations?|auth)(/|$)|(^|/)schema\.(ts|sql)$|billing|payment|subscription|secrets?|^\.github/workflows/|railway|terraform|(^|/)docker|(^|/)rls(/|$)|(^|/)\.env'
+          critical='(^|/)(migrations?|auth)(/|$)|(^|/)schema\.(ts|sql)$|billing|payment|subscription|secrets?|^\.github/workflows/|^cloudflare/|railway|terraform|(^|/)docker|(^|/)rls(/|$)|(^|/)\.env'
           if grep -Eiq "$critical" /tmp/files; then
             echo "Blocked: critical paths require human review."
             grep -Ein "$critical" /tmp/files || true
@@ -63,13 +64,26 @@ jobs:
           fi
 
           backend=false
-          publish=false
-          if grep -Eq '^(artifacts/api-server/|lib/db/|lib/api-zod/|lib/vendor-brain/|backend/Dockerfile$)' /tmp/files; then backend=true; fi
-          if grep -Eq '^(artifacts/frontend/|artifacts/api-server/|lib/db/|lib/api-zod/|lib/api-client-react/|lib/vendor-brain/|backend/Dockerfile$|pnpm-lock.yaml$|pnpm-workspace.yaml$|package.json$|\.node-version$)' /tmp/files; then publish=true; fi
+          app=false
+          website=false
+          mobile=false
+
+          shared='^(pnpm-lock.yaml$|pnpm-workspace.yaml$|package.json$|\.node-version$)'
+          if grep -Eq '^(artifacts/api-server/|lib/db/|lib/api-zod/|lib/vendor-brain/|lib/integrations-anthropic-ai/|backend/Dockerfile$)' /tmp/files || grep -Eq "$shared" /tmp/files; then backend=true; fi
+          if grep -Eq '^(artifacts/frontend/|artifacts/api-server/|lib/db/|lib/api-zod/|lib/api-client-react/|lib/vendor-brain/|backend/Dockerfile$)' /tmp/files || grep -Eq "$shared" /tmp/files; then app=true; fi
+          if grep -Eq '^(artifacts/website/|lib/vendor-brain/)' /tmp/files || grep -Eq "$shared" /tmp/files; then website=true; fi
+          if grep -Eq '^artifacts/mobile/' /tmp/files; then mobile=true; fi
+
+          release_required=false
+          if [ "$backend" = true ] || [ "$app" = true ] || [ "$website" = true ] || [ "$mobile" = true ]; then release_required=true; fi
 
           echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
           echo "backend=$backend" >> "$GITHUB_OUTPUT"
-          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          echo "app=$app" >> "$GITHUB_OUTPUT"
+          echo "website=$website" >> "$GITHUB_OUTPUT"
+          echo "mobile=$mobile" >> "$GITHUB_OUTPUT"
+          echo "release_required=$release_required" >> "$GITHUB_OUTPUT"
+          echo "Release matrix: backend=$backend app=$app website=$website mobile=$mobile"
 
       - name: Confirm mergeability
         env:
@@ -126,7 +140,7 @@ jobs:
         run: pnpm --filter @workspace/api-server run ci:railway
 
       - name: Validate frontend build
-        if: steps.pr.outputs.publish == 'true'
+        if: steps.pr.outputs.app == 'true'
         env:
           VENDOR_BUILD_ID: ${{ steps.pr.outputs.head_sha }}
         run: pnpm --filter @workspace/frontend build
@@ -181,13 +195,13 @@ jobs:
           exit 1
 
       - name: Rebuild frontend for merged revision
-        if: steps.pr.outputs.publish == 'true'
+        if: steps.pr.outputs.app == 'true'
         env:
           VENDOR_BUILD_ID: ${{ steps.merge.outputs.sha }}
         run: pnpm --filter @workspace/frontend build
 
       - name: Publish frontend directly to Cloudflare Pages
-        if: steps.pr.outputs.publish == 'true'
+        if: steps.pr.outputs.app == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -201,7 +215,7 @@ jobs:
           pnpm dlx wrangler@3.90.0 pages deploy artifacts/frontend/dist/public --project-name vendorai --branch main
 
       - name: Verify published frontend revision
-        if: steps.pr.outputs.publish == 'true'
+        if: steps.pr.outputs.app == 'true'
         env:
           EXPECTED: ${{ steps.merge.outputs.sha }}
         run: |
@@ -219,11 +233,75 @@ jobs:
           echo "Published frontend did not expose expected revision $prefix."
           exit 1
 
-      - name: Smoke test production
+      - name: Build website
+        if: steps.pr.outputs.website == 'true' && steps.pr.outputs.mobile != 'true'
+        run: pnpm --filter @workspace/website build
+
+      - name: Publish website directly to Cloudflare Pages
+        if: steps.pr.outputs.website == 'true' && steps.pr.outputs.mobile != 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          test -f artifacts/website/dist/public/index.html
+          test -f artifacts/website/dist/public/_worker.js
+          pnpm dlx wrangler@3.90.0 pages project create vendorai-website --production-branch main || true
+          pnpm dlx wrangler@3.90.0 pages deploy artifacts/website/dist/public --project-name vendorai-website --branch main
+
+      - name: Dispatch mobile APK release
+        if: steps.pr.outputs.mobile == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh workflow run jarvis-android-apk.yml --repo "$REPO" --ref main
+
+      - name: Wait for mobile APK release
+        if: steps.pr.outputs.mobile == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EXPECTED: ${{ steps.merge.outputs.sha }}
+        run: |
+          set -euo pipefail
+          run_id=""
+          for n in {1..24}; do
+            runs="$(gh api "repos/$REPO/actions/workflows/jarvis-android-apk.yml/runs?event=workflow_dispatch&head_sha=$EXPECTED&per_page=10")"
+            run_id="$(jq -r '.workflow_runs[0].id // empty' <<<"$runs")"
+            [ -n "$run_id" ] && break
+            sleep 5
+          done
+          test -n "$run_id"
+
+          for n in {1..120}; do
+            run="$(gh api "repos/$REPO/actions/runs/$run_id")"
+            status="$(jq -r '.status' <<<"$run")"
+            conclusion="$(jq -r '.conclusion // empty' <<<"$run")"
+            echo "mobile run=$run_id status=$status conclusion=$conclusion"
+            if [ "$status" = completed ]; then
+              test "$conclusion" = success
+              exit 0
+            fi
+            sleep 15
+          done
+          exit 1
+
+      - name: Smoke test app and API
+        if: steps.pr.outputs.app == 'true' || steps.pr.outputs.backend == 'true'
         run: |
           set -euo pipefail
           curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$FRONTEND_URL/login" >/dev/null
           curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$API_HEALTH_URL" >/dev/null
+
+      - name: Smoke test public website
+        if: steps.pr.outputs.website == 'true' || steps.pr.outputs.mobile == 'true'
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$WEBSITE_URL/" >/dev/null
 
       - name: Record success
         if: success()
@@ -233,7 +311,7 @@ jobs:
           REPO: ${{ github.repository }}
           SHA: ${{ steps.merge.outputs.sha }}
         run: |
-          gh pr comment "$PR" --repo "$REPO" --body "✅ Merge & Publish Agent: merge concluído em $SHA e produção validada por health checks."
+          gh pr comment "$PR" --repo "$REPO" --body "✅ Merge & Publish Agent: merge concluído em $SHA. Matriz de publicação executada e destinos aplicáveis validados em produção."
 
       - name: Record post-merge failure
         if: failure() && steps.merge.outputs.sha != ''
