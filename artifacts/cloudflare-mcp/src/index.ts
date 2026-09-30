@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
 import { toNodeHandler } from "@modelcontextprotocol/node";
 import * as z from "zod/v4";
+import { authorized, challenge, handleOAuth } from "./oauth.js";
 
 const API_BASE = "https://api.cloudflare.com/client/v4";
 const DEFAULT_GITHUB_OWNER = "casaforteicf";
@@ -274,14 +275,9 @@ const mcpHandler = createMcpHandler(() => createCloudflareMcpServer());
 const nodeMcpHandler = toNodeHandler(mcpHandler);
 const port = Number(process.env.PORT || 8788);
 
-function authorized(req: import("node:http").IncomingMessage): boolean {
-  const expected = process.env.MCP_ACCESS_TOKEN?.trim();
-  if (!expected) return false;
-  return req.headers.authorization === `Bearer ${expected}`;
-}
-
 const httpServer = createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+  if (await handleOAuth(req, res, url)) return;
 
   if (url.pathname === "/health") {
     res.writeHead(200, { "Content-Type": "application/json" });
@@ -296,7 +292,7 @@ const httpServer = createServer(async (req, res) => {
   }
 
   if (!authorized(req)) {
-    res.writeHead(401, { "Content-Type": "application/json", "WWW-Authenticate": "Bearer" });
+    res.writeHead(401, { "Content-Type": "application/json", "WWW-Authenticate": challenge() });
     res.end(JSON.stringify({ error: "unauthorized" }));
     return;
   }
