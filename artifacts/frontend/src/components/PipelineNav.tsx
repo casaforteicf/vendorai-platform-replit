@@ -8,7 +8,6 @@ import {
   Pencil,
   Plus,
   Settings2,
-  ShieldCheck,
   Trash2,
 } from "lucide-react";
 import { customFetch, getListPipelineStagesQueryKey } from "@workspace/api-client-react";
