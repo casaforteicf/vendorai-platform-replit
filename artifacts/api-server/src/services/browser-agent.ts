@@ -89,6 +89,33 @@ export function validateBrowserUrl(raw: string, connectionAllowedHosts: string[]
 export async function snapshotBrowserPage(page: Page) {
   return page.evaluate(() => {
     const clean = (v: string | null | undefined) => (v ?? "").replace(/\s+/g, " ").trim();
+    const cssString = (value: string) => JSON.stringify(value);
+    const buildStableSelector = (el: Element) => {
+      const tag = el.tagName.toLowerCase();
+      const testId = el.getAttribute("data-testid");
+      if (testId) return `[data-testid=${cssString(testId)}]`;
+
+      const aria = el.getAttribute("aria-label");
+      if (aria) return `${tag}[aria-label=${cssString(aria)}]`;
+
+      const name = (el as HTMLInputElement).name;
+      if (name) return `${tag}[name=${cssString(name)}]`;
+
+      const id = el.id;
+      if (id && !/^radix-|^_?r_|radix/i.test(id)) return `#${CSS.escape(id)}`;
+
+      const href = el.getAttribute("href");
+      if (tag === "a" && href) return `a[href=${cssString(href)}]`;
+
+      const parent = el.parentElement;
+      if (parent) {
+        const sameTag = Array.from(parent.children).filter(child => child.tagName === el.tagName);
+        const position = sameTag.indexOf(el) + 1;
+        if (position > 0) return `${tag}:nth-of-type(${position})`;
+      }
+      return tag;
+    };
+
     const interactive = Array.from(document.querySelectorAll("a,button,input,textarea,select,[role='button']"))
       .slice(0, 120)
       .map((el, index) => {
@@ -96,6 +123,7 @@ export async function snapshotBrowserPage(page: Page) {
         const i = el as HTMLInputElement;
         return {
           index,
+          selector: buildStableSelector(el),
           tag: el.tagName.toLowerCase(),
           id: el.id || null,
           name: i.name || null,
@@ -128,7 +156,7 @@ export async function planBrowserAction(
     "Ações: navigate(url), click(selector), type(selector,text), secret(selector,secret), select(selector,value), extract(selector opcional), finish(answer).",
     "Para campos de autenticação use secret com secret=login ou passcode quando disponível.",
     "Nunca peça, invente ou repita segredos. Eles são injetados pelo backend e não ficam visíveis para você.",
-    "Use seletores CSS estáveis. Não invente dados, credenciais ou elementos. Nunca use seletores Playwright como :has-text(); use id, name, aria-label, data-testid ou CSS válido.",
+    "A página fornece page.interactive[].selector. Para click/type/secret/select, reutilize EXATAMENTE um selector presente nessa lista sempre que possível. Não invente IDs, especialmente IDs Radix/temporários. Nunca use seletores Playwright como :has-text().",
     'Responda um objeto com campo action e seus parâmetros no primeiro nível, por exemplo {"action":"click","selector":"#button"}. Nunca retorne uma lista de ações.',
     'Ao finalizar use {"action":"finish","answer":"resultado","outcome":"completed|blocked|failed"}. Use completed somente se o objetivo foi atingido e verificado; bloqueios e falhas não são sucesso.',
     "Não tente contornar CAPTCHA ou verificações de segurança; finalize com outcome blocked.",
@@ -156,6 +184,11 @@ export async function planBrowserAction(
   } catch { /* Retry malformed JSON once, without executing it. */ }
   }
   throw new Error("BROWSER_PLAN_INVALID: a IA não retornou uma ação válida após duas tentativas.");
+}
+
+export function isRecoverableSelectorError(error: unknown) {
+  const message = String((error as any)?.message ?? error ?? "");
+  return /No element found for selector|failed to find element matching selector|No node found for selector|Cannot find context with specified id|Node is detached from document/i.test(message);
 }
 
 async function sensitive(page: Page, selector: string) {
@@ -251,10 +284,15 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
       timeout: 30000,
     });
 
+    let selectorRecoveryNote = "";
     for (let index = 1; index <= maxSteps; index++) {
       const state = await snapshotBrowserPage(page);
       assertBrowserPageAccessible(state);
-      const action = await planBrowserAction(input.tenantId, input.goal, state, steps, secretsAvailable);
+      const planningGoal = selectorRecoveryNote
+        ? input.goal + "\nRECUPERAÇÃO DE NAVEGAÇÃO: " + selectorRecoveryNote
+        : input.goal;
+      selectorRecoveryNote = "";
+      const action = await planBrowserAction(input.tenantId, planningGoal, state, steps, secretsAvailable);
       steps.push({ index, action: action.action, url: state.url, detail: "reason" in action ? action.reason : undefined });
 
       if (action.action === "finish") {
@@ -263,7 +301,20 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
         return { ok: true, finalUrl: state.url, answer: action.answer, steps };
       }
 
-      const extracted = await executeBrowserAction(page, action, input);
+      let extracted: string | undefined;
+      try {
+        extracted = await executeBrowserAction(page, action, input);
+      } catch (error) {
+        if (isRecoverableSelectorError(error)) {
+          selectorRecoveryNote =
+            "O seletor da ação anterior deixou de existir antes da execução. " +
+            "Faça um novo plano usando SOMENTE um selector presente no snapshot atual de page.interactive[].selector. " +
+            "Não reutilize o seletor que falhou: " + ("selector" in action ? action.selector : "indisponível");
+          steps[steps.length - 1]!.detail = "selector_stale_replan";
+          continue;
+        }
+        throw error;
+      }
       if (action.action === "extract" && extracted) {
         const state2 = await snapshotBrowserPage(page);
         assertBrowserPageAccessible(state2);
