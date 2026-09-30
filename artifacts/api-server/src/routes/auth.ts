@@ -24,7 +24,7 @@ type AuthLookupUser = {
   active: boolean;
   createdAt: Date;
   updatedAt: Date;
-  userFunction: "vendedor" | "financeiro" | "suporte" | "entrega" | "administrador" | "outro" | null;
+  userFunction: "vendedor" | "representante_comercial" | "financeiro" | "suporte" | "entrega" | "administrador" | "outro" | null;
   telefone: string | null;
   forcePasswordReset: boolean;
   lastAssignedAt: Date | null;

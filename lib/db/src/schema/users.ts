@@ -16,6 +16,7 @@ export const platformRoleEnum = pgEnum("platform_role", [
 
 export const userFunctionEnum = pgEnum("user_function", [
   "vendedor",
+  "representante_comercial",
   "financeiro",
   "suporte",
   "entrega",

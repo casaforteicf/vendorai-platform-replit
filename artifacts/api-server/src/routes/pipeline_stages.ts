@@ -101,6 +101,7 @@ export const SYSTEM_STAGES_BY_PIPELINE: Record<PipelineKey, SystemStage[]> = {
 
 const BUILTIN_FUNCTIONS = new Set([
   "vendedor",
+  "representante_comercial",
   "financeiro",
   "suporte",
   "entrega",

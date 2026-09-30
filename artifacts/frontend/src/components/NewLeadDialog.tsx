@@ -166,7 +166,7 @@ function canReceiveLeads(user: AssignmentUser) {
   if (user.active === false) return false;
   if (user.leadAssignmentEnabled === false) return false;
   if (user.leadAssignmentEnabled === true) return true;
-  return user.platformRole === "tenant_seller" || user.userFunction === "vendedor";
+  return user.platformRole === "tenant_seller" || user.userFunction === "vendedor" || user.userFunction === "representante_comercial";
 }
 
 function stableIndex(seed: string, length: number) {

@@ -111,7 +111,7 @@ function canAccessTenant(req: Request, tenantId: string) {
 function restrictedToOwnWork(req: Request) {
   if (isAdmin(req)) return false;
   const fn = req.user?.userFunction as string | undefined;
-  return req.user?.platformRole === "tenant_seller" || fn === "vendedor" || fn === "entrega" || fn === "suporte";
+  return req.user?.platformRole === "tenant_seller" || fn === "vendedor" || fn === "representante_comercial" || fn === "entrega" || fn === "suporte";
 }
 
 function workCode(prefix: "PED" | "ENT" | "AST" | "OP") {

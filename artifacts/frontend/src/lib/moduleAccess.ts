@@ -86,13 +86,14 @@ export const USER_MODULES = new Proxy(ALL_USER_MODULES, {
 export const DEFAULT_MODULES_BY_FUNCTION: Record<UserFunction, UserModuleKey[]> = {
   administrador: [...GENERAL_MODULES],
   vendedor: ["dashboard", "leads", "prospector", "deals", "conversations", "agenda", "proposals", "catalog"],
+  representante_comercial: ["dashboard", "leads", "prospector", "deals", "conversations", "agenda", "proposals", "catalog"],
   financeiro: ["dashboard", "deals", "proposals", "catalog", "erp", "analytics"],
   suporte: ["dashboard", "leads", "prospector", "conversations", "agenda", "knowledge"],
   entrega: ["dashboard", "deals", "deliveries", "proposals"],
   outro: ["dashboard", "leads", "prospector", "deals", "conversations", "agenda", "proposals", "catalog", "erp", "analytics", "revenue_scout"],
 };
 
-const PHARMACY_DEFAULT_FUNCTIONS = new Set<UserFunction>(["administrador", "vendedor", "outro"]);
+const PHARMACY_DEFAULT_FUNCTIONS = new Set<UserFunction>(["administrador", "vendedor", "representante_comercial", "outro"]);
 
 export function modulesForFunction(fn?: UserFunction | null, tenantVertical?: string | null): UserModuleKey[] {
   const userFunction = fn ?? "outro";

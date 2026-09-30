@@ -179,7 +179,7 @@ router.get("/activities/:id", async (req, res) => {
   const actRole = req.user?.platformRole;
   const actFn = req.user?.userFunction as string | undefined;
   const actIsSeller =
-    actRole === "tenant_seller" || actFn === "vendedor" || actFn === "entrega";
+    actRole === "tenant_seller" || actFn === "vendedor" || actFn === "representante_comercial" || actFn === "entrega";
   const actIsAdmin =
     actRole === "super_admin" || actRole === "tenant_admin";
 

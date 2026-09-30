@@ -629,7 +629,7 @@ router.get("/agendamentos/:id", async (req, res) => {
   const role = req.user?.platformRole;
   const fn = req.user?.userFunction as string | undefined;
   const isSeller =
-    role === "tenant_seller" || fn === "vendedor" || fn === "entrega";
+    role === "tenant_seller" || fn === "vendedor" || fn === "representante_comercial" || fn === "entrega";
   const isAdmin =
     role === "super_admin" || role === "tenant_admin";
 

@@ -35,7 +35,7 @@ export type Criterio = (typeof CRITERIOS_PADRAO)[number];
 export function canReceiveLeads(candidate: Pick<AssignmentCandidate, "platformRole" | "userFunction" | "leadAssignmentEnabled">): boolean {
   if (candidate.leadAssignmentEnabled === false) return false;
   if (candidate.leadAssignmentEnabled === true) return true;
-  return candidate.platformRole === "tenant_seller" || candidate.userFunction === "vendedor";
+  return candidate.platformRole === "tenant_seller" || candidate.userFunction === "vendedor" || candidate.userFunction === "representante_comercial";
 }
 
 function normalizeTerritory(value?: string | null): string {

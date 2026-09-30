@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 
 const BUILTIN_FUNCTIONS = [
   { value: "builtin:vendedor", label: "Vendedor" },
+  { value: "builtin:representante_comercial", label: "Representante Comercial" },
   { value: "builtin:financeiro", label: "Financeiro" },
   { value: "builtin:suporte", label: "Suporte" },
   { value: "builtin:entrega", label: "Entrega" },
