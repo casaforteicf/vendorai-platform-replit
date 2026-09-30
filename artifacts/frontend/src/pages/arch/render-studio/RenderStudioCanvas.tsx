@@ -75,7 +75,7 @@ function ProgressOverlay({ stage, elapsedSeconds, isRecovering }: { stage: strin
 
 // ─── P2-13: SelectionCanvas overlay ──────────────────────────────────────────
 
-function SelectionCanvas({ isActive, renderUrl, targetImageRef, onSelection, onUpdateSelection, existingSelections, onClearSelection }: {
+function SelectionCanvas({ isActive, renderUrl, targetImageRef, onSelection, onUpdateSelection, existingSelections, onClearSelection, hideSeed = false }: {
   isActive: boolean;
   renderUrl: string;
   targetImageRef: React.RefObject<HTMLImageElement>;
@@ -83,6 +83,7 @@ function SelectionCanvas({ isActive, renderUrl, targetImageRef, onSelection, onU
   onUpdateSelection?: (id: string, patch: Partial<Pick<SelectionRect, "x" | "y" | "w" | "h">>) => void;
   existingSelections: SelectionRect[];
   onClearSelection: () => void;
+  hideSeed?: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -99,7 +100,7 @@ function SelectionCanvas({ isActive, renderUrl, targetImageRef, onSelection, onU
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    existingSelections.forEach((sel) => {
+    if (!hideSeed) existingSelections.forEach((sel) => {
       const x = (sel.x / 100) * canvas.width, y = (sel.y / 100) * canvas.height;
       const w = (sel.w / 100) * canvas.width, h = (sel.h / 100) * canvas.height;
       const active = sel.id === activeSelectionId;
@@ -126,7 +127,7 @@ function SelectionCanvas({ isActive, renderUrl, targetImageRef, onSelection, onU
       ctx.fillStyle = "rgba(124,58,237,0.12)"; ctx.fillRect(x,y,w,h);
       ctx.strokeStyle = "#7C3AED"; ctx.lineWidth = 2; ctx.setLineDash([6,3]); ctx.strokeRect(x,y,w,h);
     }
-  }, [currentRect, existingSelections, activeSelectionId, isActive]);
+  }, [currentRect, existingSelections, activeSelectionId, isActive, hideSeed]);
 
   function coords(e: React.MouseEvent<HTMLCanvasElement>) {
     const canvas = canvasRef.current; if (!canvas) return {x:0,y:0};
@@ -420,6 +421,7 @@ export function RenderStudioCanvas({ step, imageDataUrl, renderUrl, loading, isD
                   onUpdateSelection={onUpdateSelection}
                   existingSelections={selections}
                   onClearSelection={onClearSelection}
+                  hideSeed={Boolean(materialMaskPreviewUrl)}
                 />
               )}
             </div>
