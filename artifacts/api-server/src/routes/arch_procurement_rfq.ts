@@ -328,7 +328,7 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async
           budgetItemId: row.id, specObjectId: row.spec_object_id, item: row.item, description: row.description,
           ambienteId: row.ambiente_id, ambiente: row.ambiente_nome || null, region: row.spec_region || null, quantity: n(row.quantity, 1), unit: row.unit || "un",
           productName: row.product_name, materialName: row.material_name, manufacturerName: row.manufacturer_name,
-          total, saleTotal: rowSale || null, category: group.category, discipline: group.discipline,
+          total, category: group.category, discipline: group.discipline,
         };
         const hash = scopeHash(snapshot);
         const existing = await client.query(
