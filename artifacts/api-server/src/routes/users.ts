@@ -178,6 +178,113 @@ router.post(
   },
 );
 
+router.patch(
+  "/tenants/:tenantId/user-functions/:functionId",
+  requireRole("super_admin", "tenant_admin"),
+  async (req, res) => {
+    const tenantId = String(req.params["tenantId"]);
+    const functionId = String(req.params["functionId"]);
+
+    if (!canManageTenant(req, tenantId)) {
+      res.status(403).json({ error: "Access denied to this tenant" });
+      return;
+    }
+
+    const parsed = createTenantUserFunctionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(422).json({ error: parsed.error.message });
+      return;
+    }
+
+    const existing = await findTenantUserFunction(functionId, tenantId);
+    if (!existing) {
+      res.status(404).json({ error: "Função não encontrada." });
+      return;
+    }
+
+    const permissions = [...new Set(parsed.data.permissions)];
+    const invalidPermission = permissions.find((permission) => !USER_MODULE_KEYS.has(permission));
+    if (invalidPermission) {
+      res.status(422).json({ error: `Invalid module permission: ${invalidPermission}` });
+      return;
+    }
+
+    try {
+      const [updated] = await db
+        .update(tenantUserFunctionsTable)
+        .set({
+          name: parsed.data.name.trim(),
+          permissions,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(tenantUserFunctionsTable.id, functionId),
+            eq(tenantUserFunctionsTable.tenantId, tenantId),
+          ),
+        )
+        .returning();
+
+      res.json(updated);
+    } catch (err: unknown) {
+      if (isUniqueViolation(err)) {
+        res.status(409).json({ error: "Já existe uma função com esse nome." });
+        return;
+      }
+      throw err;
+    }
+  },
+);
+
+router.delete(
+  "/tenants/:tenantId/user-functions/:functionId",
+  requireRole("super_admin", "tenant_admin"),
+  async (req, res) => {
+    const tenantId = String(req.params["tenantId"]);
+    const functionId = String(req.params["functionId"]);
+
+    if (!canManageTenant(req, tenantId)) {
+      res.status(403).json({ error: "Access denied to this tenant" });
+      return;
+    }
+
+    const existing = await findTenantUserFunction(functionId, tenantId);
+    if (!existing) {
+      res.status(404).json({ error: "Função não encontrada." });
+      return;
+    }
+
+    const [assignedUser] = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(
+        and(
+          eq(usersTable.tenantId, tenantId),
+          eq(usersTable.customFunctionId, functionId),
+        ),
+      )
+      .limit(1);
+
+    if (assignedUser) {
+      res.status(409).json({
+        error: "Esta função está vinculada a usuários. Altere a função desses usuários antes de excluir.",
+      });
+      return;
+    }
+
+    await db
+      .delete(tenantUserFunctionsTable)
+      .where(
+        and(
+          eq(tenantUserFunctionsTable.id, functionId),
+          eq(tenantUserFunctionsTable.tenantId, tenantId),
+        ),
+      );
+
+    res.status(204).send();
+  },
+);
+
 router.get("/tenants/:tenantId/users", requireRole("super_admin", "tenant_admin"), async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
 

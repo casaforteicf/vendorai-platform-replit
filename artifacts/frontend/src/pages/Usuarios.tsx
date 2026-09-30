@@ -129,8 +129,23 @@ const PT_COPY = {
   selectAccess: "Selecione os acessos",
   selectAccessDescription: "A nova função precisa ter pelo menos um módulo liberado.",
   functionCreated: "Função criada",
+  functionUpdated: "Função atualizada",
+  functionUpdatedDescription: "Nome e acessos padrão foram atualizados.",
+  functionDeleted: "Função excluída",
+  functionDeletedDescription: "A função personalizada foi removida.",
   functionSelected: (name: string) => `${name} já foi selecionada para este usuário.`,
   functionCreateError: "Erro ao criar função",
+  functionUpdateError: "Erro ao atualizar função",
+  functionDeleteError: "Erro ao excluir função",
+  manageFunctions: "Gerenciar",
+  manageFunctionsTitle: "Gerenciar funções",
+  manageFunctionsDescription: "Edite ou exclua funções personalizadas da empresa.",
+  noCustomFunctions: "Nenhuma função personalizada criada.",
+  editFunction: "Editar função",
+  deleteFunction: "Excluir função",
+  deleteFunctionTitle: "Excluir função?",
+  deleteFunctionDescription: (name: string) => `A função ${name} será excluída. Usuários vinculados precisam ser alterados antes.`,
+  saveFunction: "Salvar função",
   requiredFields: "Campos obrigatórios",
   requiredFieldsDescription: "Preencha nome e e-mail do usuário.",
   passwordRequired: "Senha obrigatória",
@@ -239,8 +254,23 @@ const ES_COPY = {
   selectAccess: "Selecciona los accesos",
   selectAccessDescription: "La nueva función debe tener al menos un módulo habilitado.",
   functionCreated: "Función creada",
+  functionUpdated: "Función actualizada",
+  functionUpdatedDescription: "El nombre y los accesos predeterminados fueron actualizados.",
+  functionDeleted: "Función eliminada",
+  functionDeletedDescription: "La función personalizada fue eliminada.",
   functionSelected: (name: string) => `${name} ya fue seleccionada para este usuario.`,
   functionCreateError: "Error al crear la función",
+  functionUpdateError: "Error al actualizar la función",
+  functionDeleteError: "Error al eliminar la función",
+  manageFunctions: "Gestionar",
+  manageFunctionsTitle: "Gestionar funciones",
+  manageFunctionsDescription: "Edita o elimina funciones personalizadas de la empresa.",
+  noCustomFunctions: "No hay funciones personalizadas creadas.",
+  editFunction: "Editar función",
+  deleteFunction: "Eliminar función",
+  deleteFunctionTitle: "¿Eliminar función?",
+  deleteFunctionDescription: (name: string) => `La función ${name} será eliminada. Los usuarios vinculados deben cambiarse antes.`,
+  saveFunction: "Guardar función",
   requiredFields: "Campos obligatorios",
   requiredFieldsDescription: "Completa el nombre y el correo electrónico del usuario.",
   passwordRequired: "Contraseña obligatoria",
@@ -386,6 +416,9 @@ export default function Usuarios() {
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [statusUpdatingUserId, setStatusUpdatingUserId] = useState<string | null>(null);
   const [functionDialogOpen, setFunctionDialogOpen] = useState(false);
+  const [manageFunctionsOpen, setManageFunctionsOpen] = useState(false);
+  const [editingFunction, setEditingFunction] = useState<TenantUserFunction | null>(null);
+  const [deleteFunctionTarget, setDeleteFunctionTarget] = useState<TenantUserFunction | null>(null);
   const [newFunctionName, setNewFunctionName] = useState("");
   const [newFunctionPermissions, setNewFunctionPermissions] = useState<UserModuleKey[]>([]);
   const [creatingFunction, setCreatingFunction] = useState(false);
@@ -539,8 +572,20 @@ export default function Usuarios() {
   }
 
   function openNewFunctionDialog() {
+    setEditingFunction(null);
     setNewFunctionName("");
     setNewFunctionPermissions([]);
+    setFunctionDialogOpen(true);
+  }
+
+  function openEditFunction(customFunction: TenantUserFunction) {
+    setEditingFunction(customFunction);
+    setNewFunctionName(customFunction.name);
+    setNewFunctionPermissions(
+      customFunction.permissions.filter((permission): permission is UserModuleKey =>
+        USER_MODULES.some((module) => module.key === permission),
+      ),
+    );
     setFunctionDialogOpen(true);
   }
 
@@ -570,7 +615,7 @@ export default function Usuarios() {
     }));
   }
 
-  async function handleCreateFunction() {
+  async function handleSaveFunction() {
     const name = newFunctionName.trim();
     if (name.length < 2) {
       toast({ title: copy.functionNameRequired, description: copy.functionNameRequiredDescription, variant: "destructive" });
@@ -583,30 +628,80 @@ export default function Usuarios() {
 
     setCreatingFunction(true);
     try {
-      const created = await customFetch<TenantUserFunction>(`/api/tenants/${tenantId}/user-functions`, {
-        method: "POST",
-        body: JSON.stringify({ name, permissions: newFunctionPermissions }),
-        responseType: "json",
-      });
-      queryClient.setQueryData<TenantUserFunction[]>(userFunctionsQueryKey, (current = []) =>
-        [...current.filter((item) => item.id !== created.id), created].sort((a, b) => a.name.localeCompare(b.name, locale)),
+      const saved = await customFetch<TenantUserFunction>(
+        editingFunction
+          ? `/api/tenants/${tenantId}/user-functions/${editingFunction.id}`
+          : `/api/tenants/${tenantId}/user-functions`,
+        {
+          method: editingFunction ? "PATCH" : "POST",
+          body: JSON.stringify({ name, permissions: newFunctionPermissions }),
+          responseType: "json",
+        },
       );
-      setFormData((current) => ({
-        ...current,
-        userFunction: "outro",
-        customFunctionId: created.id,
-        permissions: created.permissions.filter((permission): permission is UserModuleKey =>
-          USER_MODULES.some((module) => module.key === permission),
-        ),
-      }));
+      queryClient.setQueryData<TenantUserFunction[]>(userFunctionsQueryKey, (current = []) =>
+        [...current.filter((item) => item.id !== saved.id), saved].sort((a, b) => a.name.localeCompare(b.name, locale)),
+      );
+      if (!editingFunction) {
+        setFormData((current) => ({
+          ...current,
+          userFunction: "outro",
+          customFunctionId: saved.id,
+          permissions: saved.permissions.filter((permission): permission is UserModuleKey =>
+            USER_MODULES.some((module) => module.key === permission),
+          ),
+        }));
+      } else if (formData.customFunctionId === saved.id) {
+        setFormData((current) => ({
+          ...current,
+          permissions: saved.permissions.filter((permission): permission is UserModuleKey =>
+            USER_MODULES.some((module) => module.key === permission),
+          ),
+        }));
+      }
       setFunctionDialogOpen(false);
+      setEditingFunction(null);
       setNewFunctionName("");
       setNewFunctionPermissions([]);
-      toast({ title: copy.functionCreated, description: copy.functionSelected(created.name) });
+      toast({
+        title: editingFunction ? copy.functionUpdated : copy.functionCreated,
+        description: editingFunction ? copy.functionUpdatedDescription : copy.functionSelected(saved.name),
+      });
     } catch (err: any) {
-      toast({ title: copy.functionCreateError, description: err?.message || copy.tryAgain, variant: "destructive" });
+      toast({
+        title: editingFunction ? copy.functionUpdateError : copy.functionCreateError,
+        description: err?.message || copy.tryAgain,
+        variant: "destructive",
+      });
     } finally {
       setCreatingFunction(false);
+    }
+  }
+
+  async function confirmDeleteFunction() {
+    if (!deleteFunctionTarget) return;
+    try {
+      await customFetch(`/api/tenants/${tenantId}/user-functions/${deleteFunctionTarget.id}`, {
+        method: "DELETE",
+        responseType: "text",
+      });
+      queryClient.setQueryData<TenantUserFunction[]>(userFunctionsQueryKey, (current = []) =>
+        current.filter((item) => item.id !== deleteFunctionTarget.id),
+      );
+      if (formData.customFunctionId === deleteFunctionTarget.id) {
+        setFormData((current) => ({
+          ...current,
+          userFunction: "outro",
+          customFunctionId: null,
+          permissions: modulesForFunction("outro"),
+        }));
+      }
+      if (functionFilter === `${CUSTOM_FUNCTION_PREFIX}${deleteFunctionTarget.id}`) {
+        setFunctionFilter("all");
+      }
+      setDeleteFunctionTarget(null);
+      toast({ title: copy.functionDeleted, description: copy.functionDeletedDescription });
+    } catch (err: any) {
+      toast({ title: copy.functionDeleteError, description: err?.message || copy.tryAgain, variant: "destructive" });
     }
   }
 
@@ -1031,9 +1126,14 @@ export default function Usuarios() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-3">
                     <Label>{copy.role}</Label>
-                    <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={openNewFunctionDialog}>
-                      <Plus className="h-3.5 w-3.5 mr-1" /> {copy.newFunction}
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={() => setManageFunctionsOpen(true)}>
+                        <Pencil className="h-3.5 w-3.5 mr-1" /> {copy.manageFunctions}
+                      </Button>
+                      <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={openNewFunctionDialog}>
+                        <Plus className="h-3.5 w-3.5 mr-1" /> {copy.newFunction}
+                      </Button>
+                    </div>
                   </div>
                   <Select value={functionSelectValue} onValueChange={handleFunctionChange}>
                     <SelectTrigger><SelectValue placeholder={copy.selectFunction} /></SelectTrigger>
@@ -1222,8 +1322,8 @@ export default function Usuarios() {
       <Dialog open={functionDialogOpen} onOpenChange={setFunctionDialogOpen}>
         <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{copy.newFunction}</DialogTitle>
-            <DialogDescription>{copy.newFunctionDescription}</DialogDescription>
+            <DialogTitle>{editingFunction ? copy.editFunction : copy.newFunction}</DialogTitle>
+            <DialogDescription>{editingFunction ? copy.manageFunctionsDescription : copy.newFunctionDescription}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
@@ -1272,13 +1372,96 @@ export default function Usuarios() {
             <Button type="button" variant="outline" onClick={() => setFunctionDialogOpen(false)} disabled={creatingFunction}>
               {copy.cancel}
             </Button>
-            <Button type="button" onClick={handleCreateFunction} disabled={creatingFunction}>
+            <Button type="button" onClick={handleSaveFunction} disabled={creatingFunction}>
               {creatingFunction && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {copy.createFunction}
+              {editingFunction ? copy.saveFunction : copy.createFunction}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={manageFunctionsOpen} onOpenChange={setManageFunctionsOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{copy.manageFunctionsTitle}</DialogTitle>
+            <DialogDescription>{copy.manageFunctionsDescription}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            {tenantFunctions.length === 0 ? (
+              <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                {copy.noCustomFunctions}
+              </div>
+            ) : tenantFunctions.map((customFunction) => (
+              <div key={customFunction.id} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="font-medium text-sm truncate">{customFunction.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {customFunction.permissions.length} {copy.defaultAccess.toLowerCase()}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    aria-label={copy.editFunction}
+                    onClick={() => {
+                      setManageFunctionsOpen(false);
+                      openEditFunction(customFunction);
+                    }}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-destructive hover:text-destructive"
+                    aria-label={copy.deleteFunction}
+                    onClick={() => setDeleteFunctionTarget(customFunction)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setManageFunctionsOpen(false)}>
+              {copy.cancel}
+            </Button>
+            <Button type="button" onClick={() => {
+              setManageFunctionsOpen(false);
+              openNewFunctionDialog();
+            }}>
+              <Plus className="h-4 w-4 mr-2" />
+              {copy.newFunction}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={Boolean(deleteFunctionTarget)} onOpenChange={(open) => { if (!open) setDeleteFunctionTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{copy.deleteFunctionTitle}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {copy.deleteFunctionDescription(deleteFunctionTarget?.name ?? "")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{copy.cancel}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={confirmDeleteFunction}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              {copy.deleteFunction}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
         <AlertDialogContent>
