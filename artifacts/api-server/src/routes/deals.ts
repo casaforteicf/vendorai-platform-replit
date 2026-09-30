@@ -25,6 +25,7 @@ import {
   sellerCommissionsTable,
   produtosCatalogoTable,
   farmaciaPedidoTable,
+  workCardsTable,
 } from "@workspace/db";
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
 import { sendDirectWhatsAppMessage, WhatsAppNotConnectedError } from "../services/omnichannel.js";
@@ -173,6 +174,87 @@ router.post("/deals", async (req, res) => {
     responsavelId: assignedTo,
   });
   res.status(201).json(deal);
+});
+
+const transferDealPipelineSchema = z.object({
+  targetPipeline: z.literal("suporte"),
+  responsavelId: z.string().min(1),
+  observacao: z.string().trim().max(2000).optional(),
+});
+
+router.post("/deals/:id/transfer-pipeline", async (req, res) => {
+  const parsed = transferDealPipelineSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, String(req.params.id))).limit(1);
+  if (!deal) {
+    res.status(404).json({ error: "Deal not found" });
+    return;
+  }
+  if (req.user?.platformRole !== "super_admin" && deal.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+  if (!deal.leadId) {
+    res.status(422).json({ error: "O negócio precisa estar vinculado a um lead para ser transferido." });
+    return;
+  }
+
+  const [responsavel] = await db.select({ id: usersTable.id }).from(usersTable).where(and(
+    eq(usersTable.id, parsed.data.responsavelId),
+    eq(usersTable.tenantId, deal.tenantId),
+  )).limit(1);
+  if (!responsavel) {
+    res.status(422).json({ error: "Responsável do suporte inválido para este tenant." });
+    return;
+  }
+
+  const [existingSupport] = await db.select().from(workCardsTable).where(and(
+    eq(workCardsTable.tenantId, deal.tenantId),
+    eq(workCardsTable.pipeline, "suporte"),
+    eq(workCardsTable.leadId, deal.leadId),
+    eq(workCardsTable.dealId, deal.id),
+  )).limit(1);
+
+  const supportCard = existingSupport ?? (await db.insert(workCardsTable).values({
+    tenantId: deal.tenantId,
+    pipeline: "suporte",
+    tipo: "assistencia",
+    etapa: "chamado_cliente",
+    titulo: `Suporte • ${deal.titulo}`,
+    descricao: parsed.data.observacao || "Transferido da pipeline Comercial para Suporte.",
+    prioridade: "normal",
+    leadId: deal.leadId,
+    dealId: deal.id,
+    responsavelId: parsed.data.responsavelId,
+    metadata: {
+      origemPipeline: "comercial",
+      origemDealEtapa: deal.etapa,
+      transferidoEm: new Date().toISOString(),
+      transferidoPor: req.user?.sub ?? null,
+    },
+  }).returning())[0];
+
+  await db.update(dealsTable).set({
+    relationshipStage: "transferido_suporte",
+    updatedAt: new Date(),
+  }).where(eq(dealsTable.id, deal.id));
+
+  await recordDealJourney({
+    tenantId: deal.tenantId,
+    leadId: deal.leadId,
+    dealId: deal.id,
+    title: "Transferido de Comercial para Suporte",
+    description: parsed.data.observacao
+      ? `Novo chamado: ${supportCard.codigo}. Observação: ${parsed.data.observacao}`
+      : `Novo chamado: ${supportCard.codigo}. O histórico comercial foi preservado.`,
+    responsavelId: parsed.data.responsavelId,
+  });
+
+  res.json({ ok: true, dealId: deal.id, supportCard });
 });
 
 router.get("/tenants/:tenantId/deals", async (req, res) => {
