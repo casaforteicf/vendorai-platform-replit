@@ -845,6 +845,55 @@ export interface RenderJobParams {
 
 const MAX_RETENTATIVAS = 2;
 
+async function prepareMaterialReference(buffer: Buffer): Promise<Buffer> {
+  // Normaliza a referência para que o modelo receba o material em primeiro
+  // plano, sem depender do enquadramento original da foto do catálogo.
+  // "attention" prioriza a região visualmente informativa e evita bordas/fundos.
+  return sharp(buffer)
+    .rotate()
+    .resize(768, 768, { fit: "cover", position: "attention" })
+    .png({ compressionLevel: 6, adaptiveFiltering: true })
+    .toBuffer();
+}
+
+async function maskedAverageRgb(imageBuf: Buffer, maskBuf: Buffer): Promise<[number, number, number]> {
+  const meta = await sharp(imageBuf).metadata();
+  const width = meta.width ?? 0;
+  const height = meta.height ?? 0;
+  if (!width || !height) return [0, 0, 0];
+
+  const image = await sharp(imageBuf).resize(width, height, { fit: "fill" }).removeAlpha().raw().toBuffer();
+  const mask = await sharp(maskBuf).resize(width, height, { fit: "fill" }).greyscale().raw().toBuffer();
+
+  let sr = 0, sg = 0, sb = 0, n = 0;
+  for (let i = 0; i < width * height; i++) {
+    if ((mask[i] ?? 0) < 128) continue;
+    const p = i * 3;
+    sr += image[p] ?? 0;
+    sg += image[p + 1] ?? 0;
+    sb += image[p + 2] ?? 0;
+    n++;
+  }
+  return n ? [sr / n, sg / n, sb / n] : [0, 0, 0];
+}
+
+async function materialReferenceAverageRgb(referenceBuf: Buffer): Promise<[number, number, number]> {
+  const normalized = await prepareMaterialReference(referenceBuf);
+  const stats = await sharp(normalized).stats();
+  return [
+    stats.channels[0]?.mean ?? 0,
+    stats.channels[1]?.mean ?? 0,
+    stats.channels[2]?.mean ?? 0,
+  ];
+}
+
+function rgbDistance(a: [number, number, number], b: [number, number, number]): number {
+  const dr = a[0] - b[0];
+  const dg = a[1] - b[1];
+  const db = a[2] - b[2];
+  return Math.sqrt(dr * dr + dg * dg + db * db);
+}
+
 async function enhanceFinalRender(buffer: Buffer): Promise<Buffer> {
   const metadata = await sharp(buffer).metadata();
   const width = metadata.width ?? 0;
@@ -952,25 +1001,37 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
         ].join(" ");
 
         let materialReferenceDataUrl: string | undefined;
+        let materialReferenceOriginalDataUrl: string | undefined;
+        let materialReferenceBuffer: Buffer | undefined;
         if (materialReferenceUrl) {
           const reference = await fetchImageAsBuffer(materialReferenceUrl, storage);
-          materialReferenceDataUrl = bufferToDataUrl(reference.buf, reference.mime);
+          materialReferenceBuffer = reference.buf;
+          const normalizedReference = await prepareMaterialReference(reference.buf);
+          materialReferenceDataUrl = bufferToDataUrl(normalizedReference, "image/png");
+          materialReferenceOriginalDataUrl = bufferToDataUrl(reference.buf, reference.mime);
         }
 
         const finalLocalPrompt = materialReferenceDataUrl
           ? [
               localPrompt,
-              `MATERIAL REFERENCE LOCK: the second input image is the exact visual reference for the requested material${materialName ? ` "${materialName}"` : ""}.`,
-              "Inside the confirmed mask only, reproduce its base color, texture pattern, grain/vein direction, scale, roughness, gloss and reflectance as faithfully as possible.",
-              "Use the second image only as a material/finish reference. Never copy its object shape, scene, lighting, background or camera.",
+              `EXACT MATERIAL LOCK: the material selected by the user is${materialName ? ` "${materialName}"` : " the supplied catalog reference"}. This is not a suggestion and must not be replaced by a generic or similar material.`,
+              "The SECOND input image is a normalized close-up of the exact selected material. The THIRD input image, when present, is the original catalog reference for the same material.",
+              "Inside the confirmed mask only, transfer the exact visible material identity: base hue, undertone, grain/vein pattern family, grain direction, pattern scale, contrast, roughness, gloss, reflectance and finish character.",
+              "Adapt only perspective and scene lighting needed to make the exact same material physically plausible on the selected surface.",
+              "DO NOT invent another wood species, another stone, another MDF tone, another fabric, another finish, or a merely similar substitute.",
+              "Use reference images only for material appearance. Never copy their object shape, scene, background, crop or camera.",
             ].join(" ")
           : localPrompt;
+
+        const referenceImageDataUrls = materialReferenceDataUrl
+          ? [materialReferenceDataUrl, ...(materialReferenceOriginalDataUrl ? [materialReferenceOriginalDataUrl] : [])]
+          : undefined;
 
         const generated = await generateRenderPremiumOpenAI({
           tenantId: tid,
           imageDataUrl: originalDataUrl,
           maskDataUrl: bufferToDataUrl(maskBuf, "image/png"),
-          referenceImageDataUrls: materialReferenceDataUrl ? [materialReferenceDataUrl] : undefined,
+          referenceImageDataUrls,
           prompt: finalLocalPrompt,
           logger,
         });
@@ -982,17 +1043,35 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
         motor = `${generated.provider}-${generated.model}`;
 
         const validation = await validateEdgeIntegrity(originalBuf, compositedBuf, maskBuf);
-        logger?.info({ renderId, materialAwareSelection, ...validation }, "arch/ai-render: validação de bordas (Genius Render local)");
 
-        if (!validation.valid && retentativas < MAX_RETENTATIVAS) {
+        let materialFidelityValid = true;
+        let materialColorDistance: number | undefined;
+        if (materialReferenceBuffer) {
+          const referenceRgb = await materialReferenceAverageRgb(materialReferenceBuffer);
+          const resultRgb = await maskedAverageRgb(compositedBuf, maskBuf);
+          materialColorDistance = rgbDistance(referenceRgb, resultRgb);
+          // A iluminação da cena pode deslocar a cor; rejeitamos apenas desvios
+          // grandes, típicos de material substituído/ignorado pelo gerador.
+          materialFidelityValid = materialColorDistance <= 92;
+        }
+
+        logger?.info(
+          { renderId, materialAwareSelection, materialColorDistance, materialFidelityValid, ...validation },
+          "arch/ai-render: validação de bordas e fidelidade do material",
+        );
+
+        if ((!validation.valid || !materialFidelityValid) && retentativas < MAX_RETENTATIVAS) {
           logger?.warn({ renderId, retentativas }, "arch/ai-render: ajuste local rejeitado, tentando novamente");
           await db.update(archAiRendersTable)
             .set({ retentativas: String(retentativas + 1) })
             .where(ownedRender);
           return processRenderJob({ ...params, retentativas: retentativas + 1 });
         }
-        if (!validation.valid) {
-          throw new Error(`Ajuste local rejeitado após ${MAX_RETENTATIVAS} tentativas: ${validation.details}`);
+        if (!validation.valid || !materialFidelityValid) {
+          const materialDetail = !materialFidelityValid
+            ? ` Material selecionado não foi reproduzido com fidelidade suficiente (desvio de cor ${Math.round(materialColorDistance ?? 0)}).`
+            : "";
+          throw new Error(`Ajuste local rejeitado após ${MAX_RETENTATIVAS} tentativas: ${validation.details}.${materialDetail}`);
         }
 
         await db.update(archAiRendersTable)
