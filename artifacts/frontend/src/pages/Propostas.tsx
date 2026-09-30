@@ -6007,7 +6007,7 @@ function newFreeItem(): FreeItem {
                   </p>
                 </div>
 
-                {importError && <p className="text-sm text-destructive">{importError}</p>
+                {importError && <p className="text-sm text-destructive">{importError}</p>}
               </div>
             )}
 
