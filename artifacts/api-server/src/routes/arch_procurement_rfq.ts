@@ -613,6 +613,26 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
     const revision = revisionResult.rows[0];
     if (!revision) throw new Error("Não foi possível criar a revisão comercial.");
 
+    const baseProposalTotal = Math.max(0, n(base.valor_total));
+    const priceFactor = baseProposalTotal > 0 ? saleTotal / baseProposalTotal : 1;
+    await client.query(
+      `UPDATE propostas
+          SET itens = COALESCE((
+            SELECT jsonb_agg(
+              jsonb_set(
+                item,
+                '{valorUnitario}',
+                to_jsonb(ROUND(COALESCE((item->>'valorUnitario')::numeric,0) * $1::numeric, 2)),
+                true
+              )
+            )
+            FROM jsonb_array_elements(COALESCE(itens,'[]'::jsonb)) item
+          ), '[]'::jsonb),
+          updated_at=now()
+        WHERE id=$2 AND tenant_id=$3`,
+      [String(priceFactor), revisionId, tid],
+    );
+
     await client.query(
       `INSERT INTO orcamento_revisoes
         (id,tenant_id,lead_id,deal_id,base_proposta_id,proposta_revisao_id,revisao_numero,numero_orcamento,
