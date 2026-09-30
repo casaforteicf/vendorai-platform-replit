@@ -1076,7 +1076,13 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
     }
 
     // ── 6. Finalização técnica + salvar em alta resolução ─────────────
-    const finalResultBuf = await enhanceFinalRender(resultBuf);
+    // Ajustes locais já partem de uma versão finalizada em alta resolução.
+    // Reprocessar a imagem inteira aqui (resize + sharpen) altera pixels fora
+    // da máscara e quebra a promessa de "somente a região selecionada".
+    // Para edições locais compostadas, preservamos o resultado composto
+    // exatamente como saiu do compositeWithOriginal; o restante permanece
+    // pixel a pixel igual à versão pai.
+    const finalResultBuf = compositedFlag ? resultBuf : await enhanceFinalRender(resultBuf);
     const finalMeta = await sharp(finalResultBuf).metadata();
     const [renderContext] = await db
       .select({
