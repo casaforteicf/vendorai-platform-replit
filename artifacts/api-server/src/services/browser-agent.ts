@@ -186,6 +186,11 @@ export async function planBrowserAction(
   throw new Error("BROWSER_PLAN_INVALID: a IA não retornou uma ação válida após duas tentativas.");
 }
 
+export function isRecoverableSelectorError(error: unknown) {
+  const message = String((error as any)?.message ?? error ?? "");
+  return /No element found for selector|failed to find element matching selector|No node found for selector|Cannot find context with specified id|Node is detached from document/i.test(message);
+}
+
 async function sensitive(page: Page, selector: string) {
   const text = await page.$eval(selector, el => {
     const h = el as HTMLElement;
@@ -279,10 +284,15 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
       timeout: 30000,
     });
 
+    let selectorRecoveryNote = "";
     for (let index = 1; index <= maxSteps; index++) {
       const state = await snapshotBrowserPage(page);
       assertBrowserPageAccessible(state);
-      const action = await planBrowserAction(input.tenantId, input.goal, state, steps, secretsAvailable);
+      const planningGoal = selectorRecoveryNote
+        ? input.goal + "\nRECUPERAÇÃO DE NAVEGAÇÃO: " + selectorRecoveryNote
+        : input.goal;
+      selectorRecoveryNote = "";
+      const action = await planBrowserAction(input.tenantId, planningGoal, state, steps, secretsAvailable);
       steps.push({ index, action: action.action, url: state.url, detail: "reason" in action ? action.reason : undefined });
 
       if (action.action === "finish") {
@@ -291,7 +301,20 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
         return { ok: true, finalUrl: state.url, answer: action.answer, steps };
       }
 
-      const extracted = await executeBrowserAction(page, action, input);
+      let extracted: string | undefined;
+      try {
+        extracted = await executeBrowserAction(page, action, input);
+      } catch (error) {
+        if (isRecoverableSelectorError(error)) {
+          selectorRecoveryNote =
+            "O seletor da ação anterior deixou de existir antes da execução. " +
+            "Faça um novo plano usando SOMENTE um selector presente no snapshot atual de page.interactive[].selector. " +
+            "Não reutilize o seletor que falhou: " + ("selector" in action ? action.selector : "indisponível");
+          steps[steps.length - 1]!.detail = "selector_stale_replan";
+          continue;
+        }
+        throw error;
+      }
       if (action.action === "extract" && extracted) {
         const state2 = await snapshotBrowserPage(page);
         assertBrowserPageAccessible(state2);
