@@ -550,8 +550,8 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
     const tid = requireTenant(req, res); if (!tid) return;
     const obraId = String(req.params["obraId"] || "");
     const packageId = String(req.params["packageId"] || "");
-    const saleTotal = Math.max(0, n(req.body?.saleTotal));
-    if (saleTotal <= 0) return res.status(422).json({ error: "Informe um novo preço de venda válido." });
+    const packageSaleTotal = Math.max(0, n(req.body?.saleTotal));
+    if (packageSaleTotal <= 0) return res.status(422).json({ error: "Informe o novo preço de venda deste pacote." });
 
     const pkgResult = await client.query(
       `SELECT * FROM arch_rfq_packages WHERE id=$1::uuid AND obra_id=$2 AND tenant_id=$3 LIMIT 1`,
@@ -601,6 +601,59 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
     const nowIso = new Date().toISOString();
 
     await client.query("BEGIN");
+
+    // First synchronize the current commercial proposal across all budget items.
+    // Then alter only the items that belong to this supplier package.
+    const budgetItemsResult = await client.query(
+      `SELECT id,total
+         FROM arch_budget_items
+        WHERE budget_id=$1::uuid AND tenant_id::text=$2 AND deleted_at IS NULL
+        ORDER BY sort_order,created_at`,
+      [pkg.budget_id, tid],
+    );
+    const technicalBase = budgetItemsResult.rows.reduce((sum: number, row: any) => sum + n(row.total), 0);
+    const currentProjectSale = Math.max(0, n(base.valor_total));
+    if (technicalBase > 0 && currentProjectSale > 0) {
+      await client.query(
+        `UPDATE arch_budget_items
+            SET sale_total=ROUND(($1::numeric * total::numeric / $2::numeric),2),updated_at=now()
+          WHERE budget_id=$3::uuid AND tenant_id::text=$4 AND deleted_at IS NULL`,
+        [String(currentProjectSale), String(technicalBase), pkg.budget_id, tid],
+      );
+    }
+
+    const packageBudgetItems = await client.query(
+      `SELECT abi.id,abi.total
+         FROM arch_rfq_package_items pi
+         JOIN compras_obras c ON c.id=pi.compra_id
+         JOIN arch_budget_items abi ON abi.id=c.budget_item_id
+        WHERE pi.package_id=$1::uuid
+          AND c.tenant_id=$2 AND c.obra_id=$3
+          AND abi.budget_id=$4::uuid AND abi.tenant_id::text=$2 AND abi.deleted_at IS NULL`,
+      [packageId, tid, obraId, pkg.budget_id],
+    );
+    const packageTechnicalBase = packageBudgetItems.rows.reduce((sum: number, row: any) => sum + n(row.total), 0);
+    if (!packageBudgetItems.rows.length || packageTechnicalBase <= 0) {
+      throw new Error("Não foi possível localizar os itens do pacote no orçamento atual.");
+    }
+
+    const packageItemIds = packageBudgetItems.rows.map((row: any) => String(row.id));
+    await client.query(
+      `UPDATE arch_budget_items
+          SET sale_total=ROUND(($1::numeric * total::numeric / $2::numeric),2),updated_at=now()
+        WHERE id=ANY($3::uuid[]) AND budget_id=$4::uuid AND tenant_id::text=$5 AND deleted_at IS NULL`,
+      [String(packageSaleTotal), String(packageTechnicalBase), packageItemIds, pkg.budget_id, tid],
+    );
+
+    const projectSaleResult = await client.query(
+      `SELECT COALESCE(SUM(COALESCE(sale_total,0)),0)::numeric AS total
+         FROM arch_budget_items
+        WHERE budget_id=$1::uuid AND tenant_id::text=$2 AND deleted_at IS NULL`,
+      [pkg.budget_id, tid],
+    );
+    const projectSaleTotal = Math.max(0, n(projectSaleResult.rows[0]?.total));
+    if (projectSaleTotal <= 0) throw new Error("O preço comercial total ficou inválido após a revisão.");
+
     const revisionResult = await client.query(
       `INSERT INTO propostas (
         id,tenant_id,lead_id,deal_id,titulo,itens,apresentacao,valor_total,status,validade_ate,observacoes,
@@ -630,30 +683,32 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
       FROM propostas
       WHERE id=$9 AND tenant_id=$10
       RETURNING *`,
-      [revisionId, nowIso, addendum ? "contract_addendum" : "commercial_revision", baseNumero, revisionLabel, String(saleTotal),
-       revisionNumero, crypto.randomUUID().replace(/-/g, ""), base.id, tid],
+      [revisionId, nowIso, addendum ? "contract_addendum" : "commercial_revision", baseNumero, revisionLabel,
+       String(projectSaleTotal), revisionNumero, crypto.randomUUID().replace(/-/g, ""), base.id, tid],
     );
     const revision = revisionResult.rows[0];
     if (!revision) throw new Error("Não foi possível criar a revisão comercial.");
 
+    // Keep the cloned proposal internally consistent. This is a draft revision:
+    // detailed commercial items remain editable before sending.
     const baseProposalTotal = Math.max(0, n(base.valor_total));
-    const priceFactor = baseProposalTotal > 0 ? saleTotal / baseProposalTotal : 1;
+    const projectPriceFactor = baseProposalTotal > 0 ? projectSaleTotal / baseProposalTotal : 1;
     await client.query(
       `UPDATE propostas
-          SET itens = COALESCE((
+          SET itens=COALESCE((
             SELECT jsonb_agg(
               jsonb_set(
                 item,
                 '{valorUnitario}',
-                to_jsonb(ROUND(COALESCE((item->>'valorUnitario')::numeric,0) * $1::numeric, 2)),
+                to_jsonb(ROUND(COALESCE((item->>'valorUnitario')::numeric,0) * $1::numeric,2)),
                 true
               )
             )
             FROM jsonb_array_elements(COALESCE(itens,'[]'::jsonb)) item
-          ), '[]'::jsonb),
+          ),'[]'::jsonb),
           updated_at=now()
         WHERE id=$2 AND tenant_id=$3`,
-      [String(priceFactor), revisionId, tid],
+      [String(projectPriceFactor), revisionId, tid],
     );
 
     await client.query(
@@ -663,7 +718,7 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
        VALUES($1,$2,$3,$4,$5,$6,$7,$8,CURRENT_DATE,$9,$10,'[]'::jsonb,$11,now(),now())`,
       [reviewId, tid, base.lead_id, base.deal_id, rootBaseId, revisionId, revisionLabel, revisionNumero,
        "Revisão gerada a partir da análise de cotação de fornecedores",
-       `Custo de fornecedor alterou a margem do pacote ${pkg.code}. Novo preço comercial sugerido/definido pelo usuário.`,
+       `Pacote ${pkg.code}: preço comercial do pacote alterado de ${n(pkg.sale_total_snapshot).toFixed(2)} para ${packageSaleTotal.toFixed(2)}. Total comercial do projeto: ${projectSaleTotal.toFixed(2)}.`,
        req.user?.sub ?? null],
     );
 
@@ -672,18 +727,20 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
       [revisionId, pkg.project_id, tid],
     );
     await client.query(
-      `UPDATE arch_budgets SET sale_total=$1,sale_source='proposal',updated_at=now() WHERE id=$2::uuid AND tenant_id::text=$3`,
-      [String(saleTotal), pkg.budget_id, tid],
+      `UPDATE arch_budgets SET sale_total=$1,sale_source='proposal',updated_at=now()
+        WHERE id=$2::uuid AND tenant_id::text=$3`,
+      [String(projectSaleTotal), pkg.budget_id, tid],
     );
-    await client.query(
-      `UPDATE arch_budget_items
-          SET sale_total=CASE WHEN $2::numeric > 0 THEN ROUND(($1::numeric * total::numeric / $2::numeric),2) ELSE 0 END,
-              updated_at=now()
-        WHERE budget_id=$3::uuid AND tenant_id::text=$4 AND deleted_at IS NULL`,
-      [String(saleTotal), String(n((await client.query(`SELECT subtotal FROM arch_budgets WHERE id=$1::uuid`, [pkg.budget_id])).rows[0]?.subtotal)), pkg.budget_id, tid],
-    );
+
     await client.query("COMMIT");
-    res.status(201).json({ revision, revisionLabel, revisionNumero, saleTotal });
+    res.status(201).json({
+      revision,
+      revisionLabel,
+      revisionNumero,
+      packageSaleTotal,
+      previousPackageSaleTotal: n(pkg.sale_total_snapshot),
+      projectSaleTotal,
+    });
   } catch (err) {
     await client.query("ROLLBACK").catch(() => undefined);
     logger.error({ err }, "rfq commercial revision error");
