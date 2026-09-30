@@ -8055,6 +8055,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         rooms={terrainOnly || hideCurrentGeometryForReferenceReview ? [] : visibleRooms}
                         lotWidth={lotWidth}
                         lotDepth={lotDepth}
+                        showLotBoundary={startWithTerrain === true && terrainDefined}
                         activeFloor={activeFloor}
                         geometry={terrainOnly || hideCurrentGeometryForReferenceReview ? { ...geometry, walls: [], openings: [] } : geometry}
                         referenceImage={showReferenceImage && referencePlan?.kind === "image" ? {
