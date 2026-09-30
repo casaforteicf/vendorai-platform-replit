@@ -110,9 +110,20 @@ async function getProposalByProject(params: { tenantId?: string | null; projectI
 }
 
 async function createProposalFromBudget(tId: string | null, payload: CreateProposalFromBudgetPayload) {
-  const budgetResult = await pool.query(`SELECT * FROM arch_budgets WHERE id = $1`, [payload.budgetId]);
+  const budgetValues: unknown[] = [payload.budgetId];
+  let budgetWhere = "id = $1";
+  if (tId) {
+    budgetValues.push(tId);
+    budgetWhere += " AND tenant_id::text = $2";
+  }
+  const budgetResult = await pool.query(`SELECT * FROM arch_budgets WHERE ${budgetWhere} AND deleted_at IS NULL LIMIT 1`, budgetValues);
   const budget = budgetResult.rows[0];
   if (!budget) throw new Error("Orçamento não encontrado");
+  if (budget.sale_total == null || Number(budget.sale_total) <= 0) {
+    const error = new Error("Defina o preço de venda comercial no orçamento antes de gerar a proposta.");
+    (error as any).statusCode = 422;
+    throw error;
+  }
 
   const proposalId = crypto.randomUUID();
   const previousVersion = await pool.query(
@@ -122,7 +133,7 @@ async function createProposalFromBudget(tId: string | null, payload: CreatePropo
     [payload.projectId, tId],
   );
   const nextVersion = Number(previousVersion.rows[0]?.latest || 0) + 1;
-  const commercialTotal = budget.sale_total == null ? Number(budget.grand_total ?? 0) : Number(budget.sale_total);
+  const commercialTotal = Number(budget.sale_total);
 
   const proposalResult = await pool.query(
     `INSERT INTO arch_proposals (
@@ -338,6 +349,11 @@ archClientPortalApprovalRouter.post("/arch/propostas/from-budget", async (req, r
     res.status(201).json(result);
   } catch (err) {
     logger.error({ err }, "arch/propostas/from-budget error");
+    const statusCode = Number((err as any)?.statusCode || 0);
+    if (statusCode >= 400 && statusCode < 500) {
+      res.status(statusCode).json({ error: err instanceof Error ? err.message : "Não foi possível gerar a proposta." });
+      return;
+    }
     next(err);
   }
 });
