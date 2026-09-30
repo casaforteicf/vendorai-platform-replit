@@ -136,6 +136,13 @@ function formatDate(value?: string | null) {
   return new Date(value).toLocaleDateString("pt-BR");
 }
 
+function toDateInput(value?: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0, 10);
+}
+
 function safeItems(card: WorkCard): Array<{ nome?: string; quantidade?: number }> {
   const raw = card.metadata?.itens;
   return Array.isArray(raw) ? raw as Array<{ nome?: string; quantidade?: number }> : [];
@@ -216,8 +223,10 @@ export default function PipelineOperacional() {
 
   const stages = pipeline === "suporte" ? SUPPORT_STAGES : EXECUTION_STAGES;
   const cards = cardsQuery.data ?? [];
+  const isAdmin = (user as any)?.platformRole === "super_admin" || (user as any)?.platformRole === "tenant_admin" || (user as any)?.userFunction === "administrador";
   const stageIndex = (stage: string) => stages.findIndex(([key]) => key === stage);
-  const canMoveForward = (card: WorkCard, target: string) => target === card.etapa || stageIndex(target) >= stageIndex(card.etapa);
+  const canMoveForward = (card: WorkCard, target: string) =>
+    target === card.etapa || stageIndex(target) >= stageIndex(card.etapa) || (card.pipeline === "execucao" && isAdmin);
 
   function setPipeline(next: PipelineKind | "comercial" | "aquecimento" | "parceiros") {
     if (next === "comercial") navigate("/deals");
@@ -368,21 +377,113 @@ export default function PipelineOperacional() {
                   <label className="text-sm font-medium">Etapa</label>
                   <Select value={selectedCard.etapa} disabled={patchCard.isPending} onValueChange={(etapa) => { if (!patchCard.isPending) patchCard.mutate({ id: selectedCard.id, data: { etapa } }); }}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>{stages.filter(([key]) => stageIndex(key) >= stageIndex(selectedCard.etapa)).map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Responsável</label>
-                  <Select value={selectedCard.responsavelId || "__none__"} disabled={patchCard.isPending} onValueChange={(responsavelId) => { if (!patchCard.isPending) patchCard.mutate({ id: selectedCard.id, data: { responsavelId: responsavelId === "__none__" ? null : responsavelId } }); }}>
-                    <SelectTrigger><SelectValue placeholder="Selecionar responsável" /></SelectTrigger>
                     <SelectContent>
-                      {pipeline !== "suporte" && <SelectItem value="__none__">Sem responsável</SelectItem>}
-                      {(usersQuery.data ?? []).map((u) => <SelectItem key={u.id} value={u.id}>{u.name || u.email || u.id}</SelectItem>)}
+                      {stages
+                        .filter(([key]) => selectedCard.pipeline === "execucao" && isAdmin ? true : stageIndex(key) >= stageIndex(selectedCard.etapa))
+                        .map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}
                     </SelectContent>
                   </Select>
+                  {selectedCard.pipeline === "execucao" && isAdmin && (
+                    <p className="text-[11px] text-muted-foreground">Administrador pode corrigir manualmente a etapa, inclusive retornar. A alteração fica registrada no histórico.</p>
+                  )}
                 </div>
+                {selectedCard.pipeline === "suporte" && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Responsável</label>
+                    <Select value={selectedCard.responsavelId || "__none__"} disabled={patchCard.isPending} onValueChange={(responsavelId) => { if (!patchCard.isPending) patchCard.mutate({ id: selectedCard.id, data: { responsavelId: responsavelId === "__none__" ? null : responsavelId } }); }}>
+                      <SelectTrigger><SelectValue placeholder="Selecionar responsável" /></SelectTrigger>
+                      <SelectContent>
+                        {(usersQuery.data ?? []).map((u) => <SelectItem key={u.id} value={u.id}>{u.name || u.email || u.id}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
-                {selectedCard.descricao && <div className="rounded-lg border bg-muted/20 p-3"><p className="text-xs font-semibold uppercase text-muted-foreground">Relato / observações</p><p className="mt-1 whitespace-pre-wrap text-sm">{selectedCard.descricao}</p></div>}
+                {selectedCard.pipeline === "execucao" ? (
+                  <div className="space-y-4 rounded-lg border p-4">
+                    <div>
+                      <h3 className="text-sm font-semibold">Edição manual da execução</h3>
+                      <p className="text-xs text-muted-foreground">A automação continua ativa, mas estes campos podem ser corrigidos manualmente. Alterações ficam registradas no histórico.</p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium">Título do pedido</label>
+                      <Input
+                        key={`title-${selectedCard.id}-${selectedCard.titulo}`}
+                        defaultValue={selectedCard.titulo}
+                        disabled={patchCard.isPending}
+                        onBlur={(event) => {
+                          const titulo = event.currentTarget.value.trim();
+                          if (titulo && titulo !== selectedCard.titulo && !patchCard.isPending) patchCard.mutate({ id: selectedCard.id, data: { titulo } });
+                        }}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium">Prioridade</label>
+                        <Select value={selectedCard.prioridade} disabled={patchCard.isPending} onValueChange={(prioridade) => patchCard.mutate({ id: selectedCard.id, data: { prioridade } })}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="baixa">Baixa</SelectItem>
+                            <SelectItem value="normal">Normal</SelectItem>
+                            <SelectItem value="alta">Alta</SelectItem>
+                            <SelectItem value="urgente">Urgente</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium">Responsável</label>
+                        <Select value={selectedCard.responsavelId || "__none__"} disabled={patchCard.isPending} onValueChange={(responsavelId) => patchCard.mutate({ id: selectedCard.id, data: { responsavelId: responsavelId === "__none__" ? null : responsavelId } })}>
+                          <SelectTrigger><SelectValue placeholder="Selecionar responsável" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">Sem responsável</SelectItem>
+                            {(usersQuery.data ?? []).map((u) => <SelectItem key={u.id} value={u.id}>{u.name || u.email || u.id}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {[
+                        ["dataInicioPrevista", "Início previsto", selectedCard.dataInicioPrevista],
+                        ["dataInicioEfetiva", "Início efetivo", selectedCard.dataInicioEfetiva],
+                        ["dataFimPrevista", "Conclusão prevista", selectedCard.dataFimPrevista],
+                        ["dataFimEfetiva", "Conclusão efetiva", selectedCard.dataFimEfetiva],
+                      ].map(([field, label, value]) => (
+                        <div key={String(field)} className="space-y-1.5">
+                          <label className="text-xs font-medium">{String(label)}</label>
+                          <Input
+                            type="date"
+                            value={toDateInput(value as string | null)}
+                            disabled={patchCard.isPending}
+                            onChange={(event) => {
+                              const next = event.currentTarget.value;
+                              patchCard.mutate({ id: selectedCard.id, data: { [String(field)]: next ? new Date(`${next}T12:00:00`).toISOString() : null } });
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium">Observações da execução</label>
+                      <Textarea
+                        key={`description-${selectedCard.id}-${selectedCard.descricao ?? ""}`}
+                        defaultValue={selectedCard.descricao ?? ""}
+                        rows={4}
+                        disabled={patchCard.isPending}
+                        placeholder="Informações operacionais, ajustes, observações do pedido..."
+                        onBlur={(event) => {
+                          const descricao = event.currentTarget.value.trim();
+                          if (descricao !== (selectedCard.descricao ?? "") && !patchCard.isPending) patchCard.mutate({ id: selectedCard.id, data: { descricao: descricao || null } });
+                        }}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  selectedCard.descricao && <div className="rounded-lg border bg-muted/20 p-3"><p className="text-xs font-semibold uppercase text-muted-foreground">Relato / observações</p><p className="mt-1 whitespace-pre-wrap text-sm">{selectedCard.descricao}</p></div>
+                )}
 
                 {selectedCard.pipeline === "suporte" && (
                   <SupportReportPanel
