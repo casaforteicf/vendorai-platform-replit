@@ -70,6 +70,144 @@ export async function createRectMask(
     .toBuffer();
 }
 
+
+/**
+ * Gera uma máscara restrita à superfície/material indicada pelo usuário.
+ *
+ * A seleção retangular funciona como envelope máximo. Dentro dela, o algoritmo
+ * encontra a cor dominante na região central, escolhe um pixel-semente
+ * representativo e faz crescimento conectado (4-vizinhos). Isso evita que TV,
+ * parede, nicho, puxadores ou outra peça dentro do mesmo retângulo sejam
+ * alterados junto com o MDF/revestimento alvo.
+ *
+ * A máscara NUNCA cresce além do retângulo confirmado pelo usuário.
+ */
+export async function createMaterialSurfaceMask(
+  imageBuf: Buffer,
+  rects: { x: number; y: number; w: number; h: number }[],
+  width: number,
+  height: number,
+): Promise<Buffer> {
+  const { data } = await sharp(imageBuf)
+    .resize(width, height, { fit: "fill" })
+    .removeAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const mask = Buffer.alloc(width * height, 0);
+
+  const colorDistance = (a: [number, number, number], b: [number, number, number]) => {
+    const dr = a[0] - b[0];
+    const dg = a[1] - b[1];
+    const db = a[2] - b[2];
+    return Math.sqrt(dr * dr + dg * dg + db * db);
+  };
+
+  const pixel = (x: number, y: number): [number, number, number] => {
+    const i = (y * width + x) * 3;
+    return [data[i] ?? 0, data[i + 1] ?? 0, data[i + 2] ?? 0];
+  };
+
+  for (const r of rects) {
+    const x1 = Math.max(0, Math.floor((r.x / 100) * width));
+    const y1 = Math.max(0, Math.floor((r.y / 100) * height));
+    const x2 = Math.min(width - 1, Math.ceil(((r.x + r.w) / 100) * width) - 1);
+    const y2 = Math.min(height - 1, Math.ceil(((r.y + r.h) / 100) * height) - 1);
+    if (x2 <= x1 || y2 <= y1) continue;
+
+    const rw = x2 - x1 + 1;
+    const rh = y2 - y1 + 1;
+
+    // Usa o miolo da seleção para estimar a aparência predominante do material.
+    const cx1 = Math.floor(x1 + rw * 0.30);
+    const cy1 = Math.floor(y1 + rh * 0.30);
+    const cx2 = Math.ceil(x1 + rw * 0.70);
+    const cy2 = Math.ceil(y1 + rh * 0.70);
+
+    let sr = 0, sg = 0, sb = 0, count = 0;
+    for (let y = cy1; y <= cy2; y += 2) {
+      for (let x = cx1; x <= cx2; x += 2) {
+        const [pr, pg, pb] = pixel(x, y);
+        sr += pr; sg += pg; sb += pb; count++;
+      }
+    }
+    if (!count) continue;
+
+    const mean: [number, number, number] = [sr / count, sg / count, sb / count];
+
+    // Escolhe como semente um pixel real próximo da média, evitando que um
+    // puxador, fresta ou reflexo exatamente no centro vire o alvo.
+    let seedX = Math.floor((x1 + x2) / 2);
+    let seedY = Math.floor((y1 + y2) / 2);
+    let best = Number.POSITIVE_INFINITY;
+    for (let y = cy1; y <= cy2; y += 2) {
+      for (let x = cx1; x <= cx2; x += 2) {
+        const d = colorDistance(pixel(x, y), mean);
+        if (d < best) { best = d; seedX = x; seedY = y; }
+      }
+    }
+
+    const seed = pixel(seedX, seedY);
+
+    // Variância local define tolerância suficiente para madeira/pedra com
+    // textura, mas limitada para não absorver superfícies vizinhas.
+    let variance = 0;
+    let varianceCount = 0;
+    for (let y = cy1; y <= cy2; y += 3) {
+      for (let x = cx1; x <= cx2; x += 3) {
+        const d = colorDistance(pixel(x, y), seed);
+        variance += d * d;
+        varianceCount++;
+      }
+    }
+    const std = Math.sqrt(variance / Math.max(1, varianceCount));
+    const threshold = Math.max(42, Math.min(88, 38 + std * 0.85));
+
+    const visited = new Uint8Array(rw * rh);
+    const qx = new Int32Array(rw * rh);
+    const qy = new Int32Array(rw * rh);
+    let head = 0, tail = 0, accepted = 0;
+
+    qx[tail] = seedX; qy[tail] = seedY; tail++;
+
+    while (head < tail) {
+      const x = qx[head]!;
+      const y = qy[head]!;
+      head++;
+
+      if (x < x1 || x > x2 || y < y1 || y > y2) continue;
+      const li = (y - y1) * rw + (x - x1);
+      if (visited[li]) continue;
+      visited[li] = 1;
+
+      const current = pixel(x, y);
+      if (colorDistance(current, seed) > threshold) continue;
+
+      mask[y * width + x] = 255;
+      accepted++;
+
+      if (x > x1) { qx[tail] = x - 1; qy[tail] = y; tail++; }
+      if (x < x2) { qx[tail] = x + 1; qy[tail] = y; tail++; }
+      if (y > y1) { qx[tail] = x; qy[tail] = y - 1; tail++; }
+      if (y < y2) { qx[tail] = x; qy[tail] = y + 1; tail++; }
+    }
+
+    const rectArea = rw * rh;
+    const coverage = accepted / Math.max(1, rectArea);
+
+    // Se o alvo ficou minúsculo, a seleção provavelmente caiu em uma borda,
+    // puxador ou objeto sem superfície útil. Melhor falhar do que alterar o
+    // retângulo inteiro e contaminar elementos vizinhos.
+    if (coverage < 0.035) {
+      throw new Error("Não foi possível identificar com segurança a superfície do material dentro da seleção. Selecione uma área um pouco maior no centro da peça e tente novamente.");
+    }
+  }
+
+  return sharp(mask, { raw: { width, height, channels: 1 } })
+    .png()
+    .toBuffer();
+}
+
 /**
  * Gera máscara PNG (greyscale, branco=editável, preto=preservado)
  * baseada nas zonas selecionadas. Usada exclusivamente no ajuste pontual
