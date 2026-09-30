@@ -365,7 +365,7 @@ export default function BrandVideoKitPanel() {
     setUploadingSlot(slot);
     setMessage(null);
     try {
-      const requestResponse = await fetch(`/api/tenants/${tenantId}/media/assets/request-upload`, {
+      const response = await fetch(`/api/tenants/${tenantId}/media/assets/request-upload`, {
         method: "POST",
         credentials: "include",
         headers: authHeaders(true),
@@ -376,17 +376,17 @@ export default function BrandVideoKitPanel() {
           size: file.size,
         }),
       });
-      const requestPayload = await requestResponse.json().catch(() => ({}));
-      if (!requestResponse.ok) throw new Error(requestPayload?.error || `Falha ao preparar ${file.name}`);
+      const requestPayload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(requestPayload?.error || `Falha ao preparar ${file.name}`);
 
-      const uploadResponse = await fetch(requestPayload.uploadURL, {
+      const result = await fetch(requestPayload.uploadURL, {
         method: "PUT",
         headers: { "Content-Type": file.type || "application/octet-stream" },
         body: file,
       });
-      if (!uploadResponse.ok) throw new Error(`Falha ao enviar ${file.name}`);
+      if (!result.ok) throw new Error(`Falha ao enviar ${file.name}`);
 
-      const registerResponse = await fetch(`/api/tenants/${tenantId}/media/assets`, {
+      const r = await fetch(`/api/tenants/${tenantId}/media/assets`, {
         method: "POST",
         credentials: "include",
         headers: authHeaders(true),
@@ -407,8 +407,8 @@ export default function BrandVideoKitPanel() {
           },
         }),
       });
-      const registerPayload = await registerResponse.json().catch(() => ({}));
-      if (!registerResponse.ok) throw new Error(registerPayload?.error || `Falha ao registrar ${file.name}`);
+      const registerPayload = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(registerPayload?.error || `Falha ao registrar ${file.name}`);
 
       const registered = (registerPayload?.asset ?? registerPayload) as { id?: string };
       const uploadedId = typeof registered?.id === "string" ? registered.id : null;

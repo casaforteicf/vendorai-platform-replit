@@ -18,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import DevEngineeringCenterTab from "./DevEngineeringCenterTab";
+import { toast } from "sonner";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 type DevStatus = "analisando" | "diagnosticado" | "executando" | "pr_open" | "deploy_pending" | "concluido" | "approval_required" | "github_task" | "erro";
@@ -195,7 +196,10 @@ export default function DevAgentOverlay() {
         body: JSON.stringify({ requestId: request.id, request: request.text, route: request.route, recentMessages }),
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data?.cognition) return null;
+      if (!response.ok || !data?.cognition) {
+        toast("Cérebro Executivo indisponível. Nenhuma ação foi executada.");
+        return null;
+      }
       return data.cognition as Cognition;
     } catch {
       return null;
@@ -384,7 +388,10 @@ export default function DevAgentOverlay() {
         headers: authHeaders(),
         body: JSON.stringify({ messages: [...prior.slice(-10), contextMessage] }),
       });
-      if (!response.ok || !response.body) throw new Error(`Falha no Dev IA (${response.status})`);
+      if (!response.ok || !response.body) {
+        toast(`Falha no Dev IA (HTTP ${response.status}).`);
+        throw new Error(`Falha no Dev IA (${response.status})`);
+      }
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();

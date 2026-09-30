@@ -263,19 +263,19 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId, onCreateBudget
   async function uploadFile(file: File) {
     setUploading(true);
     try {
-      const metaRes = await fetch("/api/storage/uploads/request-url", {
+      const response = await fetch("/api/storage/uploads/request-url", {
         method: "POST",
         headers: authHeadersJson(),
         body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type || "application/octet-stream" }),
       });
-      if (!metaRes.ok) throw new Error("Falha ao obter URL de upload");
-      const { uploadURL, objectPath } = (await metaRes.json()) as { uploadURL: string; objectPath: string };
-      const putRes = await fetch(uploadURL, {
+      if (!response.ok) throw new Error("Falha ao obter URL de upload");
+      const { uploadURL, objectPath } = (await response.json()) as { uploadURL: string; objectPath: string };
+      const result = await fetch(uploadURL, {
         method: "PUT",
         body: file,
         headers: { "Content-Type": file.type || "application/octet-stream" },
       });
-      if (!putRes.ok) throw new Error("Falha ao enviar arquivo");
+      if (!result.ok) throw new Error("Falha ao enviar arquivo");
       const url = `${window.location.origin}/api/storage${objectPath}`;
       setAnexos((prev) => [...prev, { nome: file.name, url, mimeType: file.type, tamanho: file.size }]);
     } catch (error) {
@@ -346,10 +346,11 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId, onCreateBudget
   async function removeRevisao(id: string) {
     if (!confirm("Excluir esta revisão do histórico? Essa ação não pode ser desfeita.")) return;
     try {
-      await fetch(`/api/tenants/${tenantId}/leads/${leadId}/orcamento-revisoes/${id}`, {
+      const response = await fetch(`/api/tenants/${tenantId}/leads/${leadId}/orcamento-revisoes/${id}`, {
         method: "DELETE",
         headers: authHeaders(),
-      }).then(readJson);
+      });
+      await readJson(response);
       await qc.invalidateQueries({ queryKey });
     } catch {
       toast({ title: "Erro ao excluir", variant: "destructive" });
