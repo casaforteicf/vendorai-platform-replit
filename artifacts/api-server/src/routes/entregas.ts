@@ -1003,8 +1003,13 @@ router.patch("/work-cards/:id", async (req, res) => {
     res.status(409).json({ error: "CARD_PIPELINE_IMMUTABLE", message: "Um card não muda de pipeline. A transferência cria um novo processo vinculado ao anterior." });
     return;
   }
-  if (targetStage !== existing.etapa && !canAdvanceWorkCard(existing.pipeline, existing.etapa, targetStage)) {
-    res.status(409).json({ error: "CARD_BACKWARD_FORBIDDEN", message: "O card só pode avançar. Para retrabalho ou retorno, crie um novo ciclo vinculado ao card anterior." });
+  const manualAdminCorrection =
+    targetStage !== existing.etapa
+    && !canAdvanceWorkCard(existing.pipeline, existing.etapa, targetStage)
+    && isAdmin(req);
+
+  if (targetStage !== existing.etapa && !canAdvanceWorkCard(existing.pipeline, existing.etapa, targetStage) && !manualAdminCorrection) {
+    res.status(409).json({ error: "CARD_BACKWARD_FORBIDDEN", message: "O card só pode avançar. Administradores podem corrigir manualmente a etapa quando necessário." });
     return;
   }
   if (targetPipeline === "execucao" && !EXECUTION_STAGES.includes(targetStage as typeof EXECUTION_STAGES[number])) {
@@ -1035,7 +1040,10 @@ router.patch("/work-cards/:id", async (req, res) => {
       dealId: card.dealId,
       tipo: card.pipeline === "suporte" ? "assistencia" : "tarefa",
       titulo: `${card.codigo}: ${WORK_STAGE_LABELS[card.etapa] ?? card.etapa}`,
-      descricao: `Etapa anterior: ${WORK_STAGE_LABELS[existing.etapa] ?? existing.etapa}. Nova etapa: ${WORK_STAGE_LABELS[card.etapa] ?? card.etapa}.`,
+      descricao: [
+        `Etapa anterior: ${WORK_STAGE_LABELS[existing.etapa] ?? existing.etapa}. Nova etapa: ${WORK_STAGE_LABELS[card.etapa] ?? card.etapa}.`,
+        manualAdminCorrection ? "Alteração manual/correção realizada por administrador." : null,
+      ].filter(Boolean).join(" "),
       responsavelId: card.responsavelId,
     });
     await ensureWorkStageTask(card);
@@ -1043,6 +1051,29 @@ router.patch("/work-cards/:id", async (req, res) => {
       void requestSupportFeedback(card.tenantId, card.id, req.log);
     }
     if (card.pipeline === "execucao") await maybeCompleteOrder(card);
+  }
+
+  if (card.leadId && card.etapa === existing.etapa) {
+    const changedFields: string[] = [];
+    if (card.titulo !== existing.titulo) changedFields.push("título");
+    if (card.descricao !== existing.descricao) changedFields.push("observações");
+    if (card.prioridade !== existing.prioridade) changedFields.push("prioridade");
+    if (card.responsavelId !== existing.responsavelId) changedFields.push("responsável");
+    if (String(card.dataInicioPrevista ?? "") !== String(existing.dataInicioPrevista ?? "")) changedFields.push("início previsto");
+    if (String(card.dataInicioEfetiva ?? "") !== String(existing.dataInicioEfetiva ?? "")) changedFields.push("início efetivo");
+    if (String(card.dataFimPrevista ?? "") !== String(existing.dataFimPrevista ?? "")) changedFields.push("fim previsto");
+    if (String(card.dataFimEfetiva ?? "") !== String(existing.dataFimEfetiva ?? "")) changedFields.push("fim efetivo");
+    if (changedFields.length > 0) {
+      await recordWorkHistory({
+        tenantId: card.tenantId,
+        leadId: card.leadId,
+        dealId: card.dealId,
+        tipo: card.pipeline === "suporte" ? "assistencia" : "tarefa",
+        titulo: `${card.codigo}: edição manual`,
+        descricao: `Campos alterados manualmente: ${changedFields.join(", ")}.`,
+        responsavelId: card.responsavelId,
+      });
+    }
   }
 
   res.json(card);
