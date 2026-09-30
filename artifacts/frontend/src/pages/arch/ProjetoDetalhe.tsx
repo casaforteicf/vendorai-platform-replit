@@ -255,6 +255,7 @@ export default function ProjetoDetalhe() {
   const [ambientes, setAmbientes] = useState<Ambiente[]>([]);
   const [renders, setRenders]     = useState<ProjetoRender[]>([]);
   const [loading, setLoading]     = useState(true);
+  const [projectTab, setProjectTab] = useState("orcamento");
 
   // ── Orçamento data
   const [grupos, setGrupos]         = useState<OrcamentoGrupo[]>([]);
@@ -995,6 +996,38 @@ export default function ProjetoDetalhe() {
         <StatusBadge status={projeto.status} />
       </div>
 
+      {/* Atalhos principais do projeto — mantém o usuário dentro do mesmo contexto */}
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-muted/20 p-3">
+        <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Continuar projeto</span>
+        <Button type="button" size="sm" onClick={() => abrirRenderStudio(null)}>
+          <Sparkles className="mr-1.5 h-4 w-4" /> Render
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => navigate(`/arch/studio?module=especificacao&project_id=${encodeURIComponent(projetoId)}`)}
+        >
+          <ClipboardList className="mr-1.5 h-4 w-4" /> Especificação
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => setProjectTab("orcamento")}
+        >
+          <DollarSign className="mr-1.5 h-4 w-4" /> Orçamento
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => navigate(`/propostas?archProjectId=${encodeURIComponent(projetoId)}&returnTo=${encodeURIComponent(`/arch/projetos/${projetoId}`)}`)}
+        >
+          <ExternalLink className="mr-1.5 h-4 w-4" /> Proposta
+        </Button>
+      </div>
+
       {/* Fluxo integrado Vendor.ai */}
       <Card>
         <CardHeader className="pb-3">
@@ -1076,7 +1109,7 @@ export default function ProjetoDetalhe() {
       </Card>
 
       {/* ── Tabs ─────────────────────────────────────────────────────── */}
-      <Tabs defaultValue="orcamento">
+      <Tabs value={projectTab} onValueChange={setProjectTab}>
         <TabsList>
           <TabsTrigger value="orcamento">Orçamento</TabsTrigger>
           <TabsTrigger value="ambientes">Ambientes</TabsTrigger>

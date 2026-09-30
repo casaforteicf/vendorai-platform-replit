@@ -107,6 +107,7 @@ export default function Projetos() {
   // Filters
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterBusca,  setFilterBusca]  = useState("");
+  const [filterBuscaDebounced, setFilterBuscaDebounced] = useState("");
 
   // Dialog
   const autoOpen = location.endsWith("/novo");
@@ -232,18 +233,27 @@ export default function Projetos() {
   function load() {
     if (!tenantId) return;
     setLoading(true);
+    setError(null);
     const params = new URLSearchParams();
     if (filterStatus && filterStatus !== "all") params.set("status", filterStatus);
-    if (filterBusca) params.set("clienteNome", filterBusca);
+    if (filterBuscaDebounced) params.set("clienteNome", filterBuscaDebounced);
     fetch(`/api/arch/projetos?${params}`, {
       headers: { Authorization: `Bearer ${getToken()}` },
     })
-      .then((r) => r.json())
+      .then(async (r) => {
+        if (!r.ok) throw new Error("Erro ao carregar projetos.");
+        return r.json();
+      })
       .then((data) => { setProjetos(Array.isArray(data) ? data : []); setLoading(false); })
       .catch(() => { setError("Erro ao carregar projetos."); setLoading(false); });
   }
 
-  useEffect(() => { load(); }, [tenantId, filterStatus, filterBusca]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setFilterBuscaDebounced(filterBusca.trim()), 350);
+    return () => window.clearTimeout(timer);
+  }, [filterBusca]);
+
+  useEffect(() => { load(); }, [tenantId, filterStatus, filterBuscaDebounced]);
 
   useEffect(() => {
     if (!dialogOpen || !tenantId) {
@@ -345,15 +355,42 @@ export default function Projetos() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!selectedLead) {
-      toast({ title: "Selecione um lead cadastrado", description: "Busque o cliente na base antes de criar o projeto.", variant: "destructive" });
+    if (!selectedLead && !form.clienteNome.trim()) {
+      toast({ title: "Informe o cliente", description: "Selecione um cliente existente ou informe o nome para cadastrá-lo automaticamente.", variant: "destructive" });
       return;
     }
 
     setSaving(true);
     try {
+      let projectLead = selectedLead;
+
+      if (!projectLead) {
+        const leadRes = await fetch("/api/leads", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${getToken()}`,
+          },
+          body: JSON.stringify({
+            tenantId,
+            nome: form.clienteNome.trim(),
+            telefone: form.clienteTelefone.trim() || null,
+            email: form.clienteEmail.trim() || null,
+            source: "manual",
+          }),
+        });
+        const leadData = await leadRes.json().catch(() => ({}));
+        if (leadRes.status === 409 && leadData?.lead) {
+          projectLead = leadData.lead as Lead;
+        } else if (!leadRes.ok) {
+          throw new Error(leadData?.error ?? "Não foi possível cadastrar o cliente.");
+        } else {
+          projectLead = leadData as Lead;
+        }
+      }
+
       const body: Record<string, unknown> = {
-        leadId:    selectedLead.id,
+        leadId:    projectLead.id,
         titulo:    form.titulo,
         tipoObra:  form.tipoObra,
       };
@@ -403,11 +440,6 @@ export default function Projetos() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button type="button" variant="outline" onClick={() => openCreateLead(false)}>
-            <UserPlus className="h-4 w-4 mr-2" />
-            Cadastrar Lead
-          </Button>
-
         <Dialog
           open={dialogOpen}
           onOpenChange={(open) => {
@@ -425,7 +457,7 @@ export default function Projetos() {
             <form onSubmit={handleCreate} className="space-y-4 mt-2">
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2 space-y-1.5">
-                  <Label>Cliente / lead cadastrado *</Label>
+                  <Label>Cliente *</Label>
 
                   {selectedLead ? (
                     <div className="rounded-lg border bg-muted/30 px-3 py-3 flex items-start gap-3">
@@ -511,14 +543,40 @@ export default function Projetos() {
                     </div>
                   )}
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs text-muted-foreground">O projeto usa os dados do lead já cadastrado na base do tenant.</p>
-                    {!selectedLead && (
-                      <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs" onClick={openCreateLead}>
-                        <UserPlus className="h-3.5 w-3.5 mr-1" />
-                        Cadastrar lead
-                      </Button>
-                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Busque um cliente existente. Se for novo, informe os dados abaixo e o VendorAI cadastra automaticamente ao criar o projeto.
+                    </p>
                   </div>
+
+                  {!selectedLead && (
+                    <div className="grid grid-cols-2 gap-3 rounded-lg border bg-muted/20 p-3">
+                      <div className="col-span-2 space-y-1">
+                        <Label>Nome do cliente *</Label>
+                        <Input
+                          value={form.clienteNome}
+                          onChange={(e) => setF("clienteNome", e.target.value)}
+                          placeholder="Nome do cliente"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Telefone</Label>
+                        <Input
+                          value={form.clienteTelefone}
+                          onChange={(e) => setF("clienteTelefone", e.target.value)}
+                          placeholder="(49) 99999-9999"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>E-mail</Label>
+                        <Input
+                          type="email"
+                          value={form.clienteEmail}
+                          onChange={(e) => setF("clienteEmail", e.target.value)}
+                          placeholder="cliente@email.com"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="col-span-2 space-y-1">
@@ -553,8 +611,8 @@ export default function Projetos() {
 
               <div className="flex justify-end gap-2 pt-2">
                 <Button type="button" variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>Cancelar</Button>
-                <Button type="submit" disabled={saving || !form.titulo || !selectedLead}>
-                  {saving ? "Criando..." : "Criar Projeto"}
+                <Button type="submit" disabled={saving || !form.titulo || (!selectedLead && !form.clienteNome.trim())}>
+                  {saving ? "Criando..." : "Criar e abrir projeto"}
                 </Button>
               </div>
             </form>
@@ -728,15 +786,16 @@ export default function Projetos() {
                         >
                           Abrir
                         </Button>
-                        {p.portalAtivo && p.id && (
+                        {p.portalAtivo && p.portalToken && (
                           <Button
                             size="sm"
                             variant="ghost"
                             className="h-7 text-xs text-blue-600"
                             onClick={() => {
                               const base = window.location.origin;
-                              window.open(`${base}/arch/portal/${p.id}`, "_blank");
+                              window.open(`${base}/arch/portal/${encodeURIComponent(p.portalToken!)}`, "_blank", "noopener,noreferrer");
                             }}
+                            title="Abrir portal do cliente"
                           >
                             <ExternalLink className="h-3 w-3 mr-1" /> Portal
                           </Button>

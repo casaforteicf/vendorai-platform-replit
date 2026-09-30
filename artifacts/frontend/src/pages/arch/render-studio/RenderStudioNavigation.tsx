@@ -24,7 +24,7 @@ export function RenderStudioTopbar({
     projeto: "→ Definir Ambiente",
     ambiente: "→ Carregar Imagem",
     imagem: "→ Gerar Render",
-    render: "→ Melhorar",
+    render: "→ Melhorar render",
     melhoria: "→ Ver Versões",
     versao: "→ Aprovar",
   };
@@ -53,14 +53,14 @@ export function RenderStudioTopbar({
 
       <div style={{ flex: 1 }} />
 
-      {renderStudioStepIndex(step) >= renderStudioStepIndex("render") && (
+      {(step === "versao" || step === "aprovar") && (
         <button
           onClick={onOpenStudio}
-          aria-label="Abrir Studio IA"
-          title="Materiais, iluminação, variações e versões"
+          aria-label="Melhorar render"
+          title="Materiais, iluminação, ajustes e versões"
           style={{ background: C.card, color: C.accentText, border: `1px solid ${C.accent}55`, borderRadius: 8, padding: "7px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer", marginRight: 8 }}
         >
-          ✦ Studio IA
+          ✦ Melhorar render
         </button>
       )}
 
@@ -74,6 +74,8 @@ export function RenderStudioTopbar({
         </button>
       )}
 
+      <button type="button" onClick={_onHelp} aria-label="Ajuda da etapa" title="Ajuda da etapa" style={{ width: 30, height: 30, borderRadius: 8, border: `1px solid ${C.border}`, background: C.card, color: C.muted, cursor: "pointer", marginRight: 6 }}>?</button>
+      <button type="button" onClick={_onShortcuts} aria-label="Atalhos do Render Studio" title="Atalhos do Render Studio" style={{ height: 30, borderRadius: 8, border: `1px solid ${C.border}`, background: C.card, color: C.muted, cursor: "pointer", padding: "0 8px", fontSize: 10, marginRight: 8 }}>⌨</button>
       <div aria-label={`Usuário: ${userName}`} style={{ width: 28, height: 28, borderRadius: "50%", background: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "#fff", flexShrink: 0 }}>
         {(userName?.[0] ?? "U").toUpperCase()}
       </div>
@@ -85,10 +87,12 @@ export function RenderStudioSidebar({
   step,
   projectTitle,
   onStepClick,
+  onProjectClick,
 }: {
   step: RenderStudioStep;
   projectTitle: string | null;
   onStepClick: (step: RenderStudioStep) => void;
+  onProjectClick?: () => void;
 }) {
   const currentIndex = renderStudioStepIndex(step);
 
@@ -96,10 +100,17 @@ export function RenderStudioSidebar({
     <div className="arqdor-legacy-sidebar" style={{ width: 220, flexShrink: 0, background: C.surface, borderRight: `1px solid ${C.border}`, display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <div style={{ padding: "10px 12px", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
         <div style={{ fontSize: 9, fontWeight: 700, color: C.dim, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>Projeto atual</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 8px", background: C.card, borderRadius: 7, border: `1px solid ${C.border}` }}>
+        <button
+          type="button"
+          onClick={onProjectClick}
+          disabled={!projectTitle || !onProjectClick}
+          title={projectTitle ? "Abrir dados do projeto" : "Nenhum projeto selecionado"}
+          style={{ width: "100%", display: "flex", alignItems: "center", gap: 6, padding: "6px 8px", background: C.card, borderRadius: 7, border: `1px solid ${C.border}`, cursor: projectTitle && onProjectClick ? "pointer" : "default", textAlign: "left" }}
+        >
           <span style={{ fontSize: 12, color: C.accent }}>◈</span>
           <span style={{ fontSize: 11, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{projectTitle ?? "Nenhum projeto"}</span>
-        </div>
+          {projectTitle && onProjectClick ? <span style={{ marginLeft: "auto", fontSize: 10, color: C.dim }}>↗</span> : null}
+        </button>
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", padding: "8px 0", scrollbarWidth: "none" }}>

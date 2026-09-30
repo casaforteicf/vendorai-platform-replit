@@ -422,7 +422,7 @@ const SHELL_STYLES = `
   .arqdor-studio-v3 .arqdor-legacy-root[data-arqdor-step="Ambiente"] .arqdor-legacy-bottom-panel,
   .arqdor-studio-v3 .arqdor-legacy-root[data-arqdor-step="Imagem base"] .arqdor-legacy-bottom-panel,
   .arqdor-studio-v3 .arqdor-legacy-root[data-arqdor-step="Render IA"] .arqdor-legacy-bottom-panel,
-  .arqdor-studio-v3 .arqdor-legacy-root[data-arqdor-step="Melhoria"] .arqdor-legacy-bottom-panel {
+  .arqdor-studio-v3 .arqdor-legacy-root[data-arqdor-step="Melhorar render"] .arqdor-legacy-bottom-panel {
     display: none !important;
   }
 
@@ -469,6 +469,32 @@ const SHELL_STYLES = `
 
   @media (max-width: 899px) {
     .arqdor-studio-v3 .arqdor-back-btn {
+      display: none;
+    }
+    .arqdor-studio-v3 .arqdor-legacy-topbar {
+      padding-left: 12px !important;
+    }
+    .arqdor-studio-v3 .arqdor-legacy-sidebar {
+      width: 154px !important;
+      min-width: 154px !important;
+    }
+    .arqdor-studio-v3 .arqdor-studio-step {
+      margin-left: 6px !important;
+      margin-right: 6px !important;
+      padding-left: 8px !important;
+      padding-right: 8px !important;
+    }
+    .arqdor-studio-v3 .arqdor-legacy-right-panel {
+      padding-right: 6px !important;
+    }
+    .arqdor-studio-v3 .arqdor-legacy-right-panel > div {
+      width: 252px !important;
+    }
+    .arqdor-studio-v3 .arqdor-canvas-stage {
+      padding-left: 18px !important;
+      padding-right: 18px !important;
+    }
+    .arqdor-studio-v3 .arqdor-topbar-brand span {
       display: none;
     }
   }
@@ -662,8 +688,8 @@ export default function RenderStudioPage() {
   }
 
   function handleBack() {
-    if (window.history.length > 1) {
-      window.history.back();
+    if (projectId) {
+      setLocation(`/arch/projetos/${projectId}`);
       return;
     }
     setLocation("/arch/projetos");

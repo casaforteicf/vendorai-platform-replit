@@ -29,6 +29,7 @@ import { useRenderStudioController } from "./render-studio/useRenderStudioContro
 
 function RenderStudioInner() {
   const {
+    setLocation,
     arq,
     step,
     ambiente,
@@ -172,7 +173,7 @@ function RenderStudioInner() {
       />
 
       <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
-        <LeftSidebar step={step} projectTitle={arq.projectMeta?.titulo ?? null} onStepClick={handleStepClick} />
+        <LeftSidebar step={step} projectTitle={arq.projectMeta?.titulo ?? null} onStepClick={handleStepClick} onProjectClick={() => { if (arq.projectId) setLocation(`/arch/projetos/${arq.projectId}`); }} />
 
         {pendingNavStep && <NavConfirmBanner targetStep={pendingNavStep} onConfirm={() => { go(pendingNavStep); setPendingNavStep(null); }} onCancel={() => setPendingNavStep(null)} />}
 
@@ -246,7 +247,7 @@ function RenderStudioInner() {
 export default function RenderStudioCore() {
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 900);
+    const check = () => setIsMobile(window.innerWidth < 640);
     check();
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
@@ -259,7 +260,7 @@ export default function RenderStudioCore() {
           <div style={{ fontSize: 48 }}>🖥️</div>
           <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>ARQDOR Render Studio</h1>
           <p style={{ fontSize: 14, opacity: 0.6, maxWidth: 300, lineHeight: 1.6, margin: 0 }}>
-            Este módulo requer uma tela maior. Abra em um computador ou tablet para usar todos os recursos do Render Studio.
+            O editor completo requer pelo menos 640 px de largura. Em celulares menores, use a visualização do projeto, aprovação e especificação pelo workspace do Arqdor.
           </p>
         </div>
       </ArqdorThemeProvider>
