@@ -136,7 +136,7 @@ async function createProposalFromBudget(tId: string | null, payload: CreatePropo
       $5,$6,$7,$8,
       'ready',$9,
       $10,$11,$12,$13,$14,
-      $14,$15,$16,now(),now()
+      $15,$16,$17,now(),now()
     ) RETURNING *`,
     [
       proposalId, tId, payload.projectId, payload.budgetId,
