@@ -141,7 +141,12 @@ export async function planBrowserAction(
       { role: "system", content: system },
       { role: "user", content: JSON.stringify({ goal, page: state, recentSteps: steps.slice(-6), secretsAvailable, ...(attempt ? { correction: "A resposta anterior era inválida. Retorne uma única ação no formato indicado, com todos os campos obrigatórios." } : {}) }) },
     ],
-    { temperature: 0, maxTokens: 600, responseFormat: { type: "json_object" } },
+    {
+      temperature: 0,
+      maxTokens: 600,
+      responseFormat: { type: "json_object" },
+      billingScope: "platform_runtime",
+    },
   );
 
   try {
