@@ -77,6 +77,34 @@ function responseText(response: any): string {
   return texts.join("\n").trim();
 }
 
+function isRetryableRateLimit(error: any) {
+  const status = Number(error?.status ?? error?.statusCode ?? 0);
+  const message = String(error?.message ?? error ?? "").toLowerCase();
+  if (
+    message.includes("insufficient_quota")
+    || message.includes("exceeded your current quota")
+    || message.includes("billing hard limit")
+  ) return false;
+  return status === 429 || message.includes("rate limit") || message.includes("too many requests");
+}
+
+async function withTransientRateLimitRetry<T>(
+  work: () => Promise<T>,
+  delaysMs = [1500, 3500, 7000],
+): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= delaysMs.length; attempt += 1) {
+    try {
+      return await work();
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableRateLimit(error) || attempt >= delaysMs.length) throw error;
+      await new Promise((resolve) => setTimeout(resolve, delaysMs[attempt]));
+    }
+  }
+  throw lastError;
+}
+
 
 function refineWallTopology(
   walls: ReferenceTraceWall[],
@@ -404,7 +432,7 @@ export async function traceReferencePlanImage(input: {
     || process.env["VENDORAI_VISION_MODEL"]?.trim()
     || "gpt-5.6-luna";
 
-  const response = await (openai.responses.create as any)({
+  const response = await withTransientRateLimitRetry(() => (openai.responses.create as any)({
     model,
     input: [
       {
@@ -444,7 +472,7 @@ export async function traceReferencePlanImage(input: {
         ],
       },
     ],
-  });
+  }));
 
   const text = responseText(response);
   if (!text) throw new Error("A IA não retornou um traçado utilizável.");
