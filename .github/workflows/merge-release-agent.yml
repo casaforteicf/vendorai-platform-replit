@@ -180,25 +180,43 @@ jobs:
           done
           exit 1
 
-      - name: Verify Cloudflare publication
+      - name: Rebuild frontend for merged revision
         if: steps.pr.outputs.publish == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
+          VENDOR_BUILD_ID: ${{ steps.merge.outputs.sha }}
+        run: pnpm --filter @workspace/frontend build
+
+      - name: Publish frontend directly to Cloudflare Pages
+        if: steps.pr.outputs.publish == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          test -f artifacts/frontend/dist/public/index.html
+          test -f artifacts/frontend/dist/public/_worker.js
+          pnpm dlx wrangler@3.90.0 pages project create vendorai --production-branch main || true
+          pnpm dlx wrangler@3.90.0 pages deploy artifacts/frontend/dist/public --project-name vendorai --branch main
+
+      - name: Verify published frontend revision
+        if: steps.pr.outputs.publish == 'true'
+        env:
           EXPECTED: ${{ steps.merge.outputs.sha }}
         run: |
           set -euo pipefail
-          for n in {1..30}; do
-            data="$(gh api "repos/$REPO/actions/workflows/cloudflare-pages.yml/runs?event=push&head_sha=$EXPECTED&per_page=5")"
-            status="$(jq -r '.workflow_runs[0].status // empty' <<<"$data")"
-            conclusion="$(jq -r '.workflow_runs[0].conclusion // empty' <<<"$data")"
-            echo "cloudflare status=$status conclusion=$conclusion"
-            if [ "$status" = completed ]; then
-              test "$conclusion" = success
+          prefix="${EXPECTED:0:12}"
+          for n in {1..24}; do
+            html="$(curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$FRONTEND_URL/?__vendorai_release=$RANDOM" || true)"
+            if grep -F -- "-$prefix-" <<<"$html" >/dev/null; then
+              echo "Cloudflare frontend matches merged revision $EXPECTED"
               exit 0
             fi
+            echo "Waiting for Cloudflare frontend revision $prefix (attempt $n)"
             sleep 10
           done
+          echo "Published frontend did not expose expected revision $prefix."
           exit 1
 
       - name: Smoke test production
