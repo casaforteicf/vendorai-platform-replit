@@ -1,3 +1,5 @@
+import { isAgentActive } from "../lib/agent-activation.js";
+import { agentKeyForRuntime, primaryRuntimeForKey, resolveActivation } from "../lib/agent-activation-policy.js";
 import { Router, type IRouter } from "express";
 import { eq, sql, and } from "drizzle-orm";
 import {
@@ -20,6 +22,24 @@ const KNOWN_AGENT_KEYS = new Set([
   "suporte", "agendamento", "pos_venda", "prospector", "recepcao", "farmacia", "expansao_conta",
 ]);
 
+
+async function syncLegacyActivation(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  tenantId: string,
+  agents: Record<string, { enabled?: boolean }> | undefined,
+) {
+  for (const [runtime, entry] of Object.entries(agents ?? {})) {
+    const agentKey = agentKeyForRuntime(runtime);
+    // Followup/onboarding have separate legacy permissions; do not let them overwrite SDR/support.
+    if (primaryRuntimeForKey(agentKey) !== runtime || !KNOWN_AGENT_KEYS.has(agentKey) || entry.enabled === undefined) continue;
+    await tx.insert(tenantAgentConfigsTable).values({ tenantId, agentKey, ativo: entry.enabled })
+      .onConflictDoUpdate({
+        target: [tenantAgentConfigsTable.tenantId, tenantAgentConfigsTable.agentKey],
+        set: { ativo: entry.enabled, updatedAt: new Date() },
+      });
+  }
+}
+
 const incrementCountSchema = {
   parse(body: unknown): number {
     const count = Number((body as Record<string, unknown>)?.count ?? 1);
@@ -31,6 +51,26 @@ const incrementCountSchema = {
 };
 
 const router: IRouter = Router();
+
+// Keep legacy consumers in sync while the Hub owns the explicit switch.
+async function setAgentActivation(tenantId: string, agentKey: string, active: boolean) {
+  const runtimeName = primaryRuntimeForKey(agentKey);
+  await db.transaction(async (tx) => {
+    await tx.insert(tenantAgentConfigsTable).values({ tenantId, agentKey, ativo: active })
+      .onConflictDoUpdate({
+        target: [tenantAgentConfigsTable.tenantId, tenantAgentConfigsTable.agentKey],
+        set: { ativo: active, updatedAt: new Date() },
+      });
+    await tx.update(agentConfigsTable).set({
+      agents: sql`coalesce(${agentConfigsTable.agents}, '{}'::jsonb) ||
+        jsonb_build_object(${runtimeName}::text,
+          coalesce(${agentConfigsTable.agents} -> ${runtimeName}::text, '{}'::jsonb) ||
+          jsonb_build_object('enabled', ${active}::boolean))`,
+      updatedAt: new Date(),
+    }).where(eq(agentConfigsTable.tenantId, tenantId));
+  });
+}
+
 
 // ── Colunas sem Meta (compatível com prod onde essas colunas ainda não existem) ──
 const NON_META_COLS = {
@@ -131,9 +171,10 @@ router.get("/agent-configs", async (req, res) => {
   const tenantId = req.user?.tenantId;
   if (!tenantId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-  const [defaults, tenantConfigs] = await Promise.all([
+  const [defaults, tenantConfigs, legacyConfig] = await Promise.all([
     db.select().from(agentDefaultsTable).where(eq(agentDefaultsTable.ativo, true)),
     db.select().from(tenantAgentConfigsTable).where(eq(tenantAgentConfigsTable.tenantId, tenantId)),
+    selectConfigByTenantId(tenantId),
   ]);
 
   const configMap = new Map(tenantConfigs.map((c) => [c.agentKey, c]));
@@ -145,7 +186,7 @@ router.get("/agent-configs", async (req, res) => {
       nome:               d.nome,
       descricao:          d.descricao ?? "",
       categoria:          d.categoria ?? "",
-      ativo:              tc ? tc.ativo : false,
+      ativo:              resolveActivation(tc?.ativo, (legacyConfig?.agents as Record<string, { enabled?: boolean }> | undefined)?.[primaryRuntimeForKey(d.agentKey)]?.enabled),
       nomePerfil:         tc?.nomePerfil ?? null,
       tom:                tc?.tom ?? "profissional",
       restricoes:         tc?.restricoes ?? null,
@@ -165,13 +206,8 @@ router.post("/agent-configs/:agentKey/activate", async (req, res) => {
   if (!tenantId) { res.status(401).json({ error: "Unauthorized" }); return; }
   const { agentKey } = req.params as { agentKey: string };
 
-  await db
-    .insert(tenantAgentConfigsTable)
-    .values({ tenantId, agentKey, ativo: true })
-    .onConflictDoUpdate({
-      target: [tenantAgentConfigsTable.tenantId, tenantAgentConfigsTable.agentKey],
-      set: { ativo: true, updatedAt: new Date() },
-    });
+  if (!KNOWN_AGENT_KEYS.has(agentKey)) { res.status(404).json({ error: "Unknown agent" }); return; }
+  await setAgentActivation(tenantId, agentKey, true);
 
   return res.json({ agentKey, ativo: true });
 });
@@ -182,13 +218,8 @@ router.post("/agent-configs/:agentKey/deactivate", async (req, res) => {
   if (!tenantId) { res.status(401).json({ error: "Unauthorized" }); return; }
   const { agentKey } = req.params as { agentKey: string };
 
-  await db
-    .insert(tenantAgentConfigsTable)
-    .values({ tenantId, agentKey, ativo: false })
-    .onConflictDoUpdate({
-      target: [tenantAgentConfigsTable.tenantId, tenantAgentConfigsTable.agentKey],
-      set: { ativo: false, updatedAt: new Date() },
-    });
+  if (!KNOWN_AGENT_KEYS.has(agentKey)) { res.status(404).json({ error: "Unknown agent" }); return; }
+  await setAgentActivation(tenantId, agentKey, false);
 
   return res.json({ agentKey, ativo: false });
 });
@@ -318,12 +349,13 @@ router.patch("/agent-configs/:agentKey", async (req, res, next) => {
 
   await db
     .insert(tenantAgentConfigsTable)
-    .values({ tenantId, agentKey, ...parsed.data })
+    .values({ tenantId, agentKey, ativo: await isAgentActive(tenantId, primaryRuntimeForKey(agentKey)), ...parsed.data })
     .onConflictDoUpdate({
       target: [tenantAgentConfigsTable.tenantId, tenantAgentConfigsTable.agentKey],
       set: { ...parsed.data, updatedAt: new Date() },
     });
 
+  if (parsed.data.ativo !== undefined) await setAgentActivation(tenantId, agentKey, parsed.data.ativo);
   return res.json({ agentKey, ...parsed.data });
 });
 
@@ -337,7 +369,7 @@ router.post("/agent-configs/:agentKey/reset", async (req, res, next) => {
 
   await db
     .insert(tenantAgentConfigsTable)
-    .values({ tenantId, agentKey, systemPromptCustom: null })
+    .values({ tenantId, agentKey, ativo: await isAgentActive(tenantId, primaryRuntimeForKey(agentKey)), systemPromptCustom: null })
     .onConflictDoUpdate({
       target: [tenantAgentConfigsTable.tenantId, tenantAgentConfigsTable.agentKey],
       set: { systemPromptCustom: null, updatedAt: new Date() },
@@ -376,22 +408,26 @@ router.patch("/agent-configs/:id", async (req, res) => {
 
   let config: typeof agentConfigsTable.$inferSelect | undefined;
   try {
-    [config] = await db
-      .update(agentConfigsTable)
-      .set({ ...parsed.data, updatedAt: new Date() })
-      .where(eq(agentConfigsTable.id, existing.id))
-      .returning();
+    config = await db.transaction(async (tx) => {
+      const [updated] = await tx.update(agentConfigsTable)
+        .set({ ...parsed.data, updatedAt: new Date() })
+        .where(eq(agentConfigsTable.id, existing.id)).returning();
+      await syncLegacyActivation(tx, existing.tenantId, parsed.data.agents);
+      return updated;
+    });
   } catch (err) {
     if (!isColMissingError(err)) throw err;
     const metaFields = ["metaPhoneNumberId", "metaWabaId", "metaAccessToken", "metaVerifyToken"] as const;
     const safeData = Object.fromEntries(
       Object.entries(parsed.data).filter(([k]) => !metaFields.includes(k as typeof metaFields[number]))
     );
-    const [partial] = await db
-      .update(agentConfigsTable)
-      .set({ ...safeData, updatedAt: new Date() })
-      .where(eq(agentConfigsTable.id, existing.id))
-      .returning(NON_META_COLS);
+    const partial = await db.transaction(async (tx) => {
+      const [updated] = await tx.update(agentConfigsTable)
+        .set({ ...safeData, updatedAt: new Date() })
+        .where(eq(agentConfigsTable.id, existing.id)).returning(NON_META_COLS);
+      await syncLegacyActivation(tx, existing.tenantId, parsed.data.agents);
+      return updated;
+    });
     config = partial ? ({ ...partial, ...META_NULL } as typeof agentConfigsTable.$inferSelect) : undefined;
   }
 
