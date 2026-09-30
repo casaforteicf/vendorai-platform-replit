@@ -199,6 +199,15 @@ const PT_COPY = {
   defaultAccess: "Acessos padrão",
   defaultAccessHelp: "Defina quais módulos serão aplicados quando esta função for selecionada.",
   createFunction: "Criar função",
+  representativeCompany: "Empresa representante",
+  representativeCompanyHelp: "Ative quando esta função for ocupada por outra empresa que representa esta empresa, como se fosse um vendedor externo.",
+  linkedTenantCode: "Código Vendor.ai da representante",
+  linkedTenantCodePlaceholder: "Ex.: VAI-000031",
+  linkedTenantCodeHelp: "A empresa representante mantém os módulos do próprio tenant. Este vínculo controla somente o que ela acessa nesta empresa.",
+  representativeLeadScope: "Escopo dos leads desta empresa",
+  representativeLeadAssigned: "Somente leads atribuídos à representação",
+  representativeLeadTerritory: "Leads do território autorizado",
+  representativeLeadAll: "Todos os leads autorizados",
   leadAssignmentTitle: "Distribuição de atendimento",
   leadAssignmentHelp: "Controle quem pode aparecer como responsável e participar da distribuição automática de leads.",
   leadAssignmentEnabled: "Pode receber leads e aparecer como responsável",
@@ -324,6 +333,15 @@ const ES_COPY = {
   defaultAccess: "Accesos predeterminados",
   defaultAccessHelp: "Define qué módulos se aplicarán cuando se seleccione esta función.",
   createFunction: "Crear función",
+  representativeCompany: "Empresa representante",
+  representativeCompanyHelp: "Activa cuando esta función sea ocupada por otra empresa que representa a esta empresa, como un vendedor externo.",
+  linkedTenantCode: "Código Vendor.ai de la representante",
+  linkedTenantCodePlaceholder: "Ej.: VAI-000031",
+  linkedTenantCodeHelp: "La empresa representante conserva los módulos de su propio tenant. Este vínculo controla solo lo que puede acceder en esta empresa.",
+  representativeLeadScope: "Alcance de leads de esta empresa",
+  representativeLeadAssigned: "Solo leads asignados a la representación",
+  representativeLeadTerritory: "Leads del territorio autorizado",
+  representativeLeadAll: "Todos los leads autorizados",
   leadAssignmentTitle: "Distribución de atención",
   leadAssignmentHelp: "Controla quién puede aparecer como responsable y participar de la distribución automática de leads.",
   leadAssignmentEnabled: "Puede recibir leads y aparecer como responsable",
@@ -378,6 +396,11 @@ interface TenantUserFunction {
   tenantId: string;
   name: string;
   permissions: string[];
+  kind?: "internal" | "external_company";
+  linkedTenantId?: string | null;
+  linkedTenantCode?: string | null;
+  leadAccessScope?: "assigned" | "territory" | "all_authorized";
+  representativeUserIds?: string[];
   createdAt?: string;
   updatedAt?: string;
 }
@@ -421,6 +444,9 @@ export default function Usuarios() {
   const [deleteFunctionTarget, setDeleteFunctionTarget] = useState<TenantUserFunction | null>(null);
   const [newFunctionName, setNewFunctionName] = useState("");
   const [newFunctionPermissions, setNewFunctionPermissions] = useState<UserModuleKey[]>([]);
+  const [newFunctionKind, setNewFunctionKind] = useState<"internal" | "external_company">("internal");
+  const [newFunctionLinkedTenantCode, setNewFunctionLinkedTenantCode] = useState("");
+  const [newFunctionLeadAccessScope, setNewFunctionLeadAccessScope] = useState<"assigned" | "territory" | "all_authorized">("assigned");
   const [creatingFunction, setCreatingFunction] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
@@ -575,6 +601,9 @@ export default function Usuarios() {
     setEditingFunction(null);
     setNewFunctionName("");
     setNewFunctionPermissions([]);
+    setNewFunctionKind("internal");
+    setNewFunctionLinkedTenantCode("");
+    setNewFunctionLeadAccessScope("assigned");
     setFunctionDialogOpen(true);
   }
 
@@ -586,6 +615,9 @@ export default function Usuarios() {
         USER_MODULES.some((module) => module.key === permission),
       ),
     );
+    setNewFunctionKind(customFunction.kind ?? "internal");
+    setNewFunctionLinkedTenantCode(customFunction.linkedTenantCode ?? "");
+    setNewFunctionLeadAccessScope(customFunction.leadAccessScope ?? "assigned");
     setFunctionDialogOpen(true);
   }
 
@@ -625,6 +657,10 @@ export default function Usuarios() {
       toast({ title: copy.selectAccess, description: copy.selectAccessDescription, variant: "destructive" });
       return;
     }
+    if (newFunctionKind === "external_company" && !newFunctionLinkedTenantCode.trim()) {
+      toast({ title: copy.linkedTenantCode, description: copy.linkedTenantCodeHelp, variant: "destructive" });
+      return;
+    }
 
     setCreatingFunction(true);
     try {
@@ -634,7 +670,14 @@ export default function Usuarios() {
           : `/api/tenants/${tenantId}/user-functions`,
         {
           method: editingFunction ? "PATCH" : "POST",
-          body: JSON.stringify({ name, permissions: newFunctionPermissions }),
+          body: JSON.stringify({
+            name,
+            permissions: newFunctionPermissions,
+            kind: newFunctionKind,
+            linkedTenantCode: newFunctionKind === "external_company" ? newFunctionLinkedTenantCode.trim().toUpperCase() : null,
+            leadAccessScope: newFunctionLeadAccessScope,
+            representativeUserIds: [],
+          }),
           responseType: "json",
         },
       );
@@ -662,6 +705,9 @@ export default function Usuarios() {
       setEditingFunction(null);
       setNewFunctionName("");
       setNewFunctionPermissions([]);
+      setNewFunctionKind("internal");
+      setNewFunctionLinkedTenantCode("");
+      setNewFunctionLeadAccessScope("assigned");
       toast({
         title: editingFunction ? copy.functionUpdated : copy.functionCreated,
         description: editingFunction ? copy.functionUpdatedDescription : copy.functionSelected(saved.name),
@@ -1336,6 +1382,43 @@ export default function Usuarios() {
               />
             </div>
             <div className="space-y-3 rounded-lg border p-4">
+              <label className="flex cursor-pointer items-start gap-3">
+                <Switch
+                  checked={newFunctionKind === "external_company"}
+                  onCheckedChange={(checked) => setNewFunctionKind(checked ? "external_company" : "internal")}
+                />
+                <span>
+                  <span className="block text-sm font-medium">{copy.representativeCompany}</span>
+                  <span className="block text-xs text-muted-foreground mt-1">{copy.representativeCompanyHelp}</span>
+                </span>
+              </label>
+              {newFunctionKind === "external_company" && (
+                <div className="space-y-4 border-t pt-4">
+                  <div className="space-y-2">
+                    <Label>{copy.linkedTenantCode}</Label>
+                    <Input
+                      value={newFunctionLinkedTenantCode}
+                      onChange={(event) => setNewFunctionLinkedTenantCode(event.target.value)}
+                      placeholder={copy.linkedTenantCodePlaceholder}
+                    />
+                    <p className="text-xs text-muted-foreground">{copy.linkedTenantCodeHelp}</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{copy.representativeLeadScope}</Label>
+                    <Select value={newFunctionLeadAccessScope} onValueChange={(value) => setNewFunctionLeadAccessScope(value as "assigned" | "territory" | "all_authorized")}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="assigned">{copy.representativeLeadAssigned}</SelectItem>
+                        <SelectItem value="territory">{copy.representativeLeadTerritory}</SelectItem>
+                        <SelectItem value="all_authorized">{copy.representativeLeadAll}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-3 rounded-lg border p-4">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <Label className="text-base">{copy.defaultAccess}</Label>
@@ -1397,6 +1480,9 @@ export default function Usuarios() {
                   <p className="font-medium text-sm truncate">{customFunction.name}</p>
                   <p className="text-xs text-muted-foreground">
                     {customFunction.permissions.length} {copy.defaultAccess.toLowerCase()}
+                    {customFunction.kind === "external_company" && customFunction.linkedTenantCode
+                      ? ` · ${copy.representativeCompany}: ${customFunction.linkedTenantCode}`
+                      : ""}
                   </p>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
