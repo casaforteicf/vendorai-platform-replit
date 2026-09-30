@@ -1,14 +1,32 @@
 import { Router, type IRouter } from "express";
 import { z } from "zod";
-import { db, agentActionsLogTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import {
+  db,
+  agentActionsLogTable,
+  browserAgentConnectionsTable,
+} from "@workspace/db";
+import { and, eq } from "drizzle-orm";
+import { encrypt, decrypt } from "../lib/crypto.js";
 import { runBrowserAgent } from "../services/browser-agent.js";
 
 const router: IRouter = Router();
 
+const connectionSchema = z.object({
+  name: z.string().min(2).max(120),
+  startUrl: z.string().url(),
+  allowedHosts: z.array(z.string().min(1).max(255)).max(20).optional(),
+  login: z.string().max(500).optional(),
+  passcode: z.string().max(2000).optional(),
+});
+
+const connectionPatchSchema = connectionSchema.partial().extend({
+  clearSession: z.boolean().optional(),
+});
+
 const runSchema = z.object({
   goal: z.string().min(3).max(4000),
-  startUrl: z.string().url(),
+  startUrl: z.string().url().optional(),
+  connectionId: z.string().optional(),
   agentName: z.string().min(1).default("browser"),
   leadId: z.string().optional(),
   mode: z.enum(["assistido", "autonomo"]).default("assistido"),
@@ -17,12 +35,157 @@ const runSchema = z.object({
   tenantId: z.string().optional(),
 });
 
+function resolveTenant(req: any, explicitTenantId?: string) {
+  const ownTenantId = req.user?.tenantId;
+  const isSuperAdmin = req.user?.platformRole === "super_admin";
+  return ownTenantId ?? (isSuperAdmin ? explicitTenantId : undefined);
+}
+
+function safeConnection(connection: typeof browserAgentConnectionsTable.$inferSelect) {
+  return {
+    id: connection.id,
+    name: connection.name,
+    startUrl: connection.startUrl,
+    allowedHosts: connection.allowedHosts ?? [],
+    loginConfigured: Boolean(connection.usernameEncrypted),
+    passcodeConfigured: Boolean(connection.passwordEncrypted),
+    hasPersistentSession: Boolean(connection.cookiesEncrypted),
+    lastUsedAt: connection.lastUsedAt,
+    createdAt: connection.createdAt,
+    updatedAt: connection.updatedAt,
+  };
+}
+
 router.get("/browser-agent/status", (_req, res) => {
   res.json({
     configured: Boolean(process.env["BROWSER_CDP_URL"]),
     allowlistEnabled: Boolean(process.env["BROWSER_ALLOWED_HOSTS"]),
     runtime: "cdp",
+    persistentConnections: true,
+    secureSecretInjection: true,
   });
+});
+
+router.get("/browser-agent/connections", async (req, res) => {
+  const tenantId = resolveTenant(req, String(req.query["tenantId"] ?? ""));
+  if (!tenantId) {
+    res.status(401).json({ error: "Tenant não resolvido" });
+    return;
+  }
+
+  const rows = await db
+    .select()
+    .from(browserAgentConnectionsTable)
+    .where(eq(browserAgentConnectionsTable.tenantId, tenantId));
+
+  res.json(rows.map(safeConnection));
+});
+
+router.post("/browser-agent/connections", async (req, res) => {
+  const parsed = connectionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.flatten() });
+    return;
+  }
+
+  const tenantId = resolveTenant(req, String(req.body?.tenantId ?? ""));
+  if (!tenantId) {
+    res.status(401).json({ error: "Tenant não resolvido" });
+    return;
+  }
+
+  const url = new URL(parsed.data.startUrl);
+  const baseHost = url.hostname.toLowerCase();
+  const allowedHosts = Array.from(new Set([baseHost, ...(parsed.data.allowedHosts ?? [])]));
+
+  const [row] = await db
+    .insert(browserAgentConnectionsTable)
+    .values({
+      tenantId,
+      name: parsed.data.name,
+      startUrl: parsed.data.startUrl,
+      allowedHosts,
+      usernameEncrypted: parsed.data.login ? encrypt(parsed.data.login) : null,
+      passwordEncrypted: parsed.data.passcode ? encrypt(parsed.data.passcode) : null,
+    })
+    .returning();
+
+  res.status(201).json(row ? safeConnection(row) : null);
+});
+
+router.patch("/browser-agent/connections/:id", async (req, res) => {
+  const parsed = connectionPatchSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.flatten() });
+    return;
+  }
+
+  const tenantId = resolveTenant(req, String(req.body?.tenantId ?? ""));
+  if (!tenantId) {
+    res.status(401).json({ error: "Tenant não resolvido" });
+    return;
+  }
+
+  const [existing] = await db
+    .select()
+    .from(browserAgentConnectionsTable)
+    .where(and(
+      eq(browserAgentConnectionsTable.id, String(req.params.id)),
+      eq(browserAgentConnectionsTable.tenantId, tenantId),
+    ));
+
+  if (!existing) {
+    res.status(404).json({ error: "Conexão não encontrada" });
+    return;
+  }
+
+  const nextStartUrl = parsed.data.startUrl ?? existing.startUrl;
+  const nextUrl = new URL(nextStartUrl);
+  const nextAllowedHosts = parsed.data.allowedHosts
+    ? Array.from(new Set([nextUrl.hostname.toLowerCase(), ...parsed.data.allowedHosts]))
+    : existing.allowedHosts;
+
+  const [row] = await db
+    .update(browserAgentConnectionsTable)
+    .set({
+      ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
+      ...(parsed.data.startUrl !== undefined ? { startUrl: parsed.data.startUrl } : {}),
+      ...(parsed.data.allowedHosts !== undefined ? { allowedHosts: nextAllowedHosts } : {}),
+      ...(parsed.data.login !== undefined ? { usernameEncrypted: parsed.data.login ? encrypt(parsed.data.login) : null } : {}),
+      ...(parsed.data.passcode !== undefined ? { passwordEncrypted: parsed.data.passcode ? encrypt(parsed.data.passcode) : null } : {}),
+      ...(parsed.data.clearSession ? { cookiesEncrypted: null } : {}),
+      updatedAt: new Date(),
+    })
+    .where(and(
+      eq(browserAgentConnectionsTable.id, existing.id),
+      eq(browserAgentConnectionsTable.tenantId, tenantId),
+    ))
+    .returning();
+
+  res.json(row ? safeConnection(row) : null);
+});
+
+router.delete("/browser-agent/connections/:id", async (req, res) => {
+  const tenantId = resolveTenant(req, String(req.query["tenantId"] ?? ""));
+  if (!tenantId) {
+    res.status(401).json({ error: "Tenant não resolvido" });
+    return;
+  }
+
+  const [deleted] = await db
+    .delete(browserAgentConnectionsTable)
+    .where(and(
+      eq(browserAgentConnectionsTable.id, String(req.params.id)),
+      eq(browserAgentConnectionsTable.tenantId, tenantId),
+    ))
+    .returning({ id: browserAgentConnectionsTable.id });
+
+  if (!deleted) {
+    res.status(404).json({ error: "Conexão não encontrada" });
+    return;
+  }
+
+  res.json({ success: true, id: deleted.id });
 });
 
 router.post("/browser-agent/run", async (req, res) => {
@@ -32,12 +195,31 @@ router.post("/browser-agent/run", async (req, res) => {
     return;
   }
 
-  const ownTenantId = req.user?.tenantId;
-  const isSuperAdmin = req.user?.platformRole === "super_admin";
-  const tenantId = ownTenantId ?? (isSuperAdmin ? parsed.data.tenantId : undefined);
-
+  const tenantId = resolveTenant(req, parsed.data.tenantId);
   if (!tenantId) {
     res.status(422).json({ error: "tenantId não resolvido" });
+    return;
+  }
+
+  let connection: typeof browserAgentConnectionsTable.$inferSelect | undefined;
+  if (parsed.data.connectionId) {
+    [connection] = await db
+      .select()
+      .from(browserAgentConnectionsTable)
+      .where(and(
+        eq(browserAgentConnectionsTable.id, parsed.data.connectionId),
+        eq(browserAgentConnectionsTable.tenantId, tenantId),
+      ));
+
+    if (!connection) {
+      res.status(404).json({ error: "Conexão do navegador não encontrada" });
+      return;
+    }
+  }
+
+  const startUrl = connection?.startUrl ?? parsed.data.startUrl;
+  if (!startUrl) {
+    res.status(422).json({ error: "startUrl ou connectionId é obrigatório" });
     return;
   }
 
@@ -49,20 +231,44 @@ router.post("/browser-agent/run", async (req, res) => {
     status: parsed.data.allowWrite ? "approved" : "pending",
     payload: {
       goal: parsed.data.goal,
-      startUrl: parsed.data.startUrl,
+      startUrl,
+      connectionId: connection?.id ?? null,
       mode: parsed.data.mode,
       allowWrite: parsed.data.allowWrite,
     },
   }).returning();
 
   try {
+    const sessionCookies = connection?.cookiesEncrypted
+      ? JSON.parse(decrypt(connection.cookiesEncrypted))
+      : undefined;
+
     const result = await runBrowserAgent({
       tenantId,
       goal: parsed.data.goal,
-      startUrl: parsed.data.startUrl,
+      startUrl,
       mode: parsed.data.mode,
       allowWrite: parsed.data.allowWrite,
       maxSteps: parsed.data.maxSteps,
+      allowedHosts: connection?.allowedHosts ?? [],
+      secrets: connection ? {
+        login: connection.usernameEncrypted ? decrypt(connection.usernameEncrypted) : undefined,
+        passcode: connection.passwordEncrypted ? decrypt(connection.passwordEncrypted) : undefined,
+      } : undefined,
+      sessionCookies,
+      onSessionPersist: connection ? async (cookies) => {
+        await db
+          .update(browserAgentConnectionsTable)
+          .set({
+            cookiesEncrypted: encrypt(JSON.stringify(cookies)),
+            lastUsedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(and(
+            eq(browserAgentConnectionsTable.id, connection!.id),
+            eq(browserAgentConnectionsTable.tenantId, tenantId),
+          ));
+      } : undefined,
     });
 
     if (audit?.id) {
