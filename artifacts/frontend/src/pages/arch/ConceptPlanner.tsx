@@ -424,11 +424,19 @@ type ProjectSourceFile = {
   originalName: string;
   mimeType: string;
   extension: string;
-  kind: "bim" | "cad";
+  kind: "bim" | "cad" | "model3d";
   uploadedAt: string;
-  status: "stored_only";
-  parserStatus: "pending_ifc_parser" | "conversion_required" | "parsed_metadata";
+  status: "stored_only" | "converted";
+  parserStatus: "pending_ifc_parser" | "conversion_required" | "parsed_metadata" | "ready_model3d";
   parsedAt?: string;
+  convertedAt?: string;
+  conversionEngine?: string;
+  model3d?: {
+    storagePath: string;
+    url: string;
+    format: "glb" | "gltf";
+  };
+  manifest?: Record<string, unknown>;
   ifcMetadata?: {
     schema: string | null;
     projectName: string | null;
@@ -1043,6 +1051,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [sourceFileMessage, setSourceFileMessage] = useState<string | null>(null);
   const [parsingIfcId, setParsingIfcId] = useState<string | null>(null);
   const [convertingIfcId, setConvertingIfcId] = useState<string | null>(null);
+  const [convertingSketchupId, setConvertingSketchupId] = useState<string | null>(null);
   const wallFirstActive = (Array.isArray(wallFirstFloors) ? wallFirstFloors : []).includes(activeFloor);
   const [modelSearch, setModelSearch] = useState("");
   const [modelCategory, setModelCategory] = useState<"todos" | "terreas" | "sobrados" | "lazer">("todos");
@@ -4340,6 +4349,39 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     }
   };
 
+  const convertSketchupSourceFile = async (source: ProjectSourceFile) => {
+    if (source.extension.toLowerCase() !== "skp" || convertingSketchupId) return;
+    const id = conceptIdRef.current ?? conceptId;
+    if (!id) {
+      setSourceFileState("error");
+      setSourceFileMessage("Salve o pré-projeto antes de converter o SketchUp.");
+      return;
+    }
+    setConvertingSketchupId(source.id);
+    setSourceFileMessage(null);
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("vendorai_token") : null;
+      const response = await fetch(
+        `/api/arch/concept-projects/${encodeURIComponent(id)}/source-file/${encodeURIComponent(source.id)}/convert-sketchup`,
+        {
+          method: "POST",
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        },
+      );
+      const payload = await response.json().catch(() => ({})) as ProjectSourceFile & { error?: string };
+      if (!response.ok || !payload.id) throw new Error(payload.error ?? "Não foi possível converter o SketchUp.");
+      setSourceFiles((current) => current.map((item) => item.id === payload.id ? payload : item));
+      setSourceFileState("success");
+      setSourceFileMessage("SketchUp convertido para modelo 3D do Arqdor. O GLB e os metadados do projeto foram preservados.");
+      window.setTimeout(() => setSourceFileState("idle"), 5000);
+    } catch (error) {
+      setSourceFileState("error");
+      setSourceFileMessage(error instanceof Error ? error.message : "Falha ao converter SketchUp.");
+    } finally {
+      setConvertingSketchupId(null);
+    }
+  };
+
   const uploadProjectSourceFile = async (file: File) => {
     if (sourceFileState === "uploading") return;
     setSourceFileState("uploading");
@@ -4361,8 +4403,12 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       setSourceFileState("success");
       setSourceFileMessage(
         payload.extension === "ifc"
-          ? "IFC vinculado ao projeto. O arquivo está preservado e aguarda conexão com o parser/viewer BIM."
-          : `${payload.extension.toUpperCase()} vinculado ao projeto. A conversão para geometria editável será feita pela camada de interoperabilidade.`,
+          ? "IFC vinculado ao projeto. Você pode ler os metadados ou converter para geometria editável."
+          : payload.extension === "skp"
+            ? "SketchUp vinculado ao projeto. Clique em Converter SketchUp para gerar o modelo 3D no Arqdor."
+            : payload.parserStatus === "ready_model3d"
+              ? `${payload.extension.toUpperCase()} pronto como modelo 3D do Arqdor.`
+              : `${payload.extension.toUpperCase()} vinculado ao projeto. A conversão será feita pela camada de interoperabilidade.`,
       );
       window.setTimeout(() => setSourceFileState("idle"), 5000);
     } catch (error) {
@@ -9204,7 +9250,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   <input
                     ref={sourceFileInputRef}
                     type="file"
-                    accept=".ifc,.dwg,.rvt,.skp"
+                    accept=".ifc,.dwg,.rvt,.skp,.glb,.gltf"
                     className="hidden"
                     onChange={(event) => {
                       const file = event.target.files?.[0];
@@ -9216,10 +9262,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     onClick={() => sourceFileInputRef.current?.click()}
                     disabled={sourceFileState === "uploading" || Boolean(projectMaster)}
                     className="inline-flex items-center gap-2 rounded-xl border bg-background px-4 py-2.5 text-sm font-semibold disabled:opacity-50"
-                    title={projectMaster ? "Crie uma revisão antes de anexar nova fonte BIM/CAD." : "Anexar IFC, DWG, RVT ou SKP ao projeto"}
+                    title={projectMaster ? "Crie uma revisão antes de anexar nova fonte de projeto." : "Importar IFC, DWG, RVT, SketchUp, GLB ou GLTF"}
                   >
                     <Box className="h-4 w-4" />
-                    {sourceFileState === "uploading" ? "Enviando BIM/CAD..." : "BIM / CAD"}
+                    {sourceFileState === "uploading" ? "Enviando modelo..." : "Importar modelo"}
                   </button>
                   {archProjetoId && (
                     <button
@@ -9594,17 +9640,19 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                 )}
                 {sourceFiles.length > 0 && (
                   <div className="mt-3 space-y-2 rounded-xl border bg-muted/20 p-3 text-xs">
-                    <div className="font-semibold">Arquivos BIM/CAD vinculados</div>
+                    <div className="font-semibold">Modelos e arquivos de projeto</div>
                     {sourceFiles.slice().reverse().map((source) => (
                       <div key={source.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-background px-3 py-2">
                         <div className="min-w-0">
                           <div className="truncate font-semibold">{source.originalName}</div>
                           <div className="text-muted-foreground">
-                            {source.extension.toUpperCase()} · {source.parserStatus === "parsed_metadata"
-                              ? "IFC lido"
-                              : source.parserStatus === "pending_ifc_parser"
-                                ? "aguardando parser BIM"
-                                : "aguardando conversão"}
+                            {source.extension.toUpperCase()} · {source.parserStatus === "ready_model3d"
+                              ? "modelo 3D pronto"
+                              : source.parserStatus === "parsed_metadata"
+                                ? "IFC lido"
+                                : source.parserStatus === "pending_ifc_parser"
+                                  ? "aguardando parser BIM"
+                                  : "aguardando conversão"}
                           </div>
                           {source.ifcMetadata && (
                             <div className="mt-1 text-[11px] text-slate-600">
@@ -9618,6 +9666,27 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           ) : null}
                         </div>
                         <div className="flex items-center gap-2">
+                          {source.extension.toLowerCase() === "skp" && source.parserStatus !== "ready_model3d" && (
+                            <button
+                              type="button"
+                              onClick={() => void convertSketchupSourceFile(source)}
+                              disabled={convertingSketchupId === source.id || Boolean(projectMaster)}
+                              className="rounded-lg border px-2.5 py-1.5 font-semibold text-sky-700 disabled:opacity-50"
+                              title={projectMaster ? "Crie uma revisão antes de converter nova fonte." : "Converter o arquivo SKP para GLB e preservar os metadados do SketchUp"}
+                            >
+                              {convertingSketchupId === source.id ? "Convertendo SketchUp..." : "Converter SketchUp"}
+                            </button>
+                          )}
+                          {source.parserStatus === "ready_model3d" && source.model3d?.url && (
+                            <a
+                              href={source.model3d.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="rounded-lg border px-2.5 py-1.5 font-semibold text-emerald-700 hover:bg-emerald-50"
+                            >
+                              Abrir modelo 3D
+                            </a>
+                          )}
                           {source.extension.toLowerCase() === "ifc" && source.parserStatus !== "parsed_metadata" && (
                             <button
                               type="button"
