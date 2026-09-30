@@ -76,8 +76,9 @@ export async function createRectMask(
  *
  * A seleção retangular funciona como envelope máximo. Dentro dela, o algoritmo
  * encontra a cor dominante na região central, escolhe um pixel-semente
- * representativo e faz crescimento conectado (4-vizinhos). Isso evita que TV,
- * parede, nicho, puxadores ou outra peça dentro do mesmo retângulo sejam
+ * representativo e faz crescimento conectado (4-vizinhos) guiado por cor,
+ * textura e perímetro. Bordas/quinas/frestas funcionam como barreiras, evitando
+ * que TV, parede, nicho, puxadores ou outra peça dentro do mesmo retângulo sejam
  * alterados junto com o MDF/revestimento alvo.
  *
  * A máscara NUNCA cresce além do retângulo confirmado pelo usuário.
@@ -106,6 +107,27 @@ export async function createMaterialSurfaceMask(
   const pixel = (x: number, y: number): [number, number, number] => {
     const i = (y * width + x) * 3;
     return [data[i] ?? 0, data[i + 1] ?? 0, data[i + 2] ?? 0];
+  };
+
+  const luminance = (x: number, y: number) => {
+    const [r, g, b] = pixel(
+      Math.max(0, Math.min(width - 1, x)),
+      Math.max(0, Math.min(height - 1, y)),
+    );
+    return 0.299 * r + 0.587 * g + 0.114 * b;
+  };
+
+  // Gradiente tipo Sobel simplificado. Valores altos representam quinas,
+  // juntas, frestas e contornos físicos que devem funcionar como barreira.
+  const edgeStrength = (x: number, y: number) => {
+    const gx =
+      -luminance(x - 1, y - 1) + luminance(x + 1, y - 1) +
+      -2 * luminance(x - 1, y)   + 2 * luminance(x + 1, y) +
+      -luminance(x - 1, y + 1) + luminance(x + 1, y + 1);
+    const gy =
+      -luminance(x - 1, y - 1) - 2 * luminance(x, y - 1) - luminance(x + 1, y - 1) +
+       luminance(x - 1, y + 1) + 2 * luminance(x, y + 1) + luminance(x + 1, y + 1);
+    return Math.sqrt(gx * gx + gy * gy);
   };
 
   for (const r of rects) {
@@ -163,6 +185,25 @@ export async function createMaterialSurfaceMask(
     const std = Math.sqrt(variance / Math.max(1, varianceCount));
     const threshold = Math.max(42, Math.min(88, 38 + std * 0.85));
 
+    // Limiar de perímetro adaptativo. Amostramos o gradiente na seleção e
+    // usamos um percentil alto: textura natural da madeira/pedra continua
+    // atravessável, mas quinas, frestas e limites entre peças viram barreira.
+    const edgeSamples: number[] = [];
+    for (let y = y1 + 1; y < y2; y += 3) {
+      for (let x = x1 + 1; x < x2; x += 3) {
+        edgeSamples.push(edgeStrength(x, y));
+      }
+    }
+    edgeSamples.sort((a, b) => a - b);
+    const edgeP85 = edgeSamples.length
+      ? edgeSamples[Math.max(0, Math.floor(edgeSamples.length * 0.85) - 1)] ?? 0
+      : 0;
+    const edgeBarrierThreshold = Math.max(95, Math.min(240, edgeP85 * 1.35));
+
+    // Saltos bruscos de cor entre dois pixels vizinhos também indicam limite
+    // mesmo quando o contorno é pouco contrastado em luminância.
+    const neighborColorJumpThreshold = Math.max(34, Math.min(70, threshold * 0.72));
+
     const visited = new Uint8Array(rw * rh);
     const qx = new Int32Array(rw * rh);
     const qy = new Int32Array(rw * rh);
@@ -191,10 +232,24 @@ export async function createMaterialSurfaceMask(
       mask[y * width + x] = 255;
       accepted++;
 
-      enqueue(x - 1, y);
-      enqueue(x + 1, y);
-      enqueue(x, y - 1);
-      enqueue(x, y + 1);
+      const tryNeighbor = (nx: number, ny: number) => {
+        if (nx < x1 || nx > x2 || ny < y1 || ny > y2) return;
+        const next = pixel(nx, ny);
+
+        // Não cruza perímetro físico forte.
+        const boundaryEdge = Math.max(edgeStrength(x, y), edgeStrength(nx, ny));
+        if (boundaryEdge > edgeBarrierThreshold) return;
+
+        // Não cruza mudança abrupta de acabamento/cor entre peças adjacentes.
+        if (colorDistance(current, next) > neighborColorJumpThreshold) return;
+
+        enqueue(nx, ny);
+      };
+
+      tryNeighbor(x - 1, y);
+      tryNeighbor(x + 1, y);
+      tryNeighbor(x, y - 1);
+      tryNeighbor(x, y + 1);
     }
 
     const rectArea = rw * rh;
