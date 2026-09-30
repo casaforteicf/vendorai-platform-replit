@@ -65,6 +65,7 @@ export type RenderStudioSelectionRect = {
   h: number;
   label: string;
   id: string;
+  surfaceKey?: string;
 };
 
 export type RenderStudioVersion = {
@@ -77,6 +78,7 @@ export type RenderStudioVersion = {
   selectionLabel?: string;
   materialId?: string;
   materialName?: string;
+  surfaceKey?: string;
   approvedBy?: string;
   approvedAt?: Date;
   approvalNote?: string;
