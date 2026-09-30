@@ -10,6 +10,7 @@ import usersRouter from "./users";
 import leadsRouter from "./leads";
 import conversationsRouter from "./conversations";
 import agentActionsLogRouter from "./agent_actions_log";
+import browserAgentRouter from "./browser_agent";
 import consentsRouter from "./consents";
 import businessProfilesRouter from "./business_profiles";
 import agentConfigsRouter from "./agent_configs";
@@ -380,6 +381,7 @@ router.use(usersRouter);
 router.use(leadsRouter);
 router.use(conversationsRouter);
 router.use(agentActionsLogRouter);
+router.use(browserAgentRouter);
 router.use(consentsRouter);
 
 // Business Hub
