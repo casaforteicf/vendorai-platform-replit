@@ -13,6 +13,7 @@ import {
 } from "@workspace/db";
 import { requireRole } from "../middlewares/auth.js";
 import { geocodeAddressWithTimeout } from "../lib/geocoding.js";
+import { sendWelcomeEmail } from "../lib/email.js";
 
 const router: IRouter = Router();
 
@@ -474,7 +475,22 @@ router.post("/users", requireRole("super_admin", "tenant_admin"), async (req, re
       .insert(usersTable)
       .values(data)
       .returning(PUBLIC_FIELDS);
-    res.status(201).json(user);
+
+    const [tenant] = await db
+      .select({ name: tenantsTable.name })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, userData.tenantId))
+      .limit(1);
+
+    const emailSent = await sendWelcomeEmail({
+      to: userData.email,
+      name: userData.name,
+      tenantName: tenant?.name ?? "sua empresa",
+      loginUrl: "https://app.appvendorai.com/login",
+      tempPassword: userData.password,
+    });
+
+    res.status(201).json({ ...user, emailSent });
   } catch (err: unknown) {
     if (isUniqueViolation(err)) {
       res.status(409).json({ error: "Email already exists" });
