@@ -268,12 +268,17 @@ router.post("/leads", async (req, res) => {
   // CRM-native enrichment: every newly created lead can be enriched in the
   // background without blocking the creation response and without triggering
   // unsolicited SDR outreach. Prospector keeps its own explicit dispatch rules.
-  enrichLead({
-    leadId: lead.id,
-    tenantId: lead.tenantId,
-    log: req.log,
-    allowAutoDispatch: false,
-  }).catch((error) => req.log?.warn?.({ err: error, leadId: lead.id }, "lead: automatic enrichment skipped"));
+  const hasEnrichmentSeed = Boolean(
+    lead.documento || lead.empresa || lead.websiteUrl || lead.telefone || lead.email || lead.instagramHandle,
+  );
+  if (hasEnrichmentSeed) {
+    enrichLead({
+      leadId: lead.id,
+      tenantId: lead.tenantId,
+      log: req.log,
+      allowAutoDispatch: false,
+    }).catch((error) => req.log?.warn?.({ err: error, leadId: lead.id }, "lead: automatic enrichment skipped"));
+  }
 
   res.status(201).json(lead);
 });
