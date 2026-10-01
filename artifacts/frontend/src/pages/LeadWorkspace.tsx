@@ -131,8 +131,8 @@ export default function LeadWorkspace() {
   }, [currentStage, stages]);
   const initialNext = requestedStage ?? stages[currentIndex + 1]?.key ?? "";
   const pending = useMemo(() => activities
-    .filter((a) => ["pendente", "planejado"].includes(a.status) && (!deal || !a.dealId || a.dealId === deal.id))
-    .sort((a, b) => new Date(a.dataVencimento ?? "9999").getTime() - new Date(b.dataVencimento ?? "9999").getTime()), [activities, deal]);
+    .filter((a) => ["pendente", "planejado", "em_andamento"].includes(a.status))
+    .sort((a, b) => new Date(a.dataVencimento ?? "9999").getTime() - new Date(b.dataVencimento ?? "9999").getTime()), [activities]);
   const nextPending = pending[0];
   const overduePendingCount = pending.filter((activity) => activity.dataVencimento && new Date(activity.dataVencimento).getTime() < Date.now()).length;
   const nextPendingOverdue = Boolean(nextPending?.dataVencimento && new Date(nextPending.dataVencimento).getTime() < Date.now());
@@ -287,7 +287,17 @@ export default function LeadWorkspace() {
           qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }),
           qc.invalidateQueries({ queryKey: getListActivitiesQueryKey(tenantId, { leadId: id }) }),
         ]);
+        await qc.refetchQueries({ queryKey: getListDealsQueryKey(tenantId) });
         setOpen(false);
+
+        const activeDealId = result?.deal?.id as string | undefined;
+        if (activeDealId && activeDealId !== deal.id) {
+          const params = new URLSearchParams(window.location.search);
+          params.set("dealId", activeDealId);
+          params.delete("targetStage");
+          navigate(window.location.pathname + "?" + params.toString());
+        }
+
         toast({
           title: result.alreadyResumed ? "Atendimento já retomado" : "Novo ciclo comercial iniciado",
           description: "O Aquecimento ficou no histórico e a próxima atividade foi atribuída a " + displayUser(owner) + ".",
@@ -307,6 +317,7 @@ export default function LeadWorkspace() {
         qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }),
         qc.invalidateQueries({ queryKey: getListActivitiesQueryKey(tenantId, { leadId: id }) }),
       ]);
+      await qc.refetchQueries({ queryKey: getListDealsQueryKey(tenantId) });
       setOpen(false);
       toast({ title: "Etapa avançada", description: "Próxima atividade atribuída a " + displayUser(owner) + "." });
     } catch (e) {
@@ -437,7 +448,7 @@ export default function LeadWorkspace() {
           {pending.length > 0 && (
             <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>Há {pending.length} atividade(s) pendente(s) neste atendimento{overduePendingCount > 0 ? `, sendo ${overduePendingCount} vencida(s)` : ""}. Ao avançar, elas continuam registradas; conclua ou cancele o que não fizer mais sentido para evitar uma fila duplicada.</span>
+              <span>Há {pending.length} atividade(s) pendente(s) neste lead{overduePendingCount > 0 ? `, sendo ${overduePendingCount} vencida(s)` : ""}. Ao avançar, elas continuam registradas; conclua ou cancele o que não fizer mais sentido para evitar uma fila duplicada.</span>
             </div>
           )}
           {(() => {
