@@ -205,6 +205,15 @@ function buildExpeditionChecklist(input: {
       sku: item.sku ?? null,
       nome: item.nome,
       quantidade: item.quantidade,
+      modoConferencia: config.checklistModo === "por_unidade" || config.checklistMode === "per_unit" ? "por_unidade" : "por_lote",
+      snapshot: {
+        capturedAt: new Date().toISOString(),
+        nome: sourceItem?.nome ?? item.nome,
+        sku: sourceItem?.sku ?? item.sku ?? null,
+        descricao: sourceItem?.descricao ?? sourceItem?.sourceSnapshot?.descricao ?? null,
+        produtoId: sourceItem?.produtoId ?? item.produtoId ?? null,
+        quantidadePedido: sourceItem?.quantidade ?? item.quantidadePedido ?? null,
+      },
       contexto: {
         categoria: typeof config.categoria === "string" ? config.categoria : null,
         nicho: typeof config.nicho === "string" ? config.nicho : null,
@@ -223,8 +232,8 @@ function buildExpeditionChecklist(input: {
   const totalCampos = checklistItems.reduce((total, item) => total + item.campos.length, 0);
   return {
     schemaVersion: 1,
-    tipo: "expedicao_transporte",
-    etapa: "em_transporte",
+    tipo: "expedicao",
+    etapa: "liberado",
     status: "pendente",
     contexto: {
       segmento: input.segmento ?? null,
@@ -1257,6 +1266,27 @@ router.patch("/work-cards/:id", async (req, res) => {
   if (starting && !existing.dataInicioEfetiva && !parsed.data.dataInicioEfetiva) data.dataInicioEfetiva = new Date();
   if (finishing && !existing.dataFimEfetiva && !parsed.data.dataFimEfetiva) data.dataFimEfetiva = new Date();
 
+  if (parsed.data.metadata) {
+    const previousMetadata = existing.metadata ?? {};
+    const nextMetadata = data.metadata as Record<string, unknown>;
+    const expeditionChanged = JSON.stringify(previousMetadata.checklistExpedicao ?? null) !== JSON.stringify(nextMetadata.checklistExpedicao ?? null);
+    const transportChanged = JSON.stringify(previousMetadata.checklistTransporte ?? null) !== JSON.stringify(nextMetadata.checklistTransporte ?? null);
+    if (expeditionChanged || transportChanged) {
+      const previousAudit = Array.isArray(previousMetadata.operationalAudit) ? previousMetadata.operationalAudit : [];
+      data.metadata = {
+        ...nextMetadata,
+        operationalAudit: [
+          ...previousAudit,
+          {
+            at: new Date().toISOString(),
+            userId: req.user?.sub ?? null,
+            action: expeditionChanged ? "checklist_expedicao_atualizado" : "checklist_transporte_atualizado",
+          },
+        ].slice(-200),
+      };
+    }
+  }
+
   const [card] = await db.update(workCardsTable).set(data).where(eq(workCardsTable.id, existing.id)).returning();
 
   if (card.etapa !== existing.etapa && card.leadId) {
@@ -1289,6 +1319,7 @@ router.patch("/work-cards/:id", async (req, res) => {
     if (String(card.dataInicioEfetiva ?? "") !== String(existing.dataInicioEfetiva ?? "")) changedFields.push("início efetivo");
     if (String(card.dataFimPrevista ?? "") !== String(existing.dataFimPrevista ?? "")) changedFields.push("fim previsto");
     if (String(card.dataFimEfetiva ?? "") !== String(existing.dataFimEfetiva ?? "")) changedFields.push("fim efetivo");
+    if (JSON.stringify(card.metadata ?? {}) !== JSON.stringify(existing.metadata ?? {})) changedFields.push("checklist operacional");
     if (changedFields.length > 0) {
       await recordWorkHistory({
         tenantId: card.tenantId,
