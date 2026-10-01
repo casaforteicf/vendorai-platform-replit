@@ -41,6 +41,7 @@ type LiveBrowserSession = {
   missionActive: boolean;
   revision: number;
   pauseReason: "manual" | "human_verification" | "approval_required" | null;
+  handoffToken: string;
   actionInFlight?: Promise<unknown>;
   onMissionResult?: PersistMissionResult;
   onSessionPersist?: PersistSession;
@@ -143,6 +144,7 @@ export async function createLiveBrowserSession(input: {
     missionActive: false,
     revision: 0,
     pauseReason: null,
+    handoffToken: crypto.randomUUID() + crypto.randomUUID(),
     onSessionPersist: input.onSessionPersist,
     onMissionResult: input.onMissionResult,
   };
@@ -161,6 +163,50 @@ function requireSession(tenantId: string, sessionId: string) {
     throw new Error("Sessão expirada. Abra uma nova sessão do navegador.");
   }
   return session;
+}
+
+export function getLiveBrowserHandoff(sessionId: string) {
+  const session = sessions.get(sessionId);
+  if (!session || session.closed) throw new Error("Sessão do navegador não encontrada");
+  return { sessionId: session.id, handoffToken: session.handoffToken };
+}
+
+function requireHandoffSession(sessionId: string, handoffToken: string) {
+  const session = sessions.get(sessionId);
+  if (!session || session.closed || !handoffToken || session.handoffToken !== handoffToken) {
+    throw new Error("Sessão do navegador não encontrada");
+  }
+  if (Date.now() - session.lastActivityAt.getTime() > SESSION_TTL_MS) {
+    void closeLiveBrowserSession(session.tenantId, sessionId, true);
+    throw new Error("Sessão expirada. Abra uma nova sessão do navegador.");
+  }
+  return session;
+}
+
+export async function captureLiveBrowserHandoff(sessionId: string, handoffToken: string) {
+  const session = requireHandoffSession(sessionId, handoffToken);
+  session.lastActivityAt = new Date();
+  const buffer = await session.page.screenshot({ type: "jpeg", quality: 72, encoding: "base64" });
+  return {
+    ...publicSession(session),
+    title: await session.page.title().catch(() => ""),
+    screenshotDataUrl: "data:image/jpeg;base64," + buffer,
+  };
+}
+
+export async function setLiveBrowserHandoffPaused(sessionId: string, handoffToken: string, paused: boolean) {
+  const session = requireHandoffSession(sessionId, handoffToken);
+  return setLiveBrowserPaused(session.tenantId, session.id, paused);
+}
+
+export async function controlLiveBrowserHandoff(sessionId: string, handoffToken: string, command: Parameters<typeof controlLiveBrowserSession>[2]) {
+  const session = requireHandoffSession(sessionId, handoffToken);
+  return controlLiveBrowserSession(session.tenantId, session.id, command);
+}
+
+export async function closeLiveBrowserHandoff(sessionId: string, handoffToken: string) {
+  const session = requireHandoffSession(sessionId, handoffToken);
+  return closeLiveBrowserSession(session.tenantId, session.id);
 }
 
 export async function getLiveBrowserSession(tenantId: string, sessionId: string) {
