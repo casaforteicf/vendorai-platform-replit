@@ -3381,20 +3381,20 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const setCustomWallLength = (wallId: string, rawLength: number) => {
     const wall = safeCustomWalls.find((item) => item.id === wallId);
     if (!wall || !Number.isFinite(rawLength)) return;
-    const length = Math.max(0.5, Math.min(Math.max(lotWidth, lotDepth), rawLength));
-    const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
+    const length = Math.max(0.5, Math.min(Math.hypot(lotWidth, lotDepth), rawLength));
+    const dx = wall.x2 - wall.x1;
+    const dy = wall.y2 - wall.y1;
+    const currentLength = Math.hypot(dx, dy);
+    if (currentLength < 0.001) return;
+    const ux = dx / currentLength;
+    const uy = dy / currentLength;
     const before = snapshotEditor();
+    const x2 = Math.max(0, Math.min(lotWidth, wall.x1 + ux * length));
+    const y2 = Math.max(0, Math.min(lotDepth, wall.y1 + uy * length));
 
-    if (horizontal) {
-      const direction = wall.x2 >= wall.x1 ? 1 : -1;
-      const x2 = Math.max(0, Math.min(lotWidth, wall.x1 + length * direction));
-      setCustomWalls((prev) => (Array.isArray(prev) ? prev : []).map((item) => item.id === wallId ? { ...item, x2, y2: item.y1 } : item));
-    } else {
-      const direction = wall.y2 >= wall.y1 ? 1 : -1;
-      const y2 = Math.max(0, Math.min(lotDepth, wall.y1 + length * direction));
-      setCustomWalls((prev) => (Array.isArray(prev) ? prev : []).map((item) => item.id === wallId ? { ...item, x2: item.x1, y2 } : item));
-    }
-
+    setCustomWalls((prev) => (Array.isArray(prev) ? prev : []).map((item) =>
+      item.id === wallId ? { ...item, x2, y2 } : item
+    ));
     pushRoomHistory(before);
   };
 
@@ -3438,24 +3438,65 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const updateCustomWallLength = (wallId: string, requestedLength: number) => {
     const wall = safeCustomWalls.find((item) => item.id === wallId);
     if (!wall) return;
-    const length = Math.max(0.5, Math.min(Math.max(lotWidth, lotDepth), Number(requestedLength) || 0.5));
+    const length = Math.max(0.5, Math.min(Math.hypot(lotWidth, lotDepth), Number(requestedLength) || 0.5));
+    const dx = wall.x2 - wall.x1;
+    const dy = wall.y2 - wall.y1;
+    const currentLength = Math.hypot(dx, dy);
+    if (currentLength < 0.001) return;
     const before = snapshotEditor();
-    const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
-    const direction = horizontal
-      ? (wall.x2 >= wall.x1 ? 1 : -1)
-      : (wall.y2 >= wall.y1 ? 1 : -1);
+    const ux = dx / currentLength;
+    const uy = dy / currentLength;
+    const x2 = Math.max(0, Math.min(lotWidth, wall.x1 + ux * length));
+    const y2 = Math.max(0, Math.min(lotDepth, wall.y1 + uy * length));
+    updateCustomWall(wall.id, { x2, y2 });
+    pushRoomHistory(before);
+  };
 
-    if (horizontal) {
-      const x2 = Math.max(0, Math.min(lotWidth, wall.x1 + direction * length));
-      updateCustomWall(wall.id, { x2, y2: wall.y1 });
-    } else {
-      const y2 = Math.max(0, Math.min(lotDepth, wall.y1 + direction * length));
-      updateCustomWall(wall.id, { x2: wall.x1, y2 });
-    }
+  const duplicateCustomWall = (wallId: string) => {
+    const wall = safeCustomWalls.find((item) => item.id === wallId);
+    if (!wall) return;
+    const before = snapshotEditor();
+    const dx = wall.x2 - wall.x1;
+    const dy = wall.y2 - wall.y1;
+    const length = Math.max(0.001, Math.hypot(dx, dy));
+    const offset = 0.25;
+    const ox = (-dy / length) * offset;
+    const oy = (dx / length) * offset;
+    const copy: CustomWall = {
+      ...wall,
+      id: `custom-wall-${uid()}`,
+      x1: Math.max(0, Math.min(lotWidth, wall.x1 + ox)),
+      y1: Math.max(0, Math.min(lotDepth, wall.y1 + oy)),
+      x2: Math.max(0, Math.min(lotWidth, wall.x2 + ox)),
+      y2: Math.max(0, Math.min(lotDepth, wall.y2 + oy)),
+    };
+    setCustomWalls((prev) => [...(Array.isArray(prev) ? prev : []), copy]);
+    setSelectedCustomWallId(copy.id);
+    setSelectedWallId(null);
     pushRoomHistory(before);
   };
 
   const selectedCustomWall = safeCustomWalls.find((wall) => wall.id === selectedCustomWallId) ?? null;
+
+  useEffect(() => {
+    if (!selectedCustomWallId || editorView !== "plan") return;
+    const handleWallShortcut = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.tagName === "SELECT" || target?.isContentEditable) return;
+
+      if (event.key === "Delete" || event.key === "Backspace") {
+        event.preventDefault();
+        deleteCustomWall(selectedCustomWallId);
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "d") {
+        event.preventDefault();
+        duplicateCustomWall(selectedCustomWallId);
+      }
+    };
+    window.addEventListener("keydown", handleWallShortcut);
+    return () => window.removeEventListener("keydown", handleWallShortcut);
+  }, [editorView, selectedCustomWallId]);
 
   const visibleLibraryMaterials = useMemo(() => {
     const query = furnitureSearch.trim().toLocaleLowerCase("pt-BR");
@@ -8896,7 +8937,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       )}
                       <button type="button" onClick={() => addOpeningToCustomWall(selectedCustomWall.id, "door")} className="h-9 rounded-lg border px-3 text-xs font-semibold hover:bg-slate-50">+ Porta</button>
                       <button type="button" onClick={() => addOpeningToCustomWall(selectedCustomWall.id, "window")} className="h-9 rounded-lg border px-3 text-xs font-semibold hover:bg-slate-50">+ Janela</button>
-                      <button type="button" onClick={() => deleteCustomWall(selectedCustomWall.id)} className="h-9 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600 hover:bg-red-50">Excluir</button>
+                      <button type="button" onClick={() => duplicateCustomWall(selectedCustomWall.id)} className="h-9 rounded-lg border px-3 text-xs font-semibold hover:bg-slate-50" title="Duplicar parede (Ctrl/Cmd+D)">Duplicar</button>
+                      <button type="button" onClick={() => deleteCustomWall(selectedCustomWall.id)} className="h-9 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600 hover:bg-red-50" title="Excluir parede (Del)">Excluir</button>
                     </div>
                   </div>
                 ) : selectedOpening ? (
