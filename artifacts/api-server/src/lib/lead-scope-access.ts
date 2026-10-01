@@ -16,12 +16,7 @@ export async function canViewAllScopedData(
   req: Request,
   permission: string,
 ): Promise<boolean> {
-  if (
-    req.user?.platformRole === "super_admin" ||
-    req.user?.platformRole === "tenant_admin" ||
-    req.user?.userFunction === "administrador" ||
-    isTrustedInternalActor(req)
-  ) {
+  if (req.user?.platformRole === "super_admin" || isTrustedInternalActor(req)) {
     return true;
   }
 
