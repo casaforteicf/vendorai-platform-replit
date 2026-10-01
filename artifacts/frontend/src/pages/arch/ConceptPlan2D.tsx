@@ -1118,10 +1118,16 @@ export default function ConceptPlan2D({
     ) {
       const opening = geometry.openings.find((item) => item.id === gesture.openingId);
       if (!opening) return;
-      const horizontal = opening.orientation === "horizontal";
-      const centerAxis = horizontal ? opening.x : opening.y;
-      const pointerAxis = horizontal ? point.x : point.y;
-      const halfWidth = Math.max(0.25, Math.abs(pointerAxis - centerAxis));
+      const wallId = opening.roomId.startsWith("custom-wall:") ? opening.roomId.slice("custom-wall:".length) : null;
+      const wall = wallId ? customWalls.find((item) => item.id === wallId) ?? null : null;
+      const wallLengthValue = wall ? Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1) : 0;
+      const unit = wall && wallLengthValue > 0.001
+        ? { x: (wall.x2 - wall.x1) / wallLengthValue, y: (wall.y2 - wall.y1) / wallLengthValue }
+        : opening.orientation === "horizontal"
+          ? { x: 1, y: 0 }
+          : { x: 0, y: 1 };
+      const projection = (point.x - opening.x) * unit.x + (point.y - opening.y) * unit.y;
+      const halfWidth = Math.max(0.25, Math.abs(projection));
       onOpeningWidthChange(opening.id, Math.max(0.5, Math.min(4, snap(halfWidth * 2))));
       return;
     }
@@ -1135,24 +1141,22 @@ export default function ConceptPlan2D({
         const wallId = opening.roomId.slice("custom-wall:".length);
         const wall = customWalls.find((item) => item.id === wallId);
         if (!wall) return;
-        const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
-        if (horizontal) {
-          const minX = Math.min(wall.x1, wall.x2) + Math.min(pad, Math.abs(wall.x2 - wall.x1) / 3);
-          const maxX = Math.max(wall.x1, wall.x2) - Math.min(pad, Math.abs(wall.x2 - wall.x1) / 3);
-          onOpeningChange(opening.id, {
-            x: snap(Math.max(minX, Math.min(maxX, opening.x + dx))),
-            y: wall.y1,
-            type: opening.type,
-          });
-        } else {
-          const minY = Math.min(wall.y1, wall.y2) + Math.min(pad, Math.abs(wall.y2 - wall.y1) / 3);
-          const maxY = Math.max(wall.y1, wall.y2) - Math.min(pad, Math.abs(wall.y2 - wall.y1) / 3);
-          onOpeningChange(opening.id, {
-            x: wall.x1,
-            y: snap(Math.max(minY, Math.min(maxY, opening.y + dy))),
-            type: opening.type,
-          });
-        }
+        const wx = wall.x2 - wall.x1;
+        const wy = wall.y2 - wall.y1;
+        const wallLengthValue = Math.hypot(wx, wy);
+        if (wallLengthValue < 0.001) return;
+        const ux = wx / wallLengthValue;
+        const uy = wy / wallLengthValue;
+        const projectedDistance = (point.x - wall.x1) * ux + (point.y - wall.y1) * uy;
+        const openingHalf = Math.max(0.25, (opening.width ?? (opening.type === "door" ? 0.9 : 1.2)) / 2);
+        const minDistance = Math.min(openingHalf, wallLengthValue / 2);
+        const maxDistance = Math.max(minDistance, wallLengthValue - openingHalf);
+        const distanceAlongWall = Math.max(minDistance, Math.min(maxDistance, projectedDistance));
+        onOpeningChange(opening.id, {
+          x: wall.x1 + ux * distanceAlongWall,
+          y: wall.y1 + uy * distanceAlongWall,
+          type: opening.type,
+        });
         return;
       }
 
