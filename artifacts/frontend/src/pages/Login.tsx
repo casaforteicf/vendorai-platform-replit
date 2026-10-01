@@ -162,15 +162,36 @@ export default function Login() {
   }
 
   useEffect(() => {
-    if (!isHomologPreview || previewAutoLoginStarted.current || demoLoginMutation.isPending) return;
+    if (!isHomologPreview || previewAutoLoginStarted.current || loginMutation.isPending) return;
     previewAutoLoginStarted.current = true;
-    onDemoLogin();
+
+    // O endpoint especial /auth/demo-login pode executar seed e falhar por
+    // dependências de dados. Para previews usamos o usuário demo já existente
+    // pelo login normal, sem disparar seed nem tocar em produção.
+    loginMutation.mutate(
+      { data: { email: "demo@demo.com", password: "demo" } },
+      {
+        onSuccess: (response) => {
+          const returnPath = consumeSafePostLoginPath();
+          login(response.token, response.user, { isDemo: true });
+          window.location.assign(returnPath ?? "/");
+        },
+        onError: (error) => {
+          previewAutoLoginStarted.current = false;
+          toast({
+            title: copy.demoErrorTitle,
+            description: error.message || copy.demoErrorDescription,
+            variant: "destructive",
+          });
+        },
+      },
+    );
     // Homologação/preview Cloudflare deve abrir sem pedir credenciais.
     // Produção e domínios oficiais continuam com autenticação normal.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isHomologPreview]);
 
-  if (isHomologPreview && (demoLoginMutation.isPending || previewAutoLoginStarted.current)) {
+  if (isHomologPreview && (loginMutation.isPending || previewAutoLoginStarted.current)) {
     return (
       <div className="grid min-h-screen place-items-center bg-slate-50">
         <div className="rounded-2xl border bg-white px-6 py-5 text-center shadow-sm">
