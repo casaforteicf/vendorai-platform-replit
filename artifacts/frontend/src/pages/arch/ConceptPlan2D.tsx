@@ -2995,6 +2995,22 @@ export default function ConceptPlan2D({
           const swingOutside = opening.swingSide === "outside";
           const swingSideFactor = swingOutside ? -1 : 1;
           const leafCount = Math.max(1, Math.min(6, Math.round(opening.leafCount ?? (opening.type === "door" ? 1 : 2))));
+          const customWallId = opening.roomId.startsWith("custom-wall:") ? opening.roomId.slice("custom-wall:".length) : null;
+          const parentCustomWall = customWallId ? customWalls.find((wall) => wall.id === customWallId) ?? null : null;
+          const parentWallLength = parentCustomWall ? wallLength(parentCustomWall) : 0;
+          const wallUnit = parentCustomWall && parentWallLength > 0.001
+            ? { x: (parentCustomWall.x2 - parentCustomWall.x1) / parentWallLength, y: (parentCustomWall.y2 - parentCustomWall.y1) / parentWallLength }
+            : horizontal
+              ? { x: 1, y: 0 }
+              : { x: 0, y: 1 };
+          const openingStart = { x: opening.x - wallUnit.x * half, y: opening.y - wallUnit.y * half };
+          const openingEnd = { x: opening.x + wallUnit.x * half, y: opening.y + wallUnit.y * half };
+          const centerDistanceFromWallStart = parentCustomWall
+            ? Math.max(0, Math.min(parentWallLength, (opening.x - parentCustomWall.x1) * wallUnit.x + (opening.y - parentCustomWall.y1) * wallUnit.y))
+            : 0;
+          const clearanceStart = parentCustomWall ? Math.max(0, centerDistanceFromWallStart - half) : 0;
+          const clearanceEnd = parentCustomWall ? Math.max(0, parentWallLength - centerDistanceFromWallStart - half) : 0;
+          const wallNormal = { x: -wallUnit.y, y: wallUnit.x };
           return (
             <g
               key={opening.id}
@@ -3024,10 +3040,10 @@ export default function ConceptPlan2D({
               }}
             >
               <line
-                x1={horizontal ? opening.x - half : opening.x}
-                y1={horizontal ? opening.y : opening.y - half}
-                x2={horizontal ? opening.x + half : opening.x}
-                y2={horizontal ? opening.y : opening.y + half}
+                x1={openingStart.x}
+                y1={openingStart.y}
+                x2={openingEnd.x}
+                y2={openingEnd.y}
                 stroke="transparent"
                 strokeWidth="0.72"
               />
@@ -3127,6 +3143,40 @@ export default function ConceptPlan2D({
               {selectedOpening && (
                 <>
                   <circle cx={opening.x} cy={opening.y} r="0.26" fill="#f97316" stroke="#fff" strokeWidth="0.06" pointerEvents="none" />
+                  {parentCustomWall && (
+                    <g pointerEvents="none">
+                      <line
+                        x1={parentCustomWall.x1}
+                        y1={parentCustomWall.y1}
+                        x2={openingStart.x}
+                        y2={openingStart.y}
+                        stroke="#94a3b8"
+                        strokeWidth="0.035"
+                        strokeDasharray="0.12 0.10"
+                      />
+                      <line
+                        x1={openingEnd.x}
+                        y1={openingEnd.y}
+                        x2={parentCustomWall.x2}
+                        y2={parentCustomWall.y2}
+                        stroke="#94a3b8"
+                        strokeWidth="0.035"
+                        strokeDasharray="0.12 0.10"
+                      />
+                      <g transform={`translate(${(parentCustomWall.x1 + openingStart.x) / 2 + wallNormal.x * 0.34} ${(parentCustomWall.y1 + openingStart.y) / 2 + wallNormal.y * 0.34})`}>
+                        <rect x="-0.48" y="-0.18" width="0.96" height="0.36" rx="0.09" fill="#fff" fillOpacity="0.96" stroke="#cbd5e1" strokeWidth="0.02" />
+                        <text x="0" y="0.07" textAnchor="middle" fontSize="0.18" fontWeight="800" fill="#475569">
+                          {`${clearanceStart.toFixed(2)} m`}
+                        </text>
+                      </g>
+                      <g transform={`translate(${(openingEnd.x + parentCustomWall.x2) / 2 + wallNormal.x * 0.34} ${(openingEnd.y + parentCustomWall.y2) / 2 + wallNormal.y * 0.34})`}>
+                        <rect x="-0.48" y="-0.18" width="0.96" height="0.36" rx="0.09" fill="#fff" fillOpacity="0.96" stroke="#cbd5e1" strokeWidth="0.02" />
+                        <text x="0" y="0.07" textAnchor="middle" fontSize="0.18" fontWeight="800" fill="#475569">
+                          {`${clearanceEnd.toFixed(2)} m`}
+                        </text>
+                      </g>
+                    </g>
+                  )}
                   <g pointerEvents="none">
                     <rect
                       x={horizontal ? opening.x - 0.72 : opening.x + 0.22}
@@ -3151,8 +3201,8 @@ export default function ConceptPlan2D({
                     </text>
                   </g>
                   {opening.roomId.startsWith("custom-wall:") && onOpeningWidthChange && ([
-                    ["opening-resize-start", horizontal ? opening.x - half : opening.x, horizontal ? opening.y : opening.y - half],
-                    ["opening-resize-end", horizontal ? opening.x + half : opening.x, horizontal ? opening.y : opening.y + half],
+                    ["opening-resize-start", openingStart.x, openingStart.y],
+                    ["opening-resize-end", openingEnd.x, openingEnd.y],
                   ] as const).map(([mode, hx, hy]) => (
                     <g
                       key={mode}
