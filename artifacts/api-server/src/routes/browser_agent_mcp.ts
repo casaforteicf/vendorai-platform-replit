@@ -5,10 +5,12 @@ import {
   agentActionsLogTable,
   browserAgentConnectionsTable,
   tenantsTable,
+  usersTable,
 } from "@workspace/db";
 import { and, eq, or } from "drizzle-orm";
 import { decrypt, encrypt } from "../lib/crypto.js";
 import { runBrowserAgent, type BrowserAgentInput } from "../services/browser-agent.js";
+import { signToken } from "../lib/jwt.js";
 
 import { createLiveBrowserSession, startLiveBrowserMission } from "../services/browser-live-session.js";
 
@@ -197,6 +199,14 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
       ? JSON.parse(decrypt(connection.cookiesEncrypted))
       : undefined;
 
+    let firstPartyAuthToken: string | undefined;
+    if (new URL(startUrl).hostname.toLowerCase() === "app.appvendorai.com") {
+      const [servicePrincipal] = await db.select({ id: usersTable.id, email: usersTable.email, platformRole: usersTable.platformRole, role: usersTable.role, userFunction: usersTable.userFunction, active: usersTable.active })
+        .from(usersTable).where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.active, true))).limit(1);
+      if (!servicePrincipal) throw new Error("VENDI_AUTH_PRINCIPAL_NOT_FOUND");
+      firstPartyAuthToken = signToken({ sub: servicePrincipal.id, email: servicePrincipal.email, platformRole: servicePrincipal.platformRole, tenantId, role: servicePrincipal.role, userFunction: servicePrincipal.userFunction ?? undefined, actorType: "ai" });
+    }
+
     const agentInput: BrowserAgentInput = {
       tenantId,
       goal: parsed.data.goal,
@@ -212,6 +222,7 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
           }
         : undefined,
       sessionCookies,
+      firstPartyAuthToken,
       onSessionPersist: connection
         ? async (cookies) => {
             await db
