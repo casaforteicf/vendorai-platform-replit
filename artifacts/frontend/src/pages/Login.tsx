@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Eye, EyeOff, Lightbulb, MapPin, Sparkles, TrendingUp } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, Lightbulb, TrendingUp } from "lucide-react";
 import { useMemo, useState } from "react";
 import logoDark from "/logo-full-dark.svg";
 import { featureForDate } from "@/lib/vendorFeatureCatalog";
@@ -124,73 +124,64 @@ function ProductTour({ locale }: { locale: string }) {
   const isPt = locale === "pt-BR";
 
   return (
-    <div className="w-full max-w-2xl text-white">
-      <div className="mb-6 flex items-center justify-between gap-4">
-        <img src={logoDark} alt="Vendor.ai" className="h-14 w-auto sm:h-16" />
-        <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-medium backdrop-blur">
-          {isPt ? "Uma função nova por dia" : "Una función nueva por día"}
-        </span>
-      </div>
+    <div className="w-full max-w-xl text-white">
+      <img src={logoDark} alt="Vendor.ai" className="h-16 w-auto sm:h-[72px]" />
 
-      <div className="mb-6">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-blue-100/80">
-          {isPt ? "Função do dia" : "Función del día"} · {dailyFeature.category}
-        </p>
-        <h2 className="max-w-xl text-3xl font-semibold leading-[1.06] tracking-tight sm:text-4xl">
+      <div className="mt-10">
+        <div className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/75 backdrop-blur">
+          {isPt ? "Função do dia" : "Función del día"}
+        </div>
+
+        <p className="mt-5 text-sm font-medium text-blue-100/80">{dailyFeature.category}</p>
+        <h2 className="mt-1 text-4xl font-semibold leading-[1.02] tracking-tight sm:text-5xl">
           {dailyFeature.name}
         </h2>
-        <p className="mt-3 max-w-xl text-base leading-relaxed text-white/78">
+
+        <p className="mt-4 max-w-lg text-base leading-relaxed text-white/78">
           {dailyFeature.whatItDoes}
         </p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="rounded-2xl border border-white/15 bg-white/[0.09] p-4 backdrop-blur">
-          <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-white/12">
+      <div className="mt-8 border-t border-white/15 pt-6">
+        <div className="flex gap-4">
+          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/10">
             <Lightbulb className="h-4 w-4" />
           </div>
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-white/55">
-            {isPt ? "Como usar" : "Cómo usar"}
-          </p>
-          <p className="mt-2 text-sm leading-relaxed text-white/90">{dailyFeature.howToUse}</p>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-white/45">
+              {isPt ? "Como usar" : "Cómo usar"}
+            </p>
+            <p className="mt-1 max-w-lg text-sm leading-relaxed text-white/88">
+              {dailyFeature.howToUse}
+            </p>
+          </div>
         </div>
 
-        <div className="rounded-2xl border border-white/15 bg-white/[0.09] p-4 backdrop-blur">
-          <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-white/12">
+        <div className="mt-5 flex gap-4">
+          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/10">
             <TrendingUp className="h-4 w-4" />
           </div>
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-white/55">
-            {isPt ? "Benefício" : "Beneficio"}
-          </p>
-          <p className="mt-2 text-sm leading-relaxed text-white/90">{dailyFeature.benefit}</p>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-white/45">
+              {isPt ? "Benefício" : "Beneficio"}
+            </p>
+            <p className="mt-1 max-w-lg text-sm leading-relaxed text-white/88">
+              {dailyFeature.benefit}
+            </p>
+          </div>
         </div>
       </div>
 
-      <div className="mt-3 flex items-center gap-3 rounded-xl border border-white/15 bg-slate-950/20 px-4 py-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/10">
-          <MapPin className="h-4 w-4" />
-        </div>
-        <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/50">
-            {isPt ? "Onde encontrar" : "Dónde encontrar"}
+      <div className="mt-8 flex items-center justify-between border-t border-white/15 pt-5">
+        <div className="min-w-0 pr-5">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">
+            {isPt ? "Provérbio do dia" : "Proverbio del día"} · {dailyProverb.reference}
           </p>
-          <p className="mt-0.5 truncate text-sm font-medium text-white/90">
-            {dailyFeature.category} · {dailyFeature.route}
+          <p className="mt-1 max-w-md text-xs leading-relaxed text-white/68">
+            {isPt ? dailyProverb.pt : dailyProverb.es}
           </p>
         </div>
-        <Sparkles className="ml-auto h-4 w-4 shrink-0 text-white/45" />
-      </div>
-
-      <div className="mt-5 rounded-xl border border-white/15 bg-white/[0.08] px-4 py-3 backdrop-blur">
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/55">
-            {isPt ? "Provérbio do dia" : "Proverbio del día"}
-          </span>
-          <span className="text-xs font-medium text-white/70">{dailyProverb.reference}</span>
-        </div>
-        <p className="mt-2 text-sm leading-relaxed text-white/90">
-          {isPt ? dailyProverb.pt : dailyProverb.es}
-        </p>
+        <ArrowRight className="h-5 w-5 shrink-0 text-white/30" />
       </div>
     </div>
   );
