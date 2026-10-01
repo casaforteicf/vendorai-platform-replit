@@ -20,6 +20,10 @@ const screens = [
   { key: "financeiro-erp", path: "/erp" },
   { key: "catalogo", path: "/catalogo" },
   { key: "analytics", path: "/analytics" },
+  { key: "agents", path: "/agentes" },
+  { key: "propostas", path: "/propostas" },
+  { key: "marketing-content", path: "/content?tab=planejamento" },
+  { key: "marketing-media-plan", path: "/marketing/plano-de-midia" },
 ] as const;
 
 async function getSession(page: Page): Promise<DemoSession> {
