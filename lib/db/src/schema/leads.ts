@@ -172,6 +172,13 @@ export const leadsTable = pgTable("leads", {
       momento_expansao?: number;
       capacidade_pagamento?: number;
     };
+    provenance?: {
+      source?: string;
+      method?: string;
+      confidence?: "low" | "medium" | "high";
+      evidenceCount?: number;
+      enrichedAt?: string;
+    };
     enriquecido_em?: string;
   }>(),
   priorityReason: text("priority_reason"),
