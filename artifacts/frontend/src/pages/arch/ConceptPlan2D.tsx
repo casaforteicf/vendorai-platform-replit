@@ -2964,6 +2964,9 @@ export default function ConceptPlan2D({
           const horizontal = opening.orientation === "horizontal";
           const sliding = opening.openingStyle === "sliding";
           const swingRight = opening.swing === "right";
+          const swingOutside = opening.swingSide === "outside";
+          const swingSideFactor = swingOutside ? -1 : 1;
+          const leafCount = Math.max(1, Math.min(6, Math.round(opening.leafCount ?? (opening.type === "door" ? 1 : 2))));
           return (
             <g
               key={opening.id}
@@ -3039,9 +3042,9 @@ export default function ConceptPlan2D({
                         : opening.y + (swingRight ? half : -half)}
                       x2={horizontal
                         ? opening.x + (swingRight ? half : -half)
-                        : opening.x + (swingRight ? -openingWidth : openingWidth)}
+                        : opening.x + (swingRight ? -openingWidth : openingWidth) * swingSideFactor}
                       y2={horizontal
-                        ? opening.y + (swingRight ? -openingWidth : openingWidth)
+                        ? opening.y + (swingRight ? -openingWidth : openingWidth) * swingSideFactor
                         : opening.y + (swingRight ? half : -half)}
                       stroke={selectedOpening ? "#f97316" : "#475569"}
                       strokeWidth="0.06"
@@ -3066,6 +3069,31 @@ export default function ConceptPlan2D({
                     stroke={selectedOpening ? "#f97316" : "#0284c7"}
                     strokeWidth={selectedOpening ? "0.11" : "0.07"}
                   />
+                  {leafCount > 1 && Array.from({ length: leafCount - 1 }).map((_, leafIndex) => {
+                    const ratio = (leafIndex + 1) / leafCount;
+                    const axis = -half + openingWidth * ratio;
+                    return horizontal ? (
+                      <line
+                        key={`leaf-${leafIndex}`}
+                        x1={opening.x + axis}
+                        y1={opening.y - 0.12}
+                        x2={opening.x + axis}
+                        y2={opening.y + 0.12}
+                        stroke={selectedOpening ? "#f97316" : "#0369a1"}
+                        strokeWidth="0.035"
+                      />
+                    ) : (
+                      <line
+                        key={`leaf-${leafIndex}`}
+                        x1={opening.x - 0.12}
+                        y1={opening.y + axis}
+                        x2={opening.x + 0.12}
+                        y2={opening.y + axis}
+                        stroke={selectedOpening ? "#f97316" : "#0369a1"}
+                        strokeWidth="0.035"
+                      />
+                    );
+                  })}
                 </g>
               )}
               {selectedOpening && (
