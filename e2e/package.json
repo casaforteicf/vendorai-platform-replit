@@ -15,7 +15,7 @@
     "test:p0p1": "playwright test tests/p0-smoke.spec.ts tests/p1-transactional.spec.ts"
   },
   "devDependencies": {
-    "@playwright/test": "^1.60.0",
+    "@playwright/test": "1.60.0",
     "@types/node": "catalog:",
     "tsx": "^4.20.6"
   }
