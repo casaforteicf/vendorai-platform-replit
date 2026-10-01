@@ -15,6 +15,8 @@ import { fetchRenderedBatch, fetchRenderedPage } from "../services/browser-fetch
 import { extractStructuredData } from "../services/web-structured-extractor.js";
 import { runParallelMissions } from "../services/web-parallel-runner.js";
 import { runBrowserSkill } from "../services/browser-skill-runner.js";
+import { discoverWebsite } from "../services/browser-discovery.js";
+import { compareWatchFingerprint, fingerprintSkillResult } from "../services/web-watch.js";
 import {
   mergeBrowserProfiles,
   type BrowserProfileState,
@@ -118,6 +120,17 @@ const skillFromSessionSchema = z.object({
 
 const skillRunSchema = z.object({
   allowWrite: z.boolean().default(false),
+  allowSelfHeal: z.boolean().default(true),
+});
+
+const discoverySchema = z.object({
+  startUrl: z.string().url(),
+  allowedHosts: z.array(z.string().min(1).max(255)).max(20).optional(),
+  maxPages: z.number().int().min(1).max(12).default(5),
+});
+
+const skillWatchSchema = z.object({
+  enabled: z.boolean(),
 });
 
 const runSchema = z.object({
@@ -171,6 +184,42 @@ router.get("/browser-agent/status", (_req, res) => {
     secureSecretInjection: true,
     vendiAutonomyEnabled: vendiAutonomyEnabled(),
   });
+});
+
+router.post("/browser-agent/discover", async (req, res) => {
+  const parsed = discoverySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const tenantId = resolveTenant(req);
+  if (!tenantId) {
+    res.status(401).json({ error: "Tenant não resolvido" });
+    return;
+  }
+
+  try {
+    const host = new URL(parsed.data.startUrl).hostname.toLowerCase();
+    const result = await discoverWebsite({
+      startUrl: parsed.data.startUrl,
+      allowedHosts: Array.from(new Set([host, ...(parsed.data.allowedHosts ?? [])])),
+      maxPages: parsed.data.maxPages,
+    });
+    await db.insert(agentActionsLogTable).values({
+      tenantId,
+      agentName: "browser",
+      actionType: "browser_discovery",
+      status: "executed",
+      payload: {
+        startUrl: parsed.data.startUrl,
+        pages: result.pages.length,
+        networkApiCandidates: result.networkCalls.length,
+      },
+    });
+    res.json({ ok: true, ...result });
+  } catch (error: any) {
+    res.status(502).json({ error: error?.message ?? "DISCOVERY_FAILED" });
+  }
 });
 
 router.post("/browser-agent/fetch", async (req, res) => {
@@ -437,6 +486,13 @@ router.get("/browser-agent/skills", async (req, res) => {
     startUrl: skill.startUrl,
     allowedHosts: skill.allowedHosts,
     actionCount: Array.isArray(skill.actions) ? skill.actions.length : 0,
+    version: skill.version,
+    status: skill.status,
+    repairCount: skill.repairCount,
+    lastRunAt: skill.lastRunAt,
+    lastSuccessAt: skill.lastSuccessAt,
+    lastError: skill.lastError,
+    watchEnabled: skill.watchEnabled,
     createdAt: skill.createdAt,
     updatedAt: skill.updatedAt,
   })));
@@ -543,6 +599,7 @@ router.post("/browser-agent/skills/:id/run", async (req, res) => {
       allowWrite: parsed.data.allowWrite,
       mode: "autonomo",
       actions: (skill.actions ?? []) as PlannedAction[],
+      allowSelfHeal: parsed.data.allowSelfHeal,
       sessionCookies,
       sessionProfile,
       secrets: connection ? {
@@ -575,13 +632,219 @@ router.post("/browser-agent/skills/:id/run", async (req, res) => {
           ));
       } : undefined,
     });
-    res.json({ ok: true, skillId: skill.id, skillName: skill.name, ...result });
+
+    const repaired = result.repairs > 0;
+    await db.update(browserAgentSkillsTable)
+      .set({
+        ...(repaired ? {
+          actions: result.repairedActions as Array<Record<string, unknown>>,
+          version: skill.version + 1,
+          repairCount: skill.repairCount + result.repairs,
+        } : {}),
+        status: "ready",
+        lastRunAt: new Date(),
+        lastSuccessAt: new Date(),
+        lastError: null,
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(browserAgentSkillsTable.id, skill.id),
+        eq(browserAgentSkillsTable.tenantId, tenantId),
+      ));
+
+    res.json({
+      ok: true,
+      skillId: skill.id,
+      skillName: skill.name,
+      version: skill.version + (repaired ? 1 : 0),
+      selfHealed: repaired,
+      ...result,
+    });
   } catch (error: any) {
+    await db.update(browserAgentSkillsTable)
+      .set({
+        status: "degraded",
+        lastRunAt: new Date(),
+        lastError: error?.message ?? "SKILL_RUN_FAILED",
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(browserAgentSkillsTable.id, skill.id),
+        eq(browserAgentSkillsTable.tenantId, tenantId),
+      ));
     res.status(409).json({
       ok: false,
       skillId: skill.id,
       skillName: skill.name,
       error: error?.message ?? "SKILL_RUN_FAILED",
+    });
+  }
+});
+
+router.patch("/browser-agent/skills/:id/watch", async (req, res) => {
+  const parsed = skillWatchSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const tenantId = resolveTenant(req);
+  if (!tenantId) {
+    res.status(401).json({ error: "Tenant não resolvido" });
+    return;
+  }
+
+  const [skill] = await db.update(browserAgentSkillsTable)
+    .set({
+      watchEnabled: parsed.data.enabled,
+      updatedAt: new Date(),
+    })
+    .where(and(
+      eq(browserAgentSkillsTable.id, String(req.params.id)),
+      eq(browserAgentSkillsTable.tenantId, tenantId),
+    ))
+    .returning();
+
+  if (!skill) {
+    res.status(404).json({ error: "Skill não encontrada" });
+    return;
+  }
+
+  res.json({
+    id: skill.id,
+    name: skill.name,
+    watchEnabled: skill.watchEnabled,
+    watchFingerprint: skill.watchFingerprint,
+  });
+});
+
+router.post("/browser-agent/skills/:id/watch-check", async (req, res) => {
+  const tenantId = resolveTenant(req);
+  if (!tenantId) {
+    res.status(401).json({ error: "Tenant não resolvido" });
+    return;
+  }
+
+  const [skill] = await db
+    .select()
+    .from(browserAgentSkillsTable)
+    .where(and(
+      eq(browserAgentSkillsTable.id, String(req.params.id)),
+      eq(browserAgentSkillsTable.tenantId, tenantId),
+    ));
+  if (!skill) {
+    res.status(404).json({ error: "Skill não encontrada" });
+    return;
+  }
+
+  let connection: typeof browserAgentConnectionsTable.$inferSelect | undefined;
+  if (skill.connectionId) {
+    [connection] = await db
+      .select()
+      .from(browserAgentConnectionsTable)
+      .where(and(
+        eq(browserAgentConnectionsTable.id, skill.connectionId),
+        eq(browserAgentConnectionsTable.tenantId, tenantId),
+      ));
+  }
+
+  const sessionCookies = connection?.cookiesEncrypted
+    ? JSON.parse(decrypt(connection.cookiesEncrypted))
+    : undefined;
+  let sessionProfile = connection ? readBrowserProfile(connection) : undefined;
+
+  try {
+    const result = await runBrowserSkill({
+      tenantId,
+      goal: "Watch Skill: " + skill.name,
+      startUrl: skill.startUrl,
+      allowedHosts: skill.allowedHosts ?? [],
+      allowWrite: false,
+      allowSelfHeal: true,
+      mode: "autonomo",
+      actions: (skill.actions ?? []) as PlannedAction[],
+      sessionCookies,
+      sessionProfile,
+      secrets: connection ? {
+        login: connection.usernameEncrypted ? decrypt(connection.usernameEncrypted) : undefined,
+        passcode: connection.passwordEncrypted ? decrypt(connection.passwordEncrypted) : undefined,
+      } : undefined,
+      onSessionPersist: connection ? async (cookies) => {
+        await db.update(browserAgentConnectionsTable)
+          .set({
+            cookiesEncrypted: encrypt(JSON.stringify(cookies)),
+            lastUsedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(and(
+            eq(browserAgentConnectionsTable.id, connection!.id),
+            eq(browserAgentConnectionsTable.tenantId, tenantId),
+          ));
+      } : undefined,
+      onProfilePersist: connection ? async (profile) => {
+        sessionProfile = mergeBrowserProfiles(sessionProfile, profile);
+        await db.update(browserAgentConnectionsTable)
+          .set({
+            profileEncrypted: encrypt(JSON.stringify(sessionProfile)),
+            lastUsedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(and(
+            eq(browserAgentConnectionsTable.id, connection!.id),
+            eq(browserAgentConnectionsTable.tenantId, tenantId),
+          ));
+      } : undefined,
+    });
+
+    const fingerprint = fingerprintSkillResult(result);
+    const comparison = compareWatchFingerprint(skill.watchFingerprint, fingerprint);
+    const repaired = result.repairs > 0;
+
+    await db.update(browserAgentSkillsTable)
+      .set({
+        ...(repaired ? {
+          actions: result.repairedActions as Array<Record<string, unknown>>,
+          version: skill.version + 1,
+          repairCount: skill.repairCount + result.repairs,
+        } : {}),
+        watchFingerprint: fingerprint,
+        ...(comparison.changed ? { watchLastChangedAt: new Date() } : {}),
+        status: "ready",
+        lastRunAt: new Date(),
+        lastSuccessAt: new Date(),
+        lastError: null,
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(browserAgentSkillsTable.id, skill.id),
+        eq(browserAgentSkillsTable.tenantId, tenantId),
+      ));
+
+    res.json({
+      ok: true,
+      skillId: skill.id,
+      skillName: skill.name,
+      watchEnabled: skill.watchEnabled,
+      selfHealed: repaired,
+      version: skill.version + (repaired ? 1 : 0),
+      ...comparison,
+    });
+  } catch (error: any) {
+    await db.update(browserAgentSkillsTable)
+      .set({
+        status: "degraded",
+        lastRunAt: new Date(),
+        lastError: error?.message ?? "WATCH_CHECK_FAILED",
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(browserAgentSkillsTable.id, skill.id),
+        eq(browserAgentSkillsTable.tenantId, tenantId),
+      ));
+
+    res.status(409).json({
+      ok: false,
+      skillId: skill.id,
+      error: error?.message ?? "WATCH_CHECK_FAILED",
     });
   }
 });
