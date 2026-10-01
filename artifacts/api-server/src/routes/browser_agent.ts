@@ -15,6 +15,11 @@ import {
   controlLiveBrowserSession,
   createLiveBrowserSession,
   getLiveBrowserSession,
+  getLiveBrowserHandoff,
+  captureLiveBrowserHandoff,
+  setLiveBrowserHandoffPaused,
+  controlLiveBrowserHandoff,
+  closeLiveBrowserHandoff,
   setLiveBrowserPaused,
   startLiveBrowserMission,
 } from "../services/browser-live-session.js";
@@ -292,6 +297,42 @@ router.post("/browser-agent/live", async (req, res) => {
   res.status(201).json(session);
 });
 
+router.get("/browser-agent/handoff/:sessionId/screenshot", async (req, res) => {
+  try {
+    res.json(await captureLiveBrowserHandoff(String(req.params.sessionId), String(req.query.handoff ?? "")));
+  } catch (error: any) {
+    res.status(404).json({ error: error?.message ?? "Sessão não encontrada" });
+  }
+});
+
+router.post("/browser-agent/handoff/:sessionId/pause", async (req, res) => {
+  const parsed = livePauseSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(422).json({ error: parsed.error.flatten() }); return; }
+  try {
+    res.json(await setLiveBrowserHandoffPaused(String(req.params.sessionId), String(req.query.handoff ?? ""), parsed.data.paused));
+  } catch (error: any) {
+    res.status(409).json({ error: error?.message ?? "Não foi possível alterar o controle" });
+  }
+});
+
+router.post("/browser-agent/handoff/:sessionId/control", async (req, res) => {
+  const parsed = liveControlSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(422).json({ error: parsed.error.flatten() }); return; }
+  try {
+    res.json(await controlLiveBrowserHandoff(String(req.params.sessionId), String(req.query.handoff ?? ""), parsed.data));
+  } catch (error: any) {
+    res.status(409).json({ error: error?.message ?? "Controle manual falhou" });
+  }
+});
+
+router.delete("/browser-agent/handoff/:sessionId", async (req, res) => {
+  try {
+    res.json(await closeLiveBrowserHandoff(String(req.params.sessionId), String(req.query.handoff ?? "")));
+  } catch (error: any) {
+    res.status(404).json({ error: error?.message ?? "Sessão não encontrada" });
+  }
+});
+
 router.get("/browser-agent/live/:sessionId", async (req, res) => {
   const tenantId = resolveTenant(req);
   if (!tenantId) {
@@ -535,8 +576,9 @@ router.post("/browser-agent/run", async (req, res) => {
         },
       });
       startLiveBrowserMission(tenantId, session.id, agentInput.goal, agentInput.maxSteps, true);
+      const handoff = getLiveBrowserHandoff(session.id);
       return { sessionId: session.id,
-        controlUrl: `https://app.appvendorai.com/agents/config?browserSession=${encodeURIComponent(session.id)}` };
+        controlUrl: `https://homolog.appvendorai.com/agents/config?browserSession=${encodeURIComponent(session.id)}&handoff=${encodeURIComponent(handoff.handoffToken)}` };
     };
     const result = await runBrowserAgent(agentInput);
 
