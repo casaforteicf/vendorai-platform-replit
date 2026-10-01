@@ -418,6 +418,7 @@ export default function ConceptPlan2D({
   const [wallChainOrigin, setWallChainOrigin] = useState<{ x: number; y: number } | null>(null);
   const [wallDrawPreview, setWallDrawPreview] = useState<{ x: number; y: number } | null>(null);
   const [wallLengthInput, setWallLengthInput] = useState("");
+  const [wallLengthError, setWallLengthError] = useState<string | null>(null);
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [orthogonalEnabled, setOrthogonalEnabled] = useState(true);
   const pendingClosedSpaceSelectRef = useRef(false);
@@ -458,6 +459,7 @@ export default function ConceptPlan2D({
       setWallChainOrigin(null);
       setWallDrawPreview(null);
       setWallLengthInput("");
+      setWallLengthError(null);
       setActiveWallSnap(null);
       pendingClosedSpaceSelectRef.current = false;
     }
@@ -614,16 +616,19 @@ export default function ConceptPlan2D({
       if (interactionMode === "draw-wall" && wallDrawStart) {
         if (/^[0-9]$/.test(event.key)) {
           event.preventDefault();
+          setWallLengthError(null);
           setWallLengthInput((current) => `${current}${event.key}`);
           return;
         }
         if ((event.key === "," || event.key === ".") && !wallLengthInput.includes(",") && !wallLengthInput.includes(".")) {
           event.preventDefault();
+          setWallLengthError(null);
           setWallLengthInput((current) => current ? `${current},` : "0,");
           return;
         }
         if (event.key === "Backspace" && wallLengthInput) {
           event.preventDefault();
+          setWallLengthError(null);
           setWallLengthInput((current) => current.slice(0, -1));
           return;
         }
@@ -641,7 +646,11 @@ export default function ConceptPlan2D({
               x: wallDrawStart.x + direction.x * requestedLength,
               y: wallDrawStart.y + direction.y * requestedLength,
             };
-            const end = clampPoint(rawEnd);
+            if (!pointInsideLot(rawEnd)) {
+              setWallLengthError("A medida ultrapassa o limite do terreno.");
+              return;
+            }
+            const end = boundPoint(rawEnd);
             const actualLength = Math.hypot(end.x - wallDrawStart.x, end.y - wallDrawStart.y);
             if (actualLength >= 0.5) {
               onCreateCustomWall({
@@ -656,6 +665,7 @@ export default function ConceptPlan2D({
               setWallDrawStart(end);
               setWallDrawPreview(end);
               setWallLengthInput("");
+              setWallLengthError(null);
             }
           }
           return;
@@ -668,6 +678,7 @@ export default function ConceptPlan2D({
         setWallChainOrigin(null);
         setWallDrawPreview(null);
         setWallLengthInput("");
+        setWallLengthError(null);
         setSnapGuides({});
       }
     };
@@ -743,10 +754,18 @@ export default function ConceptPlan2D({
     ...customWalls,
   ];
 
-  const clampPoint = (point: { x: number; y: number }) => ({
-    x: snap(Math.max(0, Math.min(lotWidth, point.x))),
-    y: snap(Math.max(0, Math.min(lotDepth, point.y))),
+  const boundPoint = (point: { x: number; y: number }) => ({
+    x: Math.max(0, Math.min(lotWidth, point.x)),
+    y: Math.max(0, Math.min(lotDepth, point.y)),
   });
+
+  const pointInsideLot = (point: { x: number; y: number }) =>
+    point.x >= 0 && point.x <= lotWidth && point.y >= 0 && point.y <= lotDepth;
+
+  const clampPoint = (point: { x: number; y: number }) => {
+    const bounded = boundPoint(point);
+    return { x: snap(bounded.x), y: snap(bounded.y) };
+  };
 
   const handleDrawWallPoint = (point: { x: number; y: number }) => {
     const clamped = clampPoint(point);
@@ -1282,7 +1301,7 @@ export default function ConceptPlan2D({
                 <span>Enter cria a parede</span>
               </>
             ) : (
-              <span>Clique para continuar ou digite a medida + Enter · Snap {snapEnabled ? "ON" : "OFF"} · Orto {orthogonalEnabled ? "ON" : "OFF"}</span>
+              <span className={wallLengthError ? "font-semibold text-red-600" : ""}>{wallLengthError ?? <>Clique para continuar ou digite a medida + Enter · Snap {snapEnabled ? "ON" : "OFF"} · Orto {orthogonalEnabled ? "ON" : "OFF"}</>}</span>
             )}
           </div>
         )}
@@ -1563,7 +1582,7 @@ export default function ConceptPlan2D({
               cy={activeWallSnap.point.y}
               r="0.18"
               fill="#ffffff"
-              stroke={activeWallSnap.kind === "intersection" ? "#dc2626" : activeWallSnap.kind === "midpoint" ? "#2563eb" : activeWallSnap.kind === "endpoint" ? "#16a34a" : "#f97316"}
+              stroke={activeWallSnap.kind === "intersection" ? "#dc2626" : activeWallSnap.kind === "midpoint" ? "#2563eb" : activeWallSnap.kind === "endpoint" ? "#16a34a" : activeWallSnap.kind === "alignment" ? "#7c3aed" : "#f97316"}
               strokeWidth="0.07"
             />
             <text
@@ -1582,7 +1601,9 @@ export default function ConceptPlan2D({
                   ? "Meio"
                   : activeWallSnap.kind === "endpoint"
                     ? "Extremidade"
-                    : "Perpendicular"}
+                    : activeWallSnap.kind === "alignment"
+                      ? "Alinhamento"
+                      : "Perpendicular"}
             </text>
           </g>
         )}
