@@ -148,6 +148,8 @@ const MAIN_HOSTNAMES = new Set([
   ROOT_DOMAIN,
   `www.${ROOT_DOMAIN}`,
   `app.${ROOT_DOMAIN}`,
+  `homolog.${ROOT_DOMAIN}`,
+  `homolog2.${ROOT_DOMAIN}`,
   "localhost",
   "127.0.0.1",
   ...replitDomains,
