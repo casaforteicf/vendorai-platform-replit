@@ -54,7 +54,7 @@ export function conversationOwnedByUserCondition(userId: string) {
           ),
         ),
     ),
-  );
+  )!;
 }
 
 export async function canAccessConversation(
