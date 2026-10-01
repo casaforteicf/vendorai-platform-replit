@@ -3,7 +3,7 @@ name: VendorAI Official Media Capture
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, staging]
     paths:
       - e2e/tests/media-capture.spec.ts
       - e2e/scripts/media-video.ts
@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      MEDIA_BASE_URL: https://app.appvendorai.com
+      MEDIA_BASE_URL: ${{ github.ref_name == 'staging' && 'https://vendorai-homolog-preview-production.up.railway.app' || 'https://app.appvendorai.com' }}
       MEDIA_OUTPUT_DIR: ${{ github.workspace }}/e2e/media-output
     steps:
       - name: Checkout
@@ -72,7 +72,11 @@ jobs:
         if: always()
         shell: bash
         run: |
-          TARGET="artifacts/website/public/media/vendorai-official"
+          if [ "$GITHUB_REF_NAME" = "staging" ]; then
+            TARGET="artifacts/frontend/public/media/vendorai-official"
+          else
+            TARGET="artifacts/website/public/media/vendorai-official"
+          fi
           rm -rf "$TARGET"
           mkdir -p "$TARGET"
           if [ -d e2e/media-output ]; then
@@ -90,7 +94,7 @@ jobs:
             echo "Official media is already up to date."
           else
             git commit -m "chore(media): publish latest official VendorAI captures"
-            git push origin HEAD:main
+            git push origin HEAD:"$GITHUB_REF_NAME"
           fi
 
       - name: Upload official media artifact
