@@ -1691,6 +1691,15 @@ router.patch("/installation-occurrences/:occurrenceId", async (req, res) => {
 });
 
 
+async function acceptanceSignatureDataUrl(storage: ObjectStorageService, url: string) {
+  const objectPath = url.startsWith("/api/storage/") ? url.slice("/api/storage".length) : url;
+  if (!objectPath.startsWith("/objects/")) return url;
+  const file = await storage.getObjectEntityFile(objectPath);
+  const [[buffer], [metadata]] = await Promise.all([file.download(), file.getMetadata()]);
+  const contentType = metadata.contentType || "image/png";
+  return `data:${contentType};base64,${buffer.toString("base64")}`;
+}
+
 const installationAcceptanceSchema = z.object({
   receiverName: z.string().trim().min(2).max(200),
   receiverDocument: z.string().trim().max(100).nullable().optional(),
@@ -1719,6 +1728,13 @@ router.post("/installation-visits/:visitId/accept", async (req, res) => {
   if (!card) { res.status(404).json({ error: "Card operacional não encontrado" }); return; }
   if (restrictedToOwnWork(req) && card.responsavelId && card.responsavelId !== req.user?.sub) {
     res.status(403).json({ error: "Este card pertence a outro responsável" }); return;
+  }
+  if (!["instalacao_finalizada", "entrega_obra", "pos_venda", "concluido"].includes(card.etapa)) {
+    res.status(409).json({
+      error: "INSTALLATION_NOT_TECHNICALLY_FINALIZED",
+      message: "Finalize tecnicamente a instalação antes de registrar o aceite do cliente.",
+    });
+    return;
   }
 
   const complete = await normalizedInstallationComplete(card);
@@ -1769,8 +1785,16 @@ router.post("/installation-visits/:visitId/accept", async (req, res) => {
   const hash = createHash("sha256").update(JSON.stringify(snapshotWithoutHash)).digest("hex");
   const snapshot: InstallationAcceptanceSnapshot = { hash, ...snapshotWithoutHash };
 
-  const pdf = await generateInstallationAcceptancePdf(snapshot);
   const storage = new ObjectStorageService();
+  const [customerSignatureDataUrl, companySignatureDataUrl] = await Promise.all([
+    acceptanceSignatureDataUrl(storage, parsed.data.customerSignatureUrl),
+    acceptanceSignatureDataUrl(storage, parsed.data.companySignatureUrl),
+  ]);
+  const pdf = await generateInstallationAcceptancePdf({
+    ...snapshot,
+    customerSignatureUrl: customerSignatureDataUrl,
+    companySignatureUrl: companySignatureDataUrl,
+  });
   const objectPath = await storage.savePrivateBuffer(pdf, "application/pdf", `termo-instalacao-${card.codigo}.pdf`);
   const servedUrl = `/api/storage${objectPath}`;
 
