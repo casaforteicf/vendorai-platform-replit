@@ -290,3 +290,303 @@ main.vendor-scrollbar {
     padding-inline: 14px;
   }
 }
+
+
+/* ==========================================================================
+   VendorAI Unified UI — 2026-10-01
+   Global operational design contract for authenticated product screens.
+   Specialized full-screen workspaces keep their dedicated layout behavior.
+   ========================================================================== */
+
+:root {
+  --background: 220 29% 97%;
+  --card: 0 0% 100%;
+  --popover: 0 0% 100%;
+  --border: 220 13% 91%;
+  --input: 220 13% 88%;
+  --muted: 220 20% 96%;
+  --muted-foreground: 220 9% 46%;
+  --secondary: 220 20% 96%;
+  --sidebar: 0 0% 100%;
+  --sidebar-border: 220 13% 91%;
+  --sidebar-accent: 220 20% 96%;
+  --radius: 0.875rem;
+
+  --app-font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
+  --app-font-display: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+
+  --vendor-content-max: 1480px;
+  --vendor-page-gutter-mobile: 16px;
+  --vendor-page-gutter-tablet: 24px;
+  --vendor-page-gutter-desktop: 28px;
+  --vendor-page-gutter-wide: 32px;
+  --vendor-page-top-mobile: 18px;
+  --vendor-page-top-desktop: 24px;
+  --vendor-page-bottom-mobile: 28px;
+  --vendor-page-bottom-desktop: 36px;
+  --vendor-section-gap: 20px;
+  --vendor-card-radius: 14px;
+  --vendor-control-radius: 10px;
+  --vendor-control-height: 40px;
+  --vendor-font-body: 0.875rem;
+  --vendor-font-caption: 0.75rem;
+  --vendor-font-h1: 1.5rem;
+  --vendor-font-h2: 1.1875rem;
+  --vendor-font-h3: 1rem;
+  --vendor-font-h4: 0.875rem;
+  --vendor-shadow-card: 0 1px 2px rgba(15, 23, 42, 0.03), 0 6px 18px rgba(15, 23, 42, 0.035);
+  --vendor-shadow-float: 0 18px 48px rgba(15, 23, 42, 0.16);
+}
+
+html {
+  background: hsl(var(--background));
+}
+
+body {
+  min-width: 320px;
+  background: hsl(var(--background));
+  font-family: var(--app-font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+main.vendor-scrollbar {
+  background: hsl(var(--background));
+}
+
+.vendor-page-canvas {
+  color: hsl(var(--foreground));
+}
+
+.vendor-page-canvas :where(h1, h2, h3, h4, h5, h6) {
+  font-family: var(--app-font-display);
+  color: hsl(var(--foreground));
+}
+
+.vendor-page-canvas :where(h1) {
+  font-size: var(--vendor-font-h1) !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.025em !important;
+}
+
+.vendor-page-canvas :where(h2) {
+  font-size: var(--vendor-font-h2) !important;
+  font-weight: 650 !important;
+  letter-spacing: -0.018em !important;
+}
+
+.vendor-page-canvas :where(h3) {
+  font-size: var(--vendor-font-h3) !important;
+  font-weight: 650 !important;
+}
+
+.vendor-page-canvas :where(p, label, li, td, button, input, select, textarea) {
+  font-family: var(--app-font-sans);
+}
+
+/* Shared surfaces */
+.vendor-page-canvas :where(
+  .rounded-xl.border,
+  .rounded-2xl.border,
+  [data-ui="card"],
+  [data-slot="card"]
+) {
+  border-color: hsl(var(--border) / 0.9);
+  border-radius: var(--vendor-card-radius);
+}
+
+.vendor-page-canvas :where(
+  .rounded-xl.border.bg-card,
+  .rounded-2xl.border.bg-card,
+  [data-ui="card"],
+  [data-slot="card"]
+) {
+  background: hsl(var(--card));
+  box-shadow: var(--vendor-shadow-card);
+}
+
+.vendor-page-canvas :where(.shadow-lg, .shadow-xl, .shadow-2xl) {
+  box-shadow: var(--vendor-shadow-card);
+}
+
+/* Controls: same height, radius, typography and focus language everywhere. */
+.vendor-page-canvas :where(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+  select,
+  textarea,
+  [role="combobox"]
+) {
+  border-color: hsl(var(--input));
+  border-radius: var(--vendor-control-radius);
+  background-color: hsl(var(--card));
+  color: hsl(var(--foreground));
+  font-size: 0.875rem;
+  box-shadow: none;
+}
+
+.vendor-page-canvas :where(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+  select,
+  textarea,
+  [role="combobox"]
+):focus,
+.vendor-page-canvas :where(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+  select,
+  textarea,
+  [role="combobox"]
+):focus-visible {
+  outline: none;
+  border-color: hsl(var(--ring) / 0.58);
+  box-shadow: 0 0 0 3px hsl(var(--ring) / 0.10);
+}
+
+/* Tables */
+.vendor-page-canvas :where(table) {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.vendor-page-canvas :where(thead th) {
+  height: 42px;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.015em;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.vendor-page-canvas :where(tbody td) {
+  min-height: 48px;
+  color: hsl(var(--foreground));
+  font-size: 0.875rem;
+}
+
+.vendor-page-canvas :where(tbody tr) {
+  transition: background-color 140ms ease;
+}
+
+.vendor-page-canvas :where(tbody tr:hover) {
+  background: hsl(var(--muted) / 0.52);
+}
+
+/* Tabs and segmented controls */
+.vendor-page-canvas :where([role="tablist"]) {
+  min-height: 40px;
+  gap: 4px;
+  border-radius: 12px;
+}
+
+.vendor-page-canvas :where([role="tab"]) {
+  min-height: 36px;
+  border-radius: 9px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+/* Buttons/links must never overlap neighboring UI. */
+.vendor-page-canvas :where(button, a[role="button"]) {
+  max-width: 100%;
+}
+
+.vendor-page-canvas :where(.absolute button, .fixed button) {
+  flex-shrink: 0;
+}
+
+/* Safer popovers, menus and dialogs on every screen. */
+[role="dialog"] {
+  max-width: min(92vw, 880px);
+  max-height: min(90dvh, 900px);
+  border-radius: 16px;
+  box-shadow: var(--vendor-shadow-float);
+}
+
+[data-radix-popper-content-wrapper] {
+  max-width: calc(100vw - 24px) !important;
+  z-index: 70 !important;
+}
+
+[data-radix-popper-content-wrapper] > * {
+  max-height: min(72dvh, 680px);
+  overflow: auto;
+}
+
+/* Common toolbar/header rhythm. */
+.vendor-page-header {
+  margin-bottom: 20px;
+}
+
+.vendor-page-title {
+  font-family: var(--app-font-display);
+  font-size: var(--vendor-font-h1);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+.vendor-page-description {
+  margin-top: 4px;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.vendor-toolbar {
+  gap: 8px;
+}
+
+/* Keep decorative purple limited to dedicated AI surfaces. Generic operational
+   screens use semantic tenant/product colors instead of hard-coded violet. */
+.vendor-page-canvas :where(.text-violet-600, .text-purple-600):not([data-ai-accent="true"]),
+.vendor-page-canvas :where(.text-violet-700, .text-purple-700):not([data-ai-accent="true"]) {
+  color: hsl(var(--foreground));
+}
+
+.vendor-page-canvas :where(.bg-violet-50, .bg-purple-50):not([data-ai-accent="true"]) {
+  background-color: hsl(var(--muted));
+}
+
+/* Accessibility and motion */
+.vendor-page-canvas :where(button, a, input, select, textarea, [role="button"], [role="tab"]) {
+  transition-duration: 150ms;
+}
+
+.vendor-page-canvas :where(button, a, [role="button"]):focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px hsl(var(--ring) / 0.12);
+}
+
+@media (max-width: 767px) {
+  :root {
+    --vendor-font-h1: 1.3125rem;
+    --vendor-font-h2: 1.0625rem;
+  }
+
+  .vendor-page-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .vendor-page-header > :where(div, nav, section):last-child {
+    max-width: 100%;
+  }
+
+  [role="dialog"] {
+    max-width: 100vw;
+    border-radius: 18px 18px 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vendor-page-canvas *,
+  .vendor-page-canvas *::before,
+  .vendor-page-canvas *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
