@@ -9,6 +9,7 @@ import {
   crmCompanyPeopleTable,
   crmTenantCompaniesTable,
   crmTenantCompanyContactsTable,
+  crmCompanyRelationshipsTable,
   type CompanyContactPurpose,
 } from "@workspace/db";
 import { getCompanyByCnpj, normalizeCnpj, normalizeName } from "../services/cnpjService.js";
@@ -37,15 +38,6 @@ function tenantIdFromRequest(req: any, requested?: string): string {
     throw Object.assign(new Error("Acesso negado ao tenant"), { status: 403 });
   }
   return req.user.tenantId;
-}
-
-function defaultRolesForQsa(qualificacao: string): CompanyContactPurpose[] {
-  const q = qualificacao.toLocaleLowerCase("pt-BR");
-  const roles = new Set<CompanyContactPurpose>(["decisor"]);
-  if (q.includes("administrador") || q.includes("diretor") || q.includes("sócio") || q.includes("socio")) {
-    roles.add("comercial");
-  }
-  return [...roles];
 }
 
 async function loadCompanyContext(tenantId: string, companyId: string) {
@@ -80,6 +72,10 @@ async function loadCompanyContext(tenantId: string, companyId: string) {
       isPrimary: crmTenantCompanyContactsTable.isPrimary,
       preferredChannel: crmTenantCompanyContactsTable.preferredChannel,
       priorityByPurpose: crmTenantCompanyContactsTable.priorityByPurpose,
+      roleEvidence: crmTenantCompanyContactsTable.roleEvidence,
+      roleConfidence: crmTenantCompanyContactsTable.roleConfidence,
+      verifiedAt: crmTenantCompanyContactsTable.verifiedAt,
+      validUntil: crmTenantCompanyContactsTable.validUntil,
       notes: crmTenantCompanyContactsTable.notes,
       cargo: crmCompanyPeopleTable.cargo,
       qualificacao: crmCompanyPeopleTable.qualificacao,
@@ -100,7 +96,25 @@ async function loadCompanyContext(tenantId: string, companyId: string) {
       eq(crmTenantCompanyContactsTable.tenantCompanyId, tenantCompany.id),
     ));
 
-  return { company, tenantCompany, contacts };
+  const parentRelationships = await db
+    .select()
+    .from(crmCompanyRelationshipsTable)
+    .where(eq(crmCompanyRelationshipsTable.childCompanyId, companyId));
+
+  const childRelationships = await db
+    .select()
+    .from(crmCompanyRelationshipsTable)
+    .where(eq(crmCompanyRelationshipsTable.parentCompanyId, companyId));
+
+  return {
+    company,
+    tenantCompany,
+    contacts,
+    relationships: {
+      parents: parentRelationships,
+      children: childRelationships,
+    },
+  };
 }
 
 const enrichSchema = z.object({
@@ -271,27 +285,43 @@ router.post("/crm/companies/enrich", async (req, res) => {
         },
       });
 
-    const roles = defaultRolesForQsa(socio.qualificacao);
-    await db
-      .insert(crmTenantCompanyContactsTable)
-      .values({
-        tenantId,
-        tenantCompanyId: tenantCompany.id,
-        personId,
-        roles,
-        isPrimary: enriched.socios.length === 1,
-        priorityByPurpose: roles.includes("decisor") ? { decisor: 10, comercial: 5 } : {},
-        metadata: { discoveredBy: "qsa" },
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: [crmTenantCompanyContactsTable.tenantCompanyId, crmTenantCompanyContactsTable.personId],
-        set: {
-          roles,
-          metadata: { discoveredBy: "qsa" },
+    const [existingTenantContact] = await db
+      .select({ id: crmTenantCompanyContactsTable.id })
+      .from(crmTenantCompanyContactsTable)
+      .where(and(
+        eq(crmTenantCompanyContactsTable.tenantCompanyId, tenantCompany.id),
+        eq(crmTenantCompanyContactsTable.personId, personId),
+      ))
+      .limit(1);
+
+    // QSA comprova o vínculo societário/administrativo, mas NÃO prova que a pessoa
+    // é o decisor comercial, contato principal ou contato autorizado deste tenant.
+    // Se já houver um papel confirmado manualmente, o reenriquecimento nunca o sobrescreve.
+    if (!existingTenantContact) {
+      await db
+        .insert(crmTenantCompanyContactsTable)
+        .values({
+          tenantId,
+          tenantCompanyId: tenantCompany.id,
+          personId,
+          roles: [],
+          isPrimary: false,
+          priorityByPurpose: {},
+          roleEvidence: [{
+            source: "qsa_brasilapi",
+            detail: socio.qualificacao || "Vínculo identificado no QSA",
+            observedAt: now.toISOString(),
+          }],
+          roleConfidence: "0.00",
+          verifiedAt: null,
+          metadata: {
+            discoveredBy: "qsa",
+            roleStatus: "unconfirmed",
+            qsaQualification: socio.qualificacao || null,
+          },
           updatedAt: now,
-        },
-      });
+        });
+    }
   }
 
   if (parsed.data.leadId) {
@@ -366,6 +396,11 @@ const addContactSchema = z.object({
   isPrimary: z.boolean().optional().default(false),
   preferredChannel: z.string().optional(),
   notes: z.string().optional(),
+  roleEvidence: z.array(z.object({
+    source: z.string().min(1),
+    detail: z.string().optional(),
+    observedAt: z.string().optional(),
+  })).optional(),
 });
 
 router.post("/crm/companies/:companyId/contacts", async (req, res) => {
@@ -417,9 +452,168 @@ router.post("/crm/companies/:companyId/contacts", async (req, res) => {
     isPrimary: parsed.data.isPrimary,
     preferredChannel: parsed.data.preferredChannel ?? null,
     notes: parsed.data.notes ?? null,
+    roleEvidence: parsed.data.roleEvidence ?? [{ source: "manual", detail: "Contato cadastrado/confirmado pelo tenant", observedAt: new Date().toISOString() }],
+    roleConfidence: "1.00",
+    verifiedAt: new Date(),
+    metadata: { roleStatus: "confirmed" },
   });
 
   return res.status(201).json(await loadCompanyContext(tenantId, req.params.companyId));
+});
+
+const contactRolePatchSchema = z.object({
+  tenantId: z.string().optional(),
+  roles: z.array(z.enum(PURPOSES)).min(1),
+  isPrimary: z.boolean().optional(),
+  preferredChannel: z.string().optional().nullable(),
+  priorityByPurpose: z.record(z.string(), z.number().min(0).max(100)).optional(),
+  evidence: z.object({
+    source: z.string().min(1).default("manual"),
+    detail: z.string().optional(),
+  }).optional(),
+  validUntil: z.string().datetime().optional().nullable(),
+});
+
+router.patch("/crm/companies/:companyId/contacts/:relationId/roles", async (req, res) => {
+  const parsed = contactRolePatchSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  let tenantId: string;
+  try {
+    tenantId = tenantIdFromRequest(req, parsed.data.tenantId);
+  } catch (err: any) {
+    return res.status(err.status ?? 403).json({ error: err.message });
+  }
+
+  const [tenantCompany] = await db
+    .select({ id: crmTenantCompaniesTable.id })
+    .from(crmTenantCompaniesTable)
+    .where(and(
+      eq(crmTenantCompaniesTable.tenantId, tenantId),
+      eq(crmTenantCompaniesTable.companyId, req.params.companyId),
+    ))
+    .limit(1);
+  if (!tenantCompany) return res.status(404).json({ error: "Empresa não vinculada a este tenant" });
+
+  const [existing] = await db
+    .select()
+    .from(crmTenantCompanyContactsTable)
+    .where(and(
+      eq(crmTenantCompanyContactsTable.id, req.params.relationId),
+      eq(crmTenantCompanyContactsTable.tenantId, tenantId),
+      eq(crmTenantCompanyContactsTable.tenantCompanyId, tenantCompany.id),
+    ))
+    .limit(1);
+  if (!existing) return res.status(404).json({ error: "Contato não encontrado neste tenant" });
+
+  const now = new Date();
+  const evidence = [
+    ...((existing.roleEvidence ?? []) as Array<{ source: string; detail?: string; observedAt?: string }>),
+    {
+      source: parsed.data.evidence?.source ?? "manual",
+      detail: parsed.data.evidence?.detail ?? "Papéis confirmados pelo tenant",
+      observedAt: now.toISOString(),
+    },
+  ];
+
+  await db
+    .update(crmTenantCompanyContactsTable)
+    .set({
+      roles: parsed.data.roles,
+      isPrimary: parsed.data.isPrimary ?? existing.isPrimary,
+      preferredChannel: parsed.data.preferredChannel === undefined ? existing.preferredChannel : parsed.data.preferredChannel,
+      priorityByPurpose: parsed.data.priorityByPurpose ?? existing.priorityByPurpose,
+      roleEvidence: evidence,
+      roleConfidence: "1.00",
+      verifiedAt: now,
+      validUntil: parsed.data.validUntil ? new Date(parsed.data.validUntil) : parsed.data.validUntil === null ? null : existing.validUntil,
+      metadata: {
+        ...((existing.metadata ?? {}) as Record<string, unknown>),
+        roleStatus: "confirmed",
+      },
+      updatedAt: now,
+    })
+    .where(eq(crmTenantCompanyContactsTable.id, existing.id));
+
+  return res.json(await loadCompanyContext(tenantId, req.params.companyId));
+});
+
+const relationshipSchema = z.object({
+  tenantId: z.string().optional(),
+  relatedCompanyId: z.string().min(1),
+  direction: z.enum(["parent", "child"]),
+  relationshipType: z.enum([
+    "grupo_economico",
+    "controladora",
+    "controlada",
+    "matriz",
+    "filial",
+    "coligada",
+    "parceira",
+    "outra",
+  ]),
+  source: z.string().optional().default("manual"),
+  confidence: z.number().min(0).max(1).optional().default(1),
+  notes: z.string().optional(),
+});
+
+router.post("/crm/companies/:companyId/relationships", async (req, res) => {
+  const parsed = relationshipSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  let tenantId: string;
+  try {
+    tenantId = tenantIdFromRequest(req, parsed.data.tenantId);
+  } catch (err: any) {
+    return res.status(err.status ?? 403).json({ error: err.message });
+  }
+
+  const companyId = req.params.companyId;
+  if (companyId === parsed.data.relatedCompanyId) {
+    return res.status(422).json({ error: "Uma empresa não pode ser relacionada a ela mesma" });
+  }
+
+  const tenantLinks = await db
+    .select({ companyId: crmTenantCompaniesTable.companyId })
+    .from(crmTenantCompaniesTable)
+    .where(eq(crmTenantCompaniesTable.tenantId, tenantId));
+  const allowed = new Set(tenantLinks.map((row) => row.companyId));
+  if (!allowed.has(companyId) || !allowed.has(parsed.data.relatedCompanyId)) {
+    return res.status(403).json({ error: "As duas empresas precisam estar vinculadas a este tenant" });
+  }
+
+  const parentCompanyId = parsed.data.direction === "parent" ? parsed.data.relatedCompanyId : companyId;
+  const childCompanyId = parsed.data.direction === "parent" ? companyId : parsed.data.relatedCompanyId;
+  const now = new Date();
+
+  await db
+    .insert(crmCompanyRelationshipsTable)
+    .values({
+      parentCompanyId,
+      childCompanyId,
+      relationshipType: parsed.data.relationshipType,
+      source: parsed.data.source,
+      confidence: String(parsed.data.confidence),
+      verifiedAt: now,
+      metadata: parsed.data.notes ? { notes: parsed.data.notes, confirmedByTenantId: tenantId } : { confirmedByTenantId: tenantId },
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [
+        crmCompanyRelationshipsTable.parentCompanyId,
+        crmCompanyRelationshipsTable.childCompanyId,
+        crmCompanyRelationshipsTable.relationshipType,
+      ],
+      set: {
+        source: parsed.data.source,
+        confidence: String(parsed.data.confidence),
+        verifiedAt: now,
+        metadata: parsed.data.notes ? { notes: parsed.data.notes, confirmedByTenantId: tenantId } : { confirmedByTenantId: tenantId },
+        updatedAt: now,
+      },
+    });
+
+  return res.status(201).json(await loadCompanyContext(tenantId, companyId));
 });
 
 router.get("/crm/companies/:companyId/contact-for", async (req, res) => {
@@ -437,10 +631,22 @@ router.get("/crm/companies/:companyId/contact-for", async (req, res) => {
   if (!context) return res.status(404).json({ error: "Empresa não vinculada a este tenant" });
 
   const ranked = [...context.contacts]
-    .filter((c) => c.roles?.includes(purpose.data) || c.isPrimary)
+    .filter((c) => {
+      const confirmed = (c.metadata as Record<string, unknown> | null)?.roleStatus === "confirmed" || !!c.verifiedAt;
+      const notExpired = !c.validUntil || new Date(c.validUntil).getTime() >= Date.now();
+      return confirmed && notExpired && (c.roles?.includes(purpose.data) || c.isPrimary);
+    })
     .sort((a, b) => {
-      const ap = Number(a.priorityByPurpose?.[purpose.data] ?? 0) + (a.isPrimary ? 100 : 0);
-      const bp = Number(b.priorityByPurpose?.[purpose.data] ?? 0) + (b.isPrimary ? 100 : 0);
+      const ap =
+        Number(a.priorityByPurpose?.[purpose.data] ?? 0) +
+        Number(a.roleConfidence ?? 0) * 10 +
+        (a.roles?.includes(purpose.data) ? 100 : 0) +
+        (a.isPrimary ? 25 : 0);
+      const bp =
+        Number(b.priorityByPurpose?.[purpose.data] ?? 0) +
+        Number(b.roleConfidence ?? 0) * 10 +
+        (b.roles?.includes(purpose.data) ? 100 : 0) +
+        (b.isPrimary ? 25 : 0);
       return bp - ap;
     });
 
