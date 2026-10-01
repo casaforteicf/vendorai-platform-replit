@@ -87,6 +87,9 @@ import { createSpecificationParticipation } from "../services/commission-engine.
 import { ensureStandardConstructionCatalog } from "../lib/ensure-standard-construction-catalog.js";
 import { ensureArqdorStarterLibrary } from "../lib/arqdor/starter-library.js";
 import { searchPolyHavenModels, resolvePolyHavenModel } from "../lib/arqdor/polyhaven.js";
+import { contentTypeForModelAsset, downloadSketchfabGltfArchive, extractZipArchive, getSketchfabDownload, getSketchfabModel, searchSketchfabModels } from "../lib/arqdor/sketchfab.js";
+import { getValidSketchfabAccessToken } from "../services/sketchfab-connection.js";
+import { saveExternalAsset, saveSketchfabAsset } from "../services/sketchfab-storage.js";
 import { buildArchitecturalStrategyRepertoire } from "../lib/arqdor-architecture-strategies.js";
 import { buildArchitecturalProjectStrategy } from "../lib/arqdor-project-strategy.js";
 import { evaluateProjectMasterAcceptance } from "../lib/arqdor-project-master-validation.js";
@@ -4163,6 +4166,121 @@ router.delete("/arch/cenas/:cenaId", authenticate, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // Catálogo
 // ─────────────────────────────────────────────────────────────────────────────
+// GET /api/arch/sketchfab/search?q=sofa
+router.get("/arch/sketchfab/search", authenticate, async (req, res) => {
+  try {
+    const q = String(req.query.q ?? "").trim();
+    if (q.length < 2) return res.json({ items: [], poweredBy: "Sketchfab" });
+    const limit = Number(req.query.limit ?? 24);
+    const items = await searchSketchfabModels(q, limit);
+    return res.json({ items, poweredBy: "Sketchfab" });
+  } catch (error) {
+    console.error("[arqdor/sketchfab/search]", error);
+    return res.status(502).json({ error: "Não foi possível consultar o Sketchfab agora." });
+  }
+});
+
+router.post("/arch/sketchfab/import", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const uid = z.string().trim().min(1).max(80).safeParse(req.body?.uid);
+  if (!uid.success) return res.status(400).json({ error: "uid_invalid" });
+
+  try {
+    const accessToken = await getValidSketchfabAccessToken(tid);
+    const model = await getSketchfabModel(uid.data, accessToken);
+    if (!model.isDownloadable) return res.status(422).json({ error: "model_not_downloadable" });
+
+    const download = await getSketchfabDownload(uid.data, accessToken);
+    const gltf = download.gltf;
+    if (!gltf?.url) return res.status(422).json({ error: "gltf_not_available" });
+
+    const archive = await downloadSketchfabGltfArchive(gltf.url, gltf.size);
+    const files = extractZipArchive(archive);
+    const scene = files.find((file) => /(^|\/)scene\.gltf$/i.test(file.path))
+      ?? files.find((file) => /\.gltf$/i.test(file.path));
+    if (!scene) return res.status(422).json({ error: "gltf_scene_missing" });
+
+    const prefix = ["public", "arqdor", "sketchfab", tid, uid.data].join("/");
+    let sceneUrl: string | null = null;
+    for (const file of files) {
+      const objectName = `${prefix}/${file.path}`;
+      const publicUrl = await saveSketchfabAsset(objectName, file.data, contentTypeForModelAsset(file.path));
+      if (file.path === scene.path) sceneUrl = publicUrl;
+    }
+    if (!sceneUrl) throw new Error("scene_upload_failed");
+
+    const [existing] = await db.select().from(produtosCatalogoTable)
+      .where(and(
+        eq(produtosCatalogoTable.tenantId, tid),
+        sql`${produtosCatalogoTable.projectTechnicalConfig} ->> 'sketchfabUid' = ${uid.data}`,
+      ))
+      .limit(1);
+
+    const technical = {
+      source: "sketchfab",
+      sketchfabUid: model.uid,
+      sketchfabViewerUrl: model.viewerUrl,
+      modelSource: "Sketchfab",
+      modelFormat: "gltf",
+      modelLicense: model.licenseLabel,
+      modelLicenseSlug: model.licenseSlug,
+      modelAuthor: model.authorName,
+      modelAuthorUid: model.authorUid,
+      modelVertexCount: model.vertexCount,
+      modelFaceCount: model.faceCount,
+      importedAt: new Date().toISOString(),
+      importedFileCount: files.length,
+      originalArchiveBytes: archive.length,
+    };
+
+    const values = {
+      nome: model.name,
+      descricao: model.description,
+      fornecedor: model.authorName ?? "Sketchfab",
+      marca: "Sketchfab",
+      precoBase: existing?.precoBase ?? "0",
+      unidade: existing?.unidade ?? "un",
+      ativo: true,
+      projectLibraryEnabled: true,
+      imagemUrl: model.thumbnailUrl,
+      imagens: model.thumbnailUrl ? [model.thumbnailUrl] : [],
+      model3dUrl: sceneUrl,
+      projectTechnicalConfig: {
+        ...((existing?.projectTechnicalConfig ?? {}) as Record<string, unknown>),
+        ...technical,
+      },
+      updatedAt: new Date(),
+    };
+
+    const [product] = existing
+      ? await db.update(produtosCatalogoTable).set(values).where(eq(produtosCatalogoTable.id, existing.id)).returning()
+      : await db.insert(produtosCatalogoTable).values({ tenantId: tid, ...values }).returning();
+
+    return res.status(existing ? 200 : 201).json({
+      success: true,
+      product: {
+        id: product?.id,
+        nome: product?.nome,
+        model3dUrl: product?.model3dUrl,
+        imagemUrl: product?.imagemUrl,
+        source: "sketchfab",
+        license: model.licenseLabel,
+        author: model.authorName,
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "sketchfab_import_failed";
+    if (message === "sketchfab_not_connected" || message === "sketchfab_reconnect_required") {
+      return res.status(409).json({ error: message });
+    }
+    if (message === "sketchfab_archive_too_large") {
+      return res.status(413).json({ error: message, maxArchiveMb: 45 });
+    }
+    console.error("[arqdor/sketchfab/import]", error);
+    return res.status(502).json({ error: "sketchfab_import_failed", detail: message.slice(0, 180) });
+  }
+});
+
 // GET /api/arch/polyhaven/search?q=mesa
 router.get("/arch/polyhaven/search", authenticate, async (req, res) => {
   try {
@@ -4190,6 +4308,82 @@ router.get("/arch/polyhaven/assets/:slug", authenticate, async (req, res) => {
   }
 });
 
+
+// POST /api/arch/polyhaven/import
+router.post("/arch/polyhaven/import", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const slug = z.string().trim().regex(/^[a-zA-Z0-9_-]+$/).safeParse(req.body?.slug);
+  if (!slug.success) return res.status(400).json({ error: "slug_invalid" });
+
+  try {
+    const asset = await resolvePolyHavenModel(slug.data);
+    if (!asset.model3dUrl) return res.status(404).json({ error: "glb_not_available" });
+
+    const source = await fetch(asset.model3dUrl, { headers: { "User-Agent": "Arqdor/1.0 (3D asset importer)" } });
+    if (!source.ok) throw new Error(`polyhaven_download_failed:${source.status}`);
+    const declared = Number(source.headers.get("content-length") || 0);
+    const maxBytes = 45 * 1024 * 1024;
+    if (declared > maxBytes) return res.status(413).json({ error: "polyhaven_asset_too_large", maxMb: 45 });
+    const buffer = Buffer.from(await source.arrayBuffer());
+    if (buffer.length > maxBytes) return res.status(413).json({ error: "polyhaven_asset_too_large", maxMb: 45 });
+
+    const storedUrl = await saveExternalAsset(
+      `public/arqdor/polyhaven/${tid}/${slug.data}/model.glb`,
+      buffer,
+      "model/gltf-binary",
+    );
+
+    const [existing] = await db.select().from(produtosCatalogoTable)
+      .where(and(
+        eq(produtosCatalogoTable.tenantId, tid),
+        sql`${produtosCatalogoTable.projectTechnicalConfig} ->> 'polyHavenSlug' = ${slug.data}`,
+      ))
+      .limit(1);
+
+    const values = {
+      nome: asset.name,
+      descricao: asset.description || null,
+      fornecedor: "Poly Haven",
+      marca: "Poly Haven",
+      precoBase: existing?.precoBase ?? "0",
+      unidade: existing?.unidade ?? "un",
+      ativo: true,
+      projectLibraryEnabled: true,
+      imagemUrl: asset.thumbnailUrl,
+      imagens: asset.thumbnailUrl ? [asset.thumbnailUrl] : [],
+      model3dUrl: storedUrl,
+      projectTechnicalConfig: {
+        ...((existing?.projectTechnicalConfig ?? {}) as Record<string, unknown>),
+        source: "polyhaven",
+        polyHavenSlug: slug.data,
+        modelSource: "Poly Haven",
+        modelFormat: "glb",
+        modelLicense: "CC0",
+        attributionRequired: false,
+        authors: asset.authors,
+        tags: asset.tags,
+        importedAt: new Date().toISOString(),
+        originalModelUrl: asset.model3dUrl,
+      },
+      updatedAt: new Date(),
+    };
+
+    const [product] = existing
+      ? await db.update(produtosCatalogoTable).set(values).where(eq(produtosCatalogoTable.id, existing.id)).returning()
+      : await db.insert(produtosCatalogoTable).values({ tenantId: tid, ...values }).returning();
+
+    return res.status(existing ? 200 : 201).json({
+      success: true,
+      product: { id: product?.id, nome: product?.nome, model3dUrl: product?.model3dUrl, imagemUrl: product?.imagemUrl },
+      source: "Poly Haven",
+      license: "CC0",
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "polyhaven_import_failed";
+    console.error("[arqdor/polyhaven/import]", error);
+    return res.status(502).json({ error: "polyhaven_import_failed", detail: message.slice(0, 180) });
+  }
+});
 
 // GET /api/arch/catalogo
 router.get("/arch/catalogo", authenticate, async (req, res) => {
