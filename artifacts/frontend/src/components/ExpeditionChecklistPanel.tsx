@@ -1,4 +1,5 @@
-import { AlertTriangle, ClipboardCheck } from "lucide-react";
+import { useState } from "react";
+import { AlertTriangle, Camera, ClipboardCheck, ScanLine, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +30,7 @@ export type ExpeditionChecklist = {
       status: ChecklistStatus;
       obrigatorio?: boolean;
       observacao?: string;
+      evidencias?: Array<{ id: string; url: string; nome: string }>;
     }>;
   }>;
   verificacaoFinal?: {
@@ -43,12 +45,29 @@ export type ExpeditionChecklist = {
 export function ExpeditionChecklistPanel({
   checklist,
   disabled,
+  isAdmin,
   onChange,
+  onUploadEvidence,
+  onOverride,
 }: {
   checklist: ExpeditionChecklist;
   disabled?: boolean;
+  isAdmin?: boolean;
   onChange: (checklist: ExpeditionChecklist) => void;
+  onUploadEvidence?: (input: {
+    itemIndex: number;
+    fieldIndex: number;
+    item: ExpeditionChecklist["itens"][number];
+    field: ExpeditionChecklist["itens"][number]["campos"][number];
+    files: File[];
+  }) => Promise<Array<{ id: string; url: string; nome: string }>>;
+  onOverride?: (justificativa: string) => void;
 }) {
+  const [scanCode, setScanCode] = useState("");
+  const [scannedItemIndex, setScannedItemIndex] = useState<number | null>(null);
+  const [scanMessage, setScanMessage] = useState("");
+  const [overrideReason, setOverrideReason] = useState("");
+  const [uploadingEvidence, setUploadingEvidence] = useState<string | null>(null);
   function recalculate(itens: ExpeditionChecklist["itens"], verificacaoFinal = checklist.verificacaoFinal) {
     const fields = itens.flatMap((item) => item.campos);
     const concluidos = fields.filter((field) => field.status !== "pendente").length;
@@ -118,12 +137,49 @@ export function ExpeditionChecklistPanel({
     });
   }
 
+  function scanItem() {
+    const code = scanCode.trim().toLocaleLowerCase("pt-BR");
+    if (!code) return;
+    const index = checklist.itens.findIndex((item) => {
+      const values = [
+        item.sku,
+        item.produtoId,
+        item.propostaItemIndex != null ? String(item.propostaItemIndex) : null,
+        item.nome,
+      ].filter(Boolean).map((value) => String(value).toLocaleLowerCase("pt-BR"));
+      return values.some((value) => value === code || value.includes(code));
+    });
+    setScannedItemIndex(index >= 0 ? index : null);
+    setScanMessage(index >= 0 ? `Item localizado: ${checklist.itens[index].nome}` : "Código não encontrado neste lote.");
+  }
+
+  async function uploadEvidence(itemIndex: number, fieldIndex: number, files: File[]) {
+    if (!onUploadEvidence || !files.length) return;
+    const item = checklist.itens[itemIndex];
+    const field = item.campos[fieldIndex];
+    const key = `${itemIndex}-${fieldIndex}`;
+    setUploadingEvidence(key);
+    try {
+      const uploaded = await onUploadEvidence({ itemIndex, fieldIndex, item, field, files });
+      const itens = checklist.itens.map((currentItem, i) => i !== itemIndex ? currentItem : {
+        ...currentItem,
+        campos: currentItem.campos.map((currentField, j) => j !== fieldIndex ? currentField : {
+          ...currentField,
+          evidencias: [...(currentField.evidencias ?? []), ...uploaded],
+        }),
+      });
+      onChange({ ...checklist, itens });
+    } finally {
+      setUploadingEvidence(null);
+    }
+  }
+
   return (
     <div className="space-y-3 rounded-lg border p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h3 className="flex items-center gap-2 text-sm font-semibold">
-            <ClipboardCheck className="h-4 w-4" /> Checklist de expedição / transporte
+            <ClipboardCheck className="h-4 w-4" /> Checklist de expedição
           </h3>
           <p className="mt-1 text-xs text-muted-foreground">
             Gerado conforme produto e contexto do tenant
@@ -141,9 +197,26 @@ export function ExpeditionChecklistPanel({
         </div>
       </div>
 
+      <div className="rounded-lg border bg-muted/20 p-3">
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="relative flex-1">
+            <ScanLine className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              className="pl-9"
+              value={scanCode}
+              placeholder="Ler QR/código de barras ou digitar SKU/código"
+              onChange={(e) => setScanCode(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") scanItem(); }}
+            />
+          </div>
+          <Button type="button" variant="outline" onClick={scanItem}>Localizar item</Button>
+        </div>
+        {scanMessage && <p className="mt-2 text-xs text-muted-foreground">{scanMessage}</p>}
+      </div>
+
       <div className="space-y-3">
         {checklist.itens.map((item, itemIndex) => (
-          <div key={`${item.propostaItemIndex ?? itemIndex}-${item.sku ?? item.nome}`} className="rounded-lg border">
+          <div key={`${item.propostaItemIndex ?? itemIndex}-${item.sku ?? item.nome}`} className={`rounded-lg border ${scannedItemIndex === itemIndex ? "ring-2 ring-primary" : ""}`}>
             <div className="bg-muted/30 px-3 py-2">
               <p className="text-sm font-medium">{item.nome}</p>
               <p className="text-[11px] text-muted-foreground">
@@ -163,14 +236,42 @@ export function ExpeditionChecklistPanel({
                     <Button disabled={disabled} size="sm" variant={field.status === "na" ? "secondary" : "outline"} className="h-7 px-2 text-xs" onClick={() => setField(itemIndex, fieldIndex, "na")}>N/A</Button>
                   </div>
                   {field.status === "divergencia" && (
-                    <Textarea
-                      disabled={disabled}
-                      className="w-full basis-full"
-                      rows={2}
-                      placeholder="Descreva a divergência, quantidade afetada e ação necessária."
-                      defaultValue={field.observacao ?? ""}
-                      onBlur={(e) => setFieldObservation(itemIndex, fieldIndex, e.currentTarget.value)}
-                    />
+                    <div className="w-full basis-full space-y-2">
+                      <Textarea
+                        disabled={disabled}
+                        rows={2}
+                        placeholder="Descreva a divergência, quantidade afetada e ação necessária."
+                        defaultValue={field.observacao ?? ""}
+                        onBlur={(e) => setFieldObservation(itemIndex, fieldIndex, e.currentTarget.value)}
+                      />
+                      {onUploadEvidence && (
+                        <label className="flex cursor-pointer items-center gap-2 rounded-md border border-dashed px-3 py-2 text-xs hover:bg-muted/40">
+                          <Camera className="h-4 w-4" />
+                          <span>{uploadingEvidence === `${itemIndex}-${fieldIndex}` ? "Enviando evidência..." : "Adicionar foto/evidência da divergência"}</span>
+                          <input
+                            className="hidden"
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            disabled={disabled || uploadingEvidence === `${itemIndex}-${fieldIndex}`}
+                            onChange={(e) => {
+                              const files = Array.from(e.target.files ?? []);
+                              e.target.value = "";
+                              if (files.length) void uploadEvidence(itemIndex, fieldIndex, files);
+                            }}
+                          />
+                        </label>
+                      )}
+                      {(field.evidencias?.length ?? 0) > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {field.evidencias!.map((evidence) => (
+                            <a key={evidence.id} href={evidence.url} target="_blank" rel="noreferrer" className="rounded-md border px-2 py-1 text-[11px] hover:bg-muted/50">
+                              {evidence.nome}
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               ))}
@@ -202,6 +303,24 @@ export function ExpeditionChecklistPanel({
         <p className="text-xs text-muted-foreground">
           Para liberar o transporte, conclua os campos aplicáveis e informe o verificador final.
         </p>
+      )}
+
+      {isAdmin && onOverride && checklist.status !== "concluido" && (
+        <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50/50 p-3">
+          <div className="flex items-start gap-2 text-xs">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>Liberação com ressalva é excepcional e ficará registrada com usuário, data/hora e justificativa.</span>
+          </div>
+          <Textarea
+            rows={2}
+            value={overrideReason}
+            onChange={(e) => setOverrideReason(e.target.value)}
+            placeholder="Justificativa obrigatória para liberar o transporte com pendência/divergência."
+          />
+          <Button type="button" size="sm" variant="outline" disabled={disabled || overrideReason.trim().length < 5} onClick={() => onOverride(overrideReason.trim())}>
+            Liberar com ressalva
+          </Button>
+        </div>
       )}
 
       {checklist.divergencias > 0 && (
