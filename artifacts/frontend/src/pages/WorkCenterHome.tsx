@@ -248,14 +248,16 @@ export default function WorkCenterHome() {
     window.history.replaceState({}, "", nextQuery ? `${window.location.pathname}?${nextQuery}` : window.location.pathname);
   }, [attentionFilter, autoOpenSingle, loading, visibleQueue]);
 
-  return <div className="space-y-6">
-    <div>
-      <Badge variant="outline" className="mb-2">Estação operacional</Badge>
-      <h1 className="text-3xl font-semibold tracking-tight">Central de Trabalho</h1>
-      <p className="mt-1 text-muted-foreground">Veja quem atender, o que fazer e até quando — sem procurar trabalho em várias telas.</p>
+  return <div className="vendor-product-page">
+    <div className="vendor-product-hero">
+      <div>
+        <Badge variant="outline" className="vendor-product-kicker">Estação operacional</Badge>
+        <h1 className="vendor-product-title">Central de Trabalho</h1>
+        <p className="vendor-product-subtitle">Veja quem atender, o que fazer e até quando — sem procurar trabalho em várias telas.</p>
+      </div>
     </div>
 
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+    <div className="vendor-kpi-grid sm:grid-cols-2 xl:grid-cols-5 mb-5">
       <Metric icon={<BriefcaseBusiness className="h-5 w-5" />} label="Em atendimento" value={activeQueue.length} detail="Itens ativos agora" active={stageFilter === "ativos" && ownerFilter === "todos" && attentionFilter === "todos"} onClick={() => selectMetric("active")} />
       <Metric icon={<CircleAlert className="h-5 w-5 text-destructive" />} label="Atividades vencidas" value={overdue} detail="Ação imediata" active={attentionFilter === "vencidos"} onClick={() => selectMetric("overdue")} />
       <Metric icon={<UsersRound className="h-5 w-5" />} label="Sem responsável" value={unassigned} detail="Precisa de atribuição" active={attentionFilter === "sem_responsavel"} onClick={() => selectMetric("unassigned")} />
@@ -263,13 +265,13 @@ export default function WorkCenterHome() {
       <Metric icon={<UserRound className="h-5 w-5" />} label="Meus atendimentos" value={mine} detail="Atribuídos a mim" active={ownerFilter === "meus"} onClick={() => selectMetric("mine")} />
     </div>
 
-    <Card>
+    <Card className="vendor-work-surface">
       <CardHeader className="gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <CardTitle>Fila de trabalho</CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">{visibleQueue.length} {visibleQueue.length === 1 ? "item encontrado" : "itens encontrados"}</p>
         </div>
-        <div className="grid gap-2 sm:grid-cols-2 xl:w-[900px] xl:grid-cols-[1.4fr_1fr_1fr_1fr]">
+        <div className="vendor-filter-strip sm:grid-cols-2 xl:w-[900px] xl:grid-cols-[1.4fr_1fr_1fr_1fr]">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input aria-label="Buscar atendimento" className="pl-9" placeholder="Buscar lead, empresa ou negócio" value={search} onChange={(event) => setSearch(event.target.value)} />
@@ -305,7 +307,7 @@ export default function WorkCenterHome() {
       </CardHeader>
       <CardContent>
         {loading ? <div className="flex min-h-56 items-center justify-center"><Loader2 className="h-7 w-7 animate-spin" aria-label="Carregando fila" /></div> :
-        visibleQueue.length === 0 ? <div className="min-h-56 rounded-xl border border-dashed p-10 text-center text-muted-foreground">Nenhum item corresponde aos filtros atuais.</div> :
+        visibleQueue.length === 0 ? <div className="vendor-empty-state min-h-56 p-10 text-center text-muted-foreground">Nenhum item corresponde aos filtros atuais.</div> :
         <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">{visibleQueue.map((item) => {
           const isTerminal = terminalStageKeys.has(item.stage);
           const isOverdue = Boolean(item.nextActivity?.dataVencimento && new Date(item.nextActivity.dataVencimento).getTime() < now);
@@ -321,7 +323,7 @@ export default function WorkCenterHome() {
             key={item.key}
             type="button"
             onClick={() => openItem(item)}
-            className="group rounded-xl border bg-card p-4 text-left transition hover:border-primary/40 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="vendor-work-item group p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -366,15 +368,15 @@ function Metric({ icon, label, value, detail, active = false, onClick }: {
   onClick?: () => void;
 }) {
   return <button type="button" onClick={onClick} className="text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xl">
-    <Card className={`h-full transition hover:border-primary/40 hover:shadow-sm ${active ? "border-primary/40 bg-primary/[0.03]" : ""}`}>
-      <CardContent className="flex items-center gap-3 p-4">
-        <div className="rounded-lg bg-muted p-2">{icon}</div>
+    <div className="vendor-kpi-card h-full" data-active={active ? "true" : "false"}>
+      <div className="flex items-center gap-3 p-4">
+        <div className="vendor-kpi-icon">{icon}</div>
         <div className="min-w-0">
-          <p className="text-2xl font-semibold">{value}</p>
-          <p className="text-xs font-medium">{label}</p>
-          {detail ? <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{detail}</p> : null}
+          <p className="vendor-kpi-value">{value}</p>
+          <p className="vendor-kpi-label">{label}</p>
+          {detail ? <p className="vendor-kpi-detail truncate">{detail}</p> : null}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   </button>;
 }
