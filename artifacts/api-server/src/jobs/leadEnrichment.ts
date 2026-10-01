@@ -24,7 +24,7 @@ import { dispatchAgentBackground } from "../services/agent-dispatch.js";
 import { sendSdrFirstApproach } from "../services/sdrService.js";
 import { getSimilarityBonus, storeConvertedEmbedding } from "../lib/prospectorMemory.js";
 import { logger as rootLogger } from "../lib/logger.js";
-import { checkHasMetaAds, checkGooglePresence } from "../services/cnpjService.js";
+import { checkHasMetaAds, checkGooglePresence, getCompanyByCnpj } from "../services/cnpjService.js";
 import { evaluateColdProspectQuality } from "../lib/coldProspectQuality.js";
 
 const COLD_OUTREACH_TRIGGER =
@@ -267,6 +267,11 @@ export interface EnrichLeadParams {
   log?: Logger;
   scoreBoost?: number;
   boostReason?: string;
+  /**
+   * Controls whether enrichment may trigger automatic SDR outreach.
+   * Keep true for Prospector flows; use false for CRM/manual enrichment.
+   */
+  allowAutoDispatch?: boolean;
 }
 
 export async function enrichLead(
@@ -275,19 +280,21 @@ export async function enrichLead(
   logArg: Logger = rootLogger,
 ): Promise<void> {
   // Support both new object API and legacy positional API
-  let leadId: string, tenantId: string, log: Logger, scoreBoost: number, boostReason: string;
+  let leadId: string, tenantId: string, log: Logger, scoreBoost: number, boostReason: string, allowAutoDispatch: boolean;
   if (typeof paramsOrId === "string") {
     leadId = paramsOrId;
     tenantId = tenantIdArg!;
     log = logArg;
     scoreBoost = 0;
     boostReason = "";
+    allowAutoDispatch = true;
   } else {
     leadId = paramsOrId.leadId;
     tenantId = paramsOrId.tenantId;
     log = paramsOrId.log ?? rootLogger;
     scoreBoost = paramsOrId.scoreBoost ?? 0;
     boostReason = paramsOrId.boostReason ?? "";
+    allowAutoDispatch = paramsOrId.allowAutoDispatch ?? true;
   }
 
   log.info({ leadId, tenantId }, "enrichLead: starting");
@@ -311,6 +318,73 @@ export async function enrichLead(
   const segmento = rawSegmento.toLowerCase().replace(/\s+/g, "_");
 
   try {
+    // Phase 1: corporate registry enrichment (BrasilAPI) when a valid CNPJ is
+    // available. Only fill missing CRM fields; never overwrite data entered by
+    // the user. QSA is stored in dadosPj and the raw qualification is kept in
+    // metadata for auditability.
+    const rawCnpj = String(lead.documento ?? lead.dadosPj?.cnpj ?? "").replace(/\D/g, "");
+    if (rawCnpj.length === 14) {
+      const company = await getCompanyByCnpj(rawCnpj);
+      if (company) {
+        const currentMeta = (lead.metadata ?? {}) as Record<string, unknown>;
+        const nextDadosPj = {
+          ...(lead.dadosPj ?? {}),
+          cnpj: lead.dadosPj?.cnpj ?? company.cnpj,
+          razaoSocial: lead.dadosPj?.razaoSocial ?? company.razaoSocial,
+          segmento: lead.dadosPj?.segmento ?? company.cnaeDescricao,
+          numFuncionarios: lead.dadosPj?.numFuncionarios ?? null,
+          faturamentoEstimado: lead.dadosPj?.faturamentoEstimado ?? null,
+          socios: lead.dadosPj?.socios?.length
+            ? lead.dadosPj.socios
+            : company.socios.map((socio) => ({
+                nome: socio.nome,
+                dataNascimento: socio.dataNascimento,
+              })),
+        };
+        const nextMetadata = {
+          ...currentMeta,
+          cidade: currentMeta["cidade"] ?? company.municipio,
+          uf: currentMeta["uf"] ?? company.uf,
+          cep: currentMeta["cep"] ?? company.cep,
+          cnae_principal: currentMeta["cnae_principal"] ?? company.cnaeCode,
+          cnae_descricao: currentMeta["cnae_descricao"] ?? company.cnaeDescricao,
+          porte_empresa: currentMeta["porte_empresa"] ?? company.porte,
+          capital_social: currentMeta["capital_social"] ?? company.capitalSocial,
+          situacao_cadastral: currentMeta["situacao_cadastral"] ?? company.situacao,
+          data_abertura: currentMeta["data_abertura"] ?? company.dataAbertura,
+          qsa: currentMeta["qsa"] ?? company.socios,
+          enrichmentSources: [
+            ...((Array.isArray(currentMeta["enrichmentSources"]) ? currentMeta["enrichmentSources"] : []) as unknown[]),
+            {
+              source: "BrasilAPI/CNPJ",
+              collectedAt: new Date().toISOString(),
+              confidence: "high",
+              fields: ["razaoSocial", "nomeFantasia", "endereco", "cnae", "porte", "qsa", "telefone", "email"],
+            },
+          ].slice(-10),
+        };
+
+        const corporatePatch = {
+          empresa: lead.empresa ?? company.nomeFantasia ?? company.razaoSocial,
+          endereco: lead.endereco ?? company.enderecoCompleto,
+          telefone: lead.telefone ?? company.telefone,
+          email: lead.email ?? company.email,
+          mercadoSegmento: lead.mercadoSegmento ?? company.cnaeDescricao,
+          tipoPessoa: lead.tipoPessoa === "fisica" ? "juridica" : lead.tipoPessoa,
+          dadosPj: nextDadosPj,
+          metadata: nextMetadata,
+          updatedAt: new Date(),
+        };
+
+        await db.update(leadsTable)
+          .set(corporatePatch)
+          .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)));
+
+        Object.assign(lead, corporatePatch);
+        log.info({ leadId, cnpj: company.cnpj }, "enrichLead: corporate registry data merged");
+      }
+    }
+
     // Phase 2A: Digital Scanner
     const digital = await runDigitalScanner({
       websiteUrl: lead.websiteUrl,
@@ -377,6 +451,12 @@ export async function enrichLead(
           digital,
           growth,
           signals: { origem: lead.source, meta_anunciante: metaAdvertiserSignal },
+          provenance: {
+            source: lead.source ?? "manual",
+            method: "vendorai_enrichment_v1",
+            confidence: lead.websiteUrl || lead.documento || lead.empresa ? "medium" : "low",
+            enrichedAt: new Date().toISOString(),
+          },
           enriquecido_em: new Date().toISOString(),
         },
         enrichmentStatus: "enriched",
@@ -521,6 +601,13 @@ export async function enrichLead(
           digital,
           growth,
           signals: { origem: lead.source, meta_anunciante: metaAdvertiserSignal },
+          provenance: {
+            source: lead.source ?? "manual",
+            method: "vendorai_enrichment_v1",
+            confidence: quality.evidenceCount >= quality.requiredEvidence ? "high" : (quality.evidenceCount > 0 ? "medium" : "low"),
+            evidenceCount: quality.evidenceCount,
+            enrichedAt: new Date().toISOString(),
+          },
           score_breakdown: scoreResult.score_breakdown,
           enriquecido_em: new Date().toISOString(),
         },
@@ -543,7 +630,7 @@ export async function enrichLead(
 
     // Phase 4: Auto-dispatch ONLY when score and evidence quality both pass.
     // A high score alone never authorizes cold outreach.
-    if (quality.ready) {
+    if (quality.ready && allowAutoDispatch) {
       log.info(
         { leadId, score: scoreResult.propensity_score, threshold, evidenceCount: quality.evidenceCount },
         "enrichLead: quality gate passed — auto-dispatching SDR",
@@ -615,8 +702,11 @@ export async function enrichLead(
           evidenceCount: quality.evidenceCount,
           score: scoreResult.propensity_score,
           threshold,
+          allowAutoDispatch,
         },
-        "enrichLead: cold outreach blocked by quality gate",
+        allowAutoDispatch
+          ? "enrichLead: cold outreach blocked by quality gate"
+          : "enrichLead: enrichment completed without automatic outreach",
       );
     }
   } catch (err) {

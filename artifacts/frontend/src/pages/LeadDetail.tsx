@@ -400,6 +400,7 @@ export default function LeadDetail() {
   const { toast } = useToast();
 
   const [editingLeadDados, setEditingLeadDados] = useState(false);
+  const [isReenrichingLead, setIsReenrichingLead] = useState(false);
   const [leadDadosDraft, setLeadDadosDraft] = useState({
     nome: "",
     telefone: "",
@@ -469,6 +470,28 @@ export default function LeadDetail() {
       },
     },
   });
+
+  async function reenrichLead() {
+    if (!id || isReenrichingLead) return;
+    setIsReenrichingLead(true);
+    try {
+      const r = await fetch(`/api/leads/${id}/enrich`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data?.error ?? "Falha ao iniciar enriquecimento");
+      void queryClient.invalidateQueries({ queryKey: getGetLeadQueryKey(id) });
+      toast({
+        title: "Enriquecimento iniciado",
+        description: "O Vendi está atualizando dados e sinais públicos sem iniciar abordagem automática.",
+      });
+    } catch (err) {
+      toast({ title: "Erro ao enriquecer lead", description: String(err), variant: "destructive" });
+    } finally {
+      setIsReenrichingLead(false);
+    }
+  }
 
   async function classificarComoNaoLead() {
     if (!id) return;
@@ -1554,6 +1577,17 @@ export default function LeadDetail() {
           >
             <CalendarDays className="h-4 w-4" />
             Agendar reunião
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5"
+            disabled={isReenrichingLead}
+            onClick={() => void reenrichLead()}
+            data-testid="btn-reenrich-lead"
+          >
+            {isReenrichingLead ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            {isReenrichingLead ? "Enriquecendo..." : "Reenriquecer dados"}
           </Button>
           {lead.naoLeadTipo ? (
             <Button
