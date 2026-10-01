@@ -2487,14 +2487,16 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     if (custom) {
       const wall = safeCustomWalls.find((item) => item.id === custom.wallId);
       if (!wall) return;
-      const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
-      const start = horizontal ? wall.x1 : wall.y1;
-      const end = horizontal ? wall.x2 : wall.y2;
-      const current = horizontal ? patch.x : patch.y;
-      const denominator = end - start;
-      const offset = Math.abs(denominator) < 0.001
-        ? custom.offset
-        : Math.max(0.08, Math.min(0.92, (current - start) / denominator));
+      const dx = wall.x2 - wall.x1;
+      const dy = wall.y2 - wall.y1;
+      const wallLength = Math.hypot(dx, dy);
+      if (wallLength < 0.001) return;
+      const projectedDistance = ((patch.x - wall.x1) * dx + (patch.y - wall.y1) * dy) / wallLength;
+      const halfOpening = Math.min(wallLength / 2, Math.max(0.25, (custom.width ?? (custom.type === "door" ? 0.9 : 1.2)) / 2));
+      const minDistance = Math.min(halfOpening, wallLength / 2);
+      const maxDistance = Math.max(minDistance, wallLength - halfOpening);
+      const clampedDistance = Math.max(minDistance, Math.min(maxDistance, projectedDistance));
+      const offset = Math.max(0, Math.min(1, clampedDistance / wallLength));
       setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((opening) =>
         opening.id === openingId ? { ...opening, offset, type: patch.type } : opening
       ));
@@ -4155,6 +4157,49 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     pushRoomHistory(before);
   };
 
+  const setCustomOpeningOffset = (openingId: string, rawPercent: number) => {
+    const opening = safeCustomOpenings.find((item) => item.id === openingId);
+    const wall = opening ? safeCustomWalls.find((item) => item.id === opening.wallId) : null;
+    if (!opening || !wall || !Number.isFinite(rawPercent)) return;
+    const wallLength = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    if (wallLength < 0.001) return;
+    const halfOpening = Math.min(wallLength / 2, Math.max(0.25, (opening.width ?? (opening.type === "door" ? 0.9 : 1.2)) / 2));
+    const minOffset = halfOpening / wallLength;
+    const maxOffset = 1 - minOffset;
+    const nextOffset = Math.max(minOffset, Math.min(maxOffset, rawPercent / 100));
+    const before = snapshotEditor();
+    setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((item) =>
+      item.id === openingId ? { ...item, offset: nextOffset } : item
+    ));
+    pushRoomHistory(before);
+  };
+
+  const toggleCustomOpeningSwing = (openingId: string) => {
+    const opening = safeCustomOpenings.find((item) => item.id === openingId);
+    if (!opening) return;
+    updateCustomOpeningParams(openingId, { swing: opening.swing === "right" ? "left" : "right" });
+  };
+
+  const duplicateCustomOpening = (openingId: string) => {
+    const opening = safeCustomOpenings.find((item) => item.id === openingId);
+    const wall = opening ? safeCustomWalls.find((item) => item.id === opening.wallId) : null;
+    if (!opening || !wall) return;
+    const wallLength = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    if (wallLength < 0.001) return;
+    const before = snapshotEditor();
+    const shift = Math.max((opening.width ?? (opening.type === "door" ? 0.9 : 1.2)) / wallLength + 0.04, 0.08);
+    const candidate = opening.offset + shift <= 0.92 ? opening.offset + shift : opening.offset - shift;
+    const copy: CustomOpening = {
+      ...opening,
+      id: `custom-opening-${uid()}`,
+      offset: Math.max(0.08, Math.min(0.92, candidate)),
+    };
+    setCustomOpenings((prev) => [...(Array.isArray(prev) ? prev : []), copy]);
+    setSelectedOpeningId(copy.id);
+    setSelectedCustomWallId(null);
+    pushRoomHistory(before);
+  };
+
   const deleteCustomOpening = (openingId: string) => {
     const before = snapshotEditor();
     setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).filter((opening) => opening.id !== openingId));
@@ -4252,6 +4297,25 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     }
     pushRoomHistory(before);
   };
+
+  useEffect(() => {
+    if (!selectedCustomOpening || editorView !== "plan") return;
+    const handleOpeningShortcut = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.tagName === "SELECT" || target?.isContentEditable) return;
+      if (event.key === "Delete" || event.key === "Backspace") {
+        event.preventDefault();
+        deleteCustomOpening(selectedCustomOpening.id);
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "d") {
+        event.preventDefault();
+        duplicateCustomOpening(selectedCustomOpening.id);
+      }
+    };
+    window.addEventListener("keydown", handleOpeningShortcut);
+    return () => window.removeEventListener("keydown", handleOpeningShortcut);
+  }, [editorView, selectedCustomOpening?.id]);
 
   const setSelectedWallMaterial = (materialId: string) => {
     const wallId = selectedCustomWall?.id ?? selectedWall?.id;
@@ -8990,6 +9054,18 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           </label>
                         )}
                         <label className="text-[10px] font-semibold text-slate-500">
+                          Posição na parede (%)
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="1"
+                            value={Math.round((selectedCustomOpening.offset ?? 0.5) * 100)}
+                            onChange={(event) => setCustomOpeningOffset(selectedOpening.id, Number(event.target.value))}
+                            className="mt-1 h-9 w-[110px] rounded-lg border px-2 text-xs font-semibold"
+                          />
+                        </label>
+                        <label className="text-[10px] font-semibold text-slate-500">
                           Abertura
                           <select
                             value={selectedCustomOpening.openingStyle ?? (selectedOpening.type === "door" ? "hinged" : "sliding")}
@@ -9012,8 +9088,16 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       )}
                       <button type="button" onClick={() => moveOpening(-0.25)} className="h-9 rounded-lg border px-3 text-xs font-semibold">− 25 cm</button>
                       <button type="button" onClick={() => moveOpening(0.25)} className="h-9 rounded-lg border px-3 text-xs font-semibold">+ 25 cm</button>
-                      {safeCustomOpenings.some((opening) => opening.id === selectedOpening.id) && (
-                        <button type="button" onClick={() => deleteCustomOpening(selectedOpening.id)} className="h-9 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600">Excluir</button>
+                      {selectedCustomOpening && (
+                        <>
+                          {selectedOpening.type === "door" && selectedCustomOpening.openingStyle === "hinged" && (
+                            <button type="button" onClick={() => toggleCustomOpeningSwing(selectedOpening.id)} className="h-9 rounded-lg border px-3 text-xs font-semibold">
+                              Inverter abertura · {selectedCustomOpening.swing === "right" ? "Direita" : "Esquerda"}
+                            </button>
+                          )}
+                          <button type="button" onClick={() => duplicateCustomOpening(selectedOpening.id)} className="h-9 rounded-lg border px-3 text-xs font-semibold" title="Duplicar (Ctrl/Cmd+D)">Duplicar</button>
+                          <button type="button" onClick={() => deleteCustomOpening(selectedOpening.id)} className="h-9 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600" title="Excluir (Del)">Excluir</button>
+                        </>
                       )}
                     </div>
                   </div>
