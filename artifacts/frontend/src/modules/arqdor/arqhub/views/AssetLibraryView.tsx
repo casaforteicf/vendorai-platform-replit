@@ -113,6 +113,11 @@ export function AssetLibraryView() {
   const [externalItems, setExternalItems] = useState<SketchfabItem[]>([])
   const [externalLoading, setExternalLoading] = useState(false)
   const [externalError, setExternalError] = useState<string|null>(null)
+  const [sketchfabConnected, setSketchfabConnected] = useState(false)
+  const [sketchfabConfigured, setSketchfabConfigured] = useState(true)
+  const [sketchfabAccount, setSketchfabAccount] = useState<string|null>(null)
+  const [importingUid, setImportingUid] = useState<string|null>(null)
+  const [importMessage, setImportMessage] = useState<string|null>(null)
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
@@ -131,6 +136,50 @@ export function AssetLibraryView() {
   }, [catFilt, query])
 
   useEffect(() => { void load() }, [load])
+
+  const loadSketchfabConnection = useCallback(async () => {
+    try {
+      const res = await fetch(`${BASE}/arch/sketchfab/connection`, { headers:authHeaders() })
+      if (!res.ok) return
+      const data = await res.json() as { configured?: boolean; connected?: boolean; accountName?: string|null }
+      setSketchfabConfigured(data.configured !== false)
+      setSketchfabConnected(Boolean(data.connected))
+      setSketchfabAccount(data.accountName ?? null)
+    } catch { /* biblioteca interna continua disponível */ }
+  }, [])
+
+  useEffect(() => { void loadSketchfabConnection() }, [loadSketchfabConnection])
+
+  const connectSketchfab = useCallback(async () => {
+    setExternalError(null)
+    try {
+      const returnTo = window.location.pathname + window.location.search
+      const res = await fetch(`${BASE}/auth/sketchfab?returnTo=${encodeURIComponent(returnTo)}`, { headers:authHeaders() })
+      const data = await res.json() as { url?: string; error?: string }
+      if (!res.ok || !data.url) throw new Error(data.error === 'sketchfab_not_configured' ? 'Integração Sketchfab ainda não configurada no servidor.' : 'Não foi possível iniciar a conexão com Sketchfab.')
+      window.location.assign(data.url)
+    } catch (e: unknown) {
+      setExternalError(e instanceof Error ? e.message : 'Falha ao conectar Sketchfab')
+    }
+  }, [])
+
+  const importSketchfab = useCallback(async (item: SketchfabItem) => {
+    setImportingUid(item.uid); setImportMessage(null); setExternalError(null)
+    try {
+      const res = await fetch(`${BASE}/arch/sketchfab/import`, {
+        method:'POST', headers:{ ...authHeaders(), 'Content-Type':'application/json' }, body:JSON.stringify({ uid:item.uid }),
+      })
+      const data = await res.json() as { error?: string; product?: { nome?: string } }
+      if (!res.ok) {
+        if (data.error === 'sketchfab_not_connected' || data.error === 'sketchfab_reconnect_required') setSketchfabConnected(false)
+        throw new Error(data.error === 'sketchfab_archive_too_large' ? 'Este modelo excede o limite de importação de 45 MB.' : data.error === 'gltf_not_available' ? 'Este modelo não possui glTF disponível.' : 'Não foi possível importar este modelo.')
+      }
+      setImportMessage(`✓ ${data.product?.nome ?? item.name} adicionado à Biblioteca do Arqdor.`)
+      await load()
+    } catch (e: unknown) {
+      setExternalError(e instanceof Error ? e.message : 'Falha ao importar modelo')
+    } finally { setImportingUid(null) }
+  }, [load])
 
   const searchExternal = useCallback(async () => {
     const q = query.trim()
@@ -184,14 +233,21 @@ export function AssetLibraryView() {
         {externalError && <div style={{ fontSize:10, color:'#f87171', marginBottom:8 }}>{externalError}</div>}
         {!externalLoading && !externalError && externalItems.length===0 && <div style={{ fontSize:10, color:T.dim }}>Digite ao menos 2 caracteres e clique em “Buscar Sketchfab”.</div>}
         {externalItems.length>0 && <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(170px,1fr))', gap:8, maxHeight:260, overflow:'auto' }}>
-          {externalItems.map(item => <a key={item.uid} href={item.viewerUrl} target="_blank" rel="noreferrer" style={{ display:'block', textDecoration:'none', padding:8, borderRadius:8, border:`1px solid ${T.border}`, background:T.surface, minWidth:0 }}>
+          {externalItems.map(item => <div key={item.uid} style={{ display:'block', padding:8, borderRadius:8, border:`1px solid ${T.border}`, background:T.surface, minWidth:0 }}>
             {item.thumbnailUrl ? <img src={item.thumbnailUrl} alt={item.name} style={{ width:'100%', height:88, objectFit:'cover', borderRadius:6, marginBottom:7 }} /> : <div style={{ height:88, display:'grid', placeItems:'center', fontSize:28 }}>🧊</div>}
             <div style={{ fontSize:10, fontWeight:700, color:T.text, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{item.name}</div>
             <div style={{ marginTop:3, fontSize:8, color:T.dim }}>{item.authorName ?? 'Autor não informado'} · {item.licenseLabel ?? 'licença não informada'}</div>
-            <div style={{ marginTop:6, fontSize:8, color:T.purpleL }}>Abrir no Sketchfab ↗</div>
-          </a>)}
+            <div style={{ display:'flex', gap:6, marginTop:7 }}>
+              <a href={item.viewerUrl} target="_blank" rel="noreferrer" style={{ flex:1, textDecoration:'none', textAlign:'center', padding:'6px 7px', borderRadius:6, border:`1px solid ${T.border}`, color:T.dim, fontSize:8 }}>Ver ↗</a>
+              <button type="button" onClick={()=>void importSketchfab(item)} disabled={!sketchfabConnected || importingUid===item.uid} style={{ flex:2, padding:'6px 7px', borderRadius:6, border:0, background:sketchfabConnected?T.purple:'rgba(255,255,255,.07)', color:sketchfabConnected?'#fff':T.dim, fontSize:8, fontWeight:700, cursor:sketchfabConnected?'pointer':'not-allowed' }}>{importingUid===item.uid?'Importando…':'Adicionar à Biblioteca'}</button>
+            </div>
+          </div>)}
         </div>}
-        <div style={{ marginTop:8, fontSize:8, color:T.dim }}>A pesquisa já está integrada. O botão “Adicionar à Biblioteca” será habilitado após conectar a autenticação de download e a materialização do arquivo no Storage, para não salvar links temporários.</div>
+        <div style={{ marginTop:9, display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+          <span style={{ fontSize:8, color:sketchfabConnected?'#4ade80':T.dim }}>{sketchfabConnected ? `✓ Sketchfab conectado${sketchfabAccount ? ` · ${sketchfabAccount}` : ''}` : sketchfabConfigured ? 'Sketchfab precisa ser conectado para importar.' : 'Credenciais Sketchfab ainda não configuradas no servidor.'}</span>
+          {!sketchfabConnected && sketchfabConfigured && <button type="button" onClick={()=>void connectSketchfab()} style={{ padding:'5px 8px', borderRadius:6, border:`1px solid ${T.border}`, background:'transparent', color:T.purpleL, cursor:'pointer', fontSize:8, fontWeight:700 }}>Conectar Sketchfab</button>}
+          {importMessage && <span style={{ fontSize:8, color:'#4ade80' }}>{importMessage}</span>}
+        </div>
       </div>}
 
       {error && <div style={{ padding:'10px 16px', background:'rgba(248,113,113,0.08)', borderBottom:'1px solid rgba(248,113,113,0.2)', fontSize:11, color:'#f87171', display:'flex', justifyContent:'space-between', gap:12, alignItems:'center' }}><span>⚠ {error}</span><button type="button" onClick={()=>void load()} style={{ border:`1px solid ${T.border}`, borderRadius:6, background:'transparent', color:T.text, padding:'5px 8px', cursor:'pointer' }}>Tentar novamente</button></div>}
