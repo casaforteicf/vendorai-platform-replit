@@ -13,6 +13,7 @@ import "./logo-top-right.css";
 import "./site-generator-fix.css";
 import "./budget-dialog-policy.css";
 import "./mobile-floating-controls.css";
+import "./vendorai-ui2.css";
 import "./jarvis-mobile.css";
 import { setupApiClient } from "./lib/api";
 import { installVisitorTelemetry } from "./lib/visitorIntelligence";

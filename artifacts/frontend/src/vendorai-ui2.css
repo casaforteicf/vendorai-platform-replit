@@ -1,0 +1,422 @@
+/*
+ * Vendor.ai UI 2.0 — camada global de consistência visual
+ * Escopo: app autenticado. Não altera regras de negócio.
+ * Diretrizes: light-first, azul principal, roxo reservado para IA,
+ * tipografia/ritmo únicos e política de zero sobreposição.
+ */
+
+:root {
+  /* UI 2.0 brand */
+  --primary: 215 78% 52%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 215 78% 52%;
+  --accent: 214 100% 97%;
+  --accent-foreground: 215 72% 38%;
+
+  --background: 220 25% 98%;
+  --foreground: 222 34% 13%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 34% 13%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 34% 13%;
+  --secondary: 218 28% 96%;
+  --secondary-foreground: 222 27% 20%;
+  --muted: 218 24% 96%;
+  --muted-foreground: 220 10% 43%;
+  --border: 220 18% 90%;
+  --input: 220 18% 84%;
+
+  --sidebar: 220 30% 99%;
+  --sidebar-foreground: 222 28% 17%;
+  --sidebar-border: 220 18% 91%;
+  --sidebar-primary: 215 78% 52%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 216 45% 96%;
+  --sidebar-accent-foreground: 215 58% 31%;
+  --sidebar-ring: 215 78% 52%;
+
+  --chart-1: 215 78% 52%;
+  --chart-2: 187 72% 40%;
+  --chart-3: 158 60% 39%;
+  --chart-4: 39 86% 52%;
+  --chart-5: 344 67% 56%;
+
+  /* Roxo existe, mas só como sinal de IA */
+  --vendor-ai: 252 72% 57%;
+  --vendor-ai-soft: 251 100% 97%;
+  --vendor-ai-border: 252 65% 88%;
+
+  /* Escala única */
+  --vendor-content-max: 1560px;
+  --vendor-page-gutter-mobile: 16px;
+  --vendor-page-gutter-tablet: 24px;
+  --vendor-page-gutter-desktop: 28px;
+  --vendor-page-gutter-wide: 32px;
+  --vendor-page-top-mobile: 18px;
+  --vendor-page-top-desktop: 24px;
+  --vendor-page-bottom-mobile: 36px;
+  --vendor-page-bottom-desktop: 44px;
+  --vendor-section-gap: 20px;
+  --vendor-card-radius: 14px;
+  --vendor-control-radius: 10px;
+  --vendor-control-height: 38px;
+  --vendor-touch-target: 44px;
+  --vendor-font-body: 0.875rem;
+  --vendor-font-caption: 0.75rem;
+  --vendor-font-h1: 1.5rem;
+  --vendor-font-h2: 1.125rem;
+  --vendor-font-h3: 1rem;
+  --vendor-font-h4: 0.875rem;
+
+  --ui2-border-soft: hsl(220 18% 91%);
+  --ui2-shadow-1: 0 1px 2px rgb(15 23 42 / 0.04);
+  --ui2-shadow-2: 0 8px 24px rgb(15 23 42 / 0.07);
+}
+
+/* Dark continua disponível como opção, mas não é o padrão visual. */
+.dark {
+  --primary: 215 88% 65%;
+  --primary-foreground: 222 30% 10%;
+  --ring: 215 88% 65%;
+  --accent: 216 28% 18%;
+  --accent-foreground: 214 90% 82%;
+  --sidebar-primary: 215 88% 65%;
+  --sidebar-ring: 215 88% 65%;
+}
+
+/* ===== APP SHELL ===== */
+main.vendor-scrollbar {
+  min-width: 0;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: var(--app-font-sans);
+  font-size: var(--vendor-font-body);
+  line-height: 1.5;
+}
+
+main.vendor-scrollbar .vendor-page-canvas {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding:
+    var(--vendor-page-top-mobile)
+    var(--vendor-page-gutter-mobile)
+    var(--vendor-page-bottom-mobile);
+}
+
+main.vendor-scrollbar .vendor-page-canvas > :first-child {
+  width: min(100%, var(--vendor-content-max));
+  min-width: 0;
+  margin-inline: auto;
+}
+
+/* Um único alinhamento horizontal para cabeçalhos e conteúdo. */
+main.vendor-scrollbar .vendor-page-header,
+main.vendor-scrollbar .vendor-toolbar,
+main.vendor-scrollbar .vendor-page-stack,
+main.vendor-scrollbar .vendor-card-grid {
+  min-width: 0;
+}
+
+/* ===== TYPOGRAPHY ===== */
+main.vendor-scrollbar .vendor-page-canvas :where(
+  h1,
+  .vendor-page-title,
+  .text-3xl.font-bold,
+  .text-3xl.font-semibold,
+  .text-2xl.font-bold,
+  .text-2xl.font-semibold
+) {
+  font-family: var(--app-font-sans) !important;
+  font-size: var(--vendor-font-h1) !important;
+  font-weight: 650 !important;
+  line-height: 1.2 !important;
+  letter-spacing: -0.025em !important;
+  color: hsl(var(--foreground));
+}
+
+main.vendor-scrollbar .vendor-page-canvas :where(
+  h2,
+  .text-xl.font-bold,
+  .text-xl.font-semibold
+) {
+  font-family: var(--app-font-sans) !important;
+  font-size: var(--vendor-font-h2) !important;
+  font-weight: 650 !important;
+  line-height: 1.3 !important;
+  letter-spacing: -0.018em !important;
+}
+
+main.vendor-scrollbar .vendor-page-canvas :where(h3) {
+  font-family: var(--app-font-sans) !important;
+  font-size: var(--vendor-font-h3) !important;
+  font-weight: 620 !important;
+  line-height: 1.35 !important;
+  letter-spacing: -0.012em !important;
+}
+
+main.vendor-scrollbar .vendor-page-canvas :where(h4) {
+  font-family: var(--app-font-sans) !important;
+  font-size: var(--vendor-font-h4) !important;
+  font-weight: 620 !important;
+  line-height: 1.4 !important;
+}
+
+main.vendor-scrollbar .vendor-page-description,
+main.vendor-scrollbar .vendor-page-canvas :where(.text-muted-foreground) {
+  color: hsl(var(--muted-foreground));
+}
+
+/* ===== CARDS / SURFACES ===== */
+main.vendor-scrollbar .vendor-page-canvas :where(
+  .rounded-xl.border,
+  .rounded-2xl.border,
+  [data-ui="card"]
+) {
+  border-color: hsl(var(--border) / 0.82) !important;
+  border-radius: var(--vendor-card-radius) !important;
+  background: hsl(var(--card));
+  box-shadow: var(--ui2-shadow-1);
+}
+
+main.vendor-scrollbar .vendor-page-canvas :where(
+  .rounded-xl.border:hover,
+  .rounded-2xl.border:hover,
+  [data-clickable="true"]:hover
+) {
+  border-color: hsl(var(--border)) !important;
+}
+
+/* ===== CONTROLS ===== */
+main.vendor-scrollbar .vendor-page-canvas :where(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+  select,
+  textarea,
+  [role="combobox"]
+) {
+  max-width: 100%;
+  font-family: var(--app-font-sans);
+  border-radius: var(--vendor-control-radius);
+}
+
+main.vendor-scrollbar .vendor-page-canvas :where(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+  select,
+  [role="combobox"]
+) {
+  min-height: var(--vendor-control-height);
+}
+
+main.vendor-scrollbar .vendor-page-canvas :where(
+  button,
+  [role="button"],
+  a[class*="inline-flex"]
+) {
+  border-radius: var(--vendor-control-radius);
+}
+
+main.vendor-scrollbar .vendor-page-canvas :where(
+  input,
+  select,
+  textarea,
+  button,
+  [role="button"]
+):focus-visible {
+  outline: 2px solid hsl(var(--ring) / 0.55);
+  outline-offset: 2px;
+}
+
+/* ===== TABLES ===== */
+main.vendor-scrollbar .vendor-page-canvas :where(table) {
+  width: 100%;
+  max-width: 100%;
+  border-collapse: collapse;
+}
+
+main.vendor-scrollbar .vendor-page-canvas :where(thead th) {
+  color: hsl(var(--muted-foreground));
+  font-size: 0.6875rem;
+  font-weight: 650;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+main.vendor-scrollbar .vendor-page-canvas :where(tbody td) {
+  font-size: 0.8125rem;
+}
+
+main.vendor-scrollbar .vendor-page-canvas :where(tbody tr) {
+  transition: background-color 120ms ease;
+}
+
+main.vendor-scrollbar .vendor-page-canvas :where(tbody tr:hover) {
+  background: hsl(var(--accent) / 0.68);
+}
+
+/* ===== SIDEBAR ===== */
+.hidden.md\:flex.sticky.top-0.h-screen {
+  background: hsl(var(--sidebar)) !important;
+  border-right-color: hsl(var(--sidebar-border)) !important;
+}
+
+.hidden.md\:flex.sticky.top-0.h-screen a,
+.hidden.md\:flex.sticky.top-0.h-screen button {
+  font-family: var(--app-font-sans);
+}
+
+.hidden.md\:flex.sticky.top-0.h-screen nav a,
+.hidden.md\:flex.sticky.top-0.h-screen [data-arqdor-context-entry="true"],
+.hidden.md\:flex.sticky.top-0.h-screen [data-arqdor-context-back="true"] {
+  border-radius: 9px !important;
+}
+
+/* ===== MODAL / POPOVER / MENU: ZERO OVERLAP ===== */
+[role="dialog"] {
+  max-width: min(52rem, calc(100vw - 24px));
+  max-height: min(90dvh, 900px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+[data-radix-popper-content-wrapper] {
+  max-width: calc(100vw - 16px) !important;
+  max-height: calc(100dvh - 16px) !important;
+}
+
+[data-radix-popper-content-wrapper] > * {
+  max-width: min(32rem, calc(100vw - 24px)) !important;
+  max-height: min(78dvh, var(--radix-popper-available-height, 78dvh)) !important;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+/* Qualquer barra fixa de ação deve reservar a própria área, não cobrir o último campo. */
+main.vendor-scrollbar .vendor-page-canvas :where(
+  [data-sticky-actions],
+  .sticky.bottom-0,
+  .fixed.bottom-0
+) {
+  scroll-margin-bottom: 96px;
+}
+
+/* IA: o único lugar em que o roxo é intencional. */
+[data-vendorai-unified-assistant] button[aria-label="Abrir central de assistentes de IA"] {
+  background: hsl(var(--vendor-ai)) !important;
+  color: #fff !important;
+  border-color: hsl(var(--vendor-ai-border)) !important;
+}
+
+[data-vendorai-unified-assistant] > div {
+  border-color: hsl(var(--vendor-ai-border) / 0.7);
+}
+
+/* Painéis flutuantes nunca ultrapassam a viewport. */
+[data-vendorai-unified-assistant] {
+  max-width: calc(100vw - 24px);
+}
+
+[data-vendorai-unified-assistant] > div {
+  max-width: min(22rem, calc(100vw - 24px));
+  max-height: min(70dvh, 520px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* ===== RESPONSIVE ===== */
+@media (min-width: 640px) {
+  main.vendor-scrollbar .vendor-page-canvas {
+    padding-inline: var(--vendor-page-gutter-tablet);
+  }
+}
+
+@media (min-width: 1024px) {
+  main.vendor-scrollbar .vendor-page-canvas {
+    padding:
+      var(--vendor-page-top-desktop)
+      var(--vendor-page-gutter-desktop)
+      var(--vendor-page-bottom-desktop);
+  }
+}
+
+@media (min-width: 1536px) {
+  main.vendor-scrollbar .vendor-page-canvas {
+    padding-inline: var(--vendor-page-gutter-wide);
+  }
+}
+
+@media (max-width: 767px) {
+  :root {
+    --vendor-font-h1: 1.25rem;
+    --vendor-font-h2: 1.0625rem;
+    --vendor-font-h3: 0.9375rem;
+  }
+
+  main.vendor-scrollbar .vendor-page-canvas {
+    /* Área segura para o launcher móvel: o conteúdo final nunca fica atrás dele. */
+    padding-bottom: max(104px, calc(84px + env(safe-area-inset-bottom, 0px)));
+  }
+
+  main.vendor-scrollbar .vendor-toolbar,
+  main.vendor-scrollbar .vendor-page-header {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  main.vendor-scrollbar .vendor-toolbar > :where(button, a, input, select, [role="combobox"]),
+  main.vendor-scrollbar .vendor-page-header > :last-child {
+    max-width: 100%;
+  }
+
+  main.vendor-scrollbar .vendor-page-canvas :where(
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+    select,
+    textarea,
+    [role="combobox"]
+  ) {
+    font-size: 16px;
+  }
+
+  main.vendor-scrollbar .vendor-page-canvas :where([role="tablist"]) {
+    max-width: 100%;
+    justify-content: flex-start;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  main.vendor-scrollbar .vendor-page-canvas :where([role="tablist"])::-webkit-scrollbar {
+    display: none;
+  }
+
+  main.vendor-scrollbar .vendor-page-canvas :where(.overflow-auto, .overflow-x-auto) > table {
+    min-width: 640px;
+  }
+
+  [role="dialog"] {
+    width: calc(100vw - 16px) !important;
+    max-width: calc(100vw - 16px) !important;
+    max-height: calc(100dvh - 16px) !important;
+    margin: 0 !important;
+  }
+
+  [data-vendorai-unified-assistant] {
+    right: 12px !important;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
+
+/* Telas densas especializadas podem manter canvas próprio,
+   mas herdam cor, fonte, controles, modais e política de viewport. */
+.vendor-light-module,
+.vendor-settings-compact {
+  font-family: var(--app-font-sans);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+  }
+}
