@@ -136,6 +136,13 @@ function formatDate(value?: string | null) {
   return new Date(value).toLocaleDateString("pt-BR");
 }
 
+function formatPlannedDate(value?: string | null) {
+  if (!value) return "—";
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) return `${match[3]}/${match[2]}/${match[1]}`;
+  return formatDate(value);
+}
+
 function safeItems(card: WorkCard): Array<{ nome?: string; quantidade?: number }> {
   const raw = card.metadata?.itens;
   return Array.isArray(raw) ? raw as Array<{ nome?: string; quantidade?: number }> : [];
@@ -337,7 +344,7 @@ export default function PipelineOperacional() {
                           {items.length > 3 && <div className="text-muted-foreground">+{items.length - 3} item(ns)</div>}
                         </div>
                       )}
-                      {card.dataFimPrevista && <p className="mt-2 flex items-center gap-1 text-[11px] text-muted-foreground"><CalendarDays className="h-3 w-3" /> Previsto: {formatDate(card.dataFimPrevista)}</p>}
+                      {card.dataFimPrevista && <p className="mt-2 flex items-center gap-1 text-[11px] text-muted-foreground"><CalendarDays className="h-3 w-3" /> Previsto: {formatPlannedDate(card.dataFimPrevista)}</p>}
                     </article>
                   );
                 })}
@@ -358,9 +365,9 @@ export default function PipelineOperacional() {
                 <div className="grid grid-cols-2 gap-3 rounded-lg border p-3 text-sm">
                   <div><p className="text-xs text-muted-foreground">Cliente</p><p>{selectedCard.leadLabel || (selectedCard.leadId ? (leadMap.get(selectedCard.leadId)?.nome || leadMap.get(selectedCard.leadId)?.empresa || "—") : "—")}</p></div>
                   <div><p className="text-xs text-muted-foreground">Pedido</p><p>{selectedCard.dealTitle || (selectedCard.dealId ? (dealMap.get(selectedCard.dealId)?.titulo || "—") : "—")}</p></div>
-                  <div><p className="text-xs text-muted-foreground">Liberação prevista</p><p>{formatDate(selectedCard.dataInicioPrevista)}</p></div>
+                  <div><p className="text-xs text-muted-foreground">Liberação prevista</p><p>{formatPlannedDate(selectedCard.dataInicioPrevista)}</p></div>
                   <div><p className="text-xs text-muted-foreground">Liberação efetiva</p><p>{formatDate(selectedCard.dataInicioEfetiva)}</p></div>
-                  <div><p className="text-xs text-muted-foreground">Conclusão/entrega prevista</p><p>{formatDate(selectedCard.dataFimPrevista)}</p></div>
+                  <div><p className="text-xs text-muted-foreground">Conclusão/entrega prevista</p><p>{formatPlannedDate(selectedCard.dataFimPrevista)}</p></div>
                   <div><p className="text-xs text-muted-foreground">Conclusão/entrega efetiva</p><p>{formatDate(selectedCard.dataFimEfetiva)}</p></div>
                 </div>
 
