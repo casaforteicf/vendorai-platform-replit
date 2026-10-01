@@ -244,6 +244,64 @@ function buildExpeditionChecklist(input: {
   };
 }
 
+
+function expeditionGateStatus(metadata: Record<string, unknown> | null | undefined) {
+  const raw = metadata?.checklistExpedicao;
+  if (!raw || typeof raw !== "object") {
+    return { ready: false, reason: "Checklist de expedição ainda não foi gerado." };
+  }
+  const checklist = raw as {
+    status?: string;
+    divergencias?: number;
+    concluidos?: number;
+    totalCampos?: number;
+    verificacaoFinal?: { nomeVerificador?: string };
+  };
+  const divergencias = Number(checklist.divergencias ?? 0);
+  const concluidos = Number(checklist.concluidos ?? 0);
+  const totalCampos = Number(checklist.totalCampos ?? 0);
+  const verifier = checklist.verificacaoFinal?.nomeVerificador?.trim();
+  if (divergencias > 0) return { ready: false, reason: `Existem ${divergencias} divergência(s) pendentes na expedição.` };
+  if (!totalCampos || concluidos < totalCampos) return { ready: false, reason: "A conferência de expedição ainda possui campos pendentes." };
+  if (!verifier) return { ready: false, reason: "Informe o verificador final da expedição." };
+  if (checklist.status !== "concluido") return { ready: false, reason: "Finalize o checklist de expedição antes do transporte." };
+  return { ready: true as const, reason: null };
+}
+
+function buildTransportChecklist() {
+  const labels = [
+    "Volumes carregados conferidos",
+    "Integridade da carga",
+    "Veículo identificado",
+    "Motorista identificado",
+    "Destino confirmado",
+    "Fotos da carga",
+  ];
+  return {
+    schemaVersion: 1,
+    tipo: "transporte",
+    status: "pendente",
+    totalCampos: labels.length,
+    concluidos: 0,
+    divergencias: 0,
+    campos: labels.map((label, index) => ({
+      id: `transporte-${index}`,
+      key: label.toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, ""),
+      label,
+      status: "pendente",
+      observacao: "",
+    })),
+    saida: {
+      veiculo: "",
+      placa: "",
+      motorista: "",
+      horarioSaida: null,
+      destino: "",
+      lacre: "",
+    },
+  };
+}
+
 async function getProposalForDeal(tenantId: string, dealId: string, propostaId?: string | null) {
   if (propostaId) {
     const [proposal] = await db
@@ -732,6 +790,22 @@ router.patch("/entregas/:id", async (req, res) => {
   }
 
   const data = { ...parsed.data };
+
+  if (data.status === "em_transito" && existing.status !== "em_transito") {
+    const [preflightCard] = await db.select().from(workCardsTable)
+      .where(eq(workCardsTable.entregaId, existing.id)).limit(1);
+    if (preflightCard) {
+      const gate = expeditionGateStatus(preflightCard.metadata);
+      if (!gate.ready) {
+        res.status(409).json({
+          error: "EXPEDITION_CHECKLIST_REQUIRED_DELIVERY",
+          message: gate.reason,
+        });
+        return;
+      }
+    }
+  }
+
   if (data.assignedTo && (data.dataPrevista || existing.dataPrevista) && (data.periodo || existing.periodo)) {
     const dataPrevista = new Date(data.dataPrevista ?? existing.dataPrevista!);
     const periodo = (data.periodo ?? existing.periodo) as "manha" | "tarde";
@@ -763,7 +837,14 @@ router.patch("/entregas/:id", async (req, res) => {
       dataInicioEfetiva: entrega.dataLiberacaoEfetiva,
       dataFimPrevista: entrega.dataPrevista,
       dataFimEfetiva: entrega.dataEntregue,
-      metadata: { ...(linkedCard.metadata ?? {}), loteNumero: entrega.loteNumero, itens: entrega.itens },
+      metadata: {
+        ...(linkedCard.metadata ?? {}),
+        loteNumero: entrega.loteNumero,
+        itens: entrega.itens,
+        ...(nextStage === "em_transporte" && linkedCard.etapa !== "em_transporte"
+          ? { checklistTransporte: (linkedCard.metadata as Record<string, unknown> | null)?.checklistTransporte ?? buildTransportChecklist() }
+          : {}),
+      },
       updatedAt: new Date(),
     }).where(eq(workCardsTable.id, linkedCard.id)).returning();
 
@@ -1151,7 +1232,26 @@ router.patch("/work-cards/:id", async (req, res) => {
     return;
   }
 
+  if (existing.pipeline === "execucao" && existing.tipo === "entrega" && targetStage === "em_transporte" && existing.etapa !== "em_transporte") {
+    const gate = expeditionGateStatus(existing.metadata);
+    const override = Boolean((parsed.data.metadata as Record<string, unknown> | undefined)?.expedicaoOverride);
+    if (!gate.ready && !(isAdmin(req) && override)) {
+      res.status(409).json({
+        error: "EXPEDITION_CHECKLIST_REQUIRED",
+        message: gate.reason,
+      });
+      return;
+    }
+  }
+
   const data: Record<string, unknown> = { ...parsed.data, updatedAt: new Date() };
+  if (existing.pipeline === "execucao" && existing.tipo === "entrega" && targetStage === "em_transporte" && existing.etapa !== "em_transporte") {
+    const metadata = (data.metadata as Record<string, unknown> | undefined) ?? existing.metadata ?? {};
+    data.metadata = {
+      ...metadata,
+      checklistTransporte: metadata.checklistTransporte ?? buildTransportChecklist(),
+    };
+  }
   const starting = ["producao_em_andamento", "em_transporte", "instalacao_em_andamento", "execucao_assistencia"].includes(targetStage);
   const finishing = ["concluido", "entrega_obra", "instalacao_finalizada", "fechamento_assistencia"].includes(targetStage);
   if (starting && !existing.dataInicioEfetiva && !parsed.data.dataInicioEfetiva) data.dataInicioEfetiva = new Date();
