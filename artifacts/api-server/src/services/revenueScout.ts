@@ -31,13 +31,12 @@ import {
   farmaciaProdutoTable,
   type PropostaItem,
 } from "@workspace/db";
-import { sendDirectWhatsAppMessage } from "./omnichannel.js";
 import { triggerSequenceOffer } from "./sequence-offer.js";
 import { runInsuranceRenewalForTenant } from "./insuranceRenewalEngine.js";
 import { runInsuranceWhitespaceForTenant } from "./insuranceWhitespaceEngine.js";
 import { runDistributorRevenueForTenant } from "./distributorRevenueEngine.js";
 import { runVerticalRevenueForTenant, normalize } from "./verticalRevenueEngine.js";
-import { isWithinBusinessHours, renderTemplate } from "../lib/proactiveMessageGuard.js";
+import { isWithinBusinessHours } from "../lib/proactiveMessageGuard.js";
 import { captureLeadFeatureSnapshot } from "../lib/mlFeatureStore.js";
 import { isSentProposalStatus, requiresSentProposalContext } from "../lib/scoutBudgetGuard.js";
 import { isBirthdayOn } from "../lib/birthday-date.js";
@@ -1082,93 +1081,6 @@ export async function processarOportunidades(
         opportunityId: op.id,
         log,
       });
-      continue;
-
-      // Busca lead e regra
-      const [lead] = await db
-        .select({ nome: leadsTable.nome, telefone: leadsTable.telefone })
-        .from(leadsTable)
-        .where(eq(leadsTable.id, op.clienteId));
-
-      if (!lead?.telefone) {
-        // Sem telefone — marca como ignorado
-        await db
-          .update(scoutOportunidadesTable)
-          .set({ status: "ignorado" })
-          .where(eq(scoutOportunidadesTable.id, op.id));
-        continue;
-      }
-
-      const [regra] = await db
-        .select({ acao: scoutRegrasTable.acao })
-        .from(scoutRegrasTable)
-        .where(eq(scoutRegrasTable.id, op.regraId));
-
-      const acao = parseAcao(regra?.acao);
-      const canal = acao.canal ?? "whatsapp";
-
-      // Personaliza mensagem — recusa enviar se sobrar placeholder não
-      // resolvido em vez de mandar algo tipo "Olá {Nome Errado}," pro cliente.
-      const template = acao.mensagem ?? "Olá {nome}, temos uma novidade para você!";
-      const rendered = renderTemplate(template, { nome: lead.nome ?? "", nome_cliente: lead.nome ?? "" });
-      if (!rendered.ok) {
-        log.error({ tenantId, oportunidadeId: op.id, regraId: op.regraId, motivo: rendered.motivoFalha }, "scout/processar: mensagem da regra com placeholder quebrado, envio bloqueado");
-        await db
-          .update(scoutOportunidadesTable)
-          .set({ status: "ignorado" })
-          .where(eq(scoutOportunidadesTable.id, op.id));
-        continue;
-      }
-      const mensagem = rendered.mensagem;
-
-      // Uma mensagem sobre orcamento/proposta nunca pode ser enviada com base
-      // apenas no texto de uma regra. Exigimos o vinculo com a proposta deste
-      // tenant/lead e confirmamos novamente que ela foi realmente enviada.
-      // Isso tambem neutraliza oportunidades antigas ou regras mal configuradas.
-      if (requiresSentProposalContext(op.tipo, mensagem)) {
-        const [propostaEnviada] = op.propostaId
-          ? await db
-              .select({ status: propostasTable.status })
-              .from(propostasTable)
-              .where(
-                and(
-                  eq(propostasTable.id, op.propostaId),
-                  eq(propostasTable.tenantId, tenantId),
-                  eq(propostasTable.leadId, op.clienteId),
-                ),
-              )
-              .limit(1)
-          : [];
-
-        if (!propostaEnviada || !isSentProposalStatus(propostaEnviada.status)) {
-          log.warn(
-            { tenantId, oportunidadeId: op.id, leadId: op.clienteId, propostaId: op.propostaId },
-            "scout/processar: mensagem de orcamento bloqueada sem proposta enviada valida",
-          );
-          await db
-            .update(scoutOportunidadesTable)
-            .set({ status: "ignorado" })
-            .where(eq(scoutOportunidadesTable.id, op.id));
-          continue;
-        }
-      }
-
-      if (canal === "whatsapp") {
-        await sendDirectWhatsAppMessage(tenantId, lead.telefone, mensagem, log);
-      }
-      // Outros canais podem ser adicionados aqui (email, instagram)
-
-      await db
-        .update(scoutOportunidadesTable)
-        .set({
-          status:          "enviado",
-          mensagemEnviada: mensagem,
-          canal,
-          enviadoEm:       new Date(),
-        })
-        .where(eq(scoutOportunidadesTable.id, op.id));
-
-      log.info({ tenantId, opId: op.id, clienteId: op.clienteId }, "scout/processar: mensagem enviada");
     } catch (err) {
       log.error({ err, opId: op.id }, "scout/processar: falha ao enviar (non-fatal)");
     }
