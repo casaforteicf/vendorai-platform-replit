@@ -3054,46 +3054,38 @@ export default function ConceptPlan2D({
               {opening.type === "door" ? (
                 <g pointerEvents="none" opacity={selectedOpening ? 1 : 0.92}>
                   <line
-                    x1={horizontal ? opening.x - half : opening.x}
-                    y1={horizontal ? opening.y : opening.y - half}
-                    x2={horizontal ? opening.x + half : opening.x}
-                    y2={horizontal ? opening.y : opening.y + half}
+                    x1={openingStart.x}
+                    y1={openingStart.y}
+                    x2={openingEnd.x}
+                    y2={openingEnd.y}
                     stroke="#ffffff"
                     strokeWidth="0.22"
                   />
                   {sliding ? (
                     <>
                       <line
-                        x1={horizontal ? opening.x - half : opening.x - 0.10}
-                        y1={horizontal ? opening.y - 0.10 : opening.y - half}
-                        x2={horizontal ? opening.x + 0.06 : opening.x - 0.10}
-                        y2={horizontal ? opening.y - 0.10 : opening.y + 0.06}
+                        x1={openingStart.x - wallNormal.x * 0.10}
+                        y1={openingStart.y - wallNormal.y * 0.10}
+                        x2={opening.x + wallUnit.x * 0.06 - wallNormal.x * 0.10}
+                        y2={opening.y + wallUnit.y * 0.06 - wallNormal.y * 0.10}
                         stroke={selectedOpening ? "#f97316" : "#475569"}
                         strokeWidth="0.055"
                       />
                       <line
-                        x1={horizontal ? opening.x - 0.06 : opening.x + 0.10}
-                        y1={horizontal ? opening.y + 0.10 : opening.y - 0.06}
-                        x2={horizontal ? opening.x + half : opening.x + 0.10}
-                        y2={horizontal ? opening.y + 0.10 : opening.y + half}
+                        x1={opening.x - wallUnit.x * 0.06 + wallNormal.x * 0.10}
+                        y1={opening.y - wallUnit.y * 0.06 + wallNormal.y * 0.10}
+                        x2={openingEnd.x + wallNormal.x * 0.10}
+                        y2={openingEnd.y + wallNormal.y * 0.10}
                         stroke={selectedOpening ? "#f97316" : "#475569"}
                         strokeWidth="0.055"
                       />
                     </>
                   ) : (
                     <line
-                      x1={horizontal
-                        ? opening.x + (swingRight ? half : -half)
-                        : opening.x}
-                      y1={horizontal
-                        ? opening.y
-                        : opening.y + (swingRight ? half : -half)}
-                      x2={horizontal
-                        ? opening.x + (swingRight ? half : -half)
-                        : opening.x + (swingRight ? -openingWidth : openingWidth) * swingSideFactor}
-                      y2={horizontal
-                        ? opening.y + (swingRight ? -openingWidth : openingWidth) * swingSideFactor
-                        : opening.y + (swingRight ? half : -half)}
+                      x1={swingRight ? openingEnd.x : openingStart.x}
+                      y1={swingRight ? openingEnd.y : openingStart.y}
+                      x2={(swingRight ? openingEnd.x : openingStart.x) + wallNormal.x * openingWidth * swingSideFactor}
+                      y2={(swingRight ? openingEnd.y : openingStart.y) + wallNormal.y * openingWidth * swingSideFactor}
                       stroke={selectedOpening ? "#f97316" : "#475569"}
                       strokeWidth="0.06"
                     />
@@ -3102,41 +3094,33 @@ export default function ConceptPlan2D({
               ) : (
                 <g pointerEvents="none">
                   <line
-                    x1={horizontal ? opening.x - half : opening.x}
-                    y1={horizontal ? opening.y : opening.y - half}
-                    x2={horizontal ? opening.x + half : opening.x}
-                    y2={horizontal ? opening.y : opening.y + half}
+                    x1={openingStart.x}
+                    y1={openingStart.y}
+                    x2={openingEnd.x}
+                    y2={openingEnd.y}
                     stroke="#ffffff"
                     strokeWidth="0.18"
                   />
                   <line
-                    x1={horizontal ? opening.x - half : opening.x}
-                    y1={horizontal ? opening.y : opening.y - half}
-                    x2={horizontal ? opening.x + half : opening.x}
-                    y2={horizontal ? opening.y : opening.y + half}
+                    x1={openingStart.x}
+                    y1={openingStart.y}
+                    x2={openingEnd.x}
+                    y2={openingEnd.y}
                     stroke={selectedOpening ? "#f97316" : "#0284c7"}
                     strokeWidth={selectedOpening ? "0.11" : "0.07"}
                   />
                   {leafCount > 1 && Array.from({ length: leafCount - 1 }).map((_, leafIndex) => {
                     const ratio = (leafIndex + 1) / leafCount;
                     const axis = -half + openingWidth * ratio;
-                    return horizontal ? (
+                    const cx = opening.x + wallUnit.x * axis;
+                    const cy = opening.y + wallUnit.y * axis;
+                    return (
                       <line
                         key={`leaf-${leafIndex}`}
-                        x1={opening.x + axis}
-                        y1={opening.y - 0.12}
-                        x2={opening.x + axis}
-                        y2={opening.y + 0.12}
-                        stroke={selectedOpening ? "#f97316" : "#0369a1"}
-                        strokeWidth="0.035"
-                      />
-                    ) : (
-                      <line
-                        key={`leaf-${leafIndex}`}
-                        x1={opening.x - 0.12}
-                        y1={opening.y + axis}
-                        x2={opening.x + 0.12}
-                        y2={opening.y + axis}
+                        x1={cx - wallNormal.x * 0.12}
+                        y1={cy - wallNormal.y * 0.12}
+                        x2={cx + wallNormal.x * 0.12}
+                        y2={cy + wallNormal.y * 0.12}
                         stroke={selectedOpening ? "#f97316" : "#0369a1"}
                         strokeWidth="0.035"
                       />
@@ -3183,8 +3167,8 @@ export default function ConceptPlan2D({
                   )}
                   <g pointerEvents="none">
                     <rect
-                      x={horizontal ? opening.x - 0.72 : opening.x + 0.22}
-                      y={horizontal ? opening.y + 0.24 : opening.y - 0.20}
+                      x={opening.x + wallNormal.x * 0.44 - 0.72}
+                      y={opening.y + wallNormal.y * 0.44 - 0.20}
                       width="1.44"
                       height="0.40"
                       rx="0.10"
@@ -3194,8 +3178,8 @@ export default function ConceptPlan2D({
                       strokeWidth="0.025"
                     />
                     <text
-                      x={horizontal ? opening.x : opening.x + 0.94}
-                      y={horizontal ? opening.y + 0.50 : opening.y + 0.06}
+                      x={opening.x + wallNormal.x * 0.44}
+                      y={opening.y + wallNormal.y * 0.44 + 0.06}
                       textAnchor="middle"
                       fontSize="0.20"
                       fontWeight="800"
@@ -3211,7 +3195,7 @@ export default function ConceptPlan2D({
                     <g
                       key={mode}
                       role="button"
-                      className={horizontal ? "cursor-ew-resize" : "cursor-ns-resize"}
+                      className="cursor-crosshair"
                       onPointerDown={(event) => {
                         event.stopPropagation();
                         onEditStart?.();
