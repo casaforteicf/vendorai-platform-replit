@@ -1,10 +1,13 @@
-import puppeteer, { type Browser, type CookieData, type Page } from "puppeteer-core";
+import { type Browser, type CookieData, type Page } from "puppeteer-core";
+import { acquireBrowserLease } from "./browser-fleet.js";
 import {
   assertBrowserPageAccessible,
   executeBrowserAction,
   planBrowserAction,
   snapshotBrowserPage,
   validateBrowserUrl,
+  checkpointFromState,
+  classifyBrowserError,
   type BrowserAgentStep,
 } from "./browser-agent.js";
 
@@ -45,6 +48,7 @@ type LiveBrowserSession = {
   actionInFlight?: Promise<unknown>;
   onMissionResult?: PersistMissionResult;
   onSessionPersist?: PersistSession;
+  releaseBrowser?: (healthy?: boolean) => void;
 };
 
 const sessions = new Map<string, LiveBrowserSession>();
@@ -98,10 +102,8 @@ export async function createLiveBrowserSession(input: {
     throw new Error("Limite de sessões simultâneas atingido para este tenant");
   }
 
-  const cdpUrl = process.env["BROWSER_CDP_URL"];
-  if (!cdpUrl) throw new Error("BROWSER_CDP_URL não configurada");
-
-  const browser = input.existing?.browser ?? await puppeteer.connect({ browserWSEndpoint: cdpUrl });
+  const lease = input.existing ? undefined : await acquireBrowserLease();
+  const browser = input.existing?.browser ?? lease!.browser;
   let page: Page | undefined;
   try {
     page = input.existing?.page ?? await (await browser.createBrowserContext()).newPage();
@@ -116,6 +118,7 @@ export async function createLiveBrowserSession(input: {
     if (!input.existing) {
       if (page) await page.browserContext().close().catch(() => undefined);
       browser.disconnect();
+      lease?.release(false);
     }
     throw error;
   }
@@ -147,6 +150,7 @@ export async function createLiveBrowserSession(input: {
     handoffToken: crypto.randomUUID() + crypto.randomUUID(),
     onSessionPersist: input.onSessionPersist,
     onMissionResult: input.onMissionResult,
+    releaseBrowser: lease?.release,
   };
   sessions.set(id, session);
 
@@ -306,6 +310,7 @@ export function startLiveBrowserMission(
         login: Boolean(session.secrets?.login), passcode: Boolean(session.secrets?.passcode),
       };
       let executed = 0;
+      let recoveryNote = "";
       while (executed < Math.min(Math.max(maxSteps, 1), 40)) {
         while (session.paused && !session.closed) {
           if (Date.now() - session.lastActivityAt.getTime() > SESSION_TTL_MS) {
@@ -325,7 +330,11 @@ export function startLiveBrowserMission(
           session.status = "paused";
           continue;
         }
-        const action = await planBrowserAction(session.tenantId, goal, state, session.steps, secretsAvailable);
+        const planningGoal = recoveryNote
+          ? goal + "\nRECUPERAÇÃO DE NAVEGAÇÃO: " + recoveryNote
+          : goal;
+        recoveryNote = "";
+        const action = await planBrowserAction(session.tenantId, planningGoal, state, session.steps, secretsAvailable);
         if (session.closed) return;
         // Discard plans based on the page before the human took control.
         if (session.paused || revision !== session.revision) continue;
@@ -350,7 +359,20 @@ export function startLiveBrowserMission(
         let extracted: string | undefined;
         try { extracted = await session.actionInFlight as string | undefined; }
         catch (error: any) {
-          if (!String(error?.message).startsWith("APPROVAL_REQUIRED:")) throw error;
+          const kind = classifyBrowserError(error);
+          if (kind === "selector_stale" || kind === "detached_frame") {
+            recoveryNote =
+              "A interface mudou antes da execução. Releia o snapshot atual e escolha um novo seletor estável; não reutilize o seletor anterior.";
+            session.steps.push({
+              index: executed + 1,
+              action: "recover_replan",
+              url: state.url,
+              detail: kind,
+              checkpoint: checkpointFromState(state),
+            });
+            continue;
+          }
+          if (kind !== "approval_required") throw error;
           session.error = error.message;
           session.paused = true;
           session.pauseReason = "approval_required";
@@ -359,8 +381,13 @@ export function startLiveBrowserMission(
         } finally { session.actionInFlight = undefined; }
         if (session.closed) return;
         executed++;
-        session.steps.push({ index: executed, action: action.action, url: state.url,
-          detail: action.reason });
+        session.steps.push({
+          index: executed,
+          action: action.action,
+          url: state.url,
+          detail: action.reason,
+          checkpoint: checkpointFromState(state),
+        });
         session.lastActivityAt = new Date();
         if (action.action === "extract" && extracted) {
           session.steps.push({ index: executed, action: "extract_result", url: session.page.url(), detail: extracted.slice(0, 500) });
@@ -397,6 +424,7 @@ export async function closeLiveBrowserSession(tenantId: string, sessionId: strin
 
   await session.page.browserContext().close().catch(() => undefined);
   session.browser.disconnect();
+  session.releaseBrowser?.(!expired);
   sessions.delete(sessionId);
 
   return { success: true, id: sessionId };
