@@ -89,6 +89,7 @@ import { ensureArqdorStarterLibrary } from "../lib/arqdor/starter-library.js";
 import { searchPolyHavenModels, resolvePolyHavenModel } from "../lib/arqdor/polyhaven.js";
 import { contentTypeForModelAsset, downloadSketchfabGltfArchive, extractZipArchive, getSketchfabDownload, getSketchfabModel, searchSketchfabModels } from "../lib/arqdor/sketchfab.js";
 import { getValidSketchfabAccessToken } from "../services/sketchfab-connection.js";
+import { saveSketchfabAsset } from "../services/sketchfab-storage.js";
 import { buildArchitecturalStrategyRepertoire } from "../lib/arqdor-architecture-strategies.js";
 import { buildArchitecturalProjectStrategy } from "../lib/arqdor-project-strategy.js";
 import { evaluateProjectMasterAcceptance } from "../lib/arqdor-project-master-validation.js";
@@ -4202,20 +4203,13 @@ router.post("/arch/sketchfab/import", authenticate, async (req, res) => {
       ?? files.find((file) => /\.gltf$/i.test(file.path));
     if (!scene) return res.status(422).json({ error: "gltf_scene_missing" });
 
-    const storage = new ObjectStorageService();
-    const publicRoot = storage.getPublicObjectSearchPaths()[0];
-    if (!publicRoot) throw new Error("PUBLIC_OBJECT_SEARCH_PATHS não configurado");
-    const rootParts = publicRoot.replace(/^\/+/, "").split("/").filter(Boolean);
-    const bucketName = rootParts.shift();
-    if (!bucketName) throw new Error("PUBLIC_OBJECT_SEARCH_PATHS inválido");
-    const prefix = [...rootParts, "arqdor", "sketchfab", tid, uid.data].join("/");
+    const prefix = ["public", "arqdor", "sketchfab", tid, uid.data].join("/");
 
     let sceneUrl: string | null = null;
     for (const file of files) {
       const objectName = `${prefix}/${file.path}`;
-      const handle = objectStorageClient.bucket(bucketName).file(objectName);
-      await handle.save(file.data, { contentType: contentTypeForModelAsset(file.path), resumable: false });
-      if (file.path === scene.path) sceneUrl = handle.getPublicUrl();
+      const publicUrl = await saveSketchfabAsset(objectName, file.data, contentTypeForModelAsset(file.path));
+      if (file.path === scene.path) sceneUrl = publicUrl;
     }
     if (!sceneUrl) throw new Error("scene_upload_failed");
 
