@@ -24,6 +24,7 @@ import { extractStructuredData, type ExtractionSchema } from "./web-structured-e
 import { runAllFinanceIntegrationHealthChecks } from "./finance-integration-health.js";
 import { runAutoQuotePipeline } from "./auto-quote.js";
 import { sendOutgoingMessage } from "./omnichannel.js";
+import { getUpcomingRelationshipEvents } from "./customer-relationship-events.js";
 import { searchProspectorCompanies } from "./prospector-company-search.js";
 import { searchConstructionWorkSignals } from "./construction-radar-search.js";
 
@@ -431,6 +432,31 @@ register({
       .orderBy(desc(archProjetosTable.updatedAt))
       .limit(limit);
     return { ok: true, data: rows, evidence: { source: "db:arch_projetos", count: rows.length } };
+  },
+});
+
+register({
+  id: "customer_intelligence.relationship_events",
+  domain: "customer_intelligence",
+  description: "Lista aniversários e datas especiais próximas dos clientes para relacionamento proativo.",
+  risk: "low",
+  mutates: false,
+  externalEffect: false,
+  inputHint: "{days?:0..365,limit?:1..500}",
+  execute: async ({ tenantId }, input) => {
+    const data = await getUpcomingRelationshipEvents({
+      tenantId,
+      days: Number(input.days ?? 30),
+      limit: Number(input.limit ?? 100),
+    });
+    return {
+      ok: true,
+      data,
+      evidence: {
+        source: "customer_intelligence:relationship_events",
+        count: data.length,
+      },
+    };
   },
 });
 
