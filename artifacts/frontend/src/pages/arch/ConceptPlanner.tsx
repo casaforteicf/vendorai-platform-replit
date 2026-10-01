@@ -6752,7 +6752,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         ["models", LayoutGrid, "Modelos"],
                         ["rooms", DoorOpen, "Ambientes"],
                         ["build", Layers3, "Construir"],
-                        ["furniture", Sofa, editorExperienceMode === "guided" ? "Mobiliar" : "Itens"],
+                        ["furniture", Sofa, editorExperienceMode === "guided" ? "Mobiliar" : "Produtos"],
                         ["materials", Paintbrush, editorExperienceMode === "guided" ? "Acabamentos" : "Materiais"],
                         ["outdoor", Trees, "Externo"],
                       ] as Array<[EditorLibraryTab, typeof Ruler, string]>)
@@ -6783,7 +6783,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       <div className="my-1 h-px w-8 bg-slate-200" />
                     </div>
                   </div>
-                  <div className={libraryOpen ? "fixed inset-x-2 bottom-20 z-40 max-h-[68vh] overflow-y-auto rounded-3xl border bg-white shadow-2xl md:static md:inset-auto md:z-auto md:max-h-none md:w-[260px] md:overflow-visible md:rounded-none md:border-0 md:shadow-none" : "hidden"}>
+                  <div className={libraryOpen
+                    ? `fixed inset-x-2 bottom-20 z-40 max-h-[68vh] overflow-y-auto rounded-3xl border bg-white shadow-2xl md:static md:inset-auto md:z-auto md:max-h-none md:overflow-visible md:rounded-none md:border-0 md:shadow-none ${editorLibraryTab === "furniture" || editorLibraryTab === "materials" ? "md:w-[340px]" : "md:w-[260px]"}`
+                    : "hidden"}>
                 <div className="sticky top-0 z-10 rounded-t-3xl border-b bg-white px-4 py-3 md:rounded-none md:px-5 md:py-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -6801,7 +6803,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                               : editorLibraryTab === "rooms"
                                 ? "Ambientes"
                                 : editorLibraryTab === "furniture"
-                                  ? "Biblioteca de itens"
+                                  ? "Biblioteca de produtos"
                                   : editorLibraryTab === "materials"
                                     ? "Materiais"
                                     : "Área externa"}
@@ -8075,7 +8077,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   {editorView === "plan" && !terrainOnly && (
                       <div className={`absolute top-3 z-30 flex snap-x items-center gap-1.5 overflow-x-auto rounded-2xl border border-slate-200 bg-white/96 p-1.5 shadow-md backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
                         left-16 right-3 md:right-auto
-                        ${libraryOpen ? "md:left-[380px]" : "md:left-20"}
+                        ${libraryOpen ? (editorLibraryTab === "furniture" || editorLibraryTab === "materials" ? "md:left-[460px]" : "md:left-[380px]") : "md:left-20"}
                       `}>
                         <button
                           type="button"
@@ -8137,6 +8139,34 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                             : "shrink-0 rounded-xl border bg-background px-3 py-2 text-xs font-semibold"}
                         >
                           Portas / janelas
+                        </button>
+                        <button
+                          type="button"
+                          title="Abrir biblioteca de produtos e objetos"
+                          onClick={() => {
+                            setEditorLibraryTab("furniture");
+                            setItemLibrarySection("products");
+                            setLibraryOpen(true);
+                          }}
+                          className={libraryOpen && editorLibraryTab === "furniture" && itemLibrarySection === "products"
+                            ? "shrink-0 rounded-xl bg-slate-950 px-3 py-2 text-xs font-semibold text-white"
+                            : "shrink-0 rounded-xl border bg-background px-3 py-2 text-xs font-semibold"}
+                        >
+                          Produtos
+                        </button>
+                        <button
+                          type="button"
+                          title="Abrir biblioteca de materiais para pintar e especificar"
+                          onClick={() => {
+                            setEditorLibraryTab("furniture");
+                            setItemLibrarySection("materials");
+                            setLibraryOpen(true);
+                          }}
+                          className={libraryOpen && editorLibraryTab === "furniture" && itemLibrarySection === "materials"
+                            ? "shrink-0 rounded-xl bg-slate-950 px-3 py-2 text-xs font-semibold text-white"
+                            : "shrink-0 rounded-xl border bg-background px-3 py-2 text-xs font-semibold"}
+                        >
+                          Materiais
                         </button>
                         <button
                           type="button"
