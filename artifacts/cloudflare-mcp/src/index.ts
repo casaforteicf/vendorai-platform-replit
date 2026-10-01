@@ -88,8 +88,10 @@ function createCloudflareMcpServer() {
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     },
     async () => {
-      const projects = await cloudflare<unknown[]>(`/accounts/${accountId()}/pages/projects?per_page=1`);
-      return toolText({ connected: true, accountId: accountId(), pagesApiReachable: Array.isArray(projects) });
+      // Verify the API token independently from optional product permissions such as Pages.
+      // /user/tokens/verify is the canonical bearer-token validity check and does not require Pages access.
+      const verification = await cloudflare<{ id?: string; status?: string }>(`/user/tokens/verify`);
+      return toolText({ connected: true, accountIdConfigured: Boolean(accountId()), tokenStatus: verification?.status || "active" });
     },
   );
 
