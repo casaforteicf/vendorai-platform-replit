@@ -118,6 +118,83 @@ function workCode(prefix: "PED" | "ENT" | "AST" | "OP") {
   return `${prefix}-${Date.now().toString(36).toUpperCase()}-${randomUUID().slice(0, 4).toUpperCase()}`;
 }
 
+const INSTALLATION_DONE_STATUSES = new Set(["instalado", "conferido"]);
+
+function normalizeInstallationItemKey(item: Record<string, unknown>, index: number) {
+  const productId = typeof item.produtoId === "string" ? item.produtoId : "";
+  const sku = typeof item.sku === "string" ? item.sku : "";
+  const proposalIndex = Number.isInteger(item.propostaItemIndex) ? String(item.propostaItemIndex) : "";
+  const name = typeof item.nome === "string" ? item.nome : "";
+  return [proposalIndex, productId, sku, name, index].filter(Boolean).join(":");
+}
+
+function ensureInstallationChecklist(metadataInput: unknown) {
+  const metadata =
+    metadataInput && typeof metadataInput === "object" && !Array.isArray(metadataInput)
+      ? { ...(metadataInput as Record<string, unknown>) }
+      : {};
+  const sourceItems = Array.isArray(metadata.itens)
+    ? (metadata.itens as Array<Record<string, unknown>>)
+    : [];
+  const currentRaw =
+    metadata.installationChecklist &&
+    typeof metadata.installationChecklist === "object" &&
+    !Array.isArray(metadata.installationChecklist)
+      ? (metadata.installationChecklist as Record<string, unknown>)
+      : {};
+  const currentItems = Array.isArray(currentRaw.items)
+    ? (currentRaw.items as Array<Record<string, unknown>>)
+    : [];
+  const byKey = new Map(
+    currentItems
+      .map((item) => [String(item.key || ""), item] as const)
+      .filter(([key]) => Boolean(key)),
+  );
+
+  const items = sourceItems.map((source, index) => {
+    const key = normalizeInstallationItemKey(source, index);
+    const existing = byKey.get(key) ?? {};
+    return {
+      key,
+      sourceIndex: index,
+      status: typeof existing.status === "string" ? existing.status : "pendente",
+      observacao: typeof existing.observacao === "string" ? existing.observacao : "",
+      atualizadoEm: existing.atualizadoEm ?? null,
+      atualizadoPor: existing.atualizadoPor ?? null,
+    };
+  });
+
+  return {
+    ...metadata,
+    installationChecklist: {
+      version: 1,
+      generatedFrom: "order_items",
+      items,
+      updatedAt: new Date().toISOString(),
+    },
+  };
+}
+
+function installationChecklistComplete(metadataInput: unknown) {
+  if (!metadataInput || typeof metadataInput !== "object" || Array.isArray(metadataInput)) return false;
+  const metadata = metadataInput as Record<string, unknown>;
+  const sourceItems = Array.isArray(metadata.itens)
+    ? (metadata.itens as Array<Record<string, unknown>>)
+    : [];
+  if (sourceItems.length === 0) return true;
+  const checklist =
+    metadata.installationChecklist &&
+    typeof metadata.installationChecklist === "object" &&
+    !Array.isArray(metadata.installationChecklist)
+      ? (metadata.installationChecklist as Record<string, unknown>)
+      : null;
+  const checklistItems = checklist && Array.isArray(checklist.items)
+    ? (checklist.items as Array<Record<string, unknown>>)
+    : [];
+  if (checklistItems.length < sourceItems.length) return false;
+  return checklistItems.every((item) => INSTALLATION_DONE_STATUSES.has(String(item.status || "")));
+}
+
 function deliveryStage(input: {
   status: string;
   dataPrevista?: Date | string | null;
@@ -1046,7 +1123,34 @@ router.patch("/work-cards/:id", async (req, res) => {
     return;
   }
 
-  const data: Record<string, unknown> = { ...parsed.data, updatedAt: new Date() };
+  const nextMetadata =
+    parsed.data.metadata !== undefined ? parsed.data.metadata : existing.metadata;
+  const enteringInstallation =
+    targetPipeline === "execucao"
+    && ["instalacao_a_iniciar", "instalacao_em_andamento"].includes(targetStage)
+    && !["instalacao_a_iniciar", "instalacao_em_andamento"].includes(existing.etapa);
+  const normalizedMetadata = enteringInstallation
+    ? ensureInstallationChecklist(nextMetadata)
+    : nextMetadata;
+
+  if (
+    targetPipeline === "execucao"
+    && targetStage === "instalacao_finalizada"
+    && targetStage !== existing.etapa
+    && !installationChecklistComplete(normalizedMetadata)
+  ) {
+    res.status(409).json({
+      error: "INSTALLATION_CHECKLIST_INCOMPLETE",
+      message: "Conclua o checklist de instalação de todos os itens antes de finalizar a instalação.",
+    });
+    return;
+  }
+
+  const data: Record<string, unknown> = {
+    ...parsed.data,
+    ...(normalizedMetadata !== undefined ? { metadata: normalizedMetadata } : {}),
+    updatedAt: new Date(),
+  };
   const starting = ["producao_em_andamento", "em_transporte", "instalacao_em_andamento", "execucao_assistencia"].includes(targetStage);
   const finishing = ["concluido", "entrega_obra", "instalacao_finalizada", "fechamento_assistencia"].includes(targetStage);
   if (starting && !existing.dataInicioEfetiva && !parsed.data.dataInicioEfetiva) data.dataInicioEfetiva = new Date();
