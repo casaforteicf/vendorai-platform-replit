@@ -56,8 +56,10 @@ async function body(req: IncomingMessage): Promise<string> {
   return result;
 }
 function issue(res: ServerResponse, grant: Grant) {
-  const refresh = nonce();
-  refreshes.set(hash(refresh), { ...grant, exp: now() + 30 * 86400 });
+  // Self-contained signed refresh token survives deploys/restarts and avoids forcing
+  // ChatGPT to reconnect when Railway replaces the process. Access remains short-lived.
+  const refreshExp = now() + 365 * 86400;
+  const refresh = sign({ type: "refresh", iss: issuer(), aud: grant.resource, scope: grant.scope, client: grant.client, family: grant.family, instance: instance(), exp: refreshExp, jti: nonce() });
   json(res, 200, {
     access_token: sign({ type: "access", iss: issuer(), aud: grant.resource, scope: grant.scope, sub: "administrator", family: grant.family, instance: instance(), exp: now() + 3600, jti: nonce() }),
     token_type: "Bearer", expires_in: 3600, refresh_token: refresh, scope: grant.scope,
@@ -140,17 +142,21 @@ export async function handleOAuth(req: IncomingMessage, res: ServerResponse, url
       const client = p.get("client_id") || "";
       if (read(client)?.type !== "client") { fail(res, "invalid_client", 401); return true; }
       const kind = p.get("grant_type");
-      const map = kind === "authorization_code" ? codes : kind === "refresh_token" ? refreshes : null;
-      if (!map) { fail(res, "unsupported_grant_type"); return true; }
-      const id = hash(p.get(kind === "authorization_code" ? "code" : "refresh_token") || "");
-      const grant = map.get(id);
-      const replayed = kind === "refresh_token" ? usedRefreshes.get(id) : undefined;
-      if (replayed?.client === client) revokedFamilies.set(replayed.family, { exp: now() + 31 * 86400 });
-      if (!grant || grant.exp < now() || revokedFamilies.has(grant.family) || grant.client !== client || p.get("resource") !== grant.resource || (p.get("scope") && p.get("scope") !== grant.scope)) { fail(res, "invalid_grant"); return true; }
-      if (kind === "authorization_code" && (p.get("redirect_uri") !== grant.redirect || !/^[A-Za-z0-9._~-]{43,128}$/.test(p.get("code_verifier") || "") || !equal(hash(p.get("code_verifier")!), grant.challenge))) { fail(res, "invalid_grant"); return true; }
-      map.delete(id); // One-time codes and rotating refresh tokens.
-      if (kind === "refresh_token") usedRefreshes.set(id, grant);
-      if (usedRefreshes.size >= 10000) { fail(res, "temporarily_unavailable", 503); return true; }
+      if (kind !== "authorization_code" && kind !== "refresh_token") { fail(res, "unsupported_grant_type"); return true; }
+      const raw = p.get(kind === "authorization_code" ? "code" : "refresh_token") || "";
+      let grant: Grant | undefined;
+      if (kind === "authorization_code") {
+        const id = hash(raw);
+        grant = codes.get(id);
+        if (!grant || grant.exp < now() || grant.client !== client || p.get("resource") !== grant.resource || (p.get("scope") && p.get("scope") !== grant.scope) ||
+            p.get("redirect_uri") !== grant.redirect || !/^[A-Za-z0-9._~-]{43,128}$/.test(p.get("code_verifier") || "") || !equal(hash(p.get("code_verifier")!), grant.challenge)) { fail(res, "invalid_grant"); return true; }
+        codes.delete(id);
+      } else {
+        const claims = read(raw);
+        if (claims?.type !== "refresh" || claims.iss !== issuer() || claims.instance !== instance() || claims.client !== client || claims.exp <= now() ||
+            revokedFamilies.has(claims.family) || p.get("resource") !== claims.aud || (p.get("scope") && p.get("scope") !== claims.scope)) { fail(res, "invalid_grant"); return true; }
+        grant = { client: claims.client, redirect: "", challenge: "", resource: claims.aud, scope: claims.scope, family: claims.family, exp: claims.exp };
+      }
       issue(res, grant);
     } else if (req.method === "POST" && path === "/oauth/revoke") {
       const p = new URLSearchParams(await body(req));
