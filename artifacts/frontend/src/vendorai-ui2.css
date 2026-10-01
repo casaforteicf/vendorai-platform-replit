@@ -8,7 +8,7 @@
 
 /* Keep public/login surfaces untouched. The authenticated shell owns the tokens. */
 body:has(main.vendor-scrollbar) {
-  --background: 220 18% 98%;
+  --background: 220 23% 97%;
   --foreground: 224 41% 7%;
 
   --card: 0 0% 100%;
@@ -16,16 +16,16 @@ body:has(main.vendor-scrollbar) {
   --popover: 0 0% 100%;
   --popover-foreground: 224 41% 7%;
 
-  --primary: 247 76% 60%;
+  --primary: 16 65% 52%;
   --primary-foreground: 0 0% 100%;
-  --ring: 247 76% 60%;
+  --ring: 16 65% 52%;
 
   --secondary: 225 16% 96%;
   --secondary-foreground: 224 25% 18%;
   --muted: 225 16% 96%;
   --muted-foreground: 224 11% 42%;
-  --accent: 249 100% 96%;
-  --accent-foreground: 247 65% 45%;
+  --accent: 16 45% 94%;
+  --accent-foreground: 16 65% 32%;
 
   --destructive: 4 74% 40%;
   --destructive-foreground: 0 0% 100%;
@@ -35,13 +35,13 @@ body:has(main.vendor-scrollbar) {
   --sidebar: 225 18% 96.5%;
   --sidebar-foreground: 224 25% 18%;
   --sidebar-border: 225 17% 92%;
-  --sidebar-primary: 247 76% 60%;
+  --sidebar-primary: 16 65% 52%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 249 100% 96%;
-  --sidebar-accent-foreground: 247 65% 45%;
-  --sidebar-ring: 247 76% 60%;
+  --sidebar-accent: 220 20% 96%;
+  --sidebar-accent-foreground: 224 25% 18%;
+  --sidebar-ring: 16 65% 52%;
 
-  --chart-1: 247 76% 60%;
+  --chart-1: 16 65% 52%;
   --chart-2: 189 80% 39%;
   --chart-3: 158 75% 34%;
   --chart-4: 39 75% 45%;
@@ -81,8 +81,8 @@ body:has(main.vendor-scrollbar) {
 
   --vendor-font-body: 14px;
   --vendor-font-caption: 12px;
-  --vendor-font-h1: 22px;
-  --vendor-font-h2: 18px;
+  --vendor-font-h1: 24px;
+  --vendor-font-h2: 19px;
   --vendor-font-h3: 16px;
   --vendor-font-h4: 14px;
 
@@ -275,7 +275,7 @@ main.vendor-scrollbar .vendor-page-canvas :where(
   input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
   select, [role="combobox"]
 ) {
-  min-height: 30px;
+  min-height: 40px;
 }
 
 main.vendor-scrollbar .vendor-page-canvas :where(button, [role="button"], a[class*="inline-flex"]) {
@@ -330,7 +330,7 @@ main.vendor-scrollbar .vendor-page-canvas table {
 main.vendor-scrollbar .vendor-page-canvas thead th {
   padding-block: 10px;
   color: hsl(var(--muted-foreground));
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -338,7 +338,7 @@ main.vendor-scrollbar .vendor-page-canvas thead th {
 }
 
 main.vendor-scrollbar .vendor-page-canvas tbody td {
-  font-size: 12.5px;
+  font-size: 14px;
 }
 
 main.vendor-scrollbar .vendor-page-canvas tbody tr {
