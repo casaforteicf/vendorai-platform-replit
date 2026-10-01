@@ -47,6 +47,7 @@ export type ReferenceTraceResult = {
     translateY: number;
   };
   topologyRepairs?: number;
+  ignoredNonWallSegments?: number;
 };
 
 type JsonRecord = Record<string, unknown>;
@@ -63,6 +64,15 @@ function clamp(value: unknown, min: number, max: number, fallback: number) {
 function safeJson(text: string): JsonRecord {
   const cleaned = text.trim().replace(/^\`\`\`json\s*/i, "").replace(/\`\`\`$/i, "").trim();
   return asRecord(JSON.parse(cleaned));
+}
+
+function segmentRole(value: JsonRecord) {
+  return String(value.kind ?? value.role ?? "wall").trim().toLowerCase();
+}
+
+function isArchitecturalWallCandidate(value: JsonRecord) {
+  const role = segmentRole(value);
+  return !role || role === "wall" || role === "parede" || role === "architectural_wall";
 }
 
 function responseText(response: any): string {
@@ -242,9 +252,14 @@ export function normalizeReferenceTrace(
   }
   const wallIndexMap = new Map<number, string>();
   let skippedWalls = 0;
+  let ignoredNonWallSegments = 0;
 
   rawWalls.forEach((value, index) => {
     const wall = asRecord(value);
+    if (!isArchitecturalWallCandidate(wall)) {
+      ignoredNonWallSegments += 1;
+      return;
+    }
     const nx1 = clamp(wall.x1, 0, 1, NaN);
     const ny1 = clamp(wall.y1, 0, 1, NaN);
     const nx2 = clamp(wall.x2, 0, 1, NaN);
@@ -312,6 +327,7 @@ export function normalizeReferenceTrace(
     ? parsed.warnings.map(String).map((item) => item.trim()).filter(Boolean).slice(0, 10)
     : [];
   if (skippedWalls) warnings.push(`${skippedWalls} segmento(s) foram descartados por baixa compatibilidade geométrica.`);
+  if (ignoredNonWallSegments) warnings.push(`${ignoredNonWallSegments} linha(s) de cota, terreno ou anotação foram ignoradas e não viraram paredes.`);
   if (refinedTopology.repairs) warnings.push(`${refinedTopology.repairs} junção(ões) foram encaixadas automaticamente sem alterar a distribuição da planta.`);
   if (!walls.length) warnings.push("Nenhuma parede confiável foi identificada na imagem.");
 
@@ -324,6 +340,7 @@ export function normalizeReferenceTrace(
     skippedWalls,
     sourceModel,
     topologyRepairs: refinedTopology.repairs,
+    ignoredNonWallSegments,
   };
 }
 
@@ -343,7 +360,8 @@ function wallInkScore(
   translateX: number,
   translateY: number,
 ) {
-  const rawWalls = Array.isArray(raw.walls) ? raw.walls.slice(0, 160) : [];
+  const rawWalls = (Array.isArray(raw.walls) ? raw.walls.slice(0, 160) : [])
+    .filter((value) => isArchitecturalWallCandidate(asRecord(value)));
   if (!rawWalls.length || width < 2 || height < 2) return 0;
 
   let total = 0;
@@ -421,6 +439,7 @@ async function registerTraceToImage(raw: JsonRecord, image: Buffer): Promise<Tra
 
   const nextWalls = (Array.isArray(raw.walls) ? raw.walls : []).map((value) => {
     const wall = asRecord(value);
+    if (!isArchitecturalWallCandidate(wall)) return wall;
     const transform = (v: unknown, shift: number) => {
       const n = Number(v);
       if (!Number.isFinite(n)) return v;
@@ -471,6 +490,8 @@ export async function traceReferencePlanImage(input: {
     "FIDELIDADE É A PRIORIDADE ABSOLUTA: a geometria vetorial deve coincidir com o croqui quando sobreposta à imagem. Não reorganize cômodos, não simplifique o perímetro e não substitua o desenho por uma planta 'parecida'.",
     "Trace todos os segmentos arquitetônicos claramente visíveis, inclusive recuos, anexos, garagem, lavanderia, banheiros e pequenos nichos. Preserve o número, a ordem e a posição relativa de cada ambiente.",
     "NÃO invente paredes, portas, janelas, ambientes, alinhamentos ou dimensões ausentes. Se algo estiver encoberto, cortado ou ambíguo, omita e registre em warnings.",
+    "Antes de traçar qualquer segmento, classifique mentalmente a linha como parede, cota, limite/recuo do terreno, anotação ou desconhecida. SOMENTE parede arquitetônica pode entrar em walls.",
+    "Linhas finas de cota com números, linhas auxiliares de medida, linhas que terminam em marcas de cota, limites externos do terreno, recuos e linhas próximas de textos como Frente/Quadra NÃO são paredes da edificação.",
     "Mantenha a posição dos elementos exatamente no sistema de coordenadas da IMAGEM INTEIRA, incluindo margens em branco, carimbo, textos e áreas vazias.",
     "Esta versão gera paredes ortogonais horizontais/verticais. Em croquis, tolere pequenas inclinações de traço quando a intenção ortogonal for clara e normalize-as para horizontal/vertical; diagonais arquitetônicas reais ou curvas devem ser omitidas e citadas em warnings.",
     "Responda SOMENTE JSON válido, sem markdown.",
@@ -479,14 +500,16 @@ export async function traceReferencePlanImage(input: {
     "Identifique paredes e aberturas VISÍVEIS no croqui, pré-planta ou planta técnica e reproduza o desenho como uma planta vetorial editável sem alterar sua distribuição.",
     "Todas as coordenadas devem ser normalizadas entre 0 e 1 em relação à imagem inteira, nunca em relação apenas ao retângulo da planta.",
     "Use x=0 na borda esquerda da imagem, x=1 na borda direita, y=0 no topo e y=1 na base. Preserve margens e deslocamentos existentes na imagem.",
-    "Para cada parede informe x1,y1,x2,y2, thickness em metros e confidence 0..1.",
+    "Para cada parede informe kind='wall', x1,y1,x2,y2, thickness em metros e confidence 0..1.",
     "Use preferencialmente o eixo central da espessura visual da parede para x1,y1,x2,y2, mantendo encontros T e cruzamentos coincidentes.",
-    "Retorne somente paredes claramente observáveis ou claramente pretendidas como ortogonais. Ignore mobiliário, textos, hachuras, setas, rabiscos soltos e muros sem definição. Cotas legíveis devem ser usadas para conferir proporções e comprimentos do que já está desenhado, mas nunca para criar geometria inexistente.",
+    "Retorne em walls SOMENTE paredes arquitetônicas claramente observáveis. Não coloque linhas de cota, extensão de cota, recuos, limites do terreno, linhas de chamada, textos sublinhados ou rabiscos no array walls.",
+    "Uma linha longa fora do envelope construído, especialmente acompanhada de medidas ou palavras como Frente/Quadra, deve ser tratada como referência do terreno/cota e ignorada como parede.",
+    "Cotas legíveis servem exclusivamente para conferir proporções e comprimentos de paredes já visíveis; jamais use uma cota para inventar uma parede inexistente.",
     "Antes de responder, faça uma conferência visual interna: conte os blocos/ambientes desenhados e verifique se garagem, lavanderia, quartos, banheiros e o espaço social continuam nas mesmas posições relativas da imagem.",
     "Não redistribua cômodos, não espelhe, não rotacione, não recorte a planta e não feche automaticamente lacunas que não estejam desenhadas.",
     "Para cada porta/janela use wallIndex apontando para o índice ZERO-BASED da parede no array walls,",
     "type door|window, offset 0..1 ao longo da parede, width/height/sillHeight em metros, confidence 0..1.",
-    "JSON: {summary:string, confidence:number, walls:[{x1,y1,x2,y2,thickness,confidence}], openings:[{wallIndex,type,offset,width,height,sillHeight,confidence}], warnings:string[]}.",
+    "JSON: {summary:string, confidence:number, walls:[{kind:'wall',x1,y1,x2,y2,thickness,confidence}], openings:[{wallIndex,type,offset,width,height,sillHeight,confidence}], warnings:string[]}.",
     "Se houver dúvida relevante, omita o elemento e explique em warnings.",
   ].join(" ");
 
