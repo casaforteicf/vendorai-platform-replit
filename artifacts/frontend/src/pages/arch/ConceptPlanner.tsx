@@ -2629,6 +2629,31 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     void saveConcept(4, undefined, { objects: nextObjects });
   };
 
+  useEffect(() => {
+    if (!selectedObjectId || (editorView !== "plan" && editorView !== "model3d")) return;
+    const handleObjectShortcut = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.tagName === "SELECT" || target?.isContentEditable) return;
+
+      if (event.key === "Delete" || event.key === "Backspace") {
+        event.preventDefault();
+        deleteObject(selectedObjectId);
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "d") {
+        event.preventDefault();
+        duplicateObject(selectedObjectId);
+        return;
+      }
+      if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === "r") {
+        event.preventDefault();
+        rotateObject(selectedObjectId);
+      }
+    };
+    window.addEventListener("keydown", handleObjectShortcut);
+    return () => window.removeEventListener("keydown", handleObjectShortcut);
+  }, [editorView, selectedObjectId]);
+
   const armPaintTool = (
     target: "object" | "wall" | "floor",
     material: { id: string; name: string; swatch: string },
@@ -8778,17 +8803,20 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       </label>
                     ))}
                     <label className="text-[10px] font-semibold text-slate-500">
-                      Rotação
-                      <select
+                      Rotação (°)
+                      <input
+                        type="number"
+                        step="1"
+                        min="-360"
+                        max="360"
                         value={selectedObject.rotation}
-                        onChange={(event) => updateObjectById(selectedObject.id, { rotation: Number(event.target.value) })}
-                        className="mt-1 h-9 w-[100px] rounded-lg border bg-white px-2 text-xs"
-                      >
-                        <option value={0}>0°</option>
-                        <option value={90}>90°</option>
-                        <option value={180}>180°</option>
-                        <option value={270}>270°</option>
-                      </select>
+                        onChange={(event) => {
+                          const value = Number(event.target.value);
+                          if (!Number.isFinite(value)) return;
+                          updateObjectById(selectedObject.id, { rotation: ((value % 360) + 360) % 360 });
+                        }}
+                        className="mt-1 h-9 w-[100px] rounded-lg border bg-white px-2 text-xs font-semibold"
+                      />
                     </label>
                     {editorView === "model3d" && (
                       <div className="flex items-end gap-1">
@@ -8825,8 +8853,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           Editar no 2D
                         </button>
                       )}
-                      <button type="button" onClick={duplicateSelectedObject} className="h-9 rounded-lg border px-3 text-xs font-semibold">Duplicar</button>
-                      <button type="button" onClick={deleteSelectedObject} className="h-9 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600">Excluir</button>
+                      <button type="button" onClick={() => rotateObject(selectedObject.id)} className="h-9 rounded-lg border px-3 text-xs font-semibold" title="Girar 90° (R)">Girar</button>
+                      <button type="button" onClick={duplicateSelectedObject} className="h-9 rounded-lg border px-3 text-xs font-semibold" title="Duplicar (Ctrl/Cmd+D)">Duplicar</button>
+                      <button type="button" onClick={deleteSelectedObject} className="h-9 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600" title="Excluir (Del)">Excluir</button>
                     </div>
                   </div>
                 ) : selectedCustomWall ? (
