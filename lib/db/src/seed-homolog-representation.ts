@@ -124,7 +124,7 @@ await pool.query(`
     created_at, updated_at
   ) VALUES (
     $1, $2, 'Administrador Vendor.ai — Homologação',
-    'homolog.admin@appvendorai.com', crypt('Homolog@2026!', gen_salt('bf', 12)),
+    'marcos@vendor.ai', crypt('Homolog@2026!', gen_salt('bf', 12)),
     'admin', 'super_admin', 'administrador',
     '["dashboard","leads","deals","conversations","agenda","proposals","catalog","team","settings"]'::jsonb,
     true, false, true, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, now(), now()
