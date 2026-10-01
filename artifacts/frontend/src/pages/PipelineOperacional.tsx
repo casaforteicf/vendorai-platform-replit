@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SupportReportPanel } from "@/components/SupportReportPanel";
+import { OperationalStageFormDialog } from "@/components/OperationalStageFormDialog";
 import { PipelineNav, PIPELINE_CARD_CLASS, PIPELINE_COLUMN_CLASS, PIPELINE_COLUMN_HEADER_CLASS } from "@/components/PipelineNav";
 import {
   AlertTriangle,
@@ -130,6 +131,14 @@ const EXECUTION_STAGE_REQUIREMENTS: Record<string, StageRequirement[]> = {
   pos_venda: [{ key: "pacote_entrega", label: "Pacote de entrega enviado", description: "Termo, manual, garantia e documentos aplicáveis foram enviados e registrados." }],
 };
 
+const OPERATIONAL_FORM_KEYS = new Set([
+  "relatorio_medidas",
+  "checklist_transporte",
+  "checklist_instalacao",
+  "conferencia_instalacao",
+  "vistoria_aceite",
+]);
+
 const SUPPORT_STAGES = [
   ["chamado_cliente", "Chamado cliente"],
   ["agendamento_assistencia", "Agendamento assistência"],
@@ -197,6 +206,7 @@ export default function PipelineOperacional() {
   const [selectedCard, setSelectedCard] = useState<WorkCard | null>(null);
   const [supportOpen, setSupportOpen] = useState(false);
   const [deliveryOpen, setDeliveryOpen] = useState(false);
+  const [stageFormKey, setStageFormKey] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const detailFileRef = useRef<HTMLInputElement>(null);
 
@@ -534,6 +544,10 @@ export default function PipelineOperacional() {
                                 variant={completed ? "secondary" : "default"}
                                 disabled={patchCard.isPending}
                                 onClick={() => {
+                                  if (OPERATIONAL_FORM_KEYS.has(requirement.key)) {
+                                    setStageFormKey(requirement.key);
+                                    return;
+                                  }
                                   const metadata = { ...(selectedCard.metadata ?? {}) };
                                   const currentGates = metadata.stageGates && typeof metadata.stageGates === "object"
                                     ? { ...(metadata.stageGates as Record<string, unknown>) }
@@ -547,7 +561,9 @@ export default function PipelineOperacional() {
                                   patchCard.mutate({ id: selectedCard.id, data: { metadata: { ...metadata, stageGates: currentGates } } });
                                 }}
                               >
-                                {completed ? "Reabrir" : "Concluir"}
+                                {OPERATIONAL_FORM_KEYS.has(requirement.key)
+                                  ? (completed ? "Ver / nova versão" : "Preencher")
+                                  : (completed ? "Reabrir" : "Concluir")}
                               </Button>
                             </div>
                           );
@@ -623,6 +639,23 @@ export default function PipelineOperacional() {
           )}
         </SheetContent>
       </Sheet>
+
+      {selectedCard && (
+        <OperationalStageFormDialog
+          open={Boolean(stageFormKey)}
+          onOpenChange={(open) => { if (!open) setStageFormKey(null); }}
+          requirementKey={stageFormKey}
+          card={selectedCard}
+          attachments={attachmentsQuery.data ?? []}
+          token={token ?? ""}
+          onChanged={async () => {
+            const fresh = await api<WorkCard>(`/api/work-cards/${selectedCard.id}`);
+            setSelectedCard(fresh);
+            await queryClient.invalidateQueries({ queryKey: ["work-cards", tenantId, "execucao"] });
+            await queryClient.invalidateQueries({ queryKey: ["work-card-attachments", selectedCard.id] });
+          }}
+        />
+      )}
 
       <SupportDialog
         open={supportOpen}
