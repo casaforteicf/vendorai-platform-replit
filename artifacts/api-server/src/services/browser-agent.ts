@@ -1,6 +1,14 @@
-import puppeteer, { type Browser, type CookieData, type Page } from "puppeteer-core";
+import { type Browser, type CookieData, type Page } from "puppeteer-core";
+import { acquireBrowserLease } from "./browser-fleet.js";
+import {
+  captureBrowserProfile,
+  restoreBrowserProfileAfterNavigation,
+  restoreBrowserProfileBeforeNavigation,
+  type BrowserProfileState,
+} from "./browser-profile.js";
 import { z } from "zod";
 import { callOpenAI } from "../lib/ai-gateway.js";
+import { actionShouldChangePage, verifyCheckpointTransition } from "./browser-verifier.js";
 
 export type BrowserAgentMode = "assistido" | "autonomo";
 
@@ -33,11 +41,79 @@ export type PlannedAction =
   | { action: "extract"; selector?: string; reason?: string }
   | { action: "finish"; answer: string; outcome: "completed" | "blocked" | "failed"; reason?: string };
 
+export interface BrowserAgentCheckpoint {
+  url: string;
+  title: string;
+  textSignature: string;
+  interactiveCount: number;
+  capturedAt: string;
+}
+
 export interface BrowserAgentStep {
   index: number;
   action: string;
   url: string;
   detail?: string;
+  checkpoint?: BrowserAgentCheckpoint;
+}
+
+export type BrowserFailureKind =
+  | "selector_stale"
+  | "navigation_timeout"
+  | "transient_network"
+  | "target_closed"
+  | "detached_frame"
+  | "blocked"
+  | "approval_required"
+  | "unknown";
+
+export function classifyBrowserError(error: unknown): BrowserFailureKind {
+  const message = String((error as any)?.message ?? error ?? "");
+  if (message.startsWith("BROWSER_BLOCKED:")) return "blocked";
+  if (message.startsWith("APPROVAL_REQUIRED:")) return "approval_required";
+  if (/No element found for selector|failed to find element matching selector|No node found for selector|Node is detached from document/i.test(message)) return "selector_stale";
+  if (/Navigation timeout|TimeoutError.*navigation|waiting for navigation/i.test(message)) return "navigation_timeout";
+  if (/net::ERR_(?:TIMED_OUT|CONNECTION_RESET|CONNECTION_CLOSED|CONNECTION_REFUSED|NETWORK_CHANGED|INTERNET_DISCONNECTED)|socket hang up|ECONNRESET|ETIMEDOUT/i.test(message)) return "transient_network";
+  if (/Target closed|Session closed|Protocol error.*Target|Connection closed/i.test(message)) return "target_closed";
+  if (/detached Frame|Attempted to use detached Frame|Cannot find context with specified id/i.test(message)) return "detached_frame";
+  return "unknown";
+}
+
+export function isRetryableBrowserError(error: unknown) {
+  return ["navigation_timeout", "transient_network", "detached_frame"].includes(classifyBrowserError(error));
+}
+
+async function withBrowserRetry<T>(
+  operation: () => Promise<T>,
+  attempts = 3,
+): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableBrowserError(error) || attempt === attempts) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 350 * attempt));
+    }
+  }
+  throw lastError;
+}
+
+export function checkpointFromState(state: { url: string; title: string; text: string; interactive: unknown[] }): BrowserAgentCheckpoint {
+  const normalized = state.text.replace(/\s+/g, " ").trim().slice(0, 600);
+  let hash = 2166136261;
+  for (let i = 0; i < normalized.length; i++) {
+    hash ^= normalized.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return {
+    url: state.url,
+    title: state.title,
+    textSignature: (hash >>> 0).toString(16).padStart(8, "0"),
+    interactiveCount: state.interactive.length,
+    capturedAt: new Date().toISOString(),
+  };
 }
 
 export interface BrowserAgentInput {
@@ -50,8 +126,10 @@ export interface BrowserAgentInput {
   allowedHosts?: string[];
   secrets?: { login?: string; passcode?: string };
   sessionCookies?: CookieData[];
+  sessionProfile?: BrowserProfileState;
   firstPartyAuthToken?: string;
   onSessionPersist?: (cookies: CookieData[]) => Promise<void>;
+  onProfilePersist?: (profile: BrowserProfileState) => Promise<void>;
   onHumanVerification?: (browser: Browser, page: Page) => Promise<{ sessionId: string; controlUrl: string }>;
 }
 
@@ -188,8 +266,8 @@ export async function planBrowserAction(
 }
 
 export function isRecoverableSelectorError(error: unknown) {
-  const message = String((error as any)?.message ?? error ?? "");
-  return /No element found for selector|failed to find element matching selector|No node found for selector|Cannot find context with specified id|Node is detached from document/i.test(message);
+  const kind = classifyBrowserError(error);
+  return kind === "selector_stale" || kind === "detached_frame";
 }
 
 async function sensitive(page: Page, selector: string) {
@@ -218,7 +296,9 @@ export async function executeBrowserAction(
   if (action.action === "finish") return action.answer;
 
   if (action.action === "navigate") {
-    await page.goto(validateBrowserUrl(action.url, input.allowedHosts), { waitUntil: "domcontentloaded", timeout: 30000 });
+    await withBrowserRetry(() =>
+      page.goto(validateBrowserUrl(action.url, input.allowedHosts), { waitUntil: "domcontentloaded", timeout: 30000 }),
+    );
     return;
   }
 
@@ -259,9 +339,6 @@ export async function executeBrowserAction(
 }
 
 export async function runBrowserAgent(input: BrowserAgentInput) {
-  const cdpUrl = process.env["BROWSER_CDP_URL"];
-  if (!cdpUrl) throw new Error("BROWSER_CDP_URL não configurada");
-
   const steps: BrowserAgentStep[] = [];
   const maxSteps = Math.min(Math.max(input.maxSteps ?? 12, 1), 30);
   const secretsAvailable = {
@@ -271,19 +348,26 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
   let browser: Browser | undefined;
   let page: Page | undefined;
   let transferred = false;
+  let releaseBrowser: ((healthy?: boolean) => void) | undefined;
 
   try {
-    browser = await puppeteer.connect({ browserWSEndpoint: cdpUrl });
+    const lease = await acquireBrowserLease();
+    browser = lease.browser;
+    releaseBrowser = lease.release;
     page = await (await browser.createBrowserContext()).newPage();
 
     if (input.sessionCookies?.length) {
       await page.setCookie(...input.sessionCookies).catch(() => undefined);
     }
+    await restoreBrowserProfileBeforeNavigation(page, input.sessionProfile);
 
-    await page.goto(validateBrowserUrl(input.startUrl, input.allowedHosts), {
+    await withBrowserRetry(() => page.goto(validateBrowserUrl(input.startUrl, input.allowedHosts), {
       waitUntil: "domcontentloaded",
       timeout: 30000,
-    });
+    }));
+    if (await restoreBrowserProfileAfterNavigation(page, input.sessionProfile)) {
+      await page.reload({ waitUntil: "domcontentloaded", timeout: 30000 });
+    }
 
     if (input.firstPartyAuthToken) {
       const current = new URL(page.url());
@@ -302,17 +386,36 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
         : input.goal;
       selectorRecoveryNote = "";
       const action = await planBrowserAction(input.tenantId, planningGoal, state, steps, secretsAvailable);
-      steps.push({ index, action: action.action, url: state.url, detail: "reason" in action ? action.reason : undefined });
+      steps.push({
+        index,
+        action: action.action,
+        url: state.url,
+        detail: "reason" in action ? action.reason : undefined,
+        checkpoint: checkpointFromState(state),
+      });
 
       if (action.action === "finish") {
         if (action.outcome !== "completed") throw new Error(`BROWSER_${action.outcome.toUpperCase()}: ${action.answer}`);
         if (input.onSessionPersist) await input.onSessionPersist(await page.cookies());
+        if (input.onProfilePersist) await input.onProfilePersist(await captureBrowserProfile(page));
         return { ok: true, finalUrl: state.url, answer: action.answer, steps };
       }
 
       let extracted: string | undefined;
       try {
         extracted = await executeBrowserAction(page, action, input);
+        if (actionShouldChangePage(action.action)) {
+          const afterState = await snapshotBrowserPage(page);
+          const verification = verifyCheckpointTransition(checkpointFromState(state), checkpointFromState(afterState));
+          if (!verification.changed) {
+            selectorRecoveryNote =
+              "A ação anterior foi executada sem produzir mudança observável na página. " +
+              "Reavalie o estado atual e escolha outra ação/elemento para atingir o objetivo.";
+            steps[steps.length - 1]!.detail = [steps[steps.length - 1]!.detail, "verified_no_change_replan"]
+              .filter(Boolean).join(" | ");
+            continue;
+          }
+        }
       } catch (error) {
         if (isRecoverableSelectorError(error)) {
           selectorRecoveryNote =
@@ -337,17 +440,21 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
         if (next.action === "finish") {
           if (next.outcome !== "completed") throw new Error(`BROWSER_${next.outcome.toUpperCase()}: ${next.answer}`);
           if (input.onSessionPersist) await input.onSessionPersist(await page.cookies());
+          if (input.onProfilePersist) await input.onProfilePersist(await captureBrowserProfile(page));
           return { ok: true, finalUrl: page.url(), answer: next.answer, steps };
         }
       }
     }
 
     if (input.onSessionPersist) await input.onSessionPersist(await page.cookies());
+    if (input.onProfilePersist) await input.onProfilePersist(await captureBrowserProfile(page));
     return { ok: false, finalUrl: page.url(), answer: "Limite de passos atingido.", steps };
   } catch (error: any) {
     if (String(error?.message).startsWith("BROWSER_BLOCKED:") && input.onHumanVerification && browser && page) {
       const handoff = await input.onHumanVerification(browser, page);
       transferred = true;
+      releaseBrowser?.(true);
+      releaseBrowser = undefined;
       return { ok: false, status: "awaiting_human" as const, finalUrl: page.url(),
         answer: "Verificação humana necessária. Abra o controle ao vivo, faça a verificação e devolva para o Vendi.",
         steps, ...handoff };
@@ -356,5 +463,6 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
   } finally {
     if (!transferred && page) await page.browserContext().close().catch(() => undefined);
     if (!transferred && browser) browser.disconnect();
+    if (!transferred) releaseBrowser?.(true);
   }
 }
