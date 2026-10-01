@@ -13,7 +13,9 @@ const forms = new Map<string, { grant: Grant; state: string; exp: number }>();
 const attempts = new Map<string, { count: number; exp: number }>();
 const now = () => Math.floor(Date.now() / 1000);
 const nonce = () => randomBytes(32).toString("base64url");
-const instance = nonce();
+// Stable across deploys/replicas as long as MCP_ACCESS_TOKEN is unchanged.
+// Access tokens must not be invalidated just because the process restarted.
+const instance = () => hash(`instance:${key()}`);
 export const issuer = () => (process.env.MCP_PUBLIC_URL || "https://cloudflare-mcp-v2-production.up.railway.app").replace(/\/$/, "");
 const resource = () => `${issuer()}/mcp`;
 const key = () => process.env.MCP_ACCESS_TOKEN?.trim() || "";
@@ -57,7 +59,7 @@ function issue(res: ServerResponse, grant: Grant) {
   const refresh = nonce();
   refreshes.set(hash(refresh), { ...grant, exp: now() + 30 * 86400 });
   json(res, 200, {
-    access_token: sign({ type: "access", iss: issuer(), aud: grant.resource, scope: grant.scope, sub: "administrator", family: grant.family, instance, exp: now() + 3600, jti: nonce() }),
+    access_token: sign({ type: "access", iss: issuer(), aud: grant.resource, scope: grant.scope, sub: "administrator", family: grant.family, instance: instance(), exp: now() + 3600, jti: nonce() }),
     token_type: "Bearer", expires_in: 3600, refresh_token: refresh, scope: grant.scope,
   });
 }
@@ -66,7 +68,7 @@ export function authorized(req: IncomingMessage): boolean {
   if (!token || !key()) return false;
   if (equal(token, key())) return true; // Existing private integrations remain valid.
   const claims = read(token);
-  return claims?.type === "access" && claims.iss === issuer() && claims.aud === resource() && claims.scope === SCOPE && claims.instance === instance && claims.exp > now() && !revokedFamilies.has(claims.family);
+  return claims?.type === "access" && claims.iss === issuer() && claims.aud === resource() && claims.scope === SCOPE && claims.instance === instance() && claims.exp > now() && !revokedFamilies.has(claims.family);
 }
 export function challenge(): string {
   return `Bearer resource_metadata="${issuer()}/.well-known/oauth-protected-resource/mcp", scope="${SCOPE}"`;
@@ -98,8 +100,9 @@ export async function handleOAuth(req: IncomingMessage, res: ServerResponse, url
       if (metadata?.type !== "client" || !metadata.redirects?.includes(redirect) || !allowedRedirect(redirect) || p.get("response_type") !== "code" ||
           p.get("code_challenge_method") !== "S256" || !/^[A-Za-z0-9_-]{43}$/.test(p.get("code_challenge") || "") || aud !== resource() || scope !== SCOPE) { fail(res); return true; }
       if (forms.size >= 1000) { fail(res, "temporarily_unavailable", 503); return true; }
-      const csrf = nonce();
-      forms.set(csrf, { grant: { client, redirect, challenge: p.get("code_challenge")!, resource: resource(), scope, family: nonce(), exp: now() + 300 }, state: p.get("state") || "", exp: now() + 300 });
+      const pending = { grant: { client, redirect, challenge: p.get("code_challenge")!, resource: resource(), scope, family: nonce(), exp: now() + 600 }, state: p.get("state") || "", exp: now() + 600 };
+      // Signed self-contained consent survives process restarts and multiple replicas.
+      const csrf = sign({ type: "consent", pending });
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Referrer-Policy": "same-origin", "X-Frame-Options": "DENY", "Content-Security-Policy": "default-src 'none'; form-action 'self' https://chatgpt.com; frame-ancestors 'none'; base-uri 'none'" });
       res.end(`<!doctype html><html lang="pt-BR"><meta charset="utf-8"><title>Autorizar Vendor.ai</title><body><h1>Conectar Vendor.ai ao ChatGPT</h1><p>Esta integração administrativa permite consultar e alterar Cloudflare e executar missões no navegador do Vendor.ai. Autorize somente na sua conta.</p><form method="post" action="/oauth/approve"><input type="hidden" name="csrf" value="${csrf}"><label>Chave privada MCP do administrador <input type="password" name="credential" autocomplete="off" required></label><p>Use o valor de MCP_ACCESS_TOKEN do serviço cloudflare-mcp-v2 no Railway. A chave fica neste servidor e não é enviada ao ChatGPT.</p><button name="decision" value="approve">Autorizar acesso administrativo</button><button name="decision" value="deny" formnovalidate>Cancelar</button></form></body></html>`);
     } else if (req.method === "POST" && path === "/oauth/approve") {
@@ -107,8 +110,8 @@ export async function handleOAuth(req: IncomingMessage, res: ServerResponse, url
       if (!req.headers["content-type"]?.startsWith("application/x-www-form-urlencoded")) { fail(res); return true; }
       const p = new URLSearchParams(await body(req));
       const csrf = p.get("csrf") || "";
-      const pending = forms.get(csrf);
-      forms.delete(csrf);
+      const consent = read(csrf);
+      const pending = consent?.type === "consent" ? consent.pending as { grant: Grant; state: string; exp: number } : undefined;
       if (!pending || pending.exp < now()) { json(res, 400, { error: "invalid_request", error_description: "Autorização expirada. Abra uma nova autorização pelo ChatGPT.", reason: "expired_consent" }); return true; }
       const redirect = new URL(pending.grant.redirect);
       redirect.searchParams.set("state", pending.state);
