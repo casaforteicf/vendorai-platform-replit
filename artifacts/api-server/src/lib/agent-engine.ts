@@ -23,6 +23,11 @@ import {
   tenantAgentConfigsTable,
   agentDefaultsTable,
   knowledgeBaseTable,
+  crmCompaniesMasterTable,
+  crmPeopleMasterTable,
+  crmCompanyPeopleTable,
+  crmTenantCompaniesTable,
+  crmTenantCompanyContactsTable,
 } from "@workspace/db";
 import type { AgentTask, AiFeature } from "@workspace/db";
 import { executeTaskAction } from "../routes/agent_tasks.js";
@@ -37,11 +42,40 @@ type Conversation = typeof conversationsTable.$inferSelect;
 type Message      = typeof messagesTable.$inferSelect;
 type AgentConfig  = typeof agentConfigsTable.$inferSelect;
 
+export type CompanyAgentContext = {
+  company: {
+    id: string;
+    cnpj: string;
+    razaoSocial: string | null;
+    nomeFantasia: string | null;
+    situacaoCadastral: string | null;
+    porte: string | null;
+    cnaePrincipal: string | null;
+    telefone: string | null;
+    email: string | null;
+    website: string | null;
+  };
+  relationshipType: string;
+  contacts: Array<{
+    personId: string;
+    nome: string;
+    cargo: string | null;
+    qualificacao: string | null;
+    telefones: string[];
+    emails: string[];
+    roles: string[];
+    isPrimary: boolean;
+    preferredChannel: string | null;
+    priorityByPurpose: Record<string, number>;
+  }>;
+};
+
 export type AgentContext = {
   lead:           Lead;
   ci:             CI | null;
   conversation:   Conversation | null;
   recentMessages: Message[];
+  companyContext: CompanyAgentContext | null;
 };
 
 export type LimitOk = {
@@ -306,7 +340,81 @@ export async function loadContext(tenantId: string, leadId: string): Promise<Age
         .then((rows) => rows.reverse())
     : [];
 
-  return { lead, ci, conversation, recentMessages };
+  let companyContext: CompanyAgentContext | null = null;
+  const [tenantCompany] = await db
+    .select({
+      id: crmTenantCompaniesTable.id,
+      companyId: crmTenantCompaniesTable.companyId,
+      relationshipType: crmTenantCompaniesTable.relationshipType,
+    })
+    .from(crmTenantCompaniesTable)
+    .where(and(
+      eq(crmTenantCompaniesTable.tenantId, tenantId),
+      eq(crmTenantCompaniesTable.leadId, leadId),
+    ))
+    .limit(1);
+
+  if (tenantCompany) {
+    const [company] = await db
+      .select({
+        id: crmCompaniesMasterTable.id,
+        cnpj: crmCompaniesMasterTable.cnpj,
+        razaoSocial: crmCompaniesMasterTable.razaoSocial,
+        nomeFantasia: crmCompaniesMasterTable.nomeFantasia,
+        situacaoCadastral: crmCompaniesMasterTable.situacaoCadastral,
+        porte: crmCompaniesMasterTable.porte,
+        cnaePrincipal: crmCompaniesMasterTable.cnaePrincipal,
+        telefone: crmCompaniesMasterTable.telefone,
+        email: crmCompaniesMasterTable.email,
+        website: crmCompaniesMasterTable.website,
+      })
+      .from(crmCompaniesMasterTable)
+      .where(eq(crmCompaniesMasterTable.id, tenantCompany.companyId))
+      .limit(1);
+
+    if (company) {
+      const contacts = await db
+        .select({
+          personId: crmPeopleMasterTable.id,
+          nome: crmPeopleMasterTable.nome,
+          cargo: crmCompanyPeopleTable.cargo,
+          qualificacao: crmCompanyPeopleTable.qualificacao,
+          telefones: crmPeopleMasterTable.telefones,
+          emails: crmPeopleMasterTable.emails,
+          roles: crmTenantCompanyContactsTable.roles,
+          isPrimary: crmTenantCompanyContactsTable.isPrimary,
+          preferredChannel: crmTenantCompanyContactsTable.preferredChannel,
+          priorityByPurpose: crmTenantCompanyContactsTable.priorityByPurpose,
+        })
+        .from(crmTenantCompanyContactsTable)
+        .innerJoin(crmPeopleMasterTable, eq(crmPeopleMasterTable.id, crmTenantCompanyContactsTable.personId))
+        .leftJoin(
+          crmCompanyPeopleTable,
+          and(
+            eq(crmCompanyPeopleTable.companyId, tenantCompany.companyId),
+            eq(crmCompanyPeopleTable.personId, crmPeopleMasterTable.id),
+          ),
+        )
+        .where(and(
+          eq(crmTenantCompanyContactsTable.tenantId, tenantId),
+          eq(crmTenantCompanyContactsTable.tenantCompanyId, tenantCompany.id),
+        ));
+
+      companyContext = {
+        company,
+        relationshipType: tenantCompany.relationshipType,
+        contacts: contacts.map((contact) => ({
+          ...contact,
+          telefones: contact.telefones ?? [],
+          emails: contact.emails ?? [],
+          roles: contact.roles ?? [],
+          priorityByPurpose: contact.priorityByPurpose ?? {},
+        })),
+      };
+    }
+  }
+
+  return { lead, ci, conversation, recentMessages, companyContext };
 }
 
 // ── Limit checker ─────────────────────────────────────────────────────────────
@@ -556,7 +664,7 @@ export function msgToOpenAI(m: Message): OpenAI.Chat.ChatCompletionMessageParam 
 }
 
 // ── Lead section builder ───────────────────────────────────────────────────────
-export function buildLeadSection(lead: Lead): string {
+export function buildLeadSection(lead: Lead, companyContext?: CompanyAgentContext | null): string {
   const lines = ["## PERFIL DO LEAD"];
   lines.push(`Nome: ${lead.nome}`);
   if (lead.empresa)          lines.push(`Empresa: ${lead.empresa}`);
@@ -652,6 +760,38 @@ export function buildLeadSection(lead: Lead): string {
   }
 
   lines.push(qualLines.join("\n"));
+
+  if (companyContext) {
+    lines.push("## EMPRESA MESTRE E CONTATOS VINCULADOS");
+    const company = companyContext.company;
+    lines.push(`CNPJ: ${company.cnpj}`);
+    if (company.razaoSocial) lines.push(`Razão social: ${company.razaoSocial}`);
+    if (company.nomeFantasia) lines.push(`Nome fantasia: ${company.nomeFantasia}`);
+    if (company.situacaoCadastral) lines.push(`Situação cadastral: ${company.situacaoCadastral}`);
+    if (company.cnaePrincipal) lines.push(`Atividade principal: ${company.cnaePrincipal}`);
+    lines.push(`Relacionamento com este tenant: ${companyContext.relationshipType}`);
+    if (companyContext.contacts.length > 0) {
+      lines.push("Contatos disponíveis para este tenant:");
+      for (const contact of companyContext.contacts) {
+        const roleText = contact.roles.length > 0 ? contact.roles.join(", ") : "papel não confirmado";
+        const channels = [
+          contact.telefones[0] ? `tel: ${contact.telefones[0]}` : null,
+          contact.emails[0] ? `e-mail: ${contact.emails[0]}` : null,
+        ].filter(Boolean).join(" | ");
+        lines.push(
+          `- ${contact.nome}${contact.cargo ? ` — ${contact.cargo}` : ""} — papéis: ${roleText}` +
+          `${contact.isPrimary ? " — contato principal" : ""}${channels ? ` — ${channels}` : ""}`
+        );
+      }
+      lines.push(
+        "REGRA DE CONTATO: quando a ação tiver uma finalidade específica, use o contato com papel correspondente " +
+        "(ex.: financeiro para cobrança, compras para negociação de compra, técnico para assunto técnico, decisor para decisão). " +
+        "Não invente telefone, e-mail, cargo ou autoridade; se não houver contato adequado, sinalize que o contato precisa ser confirmado."
+      );
+    } else {
+      lines.push("Nenhum contato confirmado para este tenant. Não invente interlocutores.");
+    }
+  }
 
   return lines.join("\n");
 }
@@ -786,7 +926,7 @@ export function buildSdrPrompt(customPrompt: string | undefined, ctx: AgentConte
     "- Se o cliente disser que não resolveu ou resolveu parcialmente, preserve o histórico e continue em um retorno vinculado, sem obrigá-lo a repetir tudo.\n" +
     "- Use sempre dados reais do tenant, Base de Conhecimento, pedido/projeto/produto, histórico e AST. Não invente diagnóstico, peça, prazo, garantia, visita ou responsável."
   );
-  parts.push(buildLeadSection(lead));
+  parts.push(buildLeadSection(lead, ctx.companyContext));
 
     if (ci) {
       const lines = ["## INTELIGÊNCIA DE CLIENTE (somente contexto interno; não trate inferências como fatos)"];
@@ -850,7 +990,7 @@ export function buildSdrPrompt(customPrompt: string | undefined, ctx: AgentConte
     );
     if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   }
-  parts.push(buildLeadSection(lead));
+  parts.push(buildLeadSection(lead, ctx.companyContext));
 
   // ── SPIN adaptativo por tipo de negócio detectado por IA ─────────────────
   // Injeta exemplos de perguntas SPIN específicos para o tipo de negócio
@@ -1189,7 +1329,7 @@ export function buildCloserPrompt(customPrompt: string | undefined, ctx: AgentCo
       `Foque nas vantagens relevantes para o perfil do lead e encaminhe para a conversa no WhatsApp.`);
   }
 
-  parts.push(buildLeadSection(lead));
+  parts.push(buildLeadSection(lead, ctx.companyContext));
   if (ci) {
     const lines = ["## INTELIGÊNCIA DE CLIENTE (use para personalizar a abordagem)"];
     if (ci.journeyStage)   lines.push(`Estágio: ${ci.journeyStage}`);
@@ -1248,7 +1388,7 @@ export function buildFollowupPrompt(customPrompt: string | undefined, ctx: Agent
     );
     if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   }
-  parts.push(buildLeadSection(lead));
+  parts.push(buildLeadSection(lead, ctx.companyContext));
   if (ci) {
     const lines = ["## INTELIGÊNCIA DE CLIENTE"];
     if (ci.journeyStage)         lines.push(`Estágio: ${ci.journeyStage}`);
@@ -1331,7 +1471,7 @@ export function buildReactivationPrompt(customPrompt: string | undefined, ctx: A
     }
     if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   }
-  parts.push(buildLeadSection(lead));
+  parts.push(buildLeadSection(lead, ctx.companyContext));
   if (ci) {
     const lines = ["## INTELIGÊNCIA DE CLIENTE"];
     if (ci.journeyStage)         lines.push(`Estágio: ${ci.journeyStage}`);
@@ -1397,7 +1537,7 @@ export function buildSchedulerPrompt(
     );
     if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + resolveMeetLinkInText(customPrompt.trim()));
   }
-  parts.push(buildLeadSection(lead));
+  parts.push(buildLeadSection(lead, ctx.companyContext));
   if (ci?.nextBestAction) {
     parts.push(`## CONTEXTO\nPróxima ação recomendada: ${ci.nextBestAction}`);
   }
@@ -1423,7 +1563,7 @@ export function buildServicePrompt(customPrompt: string | undefined, ctx: AgentC
     );
     if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   }
-  parts.push(buildLeadSection(lead));
+  parts.push(buildLeadSection(lead, ctx.companyContext));
 
   const supportIntake = scenario?.supportIntake as {
     state?: "collecting" | "opened" | "existing" | "unassigned";
@@ -1486,7 +1626,7 @@ export function buildFinanceiroPrompt(customPrompt: string | undefined, ctx: Age
     );
     if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   }
-  parts.push(buildLeadSection(lead));
+  parts.push(buildLeadSection(lead, ctx.companyContext));
   if (ci) {
     const lines = ["## CONTEXTO DO CLIENTE"];
     if (ci.journeyStage) lines.push(`Estágio: ${ci.journeyStage}`);
@@ -1515,7 +1655,7 @@ export function buildCobrancaPrompt(customPrompt: string | undefined, ctx: Agent
     );
     if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   }
-  parts.push(buildLeadSection(lead));
+  parts.push(buildLeadSection(lead, ctx.companyContext));
   if (ci) {
     const lines = ["## CONTEXTO DO CLIENTE"];
     if (ci.journeyStage) lines.push(`Estágio: ${ci.journeyStage}`);
@@ -1548,7 +1688,7 @@ export function buildReceptionPrompt(customPrompt: string | undefined, ctx: Agen
     "Quando a necessidade for de farmácia — medicamento, disponibilidade, receita, sintomas, entrega ou orientação farmacêutica — responda brevemente que encaminhará para o atendimento da farmácia e acrescente ao final exatamente: {{handoff:farmacia}}\n" +
     "O marcador {{handoff:farmacia}} é interno e nunca deve ser explicado ao lead."
   );
-  parts.push(buildLeadSection(lead));
+  parts.push(buildLeadSection(lead, ctx.companyContext));
   if (ci?.goalAnalysis) parts.push(`## CONTEXTO\nObjetivo aparente do contato: ${ci.goalAnalysis}`);
   return joinWithCalibration(parts);
 }
@@ -1618,7 +1758,7 @@ export function buildPharmacyPrompt(customPrompt: string | undefined, ctx: Agent
     "- Queimadura leve: água corrente fresca por cerca de 20 minutos; encaminhar áreas extensas, face, mãos, genitais ou bolhas grandes.\n" +
     "Um asterisco ou a expressão 'após triagem' na política da farmácia significa: não sugerir automaticamente sem validação das contraindicações."
   );
-  parts.push(buildLeadSection(lead));
+  parts.push(buildLeadSection(lead, ctx.companyContext));
   if (catalog.length > 0) {
     parts.push("## PRODUTOS DISPONÍVEIS NO CATÁLOGO\n" + catalog.map((p) => {
       const posologia = p.posologiaAprovada && p.posologiaFonteUrl && p.posologia
@@ -1653,7 +1793,7 @@ export function buildOnboardingPrompt(customPrompt: string | undefined, ctx: Age
     );
     if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   }
-  parts.push(buildLeadSection(lead));
+  parts.push(buildLeadSection(lead, ctx.companyContext));
   if (ci) {
     const lines = ["## CONTEXTO DO NOVO CLIENTE"];
     if (ci.goalAnalysis)         lines.push(`Objetivo principal: ${ci.goalAnalysis}`);
