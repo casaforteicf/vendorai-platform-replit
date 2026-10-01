@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
-import { Maximize2, Move, ZoomIn, ZoomOut } from "lucide-react";
+import { Magnet, Maximize2, Move, Route, ZoomIn, ZoomOut } from "lucide-react";
 import type { ConceptGeometry, ConceptRoomShape, OpeningMarker } from "./conceptGeometry";
 import { orthogonalEnd, snapPointToWallNetwork, wallLength, wallMidpoint, type ClosedSpace, type WallTopologyEndpointRef, type WallTopologyNode } from "./conceptWallNetwork";
 
@@ -418,6 +418,8 @@ export default function ConceptPlan2D({
   const [wallChainOrigin, setWallChainOrigin] = useState<{ x: number; y: number } | null>(null);
   const [wallDrawPreview, setWallDrawPreview] = useState<{ x: number; y: number } | null>(null);
   const [wallLengthInput, setWallLengthInput] = useState("");
+  const [snapEnabled, setSnapEnabled] = useState(true);
+  const [orthogonalEnabled, setOrthogonalEnabled] = useState(true);
   const pendingClosedSpaceSelectRef = useRef(false);
   const previousClosedSpaceIdsRef = useRef(new Set<string>());
   const [snapGuides, setSnapGuides] = useState<{ x?: number; y?: number }>({});
@@ -726,7 +728,7 @@ export default function ConceptPlan2D({
     return { x: result.x, y: result.y };
   };
 
-  const snap = (value: number) => Math.round(value * 4) / 4;
+  const snap = (value: number) => snapEnabled ? Math.round(value * 4) / 4 : value;
 
   const wallNetwork = [
     ...geometry.walls.map((wall) => ({
@@ -756,9 +758,9 @@ export default function ConceptPlan2D({
       return;
     }
 
-    const rawEnd = orthogonalEnd(wallDrawStart, snapped);
+    const rawEnd = orthogonalEnabled ? orthogonalEnd(wallDrawStart, snapped) : snapped;
     const networkEnd = snapPointToWallNetwork(rawEnd, wallNetwork, 0.35);
-    let end = clampPoint(orthogonalEnd(wallDrawStart, networkEnd));
+    let end = clampPoint(orthogonalEnabled ? orthogonalEnd(wallDrawStart, networkEnd) : networkEnd);
     const closeThreshold = 0.42;
     const nearOrigin = wallChainOrigin
       ? Math.hypot(end.x - wallChainOrigin.x, end.y - wallChainOrigin.y) <= closeThreshold
@@ -850,9 +852,9 @@ export default function ConceptPlan2D({
     if (interactionMode === "draw-wall" && wallDrawStart) {
       const clamped = clampPoint(point);
       const snapped = snapPointToWallNetwork(clamped, wallNetwork, 0.35);
-      const orthogonal = orthogonalEnd(wallDrawStart, snapped);
+      const orthogonal = orthogonalEnabled ? orthogonalEnd(wallDrawStart, snapped) : snapped;
       const networkEnd = snapPointToWallNetwork(orthogonal, wallNetwork, 0.35);
-      let preview = clampPoint(orthogonalEnd(wallDrawStart, networkEnd));
+      let preview = clampPoint(orthogonalEnabled ? orthogonalEnd(wallDrawStart, networkEnd) : networkEnd);
       if (wallChainOrigin && Math.hypot(preview.x - wallChainOrigin.x, preview.y - wallChainOrigin.y) <= 0.42) {
         preview = wallChainOrigin;
       }
@@ -1219,6 +1221,29 @@ export default function ConceptPlan2D({
         <div className="mx-0.5 h-6 w-px bg-slate-200" />
         <button
           type="button"
+          onClick={() => setSnapEnabled((value) => !value)}
+          className={snapEnabled
+            ? "flex h-9 items-center gap-1.5 rounded-xl bg-sky-50 px-2.5 text-[11px] font-bold text-sky-700"
+            : "flex h-9 items-center gap-1.5 rounded-xl px-2.5 text-[11px] font-semibold text-slate-500 hover:bg-slate-100"}
+          title={snapEnabled ? "Snap inteligente ativo" : "Ativar snap inteligente"}
+        >
+          <Magnet className="h-3.5 w-3.5" />
+          <span className="hidden xl:inline">Snap</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setOrthogonalEnabled((value) => !value)}
+          className={orthogonalEnabled
+            ? "flex h-9 items-center gap-1.5 rounded-xl bg-emerald-50 px-2.5 text-[11px] font-bold text-emerald-700"
+            : "flex h-9 items-center gap-1.5 rounded-xl px-2.5 text-[11px] font-semibold text-slate-500 hover:bg-slate-100"}
+          title={orthogonalEnabled ? "Trava ortogonal ativa" : "Ativar trava ortogonal"}
+        >
+          <Route className="h-3.5 w-3.5" />
+          <span className="hidden xl:inline">Orto</span>
+        </button>
+        <div className="mx-0.5 h-6 w-px bg-slate-200" />
+        <button
+          type="button"
           onClick={resetView}
           className="grid h-9 w-9 place-items-center rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-950"
           title="Enquadrar projeto (F)"
@@ -1240,7 +1265,7 @@ export default function ConceptPlan2D({
                 <span>Enter cria a parede</span>
               </>
             ) : (
-              <span>Clique para continuar ou digite a medida + Enter · Esc finaliza</span>
+              <span>Clique para continuar ou digite a medida + Enter · Snap {snapEnabled ? "ON" : "OFF"} · Orto {orthogonalEnabled ? "ON" : "OFF"}</span>
             )}
           </div>
         )}
