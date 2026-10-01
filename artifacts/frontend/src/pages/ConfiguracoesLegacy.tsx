@@ -165,6 +165,7 @@ const SiteGeneratorTab = lazy(() => import("./SiteGenerator").then((m) => ({ def
 const FaturamentoTab = lazy(() => import("./FaturamentoTab").then((m) => ({ default: m.FaturamentoTab })));
 const ContractTemplateTab = lazy(() => import("@/components/ContractTemplateTab").then((m) => ({ default: m.ContractTemplateTab })));
 const BrandKitSettings = lazy(() => import("@/components/BrandKitSettings").then((m) => ({ default: m.BrandKitSettings })));
+const CompanyIntelligenceOverview = lazy(() => import("@/components/CompanyIntelligenceOverview"));
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -2343,6 +2344,10 @@ export default function Configuracoes() {
         <h1 className="text-2xl font-bold tracking-tight">Configurações</h1>
         <p className="text-muted-foreground text-sm mt-1">Gerencie o perfil da empresa e as configurações da conta.</p>
       </div>
+
+      <Suspense fallback={null}>
+        <CompanyIntelligenceOverview />
+      </Suspense>
 
       <Tabs
         value={activeTab}
