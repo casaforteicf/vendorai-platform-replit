@@ -432,6 +432,8 @@ async function handleConferenciaEstoqueRejected(
 
   await db.insert(notificationsTable).values({
     tenantId: task.tenantId,
+    recipientUserId: deal.assignedTo ?? null,
+    leadId: deal.leadId ?? task.leadId,
     title: "Conferência de estoque reprovada",
     message: `A conferência de estoque do negócio "${deal.titulo}" foi reprovada. Motivo: ${motivoTexto}.`,
     type: "warning",
