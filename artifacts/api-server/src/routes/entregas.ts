@@ -17,6 +17,7 @@ import {
   activitiesTable,
   leadsTable,
   usersTable,
+  tenantsTable,
   type EntregaItem,
 } from "@workspace/db";
 import { buildUserFunctionFilter } from "../middlewares/auth.js";
@@ -148,6 +149,99 @@ function proposalItemIndexFor(
   }
   const normalized = item.nome.trim().toLocaleLowerCase("pt-BR");
   return proposalItems.findIndex((p) => p.nome.trim().toLocaleLowerCase("pt-BR") === normalized);
+}
+
+
+type ExpeditionCheckStatus = "pendente" | "ok" | "divergencia" | "na";
+
+function configuredExpeditionChecks(sourceItem: any): string[] {
+  const deliveryConfig = sourceItem?.sourceSnapshot?.deliveryConfig;
+  if (!deliveryConfig || typeof deliveryConfig !== "object") return [];
+  const configured = (deliveryConfig as Record<string, unknown>).checklistExpedicao
+    ?? (deliveryConfig as Record<string, unknown>).checklist;
+  if (!Array.isArray(configured)) return [];
+  return configured
+    .map((entry) => typeof entry === "string" ? entry.trim() : "")
+    .filter(Boolean);
+}
+
+function expeditionChecksFor(segmento: string | null | undefined, sourceItem: any): string[] {
+  const configured = configuredExpeditionChecks(sourceItem);
+  if (configured.length) return configured;
+
+  const text = [
+    segmento,
+    sourceItem?.nome,
+    sourceItem?.descricao,
+    sourceItem?.sourceSnapshot?.descricao,
+  ].filter(Boolean).join(" ").toLocaleLowerCase("pt-BR");
+
+  const isEsquadria = [
+    "esquadria", "janela", "porta", "vidro", "guarda corpo", "guarda-corpo",
+    "alumínio", "aluminio", "pvc", "brise",
+  ].some((term) => text.includes(term));
+
+  if (isEsquadria) return ["Marco", "Folha", "Tela", "Vidro", "Fecho", "Acabamento"];
+  return ["Identificação", "Quantidade", "Integridade", "Embalagem", "Acabamento"];
+}
+
+function buildExpeditionChecklist(input: {
+  segmento?: string | null;
+  vertical?: string | null;
+  deliveryItems: EntregaItem[];
+  proposalItems: any[];
+}) {
+  const checklistItems = input.deliveryItems.map((item) => {
+    const sourceIndex = item.propostaItemIndex ?? -1;
+    const sourceItem = sourceIndex >= 0 ? input.proposalItems[sourceIndex] : undefined;
+    const deliveryConfig = sourceItem?.sourceSnapshot?.deliveryConfig;
+    const config = deliveryConfig && typeof deliveryConfig === "object"
+      ? deliveryConfig as Record<string, unknown>
+      : {};
+    const labels = expeditionChecksFor(input.segmento, sourceItem ?? item);
+    return {
+      propostaItemIndex: item.propostaItemIndex ?? null,
+      produtoId: item.produtoId ?? null,
+      sku: item.sku ?? null,
+      nome: item.nome,
+      quantidade: item.quantidade,
+      contexto: {
+        categoria: typeof config.categoria === "string" ? config.categoria : null,
+        nicho: typeof config.nicho === "string" ? config.nicho : null,
+      },
+      campos: labels.map((label, fieldIndex) => ({
+        id: `${item.propostaItemIndex ?? "item"}-${fieldIndex}`,
+        key: label.toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, ""),
+        label,
+        status: "pendente" as ExpeditionCheckStatus,
+        obrigatorio: true,
+        observacao: "",
+      })),
+    };
+  });
+
+  const totalCampos = checklistItems.reduce((total, item) => total + item.campos.length, 0);
+  return {
+    schemaVersion: 1,
+    tipo: "expedicao_transporte",
+    etapa: "em_transporte",
+    status: "pendente",
+    contexto: {
+      segmento: input.segmento ?? null,
+      vertical: input.vertical ?? null,
+    },
+    totalCampos,
+    concluidos: 0,
+    divergencias: 0,
+    itens: checklistItems,
+    verificacaoFinal: {
+      totalVolumes: null,
+      pesoTotalKg: null,
+      nomeVerificador: "",
+      data: null,
+      observacoes: "",
+    },
+  };
 }
 
 async function getProposalForDeal(tenantId: string, dealId: string, propostaId?: string | null) {
@@ -514,6 +608,16 @@ router.post("/tenants/:tenantId/entregas", async (req, res) => {
 
   const [entrega] = await db.insert(entregasTable).values(data).returning();
   const stage = deliveryStage(entrega);
+  const [tenantContext] = await db.select({
+    segmento: tenantsTable.segmento,
+    vertical: tenantsTable.vertical,
+  }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1);
+  const checklistExpedicao = buildExpeditionChecklist({
+    segmento: tenantContext?.segmento,
+    vertical: tenantContext?.vertical,
+    deliveryItems: entrega.itens,
+    proposalItems: proposal?.itens ?? [],
+  });
   const [card] = await db.insert(workCardsTable).values({
     tenantId,
     codigo: workCode("ENT"),
@@ -537,6 +641,7 @@ router.post("/tenants/:tenantId/entregas", async (req, res) => {
       loteNumero: entrega.loteNumero,
       itens: entrega.itens,
       saldoParcial: true,
+      checklistExpedicao,
     },
   }).returning();
 
