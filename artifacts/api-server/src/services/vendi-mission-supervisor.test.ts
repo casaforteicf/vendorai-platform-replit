@@ -32,6 +32,7 @@ describe("Vendi orchestration policy", () => {
     expect(ids).toContain("works.list");
     expect(ids).toContain("purchasing.request.create");
     expect(ids).toContain("arqdor.projects.list");
+    expect(ids).toContain("customer_intelligence.relationship_events");
     expect(ids).toContain("customer_intelligence.list");
     expect(ids).toContain("media.assets.list");
     expect(ids).toContain("omnichannel.send");
