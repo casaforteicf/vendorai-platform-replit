@@ -193,6 +193,9 @@ importers:
       '@workspace/integrations-anthropic-ai':
         specifier: workspace:*
         version: link:../../lib/integrations-anthropic-ai
+      '@workspace/vendor-brain':
+        specifier: workspace:*
+        version: link:../../lib/vendor-brain
       bcryptjs:
         specifier: ^3.0.3
         version: 3.0.3
@@ -272,9 +275,6 @@ importers:
       '@types/cookie-parser':
         specifier: ^1.4.10
         version: 1.4.10(@types/express@5.0.6)
-      '@types/cors':
-        specifier: ^2.8.19
-        version: 2.8.19
       '@types/express':
         specifier: ^5.0.6
         version: 5.0.6
