@@ -35,6 +35,7 @@ export type InstallationAcceptanceSnapshot = {
   companySignatureUrl: string;
   responsibleName?: string | null;
   visitNumber: number;
+  documents?: string[];
   items: Array<{
     productName: string;
     quantity: number;
@@ -86,6 +87,7 @@ export async function generateInstallationAcceptancePdf(snapshot: InstallationAc
     </div>
     <h2 style="font-size:14px;margin:22px 0 0">Itens conferidos</h2>
     <table><thead><tr><th>Item</th><th>Qtd.</th><th>Local</th><th>Status</th><th>Dados/observações</th></tr></thead><tbody>${rows}</tbody></table>
+    ${snapshot.documents?.length ? `<h2 style="font-size:14px;margin:22px 0 8px">Manuais e garantias aplicáveis</h2><ul>${snapshot.documents.map((url) => `<li style="margin-bottom:4px">${esc(url)}</li>`).join("")}</ul>` : ""}
     <div class="signatures">
       <div class="signature"><img src="${esc(snapshot.customerSignatureUrl)}"><strong>${esc(snapshot.receiverName)}</strong><br><span class="muted">Cliente / representante</span></div>
       <div class="signature"><img src="${esc(snapshot.companySignatureUrl)}"><strong>${esc(snapshot.responsibleName || snapshot.tenantName)}</strong><br><span class="muted">Empresa / instalador responsável</span></div>
