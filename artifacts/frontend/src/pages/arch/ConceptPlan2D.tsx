@@ -417,6 +417,7 @@ export default function ConceptPlan2D({
   const [wallDrawStart, setWallDrawStart] = useState<{ x: number; y: number } | null>(null);
   const [wallChainOrigin, setWallChainOrigin] = useState<{ x: number; y: number } | null>(null);
   const [wallDrawPreview, setWallDrawPreview] = useState<{ x: number; y: number } | null>(null);
+  const [wallLengthInput, setWallLengthInput] = useState("");
   const pendingClosedSpaceSelectRef = useRef(false);
   const previousClosedSpaceIdsRef = useRef(new Set<string>());
   const [snapGuides, setSnapGuides] = useState<{ x?: number; y?: number }>({});
@@ -453,6 +454,7 @@ export default function ConceptPlan2D({
       setWallDrawStart(null);
       setWallChainOrigin(null);
       setWallDrawPreview(null);
+      setWallLengthInput("");
       pendingClosedSpaceSelectRef.current = false;
     }
   }, [interactionMode]);
@@ -605,11 +607,63 @@ export default function ConceptPlan2D({
         return;
       }
 
+      if (interactionMode === "draw-wall" && wallDrawStart) {
+        if (/^[0-9]$/.test(event.key)) {
+          event.preventDefault();
+          setWallLengthInput((current) => `${current}${event.key}`);
+          return;
+        }
+        if ((event.key === "," || event.key === ".") && !wallLengthInput.includes(",") && !wallLengthInput.includes(".")) {
+          event.preventDefault();
+          setWallLengthInput((current) => current ? `${current},` : "0,");
+          return;
+        }
+        if (event.key === "Backspace" && wallLengthInput) {
+          event.preventDefault();
+          setWallLengthInput((current) => current.slice(0, -1));
+          return;
+        }
+        if (event.key === "Enter" && wallLengthInput.trim()) {
+          event.preventDefault();
+          const requestedLength = Number(wallLengthInput.replace(",", "."));
+          if (Number.isFinite(requestedLength) && requestedLength >= 0.5 && wallDrawPreview && onCreateCustomWall) {
+            const dx = wallDrawPreview.x - wallDrawStart.x;
+            const dy = wallDrawPreview.y - wallDrawStart.y;
+            const magnitude = Math.hypot(dx, dy);
+            const direction = magnitude > 0.001
+              ? { x: dx / magnitude, y: dy / magnitude }
+              : { x: 1, y: 0 };
+            const rawEnd = {
+              x: wallDrawStart.x + direction.x * requestedLength,
+              y: wallDrawStart.y + direction.y * requestedLength,
+            };
+            const end = clampPoint(rawEnd);
+            const actualLength = Math.hypot(end.x - wallDrawStart.x, end.y - wallDrawStart.y);
+            if (actualLength >= 0.5) {
+              onCreateCustomWall({
+                id: `custom-wall-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+                floor: activeFloor,
+                x1: wallDrawStart.x,
+                y1: wallDrawStart.y,
+                x2: end.x,
+                y2: end.y,
+                thickness: 0.15,
+              });
+              setWallDrawStart(end);
+              setWallDrawPreview(end);
+              setWallLengthInput("");
+            }
+          }
+          return;
+        }
+      }
+
       if (interactionMode === "draw-wall" && (event.key === "Escape" || event.key === "Enter")) {
         event.preventDefault();
         setWallDrawStart(null);
         setWallChainOrigin(null);
         setWallDrawPreview(null);
+        setWallLengthInput("");
         setSnapGuides({});
       }
     };
@@ -624,7 +678,7 @@ export default function ConceptPlan2D({
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [fitView, interactionMode]);
+  }, [activeFloor, fitView, interactionMode, onCreateCustomWall, wallDrawPreview, wallDrawStart, wallLengthInput]);
 
 
 
@@ -698,6 +752,7 @@ export default function ConceptPlan2D({
       setWallDrawStart(snapped);
       setWallChainOrigin(snapped);
       setWallDrawPreview(snapped);
+      setWallLengthInput("");
       return;
     }
 
@@ -728,9 +783,11 @@ export default function ConceptPlan2D({
         setWallDrawStart(null);
         setWallChainOrigin(null);
         setWallDrawPreview(null);
+        setWallLengthInput("");
       } else {
         setWallDrawStart(end);
         setWallDrawPreview(end);
+        setWallLengthInput("");
       }
       return;
     }
@@ -1174,8 +1231,17 @@ export default function ConceptPlan2D({
           </div>
         )}
         {interactionMode === "draw-wall" && wallDrawStart && (
-          <div className="hidden items-center rounded-xl bg-orange-50 px-2.5 py-2 text-[11px] font-semibold text-orange-700 xl:flex">
-            Clique para continuar · Esc/Enter finaliza
+          <div className="hidden items-center gap-2 rounded-xl bg-orange-50 px-2.5 py-2 text-[11px] font-semibold text-orange-700 xl:flex">
+            {wallLengthInput ? (
+              <>
+                <span className="rounded-md bg-white px-2 py-1 font-bold tabular-nums text-orange-700 shadow-sm">
+                  {wallLengthInput} m
+                </span>
+                <span>Enter cria a parede</span>
+              </>
+            ) : (
+              <span>Clique para continuar ou digite a medida + Enter · Esc finaliza</span>
+            )}
           </div>
         )}
       </div>
