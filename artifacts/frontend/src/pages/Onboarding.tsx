@@ -8,28 +8,12 @@ import { TenantBrand, normalizeTenantLogoUrl } from "@/components/TenantBrand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
-import OnboardingPlanStep, { type TrialPlanMode } from "./OnboardingPlanStep";
 import {
   Loader2,
   CheckCircle2,
   ChevronRight,
   ChevronLeft,
-  UserSearch,
-  Handshake,
-  BarChart2,
-  AlertCircle,
-  Headphones,
-  CalendarCheck,
-  Star,
-  Telescope,
   Check,
   X,
   ImageIcon,
@@ -40,7 +24,7 @@ import {
 } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────────────────────
-type WizardStep = 1 | 2 | 3 | "plan" | "done";
+type WizardStep = 1 | 2 | 3 | "done";
 
 type BusinessDocumentAnalysis = {
   nomeFantasia?: string | null;
@@ -58,24 +42,6 @@ type BusinessDocumentAnalysis = {
 };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const AGENT_CARDS = [
-  { key: "sdr",            labelKey: "onboarding.agent.label.sdr",        descKey: "onboarding.agent.sdr",        Icon: UserSearch },
-  { key: "closer",         labelKey: "onboarding.agent.label.closer",     descKey: "onboarding.agent.closer",     Icon: Handshake },
-  { key: "relacionamento", labelKey: "onboarding.agent.label.finance",    descKey: "onboarding.agent.finance",    Icon: BarChart2 },
-  { key: "reactivation",   labelKey: "onboarding.agent.label.collection", descKey: "onboarding.agent.collection", Icon: AlertCircle },
-  { key: "service",        labelKey: "onboarding.agent.label.support",    descKey: "onboarding.agent.support",    Icon: Headphones },
-  { key: "scheduler",      labelKey: "onboarding.agent.label.scheduler",  descKey: "onboarding.agent.scheduler",  Icon: CalendarCheck },
-  { key: "followup",       labelKey: "onboarding.agent.label.afterSales", descKey: "onboarding.agent.afterSales", Icon: Star },
-  { key: "onboarding",     labelKey: "onboarding.agent.label.prospector", descKey: "onboarding.agent.prospector", Icon: Telescope },
-] as const;
-
-const TOM_OPTIONS = [
-  { value: "profissional", labelKey: "onboarding.tone.professional" },
-  { value: "amigavel",     labelKey: "onboarding.tone.friendly" },
-  { value: "tecnico",      labelKey: "onboarding.tone.technical" },
-  { value: "vendedor",     labelKey: "onboarding.tone.sales" },
-] as const;
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function getToken() { return localStorage.getItem("vendorai_token"); }
 function getBase()  { return (import.meta.env.BASE_URL ?? "/").replace(/\/$/, ""); }
@@ -121,7 +87,6 @@ export default function Onboarding() {
   const [step, setStep] = useState<WizardStep>(1);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [isTrial, setIsTrial] = useState(false);
 
   // Step 1 state
   const [s1NomeEmpresa, setS1NomeEmpresa] = useState("");
@@ -134,17 +99,6 @@ export default function Onboarding() {
   const [documentNames, setDocumentNames] = useState<string[]>([]);
   const [businessAnalysis, setBusinessAnalysis] = useState<BusinessDocumentAnalysis | null>(null);
 
-  // Step 2 state
-  const [s2PhoneNumberId, setS2PhoneNumberId] = useState("");
-  const [s2AccessToken,   setS2AccessToken]   = useState("");
-  const [s2WabaId,        setS2WabaId]        = useState("");
-  const [s2Numero,        setS2Numero]        = useState("");
-
-  // Step 3 state
-  const [s3AgentKey,    setS3AgentKey]    = useState<string>("sdr");
-  const [s3NomePerfil,  setS3NomePerfil]  = useState("");
-  const [s3Tom,         setS3Tom]         = useState("profissional");
-
   const { data: segments = [], isLoading: segmentsLoading } = useListSegmentTemplates();
 
   // ── Load progress on mount ──────────────────────────────────────────────────
@@ -153,15 +107,6 @@ export default function Onboarding() {
     (async () => {
       try {
         const data = await apiGet("/api/onboarding") as { stepAtual?: number; concluido?: boolean };
-        let trialActive = false;
-        try {
-          const trial = await apiGet("/api/trial/status") as { isTrial?: boolean };
-          trialActive = trial.isTrial === true;
-        } catch {
-          // Compatibilidade com ambientes ainda sem a rota de jornada de trial.
-        }
-        setIsTrial(trialActive);
-
         if (data.concluido) {
           window.location.replace("/dashboard");
           return;
@@ -372,74 +317,6 @@ export default function Onboarding() {
     }
   }
 
-  async function handleStep2() {
-    const phoneId = s2PhoneNumberId.trim();
-    const token   = s2AccessToken.trim();
-
-    // If no credentials provided, skip without calling the API
-    if (!phoneId || !token) {
-      setStep(3);
-      return;
-    }
-
-    if (!s2Numero.trim()) {
-      toast({ title: t("onboarding.error.whatsappNumber"), variant: "destructive" });
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      await apiPatch("/api/onboarding/step/2", {
-        metaPhoneNumberId: phoneId,
-        metaAccessToken:   token,
-        metaWabaId:        s2WabaId.trim() || undefined,
-        numeroWhatsapp:    s2Numero.trim(),
-      });
-      setStep(3);
-    } catch (err) {
-      toast({ title: String(err instanceof Error ? err.message : t("onboarding.error.save")), variant: "destructive" });
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function handleStep3() {
-    setSubmitting(true);
-    try {
-      await apiPatch("/api/onboarding/step/3", {
-        agentKey: s3AgentKey,
-        nomePerfil: s3NomePerfil.trim() || undefined,
-        tom: s3Tom || undefined,
-      });
-      if (isTrial) {
-        setStep("plan");
-      } else {
-        await apiPatch("/api/onboarding/step/4", {});
-        setStep("done");
-      }
-    } catch (err) {
-      toast({ title: String(err instanceof Error ? err.message : t("onboarding.error.save")), variant: "destructive" });
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function handlePlanSelection(mode: TrialPlanMode) {
-    setSubmitting(true);
-    try {
-      await apiPost("/api/trial/select-plan", { mode });
-      await apiPatch("/api/onboarding/step/4", {});
-      setStep("done");
-    } catch (err) {
-      toast({
-        title: String(err instanceof Error ? err.message : "Não foi possível selecionar o plano."),
-        variant: "destructive",
-      });
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
   async function goToDashboard() {
     setSubmitting(true);
     try {
@@ -459,7 +336,7 @@ export default function Onboarding() {
   }
 
   // ── Progress bar ─────────────────────────────────────────────────────────────
-  const stepNum = typeof step === "number" ? step : step === "done" ? 3 : 3;
+  const stepNum = typeof step === "number" ? step : 3;
   const progressPct = step === "done" ? 100 : Math.max(0, Math.min(100, ((stepNum - 1) / 2) * 100));
 
   const STEP_LABELS = ["Empresa", "Materiais", "Revisar"];
@@ -478,9 +355,7 @@ export default function Onboarding() {
       <header className="border-b bg-card px-6 py-3 flex items-center justify-between shrink-0">
         <TenantBrand pendingName={s1NomeEmpresa} pendingLogoUrl={s1Logo} />
         <div className="flex items-center gap-4">
-          {step === "plan" ? (
-            <span className="text-sm font-medium text-primary">Escolha seu plano</span>
-          ) : step !== "done" ? (
+          {step !== "done" ? (
             <span className="text-sm text-muted-foreground">
               Etapa {stepNum} de 3
             </span>
@@ -549,7 +424,7 @@ export default function Onboarding() {
 
       {/* ── Content ── */}
       <main className="flex-1 flex flex-col items-center py-8 px-4">
-        <div className={`w-full space-y-6 ${step === "plan" ? "max-w-4xl" : "max-w-lg"}`}>
+        <div className="w-full max-w-lg space-y-6">
 
           {/* ═══════════════════════════════════════════════════════
               STEP 1 — EMPRESA
@@ -826,17 +701,6 @@ export default function Onboarding() {
                 </div>
               </CardContent>
             </Card>
-          )}
-
-          {/* ═══════════════════════════════════════════════════════
-              PLAN — ESCOLHA COMERCIAL DO TRIAL
-          ═══════════════════════════════════════════════════════ */}
-          {step === "plan" && (
-            <OnboardingPlanStep
-              submitting={submitting}
-              onBack={() => setStep(3)}
-              onSelect={handlePlanSelection}
-            />
           )}
 
           {/* ═══════════════════════════════════════════════════════
