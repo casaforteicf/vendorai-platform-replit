@@ -207,7 +207,7 @@ function trustedTenantCustomHost(req: Request): string | null {
 
 function isCrmHostname(hostname: string | null): boolean {
   if (!hostname) return false;
-  return MAIN_HOSTNAMES.has(hostname) || hostname.endsWith(`.app.${ROOT_DOMAIN}`);
+  return MAIN_HOSTNAMES.has(hostname) || hostname.endsWith(`.app.${ROOT_DOMAIN}`) || hostname.endsWith(".up.railway.app");
 }
 
 function firstPathSegment(pathname: string): string | null {
