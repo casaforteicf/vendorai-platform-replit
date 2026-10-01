@@ -33,11 +33,79 @@ export type PlannedAction =
   | { action: "extract"; selector?: string; reason?: string }
   | { action: "finish"; answer: string; outcome: "completed" | "blocked" | "failed"; reason?: string };
 
+export interface BrowserAgentCheckpoint {
+  url: string;
+  title: string;
+  textSignature: string;
+  interactiveCount: number;
+  capturedAt: string;
+}
+
 export interface BrowserAgentStep {
   index: number;
   action: string;
   url: string;
   detail?: string;
+  checkpoint?: BrowserAgentCheckpoint;
+}
+
+export type BrowserFailureKind =
+  | "selector_stale"
+  | "navigation_timeout"
+  | "transient_network"
+  | "target_closed"
+  | "detached_frame"
+  | "blocked"
+  | "approval_required"
+  | "unknown";
+
+export function classifyBrowserError(error: unknown): BrowserFailureKind {
+  const message = String((error as any)?.message ?? error ?? "");
+  if (message.startsWith("BROWSER_BLOCKED:")) return "blocked";
+  if (message.startsWith("APPROVAL_REQUIRED:")) return "approval_required";
+  if (/No element found for selector|failed to find element matching selector|No node found for selector|Node is detached from document/i.test(message)) return "selector_stale";
+  if (/Navigation timeout|TimeoutError.*navigation|waiting for navigation/i.test(message)) return "navigation_timeout";
+  if (/net::ERR_(?:TIMED_OUT|CONNECTION_RESET|CONNECTION_CLOSED|CONNECTION_REFUSED|NETWORK_CHANGED|INTERNET_DISCONNECTED)|socket hang up|ECONNRESET|ETIMEDOUT/i.test(message)) return "transient_network";
+  if (/Target closed|Session closed|Protocol error.*Target|Connection closed/i.test(message)) return "target_closed";
+  if (/detached Frame|Attempted to use detached Frame|Cannot find context with specified id/i.test(message)) return "detached_frame";
+  return "unknown";
+}
+
+export function isRetryableBrowserError(error: unknown) {
+  return ["navigation_timeout", "transient_network", "detached_frame"].includes(classifyBrowserError(error));
+}
+
+async function withBrowserRetry<T>(
+  operation: () => Promise<T>,
+  attempts = 3,
+): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableBrowserError(error) || attempt === attempts) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 350 * attempt));
+    }
+  }
+  throw lastError;
+}
+
+export function checkpointFromState(state: { url: string; title: string; text: string; interactive: unknown[] }): BrowserAgentCheckpoint {
+  const normalized = state.text.replace(/\s+/g, " ").trim().slice(0, 600);
+  let hash = 2166136261;
+  for (let i = 0; i < normalized.length; i++) {
+    hash ^= normalized.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return {
+    url: state.url,
+    title: state.title,
+    textSignature: (hash >>> 0).toString(16).padStart(8, "0"),
+    interactiveCount: state.interactive.length,
+    capturedAt: new Date().toISOString(),
+  };
 }
 
 export interface BrowserAgentInput {
@@ -188,8 +256,8 @@ export async function planBrowserAction(
 }
 
 export function isRecoverableSelectorError(error: unknown) {
-  const message = String((error as any)?.message ?? error ?? "");
-  return /No element found for selector|failed to find element matching selector|No node found for selector|Cannot find context with specified id|Node is detached from document/i.test(message);
+  const kind = classifyBrowserError(error);
+  return kind === "selector_stale" || kind === "detached_frame";
 }
 
 async function sensitive(page: Page, selector: string) {
@@ -218,7 +286,9 @@ export async function executeBrowserAction(
   if (action.action === "finish") return action.answer;
 
   if (action.action === "navigate") {
-    await page.goto(validateBrowserUrl(action.url, input.allowedHosts), { waitUntil: "domcontentloaded", timeout: 30000 });
+    await withBrowserRetry(() =>
+      page.goto(validateBrowserUrl(action.url, input.allowedHosts), { waitUntil: "domcontentloaded", timeout: 30000 }),
+    );
     return;
   }
 
@@ -280,10 +350,10 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
       await page.setCookie(...input.sessionCookies).catch(() => undefined);
     }
 
-    await page.goto(validateBrowserUrl(input.startUrl, input.allowedHosts), {
+    await withBrowserRetry(() => page.goto(validateBrowserUrl(input.startUrl, input.allowedHosts), {
       waitUntil: "domcontentloaded",
       timeout: 30000,
-    });
+    }));
 
     if (input.firstPartyAuthToken) {
       const current = new URL(page.url());
@@ -302,7 +372,13 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
         : input.goal;
       selectorRecoveryNote = "";
       const action = await planBrowserAction(input.tenantId, planningGoal, state, steps, secretsAvailable);
-      steps.push({ index, action: action.action, url: state.url, detail: "reason" in action ? action.reason : undefined });
+      steps.push({
+        index,
+        action: action.action,
+        url: state.url,
+        detail: "reason" in action ? action.reason : undefined,
+        checkpoint: checkpointFromState(state),
+      });
 
       if (action.action === "finish") {
         if (action.outcome !== "completed") throw new Error(`BROWSER_${action.outcome.toUpperCase()}: ${action.answer}`);
