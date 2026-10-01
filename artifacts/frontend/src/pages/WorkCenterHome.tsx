@@ -18,6 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { BriefcaseBusiness, CalendarClock, ChevronRight, CircleAlert, Clock3, Loader2, Search, UserRound, UsersRound } from "lucide-react";
+import { VisualIdentity } from "@/components/ui/visual-identity";
 
 const TERMINAL_STAGE_KEYS = new Set(["ganho", "perdido", "entregue", "concluido", "cancelado"]);
 const TERMINAL_STAGE_LABELS = new Set([
@@ -34,6 +35,7 @@ type QueueItem = {
   key: string;
   leadId?: string;
   dataIssue?: boolean;
+  visualSource?: Record<string, unknown>;
   dealId?: string;
   leadName: string;
   company?: string | null;
@@ -138,6 +140,7 @@ export default function WorkCenterHome() {
         nextActivity: pendingByDeal.get(deal.id)?.[0],
         updatedAt: deal.updatedAt,
         dataIssue: !lead,
+        visualSource: lead ? (lead as unknown as Record<string, unknown>) : undefined,
       });
     }
     for (const lead of leads) {
@@ -150,6 +153,7 @@ export default function WorkCenterHome() {
         dealTitle: "Atendimento ainda não iniciado",
         stage: "sem_negocio",
         ownerId: lead.assignedTo,
+        visualSource: lead as unknown as Record<string, unknown>,
       });
     }
 
@@ -326,11 +330,14 @@ export default function WorkCenterHome() {
             className="vendor-work-item group p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
+              <div className="flex min-w-0 gap-3">
+                <VisualIdentity source={item.visualSource} label={item.leadName} size="md" />
+                <div className="min-w-0">
                 <h2 className="truncate font-semibold">{item.leadName}</h2>
                 <p className="truncate text-sm text-muted-foreground">{subtitle}</p>
                 {showDealContext ? <p className="mt-1 truncate text-xs text-muted-foreground">Negócio: {item.dealTitle}</p> : null}
                 {item.dataIssue ? <Badge variant="outline" className="mt-2 text-amber-700">Cadastro incompleto</Badge> : null}
+                </div>
               </div>
               <div className="flex shrink-0 flex-col items-end gap-1.5">
                 <Badge variant={isTerminal ? "outline" : "secondary"}>{stageLabel.get(item.stage) ?? FALLBACK_LABELS[item.stage] ?? "Sem negócio"}</Badge>
