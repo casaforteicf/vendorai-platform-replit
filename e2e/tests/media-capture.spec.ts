@@ -4,6 +4,8 @@ import path from "node:path";
 
 const BASE_URL = process.env.MEDIA_BASE_URL || "https://app.appvendorai.com";
 const MEDIA_AUTH_TOKEN = process.env.MEDIA_AUTH_TOKEN;
+const MEDIA_AUTH_EMAIL = process.env.MEDIA_AUTH_EMAIL || "marcos@vendor.ai";
+const MEDIA_AUTH_PASSWORD = process.env.MEDIA_AUTH_PASSWORD || "Homolog@2026!";
 const OUTPUT_ROOT = process.env.MEDIA_OUTPUT_DIR || path.resolve(process.cwd(), "media-output");
 
 type DemoSession = { token: string; user?: unknown };
@@ -29,14 +31,14 @@ const screens = [
 async function getSession(page: Page): Promise<DemoSession> {
   if (sharedSession) return sharedSession;
 
-  const response = await page.request.post(`${BASE_URL}/api/auth/demo-login`, {
-    data: { email: "demo", password: "demo" },
+  const response = await page.request.post(`${BASE_URL}/api/auth/login`, {
+    data: { email: MEDIA_AUTH_EMAIL, password: MEDIA_AUTH_PASSWORD },
     headers: { "Content-Type": "application/json" },
   });
 
   if (!response.ok()) {
     const body = await response.text();
-    throw new Error(`Login demo falhou (${response.status()}): ${body.slice(0, 300)}`);
+    throw new Error(`Login de homologação falhou (${response.status()}): ${body.slice(0, 300)}`);
   }
 
   const body = await response.json();
