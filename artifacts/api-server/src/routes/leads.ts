@@ -47,6 +47,7 @@ import { getActiveCatalogPreview, compactCatalogNames } from "../lib/catalog-rea
 import { reserveUniqueVehicle } from "../services/vehicle-reservation.js";
 import { reserveUniqueItem } from "../services/item-reservation.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
+import { enrichLead } from "../jobs/leadEnrichment.js";
 
 const router: IRouter = Router();
 
@@ -264,7 +265,52 @@ router.post("/leads", async (req, res) => {
     }).catch((error) => req.log?.warn?.({ err: error, leadId: lead.id }, "lead: automatic item reservation skipped"));
   }
 
+  // CRM-native enrichment: every newly created lead can be enriched in the
+  // background without blocking the creation response and without triggering
+  // unsolicited SDR outreach. Prospector keeps its own explicit dispatch rules.
+  enrichLead({
+    leadId: lead.id,
+    tenantId: lead.tenantId,
+    log: req.log,
+    allowAutoDispatch: false,
+  }).catch((error) => req.log?.warn?.({ err: error, leadId: lead.id }, "lead: automatic enrichment skipped"));
+
   res.status(201).json(lead);
+});
+
+
+// ── POST /leads/:id/enrich ────────────────────────────────────────────────
+// Manual re-enrichment from the lead profile. This intentionally never starts
+// an SDR conversation; it only refreshes intelligence and provenance.
+router.post("/leads/:id/enrich", async (req, res) => {
+  const id = String(req.params["id"]);
+  const [lead] = await db
+    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId })
+    .from(leadsTable)
+    .where(eq(leadsTable.id, id))
+    .limit(1);
+
+  if (!lead) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== lead.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  await db.update(leadsTable)
+    .set({ enrichmentStatus: "pending", updatedAt: new Date() })
+    .where(and(eq(leadsTable.id, id), eq(leadsTable.tenantId, lead.tenantId)));
+
+  enrichLead({
+    leadId: id,
+    tenantId: lead.tenantId,
+    log: req.log,
+    allowAutoDispatch: false,
+  }).catch((error) => req.log?.warn?.({ err: error, leadId: id }, "lead: manual enrichment skipped"));
+
+  res.status(202).json({ ok: true, status: "pending" });
 });
 
 const importLeadRowSchema = z.object({
