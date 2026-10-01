@@ -12,6 +12,11 @@ import { runBrowserAgent, type BrowserAgentInput } from "../services/browser-age
 import { browserFleetConfigured, browserFleetStatus } from "../services/browser-fleet.js";
 import { fetchRenderedBatch, fetchRenderedPage } from "../services/browser-fetch.js";
 import {
+  mergeBrowserProfiles,
+  type BrowserProfileState,
+} from "../services/browser-profile.js";
+import { chooseWebExecutionStrategy } from "../services/web-execution-router.js";
+import {
   captureLiveBrowserSession,
   closeLiveBrowserSession,
   controlLiveBrowserSession,
@@ -63,6 +68,11 @@ const liveControlSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("navigate"), url: z.string().url() }),
   z.object({ action: z.literal("back") }),
   z.object({ action: z.literal("reload") }),
+  z.object({ action: z.literal("open_tab"), url: z.string().url().optional() }),
+  z.object({ action: z.literal("switch_tab"), index: z.number().int().min(0).max(30) }),
+  z.object({ action: z.literal("close_tab"), index: z.number().int().min(0).max(30) }),
+  z.object({ action: z.literal("upload"), selector: z.string().min(1).max(1000), fileName: z.string().min(1).max(255) }),
+  z.object({ action: z.literal("download"), selector: z.string().min(1).max(1000) }),
 ]);
 
 const fetchSchema = z.object({
@@ -85,10 +95,20 @@ const runSchema = z.object({
   mode: z.enum(["assistido", "autonomo"]).optional(),
   allowWrite: z.boolean().optional(),
   maxSteps: z.number().int().min(1).max(30).default(12),
+  strategy: z.enum(["browser", "auto"]).default("browser"),
 });
 
 function resolveTenant(req: any) {
   return req.user?.tenantId;
+}
+
+function readBrowserProfile(connection: typeof browserAgentConnectionsTable.$inferSelect): BrowserProfileState | undefined {
+  if (!connection.profileEncrypted) return undefined;
+  try {
+    return JSON.parse(decrypt(connection.profileEncrypted)) as BrowserProfileState;
+  } catch {
+    return undefined;
+  }
 }
 
 function safeConnection(connection: typeof browserAgentConnectionsTable.$inferSelect) {
@@ -99,7 +119,8 @@ function safeConnection(connection: typeof browserAgentConnectionsTable.$inferSe
     allowedHosts: connection.allowedHosts ?? [],
     loginConfigured: Boolean(connection.usernameEncrypted),
     passcodeConfigured: Boolean(connection.passwordEncrypted),
-    hasPersistentSession: Boolean(connection.cookiesEncrypted),
+    hasPersistentSession: Boolean(connection.profileEncrypted || connection.cookiesEncrypted),
+    hasFullProfile: Boolean(connection.profileEncrypted),
     lastUsedAt: connection.lastUsedAt,
     createdAt: connection.createdAt,
     updatedAt: connection.updatedAt,
@@ -239,7 +260,7 @@ router.patch("/browser-agent/connections/:id", async (req, res) => {
       ...(parsed.data.allowedHosts !== undefined ? { allowedHosts: nextAllowedHosts } : {}),
       ...(parsed.data.login !== undefined ? { usernameEncrypted: parsed.data.login ? encrypt(parsed.data.login) : null } : {}),
       ...(parsed.data.passcode !== undefined ? { passwordEncrypted: parsed.data.passcode ? encrypt(parsed.data.passcode) : null } : {}),
-      ...(parsed.data.clearSession ? { cookiesEncrypted: null } : {}),
+      ...(parsed.data.clearSession ? { cookiesEncrypted: null, profileEncrypted: null } : {}),
       updatedAt: new Date(),
     })
     .where(and(
@@ -303,6 +324,7 @@ router.post("/browser-agent/live", async (req, res) => {
   const sessionCookies = connection.cookiesEncrypted
     ? JSON.parse(decrypt(connection.cookiesEncrypted))
     : undefined;
+  let sessionProfile = readBrowserProfile(connection);
 
   const session = await createLiveBrowserSession({
     tenantId,
@@ -315,11 +337,26 @@ router.post("/browser-agent/live", async (req, res) => {
       passcode: connection.passwordEncrypted ? decrypt(connection.passwordEncrypted) : undefined,
     },
     sessionCookies,
+    sessionProfile,
     onSessionPersist: async (cookies) => {
       await db
         .update(browserAgentConnectionsTable)
         .set({
           cookiesEncrypted: encrypt(JSON.stringify(cookies)),
+          lastUsedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(and(
+          eq(browserAgentConnectionsTable.id, connection.id),
+          eq(browserAgentConnectionsTable.tenantId, tenantId),
+        ));
+    },
+    onProfilePersist: async (profile) => {
+      sessionProfile = mergeBrowserProfiles(sessionProfile, profile);
+      await db
+        .update(browserAgentConnectionsTable)
+        .set({
+          profileEncrypted: encrypt(JSON.stringify(sessionProfile)),
           lastUsedAt: new Date(),
           updatedAt: new Date(),
         })
@@ -567,6 +604,34 @@ router.post("/browser-agent/run", async (req, res) => {
     return;
   }
 
+  const selectedStrategy = parsed.data.strategy === "auto"
+    ? chooseWebExecutionStrategy({
+        goal: parsed.data.goal,
+        connectionId: parsed.data.connectionId,
+        allowWrite: parsed.data.allowWrite ?? false,
+      })
+    : "browser";
+
+  if (selectedStrategy === "fetch") {
+    try {
+      const host = new URL(startUrl).hostname.toLowerCase();
+      const result = await fetchRenderedPage({ url: startUrl, allowedHosts: [host] });
+      const [audit] = await db.insert(agentActionsLogTable).values({
+        tenantId,
+        leadId: parsed.data.leadId ?? null,
+        agentName: parsed.data.agentName,
+        actionType: "web_fetch",
+        status: "executed",
+        payload: { goal: parsed.data.goal, startUrl, strategy: "fetch", nodeId: result.nodeId },
+      }).returning();
+      res.json({ runId: audit?.id, ok: true, strategy: "fetch", result });
+      return;
+    } catch (error: any) {
+      res.status(502).json({ error: error?.message ?? "FETCH_FAILED", strategy: "fetch" });
+      return;
+    }
+  }
+
   const [audit] = await db.insert(agentActionsLogTable).values({
     tenantId,
     leadId: parsed.data.leadId ?? null,
@@ -586,6 +651,7 @@ router.post("/browser-agent/run", async (req, res) => {
     const sessionCookies = connection?.cookiesEncrypted
       ? JSON.parse(decrypt(connection.cookiesEncrypted))
       : undefined;
+    let sessionProfile = connection ? readBrowserProfile(connection) : undefined;
 
     const agentInput: BrowserAgentInput = {
       tenantId,
@@ -600,11 +666,26 @@ router.post("/browser-agent/run", async (req, res) => {
         passcode: connection.passwordEncrypted ? decrypt(connection.passwordEncrypted) : undefined,
       } : undefined,
       sessionCookies,
+      sessionProfile,
       onSessionPersist: connection ? async (cookies) => {
         await db
           .update(browserAgentConnectionsTable)
           .set({
             cookiesEncrypted: encrypt(JSON.stringify(cookies)),
+            lastUsedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(and(
+            eq(browserAgentConnectionsTable.id, connection!.id),
+            eq(browserAgentConnectionsTable.tenantId, tenantId),
+          ));
+      } : undefined,
+      onProfilePersist: connection ? async (profile) => {
+        sessionProfile = mergeBrowserProfiles(sessionProfile, profile);
+        await db
+          .update(browserAgentConnectionsTable)
+          .set({
+            profileEncrypted: encrypt(JSON.stringify(sessionProfile)),
             lastUsedAt: new Date(),
             updatedAt: new Date(),
           })
