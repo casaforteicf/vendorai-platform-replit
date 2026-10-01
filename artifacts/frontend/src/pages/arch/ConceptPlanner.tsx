@@ -3540,6 +3540,50 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     pushRoomHistory(before);
   };
 
+  const splitCustomWall = (wallId: string) => {
+    const wall = safeCustomWalls.find((item) => item.id === wallId);
+    if (!wall) return;
+    const length = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    if (length < 1) return;
+
+    const before = snapshotEditor();
+    const midpoint = {
+      x: (wall.x1 + wall.x2) / 2,
+      y: (wall.y1 + wall.y2) / 2,
+    };
+    const secondWallId = `custom-wall-${uid()}`;
+    const secondWall: CustomWall = {
+      ...wall,
+      id: secondWallId,
+      x1: midpoint.x,
+      y1: midpoint.y,
+    };
+
+    setCustomWalls((prev) => (Array.isArray(prev) ? prev : []).flatMap((item) => {
+      if (item.id !== wallId) return [item];
+      return [
+        { ...item, x2: midpoint.x, y2: midpoint.y },
+        secondWall,
+      ];
+    }));
+
+    setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((opening) => {
+      if (opening.wallId !== wallId) return opening;
+      if (opening.offset < 0.5) {
+        return { ...opening, offset: Math.max(0.02, Math.min(0.98, opening.offset * 2)) };
+      }
+      return {
+        ...opening,
+        wallId: secondWallId,
+        offset: Math.max(0.02, Math.min(0.98, (opening.offset - 0.5) * 2)),
+      };
+    }));
+
+    setSelectedCustomWallId(secondWallId);
+    setSelectedWallId(null);
+    pushRoomHistory(before);
+  };
+
   const selectedCustomWall = safeCustomWalls.find((wall) => wall.id === selectedCustomWallId) ?? null;
 
   useEffect(() => {
@@ -9008,6 +9052,15 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       )}
                       <button type="button" onClick={() => addOpeningToCustomWall(selectedCustomWall.id, "door")} className="h-9 rounded-lg border px-3 text-xs font-semibold hover:bg-slate-50">+ Porta</button>
                       <button type="button" onClick={() => addOpeningToCustomWall(selectedCustomWall.id, "window")} className="h-9 rounded-lg border px-3 text-xs font-semibold hover:bg-slate-50">+ Janela</button>
+                      <button
+                        type="button"
+                        onClick={() => splitCustomWall(selectedCustomWall.id)}
+                        disabled={Math.hypot(selectedCustomWall.x2 - selectedCustomWall.x1, selectedCustomWall.y2 - selectedCustomWall.y1) < 1}
+                        className="h-9 rounded-lg border px-3 text-xs font-semibold hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                        title="Dividir a parede no ponto médio"
+                      >
+                        Dividir
+                      </button>
                       <button type="button" onClick={() => duplicateCustomWall(selectedCustomWall.id)} className="h-9 rounded-lg border px-3 text-xs font-semibold hover:bg-slate-50" title="Duplicar parede (Ctrl/Cmd+D)">Duplicar</button>
                       <button type="button" onClick={() => deleteCustomWall(selectedCustomWall.id)} className="h-9 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600 hover:bg-red-50" title="Excluir parede (Del)">Excluir</button>
                     </div>
