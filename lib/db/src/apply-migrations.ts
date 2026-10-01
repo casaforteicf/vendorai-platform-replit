@@ -101,26 +101,6 @@ function sha256(content: string): string {
   return crypto.createHash("sha256").update(content, "utf8").digest("hex");
 }
 
-function assertUniqueMigrationVersions(files: MigrationFile[]): void {
-  const filesByVersion = new Map<string, string[]>();
-  for (const file of files) {
-    const filenames = filesByVersion.get(file.version) ?? [];
-    filenames.push(path.basename(file.filePath));
-    filesByVersion.set(file.version, filenames);
-  }
-  const duplicates = [...filesByVersion.entries()].filter(
-    ([, filenames]) => filenames.length > 1,
-  );
-  if (duplicates.length === 0) return;
-  const details = duplicates
-    .map(([version, filenames]) => `  ${version}: ${filenames.join(", ")}`)
-    .join("\n");
-  throw new Error(
-    `Duplicate migration version(s) detected:\n${details}\n` +
-      "Each numeric migration version must be unique. Resolve the filename conflict before running migrations.",
-  );
-}
-
 export function readMigrationFiles(
   migrationsDir: string = MIGRATIONS_DIR,
 ): MigrationFile[] {
@@ -145,8 +125,17 @@ export function readMigrationFiles(
       ];
     });
 
-  assertUniqueMigrationVersions(files);
-  return files;
+  // Legacy databases recorded unique migrations by numeric prefix. Keep that
+  // identity where it is unambiguous. For historical duplicate-prefix groups,
+  // use the full filename as the stable identity so every SQL file can be
+  // tracked independently without renaming old migrations.
+  const counts = new Map<string, number>();
+  for (const file of files) counts.set(file.version, (counts.get(file.version) ?? 0) + 1);
+  return files.map((file) =>
+    (counts.get(file.version) ?? 0) > 1
+      ? { ...file, version: path.basename(file.filePath) }
+      : file,
+  );
 }
 
 export async function ensureControlTable(client: pg.PoolClient): Promise<void> {
