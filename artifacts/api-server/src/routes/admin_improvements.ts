@@ -19,6 +19,8 @@ const STATUSES = [
 ] as const;
 
 const TEST_STATUSES = ["pending", "running", "passed", "failed"] as const;
+const GATE_STATUSES = ["pending", "passed", "failed", "not_applicable"] as const;
+const RELEASE_SCOPES = ["production", "homolog_only"] as const;
 
 const createSchema = z.object({
   title: z.string().trim().min(3).max(180),
@@ -30,6 +32,13 @@ const createSchema = z.object({
   prUrl: z.string().url().optional().nullable(),
   homologUrl: z.string().url().optional().nullable(),
   productionUrl: z.string().url().optional().nullable(),
+  releaseScope: z.enum(RELEASE_SCOPES).optional().default("production"),
+  dependencyIds: z.array(z.string().uuid()).max(100).optional().default([]),
+  securityGate: z.enum(GATE_STATUSES).optional().default("pending"),
+  migrationGate: z.enum(GATE_STATUSES).optional().default("pending"),
+  designGate: z.enum(GATE_STATUSES).optional().default("pending"),
+  performanceGate: z.enum(GATE_STATUSES).optional().default("pending"),
+  rollbackGate: z.enum(GATE_STATUSES).optional().default("pending"),
 });
 
 const patchSchema = z.object({
@@ -46,6 +55,13 @@ const patchSchema = z.object({
   packageKey: z.string().trim().max(120).nullable().optional(),
   testStatus: z.enum(TEST_STATUSES).optional(),
   testSummary: z.string().trim().max(8000).nullable().optional(),
+  releaseScope: z.enum(RELEASE_SCOPES).optional(),
+  dependencyIds: z.array(z.string().uuid()).max(100).optional(),
+  securityGate: z.enum(GATE_STATUSES).optional(),
+  migrationGate: z.enum(GATE_STATUSES).optional(),
+  designGate: z.enum(GATE_STATUSES).optional(),
+  performanceGate: z.enum(GATE_STATUSES).optional(),
+  rollbackGate: z.enum(GATE_STATUSES).optional(),
 });
 
 const idsSchema = z.object({
@@ -117,11 +133,29 @@ function ensureSchema() {
       approved_production_by text,
       approved_production_at timestamptz,
       merged_staging_sha text,
+      release_scope text NOT NULL DEFAULT 'production',
+      dependency_ids uuid[] NOT NULL DEFAULT '{}',
+      security_gate text NOT NULL DEFAULT 'pending',
+      migration_gate text NOT NULL DEFAULT 'pending',
+      design_gate text NOT NULL DEFAULT 'pending',
+      performance_gate text NOT NULL DEFAULT 'pending',
+      rollback_gate text NOT NULL DEFAULT 'pending',
+      github_state jsonb,
+      github_synced_at timestamptz,
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS admin_improvements_status_idx ON admin_improvements(status);
     CREATE INDEX IF NOT EXISTS admin_improvements_package_idx ON admin_improvements(package_key);
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS release_scope text NOT NULL DEFAULT 'production';
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS dependency_ids uuid[] NOT NULL DEFAULT '{}';
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS security_gate text NOT NULL DEFAULT 'pending';
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS migration_gate text NOT NULL DEFAULT 'pending';
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS design_gate text NOT NULL DEFAULT 'pending';
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS performance_gate text NOT NULL DEFAULT 'pending';
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS rollback_gate text NOT NULL DEFAULT 'pending';
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS github_state jsonb;
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS github_synced_at timestamptz;
     CREATE INDEX IF NOT EXISTS admin_improvements_pr_idx ON admin_improvements(pr_number);
   `).then(() => undefined);
   return schemaReady;
@@ -130,6 +164,50 @@ function ensureSchema() {
 function actor(req: any) {
   return String(req.user?.email ?? req.user?.sub ?? "super_admin");
 }
+
+function gateIssues(row: any) {
+  const issues: string[] = [];
+  if (row.release_scope === "homolog_only") issues.push("Item exclusivo de homologação");
+  if (row.test_status !== "passed") issues.push("Testes não aprovados");
+  const gateFields: Array<[string, string]> = [
+    ["security_gate", "Segurança"],
+    ["migration_gate", "Migration"],
+    ["design_gate", "Design"],
+    ["performance_gate", "Performance"],
+    ["rollback_gate", "Rollback"],
+  ];
+  for (const [field, label] of gateFields) {
+    if (!["passed", "not_applicable"].includes(row[field])) issues.push(`${label} não aprovado`);
+  }
+  return issues;
+}
+
+async function dependencyIssues(ids: string[]) {
+  if (!ids.length) return new Map<string, string[]>();
+  const result = await pool.query(
+    `SELECT id, title, status, dependency_ids FROM admin_improvements WHERE id = ANY($1::uuid[])`,
+    [ids],
+  );
+  const allDependencyIds = [...new Set(result.rows.flatMap((row) => row.dependency_ids ?? []))];
+  const dependencies = allDependencyIds.length
+    ? await pool.query(`SELECT id, title, status FROM admin_improvements WHERE id = ANY($1::uuid[])`, [allDependencyIds])
+    : { rows: [] as any[] };
+  const byId = new Map(dependencies.rows.map((row: any) => [row.id, row]));
+  const issues = new Map<string, string[]>();
+  for (const row of result.rows) {
+    const itemIssues: string[] = [];
+    for (const depId of row.dependency_ids ?? []) {
+      const dep = byId.get(depId);
+      if (!dep) itemIssues.push(`Dependência ${depId} não encontrada`);
+      else if (!["homologado", "aguardando_producao", "producao_validada"].includes(dep.status)) {
+        itemIssues.push(`Dependência "${dep.title}" ainda está em ${dep.status}`);
+      }
+    }
+    issues.set(row.id, itemIssues);
+  }
+  return issues;
+}
+
 
 router.use("/admin/improvements", requireRole("super_admin"));
 
@@ -147,6 +225,11 @@ router.get("/admin/improvements", async (_req, res) => {
       approved_production_by AS "approvedProductionBy",
       approved_production_at AS "approvedProductionAt",
       merged_staging_sha AS "mergedStagingSha",
+      release_scope AS "releaseScope", dependency_ids AS "dependencyIds",
+      security_gate AS "securityGate", migration_gate AS "migrationGate",
+      design_gate AS "designGate", performance_gate AS "performanceGate",
+      rollback_gate AS "rollbackGate", github_state AS "githubState",
+      github_synced_at AS "githubSyncedAt",
       created_at AS "createdAt", updated_at AS "updatedAt"
     FROM admin_improvements
     ORDER BY
@@ -165,13 +248,16 @@ router.post("/admin/improvements", async (req, res) => {
   const result = await pool.query(`
     INSERT INTO admin_improvements (
       id, title, description, module, priority, branch, pr_number, pr_url,
-      homolog_url, production_url, created_by
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      homolog_url, production_url, created_by, release_scope, dependency_ids,
+      security_gate, migration_gate, design_gate, performance_gate, rollback_gate
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
     RETURNING id
   `, [
     id, input.title, input.description, input.module, input.priority,
     input.branch ?? null, input.prNumber ?? null, input.prUrl ?? null,
     input.homologUrl ?? null, input.productionUrl ?? null, actor(req),
+    input.releaseScope, input.dependencyIds,
+    input.securityGate, input.migrationGate, input.designGate, input.performanceGate, input.rollbackGate,
   ]);
   res.status(201).json({ id: result.rows[0]?.id ?? id });
 });
@@ -186,6 +272,10 @@ router.patch("/admin/improvements/:id", async (req, res) => {
     status: "status", branch: "branch", prNumber: "pr_number", prUrl: "pr_url",
     homologUrl: "homolog_url", productionUrl: "production_url", packageKey: "package_key",
     testStatus: "test_status", testSummary: "test_summary",
+    releaseScope: "release_scope", dependencyIds: "dependency_ids",
+    securityGate: "security_gate", migrationGate: "migration_gate",
+    designGate: "design_gate", performanceGate: "performance_gate",
+    rollbackGate: "rollback_gate",
   };
   const sets: string[] = [];
   const values: unknown[] = [];
@@ -318,14 +408,19 @@ router.post("/admin/improvements/approve-production", async (req, res) => {
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
 
   const check = await pool.query(
-    `SELECT id, title, status FROM admin_improvements WHERE id = ANY($1::uuid[])`,
+    `SELECT id, title, status, test_status, release_scope, dependency_ids,
+            security_gate, migration_gate, design_gate, performance_gate, rollback_gate
+       FROM admin_improvements WHERE id = ANY($1::uuid[])`,
     [parsed.data.ids],
   );
-  const blocked = check.rows.filter((row) => row.status !== "homologado");
+  const depIssues = await dependencyIssues(parsed.data.ids);
+  const blocked = check.rows
+    .map((row) => ({ row, issues: [...gateIssues(row), ...(depIssues.get(row.id) ?? [])] }))
+    .filter(({ row, issues }) => row.status !== "homologado" || issues.length);
   if (blocked.length) {
     return res.status(409).json({
       error: "Somente melhorias homologadas podem ser aprovadas para produção.",
-      blocked: blocked.map((row) => ({ id: row.id, title: row.title, status: row.status })),
+      blocked: blocked.map(({ row, issues }) => ({ id: row.id, title: row.title, status: row.status, issues })),
     });
   }
 
@@ -340,6 +435,63 @@ router.post("/admin/improvements/approve-production", async (req, res) => {
     [actor(req), parsed.data.ids],
   );
   res.json({ approved: result.rowCount ?? 0 });
+});
+
+
+router.post("/admin/improvements/reconcile-github", async (_req, res) => {
+  await ensureSchema();
+  let config: GithubConfig;
+  try {
+    config = githubConfig();
+  } catch (error) {
+    return res.status(503).json({ error: error instanceof Error ? error.message : "GITHUB_CONFIG_ERROR" });
+  }
+
+  const compare = await githubJson(`/repos/${config.owner}/${config.repo}/compare/main...staging`);
+  const commits = Array.isArray(compare.commits) ? compare.commits : [];
+  const homologOnlyPatterns = [
+    /homolog/i, /seed.*homolog/i, /passwordless/i, /without password/i,
+    /preview railway/i, /capture.*staging/i, /dockerfile.*homolog/i,
+  ];
+
+  const summary = commits.map((commit: any) => {
+    const message = String(commit.commit?.message ?? "").split("\n")[0];
+    const scope = homologOnlyPatterns.some((pattern) => pattern.test(message)) ? "homolog_only" : "production";
+    return {
+      sha: commit.sha,
+      shortSha: String(commit.sha).slice(0, 8),
+      message,
+      authoredAt: commit.commit?.author?.date ?? null,
+      scope,
+    };
+  });
+
+  res.json({
+    repository: config.repository,
+    status: compare.status,
+    aheadBy: compare.ahead_by ?? 0,
+    behindBy: compare.behind_by ?? 0,
+    productionCandidates: summary.filter((item: any) => item.scope === "production"),
+    homologOnly: summary.filter((item: any) => item.scope === "homolog_only"),
+    total: summary.length,
+    syncedAt: new Date().toISOString(),
+  });
+});
+
+router.post("/admin/improvements/:id/evaluate-gates", async (req, res) => {
+  await ensureSchema();
+  const id = String(req.params.id);
+  const result = await pool.query(
+    `SELECT id, title, status, test_status, release_scope, dependency_ids,
+            security_gate, migration_gate, design_gate, performance_gate, rollback_gate
+       FROM admin_improvements WHERE id = $1 LIMIT 1`,
+    [id],
+  );
+  const row = result.rows[0];
+  if (!row) return res.status(404).json({ error: "Melhoria não encontrada" });
+  const deps = await dependencyIssues([id]);
+  const issues = [...gateIssues(row), ...(deps.get(id) ?? [])];
+  res.json({ ready: issues.length === 0 && row.status === "homologado", issues, item: row });
 });
 
 router.get("/admin/improvements/github-readiness", async (_req, res) => {

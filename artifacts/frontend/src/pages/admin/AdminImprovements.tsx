@@ -30,6 +30,15 @@ type Improvement = {
   approvedProductionBy: string | null;
   approvedProductionAt: string | null;
   mergedStagingSha: string | null;
+  releaseScope: "production" | "homolog_only";
+  dependencyIds: string[];
+  securityGate: "pending" | "passed" | "failed" | "not_applicable";
+  migrationGate: "pending" | "passed" | "failed" | "not_applicable";
+  designGate: "pending" | "passed" | "failed" | "not_applicable";
+  performanceGate: "pending" | "passed" | "failed" | "not_applicable";
+  rollbackGate: "pending" | "passed" | "failed" | "not_applicable";
+  githubState?: unknown;
+  githubSyncedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -77,6 +86,7 @@ export default function AdminImprovements() {
     prNumber: "",
     prUrl: "",
     homologUrl: "https://homolog.appvendorai.com",
+    releaseScope: "production",
   });
 
   const headers = useMemo(() => ({
@@ -103,6 +113,25 @@ export default function AdminImprovements() {
       return response.json();
     },
     staleTime: 60_000,
+  });
+
+  const reconcile = useQuery<{
+    repository: string;
+    status: string;
+    aheadBy: number;
+    behindBy: number;
+    total: number;
+    productionCandidates: Array<{ sha: string; shortSha: string; message: string; scope: string }>;
+    homologOnly: Array<{ sha: string; shortSha: string; message: string; scope: string }>;
+  }>({
+    queryKey: ["admin", "improvements", "github-reconcile"],
+    enabled: false,
+    queryFn: async () => {
+      const response = await fetch("/api/admin/improvements/reconcile-github", { method: "POST", headers, body: "{}" });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error ?? `HTTP ${response.status}`);
+      return body;
+    },
   });
 
   const items = query.data?.items ?? [];
@@ -143,13 +172,14 @@ export default function AdminImprovements() {
         prNumber: form.prNumber ? Number(form.prNumber) : null,
         prUrl: form.prUrl || null,
         homologUrl: form.homologUrl || null,
+        releaseScope: form.releaseScope as "production" | "homolog_only",
       };
       const response = await fetch("/api/admin/improvements", { method: "POST", headers, body: JSON.stringify(payload) });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body?.error ?? `HTTP ${response.status}`);
       toast({ title: "Melhoria criada" });
       setCreateOpen(false);
-      setForm({ title: "", description: "", module: "Plataforma", priority: "media", branch: "", prNumber: "", prUrl: "", homologUrl: "https://homolog.appvendorai.com" });
+      setForm({ title: "", description: "", module: "Plataforma", priority: "media", branch: "", prNumber: "", prUrl: "", homologUrl: "https://homolog.appvendorai.com", releaseScope: "production" });
       await qc.invalidateQueries({ queryKey: ["admin", "improvements"] });
     } catch (error) {
       toast({ title: "Falha ao criar melhoria", description: error instanceof Error ? error.message : "Erro inesperado", variant: "destructive" });
@@ -199,12 +229,32 @@ export default function AdminImprovements() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => reconcile.refetch()} disabled={reconcile.isFetching || github.data?.ready === false}>
+            <GitMerge className={`mr-2 h-4 w-4 ${reconcile.isFetching ? "animate-pulse" : ""}`} />Reconciliar GitHub
+          </Button>
           <Button variant="outline" onClick={() => query.refetch()} disabled={query.isFetching}>
             <RefreshCw className={`mr-2 h-4 w-4 ${query.isFetching ? "animate-spin" : ""}`} />Atualizar
           </Button>
           <Button onClick={() => setCreateOpen(true)}><Plus className="mr-2 h-4 w-4" />Nova melhoria</Button>
         </div>
       </div>
+
+      {reconcile.data && (
+        <div className="rounded-2xl border bg-card p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="font-medium">Reconciliação GitHub</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                staging está {reconcile.data.aheadBy} commit(s) à frente e {reconcile.data.behindBy} atrás da main.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Badge variant="outline">{reconcile.data.productionCandidates.length} produção</Badge>
+              <Badge variant="secondary">{reconcile.data.homologOnly.length} só homologação</Badge>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-3 md:grid-cols-4">
         {[
@@ -251,6 +301,8 @@ export default function AdminImprovements() {
                 <th className="px-3 py-3">Módulo</th>
                 <th className="px-3 py-3">Pacote</th>
                 <th className="px-3 py-3">Status</th>
+                <th className="px-3 py-3">Escopo</th>
+                <th className="px-3 py-3">Gates</th>
                 <th className="px-3 py-3">Teste</th>
                 <th className="px-3 py-3">PR</th>
                 <th className="px-3 py-3">Atualização</th>
@@ -268,6 +320,22 @@ export default function AdminImprovements() {
                   <td className="px-3 py-3">{item.module}</td>
                   <td className="px-3 py-3">{item.packageKey ? <Badge variant="outline">{item.packageKey}</Badge> : "—"}</td>
                   <td className="px-3 py-3"><Badge variant="outline">{STATUS_LABELS[item.status] ?? item.status}</Badge></td>
+                  <td className="px-3 py-3"><Badge variant={item.releaseScope === "production" ? "default" : "secondary"}>{item.releaseScope === "production" ? "Produção" : "Só homologação"}</Badge></td>
+                  <td className="px-3 py-3">
+                    <div className="flex flex-wrap gap-1">
+                      {[
+                        ["SEG", item.securityGate],
+                        ["DB", item.migrationGate],
+                        ["UI", item.designGate],
+                        ["PERF", item.performanceGate],
+                        ["RB", item.rollbackGate],
+                      ].map(([label, status]) => (
+                        <Badge key={String(label)} variant={status === "passed" || status === "not_applicable" ? "outline" : "secondary"}>
+                          {label}:{status === "passed" ? "OK" : status === "not_applicable" ? "N/A" : status === "failed" ? "FALHA" : "PEND"}
+                        </Badge>
+                      ))}
+                    </div>
+                  </td>
                   <td className="px-3 py-3">
                     <button type="button" className="rounded-md border px-2 py-1 text-xs" onClick={() => patch(item, { testStatus: item.testStatus === "passed" ? "pending" : "passed" } as any)}>
                       {TEST_LABELS[item.testStatus] ?? item.testStatus}
@@ -284,9 +352,9 @@ export default function AdminImprovements() {
                 </tr>
               ))}
               {!query.isLoading && items.length === 0 && (
-                <tr><td colSpan={9} className="px-6 py-14 text-center text-muted-foreground">Nenhuma melhoria cadastrada ainda.</td></tr>
+                <tr><td colSpan={11} className="px-6 py-14 text-center text-muted-foreground">Nenhuma melhoria cadastrada ainda.</td></tr>
               )}
-              {query.isLoading && <tr><td colSpan={9} className="px-6 py-14 text-center text-muted-foreground">Carregando melhorias…</td></tr>}
+              {query.isLoading && <tr><td colSpan={11} className="px-6 py-14 text-center text-muted-foreground">Carregando melhorias…</td></tr>}
             </tbody>
           </table>
         </div>
@@ -307,6 +375,10 @@ export default function AdminImprovements() {
               <Input placeholder="Número do PR" inputMode="numeric" value={form.prNumber} onChange={(e) => setForm({ ...form, prNumber: e.target.value })} />
               <Input placeholder="URL do PR" value={form.prUrl} onChange={(e) => setForm({ ...form, prUrl: e.target.value })} />
               <Input placeholder="URL da homologação" value={form.homologUrl} onChange={(e) => setForm({ ...form, homologUrl: e.target.value })} />
+              <select className="h-10 rounded-md border bg-background px-3 text-sm" value={form.releaseScope} onChange={(e) => setForm({ ...form, releaseScope: e.target.value })}>
+                <option value="production">Candidato à produção</option>
+                <option value="homolog_only">Somente homologação</option>
+              </select>
             </div>
           </div>
           <DialogFooter><Button variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button><Button onClick={createImprovement} disabled={busy === "create" || form.title.trim().length < 3}>Criar melhoria</Button></DialogFooter>
@@ -335,6 +407,31 @@ export default function AdminImprovements() {
                 <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">Teste</p><p className="mt-1 font-medium">{TEST_LABELS[detail.testStatus] ?? detail.testStatus}</p></div>
                 <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">Branch</p><p className="mt-1 break-all font-mono text-xs">{detail.branch || "—"}</p></div>
                 <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">Pacote</p><p className="mt-1">{detail.packageKey || "—"}</p></div>
+                <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">Escopo</p><p className="mt-1">{detail.releaseScope === "production" ? "Produção" : "Somente homologação"}</p></div>
+                <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">Dependências</p><p className="mt-1">{detail.dependencyIds?.length ?? 0}</p></div>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-5">
+                {[
+                  ["Segurança", "securityGate"],
+                  ["Migration", "migrationGate"],
+                  ["Design", "designGate"],
+                  ["Performance", "performanceGate"],
+                  ["Rollback", "rollbackGate"],
+                ].map(([label, field]) => (
+                  <label key={field} className="rounded-xl border p-3">
+                    <span className="block text-xs text-muted-foreground">{label}</span>
+                    <select
+                      className="mt-2 h-9 w-full rounded-md border bg-background px-2 text-sm"
+                      value={(detail as any)[field]}
+                      onChange={(e) => patch(detail, { [field]: e.target.value } as any)}
+                    >
+                      <option value="pending">Pendente</option>
+                      <option value="passed">Aprovado</option>
+                      <option value="failed">Falhou</option>
+                      <option value="not_applicable">N/A</option>
+                    </select>
+                  </label>
+                ))}
               </div>
               <div className="flex flex-wrap gap-2">
                 {detail.prUrl && <Button variant="outline" asChild><a href={detail.prUrl} target="_blank" rel="noreferrer">Abrir PR<ExternalLink className="ml-2 h-4 w-4" /></a></Button>}
