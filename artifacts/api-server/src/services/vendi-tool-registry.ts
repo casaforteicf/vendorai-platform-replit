@@ -3,6 +3,13 @@ import {
   db,
   dealsTable,
   leadsTable,
+  agendamentosTable,
+  customerIntelligenceTable,
+  propostasTable,
+  obrasTable,
+  solicitacoesCompraTable,
+  archProjetosTable,
+  mediaAssetsTable,
 } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { processAgentInternal } from "./agent-dispatch.js";
@@ -14,6 +21,9 @@ import { getLaunchRevenueScout } from "./launchRevenueScout.js";
 import { fetchRenderedPage } from "./browser-fetch.js";
 import { discoverWebsite } from "./browser-discovery.js";
 import { extractStructuredData, type ExtractionSchema } from "./web-structured-extractor.js";
+import { runAllFinanceIntegrationHealthChecks } from "./finance-integration-health.js";
+import { runAutoQuotePipeline } from "./auto-quote.js";
+import { sendOutgoingMessage } from "./omnichannel.js";
 
 export type VendiToolRisk = "low" | "medium" | "high";
 export type VendiToolDomain =
@@ -28,6 +38,9 @@ export type VendiToolDomain =
   | "arqdor"
   | "works"
   | "media"
+  | "purchasing"
+  | "omnichannel"
+  | "customer_intelligence"
   | "admin";
 
 export type VendiToolContext = {
@@ -199,6 +212,225 @@ register({
       scenario: input.scenario && typeof input.scenario === "object" ? input.scenario as Record<string, unknown> : null,
     });
     return { ok: data.status !== "failed", data, evidence: { source: "agents:dispatch", leadId } };
+  },
+});
+
+register({
+  id: "agenda.appointments.list",
+  domain: "agenda",
+  description: "Lista agendamentos recentes do tenant.",
+  risk: "low",
+  mutates: false,
+  externalEffect: false,
+  inputHint: "{limit?:1..100}",
+  execute: async ({ tenantId }, input) => {
+    const limit = Math.min(Math.max(Number(input.limit ?? 30), 1), 100);
+    const rows = await db.select().from(agendamentosTable)
+      .where(eq(agendamentosTable.tenantId, tenantId))
+      .orderBy(desc(agendamentosTable.dataHoraInicio))
+      .limit(limit);
+    return { ok: true, data: rows, evidence: { source: "db:agendamentos", count: rows.length } };
+  },
+});
+
+register({
+  id: "finance.integrations.health",
+  domain: "finance",
+  description: "Executa health check das integrações financeiras e operacionais configuradas.",
+  risk: "medium",
+  mutates: true,
+  externalEffect: true,
+  inputHint: "{}",
+  execute: async ({ tenantId }) => {
+    const data = await runAllFinanceIntegrationHealthChecks(tenantId);
+    return { ok: true, data, evidence: { source: "finance:integration-health" } };
+  },
+});
+
+register({
+  id: "proposals.list",
+  domain: "proposals",
+  description: "Lista propostas recentes do tenant.",
+  risk: "low",
+  mutates: false,
+  externalEffect: false,
+  inputHint: "{limit?:1..100}",
+  execute: async ({ tenantId }, input) => {
+    const limit = Math.min(Math.max(Number(input.limit ?? 30), 1), 100);
+    const rows = await db.select().from(propostasTable)
+      .where(eq(propostasTable.tenantId, tenantId))
+      .orderBy(desc(propostasTable.createdAt))
+      .limit(limit);
+    return { ok: true, data: rows, evidence: { source: "db:propostas", count: rows.length } };
+  },
+});
+
+register({
+  id: "proposals.auto_quote",
+  domain: "proposals",
+  description: "Interpreta uma solicitação de orçamento e cria proposta a partir do catálogo quando houver dados suficientes.",
+  risk: "medium",
+  mutates: true,
+  externalEffect: false,
+  inputHint: "{leadId:string,mensagem:string}",
+  execute: async ({ tenantId }, input) => {
+    const leadId = String(input.leadId ?? "");
+    const mensagem = String(input.mensagem ?? "");
+    if (!leadId || !mensagem) throw new Error("leadId e mensagem são obrigatórios");
+    const data = await runAutoQuotePipeline({
+      tenantId,
+      leadId,
+      mensagem,
+      log: logger.child({ subsystem: "vendi:auto-quote" }),
+    });
+    return { ok: true, data, evidence: { source: "proposals:auto-quote", leadId, generated: data.generated } };
+  },
+});
+
+register({
+  id: "works.list",
+  domain: "works",
+  description: "Lista obras do tenant para coordenação operacional.",
+  risk: "low",
+  mutates: false,
+  externalEffect: false,
+  inputHint: "{limit?:1..100}",
+  execute: async ({ tenantId }, input) => {
+    const limit = Math.min(Math.max(Number(input.limit ?? 30), 1), 100);
+    const rows = await db.select().from(obrasTable)
+      .where(eq(obrasTable.tenantId, tenantId))
+      .orderBy(desc(obrasTable.createdAt))
+      .limit(limit);
+    return { ok: true, data: rows, evidence: { source: "db:obras", count: rows.length } };
+  },
+});
+
+register({
+  id: "purchasing.requests.list",
+  domain: "purchasing",
+  description: "Lista solicitações de compra e cotações registradas no tenant.",
+  risk: "low",
+  mutates: false,
+  externalEffect: false,
+  inputHint: "{limit?:1..100}",
+  execute: async ({ tenantId }, input) => {
+    const limit = Math.min(Math.max(Number(input.limit ?? 30), 1), 100);
+    const rows = await db.select().from(solicitacoesCompraTable)
+      .where(eq(solicitacoesCompraTable.tenantId, tenantId))
+      .orderBy(desc(solicitacoesCompraTable.createdAt))
+      .limit(limit);
+    return { ok: true, data: rows, evidence: { source: "db:solicitacoes_compra", count: rows.length } };
+  },
+});
+
+register({
+  id: "purchasing.request.create",
+  domain: "purchasing",
+  description: "Cria uma solicitação de compra interna sem enviar pedido ao fornecedor.",
+  risk: "medium",
+  mutates: true,
+  externalEffect: false,
+  inputHint: "{produtoNome:string,quantidade?:number,fornecedorNome:string,produtoId?,fornecedorId?,fornecedorContato?,fornecedorTelefone?,fornecedorEmail?,observacoes?}",
+  execute: async ({ tenantId }, input) => {
+    const produtoNome = String(input.produtoNome ?? "").trim();
+    const fornecedorNome = String(input.fornecedorNome ?? "").trim();
+    if (!produtoNome || !fornecedorNome) throw new Error("produtoNome e fornecedorNome são obrigatórios");
+    const quantidade = Math.min(Math.max(Math.floor(Number(input.quantidade ?? 1)), 1), 1000000);
+    const [row] = await db.insert(solicitacoesCompraTable).values({
+      tenantId,
+      produtoId: input.produtoId ? String(input.produtoId) : null,
+      produtoNome,
+      quantidade,
+      fornecedorId: input.fornecedorId ? String(input.fornecedorId) : null,
+      fornecedorNome,
+      fornecedorContato: input.fornecedorContato ? String(input.fornecedorContato) : null,
+      fornecedorTelefone: input.fornecedorTelefone ? String(input.fornecedorTelefone) : null,
+      fornecedorEmail: input.fornecedorEmail ? String(input.fornecedorEmail) : null,
+      observacoes: input.observacoes ? String(input.observacoes) : null,
+      enviarPedidoAutomatico: false,
+      status: "pendente",
+      criadoPorNome: "Vendi",
+    }).returning();
+    return { ok: Boolean(row), data: row, evidence: { source: "db:solicitacoes_compra", created: Boolean(row) } };
+  },
+});
+
+register({
+  id: "arqdor.projects.list",
+  domain: "arqdor",
+  description: "Lista projetos Arqdor vinculados ao tenant.",
+  risk: "low",
+  mutates: false,
+  externalEffect: false,
+  inputHint: "{limit?:1..100}",
+  execute: async ({ tenantId }, input) => {
+    const limit = Math.min(Math.max(Number(input.limit ?? 30), 1), 100);
+    const rows = await db.select().from(archProjetosTable)
+      .where(eq(archProjetosTable.tenantId, tenantId))
+      .orderBy(desc(archProjetosTable.updatedAt))
+      .limit(limit);
+    return { ok: true, data: rows, evidence: { source: "db:arch_projetos", count: rows.length } };
+  },
+});
+
+register({
+  id: "customer_intelligence.list",
+  domain: "customer_intelligence",
+  description: "Lista inteligência de clientes, intenção, jornada, churn e próxima melhor ação.",
+  risk: "low",
+  mutates: false,
+  externalEffect: false,
+  inputHint: "{limit?:1..100}",
+  execute: async ({ tenantId }, input) => {
+    const limit = Math.min(Math.max(Number(input.limit ?? 30), 1), 100);
+    const rows = await db.select().from(customerIntelligenceTable)
+      .where(eq(customerIntelligenceTable.tenantId, tenantId))
+      .orderBy(desc(customerIntelligenceTable.updatedAt))
+      .limit(limit);
+    return { ok: true, data: rows, evidence: { source: "db:customer_intelligence", count: rows.length } };
+  },
+});
+
+register({
+  id: "media.assets.list",
+  domain: "media",
+  description: "Lista mídias da Biblioteca de Mídias do tenant.",
+  risk: "low",
+  mutates: false,
+  externalEffect: false,
+  inputHint: "{limit?:1..100}",
+  execute: async ({ tenantId }, input) => {
+    const limit = Math.min(Math.max(Number(input.limit ?? 40), 1), 100);
+    const rows = await db.select().from(mediaAssetsTable)
+      .where(eq(mediaAssetsTable.tenantId, tenantId))
+      .orderBy(desc(mediaAssetsTable.createdAt))
+      .limit(limit);
+    return { ok: true, data: rows, evidence: { source: "db:media_assets", count: rows.length } };
+  },
+});
+
+register({
+  id: "omnichannel.send",
+  domain: "omnichannel",
+  description: "Envia mensagem por canal já conectado e registra a conversa no CRM.",
+  risk: "high",
+  mutates: true,
+  externalEffect: true,
+  inputHint: "{leadId:string,conteudo:string,canal:'whatsapp'|'instagram'|'messenger'|'email'|'chat'}",
+  execute: async ({ tenantId }, input) => {
+    const leadId = String(input.leadId ?? "");
+    const conteudo = String(input.conteudo ?? "");
+    const canal = String(input.canal ?? "");
+    if (!leadId || !conteudo) throw new Error("leadId e conteudo são obrigatórios");
+    if (!["whatsapp","instagram","messenger","email","chat"].includes(canal)) throw new Error("canal inválido");
+    const data = await sendOutgoingMessage({
+      tenantId,
+      leadId,
+      conteudo,
+      canal: canal as "whatsapp" | "instagram" | "messenger" | "email" | "chat",
+      agentName: "vendi",
+    }, logger.child({ subsystem: "vendi:omnichannel" }));
+    return { ok: true, data, evidence: { source: "omnichannel", leadId, canal } };
   },
 });
 
