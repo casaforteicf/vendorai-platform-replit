@@ -87,6 +87,7 @@ import { createSpecificationParticipation } from "../services/commission-engine.
 import { ensureStandardConstructionCatalog } from "../lib/ensure-standard-construction-catalog.js";
 import { ensureArqdorStarterLibrary } from "../lib/arqdor/starter-library.js";
 import { searchPolyHavenModels, resolvePolyHavenModel } from "../lib/arqdor/polyhaven.js";
+import { searchSketchfabModels } from "../lib/arqdor/sketchfab.js";
 import { buildArchitecturalStrategyRepertoire } from "../lib/arqdor-architecture-strategies.js";
 import { buildArchitecturalProjectStrategy } from "../lib/arqdor-project-strategy.js";
 import { evaluateProjectMasterAcceptance } from "../lib/arqdor-project-master-validation.js";
@@ -4163,6 +4164,22 @@ router.delete("/arch/cenas/:cenaId", authenticate, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // Catálogo
 // ─────────────────────────────────────────────────────────────────────────────
+// GET /api/arch/sketchfab/search?q=sofa
+// Busca somente modelos marcados como downloadable. O download/materialização
+// será feito numa etapa autenticada; nenhuma URL temporária é persistida.
+router.get("/arch/sketchfab/search", authenticate, async (req, res) => {
+  try {
+    const q = String(req.query.q ?? "").trim();
+    if (q.length < 2) return res.json({ items: [], poweredBy: "Sketchfab" });
+    const limit = Number(req.query.limit ?? 24);
+    const items = await searchSketchfabModels(q, limit);
+    return res.json({ items, poweredBy: "Sketchfab" });
+  } catch (error) {
+    console.error("[arqdor/sketchfab/search]", error);
+    return res.status(502).json({ error: "Não foi possível consultar o Sketchfab agora." });
+  }
+});
+
 // GET /api/arch/polyhaven/search?q=mesa
 router.get("/arch/polyhaven/search", authenticate, async (req, res) => {
   try {
