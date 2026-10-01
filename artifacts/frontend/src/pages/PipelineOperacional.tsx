@@ -444,6 +444,17 @@ export default function PipelineOperacional() {
     onError: (error) => toast({ title: "Não foi possível atualizar a visita", description: String(error), variant: "destructive" }),
   });
 
+  const patchInstallationOccurrence = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
+      api<InstallationOccurrence>(`/api/installation-occurrences/${id}`, {
+        method: "PATCH", headers: jsonHeaders, body: JSON.stringify(data),
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["work-card-installation", selectedCard?.id] });
+    },
+    onError: (error) => toast({ title: "Não foi possível atualizar a pendência", description: String(error), variant: "destructive" }),
+  });
+
   const createInstallationReturnVisit = useMutation({
     mutationFn: (cardId: string) =>
       api<InstallationVisit>(`/api/work-cards/${cardId}/installation/visits`, {
@@ -813,11 +824,29 @@ export default function PipelineOperacional() {
                                       )}
                                       {(item.checks?.length ?? 0) > 0 && (
                                         <div className="mt-2 flex flex-wrap gap-1.5">
-                                          {(item.checks ?? []).map((check, idx) => (
-                                            <Badge key={String(check.key || idx)} variant="secondary" className="text-[10px]">
-                                              {String(check.label || check.key || "Verificação")}
-                                            </Badge>
-                                          ))}
+                                          {(item.checks ?? []).map((check, idx) => {
+                                            const done = check.completed === true;
+                                            return (
+                                              <Button
+                                                key={String(check.key || idx)}
+                                                type="button"
+                                                size="sm"
+                                                variant={done ? "secondary" : "outline"}
+                                                className="h-7 gap-1 px-2 text-[10px]"
+                                                disabled={patchInstallationItem.isPending}
+                                                onClick={() => {
+                                                  const checks = (item.checks ?? []).map((current, currentIndex) =>
+                                                    currentIndex === idx ? { ...current, completed: !done } : current
+                                                  );
+                                                  patchInstallationItem.mutate({ id: item.id, data: { checks } });
+                                                }}
+                                              >
+                                                <CheckCircle2 className="h-3 w-3" />
+                                                {done ? "OK • " : ""}
+                                                {String(check.label || check.key || "Verificação")}
+                                              </Button>
+                                            );
+                                          })}
                                         </div>
                                       )}
                                     </div>
@@ -867,7 +896,22 @@ export default function PipelineOperacional() {
                                     </label>
                                     {item.evidenceRequired && <Badge variant="outline">Evidência obrigatória</Badge>}
                                     {itemOccurrences.map((occurrence) => (
-                                      <Badge key={occurrence.id} variant="destructive">{occurrence.type.replaceAll("_", " ")}</Badge>
+                                      <div key={occurrence.id} className="inline-flex items-center gap-1">
+                                        <Badge variant="destructive">{occurrence.type.replaceAll("_", " ")}</Badge>
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          variant="outline"
+                                          className="h-7 px-2 text-[10px]"
+                                          disabled={patchInstallationOccurrence.isPending}
+                                          onClick={() => patchInstallationOccurrence.mutate({
+                                            id: occurrence.id,
+                                            data: { status: "resolved", resolution: "Pendência resolvida e conferida durante a instalação." },
+                                          })}
+                                        >
+                                          Resolver
+                                        </Button>
+                                      </div>
                                     ))}
                                   </div>
                                 </div>
@@ -879,16 +923,31 @@ export default function PipelineOperacional() {
                             <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
                               <p className="text-xs font-semibold uppercase text-amber-900">Pendências abertas</p>
                               {openOccurrences.map((occurrence) => (
-                                <div key={occurrence.id} className="text-xs text-amber-900">
-                                  <strong>{occurrence.type.replaceAll("_", " ")}</strong>
-                                  {occurrence.description ? ` — ${occurrence.description}` : ""}
+                                <div key={occurrence.id} className="flex items-start justify-between gap-3 text-xs text-amber-900">
+                                  <div>
+                                    <strong>{occurrence.type.replaceAll("_", " ")}</strong>
+                                    {occurrence.description ? ` — ${occurrence.description}` : ""}
+                                  </div>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 shrink-0 bg-white px-2 text-[10px]"
+                                    disabled={patchInstallationOccurrence.isPending}
+                                    onClick={() => patchInstallationOccurrence.mutate({
+                                      id: occurrence.id,
+                                      data: { status: "resolved", resolution: "Pendência resolvida e conferida durante a instalação." },
+                                    })}
+                                  >
+                                    Marcar resolvida
+                                  </Button>
                                 </div>
                               ))}
                             </div>
                           )}
 
                           <div className="rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground">
-                            A visita pode ser encerrada com pendências, mas <strong className="text-foreground">Instalação finalizada</strong> só é liberada quando todos os itens obrigatórios estiverem concluídos. O aceite do cliente permanece separado da conferência técnica.
+                            A visita pode ser encerrada com pendências, mas <strong className="text-foreground">Instalação finalizada</strong> só é liberada quando os itens obrigatórios, verificações e evidências exigidas estiverem concluídos e não houver ocorrência aberta. O aceite do cliente permanece separado da conferência técnica.
                           </div>
                         </div>
                       );
