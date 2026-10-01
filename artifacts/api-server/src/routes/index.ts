@@ -167,6 +167,7 @@ import supportRouter from "./support";
 import devAgentAutonomyRouter from "./dev_agent_autonomy";
 import adminBugReportsRouter from "./admin_bug_reports";
 import adminRelatosTecnicosRouter from "./admin_relatos_tecnicos";
+import adminImprovementsRouter from "./admin_improvements";
 import contractTemplatesRouter from "./contract_templates";
 import confirmClosureRouter from "./confirm_closure";
 import organizacoesRouter from "./organizacoes";
@@ -495,6 +496,7 @@ router.use(partnersRouter);
 // Admin Partners Hub (super_admin management)
 router.use(adminBugReportsRouter);
 router.use(adminRelatosTecnicosRouter);
+router.use(adminImprovementsRouter);
 router.use(adminPartnersRouter);
 router.use(adminPlansRouter);
 router.use(mediaPlanRouter);
@@ -646,4 +648,3 @@ router.use(contentTrackingRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;
-
