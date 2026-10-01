@@ -73,7 +73,7 @@ export type SpinQualificationConfig = {
 };
 
 export type RelacionamentoScenario = {
-  type: "birthday_lead" | "birthday_family" | "deal_anniversary" | "commercial_date" | "professional_day" | "spouse_welcome" | "inactivity_checkin";
+  type: "birthday_lead" | "birthday_family" | "deal_anniversary" | "commercial_date" | "professional_day" | "custom_special_date" | "spouse_welcome" | "inactivity_checkin";
   dateName?: string;
   recipientName?: string;
   recipientRelation?: string;
@@ -1772,6 +1772,7 @@ export function buildRelacionamentoPrompt(
     const scLines = ["## CENÁRIO ATUAL"];
     if (s.type === "birthday_lead") scLines.push("Hoje é o aniversário do lead!");
     else if (s.type === "birthday_family") scLines.push(`Hoje é o aniversário de ${s.recipientName ?? "familiar"} (${s.recipientRelation ?? "familiar"}) do lead.`);
+    else if (s.type === "custom_special_date") scLines.push(`Hoje é uma data especial do relacionamento: ${s.dateName ?? "data especial"}.`);
     else if (s.type === "deal_anniversary") scLines.push("Hoje é o aniversário de fechamento do deal com o lead!");
     else if (s.type === "commercial_date") scLines.push(`Data comercial: ${s.dateName ?? "data especial"}.`);
     else if (s.type === "professional_day") scLines.push(`Hoje é ${s.dateName ?? "o dia da profissão do lead"}. Envie somente uma mensagem de parabéns e reconhecimento.`);

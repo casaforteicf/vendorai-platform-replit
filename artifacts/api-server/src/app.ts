@@ -148,6 +148,8 @@ const MAIN_HOSTNAMES = new Set([
   ROOT_DOMAIN,
   `www.${ROOT_DOMAIN}`,
   `app.${ROOT_DOMAIN}`,
+  `homolog.${ROOT_DOMAIN}`,
+  `homolog2.${ROOT_DOMAIN}`,
   "localhost",
   "127.0.0.1",
   ...replitDomains,
@@ -207,7 +209,7 @@ function trustedTenantCustomHost(req: Request): string | null {
 
 function isCrmHostname(hostname: string | null): boolean {
   if (!hostname) return false;
-  return MAIN_HOSTNAMES.has(hostname) || hostname.endsWith(`.app.${ROOT_DOMAIN}`);
+  return MAIN_HOSTNAMES.has(hostname) || hostname.endsWith(`.app.${ROOT_DOMAIN}`) || hostname.endsWith(".up.railway.app");
 }
 
 function firstPathSegment(pathname: string): string | null {

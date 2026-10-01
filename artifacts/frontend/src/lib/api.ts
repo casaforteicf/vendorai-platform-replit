@@ -87,15 +87,18 @@ export function setupApiClient() {
   bootstrapAuthenticatedUserCache();
 
   const apiUrl = import.meta.env.VITE_API_URL;
+  const isHomologationWeb =
+    window.location.hostname === "homolog.appvendorai.com" ||
+    /^vendorai-homolog-[a-z0-9-]+\.up\.railway\.app$/i.test(window.location.hostname);
   const isHostedProductionWeb =
     import.meta.env.PROD &&
+    !isHomologationWeb &&
     (window.location.protocol === "http:" || window.location.protocol === "https:");
 
-  // Na web publicada, use o proxy /api do mesmo dominio. Isso evita CORS e
-  // timeouts causados por chamadas do navegador diretamente ao Railway.
-  // Apps nativos (Capacitor) continuam usando VITE_API_URL, pois nao possuem
-  // um servidor de mesma origem que possa encaminhar essas requisicoes.
-  if (apiUrl && !isHostedProductionWeb) {
+  // Produção web continua usando /api no mesmo domínio via Cloudflare.
+  // Homologação usa VITE_API_URL para falar com a API isolada da Railway,
+  // mantendo banco e backend completamente separados da produção.
+  if (apiUrl && (!isHostedProductionWeb || isHomologationWeb)) {
     setBaseUrl(apiUrl);
   }
 

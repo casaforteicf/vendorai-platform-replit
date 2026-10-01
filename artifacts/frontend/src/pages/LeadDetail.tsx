@@ -682,6 +682,7 @@ export default function LeadDetail() {
     conjugeEmail: "",
     conjugeDataNascimento: "",
     filhos: [] as Array<{ nome: string; dataNascimento: string; genero: string }>,
+    specialDates: [] as Array<{ id?: string; name: string; date: string; recurring: boolean; category: string; notes: string; active: boolean }>,
     // PJ fields
     pjCnpj: "",
     pjRazaoSocial: "",
@@ -734,6 +735,15 @@ export default function LeadDetail() {
         nome: f.nome ?? "",
         dataNascimento: f.dataNascimento ?? "",
         genero: f.genero ?? "",
+      })),
+      specialDates: (((lead as any).specialDates ?? []) as Array<any>).map((item) => ({
+        id: item.id ?? crypto.randomUUID(),
+        name: item.name ?? "",
+        date: item.date ?? "",
+        recurring: item.recurring !== false,
+        category: item.category ?? "custom",
+        notes: item.notes ?? "",
+        active: item.active !== false,
       })),
       pjCnpj: dadosPj.cnpj ?? lead.documento ?? "",
       pjRazaoSocial: dadosPj.razaoSocial ?? lead.empresa ?? "",
@@ -789,6 +799,17 @@ export default function LeadDetail() {
               genero: f.genero || null,
             }))
           : null),
+        specialDates: pessoalDraft.specialDates
+          .filter((item) => item.name.trim() && item.date)
+          .map((item) => ({
+            id: item.id || crypto.randomUUID(),
+            name: item.name.trim(),
+            date: item.date,
+            recurring: item.recurring,
+            category: item.category || "custom",
+            notes: item.notes.trim() || undefined,
+            active: item.active,
+          })),
         // PJ: sync top-level fields + store in dadosPj
         ...(isPj ? {
           empresa: pessoalDraft.pjRazaoSocial || null,
@@ -3374,6 +3395,98 @@ export default function LeadDetail() {
                           setPessoalDraft((d) => ({
                             ...d,
                             filhos: d.filhos.filter((_, j) => j !== i),
+                          }))
+                        }
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="space-y-2 rounded-md border p-3 bg-muted/20">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium">Datas especiais</p>
+                      <p className="text-xs text-muted-foreground">Relacionamento, casamento, primeira compra, formatura ou qualquer marco importante.</p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-xs gap-1"
+                      onClick={() =>
+                        setPessoalDraft((d) => ({
+                          ...d,
+                          specialDates: [
+                            ...d.specialDates,
+                            {
+                              id: crypto.randomUUID(),
+                              name: "",
+                              date: "",
+                              recurring: true,
+                              category: "custom",
+                              notes: "",
+                              active: true,
+                            },
+                          ],
+                        }))
+                      }
+                    >
+                      <Plus className="h-3 w-3" />
+                      Adicionar
+                    </Button>
+                  </div>
+                  {pessoalDraft.specialDates.length === 0 && (
+                    <p className="text-xs text-muted-foreground">Nenhuma data especial cadastrada.</p>
+                  )}
+                  {pessoalDraft.specialDates.map((item, i) => (
+                    <div key={item.id ?? i} className="grid gap-2 rounded-md border bg-background p-2 md:grid-cols-[1.2fr_150px_150px_auto]">
+                      <Input
+                        placeholder="Ex: Aniversário de casamento"
+                        value={item.name}
+                        onChange={(e) => {
+                          const specialDates = [...pessoalDraft.specialDates];
+                          specialDates[i] = { ...specialDates[i]!, name: e.target.value };
+                          setPessoalDraft((d) => ({ ...d, specialDates }));
+                        }}
+                      />
+                      <Input
+                        type="date"
+                        value={item.date}
+                        onChange={(e) => {
+                          const specialDates = [...pessoalDraft.specialDates];
+                          specialDates[i] = { ...specialDates[i]!, date: e.target.value };
+                          setPessoalDraft((d) => ({ ...d, specialDates }));
+                        }}
+                      />
+                      <Select
+                        value={item.category || "custom"}
+                        onValueChange={(value) => {
+                          const specialDates = [...pessoalDraft.specialDates];
+                          specialDates[i] = { ...specialDates[i]!, category: value };
+                          setPessoalDraft((d) => ({ ...d, specialDates }));
+                        }}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="personal">Pessoal</SelectItem>
+                          <SelectItem value="family">Família</SelectItem>
+                          <SelectItem value="relationship">Relacionamento</SelectItem>
+                          <SelectItem value="purchase">Compra/cliente</SelectItem>
+                          <SelectItem value="professional">Profissional</SelectItem>
+                          <SelectItem value="custom">Outro</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-9 px-2 text-muted-foreground hover:text-destructive"
+                        onClick={() =>
+                          setPessoalDraft((d) => ({
+                            ...d,
+                            specialDates: d.specialDates.filter((_, j) => j !== i),
                           }))
                         }
                       >

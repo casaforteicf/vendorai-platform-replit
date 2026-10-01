@@ -77,7 +77,7 @@ export async function generateSupportReportDraft(tenantId: string, workCardId: s
 
   const result = await callOpenAI(
     tenantId,
-    "support_report",
+    "agent_service",
     [
       {
         role: "system",

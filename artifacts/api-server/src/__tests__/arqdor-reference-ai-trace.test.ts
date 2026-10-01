@@ -22,6 +22,21 @@ describe("Arqdor reference AI trace normalization", () => {
     expect(result.confidence).toBe(0.9);
   });
 
+  it("ignora cotas e limites do terreno mesmo quando a IA os envia junto das paredes", () => {
+    const result = normalizeReferenceTrace({
+      walls: [
+        { kind: "wall", x1: 0.2, y1: 0.3, x2: 0.8, y2: 0.3, confidence: 0.95 },
+        { kind: "dimension", x1: 0.1, y1: 0.1, x2: 0.9, y2: 0.1, confidence: 0.99 },
+        { kind: "site_boundary", x1: 0.95, y1: 0.1, x2: 0.95, y2: 0.9, confidence: 0.99 },
+      ],
+      openings: [],
+    }, { x: 0, y: 0, width: 10, depth: 10 }, "test-model");
+
+    expect(result.walls).toHaveLength(1);
+    expect(result.ignoredNonWallSegments).toBe(2);
+    expect(result.warnings.some((warning) => warning.includes("não viraram paredes"))).toBe(true);
+  });
+
   it("descarta segmentos muito diagonais", () => {
     const result = normalizeReferenceTrace({
       walls: [{ x1: 0.1, y1: 0.1, x2: 0.9, y2: 0.9, confidence: 0.8 }],

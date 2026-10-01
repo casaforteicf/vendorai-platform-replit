@@ -59,7 +59,7 @@ function decodeTokenEmail(token: string): string | null {
   }
 }
 
-function decodeTokenClaims(token: string): { sub: string; tenantId: string; platformRole: string } | null {
+function decodeTokenClaims(token: string): { sub: string; tenantId: string; platformRole: string; role?: string; userFunction?: string } | null {
   try {
     const part = token.split(".")[1];
     if (!part) return null;
@@ -220,7 +220,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const tokenIsStale =
       claims.sub !== meData.id ||
       claims.tenantId !== meData.tenantId ||
-      claims.platformRole !== meData.platformRole;
+      claims.platformRole !== meData.platformRole ||
+      (claims.role ?? null) !== (meData.role ?? null) ||
+      (claims.userFunction ?? null) !== (meData.userFunction ?? null);
 
     if (!tokenIsStale) return;
 
@@ -255,7 +257,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [token, meData?.id, meData?.tenantId, meData?.platformRole]);
+  }, [token, meData?.id, meData?.tenantId, meData?.platformRole, meData?.role, meData?.userFunction]);
 
   useEffect(() => {
     if (meData) {
