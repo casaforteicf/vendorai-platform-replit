@@ -46,7 +46,7 @@ jobs:
         run: pnpm install --no-frozen-lockfile
 
       - name: Install Chromium
-        run: pnpm --filter @workspace/e2e exec playwright install --with-deps chromium
+        run: pnpm --filter @workspace/e2e exec playwright install chromium
 
       - name: Capture screenshots
         id: screenshots
@@ -54,6 +54,7 @@ jobs:
         run: pnpm --filter @workspace/e2e media:capture
 
       - name: Record product videos
+        if: github.ref_name != 'staging'
         id: videos
         continue-on-error: true
         run: pnpm --filter @workspace/e2e media:video
@@ -107,7 +108,7 @@ jobs:
           if-no-files-found: error
 
       - name: Fail if media generation had errors
-        if: always() && (steps.screenshots.outcome == 'failure' || steps.videos.outcome == 'failure')
+        if: always() && (steps.screenshots.outcome == 'failure' || (github.ref_name != 'staging' && steps.videos.outcome == 'failure'))
         run: |
           echo "Media artifact was preserved and publishable files were committed, but one or more generation steps need review."
           exit 1
