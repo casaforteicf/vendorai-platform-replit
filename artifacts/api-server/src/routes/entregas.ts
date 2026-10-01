@@ -50,6 +50,45 @@ const EXECUTION_STAGES = [
   "cancelado",
 ] as const;
 
+const EXECUTION_STAGE_REQUIREMENTS: Record<string, string[]> = {
+  pedido_confirmado: ["pedido_contexto"],
+  liberacao_financeira: ["liberacao_financeira"],
+  liberacao_medidas: ["relatorio_medidas"],
+  projeto: ["projeto_aprovado"],
+  producao_a_iniciar: ["pre_requisitos_producao"],
+  producao_em_andamento: ["registro_producao"],
+  producao_finalizada: ["qualidade_producao"],
+  aguardando_liberacao: ["motivo_bloqueio"],
+  liberado: ["liberacao_operacional"],
+  agenda_entrega: ["agenda_entrega"],
+  em_transporte: ["checklist_transporte"],
+  instalacao_a_iniciar: ["pre_instalacao"],
+  instalacao_em_andamento: ["checklist_instalacao"],
+  instalacao_finalizada: ["conferencia_instalacao"],
+  entrega_obra: ["vistoria_aceite"],
+  pos_venda: ["pacote_entrega"],
+};
+
+function completedStageGate(card: typeof workCardsTable.$inferSelect, key: string): boolean {
+  const metadata = (card.metadata ?? {}) as Record<string, unknown>;
+  const stageGates = (metadata.stageGates && typeof metadata.stageGates === "object")
+    ? metadata.stageGates as Record<string, unknown>
+    : {};
+  const value = stageGates[key];
+  return value === true || Boolean(value && typeof value === "object" && (value as Record<string, unknown>).completed === true);
+}
+
+function missingTransitionRequirements(card: typeof workCardsTable.$inferSelect, targetStage: string): Array<{ stage: string; key: string }> {
+  if (card.pipeline !== "execucao") return [];
+  const currentIndex = EXECUTION_STAGES.indexOf(card.etapa as typeof EXECUTION_STAGES[number]);
+  const targetIndex = EXECUTION_STAGES.indexOf(targetStage as typeof EXECUTION_STAGES[number]);
+  if (currentIndex < 0 || targetIndex <= currentIndex) return [];
+  return EXECUTION_STAGES
+    .slice(currentIndex, targetIndex)
+    .flatMap((stage) => (EXECUTION_STAGE_REQUIREMENTS[stage] ?? []).map((key) => ({ stage, key })))
+    .filter(({ key }) => !completedStageGate(card, key));
+}
+
 const SUPPORT_STAGES = [
   "chamado_cliente",
   "agendamento_assistencia",
@@ -1046,6 +1085,25 @@ router.patch("/work-cards/:id", async (req, res) => {
     return;
   }
 
+  const advancingExecutionStage =
+    targetPipeline === "execucao"
+    && targetStage !== existing.etapa
+    && targetStage !== "cancelado"
+    && canAdvanceWorkCard(existing.pipeline, existing.etapa, targetStage)
+    && !manualAdminCorrection;
+  if (advancingExecutionStage) {
+    const missing = missingTransitionRequirements(existing, targetStage);
+    if (missing.length > 0) {
+      res.status(409).json({
+        error: "STAGE_REQUIREMENTS_PENDING",
+        message: "Conclua os requisitos obrigatórios das etapas anteriores antes de avançar.",
+        stage: existing.etapa,
+        missing,
+      });
+      return;
+    }
+  }
+
   const data: Record<string, unknown> = { ...parsed.data, updatedAt: new Date() };
   const starting = ["producao_em_andamento", "em_transporte", "instalacao_em_andamento", "execucao_assistencia"].includes(targetStage);
   const finishing = ["concluido", "entrega_obra", "instalacao_finalizada", "fechamento_assistencia"].includes(targetStage);
@@ -1084,6 +1142,7 @@ router.patch("/work-cards/:id", async (req, res) => {
     if (String(card.dataInicioEfetiva ?? "") !== String(existing.dataInicioEfetiva ?? "")) changedFields.push("início efetivo");
     if (String(card.dataFimPrevista ?? "") !== String(existing.dataFimPrevista ?? "")) changedFields.push("fim previsto");
     if (String(card.dataFimEfetiva ?? "") !== String(existing.dataFimEfetiva ?? "")) changedFields.push("fim efetivo");
+    if (JSON.stringify((card.metadata as any)?.stageGates ?? {}) !== JSON.stringify((existing.metadata as any)?.stageGates ?? {})) changedFields.push("requisitos da etapa");
     if (changedFields.length > 0) {
       await recordWorkHistory({
         tenantId: card.tenantId,
