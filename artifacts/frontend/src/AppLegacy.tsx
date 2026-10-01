@@ -37,6 +37,7 @@ const Dashboard          = lazy(() => import("@/pages/dashboard/Dashboard"));
 const WorkCenterHome     = lazy(() => import("@/pages/WorkCenterHome"));
 const ComissoesVendedor  = lazy(() => import("@/pages/ComissoesVendedor"));
 const Leads              = lazy(() => import("@/pages/Leads"));
+const Companies          = lazy(() => import("@/pages/Companies"));
 const ImportConfig       = lazy(() => import("@/pages/leads/import-config"));
 const NonLeadContacts    = lazy(() => import("@/pages/contacts-nonleads"));
 const LeadWorkspace      = lazy(() => import("@/pages/LeadWorkspace"));
@@ -654,6 +655,7 @@ function AppRoutes() {
         <Route path="/leads/import-config"><ProtectedRoute component={ImportConfig} /></Route>
         <Route path="/contacts-nonleads"><ProtectedRoute component={NonLeadContacts} /></Route>
         <Route path="/leads"><ProtectedRoute component={Leads} /></Route>
+        <Route path="/empresas"><ProtectedRoute component={Companies} /></Route>
         <Route path="/leads/:id"><ProtectedRoute component={LeadWorkspace} /></Route>
         <Route path="/empresas/:id"><ProtectedRoute component={CompanyCenter} /></Route>
         <Route path="/app/prospector"><ProtectedRoute component={Prospector} /></Route>
