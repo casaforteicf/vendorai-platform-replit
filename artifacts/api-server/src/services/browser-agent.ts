@@ -50,6 +50,7 @@ export interface BrowserAgentInput {
   allowedHosts?: string[];
   secrets?: { login?: string; passcode?: string };
   sessionCookies?: CookieData[];
+  firstPartyAuthToken?: string;
   onSessionPersist?: (cookies: CookieData[]) => Promise<void>;
   onHumanVerification?: (browser: Browser, page: Page) => Promise<{ sessionId: string; controlUrl: string }>;
 }
@@ -283,6 +284,14 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
       waitUntil: "domcontentloaded",
       timeout: 30000,
     });
+
+    if (input.firstPartyAuthToken) {
+      const current = new URL(page.url());
+      if (current.hostname.toLowerCase() !== "app.appvendorai.com") throw new Error("VENDI_AUTH_ORIGIN_MISMATCH");
+      await page.evaluate((token) => localStorage.setItem("vendorai_token", token), input.firstPartyAuthToken);
+      await page.reload({ waitUntil: "domcontentloaded", timeout: 30000 });
+      await page.waitForNetworkIdle({ idleTime: 400, timeout: 5000 }).catch(() => undefined);
+    }
 
     let selectorRecoveryNote = "";
     for (let index = 1; index <= maxSteps; index++) {
