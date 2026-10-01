@@ -81,7 +81,7 @@ export async function handleOAuth(req: IncomingMessage, res: ServerResponse, url
     if (req.method === "GET" && ["/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"].includes(path)) {
       json(res, 200, { resource: resource(), authorization_servers: [issuer()], scopes_supported: [SCOPE], bearer_methods_supported: ["header"] });
     } else if (req.method === "GET" && path === "/.well-known/oauth-authorization-server") {
-      json(res, 200, { issuer: issuer(), authorization_endpoint: `${issuer()}/oauth/authorize`, token_endpoint: `${issuer()}/oauth/token`, registration_endpoint: `${issuer()}/oauth/register`, revocation_endpoint: `${issuer()}/oauth/revoke`, response_types_supported: ["code"], grant_types_supported: ["authorization_code", "refresh_token"], token_endpoint_auth_methods_supported: ["none"], code_challenge_methods_supported: ["S256"], scopes_supported: [SCOPE] });
+      json(res, 200, { issuer: issuer(), authorization_endpoint: `${issuer()}/oauth/authorize`, token_endpoint: `${issuer()}/oauth/token`, registration_endpoint: `${issuer()}/oauth/register`, revocation_endpoint: `${issuer()}/oauth/revoke`, response_types_supported: ["code"], grant_types_supported: ["authorization_code", "refresh_token"], token_endpoint_auth_methods_supported: ["none"], code_challenge_methods_supported: ["S256"], scopes_supported: [SCOPE], authorization_response_iss_parameter_supported: true });
     } else if (req.method === "POST" && path === "/oauth/register") {
       if (!req.headers["content-type"]?.startsWith("application/json")) { fail(res); return true; }
       const input = JSON.parse(await body(req));
@@ -115,6 +115,7 @@ export async function handleOAuth(req: IncomingMessage, res: ServerResponse, url
       if (!pending || pending.exp < now()) { json(res, 400, { error: "invalid_request", error_description: "Autorização expirada. Abra uma nova autorização pelo ChatGPT.", reason: "expired_consent" }); return true; }
       const redirect = new URL(pending.grant.redirect);
       redirect.searchParams.set("state", pending.state);
+      redirect.searchParams.set("iss", issuer());
       if (p.get("decision") === "deny") redirect.searchParams.set("error", "access_denied");
       else {
         // Count by direct network peer, never by an untrusted forwarded header.
@@ -127,20 +128,7 @@ export async function handleOAuth(req: IncomingMessage, res: ServerResponse, url
         codes.set(hash(code), { ...pending.grant, exp: now() + 120 });
         redirect.searchParams.set("code", code);
       }
-      // Android/ChatGPT embedded browsers may not visibly follow a cross-origin 303 after a form POST.
-      // Return an explicit navigation document: JS first, meta-refresh fallback, and a manual link.
-      const target = redirect.toString();
-      const escaped = target.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-      const scriptTarget = JSON.stringify(target).replace(/</g, "\\u003c");
-      const navNonce = nonce();
-      res.writeHead(200, {
-        "Content-Type": "text/html; charset=utf-8",
-        "Cache-Control": "no-store",
-        "Pragma": "no-cache",
-        "Referrer-Policy": "no-referrer",
-        "Content-Security-Policy": `default-src 'none'; script-src 'nonce-${navNonce}'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'`,
-      });
-      res.end(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=${escaped}"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Conectando ao ChatGPT</title></head><body><p>Autorização concluída. Retornando ao ChatGPT…</p><p><a href="${escaped}" rel="noreferrer">Continuar no ChatGPT</a></p><script nonce="${navNonce}">location.replace(${scriptTarget});</script></body></html>`);
+      res.writeHead(303, { Location: redirect.toString(), "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" }); res.end();
 
     } else if (req.method === "POST" && path === "/oauth/token") {
       if (!req.headers["content-type"]?.startsWith("application/x-www-form-urlencoded")) { fail(res); return true; }
