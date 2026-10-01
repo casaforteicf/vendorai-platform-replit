@@ -212,8 +212,7 @@ export default function Onboarding() {
         segmento: s1Segmento,
       });
       await saveCanonicalBusinessBrand(companyName, s1Logo || undefined);
-      setBusinessAnalysis((current) => ({
-        ...current,
+      setBusinessAnalysis((current) => ({ ...(current ?? {}),
         nomeFantasia: current?.nomeFantasia || companyName,
         vertical: current?.vertical || s1Segmento,
       }));
@@ -264,8 +263,7 @@ export default function Onboarding() {
   }
 
   function continueWithoutDocuments() {
-    setBusinessAnalysis((current) => ({
-      ...current,
+    setBusinessAnalysis((current) => ({ ...(current ?? {}),
       nomeFantasia: current?.nomeFantasia || s1NomeEmpresa,
       vertical: current?.vertical || s1Segmento,
     }));
@@ -636,7 +634,7 @@ export default function Onboarding() {
                   <Label>Empresa</Label>
                   <Input
                     value={businessAnalysis?.nomeFantasia ?? s1NomeEmpresa}
-                    onChange={(event) => setBusinessAnalysis((current) => ({ ...current, nomeFantasia: event.target.value }))}
+                    onChange={(event) => setBusinessAnalysis((current) => ({ ...(current ?? {}), nomeFantasia: event.target.value }))}
                   />
                 </div>
 
@@ -644,7 +642,7 @@ export default function Onboarding() {
                   <Label>Segmento</Label>
                   <Input
                     value={businessAnalysis?.vertical ?? s1Segmento}
-                    onChange={(event) => setBusinessAnalysis((current) => ({ ...current, vertical: event.target.value }))}
+                    onChange={(event) => setBusinessAnalysis((current) => ({ ...(current ?? {}), vertical: event.target.value }))}
                   />
                 </div>
 
@@ -653,7 +651,7 @@ export default function Onboarding() {
                   <textarea
                     rows={3}
                     value={businessAnalysis?.publicoAlvo ?? ""}
-                    onChange={(event) => setBusinessAnalysis((current) => ({ ...current, publicoAlvo: event.target.value }))}
+                    onChange={(event) => setBusinessAnalysis((current) => ({ ...(current ?? {}), publicoAlvo: event.target.value }))}
                     placeholder="Quem compra, influencia ou especifica sua oferta?"
                     className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm outline-none ring-offset-background focus:ring-1 focus:ring-ring"
                   />
@@ -664,7 +662,7 @@ export default function Onboarding() {
                   <textarea
                     rows={3}
                     value={businessAnalysis?.diferenciais ?? ""}
-                    onChange={(event) => setBusinessAnalysis((current) => ({ ...current, diferenciais: event.target.value }))}
+                    onChange={(event) => setBusinessAnalysis((current) => ({ ...(current ?? {}), diferenciais: event.target.value }))}
                     placeholder="Por que clientes escolhem sua empresa?"
                     className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm outline-none ring-offset-background focus:ring-1 focus:ring-ring"
                   />
