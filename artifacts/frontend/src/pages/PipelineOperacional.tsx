@@ -89,6 +89,58 @@ type BalanceItem = {
 
 type BalanceResponse = { propostaId: string; propostaTitulo: string; itens: BalanceItem[] };
 
+type InstallationVisit = {
+  id: string;
+  visitNumber: number;
+  status: string;
+  scheduledAt?: string | null;
+  startedAt?: string | null;
+  endedAt?: string | null;
+  teamUserIds?: string[];
+  responsibleId?: string | null;
+  receiverName?: string | null;
+  receiverDocument?: string | null;
+  receiverRelationship?: string | null;
+  customerAcceptanceStatus?: string;
+  notes?: string | null;
+};
+
+type InstallationDomainItem = {
+  id: string;
+  visitId: string;
+  sourceItemIndex: number;
+  unitIndex?: number | null;
+  productId?: string | null;
+  sku?: string | null;
+  productName: string;
+  quantity: number;
+  location?: string | null;
+  attributes?: Record<string, unknown>;
+  checks?: Array<Record<string, unknown>>;
+  status: string;
+  observation?: string | null;
+  evidenceRequired?: boolean;
+  required?: boolean;
+};
+
+type InstallationOccurrence = {
+  id: string;
+  checklistItemId?: string | null;
+  type: string;
+  status: string;
+  description?: string | null;
+  responsibleId?: string | null;
+  dueAt?: string | null;
+  resolution?: string | null;
+};
+
+type InstallationDomainResponse = {
+  currentVisitId: string;
+  visits: InstallationVisit[];
+  items: InstallationDomainItem[];
+  occurrences: InstallationOccurrence[];
+};
+
 const EXECUTION_STAGES = [
   ["pedido_confirmado", "Pedido confirmado"],
   ["liberacao_financeira", "Liberação financeira"],
@@ -324,6 +376,14 @@ export default function PipelineOperacional() {
     queryFn: () => api(`/api/work-cards/${selectedCard!.id}/attachments`),
   });
 
+  const installationQuery = useQuery<InstallationDomainResponse>({
+    queryKey: ["work-card-installation", selectedCard?.id],
+    enabled: !!selectedCard?.id && selectedCard?.pipeline === "execucao" && isInstallationStage(selectedCard.etapa),
+    queryFn: () => api(`/api/work-cards/${selectedCard!.id}/installation`),
+    staleTime: 5_000,
+    refetchOnWindowFocus: false,
+  });
+
   const leadMap = useMemo(() => new Map((leadsQuery.data ?? []).map((l) => [l.id, l])), [leadsQuery.data]);
   const userMap = useMemo(() => new Map((usersQuery.data ?? []).map((u) => [u.id, u])), [usersQuery.data]);
   const dealMap = useMemo(() => new Map((dealsQuery.data ?? []).map((d) => [d.id, d])), [dealsQuery.data]);
@@ -362,6 +422,40 @@ export default function PipelineOperacional() {
     patchCard.mutate({ id: card.id, data: { metadata } });
   }
 
+  const patchInstallationItem = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
+      api<InstallationDomainItem>(`/api/installation-checklist-items/${id}`, {
+        method: "PATCH", headers: jsonHeaders, body: JSON.stringify(data),
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["work-card-installation", selectedCard?.id] });
+    },
+    onError: (error) => toast({ title: "Não foi possível atualizar o item da instalação", description: String(error), variant: "destructive" }),
+  });
+
+  const patchInstallationVisit = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
+      api<InstallationVisit>(`/api/installation-visits/${id}`, {
+        method: "PATCH", headers: jsonHeaders, body: JSON.stringify(data),
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["work-card-installation", selectedCard?.id] });
+    },
+    onError: (error) => toast({ title: "Não foi possível atualizar a visita", description: String(error), variant: "destructive" }),
+  });
+
+  const createInstallationReturnVisit = useMutation({
+    mutationFn: (cardId: string) =>
+      api<InstallationVisit>(`/api/work-cards/${cardId}/installation/visits`, {
+        method: "POST", headers: jsonHeaders, body: JSON.stringify({ reason: "retorno_pendencias" }),
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["work-card-installation", selectedCard?.id] });
+      toast({ title: "Nova visita/retorno criada com as pendências abertas." });
+    },
+    onError: (error) => toast({ title: "Não foi possível criar o retorno", description: String(error), variant: "destructive" }),
+  });
+
   const stages = pipeline === "suporte" ? SUPPORT_STAGES : EXECUTION_STAGES;
   const cards = cardsQuery.data ?? [];
   const isAdmin = (user as any)?.platformRole === "super_admin" || (user as any)?.platformRole === "tenant_admin" || (user as any)?.userFunction === "administrador";
@@ -375,7 +469,7 @@ export default function PipelineOperacional() {
     else navigate(`/pipeline-operacional/${next}`);
   }
 
-  async function uploadFilesToCard(cardId: string, files: File[], origem = "app") {
+  async function uploadFilesToCard(cardId: string, files: File[], origem = "app", metadata?: Record<string, unknown>) {
     if (!files.length || uploading) return;
     setUploading(true);
     try {
@@ -398,6 +492,7 @@ export default function PipelineOperacional() {
             mimeType: file.type || "application/octet-stream",
             tamanho: file.size,
             origem,
+            metadata,
           }),
         });
       }
@@ -632,69 +727,184 @@ export default function PipelineOperacional() {
                 )}
 
                 {isInstallationStage(selectedCard.etapa) && safeItems(selectedCard).length > 0 ? (
-                  <div className="space-y-3 rounded-xl border p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div>
-                        <h3 className="text-sm font-semibold">Checklist de instalação</h3>
-                        <p className="text-xs text-muted-foreground">Gerado automaticamente pelos itens do pedido. Campos adicionais acompanham os atributos disponíveis de cada produto.</p>
+                  <div className="space-y-4">
+                    {installationQuery.isLoading && <div className="h-36 animate-pulse rounded-xl bg-muted" />}
+                    {installationQuery.isError && (
+                      <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                        Não foi possível carregar a estrutura detalhada da instalação. O checklist básico do card continua preservado.
                       </div>
-                      <Badge variant="outline">
-                        {installationChecklistItems(selectedCard).filter((item) => ["instalado", "conferido"].includes(item.status)).length}/{installationChecklistItems(selectedCard).length} concluídos
-                      </Badge>
-                    </div>
+                    )}
 
-                    <div className="space-y-3">
-                      {safeItems(selectedCard).map((source, index) => {
-                        const checklistItem = installationChecklistItems(selectedCard)[index];
-                        const attrs = displayItemAttributes(source);
-                        return (
-                          <div key={checklistItem?.key || index} className="rounded-lg border bg-muted/10 p-3">
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                              <div className="min-w-0 flex-1">
-                                <p className="font-medium">{itemQuantity(source)} × {itemName(source)}</p>
-                                {attrs.length > 0 && (
-                                  <div className="mt-2 flex flex-wrap gap-1.5">
-                                    {attrs.map((attr) => (
-                                      <span key={attr.key} className="rounded-md bg-muted px-2 py-1 text-[11px] text-muted-foreground">
-                                        <strong className="font-medium text-foreground">{attr.label}:</strong> {attr.value}
-                                      </span>
-                                    ))}
-                                  </div>
+                    {installationQuery.data ? (() => {
+                      const data = installationQuery.data;
+                      const currentVisit = data.visits.find((visit) => visit.id === data.currentVisitId) ?? data.visits.at(-1);
+                      const currentItems = currentVisit ? data.items.filter((item) => item.visitId === currentVisit.id) : data.items;
+                      const completed = currentItems.filter((item) => ["installed", "verified", "instalado", "conferido"].includes(item.status)).length;
+                      const pending = currentItems.length - completed;
+                      const openOccurrences = data.occurrences.filter((occurrence) => occurrence.status === "open" || occurrence.status === "in_progress");
+                      return (
+                        <div className="space-y-4 rounded-xl border p-4">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <h3 className="text-sm font-semibold">Checklist de instalação</h3>
+                              <p className="text-xs text-muted-foreground">
+                                Visita {currentVisit?.visitNumber ?? 1} • itens e verificações derivados do pedido e do template do produto.
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <Badge variant="outline">{completed}/{currentItems.length} concluídos</Badge>
+                              {openOccurrences.length > 0 && <Badge variant="destructive">{openOccurrences.length} pendência(s)</Badge>}
+                            </div>
+                          </div>
+
+                          {currentVisit && (
+                            <div className="grid gap-3 rounded-lg bg-muted/30 p-3 sm:grid-cols-2">
+                              <div>
+                                <p className="text-[11px] font-medium uppercase text-muted-foreground">Situação da visita</p>
+                                <p className="mt-1 text-sm font-medium">{currentVisit.status.replaceAll("_", " ")}</p>
+                              </div>
+                              <div className="flex flex-wrap items-end justify-end gap-2">
+                                {currentVisit.status === "scheduled" && (
+                                  <Button size="sm" variant="outline" onClick={() => patchInstallationVisit.mutate({ id: currentVisit.id, data: { status: "in_progress", startedAt: new Date().toISOString() } })}>
+                                    Iniciar visita
+                                  </Button>
+                                )}
+                                {currentVisit.status === "in_progress" && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => patchInstallationVisit.mutate({
+                                      id: currentVisit.id,
+                                      data: { status: pending > 0 ? "completed_with_pending" : "completed", endedAt: new Date().toISOString() },
+                                    })}
+                                  >
+                                    {pending > 0 ? "Encerrar visita com pendências" : "Concluir visita"}
+                                  </Button>
+                                )}
+                                {(currentVisit.status === "completed_with_pending" || openOccurrences.length > 0) && (
+                                  <Button size="sm" onClick={() => createInstallationReturnVisit.mutate(selectedCard.id)}>
+                                    Nova visita / retorno
+                                  </Button>
                                 )}
                               </div>
-                              <Select
-                                value={checklistItem?.status || "pendente"}
-                                disabled={patchCard.isPending}
-                                onValueChange={(status) => checklistItem && updateInstallationChecklistItem(selectedCard, checklistItem.key, { status: status as InstallationStatus })}
-                              >
-                                <SelectTrigger className="w-[190px]"><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                  {INSTALLATION_STATUS_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
-                                </SelectContent>
-                              </Select>
                             </div>
-                            <Textarea
-                              key={`installation-note-${selectedCard.id}-${checklistItem?.key}-${checklistItem?.observacao || ""}`}
-                              className="mt-3"
-                              rows={2}
-                              defaultValue={checklistItem?.observacao || ""}
-                              placeholder="Observação do item, divergência, pendência ou informação para retorno..."
-                              disabled={patchCard.isPending}
-                              onBlur={(event) => {
-                                const observacao = event.currentTarget.value.trim();
-                                if (checklistItem && observacao !== (checklistItem.observacao || "")) {
-                                  updateInstallationChecklistItem(selectedCard, checklistItem.key, { observacao });
-                                }
-                              }}
-                            />
-                          </div>
-                        );
-                      })}
-                    </div>
+                          )}
 
-                    <div className="rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground">
-                      Para avançar para <strong className="text-foreground">Instalação finalizada</strong>, todos os itens precisam estar como <strong className="text-foreground">Instalado</strong> ou <strong className="text-foreground">Conferido</strong>. Fotos e documentos podem ser anexados logo abaixo e ficam vinculados ao mesmo card.
-                    </div>
+                          <div className="space-y-3">
+                            {currentItems.map((item) => {
+                              const itemOccurrences = data.occurrences.filter((occurrence) => occurrence.checklistItemId === item.id && occurrence.status !== "resolved" && occurrence.status !== "cancelled");
+                              const attrs = Object.entries(item.attributes ?? {}).slice(0, 8);
+                              return (
+                                <div key={item.id} className="rounded-lg border bg-muted/10 p-3">
+                                  <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <div className="min-w-0 flex-1">
+                                      <p className="font-medium">
+                                        {item.quantity} × {item.productName}{item.unitIndex ? ` • unidade ${item.unitIndex}` : ""}
+                                      </p>
+                                      {item.location && <p className="mt-0.5 text-xs text-muted-foreground">Local: {item.location}</p>}
+                                      {attrs.length > 0 && (
+                                        <div className="mt-2 flex flex-wrap gap-1.5">
+                                          {attrs.map(([key, value]) => (
+                                            <span key={key} className="rounded-md bg-muted px-2 py-1 text-[11px] text-muted-foreground">
+                                              <strong className="font-medium text-foreground">{key.replace(/_/g, " ")}:</strong> {typeof value === "object" ? JSON.stringify(value) : String(value)}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
+                                      {(item.checks?.length ?? 0) > 0 && (
+                                        <div className="mt-2 flex flex-wrap gap-1.5">
+                                          {(item.checks ?? []).map((check, idx) => (
+                                            <Badge key={String(check.key || idx)} variant="secondary" className="text-[10px]">
+                                              {String(check.label || check.key || "Verificação")}
+                                            </Badge>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <Select
+                                      value={item.status}
+                                      disabled={patchInstallationItem.isPending}
+                                      onValueChange={(status) => patchInstallationItem.mutate({ id: item.id, data: { status } })}
+                                    >
+                                      <SelectTrigger className="w-[190px]"><SelectValue /></SelectTrigger>
+                                      <SelectContent>
+                                        {INSTALLATION_STATUS_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+
+                                  <Textarea
+                                    key={`installation-domain-note-${item.id}-${item.observation || ""}`}
+                                    className="mt-3"
+                                    rows={2}
+                                    defaultValue={item.observation || ""}
+                                    placeholder="Observação, divergência, pendência ou informação para retorno..."
+                                    disabled={patchInstallationItem.isPending}
+                                    onBlur={(event) => {
+                                      const observation = event.currentTarget.value.trim();
+                                      if (observation !== (item.observation || "")) patchInstallationItem.mutate({ id: item.id, data: { observation } });
+                                    }}
+                                  />
+
+                                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted">
+                                      <Upload className="h-3.5 w-3.5" />
+                                      Evidência do item
+                                      <input
+                                        type="file"
+                                        className="hidden"
+                                        multiple
+                                        accept="image/*,video/*,.pdf"
+                                        onChange={(event) => {
+                                          const files = Array.from(event.target.files ?? []);
+                                          event.currentTarget.value = "";
+                                          if (files.length) void uploadFilesToCard(selectedCard.id, files, "instalacao_item", {
+                                            installationChecklistItemId: item.id,
+                                            installationVisitId: item.visitId,
+                                          });
+                                        }}
+                                      />
+                                    </label>
+                                    {item.evidenceRequired && <Badge variant="outline">Evidência obrigatória</Badge>}
+                                    {itemOccurrences.map((occurrence) => (
+                                      <Badge key={occurrence.id} variant="destructive">{occurrence.type.replaceAll("_", " ")}</Badge>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {openOccurrences.length > 0 && (
+                            <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                              <p className="text-xs font-semibold uppercase text-amber-900">Pendências abertas</p>
+                              {openOccurrences.map((occurrence) => (
+                                <div key={occurrence.id} className="text-xs text-amber-900">
+                                  <strong>{occurrence.type.replaceAll("_", " ")}</strong>
+                                  {occurrence.description ? ` — ${occurrence.description}` : ""}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          <div className="rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground">
+                            A visita pode ser encerrada com pendências, mas <strong className="text-foreground">Instalação finalizada</strong> só é liberada quando todos os itens obrigatórios estiverem concluídos. O aceite do cliente permanece separado da conferência técnica.
+                          </div>
+                        </div>
+                      );
+                    })() : (
+                      <div className="space-y-3 rounded-xl border p-4">
+                        <h3 className="text-sm font-semibold">Checklist de instalação</h3>
+                        {safeItems(selectedCard).map((source, index) => {
+                          const checklistItem = installationChecklistItems(selectedCard)[index];
+                          return (
+                            <div key={checklistItem?.key || index} className="rounded-lg border p-3 text-sm">
+                              {itemQuantity(source)} × {itemName(source)}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 ) : safeItems(selectedCard).length > 0 ? (
                   <div className="space-y-2">
