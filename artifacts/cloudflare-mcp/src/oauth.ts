@@ -100,6 +100,8 @@ export async function handleOAuth(req: IncomingMessage, res: ServerResponse, url
       if (metadata?.type !== "client" || !metadata.redirects?.includes(redirect) || !allowedRedirect(redirect) || p.get("response_type") !== "code" ||
           p.get("code_challenge_method") !== "S256" || !/^[A-Za-z0-9_-]{43}$/.test(p.get("code_challenge") || "") || aud !== resource() || scope !== SCOPE) { fail(res); return true; }
       if (forms.size >= 1000) { fail(res, "temporarily_unavailable", 503); return true; }
+      const callbackPath = (() => { try { return new URL(redirect).pathname; } catch { return "invalid"; } })();
+      console.info("[oauth] authorize accepted", { callbackPath, callbackKind: callbackPath === "/connector_platform_oauth_redirect" ? "stable" : callbackPath.startsWith("/connector/oauth/") ? "specific" : "other" });
       const pending = { grant: { client, redirect, challenge: p.get("code_challenge")!, resource: resource(), scope, family: nonce(), exp: now() + 600 }, state: p.get("state") || "", exp: now() + 600 };
       // Signed self-contained consent survives process restarts and multiple replicas.
       const csrf = sign({ type: "consent", pending });
@@ -128,9 +130,11 @@ export async function handleOAuth(req: IncomingMessage, res: ServerResponse, url
         codes.set(hash(code), { ...pending.grant, exp: now() + 120 });
         redirect.searchParams.set("code", code);
       }
+      console.info("[oauth] approve redirect", { callbackPath: redirect.pathname, callbackKind: redirect.pathname === "/connector_platform_oauth_redirect" ? "stable" : redirect.pathname.startsWith("/connector/oauth/") ? "specific" : "other", hasCode: redirect.searchParams.has("code"), hasState: redirect.searchParams.has("state"), hasIss: redirect.searchParams.has("iss") });
       res.writeHead(303, { Location: redirect.toString(), "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" }); res.end();
 
     } else if (req.method === "POST" && path === "/oauth/token") {
+      console.info("[oauth] token endpoint reached");
       if (!req.headers["content-type"]?.startsWith("application/x-www-form-urlencoded")) { fail(res); return true; }
       const p = new URLSearchParams(await body(req));
       const client = p.get("client_id") || "";
