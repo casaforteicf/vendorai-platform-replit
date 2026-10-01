@@ -10,6 +10,7 @@ export * from "./agent_configs";
 export * from "./funis";
 export * from "./deals";
 export * from "./pipeline_stages";
+export * from "./operational_checklists";
 export * from "./activities";
 export * from "./propostas";
 export * from "./orcamento_revisoes";
