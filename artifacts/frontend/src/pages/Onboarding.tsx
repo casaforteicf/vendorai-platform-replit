@@ -97,6 +97,7 @@ export default function Onboarding() {
   const documentInputRef = useRef<HTMLInputElement>(null);
   const [documentAnalyzing, setDocumentAnalyzing] = useState(false);
   const [documentNames, setDocumentNames] = useState<string[]>([]);
+  const [selectedDocuments, setSelectedDocuments] = useState<File[]>([]);
   const [businessAnalysis, setBusinessAnalysis] = useState<BusinessDocumentAnalysis | null>(null);
 
   const { data: segments = [], isLoading: segmentsLoading } = useListSegmentTemplates();
@@ -227,7 +228,8 @@ export default function Onboarding() {
 
   async function analyzeBusinessDocuments(files: FileList | null) {
     if (!user?.tenantId || !files?.length) return;
-    const selected = Array.from(files).slice(0, 3);
+    const selected = Array.from(files).slice(0, 10);
+    setSelectedDocuments(selected);
     setDocumentNames(selected.map((file) => file.name));
     setDocumentAnalyzing(true);
     try {
@@ -302,6 +304,31 @@ export default function Onboarding() {
           extractionConfidence: analysis.confianca ?? null,
         },
       });
+
+      // The review above is the approval boundary. Only after approval do the
+      // original readable documents become persistent company knowledge.
+      if (selectedDocuments.length > 0) {
+        const token = getToken();
+        const uploads = selectedDocuments.map(async (file) => {
+          const form = new FormData();
+          form.append("file", file);
+          form.append("categoria", "Implantação da empresa");
+          form.append("tags", "onboarding,empresa,fonte-aprovada");
+          const response = await fetch(`/api/tenants/${user.tenantId}/knowledge-base/upload`, {
+            method: "POST",
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            body: form,
+          });
+          if (!response.ok) throw new Error(file.name);
+        });
+        const persisted = await Promise.allSettled(uploads);
+        const failed = persisted.filter((item) => item.status === "rejected").length;
+        if (failed > 0) {
+          toast({
+            title: `Empresa preparada. ${failed} documento(s) não puderam ser arquivados na base de conhecimento.`,
+          });
+        }
+      }
 
       await apiPatch("/api/onboarding/step/4", {});
       setStep("done");
@@ -551,7 +578,7 @@ export default function Onboarding() {
                   <p className="text-sm font-medium">Você pode importar</p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     PDF, Word, texto, imagem, catálogo, apresentação comercial, proposta, tabela ou manual.
-                    Até 3 arquivos por análise.
+                    Até 10 arquivos por análise.
                   </p>
                 </div>
 
