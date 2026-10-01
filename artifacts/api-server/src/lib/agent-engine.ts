@@ -67,6 +67,11 @@ export type CompanyAgentContext = {
     isPrimary: boolean;
     preferredChannel: string | null;
     priorityByPurpose: Record<string, number>;
+    roleEvidence: Array<{ source: string; detail?: string; observedAt?: string }>;
+    roleConfidence: string | null;
+    verifiedAt: Date | null;
+    validUntil: Date | null;
+    metadata: Record<string, unknown>;
   }>;
 };
 
@@ -385,6 +390,11 @@ export async function loadContext(tenantId: string, leadId: string): Promise<Age
           isPrimary: crmTenantCompanyContactsTable.isPrimary,
           preferredChannel: crmTenantCompanyContactsTable.preferredChannel,
           priorityByPurpose: crmTenantCompanyContactsTable.priorityByPurpose,
+          roleEvidence: crmTenantCompanyContactsTable.roleEvidence,
+          roleConfidence: crmTenantCompanyContactsTable.roleConfidence,
+          verifiedAt: crmTenantCompanyContactsTable.verifiedAt,
+          validUntil: crmTenantCompanyContactsTable.validUntil,
+          metadata: crmTenantCompanyContactsTable.metadata,
         })
         .from(crmTenantCompanyContactsTable)
         .innerJoin(crmPeopleMasterTable, eq(crmPeopleMasterTable.id, crmTenantCompanyContactsTable.personId))
@@ -409,6 +419,8 @@ export async function loadContext(tenantId: string, leadId: string): Promise<Age
           emails: contact.emails ?? [],
           roles: contact.roles ?? [],
           priorityByPurpose: contact.priorityByPurpose ?? {},
+          roleEvidence: contact.roleEvidence ?? [],
+          metadata: (contact.metadata ?? {}) as Record<string, unknown>,
         })),
       };
     }
@@ -773,15 +785,23 @@ export function buildLeadSection(lead: Lead, companyContext?: CompanyAgentContex
     if (companyContext.contacts.length > 0) {
       lines.push("Contatos disponíveis para este tenant:");
       for (const contact of companyContext.contacts) {
-        const roleText = contact.roles.length > 0 ? contact.roles.join(", ") : "papel não confirmado";
+        const roleConfirmed =
+          contact.metadata?.["roleStatus"] === "confirmed" ||
+          contact.verifiedAt != null;
+        const roleText = roleConfirmed && contact.roles.length > 0
+          ? contact.roles.join(", ")
+          : "vínculo identificado; papel comercial não confirmado";
         const channels = [
           contact.telefones[0] ? `tel: ${contact.telefones[0]}` : null,
           contact.emails[0] ? `e-mail: ${contact.emails[0]}` : null,
         ].filter(Boolean).join(" | ");
         lines.push(
           `- ${contact.nome}${contact.cargo ? ` — ${contact.cargo}` : ""} — papéis: ${roleText}` +
-          `${contact.isPrimary ? " — contato principal" : ""}${channels ? ` — ${channels}` : ""}`
+          `${roleConfirmed && contact.isPrimary ? " — contato principal" : ""}${channels ? ` — ${channels}` : ""}`
         );
+        if (!roleConfirmed && contact.metadata?.["discoveredBy"] === "qsa") {
+          lines.push("  Observação: QSA confirma vínculo societário/administrativo, não autoridade comercial.");
+        }
       }
       lines.push(
         "REGRA DE CONTATO: quando a ação tiver uma finalidade específica, use o contato com papel correspondente " +
