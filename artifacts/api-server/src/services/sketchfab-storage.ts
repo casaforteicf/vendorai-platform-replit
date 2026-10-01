@@ -17,7 +17,7 @@ function authHeaders(): Record<string,string> {
   return { apikey:key, Authorization:`Bearer ${key}` };
 }
 
-export async function saveSketchfabAsset(objectName:string, data:Buffer, contentType:string): Promise<string> {
+export async function saveExternalAsset(objectName:string, data:Buffer, contentType:string): Promise<string> {
   const bucket = process.env["SKETCHFAB_STORAGE_BUCKET"]?.trim() || "app-uploads";
   const path = objectName.replace(/^\/+/, "");
   const url = `${baseUrl()}/storage/v1/object/${encodeURIComponent(bucket)}/${path.split("/").map(encodeURIComponent).join("/")}`;
@@ -32,3 +32,5 @@ export async function saveSketchfabAsset(objectName:string, data:Buffer, content
   }
   return `${baseUrl()}/storage/v1/object/public/${encodeURIComponent(bucket)}/${path.split("/").map(encodeURIComponent).join("/")}`;
 }
+
+export const saveSketchfabAsset = saveExternalAsset;
