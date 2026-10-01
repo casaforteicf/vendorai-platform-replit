@@ -21,6 +21,20 @@ type Template = {
 
 type DraftCheck = { label: string; required: boolean };
 
+type InstallationMetrics = {
+  installations: number;
+  accepted: number;
+  firstVisitAccepted: number;
+  returns: number;
+  visits: number;
+  checklistItems: number;
+  completedChecklistItems: number;
+  completionRate: number;
+  occurrences: number;
+  openOccurrences: number;
+  occurrenceTypes: Record<string, number>;
+};
+
 export function InstallationTemplateDialog({
   open,
   onOpenChange,
@@ -34,6 +48,7 @@ export function InstallationTemplateDialog({
 }) {
   const { toast } = useToast();
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [metrics, setMetrics] = useState<InstallationMetrics | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState("");
@@ -69,7 +84,12 @@ export function InstallationTemplateDialog({
     if (!tenantId || !open) return;
     setLoading(true);
     try {
-      setTemplates(await api<Template[]>(`/api/tenants/${tenantId}/installation-templates`));
+      const [templateRows, metricData] = await Promise.all([
+        api<Template[]>(`/api/tenants/${tenantId}/installation-templates`),
+        api<InstallationMetrics>(`/api/tenants/${tenantId}/installation-metrics`),
+      ]);
+      setTemplates(templateRows);
+      setMetrics(metricData);
     } catch (error) {
       toast({ title: "Não foi possível carregar os templates", description: String(error), variant: "destructive" });
     } finally {
@@ -157,6 +177,24 @@ export function InstallationTemplateDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><Settings2 className="h-5 w-5" /> Templates de instalação</DialogTitle>
         </DialogHeader>
+
+        {metrics && (
+          <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+            {[
+              ["Instalações", metrics.installations],
+              ["Aceites", metrics.accepted],
+              ["1ª visita", metrics.firstVisitAccepted],
+              ["Retornos", metrics.returns],
+              ["Pendências", metrics.openOccurrences],
+              ["Conclusão", `${metrics.completionRate}%`],
+            ].map(([label, value]) => (
+              <div key={String(label)} className="rounded-lg border bg-muted/20 p-3">
+                <p className="text-[10px] font-medium uppercase text-muted-foreground">{label}</p>
+                <p className="mt-1 text-lg font-semibold">{value}</p>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
           <div className="space-y-4">
