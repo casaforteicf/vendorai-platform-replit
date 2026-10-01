@@ -119,6 +119,7 @@ function getBase()  { return (import.meta.env.BASE_URL ?? "/").replace(/\/$/, ""
 function getToken() { return localStorage.getItem("vendorai_token") ?? ""; }
 
 type CompanyContextContact = {
+  relationId: string;
   personId: string;
   nome: string;
   cargo?: string | null;
@@ -373,6 +374,9 @@ export default function LeadDetail() {
   const [companyContext, setCompanyContext] = useState<CompanyContext | null>(null);
   const [companyContextLoading, setCompanyContextLoading] = useState(false);
   const [companyContextError, setCompanyContextError] = useState<string | null>(null);
+  const [contactRoleDialog, setContactRoleDialog] = useState<CompanyContextContact | null>(null);
+  const [contactRoleDraft, setContactRoleDraft] = useState<string>("comercial");
+  const [contactRoleSaving, setContactRoleSaving] = useState(false);
 
   const { data: catalog = [] } = useListProdutosCatalogo(tenantId, {
     query: { queryKey: getListProdutosCatalogoQueryKey(tenantId), enabled: !!tenantId },
@@ -746,6 +750,44 @@ export default function LeadDetail() {
       setCompanyContextError(err instanceof Error ? err.message : "Falha ao carregar empresa.");
     } finally {
       setCompanyContextLoading(false);
+    }
+  }
+
+  async function confirmCompanyContactRole() {
+    if (!companyContext || !contactRoleDialog) return;
+    setContactRoleSaving(true);
+    try {
+      const response = await fetch(
+        `${getBase()}/api/crm/companies/${companyContext.company.id}/contacts/${contactRoleDialog.relationId}/roles`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${getToken()}`,
+          },
+          body: JSON.stringify({
+            tenantId,
+            roles: [contactRoleDraft],
+            isPrimary: contactRoleDraft === "decisor" ? contactRoleDialog.isPrimary ?? false : contactRoleDialog.isPrimary ?? false,
+            evidence: {
+              source: "tenant_user_confirmation",
+              detail: `Papel ${contactRoleDraft} confirmado na ficha do lead`,
+            },
+          }),
+        },
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error((payload as any)?.error ?? "Não foi possível confirmar o papel.");
+      setCompanyContext(payload as CompanyContext);
+      setContactRoleDialog(null);
+      toast({ title: "Papel do contato confirmado" });
+    } catch (err) {
+      toast({
+        title: err instanceof Error ? err.message : "Falha ao confirmar o papel do contato.",
+        variant: "destructive",
+      });
+    } finally {
+      setContactRoleSaving(false);
     }
   }
 
@@ -1885,6 +1927,18 @@ export default function LeadDetail() {
                                     <Badge variant="outline" className="text-[10px]">QSA</Badge>
                                   )}
                                   <Badge variant="secondary" className="text-[10px]">papel comercial a confirmar</Badge>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 px-2 text-[10px]"
+                                    onClick={() => {
+                                      setContactRoleDraft("comercial");
+                                      setContactRoleDialog(contact);
+                                    }}
+                                  >
+                                    Confirmar papel
+                                  </Button>
                                 </div>
                               )}
                               {(contact.telefones?.[0] || contact.emails?.[0]) && (
@@ -1903,6 +1957,52 @@ export default function LeadDetail() {
               </CardContent>
             </Card>
           )}
+
+          <Dialog open={!!contactRoleDialog} onOpenChange={(open) => !open && setContactRoleDialog(null)}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>Confirmar papel do contato</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3">
+                <div>
+                  <p className="text-sm font-medium">{contactRoleDialog?.nome}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {contactRoleDialog?.qualificacao || contactRoleDialog?.cargo || "Vínculo identificado"}
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium">Papel nesta empresa</p>
+                  <Select value={contactRoleDraft} onValueChange={setContactRoleDraft}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="comercial">Comercial</SelectItem>
+                      <SelectItem value="decisor">Decisor</SelectItem>
+                      <SelectItem value="compras">Compras</SelectItem>
+                      <SelectItem value="financeiro">Financeiro</SelectItem>
+                      <SelectItem value="tecnico">Técnico</SelectItem>
+                      <SelectItem value="administrativo">Administrativo</SelectItem>
+                      <SelectItem value="suporte">Suporte</SelectItem>
+                      <SelectItem value="outro">Outro</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11px] text-muted-foreground">
+                    O QSA comprova o vínculo societário, mas este papel só será usado pelos agentes após sua confirmação.
+                  </p>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setContactRoleDialog(null)} disabled={contactRoleSaving}>
+                  Cancelar
+                </Button>
+                <Button onClick={() => void confirmCompanyContactRole()} disabled={contactRoleSaving}>
+                  {contactRoleSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Confirmar
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           {/* Dados Pessoais */}
           <Card data-testid="card-dados-pessoais">
