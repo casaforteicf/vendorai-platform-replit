@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 import { Magnet, Maximize2, Move, Route, ZoomIn, ZoomOut } from "lucide-react";
 import type { ConceptGeometry, ConceptRoomShape, OpeningMarker } from "./conceptGeometry";
-import { orthogonalEnd, snapPointToWallNetwork, wallLength, wallMidpoint, type ClosedSpace, type WallTopologyEndpointRef, type WallTopologyNode } from "./conceptWallNetwork";
+import { orthogonalEnd, snapPointToWallNetwork, snapPointToWallNetworkDetailed, wallLength, wallMidpoint, type ClosedSpace, type WallSnapKind, type WallTopologyEndpointRef, type WallTopologyNode } from "./conceptWallNetwork";
 
 export type ConceptPlanObject = {
   id: string;
@@ -423,6 +423,7 @@ export default function ConceptPlan2D({
   const pendingClosedSpaceSelectRef = useRef(false);
   const previousClosedSpaceIdsRef = useRef(new Set<string>());
   const [snapGuides, setSnapGuides] = useState<{ x?: number; y?: number }>({});
+  const [activeWallSnap, setActiveWallSnap] = useState<{ kind: WallSnapKind; point: { x: number; y: number } } | null>(null);
   const [gesture, setGesture] = useState<null | {
     roomId: string;
     openingId?: string;
@@ -457,6 +458,7 @@ export default function ConceptPlan2D({
       setWallChainOrigin(null);
       setWallDrawPreview(null);
       setWallLengthInput("");
+      setActiveWallSnap(null);
       pendingClosedSpaceSelectRef.current = false;
     }
   }, [interactionMode]);
@@ -748,8 +750,11 @@ export default function ConceptPlan2D({
 
   const handleDrawWallPoint = (point: { x: number; y: number }) => {
     const clamped = clampPoint(point);
-    const snappedToNetwork = snapPointToWallNetwork(clamped, wallNetwork, 0.35);
-    const snapped = clampPoint(snappedToNetwork);
+    const snapResult = snapEnabled
+      ? snapPointToWallNetworkDetailed(clamped, wallNetwork, 0.35)
+      : { point: clamped, kind: "none" as const, distance: Number.POSITIVE_INFINITY };
+    const snapped = clampPoint(snapResult.point);
+    setActiveWallSnap(snapResult.kind === "none" ? null : { kind: snapResult.kind, point: snapped });
     if (!wallDrawStart) {
       setWallDrawStart(snapped);
       setWallChainOrigin(snapped);
@@ -759,8 +764,12 @@ export default function ConceptPlan2D({
     }
 
     const rawEnd = orthogonalEnabled ? orthogonalEnd(wallDrawStart, snapped) : snapped;
-    const networkEnd = snapPointToWallNetwork(rawEnd, wallNetwork, 0.35);
+    const endSnapResult = snapEnabled
+      ? snapPointToWallNetworkDetailed(rawEnd, wallNetwork, 0.35)
+      : { point: rawEnd, kind: "none" as const, distance: Number.POSITIVE_INFINITY };
+    const networkEnd = endSnapResult.point;
     let end = clampPoint(orthogonalEnabled ? orthogonalEnd(wallDrawStart, networkEnd) : networkEnd);
+    setActiveWallSnap(endSnapResult.kind === "none" ? null : { kind: endSnapResult.kind, point: end });
     const closeThreshold = 0.42;
     const nearOrigin = wallChainOrigin
       ? Math.hypot(end.x - wallChainOrigin.x, end.y - wallChainOrigin.y) <= closeThreshold
@@ -851,10 +860,18 @@ export default function ConceptPlan2D({
     }
     if (interactionMode === "draw-wall" && wallDrawStart) {
       const clamped = clampPoint(point);
-      const snapped = snapPointToWallNetwork(clamped, wallNetwork, 0.35);
+      const initialSnap = snapEnabled
+        ? snapPointToWallNetworkDetailed(clamped, wallNetwork, 0.35)
+        : { point: clamped, kind: "none" as const, distance: Number.POSITIVE_INFINITY };
+      const snapped = initialSnap.point;
       const orthogonal = orthogonalEnabled ? orthogonalEnd(wallDrawStart, snapped) : snapped;
-      const networkEnd = snapPointToWallNetwork(orthogonal, wallNetwork, 0.35);
+      const finalSnap = snapEnabled
+        ? snapPointToWallNetworkDetailed(orthogonal, wallNetwork, 0.35)
+        : { point: orthogonal, kind: "none" as const, distance: Number.POSITIVE_INFINITY };
+      const networkEnd = finalSnap.point;
       let preview = clampPoint(orthogonalEnabled ? orthogonalEnd(wallDrawStart, networkEnd) : networkEnd);
+      const snapKind = finalSnap.kind !== "none" ? finalSnap.kind : initialSnap.kind;
+      setActiveWallSnap(snapKind === "none" ? null : { kind: snapKind, point: preview });
       if (wallChainOrigin && Math.hypot(preview.x - wallChainOrigin.x, preview.y - wallChainOrigin.y) <= 0.42) {
         preview = wallChainOrigin;
       }
@@ -1537,6 +1554,36 @@ export default function ConceptPlan2D({
               opacity="0.9"
             />
             <circle cx={lotWidth / 2} cy={snapGuides.y} r="0.09" fill="#f97316" />
+          </g>
+        )}
+        {interactionMode === "draw-wall" && activeWallSnap && (
+          <g pointerEvents="none">
+            <circle
+              cx={activeWallSnap.point.x}
+              cy={activeWallSnap.point.y}
+              r="0.18"
+              fill="#ffffff"
+              stroke={activeWallSnap.kind === "intersection" ? "#dc2626" : activeWallSnap.kind === "midpoint" ? "#2563eb" : activeWallSnap.kind === "endpoint" ? "#16a34a" : "#f97316"}
+              strokeWidth="0.07"
+            />
+            <text
+              x={activeWallSnap.point.x + 0.28}
+              y={activeWallSnap.point.y - 0.28}
+              fontSize="0.24"
+              fontWeight="800"
+              fill="#334155"
+              paintOrder="stroke"
+              stroke="#ffffff"
+              strokeWidth="0.09"
+            >
+              {activeWallSnap.kind === "intersection"
+                ? "Interseção"
+                : activeWallSnap.kind === "midpoint"
+                  ? "Meio"
+                  : activeWallSnap.kind === "endpoint"
+                    ? "Extremidade"
+                    : "Perpendicular"}
+            </text>
           </g>
         )}
 
