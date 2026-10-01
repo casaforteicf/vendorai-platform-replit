@@ -1048,15 +1048,26 @@ export default function ConceptPlan2D({
       const originalY1 = gesture.wallY1 ?? wall.y1;
       const originalX2 = gesture.wallX2 ?? wall.x2;
       const originalY2 = gesture.wallY2 ?? wall.y2;
-      const horizontal = Math.abs(originalY1 - originalY2) < 0.01;
 
-      if (horizontal) {
-        const nextY = snap(Math.max(0, Math.min(lotDepth, originalY1 + dy)));
-        onUpdateCustomWall(wall.id, { y1: nextY, y2: nextY });
-      } else {
-        const nextX = snap(Math.max(0, Math.min(lotWidth, originalX1 + dx)));
-        onUpdateCustomWall(wall.id, { x1: nextX, x2: nextX });
-      }
+      let moveX = dx;
+      let moveY = dy;
+      const minX = Math.min(originalX1, originalX2);
+      const maxX = Math.max(originalX1, originalX2);
+      const minY = Math.min(originalY1, originalY2);
+      const maxY = Math.max(originalY1, originalY2);
+      moveX = Math.max(-minX, Math.min(lotWidth - maxX, moveX));
+      moveY = Math.max(-minY, Math.min(lotDepth - maxY, moveY));
+
+      const nextX1 = snap(originalX1 + moveX);
+      const nextY1 = snap(originalY1 + moveY);
+      const snappedMoveX = nextX1 - originalX1;
+      const snappedMoveY = nextY1 - originalY1;
+      onUpdateCustomWall(wall.id, {
+        x1: nextX1,
+        y1: nextY1,
+        x2: originalX2 + snappedMoveX,
+        y2: originalY2 + snappedMoveY,
+      });
       return;
     }
 
@@ -1071,22 +1082,21 @@ export default function ConceptPlan2D({
       const originalY1 = gesture.wallY1 ?? wall.y1;
       const originalX2 = gesture.wallX2 ?? wall.x2;
       const originalY2 = gesture.wallY2 ?? wall.y2;
-      const horizontal = Math.abs(originalY1 - originalY2) < 0.01;
       const clamped = clampPoint(point);
-      const snapped = snapPointToWallNetwork(clamped, wallNetwork, 0.35, wall.id);
-      setSnapGuides(horizontal ? { x: snapped.x } : { y: snapped.y });
+      const snapResult = snapEnabled
+        ? snapPointToWallNetworkDetailed(clamped, wallNetwork, 0.35, wall.id)
+        : { point: clamped, kind: "none" as const, distance: Number.POSITIVE_INFINITY };
+      const snapped = snapResult.point;
+      setActiveWallSnap(snapResult.kind === "none" ? null : { kind: snapResult.kind, point: snapped });
+      setSnapGuides({ x: snapped.x, y: snapped.y });
 
       if (gesture.mode === "custom-wall-start") {
-        const next = horizontal
-          ? { x1: snapped.x, y1: originalY1 }
-          : { x1: originalX1, y1: snapped.y };
+        const next = { x1: snapped.x, y1: snapped.y };
         if (Math.hypot(originalX2 - next.x1, originalY2 - next.y1) >= 0.5) {
           onUpdateCustomWall(wall.id, next);
         }
       } else {
-        const next = horizontal
-          ? { x2: snapped.x, y2: originalY2 }
-          : { x2: originalX2, y2: snapped.y };
+        const next = { x2: snapped.x, y2: snapped.y };
         if (Math.hypot(next.x2 - originalX1, next.y2 - originalY1) >= 0.5) {
           onUpdateCustomWall(wall.id, next);
         }
@@ -2513,7 +2523,7 @@ export default function ConceptPlan2D({
                     return (
                       <>
                         <g
-                          className={horizontal ? "cursor-ns-resize" : "cursor-ew-resize"}
+                          className="cursor-move"
                         onPointerDown={(event) => {
                           if ((interactionMode !== "wall" && interactionMode !== "navigate") || !onUpdateCustomWall) return;
                           event.stopPropagation();
