@@ -26,6 +26,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { VisualIdentity } from "@/components/ui/visual-identity";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -315,6 +316,7 @@ function propostaLabel(status: string): { text: string; className: string } {
 function DealCard({
   deal,
   leadName,
+  leadVisual,
   briefing,
   proposta,
   assignedToName,
@@ -329,6 +331,7 @@ function DealCard({
 }: {
   deal: Deal;
   leadName: string | undefined;
+  leadVisual?: Record<string, unknown>;
   briefing: LeadBriefing | undefined;
   proposta?: PropostaSnap;
   assignedToName?: string;
@@ -416,9 +419,9 @@ function DealCard({
 
       {/* Lead name */}
       {leadName && (
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground pl-6">
-          <User className="h-3 w-3 shrink-0" />
-          <span className="truncate">{leadName}</span>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground pl-6">
+          <VisualIdentity source={leadVisual} label={leadName} size="xs" />
+          <span className="truncate font-medium text-foreground/80">{leadName}</span>
         </div>
       )}
 
@@ -795,6 +798,7 @@ function KanbanColumn({
               key={deal.id}
               deal={deal}
               leadName={deal.leadId ? leadMap.get(deal.leadId) : undefined}
+              leadVisual={deal.leadId ? leadVisualMap.get(deal.leadId) : undefined}
               briefing={deal.leadId ? briefingMap.get(deal.leadId) : undefined}
               proposta={proposta}
               assignedToName={deal.assignedTo ? userMap.get(deal.assignedTo) : undefined}
@@ -1015,6 +1019,7 @@ function SaasKanbanColumn({
             key={deal.id}
             deal={deal}
             leadName={deal.leadId ? leadMap.get(deal.leadId) : undefined}
+              leadVisual={deal.leadId ? leadVisualMap.get(deal.leadId) : undefined}
             assignedToName={deal.assignedTo ? userMap.get(deal.assignedTo) : undefined}
             onClick={() => onCardClick(deal)}
             onAgendar={() => onAgendar(deal)}
@@ -2217,6 +2222,7 @@ export default function Deals() {
   const userMap = new Map(tenantUsers.map((u) => [u.id, u.name || u.email || u.id]));
 
   const leadMap = new Map(leads.map((l) => [l.id, l.nome]));
+  const leadVisualMap = new Map(leads.map((l) => [l.id, l as unknown as Record<string, unknown>]));
 
   const briefingMap = new Map(briefings.map((b) => [b.leadId, b]));
 

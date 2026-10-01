@@ -603,7 +603,9 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
         {adsContext ? <AdsMediaPlanContextBanner pathname={location} /> : null}
         {messagingContext ? <MessagingMediaPlanBridge pathname={location} /> : null}
       </Suspense>
-      {children}
+      {pathname.startsWith("/arch") || pathname.startsWith("/content-studio/video")
+        ? children
+        : <div className="vendor-unified-module">{children}</div>}
       {marketingContext ? (
         <Suspense fallback={null}>
           <MarketingAgentDock pathname={location} />

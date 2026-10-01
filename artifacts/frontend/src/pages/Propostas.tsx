@@ -56,6 +56,7 @@ import type {
 } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { VisualIdentity } from "@/components/ui/visual-identity";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -7052,8 +7053,9 @@ export default function Propostas() {
     }
   }
 
-  // Build leadId → name map
+  // Build leadId → visual identity maps
   const leadMap = Object.fromEntries(leads.map((l) => [l.id, l.nome]));
+  const leadVisualMap = Object.fromEntries(leads.map((l) => [l.id, l as unknown as Record<string, unknown>]));
 
   function changeStatus(p: Proposta, status: PropostaStatus) {
     if (statusUpdatingPropostaId) return;
@@ -7104,12 +7106,13 @@ export default function Propostas() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="vendor-product-page">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
+      <div className="vendor-product-hero">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Orçamentos</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">Gerencie orçamentos e propostas comerciais</p>
+          <span className="vendor-product-kicker">Comercial</span>
+          <h1 className="vendor-product-title">Orçamentos</h1>
+          <p className="vendor-product-subtitle">Gerencie orçamentos e propostas comerciais com leitura visual do cliente, status e valor.</p>
         </div>
         <div className="flex gap-2">
           <Button onClick={() => setModalOpen(true)} className="flex-1 sm:flex-none min-h-[44px]">
@@ -7120,16 +7123,16 @@ export default function Propostas() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="vendor-kpi-grid grid-cols-2 sm:grid-cols-5 mb-5">
         {(["rascunho", "enviada", "pendente", "aceita", "rejeitada"] as const).map((k) => (
-          <Card key={k} className={`cursor-pointer transition-shadow ${statusFilter === k ? "ring-2 ring-primary" : "hover:shadow-md"}`} onClick={() => setStatusFilter(statusFilter === k ? "all" : k)}>
-            <CardContent className="pt-4 pb-3 px-4">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">
-                {STATUS_CONFIG[k].label}s
-              </p>
-              <p className="text-2xl font-bold mt-0.5">{counts[k]}</p>
-            </CardContent>
-          </Card>
+          <button key={k} type="button" className="text-left" onClick={() => setStatusFilter(statusFilter === k ? "all" : k)}>
+            <div className="vendor-kpi-card h-full" data-active={statusFilter === k ? "true" : "false"}>
+              <div className="p-4">
+                <p className="vendor-kpi-label">{STATUS_CONFIG[k].label}s</p>
+                <p className="vendor-kpi-value mt-2">{counts[k]}</p>
+              </div>
+            </div>
+          </button>
         ))}
       </div>
 
@@ -7166,11 +7169,14 @@ export default function Propostas() {
                     onClick={() => setDetailProposta(p)}
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm truncate">{p.titulo}</p>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {leadMap[p.leadId] ?? p.leadId.slice(0, 8) + "…"}
-                        </p>
+                      <div className="flex min-w-0 flex-1 items-center gap-3">
+                        <VisualIdentity source={leadVisualMap[p.leadId]} label={leadMap[p.leadId] ?? p.titulo} size="md" />
+                        <div className="min-w-0">
+                          <p className="font-medium text-sm truncate">{p.titulo}</p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {leadMap[p.leadId] ?? p.leadId.slice(0, 8) + "…"}
+                          </p>
+                        </div>
                       </div>
                       <div onClick={(e) => e.stopPropagation()}>
                         <DropdownMenu>
@@ -7233,7 +7239,12 @@ export default function Propostas() {
                       <TableCell className="font-mono text-xs text-muted-foreground">
                         {p.numero ?? "—"}
                       </TableCell>
-                      <TableCell className="font-medium">{p.titulo}</TableCell>
+                      <TableCell className="font-medium">
+                        <div className="flex items-center gap-2.5">
+                          <VisualIdentity source={leadVisualMap[p.leadId]} label={leadMap[p.leadId] ?? p.titulo} size="sm" />
+                          <span className="truncate">{p.titulo}</span>
+                        </div>
+                      </TableCell>
                       <TableCell className="text-muted-foreground">
                         {leadMap[p.leadId] ?? p.leadId.slice(0, 8) + "…"}
                       </TableCell>

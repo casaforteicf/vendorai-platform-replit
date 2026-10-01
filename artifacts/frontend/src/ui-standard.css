@@ -790,3 +790,35 @@ main.vendor-scrollbar {
     font-size: 24px !important;
   }
 }
+
+
+/* Unified visual shell for standard Vendor.ai modules. */
+.vendor-unified-module {
+  min-height: 100%;
+  color: hsl(var(--foreground));
+}
+.vendor-unified-module :where(.page-header, .vendor-page-header) {
+  border-color: hsl(var(--border));
+}
+.vendor-unified-module :where(.rounded-lg.border, .rounded-xl.border, .rounded-2xl.border) {
+  border-color: hsl(var(--border) / .88);
+}
+.vendor-unified-module :where(img) { image-rendering: auto; }
+.vendor-unified-module :where([data-visual-cover="true"]) {
+  overflow: hidden;
+  border-radius: 14px;
+  background: hsl(var(--muted));
+}
+.vendor-unified-module :where([data-visual-cover="true"] img) {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.vendor-unified-module :where([data-visual-card="true"]) {
+  transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
+}
+.vendor-unified-module :where([data-visual-card="true"]):hover {
+  transform: translateY(-1px);
+  border-color: hsl(var(--primary) / .24);
+  box-shadow: 0 12px 30px rgba(15,23,42,.065);
+}
