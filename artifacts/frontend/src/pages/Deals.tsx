@@ -3035,12 +3035,9 @@ export default function Deals() {
                   >
                     <UserMinus className="h-3.5 w-3.5" />
                   </Button>
-                  <Select
-                    value={deal.etapa ?? "novo"}
-                    onValueChange={(etapa) => requestStageMove(deal, etapa)}
-                  >
+                  <Select onValueChange={(etapa) => requestStageMove(deal, etapa)}>
                     <SelectTrigger className="flex-1 h-8 text-xs">
-                      <SelectValue />
+                      <SelectValue placeholder="Mover para..." />
                     </SelectTrigger>
                     <SelectContent>
                       {getForwardMoveOptions(deal).map((e) => (
