@@ -112,15 +112,15 @@ export default function Dashboard() {
   }, [tenantId, token, refreshKey]);
 
   return (
-    <Tabs defaultValue="overview" className="w-full">
-      <div className="mx-auto w-full max-w-[1600px] px-4 pt-3 sm:px-6 lg:px-8">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
+    <Tabs defaultValue="overview" className="w-full vendor-dashboard-v2">
+      <div className="vendor-product-page pb-0">
+        <TabsList className="vendor-product-tabs grid max-w-[520px] grid-cols-2">
           <TabsTrigger value="overview">Visão Geral</TabsTrigger>
           <TabsTrigger value="news">Notícias & Mercado</TabsTrigger>
         </TabsList>
       </div>
 
-      <TabsContent value="overview" className="mt-0">
+      <TabsContent value="overview" className="mt-2">
         <OfficialCommandCenter
           data={official}
           executive={executive}
@@ -145,7 +145,7 @@ export default function Dashboard() {
         </Suspense>
       </TabsContent>
 
-      <TabsContent value="news" className="mt-4">
+      <TabsContent value="news" className="vendor-product-page pt-4">
         <Suspense fallback={null}>
           <JarvisNewsMarket token={token} />
         </Suspense>
