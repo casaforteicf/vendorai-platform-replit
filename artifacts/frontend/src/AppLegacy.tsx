@@ -40,6 +40,7 @@ const Leads              = lazy(() => import("@/pages/Leads"));
 const ImportConfig       = lazy(() => import("@/pages/leads/import-config"));
 const NonLeadContacts    = lazy(() => import("@/pages/contacts-nonleads"));
 const LeadWorkspace      = lazy(() => import("@/pages/LeadWorkspace"));
+const CompanyCenter      = lazy(() => import("@/pages/CompanyCenter"));
 const Prospector         = lazy(() => import("@/pages/Prospector"));
 const FlowBuilder        = lazy(() => import("@/pages/prospector/FlowBuilder"));
 const FlowExecutions     = lazy(() => import("@/pages/prospector/FlowExecutions"));
@@ -654,6 +655,7 @@ function AppRoutes() {
         <Route path="/contacts-nonleads"><ProtectedRoute component={NonLeadContacts} /></Route>
         <Route path="/leads"><ProtectedRoute component={Leads} /></Route>
         <Route path="/leads/:id"><ProtectedRoute component={LeadWorkspace} /></Route>
+        <Route path="/empresas/:id"><ProtectedRoute component={CompanyCenter} /></Route>
         <Route path="/app/prospector"><ProtectedRoute component={Prospector} /></Route>
         <Route path="/prospector"><ProtectedRoute component={Prospector} /></Route>
         <Route path="/prospector/flows"><ProtectedRoute component={FlowBuilder} /></Route>
