@@ -1325,7 +1325,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
   const openingCatalogProducts = useMemo(() => {
     if (!openingProductPickerId) return [];
-    const opening = safeCustomOpenings.find((item) => item.id === openingProductPickerId);
+    const openings = Array.isArray(customOpenings) ? customOpenings : [];
+    const opening = openings.find((item) => item.id === openingProductPickerId);
     if (!opening) return [];
     const query = furnitureSearch.trim().toLocaleLowerCase("pt-BR");
     return realCatalogProducts
@@ -1338,7 +1339,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
           .includes(query);
       })
       .slice(0, 36);
-  }, [furnitureSearch, openingProductPickerId, realCatalogProducts, safeCustomOpenings]);
+  }, [customOpenings, furnitureSearch, openingProductPickerId, realCatalogProducts]);
 
   useEffect(() => {
     if (editorLibraryTab !== "furniture") return;
