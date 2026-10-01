@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request } from "express";
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod/v4";
 import {
   db,
@@ -17,6 +17,7 @@ import {
   activitiesTable,
   leadsTable,
   usersTable,
+  tenantsTable,
   installationChecklistTemplatesTable,
   installationVisitsTable,
   installationChecklistItemsTable,
@@ -34,6 +35,8 @@ import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 import { generateSupportReportDraft } from "../services/support-report.js";
 import { requestSupportFeedback } from "../services/support-feedback.js";
 import { canAdvanceWorkCard, TERMINAL_WORK_STAGES } from "../lib/pipeline-progress.js";
+import { generateInstallationAcceptancePdf, type InstallationAcceptanceSnapshot } from "../lib/pdf-installation-acceptance.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 
 const router: IRouter = Router();
 
@@ -1614,6 +1617,10 @@ router.patch("/installation-visits/:visitId", async (req, res) => {
   const [visit] = await db.select().from(installationVisitsTable).where(eq(installationVisitsTable.id, String(req.params.visitId))).limit(1);
   if (!visit) { res.status(404).json({ error: "Visita não encontrada" }); return; }
   if (!canAccessTenant(req, visit.tenantId)) { res.status(403).json({ error: "Access denied to this tenant" }); return; }
+  if (visit.customerAcceptanceStatus === "accepted") {
+    res.status(409).json({ error: "INSTALLATION_ACCEPTANCE_IMMUTABLE", message: "Visita com aceite concluído não pode mais ser alterada." });
+    return;
+  }
   const parsed = updateInstallationVisitSchema.safeParse(req.body);
   if (!parsed.success) { res.status(422).json({ error: parsed.error.message, issues: parsed.error.issues }); return; }
   const [row] = await db.update(installationVisitsTable).set({ ...parsed.data, updatedAt: new Date() })
@@ -1681,6 +1688,162 @@ router.patch("/installation-occurrences/:occurrenceId", async (req, res) => {
     updatedAt: new Date(),
   }).where(eq(installationOccurrencesTable.id, occurrence.id)).returning();
   res.json(row);
+});
+
+
+const installationAcceptanceSchema = z.object({
+  receiverName: z.string().trim().min(2).max(200),
+  receiverDocument: z.string().trim().max(100).nullable().optional(),
+  receiverRelationship: z.string().trim().max(120).nullable().optional(),
+  customerSignatureUrl: z.string().trim().min(1),
+  companySignatureUrl: z.string().trim().min(1),
+});
+
+router.post("/installation-visits/:visitId/accept", async (req, res) => {
+  const parsed = installationAcceptanceSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(422).json({ error: parsed.error.message, issues: parsed.error.issues }); return; }
+
+  const [visit] = await db.select().from(installationVisitsTable)
+    .where(eq(installationVisitsTable.id, String(req.params.visitId))).limit(1);
+  if (!visit) { res.status(404).json({ error: "Visita não encontrada" }); return; }
+  if (!canAccessTenant(req, visit.tenantId)) { res.status(403).json({ error: "Access denied to this tenant" }); return; }
+  if (visit.customerAcceptanceStatus === "accepted") {
+    res.status(409).json({ error: "INSTALLATION_ACCEPTANCE_IMMUTABLE", message: "Este aceite já foi concluído e não pode ser alterado." });
+    return;
+  }
+
+  const [card] = await db.select().from(workCardsTable).where(and(
+    eq(workCardsTable.id, visit.workCardId),
+    eq(workCardsTable.tenantId, visit.tenantId),
+  )).limit(1);
+  if (!card) { res.status(404).json({ error: "Card operacional não encontrado" }); return; }
+  if (restrictedToOwnWork(req) && card.responsavelId && card.responsavelId !== req.user?.sub) {
+    res.status(403).json({ error: "Este card pertence a outro responsável" }); return;
+  }
+
+  const complete = await normalizedInstallationComplete(card);
+  if (!complete) {
+    res.status(409).json({
+      error: "INSTALLATION_NOT_READY_FOR_ACCEPTANCE",
+      message: "O aceite só pode ser concluído após finalizar itens, verificações, evidências obrigatórias e ocorrências.",
+    });
+    return;
+  }
+
+  const [tenant, lead, deal, responsible, items] = await Promise.all([
+    db.select({ name: tenantsTable.name }).from(tenantsTable).where(eq(tenantsTable.id, card.tenantId)).limit(1).then((rows) => rows[0] ?? null),
+    card.leadId ? db.select({ nome: leadsTable.nome, empresa: leadsTable.empresa }).from(leadsTable).where(eq(leadsTable.id, card.leadId)).limit(1).then((rows) => rows[0] ?? null) : Promise.resolve(null),
+    card.dealId ? db.select({ titulo: dealsTable.titulo }).from(dealsTable).where(eq(dealsTable.id, card.dealId)).limit(1).then((rows) => rows[0] ?? null) : Promise.resolve(null),
+    card.responsavelId ? db.select({ name: usersTable.name, email: usersTable.email }).from(usersTable).where(eq(usersTable.id, card.responsavelId)).limit(1).then((rows) => rows[0] ?? null) : Promise.resolve(null),
+    db.select().from(installationChecklistItemsTable).where(and(
+      eq(installationChecklistItemsTable.tenantId, card.tenantId),
+      eq(installationChecklistItemsTable.visitId, visit.id),
+    )).orderBy(installationChecklistItemsTable.sourceItemIndex, installationChecklistItemsTable.unitIndex),
+  ]);
+
+  const acceptedAt = new Date().toISOString();
+  const snapshotWithoutHash = {
+    acceptedAt,
+    tenantName: tenant?.name || "Empresa",
+    cardCode: card.codigo,
+    cardTitle: card.titulo,
+    customerName: lead?.nome || lead?.empresa || "Cliente",
+    orderTitle: deal?.titulo || card.titulo,
+    receiverName: parsed.data.receiverName,
+    receiverDocument: parsed.data.receiverDocument ?? null,
+    receiverRelationship: parsed.data.receiverRelationship ?? null,
+    customerSignatureUrl: parsed.data.customerSignatureUrl,
+    companySignatureUrl: parsed.data.companySignatureUrl,
+    responsibleName: responsible?.name || responsible?.email || null,
+    visitNumber: visit.visitNumber,
+    items: items.map((item) => ({
+      productName: item.productName,
+      quantity: item.quantity,
+      unitIndex: item.unitIndex,
+      location: item.location,
+      status: item.status,
+      observation: item.observation,
+      attributes: item.attributes,
+    })),
+  };
+  const hash = createHash("sha256").update(JSON.stringify(snapshotWithoutHash)).digest("hex");
+  const snapshot: InstallationAcceptanceSnapshot = { hash, ...snapshotWithoutHash };
+
+  const pdf = await generateInstallationAcceptancePdf(snapshot);
+  const storage = new ObjectStorageService();
+  const objectPath = await storage.savePrivateBuffer(pdf, "application/pdf", `termo-instalacao-${card.codigo}.pdf`);
+  const servedUrl = `/api/storage${objectPath}`;
+
+  const [attachment] = await db.insert(workCardAttachmentsTable).values({
+    tenantId: card.tenantId,
+    workCardId: card.id,
+    leadId: card.leadId,
+    criadoPor: req.user?.sub ?? null,
+    origem: "installation_acceptance",
+    nome: `Termo de Instalação e Aceite - ${card.codigo}.pdf`,
+    url: servedUrl,
+    mimeType: "application/pdf",
+    tamanho: pdf.byteLength,
+    descricao: "Documento final imutável de instalação e aceite.",
+    metadata: {
+      immutable: true,
+      installationVisitId: visit.id,
+      acceptanceHash: hash,
+      acceptedAt,
+    },
+  }).returning();
+
+  const [updatedVisit] = await db.update(installationVisitsTable).set({
+    receiverName: parsed.data.receiverName,
+    receiverDocument: parsed.data.receiverDocument ?? null,
+    receiverRelationship: parsed.data.receiverRelationship ?? null,
+    customerAcceptanceStatus: "accepted",
+    customerSignatureUrl: parsed.data.customerSignatureUrl,
+    companySignatureUrl: parsed.data.companySignatureUrl,
+    metadata: {
+      ...(visit.metadata ?? {}),
+      acceptanceSnapshot: snapshot,
+      acceptanceHash: hash,
+      acceptedAt,
+      acceptedBy: req.user?.sub ?? null,
+      acceptanceDocumentAttachmentId: attachment.id,
+      acceptanceDocumentUrl: attachment.url,
+    },
+    updatedAt: new Date(),
+  }).where(eq(installationVisitsTable.id, visit.id)).returning();
+
+  if (card.leadId) {
+    await recordWorkHistory({
+      tenantId: card.tenantId,
+      leadId: card.leadId,
+      dealId: card.dealId,
+      tipo: "tarefa",
+      titulo: `${card.codigo}: termo de instalação e aceite concluído`,
+      descricao: `Aceite registrado por ${parsed.data.receiverName}. Integridade: ${hash}.`,
+      responsavelId: card.responsavelId,
+      anexo: { nome: attachment.nome, url: attachment.url, mimeType: attachment.mimeType, tamanho: attachment.tamanho },
+    });
+  }
+
+  res.status(201).json({ visit: updatedVisit, attachment, hash });
+});
+
+router.get("/installation-visits/:visitId/acceptance", async (req, res) => {
+  const [visit] = await db.select().from(installationVisitsTable)
+    .where(eq(installationVisitsTable.id, String(req.params.visitId))).limit(1);
+  if (!visit) { res.status(404).json({ error: "Visita não encontrada" }); return; }
+  if (!canAccessTenant(req, visit.tenantId)) { res.status(403).json({ error: "Access denied to this tenant" }); return; }
+  const metadata = visit.metadata as Record<string, unknown> | null;
+  if (visit.customerAcceptanceStatus !== "accepted" || !metadata?.acceptanceHash) {
+    res.status(404).json({ error: "Aceite final ainda não foi concluído" }); return;
+  }
+  res.json({
+    status: visit.customerAcceptanceStatus,
+    hash: metadata.acceptanceHash,
+    acceptedAt: metadata.acceptedAt,
+    documentUrl: metadata.acceptanceDocumentUrl,
+    receiverName: visit.receiverName,
+  });
 });
 
 router.get("/work-cards/:id/attachments", async (req, res) => {
