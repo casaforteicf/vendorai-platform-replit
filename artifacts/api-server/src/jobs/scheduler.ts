@@ -82,6 +82,7 @@ import { runMicroEventsRescan } from "./microEventsRescan.js";
 import { runWeeklyFeedbackLoop } from "./feedbackLoop.js";
 import { runSupportLifecycle } from "./supportLifecycle.js";
 import { runPipelineActivityLifecycle } from "./pipelineActivityLifecycle.js";
+import { runPipelineStageLifecycle } from "./pipelineStageLifecycle.js";
 import { processDuePickupWaves } from "../services/pracaRoutePlanner.js";
 import { processDeliveryNotificationOutbox } from "../services/pracaDeliveryNotifications.js";
 import { runPracaExceptionScan } from "../services/pracaExceptionDetector.js";
@@ -1858,6 +1859,13 @@ export function startScheduler(log: Logger): void {
   cron.schedule("*/30 * * * *", () => {
     runPipelineActivityLifecycle(log).catch((err) => {
       log.error({ err }, "scheduler/pipeline-activity-lifecycle: unhandled error");
+    });
+  }, { timezone: "America/Sao_Paulo" });
+
+  // Job 20d: ciclo de vida por estágio — Comercial, Execução, Aquecimento, Parceiros e Scout
+  cron.schedule("*/30 * * * *", () => {
+    runPipelineStageLifecycle(log).catch((err) => {
+      log.error({ err }, "scheduler/pipeline-stage-lifecycle: unhandled error");
     });
   }, { timezone: "America/Sao_Paulo" });
 
