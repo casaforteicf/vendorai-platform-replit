@@ -81,6 +81,7 @@ import { runRecemAbertas } from "./recemAbertasJob.js";
 import { runMicroEventsRescan } from "./microEventsRescan.js";
 import { runWeeklyFeedbackLoop } from "./feedbackLoop.js";
 import { runSupportLifecycle } from "./supportLifecycle.js";
+import { runPipelineActivityLifecycle } from "./pipelineActivityLifecycle.js";
 import { processDuePickupWaves } from "../services/pracaRoutePlanner.js";
 import { processDeliveryNotificationOutbox } from "../services/pracaDeliveryNotifications.js";
 import { runPracaExceptionScan } from "../services/pracaExceptionDetector.js";
@@ -1850,6 +1851,13 @@ export function startScheduler(log: Logger): void {
   cron.schedule("*/30 * * * *", () => {
     runSupportLifecycle(log).catch((err) => {
       log.error({ err }, "scheduler/support-lifecycle: unhandled error");
+    });
+  }, { timezone: "America/Sao_Paulo" });
+
+  // Job 20c: lembretes padronizados das demais atividades das pipelines
+  cron.schedule("*/30 * * * *", () => {
+    runPipelineActivityLifecycle(log).catch((err) => {
+      log.error({ err }, "scheduler/pipeline-activity-lifecycle: unhandled error");
     });
   }, { timezone: "America/Sao_Paulo" });
 
