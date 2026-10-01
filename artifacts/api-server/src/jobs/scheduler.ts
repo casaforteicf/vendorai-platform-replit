@@ -62,6 +62,7 @@ import {
   tenantDomainsTable,
   campaignSentLogsTable,
   churnActionsTable,
+  vendiMissionsTable,
 } from "@workspace/db";
 import { callOpenAI } from "../lib/ai-gateway.js";
 import {
@@ -72,7 +73,8 @@ import {
 } from "../lib/cloudflare.js";
 import type { SegmentoFiltro } from "@workspace/db";
 import { evaluateForLead } from "../routes/rules.js";
-import { dispatchAgentBackground, processAgentInternal, type DispatchResult } from "../services/agent-dispatch.js";
+import { dispatchAgentBackground, type DispatchResult } from "../services/agent-dispatch.js";
+import { executeVendiMission } from "../services/vendi-mission-supervisor.js";
 import { searchAllPlaces } from "../routes/prospector.js";
 import { runProspectorQueueWorker } from "./prospectorQueue.js";
 import { runDailyAgendaSummary } from "./dailyAgendaSummary.js";
@@ -1048,27 +1050,62 @@ async function runSpecialDateCheck(log: Logger): Promise<void> {
           continue;
         }
 
-        // 2. Dispatch synchronously and capture explicit result
+        // 2. Create a Vendi system mission. Calendar-enabled relationship
+        // events are pre-authorized by the tenant, so the dedicated
+        // agents.relationship_event capability executes automatically.
+        const relationshipMessage =
+          `PROATIVO: ${scenario.type === "birthday_lead" ? "aniversário do lead" : scenario.type === "birthday_family" ? `aniversário de ${scenario.recipientName}` : scenario.type === "deal_anniversary" ? "aniversário de fechamento do deal" : scenario.type === "commercial_date" ? `campanha de ${scenario.dateName}` : scenario.type === "professional_day" ? `${scenario.dateName} para ${lead.profissao}` : scenario.type === "custom_special_date" ? `data especial: ${scenario.dateName}` : "relacionamento"}.`;
+
+        const relationshipScenario = {
+          type: scenario.type,
+          dateName: scenario.dateName,
+          recipientName: scenario.recipientName,
+          recipientRelation: scenario.recipientRelation,
+          catalog: catalog.map((c) => ({ nome: c.nome, categoria: c.categoria, precoBase: c.precoBase })),
+        };
+
         let result: DispatchResult | null = null;
         try {
-          result = await processAgentInternal({
-            tenantId: tenant.id,
-            leadId: lead.id,
-            mensagem: `PROATIVO: ${scenario.type === "birthday_lead" ? "aniversário do lead" : scenario.type === "birthday_family" ? `aniversário de ${scenario.recipientName}` : scenario.type === "deal_anniversary" ? "aniversário de fechamento do deal" : scenario.type === "commercial_date" ? `campanha de ${scenario.dateName}` : scenario.type === "professional_day" ? `${scenario.dateName} para ${lead.profissao}` : scenario.type === "custom_special_date" ? `data especial: ${scenario.dateName}` : "relacionamento"}.`,
-            forcedAgent: "relacionamento",
-            log,
-            scenario: {
-              type: scenario.type,
-              dateName: scenario.dateName,
-              recipientName: scenario.recipientName,
-              recipientRelation: scenario.recipientRelation,
-              catalog: catalog.map((c) => ({ nome: c.nome, categoria: c.categoria, precoBase: c.precoBase })),
-            },
-          });
-        } catch (err) {
-          log.warn({ err, leadId: lead.id, tenantId: tenant.id, campaignKey: scenario.campaignKey }, "scheduler/special-dates: dispatch failed");
-        }
+          const [mission] = await db
+            .insert(vendiMissionsTable)
+            .values({
+              tenantId: tenant.id,
+              source: "system",
+              sourceRefId: `relationship:${scenario.campaignKey}`,
+              objective: `Executar relacionamento proativo: ${scenario.dateName ?? scenario.type}`,
+              status: "planning",
+              priority: 60,
+              riskPolicy: "standard",
+              plan: [{
+                toolId: "agents.relationship_event",
+                input: {
+                  leadId: lead.id,
+                  mensagem: relationshipMessage,
+                  scenario: relationshipScenario,
+                },
+                reason: "Evento ativo no Calendário Inteligente de Relacionamento do tenant.",
+              }],
+              context: {
+                module: "relationship_calendar",
+                leadId: lead.id,
+                campaignKey: scenario.campaignKey,
+                scenarioType: scenario.type,
+                dateName: scenario.dateName ?? null,
+              },
+              successCriteria: ["Ação de relacionamento executada ou explicitamente registrada como não enviada."],
+            })
+            .returning();
 
+          if (!mission) throw new Error("VENDI_RELATIONSHIP_MISSION_CREATE_FAILED");
+
+          const execution = await executeVendiMission({ tenantId: tenant.id, missionId: mission.id });
+          const outputs = execution.status === "completed" ? (execution.result?.outputs ?? []) : execution.outputs ?? [];
+          const relationshipOutput = outputs.find((item: any) => item.toolId === "agents.relationship_event");
+          result = (relationshipOutput?.data as DispatchResult | undefined)
+            ?? (execution.status === "completed" ? ({ status: "sent" } as DispatchResult) : null);
+        } catch (err) {
+          log.warn({ err, leadId: lead.id, tenantId: tenant.id, campaignKey: scenario.campaignKey }, "scheduler/special-dates: Vendi mission failed");
+        }
         // 3. Update log with actual outcome
         const outcome = result?.status ?? "failed";
         if (outcome === "sent") {
