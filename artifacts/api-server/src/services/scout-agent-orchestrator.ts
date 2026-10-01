@@ -8,6 +8,7 @@ import {
   propostasTable,
   beautyAgendamentosTable,
   clinicConsultasTable,
+  notificationsTable,
 } from "@workspace/db";
 import { processAgentInternal } from "./agent-dispatch.js";
 import type { AgentName } from "../lib/agent-engine.js";
@@ -191,11 +192,16 @@ export async function executeScoutOpportunityWithAgent(params: {
     log,
   });
 
+  const executedAt = new Date();
+  const successful = result.status !== "failed";
+
   await db.update(scoutOportunidadesTable)
     .set({
       ...(effectiveType !== op.tipo ? { tipo: effectiveType } : {}),
-      pipelineStage: result.status === "failed" ? "em_analise" : "em_contato",
-      ...(approvedBy ? { approvedBy, approvedAt: new Date() } : {}),
+      status: successful ? "enviado" : "pendente_revisao_bot",
+      pipelineStage: successful ? "em_contato" : "em_analise",
+      ...(successful ? { enviadoEm: executedAt } : {}),
+      ...(approvedBy ? { approvedBy, approvedAt: executedAt } : {}),
       explanation: {
         ...explanation,
         relationship: {
@@ -204,7 +210,7 @@ export async function executeScoutOpportunityWithAgent(params: {
         },
         orchestration: {
           agent,
-          executedAt: new Date().toISOString(),
+          executedAt: executedAt.toISOString(),
           resultStatus: result.status,
           resultReason: "reason" in result ? result.reason : undefined,
           originalType: op.tipo,
@@ -217,6 +223,21 @@ export async function executeScoutOpportunityWithAgent(params: {
       eq(scoutOportunidadesTable.id, opportunityId),
       eq(scoutOportunidadesTable.tenantId, tenantId),
     ));
+
+  await db.insert(notificationsTable).values({
+    tenantId,
+    title: successful ? "Revenue Scout atuou em uma oportunidade" : "Revenue Scout precisa de atenção",
+    message: [
+      row.lead.nome ?? "Contato",
+      successful ? `ação conduzida pelo agente ${agent}` : `ação encaminhada para revisão após tentativa do agente ${agent}`,
+      op.valorEstimado ? `potencial de R$ ${Number(op.valorEstimado).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : null,
+      `próxima ação: ${nextAction}`,
+    ].filter(Boolean).join(" · "),
+    type: successful ? "info" : "warning",
+    category: "revenue_scout",
+  }).catch((notificationError) => {
+    log.warn({ notificationError, tenantId, opportunityId }, "scout-agent: falha ao registrar notificacao interna");
+  });
 
   log.info({ tenantId, opportunityId, leadId: row.lead.id, agent, originalType: op.tipo, effectiveType, relationship, result }, "scout-agent: oportunidade roteada para agente");
   return { agent, result, nextBestAction: nextAction, originalType: op.tipo, effectiveType, relationship };
