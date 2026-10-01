@@ -21,6 +21,7 @@ const KRAFHT_ID = "homolog-krafht";
 const WINDOOR_ID = "homolog-windoor";
 const KRAFHT_ADMIN_ID = "homolog-krafht-admin";
 const WINDOOR_USER_ID = "homolog-windoor-user";
+const VENDORAI_ADMIN_ID = "homolog-vendorai-admin";
 
 await pool.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto`);
 await pool.query(`CREATE SCHEMA IF NOT EXISTS app_security`);
@@ -115,5 +116,30 @@ await pool.query(`
     updated_at = now()
 `, [KRAFHT_ADMIN_ID, KRAFHT_ID, WINDOOR_USER_ID, WINDOOR_ID]);
 
-console.log("[homolog-seed] Krafht/Windoor representation fixtures ready");
+await pool.query(`
+  INSERT INTO users (
+    id, tenant_id, name, email, password, role, platform_role, user_function,
+    permissions, active, force_password_reset, lead_assignment_enabled,
+    lead_assignment_cities, lead_assignment_regions, lead_assignment_segments,
+    created_at, updated_at
+  ) VALUES (
+    $1, $2, 'Administrador Vendor.ai — Homologação',
+    'homolog.admin@appvendorai.com', crypt('Homolog@2026!', gen_salt('bf', 12)),
+    'admin', 'super_admin', 'administrador',
+    '["dashboard","leads","deals","conversations","agenda","proposals","catalog","team","settings"]'::jsonb,
+    true, false, true, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, now(), now()
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    tenant_id = EXCLUDED.tenant_id,
+    name = EXCLUDED.name,
+    email = EXCLUDED.email,
+    password = EXCLUDED.password,
+    role = EXCLUDED.role,
+    platform_role = EXCLUDED.platform_role,
+    user_function = EXCLUDED.user_function,
+    active = true,
+    updated_at = now()
+`, [VENDORAI_ADMIN_ID, KRAFHT_ID]);
+
+console.log("[homolog-seed] Krafht/Windoor + Vendor.ai admin fixtures ready");
 await pool.end();
