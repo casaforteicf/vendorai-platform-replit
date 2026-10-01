@@ -12,6 +12,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SupportReportPanel } from "@/components/SupportReportPanel";
 import { ExpeditionChecklistPanel, type ExpeditionChecklist } from "@/components/ExpeditionChecklistPanel";
+import { TransportChecklistPanel, type TransportChecklist } from "@/components/TransportChecklistPanel";
 import { PipelineNav, PIPELINE_CARD_CLASS, PIPELINE_COLUMN_CLASS, PIPELINE_COLUMN_HEADER_CLASS } from "@/components/PipelineNav";
 import {
   AlertTriangle,
@@ -162,6 +163,13 @@ function safeExpeditionChecklist(card: WorkCard): ExpeditionChecklist | null {
   if (!raw || typeof raw !== "object") return null;
   const checklist = raw as ExpeditionChecklist;
   return Array.isArray(checklist.itens) ? checklist : null;
+}
+
+function safeTransportChecklist(card: WorkCard): TransportChecklist | null {
+  const raw = card.metadata?.checklistTransporte;
+  if (!raw || typeof raw !== "object") return null;
+  const checklist = raw as TransportChecklist;
+  return Array.isArray(checklist.campos) ? checklist : null;
 }
 
 export default function PipelineOperacional() {
@@ -537,6 +545,22 @@ export default function PipelineOperacional() {
                         metadata: {
                           ...(selectedCard.metadata ?? {}),
                           checklistExpedicao,
+                        },
+                      },
+                    })}
+                  />
+                )}
+
+                {safeTransportChecklist(selectedCard) && (
+                  <TransportChecklistPanel
+                    checklist={safeTransportChecklist(selectedCard)!}
+                    disabled={patchCard.isPending}
+                    onChange={(checklistTransporte) => patchCard.mutate({
+                      id: selectedCard.id,
+                      data: {
+                        metadata: {
+                          ...(selectedCard.metadata ?? {}),
+                          checklistTransporte,
                         },
                       },
                     })}
