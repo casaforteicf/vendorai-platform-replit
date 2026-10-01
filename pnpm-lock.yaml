@@ -1027,6 +1027,12 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 25.6.2
+      '@workspace/vendor-brain':
+        specifier: workspace:*
+        version: link:../../lib/vendor-brain
+      web-vitals:
+        specifier: ^6.2.1
+        version: 6.2.1
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.14
