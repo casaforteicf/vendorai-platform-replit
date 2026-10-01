@@ -118,6 +118,38 @@ import {
 function getBase()  { return (import.meta.env.BASE_URL ?? "/").replace(/\/$/, ""); }
 function getToken() { return localStorage.getItem("vendorai_token") ?? ""; }
 
+type CompanyContextContact = {
+  personId: string;
+  nome: string;
+  cargo?: string | null;
+  qualificacao?: string | null;
+  telefones?: string[] | null;
+  emails?: string[] | null;
+  roles?: string[] | null;
+  isPrimary?: boolean;
+  preferredChannel?: string | null;
+};
+
+type CompanyContext = {
+  company: {
+    id: string;
+    cnpj: string;
+    razaoSocial?: string | null;
+    nomeFantasia?: string | null;
+    situacaoCadastral?: string | null;
+    porte?: string | null;
+    cnaePrincipal?: string | null;
+    endereco?: Record<string, string | null> | null;
+    telefone?: string | null;
+    email?: string | null;
+  };
+  tenantCompany: {
+    id: string;
+    relationshipType: string;
+  };
+  contacts: CompanyContextContact[];
+};
+
 function normalizeWhatsAppNumber(value?: string | null): string {
   let digits = String(value ?? "").replace(/\D/g, "");
   if (!digits) return "";
@@ -329,6 +361,9 @@ export default function LeadDetail() {
   const [naoLeadSalvando, setNaoLeadSalvando] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [lightboxTitle, setLightboxTitle] = useState<string>("");
+  const [companyContext, setCompanyContext] = useState<CompanyContext | null>(null);
+  const [companyContextLoading, setCompanyContextLoading] = useState(false);
+  const [companyContextError, setCompanyContextError] = useState<string | null>(null);
 
   const { data: catalog = [] } = useListProdutosCatalogo(tenantId, {
     query: { queryKey: getListProdutosCatalogoQueryKey(tenantId), enabled: !!tenantId },
@@ -662,9 +697,63 @@ export default function LeadDetail() {
     void openIniciarConversa("whatsapp");
   }
 
+  async function loadOrEnrichCompanyContext(forceEnrich = false) {
+    if (!id || !lead || !tenantId) return;
+    const tipoPessoa = (lead as any).tipoPessoa;
+    const rawCnpj = String((lead as any).dadosPj?.cnpj ?? lead.documento ?? "").replace(/\D/g, "");
+    if (tipoPessoa !== "juridica" || rawCnpj.length !== 14) {
+      setCompanyContext(null);
+      return;
+    }
+
+    setCompanyContextLoading(true);
+    setCompanyContextError(null);
+    try {
+      if (!forceEnrich) {
+        const existing = await fetch(`${getBase()}/api/crm/leads/${id}/company-context`, {
+          headers: { Authorization: `Bearer ${getToken()}` },
+        });
+        if (existing.ok) {
+          setCompanyContext(await existing.json() as CompanyContext);
+          return;
+        }
+      }
+
+      const enriched = await fetch(`${getBase()}/api/crm/companies/enrich`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getToken()}`,
+        },
+        body: JSON.stringify({ cnpj: rawCnpj, leadId: id, tenantId }),
+      });
+      const payload = await enriched.json().catch(() => ({}));
+      if (!enriched.ok) {
+        throw new Error((payload as any)?.error ?? "Não foi possível enriquecer a empresa.");
+      }
+      setCompanyContext(payload as CompanyContext);
+      void queryClient.invalidateQueries({ queryKey: getGetLeadQueryKey(id) });
+    } catch (err) {
+      setCompanyContextError(err instanceof Error ? err.message : "Falha ao carregar empresa.");
+    } finally {
+      setCompanyContextLoading(false);
+    }
+  }
+
   async function handleStartWhatsappConversation() {
     await handleIniciarConversa();
   }
+
+  useEffect(() => {
+    if (!lead || !id || !tenantId) return;
+    const cnpj = String((lead as any).dadosPj?.cnpj ?? lead.documento ?? "").replace(/\D/g, "");
+    if ((lead as any).tipoPessoa === "juridica" && cnpj.length === 14) {
+      void loadOrEnrichCompanyContext(false);
+    } else {
+      setCompanyContext(null);
+      setCompanyContextError(null);
+    }
+  }, [id, tenantId, lead?.documento, (lead as any)?.tipoPessoa]);
 
   const [editingPessoal, setEditingPessoal] = useState(false);
   const [pessoalDraft, setPessoalDraft] = useState({
@@ -1692,6 +1781,94 @@ export default function LeadDetail() {
               </div>
             </CardContent>
           </Card>
+
+          {(lead as any).tipoPessoa === "juridica" && (
+            <Card data-testid="card-company-context">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-semibold flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-2">
+                    <Building2 className="h-4 w-4" />
+                    Empresa e contatos
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void loadOrEnrichCompanyContext(true)}
+                    disabled={companyContextLoading}
+                    className="h-7 text-xs"
+                  >
+                    {companyContextLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                    <span className="ml-1">Enriquecer</span>
+                  </Button>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                {companyContextLoading && !companyContext && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Buscando dados empresariais e QSA...
+                  </div>
+                )}
+                {companyContextError && (
+                  <p className="text-xs text-destructive">{companyContextError}</p>
+                )}
+                {companyContext && (
+                  <>
+                    <div className="space-y-1">
+                      <p className="font-medium">{companyContext.company.nomeFantasia || companyContext.company.razaoSocial || lead.empresa}</p>
+                      <p className="text-xs text-muted-foreground font-mono">CNPJ {companyContext.company.cnpj}</p>
+                      {companyContext.company.razaoSocial && companyContext.company.razaoSocial !== companyContext.company.nomeFantasia && (
+                        <p className="text-xs text-muted-foreground">{companyContext.company.razaoSocial}</p>
+                      )}
+                      {companyContext.company.cnaePrincipal && (
+                        <p className="text-xs text-muted-foreground">{companyContext.company.cnaePrincipal}</p>
+                      )}
+                      <div className="flex flex-wrap gap-1 pt-1">
+                        {companyContext.company.situacaoCadastral && <Badge variant="outline">{companyContext.company.situacaoCadastral}</Badge>}
+                        {companyContext.company.porte && <Badge variant="outline">{companyContext.company.porte}</Badge>}
+                      </div>
+                    </div>
+                    <div className="border-t pt-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Contatos relacionados</p>
+                        <Badge variant="secondary">{companyContext.contacts.length}</Badge>
+                      </div>
+                      {companyContext.contacts.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">Nenhum contato vinculado ainda.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {companyContext.contacts.map((contact) => (
+                            <div key={contact.personId} className="rounded-md border p-2.5">
+                              <div className="flex items-start justify-between gap-2">
+                                <div>
+                                  <p className="text-sm font-medium">{contact.nome}</p>
+                                  {(contact.cargo || contact.qualificacao) && (
+                                    <p className="text-xs text-muted-foreground">{contact.cargo || contact.qualificacao}</p>
+                                  )}
+                                </div>
+                                {contact.isPrimary && <Badge className="text-[10px]">Principal</Badge>}
+                              </div>
+                              {!!contact.roles?.length && (
+                                <div className="flex flex-wrap gap-1 mt-2">
+                                  {contact.roles.map((role) => <Badge key={role} variant="outline" className="text-[10px] capitalize">{role}</Badge>)}
+                                </div>
+                              )}
+                              {(contact.telefones?.[0] || contact.emails?.[0]) && (
+                                <div className="mt-2 space-y-1 text-xs">
+                                  {contact.telefones?.[0] && <p className="flex items-center gap-1.5"><Phone className="h-3 w-3" />{contact.telefones[0]}</p>}
+                                  {contact.emails?.[0] && <p className="flex items-center gap-1.5"><Mail className="h-3 w-3" />{contact.emails[0]}</p>}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Dados Pessoais */}
           <Card data-testid="card-dados-pessoais">
