@@ -482,9 +482,10 @@ export default function PipelineOperacional() {
     else navigate(`/pipeline-operacional/${next}`);
   }
 
-  async function uploadFilesToCard(cardId: string, files: File[], origem = "app", metadata?: Record<string, unknown>) {
-    if (!files.length || uploading) return;
+  async function uploadFilesToCard(cardId: string, files: File[], origem = "app", metadata?: Record<string, unknown>): Promise<string[]> {
+    if (!files.length || uploading) return [];
     setUploading(true);
+    const urls: string[] = [];
     try {
       for (const file of files) {
         const meta = await api<{ uploadURL: string; objectPath: string }>("/api/storage/uploads/request-url", {
@@ -496,23 +497,27 @@ export default function PipelineOperacional() {
           method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" },
         });
         if (!put.ok) throw new Error(`Falha ao enviar ${file.name}`);
+        const url = `/api/storage${meta.objectPath}`;
         await api(`/api/work-cards/${cardId}/attachments`, {
           method: "POST",
           headers: jsonHeaders,
           body: JSON.stringify({
             nome: file.name,
-            url: `/api/storage${meta.objectPath}`,
+            url,
             mimeType: file.type || "application/octet-stream",
             tamanho: file.size,
             origem,
             metadata,
           }),
         });
+        urls.push(url);
       }
       await queryClient.invalidateQueries({ queryKey: ["work-card-attachments", cardId] });
       toast({ title: files.length === 1 ? "Anexo registrado" : `${files.length} anexos registrados` });
+      return urls;
     } catch (error) {
       toast({ title: "Não foi possível anexar os arquivos", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+      throw error;
     } finally {
       setUploading(false);
     }
@@ -979,6 +984,20 @@ export default function PipelineOperacional() {
                   </div>
                 ) : null}
 
+                {selectedCard.pipeline === "execucao" && selectedCard.etapa === "instalacao_finalizada" && installationQuery.data && (
+                  <InstallationAcceptancePanel
+                    card={selectedCard}
+                    installation={installationQuery.data}
+                    uploading={uploading}
+                    api={api}
+                    uploadFiles={uploadFilesToCard}
+                    onAccepted={async () => {
+                      await queryClient.invalidateQueries({ queryKey: ["work-card-installation", selectedCard.id] });
+                      await queryClient.invalidateQueries({ queryKey: ["work-card-attachments", selectedCard.id] });
+                    }}
+                  />
+                )}
+
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-semibold">Fotos, vídeos, áudios e documentos</h3>
@@ -1049,6 +1068,126 @@ export default function PipelineOperacional() {
           toast({ title: "Lote de entrega criado e enviado para a Pipeline de Execução." });
         }}
       />
+    </div>
+  );
+}
+
+function InstallationAcceptancePanel({
+  card,
+  installation,
+  uploading,
+  api,
+  uploadFiles,
+  onAccepted,
+}: {
+  card: WorkCard;
+  installation: InstallationDomainResponse;
+  uploading: boolean;
+  api: <T>(url: string, options?: RequestInit) => Promise<T>;
+  uploadFiles: (cardId: string, files: File[], origem?: string, metadata?: Record<string, unknown>) => Promise<string[]>;
+  onAccepted: () => void | Promise<void>;
+}) {
+  const { toast } = useToast();
+  const currentVisit = installation.visits.find((visit) => visit.id === installation.currentVisitId) ?? installation.visits.at(-1);
+  const [receiverName, setReceiverName] = useState("");
+  const [receiverDocument, setReceiverDocument] = useState("");
+  const [receiverRelationship, setReceiverRelationship] = useState("");
+  const [customerSignatureUrl, setCustomerSignatureUrl] = useState("");
+  const [companySignatureUrl, setCompanySignatureUrl] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  if (!currentVisit) return null;
+
+  if (currentVisit.customerAcceptanceStatus === "accepted") {
+    return (
+      <div className="rounded-xl border bg-emerald-50/60 p-4">
+        <div className="flex items-start gap-3">
+          <CheckCircle2 className="mt-0.5 h-5 w-5 text-emerald-700" />
+          <div>
+            <h3 className="text-sm font-semibold text-emerald-950">Entrega e aceite concluídos</h3>
+            <p className="mt-1 text-xs text-emerald-800">
+              Recebido por {currentVisit.receiverName || "representante identificado"}. O termo final está congelado e disponível nos documentos/anexos deste processo.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  async function uploadSignature(file: File | undefined, kind: "customer" | "company") {
+    if (!file) return;
+    const urls = await uploadFiles(card.id, [file], kind === "customer" ? "installation_signature_customer" : "installation_signature_company", {
+      installationVisitId: currentVisit.id,
+      signatureRole: kind,
+    });
+    const url = urls[0] || "";
+    if (kind === "customer") setCustomerSignatureUrl(url);
+    else setCompanySignatureUrl(url);
+  }
+
+  async function accept() {
+    if (!receiverName.trim() || !customerSignatureUrl || !companySignatureUrl) {
+      toast({ title: "Informe o recebedor e as duas assinaturas.", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    try {
+      await api(`/api/installation-visits/${currentVisit.id}/accept`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          receiverName: receiverName.trim(),
+          receiverDocument: receiverDocument.trim() || null,
+          receiverRelationship: receiverRelationship.trim() || null,
+          customerSignatureUrl,
+          companySignatureUrl,
+        }),
+      });
+      toast({ title: "Aceite concluído", description: "O termo final imutável foi gerado e anexado ao processo." });
+      await onAccepted();
+    } catch (error) {
+      toast({ title: "Não foi possível concluir o aceite", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4 rounded-xl border p-4">
+      <div>
+        <h3 className="text-sm font-semibold">Entrega e aceite do cliente</h3>
+        <p className="text-xs text-muted-foreground">Etapa separada da conferência técnica. Após confirmar, o documento fica imutável e qualquer correção exige um novo registro posterior.</p>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1.5 sm:col-span-2">
+          <label className="text-xs font-medium">Nome de quem recebe *</label>
+          <Input value={receiverName} onChange={(e) => setReceiverName(e.target.value)} placeholder="Cliente ou representante autorizado" />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium">Documento</label>
+          <Input value={receiverDocument} onChange={(e) => setReceiverDocument(e.target.value)} />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium">Vínculo com o cliente</label>
+          <Input value={receiverRelationship} onChange={(e) => setReceiverRelationship(e.target.value)} placeholder="Ex.: cliente, responsável da obra..." />
+        </div>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="cursor-pointer rounded-lg border border-dashed p-3 text-sm hover:bg-muted/40">
+          <strong>Assinatura do cliente/representante *</strong>
+          <p className="mt-1 text-xs text-muted-foreground">{customerSignatureUrl ? "Assinatura anexada." : "Clique para anexar imagem da assinatura."}</p>
+          <input type="file" className="hidden" accept="image/*" disabled={uploading} onChange={(e) => void uploadSignature(e.target.files?.[0], "customer")} />
+        </label>
+        <label className="cursor-pointer rounded-lg border border-dashed p-3 text-sm hover:bg-muted/40">
+          <strong>Assinatura da empresa/instalador *</strong>
+          <p className="mt-1 text-xs text-muted-foreground">{companySignatureUrl ? "Assinatura anexada." : "Clique para anexar imagem da assinatura."}</p>
+          <input type="file" className="hidden" accept="image/*" disabled={uploading} onChange={(e) => void uploadSignature(e.target.files?.[0], "company")} />
+        </label>
+      </div>
+      <Button disabled={saving || uploading || !receiverName.trim() || !customerSignatureUrl || !companySignatureUrl} onClick={() => void accept()}>
+        {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+        Gerar termo final e concluir aceite
+      </Button>
     </div>
   );
 }
