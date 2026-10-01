@@ -1393,7 +1393,22 @@ router.post("/work-cards/:id/delivery-acceptance/confirm", async (req, res) => {
     }).returning();
     attachmentId = attachment.id;
   } catch (error) {
-    req.log.warn({ err: error, workCardId: card.id }, "delivery-acceptance: PDF gerado, mas storage indisponível");
+    req.log.warn({ err: error, workCardId: card.id }, "delivery-acceptance: storage indisponível; arquivando PDF como data URL");
+    documentUrl = `data:application/pdf;base64,${pdf.toString("base64")}`;
+    const [attachment] = await db.insert(workCardAttachmentsTable).values({
+      tenantId: card.tenantId,
+      workCardId: card.id,
+      leadId: card.leadId,
+      criadoPor: req.user?.sub ?? null,
+      origem: "entrega_aceite",
+      nome: `Termo de Entrega e Aceite - ${card.codigo} - R${version}.pdf`,
+      url: documentUrl,
+      mimeType: "application/pdf",
+      tamanho: pdf.length,
+      descricao: "Termo de entrega, vistoria e aceite assinado digitalmente.",
+      metadata: { kind: "termo_entrega_aceite", acceptanceId, version, immutable: true, storageFallback: "data_url" },
+    }).returning();
+    attachmentId = attachment.id;
   }
 
   const completedAt = signedAt.toISOString();
@@ -1456,6 +1471,93 @@ router.post("/work-cards/:id/delivery-acceptance/confirm", async (req, res) => {
   }
 
   res.json({ card: updated, acceptance, pdfStored: Boolean(documentUrl), documentUrl, attachmentId });
+});
+
+router.post("/work-cards/:id/delivery-package/send", async (req, res) => {
+  const bodySchema = z.object({ manualAttachmentIds: z.array(z.string()).min(1) });
+  const parsed = bodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: "MANUAL_REQUIRED", message: "Selecione ao menos um manual para o pacote de entrega." });
+    return;
+  }
+  const [card] = await db.select().from(workCardsTable).where(eq(workCardsTable.id, String(req.params.id))).limit(1);
+  if (!card || card.pipeline !== "execucao") { res.status(404).json({ error: "Card não encontrado" }); return; }
+  if (!canAccessTenant(req, card.tenantId)) { res.status(403).json({ error: "Access denied to this tenant" }); return; }
+  if (card.etapa !== "pos_venda") {
+    res.status(409).json({ error: "POST_SALE_STAGE_REQUIRED", message: "O pacote de entrega é enviado na etapa Pós-venda." });
+    return;
+  }
+  const acceptance = (card.metadata as Record<string, unknown> | null)?.deliveryAcceptance as any;
+  if (!acceptance?.generatedDocumentAttachmentId) {
+    res.status(409).json({ error: "SIGNED_TERM_REQUIRED", message: "O termo de entrega assinado precisa existir antes do envio do pacote." });
+    return;
+  }
+  const [lead] = card.leadId
+    ? await db.select({ nome: leadsTable.nome, empresa: leadsTable.empresa, telefone: leadsTable.telefone })
+        .from(leadsTable).where(and(eq(leadsTable.id, card.leadId), eq(leadsTable.tenantId, card.tenantId))).limit(1)
+    : [];
+  if (!lead?.telefone) {
+    res.status(422).json({ error: "CLIENT_PHONE_REQUIRED", message: "O cliente precisa ter telefone para receber o pacote pelo WhatsApp." });
+    return;
+  }
+  const attachmentIds = [acceptance.generatedDocumentAttachmentId, ...parsed.data.manualAttachmentIds];
+  const attachments = await db.select().from(workCardAttachmentsTable).where(and(
+    eq(workCardAttachmentsTable.workCardId, card.id),
+    inArray(workCardAttachmentsTable.id, attachmentIds),
+  ));
+  const term = attachments.find((a) => a.id === acceptance.generatedDocumentAttachmentId);
+  const manuals = attachments.filter((a) => parsed.data.manualAttachmentIds.includes(a.id));
+  if (!term || manuals.length !== parsed.data.manualAttachmentIds.length) {
+    res.status(422).json({ error: "PACKAGE_ATTACHMENTS_INVALID", message: "Um ou mais documentos do pacote não foram encontrados neste card." });
+    return;
+  }
+  if (term.url.startsWith("data:")) {
+    res.status(409).json({
+      error: "PUBLIC_DOCUMENT_URL_REQUIRED",
+      message: "O PDF está arquivado internamente, mas o storage público de homologação não está disponível para envio por WhatsApp.",
+    });
+    return;
+  }
+
+  await sendDirectWhatsAppMessage(
+    card.tenantId,
+    lead.telefone,
+    [
+      "✅ Pacote de entrega",
+      `Cliente: ${lead.empresa || lead.nome || "Cliente"}`,
+      `Termo assinado: ${term.url}`,
+      ...manuals.map((attachment) => `Manual: ${attachment.url}`),
+    ].join("\n"),
+    req.log,
+  );
+
+  const metadata = (card.metadata ?? {}) as Record<string, unknown>;
+  const currentGates = metadata.stageGates && typeof metadata.stageGates === "object"
+    ? { ...(metadata.stageGates as Record<string, unknown>) }
+    : {};
+  const sentAt = new Date().toISOString();
+  currentGates.pacote_entrega = {
+    completed: true, completedAt: sentAt, completedBy: req.user?.sub ?? null,
+    stage: card.etapa, source: "delivery_package",
+  };
+  const deliveryPackage = {
+    sentAt, sentBy: req.user?.sub ?? null, channel: "whatsapp",
+    termAttachmentId: term.id, manualAttachmentIds: parsed.data.manualAttachmentIds,
+  };
+  const [updated] = await db.update(workCardsTable).set({
+    metadata: { ...metadata, stageGates: currentGates, deliveryPackage },
+    updatedAt: new Date(),
+  }).where(eq(workCardsTable.id, card.id)).returning();
+
+  if (card.leadId) {
+    await recordWorkHistory({
+      tenantId: card.tenantId, leadId: card.leadId, dealId: card.dealId, tipo: "tarefa",
+      titulo: `${card.codigo}: pacote de entrega enviado`,
+      descricao: `Termo assinado + ${manuals.length} manual(is) enviados ao cliente por WhatsApp.`,
+      responsavelId: card.responsavelId,
+    });
+  }
+  res.json({ card: updated, sent: true, manualCount: manuals.length });
 });
 
 router.get("/work-cards/:id/delivery-acceptance/pdf", async (req, res) => {
