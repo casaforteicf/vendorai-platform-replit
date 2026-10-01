@@ -1,14 +1,28 @@
-import puppeteer, { type Browser, type CookieData, type Page } from "puppeteer-core";
+import { type Browser, type CookieData, type Page } from "puppeteer-core";
+import { mkdir, readdir } from "node:fs/promises";
+import path from "node:path";
+import os from "node:os";
+import { acquireBrowserLease } from "./browser-fleet.js";
+import {
+  captureBrowserProfile,
+  restoreBrowserProfileAfterNavigation,
+  restoreBrowserProfileBeforeNavigation,
+  type BrowserProfileState,
+} from "./browser-profile.js";
 import {
   assertBrowserPageAccessible,
   executeBrowserAction,
   planBrowserAction,
   snapshotBrowserPage,
   validateBrowserUrl,
+  checkpointFromState,
+  classifyBrowserError,
   type BrowserAgentStep,
+  type PlannedAction,
 } from "./browser-agent.js";
 
 type PersistSession = (cookies: CookieData[]) => Promise<void>;
+type PersistProfile = (profile: BrowserProfileState) => Promise<void>;
 type MissionResult = { ok: boolean; sessionId: string; finalUrl: string; answer: string; steps: BrowserAgentStep[] };
 type PersistMissionResult = (result: MissionResult) => Promise<void>;
 
@@ -34,6 +48,7 @@ type LiveBrowserSession = {
   error: string | null;
   status: LiveBrowserSessionStatus;
   steps: BrowserAgentStep[];
+  recordedActions: PlannedAction[];
   createdAt: Date;
   lastActivityAt: Date;
   paused: boolean;
@@ -45,6 +60,8 @@ type LiveBrowserSession = {
   actionInFlight?: Promise<unknown>;
   onMissionResult?: PersistMissionResult;
   onSessionPersist?: PersistSession;
+  onProfilePersist?: PersistProfile;
+  releaseBrowser?: (healthy?: boolean) => void;
 };
 
 const sessions = new Map<string, LiveBrowserSession>();
@@ -62,6 +79,7 @@ function publicSession(session: LiveBrowserSession) {
     url: session.page.url(),
     title: null as string | null,
     steps: session.steps,
+    recordedActionCount: session.recordedActions.length,
     pauseReason: session.pauseReason,
     createdAt: session.createdAt,
     lastActivityAt: session.lastActivityAt,
@@ -84,9 +102,11 @@ export async function createLiveBrowserSession(input: {
   allowedHosts?: string[];
   secrets?: { login?: string; passcode?: string };
   sessionCookies?: CookieData[];
+  sessionProfile?: BrowserProfileState;
   allowWrite?: boolean;
   onMissionResult?: PersistMissionResult;
   onSessionPersist?: PersistSession;
+  onProfilePersist?: PersistProfile;
   existing?: { browser: Browser; page: Page };
 }) {
   await cleanupExpiredSessions();
@@ -98,24 +118,27 @@ export async function createLiveBrowserSession(input: {
     throw new Error("Limite de sessões simultâneas atingido para este tenant");
   }
 
-  const cdpUrl = process.env["BROWSER_CDP_URL"];
-  if (!cdpUrl) throw new Error("BROWSER_CDP_URL não configurada");
-
-  const browser = input.existing?.browser ?? await puppeteer.connect({ browserWSEndpoint: cdpUrl });
+  const lease = input.existing ? undefined : await acquireBrowserLease();
+  const browser = input.existing?.browser ?? lease!.browser;
   let page: Page | undefined;
   try {
     page = input.existing?.page ?? await (await browser.createBrowserContext()).newPage();
     await page.setViewport({ width: 1365, height: 768, deviceScaleFactor: 1 });
     if (!input.existing) {
       if (input.sessionCookies?.length) await page.setCookie(...input.sessionCookies);
+      await restoreBrowserProfileBeforeNavigation(page, input.sessionProfile);
       await page.goto(validateBrowserUrl(input.startUrl, input.allowedHosts ?? []), {
         waitUntil: "domcontentloaded", timeout: 30000,
       });
+      if (await restoreBrowserProfileAfterNavigation(page, input.sessionProfile)) {
+        await page.reload({ waitUntil: "domcontentloaded", timeout: 30000 });
+      }
     }
   } catch (error) {
     if (!input.existing) {
       if (page) await page.browserContext().close().catch(() => undefined);
       browser.disconnect();
+      lease?.release(false);
     }
     throw error;
   }
@@ -137,6 +160,7 @@ export async function createLiveBrowserSession(input: {
     error: null,
     status: "idle",
     steps: [],
+    recordedActions: [],
     createdAt: now,
     lastActivityAt: now,
     paused: false,
@@ -146,7 +170,9 @@ export async function createLiveBrowserSession(input: {
     pauseReason: null,
     handoffToken: crypto.randomUUID() + crypto.randomUUID(),
     onSessionPersist: input.onSessionPersist,
+    onProfilePersist: input.onProfilePersist,
     onMissionResult: input.onMissionResult,
+    releaseBrowser: lease?.release,
   };
   sessions.set(id, session);
 
@@ -215,6 +241,11 @@ export async function getLiveBrowserSession(tenantId: string, sessionId: string)
   return { ...publicSession(session), title };
 }
 
+export function getRecordedBrowserActions(tenantId: string, sessionId: string) {
+  const session = requireSession(tenantId, sessionId);
+  return session.recordedActions.map((action) => ({ ...action }));
+}
+
 export async function captureLiveBrowserSession(tenantId: string, sessionId: string) {
   const session = requireSession(tenantId, sessionId);
   const buffer = await session.page.screenshot({ type: "jpeg", quality: 72, encoding: "base64" });
@@ -242,6 +273,9 @@ export async function setLiveBrowserPaused(tenantId: string, sessionId: string, 
     if (session.onSessionPersist) {
       await session.onSessionPersist(await session.page.cookies());
     }
+    if (session.onProfilePersist) {
+      await session.onProfilePersist(await captureBrowserProfile(session.page));
+    }
   }
   session.lastActivityAt = new Date();
   return publicSession(session);
@@ -256,7 +290,12 @@ export async function controlLiveBrowserSession(
     | { action: "key"; key: string }
     | { action: "navigate"; url: string }
     | { action: "back" }
-    | { action: "reload" },
+    | { action: "reload" }
+    | { action: "open_tab"; url?: string }
+    | { action: "switch_tab"; index: number }
+    | { action: "close_tab"; index: number }
+    | { action: "upload"; selector: string; fileName: string }
+    | { action: "download"; selector: string },
 ) {
   const session = requireSession(tenantId, sessionId);
   await setLiveBrowserPaused(tenantId, sessionId, true);
@@ -276,6 +315,62 @@ export async function controlLiveBrowserSession(
     await session.page.goBack({ waitUntil: "domcontentloaded", timeout: 15000 }).catch(() => null);
   } else if (command.action === "reload") {
     await session.page.reload({ waitUntil: "domcontentloaded", timeout: 30000 });
+  } else if (command.action === "open_tab") {
+    const page = await session.page.browserContext().newPage();
+    if (command.url) {
+      await page.goto(validateBrowserUrl(command.url, session.allowedHosts), {
+        waitUntil: "domcontentloaded",
+        timeout: 30000,
+      });
+    }
+    session.page = page;
+  } else if (command.action === "switch_tab") {
+    const pages = await session.page.browserContext().pages();
+    const page = pages[command.index];
+    if (!page) throw new Error("Aba não encontrada");
+    session.page = page;
+    await page.bringToFront();
+  } else if (command.action === "close_tab") {
+    const pages = await session.page.browserContext().pages();
+    const page = pages[command.index];
+    if (!page) throw new Error("Aba não encontrada");
+    if (pages.length <= 1) throw new Error("Não é possível fechar a única aba da sessão");
+    const wasActive = page === session.page;
+    await page.close();
+    if (wasActive) {
+      const remaining = await session.page.browserContext().pages();
+      session.page = remaining[Math.max(0, command.index - 1)] ?? remaining[0]!;
+      await session.page.bringToFront();
+    }
+  } else if (command.action === "upload") {
+    const uploadRoot = path.resolve(process.env["BROWSER_UPLOAD_DIR"] ?? path.join(os.tmpdir(), "vendorai-uploads"));
+    const requested = path.resolve(uploadRoot, command.fileName);
+    if (!requested.startsWith(uploadRoot + path.sep)) throw new Error("Arquivo de upload fora do diretório permitido");
+    const handle = await session.page.$(command.selector);
+    if (!handle) throw new Error("Campo de upload não encontrado");
+    await handle.uploadFile(requested);
+  } else if (command.action === "download") {
+    const downloadDir = path.join(os.tmpdir(), "vendorai-downloads", tenantId, sessionId);
+    await mkdir(downloadDir, { recursive: true });
+    const client = await session.page.createCDPSession();
+    await client.send("Browser.setDownloadBehavior", { behavior: "allow", downloadPath: downloadDir });
+    const before = new Set(await readdir(downloadDir).catch(() => []));
+    await session.page.click(command.selector);
+    const deadline = Date.now() + 15000;
+    let downloaded: string | undefined;
+    while (Date.now() < deadline && !downloaded) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      const files = await readdir(downloadDir).catch(() => []);
+      downloaded = files.find((file) => !before.has(file) && !file.endsWith(".crdownload"));
+    }
+    await client.detach().catch(() => undefined);
+    if (!downloaded) throw new Error("Download não concluído dentro do tempo limite");
+    session.steps.push({
+      index: session.steps.length + 1,
+      action: "download_result",
+      url: session.page.url(),
+      detail: downloaded,
+    });
   }
 
   session.lastActivityAt = new Date();
@@ -295,6 +390,7 @@ export function startLiveBrowserMission(
   session.answer = null;
   session.error = startPaused ? "Verificação humana necessária. Resolva a verificação e devolva o controle para o Vendi." : null;
   session.steps = [];
+  session.recordedActions = [];
   session.paused = startPaused;
   session.pauseReason = startPaused ? "human_verification" : null;
   session.status = startPaused ? "paused" : "running";
@@ -306,6 +402,7 @@ export function startLiveBrowserMission(
         login: Boolean(session.secrets?.login), passcode: Boolean(session.secrets?.passcode),
       };
       let executed = 0;
+      let recoveryNote = "";
       while (executed < Math.min(Math.max(maxSteps, 1), 40)) {
         while (session.paused && !session.closed) {
           if (Date.now() - session.lastActivityAt.getTime() > SESSION_TTL_MS) {
@@ -325,7 +422,11 @@ export function startLiveBrowserMission(
           session.status = "paused";
           continue;
         }
-        const action = await planBrowserAction(session.tenantId, goal, state, session.steps, secretsAvailable);
+        const planningGoal = recoveryNote
+          ? goal + "\nRECUPERAÇÃO DE NAVEGAÇÃO: " + recoveryNote
+          : goal;
+        recoveryNote = "";
+        const action = await planBrowserAction(session.tenantId, planningGoal, state, session.steps, secretsAvailable);
         if (session.closed) return;
         // Discard plans based on the page before the human took control.
         if (session.paused || revision !== session.revision) continue;
@@ -339,6 +440,7 @@ export function startLiveBrowserMission(
           }
           if (action.outcome !== "completed") throw new Error(action.answer);
           if (session.onSessionPersist) await session.onSessionPersist(await session.page.cookies());
+          if (session.onProfilePersist) await session.onProfilePersist(await captureBrowserProfile(session.page));
           if (session.closed) return;
           session.answer = action.answer;
           session.status = "completed";
@@ -348,9 +450,25 @@ export function startLiveBrowserMission(
           allowWrite: session.allowWrite, allowedHosts: session.allowedHosts, secrets: session.secrets,
         });
         let extracted: string | undefined;
-        try { extracted = await session.actionInFlight as string | undefined; }
+        try {
+          extracted = await session.actionInFlight as string | undefined;
+          session.recordedActions.push(action);
+        }
         catch (error: any) {
-          if (!String(error?.message).startsWith("APPROVAL_REQUIRED:")) throw error;
+          const kind = classifyBrowserError(error);
+          if (kind === "selector_stale" || kind === "detached_frame") {
+            recoveryNote =
+              "A interface mudou antes da execução. Releia o snapshot atual e escolha um novo seletor estável; não reutilize o seletor anterior.";
+            session.steps.push({
+              index: executed + 1,
+              action: "recover_replan",
+              url: state.url,
+              detail: kind,
+              checkpoint: checkpointFromState(state),
+            });
+            continue;
+          }
+          if (kind !== "approval_required") throw error;
           session.error = error.message;
           session.paused = true;
           session.pauseReason = "approval_required";
@@ -359,8 +477,13 @@ export function startLiveBrowserMission(
         } finally { session.actionInFlight = undefined; }
         if (session.closed) return;
         executed++;
-        session.steps.push({ index: executed, action: action.action, url: state.url,
-          detail: action.reason });
+        session.steps.push({
+          index: executed,
+          action: action.action,
+          url: state.url,
+          detail: action.reason,
+          checkpoint: checkpointFromState(state),
+        });
         session.lastActivityAt = new Date();
         if (action.action === "extract" && extracted) {
           session.steps.push({ index: executed, action: "extract_result", url: session.page.url(), detail: extracted.slice(0, 500) });
@@ -394,9 +517,13 @@ export async function closeLiveBrowserSession(tenantId: string, sessionId: strin
   if (session.onSessionPersist && !expired) {
     await session.onSessionPersist(await session.page.cookies()).catch(() => undefined);
   }
+  if (session.onProfilePersist && !expired) {
+    await session.onProfilePersist(await captureBrowserProfile(session.page)).catch(() => undefined);
+  }
 
   await session.page.browserContext().close().catch(() => undefined);
   session.browser.disconnect();
+  session.releaseBrowser?.(!expired);
   sessions.delete(sessionId);
 
   return { success: true, id: sessionId };
