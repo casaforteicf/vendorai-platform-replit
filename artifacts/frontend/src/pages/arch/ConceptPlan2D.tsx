@@ -646,11 +646,11 @@ export default function ConceptPlan2D({
               x: wallDrawStart.x + direction.x * requestedLength,
               y: wallDrawStart.y + direction.y * requestedLength,
             };
-            if (!pointInsideLot(rawEnd)) {
+            if (rawEnd.x < 0 || rawEnd.x > lotWidth || rawEnd.y < 0 || rawEnd.y > lotDepth) {
               setWallLengthError("A medida ultrapassa o limite do terreno.");
               return;
             }
-            const end = boundPoint(rawEnd);
+            const end = rawEnd;
             const actualLength = Math.hypot(end.x - wallDrawStart.x, end.y - wallDrawStart.y);
             if (actualLength >= 0.5) {
               onCreateCustomWall({
