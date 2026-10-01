@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
@@ -183,6 +183,13 @@ export default function PipelineOperacional() {
     queryFn: () => api(`/api/tenants/${tenantId}/work-cards?pipeline=${pipeline}`),
     staleTime: 15_000, refetchOnWindowFocus: false,
   });
+
+  useEffect(() => {
+    const cardId = params.get("card");
+    if (!cardId || selectedCard || !cardsQuery.data?.length) return;
+    const card = cardsQuery.data.find((item) => item.id === cardId);
+    if (card) setSelectedCard(card);
+  }, [cardsQuery.data, params, selectedCard]);
   const needsContext = supportOpen || deliveryOpen || Boolean(selectedCard);
   const leadsQuery = useQuery<Lead[]>({
     queryKey: ["work-card-leads", tenantId], enabled: !!tenantId && needsContext,
