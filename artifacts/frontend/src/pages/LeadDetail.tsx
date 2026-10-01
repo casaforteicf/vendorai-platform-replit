@@ -1841,16 +1841,28 @@ export default function LeadDetail() {
                     <Building2 className="h-4 w-4" />
                     Empresa e contatos
                   </span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => void loadOrEnrichCompanyContext(true)}
-                    disabled={companyContextLoading}
-                    className="h-7 text-xs"
-                  >
-                    {companyContextLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                    <span className="ml-1">Enriquecer</span>
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    {companyContext?.company?.id && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setLocation(`/empresas/${companyContext.company.id}`)}
+                        className="h-7 text-xs"
+                      >
+                        Abrir empresa
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void loadOrEnrichCompanyContext(true)}
+                      disabled={companyContextLoading}
+                      className="h-7 text-xs"
+                    >
+                      {companyContextLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                      <span className="ml-1">Enriquecer</span>
+                    </Button>
+                  </div>
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
