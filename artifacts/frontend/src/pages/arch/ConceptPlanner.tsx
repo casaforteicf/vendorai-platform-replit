@@ -352,6 +352,38 @@ function catalogDimensions(item: RealCatalogProduct) {
   return { width, depth };
 }
 
+function catalogOpeningDimensions(item: RealCatalogProduct) {
+  const specs = item.especificacoes;
+  if (!specs || typeof specs !== "object") return {};
+  const record = specs as Record<string, unknown>;
+  const dims = record.dimensionsM && typeof record.dimensionsM === "object"
+    ? record.dimensionsM as Record<string, unknown>
+    : record;
+  const width = Number(dims.width ?? dims.largura);
+  const height = Number(dims.height ?? dims.altura);
+  return {
+    width: Number.isFinite(width) && width > 0 ? width : undefined,
+    height: Number.isFinite(height) && height > 0 ? height : undefined,
+    profile: typeof record.profile === "string"
+      ? record.profile
+      : typeof record.perfil === "string"
+        ? record.perfil
+        : undefined,
+    glass: typeof record.glassType === "string"
+      ? record.glassType
+      : typeof record.vidro === "string"
+        ? record.vidro
+        : undefined,
+  };
+}
+
+function catalogOpeningKind(item: RealCatalogProduct): "door" | "window" | null {
+  const text = `${item.nome} ${item.categoria ?? ""} ${item.subcategoria ?? ""}`.toLocaleLowerCase("pt-BR");
+  if (/porta|door|pivotante|camar[aã]o|porta de correr/.test(text)) return "door";
+  if (/janela|window|maxim[- ]?ar|basculante|veneziana|esquadria/.test(text)) return "window";
+  return null;
+}
+
 function inferCatalogFurniturePreset(item: RealCatalogProduct): {
   kind: ConceptPlanObject["kind"];
   width: number;
@@ -1111,6 +1143,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [savedTourPoints, setSavedTourPoints] = useState<SavedTourPoint[]>([]);
   const [tourShareState, setTourShareState] = useState<"idle" | "sharing" | "copied" | "error">("idle");
   const [realCatalogProducts, setRealCatalogProducts] = useState<RealCatalogProduct[]>([]);
+  const [openingProductPickerId, setOpeningProductPickerId] = useState<string | null>(null);
   const [realCatalogLoading, setRealCatalogLoading] = useState(false);
   const [polyHavenModels, setPolyHavenModels] = useState<PolyHavenModel[]>([]);
   const [polyHavenLoading, setPolyHavenLoading] = useState(false);
@@ -1289,6 +1322,23 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       return recentItemIds.indexOf(realLibraryItemKey(a.id)) - recentItemIds.indexOf(realLibraryItemKey(b.id));
     }).slice(0, 24);
   }, [favoriteItemIds, furnitureCategory, furnitureSearch, libraryMode, realCatalogProducts, recentItemIds]);
+
+  const openingCatalogProducts = useMemo(() => {
+    if (!openingProductPickerId) return [];
+    const opening = safeCustomOpenings.find((item) => item.id === openingProductPickerId);
+    if (!opening) return [];
+    const query = furnitureSearch.trim().toLocaleLowerCase("pt-BR");
+    return realCatalogProducts
+      .filter((item) => item.projectLibraryEnabled !== false)
+      .filter((item) => catalogOpeningKind(item) === opening.type)
+      .filter((item) => {
+        if (!query) return true;
+        return `${item.nome} ${item.categoria ?? ""} ${item.subcategoria ?? ""} ${item.fornecedor ?? ""}`
+          .toLocaleLowerCase("pt-BR")
+          .includes(query);
+      })
+      .slice(0, 36);
+  }, [furnitureSearch, openingProductPickerId, realCatalogProducts, safeCustomOpenings]);
 
   useEffect(() => {
     if (editorLibraryTab !== "furniture") return;
@@ -4224,6 +4274,48 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     setSelectedOpeningId(copy.id);
     setSelectedCustomWallId(null);
     pushRoomHistory(before);
+  };
+
+  const openOpeningProductPicker = (openingId: string) => {
+    const opening = safeCustomOpenings.find((item) => item.id === openingId);
+    if (!opening) return;
+    setOpeningProductPickerId(openingId);
+    setEditorLibraryTab("furniture");
+    setItemLibrarySection("products");
+    setFurnitureCategory("Todos");
+    setLibraryMode("all");
+    setFurnitureSearch(opening.type === "door" ? "porta" : "janela");
+    setLibraryOpen(true);
+  };
+
+  const applyCatalogProductToOpening = (openingId: string, item: RealCatalogProduct) => {
+    const opening = safeCustomOpenings.find((candidate) => candidate.id === openingId);
+    if (!opening) return;
+    const kind = catalogOpeningKind(item);
+    if (!kind || kind !== opening.type) return;
+    const dims = catalogOpeningDimensions(item);
+    const before = snapshotEditor();
+    setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((candidate) => {
+      if (candidate.id !== openingId) return candidate;
+      const next: CustomOpening = {
+        ...candidate,
+        catalogProductId: item.id,
+        manufacturer: item.fornecedor ?? candidate.manufacturer,
+        frameProfile: dims.profile ?? candidate.frameProfile,
+        glassType: kind === "window" ? (dims.glass ?? candidate.glassType) : candidate.glassType,
+        width: dims.width ?? candidate.width,
+        height: dims.height ?? candidate.height,
+      };
+      return {
+        ...next,
+        ...normalizeOpeningDimensions(next),
+      };
+    }));
+    pushRoomHistory(before);
+    rememberRecentItem(realLibraryItemKey(item.id));
+    setOpeningProductPickerId(null);
+    setFurnitureSearch("");
+    closeLibraryOnMobile();
   };
 
   const deleteCustomOpening = (openingId: string) => {
@@ -7499,7 +7591,70 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
                       {itemLibrarySection === "products" && (
                         <>
-                      {(polyHavenLoading || polyHavenModels.length > 0) && (
+                      {openingProductPickerId && (
+                        <div className="mb-5 rounded-2xl border border-sky-200 bg-sky-50/50 p-3">
+                          <div className="mb-3 flex items-start justify-between gap-2">
+                            <div>
+                              <div className="text-xs font-bold text-slate-900">
+                                Substituir {safeCustomOpenings.find((item) => item.id === openingProductPickerId)?.type === "door" ? "porta" : "janela"}
+                              </div>
+                              <div className="mt-0.5 text-[10px] text-slate-500">
+                                Escolha um produto real. Posição e vínculo com a parede serão preservados.
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOpeningProductPickerId(null);
+                                setFurnitureSearch("");
+                              }}
+                              className="rounded-lg border bg-white px-2 py-1 text-[10px] font-semibold text-slate-500"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+
+                          {realCatalogLoading ? (
+                            <div className="rounded-xl border border-dashed bg-white p-4 text-center text-xs text-slate-500">Carregando catálogo...</div>
+                          ) : openingCatalogProducts.length ? (
+                            <div className="grid grid-cols-2 gap-3">
+                              {openingCatalogProducts.map((item) => {
+                                const dims = catalogOpeningDimensions(item);
+                                return (
+                                  <button
+                                    key={item.id}
+                                    type="button"
+                                    onClick={() => applyCatalogProductToOpening(openingProductPickerId, item)}
+                                    className="overflow-hidden rounded-xl border bg-white text-left transition hover:border-sky-400 hover:shadow-sm"
+                                  >
+                                    <div className="aspect-[4/3] bg-slate-100">
+                                      {item.imagens?.[0] ? (
+                                        <img src={item.imagens[0]} alt={item.nome} className="h-full w-full object-cover" loading="lazy" />
+                                      ) : (
+                                        <div className="grid h-full place-items-center text-[10px] font-semibold text-slate-400">Sem imagem</div>
+                                      )}
+                                    </div>
+                                    <div className="p-2.5">
+                                      <div className="line-clamp-2 text-xs font-semibold text-slate-900">{item.nome}</div>
+                                      <div className="mt-1 text-[9px] text-slate-500">
+                                        {[item.fornecedor, dims.width && dims.height ? `${dims.width.toFixed(2)} × ${dims.height.toFixed(2)} m` : null]
+                                          .filter(Boolean)
+                                          .join(" · ")}
+                                      </div>
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="rounded-xl border border-dashed bg-white p-4 text-center text-xs text-slate-500">
+                              Nenhum produto compatível encontrado. Ajuste a busca ou cadastre a esquadria no catálogo mestre.
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {!openingProductPickerId && (polyHavenLoading || polyHavenModels.length > 0) && (
                         <div className="mb-5">
                           <div className="mb-3 flex items-center justify-between gap-2">
                             <div>
@@ -7575,7 +7730,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         </div>
                       )}
 
-                      {(realCatalogLoading || visibleRealCatalogProducts.length > 0) && (
+                      {!openingProductPickerId && (realCatalogLoading || visibleRealCatalogProducts.length > 0) && (
                         <div className="mb-5">
                           <div className="mb-3 flex items-center justify-between gap-2">
                             <div>
@@ -9170,6 +9325,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                               </button>
                             </>
                           )}
+                          <button type="button" onClick={() => openOpeningProductPicker(selectedOpening.id)} className="h-9 rounded-lg border border-sky-200 bg-sky-50 px-3 text-xs font-semibold text-sky-700">
+                            Substituir produto
+                          </button>
                           <button type="button" onClick={() => duplicateCustomOpening(selectedOpening.id)} className="h-9 rounded-lg border px-3 text-xs font-semibold" title="Duplicar (Ctrl/Cmd+D)">Duplicar</button>
                           <button type="button" onClick={() => deleteCustomOpening(selectedOpening.id)} className="h-9 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600" title="Excluir (Del)">Excluir</button>
                         </>
