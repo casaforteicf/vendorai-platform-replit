@@ -22,6 +22,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { VisualIdentity } from "@/components/ui/visual-identity";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -155,15 +156,12 @@ function ConvItem({
         }`}
       >
         <div className="relative shrink-0">
-          <div
-            className={`flex h-10 w-10 items-center justify-center rounded-full text-xs font-semibold uppercase ${
-              selected
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted text-muted-foreground"
-            }`}
-          >
-            {(lead?.nome ?? "?")[0]}
-          </div>
+          <VisualIdentity
+            source={lead as unknown as Record<string, unknown>}
+            label={lead?.nome ?? "Lead desconhecido"}
+            size="md"
+            className={selected ? "ring-2 ring-primary/25" : ""}
+          />
           <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-background bg-background">
             {channelIcon(conv.channel)}
           </span>
