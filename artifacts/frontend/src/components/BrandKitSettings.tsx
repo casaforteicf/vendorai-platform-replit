@@ -17,7 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Label } from "@/components/ui/label";
-import { Save, Palette, ImageIcon, Building2, Megaphone, Brain, Library, ExternalLink, Sparkles, Loader2, CheckCircle2, AlertTriangle, FileText, Target, Package, Users, Compass, ShieldCheck } from "lucide-react";
+import { Save, Palette, ImageIcon, Building2, Megaphone, Brain, Library, ExternalLink, Sparkles, Loader2 } from "lucide-react";
 
 type BrandStudioMode = "maintain" | "evolve" | "rebuild";
 
@@ -112,7 +112,7 @@ export function BrandKitSettings() {
     ?? proposalBuilderTemplates.find((item) => item.isDefault === true)
     ?? proposalBuilderTemplates[0]
     ?? null;
-  const [workspaceTab, setWorkspaceTab] = useState<"overview" | "brand" | "business">("overview");
+  const [workspaceTab, setWorkspaceTab] = useState<"brand" | "business">("business");
   const [draft, setDraft] = useState<BrandDraft>(emptyDraft);
   const [primaryColor, setPrimaryColor] = useState("#A78BFA");
   const [aiMode, setAiMode] = useState<BrandStudioMode>("evolve");
@@ -156,80 +156,6 @@ export function BrandKitSettings() {
     ];
     return Math.round((checks.filter(Boolean).length / checks.length) * 100);
   }, [profile.data, tenant.data, discovery, draft]);
-
-  const businessPlan = (discovery.businessPlan && typeof discovery.businessPlan === "object")
-    ? discovery.businessPlan as {
-        version?: number;
-        sections?: Record<string, { approved?: unknown[]; draft?: unknown[] }>;
-      }
-    : null;
-  const approvedPlanSections = businessPlan?.sections
-    ? Object.values(businessPlan.sections).filter((section) => Array.isArray(section?.approved) && section.approved.length > 0).length
-    : 0;
-  const productsCount = Array.isArray(profile.data?.produtos) ? profile.data.produtos.length : 0;
-  const sourceLabel = discovery.onboardingSource === "vendi_document_assisted"
-    ? "Materiais analisados pelo Vendi"
-    : discovery.onboardingSource === "vendi_guided"
-      ? "Configuração guiada pelo Vendi"
-      : "Cadastro da empresa";
-  const extractionConfidence = typeof discovery.extractionConfidence === "number"
-    ? Math.round(discovery.extractionConfidence * 100)
-    : null;
-
-  const intelligenceItems = [
-    {
-      key: "identity",
-      label: "Identidade",
-      done: Boolean(profile.data?.nomeFantasia || profile.data?.razaoSocial),
-      detail: profile.data?.vertical || "Segmento ainda não definido",
-      icon: Building2,
-      action: () => window.location.assign("/configuracoes?tab=perfil"),
-    },
-    {
-      key: "audience",
-      label: "Público / ICP",
-      done: Boolean(profile.data?.publicoAlvo || businessPlan?.sections?.segments?.approved?.length),
-      detail: profile.data?.publicoAlvo ? "Público principal informado" : "Falta definir para quem vender",
-      icon: Users,
-      action: () => setWorkspaceTab("business"),
-    },
-    {
-      key: "offers",
-      label: "Ofertas",
-      done: productsCount > 0 || Boolean(businessPlan?.sections?.products?.approved?.length),
-      detail: productsCount > 0 ? `${productsCount} item(ns) identificados` : "Produtos/serviços ainda não estruturados",
-      icon: Package,
-      action: () => setWorkspaceTab("business"),
-    },
-    {
-      key: "positioning",
-      label: "Posicionamento",
-      done: Boolean(profile.data?.diferenciais && (draft.posicionamento || businessPlan?.sections?.positioning?.approved?.length)),
-      detail: draft.posicionamento ? "Direção de posicionamento definida" : "Diferenciais e proposta de valor incompletos",
-      icon: Compass,
-      action: () => setWorkspaceTab("business"),
-    },
-    {
-      key: "brand",
-      label: "Marca",
-      done: Boolean((profile.data?.logoUrl || tenant.data?.logoUrl) && tenant.data?.corPrimaria && draft.tomVoz),
-      detail: draft.tomVoz ? "Visual e voz já têm contexto" : "Complete identidade visual e tom de voz",
-      icon: Palette,
-      action: () => setWorkspaceTab("brand"),
-    },
-    {
-      key: "strategy",
-      label: "Plano de Negócios",
-      done: approvedPlanSections >= 3,
-      detail: approvedPlanSections > 0 ? `${approvedPlanSections} bloco(s) aprovado(s)` : "Nenhum bloco aprovado ainda",
-      icon: Target,
-      action: () => setWorkspaceTab("business"),
-    },
-  ];
-
-  const readyItems = intelligenceItems.filter((item) => item.done).length;
-  const intelligenceHealth = Math.round((readyItems / intelligenceItems.length) * 100);
-  const recommendations = intelligenceItems.filter((item) => !item.done).slice(0, 3);
 
 
   const buildWithAI = async () => {
@@ -361,141 +287,12 @@ export function BrandKitSettings() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <div className="mr-auto">
-          <h2 className="text-xl font-semibold">Central da Empresa</h2>
-          <p className="mt-1 text-sm text-muted-foreground">A fonte oficial que orienta o Vendi, os agentes, Marketing, propostas e prospecção.</p>
+          <h2 className="text-xl font-semibold">Estratégia e Marca</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Desenvolva o negócio com o Vendi e mantenha uma única identidade oficial para todos os módulos.</p>
         </div>
-        <Button variant={workspaceTab === "overview" ? "default" : "outline"} onClick={() => setWorkspaceTab("overview")}>Visão geral</Button>
         <Button variant={workspaceTab === "business" ? "default" : "outline"} onClick={() => setWorkspaceTab("business")}>Estratégia e Negócio</Button>
         <Button variant={workspaceTab === "brand" ? "default" : "outline"} onClick={() => setWorkspaceTab("brand")}>Marca</Button>
       </div>
-
-      <div hidden={workspaceTab !== "overview"} className="space-y-4">
-        <div className="rounded-xl border bg-card p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <Brain className="h-5 w-5 text-primary" />
-                <h3 className="text-lg font-semibold">Inteligência da empresa</h3>
-              </div>
-              <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-                O Vendor.ai usa somente informações aprovadas como referência operacional. Sugestões e hipóteses permanecem separadas até revisão.
-              </p>
-            </div>
-            <div className="min-w-[190px] rounded-xl border bg-muted/20 p-4">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Saúde da base</span>
-                <strong>{intelligenceHealth}%</strong>
-              </div>
-              <Progress value={intelligenceHealth} className="mt-2" />
-              <p className="mt-2 text-xs text-muted-foreground">{readyItems} de {intelligenceItems.length} áreas prontas</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {intelligenceItems.map(({ key, label, done, detail, icon: Icon, action }) => (
-            <button
-              key={key}
-              type="button"
-              onClick={action}
-              className="rounded-xl border bg-card p-4 text-left transition hover:border-primary/40 hover:shadow-sm"
-            >
-              <div className="flex items-start gap-3">
-                <div className={`rounded-lg p-2 ${done ? "bg-emerald-50" : "bg-amber-50"}`}>
-                  <Icon className={`h-4 w-4 ${done ? "text-emerald-600" : "text-amber-600"}`} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <strong className="text-sm">{label}</strong>
-                    {done
-                      ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-                      : <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />}
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
-                </div>
-              </div>
-            </button>
-          ))}
-        </div>
-
-        <div className="grid gap-4 lg:grid-cols-[1.15fr_.85fr]">
-          <div className="rounded-xl border bg-card p-5">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-primary" />
-              <h3 className="font-semibold">Próximas ações sugeridas pelo Vendi</h3>
-            </div>
-            {recommendations.length > 0 ? (
-              <div className="mt-4 space-y-2">
-                {recommendations.map((item) => (
-                  <button
-                    key={item.key}
-                    type="button"
-                    onClick={item.action}
-                    className="flex w-full items-center gap-3 rounded-lg border p-3 text-left hover:bg-muted/30"
-                  >
-                    <item.icon className="h-4 w-4 text-primary" />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium">Completar {item.label}</p>
-                      <p className="text-xs text-muted-foreground">{item.detail}</p>
-                    </div>
-                    <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50/50 p-4 text-sm text-emerald-800">
-                A base principal está consistente. O Vendi pode continuar enriquecendo conforme novos documentos e resultados entrarem no sistema.
-              </div>
-            )}
-          </div>
-
-          <div className="rounded-xl border bg-card p-5">
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="h-4 w-4 text-primary" />
-              <h3 className="font-semibold">Origem e confiança</h3>
-            </div>
-            <div className="mt-4 space-y-3 text-sm">
-              <div className="flex items-start gap-2">
-                <FileText className="mt-0.5 h-4 w-4 text-muted-foreground" />
-                <div>
-                  <p className="font-medium">{sourceLabel}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {Array.isArray(discovery.importedDocuments) && discovery.importedDocuments.length
-                      ? `${discovery.importedDocuments.length} documento(s) usados no onboarding`
-                      : "Sem documentos registrados no onboarding atual"}
-                  </p>
-                </div>
-              </div>
-              <div className="rounded-lg bg-muted/30 p-3">
-                <p className="text-xs text-muted-foreground">Confiança da extração inicial</p>
-                <p className="mt-1 font-semibold">{extractionConfidence != null ? `${extractionConfidence}%` : "Não disponível"}</p>
-              </div>
-              <div className="rounded-lg bg-muted/30 p-3">
-                <p className="text-xs text-muted-foreground">Plano de Negócios</p>
-                <p className="mt-1 font-semibold">Versão {businessPlan?.version ?? 0} · {approvedPlanSections} bloco(s) aprovado(s)</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-primary/20 bg-primary/[0.03] p-5">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-primary" />
-                <strong>Ensinar algo novo ao Vendi</strong>
-              </div>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Importe novos materiais pela Base de Conhecimento. O conteúdo fica disponível para a empresa sem sobrescrever fatos aprovados automaticamente.
-              </p>
-            </div>
-            <Button variant="outline" type="button" onClick={() => window.location.assign("/base-conhecimento")}>
-              <Library className="mr-2 h-4 w-4" /> Importar conhecimento
-            </Button>
-          </div>
-        </div>
-      </div>
-
       <div hidden={workspaceTab !== "business"}><BusinessPlanPanel /></div>
       <div hidden={workspaceTab !== "brand"} className="space-y-4">
       <div className="rounded-xl border bg-card p-5 space-y-4">
