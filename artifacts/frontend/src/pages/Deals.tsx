@@ -62,7 +62,7 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Plus, GripVertical, DollarSign, User, UserRound, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles, BarChart3, RefreshCw, Users, Package, AlertTriangle, Paperclip, FileCheck, CreditCard, HandCoins, Flame, Cloud, Snowflake, FileText, Clock, CalendarDays, Pen, KanbanSquare, ArrowRight, UserMinus } from "lucide-react";
+import { Plus, GripVertical, DollarSign, User, UserRound, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles, BarChart3, RefreshCw, Users, Package, AlertTriangle, Paperclip, FileCheck, CreditCard, HandCoins, Flame, Cloud, Snowflake, FileText, Clock, CalendarDays, Pen, KanbanSquare, ArrowRight, UserMinus, Ruler } from "lucide-react";
 import { PipelineNav } from "@/components/PipelineNav";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
@@ -503,6 +503,24 @@ function DealCard({
       {/* Gerar contrato — ação rápida */}
       {!overlay && (deal.tipoFechamento === "contrato" || deal.tipoFechamento === "pedido_e_contrato") && deal.etapa !== "perdido" && (
         <ContractCardButton deal={deal} />
+      )}
+
+      {!overlay && /medid/i.test(String(deal.etapa ?? "")) && (
+        <div
+          className="pt-1 border-t border-border/50"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="w-full flex items-center justify-center gap-1.5 text-[11px] font-medium text-cyan-700 hover:text-cyan-800 hover:bg-cyan-50 rounded-md py-1.5 transition-colors"
+            onClick={() => { window.location.href = `/checklists/medidas/${deal.id}`; }}
+            data-testid={`deal-measurement-checklist-${deal.id}`}
+          >
+            <Ruler className="h-3.5 w-3.5" />
+            Conferência de medidas
+          </button>
+        </div>
       )}
 
       {/* Ações explícitas da pipeline — não dependem de drag-and-drop */}
