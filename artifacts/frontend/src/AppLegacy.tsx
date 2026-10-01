@@ -113,6 +113,7 @@ const FAQ                = lazy(() => import("@/pages/faq"));
 const Questionario       = lazy(() => import("@/pages/Questionario"));
 const Analytics          = lazy(() => import("@/pages/Analytics"));
 const AgentConfig        = lazy(() => import("@/pages/agents/AgentConfig"));
+const VendiOperations    = lazy(() => import("@/pages/agents/VendiOperations"));
 const RelatoriosVisaoGeral = lazy(() => import("@/pages/RelatoriosVisaoGeral"));
 const RelatorioGanhosMes = lazy(() => import("@/pages/RelatorioGanhosMes"));
 const RelatorioTipoCliente = lazy(() => import("@/pages/RelatorioTipoCliente"));
@@ -736,6 +737,7 @@ function AppRoutes() {
         <Route path="/guia-implantacao">{() => <ProtectedRoute component={GuiaImplantacao} />}</Route>
         <Route path="/agents/config">{() => <ProtectedRoute component={AgentConfig} />}</Route>
         <Route path="/agentes">{() => <ProtectedRoute component={AgentConfig} />}</Route>
+        <Route path="/vendi/operacoes">{() => <ProtectedRoute component={VendiOperations} />}</Route>
         <Route path="/analytics">{() => <ProtectedRoute component={Analytics} />}</Route>
         <Route path="/metricas-ia">{() => <ProtectedRoute component={Analytics} />}</Route>
         <Route path="/relatorios">{() => <ProtectedRoute component={RelatoriosVisaoGeral} />}</Route>
