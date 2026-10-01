@@ -2568,7 +2568,7 @@ export default function ConceptPlan2D({
                             height="0.72"
                             requiredExtensions="http://www.w3.org/1999/xhtml"
                           >
-                            <div xmlns="http://www.w3.org/1999/xhtml" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%", height: "100%" }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%", height: "100%" }}>
                               <input
                                 aria-label="Espessura da parede"
                                 type="number"
@@ -2619,7 +2619,7 @@ export default function ConceptPlan2D({
                             height="0.72"
                             requiredExtensions="http://www.w3.org/1999/xhtml"
                           >
-                            <div xmlns="http://www.w3.org/1999/xhtml" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%", height: "100%" }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%", height: "100%" }}>
                               <input
                                 aria-label="Comprimento da parede"
                                 type="number"
