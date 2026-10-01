@@ -30,7 +30,7 @@ import {
   Search,
   Sparkles,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import logoLight from "/logo-full-light.svg";
 
 const POST_LOGIN_PATH_KEY = "vendorai_post_login_path";
@@ -416,6 +416,7 @@ export default function Login() {
   const { toast } = useToast();
   const [showPassword, setShowPassword] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const homologAutoLoginAttempted = useRef(false);
   const copy = locale === "pt-BR" ? PT_COPY : ES_COPY;
   const tour = locale === "pt-BR" ? PT_TOUR : ES_TOUR;
   const proverbs = locale === "pt-BR" ? PT_PROVERBS : ES_PROVERBS;
@@ -485,6 +486,18 @@ export default function Login() {
       },
     );
   }
+
+  useEffect(() => {
+    const host = window.location.hostname.toLowerCase();
+    const isHomologationHost =
+      host === "homolog.appvendorai.com"
+      || host === "homolog2.appvendorai.com"
+      || host.includes("vendorai-homolog-frontend-production.up.railway.app");
+
+    if (!isHomologationHost || homologAutoLoginAttempted.current) return;
+    homologAutoLoginAttempted.current = true;
+    onDemoLogin();
+  }, []);
 
   function previousTool() {
     setActiveIndex((current) => (current - 1 + tour.length) % tour.length);
