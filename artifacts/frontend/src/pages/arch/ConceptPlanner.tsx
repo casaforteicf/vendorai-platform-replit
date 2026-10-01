@@ -6239,13 +6239,13 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       setEditorLibraryTab("furniture");
                       setLibraryOpen((open) => !(open && editorLibraryTab === "furniture"));
                     }}
-                    title="Abrir biblioteca de itens"
+                    title="Abrir biblioteca de móveis e objetos"
                     className={libraryOpen && editorLibraryTab === "furniture"
                       ? "hidden h-10 items-center gap-2 rounded-xl bg-white px-3 text-xs font-bold text-slate-950 shadow-sm sm:inline-flex"
                       : "hidden h-10 items-center gap-2 rounded-xl text-slate-300 hover:bg-white/10 sm:inline-flex"}
                   >
                     <Box className="h-4 w-4" />
-                    Itens
+                    Móveis
                   </button>
                 )}
                 <button
@@ -6736,6 +6736,87 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
               </div>
             )}
 
+            {editorView === "plan" && !terrainOnly && (
+              <div className="flex items-center gap-1.5 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <button
+                  type="button"
+                  onClick={() => setInteractionMode("navigate")}
+                  className={interactionMode === "navigate"
+                    ? "shrink-0 rounded-xl bg-slate-950 px-3 py-2 text-xs font-bold text-white"
+                    : "shrink-0 rounded-xl border bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"}
+                >
+                  Selecionar / editar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!wallFirstActive) activateWallFirstFloor();
+                    setEditorLibraryTab("build");
+                    setLibraryOpen(true);
+                    setInteractionMode("draw-wall");
+                    setSelectedId(null);
+                    setSelectedOpeningId(null);
+                  }}
+                  className={interactionMode === "draw-wall"
+                    ? "shrink-0 rounded-xl bg-orange-500 px-3 py-2 text-xs font-bold text-white"
+                    : "shrink-0 rounded-xl border bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-orange-300 hover:bg-orange-50"}
+                >
+                  + Parede
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditorLibraryTab("rooms");
+                    setLibraryOpen(true);
+                    setInteractionMode(wallFirstActive ? "space" : "room");
+                    setSelectedOpeningId(null);
+                  }}
+                  className={(interactionMode === "room" || interactionMode === "space")
+                    ? "shrink-0 rounded-xl bg-orange-500 px-3 py-2 text-xs font-bold text-white"
+                    : "shrink-0 rounded-xl border bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-orange-300 hover:bg-orange-50"}
+                >
+                  Ambientes
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditorLibraryTab("build");
+                    setLibraryOpen(true);
+                    setInteractionMode("opening");
+                    setSelectedId(null);
+                    setSelectedOpeningId(null);
+                  }}
+                  className={interactionMode === "opening"
+                    ? "shrink-0 rounded-xl bg-orange-500 px-3 py-2 text-xs font-bold text-white"
+                    : "shrink-0 rounded-xl border bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-orange-300 hover:bg-orange-50"}
+                >
+                  Portas / janelas
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditorLibraryTab("furniture");
+                    setLibraryOpen(true);
+                    setInteractionMode("navigate");
+                  }}
+                  className={editorLibraryTab === "furniture" && libraryOpen
+                    ? "shrink-0 rounded-xl bg-orange-500 px-3 py-2 text-xs font-bold text-white"
+                    : "shrink-0 rounded-xl border bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-orange-300 hover:bg-orange-50"}
+                >
+                  Móveis
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowDimensions((value) => !value)}
+                  className={showDimensions
+                    ? "shrink-0 rounded-xl bg-sky-50 px-3 py-2 text-xs font-bold text-sky-700 ring-1 ring-sky-200"
+                    : "shrink-0 rounded-xl border bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"}
+                >
+                  Cotas {showDimensions ? "✓" : ""}
+                </button>
+              </div>
+            )}
+
             <div className="arq-workspace-shell relative min-h-[calc(100dvh-112px)] overflow-hidden bg-[#f6f7f8]">
               <aside className={editorView !== "plan"
                   ? "arq-workspace-sidebar hidden"
@@ -7008,8 +7089,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           onClick={() => {
                             setInteractionMode("opening");
                             setSelectedId(null);
-                            setSelectedWallId(null);
-                            setSelectedCustomWallId(null);
+                            setSelectedOpeningId(null);
                             closeLibraryOnMobile();
                           }}
                           className={interactionMode === "opening"
@@ -7049,8 +7129,15 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       <div className="mt-5 border-t pt-4">
                         <div className="mb-3 flex items-center justify-between">
                           <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Portas e janelas</div>
-                          <span className="text-[10px] text-slate-400">{selectedCustomWall ? "Parede selecionada" : "Selecione uma parede"}</span>
+                          <span className={selectedCustomWall ? "text-[10px] font-semibold text-emerald-600" : "text-[10px] font-semibold text-orange-600"}>
+                            {selectedCustomWall ? "Parede selecionada ✓" : "1. Clique em uma parede"}
+                          </span>
                         </div>
+                        {!selectedCustomWall && interactionMode === "opening" && (
+                          <div className="mb-3 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2.5 text-[11px] leading-5 text-orange-900">
+                            Clique diretamente em uma parede da planta. Depois escolha abaixo a porta ou janela; a abertura ficará vinculada à parede e poderá ser ajustada nas propriedades.
+                          </div>
+                        )}
                         <div className="grid grid-cols-2 gap-2">
                           {CONCEPT_OPENING_FAMILIES.map((family) => (
                             <button
