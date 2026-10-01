@@ -8808,11 +8808,15 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     <label className="text-[10px] font-semibold text-slate-500">
                       Comprimento (m)
                       <input
+                        key={`${selectedCustomWall.id}-${selectedCustomWall.x1}-${selectedCustomWall.y1}-${selectedCustomWall.x2}-${selectedCustomWall.y2}`}
                         type="number"
                         min="0.5"
-                        step="0.05"
-                        value={Math.hypot(selectedCustomWall.x2 - selectedCustomWall.x1, selectedCustomWall.y2 - selectedCustomWall.y1).toFixed(2)}
-                        onChange={(event) => setCustomWallLength(selectedCustomWall.id, Number(event.target.value))}
+                        step="0.01"
+                        defaultValue={Math.hypot(selectedCustomWall.x2 - selectedCustomWall.x1, selectedCustomWall.y2 - selectedCustomWall.y1).toFixed(2)}
+                        onBlur={(event) => setCustomWallLength(selectedCustomWall.id, Number(event.currentTarget.value))}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") event.currentTarget.blur();
+                        }}
                         className="mt-1 h-9 w-[105px] rounded-lg border px-2 text-xs font-semibold"
                       />
                     </label>
