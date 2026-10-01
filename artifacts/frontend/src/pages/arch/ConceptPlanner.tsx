@@ -3505,7 +3505,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const setCustomWallLength = (wallId: string, rawLength: number) => {
     const wall = safeCustomWalls.find((item) => item.id === wallId);
     if (!wall || !Number.isFinite(rawLength)) return;
-    const length = Math.max(0.5, Math.min(Math.hypot(lotWidth, lotDepth), rawLength));
+    const openingMinimum = safeCustomOpenings
+      .filter((opening) => opening.wallId === wallId)
+      .reduce((max, opening) => Math.max(max, (opening.width ?? (opening.type === "door" ? 0.9 : 1.2)) + 0.1), 0.5);
+    const length = Math.max(openingMinimum, Math.min(Math.hypot(lotWidth, lotDepth), rawLength));
     const dx = wall.x2 - wall.x1;
     const dy = wall.y2 - wall.y1;
     const currentLength = Math.hypot(dx, dy);
@@ -3513,12 +3516,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     const ux = dx / currentLength;
     const uy = dy / currentLength;
     const before = snapshotEditor();
-    const x2 = Math.max(0, Math.min(lotWidth, wall.x1 + ux * length));
-    const y2 = Math.max(0, Math.min(lotDepth, wall.y1 + uy * length));
+    const target = { x: wall.x1 + ux * length, y: wall.y1 + uy * length };
+    if (target.x < 0 || target.x > lotWidth || target.y < 0 || target.y > lotDepth) return;
 
-    setCustomWalls((prev) => (Array.isArray(prev) ? prev : []).map((item) =>
-      item.id === wallId ? { ...item, x2, y2 } : item
-    ));
+    updateCustomWall(wallId, { x2: target.x, y2: target.y });
     pushRoomHistory(before);
   };
 
@@ -3808,13 +3809,16 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     const wall = safeCustomWalls.find((item) => item.id === wallId);
     if (!wall) return;
     const before = snapshotEditor();
+    const wallLength = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    const requestedWidth = type === "door" ? 0.90 : 1.20;
+    const openingWidth = Math.max(0.3, Math.min(requestedWidth, wallLength - 0.1));
     const opening: CustomOpening = {
       id: `custom-opening-${uid()}`,
       wallId,
       floor: wall.floor,
       type,
       offset: 0.5,
-      width: type === "door" ? 0.90 : 1.20,
+      width: openingWidth,
       height: type === "door" ? 2.10 : 1.20,
       sillHeight: type === "door" ? 0 : 0.90,
       openingStyle: type === "door" ? "hinged" : "sliding",
@@ -4323,10 +4327,14 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((opening) => {
       if (opening.id !== openingId) return opening;
       const next = { ...opening, ...patch };
-      return {
+      const normalized = {
         ...next,
         ...normalizeOpeningDimensions(next),
       };
+      const wall = safeCustomWalls.find((item) => item.id === normalized.wallId);
+      if (!wall) return normalized;
+      const wallLength = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+      return constrainOpeningToWall(normalized, wallLength);
     }));
     pushRoomHistory(before);
   };
