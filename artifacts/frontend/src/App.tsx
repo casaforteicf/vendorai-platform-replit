@@ -1,8 +1,8 @@
 import * as React from "react";
 import "./dev-agent-mobile.css";
 import "./video-studio-modern.css";
+import AppLegacy from "./AppLegacy";
 
-const AppLegacy = React.lazy(() => import("./AppLegacy"));
 const AppRuntimeShell = React.lazy(() => import("@/pages/app-runtime/AppRuntimeShell"));
 const DevAgentOverlay = React.lazy(() => import("@/components/admin/DevAgentOverlay"));
 
@@ -385,9 +385,7 @@ export default function App() {
 
   return (
     <>
-      <React.Suspense fallback={null}>
-        <AppLegacy />
-      </React.Suspense>
+      <AppLegacy />
 
       {catalogPreviewEnabled && (
         <style>{`[role="dialog"] img:not([data-no-preview="true"]) { cursor: zoom-in; }`}</style>
