@@ -41,6 +41,7 @@ import { isWithinBusinessHours, renderTemplate } from "../lib/proactiveMessageGu
 import { captureLeadFeatureSnapshot } from "../lib/mlFeatureStore.js";
 import { isSentProposalStatus, requiresSentProposalContext } from "../lib/scoutBudgetGuard.js";
 import { isBirthdayOn } from "../lib/birthday-date.js";
+import { executeScoutOpportunityWithAgent } from "./scout-agent-orchestrator.js";
 
 // ─── Tipos internos ───────────────────────────────────────────────────────────
 
@@ -1046,6 +1047,42 @@ export async function processarOportunidades(
         });
         continue;
       }
+
+      // O Revenue Scout atua proativamente: em vez de enviar uma mensagem fixa
+      // da regra, entrega a oportunidade ao agente especializado. O orquestrador
+      // corrige a semântica lead/cliente, registra a execução e comunica o tenant.
+      // Contextos de orçamento/proposta continuam exigindo vínculo real e enviado.
+      if (requiresSentProposalContext(op.tipo, op.descricao ?? "")) {
+        const [propostaEnviada] = op.propostaId
+          ? await db
+              .select({ status: propostasTable.status })
+              .from(propostasTable)
+              .where(and(
+                eq(propostasTable.id, op.propostaId),
+                eq(propostasTable.tenantId, tenantId),
+                eq(propostasTable.leadId, op.clienteId),
+              ))
+              .limit(1)
+          : [];
+
+        if (!propostaEnviada || !isSentProposalStatus(propostaEnviada.status)) {
+          log.warn(
+            { tenantId, oportunidadeId: op.id, leadId: op.clienteId, propostaId: op.propostaId },
+            "scout/processar: agente bloqueado sem proposta enviada valida",
+          );
+          await db.update(scoutOportunidadesTable)
+            .set({ status: "pendente_revisao_bot", pipelineStage: "em_analise" } as any)
+            .where(eq(scoutOportunidadesTable.id, op.id));
+          continue;
+        }
+      }
+
+      await executeScoutOpportunityWithAgent({
+        tenantId,
+        opportunityId: op.id,
+        log,
+      });
+      continue;
 
       // Busca lead e regra
       const [lead] = await db
