@@ -17,7 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { Eye, EyeOff } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import logoDark from "/logo-full-dark.svg";
 import logoLight from "/logo-full-light.svg";
 
@@ -101,6 +101,8 @@ export default function Login() {
   const { locale } = useI18n();
   const { toast } = useToast();
   const [showPassword, setShowPassword] = useState(false);
+  const previewAutoLoginStarted = useRef(false);
+  const isHomologPreview = typeof window !== "undefined" && window.location.hostname.endsWith(".pages.dev");
   const copy = locale === "pt-BR" ? PT_COPY : ES_COPY;
   const formSchema = useMemo(
     () => z.object({
@@ -156,6 +158,27 @@ export default function Login() {
           });
         },
       },
+    );
+  }
+
+  useEffect(() => {
+    if (!isHomologPreview || previewAutoLoginStarted.current || demoLoginMutation.isPending) return;
+    previewAutoLoginStarted.current = true;
+    onDemoLogin();
+    // Homologação/preview Cloudflare deve abrir sem pedir credenciais.
+    // Produção e domínios oficiais continuam com autenticação normal.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHomologPreview]);
+
+  if (isHomologPreview && (demoLoginMutation.isPending || previewAutoLoginStarted.current)) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-slate-50">
+        <div className="rounded-2xl border bg-white px-6 py-5 text-center shadow-sm">
+          <img src={logoLight} alt="Vendor.ai" className="mx-auto mb-4 h-8 w-auto" />
+          <div className="text-sm font-semibold text-slate-900">Abrindo homologação…</div>
+          <div className="mt-1 text-xs text-slate-500">Acesso automático, sem senha.</div>
+        </div>
+      </div>
     );
   }
 
