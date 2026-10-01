@@ -1,14 +1,20 @@
 import { Router, type IRouter, type Request } from "express";
-import { and, eq, asc } from "drizzle-orm";
+import { and, eq, asc, exists } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
   messagesTable,
+  conversationsTable,
   mediaAssetsTable,
   insertMessageSchema,
   updateMessageSchema,
 } from "@workspace/db";
 import { maybeReanalyze } from "../lib/analyze-intelligence.js";
+import {
+  canAccessConversation,
+  canViewAllConversations,
+  conversationOwnedByUserCondition,
+} from "../lib/conversation-access.js";
 import {
   sendOutgoingMessage,
   WhatsAppNotConnectedError,
@@ -98,6 +104,11 @@ router.post("/messages", async (req, res): Promise<void> => {
     return;
   }
 
+  if (!(await canAccessConversation(req, parsed.data.tenantId, parsed.data.conversationId))) {
+    res.status(403).json({ error: "Access denied to this conversation" });
+    return;
+  }
+
   let midia: ResolvedMidia | undefined;
   try {
     midia = await resolveMidia(req, parsed.data.tenantId, req.body?.midia);
@@ -174,13 +185,21 @@ router.post("/messages", async (req, res): Promise<void> => {
 router.get(
   "/tenants/:tenantId/conversations/:conversationId/messages",
   async (req, res) => {
+    const tenantId = String(req.params.tenantId);
+    const conversationId = String(req.params.conversationId);
+
+    if (!(await canAccessConversation(req, tenantId, conversationId))) {
+      res.status(403).json({ error: "Access denied to this conversation" });
+      return;
+    }
+
     const messages = await db
       .select()
       .from(messagesTable)
       .where(
         and(
-          eq(messagesTable.tenantId, String(req.params.tenantId)),
-          eq(messagesTable.conversationId, String(req.params.conversationId))
+          eq(messagesTable.tenantId, tenantId),
+          eq(messagesTable.conversationId, conversationId)
         )
       )
       .orderBy(asc(messagesTable.createdAt));
@@ -190,11 +209,45 @@ router.get(
 );
 
 router.get("/tenants/:tenantId/messages", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
   const { conversationId, leadId } = req.query as Record<string, string | undefined>;
 
-  const conditions = [eq(messagesTable.tenantId, String(req.params.tenantId))];
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  if (conversationId && !(await canAccessConversation(req, tenantId, conversationId))) {
+    res.status(403).json({ error: "Access denied to this conversation" });
+    return;
+  }
+
+  const conditions = [eq(messagesTable.tenantId, tenantId)];
   if (conversationId) conditions.push(eq(messagesTable.conversationId, conversationId));
   if (leadId) conditions.push(eq(messagesTable.leadId, leadId));
+
+  if (!(await canViewAllConversations(req))) {
+    const userId = req.user?.sub;
+    if (!userId) {
+      res.json([]);
+      return;
+    }
+
+    conditions.push(
+      exists(
+        db
+          .select({ id: conversationsTable.id })
+          .from(conversationsTable)
+          .where(
+            and(
+              eq(conversationsTable.id, messagesTable.conversationId),
+              eq(conversationsTable.tenantId, tenantId),
+              conversationOwnedByUserCondition(userId),
+            ),
+          ),
+      ),
+    );
+  }
 
   const messages = await db
     .select()
@@ -213,6 +266,11 @@ router.get("/messages/:id", async (req, res) => {
 
   if (!message) {
     res.status(404).json({ error: "Message not found" });
+    return;
+  }
+
+  if (!(await canAccessConversation(req, message.tenantId, message.conversationId))) {
+    res.status(403).json({ error: "Access denied to this message" });
     return;
   }
 
@@ -241,6 +299,17 @@ router.patch("/messages/:id", async (req, res) => {
     return;
   }
 
+  const [messageAccess] = await db
+    .select({ conversationId: messagesTable.conversationId })
+    .from(messagesTable)
+    .where(eq(messagesTable.id, existing.id))
+    .limit(1);
+
+  if (!messageAccess || !(await canAccessConversation(req, existing.tenantId, messageAccess.conversationId))) {
+    res.status(403).json({ error: "Access denied to this message" });
+    return;
+  }
+
   const [message] = await db
     .update(messagesTable)
     .set(parsed.data)
@@ -263,6 +332,17 @@ router.delete("/messages/:id", async (req, res) => {
 
   if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const [messageAccess] = await db
+    .select({ conversationId: messagesTable.conversationId })
+    .from(messagesTable)
+    .where(eq(messagesTable.id, existing.id))
+    .limit(1);
+
+  if (!messageAccess || !(await canAccessConversation(req, existing.tenantId, messageAccess.conversationId))) {
+    res.status(403).json({ error: "Access denied to this message" });
     return;
   }
 
