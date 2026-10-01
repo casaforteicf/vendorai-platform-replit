@@ -70,10 +70,14 @@ const pipelineDotClass: Record<string, string> = {
 
 const hiddenFromCommercialFlow = new Set(["em_aquecimento", "em_execucao", "entregue", "parceiro"]);
 
-function tomorrow() {
-  const d = new Date(Date.now() + 86400000);
+function deadlineFromNow(minutes = 24 * 60) {
+  const d = new Date(Date.now() + minutes * 60 * 1000);
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
   return d.toISOString().slice(0, 16);
+}
+
+function tomorrow() {
+  return deadlineFromNow();
 }
 
 function formatDeadline(value?: string | null) {
@@ -137,12 +141,17 @@ export default function LeadWorkspace() {
   const overduePendingCount = pending.filter((activity) => activity.dataVencimento && new Date(activity.dataVencimento).getTime() < Date.now()).length;
   const nextPendingOverdue = Boolean(nextPending?.dataVencimento && new Date(nextPending.dataVencimento).getTime() < Date.now());
   const displayUser = (uid?: string | null) => users.find((u) => u.id === uid)?.name ?? users.find((u) => u.id === uid)?.email ?? "Não definido";
+  const initialActivityConfig = stages.find((stage) => stage.key === initialNext) as (typeof stages[number] & {
+    atividadePadraoTitulo?: string | null;
+    atividadePadraoDescricao?: string | null;
+    atividadePadraoPrazoMinutos?: number | null;
+  }) | undefined;
   const [open, setOpen] = useState(Boolean(requestedStage));
   const [nextStage, setNextStage] = useState(initialNext);
   const [owner, setOwner] = useState(deal?.assignedTo ?? "");
-  const [title, setTitle] = useState(guidance[initialNext]?.[1] ?? "Dar continuidade ao atendimento");
-  const [due, setDue] = useState(tomorrow());
-  const [description, setDescription] = useState("");
+  const [title, setTitle] = useState(initialActivityConfig?.atividadePadraoTitulo?.trim() || guidance[initialNext]?.[1] || "Dar continuidade ao atendimento");
+  const [due, setDue] = useState(deadlineFromNow(initialActivityConfig?.atividadePadraoPrazoMinutos ?? undefined));
+  const [description, setDescription] = useState(initialActivityConfig?.atividadePadraoDescricao ?? "");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [editEligible, setEditEligible] = useState(false);
@@ -193,13 +202,24 @@ export default function LeadWorkspace() {
     }
   }
 
+  function applyStageActivityDefaults(stageKey: string) {
+    const stage = stages.find((item) => item.key === stageKey) as (typeof stages[number] & {
+      atividadePadraoTitulo?: string | null;
+      atividadePadraoDescricao?: string | null;
+      atividadePadraoPrazoMinutos?: number | null;
+    }) | undefined;
+    setTitle(stage?.atividadePadraoTitulo?.trim() || guidance[stageKey]?.[1] || "Dar continuidade ao atendimento");
+    setDescription(stage?.atividadePadraoDescricao ?? "");
+    setDue(deadlineFromNow(stage?.atividadePadraoPrazoMinutos ?? undefined));
+  }
+
   function showAdvance() {
     const stage = deal?.etapa === "em_aquecimento"
       ? "novo"
       : (requestedStage ?? stages[currentIndex + 1]?.key ?? "");
     setNextStage(stage);
     setOwner(deal?.assignedTo ?? user?.id ?? "");
-    setTitle(guidance[stage]?.[1] ?? "Dar continuidade ao atendimento");
+    applyStageActivityDefaults(stage);
     setEditEligible(false);
     setOpen(true);
   }
@@ -465,7 +485,7 @@ export default function LeadWorkspace() {
             );
           })()}
           <Field label="Nova etapa">
-            <Select value={nextStage} onValueChange={(v) => { setNextStage(v); setTitle(guidance[v]?.[1] ?? "Dar continuidade ao atendimento"); setEditEligible(false); }}>
+            <Select value={nextStage} onValueChange={(v) => { setNextStage(v); applyStageActivityDefaults(v); setEditEligible(false); }}>
               <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
               <SelectContent>{stages.filter((s, index) => {
                 if (deal?.etapa === "em_aquecimento") return s.key === "novo";
