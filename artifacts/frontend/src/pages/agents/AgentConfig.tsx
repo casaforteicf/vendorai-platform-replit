@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Link } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { isAgentAllowedForVertical } from "@/lib/verticalAgentPolicy";
@@ -193,6 +194,18 @@ export default function AgentConfig() {
               </Button>
             </div>
           </div>
+        </Card>
+      </div>
+
+      <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6">
+        <Card className="flex flex-col gap-3 border-primary/20 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="font-semibold">Vendi · Central de Operações</h3>
+            <p className="mt-1 text-sm text-muted-foreground">Crie missões para o Vendi coordenar CRM, Marketing, Prospector, agentes, Agenda, propostas, obras, compras, Arqdor, omnichannel e web.</p>
+          </div>
+          <Button asChild className="shrink-0">
+            <Link href="/vendi/operacoes"><Bot className="mr-2 h-4 w-4" />Abrir Vendi</Link>
+          </Button>
         </Card>
       </div>
 
