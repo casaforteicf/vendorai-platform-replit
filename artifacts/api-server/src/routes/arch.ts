@@ -3165,6 +3165,8 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     quantity: number;
     basis: "geometry" | "concept";
     compositionCode?: string;
+    catalogProductId?: string;
+    manufacturer?: string;
   };
   const quantityItems: ConceptQuantityItem[] = [
     { stage: "Projeto", item: "Desenvolvimento e compatibilização do projeto", unit: "un", quantity: 1, basis: "concept" },
@@ -3230,6 +3232,7 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
       const configuredPrice = Number(object.configuredPrice ?? basePrice) || basePrice;
       return {
         id: String(object.id ?? ""),
+        kind: String(object.kind ?? ""),
         catalogProductId: String(object.catalogProductId),
         label: String(object.label ?? "Produto do projeto"),
         supplier: typeof object.supplier === "string" ? object.supplier : null,
@@ -3238,6 +3241,58 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
         selections,
       };
     });
+
+  const configuredCatalogObjectGroups = new Map<string, {
+    kind: string;
+    catalogProductId: string;
+    label: string;
+    supplier: string | null;
+    configuredPrice: number;
+    selections: Array<{ surface: string; materialId: string; materialName: string; grupo: string | null; priceDelta: number }>;
+    quantity: number;
+  }>();
+  for (const product of configuredCatalogObjects) {
+    const selectionKey = JSON.stringify(
+      [...product.selections]
+        .sort((a, b) => a.surface.localeCompare(b.surface))
+        .map((selection) => [selection.surface, selection.materialId, selection.grupo, selection.priceDelta]),
+    );
+    const key = `${product.catalogProductId}::${product.configuredPrice}::${selectionKey}`;
+    const existing = configuredCatalogObjectGroups.get(key);
+    if (existing) {
+      existing.quantity += 1;
+      continue;
+    }
+    configuredCatalogObjectGroups.set(key, {
+      kind: product.kind,
+      catalogProductId: product.catalogProductId,
+      label: product.label,
+      supplier: product.supplier,
+      configuredPrice: product.configuredPrice,
+      selections: product.selections,
+      quantity: 1,
+    });
+  }
+
+  const objectStage = (kind: string) => {
+    if (kind === "appliance") return "Eletrodomésticos";
+    if (kind === "sanitary") return "Louças e metais";
+    if (kind === "lamp" || kind === "light_point") return "Iluminação";
+    if (kind === "outdoor") return "Área externa";
+    return "Mobiliário e decoração";
+  };
+
+  for (const group of configuredCatalogObjectGroups.values()) {
+    quantityItems.push({
+      stage: objectStage(group.kind),
+      item: [group.label, group.supplier].filter(Boolean).join(" · "),
+      unit: "un",
+      quantity: group.quantity,
+      basis: "geometry",
+      catalogProductId: group.catalogProductId,
+      manufacturer: group.supplier ?? undefined,
+    });
+  }
 
   let obra: any = null;
   let obraId = String(project?.obraId ?? "");
@@ -3376,8 +3431,9 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     `);
   }
 
-  for (let index = 0; index < configuredCatalogObjects.length; index++) {
-    const product = configuredCatalogObjects[index]!;
+  const configuredCatalogBudgetGroups = [...configuredCatalogObjectGroups.values()];
+  for (let index = 0; index < configuredCatalogBudgetGroups.length; index++) {
+    const product = configuredCatalogBudgetGroups[index]!;
     const itemId = crypto.randomUUID();
     const selectionsText = product.selections.length
       ? product.selections.map((selection) =>
@@ -3387,9 +3443,13 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     const description = [
       product.supplier ? `Fornecedor: ${product.supplier}` : null,
       `Catálogo: ${product.catalogProductId}`,
+      `Categoria de projeto: ${objectStage(product.kind)}`,
       `Acabamentos: ${selectionsText}`,
+      `Quantidade aplicada no projeto: ${product.quantity}`,
     ].filter(Boolean).join(". ");
     const unitPrice = Math.max(0, Number(product.configuredPrice) || 0);
+    const quantity = Math.max(1, product.quantity);
+    const total = unitPrice * quantity;
 
     await tx.execute(sql`
       INSERT INTO arch_budget_items (
@@ -3401,9 +3461,9 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
         ${itemId}, ${tid}, ${preBudgetId}, ${project.id},
         ${product.label},
         ${description},
-        'product', 1, 'un',
+        'product', ${quantity}, 'un',
         ${unitPrice}, 0, ${unitPrice},
-        ${unitPrice}, 0, ${unitPrice}, null,
+        ${total}, 0, ${total}, null,
         true, ${quantityItems.length + index + 1}, now(), now()
       )
     `);
@@ -3440,7 +3500,7 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
         'product', ${quantity}, ${catalog?.unidade || "un"},
         ${unitPrice}, 0, ${unitPrice},
         ${total}, 0, ${total}, null,
-        true, ${quantityItems.length + configuredCatalogObjects.length + index + 1}, now(), now()
+        true, ${quantityItems.length + configuredCatalogBudgetGroups.length + index + 1}, now(), now()
       )
     `);
   }
