@@ -8854,10 +8854,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                                 </div>
                               </div>
                               <div className="flex items-center gap-2">
-                                {conceptRender.status === "processing" && (
+                                {conceptRender?.status === "processing" && (
                                   <span className="rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700">{renderQueued ? "Render na fila" : "Gerando render…"}</span>
                                 )}
-                                {displayedRender.resultImageUrl && conceptRender.status !== "processing" && (
+                                {displayedRender.resultImageUrl && conceptRender?.status !== "processing" && (
                                   <a
                                     href={displayedRender.resultImageUrl}
                                     target="_blank"
@@ -8896,10 +8896,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                               <button
                                 type="button"
                                 onClick={() => setEditorView("facade")}
-                                disabled={conceptRender?.status === "processing"}
-                                className="mt-4 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                                className="mt-4 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white"
                               >
-                                {conceptRender?.status === "processing" ? "Gerando..." : "Gerar fachada"}
+                                Gerar fachada
                               </button>
                             </div>
                           </div>
