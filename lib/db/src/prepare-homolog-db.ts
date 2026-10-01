@@ -161,7 +161,7 @@ await pool.query(`
     id text PRIMARY KEY,
     tenant_id text NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     company_id text NOT NULL REFERENCES crm_companies_master(id) ON DELETE CASCADE,
-    lead_id text REFERENCES leads(id) ON DELETE SET NULL,
+    lead_id text,
     relationship_type text NOT NULL DEFAULT 'lead',
     status text NOT NULL DEFAULT 'ativo',
     notes text,
@@ -171,6 +171,17 @@ await pool.query(`
   );
   CREATE UNIQUE INDEX IF NOT EXISTS crm_tenant_companies_tenant_company_uidx ON crm_tenant_companies(tenant_id, company_id);
   CREATE INDEX IF NOT EXISTS crm_tenant_companies_tenant_lead_idx ON crm_tenant_companies(tenant_id, lead_id);
+
+  DO $ BEGIN
+    IF to_regclass('public.leads') IS NOT NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM pg_constraint WHERE conname = 'crm_tenant_companies_lead_fk'
+       ) THEN
+      ALTER TABLE crm_tenant_companies
+        ADD CONSTRAINT crm_tenant_companies_lead_fk
+        FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE SET NULL;
+    END IF;
+  END $;
 
   CREATE TABLE IF NOT EXISTS crm_tenant_company_contacts (
     id text PRIMARY KEY,
