@@ -16,6 +16,7 @@ import { and, desc, eq, gt, isNotNull, isNull, lte, gte, lt, inArray, not, sql }
 import { runMonthlyBilling } from "../lib/billing.js";
 import { isBirthdayOn, parseBirthdayParts } from "../lib/birthday-date.js";
 import { professionMatches } from "../lib/professional-date.js";
+import { mergeCommercialDates } from "../lib/commercial-calendar.js";
 import { tenantIsWithinBusinessHours } from "../lib/proactiveMessageGuard.js";
 import { runPartnerCommissions } from "./partnerCommission.js";
 import { runPartnerProspectorJob } from "./partnerProspector.js";
@@ -956,7 +957,6 @@ async function runSpecialDateCheck(log: Logger): Promise<void> {
             break;
           }
         }
-
         // Deal anniversary
         if (!scenario) {
           const wonDeals = await db
