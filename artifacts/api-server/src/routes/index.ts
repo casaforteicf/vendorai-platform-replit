@@ -280,6 +280,13 @@ router.use(async (req, res, next) => {
     (req.method === "POST" && req.path === "/business-profiles") ||
     (req.method === "PATCH" && /^\/business-profiles\/[A-Za-z0-9-]+$/.test(req.path));
 
+  // Tenant-scoped onboarding helpers (document analysis, assisted discovery, etc.)
+  // are still protected by their own tenant/super-admin guard. They must remain
+  // reachable before onboarding is complete, otherwise the assisted flow cannot
+  // use the intelligence services that were built specifically for onboarding.
+  const onboardingTenantHelperPath =
+    /^\/tenants\/[A-Za-z0-9-]+\/onboarding(?:\/|$)/.test(req.path);
+
   const arqdorConceptPath =
     req.path.startsWith("/arch/concept-projects") ||
     req.path.startsWith("/arch/ai-render");
@@ -288,6 +295,7 @@ router.use(async (req, res, next) => {
     req.path.startsWith("/onboarding") ||
     req.path.startsWith("/auth") ||
     onboardingBusinessProfilePath ||
+    onboardingTenantHelperPath ||
     arqdorConceptPath
   ) {
     return next();
