@@ -1,4 +1,5 @@
-import puppeteer, { type Browser, type CookieData, type Page } from "puppeteer-core";
+import { type Browser, type CookieData, type Page } from "puppeteer-core";
+import { acquireBrowserLease } from "./browser-fleet.js";
 import {
   assertBrowserPageAccessible,
   executeBrowserAction,
@@ -46,6 +47,7 @@ type LiveBrowserSession = {
   actionInFlight?: Promise<unknown>;
   onMissionResult?: PersistMissionResult;
   onSessionPersist?: PersistSession;
+  releaseBrowser?: (healthy?: boolean) => void;
 };
 
 const sessions = new Map<string, LiveBrowserSession>();
@@ -99,10 +101,8 @@ export async function createLiveBrowserSession(input: {
     throw new Error("Limite de sessões simultâneas atingido para este tenant");
   }
 
-  const cdpUrl = process.env["BROWSER_CDP_URL"];
-  if (!cdpUrl) throw new Error("BROWSER_CDP_URL não configurada");
-
-  const browser = input.existing?.browser ?? await puppeteer.connect({ browserWSEndpoint: cdpUrl });
+  const lease = input.existing ? undefined : await acquireBrowserLease();
+  const browser = input.existing?.browser ?? lease!.browser;
   let page: Page | undefined;
   try {
     page = input.existing?.page ?? await (await browser.createBrowserContext()).newPage();
@@ -117,6 +117,7 @@ export async function createLiveBrowserSession(input: {
     if (!input.existing) {
       if (page) await page.browserContext().close().catch(() => undefined);
       browser.disconnect();
+      lease?.release(false);
     }
     throw error;
   }
@@ -147,6 +148,7 @@ export async function createLiveBrowserSession(input: {
     pauseReason: null,
     onSessionPersist: input.onSessionPersist,
     onMissionResult: input.onMissionResult,
+    releaseBrowser: lease?.release,
   };
   sessions.set(id, session);
 
@@ -376,6 +378,7 @@ export async function closeLiveBrowserSession(tenantId: string, sessionId: strin
 
   await session.page.browserContext().close().catch(() => undefined);
   session.browser.disconnect();
+  session.releaseBrowser?.(!expired);
   sessions.delete(sessionId);
 
   return { success: true, id: sessionId };
