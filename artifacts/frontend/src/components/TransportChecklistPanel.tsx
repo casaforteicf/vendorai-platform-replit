@@ -18,6 +18,16 @@ export type TransportChecklist = {
     status: "pendente" | "ok" | "divergencia" | "na";
     observacao?: string;
   }>;
+  itens?: Array<{
+    id: string;
+    produtoId?: string | null;
+    sku?: string | null;
+    nome: string;
+    quantidadePrevista: number;
+    quantidadeCarregada?: number | null;
+    quantidadeRecebida?: number | null;
+    ocorrencia?: string;
+  }>;
   saida?: {
     veiculo?: string;
     placa?: string;
@@ -25,6 +35,11 @@ export type TransportChecklist = {
     horarioSaida?: string | null;
     destino?: string;
     lacre?: string;
+  };
+  recebimento?: {
+    recebidoPor?: string;
+    recebidoEm?: string | null;
+    observacoes?: string;
   };
 };
 
@@ -65,6 +80,29 @@ export function TransportChecklistPanel({
     onChange({ ...checklist, saida: { ...(checklist.saida ?? {}), [field]: value } });
   }
 
+  function setItemQuantity(index: number, field: "quantidadeCarregada" | "quantidadeRecebida", value: string) {
+    const parsed = value.trim() ? Number(value.replace(",", ".")) : null;
+    const itens = (checklist.itens ?? []).map((item, i) => i !== index ? item : {
+      ...item,
+      [field]: typeof parsed === "number" && Number.isFinite(parsed) ? parsed : null,
+    });
+    onChange({ ...checklist, itens });
+  }
+
+  function setItemOccurrence(index: number, ocorrencia: string) {
+    const itens = (checklist.itens ?? []).map((item, i) => i !== index ? item : { ...item, ocorrencia });
+    onChange({ ...checklist, itens });
+  }
+
+  function setReceipt(field: keyof NonNullable<TransportChecklist["recebimento"]>, value: string) {
+    onChange({ ...checklist, recebimento: { ...(checklist.recebimento ?? {}), [field]: value } });
+  }
+
+  const quantityDivergences = (checklist.itens ?? []).filter((item) => {
+    if (item.quantidadeCarregada == null || item.quantidadeRecebida == null) return false;
+    return Number(item.quantidadeCarregada) !== Number(item.quantidadeRecebida);
+  });
+
   return (
     <div className="space-y-3 rounded-lg border p-4">
       <div className="flex items-start justify-between gap-2">
@@ -93,12 +131,52 @@ export function TransportChecklistPanel({
         ))}
       </div>
 
+      {(checklist.itens?.length ?? 0) > 0 && (
+        <div className="space-y-2 border-t pt-3">
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-semibold">Carregado × recebido</h4>
+            {quantityDivergences.length > 0 && <Badge variant="destructive">{quantityDivergences.length} divergência(s)</Badge>}
+          </div>
+          <div className="overflow-hidden rounded-lg border">
+            <div className="grid grid-cols-[1fr_78px_92px_92px] gap-2 bg-muted/50 px-3 py-2 text-[11px] font-medium">
+              <span>Item</span><span>Previsto</span><span>Carregado</span><span>Recebido</span>
+            </div>
+            {(checklist.itens ?? []).map((item, index) => {
+              const differs = item.quantidadeCarregada != null && item.quantidadeRecebida != null
+                && Number(item.quantidadeCarregada) !== Number(item.quantidadeRecebida);
+              return (
+                <div key={item.id} className={`grid grid-cols-[1fr_78px_92px_92px] items-center gap-2 border-t px-3 py-2 text-sm ${differs ? "bg-destructive/5" : ""}`}>
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{item.nome}</p>
+                    {item.sku && <p className="text-[10px] text-muted-foreground">SKU {item.sku}</p>}
+                  </div>
+                  <span>{item.quantidadePrevista}</span>
+                  <Input disabled={disabled} type="number" min={0} step="any" defaultValue={item.quantidadeCarregada ?? ""} onBlur={(e) => setItemQuantity(index, "quantidadeCarregada", e.currentTarget.value)} />
+                  <Input disabled={disabled} type="number" min={0} step="any" defaultValue={item.quantidadeRecebida ?? ""} onBlur={(e) => setItemQuantity(index, "quantidadeRecebida", e.currentTarget.value)} />
+                  {differs && (
+                    <div className="col-span-4">
+                      <Textarea disabled={disabled} rows={2} placeholder="Descreva falta, avaria ou diferença no recebimento." defaultValue={item.ocorrencia ?? ""} onBlur={(e) => setItemOccurrence(index, e.currentTarget.value)} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-3 border-t pt-3 sm:grid-cols-2">
         <Input disabled={disabled} placeholder="Veículo" defaultValue={checklist.saida?.veiculo ?? ""} onBlur={(e) => setDeparture("veiculo", e.currentTarget.value)} />
         <Input disabled={disabled} placeholder="Placa" defaultValue={checklist.saida?.placa ?? ""} onBlur={(e) => setDeparture("placa", e.currentTarget.value)} />
         <Input disabled={disabled} placeholder="Motorista" defaultValue={checklist.saida?.motorista ?? ""} onBlur={(e) => setDeparture("motorista", e.currentTarget.value)} />
         <Input disabled={disabled} placeholder="Lacre" defaultValue={checklist.saida?.lacre ?? ""} onBlur={(e) => setDeparture("lacre", e.currentTarget.value)} />
         <Input disabled={disabled} className="sm:col-span-2" placeholder="Destino" defaultValue={checklist.saida?.destino ?? ""} onBlur={(e) => setDeparture("destino", e.currentTarget.value)} />
+      </div>
+
+      <div className="grid gap-3 border-t pt-3 sm:grid-cols-2">
+        <Input disabled={disabled} placeholder="Recebido por" defaultValue={checklist.recebimento?.recebidoPor ?? ""} onBlur={(e) => setReceipt("recebidoPor", e.currentTarget.value)} />
+        <Input disabled={disabled} type="datetime-local" defaultValue={checklist.recebimento?.recebidoEm ? checklist.recebimento.recebidoEm.slice(0, 16) : ""} onBlur={(e) => setReceipt("recebidoEm", e.currentTarget.value ? new Date(e.currentTarget.value).toISOString() : "")} />
+        <Textarea disabled={disabled} className="sm:col-span-2" rows={2} placeholder="Observações do recebimento" defaultValue={checklist.recebimento?.observacoes ?? ""} onBlur={(e) => setReceipt("observacoes", e.currentTarget.value)} />
       </div>
     </div>
   );
