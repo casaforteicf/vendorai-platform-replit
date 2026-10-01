@@ -998,3 +998,318 @@ router.get("/browser-agent/live/:sessionId", async (req, res) => {
     res.status(401).json({ error: "Tenant não resolvido" });
     return;
   }
+
+  try {
+    res.json(await getLiveBrowserSession(tenantId, String(req.params.sessionId)));
+  } catch (error: any) {
+    res.status(404).json({ error: error?.message ?? "Sessão não encontrada" });
+  }
+});
+
+router.get("/browser-agent/live/:sessionId/screenshot", async (req, res) => {
+  const tenantId = resolveTenant(req);
+  if (!tenantId) {
+    res.status(401).json({ error: "Tenant não resolvido" });
+    return;
+  }
+
+  try {
+    res.json(await captureLiveBrowserSession(tenantId, String(req.params.sessionId)));
+  } catch (error: any) {
+    res.status(404).json({ error: error?.message ?? "Sessão não encontrada" });
+  }
+});
+
+router.post("/browser-agent/live/:sessionId/mission", async (req, res) => {
+  const parsed = liveMissionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.flatten() });
+    return;
+  }
+
+  const tenantId = resolveTenant(req);
+  if (!tenantId) {
+    res.status(401).json({ error: "Tenant não resolvido" });
+    return;
+  }
+
+  try {
+    const session = startLiveBrowserMission(
+      tenantId,
+      String(req.params.sessionId),
+      parsed.data.goal,
+      parsed.data.maxSteps,
+    );
+
+    await db.insert(agentActionsLogTable).values({
+      tenantId,
+      agentName: "browser",
+      actionType: "browser_live_mission_started",
+      status: "executed",
+      payload: { sessionId: session.id, goal: parsed.data.goal },
+    });
+
+    res.status(202).json(session);
+  } catch (error: any) {
+    res.status(409).json({ error: error?.message ?? "Não foi possível iniciar a missão" });
+  }
+});
+
+router.post("/browser-agent/live/:sessionId/pause", async (req, res) => {
+  const parsed = livePauseSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.flatten() });
+    return;
+  }
+
+  const tenantId = resolveTenant(req);
+  if (!tenantId) {
+    res.status(401).json({ error: "Tenant não resolvido" });
+    return;
+  }
+
+  try {
+    res.json(await setLiveBrowserPaused(tenantId, String(req.params.sessionId), parsed.data.paused));
+  } catch (error: any) {
+    res.status(404).json({ error: error?.message ?? "Sessão não encontrada" });
+  }
+});
+
+router.post("/browser-agent/live/:sessionId/control", async (req, res) => {
+  const parsed = liveControlSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.flatten() });
+    return;
+  }
+
+  const tenantId = resolveTenant(req);
+  if (!tenantId) {
+    res.status(401).json({ error: "Tenant não resolvido" });
+    return;
+  }
+
+  try {
+    const result = await controlLiveBrowserSession(
+      tenantId,
+      String(req.params.sessionId),
+      parsed.data,
+    );
+
+    await db.insert(agentActionsLogTable).values({
+      tenantId,
+      agentName: "browser",
+      actionType: "browser_manual_control",
+      status: "executed",
+      payload: {
+        sessionId: String(req.params.sessionId),
+        action: parsed.data.action,
+      },
+    });
+
+    res.json(result);
+  } catch (error: any) {
+    res.status(409).json({ error: error?.message ?? "Controle manual falhou" });
+  }
+});
+
+router.delete("/browser-agent/live/:sessionId", async (req, res) => {
+  const tenantId = resolveTenant(req);
+  if (!tenantId) {
+    res.status(401).json({ error: "Tenant não resolvido" });
+    return;
+  }
+
+  try {
+    const result = await closeLiveBrowserSession(tenantId, String(req.params.sessionId));
+    await db.insert(agentActionsLogTable).values({
+      tenantId,
+      agentName: "browser",
+      actionType: "browser_live_session_closed",
+      status: "executed",
+      payload: { sessionId: String(req.params.sessionId) },
+    });
+    res.json(result);
+  } catch (error: any) {
+    res.status(404).json({ error: error?.message ?? "Sessão não encontrada" });
+  }
+});
+
+router.post("/browser-agent/run", async (req, res) => {
+  const parsed = runSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.flatten() });
+    return;
+  }
+
+  const tenantId = resolveTenant(req);
+  if (!tenantId) {
+    res.status(422).json({ error: "tenantId não resolvido" });
+    return;
+  }
+
+  const [tenantAutonomy] = await db
+    .select({ autonomyEnabledAt: tenantsTable.autonomyEnabledAt })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId))
+    .limit(1);
+  const autonomyEnabled = Boolean(tenantAutonomy?.autonomyEnabledAt);
+  const mode = vendiAutonomyEnabled() ? "autonomo" : (parsed.data.mode ?? (autonomyEnabled ? "autonomo" : "assistido"));
+  const allowWrite = vendiAutonomyEnabled() ? true : (parsed.data.allowWrite ?? autonomyEnabled);
+
+  let connection: typeof browserAgentConnectionsTable.$inferSelect | undefined;
+  if (parsed.data.connectionId) {
+    [connection] = await db
+      .select()
+      .from(browserAgentConnectionsTable)
+      .where(and(
+        eq(browserAgentConnectionsTable.id, parsed.data.connectionId),
+        eq(browserAgentConnectionsTable.tenantId, tenantId),
+      ));
+
+    if (!connection) {
+      res.status(404).json({ error: "Conexão do navegador não encontrada" });
+      return;
+    }
+  }
+
+  const startUrl = connection?.startUrl ?? parsed.data.startUrl;
+  if (!startUrl) {
+    res.status(422).json({ error: "startUrl ou connectionId é obrigatório" });
+    return;
+  }
+
+  const selectedStrategy = parsed.data.strategy === "auto"
+    ? chooseWebExecutionStrategy({
+        goal: parsed.data.goal,
+        connectionId: parsed.data.connectionId,
+        allowWrite: parsed.data.allowWrite ?? false,
+      })
+    : "browser";
+
+  if (selectedStrategy === "fetch") {
+    try {
+      const host = new URL(startUrl).hostname.toLowerCase();
+      const result = await fetchRenderedPage({ url: startUrl, allowedHosts: [host] });
+      const [audit] = await db.insert(agentActionsLogTable).values({
+        tenantId,
+        leadId: parsed.data.leadId ?? null,
+        agentName: parsed.data.agentName,
+        actionType: "web_fetch",
+        status: "executed",
+        payload: { goal: parsed.data.goal, startUrl, strategy: "fetch", nodeId: result.nodeId },
+      }).returning();
+      res.json({ runId: audit?.id, ok: true, strategy: "fetch", result });
+      return;
+    } catch (error: any) {
+      res.status(502).json({ error: error?.message ?? "FETCH_FAILED", strategy: "fetch" });
+      return;
+    }
+  }
+
+  const [audit] = await db.insert(agentActionsLogTable).values({
+    tenantId,
+    leadId: parsed.data.leadId ?? null,
+    agentName: parsed.data.agentName,
+    actionType: "browser_run",
+    status: allowWrite ? "approved" : "pending",
+    payload: {
+      goal: parsed.data.goal,
+      startUrl,
+      connectionId: connection?.id ?? null,
+      mode,
+      allowWrite,
+    },
+  }).returning();
+
+  try {
+    const sessionCookies = connection?.cookiesEncrypted
+      ? JSON.parse(decrypt(connection.cookiesEncrypted))
+      : undefined;
+    let sessionProfile = connection ? readBrowserProfile(connection) : undefined;
+
+    const agentInput: BrowserAgentInput = {
+      tenantId,
+      goal: parsed.data.goal,
+      startUrl,
+      mode,
+      allowWrite,
+      maxSteps: parsed.data.maxSteps,
+      allowedHosts: connection?.allowedHosts ?? [],
+      secrets: connection ? {
+        login: connection.usernameEncrypted ? decrypt(connection.usernameEncrypted) : undefined,
+        passcode: connection.passwordEncrypted ? decrypt(connection.passwordEncrypted) : undefined,
+      } : undefined,
+      sessionCookies,
+      sessionProfile,
+      onSessionPersist: connection ? async (cookies) => {
+        await db
+          .update(browserAgentConnectionsTable)
+          .set({
+            cookiesEncrypted: encrypt(JSON.stringify(cookies)),
+            lastUsedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(and(
+            eq(browserAgentConnectionsTable.id, connection!.id),
+            eq(browserAgentConnectionsTable.tenantId, tenantId),
+          ));
+      } : undefined,
+      onProfilePersist: connection ? async (profile) => {
+        sessionProfile = mergeBrowserProfiles(sessionProfile, profile);
+        await db
+          .update(browserAgentConnectionsTable)
+          .set({
+            profileEncrypted: encrypt(JSON.stringify(sessionProfile)),
+            lastUsedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(and(
+            eq(browserAgentConnectionsTable.id, connection!.id),
+            eq(browserAgentConnectionsTable.tenantId, tenantId),
+          ));
+      } : undefined,
+    };
+    agentInput.onHumanVerification = async (browser, page) => {
+      const session = await createLiveBrowserSession({ ...agentInput,
+        connectionId: connection?.id, existing: { browser, page },
+        onMissionResult: async (result) => {
+          if (audit?.id) await db.update(agentActionsLogTable)
+            .set({ status: result.ok ? "executed" : "rejected", payload: { ...(audit.payload ?? {}), result } })
+            .where(eq(agentActionsLogTable.id, audit.id));
+        },
+      });
+      startLiveBrowserMission(tenantId, session.id, agentInput.goal, agentInput.maxSteps, true);
+      const handoff = getLiveBrowserHandoff(session.id);
+      return { sessionId: session.id,
+        controlUrl: `https://homolog.appvendorai.com/agents/config?browserSession=${encodeURIComponent(session.id)}&handoff=${encodeURIComponent(handoff.handoffToken)}` };
+    };
+    const result = await runBrowserAgent(agentInput);
+
+    if (audit?.id) {
+      await db.update(agentActionsLogTable)
+        .set({ status: result.ok ? "executed" : ("status" in result && result.status === "awaiting_human" ? "pending" : "rejected"), payload: { ...(audit.payload ?? {}), result } })
+        .where(eq(agentActionsLogTable.id, audit.id));
+    }
+
+    res.json({ runId: audit?.id, ...result });
+  } catch (error: any) {
+    const approvalRequired = String(error?.message ?? "").startsWith("APPROVAL_REQUIRED:");
+    if (audit?.id) {
+      await db.update(agentActionsLogTable)
+        .set({
+          status: approvalRequired ? "pending" : "rejected",
+          payload: { ...(audit.payload ?? {}), error: error?.message ?? "Browser Agent failed" },
+        })
+        .where(eq(agentActionsLogTable.id, audit.id));
+    }
+
+    res.status(approvalRequired ? 409 : 500).json({
+      error: error?.message ?? "Browser Agent failed",
+      runId: audit?.id,
+      approvalRequired,
+    });
+  }
+});
+
+export default router;
+
