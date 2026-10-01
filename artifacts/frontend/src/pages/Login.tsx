@@ -114,7 +114,8 @@ type TourItem = {
   title: string;
   description: string;
   bullets: string[];
-  image: string;
+  image?: string;
+  previewNote?: string;
   icon: typeof BarChart3;
 };
 
@@ -157,6 +158,16 @@ const PT_TOUR: TourItem[] = [
     description: "O Revenue Scout observa sinais, regras e comportamento para encontrar recompra, expansão e oportunidades que poderiam passar despercebidas.",
     bullets: ["Recompra e cross-sell", "Sinais de oportunidade", "Próxima melhor ação"],
     image: `${PUBLIC_MEDIA}/revenue-scout/desktop-1440.webp`,
+    icon: Sparkles,
+  },
+  {
+    key: "marketing",
+    label: "Marketing",
+    kicker: "Marketing & Conteúdo",
+    title: "Planejamento, conteúdo e campanhas no mesmo fluxo.",
+    description: "O Marketing Hub reúne planejamento de mídia, criação de conteúdo e operação de campanhas para conectar estratégia, execução e acompanhamento.",
+    bullets: ["Planejamento de mídia", "Conteúdo e calendário", "Campanhas e anúncios"],
+    previewNote: "O módulo de Marketing é real e autenticado. Nesta tela pública não exibimos uma imagem inventada; a captura oficial específica de Marketing ainda não está cadastrada na biblioteca pública.",
     icon: Sparkles,
   },
   {
@@ -230,6 +241,16 @@ const ES_TOUR: TourItem[] = [
     description: "Revenue Scout observa señales, reglas y comportamiento para encontrar recompra, expansión y oportunidades que podrían pasar desapercibidas.",
     bullets: ["Recompra y cross-sell", "Señales de oportunidad", "Próxima mejor acción"],
     image: `${PUBLIC_MEDIA}/revenue-scout/desktop-1440.webp`,
+    icon: Sparkles,
+  },
+  {
+    key: "marketing",
+    label: "Marketing",
+    kicker: "Marketing & Contenido",
+    title: "Planificación, contenido y campañas en el mismo flujo.",
+    description: "Marketing Hub reúne planificación de medios, creación de contenido y operación de campañas para conectar estrategia, ejecución y seguimiento.",
+    bullets: ["Planificación de medios", "Contenido y calendario", "Campañas y anuncios"],
+    previewNote: "El módulo de Marketing es real y autenticado. En esta pantalla pública no mostramos una imagen inventada; la captura oficial específica de Marketing todavía no está registrada en la biblioteca pública.",
     icon: Sparkles,
   },
   {
@@ -666,11 +687,21 @@ export default function Login() {
                   </span>
                 </div>
                 <div className="aspect-[16/10] bg-slate-50">
-                  <RealProductImage
-                    src={active.image}
-                    alt={`${copy.realScreen}: ${active.label}`}
-                    unavailable={copy.unavailableScreen}
-                  />
+                  {active.image ? (
+                    <RealProductImage
+                      src={active.image}
+                      alt={`${copy.realScreen}: ${active.label}`}
+                      unavailable={copy.unavailableScreen}
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center px-10 text-center">
+                      <div className="max-w-md">
+                        <Sparkles className="mx-auto h-8 w-8 text-orange-500" />
+                        <p className="mt-4 text-[14px] font-semibold text-slate-800">{active.label}</p>
+                        <p className="mt-2 text-[12px] leading-5 text-slate-500">{active.previewNote}</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
