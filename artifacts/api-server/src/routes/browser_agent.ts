@@ -9,6 +9,8 @@ import {
 import { and, eq } from "drizzle-orm";
 import { encrypt, decrypt } from "../lib/crypto.js";
 import { runBrowserAgent, type BrowserAgentInput } from "../services/browser-agent.js";
+import { browserFleetConfigured, browserFleetStatus } from "../services/browser-fleet.js";
+import { fetchRenderedBatch, fetchRenderedPage } from "../services/browser-fetch.js";
 import {
   captureLiveBrowserSession,
   closeLiveBrowserSession,
@@ -63,6 +65,17 @@ const liveControlSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("reload") }),
 ]);
 
+const fetchSchema = z.object({
+  url: z.string().url(),
+  maxTextChars: z.number().int().min(1000).max(100000).optional(),
+  timeoutMs: z.number().int().min(3000).max(60000).optional(),
+});
+
+const fetchBatchSchema = z.object({
+  urls: z.array(z.string().url()).min(1).max(50),
+  concurrency: z.number().int().min(1).max(12).default(4),
+});
+
 const runSchema = z.object({
   goal: z.string().min(3).max(4000),
   startUrl: z.string().url().optional(),
@@ -95,13 +108,48 @@ function safeConnection(connection: typeof browserAgentConnectionsTable.$inferSe
 
 router.get("/browser-agent/status", (_req, res) => {
   res.json({
-    configured: Boolean(process.env["BROWSER_CDP_URL"]),
+    configured: browserFleetConfigured(),
     allowlistEnabled: Boolean(process.env["BROWSER_ALLOWED_HOSTS"]),
-    runtime: "cdp",
+    runtime: "vendor_chromium_fleet",
+    fleet: browserFleetStatus(),
     persistentConnections: true,
     secureSecretInjection: true,
     vendiAutonomyEnabled: vendiAutonomyEnabled(),
   });
+});
+
+router.post("/browser-agent/fetch", async (req, res) => {
+  const parsed = fetchSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.flatten() });
+    return;
+  }
+  try {
+    const host = new URL(parsed.data.url).hostname.toLowerCase();
+    const result = await fetchRenderedPage({
+      url: parsed.data.url,
+      allowedHosts: [host],
+      timeoutMs: parsed.data.timeoutMs,
+      maxTextChars: parsed.data.maxTextChars,
+    });
+    res.json(result);
+  } catch (error: any) {
+    res.status(502).json({ error: error?.message ?? "FETCH_FAILED" });
+  }
+});
+
+router.post("/browser-agent/fetch-batch", async (req, res) => {
+  const parsed = fetchBatchSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const requests = parsed.data.urls.map((url) => ({
+    url,
+    allowedHosts: [new URL(url).hostname.toLowerCase()],
+  }));
+  const results = await fetchRenderedBatch(requests, parsed.data.concurrency);
+  res.json({ count: results.length, results, fleet: browserFleetStatus() });
 });
 
 router.get("/browser-agent/connections", async (req, res) => {
