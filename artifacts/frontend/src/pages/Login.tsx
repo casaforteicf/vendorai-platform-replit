@@ -178,7 +178,7 @@ const PT_TOUR: TourItem[] = [
     description: "Os painéis conectam indicadores de vendas, marketing e operação para facilitar comparação, leitura de desempenho e acompanhamento de evolução.",
     bullets: ["KPIs comerciais", "Indicadores de marketing", "Comparações e relatórios"],
     image: `${PUBLIC_MEDIA}/analytics/desktop-1440.webp`,
-    icon: LineChart3,
+    icon: BarChart3,
   },
   {
     key: "financeiro",
