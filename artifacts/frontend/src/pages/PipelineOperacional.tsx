@@ -137,6 +137,7 @@ const OPERATIONAL_FORM_KEYS = new Set([
   "checklist_instalacao",
   "conferencia_instalacao",
   "vistoria_aceite",
+  "pacote_entrega",
 ]);
 
 const SUPPORT_STAGES = [
