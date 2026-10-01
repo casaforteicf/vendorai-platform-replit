@@ -102,6 +102,13 @@ await pool.query(`
     updated_at timestamp NOT NULL DEFAULT now()
   );
 
+  DO $ BEGIN
+    IF to_regclass('public.leads') IS NOT NULL THEN
+      ALTER TABLE leads
+        ADD COLUMN IF NOT EXISTS special_dates jsonb NOT NULL DEFAULT '[]'::jsonb;
+    END IF;
+  END $;
+
   CREATE SCHEMA IF NOT EXISTS app_security;
 `);
 
