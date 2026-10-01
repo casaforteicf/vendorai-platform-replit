@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, ilike, or } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
@@ -127,6 +127,85 @@ const enrichSchema = z.object({
   tenantId: z.string().optional(),
   leadId: z.string().optional(),
   relationshipType: z.string().min(1).optional().default("lead"),
+});
+
+router.get("/crm/companies", async (req, res) => {
+  let tenantId: string;
+  try {
+    tenantId = tenantIdFromRequest(req, typeof req.query.tenantId === "string" ? req.query.tenantId : undefined);
+  } catch (err: any) {
+    return res.status(err.status ?? 403).json({ error: err.message });
+  }
+
+  const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+  const status = typeof req.query.status === "string" ? req.query.status.trim() : "";
+  const relationshipType = typeof req.query.relationshipType === "string" ? req.query.relationshipType.trim() : "";
+
+  const filters = [eq(crmTenantCompaniesTable.tenantId, tenantId)];
+  if (status) filters.push(eq(crmTenantCompaniesTable.status, status));
+  if (relationshipType) filters.push(eq(crmTenantCompaniesTable.relationshipType, relationshipType));
+  if (q) {
+    const like = `%${q}%`;
+    const cnpjQuery = q.replace(/\D/g, "");
+    filters.push(or(
+      ilike(crmCompaniesMasterTable.razaoSocial, like),
+      ilike(crmCompaniesMasterTable.nomeFantasia, like),
+      ilike(crmCompaniesMasterTable.cnpj, cnpjQuery ? `%${cnpjQuery}%` : like),
+    )!);
+  }
+
+  const rows = await db
+    .select({
+      tenantCompanyId: crmTenantCompaniesTable.id,
+      leadId: crmTenantCompaniesTable.leadId,
+      relationshipType: crmTenantCompaniesTable.relationshipType,
+      relationshipStatus: crmTenantCompaniesTable.status,
+      relationshipUpdatedAt: crmTenantCompaniesTable.updatedAt,
+      companyId: crmCompaniesMasterTable.id,
+      cnpj: crmCompaniesMasterTable.cnpj,
+      razaoSocial: crmCompaniesMasterTable.razaoSocial,
+      nomeFantasia: crmCompaniesMasterTable.nomeFantasia,
+      situacaoCadastral: crmCompaniesMasterTable.situacaoCadastral,
+      porte: crmCompaniesMasterTable.porte,
+      cnaePrincipal: crmCompaniesMasterTable.cnaePrincipal,
+      telefone: crmCompaniesMasterTable.telefone,
+      email: crmCompaniesMasterTable.email,
+      endereco: crmCompaniesMasterTable.endereco,
+      source: crmCompaniesMasterTable.source,
+      enrichedAt: crmCompaniesMasterTable.enrichedAt,
+    })
+    .from(crmTenantCompaniesTable)
+    .innerJoin(crmCompaniesMasterTable, eq(crmCompaniesMasterTable.id, crmTenantCompaniesTable.companyId))
+    .where(and(...filters))
+    .orderBy(desc(crmTenantCompaniesTable.updatedAt))
+    .limit(500);
+
+  const contacts = await db
+    .select({
+      tenantCompanyId: crmTenantCompanyContactsTable.tenantCompanyId,
+      personId: crmTenantCompanyContactsTable.personId,
+      isPrimary: crmTenantCompanyContactsTable.isPrimary,
+      verifiedAt: crmTenantCompanyContactsTable.verifiedAt,
+    })
+    .from(crmTenantCompanyContactsTable)
+    .where(eq(crmTenantCompanyContactsTable.tenantId, tenantId));
+
+  const contactStats = new Map<string, { total: number; confirmed: number; primary: number }>();
+  for (const contact of contacts) {
+    const current = contactStats.get(contact.tenantCompanyId) ?? { total: 0, confirmed: 0, primary: 0 };
+    current.total += 1;
+    if (contact.verifiedAt) current.confirmed += 1;
+    if (contact.isPrimary) current.primary += 1;
+    contactStats.set(contact.tenantCompanyId, current);
+  }
+
+  return res.json({
+    items: rows.map((row) => ({
+      ...row,
+      contacts: contactStats.get(row.tenantCompanyId) ?? { total: 0, confirmed: 0, primary: 0 },
+    })),
+    total: rows.length,
+  });
 });
 
 router.post("/crm/companies/enrich", async (req, res) => {
