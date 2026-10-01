@@ -278,6 +278,43 @@ register({
 });
 
 register({
+  id: "agents.relationship_event",
+  domain: "agents",
+  description: "Executa uma ação de relacionamento previamente autorizada pelo calendário do tenant.",
+  risk: "medium",
+  mutates: true,
+  externalEffect: true,
+  inputHint: "{leadId:string,mensagem:string,scenario:Record<string,unknown>}",
+  execute: async ({ tenantId }, input) => {
+    const leadId = String(input.leadId ?? "");
+    const mensagem = String(input.mensagem ?? "");
+    const scenario = input.scenario && typeof input.scenario === "object"
+      ? input.scenario as Record<string, unknown>
+      : null;
+    if (!leadId || !mensagem || !scenario) {
+      throw new Error("leadId, mensagem e scenario são obrigatórios");
+    }
+    const data = await processAgentInternal({
+      tenantId,
+      leadId,
+      mensagem,
+      log: logger.child({ subsystem: "vendi:relationship-event" }),
+      forcedAgent: "relacionamento",
+      scenario,
+    });
+    return {
+      ok: data.status !== "failed",
+      data,
+      evidence: {
+        source: "agents:relationship-event",
+        leadId,
+        scenarioType: String(scenario.type ?? ""),
+      },
+    };
+  },
+});
+
+register({
   id: "agenda.appointments.list",
   domain: "agenda",
   description: "Lista agendamentos recentes do tenant.",
