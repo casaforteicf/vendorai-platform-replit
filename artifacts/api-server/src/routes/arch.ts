@@ -87,6 +87,7 @@ import { createSpecificationParticipation } from "../services/commission-engine.
 import { ensureStandardConstructionCatalog } from "../lib/ensure-standard-construction-catalog.js";
 import { ensureArqdorStarterLibrary } from "../lib/arqdor/starter-library.js";
 import { searchPolyHavenModels, resolvePolyHavenModel } from "../lib/arqdor/polyhaven.js";
+import { saveExternalAsset } from "../services/arqdor-external-storage.js";
 import { buildArchitecturalStrategyRepertoire } from "../lib/arqdor-architecture-strategies.js";
 import { buildArchitecturalProjectStrategy } from "../lib/arqdor-project-strategy.js";
 import { evaluateProjectMasterAcceptance } from "../lib/arqdor-project-master-validation.js";
@@ -4190,6 +4191,88 @@ router.get("/arch/polyhaven/assets/:slug", authenticate, async (req, res) => {
   }
 });
 
+
+// POST /api/arch/polyhaven/import
+router.post("/arch/polyhaven/import", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const slug = z.string().trim().regex(/^[a-zA-Z0-9_-]+$/).safeParse(req.body?.slug);
+  if (!slug.success) return res.status(400).json({ error: "slug_invalid" });
+
+  try {
+    const asset = await resolvePolyHavenModel(slug.data);
+    if (!asset.model3dUrl) return res.status(404).json({ error: "glb_not_available" });
+
+    const source = await fetch(asset.model3dUrl, { headers: { "User-Agent": "Arqdor/1.0 (3D asset importer)" } });
+    if (!source.ok) throw new Error(`polyhaven_download_failed:${source.status}`);
+
+    const maxBytes = 45 * 1024 * 1024;
+    const declared = Number(source.headers.get("content-length") || 0);
+    if (declared > maxBytes) return res.status(413).json({ error: "polyhaven_asset_too_large", maxMb: 45 });
+
+    const buffer = Buffer.from(await source.arrayBuffer());
+    if (buffer.length > maxBytes) return res.status(413).json({ error: "polyhaven_asset_too_large", maxMb: 45 });
+
+    const storedUrl = await saveExternalAsset(
+      `public/arqdor/polyhaven/${tid}/${slug.data}/model.glb`,
+      buffer,
+      "model/gltf-binary",
+    );
+
+    const [existing] = await db.select().from(produtosCatalogoTable)
+      .where(and(
+        eq(produtosCatalogoTable.tenantId, tid),
+        sql`${produtosCatalogoTable.projectTechnicalConfig} ->> 'polyHavenSlug' = ${slug.data}`,
+      ))
+      .limit(1);
+
+    const values = {
+      nome: asset.name,
+      descricao: asset.description || null,
+      fornecedor: "Poly Haven",
+      marca: "Poly Haven",
+      precoBase: existing?.precoBase ?? "0",
+      unidade: existing?.unidade ?? "un",
+      ativo: true,
+      projectLibraryEnabled: true,
+      imagemUrl: asset.thumbnailUrl,
+      imagens: asset.thumbnailUrl ? [asset.thumbnailUrl] : [],
+      model3dUrl: storedUrl,
+      projectTechnicalConfig: {
+        ...((existing?.projectTechnicalConfig ?? {}) as Record<string, unknown>),
+        source: "polyhaven",
+        polyHavenSlug: slug.data,
+        modelSource: "Poly Haven",
+        modelFormat: "glb",
+        modelLicense: "CC0",
+        attributionRequired: false,
+        authors: asset.authors,
+        tags: asset.tags,
+        importedAt: new Date().toISOString(),
+      },
+      updatedAt: new Date(),
+    };
+
+    const [product] = existing
+      ? await db.update(produtosCatalogoTable).set(values).where(eq(produtosCatalogoTable.id, existing.id)).returning()
+      : await db.insert(produtosCatalogoTable).values({ tenantId: tid, ...values }).returning();
+
+    return res.status(existing ? 200 : 201).json({
+      success: true,
+      product: {
+        id: product?.id,
+        nome: product?.nome,
+        model3dUrl: product?.model3dUrl,
+        imagemUrl: product?.imagemUrl,
+      },
+      source: "Poly Haven",
+      license: "CC0",
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "polyhaven_import_failed";
+    console.error("[arqdor/polyhaven/import]", error);
+    return res.status(502).json({ error: "polyhaven_import_failed", detail: message.slice(0, 180) });
+  }
+});
 
 // GET /api/arch/catalogo
 router.get("/arch/catalogo", authenticate, async (req, res) => {
