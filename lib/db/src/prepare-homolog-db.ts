@@ -45,7 +45,7 @@ await pool.query(`
     default_locale varchar(12) NOT NULL DEFAULT 'pt-BR',
     timezone varchar(64) NOT NULL DEFAULT 'America/Sao_Paulo',
     default_currency varchar(3) NOT NULL DEFAULT 'BRL',
-    supported_currencies json NOT NULL DEFAULT '["BRL"]'::json,
+    supported_currencies json NOT NULL DEFAULT '[\"BRL\"]'::json,
     is_demo boolean NOT NULL DEFAULT false,
     provisioning_method text,
     first_login_at timestamp,
@@ -55,6 +55,8 @@ await pool.query(`
     onboarding_concluido boolean NOT NULL DEFAULT false,
     integracoes_concluido boolean NOT NULL DEFAULT false,
     integracoes_step integer NOT NULL DEFAULT 0,
+    setup_completed_at timestamp,
+    demo_expires_at timestamp,
     created_at timestamp NOT NULL DEFAULT now(),
     updated_at timestamp NOT NULL DEFAULT now()
   );
@@ -105,5 +107,13 @@ await pool.query(`
   CREATE SCHEMA IF NOT EXISTS app_security;
 `);
 
+// Add missing columns to tenants table if they don't exist
+await pool.query(`
+  ALTER TABLE tenants
+  ADD COLUMN IF NOT EXISTS demo_expires_at timestamp,
+  ADD COLUMN IF NOT EXISTS setup_completed_at timestamp;
+`);
+
 console.log("[homolog-bootstrap] minimal auth/representation schema ready");
 await pool.end();
+
