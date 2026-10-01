@@ -8136,6 +8136,8 @@ packages:
   zod@4.6.1:
     resolution: {integrity: sha512-341aRWQsve0rvronKNTqZpjmzdbUDlFuzHaI/XLg/Ej82qffDJRRfBTCuv7+9q/rMjB6LSLyEBnW4InJeMtt/Q==}
 
+  web-vitals@6.2.1: {}
+
 snapshots:
 
   '@0no-co/graphql.web@1.2.0': {}
@@ -16047,6 +16049,8 @@ snapshots:
   wonka@6.3.6: {}
 
   word@0.3.0: {}
+
+  web-vitals@6.2.1: {}
 
   wouter@3.10.0(react@19.1.0):
     dependencies:
