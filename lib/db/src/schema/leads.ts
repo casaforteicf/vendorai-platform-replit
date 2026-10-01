@@ -111,6 +111,15 @@ export const leadsTable = pgTable("leads", {
   birthMonth: integer("birth_month"),
   birthDay: integer("birth_day"),
   specialDateMessagesOptOut: boolean("special_date_messages_opt_out").notNull().default(false),
+  specialDates: jsonb("special_dates").$type<Array<{
+    id?: string;
+    name: string;
+    date: string;
+    recurring?: boolean;
+    category?: "personal" | "family" | "relationship" | "purchase" | "professional" | "custom";
+    notes?: string;
+    active?: boolean;
+  }>>().notNull().default([]),
 
   // Spouse gift flow fields
   pipelineExempt: boolean("pipeline_exempt").notNull().default(false),

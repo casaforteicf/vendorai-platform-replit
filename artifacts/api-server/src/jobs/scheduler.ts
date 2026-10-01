@@ -16,6 +16,7 @@ import { and, desc, eq, gt, isNotNull, isNull, lte, gte, lt, inArray, not, sql }
 import { runMonthlyBilling } from "../lib/billing.js";
 import { isBirthdayOn, parseBirthdayParts } from "../lib/birthday-date.js";
 import { professionMatches } from "../lib/professional-date.js";
+import { mergeCommercialDates } from "../lib/commercial-calendar.js";
 import { tenantIsWithinBusinessHours } from "../lib/proactiveMessageGuard.js";
 import { runPartnerCommissions } from "./partnerCommission.js";
 import { runPartnerProspectorJob } from "./partnerProspector.js";
@@ -81,6 +82,8 @@ import { runRecemAbertas } from "./recemAbertasJob.js";
 import { runMicroEventsRescan } from "./microEventsRescan.js";
 import { runWeeklyFeedbackLoop } from "./feedbackLoop.js";
 import { runSupportLifecycle } from "./supportLifecycle.js";
+import { runPipelineActivityLifecycle } from "./pipelineActivityLifecycle.js";
+import { runPipelineStageLifecycle } from "./pipelineStageLifecycle.js";
 import { processDuePickupWaves } from "../services/pracaRoutePlanner.js";
 import { processDeliveryNotificationOutbox } from "../services/pracaDeliveryNotifications.js";
 import { runPracaExceptionScan } from "../services/pracaExceptionDetector.js";
@@ -799,17 +802,7 @@ function getMovableDates(year: number) {
  * Default commercial dates for new tenants.
  */
 export function getDefaultCommercialDates() {
-  return [
-    { name: "Ano Novo", active: false, daysBeforeToSend: 1, month: 1, day: 1 },
-    { name: "Carnaval", active: false, daysBeforeToSend: 3, movableDate: true },
-    { name: "Páscoa", active: true, daysBeforeToSend: 3, movableDate: true },
-    { name: "Dia das Mães", active: true, daysBeforeToSend: 3, movableDate: true, targetGender: "feminino" },
-    { name: "Dia dos Pais", active: true, daysBeforeToSend: 3, movableDate: true, targetGender: "masculino" },
-    { name: "Dia das Crianças", active: true, daysBeforeToSend: 3, movableDate: true },
-    { name: "Dia dos Namorados", active: true, daysBeforeToSend: 3, movableDate: true },
-    { name: "Natal", active: true, daysBeforeToSend: 5, movableDate: true },
-    { name: "Black Friday", active: true, daysBeforeToSend: 1, movableDate: true },
-  ];
+  return mergeCommercialDates([]);
 }
 
 async function isEventAlreadySent(tenantId: string, leadId: string, campaignType: string, campaignKey: string, year: string): Promise<boolean> {
@@ -856,7 +849,7 @@ async function runSpecialDateCheck(log: Logger): Promise<void> {
         .where(eq(tenantCalendarSettingsTable.tenantId, tenant.id))
         .limit(1);
 
-      const commercialDates = calendarSettings?.commercialDates ?? getDefaultCommercialDates();
+      const commercialDates = mergeCommercialDates(calendarSettings?.commercialDates);
       const professionalDates = calendarSettings?.professionalDates ?? [];
 
       const catalogRows = await db
@@ -937,6 +930,33 @@ async function runSpecialDateCheck(log: Logger): Promise<void> {
           }
         }
 
+        // Custom relationship / special dates registered on the lead
+        if (!scenario && Array.isArray(lead.specialDates)) {
+          for (const specialDate of lead.specialDates) {
+            if (!specialDate || specialDate.active === false || !specialDate.name || !specialDate.date) continue;
+            const parsed = parseBirthdayParts(specialDate.date);
+            if (!parsed) continue;
+            if (parsed.month !== todayMonth || parsed.day !== todayDay) continue;
+
+            const recurring = specialDate.recurring !== false;
+            if (!recurring) {
+              const year = Number(String(specialDate.date).slice(0, 4));
+              if (Number.isFinite(year) && year !== currentYear) continue;
+            }
+
+            const keyName = String(specialDate.id ?? specialDate.name)
+              .replace(/\s+/g, "-")
+              .toLowerCase();
+            const campaignKey = `special-${keyName}-${yearStr}`;
+            scenario = {
+              type: "custom_special_date",
+              dateName: specialDate.name,
+              catalog,
+              campaignKey,
+            };
+            break;
+          }
+        }
         // Deal anniversary
         if (!scenario) {
           const wonDeals = await db
@@ -1034,7 +1054,7 @@ async function runSpecialDateCheck(log: Logger): Promise<void> {
           result = await processAgentInternal({
             tenantId: tenant.id,
             leadId: lead.id,
-            mensagem: `PROATIVO: ${scenario.type === "birthday_lead" ? "aniversário do lead" : scenario.type === "birthday_family" ? `aniversário de ${scenario.recipientName}` : scenario.type === "deal_anniversary" ? "aniversário de fechamento do deal" : scenario.type === "commercial_date" ? `campanha de ${scenario.dateName}` : scenario.type === "professional_day" ? `${scenario.dateName} para ${lead.profissao}` : "relacionamento"}.`,
+            mensagem: `PROATIVO: ${scenario.type === "birthday_lead" ? "aniversário do lead" : scenario.type === "birthday_family" ? `aniversário de ${scenario.recipientName}` : scenario.type === "deal_anniversary" ? "aniversário de fechamento do deal" : scenario.type === "commercial_date" ? `campanha de ${scenario.dateName}` : scenario.type === "professional_day" ? `${scenario.dateName} para ${lead.profissao}` : scenario.type === "custom_special_date" ? `data especial: ${scenario.dateName}` : "relacionamento"}.`,
             forcedAgent: "relacionamento",
             log,
             scenario: {
@@ -1850,6 +1870,20 @@ export function startScheduler(log: Logger): void {
   cron.schedule("*/30 * * * *", () => {
     runSupportLifecycle(log).catch((err) => {
       log.error({ err }, "scheduler/support-lifecycle: unhandled error");
+    });
+  }, { timezone: "America/Sao_Paulo" });
+
+  // Job 20c: lembretes padronizados das demais atividades das pipelines
+  cron.schedule("*/30 * * * *", () => {
+    runPipelineActivityLifecycle(log).catch((err) => {
+      log.error({ err }, "scheduler/pipeline-activity-lifecycle: unhandled error");
+    });
+  }, { timezone: "America/Sao_Paulo" });
+
+  // Job 20d: ciclo de vida por estágio — Comercial, Execução, Aquecimento, Parceiros e Scout
+  cron.schedule("*/30 * * * *", () => {
+    runPipelineStageLifecycle(log).catch((err) => {
+      log.error({ err }, "scheduler/pipeline-stage-lifecycle: unhandled error");
     });
   }, { timezone: "America/Sao_Paulo" });
 

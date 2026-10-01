@@ -12,6 +12,7 @@ import conversationsRouter from "./conversations";
 import agentActionsLogRouter from "./agent_actions_log";
 import browserAgentRouter from "./browser_agent";
 import browserAgentMcpRouter from "./browser_agent_mcp";
+import vendiRouter from "./vendi";
 import consentsRouter from "./consents";
 import businessProfilesRouter from "./business_profiles";
 import agentConfigsRouter from "./agent_configs";
@@ -167,6 +168,7 @@ import supportRouter from "./support";
 import devAgentAutonomyRouter from "./dev_agent_autonomy";
 import adminBugReportsRouter from "./admin_bug_reports";
 import adminRelatosTecnicosRouter from "./admin_relatos_tecnicos";
+import adminImprovementsRouter from "./admin_improvements";
 import contractTemplatesRouter from "./contract_templates";
 import confirmClosureRouter from "./confirm_closure";
 import organizacoesRouter from "./organizacoes";
@@ -384,6 +386,7 @@ router.use(leadsRouter);
 router.use(conversationsRouter);
 router.use(agentActionsLogRouter);
 router.use(browserAgentRouter);
+router.use(vendiRouter);
 router.use(consentsRouter);
 
 // Business Hub
@@ -495,6 +498,7 @@ router.use(partnersRouter);
 // Admin Partners Hub (super_admin management)
 router.use(adminBugReportsRouter);
 router.use(adminRelatosTecnicosRouter);
+router.use(adminImprovementsRouter);
 router.use(adminPartnersRouter);
 router.use(adminPlansRouter);
 router.use(mediaPlanRouter);
@@ -646,4 +650,3 @@ router.use(contentTrackingRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;
-

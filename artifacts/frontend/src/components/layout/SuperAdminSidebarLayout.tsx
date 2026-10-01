@@ -14,6 +14,7 @@ import {
   ChevronRight,
   Cpu,
   HelpCircle,
+  GitMerge,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -117,6 +118,7 @@ export function SuperAdminSidebarLayout({ children }: { children: React.ReactNod
         { name: "Suporte", href: "/admin/suporte", icon: Bug, badge: openBugCount > 0 ? openBugCount : undefined },
         { name: "Relatos Técnicos", href: "/admin/relatos-tecnicos", icon: AlertCircle },
         { name: "Novidades", href: "/admin/changelog", icon: Bell },
+        { name: "Melhorias & Releases", href: "/admin/melhorias", icon: GitMerge },
       ],
     },
   ];

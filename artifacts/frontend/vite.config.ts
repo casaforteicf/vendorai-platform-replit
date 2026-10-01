@@ -283,6 +283,8 @@ export default defineConfig({
   },
   root: path.resolve(import.meta.dirname),
   build: {
+    // Evita deadlock de preload em atualizações: cada import dinâmico carrega seu chunk diretamente.
+    modulePreload: false,
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
     rollupOptions: {
@@ -322,7 +324,10 @@ export default defineConfig({
     },
     proxy: {
       "/api": {
-        target: "http://localhost:8080",
+        target:
+          process.env.VITE_PROXY_API_ORIGIN ||
+          process.env.API_ORIGIN ||
+          "http://localhost:8080",
         changeOrigin: true,
       },
     },

@@ -207,9 +207,15 @@ const PT_COPY = {
   createFunction: "Criar função",
   representativeCompany: "Empresa representante",
   representativeCompanyHelp: "Ative quando esta função for ocupada por outra empresa que representa esta empresa, como se fosse um vendedor externo.",
-  linkedTenantCode: "Código Vendor.ai da representante",
-  linkedTenantCodePlaceholder: "Ex.: VAI-000031",
-  linkedTenantCodeHelp: "A empresa representante mantém os módulos do próprio tenant. Este vínculo controla somente o que ela acessa nesta empresa.",
+  linkedTenantCode: "Empresa representante",
+  linkedTenantCodePlaceholder: "Buscar empresa pelo nome ou código Vendor.ai...",
+  linkedTenantCodeHelp: "Selecione um tenant já cadastrado no Vendor.ai. Nenhuma nova empresa será criada.",
+  linkedTenantSearchEmpty: "Digite pelo menos 2 caracteres para buscar uma empresa.",
+  linkedTenantNoResults: "Nenhum tenant ativo encontrado.",
+  linkedTenantSelected: "Empresa vinculada",
+  representativeUsers: "Usuários autorizados da representante",
+  representativeUsersHelp: "Selecione quais usuários ativos dessa empresa poderão atuar nesta representação.",
+  representativeUsersEmpty: "Nenhum usuário ativo encontrado neste tenant.",
   representativeLeadScope: "Escopo dos leads desta empresa",
   representativeLeadAssigned: "Somente leads atribuídos à representação",
   representativeLeadTerritory: "Leads do território autorizado",
@@ -343,9 +349,15 @@ const ES_COPY = {
   createFunction: "Crear función",
   representativeCompany: "Empresa representante",
   representativeCompanyHelp: "Activa cuando esta función sea ocupada por otra empresa que representa a esta empresa, como un vendedor externo.",
-  linkedTenantCode: "Código Vendor.ai de la representante",
-  linkedTenantCodePlaceholder: "Ej.: VAI-000031",
-  linkedTenantCodeHelp: "La empresa representante conserva los módulos de su propio tenant. Este vínculo controla solo lo que puede acceder en esta empresa.",
+  linkedTenantCode: "Empresa representante",
+  linkedTenantCodePlaceholder: "Buscar empresa por nombre o código Vendor.ai...",
+  linkedTenantCodeHelp: "Selecciona un tenant ya registrado en Vendor.ai. No se creará una empresa nueva.",
+  linkedTenantSearchEmpty: "Escribe al menos 2 caracteres para buscar una empresa.",
+  linkedTenantNoResults: "No se encontró ningún tenant activo.",
+  linkedTenantSelected: "Empresa vinculada",
+  representativeUsers: "Usuarios autorizados de la representante",
+  representativeUsersHelp: "Selecciona qué usuarios activos de esa empresa podrán actuar en esta representación.",
+  representativeUsersEmpty: "No se encontraron usuarios activos en este tenant.",
   representativeLeadScope: "Alcance de leads de esta empresa",
   representativeLeadAssigned: "Solo leads asignados a la representación",
   representativeLeadTerritory: "Leads del territorio autorizado",
@@ -398,6 +410,19 @@ const ES_COPY = {
   statusUpdatedDescription: (active: boolean) => active ? "El usuario fue activado." : "El usuario fue desactivado.",
   selfDeactivateBlocked: "No puedes desactivar tu propio usuario desde esta pantalla.",
 } as const;
+
+interface RepresentativeTenantOption {
+  id: string;
+  name: string;
+  tenantCode: string;
+}
+
+interface RepresentativeTenantUser {
+  id: string;
+  name: string;
+  active: boolean;
+  userFunction?: UserFunction | null;
+}
 
 interface TenantUserFunction {
   id: string;
@@ -456,6 +481,9 @@ export default function Usuarios() {
   const [newFunctionPermissions, setNewFunctionPermissions] = useState<UserModuleKey[]>([]);
   const [newFunctionKind, setNewFunctionKind] = useState<"internal" | "external_company">("internal");
   const [newFunctionLinkedTenantCode, setNewFunctionLinkedTenantCode] = useState("");
+  const [newFunctionLinkedTenantId, setNewFunctionLinkedTenantId] = useState("");
+  const [newFunctionTenantSearch, setNewFunctionTenantSearch] = useState("");
+  const [newFunctionRepresentativeUserIds, setNewFunctionRepresentativeUserIds] = useState<string[]>([]);
   const [newFunctionLeadAccessScope, setNewFunctionLeadAccessScope] = useState<"assigned" | "territory" | "all_authorized">("assigned");
   const [creatingFunction, setCreatingFunction] = useState(false);
   const [formData, setFormData] = useState({
@@ -484,6 +512,26 @@ export default function Usuarios() {
         responseType: "json",
       }),
   });
+  const representativeTenantSearch = newFunctionTenantSearch.trim();
+  const { data: representativeTenantOptions = [], isFetching: searchingRepresentativeTenants } = useQuery({
+    queryKey: ["representative-tenants", tenantId, representativeTenantSearch],
+    enabled: Boolean(tenantId) && newFunctionKind === "external_company" && representativeTenantSearch.length >= 2,
+    queryFn: () =>
+      customFetch<RepresentativeTenantOption[]>(
+        `/api/tenants/${tenantId}/representative-tenants?search=${encodeURIComponent(representativeTenantSearch)}`,
+        { responseType: "json" },
+      ),
+  });
+  const { data: representativeTenantUsers = [], isFetching: loadingRepresentativeUsers } = useQuery({
+    queryKey: ["representative-tenant-users", tenantId, newFunctionLinkedTenantId],
+    enabled: Boolean(tenantId) && newFunctionKind === "external_company" && Boolean(newFunctionLinkedTenantId),
+    queryFn: () =>
+      customFetch<RepresentativeTenantUser[]>(
+        `/api/tenants/${tenantId}/representative-tenants/${newFunctionLinkedTenantId}/users`,
+        { responseType: "json" },
+      ),
+  });
+
   const createUser = useCreateUser();
   const updateUser = useUpdateUser();
   const deleteUser = useDeleteUser();
@@ -633,6 +681,9 @@ export default function Usuarios() {
     setNewFunctionPermissions([]);
     setNewFunctionKind("internal");
     setNewFunctionLinkedTenantCode("");
+    setNewFunctionLinkedTenantId("");
+    setNewFunctionTenantSearch("");
+    setNewFunctionRepresentativeUserIds([]);
     setNewFunctionLeadAccessScope("assigned");
     setFunctionDialogOpen(true);
   }
@@ -648,6 +699,9 @@ export default function Usuarios() {
     );
     setNewFunctionKind(customFunction.kind ?? "internal");
     setNewFunctionLinkedTenantCode(customFunction.linkedTenantCode ?? "");
+    setNewFunctionLinkedTenantId(customFunction.linkedTenantId ?? "");
+    setNewFunctionTenantSearch(customFunction.linkedTenantCode ?? "");
+    setNewFunctionRepresentativeUserIds(customFunction.representativeUserIds ?? []);
     setNewFunctionLeadAccessScope(customFunction.leadAccessScope ?? "assigned");
     setFunctionDialogOpen(true);
   }
@@ -660,6 +714,9 @@ export default function Usuarios() {
     setNewFunctionPermissions(permissionsForStandardFunction(userFunction));
     setNewFunctionKind("internal");
     setNewFunctionLinkedTenantCode("");
+    setNewFunctionLinkedTenantId("");
+    setNewFunctionTenantSearch("");
+    setNewFunctionRepresentativeUserIds([]);
     setNewFunctionLeadAccessScope("assigned");
     setFunctionDialogOpen(true);
   }
@@ -700,7 +757,7 @@ export default function Usuarios() {
       toast({ title: copy.selectAccess, description: copy.selectAccessDescription, variant: "destructive" });
       return;
     }
-    if (newFunctionKind === "external_company" && !newFunctionLinkedTenantCode.trim()) {
+    if (newFunctionKind === "external_company" && (!newFunctionLinkedTenantId || !newFunctionLinkedTenantCode.trim())) {
       toast({ title: copy.linkedTenantCode, description: copy.linkedTenantCodeHelp, variant: "destructive" });
       return;
     }
@@ -720,7 +777,7 @@ export default function Usuarios() {
             kind: editingStandardFunction ? "internal" : newFunctionKind,
             linkedTenantCode: newFunctionKind === "external_company" ? newFunctionLinkedTenantCode.trim().toUpperCase() : null,
             leadAccessScope: newFunctionLeadAccessScope,
-            representativeUserIds: [],
+            representativeUserIds: newFunctionKind === "external_company" ? newFunctionRepresentativeUserIds : [],
           }),
           responseType: "json",
         },
@@ -761,6 +818,9 @@ export default function Usuarios() {
       setNewFunctionPermissions([]);
       setNewFunctionKind("internal");
       setNewFunctionLinkedTenantCode("");
+      setNewFunctionLinkedTenantId("");
+      setNewFunctionTenantSearch("");
+      setNewFunctionRepresentativeUserIds([]);
       setNewFunctionLeadAccessScope("assigned");
       toast({
         title: editingFunction ? copy.functionUpdated : copy.functionCreated,
@@ -1479,12 +1539,84 @@ export default function Usuarios() {
                   <div className="space-y-2">
                     <Label>{copy.linkedTenantCode}</Label>
                     <Input
-                      value={newFunctionLinkedTenantCode}
-                      onChange={(event) => setNewFunctionLinkedTenantCode(event.target.value)}
+                      value={newFunctionTenantSearch}
+                      onChange={(event) => {
+                        setNewFunctionTenantSearch(event.target.value);
+                        setNewFunctionLinkedTenantId("");
+                        setNewFunctionLinkedTenantCode("");
+                        setNewFunctionRepresentativeUserIds([]);
+                      }}
                       placeholder={copy.linkedTenantCodePlaceholder}
                     />
                     <p className="text-xs text-muted-foreground">{copy.linkedTenantCodeHelp}</p>
+                    {newFunctionLinkedTenantId && (
+                      <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                        <span className="font-medium">{copy.linkedTenantSelected}:</span>{" "}
+                        {newFunctionTenantSearch} {newFunctionLinkedTenantCode ? `(${newFunctionLinkedTenantCode})` : ""}
+                      </div>
+                    )}
+                    {!newFunctionLinkedTenantId && representativeTenantSearch.length < 2 && (
+                      <p className="text-xs text-muted-foreground">{copy.linkedTenantSearchEmpty}</p>
+                    )}
+                    {!newFunctionLinkedTenantId && representativeTenantSearch.length >= 2 && (
+                      <div className="max-h-44 overflow-y-auto rounded-md border">
+                        {searchingRepresentativeTenants ? (
+                          <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" /> {copy.loading}
+                          </div>
+                        ) : representativeTenantOptions.length === 0 ? (
+                          <p className="p-3 text-sm text-muted-foreground">{copy.linkedTenantNoResults}</p>
+                        ) : representativeTenantOptions.map((tenant) => (
+                          <button
+                            key={tenant.id}
+                            type="button"
+                            className="flex w-full items-center justify-between gap-3 border-b px-3 py-2.5 text-left last:border-b-0 hover:bg-muted/50"
+                            onClick={() => {
+                              setNewFunctionLinkedTenantId(tenant.id);
+                              setNewFunctionLinkedTenantCode(tenant.tenantCode);
+                              setNewFunctionTenantSearch(tenant.name);
+                              setNewFunctionRepresentativeUserIds([]);
+                            }}
+                          >
+                            <span className="font-medium">{tenant.name}</span>
+                            <span className="text-xs text-muted-foreground">{tenant.tenantCode}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
+                  {newFunctionLinkedTenantId && (
+                    <div className="space-y-2">
+                      <Label>{copy.representativeUsers}</Label>
+                      <p className="text-xs text-muted-foreground">{copy.representativeUsersHelp}</p>
+                      <div className="max-h-48 overflow-y-auto rounded-md border p-2">
+                        {loadingRepresentativeUsers ? (
+                          <div className="flex items-center gap-2 p-2 text-sm text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" /> {copy.loading}
+                          </div>
+                        ) : representativeTenantUsers.length === 0 ? (
+                          <p className="p-2 text-sm text-muted-foreground">{copy.representativeUsersEmpty}</p>
+                        ) : representativeTenantUsers.map((representativeUser) => {
+                          const checked = newFunctionRepresentativeUserIds.includes(representativeUser.id);
+                          return (
+                            <label key={representativeUser.id} className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 hover:bg-muted/50">
+                              <Checkbox
+                                checked={checked}
+                                onCheckedChange={(value) =>
+                                  setNewFunctionRepresentativeUserIds((current) =>
+                                    value
+                                      ? [...new Set([...current, representativeUser.id])]
+                                      : current.filter((id) => id !== representativeUser.id),
+                                  )
+                                }
+                              />
+                              <span className="text-sm font-medium">{representativeUser.name}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                   <div className="space-y-2">
                     <Label>{copy.representativeLeadScope}</Label>
                     <Select value={newFunctionLeadAccessScope} onValueChange={(value) => setNewFunctionLeadAccessScope(value as "assigned" | "territory" | "all_authorized")}>
