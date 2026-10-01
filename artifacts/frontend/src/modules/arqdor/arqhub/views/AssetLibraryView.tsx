@@ -8,6 +8,17 @@ function authHeaders(): Record<string, string> {
   return tok ? { Authorization: `Bearer ${tok}` } : {}
 }
 
+interface PolyHavenItem {
+  slug: string
+  name: string
+  description: string
+  thumbnailUrl: string | null
+  category: string
+  tags: string[]
+  authors: Record<string,string>
+  license: string
+}
+
 interface CatItem {
   id: string
   nome: string
@@ -96,6 +107,12 @@ export function AssetLibraryView() {
   const [query, setQuery] = useState('')
   const [catFilt, setCatFilt] = useState('')
   const [sel, setSel] = useState<CatItem|null>(null)
+  const [polyItems, setPolyItems] = useState<PolyHavenItem[]>([])
+  const [polyLoading, setPolyLoading] = useState(false)
+  const [polyOpen, setPolyOpen] = useState(false)
+  const [polyError, setPolyError] = useState<string|null>(null)
+  const [importingPoly, setImportingPoly] = useState<string|null>(null)
+  const [importMessage, setImportMessage] = useState<string|null>(null)
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
@@ -114,6 +131,39 @@ export function AssetLibraryView() {
   }, [catFilt, query])
 
   useEffect(() => { void load() }, [load])
+  const searchPolyHaven = useCallback(async () => {
+    const q = query.trim() || 'furniture'
+    setPolyOpen(true)
+    setPolyError(null)
+    setPolyLoading(true)
+    try {
+      const res = await fetch(`${BASE}/arch/polyhaven/search?q=${encodeURIComponent(q)}&limit=24`, { headers:authHeaders() })
+      if (!res.ok) throw new Error(`Falha ao consultar Poly Haven (${res.status}).`)
+      const data = await res.json() as { items?: PolyHavenItem[] }
+      setPolyItems(Array.isArray(data.items) ? data.items : [])
+    } catch (e: unknown) {
+      setPolyError(e instanceof Error ? e.message : 'Erro ao consultar Poly Haven')
+      setPolyItems([])
+    } finally { setPolyLoading(false) }
+  }, [query])
+
+  const importPolyHaven = useCallback(async (item: PolyHavenItem) => {
+    setImportingPoly(item.slug); setImportMessage(null); setPolyError(null)
+    try {
+      const res = await fetch(`${BASE}/arch/polyhaven/import`, {
+        method:'POST',
+        headers:{ ...authHeaders(), 'Content-Type':'application/json' },
+        body:JSON.stringify({ slug:item.slug }),
+      })
+      const data = await res.json() as { error?: string; product?: { nome?: string } }
+      if (!res.ok) throw new Error(data.error === 'polyhaven_asset_too_large' ? 'Este modelo excede o limite de 45 MB.' : 'Não foi possível importar este modelo.')
+      setImportMessage(`✓ ${data.product?.nome ?? item.name} adicionado à Biblioteca do Arqdor.`)
+      await load()
+    } catch (e: unknown) {
+      setPolyError(e instanceof Error ? e.message : 'Falha ao importar modelo')
+    } finally { setImportingPoly(null) }
+  }, [load])
+
   const categories = [...new Set(items.map(i=>i.categoria).filter(Boolean))] as string[]
   const canApply = hasPermission('PROJECT_EDIT') && hasPermission('MATERIAL_SELECT')
 
@@ -138,8 +188,30 @@ export function AssetLibraryView() {
         <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar asset…" style={{ flex:1, minWidth:120, background:'rgba(255,255,255,0.06)', border:`1px solid ${T.border}`, borderRadius:6, color:T.text, fontSize:11, padding:'7px 10px', outline:'none' }} />
         <select value={catFilt} onChange={e=>setCatFilt(e.target.value)} style={{ background:'rgba(255,255,255,0.06)', border:`1px solid ${T.border}`, borderRadius:6, color:catFilt?T.text:T.dim, fontSize:10, padding:'7px 8px' }}><option value="">Todos os tipos</option>{categories.map(c=><option key={c} value={c}>{c}</option>)}</select>
         <button type="button" onClick={()=>void load()} disabled={loading} style={{ padding:'7px 10px', borderRadius:6, border:`1px solid ${T.border}`, background:'transparent', color:T.dim, cursor:loading?'wait':'pointer', fontSize:10 }}>{loading?'…':'↻'}</button>
+        <button type="button" onClick={()=>void searchPolyHaven()} disabled={polyLoading} style={{ padding:'7px 10px', borderRadius:6, border:`1px solid ${T.border}`, background:polyOpen?'rgba(34,197,94,0.10)':'transparent', color:polyOpen?'#4ade80':T.dim, cursor:polyLoading?'wait':'pointer', fontSize:10 }}>{polyLoading?'Buscando…':'Buscar Poly Haven'}</button>
         <span style={{ fontSize:10, color:T.dim }}>{items.length} assets</span>
       </div>
+
+      {polyOpen && <div style={{ padding:'12px 16px', borderBottom:`1px solid ${T.border}`, background:'rgba(34,197,94,0.035)' }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, marginBottom:10 }}>
+          <div><strong style={{ fontSize:11, color:T.text }}>Biblioteca externa · Poly Haven</strong><span style={{ marginLeft:8, fontSize:9, color:T.dim }}>CC0 · sem login</span></div>
+          <button type="button" onClick={()=>setPolyOpen(false)} style={{ border:0, background:'transparent', color:T.dim, cursor:'pointer' }}>✕</button>
+        </div>
+        {polyError && <div style={{ fontSize:10, color:'#f87171', marginBottom:8 }}>{polyError}</div>}
+        {!polyLoading && !polyError && polyItems.length===0 && <div style={{ fontSize:10, color:T.dim }}>Busque por sofá, mesa, cadeira, planta, iluminação, eletrodoméstico ou outro item.</div>}
+        {polyItems.length>0 && <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(170px,1fr))', gap:8, maxHeight:300, overflow:'auto' }}>
+          {polyItems.map(item => <div key={item.slug} style={{ display:'block', padding:8, borderRadius:8, border:`1px solid ${T.border}`, background:T.surface, minWidth:0 }}>
+            {item.thumbnailUrl ? <img src={item.thumbnailUrl} alt={item.name} style={{ width:'100%', height:88, objectFit:'cover', borderRadius:6, marginBottom:7 }} /> : <div style={{ height:88, display:'grid', placeItems:'center', fontSize:28 }}>🧊</div>}
+            <div style={{ fontSize:10, fontWeight:700, color:T.text, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{item.name}</div>
+            <div style={{ marginTop:3, fontSize:8, color:T.dim }}>{item.category} · CC0</div>
+            <button type="button" onClick={()=>void importPolyHaven(item)} disabled={importingPoly===item.slug} style={{ width:'100%', marginTop:7, padding:'6px 7px', borderRadius:6, border:0, background:'#166534', color:'#fff', fontSize:8, fontWeight:700, cursor:importingPoly===item.slug?'wait':'pointer' }}>{importingPoly===item.slug?'Importando…':'Adicionar à Biblioteca'}</button>
+          </div>)}
+        </div>}
+        <div style={{ marginTop:9, display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+          <span style={{ fontSize:8, color:'#4ade80' }}>Powered by Poly Haven · assets CC0</span>
+          {importMessage && <span style={{ fontSize:8, color:'#4ade80' }}>{importMessage}</span>}
+        </div>
+      </div>}
 
       {error && <div style={{ padding:'10px 16px', background:'rgba(248,113,113,0.08)', borderBottom:'1px solid rgba(248,113,113,0.2)', fontSize:11, color:'#f87171', display:'flex', justifyContent:'space-between', gap:12, alignItems:'center' }}><span>⚠ {error}</span><button type="button" onClick={()=>void load()} style={{ border:`1px solid ${T.border}`, borderRadius:6, background:'transparent', color:T.text, padding:'5px 8px', cursor:'pointer' }}>Tentar novamente</button></div>}
 
