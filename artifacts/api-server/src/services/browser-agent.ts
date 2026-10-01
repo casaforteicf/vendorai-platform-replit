@@ -1,4 +1,5 @@
-import puppeteer, { type Browser, type CookieData, type Page } from "puppeteer-core";
+import { type Browser, type CookieData, type Page } from "puppeteer-core";
+import { acquireBrowserLease } from "./browser-fleet.js";
 import { z } from "zod";
 import { callOpenAI } from "../lib/ai-gateway.js";
 
@@ -329,9 +330,6 @@ export async function executeBrowserAction(
 }
 
 export async function runBrowserAgent(input: BrowserAgentInput) {
-  const cdpUrl = process.env["BROWSER_CDP_URL"];
-  if (!cdpUrl) throw new Error("BROWSER_CDP_URL não configurada");
-
   const steps: BrowserAgentStep[] = [];
   const maxSteps = Math.min(Math.max(input.maxSteps ?? 12, 1), 30);
   const secretsAvailable = {
@@ -341,9 +339,12 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
   let browser: Browser | undefined;
   let page: Page | undefined;
   let transferred = false;
+  let releaseBrowser: ((healthy?: boolean) => void) | undefined;
 
   try {
-    browser = await puppeteer.connect({ browserWSEndpoint: cdpUrl });
+    const lease = await acquireBrowserLease();
+    browser = lease.browser;
+    releaseBrowser = lease.release;
     page = await (await browser.createBrowserContext()).newPage();
 
     if (input.sessionCookies?.length) {
@@ -424,6 +425,8 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
     if (String(error?.message).startsWith("BROWSER_BLOCKED:") && input.onHumanVerification && browser && page) {
       const handoff = await input.onHumanVerification(browser, page);
       transferred = true;
+      releaseBrowser?.(true);
+      releaseBrowser = undefined;
       return { ok: false, status: "awaiting_human" as const, finalUrl: page.url(),
         answer: "Verificação humana necessária. Abra o controle ao vivo, faça a verificação e devolva para o Vendi.",
         steps, ...handoff };
@@ -432,5 +435,6 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
   } finally {
     if (!transferred && page) await page.browserContext().close().catch(() => undefined);
     if (!transferred && browser) browser.disconnect();
+    if (!transferred) releaseBrowser?.(true);
   }
 }
