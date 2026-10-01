@@ -134,6 +134,8 @@ export type ArchConceptConfiguration = {
       quantity: number;
       basis: "geometry" | "concept";
       compositionCode?: string;
+      catalogProductId?: string;
+      manufacturer?: string;
     }>;
     links: {
       archProjetoId: string;
