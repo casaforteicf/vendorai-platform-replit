@@ -185,11 +185,16 @@ export default function PipelineOperacional() {
   });
 
   useEffect(() => {
-    const cardId = params.get("card");
+    const search = new URLSearchParams(window.location.search);
+    const cardId = search.get("card");
     if (!cardId || selectedCard || !cardsQuery.data?.length) return;
     const card = cardsQuery.data.find((item) => item.id === cardId);
-    if (card) setSelectedCard(card);
-  }, [cardsQuery.data, params, selectedCard]);
+    if (!card) return;
+    setSelectedCard(card);
+    search.delete("card");
+    const next = search.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${next ? `?${next}` : ""}`);
+  }, [cardsQuery.data, selectedCard]);
   const needsContext = supportOpen || deliveryOpen || Boolean(selectedCard);
   const leadsQuery = useQuery<Lead[]>({
     queryKey: ["work-card-leads", tenantId], enabled: !!tenantId && needsContext,
