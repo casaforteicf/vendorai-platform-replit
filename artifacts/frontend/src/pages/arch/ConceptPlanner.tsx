@@ -2566,11 +2566,17 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   };
 
   const updateOpeningWidth = (openingId: string, width: number) => {
-    const safeWidth = Math.max(0.5, Math.min(4, Number(width) || 0.5));
     const custom = safeCustomOpenings.find((opening) => opening.id === openingId);
-    if (!custom || Math.abs((custom.width ?? (custom.type === "door" ? 0.9 : 1.2)) - safeWidth) < 0.001) return;
+    const wall = custom ? safeCustomWalls.find((item) => item.id === custom.wallId) : null;
+    if (!custom || !wall) return;
+    const wallLength = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    const maximumWidth = Math.max(0.3, wallLength - 0.1);
+    const safeWidth = Math.max(0.3, Math.min(4, maximumWidth, Number(width) || 0.5));
+    if (Math.abs((custom.width ?? (custom.type === "door" ? 0.9 : 1.2)) - safeWidth) < 0.001) return;
     setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((opening) =>
-      opening.id === openingId ? { ...opening, width: safeWidth } : opening
+      opening.id === openingId
+        ? constrainOpeningToWall({ ...opening, width: safeWidth }, wallLength)
+        : opening
     ));
   };
 
