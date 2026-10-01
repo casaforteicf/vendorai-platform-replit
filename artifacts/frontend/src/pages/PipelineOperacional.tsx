@@ -109,6 +109,27 @@ const EXECUTION_STAGES = [
   ["concluido", "Concluído"],
 ] as const;
 
+type StageRequirement = { key: string; label: string; description: string };
+
+const EXECUTION_STAGE_REQUIREMENTS: Record<string, StageRequirement[]> = {
+  pedido_confirmado: [{ key: "pedido_contexto", label: "Pedido e cliente conferidos", description: "Cliente, pedido, proposta e itens vinculados ao processo." }],
+  liberacao_financeira: [{ key: "liberacao_financeira", label: "Liberação financeira confirmada", description: "Condição financeira necessária para execução foi validada." }],
+  liberacao_medidas: [{ key: "relatorio_medidas", label: "Relatório de medição concluído", description: "Checklist de medição/conferência anexado ao pedido e cliente." }],
+  projeto: [{ key: "projeto_aprovado", label: "Projeto/aprovação concluídos", description: "Desenhos, revisões e aprovações técnicas estão vinculados." }],
+  producao_a_iniciar: [{ key: "pre_requisitos_producao", label: "Pré-requisitos de produção validados", description: "Projeto, medidas e liberações necessárias estão concluídos." }],
+  producao_em_andamento: [{ key: "registro_producao", label: "Andamento de produção registrado", description: "Responsável, evolução, fotos e ocorrências foram atualizados." }],
+  producao_finalizada: [{ key: "qualidade_producao", label: "Checklist de qualidade concluído", description: "Produto/lote foi conferido antes da liberação." }],
+  aguardando_liberacao: [{ key: "motivo_bloqueio", label: "Motivo de bloqueio registrado", description: "Pendência e responsável pela liberação estão identificados." }],
+  liberado: [{ key: "liberacao_operacional", label: "Liberação operacional confirmada", description: "Lote autorizado para seguir para entrega." }],
+  agenda_entrega: [{ key: "agenda_entrega", label: "Agenda e recebedor confirmados", description: "Data, endereço, contato e pessoa autorizada a receber foram registrados." }],
+  em_transporte: [{ key: "checklist_transporte", label: "Checklist de expedição/transporte concluído", description: "Conferência de carga, condição e evidências do transporte." }],
+  instalacao_a_iniciar: [{ key: "pre_instalacao", label: "Pré-instalação conferida", description: "Equipe, itens, local e condições para instalação estão confirmados." }],
+  instalacao_em_andamento: [{ key: "checklist_instalacao", label: "Checklist de instalação atualizado", description: "Itens, fotos, ocorrências e não conformidades foram registrados por produto." }],
+  instalacao_finalizada: [{ key: "conferencia_instalacao", label: "Conferência interna finalizada", description: "Equipe confirmou que os itens estão prontos para vistoria do cliente." }],
+  entrega_obra: [{ key: "vistoria_aceite", label: "Vistoria e aceite concluídos", description: "Cliente ou delegado realizou a vistoria e o aceite foi formalizado." }],
+  pos_venda: [{ key: "pacote_entrega", label: "Pacote de entrega enviado", description: "Termo, manual, garantia e documentos aplicáveis foram enviados e registrados." }],
+};
+
 const SUPPORT_STAGES = [
   ["chamado_cliente", "Chamado cliente"],
   ["agendamento_assistencia", "Agendamento assistência"],
@@ -156,6 +177,13 @@ function safeItems(card: WorkCard): Array<{ nome?: string; quantidade?: number }
   return Array.isArray(raw) ? raw as Array<{ nome?: string; quantidade?: number }> : [];
 }
 
+function requirementCompleted(card: WorkCard, key: string) {
+  const raw = card.metadata?.stageGates;
+  if (!raw || typeof raw !== "object") return false;
+  const value = (raw as Record<string, unknown>)[key];
+  return value === true || Boolean(value && typeof value === "object" && (value as Record<string, unknown>).completed === true);
+}
+
 export default function PipelineOperacional() {
   const { user, token } = useAuth();
   const tenantId = user?.tenantId ?? "";
@@ -179,7 +207,7 @@ export default function PipelineOperacional() {
     const response = await fetch(url, { ...options, headers: { ...authHeaders, ...(options?.headers ?? {}) } });
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
-      throw new Error(body.error || `Erro ${response.status}`);
+      throw new Error(body.message || body.error || `Erro ${response.status}`);
     }
     if (response.status === 204) return undefined as T;
     return response.json() as Promise<T>;
@@ -482,6 +510,50 @@ export default function PipelineOperacional() {
                         }}
                       />
                     </div>
+
+                    {(EXECUTION_STAGE_REQUIREMENTS[selectedCard.etapa] ?? []).length > 0 && (
+                      <div className="space-y-3 rounded-xl border bg-muted/20 p-3">
+                        <div>
+                          <h4 className="text-sm font-semibold">Requisitos desta etapa</h4>
+                          <p className="text-xs text-muted-foreground">O card só avança quando os requisitos obrigatórios desta etapa estiverem concluídos.</p>
+                        </div>
+                        {(EXECUTION_STAGE_REQUIREMENTS[selectedCard.etapa] ?? []).map((requirement) => {
+                          const completed = requirementCompleted(selectedCard, requirement.key);
+                          return (
+                            <div key={requirement.key} className="flex items-start justify-between gap-3 rounded-lg border bg-background p-3">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  {completed ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <ClipboardCheck className="h-4 w-4 text-muted-foreground" />}
+                                  <p className="text-sm font-medium">{requirement.label}</p>
+                                </div>
+                                <p className="mt-1 text-xs text-muted-foreground">{requirement.description}</p>
+                              </div>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant={completed ? "secondary" : "default"}
+                                disabled={patchCard.isPending}
+                                onClick={() => {
+                                  const metadata = { ...(selectedCard.metadata ?? {}) };
+                                  const currentGates = metadata.stageGates && typeof metadata.stageGates === "object"
+                                    ? { ...(metadata.stageGates as Record<string, unknown>) }
+                                    : {};
+                                  currentGates[requirement.key] = {
+                                    completed: !completed,
+                                    completedAt: !completed ? new Date().toISOString() : null,
+                                    completedBy: !completed ? ((user as any)?.id || (user as any)?.sub || null) : null,
+                                    stage: selectedCard.etapa,
+                                  };
+                                  patchCard.mutate({ id: selectedCard.id, data: { metadata: { ...metadata, stageGates: currentGates } } });
+                                }}
+                              >
+                                {completed ? "Reabrir" : "Concluir"}
+                              </Button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <>
