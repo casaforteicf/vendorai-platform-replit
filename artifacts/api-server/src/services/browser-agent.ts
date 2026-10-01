@@ -1,5 +1,11 @@
 import { type Browser, type CookieData, type Page } from "puppeteer-core";
 import { acquireBrowserLease } from "./browser-fleet.js";
+import {
+  captureBrowserProfile,
+  restoreBrowserProfileAfterNavigation,
+  restoreBrowserProfileBeforeNavigation,
+  type BrowserProfileState,
+} from "./browser-profile.js";
 import { z } from "zod";
 import { callOpenAI } from "../lib/ai-gateway.js";
 
@@ -119,8 +125,10 @@ export interface BrowserAgentInput {
   allowedHosts?: string[];
   secrets?: { login?: string; passcode?: string };
   sessionCookies?: CookieData[];
+  sessionProfile?: BrowserProfileState;
   firstPartyAuthToken?: string;
   onSessionPersist?: (cookies: CookieData[]) => Promise<void>;
+  onProfilePersist?: (profile: BrowserProfileState) => Promise<void>;
   onHumanVerification?: (browser: Browser, page: Page) => Promise<{ sessionId: string; controlUrl: string }>;
 }
 
@@ -350,11 +358,15 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
     if (input.sessionCookies?.length) {
       await page.setCookie(...input.sessionCookies).catch(() => undefined);
     }
+    await restoreBrowserProfileBeforeNavigation(page, input.sessionProfile);
 
     await withBrowserRetry(() => page.goto(validateBrowserUrl(input.startUrl, input.allowedHosts), {
       waitUntil: "domcontentloaded",
       timeout: 30000,
     }));
+    if (await restoreBrowserProfileAfterNavigation(page, input.sessionProfile)) {
+      await page.reload({ waitUntil: "domcontentloaded", timeout: 30000 });
+    }
 
     if (input.firstPartyAuthToken) {
       const current = new URL(page.url());
@@ -384,6 +396,7 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
       if (action.action === "finish") {
         if (action.outcome !== "completed") throw new Error(`BROWSER_${action.outcome.toUpperCase()}: ${action.answer}`);
         if (input.onSessionPersist) await input.onSessionPersist(await page.cookies());
+        if (input.onProfilePersist) await input.onProfilePersist(await captureBrowserProfile(page));
         return { ok: true, finalUrl: state.url, answer: action.answer, steps };
       }
 
@@ -414,12 +427,14 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
         if (next.action === "finish") {
           if (next.outcome !== "completed") throw new Error(`BROWSER_${next.outcome.toUpperCase()}: ${next.answer}`);
           if (input.onSessionPersist) await input.onSessionPersist(await page.cookies());
+          if (input.onProfilePersist) await input.onProfilePersist(await captureBrowserProfile(page));
           return { ok: true, finalUrl: page.url(), answer: next.answer, steps };
         }
       }
     }
 
     if (input.onSessionPersist) await input.onSessionPersist(await page.cookies());
+    if (input.onProfilePersist) await input.onProfilePersist(await captureBrowserProfile(page));
     return { ok: false, finalUrl: page.url(), answer: "Limite de passos atingido.", steps };
   } catch (error: any) {
     if (String(error?.message).startsWith("BROWSER_BLOCKED:") && input.onHumanVerification && browser && page) {
