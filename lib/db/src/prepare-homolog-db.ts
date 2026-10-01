@@ -102,15 +102,17 @@ await pool.query(`
     updated_at timestamp NOT NULL DEFAULT now()
   );
 
-  DO $ BEGIN
-    IF to_regclass('public.leads') IS NOT NULL THEN
-      ALTER TABLE leads
-        ADD COLUMN IF NOT EXISTS special_dates jsonb NOT NULL DEFAULT '[]'::jsonb;
-    END IF;
-  END $;
-
   CREATE SCHEMA IF NOT EXISTS app_security;
 `);
+
+const leadsCheck = await pool.query<{ leads_table: string | null }>(
+  "SELECT to_regclass('public.leads')::text AS leads_table",
+);
+if (leadsCheck.rows[0]?.leads_table) {
+  await pool.query(
+    "ALTER TABLE leads ADD COLUMN IF NOT EXISTS special_dates jsonb NOT NULL DEFAULT '[]'::jsonb",
+  );
+}
 
 console.log("[homolog-bootstrap] minimal auth/representation schema ready");
 await pool.end();
