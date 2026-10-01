@@ -70,6 +70,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { VisualIdentity } from "@/components/ui/visual-identity";
 
 const ActiveLeadProcesses = lazy(() => import("@/components/ActiveLeadProcesses").then((m) => ({ default: m.ActiveLeadProcesses })));
 const NewLeadDialog = lazy(() => import("@/components/NewLeadDialog").then((m) => ({ default: m.NewLeadDialog })));
@@ -945,6 +946,7 @@ export default function Leads() {
                       onClick={() => setLocation(`/leads/${lead.id}`)}
                       data-testid={`row-lead-${lead.id}`}
                     >
+                      <VisualIdentity source={lead as any} label={lead.nome} size="md" />
                       <div className="flex-1 min-w-0 space-y-1.5">
                         <div className="flex items-center gap-1.5">
                           {isHighRisk && <AlertTriangle className="h-3.5 w-3.5 text-red-500 shrink-0" />}
@@ -1069,9 +1071,15 @@ export default function Leads() {
                             data-testid={`row-lead-${lead.id}`}
                           >
                             <TableCell className="font-medium">
-                              <span className="flex items-center gap-1.5">
-                                {isHighRisk && <AlertTriangle className="h-3.5 w-3.5 text-red-500 shrink-0" />}
-                                {lead.nome}
+                              <span className="flex items-center gap-2.5">
+                                <VisualIdentity source={lead as any} label={lead.nome} size="sm" />
+                                <span className="min-w-0">
+                                  <span className="flex items-center gap-1.5">
+                                    {isHighRisk && <AlertTriangle className="h-3.5 w-3.5 text-red-500 shrink-0" />}
+                                    <span className="truncate">{lead.nome}</span>
+                                  </span>
+                                  {lead.empresa ? <span className="block max-w-[220px] truncate text-[11px] font-normal text-muted-foreground">{lead.empresa}</span> : null}
+                                </span>
                               </span>
                             </TableCell>
                             <TableCell className="text-muted-foreground">{lead.empresa || "—"}</TableCell>
