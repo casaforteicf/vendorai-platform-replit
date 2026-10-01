@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -284,6 +285,8 @@ export default function RevenueDashboard() {
   const { toast } = useToast();
   const initialTab = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("tab") : null;
   const [tab, setTab] = useState(["radar", "oportunidades", "acoes", "resultados", "config"].includes(initialTab ?? "") ? initialTab! : "radar");
+  const [vendiRequest, setVendiRequest] = useState("");
+  const [lastVendiMissionId, setLastVendiMissionId] = useState("");
 
   const { data: dash, refetch: refetchDash } = useQuery<any>({
     queryKey: ["scout-dashboard", tenantId],
@@ -357,6 +360,56 @@ export default function RevenueDashboard() {
       toast({ title: "Agente acionado", description: `${data?.agent ?? "IA"} recebeu o contexto e a próxima melhor ação.` });
     },
     onError: (e: any) => toast({ title: "Erro ao acionar agente", description: e.message, variant: "destructive" }),
+  });
+
+  const vendiMission = useMutation({
+    mutationFn: async (objective: string) => {
+      const response = await fetch("/api/vendi/missions", {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          objective,
+          source: "module",
+          sourceRefId: "revenue-scout",
+          priority: 75,
+          riskPolicy: "standard",
+          autoExecute: true,
+          context: {
+            module: "revenue-scout",
+            route: window.location.pathname + window.location.search,
+            tenantId,
+            opportunityCount: openOps.length,
+            urgentCount: urgentOps.length,
+            pendingApprovalCount: pendingApproval.length,
+            potentialOpen,
+            instruction: "Atue como orquestrador do Revenue Scout. Use primeiro dados internos do Scout/CRM, escolha o agente especializado adequado, preserve evidências e histórico e não invente preço, desconto, prazo ou disponibilidade. Ações externas de alto risco exigem aprovação humana.",
+          },
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error || "Não foi possível iniciar a missão do Vendi");
+      return body as { missionId: string; execution?: { status?: string } };
+    },
+    onSuccess: (data) => {
+      setLastVendiMissionId(data.missionId);
+      setVendiRequest("");
+      if (data.execution?.status === "paused_approval") {
+        toast({
+          title: "Vendi iniciou a missão",
+          description: "A execução chegou a uma ação que precisa da sua aprovação.",
+        });
+      } else {
+        toast({
+          title: "Vendi assumiu o Revenue Scout",
+          description: "A missão foi criada e executada com o contexto atual da carteira.",
+        });
+      }
+    },
+    onError: (e: any) => toast({
+      title: "Erro ao acionar o Vendi",
+      description: e.message,
+      variant: "destructive",
+    }),
   });
 
   const toggleRule = async (id: string) => {
@@ -464,6 +517,51 @@ export default function RevenueDashboard() {
           </Button>
         </div>
       </div>
+
+      <Card className="border-primary/20 bg-primary/[0.025] p-4 md:p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+          <div className="flex min-w-0 flex-1 gap-3">
+            <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <Bot className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-semibold">Vendi no Revenue Scout</p>
+                <Badge variant="secondary" className="gap-1">
+                  <Sparkles className="h-3 w-3" /> atua direto
+                </Badge>
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Peça o resultado que você quer. O Vendi recebe o contexto da carteira, consulta o Scout e o CRM, escolhe o agente certo e executa a missão dentro das regras de autonomia.
+              </p>
+              <Textarea
+                value={vendiRequest}
+                onChange={(event) => setVendiRequest(event.target.value)}
+                className="mt-3 min-h-[84px]"
+                placeholder="Ex.: trabalhe as oportunidades urgentes de reativação e follow-up, priorize por potencial e confiança e acione o agente adequado em cada caso."
+              />
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  disabled={vendiRequest.trim().length < 3 || vendiMission.isPending}
+                  onClick={() => vendiMission.mutate(vendiRequest.trim())}
+                >
+                  {vendiMission.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Bot className="mr-1.5 h-4 w-4" />}
+                  Vendi, executar
+                </Button>
+                {lastVendiMissionId && (
+                  <Button size="sm" variant="outline" asChild>
+                    <Link href="/vendi/operacoes">Acompanhar missão</Link>
+                  </Button>
+                )}
+                <span className="text-[11px] text-muted-foreground">
+                  Ações externas de alto risco continuam exigindo aprovação humana.
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Card>
 
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
         <Card className="p-3 md:p-4"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Potencial em aberto</p>{loadingOps ? <Skeleton className="mt-2 h-7 w-24" /> : <p className="mt-1 text-xl font-bold">{money(potentialOpen)}</p>}</Card>
