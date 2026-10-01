@@ -878,8 +878,13 @@ export default function Ads() {
             const creative = expandedCreative[c.id] ?? c.latestCreative;
             const result = overviewByCampaign.get(c.id);
             return (
-              <Card key={c.id}>
+              <Card key={c.id} data-visual-card="true">
                 <CardContent className="pt-4 space-y-3">
+                  {creative?.imagens?.[0] ? (
+                    <div data-visual-cover="true" className="h-44 w-full">
+                      <img src={creative.imagens[0]} alt={c.itemLabel ? `Criativo de ${c.itemLabel}` : "Criativo da campanha"} loading="lazy" />
+                    </div>
+                  ) : null}
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <div>
                       <div className="flex items-center gap-2">
