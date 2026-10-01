@@ -49,9 +49,10 @@ export function getSketchfabRedirectUri(): string {
   const explicit = process.env["SKETCHFAB_REDIRECT_URI"]?.trim();
   if (explicit) return explicit;
   const apiBase = process.env["PUBLIC_API_URL"]?.trim()
-    || process.env["API_URL"]?.trim()
-    || (process.env["NODE_ENV"] === "production" ? "https://api.appvendorai.com" : "http://localhost:3000/api");
-  return `${apiBase.replace(/\/$/, "")}/auth/sketchfab/callback`;
+    || process.env["APP_URL"]?.trim()
+    || (process.env["NODE_ENV"] === "production" ? "https://appvendorai.com" : "http://localhost:3000");
+  const base = apiBase.replace(/\/$/, "");
+  return `${base.endsWith("/api") ? base : `${base}/api`}/auth/sketchfab/callback`;
 }
 
 export function buildSketchfabOAuthUrl(state: string): string {
