@@ -208,7 +208,7 @@ router.get(
   "/tenants/:tenantId/representative-tenants",
   requireRole("super_admin", "tenant_admin"),
   async (req, res) => {
-    const tenantId = String(req.params["tenantId"]);
+    const tenantId = String(req.params["tenantId"]); // tenant-audit: reviewed requireRole + canManageTenant guard
     if (!canManageTenant(req, tenantId)) {
       res.status(403).json({ error: "Access denied to this tenant" });
       return;
@@ -248,7 +248,7 @@ router.get(
   "/tenants/:tenantId/representative-tenants/:representativeTenantId/users",
   requireRole("super_admin", "tenant_admin"),
   async (req, res) => {
-    const tenantId = String(req.params["tenantId"]);
+    const tenantId = String(req.params["tenantId"]); // tenant-audit: reviewed requireRole + canManageTenant guard
     const representativeTenantId = String(req.params["representativeTenantId"]);
 
     if (!canManageTenant(req, tenantId)) {
