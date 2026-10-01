@@ -1118,7 +1118,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
   const [furnitureSearch, setFurnitureSearch] = useState("");
   const [furnitureCategory, setFurnitureCategory] = useState<"Todos" | "Sala" | "Quarto" | "Jantar" | "Cozinha" | "Escritório" | "Decoração" | "Iluminação" | "Exterior">("Todos");
-  const [libraryMode, setLibraryMode] = useState<"all" | "favorites" | "recent">("all");
+  const [libraryMode, setLibraryMode] = useState<"all" | "favorites" | "recent" | "project">("all");
   const [itemLibrarySection, setItemLibrarySection] = useState<"products" | "materials">("products");
   const [favoriteItemIds, setFavoriteItemIds] = useState<string[]>(() => {
     if (typeof window === "undefined") return [];
@@ -1222,7 +1222,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       const modeMatch = libraryMode === "all"
         || (libraryMode === "favorites" && favoriteItemIds.includes(itemId))
         || (libraryMode === "recent" && recentItemIds.includes(itemId));
-      return categoryMatch && queryMatch && modeMatch;
+      return libraryMode !== "project" && categoryMatch && queryMatch && modeMatch;
     }).sort((a, b) => {
       if (libraryMode !== "recent") return 0;
       const aIndex = recentItemIds.indexOf(libraryItemKey(a.label, a.category));
@@ -2133,6 +2133,22 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const safeWallFirstFloors = Array.isArray(wallFirstFloors) ? wallFirstFloors : [];
   const safeSpaceProfiles = Array.isArray(spaceProfiles) ? spaceProfiles : [];
   const safeObjects = Array.isArray(objects) ? objects : [];
+  const usedProjectProductCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const object of safeObjects) {
+      if (!object.catalogProductId) continue;
+      counts.set(object.catalogProductId, (counts.get(object.catalogProductId) ?? 0) + 1);
+    }
+    for (const opening of safeCustomOpenings) {
+      if (!opening.catalogProductId) continue;
+      counts.set(opening.catalogProductId, (counts.get(opening.catalogProductId) ?? 0) + 1);
+    }
+    return counts;
+  }, [safeCustomOpenings, safeObjects]);
+  const usedProjectProducts = useMemo(
+    () => realCatalogProducts.filter((item) => usedProjectProductCounts.has(item.id)),
+    [realCatalogProducts, usedProjectProductCounts],
+  );
   // Etapa 1 é exclusivamente o terreno. Mesmo que um rascunho antigo já tenha
   // planta salva, ela fica oculta até o usuário avançar para Casa/Ajustes.
   const terrainOnly = terrainDefined && editorView === "plan" && editorLibraryTab === "site";
@@ -7496,11 +7512,12 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
                       {itemLibrarySection === "products" && (
                         <>
-                        <div className="mb-3 grid grid-cols-3 gap-2">
+                        <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
                           {([
                             ["all", LayoutGrid, "Todos"],
                             ["favorites", Heart, "Favoritos"],
                             ["recent", Clock3, "Recentes"],
+                            ["project", Box, "No projeto"],
                           ] as const).map(([mode, Icon, label]) => (
                             <button
                               key={mode}
@@ -7655,7 +7672,76 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         </div>
                       )}
 
-                      {!openingProductPickerId && (polyHavenLoading || polyHavenModels.length > 0) && (
+                      {!openingProductPickerId && libraryMode === "project" && (
+                        <div className="mb-5">
+                          <div className="mb-3 flex items-center justify-between gap-2">
+                            <div>
+                              <div className="text-xs font-bold text-slate-900">Usados neste projeto</div>
+                              <div className="text-[10px] text-slate-500">Produtos reais já aplicados em objetos, móveis, eletros, louças, iluminação e esquadrias.</div>
+                            </div>
+                            <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">
+                              {usedProjectProducts.length}
+                            </span>
+                          </div>
+                          {usedProjectProducts.length ? (
+                            <div className="grid grid-cols-2 gap-3">
+                              {usedProjectProducts.map((item) => {
+                                const count = usedProjectProductCounts.get(item.id) ?? 0;
+                                const objectInstance = safeObjects.find((object) => object.catalogProductId === item.id);
+                                const openingInstance = safeCustomOpenings.find((opening) => opening.catalogProductId === item.id);
+                                return (
+                                  <button
+                                    key={item.id}
+                                    type="button"
+                                    onClick={() => {
+                                      if (objectInstance) {
+                                        setSelectedObjectId(objectInstance.id);
+                                        setSelectedOpeningId(null);
+                                        setSelectedCustomWallId(null);
+                                        setSelectedWallId(null);
+                                        setSelectedId(null);
+                                        setSelectedClosedSpaceId(null);
+                                      } else if (openingInstance) {
+                                        setSelectedOpeningId(openingInstance.id);
+                                        setSelectedObjectId(null);
+                                        setSelectedCustomWallId(null);
+                                        setSelectedWallId(null);
+                                        setSelectedId(null);
+                                        setSelectedClosedSpaceId(null);
+                                      }
+                                      closeLibraryOnMobile();
+                                    }}
+                                    className="overflow-hidden rounded-xl border bg-white text-left transition hover:border-orange-300 hover:shadow-sm"
+                                  >
+                                    <div className="relative aspect-[4/3] bg-slate-100">
+                                      {item.imagens?.[0] ? (
+                                        <img src={item.imagens[0]} alt={item.nome} className="h-full w-full object-cover" loading="lazy" />
+                                      ) : (
+                                        <div className="grid h-full place-items-center"><Box className="h-8 w-8 text-slate-300" /></div>
+                                      )}
+                                      <span className="absolute right-2 top-2 rounded-full bg-slate-950 px-2 py-1 text-[9px] font-bold text-white">
+                                        {count}×
+                                      </span>
+                                    </div>
+                                    <div className="p-2.5">
+                                      <div className="line-clamp-2 text-xs font-semibold text-slate-900">{item.nome}</div>
+                                      <div className="mt-1 line-clamp-1 text-[9px] text-slate-500">
+                                        {[item.categoria, item.fornecedor].filter(Boolean).join(" · ")}
+                                      </div>
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="rounded-xl border border-dashed p-4 text-center text-xs text-slate-500">
+                              Nenhum produto do catálogo foi aplicado ao projeto ainda.
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {!openingProductPickerId && libraryMode !== "project" && (polyHavenLoading || polyHavenModels.length > 0) && (
                         <div className="mb-5">
                           <div className="mb-3 flex items-center justify-between gap-2">
                             <div>
@@ -7731,7 +7817,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         </div>
                       )}
 
-                      {!openingProductPickerId && (realCatalogLoading || visibleRealCatalogProducts.length > 0) && (
+                      {!openingProductPickerId && libraryMode !== "project" && (realCatalogLoading || visibleRealCatalogProducts.length > 0) && (
                         <div className="mb-5">
                           <div className="mb-3 flex items-center justify-between gap-2">
                             <div>
