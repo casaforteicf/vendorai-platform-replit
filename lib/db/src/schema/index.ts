@@ -246,3 +246,4 @@ export * from "./tenant_expansion_recommendations";
 
 export * from "./browser_agent_connections";
 export * from "./browser_agent_skills";
+export * from "./vendi_missions";
