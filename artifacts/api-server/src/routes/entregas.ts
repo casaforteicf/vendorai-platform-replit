@@ -1434,8 +1434,65 @@ router.post("/work-cards/:id/delivery-acceptance/confirm", async (req, res) => {
     documentUrl,
   };
 
+  const manualAttachments = parsed.data.manualAttachmentIds.length
+    ? await db.select().from(workCardAttachmentsTable).where(and(
+        eq(workCardAttachmentsTable.workCardId, card.id),
+        inArray(workCardAttachmentsTable.id, parsed.data.manualAttachmentIds),
+      ))
+    : [];
+  let packageSent = false;
+  let packageSendError: string | null = null;
+  const publicDocumentUrl = Boolean(documentUrl && !documentUrl.startsWith("data:"));
+  if (
+    lead?.telefone
+    && publicDocumentUrl
+    && parsed.data.manualAttachmentIds.length > 0
+    && manualAttachments.length === parsed.data.manualAttachmentIds.length
+  ) {
+    try {
+      await sendDirectWhatsAppMessage(
+        card.tenantId,
+        lead.telefone,
+        [
+          "✅ Entrega e vistoria concluídas.",
+          `Termo assinado: ${documentUrl}`,
+          ...manualAttachments.map((attachment) => `Manual: ${attachment.url}`),
+        ].join("\n"),
+        req.log,
+      );
+      packageSent = true;
+      currentGates.pacote_entrega = {
+        completed: true,
+        completedAt,
+        completedBy: req.user?.sub ?? null,
+        stage: "pos_venda",
+        source: "delivery_acceptance_auto_package",
+      };
+    } catch (error) {
+      packageSendError = error instanceof Error ? error.message : String(error);
+      req.log.warn({ err: error, workCardId: card.id }, "delivery-acceptance: pacote automático não enviado; pós-venda ficará pendente");
+    }
+  }
+
+  const deliveryPackage = {
+    status: packageSent ? "sent" : "pending",
+    attemptedAt: completedAt,
+    sentAt: packageSent ? completedAt : null,
+    sentBy: packageSent ? (req.user?.sub ?? null) : null,
+    channel: "whatsapp",
+    termAttachmentId: attachmentId,
+    manualAttachmentIds: parsed.data.manualAttachmentIds,
+    error: packageSendError,
+  };
+
   const [updated] = await db.update(workCardsTable).set({
-    metadata: { ...metadata, stageGates: currentGates, deliveryAcceptance: acceptance },
+    etapa: "pos_venda",
+    metadata: {
+      ...metadata,
+      stageGates: currentGates,
+      deliveryAcceptance: acceptance,
+      deliveryPackage,
+    },
     updatedAt: signedAt,
   }).where(eq(workCardsTable.id, card.id)).returning();
 
@@ -1446,31 +1503,26 @@ router.post("/work-cards/:id/delivery-acceptance/confirm", async (req, res) => {
       dealId: card.dealId,
       tipo: "tarefa",
       titulo: `${card.codigo}: entrega vistoriada e assinada`,
-      descricao: `Aceite ${parsed.data.acceptanceType === "sem_ressalvas" ? "sem ressalvas" : "com ressalvas"} · versão R${version} · recebedor: ${parsed.data.receiver.name}.`,
+      descricao: [
+        `Aceite ${parsed.data.acceptanceType === "sem_ressalvas" ? "sem ressalvas" : "com ressalvas"} · versão R${version} · recebedor: ${parsed.data.receiver.name}.`,
+        "Card avançado automaticamente para Pós-venda.",
+        packageSent ? `Pacote com termo e ${manualAttachments.length} manual(is) enviado automaticamente.` : "Pacote de entrega pendente de envio.",
+      ].join(" "),
       responsavelId: card.responsavelId,
     });
   }
 
-  if (lead?.telefone && documentUrl) {
-    const manualAttachments = parsed.data.manualAttachmentIds.length
-      ? await db.select().from(workCardAttachmentsTable).where(and(
-          eq(workCardAttachmentsTable.workCardId, card.id),
-          inArray(workCardAttachmentsTable.id, parsed.data.manualAttachmentIds),
-        ))
-      : [];
-    const packageLinks = [
-      `Termo assinado: ${documentUrl}`,
-      ...manualAttachments.map((attachment) => `Manual: ${attachment.url}`),
-    ];
-    sendDirectWhatsAppMessage(
-      card.tenantId,
-      lead.telefone,
-      ["✅ Entrega e vistoria concluídas.", ...packageLinks].join("\n"),
-      req.log,
-    ).catch((error) => req.log.warn({ err: error, workCardId: card.id }, "delivery-acceptance: envio ao cliente não realizado"));
-  }
-
-  res.json({ card: updated, acceptance, pdfStored: Boolean(documentUrl), documentUrl, attachmentId });
+  res.json({
+    card: updated,
+    acceptance,
+    pdfStored: Boolean(documentUrl),
+    publicDocumentUrl,
+    documentUrl,
+    attachmentId,
+    advancedToPostSale: true,
+    packageSent,
+    packagePending: !packageSent,
+  });
 });
 
 router.post("/work-cards/:id/delivery-package/send", async (req, res) => {
