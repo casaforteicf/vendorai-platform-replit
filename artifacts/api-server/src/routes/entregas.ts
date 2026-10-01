@@ -17,6 +17,14 @@ import {
   activitiesTable,
   leadsTable,
   usersTable,
+  installationChecklistTemplatesTable,
+  installationVisitsTable,
+  installationChecklistItemsTable,
+  installationOccurrencesTable,
+  insertInstallationTemplateSchema,
+  updateInstallationTemplateSchema,
+  updateInstallationVisitSchema,
+  updateInstallationChecklistItemSchema,
   type EntregaItem,
 } from "@workspace/db";
 import { buildUserFunctionFilter } from "../middlewares/auth.js";
@@ -194,6 +202,134 @@ function installationChecklistComplete(metadataInput: unknown) {
   if (checklistItems.length < sourceItems.length) return false;
   return checklistItems.every((item) => INSTALLATION_DONE_STATUSES.has(String(item.status || "")));
 }
+
+const INSTALLATION_EXCEPTION_STATUSES = new Set([
+  "instalado_com_ressalva",
+  "nao_instalado",
+  "peca_faltante",
+  "produto_avariado",
+  "divergencia_medida",
+  "necessita_retorno",
+]);
+
+function installationAttributes(source: Record<string, unknown>) {
+  const hidden = new Set([
+    "nome", "name", "descricao", "produto", "quantidade", "quantity", "qtd",
+    "produtoId", "sku", "propostaItemIndex", "quantidadePedido",
+    "preco", "precoUnitario", "valor", "valorUnitario", "subtotal", "total", "custo",
+  ]);
+  return Object.fromEntries(Object.entries(source).filter(([key, value]) =>
+    !hidden.has(key) && value !== null && value !== undefined && value !== ""
+  ));
+}
+
+function sourceItemCategory(source: Record<string, unknown>) {
+  return String(source.categoryKey || source.categoria || source.category || "").trim() || null;
+}
+
+function sourceItemProductId(source: Record<string, unknown>) {
+  return String(source.produtoId || source.productId || "").trim() || null;
+}
+
+function templateScore(template: typeof installationChecklistTemplatesTable.$inferSelect, source: Record<string, unknown>) {
+  const productId = sourceItemProductId(source);
+  const category = sourceItemCategory(source);
+  let score = 0;
+  if (template.productId) score += template.productId === productId ? 100 : -1000;
+  if (template.categoryKey) score += template.categoryKey === category ? 40 : -100;
+  if (!template.productId && !template.categoryKey) score += 1;
+  return score;
+}
+
+async function ensureInstallationVisitForCard(card: typeof workCardsTable.$inferSelect, metadataInput?: unknown) {
+  const [existingVisit] = await db.select().from(installationVisitsTable)
+    .where(and(eq(installationVisitsTable.tenantId, card.tenantId), eq(installationVisitsTable.workCardId, card.id)))
+    .orderBy(desc(installationVisitsTable.visitNumber))
+    .limit(1);
+  if (existingVisit) return existingVisit;
+
+  const metadata =
+    metadataInput && typeof metadataInput === "object" && !Array.isArray(metadataInput)
+      ? metadataInput as Record<string, unknown>
+      : card.metadata ?? {};
+  const sourceItems = Array.isArray(metadata.itens)
+    ? metadata.itens as Array<Record<string, unknown>>
+    : [];
+
+  const [visit] = await db.insert(installationVisitsTable).values({
+    tenantId: card.tenantId,
+    workCardId: card.id,
+    visitNumber: 1,
+    status: card.etapa === "instalacao_em_andamento" ? "in_progress" : "scheduled",
+    startedAt: card.etapa === "instalacao_em_andamento" ? new Date() : null,
+    responsibleId: card.responsavelId,
+    teamUserIds: card.responsavelId ? [card.responsavelId] : [],
+    metadata: { generatedFrom: "work_card", cardCode: card.codigo },
+  }).returning();
+
+  if (sourceItems.length === 0) return visit;
+
+  const templates = await db.select().from(installationChecklistTemplatesTable)
+    .where(and(
+      eq(installationChecklistTemplatesTable.tenantId, card.tenantId),
+      eq(installationChecklistTemplatesTable.active, true),
+    ));
+
+  const rows: Array<typeof installationChecklistItemsTable.$inferInsert> = [];
+  sourceItems.forEach((source, sourceIndex) => {
+    const ranked = templates
+      .map((template) => ({ template, score: templateScore(template, source) }))
+      .filter((entry) => entry.score >= 0)
+      .sort((a, b) => b.score - a.score);
+    const template = ranked[0]?.template;
+    const rules = template?.rules ?? {};
+    const checks = template?.checks?.length
+      ? template.checks
+      : [
+          { key: "execution", label: "Instalação/execução conforme pedido", required: true },
+          { key: "final_check", label: "Conferência final", required: true },
+        ];
+    const rawQty = Number(source.quantidade ?? source.quantity ?? source.qtd ?? 1);
+    const quantity = Number.isFinite(rawQty) && rawQty > 0 ? Math.max(1, Math.floor(rawQty)) : 1;
+    const expand = rules.expandQuantity === true && quantity <= 200;
+    const units = expand ? quantity : 1;
+    for (let unit = 0; unit < units; unit += 1) {
+      rows.push({
+        tenantId: card.tenantId,
+        visitId: visit.id,
+        workCardId: card.id,
+        sourceItemKey: normalizeInstallationItemKey(source, sourceIndex),
+        sourceItemIndex: sourceIndex,
+        unitIndex: expand ? unit + 1 : null,
+        productId: sourceItemProductId(source),
+        sku: typeof source.sku === "string" ? source.sku : null,
+        productName: String(source.nome || source.name || source.descricao || source.produto || "Item"),
+        quantity: expand ? 1 : quantity,
+        location: String(source.localizacao || source.location || source.ambiente || "").trim() || null,
+        attributes: installationAttributes(source),
+        checks,
+        status: "pending",
+        evidenceRequired: rules.evidenceRequired === true,
+        required: rules.required !== false,
+      });
+    }
+  });
+
+  if (rows.length) await db.insert(installationChecklistItemsTable).values(rows);
+  return visit;
+}
+
+async function normalizedInstallationComplete(card: typeof workCardsTable.$inferSelect) {
+  const items = await db.select().from(installationChecklistItemsTable).where(and(
+    eq(installationChecklistItemsTable.tenantId, card.tenantId),
+    eq(installationChecklistItemsTable.workCardId, card.id),
+  ));
+  if (items.length === 0) return installationChecklistComplete(card.metadata);
+  return items
+    .filter((item) => item.required)
+    .every((item) => ["installed", "verified", "instalado", "conferido"].includes(item.status));
+}
+
 
 function deliveryStage(input: {
   status: string;
@@ -1137,13 +1273,16 @@ router.patch("/work-cards/:id", async (req, res) => {
     targetPipeline === "execucao"
     && targetStage === "instalacao_finalizada"
     && targetStage !== existing.etapa
-    && !installationChecklistComplete(normalizedMetadata)
   ) {
-    res.status(409).json({
-      error: "INSTALLATION_CHECKLIST_INCOMPLETE",
-      message: "Conclua o checklist de instalação de todos os itens antes de finalizar a instalação.",
-    });
-    return;
+    const cardForValidation = { ...existing, metadata: normalizedMetadata ?? existing.metadata };
+    const domainComplete = await normalizedInstallationComplete(cardForValidation);
+    if (!domainComplete) {
+      res.status(409).json({
+        error: "INSTALLATION_CHECKLIST_INCOMPLETE",
+        message: "Conclua os itens obrigatórios do checklist e resolva as pendências antes de finalizar a instalação.",
+      });
+      return;
+    }
   }
 
   const data: Record<string, unknown> = {
@@ -1157,6 +1296,13 @@ router.patch("/work-cards/:id", async (req, res) => {
   if (finishing && !existing.dataFimEfetiva && !parsed.data.dataFimEfetiva) data.dataFimEfetiva = new Date();
 
   const [card] = await db.update(workCardsTable).set(data).where(eq(workCardsTable.id, existing.id)).returning();
+
+  if (
+    card.pipeline === "execucao"
+    && ["instalacao_a_iniciar", "instalacao_em_andamento"].includes(card.etapa)
+  ) {
+    await ensureInstallationVisitForCard(card, normalizedMetadata);
+  }
 
   if (card.etapa !== existing.etapa && card.leadId) {
     await recordWorkHistory({
@@ -1312,6 +1458,176 @@ Situação: resolvido.`,
   });
   await ensureWorkStageTask(continuation);
   res.json({ card: continuation, previousCard: closedAttempt, feedbackRequested: false, continuationCreated: true });
+});
+
+
+router.get("/tenants/:tenantId/installation-templates", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccessTenant(req, tenantId)) { res.status(403).json({ error: "Access denied to this tenant" }); return; }
+  const rows = await db.select().from(installationChecklistTemplatesTable)
+    .where(eq(installationChecklistTemplatesTable.tenantId, tenantId))
+    .orderBy(desc(installationChecklistTemplatesTable.updatedAt));
+  res.json(rows);
+});
+
+router.post("/tenants/:tenantId/installation-templates", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccessTenant(req, tenantId) || !isAdmin(req)) { res.status(403).json({ error: "Apenas administradores podem configurar templates." }); return; }
+  const parsed = insertInstallationTemplateSchema.safeParse({ ...req.body, tenantId });
+  if (!parsed.success) { res.status(422).json({ error: parsed.error.message, issues: parsed.error.issues }); return; }
+  const [row] = await db.insert(installationChecklistTemplatesTable).values(parsed.data).returning();
+  res.status(201).json(row);
+});
+
+router.patch("/tenants/:tenantId/installation-templates/:templateId", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccessTenant(req, tenantId) || !isAdmin(req)) { res.status(403).json({ error: "Apenas administradores podem configurar templates." }); return; }
+  const parsed = updateInstallationTemplateSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(422).json({ error: parsed.error.message, issues: parsed.error.issues }); return; }
+  const [row] = await db.update(installationChecklistTemplatesTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(and(
+      eq(installationChecklistTemplatesTable.id, String(req.params.templateId)),
+      eq(installationChecklistTemplatesTable.tenantId, tenantId),
+    )).returning();
+  if (!row) { res.status(404).json({ error: "Template não encontrado" }); return; }
+  res.json(row);
+});
+
+router.get("/work-cards/:id/installation", async (req, res) => {
+  const [card] = await db.select().from(workCardsTable).where(eq(workCardsTable.id, String(req.params.id))).limit(1);
+  if (!card) { res.status(404).json({ error: "Card operacional não encontrado" }); return; }
+  if (!canAccessTenant(req, card.tenantId)) { res.status(403).json({ error: "Access denied to this tenant" }); return; }
+  if (restrictedToOwnWork(req) && card.responsavelId && card.responsavelId !== req.user?.sub) { res.status(403).json({ error: "Este card pertence a outro responsável" }); return; }
+  if (card.pipeline !== "execucao") { res.status(422).json({ error: "Instalação disponível apenas na pipeline de execução" }); return; }
+
+  const visit = await ensureInstallationVisitForCard(card);
+  const [visits, items, occurrences] = await Promise.all([
+    db.select().from(installationVisitsTable).where(and(
+      eq(installationVisitsTable.tenantId, card.tenantId),
+      eq(installationVisitsTable.workCardId, card.id),
+    )).orderBy(installationVisitsTable.visitNumber),
+    db.select().from(installationChecklistItemsTable).where(and(
+      eq(installationChecklistItemsTable.tenantId, card.tenantId),
+      eq(installationChecklistItemsTable.workCardId, card.id),
+    )).orderBy(installationChecklistItemsTable.sourceItemIndex, installationChecklistItemsTable.unitIndex),
+    db.select().from(installationOccurrencesTable).where(and(
+      eq(installationOccurrencesTable.tenantId, card.tenantId),
+      eq(installationOccurrencesTable.workCardId, card.id),
+    )).orderBy(desc(installationOccurrencesTable.createdAt)),
+  ]);
+  res.json({ currentVisitId: visit.id, visits, items, occurrences });
+});
+
+router.post("/work-cards/:id/installation/visits", async (req, res) => {
+  const [card] = await db.select().from(workCardsTable).where(eq(workCardsTable.id, String(req.params.id))).limit(1);
+  if (!card) { res.status(404).json({ error: "Card operacional não encontrado" }); return; }
+  if (!canAccessTenant(req, card.tenantId)) { res.status(403).json({ error: "Access denied to this tenant" }); return; }
+  const visits = await db.select().from(installationVisitsTable).where(and(
+    eq(installationVisitsTable.tenantId, card.tenantId),
+    eq(installationVisitsTable.workCardId, card.id),
+  )).orderBy(desc(installationVisitsTable.visitNumber));
+  const visitNumber = (visits[0]?.visitNumber ?? 0) + 1;
+  const [visit] = await db.insert(installationVisitsTable).values({
+    tenantId: card.tenantId,
+    workCardId: card.id,
+    visitNumber,
+    status: "scheduled",
+    scheduledAt: req.body?.scheduledAt ? new Date(req.body.scheduledAt) : null,
+    responsibleId: req.body?.responsibleId || card.responsavelId,
+    teamUserIds: Array.isArray(req.body?.teamUserIds) ? req.body.teamUserIds : (card.responsavelId ? [card.responsavelId] : []),
+    notes: typeof req.body?.notes === "string" ? req.body.notes : null,
+    metadata: { reason: req.body?.reason || "return_or_additional_visit" },
+  }).returning();
+
+  const previousItems = await db.select().from(installationChecklistItemsTable).where(and(
+    eq(installationChecklistItemsTable.tenantId, card.tenantId),
+    eq(installationChecklistItemsTable.workCardId, card.id),
+  ));
+  const pending = previousItems.filter((item) => !["installed", "verified", "instalado", "conferido"].includes(item.status));
+  if (pending.length) {
+    await db.insert(installationChecklistItemsTable).values(pending.map((item) => ({
+      tenantId: item.tenantId, visitId: visit.id, workCardId: item.workCardId,
+      sourceItemKey: item.sourceItemKey, sourceItemIndex: item.sourceItemIndex, unitIndex: item.unitIndex,
+      productId: item.productId, sku: item.sku, productName: item.productName, quantity: item.quantity,
+      location: item.location, attributes: item.attributes, checks: item.checks,
+      status: "pending", observation: item.observation, evidenceRequired: item.evidenceRequired, required: item.required,
+    })));
+  }
+  res.status(201).json(visit);
+});
+
+router.patch("/installation-visits/:visitId", async (req, res) => {
+  const [visit] = await db.select().from(installationVisitsTable).where(eq(installationVisitsTable.id, String(req.params.visitId))).limit(1);
+  if (!visit) { res.status(404).json({ error: "Visita não encontrada" }); return; }
+  if (!canAccessTenant(req, visit.tenantId)) { res.status(403).json({ error: "Access denied to this tenant" }); return; }
+  const parsed = updateInstallationVisitSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(422).json({ error: parsed.error.message, issues: parsed.error.issues }); return; }
+  const [row] = await db.update(installationVisitsTable).set({ ...parsed.data, updatedAt: new Date() })
+    .where(eq(installationVisitsTable.id, visit.id)).returning();
+  res.json(row);
+});
+
+router.patch("/installation-checklist-items/:itemId", async (req, res) => {
+  const [item] = await db.select().from(installationChecklistItemsTable)
+    .where(eq(installationChecklistItemsTable.id, String(req.params.itemId))).limit(1);
+  if (!item) { res.status(404).json({ error: "Item do checklist não encontrado" }); return; }
+  if (!canAccessTenant(req, item.tenantId)) { res.status(403).json({ error: "Access denied to this tenant" }); return; }
+  const parsed = updateInstallationChecklistItemSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(422).json({ error: parsed.error.message, issues: parsed.error.issues }); return; }
+
+  const status = parsed.data.status ?? item.status;
+  const now = new Date();
+  const done = ["installed", "verified", "instalado", "conferido"].includes(status);
+  const [row] = await db.update(installationChecklistItemsTable).set({
+    ...parsed.data,
+    ...(done ? { completedAt: parsed.data.completedAt ?? now, completedBy: parsed.data.completedBy ?? req.user?.sub ?? null } : {}),
+    updatedAt: now,
+  }).where(eq(installationChecklistItemsTable.id, item.id)).returning();
+
+  if (INSTALLATION_EXCEPTION_STATUSES.has(status)) {
+    const [openOccurrence] = await db.select().from(installationOccurrencesTable).where(and(
+      eq(installationOccurrencesTable.tenantId, item.tenantId),
+      eq(installationOccurrencesTable.checklistItemId, item.id),
+      eq(installationOccurrencesTable.status, "open"),
+    )).limit(1);
+    if (!openOccurrence) {
+      await db.insert(installationOccurrencesTable).values({
+        tenantId: item.tenantId,
+        workCardId: item.workCardId,
+        visitId: item.visitId,
+        checklistItemId: item.id,
+        type: status,
+        status: "open",
+        description: parsed.data.observation || item.observation || `Ocorrência gerada automaticamente para ${item.productName}.`,
+        responsibleId: req.user?.sub ?? null,
+        metadata: { source: "installation_checklist", automatic: true },
+      });
+    }
+  }
+  res.json(row);
+});
+
+router.patch("/installation-occurrences/:occurrenceId", async (req, res) => {
+  const [occurrence] = await db.select().from(installationOccurrencesTable)
+    .where(eq(installationOccurrencesTable.id, String(req.params.occurrenceId))).limit(1);
+  if (!occurrence) { res.status(404).json({ error: "Ocorrência não encontrada" }); return; }
+  if (!canAccessTenant(req, occurrence.tenantId)) { res.status(403).json({ error: "Access denied to this tenant" }); return; }
+  const schema = z.object({
+    status: z.enum(["open", "in_progress", "resolved", "cancelled"]).optional(),
+    description: z.string().max(10000).optional(),
+    responsibleId: z.string().nullable().optional(),
+    dueAt: z.coerce.date().nullable().optional(),
+    resolution: z.string().max(10000).nullable().optional(),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) { res.status(422).json({ error: parsed.error.message, issues: parsed.error.issues }); return; }
+  const [row] = await db.update(installationOccurrencesTable).set({
+    ...parsed.data,
+    resolvedAt: parsed.data.status === "resolved" ? new Date() : occurrence.resolvedAt,
+    updatedAt: new Date(),
+  }).where(eq(installationOccurrencesTable.id, occurrence.id)).returning();
+  res.json(row);
 });
 
 router.get("/work-cards/:id/attachments", async (req, res) => {
