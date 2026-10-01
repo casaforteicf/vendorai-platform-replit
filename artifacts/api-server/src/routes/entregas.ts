@@ -1510,6 +1510,42 @@ Situação: resolvido.`,
 });
 
 
+router.get("/tenants/:tenantId/installation-metrics", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccessTenant(req, tenantId)) { res.status(403).json({ error: "Access denied to this tenant" }); return; }
+
+  const [visits, items, occurrences] = await Promise.all([
+    db.select().from(installationVisitsTable).where(eq(installationVisitsTable.tenantId, tenantId)),
+    db.select().from(installationChecklistItemsTable).where(eq(installationChecklistItemsTable.tenantId, tenantId)),
+    db.select().from(installationOccurrencesTable).where(eq(installationOccurrencesTable.tenantId, tenantId)),
+  ]);
+
+  const cards = new Map<string, { visits: number; accepted: boolean }>();
+  for (const visit of visits) {
+    const current = cards.get(visit.workCardId) ?? { visits: 0, accepted: false };
+    current.visits = Math.max(current.visits, visit.visitNumber);
+    current.accepted = current.accepted || visit.customerAcceptanceStatus === "accepted";
+    cards.set(visit.workCardId, current);
+  }
+  const occurrenceTypes: Record<string, number> = {};
+  for (const occurrence of occurrences) occurrenceTypes[occurrence.type] = (occurrenceTypes[occurrence.type] ?? 0) + 1;
+  const doneItems = items.filter((item) => ["installed", "verified", "instalado", "conferido"].includes(item.status)).length;
+
+  res.json({
+    installations: cards.size,
+    accepted: Array.from(cards.values()).filter((value) => value.accepted).length,
+    firstVisitAccepted: Array.from(cards.values()).filter((value) => value.accepted && value.visits === 1).length,
+    returns: Array.from(cards.values()).filter((value) => value.visits > 1).length,
+    visits: visits.length,
+    checklistItems: items.length,
+    completedChecklistItems: doneItems,
+    completionRate: items.length ? Number(((doneItems / items.length) * 100).toFixed(1)) : 0,
+    occurrences: occurrences.length,
+    openOccurrences: occurrences.filter((occurrence) => occurrence.status === "open" || occurrence.status === "in_progress").length,
+    occurrenceTypes,
+  });
+});
+
 router.get("/tenants/:tenantId/installation-templates", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   if (!canAccessTenant(req, tenantId)) { res.status(403).json({ error: "Access denied to this tenant" }); return; }
@@ -1691,13 +1727,18 @@ router.patch("/installation-occurrences/:occurrenceId", async (req, res) => {
 });
 
 
-async function acceptanceSignatureDataUrl(storage: ObjectStorageService, url: string) {
+async function acceptanceSignatureData(storage: ObjectStorageService, url: string) {
   const objectPath = url.startsWith("/api/storage/") ? url.slice("/api/storage".length) : url;
-  if (!objectPath.startsWith("/objects/")) return url;
+  if (!objectPath.startsWith("/objects/")) {
+    return { dataUrl: url, digest: createHash("sha256").update(url).digest("hex") };
+  }
   const file = await storage.getObjectEntityFile(objectPath);
   const [[buffer], [metadata]] = await Promise.all([file.download(), file.getMetadata()]);
   const contentType = metadata.contentType || "image/png";
-  return `data:${contentType};base64,${buffer.toString("base64")}`;
+  return {
+    dataUrl: `data:${contentType};base64,${buffer.toString("base64")}`,
+    digest: createHash("sha256").update(buffer).digest("hex"),
+  };
 }
 
 const installationAcceptanceSchema = z.object({
@@ -1748,7 +1789,7 @@ router.post("/installation-visits/:visitId/accept", async (req, res) => {
 
   const [tenant, lead, deal, responsible, items] = await Promise.all([
     db.select({ name: tenantsTable.name }).from(tenantsTable).where(eq(tenantsTable.id, card.tenantId)).limit(1).then((rows) => rows[0] ?? null),
-    card.leadId ? db.select({ nome: leadsTable.nome, empresa: leadsTable.empresa }).from(leadsTable).where(eq(leadsTable.id, card.leadId)).limit(1).then((rows) => rows[0] ?? null) : Promise.resolve(null),
+    card.leadId ? db.select({ nome: leadsTable.nome, empresa: leadsTable.empresa, telefone: leadsTable.telefone }).from(leadsTable).where(eq(leadsTable.id, card.leadId)).limit(1).then((rows) => rows[0] ?? null) : Promise.resolve(null),
     card.dealId ? db.select({ titulo: dealsTable.titulo }).from(dealsTable).where(eq(dealsTable.id, card.dealId)).limit(1).then((rows) => rows[0] ?? null) : Promise.resolve(null),
     card.responsavelId ? db.select({ name: usersTable.name, email: usersTable.email }).from(usersTable).where(eq(usersTable.id, card.responsavelId)).limit(1).then((rows) => rows[0] ?? null) : Promise.resolve(null),
     db.select().from(installationChecklistItemsTable).where(and(
@@ -1756,6 +1797,32 @@ router.post("/installation-visits/:visitId/accept", async (req, res) => {
       eq(installationChecklistItemsTable.visitId, visit.id),
     )).orderBy(installationChecklistItemsTable.sourceItemIndex, installationChecklistItemsTable.unitIndex),
   ]);
+
+  const templates = await db.select().from(installationChecklistTemplatesTable).where(and(
+    eq(installationChecklistTemplatesTable.tenantId, card.tenantId),
+    eq(installationChecklistTemplatesTable.active, true),
+  ));
+  const documentUrls = new Set<string>();
+  const postSaleDays: number[] = [];
+  for (const item of items) {
+    const source: Record<string, unknown> = {
+      ...(item.attributes ?? {}),
+      produtoId: item.productId,
+      sku: item.sku,
+    };
+    const ranked = templates
+      .map((template) => ({ template, score: templateScore(template, source, card.metadata ?? {}) }))
+      .filter((entry) => entry.score >= 0)
+      .sort((a, b) => b.score - a.score);
+    const rules = ranked[0]?.template.rules ?? {};
+    const manuals = Array.isArray(rules.manualUrls) ? rules.manualUrls : [];
+    const warranties = Array.isArray(rules.warrantyUrls) ? rules.warrantyUrls : [];
+    for (const value of [...manuals, ...warranties]) {
+      if (typeof value === "string" && value.trim()) documentUrls.add(value.trim());
+    }
+    const days = Number(rules.postSaleAfterDays);
+    if (Number.isFinite(days) && days > 0) postSaleDays.push(Math.floor(days));
+  }
 
   const acceptedAt = new Date().toISOString();
   const snapshotWithoutHash = {
@@ -1772,6 +1839,7 @@ router.post("/installation-visits/:visitId/accept", async (req, res) => {
     companySignatureUrl: parsed.data.companySignatureUrl,
     responsibleName: responsible?.name || responsible?.email || null,
     visitNumber: visit.visitNumber,
+    documents: Array.from(documentUrls),
     items: items.map((item) => ({
       productName: item.productName,
       quantity: item.quantity,
@@ -1782,18 +1850,21 @@ router.post("/installation-visits/:visitId/accept", async (req, res) => {
       attributes: item.attributes,
     })),
   };
-  const hash = createHash("sha256").update(JSON.stringify(snapshotWithoutHash)).digest("hex");
-  const snapshot: InstallationAcceptanceSnapshot = { hash, ...snapshotWithoutHash };
-
   const storage = new ObjectStorageService();
-  const [customerSignatureDataUrl, companySignatureDataUrl] = await Promise.all([
-    acceptanceSignatureDataUrl(storage, parsed.data.customerSignatureUrl),
-    acceptanceSignatureDataUrl(storage, parsed.data.companySignatureUrl),
+  const [customerSignature, companySignature] = await Promise.all([
+    acceptanceSignatureData(storage, parsed.data.customerSignatureUrl),
+    acceptanceSignatureData(storage, parsed.data.companySignatureUrl),
   ]);
+  const hash = createHash("sha256")
+    .update(JSON.stringify(snapshotWithoutHash))
+    .update(customerSignature.digest)
+    .update(companySignature.digest)
+    .digest("hex");
+  const snapshot: InstallationAcceptanceSnapshot = { hash, ...snapshotWithoutHash };
   const pdf = await generateInstallationAcceptancePdf({
     ...snapshot,
-    customerSignatureUrl: customerSignatureDataUrl,
-    companySignatureUrl: companySignatureDataUrl,
+    customerSignatureUrl: customerSignature.dataUrl,
+    companySignatureUrl: companySignature.dataUrl,
   });
   const objectPath = await storage.savePrivateBuffer(pdf, "application/pdf", `termo-instalacao-${card.codigo}.pdf`);
   const servedUrl = `/api/storage${objectPath}`;
@@ -1849,7 +1920,51 @@ router.post("/installation-visits/:visitId/accept", async (req, res) => {
     });
   }
 
-  res.status(201).json({ visit: updatedVisit, attachment, hash });
+  if (card.leadId && postSaleDays.length > 0) {
+    const days = Math.min(...postSaleDays);
+    const title = `Pós-venda pós-instalação — ${card.codigo}`;
+    const [existingPostSale] = await db.select({ id: activitiesTable.id }).from(activitiesTable).where(and(
+      eq(activitiesTable.tenantId, card.tenantId),
+      eq(activitiesTable.leadId, card.leadId),
+      eq(activitiesTable.titulo, title),
+      eq(activitiesTable.status, "planejado"),
+    )).limit(1);
+    if (!existingPostSale) {
+      await db.insert(activitiesTable).values({
+        tenantId: card.tenantId,
+        leadId: card.leadId,
+        dealId: card.dealId,
+        tipo: "tarefa",
+        titulo: title,
+        descricao: "Retorno automático configurado pelo template do produto após a instalação.",
+        status: "planejado",
+        responsavelId: card.responsavelId,
+        dataVencimento: new Date(Date.now() + days * 24 * 60 * 60 * 1000),
+      });
+    }
+  }
+
+  if (lead?.telefone) {
+    const links = Array.from(documentUrls);
+    const acceptanceUrl = `https://app.appvendorai.com${attachment.url}`;
+    const message = [
+      `Olá, ${lead.nome || "cliente"}. A instalação do pedido ${deal?.titulo || card.codigo} foi concluída e aceita.`,
+      `Termo de instalação e aceite: ${acceptanceUrl}`,
+      links.length ? "Manuais/garantias aplicáveis:" : null,
+      ...links,
+    ].filter(Boolean).join("\n");
+    sendDirectWhatsAppMessage(card.tenantId, lead.telefone, message, req.log).catch((err) => {
+      req.log.warn({ err, workCardId: card.id }, "installation-acceptance: não foi possível enviar documentos ao cliente");
+    });
+  }
+
+  res.status(201).json({
+    visit: updatedVisit,
+    attachment,
+    hash,
+    documents: Array.from(documentUrls),
+    postSaleAfterDays: postSaleDays.length ? Math.min(...postSaleDays) : null,
+  });
 });
 
 router.get("/installation-visits/:visitId/acceptance", async (req, res) => {
