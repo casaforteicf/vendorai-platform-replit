@@ -1581,16 +1581,6 @@ export default function ConceptPlan2D({
                         ))}
                       </text>
                     )}
-                    <text
-                      x={space.centroid.x}
-                      y={space.centroid.y + badgeHeight / 2 - 0.18}
-                      textAnchor="middle"
-                      fontSize={areaFontSize}
-                      fontWeight="800"
-                      fill={selectedSpace ? "#c2410c" : "#475569"}
-                    >
-                      {space.area.toFixed(1)} m²
-                    </text>
                   </g>
                 );
               })()}
@@ -1602,7 +1592,6 @@ export default function ConceptPlan2D({
           const selected = selectedId === room.id;
           const fill = floorMaterialFill(roomFloorMaterials[room.id]) ?? ROOM_FILL[room.kind] ?? "#ffffff";
           const isPool = room.kind === "piscina";
-          const area = room.width * room.depth;
           const labelLines = splitRoomLabel(room.label);
           const labelSize = room.kind === "escada" ? 0.25 : fitLabelSize(room.label, room.width, room.depth);
           return (
@@ -1707,18 +1696,6 @@ export default function ConceptPlan2D({
                           </tspan>
                         ))}
                       </text>
-                      {room.width >= 2.1 && room.depth >= 1.8 && (
-                        <text
-                          x={room.x + room.width / 2}
-                          y={room.y + room.depth / 2 + (labelLines.length > 1 ? 0.42 : 0.30)}
-                          textAnchor="middle"
-                          fontSize="0.21"
-                          fontWeight="650"
-                          fill="#64748b"
-                        >
-                          {area.toFixed(1)} m²
-                        </text>
-                      )}
                     </>
                   )}
                 </>
@@ -2794,7 +2771,7 @@ export default function ConceptPlan2D({
             })()}
 
             {customWalls
-              .filter((wall) => wall.id === selectedCustomWallId && wallLength(wall) >= 0.5)
+              .filter((wall) => wall.floor === activeFloor && wallLength(wall) >= 0.5)
               .map((wall) => {
                 const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
                 const length = wallLength(wall);
@@ -2803,17 +2780,26 @@ export default function ConceptPlan2D({
                 const offsetX = horizontal ? 0 : (wall.x1 <= lotWidth / 2 ? -offset : offset);
                 const offsetY = horizontal ? (wall.y1 <= lotDepth / 2 ? -offset : offset) : 0;
                 return (
-                  <DimensionLine
+                  <g
                     key={`dimension-${wall.id}`}
-                    x1={wall.x1}
-                    y1={wall.y1}
-                    x2={wall.x2}
-                    y2={wall.y2}
-                    offsetX={offsetX}
-                    offsetY={offsetY}
-                    label={`${length.toFixed(2).replace(".", ",")} m`}
-                    tone={selected ? "#ea580c" : "#64748b"}
-                  />
+                    role="button"
+                    className="cursor-pointer"
+                    onPointerDown={(event) => {
+                      event.stopPropagation();
+                      onSelectCustomWall?.(wall.id);
+                    }}
+                  >
+                    <DimensionLine
+                      x1={wall.x1}
+                      y1={wall.y1}
+                      x2={wall.x2}
+                      y2={wall.y2}
+                      offsetX={offsetX}
+                      offsetY={offsetY}
+                      label={`${length.toFixed(2).replace(".", ",")} m`}
+                      tone={selected ? "#ea580c" : "#64748b"}
+                    />
+                  </g>
                 );
               })}
           </g>
