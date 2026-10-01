@@ -270,6 +270,10 @@ function expeditionGateStatus(metadata: Record<string, unknown> | null | undefin
   const concluidos = Number(checklist.concluidos ?? 0);
   const totalCampos = Number(checklist.totalCampos ?? 0);
   const verifier = checklist.verificacaoFinal?.nomeVerificador?.trim();
+  const override = metadata?.expedicaoOverride as { aprovado?: boolean; justificativa?: string; aprovadoPor?: string; aprovadoEm?: string } | undefined;
+  if (override?.aprovado && override.justificativa?.trim() && override.aprovadoPor && override.aprovadoEm) {
+    return { ready: true as const, reason: null, override: true as const };
+  }
   if (divergencias > 0) return { ready: false, reason: `Existem ${divergencias} divergência(s) pendentes na expedição.` };
   if (!totalCampos || concluidos < totalCampos) return { ready: false, reason: "A conferência de expedição ainda possui campos pendentes." };
   if (!verifier) return { ready: false, reason: "Informe o verificador final da expedição." };
@@ -277,7 +281,7 @@ function expeditionGateStatus(metadata: Record<string, unknown> | null | undefin
   return { ready: true as const, reason: null };
 }
 
-function buildTransportChecklist() {
+function buildTransportChecklist(items: Array<{ nome?: string; quantidade?: number; sku?: string | null; produtoId?: string | null }> = []) {
   const labels = [
     "Volumes carregados conferidos",
     "Integridade da carga",
@@ -300,6 +304,16 @@ function buildTransportChecklist() {
       status: "pendente",
       observacao: "",
     })),
+    itens: items.map((item, index) => ({
+      id: item.produtoId ?? item.sku ?? `item-${index}`,
+      produtoId: item.produtoId ?? null,
+      sku: item.sku ?? null,
+      nome: item.nome ?? `Item ${index + 1}`,
+      quantidadePrevista: Number(item.quantidade ?? 0),
+      quantidadeCarregada: null,
+      quantidadeRecebida: null,
+      ocorrencia: "",
+    })),
     saida: {
       veiculo: "",
       placa: "",
@@ -307,6 +321,11 @@ function buildTransportChecklist() {
       horarioSaida: null,
       destino: "",
       lacre: "",
+    },
+    recebimento: {
+      recebidoPor: "",
+      recebidoEm: null,
+      observacoes: "",
     },
   };
 }
@@ -851,7 +870,7 @@ router.patch("/entregas/:id", async (req, res) => {
         loteNumero: entrega.loteNumero,
         itens: entrega.itens,
         ...(nextStage === "em_transporte" && linkedCard.etapa !== "em_transporte"
-          ? { checklistTransporte: (linkedCard.metadata as Record<string, unknown> | null)?.checklistTransporte ?? buildTransportChecklist() }
+          ? { checklistTransporte: (linkedCard.metadata as Record<string, unknown> | null)?.checklistTransporte ?? buildTransportChecklist(entrega.itens) }
           : {}),
       },
       updatedAt: new Date(),
@@ -1243,8 +1262,31 @@ router.patch("/work-cards/:id", async (req, res) => {
 
   if (existing.pipeline === "execucao" && existing.tipo === "entrega" && targetStage === "em_transporte" && existing.etapa !== "em_transporte") {
     const gate = expeditionGateStatus(existing.metadata);
-    const override = Boolean((parsed.data.metadata as Record<string, unknown> | undefined)?.expedicaoOverride);
-    if (!gate.ready && !(isAdmin(req) && override)) {
+    const incomingOverride = (parsed.data.metadata as Record<string, unknown> | undefined)?.expedicaoOverride as {
+      aprovado?: boolean;
+      justificativa?: string;
+    } | undefined;
+    const overrideRequested = Boolean(incomingOverride?.aprovado);
+    if (overrideRequested) {
+      if (!isAdmin(req)) {
+        res.status(403).json({ error: "EXPEDITION_OVERRIDE_ADMIN_REQUIRED", message: "Somente administrador pode liberar com ressalva." });
+        return;
+      }
+      if (!incomingOverride?.justificativa?.trim()) {
+        res.status(422).json({ error: "EXPEDITION_OVERRIDE_REASON_REQUIRED", message: "Informe a justificativa da liberação com ressalva." });
+        return;
+      }
+      parsed.data.metadata = {
+        ...(parsed.data.metadata ?? {}),
+        expedicaoOverride: {
+          ...incomingOverride,
+          aprovado: true,
+          aprovadoPor: req.user?.sub ?? null,
+          aprovadoEm: new Date().toISOString(),
+        },
+      };
+    }
+    if (!gate.ready && !overrideRequested) {
       res.status(409).json({
         error: "EXPEDITION_CHECKLIST_REQUIRED",
         message: gate.reason,
@@ -1258,7 +1300,9 @@ router.patch("/work-cards/:id", async (req, res) => {
     const metadata = (data.metadata as Record<string, unknown> | undefined) ?? existing.metadata ?? {};
     data.metadata = {
       ...metadata,
-      checklistTransporte: metadata.checklistTransporte ?? buildTransportChecklist(),
+      checklistTransporte: metadata.checklistTransporte ?? buildTransportChecklist(
+        Array.isArray(metadata.itens) ? metadata.itens as Array<{ nome?: string; quantidade?: number; sku?: string | null; produtoId?: string | null }> : [],
+      ),
     };
   }
   const starting = ["producao_em_andamento", "em_transporte", "instalacao_em_andamento", "execucao_assistencia"].includes(targetStage);
@@ -1280,7 +1324,9 @@ router.patch("/work-cards/:id", async (req, res) => {
           {
             at: new Date().toISOString(),
             userId: req.user?.sub ?? null,
-            action: expeditionChanged ? "checklist_expedicao_atualizado" : "checklist_transporte_atualizado",
+            action: (nextMetadata.expedicaoOverride && JSON.stringify(previousMetadata.expedicaoOverride ?? null) !== JSON.stringify(nextMetadata.expedicaoOverride ?? null))
+              ? "expedicao_liberada_com_ressalva"
+              : expeditionChanged ? "checklist_expedicao_atualizado" : "checklist_transporte_atualizado",
           },
         ].slice(-200),
       };
