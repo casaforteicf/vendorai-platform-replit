@@ -12,6 +12,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SupportReportPanel } from "@/components/SupportReportPanel";
 import { PipelineNav, PIPELINE_CARD_CLASS, PIPELINE_COLUMN_CLASS, PIPELINE_COLUMN_HEADER_CLASS } from "@/components/PipelineNav";
+import { InstallationTemplateDialog } from "@/components/InstallationTemplateDialog";
 import {
   AlertTriangle,
   CalendarDays,
@@ -319,6 +320,7 @@ export default function PipelineOperacional() {
   const [selectedCard, setSelectedCard] = useState<WorkCard | null>(null);
   const [supportOpen, setSupportOpen] = useState(false);
   const [deliveryOpen, setDeliveryOpen] = useState(false);
+  const [installationTemplatesOpen, setInstallationTemplatesOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const detailFileRef = useRef<HTMLInputElement>(null);
 
@@ -523,9 +525,12 @@ export default function PipelineOperacional() {
           <h1 className="text-2xl font-bold tracking-tight">Pipeline</h1>
           <p className="text-sm text-muted-foreground">Comercial, execução, suporte, aquecimento e parceiros ligados à mesma base de clientes.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {pipeline === "execucao" ? (
-            <Button onClick={() => setDeliveryOpen(true)} className="gap-2"><Truck className="h-4 w-4" /> Liberar itens para entrega</Button>
+            <>
+              {isAdmin && <Button variant="outline" onClick={() => setInstallationTemplatesOpen(true)} className="gap-2"><ClipboardCheck className="h-4 w-4" /> Configurar instalação</Button>}
+              <Button onClick={() => setDeliveryOpen(true)} className="gap-2"><Truck className="h-4 w-4" /> Liberar itens para entrega</Button>
+            </>
           ) : (
             <Button onClick={() => setSupportOpen(true)} className="gap-2"><Wrench className="h-4 w-4" /> Novo chamado</Button>
           )}
@@ -1021,6 +1026,13 @@ export default function PipelineOperacional() {
           await queryClient.invalidateQueries({ queryKey: ["work-cards", tenantId, "suporte"] });
           if (pipeline !== "suporte") setPipeline("suporte");
         }}
+      />
+
+      <InstallationTemplateDialog
+        open={installationTemplatesOpen}
+        onOpenChange={setInstallationTemplatesOpen}
+        tenantId={tenantId}
+        token={token ?? ""}
       />
 
       <DeliveryDialog
