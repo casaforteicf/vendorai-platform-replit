@@ -214,6 +214,7 @@ async function notifyOwner(input: {
     `Etapa: ${input.stage}`,
     `Responsável: ${owner.name || "não informado"}`,
     input.title,
+    `🔗 Abrir atendimento: https://app.appvendorai.com/pipeline-operacional/suporte?card=${encodeURIComponent(input.cardId)}`,
     images.length ? `Imagens anexadas: ${images.length}` : "Imagens anexadas: nenhuma",
     ...fallbackImageLinks,
   ].filter(Boolean).join("\n");
