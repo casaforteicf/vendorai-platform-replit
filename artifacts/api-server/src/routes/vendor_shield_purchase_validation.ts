@@ -143,7 +143,7 @@ router.post("/tenants/:tenantId/purchase-validations/:validationId/steps/:method
     verified=req.body?.providerVerified===true || req.body?.manualVerified===true;
     snapshot={verificationType:req.body?.providerVerified===true?"provider":"manual",documentType:req.body?.documentType||null};
   }else if(method==="manual_review"){
-    const user=(req as any).user; if(user?.platformRole!=="super_admin"&&user?.role!=="tenant_admin")return res.status(403).json({error:"A revisão manual exige administrador."});
+    const user=(req as any).user; if(user?.platformRole!=="super_admin"&&user?.platformRole!=="tenant_admin"&&user?.role!=="admin")return res.status(403).json({error:"A revisão manual exige administrador."});
     verified=req.body?.approved===true; snapshot={note:typeof req.body?.note==="string"?req.body.note:null};
   }
   await vendorPool.query(`UPDATE vendor_shield_validation_steps SET status=$1,provider=coalesce($2,provider),provider_reference=coalesce($3,provider_reference),evidence_url=coalesce($4,evidence_url),evidence_hash=coalesce($5,evidence_hash),verification_snapshot=$6::jsonb,verified_by=$7,verified_at=CASE WHEN $1='verified' THEN now() ELSE verified_at END,updated_at=now() WHERE id=$8`,[verified?"verified":"failed",provider,providerReference,evidenceUrl,evidenceHash,JSON.stringify(snapshot),actorId(req),step.id]);
