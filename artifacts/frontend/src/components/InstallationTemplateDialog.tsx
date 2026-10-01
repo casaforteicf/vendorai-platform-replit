@@ -43,6 +43,9 @@ export function InstallationTemplateDialog({
   const [productId, setProductId] = useState("");
   const [expandQuantity, setExpandQuantity] = useState(false);
   const [evidenceRequired, setEvidenceRequired] = useState(false);
+  const [manualUrls, setManualUrls] = useState("");
+  const [warrantyUrls, setWarrantyUrls] = useState("");
+  const [postSaleAfterDays, setPostSaleAfterDays] = useState("7");
   const [checks, setChecks] = useState<DraftCheck[]>([
     { label: "Instalação/execução conforme pedido", required: true },
     { label: "Conferência final", required: true },
@@ -97,7 +100,14 @@ export function InstallationTemplateDialog({
           categoryKey: categoryKey.trim() || null,
           productId: productId.trim() || null,
           active: true,
-          rules: { expandQuantity, evidenceRequired, required: true },
+          rules: {
+            expandQuantity,
+            evidenceRequired,
+            required: true,
+            manualUrls: manualUrls.split(/[\n,;]/).map((value) => value.trim()).filter(Boolean),
+            warrantyUrls: warrantyUrls.split(/[\n,;]/).map((value) => value.trim()).filter(Boolean),
+            postSaleAfterDays: Number(postSaleAfterDays) > 0 ? Number(postSaleAfterDays) : null,
+          },
           checks: validChecks.map((check, index) => ({
             key: `check_${index + 1}`,
             label: check.label.trim(),
@@ -113,6 +123,9 @@ export function InstallationTemplateDialog({
       setProductId("");
       setExpandQuantity(false);
       setEvidenceRequired(false);
+      setManualUrls("");
+      setWarrantyUrls("");
+      setPostSaleAfterDays("7");
       setChecks([
         { label: "Instalação/execução conforme pedido", required: true },
         { label: "Conferência final", required: true },
@@ -184,6 +197,31 @@ export function InstallationTemplateDialog({
                 <input type="checkbox" checked={evidenceRequired} onChange={(e) => setEvidenceRequired(e.target.checked)} />
                 Exigir evidência por item
               </label>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium">Manuais aplicáveis</label>
+                <textarea
+                  className="min-h-20 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  value={manualUrls}
+                  onChange={(e) => setManualUrls(e.target.value)}
+                  placeholder="Um link por linha"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium">Garantias aplicáveis</label>
+                <textarea
+                  className="min-h-20 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  value={warrantyUrls}
+                  onChange={(e) => setWarrantyUrls(e.target.value)}
+                  placeholder="Um link por linha"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium">Pós-venda após quantos dias?</label>
+                <Input type="number" min={1} value={postSaleAfterDays} onChange={(e) => setPostSaleAfterDays(e.target.value)} />
+              </div>
             </div>
 
             <div className="space-y-2">
