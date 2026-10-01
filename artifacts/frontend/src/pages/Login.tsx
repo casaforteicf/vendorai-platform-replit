@@ -34,7 +34,7 @@ import { useEffect, useMemo, useState } from "react";
 import logoLight from "/logo-full-light.svg";
 
 const POST_LOGIN_PATH_KEY = "vendorai_post_login_path";
-const PUBLIC_MEDIA = "https://appvendorai.com/media/vendorai-official";
+const PUBLIC_MEDIA = "/media/vendorai-official";
 
 const PT_COPY = {
   invalidEmail: "Email inválido",
@@ -127,8 +127,18 @@ const PT_TOUR: TourItem[] = [
     title: "Pipeline comercial com estágio, responsável e próxima ação.",
     description: "O CRM organiza oportunidades e mantém o histórico comercial visível para pessoas e agentes de IA.",
     bullets: ["Pipeline visual", "Responsável e próxima ação", "Histórico compartilhado com os agentes"],
-    image: `${PUBLIC_MEDIA}/crm-pipeline/desktop-1440.webp`,
+    image: `${PUBLIC_MEDIA}/crm-pipeline/desktop-1440.png`,
     icon: BarChart3,
+  },
+  {
+    key: "agents",
+    label: "Agentes de IA",
+    kicker: "Agentes de IA",
+    title: "Agentes especializados trabalhando junto com sua equipe.",
+    description: "Configure agentes para atuar em diferentes momentos da operação, respeitando contexto, regras e permissões do tenant.",
+    bullets: ["Configuração por função", "Contexto compartilhado", "Ações conforme permissões"],
+    image: `${PUBLIC_MEDIA}/agents/desktop-1440.png`,
+    icon: Sparkles,
   },
   {
     key: "omnichannel",
@@ -137,7 +147,7 @@ const PT_TOUR: TourItem[] = [
     title: "Todas as conversas entram na mesma operação.",
     description: "O Omnichannel reúne atendimento e histórico para reduzir perda de contexto entre canais, pessoas e etapas do funil.",
     bullets: ["Caixa de entrada unificada", "Histórico do contato", "Distribuição e continuidade"],
-    image: `${PUBLIC_MEDIA}/omnichannel/desktop-1440.webp`,
+    image: `${PUBLIC_MEDIA}/omnichannel/desktop-1440.png`,
     icon: MessageSquareText,
   },
   {
@@ -147,7 +157,7 @@ const PT_TOUR: TourItem[] = [
     title: "Encontre novos clientes antes de esperar o próximo lead.",
     description: "O Prospector IA organiza descoberta, enriquecimento e priorização para transformar busca ativa em uma rotina comercial estruturada.",
     bullets: ["Busca por perfil e região", "Enriquecimento de contexto", "Priorização para abordagem"],
-    image: `${PUBLIC_MEDIA}/prospector/desktop-1440.webp`,
+    image: `${PUBLIC_MEDIA}/prospector/desktop-1440.png`,
     icon: Search,
   },
   {
@@ -157,8 +167,18 @@ const PT_TOUR: TourItem[] = [
     title: "A próxima venda também pode estar dentro da sua carteira.",
     description: "O Revenue Scout observa sinais, regras e comportamento para encontrar recompra, expansão e oportunidades que poderiam passar despercebidas.",
     bullets: ["Recompra e cross-sell", "Sinais de oportunidade", "Próxima melhor ação"],
-    image: `${PUBLIC_MEDIA}/revenue-scout/desktop-1440.webp`,
+    image: `${PUBLIC_MEDIA}/revenue-scout/desktop-1440.png`,
     icon: Sparkles,
+  },
+  {
+    key: "propostas",
+    label: "Propostas & Orçamentos",
+    kicker: "Propostas",
+    title: "Da composição comercial à proposta apresentada ao cliente.",
+    description: "O Vendor.ai organiza propostas, itens e versões para manter a negociação comercial vinculada ao contexto do cliente.",
+    bullets: ["Propostas organizadas", "Itens e versões", "Histórico comercial"],
+    image: `${PUBLIC_MEDIA}/propostas/desktop-1440.png`,
+    icon: CircleDollarSign,
   },
   {
     key: "marketing",
@@ -167,7 +187,7 @@ const PT_TOUR: TourItem[] = [
     title: "Planejamento, conteúdo e campanhas no mesmo fluxo.",
     description: "O Marketing Hub reúne planejamento de mídia, criação de conteúdo e operação de campanhas para conectar estratégia, execução e acompanhamento.",
     bullets: ["Planejamento de mídia", "Conteúdo e calendário", "Campanhas e anúncios"],
-    previewNote: "O módulo de Marketing é real e autenticado. Nesta tela pública não exibimos uma imagem inventada; a captura oficial específica de Marketing ainda não está cadastrada na biblioteca pública.",
+    image: `${PUBLIC_MEDIA}/marketing-content/desktop-1440.png`,
     icon: Sparkles,
   },
   {
@@ -177,7 +197,7 @@ const PT_TOUR: TourItem[] = [
     title: "Próxima ação com responsável e prazo.",
     description: "A agenda conecta compromissos, tarefas e follow-ups ao contexto comercial para que a operação não dependa da memória de alguém.",
     bullets: ["Compromissos e tarefas", "Vínculo com leads", "Próxima ação organizada"],
-    image: `${PUBLIC_MEDIA}/agenda/desktop-1440.webp`,
+    image: `${PUBLIC_MEDIA}/agenda/desktop-1440.png`,
     icon: CalendarDays,
   },
   {
@@ -187,7 +207,7 @@ const PT_TOUR: TourItem[] = [
     title: "Dados comerciais precisam virar decisão.",
     description: "Os painéis conectam indicadores de vendas, marketing e operação para facilitar comparação, leitura de desempenho e acompanhamento de evolução.",
     bullets: ["KPIs comerciais", "Indicadores de marketing", "Comparações e relatórios"],
-    image: `${PUBLIC_MEDIA}/analytics/desktop-1440.webp`,
+    image: `${PUBLIC_MEDIA}/analytics/desktop-1440.png`,
     icon: BarChart3,
   },
   {
@@ -197,7 +217,7 @@ const PT_TOUR: TourItem[] = [
     title: "A operação comercial não termina no fechamento.",
     description: "O Financeiro / ERP Hub aproxima cobrança, comissões, conciliação e indicadores da mesma jornada que originou a venda.",
     bullets: ["Cobranças e recebimentos", "Comissões", "Conciliação e indicadores"],
-    image: `${PUBLIC_MEDIA}/financeiro-erp/desktop-1440.webp`,
+    image: `${PUBLIC_MEDIA}/financeiro-erp/desktop-1440.png`,
     icon: CircleDollarSign,
   },
 ];
@@ -210,8 +230,18 @@ const ES_TOUR: TourItem[] = [
     title: "Pipeline comercial con etapa, responsable y próxima acción.",
     description: "El CRM organiza oportunidades y mantiene el historial comercial visible para personas y agentes de IA.",
     bullets: ["Pipeline visual", "Responsable y próxima acción", "Historial compartido con los agentes"],
-    image: `${PUBLIC_MEDIA}/crm-pipeline/desktop-1440.webp`,
+    image: `${PUBLIC_MEDIA}/crm-pipeline/desktop-1440.png`,
     icon: BarChart3,
+  },
+  {
+    key: "agents",
+    label: "Agentes de IA",
+    kicker: "Agentes de IA",
+    title: "Agentes especializados trabajando junto con tu equipo.",
+    description: "Configura agentes para actuar en diferentes momentos de la operación, respetando contexto, reglas y permisos del tenant.",
+    bullets: ["Configuración por función", "Contexto compartido", "Acciones según permisos"],
+    image: `${PUBLIC_MEDIA}/agents/desktop-1440.png`,
+    icon: Sparkles,
   },
   {
     key: "omnichannel",
@@ -220,7 +250,7 @@ const ES_TOUR: TourItem[] = [
     title: "Todas las conversaciones entran en la misma operación.",
     description: "Omnichannel reúne atención e historial para reducir pérdida de contexto entre canales, personas y etapas del embudo.",
     bullets: ["Bandeja unificada", "Historial del contacto", "Distribución y continuidad"],
-    image: `${PUBLIC_MEDIA}/omnichannel/desktop-1440.webp`,
+    image: `${PUBLIC_MEDIA}/omnichannel/desktop-1440.png`,
     icon: MessageSquareText,
   },
   {
@@ -230,7 +260,7 @@ const ES_TOUR: TourItem[] = [
     title: "Encuentra nuevos clientes antes de esperar el próximo lead.",
     description: "Prospector IA organiza descubrimiento, enriquecimiento y priorización para convertir la búsqueda activa en una rutina comercial estructurada.",
     bullets: ["Búsqueda por perfil y región", "Enriquecimiento de contexto", "Priorización para contacto"],
-    image: `${PUBLIC_MEDIA}/prospector/desktop-1440.webp`,
+    image: `${PUBLIC_MEDIA}/prospector/desktop-1440.png`,
     icon: Search,
   },
   {
@@ -240,8 +270,18 @@ const ES_TOUR: TourItem[] = [
     title: "La próxima venta también puede estar dentro de tu cartera.",
     description: "Revenue Scout observa señales, reglas y comportamiento para encontrar recompra, expansión y oportunidades que podrían pasar desapercibidas.",
     bullets: ["Recompra y cross-sell", "Señales de oportunidad", "Próxima mejor acción"],
-    image: `${PUBLIC_MEDIA}/revenue-scout/desktop-1440.webp`,
+    image: `${PUBLIC_MEDIA}/revenue-scout/desktop-1440.png`,
     icon: Sparkles,
+  },
+  {
+    key: "propostas",
+    label: "Propuestas & Presupuestos",
+    kicker: "Propuestas",
+    title: "De la composición comercial a la propuesta presentada al cliente.",
+    description: "Vendor.ai organiza propuestas, ítems y versiones para mantener la negociación vinculada al contexto del cliente.",
+    bullets: ["Propuestas organizadas", "Ítems y versiones", "Historial comercial"],
+    image: `${PUBLIC_MEDIA}/propostas/desktop-1440.png`,
+    icon: CircleDollarSign,
   },
   {
     key: "marketing",
@@ -250,7 +290,7 @@ const ES_TOUR: TourItem[] = [
     title: "Planificación, contenido y campañas en el mismo flujo.",
     description: "Marketing Hub reúne planificación de medios, creación de contenido y operación de campañas para conectar estrategia, ejecución y seguimiento.",
     bullets: ["Planificación de medios", "Contenido y calendario", "Campañas y anuncios"],
-    previewNote: "El módulo de Marketing es real y autenticado. En esta pantalla pública no mostramos una imagen inventada; la captura oficial específica de Marketing todavía no está registrada en la biblioteca pública.",
+    image: `${PUBLIC_MEDIA}/marketing-content/desktop-1440.png`,
     icon: Sparkles,
   },
   {
@@ -260,7 +300,7 @@ const ES_TOUR: TourItem[] = [
     title: "Próxima acción con responsable y plazo.",
     description: "La agenda conecta compromisos, tareas y seguimientos al contexto comercial para que la operación no dependa de la memoria de alguien.",
     bullets: ["Compromisos y tareas", "Vínculo con leads", "Próxima acción organizada"],
-    image: `${PUBLIC_MEDIA}/agenda/desktop-1440.webp`,
+    image: `${PUBLIC_MEDIA}/agenda/desktop-1440.png`,
     icon: CalendarDays,
   },
   {
@@ -270,7 +310,7 @@ const ES_TOUR: TourItem[] = [
     title: "Los datos comerciales deben convertirse en decisión.",
     description: "Los paneles conectan indicadores de ventas, marketing y operación para facilitar comparación, lectura de desempeño y seguimiento de evolución.",
     bullets: ["KPIs comerciales", "Indicadores de marketing", "Comparaciones e informes"],
-    image: `${PUBLIC_MEDIA}/analytics/desktop-1440.webp`,
+    image: `${PUBLIC_MEDIA}/analytics/desktop-1440.png`,
     icon: BarChart3,
   },
   {
@@ -280,7 +320,7 @@ const ES_TOUR: TourItem[] = [
     title: "La operación comercial no termina en el cierre.",
     description: "Financeiro / ERP Hub acerca cobros, comisiones, conciliación e indicadores a la misma jornada que originó la venta.",
     bullets: ["Cobros y recibos", "Comisiones", "Conciliación e indicadores"],
-    image: `${PUBLIC_MEDIA}/financeiro-erp/desktop-1440.webp`,
+    image: `${PUBLIC_MEDIA}/financeiro-erp/desktop-1440.png`,
     icon: CircleDollarSign,
   },
 ];
