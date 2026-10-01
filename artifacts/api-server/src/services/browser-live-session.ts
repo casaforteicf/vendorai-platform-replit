@@ -18,6 +18,7 @@ import {
   checkpointFromState,
   classifyBrowserError,
   type BrowserAgentStep,
+  type PlannedAction,
 } from "./browser-agent.js";
 
 type PersistSession = (cookies: CookieData[]) => Promise<void>;
@@ -47,6 +48,7 @@ type LiveBrowserSession = {
   error: string | null;
   status: LiveBrowserSessionStatus;
   steps: BrowserAgentStep[];
+  recordedActions: PlannedAction[];
   createdAt: Date;
   lastActivityAt: Date;
   paused: boolean;
@@ -77,6 +79,7 @@ function publicSession(session: LiveBrowserSession) {
     url: session.page.url(),
     title: null as string | null,
     steps: session.steps,
+    recordedActionCount: session.recordedActions.length,
     pauseReason: session.pauseReason,
     createdAt: session.createdAt,
     lastActivityAt: session.lastActivityAt,
@@ -157,6 +160,7 @@ export async function createLiveBrowserSession(input: {
     error: null,
     status: "idle",
     steps: [],
+    recordedActions: [],
     createdAt: now,
     lastActivityAt: now,
     paused: false,
@@ -235,6 +239,11 @@ export async function getLiveBrowserSession(tenantId: string, sessionId: string)
   const session = requireSession(tenantId, sessionId);
   const title = await session.page.title().catch(() => "");
   return { ...publicSession(session), title };
+}
+
+export function getRecordedBrowserActions(tenantId: string, sessionId: string) {
+  const session = requireSession(tenantId, sessionId);
+  return session.recordedActions.map((action) => ({ ...action }));
 }
 
 export async function captureLiveBrowserSession(tenantId: string, sessionId: string) {
@@ -440,7 +449,10 @@ export function startLiveBrowserMission(
           allowWrite: session.allowWrite, allowedHosts: session.allowedHosts, secrets: session.secrets,
         });
         let extracted: string | undefined;
-        try { extracted = await session.actionInFlight as string | undefined; }
+        try {
+          extracted = await session.actionInFlight as string | undefined;
+          session.recordedActions.push(action);
+        }
         catch (error: any) {
           const kind = classifyBrowserError(error);
           if (kind === "selector_stale" || kind === "detached_frame") {
