@@ -390,6 +390,7 @@ export function startLiveBrowserMission(
   session.answer = null;
   session.error = startPaused ? "Verificação humana necessária. Resolva a verificação e devolva o controle para o Vendi." : null;
   session.steps = [];
+  session.recordedActions = [];
   session.paused = startPaused;
   session.pauseReason = startPaused ? "human_verification" : null;
   session.status = startPaused ? "paused" : "running";
