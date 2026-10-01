@@ -165,6 +165,7 @@ const SiteGeneratorTab = lazy(() => import("./SiteGenerator").then((m) => ({ def
 const FaturamentoTab = lazy(() => import("./FaturamentoTab").then((m) => ({ default: m.FaturamentoTab })));
 const ContractTemplateTab = lazy(() => import("@/components/ContractTemplateTab").then((m) => ({ default: m.ContractTemplateTab })));
 const BrandKitSettings = lazy(() => import("@/components/BrandKitSettings").then((m) => ({ default: m.BrandKitSettings })));
+const CompanyIntelligenceOverview = lazy(() => import("@/components/CompanyIntelligenceOverview"));
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -589,7 +590,7 @@ export default function Configuracoes() {
 
   const [activeTab, setActiveTab] = useState<string>(() => {
     const params = new URLSearchParams(window.location.search);
-    return params.get("tab") ?? "perfil";
+    return params.get("tab") ?? "marketing";
   });
 
   // ── Team Management ────────────────────────────────────────────────────────
@@ -2344,6 +2345,12 @@ export default function Configuracoes() {
         <p className="text-muted-foreground text-sm mt-1">Gerencie o perfil da empresa e as configurações da conta.</p>
       </div>
 
+      {activeTab === "marketing" && (
+        <Suspense fallback={null}>
+          <CompanyIntelligenceOverview />
+        </Suspense>
+      )}
+
       <Tabs
         value={activeTab}
         className="space-y-6"
@@ -2359,8 +2366,8 @@ export default function Configuracoes() {
             Perfil
           </TabsTrigger>
           <TabsTrigger value="marketing" className="gap-1.5">
-            <Megaphone className="h-4 w-4" />
-            Marketing
+            <Building2 className="h-4 w-4" />
+            Empresa
           </TabsTrigger>
           <TabsTrigger value="analise" className="gap-1.5">
             <Brain className="h-4 w-4" />
@@ -2403,7 +2410,7 @@ export default function Configuracoes() {
         </TabsList>
         </div>
 
-        {/* ── Tab: Marketing / Kit da Marca ─────────────────────────────── */}
+        {/* ── Tab: Central da Empresa / Estratégia / Marca ──────────────── */}
         <TabsContent value="marketing">
           <Suspense fallback={null}><BrandKitSettings /></Suspense>
         </TabsContent>

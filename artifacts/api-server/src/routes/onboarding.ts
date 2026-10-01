@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq, and, count } from "drizzle-orm";
 import { z } from "zod/v4";
 import multer from "multer";
+import { randomUUID } from "node:crypto";
 import {
   db,
   tenantsTable,
@@ -34,13 +35,15 @@ import { getGoogleAdsConnectionByTenantId } from "../services/google-ads-oauth.j
 import { callOpenAI } from "../lib/ai-gateway.js";
 import { getActiveCatalogCount } from "../lib/catalog-readiness.js";
 import { ensureTenantProposalBuilderTemplate } from "../lib/proposal-builder.js";
+import { loadBusinessPlan, saveBusinessPlanSection } from "../services/business-plan.js";
+import type { PlanRecord, PlanSectionId } from "../services/business-plan-model.js";
 
 const router: IRouter = Router();
 
-// ── Multer: in-memory, max 10 MB/file, 3 files ──────────────────────────────
+// ── Multer: assisted company import — max 15 MB/file, up to 10 files ────────
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: 15 * 1024 * 1024, files: 10 },
 });
 
 // ── Zod schemas ──────────────────────────────────────────────────────────────
@@ -275,11 +278,109 @@ function buildStrategyContent(data: WizardData): string {
   return parts.join("\n\n").trim();
 }
 
+function compactRecord(
+  title: string,
+  values: Record<string, string | undefined>,
+  source: string,
+): PlanRecord | null {
+  const cleaned = Object.fromEntries(
+    Object.entries(values)
+      .map(([key, value]) => [key, value?.trim() ?? ""])
+      .filter(([, value]) => value),
+  );
+  if (!Object.keys(cleaned).length) return null;
+  return {
+    id: randomUUID(),
+    title,
+    values: cleaned,
+    source,
+    evidence: "declared",
+    productIds: [],
+    assetIds: [],
+  };
+}
+
+async function seedApprovedBusinessPlanFromOnboarding(input: {
+  tenantId: string;
+  userId: string;
+  data: WizardData;
+}) {
+  const { data } = input;
+  const dd = data.discoveryData ?? {};
+  const importedDocuments = Array.isArray(dd["importedDocuments"])
+    ? (dd["importedDocuments"] as unknown[]).filter((item): item is string => typeof item === "string")
+    : [];
+  const source = importedDocuments.length
+    ? `Onboarding aprovado · documentos: ${importedDocuments.slice(0, 3).join(", ")}`
+    : "Onboarding aprovado pelo administrador";
+
+  const mission = typeof dd["missao"] === "string" ? dd["missao"] : undefined;
+  const vision = typeof dd["visao"] === "string" ? dd["visao"] : undefined;
+  const values = Array.isArray(dd["valores"])
+    ? (dd["valores"] as unknown[]).filter((item): item is string => typeof item === "string").join(", ")
+    : undefined;
+  const history = typeof dd["historia"] === "string" ? dd["historia"] : undefined;
+
+  const sections: Array<{ section: PlanSectionId; records: PlanRecord[] }> = [];
+
+  const company = compactRecord("Identidade e direção inicial", {
+    "História e atuação": history || `${data.nomeFantasia} atua no segmento ${data.vertical}.`,
+    "Missão, visão e valores": [mission && `Missão: ${mission}`, vision && `Visão: ${vision}`, values && `Valores: ${values}`].filter(Boolean).join("\n"),
+  }, source);
+  if (company) sections.push({ section: "company", records: [company] });
+
+  const segment = compactRecord("Público principal", {
+    "Segmento e perfil ideal": data.publicoAlvo,
+    "Canais e região": data.canaisVenda?.join(", "),
+  }, source);
+  if (segment) sections.push({ section: "segments", records: [segment] });
+
+  const productRecords = (data.produtos ?? []).slice(0, 20).map((product) =>
+    compactRecord(product.nome, {
+      "Produto ou serviço": product.nome,
+      "Aplicações por público": product.descricao,
+      "Limites e condições da oferta": typeof product.preco === "number" ? `Preço informado no onboarding: R$ ${product.preco.toFixed(2)}` : undefined,
+    }, source),
+  ).filter((record): record is PlanRecord => Boolean(record));
+  if (productRecords.length) sections.push({ section: "products", records: productRecords });
+
+  const positioning = compactRecord("Posicionamento inicial", {
+    "Proposta de valor": data.diferenciais,
+    "Diferenciais comprovados": data.diferenciais,
+  }, source);
+  if (positioning) sections.push({ section: "positioning", records: [positioning] });
+
+  const market = compactRecord("Mercado inicial", {
+    "Mercado e concorrentes": data.concorrentes?.join(", "),
+  }, source);
+  if (market) sections.push({ section: "swot", records: [market] });
+
+  if (!sections.length) return { seededSections: 0, planVersion: (await loadBusinessPlan(input.tenantId)).version };
+
+  let plan = await loadBusinessPlan(input.tenantId);
+  let seededSections = 0;
+  for (const item of sections) {
+    // Never overwrite a block the company already developed and approved.
+    if ((plan.sections[item.section]?.approved?.length ?? 0) > 0) continue;
+    plan = await saveBusinessPlanSection({
+      tenantId: input.tenantId,
+      section: item.section,
+      records: item.records,
+      action: "approve",
+      version: plan.version,
+      by: input.userId,
+    });
+    seededSections += 1;
+  }
+
+  return { seededSections, planVersion: plan.version };
+}
+
 // ── POST /tenants/:tenantId/onboarding/analyze-documents ─────────────────────
 router.post(
   "/tenants/:tenantId/onboarding/analyze-documents",
   requireSameTenanOrSuperAdmin(),
-  upload.array("files", 3),
+  upload.array("files", 10),
   async (req, res) => {
     const tenantId = String(req.params["tenantId"]);
     const files = (req.files as Express.Multer.File[]) ?? [];
@@ -600,12 +701,27 @@ router.post(
       "Onboarding: knowledge base populated without duplicates"
     );
 
+    let businessPlanSeed = { seededSections: 0, planVersion: 0 };
+    try {
+      businessPlanSeed = await seedApprovedBusinessPlanFromOnboarding({
+        tenantId,
+        userId: req.user?.sub ?? "onboarding",
+        data,
+      });
+      req.log.info({ tenantId, ...businessPlanSeed }, "Onboarding: approved company intelligence seeded");
+    } catch (error) {
+      // The company profile + KB are already valid. A plan seed failure must not
+      // trap the tenant inside onboarding; the administrator can develop the plan later.
+      req.log.warn({ err: error, tenantId }, "Onboarding: business plan seed skipped");
+    }
+
     res.json({
       setupCompletedAt: tenant.setupCompletedAt!.toISOString(),
       promptsApplied,
       funilCriado,
       kbArtigosGerados,
       kbArtigosIgnorados: kbArticles.length - kbArtigosGerados,
+      businessPlanSeed,
     });
   }
 );

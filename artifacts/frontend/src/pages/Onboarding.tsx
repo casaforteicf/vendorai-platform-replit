@@ -8,55 +8,40 @@ import { TenantBrand, normalizeTenantLogoUrl } from "@/components/TenantBrand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
-import OnboardingPlanStep, { type TrialPlanMode } from "./OnboardingPlanStep";
 import {
   Loader2,
   CheckCircle2,
   ChevronRight,
   ChevronLeft,
-  UserSearch,
-  Handshake,
-  BarChart2,
-  AlertCircle,
-  Headphones,
-  CalendarCheck,
-  Star,
-  Telescope,
   Check,
   X,
   ImageIcon,
+  Upload,
+  FileText,
+  Sparkles,
+  Building2,
 } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────────────────────
-type WizardStep = 1 | 2 | 3 | "plan" | "done";
+type WizardStep = 1 | 2 | 3 | "done";
+
+type BusinessDocumentAnalysis = {
+  nomeFantasia?: string | null;
+  vertical?: string | null;
+  produtos?: Array<{ nome: string; descricao?: string | null; preco?: number | null }> | null;
+  diferenciais?: string | null;
+  publicoAlvo?: string | null;
+  concorrentes?: string[] | null;
+  canaisVenda?: string[] | null;
+  missao?: string | null;
+  visao?: string | null;
+  valores?: string[] | null;
+  historia?: string | null;
+  confianca?: number | null;
+};
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const AGENT_CARDS = [
-  { key: "sdr",            labelKey: "onboarding.agent.label.sdr",        descKey: "onboarding.agent.sdr",        Icon: UserSearch },
-  { key: "closer",         labelKey: "onboarding.agent.label.closer",     descKey: "onboarding.agent.closer",     Icon: Handshake },
-  { key: "relacionamento", labelKey: "onboarding.agent.label.finance",    descKey: "onboarding.agent.finance",    Icon: BarChart2 },
-  { key: "reactivation",   labelKey: "onboarding.agent.label.collection", descKey: "onboarding.agent.collection", Icon: AlertCircle },
-  { key: "service",        labelKey: "onboarding.agent.label.support",    descKey: "onboarding.agent.support",    Icon: Headphones },
-  { key: "scheduler",      labelKey: "onboarding.agent.label.scheduler",  descKey: "onboarding.agent.scheduler",  Icon: CalendarCheck },
-  { key: "followup",       labelKey: "onboarding.agent.label.afterSales", descKey: "onboarding.agent.afterSales", Icon: Star },
-  { key: "onboarding",     labelKey: "onboarding.agent.label.prospector", descKey: "onboarding.agent.prospector", Icon: Telescope },
-] as const;
-
-const TOM_OPTIONS = [
-  { value: "profissional", labelKey: "onboarding.tone.professional" },
-  { value: "amigavel",     labelKey: "onboarding.tone.friendly" },
-  { value: "tecnico",      labelKey: "onboarding.tone.technical" },
-  { value: "vendedor",     labelKey: "onboarding.tone.sales" },
-] as const;
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function getToken() { return localStorage.getItem("vendorai_token"); }
 function getBase()  { return (import.meta.env.BASE_URL ?? "/").replace(/\/$/, ""); }
@@ -102,7 +87,6 @@ export default function Onboarding() {
   const [step, setStep] = useState<WizardStep>(1);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [isTrial, setIsTrial] = useState(false);
 
   // Step 1 state
   const [s1NomeEmpresa, setS1NomeEmpresa] = useState("");
@@ -110,17 +94,11 @@ export default function Onboarding() {
   const [s1Logo,        setS1Logo]        = useState("");
   const [logoUploading, setLogoUploading] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
-
-  // Step 2 state
-  const [s2PhoneNumberId, setS2PhoneNumberId] = useState("");
-  const [s2AccessToken,   setS2AccessToken]   = useState("");
-  const [s2WabaId,        setS2WabaId]        = useState("");
-  const [s2Numero,        setS2Numero]        = useState("");
-
-  // Step 3 state
-  const [s3AgentKey,    setS3AgentKey]    = useState<string>("sdr");
-  const [s3NomePerfil,  setS3NomePerfil]  = useState("");
-  const [s3Tom,         setS3Tom]         = useState("profissional");
+  const documentInputRef = useRef<HTMLInputElement>(null);
+  const [documentAnalyzing, setDocumentAnalyzing] = useState(false);
+  const [documentNames, setDocumentNames] = useState<string[]>([]);
+  const [selectedDocuments, setSelectedDocuments] = useState<File[]>([]);
+  const [businessAnalysis, setBusinessAnalysis] = useState<BusinessDocumentAnalysis | null>(null);
 
   const { data: segments = [], isLoading: segmentsLoading } = useListSegmentTemplates();
 
@@ -130,26 +108,14 @@ export default function Onboarding() {
     (async () => {
       try {
         const data = await apiGet("/api/onboarding") as { stepAtual?: number; concluido?: boolean };
-        let trialActive = false;
-        try {
-          const trial = await apiGet("/api/trial/status") as { isTrial?: boolean };
-          trialActive = trial.isTrial === true;
-        } catch {
-          // Compatibilidade com ambientes ainda sem a rota de jornada de trial.
-        }
-        setIsTrial(trialActive);
-
         if (data.concluido) {
           window.location.replace("/dashboard");
           return;
         }
         const s = data.stepAtual ?? 1;
-        if (s >= 2) {
-          await apiPatch("/api/onboarding/step/4", {});
-          window.location.replace("/dashboard");
-          return;
-        }
-        setStep(1);
+        // Resume the assisted discovery instead of silently finishing onboarding.
+        // Existing tenants that saved step 1 should continue at document import.
+        setStep(s >= 2 ? 2 : 1);
       } catch {
         // ignore — start at step 1
       } finally {
@@ -247,8 +213,11 @@ export default function Onboarding() {
         segmento: s1Segmento,
       });
       await saveCanonicalBusinessBrand(companyName, s1Logo || undefined);
-      await apiPatch("/api/onboarding/step/4", {});
-      window.location.assign("/dashboard");
+      setBusinessAnalysis((current) => ({ ...(current ?? {}),
+        nomeFantasia: current?.nomeFantasia || companyName,
+        vertical: current?.vertical || s1Segmento,
+      }));
+      setStep(2);
     } catch (err) {
       toast({ title: String(err instanceof Error ? err.message : t("onboarding.error.save")), variant: "destructive" });
     } finally {
@@ -256,67 +225,116 @@ export default function Onboarding() {
     }
   }
 
-  async function handleStep2() {
-    const phoneId = s2PhoneNumberId.trim();
-    const token   = s2AccessToken.trim();
 
-    // If no credentials provided, skip without calling the API
-    if (!phoneId || !token) {
-      setStep(3);
-      return;
-    }
-
-    if (!s2Numero.trim()) {
-      toast({ title: t("onboarding.error.whatsappNumber"), variant: "destructive" });
-      return;
-    }
-
-    setSubmitting(true);
+  async function analyzeBusinessDocuments(files: FileList | null) {
+    if (!user?.tenantId || !files?.length) return;
+    const selected = Array.from(files).slice(0, 10);
+    setSelectedDocuments(selected);
+    setDocumentNames(selected.map((file) => file.name));
+    setDocumentAnalyzing(true);
     try {
-      await apiPatch("/api/onboarding/step/2", {
-        metaPhoneNumberId: phoneId,
-        metaAccessToken:   token,
-        metaWabaId:        s2WabaId.trim() || undefined,
-        numeroWhatsapp:    s2Numero.trim(),
+      const body = new FormData();
+      for (const file of selected) body.append("files", file);
+      const res = await fetch(`/api/tenants/${user.tenantId}/onboarding/analyze-documents`, {
+        method: "POST",
+        headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
+        body,
+      });
+      const data = await res.json().catch(() => ({})) as BusinessDocumentAnalysis & { error?: string };
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setBusinessAnalysis({
+        ...data,
+        nomeFantasia: data.nomeFantasia || s1NomeEmpresa,
+        vertical: data.vertical || s1Segmento,
+      });
+      toast({
+        title: typeof data.confianca === "number"
+          ? `Vendi analisou seus materiais · confiança ${Math.round(data.confianca * 100)}%`
+          : "Vendi analisou seus materiais.",
       });
       setStep(3);
     } catch (err) {
-      toast({ title: String(err instanceof Error ? err.message : t("onboarding.error.save")), variant: "destructive" });
+      toast({
+        title: err instanceof Error ? err.message : "Não foi possível analisar os documentos.",
+        variant: "destructive",
+      });
     } finally {
-      setSubmitting(false);
+      setDocumentAnalyzing(false);
+      if (documentInputRef.current) documentInputRef.current.value = "";
     }
   }
 
-  async function handleStep3() {
+  function continueWithoutDocuments() {
+    setBusinessAnalysis((current) => ({ ...(current ?? {}),
+      nomeFantasia: current?.nomeFantasia || s1NomeEmpresa,
+      vertical: current?.vertical || s1Segmento,
+    }));
+    setStep(3);
+  }
+
+  async function finalizeAssistedOnboarding() {
+    if (!user?.tenantId) return;
+    const analysis = businessAnalysis ?? {};
+    const products = (analysis.produtos ?? [])
+      .filter((item) => item?.nome?.trim())
+      .map((item) => ({
+        nome: item.nome.trim(),
+        ...(item.descricao?.trim() ? { descricao: item.descricao.trim() } : {}),
+        ...(typeof item.preco === "number" && item.preco >= 0 ? { preco: item.preco } : {}),
+      }));
+
     setSubmitting(true);
     try {
-      await apiPatch("/api/onboarding/step/3", {
-        agentKey: s3AgentKey,
-        nomePerfil: s3NomePerfil.trim() || undefined,
-        tom: s3Tom || undefined,
+      await apiPost(`/api/tenants/${user.tenantId}/onboarding/complete`, {
+        nomeFantasia: analysis.nomeFantasia?.trim() || s1NomeEmpresa.trim(),
+        vertical: analysis.vertical?.trim() || s1Segmento,
+        ...(s1Logo ? { logoUrl: s1Logo } : {}),
+        ...(products.length ? { produtos: products } : {}),
+        ...(analysis.diferenciais?.trim() ? { diferenciais: analysis.diferenciais.trim() } : {}),
+        ...(analysis.publicoAlvo?.trim() ? { publicoAlvo: analysis.publicoAlvo.trim() } : {}),
+        ...(analysis.concorrentes?.length ? { concorrentes: analysis.concorrentes } : {}),
+        ...(analysis.canaisVenda?.length ? { canaisVenda: analysis.canaisVenda } : {}),
+        discoveryData: {
+          ...(analysis.missao ? { missao: analysis.missao } : {}),
+          ...(analysis.visao ? { visao: analysis.visao } : {}),
+          ...(analysis.valores?.length ? { valores: analysis.valores } : {}),
+          ...(analysis.historia ? { historia: analysis.historia } : {}),
+          onboardingSource: documentNames.length ? "vendi_document_assisted" : "vendi_guided",
+          importedDocuments: documentNames,
+          extractionConfidence: analysis.confianca ?? null,
+        },
       });
-      if (isTrial) {
-        setStep("plan");
-      } else {
-        await apiPatch("/api/onboarding/step/4", {});
-        setStep("done");
+
+      // The review above is the approval boundary. Only after approval do the
+      // original readable documents become persistent company knowledge.
+      if (selectedDocuments.length > 0) {
+        const token = getToken();
+        const uploads = selectedDocuments.map(async (file) => {
+          const form = new FormData();
+          form.append("file", file);
+          form.append("categoria", "Implantação da empresa");
+          form.append("tags", "onboarding,empresa,fonte-aprovada");
+          const response = await fetch(`/api/tenants/${user.tenantId}/knowledge-base/upload`, {
+            method: "POST",
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            body: form,
+          });
+          if (!response.ok) throw new Error(file.name);
+        });
+        const persisted = await Promise.allSettled(uploads);
+        const failed = persisted.filter((item) => item.status === "rejected").length;
+        if (failed > 0) {
+          toast({
+            title: `Empresa preparada. ${failed} documento(s) não puderam ser arquivados na base de conhecimento.`,
+          });
+        }
       }
-    } catch (err) {
-      toast({ title: String(err instanceof Error ? err.message : t("onboarding.error.save")), variant: "destructive" });
-    } finally {
-      setSubmitting(false);
-    }
-  }
 
-  async function handlePlanSelection(mode: TrialPlanMode) {
-    setSubmitting(true);
-    try {
-      await apiPost("/api/trial/select-plan", { mode });
       await apiPatch("/api/onboarding/step/4", {});
       setStep("done");
     } catch (err) {
       toast({
-        title: String(err instanceof Error ? err.message : "Não foi possível selecionar o plano."),
+        title: err instanceof Error ? err.message : "Não foi possível concluir a implantação.",
         variant: "destructive",
       });
     } finally {
@@ -343,10 +361,10 @@ export default function Onboarding() {
   }
 
   // ── Progress bar ─────────────────────────────────────────────────────────────
-  const stepNum = 1;
-  const progressPct = step === "done" ? 100 : 0;
+  const stepNum = typeof step === "number" ? step : 3;
+  const progressPct = step === "done" ? 100 : Math.max(0, Math.min(100, ((stepNum - 1) / 2) * 100));
 
-  const STEP_LABELS = [t("onboarding.progress.company")];
+  const STEP_LABELS = ["Empresa", "Materiais", "Revisar"];
 
   if (loading) {
     return (
@@ -362,11 +380,9 @@ export default function Onboarding() {
       <header className="border-b bg-card px-6 py-3 flex items-center justify-between shrink-0">
         <TenantBrand pendingName={s1NomeEmpresa} pendingLogoUrl={s1Logo} />
         <div className="flex items-center gap-4">
-          {step === "plan" ? (
-            <span className="text-sm font-medium text-primary">Escolha seu plano</span>
-          ) : step !== "done" ? (
+          {step !== "done" ? (
             <span className="text-sm text-muted-foreground">
-              {t("onboarding.header.step", { current: 1, total: 1 })}
+              Etapa {stepNum} de 3
             </span>
           ) : null}
           <button
@@ -433,7 +449,7 @@ export default function Onboarding() {
 
       {/* ── Content ── */}
       <main className="flex-1 flex flex-col items-center py-8 px-4">
-        <div className={`w-full space-y-6 ${step === "plan" ? "max-w-4xl" : "max-w-lg"}`}>
+        <div className="w-full max-w-lg space-y-6">
 
           {/* ═══════════════════════════════════════════════════════
               STEP 1 — EMPRESA
@@ -533,7 +549,7 @@ export default function Onboarding() {
                   onClick={handleStep1}
                 >
                   {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                  Criar e entrar no VendorAI
+                  Continuar com Vendi
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </CardContent>
@@ -541,69 +557,76 @@ export default function Onboarding() {
           )}
 
           {/* ═══════════════════════════════════════════════════════
-              STEP 2 — WHATSAPP
+              STEP 2 — MATERIAIS DA EMPRESA
           ═══════════════════════════════════════════════════════ */}
           {step === 2 && (
             <Card>
               <CardContent className="pt-6 space-y-5">
-                <div>
-                  <h2 className="text-xl font-bold">{t("onboarding.whatsapp.title")}</h2>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {t("onboarding.whatsapp.subtitle")}{" "}
-                    <span className="text-muted-foreground/70">({t("onboarding.whatsapp.skipHint")})</span>
+                <div className="flex items-start gap-3">
+                  <div className="rounded-xl bg-primary/10 p-2.5">
+                    <Sparkles className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold">Deixe o Vendi conhecer sua empresa</h2>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Envie o que você já tem. O Vendi organiza as informações e você revisa antes de salvar.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border bg-muted/20 p-4">
+                  <p className="text-sm font-medium">Você pode importar</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    PDF, Word, texto, imagem, catálogo, apresentação comercial, proposta, tabela ou manual.
+                    Até 10 arquivos por análise.
                   </p>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="metaPhoneNumberId">Phone Number ID</Label>
-                  <Input
-                    id="metaPhoneNumberId"
-                    placeholder="Ex: 123456789012345"
-                    value={s2PhoneNumberId}
-                    onChange={(e) => setS2PhoneNumberId(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">{t("onboarding.whatsapp.phoneIdHelp")}</p>
-                </div>
+                <input
+                  ref={documentInputRef}
+                  type="file"
+                  multiple
+                  accept=".pdf,.doc,.docx,.txt,.md,image/*"
+                  className="hidden"
+                  onChange={(event) => void analyzeBusinessDocuments(event.target.files)}
+                />
 
-                <div className="space-y-2">
-                  <Label htmlFor="metaAccessToken">Access Token</Label>
-                  <Input
-                    id="metaAccessToken"
-                    type="password"
-                    placeholder={t("onboarding.whatsapp.tokenPlaceholder")}
-                    value={s2AccessToken}
-                    onChange={(e) => setS2AccessToken(e.target.value)}
-                  />
-                </div>
+                <button
+                  type="button"
+                  disabled={documentAnalyzing}
+                  onClick={() => documentInputRef.current?.click()}
+                  className="w-full rounded-xl border-2 border-dashed border-muted-foreground/30 p-8 text-center transition hover:border-primary/50 hover:bg-primary/5 disabled:opacity-50"
+                >
+                  {documentAnalyzing ? (
+                    <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
+                  ) : (
+                    <Upload className="mx-auto h-8 w-8 text-muted-foreground" />
+                  )}
+                  <div className="mt-3 text-sm font-semibold">
+                    {documentAnalyzing ? "Vendi está analisando os materiais..." : "Importar documentos"}
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    O agente extrai negócio, público, produtos, diferenciais, missão, valores e contexto comercial.
+                  </div>
+                </button>
 
-                <div className="space-y-2">
-                  <Label htmlFor="metaWabaId">WABA ID <span className="text-muted-foreground/60">({t("onboarding.optional")})</span></Label>
-                  <Input
-                    id="metaWabaId"
-                    placeholder="Ex: 987654321098765"
-                    value={s2WabaId}
-                    onChange={(e) => setS2WabaId(e.target.value)}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="waNumero">{t("onboarding.whatsapp.number")}</Label>
-                  <Input
-                    id="waNumero"
-                    placeholder={t("onboarding.whatsapp.numberPlaceholder")}
-                    value={s2Numero}
-                    onChange={(e) => setS2Numero(e.target.value)}
-                  />
-                </div>
+                {documentNames.length > 0 && (
+                  <div className="space-y-2">
+                    {documentNames.map((name) => (
+                      <div key={name} className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
+                        <FileText className="h-4 w-4 text-primary" />
+                        <span className="truncate">{name}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 <div className="flex gap-3 pt-1">
                   <Button variant="ghost" onClick={() => setStep(1)} className="gap-1.5">
-                    <ChevronLeft className="h-4 w-4" /> {t("common.back")}
+                    <ChevronLeft className="h-4 w-4" /> Voltar
                   </Button>
-                  <Button className="flex-1 gap-2" disabled={submitting} onClick={handleStep2}>
-                    {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                    {s2PhoneNumberId && s2AccessToken ? t("onboarding.whatsapp.saveContinue") : t("onboarding.whatsapp.skipNow")}
-                    <ChevronRight className="h-4 w-4" />
+                  <Button variant="outline" className="flex-1" disabled={documentAnalyzing} onClick={continueWithoutDocuments}>
+                    Não tenho documentos agora
                   </Button>
                 </div>
               </CardContent>
@@ -611,102 +634,98 @@ export default function Onboarding() {
           )}
 
           {/* ═══════════════════════════════════════════════════════
-              STEP 3 — PRIMEIRO AGENTE
+              STEP 3 — REVISÃO COM O VENDI
           ═══════════════════════════════════════════════════════ */}
           {step === 3 && (
             <Card>
               <CardContent className="pt-6 space-y-5">
-                <div>
-                  <h2 className="text-xl font-bold">{t("onboarding.agent.title")}</h2>
-                  <p className="text-sm text-muted-foreground mt-1">{t("onboarding.agent.subtitle")}</p>
+                <div className="flex items-start gap-3">
+                  <div className="rounded-xl bg-primary/10 p-2.5">
+                    <Building2 className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold">Revise o que o Vendi entendeu</h2>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Nada vira informação oficial sem sua confirmação.
+                    </p>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2.5">
-                  {AGENT_CARDS.map(({ key, labelKey, descKey, Icon }) => {
-                    const selected = s3AgentKey === key;
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => setS3AgentKey(key)}
-                        className={`relative flex flex-col items-center gap-2 rounded-xl border-2 p-4 text-center transition-all hover:shadow-sm ${
-                          selected
-                            ? "border-transparent ring-2 ring-primary bg-primary/5"
-                            : "border-border hover:border-primary/40"
-                        }`}
-                        style={
-                          selected
-                            ? {
-                                borderImage:
-                                  "linear-gradient(135deg, #6366f1, #8b5cf6) 1",
-                                borderImageSlice: 1,
-                              }
-                            : {}
-                        }
-                      >
-                        {selected && (
-                          <span className="absolute top-2 right-2 h-4 w-4 rounded-full bg-primary flex items-center justify-center">
-                            <Check className="h-2.5 w-2.5 text-white" />
-                          </span>
-                        )}
-                        <Icon className={`h-6 w-6 ${selected ? "text-primary" : "text-muted-foreground"}`} />
-                        <span className={`text-sm font-semibold leading-tight ${selected ? "text-primary" : ""}`}>
-                          {t(labelKey)}
+                {typeof businessAnalysis?.confianca === "number" && (
+                  <div className="rounded-lg border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                    Confiança da leitura: <strong className="text-foreground">{Math.round(businessAnalysis.confianca * 100)}%</strong>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <Label>Empresa</Label>
+                  <Input
+                    value={businessAnalysis?.nomeFantasia ?? s1NomeEmpresa}
+                    onChange={(event) => setBusinessAnalysis((current) => ({ ...(current ?? {}), nomeFantasia: event.target.value }))}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Segmento</Label>
+                  <Input
+                    value={businessAnalysis?.vertical ?? s1Segmento}
+                    onChange={(event) => setBusinessAnalysis((current) => ({ ...(current ?? {}), vertical: event.target.value }))}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Público principal</Label>
+                  <textarea
+                    rows={3}
+                    value={businessAnalysis?.publicoAlvo ?? ""}
+                    onChange={(event) => setBusinessAnalysis((current) => ({ ...(current ?? {}), publicoAlvo: event.target.value }))}
+                    placeholder="Quem compra, influencia ou especifica sua oferta?"
+                    className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm outline-none ring-offset-background focus:ring-1 focus:ring-ring"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Diferenciais</Label>
+                  <textarea
+                    rows={3}
+                    value={businessAnalysis?.diferenciais ?? ""}
+                    onChange={(event) => setBusinessAnalysis((current) => ({ ...(current ?? {}), diferenciais: event.target.value }))}
+                    placeholder="Por que clientes escolhem sua empresa?"
+                    className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm outline-none ring-offset-background focus:ring-1 focus:ring-ring"
+                  />
+                </div>
+
+                {(businessAnalysis?.produtos?.length ?? 0) > 0 && (
+                  <div className="rounded-xl border p-4">
+                    <p className="text-sm font-semibold">Produtos e serviços identificados</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {businessAnalysis!.produtos!.slice(0, 12).map((product, index) => (
+                        <span key={`${product.nome}-${index}`} className="rounded-full bg-muted px-3 py-1 text-xs">
+                          {product.nome}
                         </span>
-                        <span className="text-[11px] text-muted-foreground leading-snug">{t(descKey)}</span>
-                      </button>
-                    );
-                  })}
-                </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-                <div className="space-y-4 pt-1 border-t">
-                  <div className="space-y-2">
-                    <Label htmlFor="nomePerfil">{t("onboarding.agent.name")}</Label>
-                    <Input
-                      id="nomePerfil"
-                      placeholder={t("onboarding.agent.namePlaceholder")}
-                      value={s3NomePerfil}
-                      onChange={(e) => setS3NomePerfil(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>{t("onboarding.agent.tone")}</Label>
-                    <Select value={s3Tom} onValueChange={setS3Tom}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {TOM_OPTIONS.map((o) => (
-                          <SelectItem key={o.value} value={o.value}>{t(o.labelKey)}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+                  <p className="text-sm font-medium">Ao confirmar, o Vendor.ai prepara automaticamente</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Perfil da empresa, base inicial de conhecimento, produtos/serviços encontrados, contexto comercial e configuração inicial dos agentes.
+                  </p>
                 </div>
 
                 <div className="flex gap-3 pt-1">
                   <Button variant="ghost" onClick={() => setStep(2)} className="gap-1.5">
-                    <ChevronLeft className="h-4 w-4" /> {t("common.back")}
+                    <ChevronLeft className="h-4 w-4" /> Voltar
                   </Button>
-                  <Button className="flex-1 gap-2" disabled={submitting} onClick={handleStep3}>
-                    {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                    {t("onboarding.agent.activateContinue")}
-                    <ChevronRight className="h-4 w-4" />
+                  <Button className="flex-1 gap-2" disabled={submitting} onClick={finalizeAssistedOnboarding}>
+                    {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                    Aprovar e preparar minha empresa
                   </Button>
                 </div>
               </CardContent>
             </Card>
-          )}
-
-          {/* ═══════════════════════════════════════════════════════
-              PLAN — ESCOLHA COMERCIAL DO TRIAL
-          ═══════════════════════════════════════════════════════ */}
-          {step === "plan" && (
-            <OnboardingPlanStep
-              submitting={submitting}
-              onBack={() => setStep(3)}
-              onSelect={handlePlanSelection}
-            />
           )}
 
           {/* ═══════════════════════════════════════════════════════

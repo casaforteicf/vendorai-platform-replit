@@ -285,7 +285,14 @@ export function BrandKitSettings() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3"><h2 className="mr-auto text-xl font-semibold">Marca e Negócio</h2><Button variant={workspaceTab === "business" ? "default" : "outline"} onClick={() => setWorkspaceTab("business")}>Plano de Negócios</Button><Button variant={workspaceTab === "brand" ? "default" : "outline"} onClick={() => setWorkspaceTab("brand")}>Identidade da marca</Button></div>
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="mr-auto">
+          <h2 className="text-xl font-semibold">Estratégia e Marca</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Desenvolva o negócio com o Vendi e mantenha uma única identidade oficial para todos os módulos.</p>
+        </div>
+        <Button variant={workspaceTab === "business" ? "default" : "outline"} onClick={() => setWorkspaceTab("business")}>Estratégia e Negócio</Button>
+        <Button variant={workspaceTab === "brand" ? "default" : "outline"} onClick={() => setWorkspaceTab("brand")}>Marca</Button>
+      </div>
       <div hidden={workspaceTab !== "business"}><BusinessPlanPanel /></div>
       <div hidden={workspaceTab !== "brand"} className="space-y-4">
       <div className="rounded-xl border bg-card p-5 space-y-4">

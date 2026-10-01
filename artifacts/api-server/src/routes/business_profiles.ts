@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { and, desc, eq, sql } from "drizzle-orm";
 import {
   db,
+  pool,
   businessProfilesTable,
   generatedSitesTable,
   tenantsTable,
@@ -16,6 +17,8 @@ import { buildGenerationDesignQa } from "../services/contentCreativeRuntime";
 import { enrichSiteGeneratorServicesContext, inspectGeneratedSite, resolveSiteCreativeRuntime } from "../services/siteCreativeRuntime";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import { ensureTenantProposalBuilderTemplate } from "../lib/proposal-builder.js";
+import { loadBusinessPlan } from "../services/business-plan.js";
+import { PLAN_SECTIONS } from "../services/business-plan-model.js";
 
 const router: IRouter = Router();
 
@@ -26,6 +29,194 @@ function canAccessTenant(req: any, tenantId: string) {
 function normalizeSiteSurface(value: unknown): "institutional" | "landing" | "product" | "ecommerce" {
   return value === "institutional" || value === "product" || value === "ecommerce" ? value : "landing";
 }
+
+
+router.get("/tenants/:tenantId/company-intelligence/health", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccessTenant(req, tenantId)) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  try {
+    const [profileResult, tenantResult, brandResult, catalogResult, knowledgeResult, plan] = await Promise.all([
+      pool.query(
+        `SELECT razao_social, nome_fantasia, cnpj, endereco, telefone, email, vertical,
+                logo_url, diferenciais, publico_alvo, canais_venda, discovery_data, updated_at
+           FROM business_profiles
+          WHERE tenant_id=$1 LIMIT 1`,
+        [tenantId],
+      ),
+      pool.query(
+        `SELECT name, nome_empresa, segmento, vertical, site, logo_url, cor_primaria, updated_at
+           FROM tenants
+          WHERE id=$1 LIMIT 1`,
+        [tenantId],
+      ),
+      pool.query(
+        `SELECT id, name, logo_asset_id, visual_config, metadata, updated_at
+           FROM media_brand_video_kits
+          WHERE tenant_id=$1 AND status='active'
+          ORDER BY updated_at DESC LIMIT 1`,
+        [tenantId],
+      ),
+      pool.query(
+        `SELECT COUNT(*)::int AS total
+           FROM produtos_catalogo
+          WHERE tenant_id=$1 AND ativo=true`,
+        [tenantId],
+      ),
+      pool.query(
+        `SELECT COUNT(*)::int AS total
+           FROM knowledge_base
+          WHERE tenant_id=$1 AND ativo=true`,
+        [tenantId],
+      ),
+      loadBusinessPlan(tenantId),
+    ]);
+
+    const profile = profileResult.rows[0] ?? {};
+    const tenant = tenantResult.rows[0] ?? {};
+    const brand = brandResult.rows[0] ?? null;
+    const discovery = profile.discovery_data && typeof profile.discovery_data === "object"
+      ? profile.discovery_data as Record<string, unknown>
+      : {};
+
+    const present = (value: unknown) => {
+      if (typeof value === "string") return value.trim().length > 0;
+      if (Array.isArray(value)) return value.length > 0;
+      return value !== null && value !== undefined;
+    };
+
+    const profileChecks = [
+      profile.razao_social || profile.nome_fantasia || tenant.nome_empresa || tenant.name,
+      profile.cnpj,
+      profile.endereco,
+      profile.telefone || profile.email,
+      profile.vertical || tenant.segmento || tenant.vertical,
+      profile.logo_url || tenant.logo_url,
+      profile.diferenciais,
+      profile.publico_alvo,
+    ];
+    const profileCompleted = profileChecks.filter(present).length;
+    const profileScore = Math.round((profileCompleted / profileChecks.length) * 100);
+
+    const approvedSections = PLAN_SECTIONS.filter((section) => (plan.sections[section.id]?.approved?.length ?? 0) > 0);
+    const planScore = Math.round((approvedSections.length / PLAN_SECTIONS.length) * 100);
+
+    const brandIdentity = brand?.metadata?.brandIdentity;
+    const brandChecks = [
+      profile.logo_url || tenant.logo_url || brand?.logo_asset_id,
+      tenant.cor_primaria || brand?.visual_config?.brandStudio?.palette,
+      brandIdentity?.toneOfVoice,
+      brandIdentity?.positioning || discovery["posicionamento"],
+      brandIdentity?.typography || brand?.visual_config?.brandStudio?.typography,
+    ];
+    const brandScore = Math.round((brandChecks.filter(present).length / brandChecks.length) * 100);
+
+    const catalogCount = Number(catalogResult.rows[0]?.total ?? 0);
+    const knowledgeCount = Number(knowledgeResult.rows[0]?.total ?? 0);
+    const catalogScore = catalogCount > 0 ? 100 : 0;
+    const knowledgeScore = knowledgeCount >= 5 ? 100 : knowledgeCount > 0 ? 60 : 0;
+
+    const conflicts: Array<{ key: string; message: string }> = [];
+    if (present(profile.vertical) && present(tenant.vertical) && String(profile.vertical).trim() !== String(tenant.vertical).trim()) {
+      conflicts.push({ key: "vertical", message: "O segmento do Perfil da Empresa está diferente do segmento do tenant." });
+    }
+    if (present(profile.logo_url) && present(tenant.logo_url) && String(profile.logo_url) !== String(tenant.logo_url)) {
+      conflicts.push({ key: "logo", message: "Existem duas referências de logo diferentes entre Perfil e tenant." });
+    }
+
+    const confidence = typeof discovery["extractionConfidence"] === "number"
+      ? Number(discovery["extractionConfidence"])
+      : null;
+    const importedDocuments = Array.isArray(discovery["importedDocuments"])
+      ? (discovery["importedDocuments"] as unknown[]).filter((item): item is string => typeof item === "string")
+      : [];
+
+    const overallScore = Math.round(
+      profileScore * 0.30 +
+      planScore * 0.25 +
+      brandScore * 0.20 +
+      catalogScore * 0.15 +
+      knowledgeScore * 0.10
+    );
+
+    const recommendations: Array<{ key: string; title: string; detail: string; action: string; href: string }> = [];
+    if (profileScore < 80) recommendations.push({
+      key: "profile",
+      title: "Completar dados essenciais da empresa",
+      detail: "CNPJ, contatos, segmento, público e diferenciais ajudam todos os agentes a trabalhar com contexto correto.",
+      action: "Completar empresa",
+      href: "/configuracoes?tab=perfil",
+    });
+    if (planScore < 55) recommendations.push({
+      key: "plan",
+      title: "Desenvolver o Plano de Negócios com o Vendi",
+      detail: `${approvedSections.length} de ${PLAN_SECTIONS.length} blocos têm informação aprovada para uso dos agentes.`,
+      action: "Desenvolver estratégia",
+      href: "/configuracoes?tab=marketing",
+    });
+    if (brandScore < 80) recommendations.push({
+      key: "brand",
+      title: "Completar a identidade da marca",
+      detail: "Defina logo, cores, tom, posicionamento e tipografia para manter consistência em propostas, anúncios e conteúdos.",
+      action: "Completar marca",
+      href: "/configuracoes?tab=marketing",
+    });
+    if (catalogCount === 0) recommendations.push({
+      key: "catalog",
+      title: "Cadastrar produtos ou serviços",
+      detail: "O catálogo é a referência oficial de oferta, preços e itens usados pelo CRM e pelos agentes.",
+      action: "Abrir catálogo",
+      href: "/catalogo",
+    });
+    if (knowledgeCount === 0) recommendations.push({
+      key: "knowledge",
+      title: "Adicionar conhecimento da empresa",
+      detail: "Importe manuais, políticas, apresentações e documentos para reduzir respostas genéricas dos agentes.",
+      action: "Abrir conhecimento",
+      href: "/base-conhecimento",
+    });
+    for (const conflict of conflicts) recommendations.unshift({
+      key: `conflict-${conflict.key}`,
+      title: "Resolver informação divergente",
+      detail: conflict.message,
+      action: "Revisar fonte oficial",
+      href: "/configuracoes?tab=perfil",
+    });
+
+    const status =
+      conflicts.length > 0 ? "attention" :
+      overallScore >= 85 ? "ready" :
+      overallScore >= 60 ? "progress" : "initial";
+
+    res.setHeader("Cache-Control", "no-store");
+    res.json({
+      overallScore,
+      status,
+      metrics: {
+        profile: { score: profileScore, completed: profileCompleted, total: profileChecks.length },
+        businessPlan: { score: planScore, approvedSections: approvedSections.length, totalSections: PLAN_SECTIONS.length },
+        brand: { score: brandScore },
+        catalog: { score: catalogScore, count: catalogCount },
+        knowledge: { score: knowledgeScore, count: knowledgeCount },
+      },
+      sources: {
+        importedDocuments,
+        extractionConfidence: confidence,
+        onboardingSource: typeof discovery["onboardingSource"] === "string" ? discovery["onboardingSource"] : null,
+        lastProfileUpdate: profile.updated_at ?? null,
+        lastBrandUpdate: brand?.updated_at ?? null,
+      },
+      conflicts,
+      recommendations: recommendations.slice(0, 6),
+    });
+  } catch (error) {
+    req.log?.error({ error, tenantId }, "company-intelligence: health failed");
+    res.status(500).json({ error: "Não foi possível calcular a saúde da empresa agora." });
+  }
+});
 
 router.post("/business-profiles", async (req, res) => {
   const parsed = insertBusinessProfileSchema.safeParse(req.body);
