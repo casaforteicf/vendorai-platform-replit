@@ -128,6 +128,11 @@ type CompanyContextContact = {
   roles?: string[] | null;
   isPrimary?: boolean;
   preferredChannel?: string | null;
+  roleEvidence?: Array<{ source: string; detail?: string; observedAt?: string }> | null;
+  roleConfidence?: string | null;
+  verifiedAt?: string | null;
+  validUntil?: string | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 type CompanyContext = {
@@ -148,6 +153,10 @@ type CompanyContext = {
     relationshipType: string;
   };
   contacts: CompanyContextContact[];
+  relationships?: {
+    parents?: Array<{ id: string; parentCompanyId: string; childCompanyId: string; relationshipType: string; source: string }>;
+    children?: Array<{ id: string; parentCompanyId: string; childCompanyId: string; relationshipType: string; source: string }>;
+  };
 };
 
 function normalizeWhatsAppNumber(value?: string | null): string {
@@ -1828,6 +1837,23 @@ export default function LeadDetail() {
                         {companyContext.company.porte && <Badge variant="outline">{companyContext.company.porte}</Badge>}
                       </div>
                     </div>
+                    {!!((companyContext.relationships?.parents?.length ?? 0) + (companyContext.relationships?.children?.length ?? 0)) && (
+                      <div className="border-t pt-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Estrutura societária</p>
+                        <div className="flex flex-wrap gap-1">
+                          {companyContext.relationships?.parents?.map((rel) => (
+                            <Badge key={rel.id} variant="outline" className="text-[10px] capitalize">
+                              ↑ {rel.relationshipType.replace(/_/g, " ")}
+                            </Badge>
+                          ))}
+                          {companyContext.relationships?.children?.map((rel) => (
+                            <Badge key={rel.id} variant="outline" className="text-[10px] capitalize">
+                              ↓ {rel.relationshipType.replace(/_/g, " ")}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     <div className="border-t pt-3">
                       <div className="flex items-center justify-between mb-2">
                         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Contatos relacionados</p>
@@ -1846,11 +1872,19 @@ export default function LeadDetail() {
                                     <p className="text-xs text-muted-foreground">{contact.cargo || contact.qualificacao}</p>
                                   )}
                                 </div>
-                                {contact.isPrimary && <Badge className="text-[10px]">Principal</Badge>}
+                                {contact.verifiedAt && contact.isPrimary && <Badge className="text-[10px]">Principal</Badge>}
                               </div>
-                              {!!contact.roles?.length && (
+                              {contact.verifiedAt && !!contact.roles?.length ? (
                                 <div className="flex flex-wrap gap-1 mt-2">
                                   {contact.roles.map((role) => <Badge key={role} variant="outline" className="text-[10px] capitalize">{role}</Badge>)}
+                                  <Badge variant="secondary" className="text-[10px]">papel confirmado</Badge>
+                                </div>
+                              ) : (
+                                <div className="flex flex-wrap gap-1 mt-2">
+                                  {contact.metadata?.discoveredBy === "qsa" && (
+                                    <Badge variant="outline" className="text-[10px]">QSA</Badge>
+                                  )}
+                                  <Badge variant="secondary" className="text-[10px]">papel comercial a confirmar</Badge>
                                 </div>
                               )}
                               {(contact.telefones?.[0] || contact.emails?.[0]) && (
