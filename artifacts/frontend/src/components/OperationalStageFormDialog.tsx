@@ -45,6 +45,7 @@ const FORM_TITLES: Record<string, string> = {
   checklist_instalacao: "Checklist de instalação",
   conferencia_instalacao: "Conferência final da instalação",
   vistoria_aceite: "Entrega, vistoria e aceite",
+  pacote_entrega: "Pacote de entrega ao cliente",
 };
 
 function cardItems(card: WorkCardLike): ItemDraft[] {
@@ -225,6 +226,30 @@ export function OperationalStageFormDialog({
 
   async function submitStageForm() {
     if (!requirementKey) return;
+    if (requirementKey === "pacote_entrega") {
+      if (manualAttachmentIds.length === 0) {
+        toast({ title: "Manual obrigatório", description: "Anexe o Manual de Uso/Manutenção ao card antes de enviar o pacote.", variant: "destructive" });
+        return;
+      }
+      setSaving(true);
+      try {
+        const response = await fetch(`/api/work-cards/${card.id}/delivery-package/send`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ manualAttachmentIds }),
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.message || body.error || "Não foi possível enviar o pacote de entrega.");
+        toast({ title: "Pacote enviado", description: "Termo assinado e manuais enviados ao cliente e registrados no histórico." });
+        await onChanged();
+        onOpenChange(false);
+      } catch (error) {
+        toast({ title: "Não foi possível enviar o pacote", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
     const data: Record<string, unknown> = { notes };
     if (requirementKey === "relatorio_medidas") {
       data.items = items.map((item) => ({
@@ -330,6 +355,7 @@ export function OperationalStageFormDialog({
   if (!requirementKey) return null;
   const isAcceptance = requirementKey === "vistoria_aceite";
   const isFinal = requirementKey === "conferencia_instalacao";
+  const isPackage = requirementKey === "pacote_entrega";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -338,7 +364,7 @@ export function OperationalStageFormDialog({
           <DialogTitle className="flex items-center gap-2"><PenLine className="h-5 w-5" />{FORM_TITLES[requirementKey] ?? "Formulário da etapa"}</DialogTitle>
         </DialogHeader>
 
-        {!isFinal && (
+        {!isFinal && !isPackage && (
           <div className="space-y-3">
             {requirementKey === "checklist_transporte" && (
               <div className="grid gap-3 sm:grid-cols-3">
@@ -400,6 +426,28 @@ export function OperationalStageFormDialog({
           </div>
         )}
 
+        {isPackage && (
+          <div className="space-y-4">
+            <div className="rounded-xl border p-4">
+              <p className="font-medium">Documentos do pacote</p>
+              <p className="mt-1 text-sm text-muted-foreground">O termo assinado da entrega será combinado com os manuais identificados nos anexos deste card.</p>
+            </div>
+            <div className="space-y-2">
+              {attachments.filter((a) => /manual|garantia|uso|manuten/i.test(a.nome)).map((attachment) => (
+                <div key={attachment.id} className="flex items-center justify-between rounded-lg border p-3">
+                  <span className="text-sm">{attachment.nome}</span>
+                  <span className="text-xs text-muted-foreground">Incluído</span>
+                </div>
+              ))}
+              {manualAttachmentIds.length === 0 && (
+                <div className="rounded-lg border border-dashed p-4 text-sm text-amber-700">
+                  Nenhum manual identificado. Anexe o Manual de Uso/Manutenção ao card e volte para concluir o pacote.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {isAcceptance && (
           <div className="space-y-4 border-t pt-4">
             <div className="grid gap-3 sm:grid-cols-2">
@@ -431,13 +479,13 @@ export function OperationalStageFormDialog({
           </div>
         )}
 
-        {!isAcceptance && <Textarea rows={3} placeholder="Observações gerais" value={notes} onChange={(e) => setNotes(e.target.value)} />}
+        {!isAcceptance && !isPackage && <Textarea rows={3} placeholder="Observações gerais" value={notes} onChange={(e) => setNotes(e.target.value)} />}
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
           <Button disabled={saving} onClick={() => void (isAcceptance ? submitAcceptance() : submitStageForm())}>
             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {isAcceptance ? "Assinar e concluir entrega" : "Concluir formulário"}
+            {isAcceptance ? "Assinar e concluir entrega" : isPackage ? "Enviar pacote ao cliente" : "Concluir formulário"}
           </Button>
         </DialogFooter>
       </DialogContent>
