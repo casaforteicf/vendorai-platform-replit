@@ -12,6 +12,7 @@ import {
   buildRelevantProfessionalDates,
   canonicalizeProfessionalDates,
 } from "../lib/professional-calendar-selection.js";
+import { mergeCommercialDates } from "../lib/commercial-calendar.js";
 
 const router: IRouter = Router();
 
@@ -61,7 +62,7 @@ router.get("/tenants/:tenantId/calendar-settings", async (req, res) => {
     return res.json({
       id: "",
       tenantId,
-      commercialDates: [],
+      commercialDates: mergeCommercialDates([]),
       professionalDates: buildRelevantProfessionalDates([], leadProfessions),
       enableSpouseGiftFlow: false,
       createdAt: null,
@@ -92,7 +93,11 @@ router.get("/tenants/:tenantId/calendar-settings", async (req, res) => {
     leadProfessions,
   );
 
-  return res.json({ ...persistedSettings, professionalDates });
+  return res.json({
+    ...persistedSettings,
+    commercialDates: mergeCommercialDates(persistedSettings.commercialDates),
+    professionalDates,
+  });
 });
 
 router.post("/tenants/:tenantId/calendar-settings", async (req, res) => {
