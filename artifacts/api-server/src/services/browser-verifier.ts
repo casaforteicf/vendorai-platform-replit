@@ -26,5 +26,5 @@ export function verifyCheckpointTransition(
 }
 
 export function actionShouldChangePage(action: string) {
-  return ["navigate", "click", "type", "select", "secret"].includes(action);
+  return ["navigate", "click"].includes(action);
 }
