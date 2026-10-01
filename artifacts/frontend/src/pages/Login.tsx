@@ -416,12 +416,22 @@ export default function Login() {
   const { toast } = useToast();
   const [showPassword, setShowPassword] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [homologLoginError, setHomologLoginError] = useState<string | null>(null);
   const homologAutoLoginAttempted = useRef(false);
   const copy = locale === "pt-BR" ? PT_COPY : ES_COPY;
   const tour = locale === "pt-BR" ? PT_TOUR : ES_TOUR;
   const proverbs = locale === "pt-BR" ? PT_PROVERBS : ES_PROVERBS;
   const active = tour[activeIndex];
   const proverb = proverbs[dayOfYear(new Date()) % proverbs.length];
+  const isHomologationHost = useMemo(() => {
+    const host = window.location.hostname.toLowerCase();
+    return (
+      host === "homolog.appvendorai.com"
+      || host === "homolog2.appvendorai.com"
+      || host.includes("vendorai-homolog-frontend-production.up.railway.app")
+      || host.includes("vendorai-homolog-preview-production.up.railway.app")
+    );
+  }, []);
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -487,17 +497,33 @@ export default function Login() {
     );
   }
 
-  useEffect(() => {
-    const host = window.location.hostname.toLowerCase();
-    const isHomologationHost =
-      host === "homolog.appvendorai.com"
-      || host === "homolog2.appvendorai.com"
-      || host.includes("vendorai-homolog-frontend-production.up.railway.app");
+  async function onHomologLogin() {
+    setHomologLoginError(null);
+    try {
+      const response = await fetch("/api/auth/homolog-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = await response.json();
+      const returnPath = consumeSafePostLoginPath();
+      login(payload.token, payload.user);
+      window.location.assign(returnPath || "/");
+    } catch (error) {
+      console.error("Homologation passwordless login failed", error);
+      setHomologLoginError(
+        locale === "pt-BR"
+          ? "Não foi possível entrar automaticamente na homologação."
+          : "No fue posible ingresar automáticamente a homologación.",
+      );
+    }
+  }
 
+  useEffect(() => {
     if (!isHomologationHost || homologAutoLoginAttempted.current) return;
     homologAutoLoginAttempted.current = true;
-    onDemoLogin();
-  }, []);
+    void onHomologLogin();
+  }, [isHomologationHost]);
 
   function previousTool() {
     setActiveIndex((current) => (current - 1 + tour.length) % tour.length);
@@ -508,6 +534,35 @@ export default function Login() {
   }
 
   const ActiveIcon = active.icon;
+
+  if (isHomologationHost) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#f7f8fa] px-6 text-slate-950">
+        <div className="w-full max-w-sm text-center">
+          <img src={logoLight} alt="Vendor.ai" className="mx-auto h-12 w-auto" />
+          <div className="mt-8 text-[22px] font-semibold tracking-[-0.025em]">
+            {locale === "pt-BR" ? "Homologação Vendor.ai" : "Homologación Vendor.ai"}
+          </div>
+          <p className="mt-2 text-[14px] leading-6 text-slate-500">
+            {homologLoginError
+              ? homologLoginError
+              : (locale === "pt-BR" ? "Entrando automaticamente, sem senha..." : "Ingresando automáticamente, sin contraseña...")}
+          </p>
+          {homologLoginError ? (
+            <Button
+              type="button"
+              onClick={() => void onHomologLogin()}
+              className="mt-6 h-11 rounded-lg bg-[#5b4ce6] px-5 text-white hover:bg-[#4e3fd8]"
+            >
+              {locale === "pt-BR" ? "Tentar novamente" : "Intentar nuevamente"}
+            </Button>
+          ) : (
+            <div className="mx-auto mt-6 h-7 w-7 animate-spin rounded-full border-2 border-slate-200 border-t-[#5b4ce6]" aria-label="Entrando" />
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#f7f9fc] text-slate-950 lg:grid lg:grid-cols-[42%_58%]">
