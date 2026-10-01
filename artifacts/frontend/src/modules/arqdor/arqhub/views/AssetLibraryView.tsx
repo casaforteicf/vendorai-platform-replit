@@ -133,6 +133,9 @@ export function AssetLibraryView() {
   const [polyLoading, setPolyLoading] = useState(false)
   const [polyOpen, setPolyOpen] = useState(false)
   const [importingPoly, setImportingPoly] = useState<string|null>(null)
+  const [unifiedOpen, setUnifiedOpen] = useState(false)
+  const [unifiedLoading, setUnifiedLoading] = useState(false)
+  const [sourceView, setSourceView] = useState<'all'|'mine'|'poly'|'sketchfab'>('all')
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
@@ -246,6 +249,56 @@ export function AssetLibraryView() {
     } finally { setImportingPoly(null) }
   }, [load])
 
+
+  const searchUniversal = useCallback(async () => {
+    const q = query.trim()
+    if (q.length < 2) {
+      setExternalError('Digite ao menos 2 caracteres para buscar em todas as bibliotecas.')
+      return
+    }
+
+    setUnifiedOpen(true)
+    setSourceView('all')
+    setUnifiedLoading(true)
+    setExternalLoading(true)
+    setPolyLoading(true)
+    setExternalError(null)
+    setImportMessage(null)
+
+    const headers = authHeaders()
+    const [polyResult, sketchResult] = await Promise.allSettled([
+      fetch(`${BASE}/arch/polyhaven/search?q=${encodeURIComponent(q)}&limit=24`, { headers })
+        .then(async res => {
+          if (!res.ok) throw new Error(`Poly Haven (${res.status})`)
+          return res.json() as Promise<{ items?: PolyHavenItem[] }>
+        }),
+      fetch(`${BASE}/arch/sketchfab/search?q=${encodeURIComponent(q)}&limit=24`, { headers })
+        .then(async res => {
+          if (!res.ok) throw new Error(`Sketchfab (${res.status})`)
+          return res.json() as Promise<{ items?: SketchfabItem[] }>
+        }),
+    ])
+
+    if (polyResult.status === 'fulfilled') setPolyItems(Array.isArray(polyResult.value.items) ? polyResult.value.items : [])
+    else setPolyItems([])
+
+    if (sketchResult.status === 'fulfilled') setExternalItems(Array.isArray(sketchResult.value.items) ? sketchResult.value.items : [])
+    else setExternalItems([])
+
+    const failures = [
+      polyResult.status === 'rejected' ? 'Poly Haven' : null,
+      sketchResult.status === 'rejected' ? 'Sketchfab' : null,
+    ].filter(Boolean)
+
+    if (failures.length) setExternalError(`Algumas fontes não responderam: ${failures.join(', ')}.`)
+
+    setPolyOpen(true)
+    setExternalOpen(true)
+    setPolyLoading(false)
+    setExternalLoading(false)
+    setUnifiedLoading(false)
+  }, [query])
+
   const categories = [...new Set(items.map(i=>i.categoria).filter(Boolean))] as string[]
   const canApply = hasPermission('PROJECT_EDIT') && hasPermission('MATERIAL_SELECT')
 
@@ -270,12 +323,32 @@ export function AssetLibraryView() {
         <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar asset…" style={{ flex:1, minWidth:120, background:'rgba(255,255,255,0.06)', border:`1px solid ${T.border}`, borderRadius:6, color:T.text, fontSize:11, padding:'7px 10px', outline:'none' }} />
         <select value={catFilt} onChange={e=>setCatFilt(e.target.value)} style={{ background:'rgba(255,255,255,0.06)', border:`1px solid ${T.border}`, borderRadius:6, color:catFilt?T.text:T.dim, fontSize:10, padding:'7px 8px' }}><option value="">Todos os tipos</option>{categories.map(c=><option key={c} value={c}>{c}</option>)}</select>
         <button type="button" onClick={()=>void load()} disabled={loading} style={{ padding:'7px 10px', borderRadius:6, border:`1px solid ${T.border}`, background:'transparent', color:T.dim, cursor:loading?'wait':'pointer', fontSize:10 }}>{loading?'…':'↻'}</button>
-        <button type="button" onClick={()=>void searchExternal()} disabled={externalLoading || query.trim().length < 2} style={{ padding:'7px 10px', borderRadius:6, border:`1px solid ${T.border}`, background:externalOpen?'rgba(124,58,237,0.12)':'transparent', color:externalOpen?T.purpleL:T.dim, cursor:externalLoading?'wait':'pointer', fontSize:10 }}>{externalLoading?'Buscando…':'Buscar Sketchfab'}</button>
-        <button type="button" onClick={()=>void searchPolyHaven()} disabled={polyLoading} style={{ padding:'7px 10px', borderRadius:6, border:`1px solid ${T.border}`, background:polyOpen?'rgba(34,197,94,0.10)':'transparent', color:polyOpen?'#4ade80':T.dim, cursor:polyLoading?'wait':'pointer', fontSize:10 }}>{polyLoading?'Buscando…':'Buscar Poly Haven'}</button>
+        <button type="button" onClick={()=>void searchUniversal()} disabled={unifiedLoading || query.trim().length < 2} style={{ padding:'7px 12px', borderRadius:6, border:`1px solid ${unifiedOpen?'rgba(124,58,237,.45)':T.border}`, background:unifiedOpen?'rgba(124,58,237,0.12)':'transparent', color:unifiedOpen?T.purpleL:T.text, cursor:unifiedLoading?'wait':'pointer', fontSize:10, fontWeight:700 }}>{unifiedLoading?'Buscando em tudo…':'⌕ Buscar em tudo'}</button>
         <span style={{ fontSize:10, color:T.dim }}>{items.length} assets</span>
       </div>
 
-      {polyOpen && <div style={{ padding:'12px 16px', borderBottom:`1px solid ${T.border}`, background:'rgba(34,197,94,0.035)' }}>
+      {unifiedOpen && <div style={{ padding:'10px 16px', borderBottom:`1px solid ${T.border}`, background:'rgba(124,58,237,0.03)' }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, flexWrap:'wrap' }}>
+          <div>
+            <strong style={{ fontSize:11, color:T.text }}>Busca Universal</strong>
+            <span style={{ marginLeft:8, fontSize:9, color:T.dim }}>uma pesquisa · todas as bibliotecas</span>
+          </div>
+          <button type="button" onClick={()=>{setUnifiedOpen(false);setPolyOpen(false);setExternalOpen(false)}} style={{ border:0, background:'transparent', color:T.dim, cursor:'pointer' }}>✕</button>
+        </div>
+        <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop:9 }}>
+          {([
+            ['all','Tudo',items.length + polyItems.length + externalItems.length],
+            ['mine','Minha Biblioteca',items.length],
+            ['poly','Poly Haven',polyItems.length],
+            ['sketchfab','Sketchfab',externalItems.length],
+          ] as const).map(([key,label,count]) => <button key={key} type="button" onClick={()=>setSourceView(key)} style={{ padding:'5px 8px', borderRadius:999, border:`1px solid ${sourceView===key?'rgba(124,58,237,.45)':T.border}`, background:sourceView===key?'rgba(124,58,237,.12)':'transparent', color:sourceView===key?T.purpleL:T.dim, fontSize:8, cursor:'pointer' }}>{label} · {count}</button>)}
+          <span style={{ padding:'5px 8px', fontSize:8, color:T.dim, border:`1px dashed ${T.border}`, borderRadius:999 }}>Fabricantes · em breve</span>
+          <span style={{ padding:'5px 8px', fontSize:8, color:T.dim, border:`1px dashed ${T.border}`, borderRadius:999 }}>BIM · em breve</span>
+        </div>
+        {externalError && <div style={{ marginTop:8, fontSize:9, color:'#fbbf24' }}>⚠ {externalError}</div>}
+      </div>}
+
+      {polyOpen && unifiedOpen && (sourceView==='all' || sourceView==='poly') && <div style={{ padding:'12px 16px', borderBottom:`1px solid ${T.border}`, background:'rgba(34,197,94,0.035)' }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, marginBottom:10 }}>
           <div><strong style={{ fontSize:11, color:T.text }}>Biblioteca externa · Poly Haven</strong><span style={{ marginLeft:8, fontSize:9, color:T.dim }}>CC0 · sem login</span></div>
           <button type="button" onClick={()=>setPolyOpen(false)} style={{ border:0, background:'transparent', color:T.dim, cursor:'pointer' }}>✕</button>
@@ -296,7 +369,7 @@ export function AssetLibraryView() {
         </div>
       </div>}
 
-      {externalOpen && <div style={{ padding:'12px 16px', borderBottom:`1px solid ${T.border}`, background:'rgba(124,58,237,0.035)' }}>
+      {externalOpen && unifiedOpen && (sourceView==='all' || sourceView==='sketchfab') && <div style={{ padding:'12px 16px', borderBottom:`1px solid ${T.border}`, background:'rgba(124,58,237,0.035)' }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, marginBottom:10 }}>
           <div><strong style={{ fontSize:11, color:T.text }}>Biblioteca externa · Sketchfab</strong><span style={{ marginLeft:8, fontSize:9, color:T.dim }}>somente modelos com download permitido</span></div>
           <button type="button" onClick={()=>setExternalOpen(false)} style={{ border:0, background:'transparent', color:T.dim, cursor:'pointer' }}>✕</button>
@@ -323,7 +396,7 @@ export function AssetLibraryView() {
 
       {error && <div style={{ padding:'10px 16px', background:'rgba(248,113,113,0.08)', borderBottom:'1px solid rgba(248,113,113,0.2)', fontSize:11, color:'#f87171', display:'flex', justifyContent:'space-between', gap:12, alignItems:'center' }}><span>⚠ {error}</span><button type="button" onClick={()=>void load()} style={{ border:`1px solid ${T.border}`, borderRadius:6, background:'transparent', color:T.text, padding:'5px 8px', cursor:'pointer' }}>Tentar novamente</button></div>}
 
-      <div className="arq-asset-body" data-has-selection={Boolean(sel)}>
+      <div className="arq-asset-body" data-has-selection={Boolean(sel)} style={{ display: unifiedOpen && sourceView!=='all' && sourceView!=='mine' ? 'none' : undefined }}>
         <div className="arq-asset-grid-wrap">
           {loading && <div className="arq-asset-grid">{[1,2,3,4,5,6].map(i=><div key={i} style={{ height:120, borderRadius:10, background:'rgba(255,255,255,0.04)', border:`1px solid ${T.border}` }} />)}</div>}
           {!loading && !error && items.length===0 && <div style={{ textAlign:'center', padding:'48px 16px', color:T.dim, fontSize:12 }}><p style={{ fontSize:28, margin:'0 0 8px' }}>📦</p><p>Nenhum item encontrado. Ajuste os filtros ou cadastre itens na Biblioteca.</p></div>}
