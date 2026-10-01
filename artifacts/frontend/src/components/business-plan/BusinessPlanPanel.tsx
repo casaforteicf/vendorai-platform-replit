@@ -10,6 +10,7 @@ type Entry = { id: string; title: string; values: Record<string, string>; source
 type Section = { draft: Entry[]; approved: Entry[]; approvedAt?: string; revision: number };
 type Plan = { version: number; sections: Record<string, Section>; history: Array<{ version: number; section: string; action: string; at: string }> };
 type Data = { plan: Plan; sections: Array<{ id: string; title: string; fields: string[] }>; sources: { profile: Record<string, unknown> | null; products: Array<{ id: string; nome: string; descricao?: string }>; assets: Array<{ id: string; title: string; url: string }> } };
+type ImportPreview = { fileName: string; extractedChars: number; truncated: boolean; coveredSectionIds: string[]; missingSectionIds: string[]; sections: Array<{ sectionId: string; title: string; records: Entry[]; hasExisting: boolean }> };
 const selectClass = "w-full rounded-md border bg-background p-2 text-sm";
 const roleLabels: Record<string, string> = { marketing: "Marketing", prospector: "Prospector", sdr: "SDR", closer: "Closer", agendamento: "Agendamento", suporte: "Suporte", pos_venda: "Pós-venda", financeiro: "Financeiro", cobranca: "Cobrança", scout: "Revenue Scout" };
 export function BusinessPlanPanel() {
@@ -38,6 +39,8 @@ export function BusinessPlanPanel() {
   const [campaign, setCampaign] = useState({ segmentId: "", productId: "", goal: "", channel: "instagram", assetIds: [] as string[] });
   const [message, setMessage] = useState("");
   const [savedCampaign, setSavedCampaign] = useState("");
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
+  const importInput = useRef<HTMLInputElement>(null);
   const campaignId = useRef(crypto.randomUUID());
   const previewVersion = useRef<number | null>(null);
   const data = query.data;
@@ -45,7 +48,7 @@ export function BusinessPlanPanel() {
   const saved = data?.plan.sections[sectionId];
   const records = drafts[sectionId] ?? saved?.draft ?? [];
   const dirty = Object.keys(drafts).length > 0;
-  useEffect(() => { setDrafts({}); setSuggestion(null); setMessage(""); setSavedCampaign(""); setAgentContext(""); }, [tenantId]);
+  useEffect(() => { setDrafts({}); setSuggestion(null); setMessage(""); setSavedCampaign(""); setAgentContext(""); setImportPreview(null); }, [tenantId]);
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => { if (dirty) { e.preventDefault(); e.returnValue = ""; } };
     window.addEventListener("beforeunload", handler); return () => window.removeEventListener("beforeunload", handler);
@@ -57,6 +60,43 @@ export function BusinessPlanPanel() {
     finally { busyRef.current = false; setBusy(""); }
   }
   function update(index: number, patch: Partial<Entry>) { setDrafts(v => ({ ...v, [sectionId]: records.map((r, i) => i === index ? { ...r, ...patch } : r) })); }
+  async function importDocument(file: File) {
+    await run("Lendo e organizando o documento...", async () => {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch(base + "/import", { method: "POST", credentials: "include", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body: form });
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload.error || "Não foi possível importar o documento");
+      setImportPreview(payload);
+      toast({ title: `${payload.coveredSectionIds.length} de ${data!.sections.length} blocos encontrados no documento` });
+    });
+    if (importInput.current) importInput.current.value = "";
+  }
+  function applyImportedSection(targetSectionId: string) {
+    const imported = importPreview?.sections.find(s => s.sectionId === targetSectionId)?.records ?? [];
+    if (!imported.length) return;
+    setDrafts(current => {
+      const existing = current[targetSectionId] ?? data!.plan.sections[targetSectionId]?.draft ?? [];
+      const existingIds = new Set(existing.map(r => r.id));
+      return { ...current, [targetSectionId]: [...existing, ...imported.filter(r => !existingIds.has(r.id))].slice(0, 30) };
+    });
+    setSectionId(targetSectionId);
+    setTab("plan");
+    toast({ title: "Informações adicionadas ao rascunho", description: "Nada existente foi sobrescrito. Revise antes de salvar ou aprovar." });
+  }
+  function applyAllImported() {
+    if (!importPreview) return;
+    setDrafts(current => {
+      const next = { ...current };
+      for (const section of importPreview.sections) {
+        const existing = next[section.sectionId] ?? data!.plan.sections[section.sectionId]?.draft ?? [];
+        const existingIds = new Set(existing.map(r => r.id));
+        next[section.sectionId] = [...existing, ...section.records.filter(r => !existingIds.has(r.id))].slice(0, 30);
+      }
+      return next;
+    });
+    toast({ title: "Importação adicionada aos rascunhos", description: "Conteúdo existente foi preservado. Revise os blocos antes de aprovar." });
+  }
   function newEntry(): Entry { return { id: crypto.randomUUID(), title: "Nova ficha", values: {}, evidence: "declared", source: "Informado pela empresa", productIds: [], assetIds: [] }; }
   async function save(action: "save" | "approve" | "revoke") {
     await run("Salvando...", async () => {
@@ -79,7 +119,8 @@ export function BusinessPlanPanel() {
   }
   const approvedCount = Object.values(data.plan.sections).filter(s => s.approved.length).length;
   return <fieldset disabled={!!busy} className="min-w-0 space-y-4">
-    <div className="rounded-xl border bg-card p-5"><h2 className="text-xl font-semibold">Plano de Negócios</h2><p className="mt-1 text-sm text-muted-foreground">Desenvolva sua estratégia com IA e transforme informações aprovadas em orientação para os agentes e campanhas.</p><p className="mt-3 text-sm">{approvedCount} de {data.sections.length} blocos aprovados · versão {data.plan.version}{dirty ? " · alterações não salvas" : ""}</p><div className="mt-4 flex flex-wrap gap-2">{[["plan", "Desenvolver plano"], ["agents", "Conexão com agentes"], ["campaign", "Criar campanha"], ["document", "Visualizar PN"]].map(([key, label]) => <Button key={key} variant={tab === key ? "default" : "outline"} onClick={() => setTab(key)}>{label}</Button>)}</div></div>
+    <div className="rounded-xl border bg-card p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-xl font-semibold">Plano de Negócios</h2><p className="mt-1 text-sm text-muted-foreground">Desenvolva sua estratégia com IA ou importe um documento existente para preencher somente o que ele realmente informa.</p></div><div><input ref={importInput} type="file" accept=".pdf,.doc,.docx,.txt,.md,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown" className="hidden" onChange={e => { const file=e.target.files?.[0]; if (file) void importDocument(file); }} /><Button variant="outline" onClick={() => importInput.current?.click()}>Importar PDF/DOCX</Button><p className="mt-1 text-right text-xs text-muted-foreground">A IA organiza sem sobrescrever seus dados.</p></div></div><p className="mt-3 text-sm">{approvedCount} de {data.sections.length} blocos aprovados · versão {data.plan.version}{dirty ? " · alterações não salvas" : ""}</p><div className="mt-4 flex flex-wrap gap-2">{[["plan", "Desenvolver plano"], ["agents", "Conexão com agentes"], ["campaign", "Criar campanha"], ["document", "Visualizar PN"]].map(([key, label]) => <Button key={key} variant={tab === key ? "default" : "outline"} onClick={() => setTab(key)}>{label}</Button>)}</div></div>
+    {importPreview && <div className="rounded-xl border border-primary/40 bg-card p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-semibold">Documento analisado · {importPreview.fileName}</h3><p className="mt-1 text-sm text-muted-foreground">A IA encontrou conteúdo para {importPreview.coveredSectionIds.length} de {data.sections.length} blocos. O resultado fica como rascunho e nunca substitui informações existentes automaticamente.{importPreview.truncated ? " O documento era muito extenso e a análise usou a parte inicial." : ""}</p></div><div className="flex gap-2"><Button onClick={applyAllImported}>Adicionar tudo aos rascunhos</Button><Button variant="ghost" onClick={() => setImportPreview(null)}>Fechar</Button></div></div><div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">{importPreview.sections.map(section => <div key={section.sectionId} className="rounded-lg border p-3"><div className="flex items-start justify-between gap-2"><div><p className="text-sm font-medium">{section.title}</p><p className="text-xs text-muted-foreground">{section.records.length} ficha{section.records.length === 1 ? "" : "s"} encontrada{section.records.length === 1 ? "" : "s"}{section.hasExisting ? " · já existe conteúdo neste bloco" : ""}</p></div><Button size="sm" variant="outline" onClick={() => applyImportedSection(section.sectionId)}>Adicionar</Button></div></div>)}</div>{importPreview.missingSectionIds.length > 0 && <p className="mt-3 text-xs text-muted-foreground">Sem informação suficiente no documento: {importPreview.missingSectionIds.map(id => data.sections.find(s => s.id === id)?.title).filter(Boolean).join(", ")}. Esses campos permanecem vazios para completar depois.</p>}</div>}
     {tab === "plan" && <div className="grid gap-4 lg:grid-cols-[230px_minmax(0,1fr)]"><nav className="flex gap-2 overflow-x-auto lg:flex-col" aria-label="Blocos do plano">{data.sections.map((s,i) => <button key={s.id} disabled={!!busy} onClick={() => { setSectionId(s.id); setSuggestion(null); setNotes(""); }} className={`shrink-0 rounded-lg border p-3 text-left text-sm ${sectionId === s.id ? "border-primary bg-primary/5 font-semibold" : "bg-card"}`}>{i+1}. {s.title}<span className="block text-xs font-normal text-muted-foreground">{drafts[s.id] ? "Alterações não salvas" : data.plan.sections[s.id]?.approved.length ? "Versão aprovada disponível" : "Em desenvolvimento"}</span></button>)}</nav>
       <div className="min-w-0 space-y-4"><div className="rounded-xl border bg-card p-4"><h3 className="font-semibold">{spec?.title}</h3><p className="mt-1 text-sm text-muted-foreground">Crie uma ficha por segmento, produto, oportunidade ou ação. Rascunhos e hipóteses não entram no atendimento dos agentes.</p><label className="mt-3 block text-sm">Como a IA pode ajudar?<Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Ex.: desenvolva oportunidades específicas para os públicos que atendemos" /></label><Button className="mt-2" disabled={!!busy} onClick={() => run("Desenvolvendo com IA...", async () => { const r = await request(`/sections/${sectionId}/suggest`, "POST", { records, notes }); setSuggestion(r.records); })}>Desenvolver com IA</Button></div>
       {suggestion && <div className="rounded-xl border border-primary bg-card p-4"><h4 className="font-semibold">Sugestão para revisão</h4>{suggestion.map(r => <details key={r.id} className="mt-2"><summary>{r.title}</summary>{Object.entries(r.values).map(([k,v]) => <p key={k} className="mt-2 whitespace-pre-wrap text-sm"><strong>{k}: </strong>{v}</p>)}</details>)}<div className="mt-3 flex gap-2"><Button onClick={() => { setDrafts(v => ({ ...v, [sectionId]: [...records, ...suggestion].slice(0,30) })); setSuggestion(null); }}>Adicionar ao rascunho</Button><Button variant="outline" onClick={() => setSuggestion(null)}>Descartar sugestão</Button></div></div>}
