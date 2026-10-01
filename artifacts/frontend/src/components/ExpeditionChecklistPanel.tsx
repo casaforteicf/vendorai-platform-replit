@@ -49,36 +49,72 @@ export function ExpeditionChecklistPanel({
   disabled?: boolean;
   onChange: (checklist: ExpeditionChecklist) => void;
 }) {
+  function recalculate(itens: ExpeditionChecklist["itens"], verificacaoFinal = checklist.verificacaoFinal) {
+    const fields = itens.flatMap((item) => item.campos);
+    const concluidos = fields.filter((field) => field.status !== "pendente").length;
+    const divergencias = fields.filter((field) => field.status === "divergencia").length;
+    const fullyChecked = fields.length > 0 && concluidos === fields.length;
+    const verifierOk = Boolean(verificacaoFinal?.nomeVerificador?.trim());
+    return {
+      concluidos,
+      divergencias,
+      status: divergencias > 0
+        ? "com_divergencia" as const
+        : fullyChecked && verifierOk
+          ? "concluido" as const
+          : concluidos > 0 ? "em_andamento" as const : "pendente" as const,
+    };
+  }
+
   function setField(itemIndex: number, fieldIndex: number, status: ChecklistStatus) {
     const itens = checklist.itens.map((item, i) => i !== itemIndex ? item : {
       ...item,
       campos: item.campos.map((field, j) => j !== fieldIndex ? field : { ...field, status }),
     });
-    const fields = itens.flatMap((item) => item.campos);
-    const concluidos = fields.filter((field) => field.status !== "pendente").length;
-    const divergencias = fields.filter((field) => field.status === "divergencia").length;
+    const summary = recalculate(itens);
     onChange({
       ...checklist,
       itens,
-      concluidos,
-      divergencias,
-      status: divergencias > 0
-        ? "com_divergencia"
-        : concluidos === fields.length && fields.length > 0
-          ? "concluido"
-          : concluidos > 0 ? "em_andamento" : "pendente",
+      ...summary,
+      verificacaoFinal: {
+        ...(checklist.verificacaoFinal ?? {}),
+        ...(summary.status === "concluido" && !checklist.verificacaoFinal?.data ? { data: new Date().toISOString() } : {}),
+      },
     });
+  }
+
+  function setFieldObservation(itemIndex: number, fieldIndex: number, observacao: string) {
+    const itens = checklist.itens.map((item, i) => i !== itemIndex ? item : {
+      ...item,
+      campos: item.campos.map((field, j) => j !== fieldIndex ? field : { ...field, observacao }),
+    });
+    onChange({ ...checklist, itens });
+  }
+
+  function markAllOk() {
+    const itens = checklist.itens.map((item) => ({
+      ...item,
+      campos: item.campos.map((field) => field.status === "na" ? field : { ...field, status: "ok" as const }),
+    }));
+    const summary = recalculate(itens);
+    onChange({ ...checklist, itens, ...summary });
   }
 
   function setFinal(field: "totalVolumes" | "pesoTotalKg" | "nomeVerificador" | "observacoes", value: string) {
     const numeric = field === "totalVolumes" || field === "pesoTotalKg";
     const parsed = numeric ? (value.trim() ? Number(value.replace(",", ".")) : null) : value;
+    const verificacaoFinal = {
+      ...(checklist.verificacaoFinal ?? {}),
+      [field]: numeric && typeof parsed === "number" && !Number.isFinite(parsed) ? null : parsed,
+    };
+    const summary = recalculate(checklist.itens, verificacaoFinal);
     onChange({
       ...checklist,
       verificacaoFinal: {
-        ...(checklist.verificacaoFinal ?? {}),
-        [field]: numeric && typeof parsed === "number" && !Number.isFinite(parsed) ? null : parsed,
+        ...verificacaoFinal,
+        ...(summary.status === "concluido" && !verificacaoFinal.data ? { data: new Date().toISOString() } : {}),
       },
+      ...summary,
     });
   }
 
@@ -95,9 +131,14 @@ export function ExpeditionChecklistPanel({
             {checklist.contexto?.vertical ? ` • ${checklist.contexto.vertical}` : ""}.
           </p>
         </div>
-        <Badge variant={checklist.divergencias > 0 ? "destructive" : checklist.status === "concluido" ? "default" : "secondary"}>
-          {checklist.concluidos}/{checklist.totalCampos}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant={checklist.divergencias > 0 ? "destructive" : checklist.status === "concluido" ? "default" : "secondary"}>
+            {checklist.concluidos}/{checklist.totalCampos}
+          </Badge>
+          <Button disabled={disabled} size="sm" variant="outline" className="h-7 text-xs" onClick={markAllOk}>
+            Marcar pendentes como OK
+          </Button>
+        </div>
       </div>
 
       <div className="space-y-3">
@@ -121,6 +162,16 @@ export function ExpeditionChecklistPanel({
                     <Button disabled={disabled} size="sm" variant={field.status === "divergencia" ? "destructive" : "outline"} className="h-7 px-2 text-xs" onClick={() => setField(itemIndex, fieldIndex, "divergencia")}>Divergência</Button>
                     <Button disabled={disabled} size="sm" variant={field.status === "na" ? "secondary" : "outline"} className="h-7 px-2 text-xs" onClick={() => setField(itemIndex, fieldIndex, "na")}>N/A</Button>
                   </div>
+                  {field.status === "divergencia" && (
+                    <Textarea
+                      disabled={disabled}
+                      className="w-full basis-full"
+                      rows={2}
+                      placeholder="Descreva a divergência, quantidade afetada e ação necessária."
+                      defaultValue={field.observacao ?? ""}
+                      onBlur={(e) => setFieldObservation(itemIndex, fieldIndex, e.currentTarget.value)}
+                    />
+                  )}
                 </div>
               ))}
             </div>
@@ -146,6 +197,12 @@ export function ExpeditionChecklistPanel({
           <Textarea disabled={disabled} rows={3} defaultValue={checklist.verificacaoFinal?.observacoes ?? ""} onBlur={(e) => setFinal("observacoes", e.currentTarget.value)} />
         </div>
       </div>
+
+      {checklist.status !== "concluido" && checklist.divergencias === 0 && (
+        <p className="text-xs text-muted-foreground">
+          Para liberar o transporte, conclua os campos aplicáveis e informe o verificador final.
+        </p>
+      )}
 
       {checklist.divergencias > 0 && (
         <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs">
