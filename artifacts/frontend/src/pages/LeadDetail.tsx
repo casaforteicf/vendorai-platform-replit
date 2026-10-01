@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { useRelativeTime } from "@/hooks/useRelativeTime";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { PropostaModal } from "./Propostas";
@@ -327,6 +327,17 @@ export default function LeadDetail() {
   const [naoLeadTipoSel, setNaoLeadTipoSel] = useState<string>("fornecedor");
   const [naoLeadNotasInput, setNaoLeadNotasInput] = useState("");
   const [naoLeadSalvando, setNaoLeadSalvando] = useState(false);
+  const { data: nonLeadClassifications = [] } = useQuery<Array<{ id: string; label: string; active?: boolean }>>({
+    queryKey: ["non-lead-classifications", tenantId],
+    enabled: Boolean(tenantId),
+    queryFn: async () => {
+      const r = await fetch(`/api/tenants/${tenantId}/non-lead-classifications`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!r.ok) throw new Error("Falha ao carregar classificações de Não Lead");
+      return r.json();
+    },
+  });
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [lightboxTitle, setLightboxTitle] = useState<string>("");
 
@@ -4195,12 +4206,9 @@ export default function LeadDetail() {
               <Select value={naoLeadTipoSel} onValueChange={setNaoLeadTipoSel}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="colaborador">Colaborador</SelectItem>
-                  <SelectItem value="fornecedor">Fornecedor</SelectItem>
-                  <SelectItem value="parceiro">Parceiro</SelectItem>
-                  <SelectItem value="familiar">Familiar</SelectItem>
-                  <SelectItem value="amigo">Amigo</SelectItem>
-                  <SelectItem value="outro">Outro</SelectItem>
+                  {nonLeadClassifications.filter((item) => item.active !== false).map((item) => (
+                    <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
