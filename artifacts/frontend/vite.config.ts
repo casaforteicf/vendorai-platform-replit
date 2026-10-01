@@ -283,6 +283,8 @@ export default defineConfig({
   },
   root: path.resolve(import.meta.dirname),
   build: {
+    // Evita deadlock de preload em atualizações: cada import dinâmico carrega seu chunk diretamente.
+    modulePreload: false,
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
     rollupOptions: {

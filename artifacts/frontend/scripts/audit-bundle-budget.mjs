@@ -10,12 +10,12 @@ if (!fs.existsSync(assetsDir)) {
 const chunkPattern = (name) => new RegExp("^" + name + "(?:-[A-Za-z0-9_-]+)+\\.js$");
 
 const budgets = [
-  { label: "main index", pattern: chunkPattern("index"), maxKb: 280, pick: "largest" },
+  { label: "main index", pattern: chunkPattern("index"), maxKb: 140, pick: "largest" },
   { label: "Dashboard", pattern: chunkPattern("Dashboard"), maxKb: 50 },
   { label: "Leads", pattern: chunkPattern("Leads"), maxKb: 50 },
   { label: "LeadWorkspace", pattern: chunkPattern("LeadWorkspace"), maxKb: 50 },
   { label: "SidebarLayout", pattern: chunkPattern("SidebarLayout"), maxKb: 30 },
-  { label: "AppLegacy", pattern: chunkPattern("AppLegacy"), maxKb: 80, optional: true },
+  { label: "AppLegacy", pattern: chunkPattern("AppLegacy"), maxKb: 80 },
   { label: "ArqWorkspace", pattern: chunkPattern("ArqWorkspace"), maxKb: 150, optional: true },
   { label: "ConceptPlanner", pattern: chunkPattern("ConceptPlanner"), maxKb: 350 },
 ];
