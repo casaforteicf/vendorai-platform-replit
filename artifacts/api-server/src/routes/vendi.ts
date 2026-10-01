@@ -13,7 +13,7 @@ const router: IRouter = Router();
 
 const createMissionSchema = z.object({
   objective: z.string().min(3).max(4000),
-  source: z.enum(["user", "jarvis", "system", "agent"]).default("user"),
+  source: z.enum(["user", "jarvis", "system", "agent", "module"]).default("user"),
   sourceRefId: z.string().max(200).optional(),
   priority: z.number().int().min(0).max(100).default(50),
   riskPolicy: z.enum(["read_only", "standard", "strict"]).default("standard"),

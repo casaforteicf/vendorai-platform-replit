@@ -24,6 +24,8 @@ import { extractStructuredData, type ExtractionSchema } from "./web-structured-e
 import { runAllFinanceIntegrationHealthChecks } from "./finance-integration-health.js";
 import { runAutoQuotePipeline } from "./auto-quote.js";
 import { sendOutgoingMessage } from "./omnichannel.js";
+import { searchProspectorCompanies } from "./prospector-company-search.js";
+import { searchConstructionWorkSignals } from "./construction-radar-search.js";
 
 export type VendiToolRisk = "low" | "medium" | "high";
 export type VendiToolDomain =
@@ -173,6 +175,65 @@ register({
     if (!publicationId) throw new Error("publicationId obrigatório");
     const data = await publishAnySocialPublication(tenantId, publicationId);
     return { ok: true, data, evidence: { source: "marketing:social-publisher", publicationId } };
+  },
+});
+
+register({
+  id: "prospector.search_companies",
+  domain: "prospector",
+  description: "Busca empresas por atividade e localidade usando a fonte oficial do Prospector.",
+  risk: "low",
+  mutates: false,
+  externalEffect: false,
+  inputHint: "{atividade:string,localidade:string,maxResults?:1..20}",
+  execute: async (_ctx, input) => {
+    const atividade = String(input.atividade ?? "");
+    const localidade = String(input.localidade ?? "");
+    const data = await searchProspectorCompanies({
+      atividade,
+      localidade,
+      maxResults: Number(input.maxResults ?? 10),
+    });
+    return {
+      ok: true,
+      data,
+      evidence: {
+        source: "prospector:google-places",
+        query: data.query,
+        count: data.results.length,
+      },
+    };
+  },
+});
+
+register({
+  id: "prospector.search_construction_signals",
+  domain: "prospector",
+  description: "Pesquisa sinais de obras privadas e oportunidades de construção usando o Radar de Obras.",
+  risk: "low",
+  mutates: false,
+  externalEffect: false,
+  inputHint: "{category:string,model:string,locality:string,intervention?,standard?,phase?,productInterest?,maxResults?:1..15}",
+  execute: async ({ tenantId }, input) => {
+    const data = await searchConstructionWorkSignals({
+      tenantId,
+      category: String(input.category ?? "construcao"),
+      model: String(input.model ?? "obra privada"),
+      locality: String(input.locality ?? ""),
+      intervention: input.intervention ? String(input.intervention) : undefined,
+      standard: input.standard ? String(input.standard) : undefined,
+      phase: input.phase ? String(input.phase) : undefined,
+      productInterest: input.productInterest ? String(input.productInterest) : undefined,
+      maxResults: Math.min(Math.max(Number(input.maxResults ?? 10), 1), 15),
+    });
+    return {
+      ok: true,
+      data,
+      evidence: {
+        source: "prospector:construction-radar",
+        count: data.works.length,
+      },
+    };
   },
 });
 
