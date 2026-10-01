@@ -95,6 +95,8 @@ jobs:
             echo "Official media is already up to date."
           else
             git commit -m "chore(media): publish latest official VendorAI captures"
+            git fetch origin "$GITHUB_REF_NAME"
+            git rebase "origin/$GITHUB_REF_NAME"
             git push origin HEAD:"$GITHUB_REF_NAME"
           fi
 
