@@ -231,13 +231,21 @@ function sourceItemProductId(source: Record<string, unknown>) {
   return String(source.produtoId || source.productId || "").trim() || null;
 }
 
-function templateScore(template: typeof installationChecklistTemplatesTable.$inferSelect, source: Record<string, unknown>) {
+function templateScore(
+  template: typeof installationChecklistTemplatesTable.$inferSelect,
+  source: Record<string, unknown>,
+  metadata: Record<string, unknown>,
+) {
   const productId = sourceItemProductId(source);
   const category = sourceItemCategory(source);
+  const segment = String(source.segmentKey || metadata.segmentKey || metadata.segmento || "").trim() || null;
+  const niche = String(source.nicheKey || metadata.nicheKey || metadata.nicho || "").trim() || null;
   let score = 0;
   if (template.productId) score += template.productId === productId ? 100 : -1000;
   if (template.categoryKey) score += template.categoryKey === category ? 40 : -100;
-  if (!template.productId && !template.categoryKey) score += 1;
+  if (template.nicheKey) score += template.nicheKey === niche ? 20 : -50;
+  if (template.segmentKey) score += template.segmentKey === segment ? 10 : -25;
+  if (!template.productId && !template.categoryKey && !template.nicheKey && !template.segmentKey) score += 1;
   return score;
 }
 
@@ -278,7 +286,7 @@ async function ensureInstallationVisitForCard(card: typeof workCardsTable.$infer
   const rows: Array<typeof installationChecklistItemsTable.$inferInsert> = [];
   sourceItems.forEach((source, sourceIndex) => {
     const ranked = templates
-      .map((template) => ({ template, score: templateScore(template, source) }))
+      .map((template) => ({ template, score: templateScore(template, source, metadata) }))
       .filter((entry) => entry.score >= 0)
       .sort((a, b) => b.score - a.score);
     const template = ranked[0]?.template;
@@ -286,8 +294,8 @@ async function ensureInstallationVisitForCard(card: typeof workCardsTable.$infer
     const checks = template?.checks?.length
       ? template.checks
       : [
-          { key: "execution", label: "Instalação/execução conforme pedido", required: true },
-          { key: "final_check", label: "Conferência final", required: true },
+          { key: "execution", label: "Instalação/execução conforme pedido", required: true, completed: false },
+          { key: "final_check", label: "Conferência final", required: true, completed: false },
         ];
     const rawQty = Number(source.quantidade ?? source.quantity ?? source.qtd ?? 1);
     const quantity = Number.isFinite(rawQty) && rawQty > 0 ? Math.max(1, Math.floor(rawQty)) : 1;
@@ -320,14 +328,52 @@ async function ensureInstallationVisitForCard(card: typeof workCardsTable.$infer
 }
 
 async function normalizedInstallationComplete(card: typeof workCardsTable.$inferSelect) {
-  const items = await db.select().from(installationChecklistItemsTable).where(and(
-    eq(installationChecklistItemsTable.tenantId, card.tenantId),
-    eq(installationChecklistItemsTable.workCardId, card.id),
-  ));
+  const [latestVisit] = await db.select().from(installationVisitsTable).where(and(
+    eq(installationVisitsTable.tenantId, card.tenantId),
+    eq(installationVisitsTable.workCardId, card.id),
+  )).orderBy(desc(installationVisitsTable.visitNumber)).limit(1);
+
+  if (!latestVisit) return installationChecklistComplete(card.metadata);
+
+  const [items, occurrences, attachments] = await Promise.all([
+    db.select().from(installationChecklistItemsTable).where(and(
+      eq(installationChecklistItemsTable.tenantId, card.tenantId),
+      eq(installationChecklistItemsTable.visitId, latestVisit.id),
+    )),
+    db.select().from(installationOccurrencesTable).where(and(
+      eq(installationOccurrencesTable.tenantId, card.tenantId),
+      eq(installationOccurrencesTable.workCardId, card.id),
+    )),
+    db.select().from(workCardAttachmentsTable).where(and(
+      eq(workCardAttachmentsTable.tenantId, card.tenantId),
+      eq(workCardAttachmentsTable.workCardId, card.id),
+    )),
+  ]);
+
   if (items.length === 0) return installationChecklistComplete(card.metadata);
-  return items
-    .filter((item) => item.required)
-    .every((item) => ["installed", "verified", "instalado", "conferido"].includes(item.status));
+
+  const openOccurrence = occurrences.some((occurrence) =>
+    occurrence.status === "open" || occurrence.status === "in_progress"
+  );
+  if (openOccurrence) return false;
+
+  const evidenceItemIds = new Set(
+    attachments.map((attachment) => {
+      const metadata = attachment.metadata as Record<string, unknown> | null;
+      return typeof metadata?.installationChecklistItemId === "string"
+        ? metadata.installationChecklistItemId
+        : null;
+    }).filter(Boolean),
+  );
+
+  return items.filter((item) => item.required).every((item) => {
+    if (!["installed", "verified", "instalado", "conferido"].includes(item.status)) return false;
+    if (item.evidenceRequired && !evidenceItemIds.has(item.id)) return false;
+    const checks = Array.isArray(item.checks) ? item.checks as Array<Record<string, unknown>> : [];
+    return checks
+      .filter((check) => check.required !== false)
+      .every((check) => check.completed === true);
+  });
 }
 
 
@@ -1500,6 +1546,10 @@ router.get("/work-cards/:id/installation", async (req, res) => {
   if (!canAccessTenant(req, card.tenantId)) { res.status(403).json({ error: "Access denied to this tenant" }); return; }
   if (restrictedToOwnWork(req) && card.responsavelId && card.responsavelId !== req.user?.sub) { res.status(403).json({ error: "Este card pertence a outro responsável" }); return; }
   if (card.pipeline !== "execucao") { res.status(422).json({ error: "Instalação disponível apenas na pipeline de execução" }); return; }
+  if (!["instalacao_a_iniciar", "instalacao_em_andamento", "instalacao_finalizada"].includes(card.etapa)) {
+    res.status(409).json({ error: "INSTALLATION_NOT_STARTED", message: "O checklist detalhado é criado quando o pedido entra na etapa de instalação." });
+    return;
+  }
 
   const visit = await ensureInstallationVisitForCard(card);
   const [visits, items, occurrences] = await Promise.all([
@@ -1540,10 +1590,13 @@ router.post("/work-cards/:id/installation/visits", async (req, res) => {
     metadata: { reason: req.body?.reason || "return_or_additional_visit" },
   }).returning();
 
-  const previousItems = await db.select().from(installationChecklistItemsTable).where(and(
-    eq(installationChecklistItemsTable.tenantId, card.tenantId),
-    eq(installationChecklistItemsTable.workCardId, card.id),
-  ));
+  const previousVisit = visits[0];
+  const previousItems = previousVisit
+    ? await db.select().from(installationChecklistItemsTable).where(and(
+        eq(installationChecklistItemsTable.tenantId, card.tenantId),
+        eq(installationChecklistItemsTable.visitId, previousVisit.id),
+      ))
+    : [];
   const pending = previousItems.filter((item) => !["installed", "verified", "instalado", "conferido"].includes(item.status));
   if (pending.length) {
     await db.insert(installationChecklistItemsTable).values(pending.map((item) => ({
