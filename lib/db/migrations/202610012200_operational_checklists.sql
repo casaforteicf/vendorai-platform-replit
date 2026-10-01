@@ -47,15 +47,16 @@ CREATE INDEX IF NOT EXISTS operational_checklist_runs_deal_idx
 CREATE INDEX IF NOT EXISTS operational_checklist_runs_stage_idx
   ON operational_checklist_runs (tenant_id, stage_key, status);
 
+REVOKE ALL ON TABLE operational_checklist_templates, operational_checklist_runs FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE operational_checklist_templates, operational_checklist_runs TO vendorai_app;
+
 ALTER TABLE operational_checklist_templates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE operational_checklist_runs ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS operational_checklist_templates_tenant_isolation ON operational_checklist_templates;
-CREATE POLICY operational_checklist_templates_tenant_isolation ON operational_checklist_templates
-  USING (tenant_id = current_setting('app.tenant_id', true))
-  WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
+DROP POLICY IF EXISTS vendorai_backend_access ON operational_checklist_templates;
+CREATE POLICY vendorai_backend_access ON operational_checklist_templates
+  AS PERMISSIVE FOR ALL TO vendorai_app USING (true) WITH CHECK (true);
 
-DROP POLICY IF EXISTS operational_checklist_runs_tenant_isolation ON operational_checklist_runs;
-CREATE POLICY operational_checklist_runs_tenant_isolation ON operational_checklist_runs
-  USING (tenant_id = current_setting('app.tenant_id', true))
-  WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
+DROP POLICY IF EXISTS vendorai_backend_access ON operational_checklist_runs;
+CREATE POLICY vendorai_backend_access ON operational_checklist_runs
+  AS PERMISSIVE FOR ALL TO vendorai_app USING (true) WITH CHECK (true);
