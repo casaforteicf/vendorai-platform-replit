@@ -759,9 +759,6 @@ export default function ConceptPlan2D({
     y: Math.max(0, Math.min(lotDepth, point.y)),
   });
 
-  const pointInsideLot = (point: { x: number; y: number }) =>
-    point.x >= 0 && point.x <= lotWidth && point.y >= 0 && point.y <= lotDepth;
-
   const clampPoint = (point: { x: number; y: number }) => {
     const bounded = boundPoint(point);
     return { x: snap(bounded.x), y: snap(bounded.y) };
