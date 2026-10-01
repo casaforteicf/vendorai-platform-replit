@@ -32,6 +32,11 @@ export const pipelineStagesTable = pgTable("pipeline_stages", {
   responsavelAgenteKey: text("responsavel_agente_key"),
   // Perguntas-chave/playbook. Hoje são usadas principalmente na pipeline comercial.
   perguntas: jsonb("perguntas").$type<{ id: string; texto: string }[]>().notNull().default([]),
+  // Próxima atividade sugerida ao entrar nesta etapa. O título vazio significa
+  // que a etapa não força uma atividade padrão e o usuário/agente pode definir manualmente.
+  atividadePadraoTitulo: text("atividade_padrao_titulo"),
+  atividadePadraoDescricao: text("atividade_padrao_descricao"),
+  atividadePadraoPrazoMinutos: integer("atividade_padrao_prazo_minutos"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
