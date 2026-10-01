@@ -69,6 +69,7 @@ type Attachment = {
   descricao?: string | null;
   transcricao?: string | null;
   origem: string;
+  metadata?: Record<string, unknown> | null;
   createdAt?: string;
 };
 
@@ -270,9 +271,16 @@ export default function PipelineOperacional() {
     else navigate(`/pipeline-operacional/${next}`);
   }
 
-  async function uploadFilesToCard(cardId: string, files: File[], origem = "app") {
-    if (!files.length || uploading) return;
+  async function uploadFilesToCard(
+    cardId: string,
+    files: File[],
+    origem = "app",
+    metadata?: Record<string, unknown>,
+    descricao?: string,
+  ): Promise<Attachment[]> {
+    if (!files.length || uploading) return [];
     setUploading(true);
+    const uploaded: Attachment[] = [];
     try {
       for (const file of files) {
         const meta = await api<{ uploadURL: string; objectPath: string }>("/api/storage/uploads/request-url", {
@@ -284,7 +292,7 @@ export default function PipelineOperacional() {
           method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" },
         });
         if (!put.ok) throw new Error(`Falha ao enviar ${file.name}`);
-        await api(`/api/work-cards/${cardId}/attachments`, {
+        const attachment = await api<Attachment>(`/api/work-cards/${cardId}/attachments`, {
           method: "POST",
           headers: jsonHeaders,
           body: JSON.stringify({
@@ -293,13 +301,18 @@ export default function PipelineOperacional() {
             mimeType: file.type || "application/octet-stream",
             tamanho: file.size,
             origem,
+            descricao,
+            metadata: metadata ?? {},
           }),
         });
+        uploaded.push(attachment);
       }
       await queryClient.invalidateQueries({ queryKey: ["work-card-attachments", cardId] });
       toast({ title: files.length === 1 ? "Anexo registrado" : `${files.length} anexos registrados` });
+      return uploaded;
     } catch (error) {
       toast({ title: "Não foi possível anexar os arquivos", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+      return [];
     } finally {
       setUploading(false);
     }
@@ -538,13 +551,44 @@ export default function PipelineOperacional() {
                 {safeExpeditionChecklist(selectedCard) && (
                   <ExpeditionChecklistPanel
                     checklist={safeExpeditionChecklist(selectedCard)!}
-                    disabled={patchCard.isPending}
+                    disabled={patchCard.isPending || uploading}
+                    isAdmin={isAdmin}
                     onChange={(checklistExpedicao) => patchCard.mutate({
                       id: selectedCard.id,
                       data: {
                         metadata: {
                           ...(selectedCard.metadata ?? {}),
                           checklistExpedicao,
+                        },
+                      },
+                    })}
+                    onUploadEvidence={async ({ itemIndex, fieldIndex, item, field, files }) => {
+                      const uploaded = await uploadFilesToCard(
+                        selectedCard.id,
+                        files,
+                        "checklist_expedicao",
+                        {
+                          checklist: "expedicao",
+                          itemIndex,
+                          fieldIndex,
+                          produtoId: item.produtoId ?? null,
+                          sku: item.sku ?? null,
+                          campo: field.key,
+                        },
+                        `Evidência da expedição • ${item.nome} • ${field.label}`,
+                      );
+                      return uploaded.map((attachment) => ({ id: attachment.id, url: attachment.url, nome: attachment.nome }));
+                    }}
+                    onOverride={(justificativa) => patchCard.mutate({
+                      id: selectedCard.id,
+                      data: {
+                        etapa: "em_transporte",
+                        metadata: {
+                          ...(selectedCard.metadata ?? {}),
+                          expedicaoOverride: {
+                            aprovado: true,
+                            justificativa,
+                          },
                         },
                       },
                     })}
