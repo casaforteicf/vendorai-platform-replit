@@ -151,9 +151,107 @@ function toDateInput(value?: string | null) {
   return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
 }
 
-function safeItems(card: WorkCard): Array<{ nome?: string; quantidade?: number }> {
+type InstallationStatus =
+  | "pendente"
+  | "em_instalacao"
+  | "instalado"
+  | "conferido"
+  | "instalado_com_ressalva"
+  | "nao_instalado"
+  | "peca_faltante"
+  | "produto_avariado"
+  | "divergencia_medida"
+  | "necessita_retorno";
+
+type InstallationChecklistItem = {
+  key: string;
+  sourceIndex: number;
+  status: InstallationStatus;
+  observacao?: string;
+  atualizadoEm?: string | null;
+  atualizadoPor?: string | null;
+};
+
+function safeItems(card: WorkCard): Array<Record<string, unknown>> {
   const raw = card.metadata?.itens;
-  return Array.isArray(raw) ? raw as Array<{ nome?: string; quantidade?: number }> : [];
+  return Array.isArray(raw) ? raw as Array<Record<string, unknown>> : [];
+}
+
+function itemName(item: Record<string, unknown>) {
+  return String(item.nome || item.name || item.descricao || item.produto || "Item");
+}
+
+function itemQuantity(item: Record<string, unknown>) {
+  const raw = item.quantidade ?? item.quantity ?? item.qtd ?? 1;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : 1;
+}
+
+function installationItemKey(item: Record<string, unknown>, index: number) {
+  return [
+    Number.isInteger(item.propostaItemIndex) ? String(item.propostaItemIndex) : "",
+    typeof item.produtoId === "string" ? item.produtoId : "",
+    typeof item.sku === "string" ? item.sku : "",
+    itemName(item),
+    index,
+  ].filter(Boolean).join(":");
+}
+
+function installationChecklistItems(card: WorkCard): InstallationChecklistItem[] {
+  const source = safeItems(card);
+  const checklistRaw = card.metadata?.installationChecklist;
+  const checklist =
+    checklistRaw && typeof checklistRaw === "object" && !Array.isArray(checklistRaw)
+      ? checklistRaw as Record<string, unknown>
+      : {};
+  const saved = Array.isArray(checklist.items)
+    ? checklist.items as Array<Record<string, unknown>>
+    : [];
+  const byKey = new Map(saved.map((item) => [String(item.key || ""), item]));
+  return source.map((item, index) => {
+    const key = installationItemKey(item, index);
+    const current = byKey.get(key) ?? {};
+    return {
+      key,
+      sourceIndex: index,
+      status: (typeof current.status === "string" ? current.status : "pendente") as InstallationStatus,
+      observacao: typeof current.observacao === "string" ? current.observacao : "",
+      atualizadoEm: typeof current.atualizadoEm === "string" ? current.atualizadoEm : null,
+      atualizadoPor: typeof current.atualizadoPor === "string" ? current.atualizadoPor : null,
+    };
+  });
+}
+
+function displayItemAttributes(item: Record<string, unknown>) {
+  const hidden = new Set([
+    "nome","name","descricao","produto","quantidade","quantity","qtd","produtoId","propostaItemIndex",
+    "quantidadePedido","preco","precoUnitario","valor","valorUnitario","subtotal","total","custo",
+  ]);
+  return Object.entries(item)
+    .filter(([key, value]) => !hidden.has(key) && value !== null && value !== undefined && value !== "")
+    .slice(0, 8)
+    .map(([key, value]) => ({
+      key,
+      label: key.replace(/([A-Z])/g, " $1").replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()),
+      value: typeof value === "object" ? JSON.stringify(value) : String(value),
+    }));
+}
+
+const INSTALLATION_STATUS_OPTIONS: Array<{ value: InstallationStatus; label: string }> = [
+  { value: "pendente", label: "Pendente" },
+  { value: "em_instalacao", label: "Em instalação" },
+  { value: "instalado", label: "Instalado" },
+  { value: "conferido", label: "Conferido" },
+  { value: "instalado_com_ressalva", label: "Instalado com ressalva" },
+  { value: "nao_instalado", label: "Não instalado" },
+  { value: "peca_faltante", label: "Peça faltante" },
+  { value: "produto_avariado", label: "Produto avariado" },
+  { value: "divergencia_medida", label: "Divergência de medida" },
+  { value: "necessita_retorno", label: "Necessita retorno" },
+];
+
+function isInstallationStage(stage: string) {
+  return ["instalacao_a_iniciar", "instalacao_em_andamento", "instalacao_finalizada"].includes(stage);
 }
 
 export default function PipelineOperacional() {
@@ -240,6 +338,29 @@ export default function PipelineOperacional() {
     },
     onError: (error) => toast({ title: "Não foi possível atualizar o card", description: String(error), variant: "destructive" }),
   });
+
+  function updateInstallationChecklistItem(card: WorkCard, key: string, patch: Partial<InstallationChecklistItem>) {
+    const items = installationChecklistItems(card).map((item) =>
+      item.key === key
+        ? {
+            ...item,
+            ...patch,
+            atualizadoEm: new Date().toISOString(),
+            atualizadoPor: String((user as any)?.id || (user as any)?.sub || ""),
+          }
+        : item,
+    );
+    const metadata = {
+      ...(card.metadata ?? {}),
+      installationChecklist: {
+        version: 1,
+        generatedFrom: "order_items",
+        items,
+        updatedAt: new Date().toISOString(),
+      },
+    };
+    patchCard.mutate({ id: card.id, data: { metadata } });
+  }
 
   const stages = pipeline === "suporte" ? SUPPORT_STAGES : EXECUTION_STAGES;
   const cards = cardsQuery.data ?? [];
@@ -510,14 +631,79 @@ export default function PipelineOperacional() {
                   />
                 )}
 
-                {safeItems(selectedCard).length > 0 && (
+                {isInstallationStage(selectedCard.etapa) && safeItems(selectedCard).length > 0 ? (
+                  <div className="space-y-3 rounded-xl border p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <h3 className="text-sm font-semibold">Checklist de instalação</h3>
+                        <p className="text-xs text-muted-foreground">Gerado automaticamente pelos itens do pedido. Campos adicionais acompanham os atributos disponíveis de cada produto.</p>
+                      </div>
+                      <Badge variant="outline">
+                        {installationChecklistItems(selectedCard).filter((item) => ["instalado", "conferido"].includes(item.status)).length}/{installationChecklistItems(selectedCard).length} concluídos
+                      </Badge>
+                    </div>
+
+                    <div className="space-y-3">
+                      {safeItems(selectedCard).map((source, index) => {
+                        const checklistItem = installationChecklistItems(selectedCard)[index];
+                        const attrs = displayItemAttributes(source);
+                        return (
+                          <div key={checklistItem?.key || index} className="rounded-lg border bg-muted/10 p-3">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div className="min-w-0 flex-1">
+                                <p className="font-medium">{itemQuantity(source)} × {itemName(source)}</p>
+                                {attrs.length > 0 && (
+                                  <div className="mt-2 flex flex-wrap gap-1.5">
+                                    {attrs.map((attr) => (
+                                      <span key={attr.key} className="rounded-md bg-muted px-2 py-1 text-[11px] text-muted-foreground">
+                                        <strong className="font-medium text-foreground">{attr.label}:</strong> {attr.value}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                              <Select
+                                value={checklistItem?.status || "pendente"}
+                                disabled={patchCard.isPending}
+                                onValueChange={(status) => checklistItem && updateInstallationChecklistItem(selectedCard, checklistItem.key, { status: status as InstallationStatus })}
+                              >
+                                <SelectTrigger className="w-[190px]"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  {INSTALLATION_STATUS_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <Textarea
+                              key={`installation-note-${selectedCard.id}-${checklistItem?.key}-${checklistItem?.observacao || ""}`}
+                              className="mt-3"
+                              rows={2}
+                              defaultValue={checklistItem?.observacao || ""}
+                              placeholder="Observação do item, divergência, pendência ou informação para retorno..."
+                              disabled={patchCard.isPending}
+                              onBlur={(event) => {
+                                const observacao = event.currentTarget.value.trim();
+                                if (checklistItem && observacao !== (checklistItem.observacao || "")) {
+                                  updateInstallationChecklistItem(selectedCard, checklistItem.key, { observacao });
+                                }
+                              }}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground">
+                      Para avançar para <strong className="text-foreground">Instalação finalizada</strong>, todos os itens precisam estar como <strong className="text-foreground">Instalado</strong> ou <strong className="text-foreground">Conferido</strong>. Fotos e documentos podem ser anexados logo abaixo e ficam vinculados ao mesmo card.
+                    </div>
+                  </div>
+                ) : safeItems(selectedCard).length > 0 ? (
                   <div className="space-y-2">
                     <h3 className="text-sm font-semibold">Itens deste lote</h3>
                     <div className="divide-y rounded-lg border">
-                      {safeItems(selectedCard).map((item, index) => <div key={index} className="flex justify-between px-3 py-2 text-sm"><span>{item.nome}</span><strong>{item.quantidade}</strong></div>)}
+                      {safeItems(selectedCard).map((item, index) => <div key={index} className="flex justify-between px-3 py-2 text-sm"><span>{itemName(item)}</span><strong>{itemQuantity(item)}</strong></div>)}
                     </div>
                   </div>
-                )}
+                ) : null}
 
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
