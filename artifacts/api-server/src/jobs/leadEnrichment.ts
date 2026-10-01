@@ -267,6 +267,11 @@ export interface EnrichLeadParams {
   log?: Logger;
   scoreBoost?: number;
   boostReason?: string;
+  /**
+   * Controls whether enrichment may trigger automatic SDR outreach.
+   * Keep true for Prospector flows; use false for CRM/manual enrichment.
+   */
+  allowAutoDispatch?: boolean;
 }
 
 export async function enrichLead(
@@ -275,19 +280,21 @@ export async function enrichLead(
   logArg: Logger = rootLogger,
 ): Promise<void> {
   // Support both new object API and legacy positional API
-  let leadId: string, tenantId: string, log: Logger, scoreBoost: number, boostReason: string;
+  let leadId: string, tenantId: string, log: Logger, scoreBoost: number, boostReason: string, allowAutoDispatch: boolean;
   if (typeof paramsOrId === "string") {
     leadId = paramsOrId;
     tenantId = tenantIdArg!;
     log = logArg;
     scoreBoost = 0;
     boostReason = "";
+    allowAutoDispatch = true;
   } else {
     leadId = paramsOrId.leadId;
     tenantId = paramsOrId.tenantId;
     log = paramsOrId.log ?? rootLogger;
     scoreBoost = paramsOrId.scoreBoost ?? 0;
     boostReason = paramsOrId.boostReason ?? "";
+    allowAutoDispatch = paramsOrId.allowAutoDispatch ?? true;
   }
 
   log.info({ leadId, tenantId }, "enrichLead: starting");
@@ -377,6 +384,12 @@ export async function enrichLead(
           digital,
           growth,
           signals: { origem: lead.source, meta_anunciante: metaAdvertiserSignal },
+          provenance: {
+            source: lead.source ?? "manual",
+            method: "vendorai_enrichment_v1",
+            confidence: lead.websiteUrl || lead.documento || lead.empresa ? "medium" : "low",
+            enrichedAt: new Date().toISOString(),
+          },
           enriquecido_em: new Date().toISOString(),
         },
         enrichmentStatus: "enriched",
@@ -521,6 +534,13 @@ export async function enrichLead(
           digital,
           growth,
           signals: { origem: lead.source, meta_anunciante: metaAdvertiserSignal },
+          provenance: {
+            source: lead.source ?? "manual",
+            method: "vendorai_enrichment_v1",
+            confidence: quality.evidenceCount >= quality.requiredEvidence ? "high" : (quality.evidenceCount > 0 ? "medium" : "low"),
+            evidenceCount: quality.evidenceCount,
+            enrichedAt: new Date().toISOString(),
+          },
           score_breakdown: scoreResult.score_breakdown,
           enriquecido_em: new Date().toISOString(),
         },
@@ -543,7 +563,7 @@ export async function enrichLead(
 
     // Phase 4: Auto-dispatch ONLY when score and evidence quality both pass.
     // A high score alone never authorizes cold outreach.
-    if (quality.ready) {
+    if (quality.ready && allowAutoDispatch) {
       log.info(
         { leadId, score: scoreResult.propensity_score, threshold, evidenceCount: quality.evidenceCount },
         "enrichLead: quality gate passed — auto-dispatching SDR",
@@ -615,8 +635,11 @@ export async function enrichLead(
           evidenceCount: quality.evidenceCount,
           score: scoreResult.propensity_score,
           threshold,
+          allowAutoDispatch,
         },
-        "enrichLead: cold outreach blocked by quality gate",
+        allowAutoDispatch
+          ? "enrichLead: cold outreach blocked by quality gate"
+          : "enrichLead: enrichment completed without automatic outreach",
       );
     }
   } catch (err) {
