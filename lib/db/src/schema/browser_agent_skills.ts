@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, unique } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, jsonb, unique, integer, boolean } from "drizzle-orm/pg-core";
 import { tenantsTable } from "./tenants";
 import { browserAgentConnectionsTable } from "./browser_agent_connections";
 
@@ -12,6 +12,15 @@ export const browserAgentSkillsTable = pgTable(
     startUrl: text("start_url").notNull(),
     allowedHosts: jsonb("allowed_hosts").$type<string[]>().notNull().default([]),
     actions: jsonb("actions").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    version: integer("version").notNull().default(1),
+    status: text("status").notNull().default("ready"),
+    repairCount: integer("repair_count").notNull().default(0),
+    lastRunAt: timestamp("last_run_at"),
+    lastSuccessAt: timestamp("last_success_at"),
+    lastError: text("last_error"),
+    watchEnabled: boolean("watch_enabled").notNull().default(false),
+    watchFingerprint: text("watch_fingerprint"),
+    watchLastChangedAt: timestamp("watch_last_changed_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
