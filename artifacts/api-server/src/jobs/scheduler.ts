@@ -16,7 +16,6 @@ import { and, desc, eq, gt, isNotNull, isNull, lte, gte, lt, inArray, not, sql }
 import { runMonthlyBilling } from "../lib/billing.js";
 import { isBirthdayOn, parseBirthdayParts } from "../lib/birthday-date.js";
 import { professionMatches } from "../lib/professional-date.js";
-import { mergeCommercialDates } from "../lib/commercial-calendar.js";
 import { tenantIsWithinBusinessHours } from "../lib/proactiveMessageGuard.js";
 import { runPartnerCommissions } from "./partnerCommission.js";
 import { runPartnerProspectorJob } from "./partnerProspector.js";
@@ -62,6 +61,7 @@ import {
   tenantDomainsTable,
   campaignSentLogsTable,
   churnActionsTable,
+  vendiMissionsTable,
 } from "@workspace/db";
 import { callOpenAI } from "../lib/ai-gateway.js";
 import {
@@ -72,7 +72,8 @@ import {
 } from "../lib/cloudflare.js";
 import type { SegmentoFiltro } from "@workspace/db";
 import { evaluateForLead } from "../routes/rules.js";
-import { dispatchAgentBackground, processAgentInternal, type DispatchResult } from "../services/agent-dispatch.js";
+import { dispatchAgentBackground, type DispatchResult } from "../services/agent-dispatch.js";
+import { executeVendiMission } from "../services/vendi-mission-supervisor.js";
 import { searchAllPlaces } from "../routes/prospector.js";
 import { runProspectorQueueWorker } from "./prospectorQueue.js";
 import { runDailyAgendaSummary } from "./dailyAgendaSummary.js";
@@ -957,6 +958,7 @@ async function runSpecialDateCheck(log: Logger): Promise<void> {
             break;
           }
         }
+
         // Deal anniversary
         if (!scenario) {
           const wonDeals = await db
