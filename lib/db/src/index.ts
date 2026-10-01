@@ -33,19 +33,23 @@ if (connectionTarget) {
   console.info("[db] connection target could not be parsed");
 }
 
-// Pool sem `max` explícito cai no default do node-postgres (10 conexões
-// simultâneas). O front dispara ~10-15 chamadas em paralelo por troca de
-// tela (visto nos logs do Railway) — acima de 10, as requisições extras
-// ficam na fila esperando uma conexão liberar, e é exatamente esse
-// enfileiramento que produzia respostas de 1-2,8s mesmo com o servidor
-// praticamente ocioso (CPU <1%) e o Postgres longe de saturado (18/60
-// conexões em uso). O banco tem folga de sobra pra um pool maior.
+// O Supabase em session mode limita o role runtime a 15 conexões. Um pool
+// local maior que esse limite gera EMAXCONNSESSION sob carga e pode fazer
+// gravações simples (como criar usuário/representante) falharem de forma
+// intermitente. Mantemos folga para jobs e outras instâncias do backend.
+const configuredPoolMax = Number.parseInt(process.env.DB_POOL_MAX ?? "8", 10);
+const poolMax = Number.isFinite(configuredPoolMax)
+  ? Math.min(Math.max(configuredPoolMax, 1), 10)
+  : 8;
+
 export const pool = new Pool({
   connectionString,
-  max: 20,
+  max: poolMax,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 10_000,
 });
+
+console.info("[db] pool configured", { max: poolMax });
 export const db = drizzle(pool, { schema });
 
 export * from "./schema";
