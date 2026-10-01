@@ -87,7 +87,8 @@ import { createSpecificationParticipation } from "../services/commission-engine.
 import { ensureStandardConstructionCatalog } from "../lib/ensure-standard-construction-catalog.js";
 import { ensureArqdorStarterLibrary } from "../lib/arqdor/starter-library.js";
 import { searchPolyHavenModels, resolvePolyHavenModel } from "../lib/arqdor/polyhaven.js";
-import { searchSketchfabModels } from "../lib/arqdor/sketchfab.js";
+import { contentTypeForModelAsset, downloadSketchfabGltfArchive, extractZipArchive, getSketchfabDownload, getSketchfabModel, searchSketchfabModels } from "../lib/arqdor/sketchfab.js";
+import { getValidSketchfabAccessToken } from "../services/sketchfab-connection.js";
 import { buildArchitecturalStrategyRepertoire } from "../lib/arqdor-architecture-strategies.js";
 import { buildArchitecturalProjectStrategy } from "../lib/arqdor-project-strategy.js";
 import { evaluateProjectMasterAcceptance } from "../lib/arqdor-project-master-validation.js";
@@ -4177,6 +4178,118 @@ router.get("/arch/sketchfab/search", authenticate, async (req, res) => {
   } catch (error) {
     console.error("[arqdor/sketchfab/search]", error);
     return res.status(502).json({ error: "Não foi possível consultar o Sketchfab agora." });
+  }
+});
+
+// POST /api/arch/sketchfab/import
+// Materializa um modelo autorizado do Sketchfab no Storage do Vendor.ai e o
+// vincula ao Produto Mestre. O link temporário do Download API nunca é salvo.
+router.post("/arch/sketchfab/import", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const uid = z.string().trim().min(1).max(80).safeParse(req.body?.uid);
+  if (!uid.success) return res.status(400).json({ error: "uid_invalid" });
+
+  try {
+    const accessToken = await getValidSketchfabAccessToken(tid);
+    const model = await getSketchfabModel(uid.data, accessToken);
+    if (!model.isDownloadable) return res.status(422).json({ error: "model_not_downloadable" });
+
+    const download = await getSketchfabDownload(uid.data, accessToken);
+    const gltf = download.gltf;
+    if (!gltf?.url) return res.status(422).json({ error: "gltf_not_available" });
+
+    const archive = await downloadSketchfabGltfArchive(gltf.url, gltf.size);
+    const files = extractZipArchive(archive);
+    const scene = files.find((file) => /(^|\/)scene\.gltf$/i.test(file.path))
+      ?? files.find((file) => /\.gltf$/i.test(file.path));
+    if (!scene) return res.status(422).json({ error: "gltf_scene_missing" });
+
+    const storage = new ObjectStorageService();
+    const publicRoot = storage.getPublicObjectSearchPaths()[0];
+    if (!publicRoot) throw new Error("PUBLIC_OBJECT_SEARCH_PATHS não configurado");
+    const rootParts = publicRoot.replace(/^\/+/, "").split("/").filter(Boolean);
+    const bucketName = rootParts.shift();
+    if (!bucketName) throw new Error("PUBLIC_OBJECT_SEARCH_PATHS inválido");
+    const prefix = [...rootParts, "arqdor", "sketchfab", tid, uid.data].join("/");
+
+    let sceneUrl: string | null = null;
+    for (const file of files) {
+      const objectName = `${prefix}/${file.path}`;
+      const handle = objectStorageClient.bucket(bucketName).file(objectName);
+      await handle.save(file.data, { contentType: contentTypeForModelAsset(file.path), resumable: false });
+      if (file.path === scene.path) sceneUrl = handle.getPublicUrl();
+    }
+    if (!sceneUrl) throw new Error("scene_upload_failed");
+
+    const technical = {
+      source: "sketchfab",
+      sketchfabUid: model.uid,
+      sketchfabViewerUrl: model.viewerUrl,
+      modelSource: "Sketchfab",
+      modelFormat: "gltf",
+      modelLicense: model.licenseLabel,
+      modelLicenseSlug: model.licenseSlug,
+      modelAuthor: model.authorName,
+      modelAuthorUid: model.authorUid,
+      modelVertexCount: model.vertexCount,
+      modelFaceCount: model.faceCount,
+      importedAt: new Date().toISOString(),
+      importedFileCount: files.length,
+      originalArchiveBytes: archive.length,
+    };
+
+    const [existing] = await db.select().from(produtosCatalogoTable)
+      .where(and(
+        eq(produtosCatalogoTable.tenantId, tid),
+        sql`${produtosCatalogoTable.projectTechnicalConfig} ->> 'sketchfabUid' = ${uid.data}`,
+      ))
+      .limit(1);
+
+    const values = {
+      nome: model.name,
+      descricao: model.description,
+      fornecedor: model.authorName ?? "Sketchfab",
+      marca: "Sketchfab",
+      precoBase: existing?.precoBase ?? "0",
+      unidade: existing?.unidade ?? "un",
+      ativo: true,
+      projectLibraryEnabled: true,
+      imagemUrl: model.thumbnailUrl,
+      imagens: model.thumbnailUrl ? [model.thumbnailUrl] : [],
+      model3dUrl: sceneUrl,
+      projectTechnicalConfig: {
+        ...((existing?.projectTechnicalConfig ?? {}) as Record<string, unknown>),
+        ...technical,
+      },
+      updatedAt: new Date(),
+    };
+
+    const [product] = existing
+      ? await db.update(produtosCatalogoTable).set(values).where(eq(produtosCatalogoTable.id, existing.id)).returning()
+      : await db.insert(produtosCatalogoTable).values({ tenantId: tid, ...values }).returning();
+
+    return res.status(existing ? 200 : 201).json({
+      success: true,
+      product: {
+        id: product?.id,
+        nome: product?.nome,
+        model3dUrl: product?.model3dUrl,
+        imagemUrl: product?.imagemUrl,
+        source: "sketchfab",
+        license: model.licenseLabel,
+        author: model.authorName,
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "sketchfab_import_failed";
+    if (message === "sketchfab_not_connected" || message === "sketchfab_reconnect_required") {
+      return res.status(409).json({ error: message });
+    }
+    if (message === "sketchfab_archive_too_large") {
+      return res.status(413).json({ error: message, maxArchiveMb: 45 });
+    }
+    console.error("[arqdor/sketchfab/import]", error);
+    return res.status(502).json({ error: "sketchfab_import_failed", detail: message.slice(0, 180) });
   }
 });
 
