@@ -12,6 +12,16 @@ export type CompanyContactPurpose =
   | "suporte"
   | "outro";
 
+export type CompanyRelationshipType =
+  | "grupo_economico"
+  | "controladora"
+  | "controlada"
+  | "matriz"
+  | "filial"
+  | "coligada"
+  | "parceira"
+  | "outra";
+
 export const crmCompaniesMasterTable = pgTable("crm_companies_master", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   cnpj: text("cnpj").notNull(),
@@ -107,6 +117,10 @@ export const crmTenantCompanyContactsTable = pgTable("crm_tenant_company_contact
   isPrimary: boolean("is_primary").notNull().default(false),
   preferredChannel: text("preferred_channel"),
   priorityByPurpose: jsonb("priority_by_purpose").$type<Partial<Record<CompanyContactPurpose, number>>>().default({}),
+  roleEvidence: jsonb("role_evidence").$type<Array<{ source: string; detail?: string; observedAt?: string }>>().default([]),
+  roleConfidence: numeric("role_confidence", { precision: 5, scale: 2 }),
+  verifiedAt: timestamp("verified_at"),
+  validUntil: timestamp("valid_until"),
   notes: text("notes"),
   metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -115,4 +129,27 @@ export const crmTenantCompanyContactsTable = pgTable("crm_tenant_company_contact
   tenantCompanyPersonUnique: uniqueIndex("crm_tenant_company_contacts_tc_person_uidx").on(table.tenantCompanyId, table.personId),
   tenantIdx: index("crm_tenant_company_contacts_tenant_idx").on(table.tenantId),
   tenantCompanyIdx: index("crm_tenant_company_contacts_company_idx").on(table.tenantCompanyId),
+}));
+
+
+export const crmCompanyRelationshipsTable = pgTable("crm_company_relationships", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  parentCompanyId: text("parent_company_id").notNull().references(() => crmCompaniesMasterTable.id, { onDelete: "cascade" }),
+  childCompanyId: text("child_company_id").notNull().references(() => crmCompaniesMasterTable.id, { onDelete: "cascade" }),
+  relationshipType: text("relationship_type").$type<CompanyRelationshipType>().notNull(),
+  source: text("source").notNull().default("manual"),
+  confidence: numeric("confidence", { precision: 5, scale: 2 }),
+  verifiedAt: timestamp("verified_at"),
+  validUntil: timestamp("valid_until"),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  parentChildUnique: uniqueIndex("crm_company_relationships_parent_child_type_uidx").on(
+    table.parentCompanyId,
+    table.childCompanyId,
+    table.relationshipType,
+  ),
+  parentIdx: index("crm_company_relationships_parent_idx").on(table.parentCompanyId),
+  childIdx: index("crm_company_relationships_child_idx").on(table.childCompanyId),
 }));
