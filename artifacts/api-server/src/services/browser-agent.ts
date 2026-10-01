@@ -8,6 +8,7 @@ import {
 } from "./browser-profile.js";
 import { z } from "zod";
 import { callOpenAI } from "../lib/ai-gateway.js";
+import { actionShouldChangePage, verifyCheckpointTransition } from "./browser-verifier.js";
 
 export type BrowserAgentMode = "assistido" | "autonomo";
 
@@ -403,6 +404,18 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
       let extracted: string | undefined;
       try {
         extracted = await executeBrowserAction(page, action, input);
+        if (actionShouldChangePage(action.action)) {
+          const afterState = await snapshotBrowserPage(page);
+          const verification = verifyCheckpointTransition(checkpointFromState(state), checkpointFromState(afterState));
+          if (!verification.changed) {
+            selectorRecoveryNote =
+              "A ação anterior foi executada sem produzir mudança observável na página. " +
+              "Reavalie o estado atual e escolha outra ação/elemento para atingir o objetivo.";
+            steps[steps.length - 1]!.detail = [steps[steps.length - 1]!.detail, "verified_no_change_replan"]
+              .filter(Boolean).join(" | ");
+            continue;
+          }
+        }
       } catch (error) {
         if (isRecoverableSelectorError(error)) {
           selectorRecoveryNote =
