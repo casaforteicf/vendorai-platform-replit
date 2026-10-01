@@ -878,7 +878,15 @@ router.post("/tenants/:tenantId/support-cases", async (req, res) => {
     return;
   }
 
-  const [lead] = await db.select({ id: leadsTable.id, nome: leadsTable.nome, empresa: leadsTable.empresa })
+  const [lead] = await db.select({
+    id: leadsTable.id,
+    nome: leadsTable.nome,
+    empresa: leadsTable.empresa,
+    telefone: leadsTable.telefone,
+    endereco: leadsTable.endereco,
+    tipoPessoa: leadsTable.tipoPessoa,
+    dadosPj: leadsTable.dadosPj,
+  })
     .from(leadsTable)
     .where(and(eq(leadsTable.id, parsed.data.leadId), eq(leadsTable.tenantId, tenantId)));
   if (!lead) {
@@ -943,15 +951,28 @@ router.post("/tenants/:tenantId/support-cases", async (req, res) => {
   }).returning();
 
   if (responsavel.telefone) {
-    const clienteNome = lead.nome || lead.empresa || "Cliente";
+    const clienteNome = lead.empresa || lead.nome || "Cliente";
+    const socios = Array.isArray((lead.dadosPj as { socios?: unknown } | null)?.socios)
+      ? ((lead.dadosPj as { socios?: Array<{ nome?: string | null; telefone?: string | null }> }).socios ?? [])
+      : [];
+    const contatoNome = lead.empresa ? lead.nome : (lead.tipoPessoa === "juridica" ? socios[0]?.nome ?? null : null);
+    const contatoTelefone = lead.telefone || socios[0]?.telefone || null;
+    const dataPrevista = parsed.data.dataVencimento
+      ? parsed.data.dataVencimento.toLocaleDateString("pt-BR", { timeZone: "UTC" })
+      : "Não informada";
     const whatsappText = [
       `🛠️ Nova assistência ${codigo}`,
       `Cliente: ${clienteNome}`,
+      contatoNome && contatoNome !== clienteNome ? `Contato: ${contatoNome}` : null,
+      contatoTelefone ? `Telefone: ${contatoTelefone}` : null,
+      lead.endereco ? `Endereço: ${lead.endereco}` : null,
+      `Data prevista: ${dataPrevista}`,
       `Categoria: ${parsed.data.categoria}`,
       `Prioridade: ${parsed.data.prioridade}`,
+      `Responsável: ${responsavel.name || "não informado"}`,
       `Relato: ${parsed.data.relato}`,
-      `Abra no VendorAI para acompanhar e anexar relatório, fotos, vídeos ou áudio.`,
-    ].join("\n");
+      `🔗 Abrir atendimento: https://app.appvendorai.com/pipeline-operacional/suporte?card=${encodeURIComponent(card.id)}`,
+    ].filter(Boolean).join("\n");
     sendDirectWhatsAppMessage(tenantId, responsavel.telefone, whatsappText, req.log).catch((err) => {
       req.log.warn({ err, workCardId: card.id }, "support-case: WhatsApp do responsável não enviado (não fatal)");
     });

@@ -4,6 +4,7 @@ import {
   activitiesTable,
   db,
   dealsTable,
+  leadsTable,
   notificationsTable,
   usersTable,
   workCardsTable,
@@ -308,15 +309,35 @@ export async function prepareSupportAiIntake(input: {
   await db.update(usersTable).set({ lastAssignedAt: new Date(), updatedAt: new Date() }).where(eq(usersTable.id, owner.id));
 
   if (owner.telefone) {
-    const customerName = input.lead.nome || input.lead.empresa || "Cliente";
+    const [fullLead] = await db.select({
+      nome: leadsTable.nome,
+      empresa: leadsTable.empresa,
+      telefone: leadsTable.telefone,
+      endereco: leadsTable.endereco,
+      tipoPessoa: leadsTable.tipoPessoa,
+      dadosPj: leadsTable.dadosPj,
+    }).from(leadsTable).where(and(
+      eq(leadsTable.id, input.lead.id),
+      eq(leadsTable.tenantId, input.tenantId),
+    )).limit(1);
+    const customerName = fullLead?.empresa || fullLead?.nome || input.lead.empresa || input.lead.nome || "Cliente";
+    const socios = Array.isArray((fullLead?.dadosPj as { socios?: unknown } | null)?.socios)
+      ? ((fullLead?.dadosPj as { socios?: Array<{ nome?: string | null; telefone?: string | null }> }).socios ?? [])
+      : [];
+    const contactName = fullLead?.empresa ? fullLead.nome : (fullLead?.tipoPessoa === "juridica" ? socios[0]?.nome ?? null : null);
+    const contactPhone = fullLead?.telefone || socios[0]?.telefone || null;
     const whatsappText = [
       `🛠️ Nova assistência ${codigo} aberta pela IA`,
       `Cliente: ${customerName}`,
+      contactName && contactName !== customerName ? `Contato: ${contactName}` : null,
+      contactPhone ? `Telefone: ${contactPhone}` : null,
+      fullLead?.endereco ? `Endereço: ${fullLead.endereco}` : null,
       `Categoria: ${classification.category}`,
       `Prioridade: ${classification.priority}`,
+      `Responsável: ${owner.name || "não informado"}`,
       classification.products.length ? `Itens/produtos: ${classification.products.join(", ")}` : null,
       `Relato: ${classification.problemSummary}`,
-      "Abra no VendorAI para assumir o atendimento e acompanhar a execução.",
+      `🔗 Abrir atendimento: https://app.appvendorai.com/pipeline-operacional/suporte?card=${encodeURIComponent(card.id)}`,
     ].filter(Boolean).join("\n");
     sendDirectWhatsAppMessage(input.tenantId, owner.telefone, whatsappText, input.log).catch((error) => {
       input.log.warn({ err: error, workCardId: card.id }, "support-ai-intake: aviso WhatsApp do responsável não enviado");
