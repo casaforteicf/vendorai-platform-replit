@@ -17,7 +17,7 @@ export function orthogonalEnd(start: WallNetworkPoint, raw: WallNetworkPoint) {
   return dx >= dy ? { x: raw.x, y: start.y } : { x: start.x, y: raw.y };
 }
 
-export type WallSnapKind = "intersection" | "endpoint" | "midpoint" | "perpendicular" | "none";
+export type WallSnapKind = "intersection" | "endpoint" | "midpoint" | "alignment" | "perpendicular" | "none";
 
 export type WallSnapResult = {
   point: WallNetworkPoint;
@@ -35,21 +35,24 @@ export function snapPointToWallNetworkDetailed(
   const candidates: Array<WallSnapResult & { priority: number }> = [];
   const usableWalls = walls.filter((wall) => wall.id !== excludeWallId);
 
+  const segmentIntersection = (a: WallNetworkSegment, b: WallNetworkSegment): WallNetworkPoint | null => {
+    const r = { x: a.x2 - a.x1, y: a.y2 - a.y1 };
+    const s = { x: b.x2 - b.x1, y: b.y2 - b.y1 };
+    const cross = r.x * s.y - r.y * s.x;
+    if (Math.abs(cross) < 0.000001) return null;
+    const qMinusP = { x: b.x1 - a.x1, y: b.y1 - a.y1 };
+    const t = (qMinusP.x * s.y - qMinusP.y * s.x) / cross;
+    const u = (qMinusP.x * r.y - qMinusP.y * r.x) / cross;
+    if (t < -0.001 || t > 1.001 || u < -0.001 || u > 1.001) return null;
+    return { x: a.x1 + t * r.x, y: a.y1 + t * r.y };
+  };
+
   for (let i = 0; i < usableWalls.length; i += 1) {
     for (let j = i + 1; j < usableWalls.length; j += 1) {
-      const a = usableWalls[i];
-      const b = usableWalls[j];
-      const aHorizontal = Math.abs(a.y1 - a.y2) < 0.01;
-      const bHorizontal = Math.abs(b.y1 - b.y2) < 0.01;
-      if (aHorizontal === bHorizontal) continue;
-      const h = aHorizontal ? a : b;
-      const v = aHorizontal ? b : a;
-      const point = { x: v.x1, y: h.y1 };
-      const withinH = point.x >= Math.min(h.x1, h.x2) - 0.01 && point.x <= Math.max(h.x1, h.x2) + 0.01;
-      const withinV = point.y >= Math.min(v.y1, v.y2) - 0.01 && point.y <= Math.max(v.y1, v.y2) + 0.01;
-      if (!withinH || !withinV) continue;
+      const point = segmentIntersection(usableWalls[i], usableWalls[j]);
+      if (!point) continue;
       const d = distance(raw, point);
-      if (d <= threshold) candidates.push({ point, distance: d, priority: -2, kind: "intersection" });
+      if (d <= threshold) candidates.push({ point, distance: d, priority: -3, kind: "intersection" });
     }
   }
 
@@ -61,13 +64,36 @@ export function snapPointToWallNetworkDetailed(
 
     for (const endpoint of endpoints) {
       const d = distance(raw, endpoint);
-      if (d <= threshold) candidates.push({ point: endpoint, distance: d, priority: -1, kind: "endpoint", wallId: wall.id });
+      if (d <= threshold) candidates.push({ point: endpoint, distance: d, priority: -2, kind: "endpoint", wallId: wall.id });
     }
 
     const midpoint = { x: (wall.x1 + wall.x2) / 2, y: (wall.y1 + wall.y2) / 2 };
     const midpointDistance = distance(raw, midpoint);
     if (midpointDistance <= threshold) {
-      candidates.push({ point: midpoint, distance: midpointDistance, priority: 0, kind: "midpoint", wallId: wall.id });
+      candidates.push({ point: midpoint, distance: midpointDistance, priority: -1, kind: "midpoint", wallId: wall.id });
+    }
+
+    for (const reference of [...endpoints, midpoint]) {
+      const dxAlign = Math.abs(raw.x - reference.x);
+      if (dxAlign <= threshold) {
+        candidates.push({
+          point: { x: reference.x, y: raw.y },
+          distance: dxAlign,
+          priority: 0,
+          kind: "alignment",
+          wallId: wall.id,
+        });
+      }
+      const dyAlign = Math.abs(raw.y - reference.y);
+      if (dyAlign <= threshold) {
+        candidates.push({
+          point: { x: raw.x, y: reference.y },
+          distance: dyAlign,
+          priority: 0,
+          kind: "alignment",
+          wallId: wall.id,
+        });
+      }
     }
 
     const dx = wall.x2 - wall.x1;
