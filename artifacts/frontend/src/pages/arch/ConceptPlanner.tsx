@@ -155,6 +155,12 @@ type CustomOpening = {
   sillHeight?: number;
   openingStyle?: "hinged" | "sliding" | "fixed" | "tilt_turn";
   swing?: "left" | "right";
+  swingSide?: "inside" | "outside";
+  leafCount?: number;
+  frameProfile?: string;
+  glassType?: string;
+  manufacturer?: string;
+  catalogProductId?: string;
   familyId?: string;
   familyLabel?: string;
 };
@@ -3033,6 +3039,12 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
             sillHeight: opening.sillHeight,
             openingStyle: opening.openingStyle,
             swing: opening.swing,
+            swingSide: opening.swingSide,
+            leafCount: opening.leafCount,
+            frameProfile: opening.frameProfile,
+            glassType: opening.glassType,
+            manufacturer: opening.manufacturer,
+            catalogProductId: opening.catalogProductId,
           }];
         }),
     [safeCustomOpenings, safeCustomWalls, activeFloor],
@@ -3653,6 +3665,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       sillHeight: type === "door" ? 0 : 0.90,
       openingStyle: type === "door" ? "hinged" : "sliding",
       swing: "left",
+      swingSide: "inside",
+      leafCount: type === "door" ? 1 : 2,
+      frameProfile: "",
+      glassType: type === "door" ? "" : "Incolor",
     };
     setCustomOpenings((prev) => [...(Array.isArray(prev) ? prev : []), opening]);
     pushRoomHistory(before);
@@ -4130,6 +4146,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       sillHeight: preset.type === "door" ? 0 : preset.sillHeight,
       openingStyle: preset.openingStyle,
       swing: preset.swing ?? "left",
+      swingSide: "inside",
+      leafCount: preset.type === "door" ? 1 : 2,
+      frameProfile: "",
+      glassType: preset.type === "door" ? "" : "Incolor",
       familyId: preset.familyId,
       familyLabel: preset.familyLabel,
     };
@@ -4143,7 +4163,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
   const updateCustomOpeningParams = (
     openingId: string,
-    patch: Partial<Pick<CustomOpening, "width" | "height" | "sillHeight" | "openingStyle" | "swing">>,
+    patch: Partial<Pick<CustomOpening, "width" | "height" | "sillHeight" | "openingStyle" | "swing" | "swingSide" | "leafCount" | "frameProfile" | "glassType" | "manufacturer" | "catalogProductId">>,
   ) => {
     const before = snapshotEditor();
     setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((opening) => {
@@ -4178,6 +4198,12 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     const opening = safeCustomOpenings.find((item) => item.id === openingId);
     if (!opening) return;
     updateCustomOpeningParams(openingId, { swing: opening.swing === "right" ? "left" : "right" });
+  };
+
+  const toggleCustomOpeningSide = (openingId: string) => {
+    const opening = safeCustomOpenings.find((item) => item.id === openingId);
+    if (!opening) return;
+    updateCustomOpeningParams(openingId, { swingSide: opening.swingSide === "outside" ? "inside" : "outside" });
   };
 
   const duplicateCustomOpening = (openingId: string) => {
@@ -9078,6 +9104,50 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                             {selectedOpening.type === "window" && <option value="tilt_turn">Oscilobatente</option>}
                           </select>
                         </label>
+                        <label className="text-[10px] font-semibold text-slate-500">
+                          Folhas
+                          <select
+                            value={Math.max(1, Math.min(6, selectedCustomOpening.leafCount ?? (selectedOpening.type === "door" ? 1 : 2)))}
+                            onChange={(event) => updateCustomOpeningParams(selectedOpening.id, { leafCount: Number(event.target.value) })}
+                            className="mt-1 h-9 w-[82px] rounded-lg border bg-white px-2 text-xs"
+                          >
+                            {[1, 2, 3, 4, 6].map((count) => <option key={count} value={count}>{count}</option>)}
+                          </select>
+                        </label>
+                        <label className="min-w-[130px] text-[10px] font-semibold text-slate-500">
+                          Perfil
+                          <input
+                            value={selectedCustomOpening.frameProfile ?? ""}
+                            onChange={(event) => updateCustomOpeningParams(selectedOpening.id, { frameProfile: event.target.value })}
+                            placeholder="Ex.: PVC branco"
+                            className="mt-1 h-9 w-full rounded-lg border px-2 text-xs font-semibold"
+                          />
+                        </label>
+                        {selectedOpening.type === "window" && (
+                          <label className="min-w-[120px] text-[10px] font-semibold text-slate-500">
+                            Vidro
+                            <select
+                              value={selectedCustomOpening.glassType ?? "Incolor"}
+                              onChange={(event) => updateCustomOpeningParams(selectedOpening.id, { glassType: event.target.value })}
+                              className="mt-1 h-9 w-full rounded-lg border bg-white px-2 text-xs"
+                            >
+                              <option value="Incolor">Incolor</option>
+                              <option value="Fumê">Fumê</option>
+                              <option value="Refletivo">Refletivo</option>
+                              <option value="Laminado">Laminado</option>
+                              <option value="Duplo">Duplo / insulado</option>
+                            </select>
+                          </label>
+                        )}
+                        <label className="min-w-[130px] text-[10px] font-semibold text-slate-500">
+                          Fabricante
+                          <input
+                            value={selectedCustomOpening.manufacturer ?? ""}
+                            onChange={(event) => updateCustomOpeningParams(selectedOpening.id, { manufacturer: event.target.value })}
+                            placeholder="Fabricante"
+                            className="mt-1 h-9 w-full rounded-lg border px-2 text-xs font-semibold"
+                          />
+                        </label>
                       </>
                     )}
                     <div className="mt-2 flex w-full items-center gap-1.5 md:ml-auto md:mt-0 md:w-auto">
@@ -9091,9 +9161,14 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       {selectedCustomOpening && (
                         <>
                           {selectedOpening.type === "door" && selectedCustomOpening.openingStyle === "hinged" && (
-                            <button type="button" onClick={() => toggleCustomOpeningSwing(selectedOpening.id)} className="h-9 rounded-lg border px-3 text-xs font-semibold">
-                              Inverter abertura · {selectedCustomOpening.swing === "right" ? "Direita" : "Esquerda"}
-                            </button>
+                            <>
+                              <button type="button" onClick={() => toggleCustomOpeningSwing(selectedOpening.id)} className="h-9 rounded-lg border px-3 text-xs font-semibold">
+                                Inverter mão · {selectedCustomOpening.swing === "right" ? "Direita" : "Esquerda"}
+                              </button>
+                              <button type="button" onClick={() => toggleCustomOpeningSide(selectedOpening.id)} className="h-9 rounded-lg border px-3 text-xs font-semibold">
+                                Sentido · {selectedCustomOpening.swingSide === "outside" ? "Exterior" : "Interior"}
+                              </button>
+                            </>
                           )}
                           <button type="button" onClick={() => duplicateCustomOpening(selectedOpening.id)} className="h-9 rounded-lg border px-3 text-xs font-semibold" title="Duplicar (Ctrl/Cmd+D)">Duplicar</button>
                           <button type="button" onClick={() => deleteCustomOpening(selectedOpening.id)} className="h-9 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600" title="Excluir (Del)">Excluir</button>
