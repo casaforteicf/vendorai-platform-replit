@@ -74,6 +74,44 @@ class DevAgentIsolationBoundary extends React.Component<
   }
 }
 
+function AppShellFallback() {
+  const [slow, setSlow] = React.useState(false);
+
+  React.useEffect(() => {
+    const timer = window.setTimeout(() => setSlow(true), 8_000);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const reloadLatest = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("__vendorai_refresh", String(Date.now()));
+    window.location.replace(url.toString());
+  };
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-[#f7f8fa] px-6 text-slate-800">
+      <div className="w-full max-w-md text-center">
+        <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-[#D9673E]" />
+        <div className="mt-4 text-base font-semibold">Carregando o sistema…</div>
+        {slow ? (
+          <>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Esta versão demorou mais que o esperado. Você pode buscar a versão mais recente sem perder sua sessão.
+            </p>
+            <button
+              type="button"
+              onClick={reloadLatest}
+              className="mt-5 rounded-lg bg-[#D9673E] px-4 py-2.5 text-sm font-semibold text-white"
+            >
+              Carregar versão atual
+            </button>
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function runtimeAppId(pathname: string): string | null {
   const match = pathname.match(/^\/apps\/([^/?#]+)\/?$/);
   if (!match?.[1]) return null;
@@ -385,7 +423,7 @@ export default function App() {
 
   return (
     <>
-      <React.Suspense fallback={null}>
+      <React.Suspense fallback={<AppShellFallback />}>
         <AppLegacy />
       </React.Suspense>
 

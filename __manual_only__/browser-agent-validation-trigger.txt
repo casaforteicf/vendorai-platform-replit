@@ -1,0 +1,3 @@
+Browser Agent validation trigger
+commit=c37cb1681061e1a549be1a22f1da3486bbff6fad
+purpose=persistent-session-on-return

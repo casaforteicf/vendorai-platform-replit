@@ -77,8 +77,11 @@ async function fetchConnections(): Promise<Connection[]> {
   return res.json();
 }
 
-async function fetchLiveScreenshot(sessionId: string): Promise<LiveSession> {
-  const res = await fetch(`/api/browser-agent/live/${sessionId}/screenshot`, { headers: headers() });
+async function fetchLiveScreenshot(sessionId: string, handoffToken?: string): Promise<LiveSession> {
+  const endpoint = handoffToken
+    ? `/api/browser-agent/handoff/${sessionId}/screenshot?handoff=${encodeURIComponent(handoffToken)}`
+    : `/api/browser-agent/live/${sessionId}/screenshot`;
+  const res = await fetch(endpoint, { headers: headers() });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || "Sessão ao vivo indisponível");
   return body;
@@ -96,6 +99,7 @@ export default function BrowserAgentPanel() {
   const [goal, setGoal] = useState("");
   const [allowWrite, setAllowWrite] = useState(false);
   const [liveSessionId, setLiveSessionId] = useState(() => new URLSearchParams(window.location.search).get("browserSession") || sessionStorage.getItem("vendi_live_session") || "");
+  const [handoffToken, setHandoffToken] = useState(() => new URLSearchParams(window.location.search).get("handoff") || sessionStorage.getItem("vendi_live_handoff") || "");
   const [requestedManual, setManualMode] = useState(false);
   const [manualText, setManualText] = useState("");
   const [manualUrl, setManualUrl] = useState("");
@@ -107,7 +111,7 @@ export default function BrowserAgentPanel() {
 
   const { data: liveSession, error: liveError } = useQuery<LiveSession>({
     queryKey: ["browser-agent-live", liveSessionId],
-    queryFn: () => fetchLiveScreenshot(liveSessionId),
+    queryFn: () => fetchLiveScreenshot(liveSessionId, handoffToken || undefined),
     enabled: Boolean(liveSessionId),
     refetchInterval: (query) => {
       const status = (query.state.data as LiveSession | undefined)?.status;
@@ -121,7 +125,9 @@ export default function BrowserAgentPanel() {
   useEffect(() => {
     if (liveSessionId) sessionStorage.setItem("vendi_live_session", liveSessionId);
     else sessionStorage.removeItem("vendi_live_session");
-  }, [liveSessionId]);
+    if (handoffToken) sessionStorage.setItem("vendi_live_handoff", handoffToken);
+    else sessionStorage.removeItem("vendi_live_handoff");
+  }, [liveSessionId, handoffToken]);
 
   const selected = useMemo(
     () => connections.find((connection) => connection.id === selectedId) ?? connections[0] ?? null,
@@ -195,7 +201,8 @@ export default function BrowserAgentPanel() {
   const pauseMutation = useMutation({
     mutationFn: async (paused: boolean) => {
       if (!liveSessionId) return;
-      const res = await fetch(`/api/browser-agent/live/${liveSessionId}/pause`, {
+      const base = handoffToken ? `/api/browser-agent/handoff/${liveSessionId}/pause?handoff=${encodeURIComponent(handoffToken)}` : `/api/browser-agent/live/${liveSessionId}/pause`;
+      const res = await fetch(base, {
         method: "POST",
         headers: headers(),
         body: JSON.stringify({ paused }),
@@ -214,7 +221,8 @@ export default function BrowserAgentPanel() {
   const controlMutation = useMutation({
     mutationFn: async (command: Record<string, unknown>) => {
       if (!liveSessionId) throw new Error("Sessão não iniciada");
-      const res = await fetch(`/api/browser-agent/live/${liveSessionId}/control`, {
+      const base = handoffToken ? `/api/browser-agent/handoff/${liveSessionId}/control?handoff=${encodeURIComponent(handoffToken)}` : `/api/browser-agent/live/${liveSessionId}/control`;
+      const res = await fetch(base, {
         method: "POST",
         headers: headers(),
         body: JSON.stringify(command),
@@ -230,16 +238,19 @@ export default function BrowserAgentPanel() {
   const closeMutation = useMutation({
     mutationFn: async () => {
       if (!liveSessionId) return;
-      const res = await fetch(`/api/browser-agent/live/${liveSessionId}`, { method: "DELETE", headers: headers() });
+      const base = handoffToken ? `/api/browser-agent/handoff/${liveSessionId}?handoff=${encodeURIComponent(handoffToken)}` : `/api/browser-agent/live/${liveSessionId}`;
+      const res = await fetch(base, { method: "DELETE", headers: headers() });
       if (!res.ok && res.status !== 404) throw new Error("Não foi possível encerrar a sessão");
     },
     onSuccess: () => {
       setLiveSessionId("");
+      setHandoffToken("");
       setManualMode(false);
       setManualText("");
       setManualUrl("");
       const url = new URL(window.location.href);
       url.searchParams.delete("browserSession");
+      url.searchParams.delete("handoff");
       window.history.replaceState(null, "", url);
     },
     onError: (error: Error) => toast({ title: "Sessão", description: error.message, variant: "destructive" }),

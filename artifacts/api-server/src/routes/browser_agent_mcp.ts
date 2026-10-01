@@ -12,7 +12,7 @@ import { decrypt, encrypt } from "../lib/crypto.js";
 import { runBrowserAgent, type BrowserAgentInput } from "../services/browser-agent.js";
 import { signToken } from "../lib/jwt.js";
 
-import { createLiveBrowserSession, startLiveBrowserMission } from "../services/browser-live-session.js";
+import { createLiveBrowserSession, getLiveBrowserHandoff, startLiveBrowserMission } from "../services/browser-live-session.js";
 
 const router: IRouter = Router();
 
@@ -251,8 +251,9 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
         },
       });
       startLiveBrowserMission(tenantId, session.id, agentInput.goal, agentInput.maxSteps, true);
+      const handoff = getLiveBrowserHandoff(session.id);
       return { sessionId: session.id,
-        controlUrl: `https://app.appvendorai.com/agents/config?browserSession=${encodeURIComponent(session.id)}` };
+        controlUrl: `https://homolog.appvendorai.com/agents/config?browserSession=${encodeURIComponent(session.id)}&handoff=${encodeURIComponent(handoff.handoffToken)}` };
     };
     const result = await runBrowserAgent(agentInput);
 

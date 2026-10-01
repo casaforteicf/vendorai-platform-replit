@@ -122,7 +122,7 @@ export function moduleForPath(path: string): UserModuleKey | null {
   if (path.startsWith("/propostas") || path.startsWith("/solicitacoes-compra")) return "proposals";
   if (path.startsWith("/catalogo") || path.startsWith("/estoque") || path.startsWith("/varejo")) return "catalog";
   if (path.startsWith("/erp") || path.startsWith("/financeiro")) return "erp";
-  if (path.startsWith("/agents")) return "agents";
+  if (path.startsWith("/agents") || path.startsWith("/vendi")) return "agents";
   if (path.startsWith("/base-conhecimento")) return "knowledge";
   if (path.startsWith("/analytics") || path.startsWith("/relatorios")) return "analytics";
   if (path.startsWith("/usuarios") || path.startsWith("/organizacao")) return "team";

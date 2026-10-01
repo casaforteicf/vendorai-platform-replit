@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
@@ -136,6 +136,21 @@ function formatDate(value?: string | null) {
   return new Date(value).toLocaleDateString("pt-BR");
 }
 
+function formatPlannedDate(value?: string | null) {
+  if (!value) return "—";
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) return `${match[3]}/${match[2]}/${match[1]}`;
+  return formatDate(value);
+}
+
+function toDateInput(value?: string | null) {
+  if (!value) return "";
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
+}
+
 function safeItems(card: WorkCard): Array<{ nome?: string; quantidade?: number }> {
   const raw = card.metadata?.itens;
   return Array.isArray(raw) ? raw as Array<{ nome?: string; quantidade?: number }> : [];
@@ -176,6 +191,18 @@ export default function PipelineOperacional() {
     queryFn: () => api(`/api/tenants/${tenantId}/work-cards?pipeline=${pipeline}`),
     staleTime: 15_000, refetchOnWindowFocus: false,
   });
+
+  useEffect(() => {
+    const search = new URLSearchParams(window.location.search);
+    const cardId = search.get("card");
+    if (!cardId || selectedCard || !cardsQuery.data?.length) return;
+    const card = cardsQuery.data.find((item) => item.id === cardId);
+    if (!card) return;
+    setSelectedCard(card);
+    search.delete("card");
+    const next = search.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${next ? `?${next}` : ""}`);
+  }, [cardsQuery.data, selectedCard]);
   const needsContext = supportOpen || deliveryOpen || Boolean(selectedCard);
   const leadsQuery = useQuery<Lead[]>({
     queryKey: ["work-card-leads", tenantId], enabled: !!tenantId && needsContext,
@@ -216,8 +243,10 @@ export default function PipelineOperacional() {
 
   const stages = pipeline === "suporte" ? SUPPORT_STAGES : EXECUTION_STAGES;
   const cards = cardsQuery.data ?? [];
+  const isAdmin = (user as any)?.platformRole === "super_admin" || (user as any)?.platformRole === "tenant_admin" || (user as any)?.userFunction === "administrador";
   const stageIndex = (stage: string) => stages.findIndex(([key]) => key === stage);
-  const canMoveForward = (card: WorkCard, target: string) => target === card.etapa || stageIndex(target) >= stageIndex(card.etapa);
+  const canMoveForward = (card: WorkCard, target: string) =>
+    target === card.etapa || stageIndex(target) >= stageIndex(card.etapa) || (card.pipeline === "execucao" && isAdmin);
 
   function setPipeline(next: PipelineKind | "comercial" | "aquecimento" | "parceiros") {
     if (next === "comercial") navigate("/deals");
@@ -337,7 +366,7 @@ export default function PipelineOperacional() {
                           {items.length > 3 && <div className="text-muted-foreground">+{items.length - 3} item(ns)</div>}
                         </div>
                       )}
-                      {card.dataFimPrevista && <p className="mt-2 flex items-center gap-1 text-[11px] text-muted-foreground"><CalendarDays className="h-3 w-3" /> Previsto: {formatDate(card.dataFimPrevista)}</p>}
+                      {card.dataFimPrevista && <p className="mt-2 flex items-center gap-1 text-[11px] text-muted-foreground"><CalendarDays className="h-3 w-3" /> Previsto: {formatPlannedDate(card.dataFimPrevista)}</p>}
                     </article>
                   );
                 })}
@@ -358,9 +387,9 @@ export default function PipelineOperacional() {
                 <div className="grid grid-cols-2 gap-3 rounded-lg border p-3 text-sm">
                   <div><p className="text-xs text-muted-foreground">Cliente</p><p>{selectedCard.leadLabel || (selectedCard.leadId ? (leadMap.get(selectedCard.leadId)?.nome || leadMap.get(selectedCard.leadId)?.empresa || "—") : "—")}</p></div>
                   <div><p className="text-xs text-muted-foreground">Pedido</p><p>{selectedCard.dealTitle || (selectedCard.dealId ? (dealMap.get(selectedCard.dealId)?.titulo || "—") : "—")}</p></div>
-                  <div><p className="text-xs text-muted-foreground">Liberação prevista</p><p>{formatDate(selectedCard.dataInicioPrevista)}</p></div>
+                  <div><p className="text-xs text-muted-foreground">Liberação prevista</p><p>{formatPlannedDate(selectedCard.dataInicioPrevista)}</p></div>
                   <div><p className="text-xs text-muted-foreground">Liberação efetiva</p><p>{formatDate(selectedCard.dataInicioEfetiva)}</p></div>
-                  <div><p className="text-xs text-muted-foreground">Conclusão/entrega prevista</p><p>{formatDate(selectedCard.dataFimPrevista)}</p></div>
+                  <div><p className="text-xs text-muted-foreground">Conclusão/entrega prevista</p><p>{formatPlannedDate(selectedCard.dataFimPrevista)}</p></div>
                   <div><p className="text-xs text-muted-foreground">Conclusão/entrega efetiva</p><p>{formatDate(selectedCard.dataFimEfetiva)}</p></div>
                 </div>
 
@@ -368,21 +397,106 @@ export default function PipelineOperacional() {
                   <label className="text-sm font-medium">Etapa</label>
                   <Select value={selectedCard.etapa} disabled={patchCard.isPending} onValueChange={(etapa) => { if (!patchCard.isPending) patchCard.mutate({ id: selectedCard.id, data: { etapa } }); }}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>{stages.filter(([key]) => stageIndex(key) >= stageIndex(selectedCard.etapa)).map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Responsável</label>
-                  <Select value={selectedCard.responsavelId || "__none__"} disabled={patchCard.isPending} onValueChange={(responsavelId) => { if (!patchCard.isPending) patchCard.mutate({ id: selectedCard.id, data: { responsavelId: responsavelId === "__none__" ? null : responsavelId } }); }}>
-                    <SelectTrigger><SelectValue placeholder="Selecionar responsável" /></SelectTrigger>
                     <SelectContent>
-                      {pipeline !== "suporte" && <SelectItem value="__none__">Sem responsável</SelectItem>}
-                      {(usersQuery.data ?? []).map((u) => <SelectItem key={u.id} value={u.id}>{u.name || u.email || u.id}</SelectItem>)}
+                      {stages
+                        .filter(([key]) => selectedCard.pipeline === "execucao" && isAdmin ? true : stageIndex(key) >= stageIndex(selectedCard.etapa))
+                        .map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}
                     </SelectContent>
                   </Select>
+                  {selectedCard.pipeline === "execucao" && isAdmin && <p className="text-[11px] text-muted-foreground">Administrador pode corrigir a etapa para frente ou para trás; a alteração fica registrada no histórico.</p>}
                 </div>
 
-                {selectedCard.descricao && <div className="rounded-lg border bg-muted/20 p-3"><p className="text-xs font-semibold uppercase text-muted-foreground">Relato / observações</p><p className="mt-1 whitespace-pre-wrap text-sm">{selectedCard.descricao}</p></div>}
+                {selectedCard.pipeline === "execucao" ? (
+                  <div className="space-y-4 rounded-lg border p-4">
+                    <div>
+                      <h3 className="text-sm font-semibold">Edição manual da execução</h3>
+                      <p className="text-xs text-muted-foreground">As automações continuam ativas, mas estes dados podem ser corrigidos manualmente.</p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium">Título do pedido</label>
+                      <Input
+                        key={`title-${selectedCard.id}-${selectedCard.titulo}`}
+                        defaultValue={selectedCard.titulo}
+                        disabled={patchCard.isPending}
+                        onBlur={(event) => {
+                          const titulo = event.currentTarget.value.trim();
+                          if (titulo && titulo !== selectedCard.titulo && !patchCard.isPending) patchCard.mutate({ id: selectedCard.id, data: { titulo } });
+                        }}
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium">Prioridade</label>
+                        <Select value={selectedCard.prioridade} disabled={patchCard.isPending} onValueChange={(prioridade) => patchCard.mutate({ id: selectedCard.id, data: { prioridade } })}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="baixa">Baixa</SelectItem>
+                            <SelectItem value="normal">Normal</SelectItem>
+                            <SelectItem value="alta">Alta</SelectItem>
+                            <SelectItem value="urgente">Urgente</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium">Responsável</label>
+                        <Select value={selectedCard.responsavelId || "__none__"} disabled={patchCard.isPending} onValueChange={(responsavelId) => patchCard.mutate({ id: selectedCard.id, data: { responsavelId: responsavelId === "__none__" ? null : responsavelId } })}>
+                          <SelectTrigger><SelectValue placeholder="Selecionar responsável" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">Sem responsável</SelectItem>
+                            {(usersQuery.data ?? []).map((u) => <SelectItem key={u.id} value={u.id}>{u.name || u.email || u.id}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {[
+                        ["dataInicioPrevista", "Início previsto", selectedCard.dataInicioPrevista],
+                        ["dataInicioEfetiva", "Início efetivo", selectedCard.dataInicioEfetiva],
+                        ["dataFimPrevista", "Conclusão prevista", selectedCard.dataFimPrevista],
+                        ["dataFimEfetiva", "Conclusão efetiva", selectedCard.dataFimEfetiva],
+                      ].map(([field, label, value]) => (
+                        <div key={String(field)} className="space-y-1.5">
+                          <label className="text-xs font-medium">{String(label)}</label>
+                          <Input
+                            type="date"
+                            value={toDateInput(value as string | null)}
+                            disabled={patchCard.isPending}
+                            onChange={(event) => {
+                              const next = event.currentTarget.value;
+                              patchCard.mutate({ id: selectedCard.id, data: { [String(field)]: next || null } });
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium">Observações da execução</label>
+                      <Textarea
+                        key={`description-${selectedCard.id}-${selectedCard.descricao ?? ""}`}
+                        defaultValue={selectedCard.descricao ?? ""}
+                        rows={4}
+                        disabled={patchCard.isPending}
+                        onBlur={(event) => {
+                          const descricao = event.currentTarget.value.trim();
+                          if (descricao !== (selectedCard.descricao ?? "") && !patchCard.isPending) patchCard.mutate({ id: selectedCard.id, data: { descricao: descricao || null } });
+                        }}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Responsável</label>
+                      <Select value={selectedCard.responsavelId || "__none__"} disabled={patchCard.isPending} onValueChange={(responsavelId) => { if (!patchCard.isPending) patchCard.mutate({ id: selectedCard.id, data: { responsavelId: responsavelId === "__none__" ? null : responsavelId } }); }}>
+                        <SelectTrigger><SelectValue placeholder="Selecionar responsável" /></SelectTrigger>
+                        <SelectContent>
+                          {(usersQuery.data ?? []).map((u) => <SelectItem key={u.id} value={u.id}>{u.name || u.email || u.id}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {selectedCard.descricao && <div className="rounded-lg border bg-muted/20 p-3"><p className="text-xs font-semibold uppercase text-muted-foreground">Relato / observações</p><p className="mt-1 whitespace-pre-wrap text-sm">{selectedCard.descricao}</p></div>}
+                  </>
+                )}
 
                 {selectedCard.pipeline === "suporte" && (
                   <SupportReportPanel
