@@ -1,5 +1,6 @@
 import { createRoot } from "react-dom/client";
 import { lazy, Suspense, useEffect, useLayoutEffect, useState } from "react";
+import App from "./App";
 import { useLocation } from "wouter";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { FrontendRecoveryGuard } from "./components/FrontendRecoveryGuard";
@@ -18,7 +19,6 @@ import "./jarvis-mobile.css";
 import { setupApiClient } from "./lib/api";
 import { installVisitorTelemetry } from "./lib/visitorIntelligence";
 
-const App = lazy(() => import("./App"));
 function BootstrapFallback() {
   const [stalled, setStalled] = useState(false);
 
