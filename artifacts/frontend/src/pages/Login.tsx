@@ -107,6 +107,40 @@ const ES_CHAPTERS: DemoChapter[] = [
   { id: "inteligencia", label: "Inteligencia", title: "Decisiones con visión del negocio", description: "Indicadores y prioridades para actuar con más velocidad.", start: 18, icon: BarChart3 },
 ];
 
+type DailyProverb = {
+  reference: string;
+  pt: string;
+  es: string;
+};
+
+const DAILY_PROVERBS: DailyProverb[] = [
+  { reference: "Provérbios 3:5-6", pt: "Confie em Deus de todo o coração e permita que Ele direcione seus caminhos.", es: "Confía en Dios de todo corazón y permite que Él dirija tus caminos." },
+  { reference: "Provérbios 16:3", pt: "Entregue seus planos a Deus e trabalhe com propósito.", es: "Entrega tus planes a Dios y trabaja con propósito." },
+  { reference: "Provérbios 21:5", pt: "Planos bem pensados e trabalho constante conduzem a bons resultados.", es: "Los planes bien pensados y el trabajo constante conducen a buenos resultados." },
+  { reference: "Provérbios 22:29", pt: "A excelência no trabalho abre portas e coloca você diante de grandes oportunidades.", es: "La excelencia en el trabajo abre puertas y te pone frente a grandes oportunidades." },
+  { reference: "Provérbios 11:14", pt: "Boas decisões crescem quando buscamos conselho e ouvimos pessoas sábias.", es: "Las buenas decisiones crecen cuando buscamos consejo y escuchamos a personas sabias." },
+  { reference: "Provérbios 15:22", pt: "Planos ganham força quando são construídos com bons conselhos.", es: "Los planes se fortalecen cuando se construyen con buenos consejos." },
+  { reference: "Provérbios 10:4", pt: "Mãos diligentes constroem prosperidade com constância.", es: "Las manos diligentes construyen prosperidad con constancia." },
+  { reference: "Provérbios 12:24", pt: "A dedicação coloca você em posição de liderança.", es: "La dedicación te coloca en posición de liderazgo." },
+  { reference: "Provérbios 13:4", pt: "Desejo sem ação não basta; a diligência produz frutos.", es: "El deseo sin acción no basta; la diligencia produce frutos." },
+  { reference: "Provérbios 14:23", pt: "Todo trabalho sério produz resultado; apenas falar não é suficiente.", es: "Todo trabajo serio produce resultado; solo hablar no es suficiente." },
+  { reference: "Provérbios 16:9", pt: "Planejamos o caminho, mas permanecemos abertos à direção de Deus.", es: "Planeamos el camino, pero permanecemos abiertos a la dirección de Dios." },
+  { reference: "Provérbios 18:15", pt: "A mente sábia busca conhecimento e continua aprendendo.", es: "La mente sabia busca conocimiento y continúa aprendiendo." },
+  { reference: "Provérbios 19:20", pt: "Ouvir conselhos hoje ajuda a tomar decisões mais sábias amanhã.", es: "Escuchar consejos hoy ayuda a tomar decisiones más sabias mañana." },
+  { reference: "Provérbios 20:18", pt: "Estratégias ficam melhores quando são avaliadas com conselho.", es: "Las estrategias mejoran cuando se evalúan con buen consejo." },
+  { reference: "Provérbios 22:4", pt: "Humildade, respeito a Deus e caráter constroem riqueza que permanece.", es: "Humildad, respeto a Dios y carácter construyen una riqueza que permanece." },
+  { reference: "Provérbios 24:3-4", pt: "Sabedoria constrói; entendimento fortalece; conhecimento enche de valor.", es: "La sabiduría construye; el entendimiento fortalece; el conocimiento llena de valor." },
+  { reference: "Provérbios 27:17", pt: "Pessoas boas se desafiam e se tornam melhores juntas.", es: "Las buenas personas se desafían y se vuelven mejores juntas." },
+];
+
+function proverbForToday(): DailyProverb {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), 0, 0);
+  const dayOfYear = Math.floor((now.getTime() - start.getTime()) / 86_400_000);
+  return DAILY_PROVERBS[dayOfYear % DAILY_PROVERBS.length]!;
+}
+
+
 function ProductTour({ locale }: { locale: string }) {
   const chapters = locale === "pt-BR" ? PT_CHAPTERS : ES_CHAPTERS;
   const [activeIndex, setActiveIndex] = useState(0);
@@ -116,6 +150,7 @@ function ProductTour({ locale }: { locale: string }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const videoUrl = (import.meta.env.VITE_LOGIN_DEMO_VIDEO_URL as string | undefined)?.trim();
   const active = chapters[activeIndex]!;
+  const dailyProverb = proverbForToday();
 
   useEffect(() => {
     if (videoUrl || !playing) return;
@@ -153,8 +188,19 @@ function ProductTour({ locale }: { locale: string }) {
       <div className="mb-5 flex items-center justify-between gap-4">
         <img src={logoDark} alt="Vendor.ai" className="h-11 w-auto" />
         <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-medium backdrop-blur">
-          {locale === "pt-BR" ? "Conheça a plataforma" : "Conoce la plataforma"}
+          {locale === "pt-BR" ? "Inteligência para o seu negócio" : "Inteligencia para tu negocio"}
         </span>
+      </div>
+
+      <div className="mb-6">
+        <h2 className="max-w-xl text-3xl font-semibold leading-[1.08] tracking-tight sm:text-4xl">
+          {locale === "pt-BR" ? "Clareza para vender. Inteligência para crescer." : "Claridad para vender. Inteligencia para crecer."}
+        </h2>
+        <p className="mt-3 max-w-xl text-base leading-relaxed text-white/75">
+          {locale === "pt-BR"
+            ? "Tudo o que sua equipe precisa para transformar informação em ação, relacionamento e resultado."
+            : "Todo lo que tu equipo necesita para transformar información en acción, relación y resultados."}
+        </p>
       </div>
 
       <div className="relative overflow-hidden rounded-2xl border border-white/20 bg-slate-950/90 shadow-2xl shadow-blue-950/20">
@@ -281,11 +327,17 @@ function ProductTour({ locale }: { locale: string }) {
         })}
       </div>
 
-      <p className="mt-5 max-w-xl text-sm leading-relaxed text-white/75">
-        {locale === "pt-BR"
-          ? "CRM, conversas, propostas, automações e IA conectados em uma única experiência."
-          : "CRM, conversaciones, propuestas, automatizaciones e IA conectados en una sola experiencia."}
-      </p>
+      <div className="mt-5 rounded-xl border border-white/15 bg-white/[0.08] px-4 py-3 backdrop-blur">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/55">
+            {locale === "pt-BR" ? "Provérbio do dia" : "Proverbio del día"}
+          </span>
+          <span className="text-xs font-medium text-white/70">{dailyProverb.reference}</span>
+        </div>
+        <p className="mt-2 text-sm leading-relaxed text-white/90">
+          {locale === "pt-BR" ? dailyProverb.pt : dailyProverb.es}
+        </p>
+      </div>
     </div>
   );
 }
