@@ -127,7 +127,21 @@ export async function handleOAuth(req: IncomingMessage, res: ServerResponse, url
         codes.set(hash(code), { ...pending.grant, exp: now() + 120 });
         redirect.searchParams.set("code", code);
       }
-      res.writeHead(303, { Location: redirect.toString(), "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" }); res.end();
+      // Android/ChatGPT embedded browsers may not visibly follow a cross-origin 303 after a form POST.
+      // Return an explicit navigation document: JS first, meta-refresh fallback, and a manual link.
+      const target = redirect.toString();
+      const escaped = target.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      const scriptTarget = JSON.stringify(target).replace(/</g, "\\u003c");
+      const navNonce = nonce();
+      res.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+        "Pragma": "no-cache",
+        "Referrer-Policy": "no-referrer",
+        "Content-Security-Policy": `default-src 'none'; script-src 'nonce-${navNonce}'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'`,
+      });
+      res.end(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=${escaped}"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Conectando ao ChatGPT</title></head><body><p>Autorização concluída. Retornando ao ChatGPT…</p><p><a href="${escaped}" rel="noreferrer">Continuar no ChatGPT</a></p><script nonce="${navNonce}">location.replace(${scriptTarget});</script></body></html>`);
+
     } else if (req.method === "POST" && path === "/oauth/token") {
       if (!req.headers["content-type"]?.startsWith("application/x-www-form-urlencoded")) { fail(res); return true; }
       const p = new URLSearchParams(await body(req));
