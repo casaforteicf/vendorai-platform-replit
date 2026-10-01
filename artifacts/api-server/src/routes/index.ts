@@ -38,6 +38,7 @@ import { googleAdsCallbackRouter } from "./google-ads-auth";
 import { searchConsoleCallbackRouter } from "./search-console-auth";
 import { metaAdsCallbackRouter } from "./meta-ads-auth";
 import socialIntegrationsRouter, { socialIntegrationsCallbackRouter } from "./social-integrations";
+import sketchfabAuthRouter, { sketchfabCallbackRouter } from "./sketchfab-auth";
 import agendamentosRouter from "./agendamentos";
 import entregasRouter from "./entregas";
 import bloqueiosAgendaRouter from "./bloqueios_agenda";
@@ -233,6 +234,7 @@ router.use(googleAdsCallbackRouter);
 router.use(searchConsoleCallbackRouter);
 router.use(metaAdsCallbackRouter);
 router.use(socialIntegrationsCallbackRouter);
+router.use(sketchfabCallbackRouter);
 router.use(publicProposalsRouter);
 router.use(supermercadoPublicRouter);
 router.use(fretesPublicRouter);
@@ -555,6 +557,7 @@ router.use(prospectorFlowsRouter);
 router.use(partnerProspectorRouter);
 
 // Arch Hub
+router.use(sketchfabAuthRouter);
 router.use(arqdorPublicLinkAdminRouter);
 router.use(archRouter);
 router.use(archSpecObjectsRouter);
