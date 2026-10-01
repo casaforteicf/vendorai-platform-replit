@@ -26,6 +26,7 @@ import {
   produtosCatalogoTable,
   farmaciaPedidoTable,
   workCardsTable,
+  pipelineStagesTable,
 } from "@workspace/db";
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
 import { sendDirectWhatsAppMessage, WhatsAppNotConnectedError } from "../services/omnichannel.js";
@@ -77,26 +78,48 @@ const COMMERCIAL_STAGE_TASKS: Record<string, string> = {
 
 async function ensureCommercialStageTask(deal: typeof dealsTable.$inferSelect) {
   if (!deal.leadId || !deal.assignedTo) return;
-  const taskTitle = COMMERCIAL_STAGE_TASKS[deal.etapa];
+
+  const [stageConfig] = await db
+    .select({
+      atividadePadraoTitulo: pipelineStagesTable.atividadePadraoTitulo,
+      atividadePadraoDescricao: pipelineStagesTable.atividadePadraoDescricao,
+      atividadePadraoPrazoMinutos: pipelineStagesTable.atividadePadraoPrazoMinutos,
+    })
+    .from(pipelineStagesTable)
+    .where(and(
+      eq(pipelineStagesTable.tenantId, deal.tenantId),
+      eq(pipelineStagesTable.pipeline, "comercial"),
+      eq(pipelineStagesTable.key, deal.etapa),
+    ))
+    .limit(1);
+
+  const configuredTitle = stageConfig?.atividadePadraoTitulo?.trim();
+  const fallbackTitle = COMMERCIAL_STAGE_TASKS[deal.etapa];
+  const taskTitle = configuredTitle || fallbackTitle;
   if (!taskTitle) return;
+
   const title = `${taskTitle} — ${deal.titulo}`;
   const [existingTask] = await db.select({ id: activitiesTable.id }).from(activitiesTable).where(and(
     eq(activitiesTable.tenantId, deal.tenantId),
     eq(activitiesTable.leadId, deal.leadId),
+    eq(activitiesTable.dealId, deal.id),
     eq(activitiesTable.titulo, title),
     eq(activitiesTable.status, "planejado"),
   )).limit(1);
   if (existingTask) return;
+
+  const prazoMinutos = stageConfig?.atividadePadraoPrazoMinutos ?? 24 * 60;
   await db.insert(activitiesTable).values({
     tenantId: deal.tenantId,
     leadId: deal.leadId,
     dealId: deal.id,
     tipo: "tarefa",
     titulo: title,
-    descricao: `Tarefa criada automaticamente ao entrar na etapa ${DEAL_STAGE_LABELS[deal.etapa] ?? deal.etapa}.`,
+    descricao: stageConfig?.atividadePadraoDescricao?.trim()
+      || `Tarefa criada automaticamente ao entrar na etapa ${DEAL_STAGE_LABELS[deal.etapa] ?? deal.etapa}.`,
     status: "planejado",
     responsavelId: deal.assignedTo,
-    dataVencimento: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    dataVencimento: new Date(Date.now() + prazoMinutos * 60 * 1000),
   });
 }
 
