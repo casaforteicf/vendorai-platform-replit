@@ -3432,13 +3432,73 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     setSelectedWallId(null);
   };
 
+  const constrainOpeningToWall = (
+    opening: CustomOpening,
+    wallLength: number,
+    preserveFrom: "start" | "end" | "ratio" = "ratio",
+    previousWallLength = wallLength,
+  ): CustomOpening => {
+    const requestedWidth = opening.width ?? (opening.type === "door" ? 0.9 : 1.2);
+    const maxWidth = Math.max(0.3, wallLength - 0.1);
+    const width = Math.max(0.3, Math.min(requestedWidth, maxWidth));
+    const halfRatio = wallLength > 0.001 ? Math.min(0.49, width / 2 / wallLength) : 0.49;
+    const minOffset = halfRatio;
+    const maxOffset = 1 - halfRatio;
+
+    let offset = opening.offset;
+    if (previousWallLength > 0.001 && wallLength > 0.001) {
+      if (preserveFrom === "start") {
+        offset = (opening.offset * previousWallLength) / wallLength;
+      } else if (preserveFrom === "end") {
+        const distanceFromEnd = (1 - opening.offset) * previousWallLength;
+        offset = 1 - distanceFromEnd / wallLength;
+      }
+    }
+
+    return {
+      ...opening,
+      width,
+      offset: Math.max(minOffset, Math.min(maxOffset, offset)),
+    };
+  };
+
+  const reconcileOpeningsForWall = (
+    wallId: string,
+    previousWall: CustomWall,
+    nextWall: CustomWall,
+  ) => {
+    const previousLength = Math.hypot(previousWall.x2 - previousWall.x1, previousWall.y2 - previousWall.y1);
+    const nextLength = Math.hypot(nextWall.x2 - nextWall.x1, nextWall.y2 - nextWall.y1);
+    const startChanged = Math.hypot(nextWall.x1 - previousWall.x1, nextWall.y1 - previousWall.y1) > 0.001;
+    const endChanged = Math.hypot(nextWall.x2 - previousWall.x2, nextWall.y2 - previousWall.y2) > 0.001;
+    const preserveFrom: "start" | "end" | "ratio" =
+      startChanged && !endChanged ? "end" : endChanged && !startChanged ? "start" : "ratio";
+
+    setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((opening) =>
+      opening.wallId === wallId
+        ? constrainOpeningToWall(opening, nextLength, preserveFrom, previousLength)
+        : opening
+    ));
+  };
+
   const updateCustomWall = (
     wallId: string,
     patch: Partial<{ x1: number; y1: number; x2: number; y2: number; thickness: number }>,
     recordHistory = false,
   ) => {
+    const wall = safeCustomWalls.find((item) => item.id === wallId);
+    if (!wall) return;
+    const nextWall = { ...wall, ...patch };
+    const nextLength = Math.hypot(nextWall.x2 - nextWall.x1, nextWall.y2 - nextWall.y1);
+    const widestOpening = safeCustomOpenings
+      .filter((opening) => opening.wallId === wallId)
+      .reduce((max, opening) => Math.max(max, opening.width ?? (opening.type === "door" ? 0.9 : 1.2)), 0);
+    const minimumWallLength = widestOpening > 0 ? Math.max(0.5, widestOpening + 0.1) : 0.5;
+    if (nextLength < minimumWallLength) return;
+
     const before = recordHistory ? snapshotEditor() : null;
-    setCustomWalls((prev) => (Array.isArray(prev) ? prev : []).map((wall) => wall.id === wallId ? { ...wall, ...patch } : wall));
+    setCustomWalls((prev) => (Array.isArray(prev) ? prev : []).map((item) => item.id === wallId ? nextWall : item));
+    reconcileOpeningsForWall(wallId, wall, nextWall);
     if (before) pushRoomHistory(before);
   };
 
