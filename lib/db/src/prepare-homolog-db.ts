@@ -172,17 +172,6 @@ await pool.query(`
   CREATE UNIQUE INDEX IF NOT EXISTS crm_tenant_companies_tenant_company_uidx ON crm_tenant_companies(tenant_id, company_id);
   CREATE INDEX IF NOT EXISTS crm_tenant_companies_tenant_lead_idx ON crm_tenant_companies(tenant_id, lead_id);
 
-  DO $ BEGIN
-    IF to_regclass('public.leads') IS NOT NULL
-       AND NOT EXISTS (
-         SELECT 1 FROM pg_constraint WHERE conname = 'crm_tenant_companies_lead_fk'
-       ) THEN
-      ALTER TABLE crm_tenant_companies
-        ADD CONSTRAINT crm_tenant_companies_lead_fk
-        FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE SET NULL;
-    END IF;
-  END $;
-
   CREATE TABLE IF NOT EXISTS crm_tenant_company_contacts (
     id text PRIMARY KEY,
     tenant_id text NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -203,6 +192,22 @@ await pool.query(`
 
   CREATE SCHEMA IF NOT EXISTS app_security;
 `);
+
+const leadsTableCheck = await pool.query<{ relation_name: string | null }>(
+  "SELECT to_regclass('public.leads')::text AS relation_name",
+);
+
+if (leadsTableCheck.rows[0]?.relation_name) {
+  const fkCheck = await pool.query(
+    "SELECT 1 FROM pg_constraint WHERE conname = 'crm_tenant_companies_lead_fk' LIMIT 1",
+  );
+  if (fkCheck.rowCount === 0) {
+    await pool.query(
+      "ALTER TABLE crm_tenant_companies ADD CONSTRAINT crm_tenant_companies_lead_fk " +
+      "FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE SET NULL",
+    );
+  }
+}
 
 console.log("[homolog-bootstrap] auth/representation + crm company master schema ready");
 await pool.end();
