@@ -62,7 +62,7 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Plus, GripVertical, DollarSign, User, UserRound, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles, BarChart3, RefreshCw, Users, Package, AlertTriangle, Paperclip, FileCheck, CreditCard, HandCoins, Flame, Cloud, Snowflake, FileText, Clock, CalendarDays, Pen, KanbanSquare } from "lucide-react";
+import { Plus, GripVertical, DollarSign, User, UserRound, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles, BarChart3, RefreshCw, Users, Package, AlertTriangle, Paperclip, FileCheck, CreditCard, HandCoins, Flame, Cloud, Snowflake, FileText, Clock, CalendarDays, Pen, KanbanSquare, ArrowRight, UserMinus } from "lucide-react";
 import { PipelineNav } from "@/components/PipelineNav";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
@@ -320,6 +320,10 @@ function DealCard({
   assignedToName,
   onClick,
   onAgendar,
+  onAdvance,
+  onMove,
+  onRemove,
+  moveOptions = [],
   overlay = false,
   slaOverdue = false,
 }: {
@@ -330,6 +334,10 @@ function DealCard({
   assignedToName?: string;
   onClick?: () => void;
   onAgendar?: () => void;
+  onAdvance?: () => void;
+  onMove?: (stage: string) => void;
+  onRemove?: () => void;
+  moveOptions?: Array<{ value: string; label: string }>;
   overlay?: boolean;
   /** Tempo na etapa atual estourou o SLA configurado pelo admin (distinto do prazo geral do negócio — ver isOverdue abaixo). */
   slaOverdue?: boolean;
@@ -497,6 +505,54 @@ function DealCard({
         <ContractCardButton deal={deal} />
       )}
 
+      {/* Ações explícitas da pipeline — não dependem de drag-and-drop */}
+      {!overlay && (onAdvance || onMove || onRemove) && (
+        <div
+          className="pt-1 border-t border-border/50 grid grid-cols-[1fr_1fr_auto] gap-1"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          {onAdvance ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-[10px] gap-1 text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50"
+              onClick={onAdvance}
+              data-testid={`deal-advance-${deal.id}`}
+            >
+              <ArrowRight className="h-3 w-3" />
+              Avançar
+            </Button>
+          ) : <span />}
+          {onMove && moveOptions.length > 0 ? (
+            <Select onValueChange={onMove}>
+              <SelectTrigger className="h-7 px-2 text-[10px]" data-testid={`deal-move-${deal.id}`}>
+                <SelectValue placeholder="Mover" />
+              </SelectTrigger>
+              <SelectContent>
+                {moveOptions.map((stage) => (
+                  <SelectItem key={stage.value} value={stage.value}>{stage.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : <span />}
+          {onRemove && deal.leadId ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50"
+              onClick={onRemove}
+              title="Retirar da pipeline"
+              data-testid={`deal-remove-${deal.id}`}
+            >
+              <UserMinus className="h-3.5 w-3.5" />
+            </Button>
+          ) : null}
+        </div>
+      )}
+
       {/* Agendar reunião — ação rápida */}
       {onAgendar && !overlay && (
         <div
@@ -630,6 +686,10 @@ function KanbanColumn({
   isOver,
   onCardClick,
   onAgendar,
+  onAdvance,
+  onMove,
+  onRemove,
+  getMoveOptions,
   stagesByKey,
 }: {
   col: KanbanColumnDef;
@@ -642,6 +702,10 @@ function KanbanColumn({
   isOver: boolean;
   onCardClick: (deal: Deal) => void;
   onAgendar: (deal: Deal) => void;
+  onAdvance: (deal: Deal) => void;
+  onMove: (deal: Deal, stage: string) => void;
+  onRemove: (deal: Deal) => void;
+  getMoveOptions: (deal: Deal) => Array<{ value: string; label: string }>;
   stagesByKey: Record<string, PipelineStage>;
 }) {
   const { setNodeRef } = useDroppable({ id: col.dropId });
@@ -736,6 +800,10 @@ function KanbanColumn({
               assignedToName={deal.assignedTo ? userMap.get(deal.assignedTo) : undefined}
               onClick={() => onCardClick(deal)}
               onAgendar={() => onAgendar(deal)}
+              onAdvance={() => onAdvance(deal)}
+              onMove={(stage) => onMove(deal, stage)}
+              onRemove={() => onRemove(deal)}
+              moveOptions={getMoveOptions(deal)}
               slaOverdue={isSlaOverdue(deal)}
             />
           );
@@ -2004,6 +2072,10 @@ export default function Deals() {
     updateData: Record<string, unknown> | null;
     onGanho: boolean;
   }>({ open: false, deal: null, updateData: null, onGanho: false });
+  const [removeDialog, setRemoveDialog] = useState<{ open: boolean; deal: Deal | null }>({ open: false, deal: null });
+  const [removeReason, setRemoveReason] = useState<"colaborador" | "fornecedor" | "parceiro" | "familiar" | "amigo" | "outro">("outro");
+  const [removeNotes, setRemoveNotes] = useState("");
+  const [removingFromPipeline, setRemovingFromPipeline] = useState(false);
   // SaaS pipeline state
   const [saasActiveId, setSaasActiveId] = useState<string | null>(null);
   const [saasOverColumn, setSaasOverColumn] = useState<DealEtapaSaas | null>(null);
@@ -2246,6 +2318,113 @@ export default function Deals() {
         },
       }
     );
+  }
+
+  function getForwardMoveOptions(deal: Deal) {
+    const current = kanbanColumns.find((column) => column.onDrop.etapa === deal.etapa);
+    const currentOrder = current?.order ?? -1;
+    return visibleEtapas.filter((stage) => {
+      if (stage.value === deal.etapa) return false;
+      const target = kanbanColumns.find((column) => column.onDrop.etapa === stage.value);
+      if (!target) return false;
+      if (target.isSpecial) return stage.value === "perdido";
+      return currentOrder < 0 || target.order > currentOrder;
+    });
+  }
+
+  function requestStageMove(deal: Deal, targetStage: string) {
+    if (targetStage === deal.etapa) return;
+    const targetCol = kanbanColumns.find((column) => column.onDrop.etapa === targetStage);
+    if (!targetCol) {
+      toast({ title: "Etapa indisponível", variant: "destructive" });
+      return;
+    }
+    const allowed = getForwardMoveOptions(deal).some((stage) => stage.value === targetStage);
+    if (!allowed) {
+      toast({
+        title: "Movimento não permitido",
+        description: "Use Avançar ou escolha uma etapa posterior. O histórico das etapas anteriores é preservado.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const novaProb = ETAPA_PROBABILIDADE[targetStage] ?? deal.probabilidade ?? 0;
+    if (targetStage === "perdido") {
+      setPerdidoDialog({ open: true, deal, novaProb });
+      return;
+    }
+    setAssignDialog({
+      open: true,
+      deal,
+      updateData: {
+        etapa: targetStage,
+        probabilidade: novaProb,
+        tipoFechamento: deal.tipoFechamento ?? undefined,
+      },
+      onGanho: targetStage === "ganho",
+    });
+  }
+
+  function advanceDeal(deal: Deal) {
+    const next = getForwardMoveOptions(deal)
+      .map((stage) => ({
+        stage,
+        column: kanbanColumns.find((column) => column.onDrop.etapa === stage.value),
+      }))
+      .filter((item) => item.column && !item.column.isSpecial)
+      .sort((a, b) => (a.column!.order ?? 999) - (b.column!.order ?? 999))[0];
+    if (!next) {
+      toast({ title: "Este negócio já está na última etapa disponível." });
+      return;
+    }
+    requestStageMove(deal, next.stage.value);
+  }
+
+  function openRemoveFromPipeline(deal: Deal) {
+    if (!deal.leadId) {
+      toast({ title: "Este negócio não possui lead vinculado.", variant: "destructive" });
+      return;
+    }
+    setRemoveReason("outro");
+    setRemoveNotes("");
+    setRemoveDialog({ open: true, deal });
+  }
+
+  async function confirmRemoveFromPipeline() {
+    const deal = removeDialog.deal;
+    if (!deal?.leadId) return;
+    setRemovingFromPipeline(true);
+    try {
+      const response = await fetch(`/api/leads/${deal.leadId}/classificar-nao-lead`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token ?? localStorage.getItem("vendorai_token") ?? ""}`,
+        },
+        body: JSON.stringify({
+          tipo: removeReason,
+          notas: removeNotes.trim() || `Retirado da pipeline pelo negócio "${deal.titulo}".`,
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || "Falha ao retirar da pipeline");
+      toast({
+        title: "Retirado da pipeline",
+        description: "O contato foi enviado para Aquecimento / Não Lead. Cadastro e histórico foram preservados.",
+      });
+      setRemoveDialog({ open: false, deal: null });
+      setRemoveNotes("");
+      queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
+      queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
+    } catch (error) {
+      toast({
+        title: "Não foi possível retirar da pipeline",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setRemovingFromPipeline(false);
+    }
   }
 
   // Achado real: PointerSensor sozinho intercepta qualquer arrasto de 8px+
@@ -2838,34 +3017,33 @@ export default function Deals() {
                   </div>
                 )}
                 <div className="flex items-center gap-2 pt-1 border-t border-border/50">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs gap-1"
+                    onClick={() => advanceDeal(deal)}
+                  >
+                    <ArrowRight className="h-3.5 w-3.5" />
+                    Avançar
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-red-600 hover:bg-red-50"
+                    title="Retirar da pipeline"
+                    onClick={() => openRemoveFromPipeline(deal)}
+                  >
+                    <UserMinus className="h-3.5 w-3.5" />
+                  </Button>
                   <Select
                     value={deal.etapa ?? "novo"}
-                    onValueChange={(etapa) => {
-                      const e = etapa as DealEtapa;
-                      const prob = ETAPA_PROBABILIDADE[e] ?? deal.probabilidade;
-                      if (e === "perdido" && deal.etapa !== "perdido") {
-                        setPerdidoDialog({ open: true, deal, novaProb: prob ?? 0 });
-                        return;
-                      }
-                      updateDeal.mutate(
-                        { id: deal.id, data: { etapa: e, probabilidade: prob } },
-                        {
-                          onSuccess: () => queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }),
-                          onError: () => toast({ title: "Erro ao mover negócio", variant: "destructive" }),
-                        }
-                      );
-                    }}
+                    onValueChange={(etapa) => requestStageMove(deal, etapa)}
                   >
                     <SelectTrigger className="flex-1 h-8 text-xs">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {visibleEtapas.filter((stage) => {
-                        if (stage.value === "perdido") return true;
-                        const currentOrder = kanbanColumns.find((column) => column.onDrop.etapa === deal.etapa)?.order ?? -1;
-                        const targetOrder = kanbanColumns.find((column) => column.onDrop.etapa === stage.value)?.order ?? -1;
-                        return currentOrder < 0 || targetOrder < 0 || targetOrder >= currentOrder;
-                      }).map((e) => (
+                      {getForwardMoveOptions(deal).map((e) => (
                         <SelectItem key={e.value} value={e.value}>{e.label}</SelectItem>
                       ))}
                     </SelectContent>
@@ -2927,6 +3105,10 @@ export default function Deals() {
                   isOver={overColumn === col.dropId}
                   onCardClick={handleCardClick}
                   onAgendar={(deal) => setAgendarDeal(deal)}
+                  onAdvance={advanceDeal}
+                  onMove={requestStageMove}
+                  onRemove={openRemoveFromPipeline}
+                  getMoveOptions={getForwardMoveOptions}
                   stagesByKey={stagesByKey}
                 />
               ))}
@@ -2952,6 +3134,71 @@ export default function Deals() {
         onConfirm={confirmarPerdido}
         onCancel={cancelarPerdido}
       />
+
+      {/* ── Retirar da pipeline / enviar para Aquecimento / Não Lead ─────── */}
+      <Dialog
+        open={removeDialog.open}
+        onOpenChange={(open) => {
+          if (!open && !removingFromPipeline) setRemoveDialog({ open: false, deal: null });
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Retirar da pipeline</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            O negócio sai do Kanban, mas o contato e todo o histórico permanecem salvos em Aquecimento / Não Lead.
+          </p>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Motivo / tipo do contato</label>
+              <Select value={removeReason} onValueChange={(value) => setRemoveReason(value as typeof removeReason)}>
+                <SelectTrigger data-testid="remove-pipeline-reason">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="colaborador">Colaborador</SelectItem>
+                  <SelectItem value="fornecedor">Fornecedor</SelectItem>
+                  <SelectItem value="parceiro">Parceiro</SelectItem>
+                  <SelectItem value="familiar">Familiar</SelectItem>
+                  <SelectItem value="amigo">Amigo</SelectItem>
+                  <SelectItem value="outro">Não é lead / Outro</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Observação</label>
+              <textarea
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none"
+                rows={3}
+                value={removeNotes}
+                onChange={(event) => setRemoveNotes(event.target.value)}
+                placeholder="Ex.: contato sem intenção comercial neste momento."
+                data-testid="remove-pipeline-notes"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={removingFromPipeline}
+                onClick={() => setRemoveDialog({ open: false, deal: null })}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={removingFromPipeline}
+                onClick={confirmRemoveFromPipeline}
+                data-testid="confirm-remove-pipeline"
+              >
+                {removingFromPipeline ? "Retirando..." : "Retirar da pipeline"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Pra quem vai o negócio (sempre pergunta ao mover o card) ──────── */}
       <Dialog
