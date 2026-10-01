@@ -4,13 +4,17 @@ import {
   db,
   agentActionsLogTable,
   browserAgentConnectionsTable,
+  browserAgentSkillsTable,
   tenantsTable,
 } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { encrypt, decrypt } from "../lib/crypto.js";
-import { runBrowserAgent, type BrowserAgentInput } from "../services/browser-agent.js";
+import { runBrowserAgent, type BrowserAgentInput, type PlannedAction } from "../services/browser-agent.js";
 import { browserFleetConfigured, browserFleetStatus } from "../services/browser-fleet.js";
 import { fetchRenderedBatch, fetchRenderedPage } from "../services/browser-fetch.js";
+import { extractStructuredData } from "../services/web-structured-extractor.js";
+import { runParallelMissions } from "../services/web-parallel-runner.js";
+import { runBrowserSkill } from "../services/browser-skill-runner.js";
 import {
   mergeBrowserProfiles,
   type BrowserProfileState,
@@ -23,6 +27,7 @@ import {
   createLiveBrowserSession,
   getLiveBrowserSession,
   getLiveBrowserHandoff,
+  getRecordedBrowserActions,
   captureLiveBrowserHandoff,
   setLiveBrowserHandoffPaused,
   controlLiveBrowserHandoff,
@@ -84,6 +89,35 @@ const fetchSchema = z.object({
 const fetchBatchSchema = z.object({
   urls: z.array(z.string().url()).min(1).max(50),
   concurrency: z.number().int().min(1).max(12).default(4),
+});
+
+const extractionFieldTypeSchema = z.enum(["string", "number", "boolean", "string[]", "number[]"]);
+const extractStructuredSchema = z.object({
+  url: z.string().url(),
+  goal: z.string().min(3).max(2000),
+  schema: z.record(z.string().min(1).max(100), extractionFieldTypeSchema).refine(
+    (value) => Object.keys(value).length > 0 && Object.keys(value).length <= 50,
+    "schema deve conter entre 1 e 50 campos",
+  ),
+});
+
+const parallelMissionSchema = z.object({
+  missions: z.array(z.object({
+    id: z.string().min(1).max(120),
+    goal: z.string().min(3).max(4000),
+    startUrl: z.string().url(),
+    strategy: z.enum(["auto", "browser", "fetch"]).default("auto"),
+  })).min(1).max(24),
+  concurrency: z.number().int().min(1).max(12).default(4),
+});
+
+const skillFromSessionSchema = z.object({
+  name: z.string().min(2).max(120),
+  sessionId: z.string().min(1),
+});
+
+const skillRunSchema = z.object({
+  allowWrite: z.boolean().default(false),
 });
 
 const runSchema = z.object({
@@ -171,6 +205,97 @@ router.post("/browser-agent/fetch-batch", async (req, res) => {
   }));
   const results = await fetchRenderedBatch(requests, parsed.data.concurrency);
   res.json({ count: results.length, results, fleet: browserFleetStatus() });
+});
+
+router.post("/browser-agent/extract-structured", async (req, res) => {
+  const parsed = extractStructuredSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const tenantId = resolveTenant(req);
+  if (!tenantId) {
+    res.status(401).json({ error: "Tenant não resolvido" });
+    return;
+  }
+
+  try {
+    const host = new URL(parsed.data.url).hostname.toLowerCase();
+    const page = await fetchRenderedPage({
+      url: parsed.data.url,
+      allowedHosts: [host],
+      maxTextChars: 50000,
+    });
+    const extraction = await extractStructuredData({
+      tenantId,
+      goal: parsed.data.goal,
+      page,
+      schema: parsed.data.schema,
+    });
+    res.json({
+      ok: true,
+      source: { url: page.url, title: page.title, fetchedAt: page.fetchedAt, nodeId: page.nodeId },
+      ...extraction,
+    });
+  } catch (error: any) {
+    res.status(502).json({ error: error?.message ?? "STRUCTURED_EXTRACT_FAILED" });
+  }
+});
+
+router.post("/browser-agent/missions/parallel", async (req, res) => {
+  const parsed = parallelMissionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const tenantId = resolveTenant(req);
+  if (!tenantId) {
+    res.status(401).json({ error: "Tenant não resolvido" });
+    return;
+  }
+
+  const results = await runParallelMissions(
+    parsed.data.missions.map((mission) => ({ id: mission.id, payload: mission })),
+    async ({ payload }) => {
+      const host = new URL(payload.startUrl).hostname.toLowerCase();
+      const strategy = payload.strategy === "auto"
+        ? chooseWebExecutionStrategy({ goal: payload.goal })
+        : payload.strategy;
+
+      if (strategy === "fetch") {
+        return {
+          strategy,
+          result: await fetchRenderedPage({
+            url: payload.startUrl,
+            allowedHosts: [host],
+          }),
+        };
+      }
+
+      return {
+        strategy: "browser" as const,
+        result: await runBrowserAgent({
+          tenantId,
+          goal: payload.goal,
+          startUrl: payload.startUrl,
+          allowedHosts: [host],
+          allowWrite: false,
+          mode: "autonomo",
+          maxSteps: 18,
+        }),
+      };
+    },
+    parsed.data.concurrency,
+  );
+
+  res.json({
+    ok: results.every((item) => item.ok),
+    count: results.length,
+    succeeded: results.filter((item) => item.ok).length,
+    failed: results.filter((item) => !item.ok).length,
+    results,
+    fleet: browserFleetStatus(),
+  });
 });
 
 router.get("/browser-agent/connections", async (req, res) => {
@@ -292,6 +417,192 @@ router.delete("/browser-agent/connections/:id", async (req, res) => {
     return;
   }
 
+  res.json({ success: true, id: deleted.id });
+});
+
+router.get("/browser-agent/skills", async (req, res) => {
+  const tenantId = resolveTenant(req);
+  if (!tenantId) {
+    res.status(401).json({ error: "Tenant não resolvido" });
+    return;
+  }
+  const skills = await db
+    .select()
+    .from(browserAgentSkillsTable)
+    .where(eq(browserAgentSkillsTable.tenantId, tenantId));
+  res.json(skills.map((skill) => ({
+    id: skill.id,
+    name: skill.name,
+    connectionId: skill.connectionId,
+    startUrl: skill.startUrl,
+    allowedHosts: skill.allowedHosts,
+    actionCount: Array.isArray(skill.actions) ? skill.actions.length : 0,
+    createdAt: skill.createdAt,
+    updatedAt: skill.updatedAt,
+  })));
+});
+
+router.post("/browser-agent/skills/from-session", async (req, res) => {
+  const parsed = skillFromSessionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const tenantId = resolveTenant(req);
+  if (!tenantId) {
+    res.status(401).json({ error: "Tenant não resolvido" });
+    return;
+  }
+
+  const session = await getLiveBrowserSession(tenantId, parsed.data.sessionId);
+  const actions = getRecordedBrowserActions(tenantId, parsed.data.sessionId)
+    .filter((action) => action.action !== "finish");
+
+  if (!actions.length) {
+    res.status(409).json({ error: "A sessão não possui ações reutilizáveis para gravar como skill" });
+    return;
+  }
+
+  let connection: typeof browserAgentConnectionsTable.$inferSelect | undefined;
+  if (session.connectionId) {
+    [connection] = await db
+      .select()
+      .from(browserAgentConnectionsTable)
+      .where(and(
+        eq(browserAgentConnectionsTable.id, session.connectionId),
+        eq(browserAgentConnectionsTable.tenantId, tenantId),
+      ));
+  }
+
+  const startUrl = connection?.startUrl ?? session.url;
+  const allowedHosts = connection?.allowedHosts ?? [new URL(startUrl).hostname.toLowerCase()];
+  const [skill] = await db.insert(browserAgentSkillsTable).values({
+    tenantId,
+    connectionId: connection?.id ?? null,
+    name: parsed.data.name,
+    startUrl,
+    allowedHosts,
+    actions: actions as Array<Record<string, unknown>>,
+  }).returning();
+
+  res.status(201).json({
+    id: skill?.id,
+    name: skill?.name,
+    connectionId: skill?.connectionId,
+    startUrl: skill?.startUrl,
+    actionCount: actions.length,
+  });
+});
+
+router.post("/browser-agent/skills/:id/run", async (req, res) => {
+  const parsed = skillRunSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const tenantId = resolveTenant(req);
+  if (!tenantId) {
+    res.status(401).json({ error: "Tenant não resolvido" });
+    return;
+  }
+
+  const [skill] = await db
+    .select()
+    .from(browserAgentSkillsTable)
+    .where(and(
+      eq(browserAgentSkillsTable.id, String(req.params.id)),
+      eq(browserAgentSkillsTable.tenantId, tenantId),
+    ));
+  if (!skill) {
+    res.status(404).json({ error: "Skill não encontrada" });
+    return;
+  }
+
+  let connection: typeof browserAgentConnectionsTable.$inferSelect | undefined;
+  if (skill.connectionId) {
+    [connection] = await db
+      .select()
+      .from(browserAgentConnectionsTable)
+      .where(and(
+        eq(browserAgentConnectionsTable.id, skill.connectionId),
+        eq(browserAgentConnectionsTable.tenantId, tenantId),
+      ));
+  }
+
+  const sessionCookies = connection?.cookiesEncrypted
+    ? JSON.parse(decrypt(connection.cookiesEncrypted))
+    : undefined;
+  let sessionProfile = connection ? readBrowserProfile(connection) : undefined;
+
+  try {
+    const result = await runBrowserSkill({
+      tenantId,
+      goal: "Executar Web Skill: " + skill.name,
+      startUrl: skill.startUrl,
+      allowedHosts: skill.allowedHosts ?? [],
+      allowWrite: parsed.data.allowWrite,
+      mode: "autonomo",
+      actions: (skill.actions ?? []) as PlannedAction[],
+      sessionCookies,
+      sessionProfile,
+      secrets: connection ? {
+        login: connection.usernameEncrypted ? decrypt(connection.usernameEncrypted) : undefined,
+        passcode: connection.passwordEncrypted ? decrypt(connection.passwordEncrypted) : undefined,
+      } : undefined,
+      onSessionPersist: connection ? async (cookies) => {
+        await db.update(browserAgentConnectionsTable)
+          .set({
+            cookiesEncrypted: encrypt(JSON.stringify(cookies)),
+            lastUsedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(and(
+            eq(browserAgentConnectionsTable.id, connection!.id),
+            eq(browserAgentConnectionsTable.tenantId, tenantId),
+          ));
+      } : undefined,
+      onProfilePersist: connection ? async (profile) => {
+        sessionProfile = mergeBrowserProfiles(sessionProfile, profile);
+        await db.update(browserAgentConnectionsTable)
+          .set({
+            profileEncrypted: encrypt(JSON.stringify(sessionProfile)),
+            lastUsedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(and(
+            eq(browserAgentConnectionsTable.id, connection!.id),
+            eq(browserAgentConnectionsTable.tenantId, tenantId),
+          ));
+      } : undefined,
+    });
+    res.json({ ok: true, skillId: skill.id, skillName: skill.name, ...result });
+  } catch (error: any) {
+    res.status(409).json({
+      ok: false,
+      skillId: skill.id,
+      skillName: skill.name,
+      error: error?.message ?? "SKILL_RUN_FAILED",
+    });
+  }
+});
+
+router.delete("/browser-agent/skills/:id", async (req, res) => {
+  const tenantId = resolveTenant(req);
+  if (!tenantId) {
+    res.status(401).json({ error: "Tenant não resolvido" });
+    return;
+  }
+  const [deleted] = await db
+    .delete(browserAgentSkillsTable)
+    .where(and(
+      eq(browserAgentSkillsTable.id, String(req.params.id)),
+      eq(browserAgentSkillsTable.tenantId, tenantId),
+    ))
+    .returning({ id: browserAgentSkillsTable.id });
+  if (!deleted) {
+    res.status(404).json({ error: "Skill não encontrada" });
+    return;
+  }
   res.json({ success: true, id: deleted.id });
 });
 
