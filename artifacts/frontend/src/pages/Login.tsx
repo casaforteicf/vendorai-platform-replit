@@ -508,7 +508,10 @@ export default function Login() {
       const payload = await response.json();
       const returnPath = consumeSafePostLoginPath();
       login(payload.token, payload.user);
-      window.location.assign(returnPath || "/");
+      const target = returnPath && returnPath !== "/" && returnPath !== "/login"
+        ? returnPath
+        : "/dashboard";
+      window.location.replace(target);
     } catch (error) {
       console.error("Homologation passwordless login failed", error);
       setHomologLoginError(
@@ -521,6 +524,18 @@ export default function Login() {
 
   useEffect(() => {
     if (!isHomologationHost || homologAutoLoginAttempted.current) return;
+
+    const existingToken = localStorage.getItem("vendorai_token");
+    if (existingToken) {
+      homologAutoLoginAttempted.current = true;
+      const returnPath = consumeSafePostLoginPath();
+      const target = returnPath && returnPath !== "/" && returnPath !== "/login"
+        ? returnPath
+        : "/dashboard";
+      window.location.replace(target);
+      return;
+    }
+
     homologAutoLoginAttempted.current = true;
     void onHomologLogin();
   }, [isHomologationHost]);
