@@ -26,7 +26,6 @@ import {
   CircleDollarSign,
   Eye,
   EyeOff,
-  LineChart3,
   MessageSquareText,
   Search,
   Sparkles,
@@ -251,7 +250,7 @@ const ES_TOUR: TourItem[] = [
     description: "Los paneles conectan indicadores de ventas, marketing y operación para facilitar comparación, lectura de desempeño y seguimiento de evolución.",
     bullets: ["KPIs comerciales", "Indicadores de marketing", "Comparaciones e informes"],
     image: `${PUBLIC_MEDIA}/analytics/desktop-1440.webp`,
-    icon: LineChart3,
+    icon: BarChart3,
   },
   {
     key: "financeiro",
