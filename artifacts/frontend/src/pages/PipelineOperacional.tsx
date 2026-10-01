@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SupportReportPanel } from "@/components/SupportReportPanel";
+import { ExpeditionChecklistPanel, type ExpeditionChecklist } from "@/components/ExpeditionChecklistPanel";
 import { PipelineNav, PIPELINE_CARD_CLASS, PIPELINE_COLUMN_CLASS, PIPELINE_COLUMN_HEADER_CLASS } from "@/components/PipelineNav";
 import {
   AlertTriangle,
@@ -154,6 +155,13 @@ function toDateInput(value?: string | null) {
 function safeItems(card: WorkCard): Array<{ nome?: string; quantidade?: number }> {
   const raw = card.metadata?.itens;
   return Array.isArray(raw) ? raw as Array<{ nome?: string; quantidade?: number }> : [];
+}
+
+function safeExpeditionChecklist(card: WorkCard): ExpeditionChecklist | null {
+  const raw = card.metadata?.checklistExpedicao;
+  if (!raw || typeof raw !== "object") return null;
+  const checklist = raw as ExpeditionChecklist;
+  return Array.isArray(checklist.itens) ? checklist : null;
 }
 
 export default function PipelineOperacional() {
@@ -517,6 +525,22 @@ export default function PipelineOperacional() {
                       {safeItems(selectedCard).map((item, index) => <div key={index} className="flex justify-between px-3 py-2 text-sm"><span>{item.nome}</span><strong>{item.quantidade}</strong></div>)}
                     </div>
                   </div>
+                )}
+
+                {safeExpeditionChecklist(selectedCard) && (
+                  <ExpeditionChecklistPanel
+                    checklist={safeExpeditionChecklist(selectedCard)!}
+                    disabled={patchCard.isPending}
+                    onChange={(checklistExpedicao) => patchCard.mutate({
+                      id: selectedCard.id,
+                      data: {
+                        metadata: {
+                          ...(selectedCard.metadata ?? {}),
+                          checklistExpedicao,
+                        },
+                      },
+                    })}
+                  />
                 )}
 
                 <div className="space-y-2">
