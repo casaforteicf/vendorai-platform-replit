@@ -21,6 +21,8 @@ describe("browser action verifier", () => {
 
   it("knows which action classes normally require a visible transition", () => {
     expect(actionShouldChangePage("click")).toBe(true);
+    expect(actionShouldChangePage("navigate")).toBe(true);
+    expect(actionShouldChangePage("type")).toBe(false);
     expect(actionShouldChangePage("extract")).toBe(false);
   });
 });
