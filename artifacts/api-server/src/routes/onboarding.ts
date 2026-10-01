@@ -40,10 +40,10 @@ import type { PlanRecord, PlanSectionId } from "../services/business-plan-model.
 
 const router: IRouter = Router();
 
-// ── Multer: in-memory, max 10 MB/file, 3 files ──────────────────────────────
+// ── Multer: assisted company import — max 15 MB/file, up to 10 files ────────
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: 15 * 1024 * 1024, files: 10 },
 });
 
 // ── Zod schemas ──────────────────────────────────────────────────────────────
@@ -380,7 +380,7 @@ async function seedApprovedBusinessPlanFromOnboarding(input: {
 router.post(
   "/tenants/:tenantId/onboarding/analyze-documents",
   requireSameTenanOrSuperAdmin(),
-  upload.array("files", 3),
+  upload.array("files", 10),
   async (req, res) => {
     const tenantId = String(req.params["tenantId"]);
     const files = (req.files as Express.Multer.File[]) ?? [];
