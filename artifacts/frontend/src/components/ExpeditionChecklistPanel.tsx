@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Camera, ClipboardCheck, ScanLine, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -68,6 +68,72 @@ export function ExpeditionChecklistPanel({
   const [scanMessage, setScanMessage] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
   const [uploadingEvidence, setUploadingEvidence] = useState<string | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraMessage, setCameraMessage] = useState("");
+  const videoRef = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    if (!cameraOpen) return;
+    let cancelled = false;
+    let stream: MediaStream | null = null;
+    let timer: number | null = null;
+
+    async function startCameraScanner() {
+      const BarcodeDetectorCtor = (window as any).BarcodeDetector;
+      if (!BarcodeDetectorCtor || !navigator.mediaDevices?.getUserMedia) {
+        setCameraMessage("Leitura por câmera não disponível neste navegador. Use o leitor USB/Bluetooth ou digite o código.");
+        setCameraOpen(false);
+        return;
+      }
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
+        if (cancelled) return;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play();
+        }
+        const detector = new BarcodeDetectorCtor({
+          formats: ["qr_code", "code_128", "code_39", "ean_13", "ean_8", "upc_a", "upc_e", "itf"],
+        });
+        const detect = async () => {
+          if (cancelled || !videoRef.current) return;
+          try {
+            const codes = await detector.detect(videoRef.current);
+            const value = codes?.[0]?.rawValue;
+            if (value) {
+              setScanCode(String(value));
+              const normalized = String(value).trim().toLocaleLowerCase("pt-BR");
+              const index = checklist.itens.findIndex((item) => [
+                item.sku,
+                item.produtoId,
+                item.propostaItemIndex != null ? String(item.propostaItemIndex) : null,
+                item.nome,
+              ].filter(Boolean).some((candidate) => String(candidate).toLocaleLowerCase("pt-BR") === normalized));
+              setScannedItemIndex(index >= 0 ? index : null);
+              setScanMessage(index >= 0 ? `Item localizado: ${checklist.itens[index].nome}` : `Código ${value} não pertence a este lote.`);
+              setCameraOpen(false);
+              return;
+            }
+          } catch {
+            // Mantém a leitura ativa; frames intermediários podem falhar.
+          }
+          timer = window.setTimeout(detect, 250);
+        };
+        void detect();
+      } catch {
+        setCameraMessage("Não foi possível acessar a câmera. Verifique a permissão do navegador.");
+        setCameraOpen(false);
+      }
+    }
+
+    void startCameraScanner();
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+      stream?.getTracks().forEach((track) => track.stop());
+      if (videoRef.current) videoRef.current.srcObject = null;
+    };
+  }, [cameraOpen, checklist.itens]);
+
   function recalculate(itens: ExpeditionChecklist["itens"], verificacaoFinal = checklist.verificacaoFinal) {
     const fields = itens.flatMap((item) => item.campos);
     const concluidos = fields.filter((field) => field.status !== "pendente").length;
@@ -210,7 +276,16 @@ export function ExpeditionChecklistPanel({
             />
           </div>
           <Button type="button" variant="outline" onClick={scanItem}>Localizar item</Button>
+          <Button type="button" variant="outline" onClick={() => { setCameraMessage(""); setCameraOpen((open) => !open); }}>
+            <Camera className="mr-1.5 h-4 w-4" /> {cameraOpen ? "Fechar câmera" : "Ler com câmera"}
+          </Button>
         </div>
+        {cameraOpen && (
+          <div className="mt-3 overflow-hidden rounded-lg border bg-black">
+            <video ref={videoRef} className="aspect-video w-full object-cover" muted playsInline />
+          </div>
+        )}
+        {cameraMessage && <p className="mt-2 text-xs text-muted-foreground">{cameraMessage}</p>}
         {scanMessage && <p className="mt-2 text-xs text-muted-foreground">{scanMessage}</p>}
       </div>
 
