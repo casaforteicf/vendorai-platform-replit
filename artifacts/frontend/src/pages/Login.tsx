@@ -16,9 +16,10 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { BarChart3, Eye, EyeOff, FileText, Pause, Play, Sparkles, Users, Volume2, VolumeX } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Eye, EyeOff, Lightbulb, MapPin, Sparkles, TrendingUp } from "lucide-react";
+import { useMemo, useState } from "react";
 import logoDark from "/logo-full-dark.svg";
+import { featureForDate } from "@/lib/vendorFeatureCatalog";
 import logoLight from "/logo-full-light.svg";
 
 const POST_LOGIN_PATH_KEY = "vendorai_post_login_path";
@@ -84,29 +85,6 @@ function consumeSafePostLoginPath(): string | null {
 }
 
 
-type DemoChapter = {
-  id: string;
-  label: string;
-  title: string;
-  description: string;
-  start: number;
-  icon: typeof Users;
-};
-
-const PT_CHAPTERS: DemoChapter[] = [
-  { id: "crm", label: "CRM", title: "Pipeline em tempo real", description: "Leads, oportunidades e próximos passos organizados em um único fluxo.", start: 0, icon: Users },
-  { id: "vendi", label: "Vendi IA", title: "IA trabalhando junto com a equipe", description: "Sugestões, contexto e ações assistidas no momento certo.", start: 6, icon: Sparkles },
-  { id: "propostas", label: "Propostas", title: "Do orçamento à proposta", description: "Monte, revise e acompanhe propostas sem sair da jornada comercial.", start: 12, icon: FileText },
-  { id: "inteligencia", label: "Inteligência", title: "Decisões com visão do negócio", description: "Indicadores e prioridades para agir com mais velocidade.", start: 18, icon: BarChart3 },
-];
-
-const ES_CHAPTERS: DemoChapter[] = [
-  { id: "crm", label: "CRM", title: "Pipeline en tiempo real", description: "Leads, oportunidades y próximos pasos organizados en un único flujo.", start: 0, icon: Users },
-  { id: "vendi", label: "Vendi IA", title: "IA trabajando con el equipo", description: "Sugerencias, contexto y acciones asistidas en el momento adecuado.", start: 6, icon: Sparkles },
-  { id: "propostas", label: "Propuestas", title: "Del presupuesto a la propuesta", description: "Crea, revisa y acompaña propuestas sin salir de la jornada comercial.", start: 12, icon: FileText },
-  { id: "inteligencia", label: "Inteligencia", title: "Decisiones con visión del negocio", description: "Indicadores y prioridades para actuar con más velocidad.", start: 18, icon: BarChart3 },
-];
-
 type DailyProverb = {
   reference: string;
   pt: string;
@@ -140,202 +118,78 @@ function proverbForToday(): DailyProverb {
   return DAILY_PROVERBS[dayOfYear % DAILY_PROVERBS.length]!;
 }
 
-
 function ProductTour({ locale }: { locale: string }) {
-  const chapters = locale === "pt-BR" ? PT_CHAPTERS : ES_CHAPTERS;
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [playing, setPlaying] = useState(true);
-  const [muted, setMuted] = useState(true);
-  const [videoReady, setVideoReady] = useState(false);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const videoUrl = (import.meta.env.VITE_LOGIN_DEMO_VIDEO_URL as string | undefined)?.trim();
-  const active = chapters[activeIndex]!;
+  const dailyFeature = featureForDate();
   const dailyProverb = proverbForToday();
-
-  useEffect(() => {
-    if (videoUrl || !playing) return;
-    const timer = window.setInterval(() => {
-      setActiveIndex((current) => (current + 1) % chapters.length);
-    }, 4300);
-    return () => window.clearInterval(timer);
-  }, [chapters.length, playing, videoUrl]);
-
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video || !videoReady) return;
-    video.muted = muted;
-    if (playing) {
-      void video.play().catch(() => setPlaying(false));
-    } else {
-      video.pause();
-    }
-  }, [muted, playing, videoReady]);
-
-  const selectChapter = (index: number) => {
-    setActiveIndex(index);
-    const video = videoRef.current;
-    if (video && videoReady) {
-      video.currentTime = chapters[index]!.start;
-      setPlaying(true);
-      void video.play().catch(() => undefined);
-    }
-  };
-
-  const togglePlay = () => setPlaying((value) => !value);
+  const isPt = locale === "pt-BR";
 
   return (
     <div className="w-full max-w-2xl text-white">
-      <div className="mb-5 flex items-center justify-between gap-4">
-        <img src={logoDark} alt="Vendor.ai" className="h-11 w-auto" />
+      <div className="mb-6 flex items-center justify-between gap-4">
+        <img src={logoDark} alt="Vendor.ai" className="h-14 w-auto sm:h-16" />
         <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-medium backdrop-blur">
-          {locale === "pt-BR" ? "Inteligência para o seu negócio" : "Inteligencia para tu negocio"}
+          {isPt ? "Uma função nova por dia" : "Una función nueva por día"}
         </span>
       </div>
 
       <div className="mb-6">
-        <h2 className="max-w-xl text-3xl font-semibold leading-[1.08] tracking-tight sm:text-4xl">
-          {locale === "pt-BR" ? "Clareza para vender. Inteligência para crescer." : "Claridad para vender. Inteligencia para crecer."}
+        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-blue-100/80">
+          {isPt ? "Função do dia" : "Función del día"} · {dailyFeature.category}
+        </p>
+        <h2 className="max-w-xl text-3xl font-semibold leading-[1.06] tracking-tight sm:text-4xl">
+          {dailyFeature.name}
         </h2>
-        <p className="mt-3 max-w-xl text-base leading-relaxed text-white/75">
-          {locale === "pt-BR"
-            ? "Tudo o que sua equipe precisa para transformar informação em ação, relacionamento e resultado."
-            : "Todo lo que tu equipo necesita para transformar información en acción, relación y resultados."}
+        <p className="mt-3 max-w-xl text-base leading-relaxed text-white/78">
+          {dailyFeature.whatItDoes}
         </p>
       </div>
 
-      <div className="relative overflow-hidden rounded-2xl border border-white/20 bg-slate-950/90 shadow-2xl shadow-blue-950/20">
-        {videoUrl ? (
-          <video
-            ref={videoRef}
-            src={videoUrl}
-            className="aspect-video w-full object-cover"
-            autoPlay
-            muted={muted}
-            playsInline
-            loop
-            preload="metadata"
-            onLoadedMetadata={() => setVideoReady(true)}
-            onTimeUpdate={(event) => {
-              const current = event.currentTarget.currentTime;
-              let next = 0;
-              for (let index = 0; index < chapters.length; index += 1) {
-                if (current >= chapters[index]!.start) next = index;
-              }
-              if (next !== activeIndex) setActiveIndex(next);
-            }}
-          />
-        ) : (
-          <div className="aspect-video p-5 sm:p-7">
-            <div className="flex h-full overflow-hidden rounded-xl border border-white/10 bg-slate-50 text-slate-900">
-              <div className="w-[27%] border-r border-slate-200 bg-white p-3">
-                <div className="mb-4 h-5 w-20 rounded bg-slate-900/90" />
-                <div className="space-y-2">
-                  {["Visão geral", "CRM", "Conversas", "Propostas", "Inteligência"].map((item, index) => (
-                    <div
-                      key={item}
-                      className={`rounded-md px-2 py-2 text-[10px] font-medium transition-all duration-500 ${index === activeIndex + 1 || (activeIndex === 3 && index === 4) ? "bg-blue-50 text-blue-700" : "text-slate-500"}`}
-                    >
-                      {item}
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="min-w-0 flex-1 bg-slate-50 p-4">
-                <div className="mb-4 flex items-center justify-between">
-                  <div>
-                    <div className="h-2.5 w-20 rounded bg-slate-300" />
-                    <div className="mt-2 h-5 w-40 rounded bg-slate-900/85" />
-                  </div>
-                  <div className="h-8 w-20 rounded-lg bg-blue-600" />
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  {[0, 1, 2].map((item) => (
-                    <div key={item} className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
-                      <div className="h-2 w-12 rounded bg-slate-200" />
-                      <div className="mt-2 h-5 w-16 rounded bg-slate-800" />
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
-                  <div className="mb-3 flex gap-2">
-                    {[0, 1, 2, 3].map((item) => (
-                      <div key={item} className={`h-6 flex-1 rounded transition-colors duration-700 ${item === activeIndex ? "bg-blue-100" : "bg-slate-100"}`} />
-                    ))}
-                  </div>
-                  <div className="space-y-2">
-                    {[0, 1, 2, 3].map((item) => (
-                      <div key={item} className="flex items-center gap-2">
-                        <div className={`h-6 w-6 rounded-full transition-colors duration-500 ${item === activeIndex ? "bg-blue-600" : "bg-slate-200"}`} />
-                        <div className="h-2 flex-1 rounded bg-slate-200" />
-                        <div className="h-5 w-14 rounded bg-slate-100" />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-2xl border border-white/15 bg-white/[0.09] p-4 backdrop-blur">
+          <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-white/12">
+            <Lightbulb className="h-4 w-4" />
           </div>
-        )}
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-white/55">
+            {isPt ? "Como usar" : "Cómo usar"}
+          </p>
+          <p className="mt-2 text-sm leading-relaxed text-white/90">{dailyFeature.howToUse}</p>
+        </div>
 
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950 via-slate-950/90 to-transparent px-5 pb-5 pt-16">
-          <div className="flex items-end justify-between gap-5">
-            <div className="min-w-0">
-              <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-blue-300">{active.label}</p>
-              <h2 className="text-xl font-semibold leading-tight sm:text-2xl">{active.title}</h2>
-              <p className="mt-2 max-w-lg text-sm leading-relaxed text-white/70">{active.description}</p>
-            </div>
-            <div className="pointer-events-auto flex shrink-0 gap-2">
-              <button
-                type="button"
-                onClick={togglePlay}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/10 backdrop-blur transition hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
-                aria-label={playing ? "Pausar demonstração" : "Reproduzir demonstração"}
-              >
-                {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-              </button>
-              {videoUrl ? (
-                <button
-                  type="button"
-                  onClick={() => setMuted((value) => !value)}
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/10 backdrop-blur transition hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
-                  aria-label={muted ? "Ativar som" : "Desativar som"}
-                >
-                  {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-                </button>
-              ) : null}
-            </div>
+        <div className="rounded-2xl border border-white/15 bg-white/[0.09] p-4 backdrop-blur">
+          <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-white/12">
+            <TrendingUp className="h-4 w-4" />
           </div>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-white/55">
+            {isPt ? "Benefício" : "Beneficio"}
+          </p>
+          <p className="mt-2 text-sm leading-relaxed text-white/90">{dailyFeature.benefit}</p>
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {chapters.map((chapter, index) => {
-          const Icon = chapter.icon;
-          const selected = index === activeIndex;
-          return (
-            <button
-              key={chapter.id}
-              type="button"
-              onClick={() => selectChapter(index)}
-              className={`flex min-h-12 items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white ${selected ? "border-white/40 bg-white text-slate-900 shadow-sm" : "border-white/15 bg-white/10 text-white hover:bg-white/15"}`}
-              aria-pressed={selected}
-            >
-              <Icon className="h-4 w-4 shrink-0" />
-              <span className="truncate font-medium">{chapter.label}</span>
-            </button>
-          );
-        })}
+      <div className="mt-3 flex items-center gap-3 rounded-xl border border-white/15 bg-slate-950/20 px-4 py-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/10">
+          <MapPin className="h-4 w-4" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/50">
+            {isPt ? "Onde encontrar" : "Dónde encontrar"}
+          </p>
+          <p className="mt-0.5 truncate text-sm font-medium text-white/90">
+            {dailyFeature.category} · {dailyFeature.route}
+          </p>
+        </div>
+        <Sparkles className="ml-auto h-4 w-4 shrink-0 text-white/45" />
       </div>
 
       <div className="mt-5 rounded-xl border border-white/15 bg-white/[0.08] px-4 py-3 backdrop-blur">
         <div className="flex items-center justify-between gap-3">
           <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/55">
-            {locale === "pt-BR" ? "Provérbio do dia" : "Proverbio del día"}
+            {isPt ? "Provérbio do dia" : "Proverbio del día"}
           </span>
           <span className="text-xs font-medium text-white/70">{dailyProverb.reference}</span>
         </div>
         <p className="mt-2 text-sm leading-relaxed text-white/90">
-          {locale === "pt-BR" ? dailyProverb.pt : dailyProverb.es}
+          {isPt ? dailyProverb.pt : dailyProverb.es}
         </p>
       </div>
     </div>
