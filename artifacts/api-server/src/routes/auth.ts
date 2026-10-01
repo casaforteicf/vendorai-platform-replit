@@ -894,6 +894,34 @@ router.post("/auth/demo-login", async (req, res) => {
   });
 });
 
+router.post("/auth/homolog-login", async (req, res) => {
+  // Passwordless access is intentionally restricted to the isolated homolog
+  // environment. Production never has VENDORAI_HOMOLOGATION_SEED=1.
+  if (process.env.VENDORAI_HOMOLOGATION_SEED !== "1") {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+
+  const user = await findUserForAuth("marcos@vendor.ai");
+  if (!user || !user.active) {
+    req.log?.error({ authFailure: "homolog_fixture_missing" }, "auth: homolog passwordless login unavailable");
+    res.status(503).json({ error: "Homologation user unavailable" });
+    return;
+  }
+
+  const token = signToken({
+    sub: user.id,
+    email: user.email,
+    platformRole: user.platformRole,
+    tenantId: user.tenantId,
+    role: user.role,
+    userFunction: user.userFunction ?? undefined,
+  });
+
+  const { password: _pw, ...publicUser } = user;
+  res.json({ token, user: publicUser, homologation: true });
+});
+
 router.post("/auth/login", async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
