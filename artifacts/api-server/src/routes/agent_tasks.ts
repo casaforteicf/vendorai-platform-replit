@@ -1,3 +1,4 @@
+import { isAgentActive } from "../lib/agent-activation.js";
 import { Router, type IRouter } from "express";
 import { and, eq } from "drizzle-orm";
 import {
@@ -5,6 +6,7 @@ import {
   agentTasksTable,
   agentConfigsTable,
   dealsTable,
+  leadsTable,
   usersTable,
   notificationsTable,
   activitiesTable,
@@ -143,6 +145,18 @@ export async function executeTaskAction(
   const { leadId, conteudo, agentName, agentKey, attachmentNames, campaignImageObjectPath, canal } = parsedPayload.data;
 
   try {
+    // Recheck at execution time: queued/approved work must respect a later switch-off
+    // or human takeover. Never trust the agent identity carried in the payload.
+    if (!(await isAgentActive(task.tenantId, task.agentName))) {
+      throw new Error("AGENT_DISABLED: envio bloqueado porque o agente está desativado");
+    }
+    const [lead] = await db.select({
+      humanLock: leadsTable.activeAgentLock,
+      disabled: leadsTable.agenteDesativado,
+    }).from(leadsTable).where(and(eq(leadsTable.tenantId, task.tenantId), eq(leadsTable.id, leadId))).limit(1);
+    if (!lead || lead.humanLock === "human" || lead.disabled) {
+      throw new Error("AGENT_BLOCKED: contato inexistente, desativado ou em atendimento humano");
+    }
     const { message, telefoneDestino } = await sendOutgoingMessage(
       { tenantId: task.tenantId, leadId, conteudo, agentName, canal },
       log

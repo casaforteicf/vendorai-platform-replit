@@ -50,6 +50,9 @@ jobs:
       - name: Launch lifecycle and analytics typecheck
         run: pnpm --filter @workspace/api-server exec tsc -p tsconfig.launch-ci.json --noEmit
 
+      - name: Agent activation regression tests
+        run: pnpm --filter @workspace/api-server exec vitest run src/lib/agent-activation-policy.test.ts src/lib/agent-send-guard.test.ts
+
       - name: JARVIS Action Orchestrator tests
         run: >-
           pnpm --filter @workspace/api-server exec vitest run
