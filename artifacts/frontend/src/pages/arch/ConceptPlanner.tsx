@@ -82,6 +82,7 @@ const ConceptClientBriefPanel = lazy(() => import("./ConceptClientBriefPanel"));
 const ConceptSitePlacementPanel = lazy(() => import("./ConceptSitePlacementPanel"));
 const ConceptModel3D = lazy(() => import("./ConceptModel3D"));
 const ConceptRenderGalleryActions = lazy(() => import("./ConceptRenderGalleryActions").then((m) => ({ default: m.ConceptRenderGalleryActions })));
+const ConceptCatalogPanels = lazy(() => import("./ConceptCatalogPanels"));
 
 
 type RoomKind =
@@ -1322,24 +1323,6 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       return recentItemIds.indexOf(realLibraryItemKey(a.id)) - recentItemIds.indexOf(realLibraryItemKey(b.id));
     }).slice(0, 24);
   }, [favoriteItemIds, furnitureCategory, furnitureSearch, libraryMode, realCatalogProducts, recentItemIds]);
-
-  const openingCatalogProducts = useMemo(() => {
-    if (!openingProductPickerId) return [];
-    const openings = Array.isArray(customOpenings) ? customOpenings : [];
-    const opening = openings.find((item) => item.id === openingProductPickerId);
-    if (!opening) return [];
-    const query = furnitureSearch.trim().toLocaleLowerCase("pt-BR");
-    return realCatalogProducts
-      .filter((item) => item.projectLibraryEnabled !== false)
-      .filter((item) => catalogOpeningKind(item) === opening.type)
-      .filter((item) => {
-        if (!query) return true;
-        return `${item.nome} ${item.categoria ?? ""} ${item.subcategoria ?? ""} ${item.fornecedor ?? ""}`
-          .toLocaleLowerCase("pt-BR")
-          .includes(query);
-      })
-      .slice(0, 36);
-  }, [customOpenings, furnitureSearch, openingProductPickerId, realCatalogProducts]);
 
   useEffect(() => {
     if (editorLibraryTab !== "furniture") return;
@@ -7609,137 +7592,43 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
                       {itemLibrarySection === "products" && (
                         <>
-                      {openingProductPickerId && (
-                        <div className="mb-5 rounded-2xl border border-sky-200 bg-sky-50/50 p-3">
-                          <div className="mb-3 flex items-start justify-between gap-2">
-                            <div>
-                              <div className="text-xs font-bold text-slate-900">
-                                Substituir {safeCustomOpenings.find((item) => item.id === openingProductPickerId)?.type === "door" ? "porta" : "janela"}
-                              </div>
-                              <div className="mt-0.5 text-[10px] text-slate-500">
-                                Escolha um produto real. Posição e vínculo com a parede serão preservados.
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setOpeningProductPickerId(null);
-                                setFurnitureSearch("");
-                              }}
-                              className="rounded-lg border bg-white px-2 py-1 text-[10px] font-semibold text-slate-500"
-                            >
-                              Cancelar
-                            </button>
-                          </div>
-
-                          {realCatalogLoading ? (
-                            <div className="rounded-xl border border-dashed bg-white p-4 text-center text-xs text-slate-500">Carregando catálogo...</div>
-                          ) : openingCatalogProducts.length ? (
-                            <div className="grid grid-cols-2 gap-3">
-                              {openingCatalogProducts.map((item) => {
-                                const dims = catalogOpeningDimensions(item);
-                                return (
-                                  <button
-                                    key={item.id}
-                                    type="button"
-                                    onClick={() => applyCatalogProductToOpening(openingProductPickerId, item)}
-                                    className="overflow-hidden rounded-xl border bg-white text-left transition hover:border-sky-400 hover:shadow-sm"
-                                  >
-                                    <div className="aspect-[4/3] bg-slate-100">
-                                      {item.imagens?.[0] ? (
-                                        <img src={item.imagens[0]} alt={item.nome} className="h-full w-full object-cover" loading="lazy" />
-                                      ) : (
-                                        <div className="grid h-full place-items-center text-[10px] font-semibold text-slate-400">Sem imagem</div>
-                                      )}
-                                    </div>
-                                    <div className="p-2.5">
-                                      <div className="line-clamp-2 text-xs font-semibold text-slate-900">{item.nome}</div>
-                                      <div className="mt-1 text-[9px] text-slate-500">
-                                        {[item.fornecedor, dims.width && dims.height ? `${dims.width.toFixed(2)} × ${dims.height.toFixed(2)} m` : null]
-                                          .filter(Boolean)
-                                          .join(" · ")}
-                                      </div>
-                                    </div>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          ) : (
-                            <div className="rounded-xl border border-dashed bg-white p-4 text-center text-xs text-slate-500">
-                              Nenhum produto compatível encontrado. Ajuste a busca ou cadastre a esquadria no catálogo mestre.
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {!openingProductPickerId && libraryMode === "project" && (
-                        <div className="mb-5">
-                          <div className="mb-3 flex items-center justify-between gap-2">
-                            <div>
-                              <div className="text-xs font-bold text-slate-900">Usados neste projeto</div>
-                              <div className="text-[10px] text-slate-500">Produtos reais já aplicados em objetos, móveis, eletros, louças, iluminação e esquadrias.</div>
-                            </div>
-                            <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">
-                              {usedProjectProducts.length}
-                            </span>
-                          </div>
-                          {usedProjectProducts.length ? (
-                            <div className="grid grid-cols-2 gap-3">
-                              {usedProjectProducts.map((item) => {
-                                const count = usedProjectProductCounts.get(item.id) ?? 0;
-                                const objectInstance = safeObjects.find((object) => object.catalogProductId === item.id);
-                                const openingInstance = safeCustomOpenings.find((opening) => opening.catalogProductId === item.id);
-                                return (
-                                  <button
-                                    key={item.id}
-                                    type="button"
-                                    onClick={() => {
-                                      if (objectInstance) {
-                                        setSelectedObjectId(objectInstance.id);
-                                        setSelectedOpeningId(null);
-                                        setSelectedCustomWallId(null);
-                                        setSelectedWallId(null);
-                                        setSelectedId(null);
-                                        setSelectedClosedSpaceId(null);
-                                      } else if (openingInstance) {
-                                        setSelectedOpeningId(openingInstance.id);
-                                        setSelectedObjectId(null);
-                                        setSelectedCustomWallId(null);
-                                        setSelectedWallId(null);
-                                        setSelectedId(null);
-                                        setSelectedClosedSpaceId(null);
-                                      }
-                                      closeLibraryOnMobile();
-                                    }}
-                                    className="overflow-hidden rounded-xl border bg-white text-left transition hover:border-orange-300 hover:shadow-sm"
-                                  >
-                                    <div className="relative aspect-[4/3] bg-slate-100">
-                                      {item.imagens?.[0] ? (
-                                        <img src={item.imagens[0]} alt={item.nome} className="h-full w-full object-cover" loading="lazy" />
-                                      ) : (
-                                        <div className="grid h-full place-items-center"><Box className="h-8 w-8 text-slate-300" /></div>
-                                      )}
-                                      <span className="absolute right-2 top-2 rounded-full bg-slate-950 px-2 py-1 text-[9px] font-bold text-white">
-                                        {count}×
-                                      </span>
-                                    </div>
-                                    <div className="p-2.5">
-                                      <div className="line-clamp-2 text-xs font-semibold text-slate-900">{item.nome}</div>
-                                      <div className="mt-1 line-clamp-1 text-[9px] text-slate-500">
-                                        {[item.categoria, item.fornecedor].filter(Boolean).join(" · ")}
-                                      </div>
-                                    </div>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          ) : (
-                            <div className="rounded-xl border border-dashed p-4 text-center text-xs text-slate-500">
-                              Nenhum produto do catálogo foi aplicado ao projeto ainda.
-                            </div>
-                          )}
-                        </div>
-                      )}
+                      <ConceptCatalogPanels
+                        openingPickerId={openingProductPickerId}
+                        opening={openingProductPickerId ? safeCustomOpenings.find((item) => item.id === openingProductPickerId) ?? null : null}
+                        catalogProducts={realCatalogProducts}
+                        search={furnitureSearch}
+                        loading={realCatalogLoading}
+                        projectMode={!openingProductPickerId && libraryMode === "project"}
+                        usedCounts={Object.fromEntries(usedProjectProductCounts)}
+                        usedProducts={usedProjectProducts}
+                        onCancelOpening={() => {
+                          setOpeningProductPickerId(null);
+                          setFurnitureSearch("");
+                        }}
+                        onApplyOpening={(item) => {
+                          if (openingProductPickerId) applyCatalogProductToOpening(openingProductPickerId, item as RealCatalogProduct);
+                        }}
+                        onSelectUsed={(productId) => {
+                          const objectInstance = safeObjects.find((object) => object.catalogProductId === productId);
+                          const openingInstance = safeCustomOpenings.find((opening) => opening.catalogProductId === productId);
+                          if (objectInstance) {
+                            setSelectedObjectId(objectInstance.id);
+                            setSelectedOpeningId(null);
+                            setSelectedCustomWallId(null);
+                            setSelectedWallId(null);
+                            setSelectedId(null);
+                            setSelectedClosedSpaceId(null);
+                          } else if (openingInstance) {
+                            setSelectedOpeningId(openingInstance.id);
+                            setSelectedObjectId(null);
+                            setSelectedCustomWallId(null);
+                            setSelectedWallId(null);
+                            setSelectedId(null);
+                            setSelectedClosedSpaceId(null);
+                          }
+                          closeLibraryOnMobile();
+                        }}
+                      />
 
                       {!openingProductPickerId && libraryMode !== "project" && (polyHavenLoading || polyHavenModels.length > 0) && (
                         <div className="mb-5">
