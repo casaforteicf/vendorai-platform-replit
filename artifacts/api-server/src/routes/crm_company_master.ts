@@ -10,6 +10,11 @@ import {
   crmTenantCompaniesTable,
   crmTenantCompanyContactsTable,
   crmCompanyRelationshipsTable,
+  dealsTable,
+  conversationsTable,
+  activitiesTable,
+  propostasTable,
+  customerIntelligenceTable,
   type CompanyContactPurpose,
 } from "@workspace/db";
 import { getCompanyByCnpj, normalizeCnpj, normalizeName } from "../services/cnpjService.js";
@@ -614,6 +619,122 @@ router.post("/crm/companies/:companyId/relationships", async (req, res) => {
     });
 
   return res.status(201).json(await loadCompanyContext(tenantId, companyId));
+});
+
+router.get("/crm/companies/:companyId/workspace", async (req, res) => {
+  let tenantId: string;
+  try {
+    tenantId = tenantIdFromRequest(req, typeof req.query.tenantId === "string" ? req.query.tenantId : undefined);
+  } catch (err: any) {
+    return res.status(err.status ?? 403).json({ error: err.message });
+  }
+
+  const context = await loadCompanyContext(tenantId, req.params.companyId);
+  if (!context) return res.status(404).json({ error: "Empresa não vinculada a este tenant" });
+
+  const leadId = context.tenantCompany.leadId;
+  if (!leadId) {
+    return res.json({
+      ...context,
+      lead: null,
+      opportunities: [],
+      conversations: [],
+      orders: [],
+      finance: [],
+      documents: [],
+      activities: [],
+      proposals: [],
+      intelligence: null,
+      counts: {
+        people: context.contacts.length,
+        opportunities: 0,
+        conversations: 0,
+        orders: 0,
+        finance: 0,
+        documents: 0,
+        activities: 0,
+        proposals: 0,
+      },
+    });
+  }
+
+  const [leadRows, opportunities, conversations, activities, proposals, intelligenceRows] = await Promise.all([
+    db.select().from(leadsTable).where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId))).limit(1),
+    db.select().from(dealsTable).where(and(eq(dealsTable.leadId, leadId), eq(dealsTable.tenantId, tenantId))),
+    db.select().from(conversationsTable).where(and(eq(conversationsTable.leadId, leadId), eq(conversationsTable.tenantId, tenantId))),
+    db.select().from(activitiesTable).where(and(eq(activitiesTable.leadId, leadId), eq(activitiesTable.tenantId, tenantId))),
+    db.select().from(propostasTable).where(and(eq(propostasTable.leadId, leadId), eq(propostasTable.tenantId, tenantId))),
+    db.select().from(customerIntelligenceTable).where(and(
+      eq(customerIntelligenceTable.leadId, leadId),
+      eq(customerIntelligenceTable.tenantId, tenantId),
+    )).limit(1),
+  ]);
+
+  const orders = opportunities.filter((deal) =>
+    ["ganho", "em_execucao", "entregue", "conferencia_estoque"].includes(deal.etapa),
+  );
+
+  const finance = opportunities
+    .filter((deal) => deal.valor || deal.chargeStatus || deal.asaasChargeId || deal.chargeLink)
+    .map((deal) => ({
+      id: deal.id,
+      titulo: deal.titulo,
+      valor: deal.valor,
+      etapa: deal.etapa,
+      chargeStatus: deal.chargeStatus,
+      chargeLink: deal.chargeLink,
+      cobrancaTipo: deal.cobrancaTipo,
+      dataFechamento: deal.dataFechamento,
+      updatedAt: deal.updatedAt,
+    }));
+
+  const documents = [
+    ...activities
+      .filter((activity) => activity.anexoUrl)
+      .map((activity) => ({
+        id: `activity:${activity.id}`,
+        source: "activity",
+        name: activity.anexoNome ?? activity.titulo,
+        url: activity.anexoUrl,
+        mimeType: activity.anexoMimeType,
+        category: activity.anexoCategoria,
+        createdAt: activity.createdAt,
+      })),
+    ...proposals
+      .filter((proposal) => proposal.arquivoImportadoUrl)
+      .map((proposal) => ({
+        id: `proposal:${proposal.id}`,
+        source: "proposal",
+        name: proposal.arquivoImportadoNome ?? proposal.titulo,
+        url: proposal.arquivoImportadoUrl,
+        mimeType: null,
+        category: "proposta",
+        createdAt: proposal.createdAt,
+      })),
+  ];
+
+  return res.json({
+    ...context,
+    lead: leadRows[0] ?? null,
+    opportunities,
+    conversations,
+    orders,
+    finance,
+    documents,
+    activities,
+    proposals,
+    intelligence: intelligenceRows[0] ?? null,
+    counts: {
+      people: context.contacts.length,
+      opportunities: opportunities.length,
+      conversations: conversations.length,
+      orders: orders.length,
+      finance: finance.length,
+      documents: documents.length,
+      activities: activities.length,
+      proposals: proposals.length,
+    },
+  });
 });
 
 router.get("/crm/companies/:companyId/contact-for", async (req, res) => {
