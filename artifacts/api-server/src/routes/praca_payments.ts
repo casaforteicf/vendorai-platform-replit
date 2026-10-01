@@ -32,12 +32,12 @@ router.use(async (req, _res, next) => {
       ? req.body.courierSplits.map((x:any)=>String(x?.courierId||"")).filter(Boolean)
       : [];
     const users = await vendorPool.query(
-      `SELECT id,email,user_function,role FROM users
+      `SELECT id,email,user_function,role,platform_role FROM users
         WHERE tenant_id=$1 AND active=true AND email IS NOT NULL
-          AND (id=ANY($2::text[]) OR role='tenant_admin')`,
+          AND (id=ANY($2::text[]) OR platform_role='tenant_admin')`,
       [tenantId,courierIds],
     );
-    const sellerEmail = users.rows.find((u:any)=>u.role==='tenant_admin')?.email;
+    const sellerEmail = users.rows.find((u:any)=>u.platform_role==='tenant_admin')?.email;
     if (sellerEmail) {
       await vendorPool.query(
         `INSERT INTO praca_payment_recipients (tenant_id,owner_type,owner_id,provider,wallet_id,status,metadata)
