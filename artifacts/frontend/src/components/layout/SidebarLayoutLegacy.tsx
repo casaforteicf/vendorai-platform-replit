@@ -460,6 +460,7 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
     { name: "Pacotes",       href: "/pacotes",       icon: PackagePlus,     sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
     { name: "Gestão ERP",    href: "/erp",           icon: WalletCards,     sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
     { name: "Agentes",       href: "/agents/config", icon: Bot,           sellerHidden: true,  section: "crm", fn: ["administrador"] as UserFunction[] },
+    { name: "Vendi · Operações", href: "/vendi/operacoes", icon: Zap, sellerHidden: true, section: "crm", fn: ["administrador"] as UserFunction[] },
     { name: "Base de Conhecimento", href: "/base-conhecimento", icon: BookOpen, sellerHidden: true, section: "crm", fn: ["administrador"] as UserFunction[] },
     { name: "Métricas de IA",href: "/analytics",     icon: BarChart3,     sellerHidden: true,  section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Painel da Rede",href: "/organizacao",   icon: Network,       sellerHidden: true,  section: "crm", fn: ["administrador"] as UserFunction[] },
@@ -779,7 +780,7 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
     const financeHrefs = new Set(["/erp"]);
     const administrationHrefs = new Set(["/organizacao", "/usuarios", "/configuracoes"]);
     const operationHrefs = new Set(["/entregas"]);
-    const aiKnowledgeHrefs = new Set(["/agents/config", "/base-conhecimento"]);
+    const aiKnowledgeHrefs = new Set(["/agents/config", "/vendi/operacoes", "/base-conhecimento"]);
     const reportHrefs = new Set(["/analytics"]);
     const pracaHrefs = new Set(["/entregas-praca", "/praca-executivo", "/praca-conciliacao", "/logistica-praca"]);
     const marketingHrefs = new Set(["/marketing/facebook-marketplace"]);
