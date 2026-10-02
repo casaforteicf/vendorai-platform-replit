@@ -146,8 +146,8 @@ export async function runCustomerIntelligenceFollowup(log: Logger): Promise<void
           const dispatch = await processAgentInternal({
             tenantId: deal.tenantId,
             leadId: deal.leadId,
-            forcedAgent: "followup",
-            mensagem: `PROATIVO: acompanhamento inteligente da etapa ${objective.stageLabel}. Objetivo atual: ${objective.objective.title}. Lacuna/contexto: ${objective.objective.detail}. Não pergunte novamente informações já conhecidas.`,
+            forcedAgent: objective.agentName,
+            mensagem: `PROATIVO: acompanhamento inteligente da etapa ${objective.stageLabel}. Agente responsável: ${objective.agentName}. Objetivo atual: ${objective.objective.title}. Lacuna/contexto: ${objective.objective.detail}. Não pergunte novamente informações já conhecidas.`,
             scenario: {
               intelligentFollowup: {
                 source: objective.objective.source,
@@ -170,6 +170,7 @@ export async function runCustomerIntelligenceFollowup(log: Logger): Promise<void
             descricao: [
               `Objetivo: ${objective.objective.title}`,
               `Contexto: ${objective.objective.detail}`,
+              `Agente: ${objective.agentName}`,
               `Resultado do agente: ${dispatch.status}`,
               "reason" in dispatch ? `Motivo: ${dispatch.reason}` : null,
             ].filter(Boolean).join("\n"),
@@ -218,7 +219,7 @@ export async function runCustomerIntelligenceFollowup(log: Logger): Promise<void
           summary: objective.objective.title,
           sourceModule: "activities",
           sourceId: reservation.id,
-          metadata: { dealId: deal.id, stage: deal.etapa, objective, mode: cfg.modo ?? "gerar_aprovar" },
+          metadata: { dealId: deal.id, stage: deal.etapa, objective, agentName: objective.agentName, mode: cfg.modo ?? "gerar_aprovar" },
           log,
         });
         tarefas++;
