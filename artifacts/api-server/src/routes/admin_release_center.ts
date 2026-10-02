@@ -627,9 +627,14 @@ async function runReleaseWorker() {
   workerRunning = true;
   try {
     await ensureSchema();
-    const claim = await pool.query(
-      "WITH candidate AS (SELECT id FROM admin_releases WHERE status='scheduled' AND scheduled_at<=now() ORDER BY scheduled_at ASC,created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED) UPDATE admin_releases r SET status='publishing',started_at=now(),last_error=NULL,updated_at=now() FROM candidate c WHERE r.id=c.id RETURNING r.id"
+    const queueBlock = await pool.query(
+      "SELECT id,status FROM admin_releases WHERE status IN ('publishing','monitoring') OR (status='blocked' AND scheduled_at IS NOT NULL) ORDER BY updated_at DESC LIMIT 1"
     );
+    const claim = queueBlock.rowCount
+      ? { rows: [] as any[] }
+      : await pool.query(
+          "WITH candidate AS (SELECT id FROM admin_releases WHERE status='scheduled' AND scheduled_at<=now() ORDER BY scheduled_at ASC,created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED) UPDATE admin_releases r SET status='publishing',started_at=now(),last_error=NULL,updated_at=now() FROM candidate c WHERE r.id=c.id RETURNING r.id"
+        );
     const claimedId = claim.rows[0]?.id;
     if (claimedId) {
       const release = await getReleaseById(String(claimedId));
