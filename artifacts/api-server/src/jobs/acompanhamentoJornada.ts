@@ -225,12 +225,11 @@ export async function runAcompanhamentoJornada(log: Logger): Promise<void> {
         }).where(eq(activitiesTable.id, reservation.id));
         tarefas++;
       } catch (error) {
-        await db.update(activitiesTable).set({
-          titulo: `Vendi — falha ao preparar acompanhamento · ${stage.label}`,
-          descricao: error instanceof Error ? error.message.slice(0, 1500) : "Falha ao preparar acompanhamento.",
-          status: "pendente",
-          updatedAt: new Date(),
-        }).where(eq(activitiesTable.id, reservation.id)).catch(() => undefined);
+        // Falha técnica não consome tentativa. Remove a reserva para permitir
+        // nova tentativa no próximo ciclo, sem avançar a cadência comercial.
+        await db.delete(activitiesTable)
+          .where(eq(activitiesTable.id, reservation.id))
+          .catch(() => undefined);
         throw error;
       }
     } catch (error) {
