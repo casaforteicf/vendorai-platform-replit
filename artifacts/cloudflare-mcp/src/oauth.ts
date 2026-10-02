@@ -85,6 +85,7 @@ function issue(res: ServerResponse, grant: Grant) {
   // ChatGPT to reconnect when Railway replaces the process. Access remains short-lived.
   const refreshExp = now() + 365 * 86400;
   const refresh = sign({ type: "refresh", iss: issuer(), aud: grant.resource, scope: grant.scope, client: grant.client, family: grant.family, instance: instance(), exp: refreshExp, jti: nonce() });
+  refreshes.set(hash(refresh), { ...grant, exp: refreshExp });
   json(res, 200, {
     access_token: sign({ type: "access", iss: issuer(), aud: grant.resource, scope: grant.scope, sub: "administrator", family: grant.family, instance: instance(), exp: now() + 3600, jti: nonce() }),
     token_type: "Bearer", expires_in: 3600, refresh_token: refresh, scope: grant.scope,
@@ -222,18 +223,33 @@ export async function handleOAuth(req: IncomingMessage, res: ServerResponse, url
         }
         codes.delete(id);
       } else {
+        const id = hash(raw);
+        const reused = usedRefreshes.get(id);
+        if (reused) {
+          revokedFamilies.set(reused.family, { exp: now() + 365 * 86400 });
+          fail(res, "invalid_grant"); return true;
+        }
         const claims = read(raw);
         if (claims?.type !== "refresh" || claims.iss !== issuer() || claims.instance !== instance() || claims.client !== client || claims.exp <= now() ||
             revokedFamilies.has(claims.family) || (p.get("resource") && p.get("resource") !== claims.aud) || (p.get("scope") && p.get("scope") !== claims.scope)) { fail(res, "invalid_grant"); return true; }
         grant = { client: claims.client, redirect: "", challenge: "", resource: claims.aud, scope: claims.scope, family: claims.family, exp: claims.exp };
+        usedRefreshes.set(id, grant);
+        refreshes.delete(id);
       }
       if (!grant) { fail(res, "invalid_grant"); return true; }
       issue(res, grant);
     } else if (req.method === "POST" && path === "/oauth/revoke") {
       const p = new URLSearchParams(await body(req));
-      const id = hash(p.get("token") || "");
+      const raw = p.get("token") || "";
+      const id = hash(raw);
       const grant = refreshes.get(id);
-      if (grant?.client === p.get("client_id")) { revokedFamilies.set(grant.family, { exp: now() + 31 * 86400 }); refreshes.delete(id); }
+      const claims = read(raw);
+      const family = grant?.client === p.get("client_id") ? grant.family :
+        (claims?.type === "refresh" && claims.client === p.get("client_id") ? claims.family : undefined);
+      if (family) {
+        revokedFamilies.set(family, { exp: now() + 365 * 86400 });
+        refreshes.delete(id);
+      }
       json(res, 200, {});
     } else fail(res, "not_found", 404);
   } catch { if (!res.headersSent) fail(res); else res.end(); }
