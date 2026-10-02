@@ -183,11 +183,11 @@ export default function SupportAdmin() {
     onSuccess: async (body) => {
       qc.invalidateQueries({ queryKey: ["admin", "improvements"] });
       if (body?.created && body?.improvement?.id) {
-        const start = await fetch("/api/admin/improvements/" + body.improvement.id + "/start-agent", {
+        const response = await fetch("/api/admin/improvements/" + body.improvement.id + "/start-agent", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
         });
-        if (!start.ok) {
+        if (!response.ok) {
           toast({
             title: "Demanda criada",
             description: "A melhoria entrou na fila, mas o Vendi não conseguiu iniciar imediatamente. Ela poderá ser retomada pela Central de Melhorias.",
