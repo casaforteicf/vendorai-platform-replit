@@ -101,6 +101,18 @@ jobs:
         run: |
           set -euo pipefail
 
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ -n "${BASE_SHA:-}" ]; then
+            git fetch --no-tags --depth=1 origin "$BASE_SHA"
+            changed_files="$(git diff --name-only "$BASE_SHA"...HEAD)"
+            echo "Arquivos alterados:"
+            echo "$changed_files"
+
+            if ! grep -Eq '^(artifacts/|lib/|scripts/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|tsconfig(\..+)?\.json$|\.node-version$)' <<<"$changed_files"; then
+              echo "✅ PR altera apenas governança/documentação fora do código TypeScript; comparação de typecheck não se aplica."
+              exit 0
+            fi
+          fi
+
           normalize_errors() {
             sed -E               -e 's#^([^:[:space:]]+/)*##'               -e 's#\([0-9]+,[0-9]+\)##g'               -e 's#[[:space:]]+# #g'               | grep -E 'error TS[0-9]+:'               | sort -u
           }
