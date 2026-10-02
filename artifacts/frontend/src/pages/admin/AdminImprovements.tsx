@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { type ChangeEvent, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -335,7 +335,7 @@ export default function AdminImprovements() {
     }
   }
 
-  async function handleImprovementAttachment(event: React.ChangeEvent<HTMLInputElement>) {
+  async function handleImprovementAttachment(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file || uploadingAttachment || attachments.length >= 5) return;
