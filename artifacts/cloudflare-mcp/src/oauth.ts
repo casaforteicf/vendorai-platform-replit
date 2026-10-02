@@ -19,17 +19,18 @@ const instance = () => hash(`instance:${key()}`);
 export const issuer = () => (process.env.MCP_PUBLIC_URL || "https://cloudflare-mcp-v2-production.up.railway.app").replace(/\/$/, "");
 const resource = () => `${issuer()}/mcp`;
 const key = () => process.env.MCP_ACCESS_TOKEN?.trim() || "";
+const oauthKey = () => process.env.OAUTH_SIGNING_SECRET?.trim() || key();
 const hash = (s: string) => createHash("sha256").update(s).digest("base64url");
 const equal = (a: string, b: string) => timingSafeEqual(createHash("sha256").update(a).digest(), createHash("sha256").update(b).digest());
 function sign(value: object): string {
-  if (!key()) throw new Error("MCP_ACCESS_TOKEN missing");
+  if (!oauthKey()) throw new Error("OAUTH_SIGNING_SECRET missing");
   const data = Buffer.from(JSON.stringify(value)).toString("base64url");
-  return `${data}.${createHmac("sha256", key()).update(data).digest("base64url")}`;
+  return `${data}.${createHmac("sha256", oauthKey()).update(data).digest("base64url")}`;
 }
 function read(token: string): any {
-  if (!key() || token.length > 12000) return null;
+  if (!oauthKey() || token.length > 12000) return null;
   const [data, signature, extra] = token.split(".");
-  if (extra || !data || !signature || !equal(signature, createHmac("sha256", key()).update(data).digest("base64url"))) return null;
+  if (extra || !data || !signature || !equal(signature, createHmac("sha256", oauthKey()).update(data).digest("base64url"))) return null;
   try { return JSON.parse(Buffer.from(data, "base64url").toString()); } catch { return null; }
 }
 function json(res: ServerResponse, status: number, value: unknown) {
@@ -99,8 +100,21 @@ export async function handleOAuth(req: IncomingMessage, res: ServerResponse, url
       const redirect = p.get("redirect_uri") || "";
       const aud = p.get("resource");
       const scope = p.get("scope") || SCOPE;
-      if (metadata?.type !== "client" || !metadata.redirects?.includes(redirect) || !allowedRedirect(redirect) || p.get("response_type") !== "code" ||
-          p.get("code_challenge_method") !== "S256" || !/^[A-Za-z0-9_-]{43}$/.test(p.get("code_challenge") || "") || aud !== resource() || scope !== SCOPE) { fail(res); return true; }
+      const invalidReason =
+        metadata?.type !== "client" ? "invalid_client" :
+        !metadata.redirects?.includes(redirect) ? "redirect_not_registered" :
+        !allowedRedirect(redirect) ? "redirect_not_allowed" :
+        p.get("response_type") !== "code" ? "unsupported_response_type" :
+        p.get("code_challenge_method") !== "S256" ? "pkce_method_required" :
+        !/^[A-Za-z0-9_-]{43}$/.test(p.get("code_challenge") || "") ? "invalid_code_challenge" :
+        (aud && aud !== resource()) ? "invalid_resource" :
+        scope !== SCOPE ? "invalid_scope" :
+        null;
+      if (invalidReason) {
+        console.warn("[oauth] authorize rejected", { reason: invalidReason, hasClient: Boolean(client), hasRedirect: Boolean(redirect), hasResource: Boolean(aud), scope });
+        json(res, 400, { error: "invalid_request", error_description: "A autorização não pôde ser iniciada. Reabra a conexão no ChatGPT.", reason: invalidReason });
+        return true;
+      }
       if (forms.size >= 1000) { fail(res, "temporarily_unavailable", 503); return true; }
       const callbackPath = (() => { try { return new URL(redirect).pathname; } catch { return "invalid"; } })();
       console.info("[oauth] authorize accepted", { callbackPath, callbackKind: callbackPath === "/connector_platform_oauth_redirect" ? "stable" : callbackPath.startsWith("/connector/oauth/") ? "specific" : "other" });
@@ -148,13 +162,13 @@ export async function handleOAuth(req: IncomingMessage, res: ServerResponse, url
       if (kind === "authorization_code") {
         const id = hash(raw);
         grant = codes.get(id);
-        if (!grant || grant.exp < now() || grant.client !== client || p.get("resource") !== grant.resource || (p.get("scope") && p.get("scope") !== grant.scope) ||
+        if (!grant || grant.exp < now() || grant.client !== client || (p.get("resource") && p.get("resource") !== grant.resource) || (p.get("scope") && p.get("scope") !== grant.scope) ||
             p.get("redirect_uri") !== grant.redirect || !/^[A-Za-z0-9._~-]{43,128}$/.test(p.get("code_verifier") || "") || !equal(hash(p.get("code_verifier")!), grant.challenge)) { fail(res, "invalid_grant"); return true; }
         codes.delete(id);
       } else {
         const claims = read(raw);
         if (claims?.type !== "refresh" || claims.iss !== issuer() || claims.instance !== instance() || claims.client !== client || claims.exp <= now() ||
-            revokedFamilies.has(claims.family) || p.get("resource") !== claims.aud || (p.get("scope") && p.get("scope") !== claims.scope)) { fail(res, "invalid_grant"); return true; }
+            revokedFamilies.has(claims.family) || (p.get("resource") && p.get("resource") !== claims.aud) || (p.get("scope") && p.get("scope") !== claims.scope)) { fail(res, "invalid_grant"); return true; }
         grant = { client: claims.client, redirect: "", challenge: "", resource: claims.aud, scope: claims.scope, family: claims.family, exp: claims.exp };
       }
       issue(res, grant);
