@@ -5,7 +5,6 @@ import {
   Bot,
   CalendarClock,
   CheckCircle2,
-  Clock3,
   ExternalLink,
   History,
   Plus,
