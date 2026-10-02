@@ -212,37 +212,34 @@ export async function runSdrFollowup(log: Logger): Promise<void> {
         tenantId,
         leadId,
         dealId: dealId ?? null,
-        motivoDisparo: "48 horas sem resposta após a primeira abordagem SDR",
-        // Preserva o comportamento automático já existente neste gatilho.
-        // Uma configuração explícita da etapa pode mudar para gerar/aprovar ou somente sugestão.
-        modoPadrao: "automatico",
+        motivoDisparo: "verificação do gatilho legado de 48 horas",
+        // O motor novo só deve executar por este job quando a etapa não
+        // estiver governada pela jornada inteligente. Etapa ativa é tratada
+        // pelo ciclo geral de acompanhamento, evitando duplicidade.
+        modoPadrao: "somente_sugestao",
         log,
       }).catch((err) => {
         log.warn({ err, tenantId, leadId }, "sdr-followup: orquestrador indisponível; usando fallback legado");
         return null;
       });
 
-      if (!acompanhamento?.executado) {
-        // Compatibilidade: o fluxo legado continua disponível enquanto
-        // canais/modos da nova jornada ainda não estiverem configurados.
-        if (!acompanhamento || acompanhamento.plano.modo === "automatico") {
-          await sendSdrFollowup(leadId, dealId ?? null, tenantId, lead.nome, lead.telefone, log);
-          sent++;
-        } else {
-          log.info(
-            {
-              tenantId,
-              leadId,
-              modo: acompanhamento.plano.modo,
-              canal: acompanhamento.plano.canalPrincipal,
-              requerHumano: acompanhamento.plano.requerHumano,
-            },
-            "sdr-followup: acompanhamento planejado aguardando aprovação/sugestão",
-          );
-        }
-      } else {
-        sent++;
+      if (acompanhamento?.plano.ativo) {
+        log.info(
+          {
+            tenantId,
+            leadId,
+            modo: acompanhamento.plano.modo,
+            canal: acompanhamento.plano.canalPrincipal,
+          },
+          "sdr-followup: etapa governada pelo Acompanhamento Inteligente; gatilho legado ignorado",
+        );
+        continue;
       }
+
+      // Compatibilidade integral para tenants/etapas que ainda não ativaram
+      // o novo acompanhamento.
+      await sendSdrFollowup(leadId, dealId ?? null, tenantId, lead.nome, lead.telefone, log);
+      sent++;
 
       // Anti-ban delay
       await new Promise((r) => setTimeout(r, 1_200));
