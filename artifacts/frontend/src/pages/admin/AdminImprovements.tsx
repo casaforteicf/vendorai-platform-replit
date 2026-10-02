@@ -8,6 +8,9 @@ import {
   ExternalLink,
   History,
   Plus,
+  Paperclip,
+  X,
+  Loader2,
   RefreshCw,
   Rocket,
   RotateCcw,
@@ -60,6 +63,12 @@ type Improvement = {
   dependencies?: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+type ImprovementAttachment = {
+  name: string;
+  mimeType: string;
+  content: string;
 };
 
 type ImpactFile = {
@@ -197,6 +206,8 @@ export default function AdminImprovements() {
   const [busy, setBusy] = useState("");
   const [scheduleAt, setScheduleAt] = useState("");
   const [adjustment, setAdjustment] = useState("");
+  const [attachments, setAttachments] = useState<ImprovementAttachment[]>([]);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [form, setForm] = useState({
     title: "",
     description: "",
@@ -324,6 +335,37 @@ export default function AdminImprovements() {
     }
   }
 
+  async function handleImprovementAttachment(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || uploadingAttachment || attachments.length >= 5) return;
+    setUploadingAttachment(true);
+    try {
+      const payload = new FormData();
+      payload.append("file", file);
+      const response = await fetch("/api/support/file/interpret", {
+        method: "POST",
+        headers: token ? { Authorization: "Bearer " + token } : undefined,
+        body: payload,
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error ?? "Não foi possível interpretar o anexo.");
+      setAttachments((current) => [...current, {
+        name: String(body?.name ?? file.name),
+        mimeType: String(body?.mimeType ?? file.type ?? "application/octet-stream"),
+        content: String(body?.content ?? "").slice(0, 20000),
+      }]);
+    } catch (error) {
+      toast({
+        title: "Falha ao adicionar anexo",
+        description: error instanceof Error ? error.message : "Erro inesperado",
+        variant: "destructive",
+      });
+    } finally {
+      setUploadingAttachment(false);
+    }
+  }
+
   async function createImprovement() {
     setBusy("create");
     try {
@@ -340,6 +382,7 @@ export default function AdminImprovements() {
           acceptanceCriteria: form.acceptanceCriteria,
           riskSummary: form.riskSummary,
           dependencies: form.dependencies,
+          attachments,
           homologUrl: "https://homolog.appvendorai.com",
         }),
       });
@@ -347,6 +390,7 @@ export default function AdminImprovements() {
       if (!response.ok) throw new Error(body?.error ?? "HTTP " + response.status);
       toast({ title: "Melhoria criada", description: "O Vendi já pode assumir o desenvolvimento." });
       setCreateOpen(false);
+      setAttachments([]);
       setForm({
         title: "",
         description: "",
@@ -785,6 +829,46 @@ export default function AdminImprovements() {
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
             />
+            <div className="rounded-xl border p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium">Anexos <span className="font-normal text-muted-foreground">(opcional)</span></p>
+                  <p className="text-xs text-muted-foreground">Adicione prints, imagens, PDFs ou documentos. O Vendi usa o conteúdo como contexto da melhoria.</p>
+                </div>
+                <label className={"inline-flex cursor-pointer items-center rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted " + (uploadingAttachment || attachments.length >= 5 ? "pointer-events-none opacity-50" : "")}>
+                  {uploadingAttachment ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Paperclip className="mr-2 h-4 w-4" />}
+                  {uploadingAttachment ? "Analisando..." : "Adicionar"}
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept="image/*,.pdf,.txt,.csv,.doc,.docx"
+                    onChange={(event) => void handleImprovementAttachment(event)}
+                    disabled={uploadingAttachment || attachments.length >= 5}
+                  />
+                </label>
+              </div>
+              {attachments.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {attachments.map((attachment, index) => (
+                    <div key={attachment.name + index} className="flex items-center justify-between gap-2 rounded-lg bg-muted/40 px-3 py-2 text-sm">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{attachment.name}</p>
+                        <p className="truncate text-xs text-muted-foreground">{attachment.mimeType}</p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                        aria-label={"Remover " + attachment.name}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <Input placeholder="Módulo / tela" value={form.module} onChange={(e) => setForm({ ...form, module: e.target.value })} />
               <select
@@ -842,7 +926,7 @@ export default function AdminImprovements() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button>
-            <Button onClick={createImprovement} disabled={busy === "create" || form.title.trim().length < 3}>
+            <Button onClick={createImprovement} disabled={busy === "create" || uploadingAttachment || form.title.trim().length < 3}>
               Criar e iniciar Vendi
             </Button>
           </DialogFooter>
