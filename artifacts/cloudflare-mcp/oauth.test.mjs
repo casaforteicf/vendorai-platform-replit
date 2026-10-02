@@ -45,6 +45,9 @@ test('private OAuth: discovery, redirect restrictions, consent, PKCE, replay, re
     assert.equal((await form({ resource: 'https://attacker.example' })).response.status, 400);
     assert.equal((await form({ code_challenge_method: 'plain' })).response.status, 400);
     assert.equal((await form({ resource: '' })).response.status, 200);
+    const legacyClient = 'legacy-public-client-1234567890';
+    const legacyAuthorize = await form({ client_id: legacyClient });
+    assert.equal(legacyAuthorize.response.status, 200);
     let f = await form();
     assert.equal(f.response.headers.get("referrer-policy"), "same-origin");
     assert.match(f.response.headers.get("content-security-policy"), /form-action 'self' https:\/\/chatgpt\.com;/);
@@ -75,6 +78,21 @@ test('private OAuth: discovery, redirect restrictions, consent, PKCE, replay, re
     const noResourceCode = await grant();
     const noResourceTokens = await (await post('/oauth/token', { client_id: client, redirect_uri: redirect, code: noResourceCode, grant_type: 'authorization_code', code_verifier: verifier })).json();
     assert.ok(noResourceTokens.access_token);
+
+    const legacyAuth = await form({ client_id: legacyClient });
+    const legacyHtml = await legacyAuth.response.text();
+    const legacyCsrf = legacyHtml.match(/name="csrf" value="([^"]+)"/)?.[1];
+    assert.ok(legacyCsrf);
+    const legacyApprove = await fetch(resource + '/oauth/approve', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', origin: resource },
+      body: new URLSearchParams({ csrf: legacyCsrf, credential: process.env.MCP_ACCESS_TOKEN, decision: 'approve' }),
+      redirect: 'manual',
+    });
+    const legacyCode = new URL(legacyApprove.headers.get('location')).searchParams.get('code');
+    assert.ok(legacyCode);
+    const legacyTokens = await (await post('/oauth/token', { client_id: legacyClient, redirect_uri: redirect, code: legacyCode, grant_type: 'authorization_code', code_verifier: verifier })).json();
+    assert.ok(legacyTokens.access_token);
     assert.equal((await post('/oauth/token', exchange)).status, 400);
     assert.equal((await fetch(resource, { headers: { Authorization: 'Bearer ' + tokens.access_token } })).status, 200);
     assert.equal((await fetch(resource, { headers: { Authorization: 'Bearer ' + tokens.access_token + 'x' } })).status, 401);
