@@ -260,9 +260,11 @@ function buildFallbackMediaPlan(
   const nome = profile.nomeFantasia || profile.razaoSocial;
   const segmento = profile.vertical || "seu segmento";
   const produtos = profile.produtos?.map((produto) => produto.nome).filter(Boolean) ?? [];
+  const keywords = keywordsRelevantes ?? [];
+  const concorrentes = concorrentesEncontrados ?? [];
   const principalProduto = produtos[0];
-  const principalKeyword = keywordsRelevantes[0];
-  const principalConcorrente = concorrentesEncontrados[0];
+  const principalKeyword = keywords[0];
+  const principalConcorrente = concorrentes[0];
 
   const pontosFortesAtuais: string[] = [];
   if (profile.vertical) pontosFortesAtuais.push(`Atuação definida no segmento ${profile.vertical}.`);
