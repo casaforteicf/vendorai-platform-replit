@@ -5,6 +5,7 @@ import { pool } from "@workspace/db";
 import { requireRole } from "../middlewares/auth.js";
 
 const router: IRouter = Router();
+// Control-plane P0 #2873: keep this route in the homologation watch scope.
 
 const STATUSES = [
   "solicitada",
