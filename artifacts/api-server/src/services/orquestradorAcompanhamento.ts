@@ -186,6 +186,7 @@ export async function planejarAcompanhamento(params: {
   leadId: string;
   dealId?: string | null;
   motivoDisparo?: string;
+  modoPadrao?: "automatico" | "gerar_aprovar" | "somente_sugestao";
   log: Logger;
 }): Promise<PlanoAcompanhamento> {
   const context = await carregarContextoBasico(params.tenantId, params.leadId, params.dealId);
@@ -198,7 +199,7 @@ export async function planejarAcompanhamento(params: {
     : objetivoPadrao(context.etapa);
   const modo = ["automatico", "gerar_aprovar", "somente_sugestao"].includes(String(cfg.modo))
     ? String(cfg.modo) as PlanoAcompanhamento["modo"]
-    : "gerar_aprovar";
+    : (params.modoPadrao ?? "gerar_aprovar");
 
   const contextoNegocio = await resolverContextoNegocio({
     tenantId: params.tenantId,
@@ -312,6 +313,7 @@ export async function executarAcompanhamento(params: {
   leadId: string;
   dealId?: string | null;
   motivoDisparo?: string;
+  modoPadrao?: "automatico" | "gerar_aprovar" | "somente_sugestao";
   log: Logger;
 }) {
   const plano = await planejarAcompanhamento(params);
