@@ -12,6 +12,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SupportReportPanel } from "@/components/SupportReportPanel";
 import { OperationalStageFormDialog } from "@/components/OperationalStageFormDialog";
+import { ExpeditionChecklistPanel, type ExpeditionChecklist } from "@/components/ExpeditionChecklistPanel";
+import { TransportChecklistPanel, type TransportChecklist } from "@/components/TransportChecklistPanel";
 import { PipelineNav, PIPELINE_CARD_CLASS, PIPELINE_COLUMN_CLASS, PIPELINE_COLUMN_HEADER_CLASS } from "@/components/PipelineNav";
 import {
   AlertTriangle,
@@ -68,6 +70,7 @@ type Attachment = {
   descricao?: string | null;
   transcricao?: string | null;
   origem: string;
+  metadata?: Record<string, unknown> | null;
   createdAt?: string;
 };
 
@@ -187,6 +190,20 @@ function safeItems(card: WorkCard): Array<{ nome?: string; quantidade?: number }
   return Array.isArray(raw) ? raw as Array<{ nome?: string; quantidade?: number }> : [];
 }
 
+function safeExpeditionChecklist(card: WorkCard): ExpeditionChecklist | null {
+  const raw = card.metadata?.checklistExpedicao;
+  if (!raw || typeof raw !== "object") return null;
+  const checklist = raw as ExpeditionChecklist;
+  return Array.isArray(checklist.itens) ? checklist : null;
+}
+
+function safeTransportChecklist(card: WorkCard): TransportChecklist | null {
+  const raw = card.metadata?.checklistTransporte;
+  if (!raw || typeof raw !== "object") return null;
+  const checklist = raw as TransportChecklist;
+  return Array.isArray(checklist.campos) ? checklist : null;
+}
+
 function requirementCompleted(card: WorkCard, key: string) {
   const raw = card.metadata?.stageGates;
   if (!raw || typeof raw !== "object") return false;
@@ -293,9 +310,16 @@ export default function PipelineOperacional() {
     else navigate(`/pipeline-operacional/${next}`);
   }
 
-  async function uploadFilesToCard(cardId: string, files: File[], origem = "app") {
-    if (!files.length || uploading) return;
+  async function uploadFilesToCard(
+    cardId: string,
+    files: File[],
+    origem = "app",
+    metadata?: Record<string, unknown>,
+    descricao?: string,
+  ): Promise<Attachment[]> {
+    if (!files.length || uploading) return [];
     setUploading(true);
+    const uploaded: Attachment[] = [];
     try {
       for (const file of files) {
         const meta = await api<{ uploadURL: string; objectPath: string }>("/api/storage/uploads/request-url", {
@@ -307,7 +331,7 @@ export default function PipelineOperacional() {
           method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" },
         });
         if (!put.ok) throw new Error(`Falha ao enviar ${file.name}`);
-        await api(`/api/work-cards/${cardId}/attachments`, {
+        const attachment = await api<Attachment>(`/api/work-cards/${cardId}/attachments`, {
           method: "POST",
           headers: jsonHeaders,
           body: JSON.stringify({
@@ -316,13 +340,18 @@ export default function PipelineOperacional() {
             mimeType: file.type || "application/octet-stream",
             tamanho: file.size,
             origem,
+            metadata: metadata ?? {},
+            descricao,
           }),
         });
+        uploaded.push(attachment);
       }
       await queryClient.invalidateQueries({ queryKey: ["work-card-attachments", cardId] });
       toast({ title: files.length === 1 ? "Anexo registrado" : `${files.length} anexos registrados` });
+      return uploaded;
     } catch (error) {
       toast({ title: "Não foi possível anexar os arquivos", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+      return [];
     } finally {
       setUploading(false);
     }
@@ -545,6 +574,10 @@ export default function PipelineOperacional() {
                                 variant={completed ? "secondary" : "default"}
                                 disabled={patchCard.isPending}
                                 onClick={() => {
+                                  if (requirement.key === "checklist_transporte" && safeTransportChecklist(selectedCard)) {
+                                    document.getElementById("transport-checklist-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                                    return;
+                                  }
                                   if (OPERATIONAL_FORM_KEYS.has(requirement.key)) {
                                     setStageFormKey(requirement.key);
                                     return;
@@ -562,9 +595,11 @@ export default function PipelineOperacional() {
                                   patchCard.mutate({ id: selectedCard.id, data: { metadata: { ...metadata, stageGates: currentGates } } });
                                 }}
                               >
-                                {OPERATIONAL_FORM_KEYS.has(requirement.key)
-                                  ? (completed ? "Ver / nova versão" : "Preencher")
-                                  : (completed ? "Reabrir" : "Concluir")}
+                                {requirement.key === "checklist_transporte" && safeTransportChecklist(selectedCard)
+                                  ? (completed ? "Ver checklist" : "Abrir checklist")
+                                  : OPERATIONAL_FORM_KEYS.has(requirement.key)
+                                    ? (completed ? "Ver / nova versão" : "Preencher")
+                                    : (completed ? "Reabrir" : "Concluir")}
                               </Button>
                             </div>
                           );
@@ -605,6 +640,78 @@ export default function PipelineOperacional() {
                     <div className="divide-y rounded-lg border">
                       {safeItems(selectedCard).map((item, index) => <div key={index} className="flex justify-between px-3 py-2 text-sm"><span>{item.nome}</span><strong>{item.quantidade}</strong></div>)}
                     </div>
+                  </div>
+                )}
+
+
+                {safeExpeditionChecklist(selectedCard) && (
+                  <div id="expedition-checklist-panel" className="scroll-mt-4">
+                    <ExpeditionChecklistPanel
+                      checklist={safeExpeditionChecklist(selectedCard)!}
+                      disabled={patchCard.isPending || uploading}
+                      isAdmin={isAdmin}
+                      onChange={(checklistExpedicao) => patchCard.mutate({
+                        id: selectedCard.id,
+                        data: {
+                          metadata: {
+                            ...(selectedCard.metadata ?? {}),
+                            checklistExpedicao,
+                          },
+                        },
+                      })}
+                      onUploadEvidence={async ({ itemIndex, fieldIndex, item, field, files }) => {
+                        const uploaded = await uploadFilesToCard(
+                          selectedCard.id,
+                          files,
+                          "checklist_expedicao",
+                          {
+                            checklist: "expedicao",
+                            itemIndex,
+                            fieldIndex,
+                            produtoId: item.produtoId ?? null,
+                            sku: item.sku ?? null,
+                            campo: field.key,
+                          },
+                          `Evidência da expedição • ${item.nome} • ${field.label}`,
+                        );
+                        return uploaded.map((attachment) => ({
+                          id: attachment.id,
+                          url: attachment.url,
+                          nome: attachment.nome,
+                        }));
+                      }}
+                      onOverride={(justificativa) => patchCard.mutate({
+                        id: selectedCard.id,
+                        data: {
+                          etapa: "em_transporte",
+                          metadata: {
+                            ...(selectedCard.metadata ?? {}),
+                            expedicaoOverride: {
+                              aprovado: true,
+                              justificativa,
+                            },
+                          },
+                        },
+                      })}
+                    />
+                  </div>
+                )}
+
+                {safeTransportChecklist(selectedCard) && (
+                  <div id="transport-checklist-panel" className="scroll-mt-4">
+                    <TransportChecklistPanel
+                      checklist={safeTransportChecklist(selectedCard)!}
+                      disabled={patchCard.isPending}
+                      onChange={(checklistTransporte) => patchCard.mutate({
+                        id: selectedCard.id,
+                        data: {
+                          metadata: {
+                            ...(selectedCard.metadata ?? {}),
+                            checklistTransporte,
+                          },
+                        },
+                      })}
+                    />
                   </div>
                 )}
 
