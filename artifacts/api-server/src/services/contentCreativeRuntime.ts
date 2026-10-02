@@ -49,20 +49,21 @@ export async function buildContentCreativeRuntime(input: {
     }),
   ]);
   brief.assetIds = [...new Set([...(brief.assetIds ?? []), ...libraryContext.assetIds])];
+  const channelPlan = creativePlan.channel;
   const promptContext = [
     `Campanha: ${input.context.campaignName || input.context.campaignId || 'não vinculada'}`,
     `Objetivo: ${brief.objective}`,
     brief.audience ? `Público: ${brief.audience}` : null,
     input.context.productName ? `Produto: ${input.context.productName}` : null,
     brief.offer ? `Oferta: ${brief.offer}` : null,
-    `Canal: ${creativePlan.channel.name}`,
+    `Canal: ${brief.channel}`,
     `Formato: ${brief.format}`,
     brief.cta ? `CTA: ${brief.cta}` : null,
     creativePlan.brand.tone?.length ? `Tom da marca: ${creativePlan.brand.tone.join(' | ')}` : null,
     creativePlan.brand.colors?.length ? `Cores da marca: ${creativePlan.brand.colors.join(', ')}` : null,
     creativePlan.brand.visualStyle?.length ? `Estilo visual: ${creativePlan.brand.visualStyle.join(' | ')}` : null,
-    `Linguagem do canal: ${creativePlan.channel.language}`,
-    `Regras do canal: ${creativePlan.channel.rules.join(' | ')}`,
+    channelPlan ? `Linguagem do canal: ${channelPlan.language}` : null,
+    channelPlan?.rules?.length ? `Regras do canal: ${channelPlan.rules.join(' | ')}` : null,
     input.agentPlan?.skills?.length ? `Skills do Marketing Agent: ${input.agentPlan.skills.join(', ')}` : null,
     '',
     libraryContext.promptBlock,
