@@ -17,6 +17,28 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 
 type ProductSpec = { label: string; value: string };
+type InteligenciaComercialProduto = {
+  caracteristicas?: string[];
+  diferenciais?: string[];
+  beneficios?: string[];
+  doresAtendidas?: string[];
+  casosUso?: string[];
+  personas?: string[];
+  objecoes?: Array<{ objecao: string; resposta?: string; idsProvas?: string[] }>;
+  idsProvas?: string[];
+  idsProdutosComplementares?: string[];
+  afirmacoesPermitidas?: string[];
+  afirmacoesProibidas?: string[];
+  notasComerciais?: string[];
+  duvidasFrequentes?: string[];
+  garantia?: string | null;
+  instalacaoUso?: string | null;
+  entregaPrazo?: string | null;
+  orientacoesIa?: string[];
+  aprovadoEm?: string | null;
+  aprovadoPor?: string | null;
+  origem?: "manual" | "sugerido_ia" | "importado" | "misto";
+};
 type MediaAsset = {
   id: string;
   type: "image" | "video" | "audio" | "document";
@@ -50,6 +72,7 @@ type CatalogProduct = {
   videoUrl?: string | null;
   tags?: string[] | null;
   especificacoes?: ProductSpec[] | null;
+  inteligenciaComercial?: InteligenciaComercialProduto | null;
 };
 type ProductForm = {
   descricaoCompleta: string;
@@ -65,6 +88,7 @@ type ProductForm = {
   instalacao: string;
   entrega: string;
   observacoesIa: string;
+  afirmacoesProibidas: string;
   condicoesPagamento: string;
   tags: string;
   aiEnabled: boolean;
@@ -87,6 +111,7 @@ const FIELD_SPECS: KnowledgeField[] = [
   { key: "instalacao", label: "Instalação / uso", aliases: ["Instalação / uso", "Instalacao / uso", "Instalação", "Instalacao", "Modo de uso"], placeholder: "Orientações de instalação, montagem ou utilização." },
   { key: "entrega", label: "Entrega / prazo", aliases: ["Entrega / prazo", "Entrega", "Prazo", "Prazo de entrega"], placeholder: "Informações relevantes sobre entrega, prazo e disponibilidade." },
   { key: "observacoesIa", label: "Observações para IA", aliases: ["Observações para IA", "Observacoes para IA", "Observações", "Observacoes", "Informações adicionais", "Informacoes adicionais"], placeholder: "Regras específicas que a IA deve respeitar ao falar deste produto.", rows: 4 },
+  { key: "afirmacoesProibidas", label: "O que a IA não pode afirmar", aliases: ["O que a IA não pode afirmar", "Afirmações proibidas", "Afirmacoes proibidas", "Restrições de afirmação", "Restricoes de afirmacao"], placeholder: "Ex.: não afirmar garantia vitalícia; não comparar desempenho sem laudo; não prometer prazo fixo.", rows: 4 },
 ];
 const PRICE_SPEC_ALIASES = ["Condições de pagamento", "Condicoes de pagamento", "Condição de pagamento", "Condicao de pagamento", "Pagamento", "Valor", "Preço", "Preco", "Investimento"];
 
@@ -133,6 +158,23 @@ function installmentCondition(value: string) {
     .trim();
 }
 function hasValue(value: unknown) { return value !== null && value !== undefined && String(value).trim() !== ""; }
+function textToList(value: string) {
+  return value.split(/\n|;/).map((item) => item.replace(/^[-•]\s*/, "").trim()).filter(Boolean);
+}
+function listToText(value?: string[] | null) {
+  return Array.isArray(value) ? value.filter(Boolean).join("\n") : "";
+}
+function parseObjections(value: string) {
+  return textToList(value).map((line) => {
+    const parts = line.split(/\s*(?:=>|→|\|)\s*/, 2);
+    return { objecao: parts[0] ?? "", ...(parts[1] ? { resposta: parts[1] } : {}) };
+  }).filter((item) => item.objecao);
+}
+function objectionsToText(value?: Array<{ objecao: string; resposta?: string }> | null) {
+  return Array.isArray(value)
+    ? value.map((item) => item.resposta ? `${item.objecao} → ${item.resposta}` : item.objecao).filter(Boolean).join("\n")
+    : "";
+}
 function formatPrice(value?: string | null) {
   if (!hasValue(value)) return "";
   const number = Number(value);
@@ -175,18 +217,35 @@ function emptyForm(): ProductForm {
   return {
     descricaoCompleta: "", caracteristicas: "", beneficios: "", diferenciais: "", aplicacoes: "", publicoIndicado: "",
     argumentosComerciais: "", duvidasFrequentes: "", objecoesRespostas: "", garantia: "", instalacao: "",
-    entrega: "", observacoesIa: "", condicoesPagamento: "", tags: "", aiEnabled: true,
+    entrega: "", observacoesIa: "", afirmacoesProibidas: "", condicoesPagamento: "", tags: "", aiEnabled: true,
   };
 }
 function formFromProduct(product: CatalogProduct): ProductForm {
   const form = emptyForm();
   const originalDescription = stripGeneratedKnowledge(product.descricaoLonga) || product.descricao || "";
   const separated = splitDescriptionPrice(originalDescription);
+  const intelligence = product.inteligenciaComercial ?? {};
   form.descricaoCompleta = separated.description;
   form.condicoesPagamento = installmentCondition(specValueAny(product, PRICE_SPEC_ALIASES) || separated.payment);
   form.tags = (product.tags ?? []).join(", ");
   form.aiEnabled = aiEnabledFor(product);
+
   for (const field of FIELD_SPECS) form[field.key] = specValueAny(product, field.aliases);
+
+  form.caracteristicas = listToText(intelligence.caracteristicas) || form.caracteristicas;
+  form.beneficios = listToText(intelligence.beneficios) || form.beneficios;
+  form.diferenciais = listToText(intelligence.diferenciais) || form.diferenciais;
+  form.aplicacoes = listToText(intelligence.casosUso) || form.aplicacoes;
+  form.publicoIndicado = listToText(intelligence.personas) || form.publicoIndicado;
+  form.argumentosComerciais = listToText(intelligence.notasComerciais) || form.argumentosComerciais;
+  form.duvidasFrequentes = listToText(intelligence.duvidasFrequentes) || form.duvidasFrequentes;
+  form.objecoesRespostas = objectionsToText(intelligence.objecoes) || form.objecoesRespostas;
+  form.garantia = intelligence.garantia?.trim() || form.garantia;
+  form.instalacao = intelligence.instalacaoUso?.trim() || form.instalacao;
+  form.entrega = intelligence.entregaPrazo?.trim() || form.entrega;
+  form.observacoesIa = listToText(intelligence.orientacoesIa) || form.observacoesIa;
+  form.afirmacoesProibidas = listToText(intelligence.afirmacoesProibidas) || form.afirmacoesProibidas;
+
   if (!form.entrega && product.prazoEntregaDias != null) form.entrega = `Prazo de entrega: ${product.prazoEntregaDias} dia(s).`;
   return form;
 }
@@ -289,8 +348,26 @@ export default function ProductCatalogKnowledgeLibraryV2() {
       const knowledgeText = form.aiEnabled ? knowledgeSpecs.map((spec) => `${spec.label}: ${spec.value}`).join("\n\n") : "";
       const descricaoLonga = [form.descricaoCompleta.trim(), knowledgeText ? `${KNOWLEDGE_MARKER}\n${knowledgeText}` : ""].filter(Boolean).join("\n\n");
       const tags = form.tags.split(",").map((tag) => tag.trim()).filter(Boolean);
+      const inteligenciaComercial: InteligenciaComercialProduto = {
+        caracteristicas: textToList(form.caracteristicas),
+        diferenciais: textToList(form.diferenciais),
+        beneficios: textToList(form.beneficios),
+        casosUso: textToList(form.aplicacoes),
+        personas: textToList(form.publicoIndicado),
+        objecoes: parseObjections(form.objecoesRespostas),
+        afirmacoesProibidas: textToList(form.afirmacoesProibidas),
+        notasComerciais: textToList(form.argumentosComerciais),
+        duvidasFrequentes: textToList(form.duvidasFrequentes),
+        garantia: form.garantia.trim() || null,
+        instalacaoUso: form.instalacao.trim() || null,
+        entregaPrazo: form.entrega.trim() || null,
+        orientacoesIa: textToList(form.observacoesIa),
+        aprovadoEm: form.aiEnabled ? new Date().toISOString() : null,
+        aprovadoPor: form.aiEnabled ? (user?.id ?? null) : null,
+        origem: "manual",
+      };
       const response = await fetch(`/api/produtos-catalogo/${selected.id}`, {
-        method: "PATCH", headers: authHeaders(true), body: JSON.stringify({ descricaoLonga, especificacoes, tags }),
+        method: "PATCH", headers: authHeaders(true), body: JSON.stringify({ descricaoLonga, especificacoes, tags, inteligenciaComercial }),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || "Não foi possível salvar as informações do produto.");
