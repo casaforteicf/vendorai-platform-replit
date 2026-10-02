@@ -1,13 +1,19 @@
 import { randomUUID } from "node:crypto";
 import { Router, type IRouter } from "express";
 import { z } from "zod";
+import multer from "multer";
 import { pool } from "@workspace/db";
 import { requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth.js";
 import { callOpenAI } from "../lib/ai-gateway.js";
+import { extractBusinessDataFromDocuments } from "../lib/document-extraction.js";
 import { PLAN_SECTIONS, ROLE_SECTIONS, type PlanSectionId } from "../services/business-plan-model.js";
 import { loadBusinessPlan, loadBusinessPlanSources, loadApprovedBusinessContext, saveBusinessPlanSection, validateBusinessReferences } from "../services/business-plan.js";
 
 const router: IRouter = Router();
+const discoveryUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 5 },
+});
 const base = "/tenants/:tenantId/business-plan";
 router.use(base, requireSameTenanOrSuperAdmin());
 const recordSchema = z.object({
@@ -236,6 +242,133 @@ router.put(`${base}/sections/:section`, async (req, res) => {
     res.json({ plan });
   } catch (error) { handleError(res, error); }
 });
+router.post(
+  `${base}/discovery-documentos`,
+  discoveryUpload.array("files", 5),
+  async (req, res) => {
+    const files = (req.files as Express.Multer.File[]) ?? [];
+    if (!files.length) {
+      res.status(422).json({ error: "Selecione ao menos um documento." });
+      return;
+    }
+
+    try {
+      const tenantId = String(req.params.tenantId);
+      const extracted = await extractBusinessDataFromDocuments(
+        files.map((file) => ({
+          buffer: file.buffer,
+          mimeType: file.mimetype,
+          originalName: file.originalname,
+        })),
+        tenantId,
+      );
+
+      const origem = `Documentos analisados: ${files.map((file) => file.originalname).join(", ")}`;
+      const registros: Array<{ secao: PlanSectionId; records: any[] }> = [];
+
+      const companyValues: Record<string, string> = {};
+      if (extracted.historia) companyValues["História e atuação"] = extracted.historia;
+      if (extracted.missao || extracted.visao || extracted.valores?.length) {
+        companyValues["Missão, visão e valores"] = [
+          extracted.missao ? `Missão: ${extracted.missao}` : "",
+          extracted.visao ? `Visão: ${extracted.visao}` : "",
+          extracted.valores?.length ? `Valores: ${extracted.valores.join(", ")}` : "",
+        ].filter(Boolean).join("\n");
+      }
+      if (Object.keys(companyValues).length) {
+        registros.push({
+          secao: "company",
+          records: [{
+            id: randomUUID(),
+            title: extracted.nomeFantasia || "Informações institucionais extraídas",
+            values: companyValues,
+            source: origem,
+            evidence: "declared",
+            productIds: [],
+            assetIds: [],
+          }],
+        });
+      }
+
+      if (extracted.publicoAlvo) {
+        registros.push({
+          secao: "segments",
+          records: [{
+            id: randomUUID(),
+            title: "Público identificado nos documentos",
+            values: { "Segmento e perfil ideal": extracted.publicoAlvo },
+            source: origem,
+            evidence: "declared",
+            productIds: [],
+            assetIds: [],
+          }],
+        });
+      }
+
+      if (extracted.produtos?.length) {
+        registros.push({
+          secao: "products",
+          records: extracted.produtos.slice(0, 20).map((product) => ({
+            id: randomUUID(),
+            title: product.nome,
+            values: {
+              "Produto ou serviço": [product.nome, product.descricao].filter(Boolean).join(" — "),
+              ...(product.preco != null ? { "Limites e condições da oferta": `Preço citado no documento: R$ ${Number(product.preco).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` } : {}),
+            },
+            source: origem,
+            evidence: "declared",
+            productIds: [],
+            assetIds: [],
+          })),
+        });
+      }
+
+      if (extracted.diferenciais) {
+        registros.push({
+          secao: "positioning",
+          records: [{
+            id: randomUUID(),
+            title: "Diferenciais extraídos dos documentos",
+            values: { "Diferenciais comprovados": extracted.diferenciais },
+            source: origem,
+            evidence: "declared",
+            productIds: [],
+            assetIds: [],
+          }],
+        });
+      }
+
+      if (extracted.concorrentes?.length || extracted.canaisVenda?.length) {
+        registros.push({
+          secao: "swot",
+          records: [{
+            id: randomUUID(),
+            title: "Mercado e canais citados nos documentos",
+            values: {
+              ...(extracted.concorrentes?.length ? { "Mercado e concorrentes": extracted.concorrentes.join(", ") } : {}),
+              ...(extracted.canaisVenda?.length ? { "Evidências e ações prioritárias": `Canais citados: ${extracted.canaisVenda.join(", ")}` } : {}),
+            },
+            source: origem,
+            evidence: "declared",
+            productIds: [],
+            assetIds: [],
+          }],
+        });
+      }
+
+      res.setHeader("Cache-Control", "no-store");
+      res.json({
+        extracao: extracted,
+        sugestoes: registros,
+        status: "rascunho",
+        aviso: "Os documentos foram analisados. Revise cada sugestão antes de adicionar ao Plano de Negócios.",
+      });
+    } catch (error) {
+      handleError(res, error);
+    }
+  },
+);
+
 router.post(`${base}/discovery-inteligente`, async (req, res) => {
   const parsed = discoveryInteligenteSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
