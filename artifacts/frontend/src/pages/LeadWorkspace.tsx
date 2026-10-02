@@ -227,6 +227,7 @@ export default function LeadWorkspace() {
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error ?? result.message ?? "Não foi possível salvar as respostas da etapa.");
       await qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId, { leadId: id }) });
+      await qc.invalidateQueries({ queryKey: ["customer-intelligence-v2", tenantId, id] });
     } catch (error) {
       toast({ title: "Erro ao salvar respostas", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
     } finally {
