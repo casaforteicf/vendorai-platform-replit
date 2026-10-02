@@ -27,7 +27,7 @@ interface BugReport {
   tenantId: string;
   tenantName: string | null;
   conversationId: string | null;
-  resolvidoPor: "agente" | "humano" | null;
+  resolvidoPor: "agente" | "humano" | "dev_ia" | null;
   titulo: string;
   descricao: string;
   categoria: "bug" | "duvida" | "sugestao";
@@ -180,11 +180,24 @@ export default function SupportAdmin() {
       if (!r.ok) throw new Error(body?.error ?? "Não foi possível gerar a demanda.");
       return body;
     },
-    onSuccess: (body) => {
+    onSuccess: async (body) => {
       qc.invalidateQueries({ queryKey: ["admin", "improvements"] });
+      if (body?.created && body?.improvement?.id) {
+        const start = await fetch("/api/admin/improvements/" + body.improvement.id + "/start-agent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+        });
+        if (!start.ok) {
+          toast({
+            title: "Demanda criada",
+            description: "A melhoria entrou na fila, mas o Vendi não conseguiu iniciar imediatamente. Ela poderá ser retomada pela Central de Melhorias.",
+          });
+          return;
+        }
+      }
       toast({
-        title: body?.created ? "Demanda criada em Melhorias" : "Chamado vinculado à melhoria existente",
-        description: "O Vendi passa a acompanhar desenvolvimento, testes e publicação pelo fluxo controlado.",
+        title: body?.created ? "Demanda criada e Vendi iniciado" : "Chamado vinculado à melhoria existente",
+        description: "Desenvolvimento, testes e publicação seguem pelo fluxo controlado de Melhorias & Publicações.",
       });
     },
     onError: (error) => toast({
