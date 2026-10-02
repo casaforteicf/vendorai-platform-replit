@@ -345,9 +345,10 @@ async function preflightBranch(branchInput: string) {
   };
 }
 
-async function createPullRequest(args: { title: string; body: string; head: string }) {
+async function createPullRequest(args: { title: string; body: string; head: string; base?: "main" | "staging" }) {
   const { owner, repo } = githubConfig();
   const head = normalizeBranch(args.head);
+  const base = args.base ?? "main";
   const preflight = await preflightBranch(head);
   if (!preflight.passed) {
     const summary = preflight.findings.slice(0, 6).map((item) => `${item.title}${item.file ? ` (${item.file})` : ""}: ${item.detail}`).join("; ");
@@ -356,7 +357,7 @@ async function createPullRequest(args: { title: string; body: string; head: stri
     (error as any).preflight = preflight;
     throw error;
   }
-  const data = await gh(`/repos/${owner}/${repo}/pulls`, { method: "POST", body: JSON.stringify({ title: args.title.slice(0, 120), body: args.body.slice(0, 12000), head, base: "main", draft: false }) });
+  const data = await gh(`/repos/${owner}/${repo}/pulls`, { method: "POST", body: JSON.stringify({ title: args.title.slice(0, 120), body: args.body.slice(0, 12000), head, base, draft: false }) });
   return { number: data.number, url: data.html_url, headSha: data.head?.sha, mergeable: data.mergeable, changedFiles: preflight.changedFiles, preflight: { passed: true, checkedAt: new Date().toISOString() } };
 }
 
@@ -450,7 +451,11 @@ const tools: any[] = [
   { type: "function", function: { name: "merge_pr", description: "Faz squash merge apenas se PR dev-ia/ for não crítico, mergeável, gates Vercel relevantes verdes, aprovado por revisor adversarial e ainda estiver no mesmo SHA/atualizado contra main imediatamente antes do merge. Depois exige validação real de produção; backend passa pelo ci:railway.", parameters: { type: "object", properties: { number: { type: "integer" } }, required: ["number"], additionalProperties: false } } },
 ];
 
-async function runTool(name: string, args: any) {
+async function runTool(
+  name: string,
+  args: any,
+  policy: { targetBase: "main" | "staging"; allowMerge: boolean },
+) {
   switch (name) {
     case "search_code": return searchCode(String(args.query ?? ""));
     case "get_file": return getFile(String(args.path ?? ""), String(args.ref ?? "main"));
@@ -461,9 +466,15 @@ async function runTool(name: string, args: any) {
     case "create_file": return createFile({ path: String(args.path ?? ""), content: String(args.content ?? ""), branch: String(args.branch ?? ""), message: String(args.message ?? "Dev IA create file") });
     case "compare_branch": return compareBranch(String(args.branch ?? ""));
     case "preflight_branch": return preflightBranch(String(args.branch ?? ""));
-    case "create_pr": return createPullRequest({ title: String(args.title ?? "Dev IA change"), body: String(args.body ?? ""), head: String(args.head ?? "") });
+    case "create_pr": return createPullRequest({ title: String(args.title ?? "Dev IA change"), body: String(args.body ?? ""), head: String(args.head ?? ""), base: policy.targetBase });
     case "get_pr": return getPullRequest(Number(args.number));
-    case "merge_pr": return mergePullRequest(Number(args.number));
+    case "merge_pr":
+      if (!policy.allowMerge) {
+        const error = new Error("approval_required: merge em produção é controlado pela Central de Melhorias & Publicações");
+        (error as any).code = "APPROVAL_REQUIRED";
+        throw error;
+      }
+      return mergePullRequest(Number(args.number));
     default: throw new Error(`Ferramenta desconhecida: ${name}`);
   }
 }
@@ -473,7 +484,7 @@ export type DevAutonomousExecutionInput = {
   request: string;
   diagnosis?: string;
   route: string;
-  source?: "super_admin" | "support_handoff";
+  source?: "super_admin" | "support_handoff" | "release_center";
 };
 
 export async function executeDevAutonomousWork(input: DevAutonomousExecutionInput) {
@@ -512,6 +523,12 @@ export async function executeDevAutonomousWork(input: DevAutonomousExecutionInpu
     { role: "user", content: JSON.stringify({ requestId: parsed.requestId, route: parsed.route, pedido: parsed.request, diagnostico_previo: parsed.diagnosis, origem: input.source ?? "super_admin", conselho_de_especialistas: council, plano_de_engenharia: plan }) },
   ];
   const actions = [...baseActions];
+  const source = input.source ?? "super_admin";
+  const releaseControlled = source === "support_handoff" || source === "release_center";
+  const executionPolicy = {
+    targetBase: (releaseControlled ? "staging" : "main") as "main" | "staging",
+    allowMerge: !releaseControlled,
+  };
   const executorEngines = new Set<string>();
   const executorFallbacks: string[] = [];
 
@@ -559,7 +576,7 @@ export async function executeDevAutonomousWork(input: DevAutonomousExecutionInpu
       let args: any = {};
       try { args = JSON.parse(call.function?.arguments ?? "{}"); } catch { args = {}; }
       try {
-        const result = await runTool(name, args);
+        const result = await runTool(name, args, executionPolicy);
         const compactDetail = name === "get_file"
           ? { path: result.path, ref: result.ref, sha: result.sha }
           : name === "compare_branch"
