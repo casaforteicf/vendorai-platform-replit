@@ -1,25 +1,27 @@
-name: Merge & Publish Agent
+name: Merge e Publicação Controlados
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       pr_number:
-        description: Pull request number
+        description: Número do Pull Request homologado
         required: true
         type: string
       confirmation:
-        description: Type PUBLICAR to merge and publish
+        description: Digite PUBLICAR para autorizar merge e publicação
         required: true
+        type: string
+      critical_confirmation:
+        description: Para mudança crítica, digite APROVAR CRITICO
+        required: false
         type: string
 
 permissions:
   contents: write
   pull-requests: write
-  actions: write
+  actions: read
   checks: read
-  statuses: read
+  statuses: write
 
 concurrency:
   group: vendorai-production-release
@@ -31,96 +33,146 @@ env:
   WEBSITE_URL: https://appvendorai.com
 
 jobs:
-  merge-publish:
-    if: github.event_name == 'workflow_dispatch'
+  merge-publicar:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 55
     steps:
-      - name: Guard confirmation
+      - name: Validar autorização explícita
         run: |
           set -euo pipefail
           test "${{ inputs.confirmation }}" = "PUBLICAR"
 
-      - name: Inspect PR
+      - name: Inspecionar PR e classificar risco
         id: pr
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ inputs.pr_number }}
           REPO: ${{ github.repository }}
+          CRITICAL_CONFIRMATION: ${{ inputs.critical_confirmation }}
         run: |
           set -euo pipefail
           [[ "$PR" =~ ^[0-9]+$ ]]
+
           data="$(gh api "repos/$REPO/pulls/$PR")"
-          test "$(jq -r .state <<<"$data")" = open
-          test "$(jq -r .draft <<<"$data")" = false
-          test "$(jq -r .base.ref <<<"$data")" = main
+          test "$(jq -r .state <<<"$data")" = "open"
+          test "$(jq -r .draft <<<"$data")" = "false"
+          test "$(jq -r .base.ref <<<"$data")" = "main"
           test "$(jq -r '.head.repo.full_name' <<<"$data")" = "$REPO"
 
           head_sha="$(jq -r .head.sha <<<"$data")"
+          base_sha="$(jq -r .base.sha <<<"$data")"
           gh api --paginate "repos/$REPO/pulls/$PR/files?per_page=100" --jq '.[].filename' > /tmp/files
 
-          critical='(^|/)(migrations?|auth)(/|$)|(^|/)schema\.(ts|sql)$|billing|payment|subscription|secrets?|^\.github/workflows/|^cloudflare/|railway|terraform|(^|/)docker|(^|/)rls(/|$)|(^|/)\.env'
-          if grep -Eiq "$critical" /tmp/files; then
-            echo "Blocked: critical paths require human review."
-            grep -Ein "$critical" /tmp/files || true
-            exit 1
+          critical_re='(^|/)(migrations?|auth)(/|$)|(^|/)schema\.(ts|sql)$|billing|payment|subscription|secrets?|^\.github/workflows/|^cloudflare/|railway|terraform|(^|/)docker|(^|/)rls(/|$)|(^|/)\.env'
+          critical=false
+          if grep -Eiq "$critical_re" /tmp/files; then
+            critical=true
+            echo "Mudança crítica detectada:"
+            grep -Ein "$critical_re" /tmp/files || true
+            if [ "$CRITICAL_CONFIRMATION" != "APROVAR CRITICO" ]; then
+              echo "::error::Mudança crítica exige confirmação adicional: APROVAR CRITICO"
+              exit 1
+            fi
           fi
 
           backend=false
           app=false
           website=false
           mobile=false
-
           shared='^(pnpm-lock.yaml$|pnpm-workspace.yaml$|package.json$|\.node-version$)'
+
           if grep -Eq '^(artifacts/api-server/|lib/db/|lib/api-zod/|lib/vendor-brain/|lib/integrations-anthropic-ai/|backend/Dockerfile$)' /tmp/files || grep -Eq "$shared" /tmp/files; then backend=true; fi
           if grep -Eq '^(artifacts/frontend/|artifacts/api-server/|lib/db/|lib/api-zod/|lib/api-client-react/|lib/vendor-brain/|backend/Dockerfile$)' /tmp/files || grep -Eq "$shared" /tmp/files; then app=true; fi
           if grep -Eq '^(artifacts/website/|lib/vendor-brain/)' /tmp/files || grep -Eq "$shared" /tmp/files; then website=true; fi
           if grep -Eq '^artifacts/mobile/' /tmp/files; then mobile=true; fi
 
-          release_required=false
-          if [ "$backend" = true ] || [ "$app" = true ] || [ "$website" = true ] || [ "$mobile" = true ]; then release_required=true; fi
-
           echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$base_sha" >> "$GITHUB_OUTPUT"
+          echo "critical=$critical" >> "$GITHUB_OUTPUT"
           echo "backend=$backend" >> "$GITHUB_OUTPUT"
           echo "app=$app" >> "$GITHUB_OUTPUT"
           echo "website=$website" >> "$GITHUB_OUTPUT"
           echo "mobile=$mobile" >> "$GITHUB_OUTPUT"
-          echo "release_required=$release_required" >> "$GITHUB_OUTPUT"
-          echo "Release matrix: backend=$backend app=$app website=$website mobile=$mobile"
 
-      - name: Confirm mergeability
+      - name: Validar que o PR está atualizado e mergeável
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ inputs.pr_number }}
           REPO: ${{ github.repository }}
+          EXPECTED: ${{ steps.pr.outputs.head_sha }}
         run: |
           set -euo pipefail
           for n in {1..12}; do
             data="$(gh api "repos/$REPO/pulls/$PR")"
+            test "$(jq -r .head.sha <<<"$data")" = "$EXPECTED"
+
             mergeable="$(jq -r .mergeable <<<"$data")"
             state="$(jq -r .mergeable_state <<<"$data")"
             echo "mergeable=$mergeable state=$state"
-            if [ "$mergeable" = true ] && [ "$state" != behind ] && [ "$state" != dirty ] && [ "$state" != blocked ]; then exit 0; fi
-            if [ "$mergeable" = false ] || [ "$state" = behind ] || [ "$state" = dirty ]; then exit 1; fi
+
+            if [ "$mergeable" = "true" ] && [ "$state" != "behind" ] && [ "$state" != "dirty" ] && [ "$state" != "blocked" ]; then
+              exit 0
+            fi
+            if [ "$mergeable" = "false" ] || [ "$state" = "behind" ] || [ "$state" = "dirty" ]; then
+              exit 1
+            fi
             sleep 5
           done
           exit 1
+
+      - name: Exigir CI verde no SHA exato do PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD: ${{ steps.pr.outputs.head_sha }}
+          BACKEND: ${{ steps.pr.outputs.backend }}
+          APP: ${{ steps.pr.outputs.app }}
+        run: |
+          set -euo pipefail
+
+          runs="$(gh api "repos/$REPO/actions/runs?head_sha=$HEAD&event=pull_request&per_page=100")"
+
+          require_workflow() {
+            local workflow="$1"
+            local row
+            row="$(jq -c --arg workflow "$workflow" '
+              [.workflow_runs[] | select(.name == $workflow)] |
+              sort_by(.created_at) | last // empty
+            ' <<<"$runs")"
+
+            if [ -z "$row" ]; then
+              echo "::error::Workflow obrigatório não encontrado para $HEAD: $workflow"
+              exit 1
+            fi
+
+            status="$(jq -r .status <<<"$row")"
+            conclusion="$(jq -r '.conclusion // empty' <<<"$row")"
+            echo "$workflow: status=$status conclusion=$conclusion"
+
+            test "$status" = "completed"
+            test "$conclusion" = "success"
+          }
+
+          if [ "$BACKEND" = "true" ] || [ "$APP" = "true" ]; then
+            require_workflow "VendorAI Stability Gate"
+          fi
+
+          if [ "$BACKEND" = "true" ]; then
+            require_workflow "VendorAI API CI"
+            require_workflow "Cloudflare API Container"
+          fi
+
+          if [ "$APP" = "true" ]; then
+            require_workflow "Frontend PR Check"
+          fi
+
+          # Statuses externos não relacionados ao VendorAI (ex.: previews Vercel
+          # bloqueados por conta) não podem mascarar os gates internos oficiais.
 
       - uses: actions/checkout@v4
         with:
           ref: ${{ steps.pr.outputs.head_sha }}
           fetch-depth: 0
-
-      - name: Guard against main race
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          HEAD: ${{ steps.pr.outputs.head_sha }}
-        run: |
-          set -euo pipefail
-          main="$(gh api "repos/$REPO/commits/main" --jq .sha)"
-          behind="$(gh api "repos/$REPO/compare/$main...$HEAD" --jq .behind_by)"
-          test "$behind" = 0
 
       - uses: pnpm/action-setup@v4
         with:
@@ -132,38 +184,44 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
 
-      - name: Install
-        run: pnpm install --no-frozen-lockfile
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
 
-      - name: Typecheck
-        run: pnpm run typecheck
+      - name: Validação final das bibliotecas compartilhadas
+        run: pnpm run typecheck:libs
 
-      - name: Validate backend production contract
+      - name: Validar contrato de produção da API
         if: steps.pr.outputs.backend == 'true'
         run: pnpm --filter @workspace/api-server run ci:railway
 
-      - name: Validate frontend build
+      - name: Validar build do app
         if: steps.pr.outputs.app == 'true'
         env:
           VENDOR_BUILD_ID: ${{ steps.pr.outputs.head_sha }}
         run: pnpm --filter @workspace/frontend build
 
-      - name: Recheck exact PR head
+      - name: Trava contra corrida da main e alteração do PR
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ inputs.pr_number }}
           REPO: ${{ github.repository }}
-          EXPECTED: ${{ steps.pr.outputs.head_sha }}
+          EXPECTED_HEAD: ${{ steps.pr.outputs.head_sha }}
+          EXPECTED_BASE: ${{ steps.pr.outputs.base_sha }}
         run: |
           set -euo pipefail
           data="$(gh api "repos/$REPO/pulls/$PR")"
-          test "$(jq -r .head.sha <<<"$data")" = "$EXPECTED"
-          test "$(jq -r .state <<<"$data")" = open
-          test "$(jq -r .draft <<<"$data")" = false
-          main="$(gh api "repos/$REPO/commits/main" --jq .sha)"
-          test "$(gh api "repos/$REPO/compare/$main...$EXPECTED" --jq .behind_by)" = 0
+          test "$(jq -r .head.sha <<<"$data")" = "$EXPECTED_HEAD"
+          test "$(jq -r .state <<<"$data")" = "open"
+          test "$(jq -r .draft <<<"$data")" = "false"
 
-      - name: Squash merge
+          current_main="$(gh api "repos/$REPO/commits/main" --jq .sha)"
+          if [ "$current_main" != "$EXPECTED_BASE" ]; then
+            echo "::error::A main mudou desde a homologação deste PR. Atualize/rebase e rode os checks novamente."
+            echo "base homologada=$EXPECTED_BASE main atual=$current_main"
+            exit 1
+          fi
+
+      - name: Merge squash autorizado
         id: merge
         env:
           GH_TOKEN: ${{ github.token }}
@@ -173,235 +231,15 @@ jobs:
         run: |
           set -euo pipefail
           result="$(gh api --method PUT "repos/$REPO/pulls/$PR/merge" -f merge_method=squash -f sha="$EXPECTED")"
-          test "$(jq -r .merged <<<"$result")" = true
+          test "$(jq -r .merged <<<"$result")" = "true"
           sha="$(jq -r .sha <<<"$result")"
           test -n "$sha"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
-      - name: Verify Railway revision
+      - name: Aguardar revisão Railway do merge autorizado
         if: steps.pr.outputs.backend == 'true'
         env:
           EXPECTED: ${{ steps.merge.outputs.sha }}
-        run: |
-          set -euo pipefail
-          for n in {1..36}; do
-            headers="$(mktemp)"
-            body="$(mktemp)"
-            code="$(curl -sS --connect-timeout 5 --max-time 15 -D "$headers" -o "$body" -w '%{http_code}' "$API_HEALTH_URL" || true)"
-            health="$(jq -r '.status // empty' "$body" 2>/dev/null || true)"
-            rev="$(awk 'BEGIN{IGNORECASE=1} /^X-VendorAI-Revision:/ {gsub("\r","",$2); print $2}' "$headers" | tail -1)"
-            rm -f "$headers" "$body"
-            echo "railway http=$code health=$health revision=$rev"
-            if [ "$code" = 200 ] && [ "$health" = ok ] && { [ "$rev" = "$EXPECTED" ] || [[ "$EXPECTED" == "$rev"* ]] || [[ "$rev" == "$EXPECTED"* ]]; }; then exit 0; fi
-            sleep 10
-          done
-          exit 1
-
-      - name: Rebuild frontend for merged revision
-        if: steps.pr.outputs.app == 'true'
-        env:
-          VENDOR_BUILD_ID: ${{ steps.merge.outputs.sha }}
-        run: pnpm --filter @workspace/frontend build
-
-      - name: Publish frontend directly to Cloudflare Pages
-        id: primary_frontend_publish
-        continue-on-error: true
-        if: steps.pr.outputs.app == 'true'
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          set -euo pipefail
-          test -n "$CLOUDFLARE_API_TOKEN"
-          test -n "$CLOUDFLARE_ACCOUNT_ID"
-          test -f artifacts/frontend/dist/public/index.html
-          test -f artifacts/frontend/dist/public/_worker.js
-          pnpm dlx wrangler@3.90.0 pages project create vendorai --production-branch main || true
-          pnpm dlx wrangler@3.90.0 pages deploy artifacts/frontend/dist/public --project-name vendorai --branch main
-
-      - name: Verify published frontend revision
-        if: steps.pr.outputs.app == 'true'
-        env:
-          EXPECTED: ${{ steps.merge.outputs.sha }}
-        run: |
-          set -euo pipefail
-          prefix="${EXPECTED:0:12}"
-          for n in {1..24}; do
-            html="$(curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$FRONTEND_URL/?__vendorai_release=$RANDOM" || true)"
-            if grep -F -- "-$prefix-" <<<"$html" >/dev/null; then
-              echo "Cloudflare frontend matches merged revision $EXPECTED (primary or Railway fallback route)"
-              exit 0
-            fi
-            echo "Waiting for Cloudflare frontend revision $prefix (attempt $n)"
-            sleep 10
-          done
-          echo "Neither primary publish nor Railway fallback exposed expected frontend revision $prefix."
-          exit 1
-
-      - name: Build website
-        if: steps.pr.outputs.website == 'true' && steps.pr.outputs.mobile != 'true'
-        run: pnpm --filter @workspace/website build
-
-      - name: Publish website directly to Cloudflare Pages
-        id: primary_website_publish
-        continue-on-error: true
-        if: steps.pr.outputs.website == 'true' && steps.pr.outputs.mobile != 'true'
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          set -euo pipefail
-          test -n "$CLOUDFLARE_API_TOKEN"
-          test -n "$CLOUDFLARE_ACCOUNT_ID"
-          test -f artifacts/website/dist/public/index.html
-          test -f artifacts/website/dist/public/_worker.js
-          pnpm dlx wrangler@3.90.0 pages project create vendorai-website --production-branch main || true
-          pnpm dlx wrangler@3.90.0 pages deploy artifacts/website/dist/public --project-name vendorai-website --branch main
-
-      - name: Dispatch mobile APK release
-        if: steps.pr.outputs.mobile == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          gh workflow run jarvis-android-apk.yml --repo "$REPO" --ref main
-
-      - name: Wait for mobile APK release
-        if: steps.pr.outputs.mobile == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          EXPECTED: ${{ steps.merge.outputs.sha }}
-        run: |
-          set -euo pipefail
-          run_id=""
-          for n in {1..24}; do
-            runs="$(gh api "repos/$REPO/actions/workflows/jarvis-android-apk.yml/runs?event=workflow_dispatch&head_sha=$EXPECTED&per_page=10")"
-            run_id="$(jq -r '.workflow_runs[0].id // empty' <<<"$runs")"
-            [ -n "$run_id" ] && break
-            sleep 5
-          done
-          test -n "$run_id"
-
-          for n in {1..120}; do
-            run="$(gh api "repos/$REPO/actions/runs/$run_id")"
-            status="$(jq -r '.status' <<<"$run")"
-            conclusion="$(jq -r '.conclusion // empty' <<<"$run")"
-            echo "mobile run=$run_id status=$status conclusion=$conclusion"
-            if [ "$status" = completed ]; then
-              test "$conclusion" = success
-              exit 0
-            fi
-            sleep 15
-          done
-          exit 1
-
-      - name: Smoke test app and API
-        if: steps.pr.outputs.app == 'true' || steps.pr.outputs.backend == 'true'
-        run: |
-          set -euo pipefail
-          curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$FRONTEND_URL/login" >/dev/null
-          curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$API_HEALTH_URL" >/dev/null
-
-      - name: Smoke test public website
-        if: steps.pr.outputs.website == 'true' || steps.pr.outputs.mobile == 'true'
-        run: |
-          set -euo pipefail
-          curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$WEBSITE_URL/" >/dev/null
-
-      - name: Record success
-        if: success()
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR: ${{ inputs.pr_number }}
-          REPO: ${{ github.repository }}
-          SHA: ${{ steps.merge.outputs.sha }}
-        run: |
-          gh pr comment "$PR" --repo "$REPO" --body "✅ Merge & Publish Agent: merge concluído em $SHA. Matriz de publicação executada e destinos aplicáveis validados em produção."
-
-      - name: Record post-merge failure
-        if: failure() && steps.merge.outputs.sha != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR: ${{ inputs.pr_number }}
-          REPO: ${{ github.repository }}
-          SHA: ${{ steps.merge.outputs.sha }}
-        run: |
-          gh pr comment "$PR" --repo "$REPO" --body "⚠️ Merge & Publish Agent: o merge $SHA entrou na main, mas a publicação não foi validada. Rollback automático foi bloqueado por segurança."
-
-  publish-main-push:
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    timeout-minutes: 75
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-
-      - name: Classify main push
-        id: release
-        shell: bash
-        env:
-          BEFORE_SHA: ${{ github.event.before }}
-          CURRENT_SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          if [ -n "${BEFORE_SHA:-}" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ] && git cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null; then
-            git diff --name-only "$BEFORE_SHA" "$CURRENT_SHA" > /tmp/files
-          else
-            git diff-tree --no-commit-id --name-only -r "$CURRENT_SHA" > /tmp/files
-          fi
-
-          echo "Changed files:"
-          cat /tmp/files
-
-          backend=false
-          app=false
-          website=false
-          mobile=false
-          critical=false
-
-          shared='^(pnpm-lock.yaml$|pnpm-workspace.yaml$|package.json$|\.node-version$)'
-          critical_re='(^|/)(migrations?|auth)(/|$)|(^|/)schema\.(ts|sql)$|billing|payment|subscription|secrets?|^\.github/workflows/|^cloudflare/|railway|terraform|(^|/)docker|(^|/)rls(/|$)|(^|/)\.env'
-
-          if grep -Eiq "$critical_re" /tmp/files; then critical=true; fi
-          if grep -Eq '^(artifacts/api-server/|lib/db/|lib/api-zod/|lib/vendor-brain/|lib/integrations-anthropic-ai/|backend/Dockerfile$)' /tmp/files || grep -Eq "$shared" /tmp/files; then backend=true; fi
-          if grep -Eq '^(artifacts/frontend/|artifacts/api-server/|lib/db/|lib/api-zod/|lib/api-client-react/|lib/vendor-brain/|backend/Dockerfile$)' /tmp/files || grep -Eq "$shared" /tmp/files; then app=true; fi
-          if grep -Eq '^(artifacts/website/|lib/vendor-brain/)' /tmp/files || grep -Eq "$shared" /tmp/files; then website=true; fi
-          if grep -Eq '^artifacts/mobile/' /tmp/files; then mobile=true; fi
-
-          release_required=false
-          if [ "$backend" = true ] || [ "$app" = true ] || [ "$website" = true ] || [ "$mobile" = true ]; then release_required=true; fi
-
-          echo "backend=$backend" >> "$GITHUB_OUTPUT"
-          echo "app=$app" >> "$GITHUB_OUTPUT"
-          echo "website=$website" >> "$GITHUB_OUTPUT"
-          echo "mobile=$mobile" >> "$GITHUB_OUTPUT"
-          echo "critical=$critical" >> "$GITHUB_OUTPUT"
-          echo "release_required=$release_required" >> "$GITHUB_OUTPUT"
-          echo "Safety-net matrix: backend=$backend app=$app website=$website mobile=$mobile critical=$critical"
-
-      - uses: pnpm/action-setup@v4
-        if: steps.release.outputs.release_required == 'true'
-        with:
-          version: 10.26.1
-          run_install: false
-
-      - uses: actions/setup-node@v4
-        if: steps.release.outputs.release_required == 'true'
-        with:
-          node-version-file: .node-version
-          cache: pnpm
-
-      - name: Install dependencies
-        if: steps.release.outputs.release_required == 'true'
-        run: pnpm install --no-frozen-lockfile
-
-      - name: Wait for Railway production revision
-        if: steps.release.outputs.backend == 'true'
-        env:
-          EXPECTED: ${{ github.sha }}
         run: |
           set -euo pipefail
           for n in {1..42}; do
@@ -412,22 +250,22 @@ jobs:
             rev="$(awk 'BEGIN{IGNORECASE=1} /^X-VendorAI-Revision:/ {gsub("\r","",$2); print $2}' "$headers" | tail -1)"
             rm -f "$headers" "$body"
             echo "railway http=$code health=$health revision=$rev"
-            if [ "$code" = 200 ] && [ "$health" = ok ] && { [ "$rev" = "$EXPECTED" ] || [[ "$EXPECTED" == "$rev"* ]] || [[ "$rev" == "$EXPECTED"* ]]; }; then exit 0; fi
+            if [ "$code" = "200" ] && [ "$health" = "ok" ] && { [ "$rev" = "$EXPECTED" ] || [[ "$EXPECTED" == "$rev"* ]] || [[ "$rev" == "$EXPECTED"* ]]; }; then
+              exit 0
+            fi
             sleep 10
           done
-          echo "::error::Railway did not reach main SHA $EXPECTED"
+          echo "::error::Railway não atingiu o SHA autorizado $EXPECTED"
           exit 1
 
-      - name: Build app frontend
-        if: steps.release.outputs.app == 'true'
+      - name: Rebuild do app para o SHA resultante do merge
+        if: steps.pr.outputs.app == 'true'
         env:
-          VENDOR_BUILD_ID: ${{ github.sha }}
+          VENDOR_BUILD_ID: ${{ steps.merge.outputs.sha }}
         run: pnpm --filter @workspace/frontend build
 
-      - name: Publish app frontend
-        id: push_primary_frontend_publish
-        continue-on-error: true
-        if: steps.release.outputs.app == 'true'
+      - name: Publicar app no Cloudflare Pages
+        if: steps.pr.outputs.app == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -440,41 +278,43 @@ jobs:
           pnpm dlx wrangler@3.90.0 pages project create vendorai --production-branch main || true
           pnpm dlx wrangler@3.90.0 pages deploy artifacts/frontend/dist/public --project-name vendorai --branch main
 
-      - name: Verify app frontend revision
-        if: steps.release.outputs.app == 'true'
+      - name: Validar revisão publicada do app
+        if: steps.pr.outputs.app == 'true'
         env:
-          EXPECTED: ${{ github.sha }}
+          EXPECTED: ${{ steps.merge.outputs.sha }}
         run: |
           set -euo pipefail
           prefix="${EXPECTED:0:12}"
-          for n in {1..24}; do
+          for n in {1..30}; do
             html="$(curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$FRONTEND_URL/?__vendorai_release=$RANDOM" || true)"
-            if grep -F -- "-$prefix-" <<<"$html" >/dev/null; then exit 0; fi
+            if grep -F -- "-$prefix-" <<<"$html" >/dev/null; then
+              exit 0
+            fi
             sleep 10
           done
-          echo "::error::Neither primary publish nor Railway fallback exposed app revision $prefix"
+          echo "::error::Frontend não expôs a revisão $prefix"
           exit 1
 
-      - name: Build public website
-        if: steps.release.outputs.website == 'true' && steps.release.outputs.mobile != 'true'
+      - name: Build do site público
+        if: steps.pr.outputs.website == 'true' && steps.pr.outputs.mobile != 'true'
         run: pnpm --filter @workspace/website build
 
-      - name: Publish public website
-        id: push_primary_website_publish
-        continue-on-error: true
-        if: steps.release.outputs.website == 'true' && steps.release.outputs.mobile != 'true'
+      - name: Publicar site público
+        if: steps.pr.outputs.website == 'true' && steps.pr.outputs.mobile != 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
           test -f artifacts/website/dist/public/index.html
           test -f artifacts/website/dist/public/_worker.js
           pnpm dlx wrangler@3.90.0 pages project create vendorai-website --production-branch main || true
           pnpm dlx wrangler@3.90.0 pages deploy artifacts/website/dist/public --project-name vendorai-website --branch main
 
-      - name: Dispatch mobile APK release
-        if: steps.release.outputs.mobile == 'true'
+      - name: Disparar build do APK
+        if: steps.pr.outputs.mobile == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -482,45 +322,39 @@ jobs:
           set -euo pipefail
           gh workflow run jarvis-android-apk.yml --repo "$REPO" --ref main
 
-      - name: Smoke test app/API
-        if: steps.release.outputs.app == 'true' || steps.release.outputs.backend == 'true'
+      - name: Smoke test app e API
+        if: steps.pr.outputs.app == 'true' || steps.pr.outputs.backend == 'true'
         run: |
           set -euo pipefail
           curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$FRONTEND_URL/login" >/dev/null
           curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$API_HEALTH_URL" >/dev/null
 
-      - name: Smoke test public website
-        if: steps.release.outputs.website == 'true' || steps.release.outputs.mobile == 'true'
+      - name: Smoke test site público
+        if: steps.pr.outputs.website == 'true' || steps.pr.outputs.mobile == 'true'
         run: curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$WEBSITE_URL/" >/dev/null
 
-      - name: Report critical direct-main change
-        if: steps.release.outputs.critical == 'true'
-        run: echo "::warning::Critical files reached main outside guarded Merge & Publish; relevant publication checks were still applied."
-
-      - name: Confirm release success
+      - name: Registrar publicação validada
         if: success()
         env:
           GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr_number }}
           REPO: ${{ github.repository }}
-          SHA: ${{ github.sha }}
+          SHA: ${{ steps.merge.outputs.sha }}
         run: |
           set -euo pipefail
-          gh api --method POST "repos/$REPO/statuses/$SHA" \
-            -f state=success \
-            -f context='vendorai/merge-publish' \
-            -f description='CONCLUÍDO — publicado e validado em produção' >/dev/null
-          echo "✅ CONCLUÍDO — publicado e validado em produção."
+          gh api --method POST "repos/$REPO/statuses/$SHA"             -f state=success             -f context='vendorai/merge-publish'             -f description='PUBLICADO — merge autorizado e produção validada' >/dev/null
 
-      - name: Confirm release failure
-        if: failure()
+          gh pr comment "$PR" --repo "$REPO" --body "✅ Merge e Publicação Controlados: revisão $SHA publicada e validada em produção."
+
+      - name: Registrar falha pós-merge
+        if: failure() && steps.merge.outputs.sha != ''
         env:
           GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr_number }}
           REPO: ${{ github.repository }}
-          SHA: ${{ github.sha }}
+          SHA: ${{ steps.merge.outputs.sha }}
         run: |
           set -euo pipefail
-          gh api --method POST "repos/$REPO/statuses/$SHA" \
-            -f state=failure \
-            -f context='vendorai/merge-publish' \
-            -f description='FALHOU — publicação não validada em produção' >/dev/null || true
-          echo "❌ FALHOU — publicação não validada em produção."
+          gh api --method POST "repos/$REPO/statuses/$SHA"             -f state=failure             -f context='vendorai/merge-publish'             -f description='MERGE FEITO — publicação/validação pendente' >/dev/null || true
+
+          gh pr comment "$PR" --repo "$REPO" --body "⚠️ O merge $SHA entrou na main, mas a publicação não foi validada. Nenhum rollback automático foi executado."
