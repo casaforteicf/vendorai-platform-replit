@@ -2,6 +2,8 @@ const CF_API_BASE = "https://api.cloudflare.com/client/v4";
 
 const API_TOKEN = process.env.CLOUDFLARE_API_TOKEN;
 const ZONE_ID = process.env.CLOUDFLARE_ZONE_ID;
+const CLOUDFLARE_PROXY_URL = process.env.CLOUDFLARE_MCP_URL?.replace(/\/$/, "");
+const CLOUDFLARE_PROXY_TOKEN = process.env.CLOUDFLARE_MCP_ACCESS_TOKEN;
 const SAAS_CNAME_TARGET = (
   process.env.CLOUDFLARE_SAAS_CNAME_TARGET ??
   process.env.CLOUDFLARE_SAAS_ORIGIN ??
@@ -24,6 +26,43 @@ type CustomHostnameResult = {
   ssl?: { status?: string };
   hostname: string;
 };
+
+type CustomHostnameView = {
+  id: string;
+  status: string;
+  sslStatus: string;
+  hostname: string;
+};
+
+function proxyConfigured() {
+  return Boolean(CLOUDFLARE_PROXY_URL && CLOUDFLARE_PROXY_TOKEN);
+}
+
+async function proxyRequest(
+  action: "find" | "createOrGet" | "get" | "delete",
+  payload: { hostname?: string; hostnameId?: string },
+): Promise<CustomHostnameView | null> {
+  if (!CLOUDFLARE_PROXY_URL || !CLOUDFLARE_PROXY_TOKEN) {
+    throw new Error("Cloudflare proxy not configured");
+  }
+  const response = await fetch(`${CLOUDFLARE_PROXY_URL}/internal/custom-hostname`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${CLOUDFLARE_PROXY_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ action, ...payload }),
+  });
+  const body = await response.json().catch(() => ({})) as {
+    ok?: boolean;
+    result?: CustomHostnameView | null;
+    error?: string;
+  };
+  if (!response.ok || !body.ok) {
+    throw new Error(body.error || `Cloudflare proxy HTTP ${response.status}`);
+  }
+  return body.result ?? null;
+}
 
 async function cfRequest(
   path: string,
@@ -61,11 +100,11 @@ function mapCustomHostname(result: CustomHostnameResult) {
 
 export function getCloudflareCustomDomainConfig() {
   return {
-    apiConfigured: Boolean(API_TOKEN && ZONE_ID),
+    apiConfigured: proxyConfigured() || Boolean(API_TOKEN && ZONE_ID),
     cnameTargetConfigured: Boolean(SAAS_CNAME_TARGET),
     // Backward-compatible field for older frontend builds.
     originConfigured: Boolean(SAAS_CNAME_TARGET),
-    ready: Boolean(API_TOKEN && ZONE_ID && SAAS_CNAME_TARGET),
+    ready: Boolean((proxyConfigured() || (API_TOKEN && ZONE_ID)) && SAAS_CNAME_TARGET),
   };
 }
 
@@ -73,6 +112,9 @@ export function getCloudflareCustomDomainConfig() {
 export async function findCustomHostname(
   hostname: string
 ): Promise<{ id: string; status: string; sslStatus: string; hostname: string } | null> {
+  if (proxyConfigured()) {
+    return proxyRequest("find", { hostname });
+  }
   if (!API_TOKEN || !ZONE_ID) {
     throw new Error("Cloudflare credentials not configured");
   }
@@ -93,6 +135,11 @@ export async function findCustomHostname(
 export async function createCustomHostname(
   hostname: string
 ): Promise<{ id: string; status: string; sslStatus: string; hostname: string }> {
+  if (proxyConfigured()) {
+    const result = await proxyRequest("createOrGet", { hostname });
+    if (!result) throw new Error("Cloudflare proxy returned empty result");
+    return result;
+  }
   if (!API_TOKEN || !ZONE_ID) {
     throw new Error("Cloudflare credentials not configured");
   }
@@ -126,6 +173,11 @@ export async function createCustomHostname(
 export async function createOrGetCustomHostname(
   hostname: string
 ): Promise<{ id: string; status: string; sslStatus: string; hostname: string }> {
+  if (proxyConfigured()) {
+    const result = await proxyRequest("createOrGet", { hostname });
+    if (!result) throw new Error("Cloudflare proxy returned empty result");
+    return result;
+  }
   const existing = await findCustomHostname(hostname);
   if (existing) return existing;
 
@@ -145,6 +197,11 @@ export async function createOrGetCustomHostname(
 export async function getCustomHostname(
   hostnameId: string
 ): Promise<{ status: string; sslStatus: string; hostname: string }> {
+  if (proxyConfigured()) {
+    const result = await proxyRequest("get", { hostnameId });
+    if (!result) throw new Error("Cloudflare proxy returned empty result");
+    return result;
+  }
   if (!API_TOKEN || !ZONE_ID) {
     throw new Error("Cloudflare credentials not configured");
   }
@@ -163,6 +220,10 @@ export async function getCustomHostname(
 
 // ── Delete custom hostname ──────────────────────────────────────────────────
 export async function deleteCustomHostname(hostnameId: string): Promise<void> {
+  if (proxyConfigured()) {
+    await proxyRequest("delete", { hostnameId });
+    return;
+  }
   if (!API_TOKEN || !ZONE_ID) {
     throw new Error("Cloudflare credentials not configured");
   }
