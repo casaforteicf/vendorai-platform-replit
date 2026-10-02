@@ -15,6 +15,10 @@ type PublishResult = {
 
 class SocialPublishError extends Error {}
 
+function bytesBody(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+}
+
 async function requestJson(url: string, init: RequestInit, label: string): Promise<any> {
   const response = await fetch(url, init);
   if (!response.ok) {
@@ -65,7 +69,7 @@ async function uploadLinkedInImage(token: string, owner: string, mediaUrl: strin
   const upload = await fetch(uploadUrl, {
     method: "PUT",
     headers: { "Content-Type": media.contentType },
-    body: media.bytes,
+    body: bytesBody(media.bytes),
   });
   if (!upload.ok) throw new SocialPublishError(`linkedin_image_upload_${upload.status}`);
   return image;
@@ -101,7 +105,7 @@ async function uploadLinkedInVideo(token: string, owner: string, mediaUrl: strin
     const upload = await fetch(part.uploadUrl, {
       method: "PUT",
       headers: { "Content-Type": media.contentType },
-      body: chunk,
+      body: bytesBody(chunk),
     });
     if (!upload.ok) throw new SocialPublishError(`linkedin_video_upload_${upload.status}`);
     const etag = upload.headers.get("etag")?.replace(/^\"|\"$/g, "");
@@ -251,7 +255,7 @@ async function publishYouTube(
   const uploaded = await fetch(uploadUrl, {
     method: "PUT",
     headers: { "Content-Type": media.contentType, "Content-Length": String(media.bytes.byteLength) },
-    body: media.bytes,
+    body: bytesBody(media.bytes),
   });
   if (!uploaded.ok) throw new SocialPublishError(`youtube_upload_${uploaded.status}: ${(await uploaded.text()).slice(0, 500)}`);
   const data = await uploaded.json() as { id?: string };
@@ -268,7 +272,7 @@ async function publishYouTube(
         {
           method: "POST",
           headers: { Authorization: `Bearer ${token}`, "Content-Type": thumbnail.contentType },
-          body: thumbnail.bytes,
+          body: bytesBody(thumbnail.bytes),
         },
       );
       if (!response.ok) throw new Error(`thumbnail_${response.status}: ${(await response.text()).slice(0, 300)}`);
