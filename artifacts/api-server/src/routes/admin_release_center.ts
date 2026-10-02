@@ -898,6 +898,10 @@ async function runReleaseWorker() {
         // A validação continua no próximo ciclo.
       }
     }
+  } catch (error) {
+    // O worker de publicações é auxiliar e não pode derrubar a API inteira
+    // quando o usuário runtime do banco não possui DDL no schema public.
+    console.error("[release-worker] ciclo ignorado:", error instanceof Error ? error.message : error);
   } finally {
     workerRunning = false;
   }
