@@ -103,7 +103,7 @@ jobs:
 
           if [ "${{ github.event_name }}" = "pull_request" ] && [ -n "${BASE_SHA:-}" ]; then
             git fetch --no-tags --depth=1 origin "$BASE_SHA"
-            changed_files="$(git diff --name-only "$BASE_SHA"...HEAD)"
+            changed_files="$(git diff --name-only "$BASE_SHA" HEAD)"
             echo "Arquivos alterados:"
             echo "$changed_files"
 
