@@ -8,6 +8,30 @@ function authHeaders(): Record<string, string> {
   return tok ? { Authorization: `Bearer ${tok}` } : {}
 }
 
+interface PolyHavenItem {
+  slug: string
+  name: string
+  description: string
+  thumbnailUrl: string | null
+  category: string
+  tags: string[]
+  authors: Record<string,string>
+  license: string
+}
+
+interface SketchfabItem {
+  uid: string
+  name: string
+  description: string | null
+  viewerUrl: string
+  thumbnailUrl: string | null
+  authorName: string | null
+  licenseLabel: string | null
+  isDownloadable: boolean
+  vertexCount: number | null
+  faceCount: number | null
+}
+
 interface CatItem {
   id: string
   nome: string
@@ -96,6 +120,22 @@ export function AssetLibraryView() {
   const [query, setQuery] = useState('')
   const [catFilt, setCatFilt] = useState('')
   const [sel, setSel] = useState<CatItem|null>(null)
+  const [externalOpen, setExternalOpen] = useState(false)
+  const [externalItems, setExternalItems] = useState<SketchfabItem[]>([])
+  const [externalLoading, setExternalLoading] = useState(false)
+  const [externalError, setExternalError] = useState<string|null>(null)
+  const [sketchfabConnected, setSketchfabConnected] = useState(false)
+  const [sketchfabConfigured, setSketchfabConfigured] = useState(true)
+  const [sketchfabAccount, setSketchfabAccount] = useState<string|null>(null)
+  const [importingUid, setImportingUid] = useState<string|null>(null)
+  const [importMessage, setImportMessage] = useState<string|null>(null)
+  const [polyItems, setPolyItems] = useState<PolyHavenItem[]>([])
+  const [polyLoading, setPolyLoading] = useState(false)
+  const [polyOpen, setPolyOpen] = useState(false)
+  const [importingPoly, setImportingPoly] = useState<string|null>(null)
+  const [unifiedOpen, setUnifiedOpen] = useState(false)
+  const [unifiedLoading, setUnifiedLoading] = useState(false)
+  const [sourceView, setSourceView] = useState<'all'|'mine'|'poly'|'sketchfab'>('all')
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
@@ -114,6 +154,151 @@ export function AssetLibraryView() {
   }, [catFilt, query])
 
   useEffect(() => { void load() }, [load])
+
+  const loadSketchfabConnection = useCallback(async () => {
+    try {
+      const res = await fetch(`${BASE}/arch/sketchfab/connection`, { headers:authHeaders() })
+      if (!res.ok) return
+      const data = await res.json() as { configured?: boolean; connected?: boolean; accountName?: string|null }
+      setSketchfabConfigured(data.configured !== false)
+      setSketchfabConnected(Boolean(data.connected))
+      setSketchfabAccount(data.accountName ?? null)
+    } catch { /* biblioteca interna continua disponível */ }
+  }, [])
+
+  useEffect(() => { void loadSketchfabConnection() }, [loadSketchfabConnection])
+
+  const connectSketchfab = useCallback(async () => {
+    setExternalError(null)
+    try {
+      const returnTo = window.location.pathname + window.location.search
+      const res = await fetch(`${BASE}/auth/sketchfab?returnTo=${encodeURIComponent(returnTo)}`, { headers:authHeaders() })
+      const data = await res.json() as { url?: string; error?: string }
+      if (!res.ok || !data.url) throw new Error(data.error === 'sketchfab_not_configured' ? 'Integração Sketchfab ainda não configurada no servidor.' : 'Não foi possível iniciar a conexão com Sketchfab.')
+      window.location.assign(data.url)
+    } catch (e: unknown) {
+      setExternalError(e instanceof Error ? e.message : 'Falha ao conectar Sketchfab')
+    }
+  }, [])
+
+  const searchExternal = useCallback(async () => {
+    const q = query.trim()
+    setExternalOpen(true)
+    setExternalError(null)
+    if (q.length < 2) { setExternalItems([]); return }
+    setExternalLoading(true)
+    try {
+      const res = await fetch(`${BASE}/arch/sketchfab/search?q=${encodeURIComponent(q)}&limit=24`, { headers:authHeaders() })
+      if (!res.ok) throw new Error(`Falha ao consultar Sketchfab (${res.status}).`)
+      const data = await res.json() as { items?: SketchfabItem[] }
+      setExternalItems(Array.isArray(data.items) ? data.items : [])
+    } catch (e: unknown) {
+      setExternalError(e instanceof Error ? e.message : 'Erro ao consultar biblioteca externa')
+      setExternalItems([])
+    } finally { setExternalLoading(false) }
+  }, [query])
+
+  const importSketchfab = useCallback(async (item: SketchfabItem) => {
+    setImportingUid(item.uid); setImportMessage(null); setExternalError(null)
+    try {
+      const res = await fetch(`${BASE}/arch/sketchfab/import`, {
+        method:'POST', headers:{ ...authHeaders(), 'Content-Type':'application/json' }, body:JSON.stringify({ uid:item.uid }),
+      })
+      const data = await res.json() as { error?: string; product?: { nome?: string } }
+      if (!res.ok) {
+        if (data.error === 'sketchfab_not_connected' || data.error === 'sketchfab_reconnect_required') setSketchfabConnected(false)
+        throw new Error(data.error === 'sketchfab_archive_too_large' ? 'Este modelo excede o limite de importação de 45 MB.' : data.error === 'gltf_not_available' ? 'Este modelo não possui glTF disponível.' : 'Não foi possível importar este modelo.')
+      }
+      setImportMessage(`✓ ${data.product?.nome ?? item.name} adicionado à Biblioteca do Arqdor.`)
+      await load()
+    } catch (e: unknown) {
+      setExternalError(e instanceof Error ? e.message : 'Falha ao importar modelo')
+    } finally { setImportingUid(null) }
+  }, [load])
+  const searchPolyHaven = useCallback(async () => {
+    const q = query.trim() || 'furniture'
+    setPolyOpen(true)
+    setExternalOpen(false)
+    setExternalError(null)
+    setPolyLoading(true)
+    try {
+      const res = await fetch(`${BASE}/arch/polyhaven/search?q=${encodeURIComponent(q)}&limit=24`, { headers:authHeaders() })
+      if (!res.ok) throw new Error(`Falha ao consultar Poly Haven (${res.status}).`)
+      const data = await res.json() as { items?: PolyHavenItem[] }
+      setPolyItems(Array.isArray(data.items) ? data.items : [])
+    } catch (e: unknown) {
+      setExternalError(e instanceof Error ? e.message : 'Erro ao consultar Poly Haven')
+      setPolyItems([])
+    } finally { setPolyLoading(false) }
+  }, [query])
+
+  const importPolyHaven = useCallback(async (item: PolyHavenItem) => {
+    setImportingPoly(item.slug); setImportMessage(null); setExternalError(null)
+    try {
+      const res = await fetch(`${BASE}/arch/polyhaven/import`, {
+        method:'POST',
+        headers:{ ...authHeaders(), 'Content-Type':'application/json' },
+        body:JSON.stringify({ slug:item.slug }),
+      })
+      const data = await res.json() as { error?: string; product?: { nome?: string } }
+      if (!res.ok) throw new Error(data.error === 'polyhaven_asset_too_large' ? 'Este modelo excede o limite de 45 MB.' : 'Não foi possível importar este modelo.')
+      setImportMessage(`✓ ${data.product?.nome ?? item.name} adicionado à Biblioteca do Arqdor.`)
+      await load()
+    } catch (e: unknown) {
+      setExternalError(e instanceof Error ? e.message : 'Falha ao importar modelo')
+    } finally { setImportingPoly(null) }
+  }, [load])
+
+
+  const searchUniversal = useCallback(async () => {
+    const q = query.trim()
+    if (q.length < 2) {
+      setExternalError('Digite ao menos 2 caracteres para buscar em todas as bibliotecas.')
+      return
+    }
+
+    setUnifiedOpen(true)
+    setSourceView('all')
+    setUnifiedLoading(true)
+    setExternalLoading(true)
+    setPolyLoading(true)
+    setExternalError(null)
+    setImportMessage(null)
+
+    const headers = authHeaders()
+    const [polyResult, sketchResult] = await Promise.allSettled([
+      fetch(`${BASE}/arch/polyhaven/search?q=${encodeURIComponent(q)}&limit=24`, { headers })
+        .then(async res => {
+          if (!res.ok) throw new Error(`Poly Haven (${res.status})`)
+          return res.json() as Promise<{ items?: PolyHavenItem[] }>
+        }),
+      fetch(`${BASE}/arch/sketchfab/search?q=${encodeURIComponent(q)}&limit=24`, { headers })
+        .then(async res => {
+          if (!res.ok) throw new Error(`Sketchfab (${res.status})`)
+          return res.json() as Promise<{ items?: SketchfabItem[] }>
+        }),
+    ])
+
+    if (polyResult.status === 'fulfilled') setPolyItems(Array.isArray(polyResult.value.items) ? polyResult.value.items : [])
+    else setPolyItems([])
+
+    if (sketchResult.status === 'fulfilled') setExternalItems(Array.isArray(sketchResult.value.items) ? sketchResult.value.items : [])
+    else setExternalItems([])
+
+    const failures = [
+      polyResult.status === 'rejected' ? 'Poly Haven' : null,
+      sketchResult.status === 'rejected' ? 'Sketchfab' : null,
+    ].filter(Boolean)
+
+    if (failures.length) setExternalError(`Algumas fontes não responderam: ${failures.join(', ')}.`)
+
+    setPolyOpen(true)
+    setExternalOpen(true)
+    setPolyLoading(false)
+    setExternalLoading(false)
+    setUnifiedLoading(false)
+  }, [query])
+
   const categories = [...new Set(items.map(i=>i.categoria).filter(Boolean))] as string[]
   const canApply = hasPermission('PROJECT_EDIT') && hasPermission('MATERIAL_SELECT')
 
@@ -138,12 +323,80 @@ export function AssetLibraryView() {
         <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar asset…" style={{ flex:1, minWidth:120, background:'rgba(255,255,255,0.06)', border:`1px solid ${T.border}`, borderRadius:6, color:T.text, fontSize:11, padding:'7px 10px', outline:'none' }} />
         <select value={catFilt} onChange={e=>setCatFilt(e.target.value)} style={{ background:'rgba(255,255,255,0.06)', border:`1px solid ${T.border}`, borderRadius:6, color:catFilt?T.text:T.dim, fontSize:10, padding:'7px 8px' }}><option value="">Todos os tipos</option>{categories.map(c=><option key={c} value={c}>{c}</option>)}</select>
         <button type="button" onClick={()=>void load()} disabled={loading} style={{ padding:'7px 10px', borderRadius:6, border:`1px solid ${T.border}`, background:'transparent', color:T.dim, cursor:loading?'wait':'pointer', fontSize:10 }}>{loading?'…':'↻'}</button>
+        <button type="button" onClick={()=>void searchUniversal()} disabled={unifiedLoading || query.trim().length < 2} style={{ padding:'7px 12px', borderRadius:6, border:`1px solid ${unifiedOpen?'rgba(124,58,237,.45)':T.border}`, background:unifiedOpen?'rgba(124,58,237,0.12)':'transparent', color:unifiedOpen?T.purpleL:T.text, cursor:unifiedLoading?'wait':'pointer', fontSize:10, fontWeight:700 }}>{unifiedLoading?'Buscando em tudo…':'⌕ Buscar em tudo'}</button>
         <span style={{ fontSize:10, color:T.dim }}>{items.length} assets</span>
       </div>
 
+      {unifiedOpen && <div style={{ padding:'10px 16px', borderBottom:`1px solid ${T.border}`, background:'rgba(124,58,237,0.03)' }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, flexWrap:'wrap' }}>
+          <div>
+            <strong style={{ fontSize:11, color:T.text }}>Busca Universal</strong>
+            <span style={{ marginLeft:8, fontSize:9, color:T.dim }}>uma pesquisa · todas as bibliotecas</span>
+          </div>
+          <button type="button" onClick={()=>{setUnifiedOpen(false);setPolyOpen(false);setExternalOpen(false)}} style={{ border:0, background:'transparent', color:T.dim, cursor:'pointer' }}>✕</button>
+        </div>
+        <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop:9 }}>
+          {([
+            ['all','Tudo',items.length + polyItems.length + externalItems.length],
+            ['mine','Minha Biblioteca',items.length],
+            ['poly','Poly Haven',polyItems.length],
+            ['sketchfab','Sketchfab',externalItems.length],
+          ] as const).map(([key,label,count]) => <button key={key} type="button" onClick={()=>setSourceView(key)} style={{ padding:'5px 8px', borderRadius:999, border:`1px solid ${sourceView===key?'rgba(124,58,237,.45)':T.border}`, background:sourceView===key?'rgba(124,58,237,.12)':'transparent', color:sourceView===key?T.purpleL:T.dim, fontSize:8, cursor:'pointer' }}>{label} · {count}</button>)}
+          <span style={{ padding:'5px 8px', fontSize:8, color:T.dim, border:`1px dashed ${T.border}`, borderRadius:999 }}>Fabricantes · em breve</span>
+          <span style={{ padding:'5px 8px', fontSize:8, color:T.dim, border:`1px dashed ${T.border}`, borderRadius:999 }}>BIM · em breve</span>
+        </div>
+        {externalError && <div style={{ marginTop:8, fontSize:9, color:'#fbbf24' }}>⚠ {externalError}</div>}
+      </div>}
+
+      {polyOpen && unifiedOpen && (sourceView==='all' || sourceView==='poly') && <div style={{ padding:'12px 16px', borderBottom:`1px solid ${T.border}`, background:'rgba(34,197,94,0.035)' }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, marginBottom:10 }}>
+          <div><strong style={{ fontSize:11, color:T.text }}>Biblioteca externa · Poly Haven</strong><span style={{ marginLeft:8, fontSize:9, color:T.dim }}>CC0 · sem login</span></div>
+          <button type="button" onClick={()=>setPolyOpen(false)} style={{ border:0, background:'transparent', color:T.dim, cursor:'pointer' }}>✕</button>
+        </div>
+        {externalError && <div style={{ fontSize:10, color:'#f87171', marginBottom:8 }}>{externalError}</div>}
+        {!polyLoading && !externalError && polyItems.length===0 && <div style={{ fontSize:10, color:T.dim }}>Busque por sofá, mesa, cadeira, planta, iluminação, eletrodoméstico ou outro item.</div>}
+        {polyItems.length>0 && <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(170px,1fr))', gap:8, maxHeight:300, overflow:'auto' }}>
+          {polyItems.map(item => <div key={item.slug} style={{ display:'block', padding:8, borderRadius:8, border:`1px solid ${T.border}`, background:T.surface, minWidth:0 }}>
+            {item.thumbnailUrl ? <img src={item.thumbnailUrl} alt={item.name} style={{ width:'100%', height:88, objectFit:'cover', borderRadius:6, marginBottom:7 }} /> : <div style={{ height:88, display:'grid', placeItems:'center', fontSize:28 }}>🧊</div>}
+            <div style={{ fontSize:10, fontWeight:700, color:T.text, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{item.name}</div>
+            <div style={{ marginTop:3, fontSize:8, color:T.dim }}>{item.category} · CC0</div>
+            <button type="button" onClick={()=>void importPolyHaven(item)} disabled={importingPoly===item.slug} style={{ width:'100%', marginTop:7, padding:'6px 7px', borderRadius:6, border:0, background:'#166534', color:'#fff', fontSize:8, fontWeight:700, cursor:'pointer' }}>{importingPoly===item.slug?'Importando…':'Adicionar à Biblioteca'}</button>
+          </div>)}
+        </div>}
+        <div style={{ marginTop:9, display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+          <span style={{ fontSize:8, color:'#4ade80' }}>Powered by Poly Haven · assets CC0</span>
+          {importMessage && <span style={{ fontSize:8, color:'#4ade80' }}>{importMessage}</span>}
+        </div>
+      </div>}
+
+      {externalOpen && unifiedOpen && (sourceView==='all' || sourceView==='sketchfab') && <div style={{ padding:'12px 16px', borderBottom:`1px solid ${T.border}`, background:'rgba(124,58,237,0.035)' }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, marginBottom:10 }}>
+          <div><strong style={{ fontSize:11, color:T.text }}>Biblioteca externa · Sketchfab</strong><span style={{ marginLeft:8, fontSize:9, color:T.dim }}>somente modelos com download permitido</span></div>
+          <button type="button" onClick={()=>setExternalOpen(false)} style={{ border:0, background:'transparent', color:T.dim, cursor:'pointer' }}>✕</button>
+        </div>
+        {externalError && <div style={{ fontSize:10, color:'#f87171', marginBottom:8 }}>{externalError}</div>}
+        {!externalLoading && !externalError && externalItems.length===0 && <div style={{ fontSize:10, color:T.dim }}>Digite ao menos 2 caracteres e clique em “Buscar Sketchfab”.</div>}
+        {externalItems.length>0 && <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(170px,1fr))', gap:8, maxHeight:260, overflow:'auto' }}>
+          {externalItems.map(item => <div key={item.uid} style={{ display:'block', padding:8, borderRadius:8, border:`1px solid ${T.border}`, background:T.surface, minWidth:0 }}>
+            {item.thumbnailUrl ? <img src={item.thumbnailUrl} alt={item.name} style={{ width:'100%', height:88, objectFit:'cover', borderRadius:6, marginBottom:7 }} /> : <div style={{ height:88, display:'grid', placeItems:'center', fontSize:28 }}>🧊</div>}
+            <div style={{ fontSize:10, fontWeight:700, color:T.text, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{item.name}</div>
+            <div style={{ marginTop:3, fontSize:8, color:T.dim }}>{item.authorName ?? 'Autor não informado'} · {item.licenseLabel ?? 'licença não informada'}</div>
+            <div style={{ display:'flex', gap:6, marginTop:7 }}>
+              <a href={item.viewerUrl} target="_blank" rel="noreferrer" style={{ flex:1, textDecoration:'none', textAlign:'center', padding:'6px 7px', borderRadius:6, border:`1px solid ${T.border}`, color:T.dim, fontSize:8 }}>Ver ↗</a>
+              <button type="button" onClick={()=>void importSketchfab(item)} disabled={!sketchfabConnected || importingUid===item.uid} style={{ flex:2, padding:'6px 7px', borderRadius:6, border:0, background:sketchfabConnected?T.purple:'rgba(255,255,255,.07)', color:sketchfabConnected?'#fff':T.dim, fontSize:8, fontWeight:700, cursor:sketchfabConnected?'pointer':'not-allowed' }}>{importingUid===item.uid?'Importando…':'Adicionar à Biblioteca'}</button>
+            </div>
+          </div>)}
+        </div>}
+        <div style={{ marginTop:9, display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+          <span style={{ fontSize:8, color:sketchfabConnected?'#4ade80':T.dim }}>{sketchfabConnected ? `✓ Sketchfab conectado${sketchfabAccount ? ` · ${sketchfabAccount}` : ''}` : sketchfabConfigured ? 'Sketchfab precisa ser conectado para importar.' : 'Credenciais Sketchfab ainda não configuradas no servidor.'}</span>
+          {!sketchfabConnected && sketchfabConfigured && <button type="button" onClick={()=>void connectSketchfab()} style={{ padding:'5px 8px', borderRadius:6, border:`1px solid ${T.border}`, background:'transparent', color:T.purpleL, cursor:'pointer', fontSize:8, fontWeight:700 }}>Conectar Sketchfab</button>}
+          {importMessage && <span style={{ fontSize:8, color:'#4ade80' }}>{importMessage}</span>}
+        </div>
+      </div>}
+
       {error && <div style={{ padding:'10px 16px', background:'rgba(248,113,113,0.08)', borderBottom:'1px solid rgba(248,113,113,0.2)', fontSize:11, color:'#f87171', display:'flex', justifyContent:'space-between', gap:12, alignItems:'center' }}><span>⚠ {error}</span><button type="button" onClick={()=>void load()} style={{ border:`1px solid ${T.border}`, borderRadius:6, background:'transparent', color:T.text, padding:'5px 8px', cursor:'pointer' }}>Tentar novamente</button></div>}
 
-      <div className="arq-asset-body" data-has-selection={Boolean(sel)}>
+      <div className="arq-asset-body" data-has-selection={Boolean(sel)} style={{ display: unifiedOpen && sourceView!=='all' && sourceView!=='mine' ? 'none' : undefined }}>
         <div className="arq-asset-grid-wrap">
           {loading && <div className="arq-asset-grid">{[1,2,3,4,5,6].map(i=><div key={i} style={{ height:120, borderRadius:10, background:'rgba(255,255,255,0.04)', border:`1px solid ${T.border}` }} />)}</div>}
           {!loading && !error && items.length===0 && <div style={{ textAlign:'center', padding:'48px 16px', color:T.dim, fontSize:12 }}><p style={{ fontSize:28, margin:'0 0 8px' }}>📦</p><p>Nenhum item encontrado. Ajuste os filtros ou cadastre itens na Biblioteca.</p></div>}
