@@ -13,7 +13,11 @@ export type VendorSession = {
   };
 };
 
+let cachedSession: VendorSession | null = null;
+
 export async function getVendorSession(request: APIRequestContext): Promise<VendorSession> {
+  if (cachedSession) return cachedSession;
+
   const staticToken = process.env.E2E_AUTH_TOKEN?.trim();
   if (staticToken) {
     const me = await request.get(`${BASE_URL}/api/auth/me`, {
@@ -21,7 +25,8 @@ export async function getVendorSession(request: APIRequestContext): Promise<Vend
     });
     expect(me.ok(), "E2E_AUTH_TOKEN inválido ou expirado").toBeTruthy();
     const body = await me.json();
-    return { token: staticToken, user: body.user ?? body };
+    cachedSession = { token: staticToken, user: body.user ?? body };
+    return cachedSession;
   }
 
   const email = process.env.E2E_EMAIL?.trim();
@@ -44,7 +49,8 @@ export async function getVendorSession(request: APIRequestContext): Promise<Vend
 
   const body = JSON.parse(responseText);
   expect(body.token, "Login E2E não retornou token").toBeTruthy();
-  return { token: body.token as string, user: body.user ?? {} };
+  cachedSession = { token: body.token as string, user: body.user ?? {} };
+  return cachedSession;
 }
 
 export async function authenticatePage(page: Page, session: VendorSession): Promise<void> {
