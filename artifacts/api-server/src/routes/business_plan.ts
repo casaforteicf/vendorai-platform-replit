@@ -19,6 +19,133 @@ const recordSchema = z.object({
 const saveSchema = z.object({ version: z.number().int().nonnegative(), action: z.enum(["save", "approve", "revoke"]), records: z.array(recordSchema).max(30) });
 const suggestSchema = z.object({ records: z.array(recordSchema).max(30), notes: z.string().max(4000).default("") });
 function validSection(value: string): value is PlanSectionId { return PLAN_SECTIONS.some(s => s.id === value); }
+type DiagnosticoItem = {
+  id: string;
+  titulo: string;
+  concluido: boolean;
+  peso: number;
+  detalhe: string;
+  acao?: string;
+};
+
+function calcularDiagnosticoInteligencia(input: {
+  profile: Record<string, unknown> | null;
+  plan: Awaited<ReturnType<typeof loadBusinessPlan>>;
+  totalProducts: number;
+  enrichedProducts: number;
+  approvedContextEntries: number;
+  knowledgeItems: number;
+}) {
+  const profile = input.profile ?? {};
+  const hasCompany =
+    Boolean(String(profile["nome_fantasia"] ?? profile["razao_social"] ?? "").trim()) &&
+    Boolean(String(profile["vertical"] ?? "").trim());
+  const hasAudience = Boolean(String(profile["publico_alvo"] ?? "").trim());
+  const hasDifferentials = Boolean(String(profile["diferenciais"] ?? "").trim());
+  const hasSalesMethod = Boolean(String(profile["metodo_vendas"] ?? "").trim());
+
+  const approvedSections = new Set(
+    Object.entries(input.plan.sections)
+      .filter(([, section]) => (section?.approved ?? []).some((record) => record.evidence !== "hypothesis"))
+      .map(([id]) => id),
+  );
+
+  const criticalSections = ["company", "segments", "products", "positioning", "sales"];
+  const criticalApproved = criticalSections.filter((id) => approvedSections.has(id)).length;
+  const productCoverage = input.totalProducts > 0 ? input.enrichedProducts / input.totalProducts : 0;
+
+  const itens: DiagnosticoItem[] = [
+    {
+      id: "perfil_empresa",
+      titulo: "Perfil da empresa",
+      concluido: hasCompany,
+      peso: 12,
+      detalhe: hasCompany ? "Empresa e segmento cadastrados." : "Faltam nome/segmento consolidados no perfil.",
+      acao: hasCompany ? undefined : "Completar dados institucionais da empresa.",
+    },
+    {
+      id: "publico_alvo",
+      titulo: "Público-alvo",
+      concluido: hasAudience || approvedSections.has("segments"),
+      peso: 10,
+      detalhe: hasAudience || approvedSections.has("segments") ? "Públicos disponíveis para os agentes." : "Ainda não há público/segmento aprovado.",
+      acao: hasAudience || approvedSections.has("segments") ? undefined : "Definir públicos, decisores, dores e momento de compra.",
+    },
+    {
+      id: "diferenciais",
+      titulo: "Diferenciais e posicionamento",
+      concluido: hasDifferentials || approvedSections.has("positioning"),
+      peso: 10,
+      detalhe: hasDifferentials || approvedSections.has("positioning") ? "Posicionamento disponível." : "Faltam diferenciais aprovados.",
+      acao: hasDifferentials || approvedSections.has("positioning") ? undefined : "Registrar diferenciais comprovados e promessas a evitar.",
+    },
+    {
+      id: "metodo_vendas",
+      titulo: "Método comercial",
+      concluido: hasSalesMethod || approvedSections.has("sales"),
+      peso: 8,
+      detalhe: hasSalesMethod || approvedSections.has("sales") ? "Estratégia comercial disponível." : "Método comercial ainda incompleto.",
+      acao: hasSalesMethod || approvedSections.has("sales") ? undefined : "Definir abordagem, qualificação, negociação e pós-venda.",
+    },
+    {
+      id: "catalogo",
+      titulo: "Catálogo oficial",
+      concluido: input.totalProducts > 0,
+      peso: 12,
+      detalhe: input.totalProducts > 0 ? `${input.totalProducts} produto(s)/serviço(s) ativo(s).` : "Nenhum produto/serviço ativo no catálogo.",
+      acao: input.totalProducts > 0 ? undefined : "Cadastrar produtos e serviços no Catálogo oficial.",
+    },
+    {
+      id: "inteligencia_produtos",
+      titulo: "Inteligência comercial dos produtos",
+      concluido: input.totalProducts > 0 && productCoverage >= 0.7,
+      peso: 16,
+      detalhe: input.totalProducts > 0
+        ? `${input.enrichedProducts} de ${input.totalProducts} produto(s) com inteligência comercial estruturada.`
+        : "Sem produtos para avaliar.",
+      acao: input.totalProducts > 0 && productCoverage < 0.7
+        ? "Enriquecer benefícios, dores, objeções, provas e restrições dos produtos prioritários."
+        : undefined,
+    },
+    {
+      id: "plano_negocio",
+      titulo: "Plano de Negócios aprovado",
+      concluido: criticalApproved >= 4,
+      peso: 14,
+      detalhe: `${criticalApproved} de ${criticalSections.length} blocos críticos aprovados.`,
+      acao: criticalApproved >= 4 ? undefined : "Revisar e aprovar os blocos críticos do Plano de Negócios.",
+    },
+    {
+      id: "biblioteca_contexto",
+      titulo: "Biblioteca de Informações",
+      concluido: input.approvedContextEntries >= 3,
+      peso: 10,
+      detalhe: `${input.approvedContextEntries} informação(ões) aprovada(s).`,
+      acao: input.approvedContextEntries >= 3 ? undefined : "Adicionar cases, provas, diferenciais, documentos e referências aprovadas.",
+    },
+    {
+      id: "base_conhecimento",
+      titulo: "Base de Conhecimento",
+      concluido: input.knowledgeItems > 0,
+      peso: 8,
+      detalhe: `${input.knowledgeItems} documento(s)/item(ns) ativo(s).`,
+      acao: input.knowledgeItems > 0 ? undefined : "Adicionar documentos técnicos, FAQs ou materiais de apoio.",
+    },
+  ];
+
+  const pesoTotal = itens.reduce((sum, item) => sum + item.peso, 0);
+  const pesoConcluido = itens.filter((item) => item.concluido).reduce((sum, item) => sum + item.peso, 0);
+  const percentual = Math.round((pesoConcluido / pesoTotal) * 100);
+  const nivel = percentual >= 85 ? "forte" : percentual >= 65 ? "bom" : percentual >= 40 ? "parcial" : "inicial";
+
+  return {
+    percentual,
+    nivel,
+    itens,
+    lacunas: itens.filter((item) => !item.concluido && item.acao).map((item) => ({ id: item.id, titulo: item.titulo, acao: item.acao! })),
+  };
+}
+
 function handleError(res: any, error: unknown) {
   const e = error as { status?: number; httpStatus?: number; message?: string };
   const status = e.status ?? e.httpStatus ?? 500;
@@ -39,6 +166,58 @@ router.get(base, async (req, res) => {
     res.json({ plan, sources, sections: PLAN_SECTIONS });
   } catch (error) { handleError(res, error); }
 });
+router.get(`${base}/diagnostico-inteligencia`, async (req, res) => {
+  try {
+    const tenantId = String(req.params.tenantId);
+    const [plan, sources, catalogResult, contextResult, knowledgeResult] = await Promise.all([
+      loadBusinessPlan(tenantId),
+      loadBusinessPlanSources(tenantId),
+      pool.query(
+        `SELECT
+           count(*) FILTER (WHERE ativo=true) AS total,
+           count(*) FILTER (
+             WHERE ativo=true
+               AND status_revisao='ok'
+               AND inteligencia_comercial IS NOT NULL
+               AND inteligencia_comercial <> '{}'::jsonb
+           ) AS enriquecidos
+         FROM produtos_catalogo
+        WHERE tenant_id=$1`,
+        [tenantId],
+      ),
+      pool.query(
+        `SELECT count(*) AS total
+           FROM media_context_entries
+          WHERE tenant_id=$1
+            AND status='approved'
+            AND (valid_until IS NULL OR valid_until >= now())`,
+        [tenantId],
+      ),
+      pool.query(
+        `SELECT count(*) AS total
+           FROM knowledge_base
+          WHERE tenant_id=$1
+            AND ativo=true`,
+        [tenantId],
+      ),
+    ]);
+
+    const diagnostico = calcularDiagnosticoInteligencia({
+      profile: sources.profile,
+      plan,
+      totalProducts: Number(catalogResult.rows[0]?.total ?? 0),
+      enrichedProducts: Number(catalogResult.rows[0]?.enriquecidos ?? 0),
+      approvedContextEntries: Number(contextResult.rows[0]?.total ?? 0),
+      knowledgeItems: Number(knowledgeResult.rows[0]?.total ?? 0),
+    });
+
+    res.setHeader("Cache-Control", "no-store");
+    res.json(diagnostico);
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
 router.put(`${base}/sections/:section`, async (req, res) => {
   const section = String(req.params.section);
   const parsed = saveSchema.safeParse(req.body);
