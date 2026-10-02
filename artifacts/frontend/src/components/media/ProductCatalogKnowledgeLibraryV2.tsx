@@ -79,9 +79,11 @@ type ProductForm = {
   caracteristicas: string;
   beneficios: string;
   diferenciais: string;
+  doresAtendidas: string;
   aplicacoes: string;
   publicoIndicado: string;
   argumentosComerciais: string;
+  afirmacoesPermitidas: string;
   duvidasFrequentes: string;
   objecoesRespostas: string;
   garantia: string;
@@ -102,9 +104,11 @@ const FIELD_SPECS: KnowledgeField[] = [
   { key: "caracteristicas", label: "Características", aliases: ["Características", "Caracteristicas", "Detalhes técnicos", "Detalhes tecnicos"], placeholder: "Características, materiais, medidas, composição ou detalhes técnicos relevantes." },
   { key: "beneficios", label: "Benefícios", aliases: ["Benefícios", "Benefício", "Beneficios", "Beneficio", "Vantagens"], placeholder: "Quais benefícios o cliente obtém com este produto?" },
   { key: "diferenciais", label: "Diferenciais", aliases: ["Diferenciais", "Diferencial"], placeholder: "O que diferencia este produto de alternativas e concorrentes?" },
+  { key: "doresAtendidas", label: "Dores que resolve", aliases: ["Dores que resolve", "Dores atendidas", "Problemas que resolve", "Necessidades atendidas"], placeholder: "Quais dores, problemas ou necessidades reais este produto ajuda a resolver?" },
   { key: "aplicacoes", label: "Aplicações", aliases: ["Aplicações", "Aplicação", "Aplicacoes", "Aplicacao", "Uso", "Usos"], placeholder: "Onde, como e em quais situações o produto pode ser utilizado?" },
   { key: "publicoIndicado", label: "Público / cliente indicado", aliases: ["Público / cliente indicado", "Público indicado", "Publico indicado", "Público", "Publico", "Cliente indicado"], placeholder: "Para quem este produto é mais indicado?" },
   { key: "argumentosComerciais", label: "Argumentos comerciais", aliases: ["Argumentos comerciais", "Argumento comercial", "Argumentos de venda", "Argumento de venda"], placeholder: "Pontos que vendedores e agentes de IA podem usar no atendimento." },
+  { key: "afirmacoesPermitidas", label: "Afirmações permitidas", aliases: ["Afirmações permitidas", "Afirmacoes permitidas", "Claims aprovados", "Informações aprovadas"], placeholder: "Fatos que a IA pode afirmar com segurança porque estão aprovados ou comprovados.", rows: 4 },
   { key: "duvidasFrequentes", label: "Dúvidas frequentes", aliases: ["Dúvidas frequentes", "Duvidas frequentes", "Dúvidas", "Duvidas", "FAQ"], placeholder: "Perguntas frequentes e respectivas respostas.", rows: 4 },
   { key: "objecoesRespostas", label: "Objeções e respostas", aliases: ["Objeções e respostas", "Objecoes e respostas", "Objeções", "Objecoes"], placeholder: "Principais objeções do cliente e como respondê-las com informações reais.", rows: 4 },
   { key: "garantia", label: "Garantia", aliases: ["Garantia", "Garantias"], placeholder: "Regras e informações de garantia." },
@@ -215,8 +219,8 @@ function typeLabel(type: MediaAsset["type"]) {
 }
 function emptyForm(): ProductForm {
   return {
-    descricaoCompleta: "", caracteristicas: "", beneficios: "", diferenciais: "", aplicacoes: "", publicoIndicado: "",
-    argumentosComerciais: "", duvidasFrequentes: "", objecoesRespostas: "", garantia: "", instalacao: "",
+    descricaoCompleta: "", caracteristicas: "", beneficios: "", diferenciais: "", doresAtendidas: "", aplicacoes: "", publicoIndicado: "",
+    argumentosComerciais: "", afirmacoesPermitidas: "", duvidasFrequentes: "", objecoesRespostas: "", garantia: "", instalacao: "",
     entrega: "", observacoesIa: "", afirmacoesProibidas: "", condicoesPagamento: "", tags: "", aiEnabled: true,
   };
 }
@@ -235,9 +239,11 @@ function formFromProduct(product: CatalogProduct): ProductForm {
   form.caracteristicas = listToText(intelligence.caracteristicas) || form.caracteristicas;
   form.beneficios = listToText(intelligence.beneficios) || form.beneficios;
   form.diferenciais = listToText(intelligence.diferenciais) || form.diferenciais;
+  form.doresAtendidas = listToText(intelligence.doresAtendidas) || form.doresAtendidas;
   form.aplicacoes = listToText(intelligence.casosUso) || form.aplicacoes;
   form.publicoIndicado = listToText(intelligence.personas) || form.publicoIndicado;
   form.argumentosComerciais = listToText(intelligence.notasComerciais) || form.argumentosComerciais;
+  form.afirmacoesPermitidas = listToText(intelligence.afirmacoesPermitidas) || form.afirmacoesPermitidas;
   form.duvidasFrequentes = listToText(intelligence.duvidasFrequentes) || form.duvidasFrequentes;
   form.objecoesRespostas = objectionsToText(intelligence.objecoes) || form.objecoesRespostas;
   form.garantia = intelligence.garantia?.trim() || form.garantia;
@@ -358,9 +364,11 @@ export default function ProductCatalogKnowledgeLibraryV2() {
         caracteristicas: listToText(intelligence.caracteristicas) || current.caracteristicas,
         beneficios: listToText(intelligence.beneficios) || current.beneficios,
         diferenciais: listToText(intelligence.diferenciais) || current.diferenciais,
+        doresAtendidas: listToText(intelligence.doresAtendidas) || current.doresAtendidas,
         aplicacoes: listToText(intelligence.casosUso) || current.aplicacoes,
         publicoIndicado: listToText(intelligence.personas) || current.publicoIndicado,
         argumentosComerciais: listToText(intelligence.notasComerciais) || current.argumentosComerciais,
+        afirmacoesPermitidas: listToText(intelligence.afirmacoesPermitidas) || current.afirmacoesPermitidas,
         duvidasFrequentes: listToText(intelligence.duvidasFrequentes) || current.duvidasFrequentes,
         objecoesRespostas: objectionsToText(intelligence.objecoes) || current.objecoesRespostas,
         garantia: intelligence.garantia?.trim() || current.garantia,
@@ -403,9 +411,11 @@ export default function ProductCatalogKnowledgeLibraryV2() {
         caracteristicas: textToList(form.caracteristicas),
         diferenciais: textToList(form.diferenciais),
         beneficios: textToList(form.beneficios),
+        doresAtendidas: textToList(form.doresAtendidas),
         casosUso: textToList(form.aplicacoes),
         personas: textToList(form.publicoIndicado),
         objecoes: parseObjections(form.objecoesRespostas),
+        afirmacoesPermitidas: textToList(form.afirmacoesPermitidas),
         afirmacoesProibidas: textToList(form.afirmacoesProibidas),
         notasComerciais: textToList(form.argumentosComerciais),
         duvidasFrequentes: textToList(form.duvidasFrequentes),
