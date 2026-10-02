@@ -100,4 +100,4 @@ jobs:
       - name: Frontend tests
         run: pnpm --filter @workspace/frontend test
       - name: Build all production packages
-        run: pnpm build
+        run: pnpm -r --if-present --filter=!@workspace/mobile run build
