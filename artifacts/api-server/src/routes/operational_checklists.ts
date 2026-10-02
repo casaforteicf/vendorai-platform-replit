@@ -9,6 +9,7 @@ import {
   tenantsTable,
   usersTable,
   activitiesTable,
+  workCardsTable,
   operationalChecklistTemplatesTable,
   operationalChecklistRunsTable,
   type OperationalChecklistItem,
@@ -149,7 +150,7 @@ router.post("/operational-checklists/deals/:dealId/start", async (req, res) => {
     });
   }
 
-  const stageKey = parsed.data.stageKey ?? context.deal.etapa ?? "conferencia_medidas";
+  const stageKey = parsed.data.stageKey ?? "liberacao_medidas";
   let [template] = await db.select().from(operationalChecklistTemplatesTable)
     .where(and(
       eq(operationalChecklistTemplatesTable.tenantId, context.deal.tenantId),
@@ -292,6 +293,53 @@ router.post("/operational-checklists/runs/:runId/complete", async (req, res) => 
     updatedAt: new Date(),
   }).where(eq(operationalChecklistRunsTable.id, run.id)).returning();
 
+  const [workCard] = await db.select().from(workCardsTable)
+    .where(and(
+      eq(workCardsTable.tenantId, run.tenantId),
+      eq(workCardsTable.dealId, run.dealId),
+      eq(workCardsTable.pipeline, "execucao"),
+    ))
+    .orderBy(desc(workCardsTable.createdAt))
+    .limit(1);
+
+  if (workCard) {
+    const metadata = (workCard.metadata ?? {}) as Record<string, unknown>;
+    const stageGates = metadata.stageGates && typeof metadata.stageGates === "object"
+      ? { ...(metadata.stageGates as Record<string, unknown>) }
+      : {};
+    const stageForms = metadata.stageForms && typeof metadata.stageForms === "object"
+      ? { ...(metadata.stageForms as Record<string, unknown>) }
+      : {};
+    const completedAt = new Date().toISOString();
+
+    stageGates.relatorio_medidas = {
+      completed: true,
+      completedAt,
+      completedBy: req.user?.sub ?? null,
+      stage: "liberacao_medidas",
+      source: "structured_measurement_checklist",
+      revision: updated.revision,
+      checklistRunId: updated.id,
+    };
+    stageForms.relatorio_medidas = {
+      version: updated.revision,
+      completedAt,
+      completedBy: req.user?.sub ?? null,
+      stage: "liberacao_medidas",
+      source: "structured_measurement_checklist",
+      checklistRunId: updated.id,
+      summary: {
+        items: updated.items.length,
+        toleranceMm: updated.toleranceMm,
+      },
+    };
+
+    await db.update(workCardsTable).set({
+      metadata: { ...metadata, stageGates, stageForms },
+      updatedAt: new Date(),
+    }).where(eq(workCardsTable.id, workCard.id));
+  }
+
   if (run.leadId) {
     await db.insert(activitiesTable).values({
       tenantId: run.tenantId,
@@ -305,7 +353,7 @@ router.post("/operational-checklists/runs/:runId/complete", async (req, res) => 
       responsavelId: req.user?.sub ?? null,
     });
   }
-  res.json(updated);
+  res.json({ ...updated, workCardId: workCard?.id ?? null, gateUpdated: Boolean(workCard) });
 });
 
 export default router;
