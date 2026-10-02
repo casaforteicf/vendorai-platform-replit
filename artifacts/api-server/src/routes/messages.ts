@@ -1,20 +1,16 @@
 import { Router, type IRouter, type Request } from "express";
-import { and, eq, asc, exists } from "drizzle-orm";
+import { and, eq, asc } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
   messagesTable,
-  conversationsTable,
   mediaAssetsTable,
   insertMessageSchema,
   updateMessageSchema,
 } from "@workspace/db";
 import { maybeReanalyze } from "../lib/analyze-intelligence.js";
-import {
-  canAccessConversation,
-  canViewAllConversations,
-  conversationOwnedByUserCondition,
-} from "../lib/conversation-access.js";
+import { recordIntelligenceEvent, recordIntelligenceFact } from "../services/customer-intelligence-history.js";
+import { resolveStageQuestionsFromInboundMessage } from "../services/stage-question-resolution.js";
 import {
   sendOutgoingMessage,
   WhatsAppNotConnectedError,
@@ -104,11 +100,6 @@ router.post("/messages", async (req, res): Promise<void> => {
     return;
   }
 
-  if (!(await canAccessConversation(req, parsed.data.tenantId, parsed.data.conversationId))) {
-    res.status(403).json({ error: "Access denied to this conversation" });
-    return;
-  }
-
   let midia: ResolvedMidia | undefined;
   try {
     midia = await resolveMidia(req, parsed.data.tenantId, req.body?.midia);
@@ -135,6 +126,7 @@ router.post("/messages", async (req, res): Promise<void> => {
         req.log
       );
       res.status(201).json(message);
+
     } catch (err) {
       if (err instanceof WhatsAppNotConnectedError) {
         res.status(422).json({ error: "WhatsApp não configurado para este tenant. Configure as credenciais Z-API em Configurações." });
@@ -173,6 +165,49 @@ router.post("/messages", async (req, res): Promise<void> => {
 
   res.status(201).json(message);
 
+  void recordIntelligenceEvent({
+    tenantId: parsed.data.tenantId,
+    leadId: parsed.data.leadId,
+    eventType: parsed.data.direcao === "entrada" ? "message_received" : "message_sent",
+    title: parsed.data.direcao === "entrada"
+      ? `Mensagem recebida via ${parsed.data.canal}`
+      : `Mensagem enviada via ${parsed.data.canal}`,
+    summary: parsed.data.conteudo?.slice(0, 500) ?? null,
+    sourceModule: "messages",
+    sourceId: message.id,
+    metadata: { canal: parsed.data.canal, direcao: parsed.data.direcao },
+    log: req.log,
+  });
+
+  if (parsed.data.direcao === "entrada") {
+    void resolveStageQuestionsFromInboundMessage({
+      tenantId: parsed.data.tenantId,
+      leadId: parsed.data.leadId,
+      messageId: message.id,
+      message: parsed.data.conteudo,
+      log: req.log,
+    }).catch((err) => {
+      req.log.warn({ err, messageId: message.id }, "customer-intelligence: stage question resolution failed (non-fatal)");
+    });
+
+    void recordIntelligenceFact({
+      tenantId: parsed.data.tenantId,
+      leadId: parsed.data.leadId,
+      kind: "declaracao_cliente",
+      factKey: "ultima_interacao_cliente",
+      value: {
+        canal: parsed.data.canal,
+        conteudo: parsed.data.conteudo?.slice(0, 1000) ?? "",
+        em: new Date().toISOString(),
+      },
+      sourceType: "mensagem",
+      sourceModule: "messages",
+      sourceId: message.id,
+      title: "Última interação recebida do cliente",
+      log: req.log,
+    });
+  }
+
   // Fire-and-forget: check whether this lead's intelligence is stale or has
   // accumulated enough new messages to warrant automatic re-analysis.
   maybeReanalyze({
@@ -185,21 +220,13 @@ router.post("/messages", async (req, res): Promise<void> => {
 router.get(
   "/tenants/:tenantId/conversations/:conversationId/messages",
   async (req, res) => {
-    const tenantId = String(req.params.tenantId);
-    const conversationId = String(req.params.conversationId);
-
-    if (!(await canAccessConversation(req, tenantId, conversationId))) {
-      res.status(403).json({ error: "Access denied to this conversation" });
-      return;
-    }
-
     const messages = await db
       .select()
       .from(messagesTable)
       .where(
         and(
-          eq(messagesTable.tenantId, tenantId),
-          eq(messagesTable.conversationId, conversationId)
+          eq(messagesTable.tenantId, String(req.params.tenantId)),
+          eq(messagesTable.conversationId, String(req.params.conversationId))
         )
       )
       .orderBy(asc(messagesTable.createdAt));
@@ -209,45 +236,11 @@ router.get(
 );
 
 router.get("/tenants/:tenantId/messages", async (req, res) => {
-  const tenantId = String(req.params.tenantId);
   const { conversationId, leadId } = req.query as Record<string, string | undefined>;
 
-  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
-    res.status(403).json({ error: "Access denied to this tenant" });
-    return;
-  }
-
-  if (conversationId && !(await canAccessConversation(req, tenantId, conversationId))) {
-    res.status(403).json({ error: "Access denied to this conversation" });
-    return;
-  }
-
-  const conditions = [eq(messagesTable.tenantId, tenantId)];
+  const conditions = [eq(messagesTable.tenantId, String(req.params.tenantId))];
   if (conversationId) conditions.push(eq(messagesTable.conversationId, conversationId));
   if (leadId) conditions.push(eq(messagesTable.leadId, leadId));
-
-  if (!(await canViewAllConversations(req))) {
-    const userId = req.user?.sub;
-    if (!userId) {
-      res.json([]);
-      return;
-    }
-
-    conditions.push(
-      exists(
-        db
-          .select({ id: conversationsTable.id })
-          .from(conversationsTable)
-          .where(
-            and(
-              eq(conversationsTable.id, messagesTable.conversationId),
-              eq(conversationsTable.tenantId, tenantId),
-              conversationOwnedByUserCondition(userId),
-            ),
-          ),
-      ),
-    );
-  }
 
   const messages = await db
     .select()
@@ -269,11 +262,6 @@ router.get("/messages/:id", async (req, res) => {
     return;
   }
 
-  if (!(await canAccessConversation(req, message.tenantId, message.conversationId))) {
-    res.status(403).json({ error: "Access denied to this message" });
-    return;
-  }
-
   res.json(message);
 });
 
@@ -285,11 +273,7 @@ router.patch("/messages/:id", async (req, res) => {
   }
 
   const [existing] = await db
-    .select({
-      id: messagesTable.id,
-      tenantId: messagesTable.tenantId,
-      conversationId: messagesTable.conversationId,
-    })
+    .select({ id: messagesTable.id, tenantId: messagesTable.tenantId })
     .from(messagesTable)
     .where(eq(messagesTable.id, String(req.params.id)));
 
@@ -300,11 +284,6 @@ router.patch("/messages/:id", async (req, res) => {
 
   if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
-    return;
-  }
-
-  if (!(await canAccessConversation(req, existing.tenantId, existing.conversationId))) {
-    res.status(403).json({ error: "Access denied to this message" });
     return;
   }
 
@@ -319,11 +298,7 @@ router.patch("/messages/:id", async (req, res) => {
 
 router.delete("/messages/:id", async (req, res) => {
   const [existing] = await db
-    .select({
-      id: messagesTable.id,
-      tenantId: messagesTable.tenantId,
-      conversationId: messagesTable.conversationId,
-    })
+    .select({ id: messagesTable.id, tenantId: messagesTable.tenantId })
     .from(messagesTable)
     .where(eq(messagesTable.id, String(req.params.id)));
 
@@ -334,11 +309,6 @@ router.delete("/messages/:id", async (req, res) => {
 
   if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
-    return;
-  }
-
-  if (!(await canAccessConversation(req, existing.tenantId, existing.conversationId))) {
-    res.status(403).json({ error: "Access denied to this message" });
     return;
   }
 
