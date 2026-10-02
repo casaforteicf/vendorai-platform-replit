@@ -581,6 +581,14 @@ router.post("/tenants/:tenantId/entregas", async (req, res) => {
     itens: items,
   };
 
+  if (data.status === "em_transito") {
+    res.status(409).json({
+      error: "EXPEDITION_REQUIRED_BEFORE_INITIAL_TRANSIT",
+      message: "Crie o lote, conclua a expedição e somente depois libere a saída para transporte.",
+    });
+    return;
+  }
+
   if (data.modo === "agendada" && !data.assignedTo && data.dataPrevista && data.periodo) {
     const motoristaId = await pickNextMotorista(tenantId, new Date(data.dataPrevista), data.periodo);
     if (!motoristaId) {
