@@ -83,6 +83,8 @@ jobs:
     name: Typecheck + Tests + Build
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
