@@ -3,7 +3,8 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { findOfficialItemCategory, ITEM_CATEGORIES, categoryNameSimilarity } from "../lib/itemCategories";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { generateImage } from "../lib/ai-gateway.js";
+import { callOpenAI, generateImage } from "../lib/ai-gateway.js";
+import { resolverContextoNegocio } from "../services/resolvedorContextoNegocio.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import {
   db,
@@ -293,6 +294,131 @@ router.post("/produtos-catalogo/:id/aprovar", async (req, res) => {
     .returning();
 
   res.json(updated);
+});
+
+router.post("/produtos-catalogo/:id/inteligencia-comercial/sugerir", async (req, res) => {
+  const id = String(req.params.id);
+  const [product] = await db
+    .select()
+    .from(produtosCatalogoTable)
+    .where(eq(produtosCatalogoTable.id, id));
+
+  if (!product) {
+    res.status(404).json({ error: "Produto não encontrado" });
+    return;
+  }
+
+  const tenantId = product.tenantId;
+  if (!tenantId) {
+    res.status(422).json({ error: "Produto sem empresa vinculada" });
+    return;
+  }
+  if (!canAccessTenant(req, tenantId)) {
+    res.status(403).json({ error: "Acesso negado a esta empresa" });
+    return;
+  }
+
+  try {
+    const contexto = await resolverContextoNegocio({
+      tenantId,
+      query: [
+        product.nome,
+        product.descricao,
+        product.descricaoLonga,
+        ...(product.tags ?? []),
+      ].filter(Boolean).join(" | "),
+      productIds: [product.id],
+      limit: 12,
+    });
+
+    const especificacoes = Array.isArray(product.especificacoes)
+      ? product.especificacoes.slice(0, 60)
+      : [];
+
+    const result = await callOpenAI(
+      tenantId,
+      "agent_onboarding",
+      [
+        {
+          role: "system",
+          content:
+            "Você organiza inteligência comercial de produtos sem inventar fatos. " +
+            "Use somente os dados e fontes fornecidos. Quando não houver evidência suficiente, deixe o campo vazio. " +
+            "Não crie números, garantias, certificações, desempenho, comparações, prazos ou promessas não documentadas. " +
+            "Responda somente JSON válido.",
+        },
+        {
+          role: "user",
+          content: `Analise o produto e proponha uma estrutura comercial que será revisada por uma pessoa antes de ser aprovada.
+
+PRODUTO:
+${JSON.stringify({
+  nome: product.nome,
+  marca: product.marca,
+  descricao: product.descricao,
+  descricaoLonga: product.descricaoLonga,
+  tags: product.tags,
+  especificacoes,
+  prazoEntregaDias: product.prazoEntregaDias,
+})}
+
+CONTEXTO APROVADO RECUPERADO:
+${contexto.blocoPrompt || "Nenhum contexto adicional aprovado encontrado."}
+
+Retorne:
+{
+  "caracteristicas": [],
+  "diferenciais": [],
+  "beneficios": [],
+  "doresAtendidas": [],
+  "casosUso": [],
+  "personas": [],
+  "objecoes": [{"objecao":"","resposta":""}],
+  "afirmacoesProibidas": [],
+  "notasComerciais": [],
+  "duvidasFrequentes": [],
+  "garantia": "",
+  "instalacaoUso": "",
+  "entregaPrazo": "",
+  "orientacoesIa": []
+}
+
+Regras adicionais:
+- Diferencial só existe se houver base concreta para sustentá-lo.
+- Benefício deve ser consequência plausível de característica/diferencial documentado, sem exagero.
+- Se houver dúvida, prefira deixar vazio.
+- Em afirmacoesProibidas, registre riscos claros de extrapolação percebidos no material.`,
+        },
+      ],
+      {
+        temperature: 0.2,
+        maxTokens: 1800,
+        responseFormat: { type: "json_object" },
+        log: req.log,
+      },
+    );
+
+    let sugestoes: Record<string, unknown> = {};
+    try {
+      sugestoes = JSON.parse(result.content);
+    } catch {
+      const match = result.content.match(/\{[\s\S]*\}/);
+      if (match) sugestoes = JSON.parse(match[0]);
+    }
+
+    res.setHeader("Cache-Control", "no-store");
+    res.status(200).json({
+      sugestoes,
+      fontes: contexto.fontes,
+      idsProdutos: contexto.idsProdutos,
+      idsMidias: contexto.idsMidias,
+      status: "rascunho",
+      aviso: "Sugestões geradas por IA. Revise e salve para aprovar o uso.",
+    });
+  } catch (error) {
+    req.log?.error({ error, tenantId, productId: id }, "inteligencia-comercial: falha ao sugerir");
+    res.status(500).json({ error: "Não foi possível gerar sugestões agora." });
+  }
 });
 
 router.get("/produtos-catalogo/:id", async (req, res) => {
