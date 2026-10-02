@@ -262,6 +262,7 @@ export default function ProductCatalogKnowledgeLibraryV2() {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [assets, setAssets] = useState<MediaAsset[]>([]);
@@ -333,6 +334,56 @@ export default function ProductCatalogKnowledgeLibraryV2() {
 
   useEffect(() => { if (tenantId) void load(); }, [tenantId]);
   useEffect(() => { if (selected) setForm(formFromProduct(selected)); }, [selected?.id]);
+
+  async function sugerirInteligenciaComercial() {
+    if (!selected) return;
+    setSuggesting(true);
+    try {
+      const response = await fetch(`/api/produtos-catalogo/${selected.id}/inteligencia-comercial/sugerir`, {
+        method: "POST",
+        headers: authHeaders(true),
+        body: JSON.stringify({}),
+      });
+      const body = await response.json().catch(() => ({})) as {
+        sugestoes?: InteligenciaComercialProduto;
+        fontes?: Array<{ id: string; titulo?: string }>;
+        aviso?: string;
+        error?: string;
+      };
+      if (!response.ok) throw new Error(body.error || "Não foi possível gerar sugestões.");
+      const intelligence = body.sugestoes ?? {};
+
+      setForm((current) => ({
+        ...current,
+        caracteristicas: listToText(intelligence.caracteristicas) || current.caracteristicas,
+        beneficios: listToText(intelligence.beneficios) || current.beneficios,
+        diferenciais: listToText(intelligence.diferenciais) || current.diferenciais,
+        aplicacoes: listToText(intelligence.casosUso) || current.aplicacoes,
+        publicoIndicado: listToText(intelligence.personas) || current.publicoIndicado,
+        argumentosComerciais: listToText(intelligence.notasComerciais) || current.argumentosComerciais,
+        duvidasFrequentes: listToText(intelligence.duvidasFrequentes) || current.duvidasFrequentes,
+        objecoesRespostas: objectionsToText(intelligence.objecoes) || current.objecoesRespostas,
+        garantia: intelligence.garantia?.trim() || current.garantia,
+        instalacao: intelligence.instalacaoUso?.trim() || current.instalacao,
+        entrega: intelligence.entregaPrazo?.trim() || current.entrega,
+        observacoesIa: listToText(intelligence.orientacoesIa) || current.observacoesIa,
+        afirmacoesProibidas: listToText(intelligence.afirmacoesProibidas) || current.afirmacoesProibidas,
+      }));
+
+      toast({
+        title: "Sugestões geradas",
+        description: `Revise antes de salvar. ${body.fontes?.length ?? 0} fonte(s) do negócio foram consideradas.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Não foi possível gerar sugestões",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setSuggesting(false);
+    }
+  }
 
   async function saveProduct() {
     if (!selected) return;
@@ -481,6 +532,26 @@ export default function ProductCatalogKnowledgeLibraryV2() {
               </div>
               <div className="max-h-[calc(100vh-190px)] space-y-5 overflow-y-auto p-4">
                 <div className="rounded-2xl border border-orange-200 bg-orange-50 p-3"><label className="flex cursor-pointer items-start justify-between gap-3"><div><p className="text-sm font-semibold text-orange-900">Disponível para IA</p><p className="mt-1 text-xs leading-relaxed text-orange-800/80">Libera o complemento deste produto para uso automatizado. Informações operacionais sensíveis devem ficar fora dos campos abaixo.</p></div><input type="checkbox" checked={form.aiEnabled} onChange={(event) => setForm((current) => ({ ...current, aiEnabled: event.target.checked }))} className="mt-1 h-4 w-4 accent-orange-500" /></label></div>
+
+                <div className="rounded-2xl border border-violet-200 bg-violet-50/70 p-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-violet-950">Inteligência comercial assistida</p>
+                      <p className="mt-1 text-xs leading-relaxed text-violet-800/80">
+                        A IA usa o cadastro do produto e informações aprovadas da empresa para sugerir benefícios, objeções, aplicações e cuidados. Nada é aprovado automaticamente.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={suggesting}
+                      onClick={() => void sugerirInteligenciaComercial()}
+                      className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl border border-violet-200 bg-background px-3 text-xs font-semibold text-violet-800 disabled:opacity-50"
+                    >
+                      {suggesting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                      Sugerir inteligência com IA
+                    </button>
+                  </div>
+                </div>
 
                 <section className="rounded-2xl border border-sky-200 bg-sky-50/70 p-3">
                   <div className="flex items-start gap-2"><CircleDollarSign className="mt-0.5 h-4 w-4 shrink-0 text-sky-700" /><div><p className="text-sm font-semibold text-sky-950">Preço e pagamento</p><p className="mt-0.5 text-[11px] leading-relaxed text-sky-800/80">Padrão único do catálogo: uma linha para o valor à vista e outra para o parcelamento.</p></div></div>
