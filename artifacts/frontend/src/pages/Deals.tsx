@@ -700,6 +700,7 @@ function KanbanColumn({
   col,
   deals,
   leadMap,
+  leadVisualMap,
   briefingMap,
   propostaByDealId,
   propostaByLeadId,
@@ -716,6 +717,7 @@ function KanbanColumn({
   col: KanbanColumnDef;
   deals: Deal[];
   leadMap: Map<string, string>;
+  leadVisualMap: Map<string, Record<string, unknown>>;
   briefingMap: Map<string, LeadBriefing>;
   propostaByDealId: Map<string, PropostaSnap>;
   propostaByLeadId: Map<string, PropostaSnap>;
@@ -996,4 +998,3 @@ function SaasKanbanColumn({
   onCardClick: (deal: Deal) => void;
   onAgendar: (deal: Deal) => void;
 }) {
-  const { setNodeRef } = useDroppable({ id: `saas-col-${etapa.value}` });

@@ -12,6 +12,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SupportReportPanel } from "@/components/SupportReportPanel";
 import { OperationalStageFormDialog } from "@/components/OperationalStageFormDialog";
+import { ExpeditionChecklistPanel, type ExpeditionChecklist } from "@/components/ExpeditionChecklistPanel";
+import { TransportChecklistPanel, type TransportChecklist } from "@/components/TransportChecklistPanel";
 import { PipelineNav, PIPELINE_CARD_CLASS, PIPELINE_COLUMN_CLASS, PIPELINE_COLUMN_HEADER_CLASS } from "@/components/PipelineNav";
 import { InstallationTemplateDialog } from "@/components/InstallationTemplateDialog";
 import {
@@ -221,6 +223,10 @@ function formatDate(value?: string | null) {
   return new Date(value).toLocaleDateString("pt-BR");
 }
 
+function formatPlannedDate(value?: string | null) {
+  return formatDate(value);
+}
+
 function toDateInput(value?: string | null) {
   if (!value) return "";
   const date = new Date(value);
@@ -352,48 +358,6 @@ function requirementCompleted(card: WorkCard, key: string) {
   return value === true || Boolean(value && typeof value === "object" && (value as Record<string, unknown>).completed === true);
 }
 
-function safeExpeditionChecklist(card: WorkCard): ExpeditionChecklist | null {
-  const raw = card.metadata?.checklistExpedicao;
-  if (!raw || typeof raw !== "object") return null;
-  const checklist = raw as ExpeditionChecklist;
-  return Array.isArray(checklist.itens) ? checklist : null;
-}
-
-function safeTransportChecklist(card: WorkCard): TransportChecklist | null {
-  const raw = card.metadata?.checklistTransporte;
-  if (!raw || typeof raw !== "object") return null;
-  const checklist = raw as TransportChecklist;
-  return Array.isArray(checklist.campos) ? checklist : null;
-}
-
-function requirementCompleted(card: WorkCard, key: string) {
-  const raw = card.metadata?.stageGates;
-  if (!raw || typeof raw !== "object") return false;
-  const value = (raw as Record<string, unknown>)[key];
-  return value === true || Boolean(value && typeof value === "object" && (value as Record<string, unknown>).completed === true);
-}
-
-function safeExpeditionChecklist(card: WorkCard): ExpeditionChecklist | null {
-  const raw = card.metadata?.checklistExpedicao;
-  if (!raw || typeof raw !== "object") return null;
-  const checklist = raw as ExpeditionChecklist;
-  return Array.isArray(checklist.itens) ? checklist : null;
-}
-
-function safeTransportChecklist(card: WorkCard): TransportChecklist | null {
-  const raw = card.metadata?.checklistTransporte;
-  if (!raw || typeof raw !== "object") return null;
-  const checklist = raw as TransportChecklist;
-  return Array.isArray(checklist.campos) ? checklist : null;
-}
-
-function requirementCompleted(card: WorkCard, key: string) {
-  const raw = card.metadata?.stageGates;
-  if (!raw || typeof raw !== "object") return false;
-  const value = (raw as Record<string, unknown>)[key];
-  return value === true || Boolean(value && typeof value === "object" && (value as Record<string, unknown>).completed === true);
-}
-
 export default function PipelineOperacional() {
   const { user, token } = useAuth();
   const tenantId = user?.tenantId ?? "";
@@ -408,11 +372,12 @@ export default function PipelineOperacional() {
   const [supportOpen, setSupportOpen] = useState(false);
   const [deliveryOpen, setDeliveryOpen] = useState(false);
   const [stageFormKey, setStageFormKey] = useState<string | null>(null);
+  const [installationTemplatesOpen, setInstallationTemplatesOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const detailFileRef = useRef<HTMLInputElement>(null);
 
-  const authHeaders = useMemo(() => token ? { Authorization: `Bearer ${token}` } : {}, [token]);
-  const jsonHeaders = useMemo(() => ({ "Content-Type": "application/json", ...authHeaders }), [authHeaders]);
+  const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${String(token)}` } : {};
+  const jsonHeaders: Record<string, string> = { "Content-Type": "application/json", ...authHeaders };
 
   async function api<T>(url: string, options?: RequestInit): Promise<T> {
     const response = await fetch(url, { ...options, headers: { ...authHeaders, ...(options?.headers ?? {}) } });
@@ -594,7 +559,6 @@ export default function PipelineOperacional() {
             mimeType: file.type || "application/octet-stream",
             tamanho: file.size,
             origem,
-            descricao,
             metadata: metadata ?? {},
           }),
         });
@@ -687,7 +651,7 @@ export default function PipelineOperacional() {
                       )}
                       {card.tipo === "entrega" && items.length > 0 && (
                         <div className="mt-2 rounded-md bg-muted/50 p-2 text-[11px]">
-                          {items.slice(0, 3).map((item, index) => <div key={index}>{item.quantidade} × {item.nome}</div>)}
+                          {items.slice(0, 3).map((item, index) => <div key={index}>{String(item.quantidade ?? 1)} × {String(item.nome ?? item.name ?? "Item")}</div>)}
                           {items.length > 3 && <div className="text-muted-foreground">+{items.length - 3} item(ns)</div>}
                         </div>
                       )}
@@ -998,3 +962,39 @@ export default function PipelineOperacional() {
                                               >
                                                 <CheckCircle2 className="h-3 w-3" />
                                                 {done ? "OK • " : ""}
+                                                {String(check.label || check.key || "Verificação")}
+                                              </Button>
+                                            );
+                                          })}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <Select
+                                      value={item.status}
+                                      disabled={patchInstallationItem.isPending}
+                                      onValueChange={(status) => patchInstallationItem.mutate({ id: item.id, data: { status } })}
+                                    >
+                                      <SelectTrigger className="w-[190px]"><SelectValue /></SelectTrigger>
+                                      <SelectContent>
+                                        {INSTALLATION_STATUS_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+
+                                  <Textarea
+                                    key={`installation-domain-note-${item.id}-${item.observation || ""}`}
+                                    className="mt-3"
+                                    rows={2}
+                                    defaultValue={item.observation || ""}
+                                    placeholder="Observação, divergência, pendência ou informação para retorno..."
+                                    disabled={patchInstallationItem.isPending}
+                                    onBlur={(event) => {
+                                      const observation = event.currentTarget.value.trim();
+                                      if (observation !== (item.observation || "")) patchInstallationItem.mutate({ id: item.id, data: { observation } });
+                                    }}
+                                  />
+
+                                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted">
+                                      <Upload className="h-3.5 w-3.5" />
+                                      Evidência do item
