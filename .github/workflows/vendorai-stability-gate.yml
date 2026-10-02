@@ -45,6 +45,30 @@ jobs:
       - name: Enable pnpm
         run: npm install --global pnpm@10.26.1
       - run: pnpm install --frozen-lockfile
+
+      - name: Detectar escopo de código
+        id: scope
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          code_changed=true
+
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ -n "${BASE_SHA:-}" ]; then
+            git fetch --no-tags --depth=1 origin "$BASE_SHA"
+            changed_files="$(git diff --name-only "$BASE_SHA" HEAD)"
+            echo "Arquivos alterados:"
+            echo "$changed_files"
+
+            if ! grep -Eq '^(artifacts/|lib/|scripts/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|tsconfig(\..+)?\.json$|\.node-version$)' <<<"$changed_files"; then
+              code_changed=false
+            fi
+          fi
+
+          echo "code_changed=$code_changed" >> "$GITHUB_OUTPUT"
+          echo "code_changed=$code_changed"
+
       - name: CRM deal isolation regression
         run: pnpm --filter @workspace/api-server exec vitest run --config vitest.config.ts src/__tests__/deals-isolation.test.ts
 
@@ -95,6 +119,7 @@ jobs:
         run: npm install --global pnpm@10.26.1
       - run: pnpm install --frozen-lockfile
       - name: Typecheck sem regressão contra a base do PR
+        if: steps.scope.outputs.code_changed == 'true'
         shell: bash
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -162,8 +187,11 @@ jobs:
           echo "✅ Nenhum erro novo de TypeScript foi introduzido pelo PR."
           echo "::warning::A base ainda possui dívida de TypeScript; este PR não a aumentou."
       - name: Backend tests
+        if: steps.scope.outputs.code_changed == 'true'
         run: pnpm --filter @workspace/api-server test
       - name: Frontend tests
+        if: steps.scope.outputs.code_changed == 'true'
         run: pnpm --filter @workspace/frontend test
       - name: Build all production packages
+        if: steps.scope.outputs.code_changed == 'true'
         run: pnpm build
