@@ -23,6 +23,28 @@ const oauthKey = () => process.env.OAUTH_SIGNING_SECRET?.trim() || key();
 const hash = (s: string) => createHash("sha256").update(s).digest("base64url");
 const equal = (a: string, b: string) => timingSafeEqual(createHash("sha256").update(a).digest(), createHash("sha256").update(b).digest());
 const sanePublicClientId = (value: string) => value.length >= 8 && value.length <= 12000 && /^[A-Za-z0-9._~-]+$/.test(value);
+function chatGptMetadataClientId(value: string): boolean {
+  try {
+    const u = new URL(value);
+    return u.origin === "https://chatgpt.com" && !u.username && !u.password && !u.hash && !u.search &&
+      (u.pathname === "/oauth/client.json" || /^\/oauth\/[a-zA-Z0-9_-]+\/client\.json$/.test(u.pathname));
+  } catch { return false; }
+}
+function chatGptMetadataRedirectAllowed(client: string, redirect: string): boolean {
+  try {
+    const c = new URL(client);
+    const r = new URL(redirect);
+    if (c.pathname === "/oauth/client.json") return r.pathname === "/connector_platform_oauth_redirect";
+    const callbackId = c.pathname.match(/^\/oauth\/([a-zA-Z0-9_-]+)\/client\.json$/)?.[1];
+    return Boolean(callbackId && r.pathname === `/connector/oauth/${callbackId}`);
+  } catch { return false; }
+}
+function clientKind(client: string): "registered" | "chatgpt_cimd" | "legacy_public" | "invalid" {
+  if (read(client)?.type === "client") return "registered";
+  if (chatGptMetadataClientId(client)) return "chatgpt_cimd";
+  if (sanePublicClientId(client)) return "legacy_public";
+  return "invalid";
+}
 function sign(value: object): string {
   if (!oauthKey()) throw new Error("OAUTH_SIGNING_SECRET missing");
   const data = Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -85,7 +107,7 @@ export async function handleOAuth(req: IncomingMessage, res: ServerResponse, url
     if (req.method === "GET" && ["/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"].includes(path)) {
       json(res, 200, { resource: resource(), authorization_servers: [issuer()], scopes_supported: [SCOPE], bearer_methods_supported: ["header"] });
     } else if (req.method === "GET" && path === "/.well-known/oauth-authorization-server") {
-      json(res, 200, { issuer: issuer(), authorization_endpoint: `${issuer()}/oauth/authorize`, token_endpoint: `${issuer()}/oauth/token`, registration_endpoint: `${issuer()}/oauth/register`, revocation_endpoint: `${issuer()}/oauth/revoke`, response_types_supported: ["code"], grant_types_supported: ["authorization_code", "refresh_token"], token_endpoint_auth_methods_supported: ["none"], code_challenge_methods_supported: ["S256"], scopes_supported: [SCOPE], authorization_response_iss_parameter_supported: true });
+      json(res, 200, { issuer: issuer(), authorization_endpoint: `${issuer()}/oauth/authorize`, token_endpoint: `${issuer()}/oauth/token`, registration_endpoint: `${issuer()}/oauth/register`, revocation_endpoint: `${issuer()}/oauth/revoke`, response_types_supported: ["code"], grant_types_supported: ["authorization_code", "refresh_token"], token_endpoint_auth_methods_supported: ["none"], code_challenge_methods_supported: ["S256"], scopes_supported: [SCOPE], authorization_response_iss_parameter_supported: true, client_id_metadata_document_supported: true });
     } else if (req.method === "POST" && path === "/oauth/register") {
       if (!req.headers["content-type"]?.startsWith("application/json")) { fail(res); return true; }
       const input = JSON.parse(await body(req));
@@ -98,13 +120,16 @@ export async function handleOAuth(req: IncomingMessage, res: ServerResponse, url
       const p = url.searchParams;
       const client = p.get("client_id") || "";
       const metadata = read(client);
-      const legacyPublicClient = !metadata && sanePublicClientId(client);
+      const kind = clientKind(client);
+      const legacyPublicClient = kind === "legacy_public";
+      const cimdClient = kind === "chatgpt_cimd";
       const redirect = p.get("redirect_uri") || "";
       const aud = p.get("resource");
       const scope = p.get("scope") || SCOPE;
       const invalidReason =
-        (!legacyPublicClient && metadata?.type !== "client") ? "invalid_client" :
-        (!legacyPublicClient && !metadata.redirects?.includes(redirect)) ? "redirect_not_registered" :
+        kind === "invalid" ? "invalid_client" :
+        (kind === "registered" && !metadata.redirects?.includes(redirect)) ? "redirect_not_registered" :
+        (cimdClient && !chatGptMetadataRedirectAllowed(client, redirect)) ? "redirect_not_registered" :
         !allowedRedirect(redirect) ? "redirect_not_allowed" :
         p.get("response_type") !== "code" ? "unsupported_response_type" :
         p.get("code_challenge_method") !== "S256" ? "pkce_method_required" :
@@ -119,7 +144,7 @@ export async function handleOAuth(req: IncomingMessage, res: ServerResponse, url
       }
       if (forms.size >= 1000) { fail(res, "temporarily_unavailable", 503); return true; }
       const callbackPath = (() => { try { return new URL(redirect).pathname; } catch { return "invalid"; } })();
-      console.info("[oauth] authorize accepted", { callbackPath, callbackKind: callbackPath === "/connector_platform_oauth_redirect" ? "stable" : callbackPath.startsWith("/connector/oauth/") ? "specific" : "other", clientKind: legacyPublicClient ? "legacy_public" : "registered" });
+      console.info("[oauth] authorize accepted", { callbackPath, callbackKind: callbackPath === "/connector_platform_oauth_redirect" ? "stable" : callbackPath.startsWith("/connector/oauth/") ? "specific" : "other", clientKind: kind });
       const pending = { grant: { client, redirect, challenge: p.get("code_challenge")!, resource: resource(), scope, family: nonce(), exp: now() + 600 }, state: p.get("state") || "", exp: now() + 600 };
       // Signed self-contained consent survives process restarts and multiple replicas.
       const csrf = sign({ type: "consent", pending });
@@ -145,7 +170,7 @@ export async function handleOAuth(req: IncomingMessage, res: ServerResponse, url
         if (attempt.count > 10 || !key() || !equal(p.get("credential") || "", key()) || p.get("decision") !== "approve") { fail(res, "access_denied", 403); return true; }
         if (codes.size >= 1000 || refreshes.size >= 1000) { fail(res, "temporarily_unavailable", 503); return true; }
         const code = nonce();
-        codes.set(hash(code), { ...pending.grant, exp: now() + 120 });
+        codes.set(hash(code), { ...pending.grant, exp: now() + 600 });
         redirect.searchParams.set("code", code);
       }
       console.info("[oauth] approve redirect", { callbackPath: redirect.pathname, callbackKind: redirect.pathname === "/connector_platform_oauth_redirect" ? "stable" : redirect.pathname.startsWith("/connector/oauth/") ? "specific" : "other", hasCode: redirect.searchParams.has("code"), hasState: redirect.searchParams.has("state"), hasIss: redirect.searchParams.has("iss") });
@@ -156,7 +181,11 @@ export async function handleOAuth(req: IncomingMessage, res: ServerResponse, url
       if (!req.headers["content-type"]?.startsWith("application/x-www-form-urlencoded")) { fail(res); return true; }
       const p = new URLSearchParams(await body(req));
       const client = p.get("client_id") || "";
-      if (!sanePublicClientId(client)) { fail(res, "invalid_client", 401); return true; }
+      const tokenClientKind = clientKind(client);
+      if (tokenClientKind === "invalid") {
+        console.warn("[oauth] token rejected", { reason: "invalid_client", hasClient: Boolean(client) });
+        fail(res, "invalid_client", 401); return true;
+      }
       const kind = p.get("grant_type");
       if (kind !== "authorization_code" && kind !== "refresh_token") { fail(res, "unsupported_grant_type"); return true; }
       const raw = p.get(kind === "authorization_code" ? "code" : "refresh_token") || "";
@@ -164,8 +193,21 @@ export async function handleOAuth(req: IncomingMessage, res: ServerResponse, url
       if (kind === "authorization_code") {
         const id = hash(raw);
         grant = codes.get(id);
-        if (!grant || grant.exp < now() || grant.client !== client || (p.get("resource") && p.get("resource") !== grant.resource) || (p.get("scope") && p.get("scope") !== grant.scope) ||
-            p.get("redirect_uri") !== grant.redirect || !/^[A-Za-z0-9._~-]{43,128}$/.test(p.get("code_verifier") || "") || !equal(hash(p.get("code_verifier")!), grant.challenge)) { fail(res, "invalid_grant"); return true; }
+        const verifier = p.get("code_verifier") || "";
+        const rejectReason =
+          !grant ? "code_not_found" :
+          grant.exp < now() ? "code_expired" :
+          grant.client !== client ? "client_mismatch" :
+          (p.get("resource") && p.get("resource") !== grant.resource) ? "resource_mismatch" :
+          (p.get("scope") && p.get("scope") !== grant.scope) ? "scope_mismatch" :
+          p.get("redirect_uri") !== grant.redirect ? "redirect_mismatch" :
+          !/^[A-Za-z0-9._~-]{43,128}$/.test(verifier) ? "invalid_verifier_format" :
+          !equal(hash(verifier), grant.challenge) ? "pkce_mismatch" :
+          null;
+        if (rejectReason) {
+          console.warn("[oauth] token rejected", { reason: rejectReason, clientKind: tokenClientKind, grantType: kind });
+          fail(res, "invalid_grant"); return true;
+        }
         codes.delete(id);
       } else {
         const claims = read(raw);
@@ -173,6 +215,7 @@ export async function handleOAuth(req: IncomingMessage, res: ServerResponse, url
             revokedFamilies.has(claims.family) || (p.get("resource") && p.get("resource") !== claims.aud) || (p.get("scope") && p.get("scope") !== claims.scope)) { fail(res, "invalid_grant"); return true; }
         grant = { client: claims.client, redirect: "", challenge: "", resource: claims.aud, scope: claims.scope, family: claims.family, exp: claims.exp };
       }
+      if (!grant) { fail(res, "invalid_grant"); return true; }
       issue(res, grant);
     } else if (req.method === "POST" && path === "/oauth/revoke") {
       const p = new URLSearchParams(await body(req));
