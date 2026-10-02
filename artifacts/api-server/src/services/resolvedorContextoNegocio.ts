@@ -101,7 +101,7 @@ function relevance(haystack: string, queryTokens: string[], preferred: boolean):
   return value;
 }
 
-function formatCommercialIntel(product: ProductRow): string {
+function formatInteligenciaComercial(product: ProductRow): string {
   const ci = product.comercial ?? {};
   const parts: string[] = [];
   const add = (label: string, value: unknown) => {
@@ -109,20 +109,20 @@ function formatCommercialIntel(product: ProductRow): string {
     if (list.length) parts.push(`${label}: ${list.join("; ")}`);
   };
 
-  add("Características", ci.features);
-  add("Diferenciais", ci.differentials);
-  add("Benefícios", ci.benefits);
-  add("Dores atendidas", ci.painsSolved);
-  add("Casos de uso", ci.useCases);
+  add("Características", ci.caracteristicas);
+  add("Diferenciais", ci.diferenciais);
+  add("Benefícios", ci.beneficios);
+  add("Dores atendidas", ci.doresAtendidas);
+  add("Casos de uso", ci.casosUso);
   add("Personas", ci.personas);
-  add("Afirmações permitidas", ci.allowedClaims);
-  add("NÃO afirmar", ci.prohibitedClaims);
-  add("Notas comerciais", ci.salesNotes);
+  add("Afirmações permitidas", ci.afirmacoesPermitidas);
+  add("NÃO afirmar", ci.afirmacoesProibidas);
+  add("Notas comerciais", ci.notasComerciais);
 
-  const objections = objectList(ci.objections)
+  const objections = objectList(ci.objecoes)
     .map((item) => {
-      const objection = compact(item.objection, 220);
-      const response = compact(item.response, 420);
+      const objection = compact(item.objecao, 220);
+      const response = compact(item.resposta, 420);
       return objection ? `${objection}${response ? ` → ${response}` : ""}` : "";
     })
     .filter(Boolean);
@@ -216,23 +216,23 @@ export async function resolverContextoNegocio(input: {
 
   const rankedProducts = productResult.rows
     .map((item) => {
-      const commercialText = formatCommercialIntel(item);
-      const haystack = [item.nome, item.product_type, item.descricao, item.descricao_longa, item.marca, ...(item.tags ?? []), commercialText].join(" ");
-      return { item, commercialText, score: relevance(haystack, queryTokens, preferredProductIds.has(item.id)) };
+      const textoComercial = formatInteligenciaComercial(item);
+      const haystack = [item.nome, item.product_type, item.descricao, item.descricao_longa, item.marca, ...(item.tags ?? []), textoComercial].join(" ");
+      return { item, textoComercial, score: relevance(haystack, queryTokens, preferredProductIds.has(item.id)) };
     })
     .filter(({ score, item }) => score > 0 || preferredProductIds.has(item.id))
     .sort((a, b) => b.score - a.score)
     .slice(0, 5);
 
   if (rankedProducts.length) {
-    const productBlocks = rankedProducts.map(({ item, commercialText, score }) => {
+    const productBlocks = rankedProducts.map(({ item, textoComercial, score }) => {
       selectedProductIds.push(item.id);
       sources.push({
         id: item.id,
         type: "produto_catalogo",
         kind: item.product_type,
         title: item.nome,
-        summary: compact([item.descricao, commercialText].filter(Boolean).join(" | "), 600),
+        summary: compact([item.descricao, textoComercial].filter(Boolean).join(" | "), 600),
         score,
         approved: true,
       });
@@ -240,7 +240,7 @@ export async function resolverContextoNegocio(input: {
         `#### ${item.nome}`,
         item.descricao ? `Descrição: ${compact(item.descricao, 500)}` : "",
         item.descricao_longa ? `Contexto: ${compact(item.descricao_longa, 700)}` : "",
-        commercialText,
+        textoComercial,
       ].filter(Boolean).join("\n");
     });
     blocks.push(`### PRODUTOS/SERVIÇOS RELEVANTES\n${productBlocks.join("\n\n")}`);
