@@ -12,6 +12,7 @@ import {
 } from "@workspace/db";
 import type { Logger } from "pino";
 import { sendSdrFollowup } from "../services/sdrService.js";
+import { executarAcompanhamento } from "../services/orquestradorAcompanhamento.js";
 import { tenantIsWithinBusinessHours } from "../lib/proactiveMessageGuard.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 
@@ -207,8 +208,41 @@ export async function runSdrFollowup(log: Logger): Promise<void> {
         log.warn({ err, tenantId, leadId }, "sdr-followup: failed to record lead_cooling");
       });
 
-      await sendSdrFollowup(leadId, dealId ?? null, tenantId, lead.nome, lead.telefone, log);
-      sent++;
+      const acompanhamento = await executarAcompanhamento({
+        tenantId,
+        leadId,
+        dealId: dealId ?? null,
+        motivoDisparo: "48 horas sem resposta após a primeira abordagem SDR",
+        // Preserva o comportamento automático já existente neste gatilho.
+        // Uma configuração explícita da etapa pode mudar para gerar/aprovar ou somente sugestão.
+        modoPadrao: "automatico",
+        log,
+      }).catch((err) => {
+        log.warn({ err, tenantId, leadId }, "sdr-followup: orquestrador indisponível; usando fallback legado");
+        return null;
+      });
+
+      if (!acompanhamento?.executado) {
+        // Compatibilidade: o fluxo legado continua disponível enquanto
+        // canais/modos da nova jornada ainda não estiverem configurados.
+        if (!acompanhamento || acompanhamento.plano.modo === "automatico") {
+          await sendSdrFollowup(leadId, dealId ?? null, tenantId, lead.nome, lead.telefone, log);
+          sent++;
+        } else {
+          log.info(
+            {
+              tenantId,
+              leadId,
+              modo: acompanhamento.plano.modo,
+              canal: acompanhamento.plano.canalPrincipal,
+              requerHumano: acompanhamento.plano.requerHumano,
+            },
+            "sdr-followup: acompanhamento planejado aguardando aprovação/sugestão",
+          );
+        }
+      } else {
+        sent++;
+      }
 
       // Anti-ban delay
       await new Promise((r) => setTimeout(r, 1_200));
