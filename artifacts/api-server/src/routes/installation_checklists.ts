@@ -851,9 +851,15 @@ router.post("/installation-visits/:visitId/accept", async (req, res) => {
 
   if (lead?.telefone) {
     const docs = Array.from(documentUrls);
+    const publicBase = (
+      process.env["PUBLIC_API_URL"]
+      || process.env["APP_URL"]
+      || "https://app.appvendorai.com"
+    ).replace(/\/$/, "");
+    const publicDocumentUrl = servedUrl.startsWith("http") ? servedUrl : `${publicBase}${servedUrl}`;
     const message = [
       `Olá ${lead.nome || lead.empresa || ""}. A instalação foi concluída e o termo de aceite foi registrado.`,
-      `Documento: ${servedUrl}`,
+      `Documento: ${publicDocumentUrl}`,
       docs.length ? `Manuais/garantias: ${docs.join(" | ")}` : null,
     ].filter(Boolean).join("\n");
     sendDirectWhatsAppMessage(card.tenantId, lead.telefone, message, req.log)
