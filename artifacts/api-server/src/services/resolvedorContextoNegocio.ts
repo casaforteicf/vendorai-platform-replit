@@ -37,7 +37,7 @@ type ProfileRow = {
 type ProductRow = {
   id: string;
   nome: string;
-  product_tipo: string;
+  product_type: string;
   descricao: string | null;
   descricao_longa: string | null;
   marca: string | null;
@@ -47,9 +47,9 @@ type ProductRow = {
 
 type ContextRow = {
   id: string;
-  titulo: string;
-  categoria: string;
-  resumo: string;
+  title: string;
+  kind: string;
+  summary: string;
   details: string | null;
   tags: string[] | null;
   asset_ids: string[] | null;
@@ -238,7 +238,7 @@ export async function resolverContextoNegocio(input: {
         categoria: item.product_type,
         titulo: item.nome,
         resumo: compact([item.descricao, textoComercial].filter(Boolean).join(" | "), 600),
-        score,
+        pontuacao: score,
         aprovado: true,
       });
       return [
@@ -269,7 +269,7 @@ export async function resolverContextoNegocio(input: {
         categoria: item.kind,
         titulo: item.title,
         resumo: compact(item.summary, 500),
-        score,
+        pontuacao: score,
         aprovado: true,
       });
       return `- [${item.kind}] ${item.title}: ${compact([item.summary, item.details].filter(Boolean).join(" — "), 850)}`;
@@ -294,7 +294,7 @@ export async function resolverContextoNegocio(input: {
         categoria: item.categoria,
         titulo: item.titulo,
         resumo: compact(item.conteudo, 500),
-        score,
+        pontuacao: score,
         aprovado: true,
       });
       return `- ${item.titulo} [${item.categoria}]: ${compact(item.conteudo, 1000)}`;
@@ -316,7 +316,7 @@ export async function resolverContextoNegocio(input: {
 
   return {
     blocoPrompt,
-    fontes: fontes.sort((a, b) => b.score - a.score),
+    fontes: fontes.sort((a, b) => b.pontuacao - a.pontuacao),
     idsProdutos: idsProdutosSelecionados,
     idsMidias: [...idsMidias],
   };
