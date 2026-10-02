@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft, ArrowRight, AlertTriangle, BrainCircuit, Clock3, Loader2, Pencil, Settings2, Sparkles, UserRound } from "lucide-react";
 
 const LeadDetail = lazy(() => import("@/pages/LeadDetail"));
@@ -71,6 +72,15 @@ const pipelineDotClass: Record<string, string> = {
 const hiddenFromCommercialFlow = new Set(["em_aquecimento", "em_execucao", "entregue", "parceiro"]);
 
 type FullIntelligenceResponse = {
+  profile: null | {
+    journeyStage?: string | null;
+    intentAnalysis?: string | null;
+    goalAnalysis?: string | null;
+    opportunities?: string[] | null;
+    nextBestAction?: string | null;
+    nextBestActionReason?: string | null;
+    lastAnalyzedAt?: string | null;
+  };
   health: null | {
     score: number | null;
     status: "saudavel" | "atencao" | "alto_risco" | "critico" | null;
@@ -94,9 +104,25 @@ type FullIntelligenceResponse = {
     status: string;
     confidence: number | null;
   }>;
-  events: Array<{ id: string }>;
-  facts: Array<{ id: string }>;
+  events: Array<{ id: string; eventType?: string | null; title?: string | null; summary?: string | null; sourceModule?: string | null; occurredAt?: string | null; createdAt?: string | null }>;
+  facts: Array<{ id: string; kind?: string | null; factKey?: string | null; value?: unknown; confidence?: number | null; createdAt?: string | null }>;
+  snapshots: Array<{ id: string; healthScore?: number | null; riskType?: string | null; riskLevel?: string | null; riskTrend?: string | null; analysisConfidence?: number | null; createdAt?: string | null }>;
+  sources: Array<{ id: string; sourceType?: string | null; sourceModule?: string | null; title?: string | null; sourceUrl?: string | null; capturedAt?: string | null }>;
 };
+
+function formatIntelligenceDate(value?: string | null) {
+  if (!value) return "Data não informada";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Data não informada";
+  return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(date);
+}
+
+function displayFactValue(value: unknown) {
+  if (value == null) return "Sem valor";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  try { return JSON.stringify(value); } catch { return "Informação estruturada"; }
+}
 
 function tomorrow() {
   const d = new Date(Date.now() + 86400000);
@@ -191,6 +217,7 @@ export default function LeadWorkspace() {
   const [ownerEditorOpen, setOwnerEditorOpen] = useState(false);
   const [currentOwner, setCurrentOwner] = useState("");
   const [savingOwner, setSavingOwner] = useState(false);
+  const [intelligenceOpen, setIntelligenceOpen] = useState(false);
 
   const targetStage = stages.find((s) => s.key === nextStage);
   const eligibleIds = (targetStage as { elegiveisUserIds?: string[] | null } | undefined)?.elegiveisUserIds ?? null;
@@ -484,9 +511,12 @@ export default function LeadWorkspace() {
                   {fullIntelligence.health.nextBestActionReason && <p className="mt-0.5 text-xs text-muted-foreground">{fullIntelligence.health.nextBestActionReason}</p>}
                 </div>
               </div>
-              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] text-muted-foreground">
                 <span>{fullIntelligence.events.length} evento(s) no histórico inteligente</span>
                 <span>{fullIntelligence.facts.length} conhecimento(s) estruturado(s)</span>
+                <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs text-primary" onClick={() => setIntelligenceOpen(true)}>
+                  Ver inteligência completa
+                </Button>
               </div>
             </div>
             {deal && fullIntelligence.dynamicQuestions.some((question) => question.stageKey === deal.etapa && question.status === "pendente") && (
