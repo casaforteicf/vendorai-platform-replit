@@ -43,7 +43,7 @@ import { detectBotPattern, BOT_SIGNAL_THRESHOLD } from "./bot-detection.js";
 import { classifyFinancialIntent } from "./financial-intent.js";
 import { handleDeliveryFeedbackReply } from "./post-venda.js";
 import { prepareSupportAiIntake } from "./support-ai-intake.js";
-import { resolveBusinessContext } from "./businessContextResolver.js";
+import { resolverContextoNegocio } from "./resolvedorContextoNegocio.js";
 import { handleSequenceOfferReply } from "./sequence-offer.js";
 import { generateAgentHandoffSummary } from "./handoff.js";
 import { sendDirectWhatsAppMessage, sendDirectWhatsAppDocument, sendOutgoingMessage } from "./omnichannel.js";
@@ -1590,9 +1590,9 @@ export async function processAgentInternal(params: {
 
     // Resolve tenant intelligence dynamically for the current lead/message.
     // Failure is non-fatal: legacy prompt/context remains available as fallback.
-    let dynamicBusinessContext = "";
+    let contextoNegocioDinamico = "";
     try {
-      const resolvedBusiness = await resolveBusinessContext({
+      const contextoNegocioResolvido = await resolverContextoNegocio({
         tenantId,
         query: [
           mensagem,
@@ -1603,29 +1603,29 @@ export async function processAgentInternal(params: {
           ctx.ci?.nextBestAction,
         ].filter(Boolean).join(" | "),
       });
-      dynamicBusinessContext = resolvedBusiness.promptBlock;
+      contextoNegocioDinamico = contextoNegocioResolvido.promptBlock;
       log.debug(
         {
           tenantId,
           leadId,
           agentName: resolvedAgentName,
-          sourceCount: resolvedBusiness.sources.length,
-          sourceIds: resolvedBusiness.sources.slice(0, 12).map((source) => source.id),
+          sourceCount: contextoNegocioResolvido.sources.length,
+          sourceIds: contextoNegocioResolvido.sources.slice(0, 12).map((source) => source.id),
         },
-        "dispatch: dynamic business intelligence context resolved",
+        "dispatch: contexto dinâmico de inteligência do negócio resolvido",
       );
     } catch (err) {
-      log.warn({ err, tenantId, leadId }, "dispatch: business intelligence resolver unavailable (non-fatal)");
+      log.warn({ err, tenantId, leadId }, "dispatch: resolvedor de inteligência do negócio indisponível (não fatal)");
     }
 
     // Inject handoff + Business Intelligence context at the start of the system prompt.
     const baseSystemContent = buildPrompt(resolvedAgentCfg?.prompt, ctx, enrichedScenario, dispatchSystemPrompt);
-    const withBusinessIntelligence = dynamicBusinessContext
-      ? `${baseSystemContent}\n\n---\n\n${dynamicBusinessContext}`
+    const comInteligenciaNegocio = contextoNegocioDinamico
+      ? `${baseSystemContent}\n\n---\n\n${contextoNegocioDinamico}`
       : baseSystemContent;
     const systemContent = handoffContextForPrompt
-      ? `## Contexto recebido do agente anterior:\n${handoffContextForPrompt}\n\n---\n\n${withBusinessIntelligence}`
-      : withBusinessIntelligence;
+      ? `## Contexto recebido do agente anterior:\n${handoffContextForPrompt}\n\n---\n\n${comInteligenciaNegocio}`
+      : comInteligenciaNegocio;
 
     const openaiMessages = [
       { role: "system" as const, content: systemContent },
