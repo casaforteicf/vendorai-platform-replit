@@ -226,7 +226,7 @@ export default function AdminImprovements() {
     refetchInterval: 30000,
   });
 
-  const github = useQuery<{ ready: boolean; repository?: string; reason?: string }>({
+  const github = useQuery<{ ready: boolean; repository?: string; reason?: string; private?: boolean }>({
     queryKey: ["admin", "improvements", "github-readiness"],
     enabled: !!token,
     queryFn: async () => {
@@ -271,6 +271,34 @@ export default function AdminImprovements() {
       throw error;
     } finally {
       setBusy("");
+    }
+  }
+
+  async function reconcileGithub() {
+    if (!github.data?.ready) {
+      toast({
+        title: "GitHub ainda não está conectado neste ambiente",
+        description: github.data?.reason === "GITHUB_DEV_TOKEN_MISSING"
+          ? "Configure GITHUB_DEV_TOKEN no backend de homologação. O repositório padrão já é casaforteicf/vendorai-platform-replit."
+          : (github.data?.reason || "A credencial GitHub do backend precisa ser configurada."),
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const result = await post(
+        "/api/admin/improvements/github-reconcile",
+        undefined,
+        "GitHub reconciliado",
+      );
+      toast({
+        title: "Fila sincronizada com o GitHub",
+        description: `${result.created ?? 0} criada(s), ${result.updated ?? 0} atualizada(s) de ${result.scanned ?? 0} PR(s) aberto(s).`,
+      });
+      await github.refetch();
+    } catch {
+      // O helper post já exibe a falha detalhada.
     }
   }
 
@@ -380,7 +408,10 @@ export default function AdminImprovements() {
         <div>
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <Badge variant="secondary">Superadmin</Badge>
-            <Badge variant={github.data?.ready ? "default" : "outline"}>
+            <Badge
+              variant={github.data?.ready ? "default" : "outline"}
+              title={github.data?.ready ? github.data?.repository : github.data?.reason}
+            >
               GitHub {github.data?.ready ? "conectado" : "não conectado"}
             </Badge>
             <Badge variant="outline">Produção protegida</Badge>
@@ -391,6 +422,14 @@ export default function AdminImprovements() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            onClick={() => void reconcileGithub()}
+            disabled={busy === "/api/admin/improvements/github-reconcile"}
+          >
+            <RefreshCw className={"mr-2 h-4 w-4 " + (busy === "/api/admin/improvements/github-reconcile" ? "animate-spin" : "")} />
+            Reconciliar GitHub
+          </Button>
           <Button
             variant="outline"
             onClick={() => {
