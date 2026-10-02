@@ -1,0 +1,934 @@
+import { Router, type IRouter } from "express";
+import { createHash, randomUUID } from "crypto";
+import { z } from "zod/v4";
+import { pool } from "@workspace/db";
+import { requireRole } from "../middlewares/auth.js";
+import { executeDevAutonomousWork } from "./dev_agent_autonomy.js";
+import { validateProductionRevision } from "./dev_agent_validation.js";
+import { collectDevAgentCheckEvidence } from "../lib/dev-agent-check-evidence.js";
+import { runBrowserAgent } from "../services/browser-agent.js";
+import { signToken } from "../lib/jwt.js";
+
+const router: IRouter = Router();
+
+const releaseCreateSchema = z.object({
+  name: z.string().trim().min(3).max(180),
+  summary: z.string().trim().max(6000).optional().default(""),
+  ids: z.array(z.string().uuid()).min(1).max(100),
+});
+
+const releaseScheduleSchema = z.object({
+  scheduledAt: z.string().datetime().optional().nullable(),
+  publishNow: z.boolean().optional().default(false),
+});
+
+const adjustmentSchema = z.object({
+  message: z.string().trim().min(2).max(6000),
+});
+
+type GithubConfig = { token: string; owner: string; repo: string; repository: string };
+
+function actor(req: any) {
+  return String(req.user?.email ?? req.user?.sub ?? "super_admin");
+}
+
+function githubConfig(): GithubConfig {
+  const token = process.env["GITHUB_DEV_TOKEN"] ?? process.env["GITHUB_PERSONAL_ACCESS_TOKEN"] ?? process.env["GITHUB_TOKEN"];
+  const repository = process.env["GITHUB_DEV_REPOSITORY"] ?? "casaforteicf/vendorai-platform-replit";
+  const parts = repository.split("/");
+  if (!token) throw new Error("GITHUB_DEV_TOKEN_MISSING");
+  if (!parts[0] || !parts[1]) throw new Error("GITHUB_DEV_REPOSITORY_INVALID");
+  return { token, owner: parts[0], repo: parts[1], repository };
+}
+
+async function githubJson(path: string, init?: RequestInit) {
+  const config = githubConfig();
+  const response = await fetch("https://api.github.com" + path, {
+    ...init,
+    headers: {
+      Authorization: "Bearer " + config.token,
+      Accept: "application/vnd.github+json",
+      "Content-Type": "application/json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      "User-Agent": "VendorAI-Release-Center/2.0",
+      ...(init?.headers ?? {}),
+    },
+  });
+  const raw = await response.text();
+  let body: any = {};
+  try { body = raw ? JSON.parse(raw) : {}; } catch { body = { raw: raw.slice(0, 1000) }; }
+  if (!response.ok) throw new Error(body?.message ?? "GitHub HTTP " + response.status);
+  return body;
+}
+
+let schemaReady: Promise<void> | null = null;
+
+function ensureSchema() {
+  if (schemaReady) return schemaReady;
+  schemaReady = pool.query(
+    "CREATE TABLE IF NOT EXISTS admin_releases (" +
+    "id uuid PRIMARY KEY," +
+    "version text NOT NULL UNIQUE," +
+    "name text NOT NULL," +
+    "summary text NOT NULL DEFAULT ''," +
+    "status text NOT NULL DEFAULT 'draft'," +
+    "improvement_ids uuid[] NOT NULL DEFAULT '{}'," +
+    "test_url text," +
+    "test_status text NOT NULL DEFAULT 'pending'," +
+    "test_summary text," +
+    "impact jsonb," +
+    "base_sha text," +
+    "head_sha text," +
+    "approval_fingerprint text," +
+    "approved_by text," +
+    "approved_at timestamptz," +
+    "scheduled_at timestamptz," +
+    "started_at timestamptz," +
+    "published_at timestamptz," +
+    "duration_ms integer," +
+    "release_pr_number integer," +
+    "release_pr_url text," +
+    "release_branch text," +
+    "published_sha text," +
+    "rollback_version text," +
+    "last_error text," +
+    "created_by text," +
+    "created_at timestamptz NOT NULL DEFAULT now()," +
+    "updated_at timestamptz NOT NULL DEFAULT now()" +
+    ");" +
+    "ALTER TABLE admin_releases ADD COLUMN IF NOT EXISTS release_branch text;" +
+    "CREATE INDEX IF NOT EXISTS admin_releases_status_idx ON admin_releases(status,scheduled_at);" +
+    "CREATE TABLE IF NOT EXISTS admin_improvement_events (" +
+    "id uuid PRIMARY KEY," +
+    "improvement_id uuid NOT NULL REFERENCES admin_improvements(id) ON DELETE CASCADE," +
+    "event_type text NOT NULL," +
+    "message text NOT NULL DEFAULT ''," +
+    "payload jsonb," +
+    "actor text," +
+    "created_at timestamptz NOT NULL DEFAULT now()" +
+    ");" +
+    "CREATE INDEX IF NOT EXISTS admin_improvement_events_improvement_idx ON admin_improvement_events(improvement_id,created_at DESC);" +
+    "ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS source_type text NOT NULL DEFAULT 'super_admin';" +
+    "ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS source_ref_id text;" +
+    "ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS source_tenant_id text;" +
+    "ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS owner_agent text NOT NULL DEFAULT 'vendi';" +
+    "ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS agent_status text NOT NULL DEFAULT 'idle';" +
+    "ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS agent_summary text;" +
+    "ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS requested_at timestamptz NOT NULL DEFAULT now();" +
+    "ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS due_at timestamptz NOT NULL DEFAULT (now() + interval '24 hours');"
+  ).then(() => undefined);
+  return schemaReady;
+}
+
+function hashJson(value: unknown) {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+function extractAction(result: any, tool: string) {
+  const actions = Array.isArray(result?.actions) ? result.actions : [];
+  const match = [...actions].reverse().find((item: any) => item?.tool === tool && item?.ok);
+  return match?.detail ?? null;
+}
+
+async function nextReleaseVersion() {
+  const dayResult = await pool.query("SELECT to_char(now() AT TIME ZONE 'America/Sao_Paulo','YYYY.MM.DD') AS day");
+  const day = String(dayResult.rows[0]?.day ?? "0000.00.00");
+  const prefix = "v" + day + ".";
+  const countResult = await pool.query("SELECT count(*)::int AS total FROM admin_releases WHERE version LIKE $1", [prefix + "%"]);
+  return prefix + String(Number(countResult.rows[0]?.total ?? 0) + 1);
+}
+
+async function getReleaseById(id: string) {
+  const result = await pool.query(
+    "SELECT id,version,name,summary,status,improvement_ids AS \"improvementIds\",test_url AS \"testUrl\",test_status AS \"testStatus\",test_summary AS \"testSummary\",impact,base_sha AS \"baseSha\",head_sha AS \"headSha\",approval_fingerprint AS \"approvalFingerprint\",approved_by AS \"approvedBy\",approved_at AS \"approvedAt\",scheduled_at AS \"scheduledAt\",started_at AS \"startedAt\",published_at AS \"publishedAt\",duration_ms AS \"durationMs\",release_pr_number AS \"releasePrNumber\",release_pr_url AS \"releasePrUrl\",published_sha AS \"publishedSha\",rollback_version AS \"rollbackVersion\",last_error AS \"lastError\",created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\" FROM admin_releases WHERE id=$1",
+    [id],
+  );
+  return result.rows[0] ?? null;
+}
+
+async function collectReleaseImpact(ids: string[], candidateBranch = "staging") {
+  const itemsResult = await pool.query(
+    "SELECT id,title,module,status,test_status AS \"testStatus\",pr_number AS \"prNumber\",pr_url AS \"prUrl\",branch FROM admin_improvements WHERE id=ANY($1::uuid[]) ORDER BY created_at ASC",
+    [ids],
+  );
+  if (itemsResult.rows.length !== ids.length) throw new Error("RELEASE_ITEMS_NOT_FOUND");
+
+  const config = githubConfig();
+  const expectedFiles = new Set<string>();
+  const prs: any[] = [];
+
+  for (const item of itemsResult.rows) {
+    if (!item.prNumber) {
+      prs.push({ id: item.id, title: item.title, ready: false, reason: "PR não vinculado" });
+      continue;
+    }
+    const pr = await githubJson("/repos/" + config.owner + "/" + config.repo + "/pulls/" + item.prNumber);
+    const files = await githubJson("/repos/" + config.owner + "/" + config.repo + "/pulls/" + item.prNumber + "/files?per_page=100");
+    const names = (Array.isArray(files) ? files : []).map((file: any) => String(file.filename));
+    names.forEach((name: string) => expectedFiles.add(name));
+    prs.push({
+      id: item.id,
+      title: item.title,
+      prNumber: item.prNumber,
+      prUrl: pr.html_url ?? item.prUrl,
+      base: pr.base?.ref ?? null,
+      head: pr.head?.ref ?? item.branch,
+      headSha: pr.head?.sha ?? null,
+      merged: Boolean(pr.merged),
+      mergeable: pr.mergeable,
+      testStatus: item.testStatus,
+      files: names,
+      ready: item.testStatus === "passed",
+    });
+  }
+
+  const mainRef = await githubJson("/repos/" + config.owner + "/" + config.repo + "/git/ref/heads/main");
+  let candidateRef: any;
+  let candidateExists = true;
+  try {
+    candidateRef = await githubJson("/repos/" + config.owner + "/" + config.repo + "/git/ref/heads/" + encodeURIComponent(candidateBranch));
+  } catch {
+    candidateRef = mainRef;
+    candidateExists = false;
+  }
+
+  const baseSha = String(mainRef.object?.sha ?? "");
+  const headSha = String(candidateRef.object?.sha ?? "");
+  const compare = baseSha === headSha
+    ? { files: [] }
+    : await githubJson("/repos/" + config.owner + "/" + config.repo + "/compare/" + encodeURIComponent(baseSha) + "..." + encodeURIComponent(headSha));
+  const actualFiles = (compare.files ?? []).map((file: any) => ({
+    path: String(file.filename),
+    status: String(file.status ?? "modified"),
+    additions: Number(file.additions ?? 0),
+    deletions: Number(file.deletions ?? 0),
+    changes: Number(file.changes ?? 0),
+  }));
+  const actualNames = new Set(actualFiles.map((file: any) => file.path));
+  const expected = [...expectedFiles].sort();
+  const unexpected = actualFiles.filter((file: any) => !expectedFiles.has(file.path));
+  const missing = expected.filter((file) => !actualNames.has(file));
+  const notReady = prs.filter((pr) => !pr.ready);
+
+  return {
+    checkedAt: new Date().toISOString(),
+    repository: config.repository,
+    base: { branch: "main", sha: baseSha },
+    head: { branch: candidateExists ? candidateBranch : "main", sha: headSha },
+    prs,
+    expectedFiles: expected,
+    actualFiles,
+    unexpectedFiles: unexpected,
+    missingExpectedFiles: missing,
+    notReady,
+    clean: candidateExists && unexpected.length === 0 && missing.length === 0 && notReady.length === 0 && baseSha !== headSha,
+  };
+}
+
+
+async function createReleaseCandidateBranch(version: string, ids: string[]) {
+  const config = githubConfig();
+  const mainRef = await githubJson("/repos/" + config.owner + "/" + config.repo + "/git/ref/heads/main");
+  const mainSha = String(mainRef.object?.sha ?? "");
+  if (!mainSha) throw new Error("MAIN_SHA_NOT_FOUND");
+
+  const safeVersion = version.replace(/[^0-9A-Za-z._-]+/g, "-");
+  const branch = "release/" + safeVersion;
+
+  try {
+    await githubJson("/repos/" + config.owner + "/" + config.repo + "/git/refs", {
+      method: "POST",
+      body: JSON.stringify({ ref: "refs/heads/" + branch, sha: mainSha }),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/Reference already exists/i.test(message)) throw error;
+  }
+
+  const items = await pool.query(
+    "SELECT id,title,branch,pr_number AS \"prNumber\" FROM admin_improvements WHERE id=ANY($1::uuid[]) ORDER BY created_at ASC",
+    [ids],
+  );
+  if (items.rows.length !== ids.length) throw new Error("RELEASE_ITEMS_NOT_FOUND");
+
+  for (const item of items.rows) {
+    let head = item.branch ? String(item.branch) : "";
+    if (!head && item.prNumber) {
+      const pr = await githubJson("/repos/" + config.owner + "/" + config.repo + "/pulls/" + item.prNumber);
+      head = String(pr.head?.ref ?? "");
+    }
+    if (!head) throw new Error("Melhoria sem branch técnica: " + item.title);
+
+    const merged = await githubJson("/repos/" + config.owner + "/" + config.repo + "/merges", {
+      method: "POST",
+      body: JSON.stringify({
+        base: branch,
+        head,
+        commit_message: "[Release candidate " + version + "] " + item.title,
+      }),
+    });
+    if (!merged?.sha) throw new Error("Não foi possível incluir a melhoria na versão candidata: " + item.title);
+  }
+
+  const finalRef = await githubJson("/repos/" + config.owner + "/" + config.repo + "/git/ref/heads/" + encodeURIComponent(branch));
+  return { branch, baseSha: mainSha, headSha: String(finalRef.object?.sha ?? "") };
+}
+
+function releaseFingerprint(release: any, impact: any) {
+  return hashJson({
+    id: release.id,
+    version: release.version,
+    name: release.name,
+    improvementIds: [...(release.improvementIds ?? [])].sort(),
+    baseSha: impact?.base?.sha ?? release.baseSha ?? null,
+    headSha: impact?.head?.sha ?? release.headSha ?? null,
+    expectedFiles: [...(impact?.expectedFiles ?? [])].sort(),
+    actualFiles: (impact?.actualFiles ?? []).map((file: any) => file.path).sort(),
+  });
+}
+
+async function invalidateReleasesForImprovement(improvementId: string, reason: string) {
+  await pool.query(
+    "UPDATE admin_releases SET status=CASE WHEN status IN ('approved','scheduled') THEN 'blocked' ELSE status END,approval_fingerprint=CASE WHEN status IN ('approved','scheduled') THEN NULL ELSE approval_fingerprint END,approved_by=CASE WHEN status IN ('approved','scheduled') THEN NULL ELSE approved_by END,approved_at=CASE WHEN status IN ('approved','scheduled') THEN NULL ELSE approved_at END,last_error=CASE WHEN status IN ('approved','scheduled') THEN $2 ELSE last_error END,updated_at=now() WHERE $1::uuid=ANY(improvement_ids) AND status NOT IN ('published','cancelled','rolled_back')",
+    [improvementId, reason],
+  );
+}
+
+router.use("/admin", requireRole("super_admin"));
+
+router.post("/admin/improvements/:id/adjustments", async (req, res) => {
+  await ensureSchema();
+  const parsed = adjustmentSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const improvementId = String(req.params.id);
+  const exists = await pool.query("SELECT id FROM admin_improvements WHERE id=$1", [improvementId]);
+  if (!exists.rowCount) return res.status(404).json({ error: "Melhoria não encontrada" });
+
+  await pool.query(
+    "INSERT INTO admin_improvement_events (id,improvement_id,event_type,message,actor) VALUES ($1,$2,'adjustment',$3,$4)",
+    [randomUUID(), improvementId, parsed.data.message, actor(req)],
+  );
+  await pool.query(
+    "UPDATE admin_improvements SET status='em_desenvolvimento',test_status='pending',agent_status='queued',updated_at=now() WHERE id=$1",
+    [improvementId],
+  );
+  await invalidateReleasesForImprovement(improvementId, "Melhoria alterada depois da montagem ou aprovação da publicação.");
+  return res.json({ ok: true });
+});
+
+router.get("/admin/improvements/:id/events", async (req, res) => {
+  await ensureSchema();
+  const result = await pool.query(
+    "SELECT id,event_type AS \"eventType\",message,payload,actor,created_at AS \"createdAt\" FROM admin_improvement_events WHERE improvement_id=$1 ORDER BY created_at ASC",
+    [String(req.params.id)],
+  );
+  return res.json({ items: result.rows });
+});
+
+router.post("/admin/improvements/:id/start-agent", async (req, res) => {
+  await ensureSchema();
+  const improvementId = String(req.params.id);
+  const found = await pool.query(
+    "SELECT id,title,description,module,priority,status,source_type AS \"sourceType\",source_ref_id AS \"sourceRefId\",source_tenant_id AS \"sourceTenantId\" FROM admin_improvements WHERE id=$1",
+    [improvementId],
+  );
+  const item = found.rows[0];
+  if (!item) return res.status(404).json({ error: "Melhoria não encontrada" });
+
+  await pool.query(
+    "UPDATE admin_improvements SET status='em_desenvolvimento',owner_agent='vendi',agent_status='running',updated_at=now() WHERE id=$1",
+    [improvementId],
+  );
+  await pool.query(
+    "INSERT INTO admin_improvement_events (id,improvement_id,event_type,message,actor,payload) VALUES ($1,$2,'agent_started','Vendi iniciou a execução técnica com o Dev IA.',$3,$4::jsonb)",
+    [randomUUID(), improvementId, actor(req), JSON.stringify({ sourceType: item.sourceType, sourceRefId: item.sourceRefId })],
+  );
+
+  try {
+    const result = await executeDevAutonomousWork({
+      requestId: improvementId,
+      request: item.title + "\n\n" + item.description,
+      diagnosis: "Módulo: " + item.module + "\nPrioridade: " + item.priority + "\nOrigem: " + item.sourceType,
+      route: "/admin/melhorias/" + improvementId,
+      source: "release_center",
+    });
+    const pr = result.pullRequest ?? extractAction(result, "create_pr");
+    const branch = extractAction(result, "create_branch")?.branch ?? null;
+    const status = result.status === "approval_required"
+      ? "needs_attention"
+      : result.success && pr
+        ? "waiting_tests"
+        : result.success
+          ? "completed"
+          : "failed";
+    const summary = String(result.summary ?? result.error ?? "Execução do agente concluída sem resumo.").slice(0, 12000);
+
+    await pool.query(
+      "UPDATE admin_improvements SET branch=COALESCE($2,branch),pr_number=COALESCE($3,pr_number),pr_url=COALESCE($4,pr_url),status=CASE WHEN $5='waiting_tests' THEN 'testando' WHEN $5='completed' THEN 'testando' WHEN $5='needs_attention' THEN 'bloqueada' ELSE 'em_desenvolvimento' END,test_status=CASE WHEN $6 THEN 'running' ELSE test_status END,test_summary=$7,agent_status=$5,agent_summary=$7,updated_at=now() WHERE id=$1",
+      [improvementId, branch, pr?.number ? Number(pr.number) : null, pr?.url ?? null, status, Boolean(pr?.preflight?.passed), summary],
+    );
+    await pool.query(
+      "INSERT INTO admin_improvement_events (id,improvement_id,event_type,message,actor,payload) VALUES ($1,$2,'agent_result',$3,'vendi',$4::jsonb)",
+      [randomUUID(), improvementId, summary.slice(0, 6000), JSON.stringify({ status: result.status, prNumber: pr?.number ?? null, prUrl: pr?.url ?? null, branch })],
+    );
+    return res.status(result.status === "approval_required" ? 202 : 200).json({
+      ok: Boolean(result.success),
+      status: result.status,
+      prNumber: pr?.number ?? null,
+      prUrl: pr?.url ?? null,
+      branch,
+      summary,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Falha no agente";
+    await pool.query(
+      "UPDATE admin_improvements SET agent_status='failed',agent_summary=$2,status='em_desenvolvimento',updated_at=now() WHERE id=$1",
+      [improvementId, message.slice(0, 12000)],
+    );
+    return res.status(500).json({ error: message });
+  }
+});
+
+router.post("/admin/improvements/:id/check-tests", async (req, res) => {
+  await ensureSchema();
+  const improvementId = String(req.params.id);
+  const found = await pool.query(
+    "SELECT id,pr_number AS \"prNumber\" FROM admin_improvements WHERE id=$1",
+    [improvementId],
+  );
+  const item = found.rows[0];
+  if (!item) return res.status(404).json({ error: "Melhoria não encontrada" });
+  if (!item.prNumber) return res.status(409).json({ error: "Melhoria ainda não possui PR" });
+
+  const config = githubConfig();
+  const pr = await githubJson("/repos/" + config.owner + "/" + config.repo + "/pulls/" + item.prNumber);
+  const evidence = await collectDevAgentCheckEvidence(String(pr.head.sha));
+  const passed = pr.mergeable !== false
+    && evidence.codeFailures.length === 0
+    && evidence.pending.length === 0
+    && evidence.successes.length > 0;
+  const nextTest = passed ? "passed" : evidence.codeFailures.length > 0 ? "failed" : "running";
+  const summary = {
+    mergeable: pr.mergeable,
+    successes: evidence.successes,
+    codeFailures: evidence.codeFailures,
+    infrastructureFailures: evidence.infrastructureFailures,
+    externalFailures: evidence.externalFailures,
+    pending: evidence.pending,
+    regressionTestEvidence: evidence.regressionTestEvidence,
+  };
+
+  await pool.query(
+    "UPDATE admin_improvements SET test_status=$2,test_summary=$3,agent_status=CASE WHEN $2='passed' THEN 'ready' WHEN $2='failed' THEN 'needs_attention' ELSE 'waiting_tests' END,status=CASE WHEN $2='passed' THEN 'pronto_staging' WHEN $2='failed' THEN 'em_desenvolvimento' ELSE 'testando' END,updated_at=now() WHERE id=$1",
+    [improvementId, nextTest, JSON.stringify(summary).slice(0, 8000)],
+  );
+  return res.json({ passed, state: nextTest, mergeable: pr.mergeable, evidence });
+});
+
+router.post("/admin/improvements/:id/prepare-test", async (req, res) => {
+  await ensureSchema();
+  const improvementId = String(req.params.id);
+  const found = await pool.query(
+    "SELECT id,title,test_status AS \"testStatus\",pr_number AS \"prNumber\" FROM admin_improvements WHERE id=$1",
+    [improvementId],
+  );
+  const item = found.rows[0];
+  if (!item) return res.status(404).json({ error: "Melhoria não encontrada" });
+  if (item.testStatus !== "passed" || !item.prNumber) return res.status(409).json({ error: "A melhoria precisa ter testes aprovados e PR vinculado." });
+
+  const config = githubConfig();
+  const pr = await githubJson("/repos/" + config.owner + "/" + config.repo + "/pulls/" + item.prNumber);
+  if (pr.base?.ref !== "staging") {
+    return res.status(409).json({ error: "O PR da melhoria não aponta para staging." });
+  }
+  let mergeSha = pr.merge_commit_sha ?? null;
+  if (!pr.merged) {
+    const merged = await githubJson("/repos/" + config.owner + "/" + config.repo + "/pulls/" + item.prNumber + "/merge", {
+      method: "PUT",
+      body: JSON.stringify({ merge_method: "squash", sha: pr.head?.sha }),
+    });
+    if (!merged.merged) return res.status(409).json({ error: merged.message ?? "Não foi possível preparar a versão de teste." });
+    mergeSha = merged.sha ?? null;
+  }
+  const homologUrl = process.env["HOMOLOGATION_URL"] ?? "https://homolog.appvendorai.com";
+  await pool.query(
+    "UPDATE admin_improvements SET status='em_homologacao',merged_staging_sha=COALESCE($2,merged_staging_sha),homolog_url=COALESCE(homolog_url,$3),agent_status='ready',updated_at=now() WHERE id=$1",
+    [improvementId, mergeSha, homologUrl],
+  );
+  return res.json({ ok: true, homologUrl, mergeSha });
+});
+
+router.post("/admin/improvements/from-support/:bugId", async (req, res) => {
+  await ensureSchema();
+  const bugId = String(req.params.bugId);
+  const reportResult = await pool.query(
+    "SELECT id,tenant_id AS \"tenantId\",titulo,descricao,categoria,prioridade,rota_afetada AS \"rotaAfetada\",erro_tecnico AS \"erroTecnico\" FROM bug_reports WHERE id=$1",
+    [bugId],
+  );
+  const report = reportResult.rows[0];
+  if (!report) return res.status(404).json({ error: "Chamado não encontrado" });
+
+  const linked = await pool.query(
+    "SELECT id,title,status FROM admin_improvements WHERE source_type='support' AND source_ref_id=$1 LIMIT 1",
+    [bugId],
+  );
+  if (linked.rowCount) return res.json({ created: false, improvement: linked.rows[0], reason: "already_linked" });
+
+  const duplicate = await pool.query(
+    "SELECT id,title,status FROM admin_improvements WHERE lower(title)=lower($1) AND status<>'producao_validada' ORDER BY created_at DESC LIMIT 1",
+    [report.titulo],
+  );
+  if (duplicate.rowCount) {
+    const item = duplicate.rows[0];
+    await pool.query(
+      "INSERT INTO admin_improvement_events (id,improvement_id,event_type,message,actor,payload) VALUES ($1,$2,'support_link',$3,$4,$5::jsonb)",
+      [randomUUID(), item.id, "Chamado " + bugId + " vinculado como solicitação adicional.", actor(req), JSON.stringify({ bugId, tenantId: report.tenantId })],
+    );
+    return res.json({ created: false, improvement: item, reason: "deduplicated" });
+  }
+
+  const improvementId = randomUUID();
+  const priorityMap: Record<string, string> = { critica: "urgente", alta: "alta", media: "media", baixa: "baixa" };
+  const description = [
+    report.descricao,
+    report.rotaAfetada ? "\nTela/rota: " + report.rotaAfetada : "",
+    report.erroTecnico ? "\nEvidência técnica: " + String(report.erroTecnico).slice(0, 3000) : "",
+    "\nOrigem: Suporte (" + report.categoria + ")",
+  ].join("").slice(0, 8000);
+  const homologUrl = process.env["HOMOLOGATION_URL"] ?? "https://homolog.appvendorai.com";
+
+  await pool.query(
+    "INSERT INTO admin_improvements (id,title,description,module,priority,status,source_type,source_ref_id,source_tenant_id,owner_agent,agent_status,created_by,homolog_url) VALUES ($1,$2,$3,'Plataforma',$4,'solicitada','support',$5,$6,'vendi','queued',$7,$8)",
+    [improvementId, report.titulo, description, priorityMap[String(report.prioridade)] ?? "media", bugId, report.tenantId, actor(req), homologUrl],
+  );
+  await pool.query(
+    "INSERT INTO admin_improvement_events (id,improvement_id,event_type,message,actor,payload) VALUES ($1,$2,'created_from_support','Demanda criada a partir do suporte.',$3,$4::jsonb)",
+    [randomUUID(), improvementId, actor(req), JSON.stringify({ bugId, tenantId: report.tenantId, category: report.categoria })],
+  );
+
+  return res.status(201).json({ created: true, improvement: { id: improvementId, title: report.titulo, status: "solicitada" } });
+});
+
+router.get("/admin/releases", async (_req, res) => {
+  await ensureSchema();
+  const releases = await pool.query(
+    "SELECT id,version,name,summary,status,improvement_ids AS \"improvementIds\",test_url AS \"testUrl\",test_status AS \"testStatus\",test_summary AS \"testSummary\",impact,approved_by AS \"approvedBy\",approved_at AS \"approvedAt\",scheduled_at AS \"scheduledAt\",started_at AS \"startedAt\",published_at AS \"publishedAt\",duration_ms AS \"durationMs\",release_pr_number AS \"releasePrNumber\",release_pr_url AS \"releasePrUrl\",published_sha AS \"publishedSha\",rollback_version AS \"rollbackVersion\",last_error AS \"lastError\",created_at AS \"createdAt\",updated_at AS \"updatedAt\" FROM admin_releases ORDER BY created_at DESC LIMIT 100"
+  );
+  return res.json({ items: releases.rows });
+});
+
+router.post("/admin/releases", async (req, res) => {
+  await ensureSchema();
+  const parsed = releaseCreateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const checks = await pool.query(
+    "SELECT id,title,module,test_status AS \"testStatus\",pr_number AS \"prNumber\" FROM admin_improvements WHERE id=ANY($1::uuid[])",
+    [parsed.data.ids],
+  );
+  const blocked = checks.rows.filter((row) => row.testStatus !== "passed" || !row.prNumber);
+  if (blocked.length || checks.rows.length !== parsed.data.ids.length) {
+    return res.status(409).json({ error: "Somente melhorias com testes aprovados e PR vinculado podem entrar numa publicação.", blocked });
+  }
+
+  const version = await nextReleaseVersion();
+  const candidate = await createReleaseCandidateBranch(version, parsed.data.ids);
+  const impact = await collectReleaseImpact(parsed.data.ids, candidate.branch);
+  const previous = await pool.query("SELECT version FROM admin_releases WHERE status='published' ORDER BY published_at DESC NULLS LAST LIMIT 1");
+  const id = randomUUID();
+  const summary = parsed.data.summary || checks.rows.map((row) => row.title).join(" • ").slice(0, 6000);
+  const status = impact.clean ? "ready" : "blocked";
+  const testUrl = process.env["HOMOLOGATION_URL"] ?? "https://homolog.appvendorai.com";
+
+  await pool.query(
+    "INSERT INTO admin_releases (id,version,name,summary,status,improvement_ids,test_url,test_status,impact,base_sha,head_sha,release_branch,rollback_version,created_by) VALUES ($1,$2,$3,$4,$5,$6::uuid[],$7,'pending',$8::jsonb,$9,$10,$11,$12,$13)",
+    [id, version, parsed.data.name, summary, status, parsed.data.ids, testUrl, JSON.stringify(impact), impact.base.sha, impact.head.sha, candidate.branch, previous.rows[0]?.version ?? null, actor(req)],
+  );
+  await pool.query("UPDATE admin_improvements SET package_key=$1,updated_at=now() WHERE id=ANY($2::uuid[])", [version, parsed.data.ids]);
+  return res.status(201).json({ id, version, name: parsed.data.name, status, impact, testUrl });
+});
+
+router.post("/admin/releases/:id/impact", async (req, res) => {
+  await ensureSchema();
+  const release = await getReleaseById(String(req.params.id));
+  if (!release) return res.status(404).json({ error: "Publicação não encontrada" });
+  if (["publishing", "monitoring", "published", "rolled_back"].includes(release.status)) return res.status(409).json({ error: "Publicação já está em execução ou concluída." });
+
+  const impact = await collectReleaseImpact(release.improvementIds, release.releaseBranch ?? "staging");
+  const fingerprint = releaseFingerprint(release, impact);
+  const changedAfterApproval = Boolean(release.approvalFingerprint && release.approvalFingerprint !== fingerprint);
+  const nextStatus = !impact.clean || changedAfterApproval ? "blocked" : release.status === "blocked" ? "ready" : release.status;
+
+  await pool.query(
+    "UPDATE admin_releases SET impact=$2::jsonb,base_sha=$3,head_sha=$4,status=$5,approval_fingerprint=CASE WHEN $6 THEN NULL ELSE approval_fingerprint END,approved_by=CASE WHEN $6 THEN NULL ELSE approved_by END,approved_at=CASE WHEN $6 THEN NULL ELSE approved_at END,last_error=CASE WHEN $6 THEN 'Conteúdo da versão mudou depois da aprovação.' WHEN $7 THEN 'Alterações fora do escopo ou itens não prontos foram detectados.' ELSE NULL END,updated_at=now() WHERE id=$1",
+    [release.id, JSON.stringify(impact), impact.base.sha, impact.head.sha, nextStatus, changedAfterApproval, !impact.clean],
+  );
+  return res.json({ impact, changedAfterApproval, status: nextStatus });
+});
+
+
+router.post("/admin/releases/:id/vendi-test", async (req, res) => {
+  await ensureSchema();
+  const release = await getReleaseById(String(req.params.id));
+  if (!release) return res.status(404).json({ error: "Publicação não encontrada" });
+
+  const impact = await collectReleaseImpact(release.improvementIds, release.releaseBranch ?? "staging");
+  if (!impact.clean) {
+    return res.status(409).json({
+      error: "O Vendi não pode validar uma versão com impacto inconsistente.",
+      impact,
+    });
+  }
+
+  const baseUrl = String(release.testUrl ?? process.env["HOMOLOGATION_URL"] ?? "").replace(/\/+$/, "");
+  if (!baseUrl) return res.status(409).json({ error: "Ambiente de teste não configurado." });
+  const startUrl = baseUrl + "/admin/melhorias";
+  const host = new URL(startUrl).hostname.toLowerCase();
+
+  const user = req.user as any;
+  if (!user?.id && !user?.sub) return res.status(401).json({ error: "Super Admin não identificado." });
+  const firstPartyAuthToken = signToken({
+    sub: String(user.id ?? user.sub),
+    email: String(user.email ?? ""),
+    platformRole: "super_admin",
+    tenantId: String(user.tenantId ?? ""),
+    role: String(user.role ?? "admin"),
+    userFunction: user.userFunction ? String(user.userFunction) : undefined,
+    actorType: "ai",
+  });
+
+  await pool.query(
+    "UPDATE admin_releases SET test_status='running',test_summary='Vendi iniciou a validação funcional e visual.',updated_at=now() WHERE id=$1",
+    [release.id],
+  );
+
+  const goal = [
+    "Você é o Vendi validando uma versão de homologação do próprio VendorAI.",
+    "Valide SOMENTE leitura e navegação; não crie, aprove, publique, agende, exclua ou salve nada.",
+    "Na tela Super Admin > Melhorias & Publicações confirme:",
+    "1) título 'Melhorias & Publicações';",
+    "2) cards Fazendo, Prontas, Agendadas / em execução, Publicadas e Tempo médio;",
+    "3) abas Melhorias e Publicações e navegação entre elas;",
+    "4) botão Nova melhoria visível, sem submeter o formulário;",
+    "5) lista/tabela sem erro de renderização;",
+    "6) na aba Publicações, os controles e estados existentes carregam sem erro;",
+    "7) registre textos ausentes, tela quebrada, erro de rota, erro de autenticação ou comportamento inesperado.",
+    "Ao final retorne um resumo objetivo dizendo PASSOU ou FALHOU e os achados.",
+  ].join("\n");
+
+  try {
+    const result = await runBrowserAgent({
+      tenantId: String(user.tenantId ?? "platform"),
+      goal,
+      startUrl,
+      mode: "autonomo",
+      allowWrite: false,
+      maxSteps: 24,
+      allowedHosts: [host],
+      firstPartyAuthToken,
+    });
+
+    const passed = Boolean(result.ok);
+    const summary = JSON.stringify({
+      verdict: passed ? "passed" : "failed",
+      answer: result.answer,
+      finalUrl: result.finalUrl,
+      steps: result.steps,
+      checkedAt: new Date().toISOString(),
+    }).slice(0, 12000);
+
+    await pool.query(
+      "UPDATE admin_releases SET test_status=$2,test_summary=$3,status=CASE WHEN $2='passed' THEN 'ready' ELSE 'blocked' END,last_error=CASE WHEN $2='passed' THEN NULL ELSE $4 END,updated_at=now() WHERE id=$1",
+      [release.id, passed ? "passed" : "failed", summary, passed ? null : String(result.answer ?? "Validação do Vendi falhou.").slice(0, 4000)],
+    );
+
+    return res.status(passed ? 200 : 409).json({
+      ok: passed,
+      testStatus: passed ? "passed" : "failed",
+      result,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Falha na validação do Vendi";
+    await pool.query(
+      "UPDATE admin_releases SET test_status='failed',test_summary=$2,status='blocked',last_error=$2,updated_at=now() WHERE id=$1",
+      [release.id, message.slice(0, 12000)],
+    );
+    return res.status(409).json({ error: message, testStatus: "failed" });
+  }
+});
+
+router.post("/admin/releases/:id/tested", async (req, res) => {
+  await ensureSchema();
+  const release = await getReleaseById(String(req.params.id));
+  if (!release) return res.status(404).json({ error: "Publicação não encontrada" });
+  const impact = await collectReleaseImpact(release.improvementIds, release.releaseBranch ?? "staging");
+  if (!impact.clean) return res.status(409).json({ error: "Impacto da versão não está limpo.", impact });
+
+  await pool.query(
+    "UPDATE admin_releases SET test_status='passed',test_summary='Teste manual confirmado pelo Super Admin.',impact=$2::jsonb,base_sha=$3,head_sha=$4,status='ready',updated_at=now() WHERE id=$1",
+    [release.id, JSON.stringify(impact), impact.base.sha, impact.head.sha],
+  );
+  return res.json({ ok: true });
+});
+
+router.post("/admin/releases/:id/approve", async (req, res) => {
+  await ensureSchema();
+  const release = await getReleaseById(String(req.params.id));
+  if (!release) return res.status(404).json({ error: "Publicação não encontrada" });
+  if (release.testStatus !== "passed") return res.status(409).json({ error: "Teste da versão ainda não foi confirmado." });
+
+  const impact = await collectReleaseImpact(release.improvementIds, release.releaseBranch ?? "staging");
+  if (!impact.clean) return res.status(409).json({ error: "A publicação possui alterações fora do escopo ou itens não prontos.", impact });
+
+  const fingerprint = releaseFingerprint(release, impact);
+  await pool.query(
+    "UPDATE admin_releases SET status='approved',impact=$2::jsonb,base_sha=$3,head_sha=$4,approval_fingerprint=$5,approved_by=$6,approved_at=now(),last_error=NULL,updated_at=now() WHERE id=$1",
+    [release.id, JSON.stringify(impact), impact.base.sha, impact.head.sha, fingerprint, actor(req)],
+  );
+  return res.json({ ok: true, fingerprint, approvedBy: actor(req) });
+});
+
+router.post("/admin/releases/:id/schedule", async (req, res) => {
+  await ensureSchema();
+  const parsed = releaseScheduleSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const release = await getReleaseById(String(req.params.id));
+  if (!release) return res.status(404).json({ error: "Publicação não encontrada" });
+  if (release.status !== "approved" || !release.approvalFingerprint) return res.status(409).json({ error: "A publicação precisa estar aprovada antes de ser agendada." });
+
+  const impact = await collectReleaseImpact(release.improvementIds, release.releaseBranch ?? "staging");
+  const fingerprint = releaseFingerprint(release, impact);
+  if (!impact.clean || fingerprint !== release.approvalFingerprint) {
+    await pool.query(
+      "UPDATE admin_releases SET status='blocked',approval_fingerprint=NULL,approved_by=NULL,approved_at=NULL,last_error=$2,updated_at=now() WHERE id=$1",
+      [release.id, "Versão alterada depois da aprovação; nova aprovação necessária."],
+    );
+    return res.status(409).json({ error: "A versão mudou depois da aprovação. Aprove novamente.", impact });
+  }
+
+  const scheduledAt = parsed.data.publishNow ? new Date() : parsed.data.scheduledAt ? new Date(parsed.data.scheduledAt) : null;
+  if (!scheduledAt || Number.isNaN(scheduledAt.getTime())) return res.status(422).json({ error: "Informe um horário de publicação válido." });
+  await pool.query("UPDATE admin_releases SET status='scheduled',scheduled_at=$2,last_error=NULL,updated_at=now() WHERE id=$1", [release.id, scheduledAt]);
+  return res.json({ ok: true, scheduledAt, status: "scheduled" });
+});
+
+router.post("/admin/releases/:id/cancel", async (req, res) => {
+  await ensureSchema();
+  const release = await getReleaseById(String(req.params.id));
+  if (!release) return res.status(404).json({ error: "Publicação não encontrada" });
+  if (["publishing", "monitoring", "published", "rolled_back"].includes(release.status)) return res.status(409).json({ error: "Esta publicação não pode mais ser cancelada." });
+  await pool.query("UPDATE admin_releases SET status='cancelled',scheduled_at=NULL,updated_at=now() WHERE id=$1", [release.id]);
+  return res.json({ ok: true });
+});
+
+
+async function notifySupportRequestersAfterPublish(release: any) {
+  const linked = await pool.query(
+    "SELECT id,title,source_ref_id AS \"sourceRefId\",source_tenant_id AS \"sourceTenantId\" FROM admin_improvements WHERE id=ANY($1::uuid[]) AND source_type='support' AND source_tenant_id IS NOT NULL",
+    [release.improvementIds],
+  );
+
+  for (const item of linked.rows) {
+    const tenantId = String(item.sourceTenantId ?? "");
+    if (!tenantId) continue;
+    await pool.query(
+      "INSERT INTO notifications (id,tenant_id,title,message,type,category,created_at) VALUES ($1,$2,$3,$4,'info','product_improvement',now())",
+      [
+        randomUUID(),
+        tenantId,
+        "Melhoria publicada",
+        "A solicitação \"" + String(item.title) + "\" foi implementada na versão " + String(release.version) + " — " + String(release.name) + ".",
+      ],
+    ).catch(() => undefined);
+
+    if (item.sourceRefId) {
+      await pool.query(
+        "UPDATE bug_reports SET status='resolvido',resolvido_por='dev_ia',resolvido_at=COALESCE(resolvido_at,now()),updated_at=now() WHERE id=$1",
+        [String(item.sourceRefId)],
+      ).catch(() => undefined);
+    }
+  }
+}
+
+async function executeScheduledRelease(release: any) {
+  const impact = await collectReleaseImpact(release.improvementIds, release.releaseBranch ?? "staging");
+  const fingerprint = releaseFingerprint(release, impact);
+  if (!impact.clean || !release.approvalFingerprint || fingerprint !== release.approvalFingerprint) throw new Error("A versão mudou ou contém alterações fora do escopo aprovado.");
+
+  const config = githubConfig();
+  const currentMain = await githubJson("/repos/" + config.owner + "/" + config.repo + "/git/ref/heads/main");
+  const releaseBranch = String(release.releaseBranch ?? "");
+  if (!releaseBranch) throw new Error("Versão candidata sem branch de release.");
+  const candidate = await githubJson("/repos/" + config.owner + "/" + config.repo + "/git/ref/heads/" + encodeURIComponent(releaseBranch));
+  if (String(currentMain.object?.sha ?? "") !== String(impact.base.sha ?? "")) throw new Error("A main mudou desde a aprovação. Nova comparação e aprovação são necessárias.");
+  if (String(candidate.object?.sha ?? "") !== String(impact.head.sha ?? "")) throw new Error("A versão candidata mudou desde a aprovação. Nova comparação e aprovação são necessárias.");
+
+  const releaseEvidence = await collectDevAgentCheckEvidence(String(candidate.object.sha));
+  if (releaseEvidence.codeFailures.length) {
+    throw new Error("A versão possui falhas de código/teste: " + releaseEvidence.codeFailures.map((item) => item.name).join(", "));
+  }
+  if (releaseEvidence.pending.length) {
+    throw new Error("Os testes da versão ainda estão em execução: " + releaseEvidence.pending.map((item) => item.name).join(", "));
+  }
+  if (!releaseEvidence.successes.length) {
+    throw new Error("Nenhum gate técnico concluído com sucesso foi comprovado para a versão.");
+  }
+
+  let prNumber = release.releasePrNumber ? Number(release.releasePrNumber) : null;
+  let prUrl = release.releasePrUrl ?? null;
+  if (!prNumber) {
+    const pr = await githubJson("/repos/" + config.owner + "/" + config.repo + "/pulls", {
+      method: "POST",
+      body: JSON.stringify({
+        title: ("[Release] " + release.version + " — " + release.name).slice(0, 120),
+        body: ("Publicação aprovada pelo Super Admin.\n\nVersão: " + release.version + "\nNome: " + release.name + "\nMelhorias: " + (release.improvementIds ?? []).join(", ") + "\n\nFingerprint: " + release.approvalFingerprint).slice(0, 12000),
+        head: releaseBranch,
+        base: "main",
+        draft: false,
+      }),
+    });
+    prNumber = Number(pr.number);
+    prUrl = pr.html_url ?? null;
+    await pool.query("UPDATE admin_releases SET release_pr_number=$2,release_pr_url=$3,updated_at=now() WHERE id=$1", [release.id, prNumber, prUrl]);
+  }
+
+  const pr = await githubJson("/repos/" + config.owner + "/" + config.repo + "/pulls/" + prNumber);
+  if (pr.mergeable === false || pr.state !== "open" || pr.draft) throw new Error("PR da publicação não está mergeável ou pronto.");
+  const merged = await githubJson("/repos/" + config.owner + "/" + config.repo + "/pulls/" + prNumber + "/merge", {
+    method: "PUT",
+    body: JSON.stringify({ merge_method: "squash", sha: pr.head?.sha }),
+  });
+  if (!merged.merged) throw new Error(merged.message ?? "GitHub não confirmou a publicação.");
+
+  await pool.query(
+    "UPDATE admin_releases SET status='monitoring',published_sha=$2,release_pr_number=$3,release_pr_url=$4,last_error=NULL,updated_at=now() WHERE id=$1",
+    [release.id, merged.sha ?? null, prNumber, prUrl],
+  );
+  return { sha: merged.sha ?? null, prNumber, prUrl };
+}
+
+let workerStarted = false;
+let workerRunning = false;
+
+async function runReleaseWorker() {
+  if (workerRunning) return;
+  workerRunning = true;
+  try {
+    await ensureSchema();
+    const queueBlock = await pool.query(
+      "SELECT id,status FROM admin_releases WHERE status IN ('publishing','monitoring') OR (status='blocked' AND scheduled_at IS NOT NULL) ORDER BY updated_at DESC LIMIT 1"
+    );
+    const claim = queueBlock.rowCount
+      ? { rows: [] as any[] }
+      : await pool.query(
+          "WITH candidate AS (SELECT id FROM admin_releases WHERE status='scheduled' AND scheduled_at<=now() ORDER BY scheduled_at ASC,created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED) UPDATE admin_releases r SET status='publishing',started_at=now(),last_error=NULL,updated_at=now() FROM candidate c WHERE r.id=c.id RETURNING r.id"
+        );
+    const claimedId = claim.rows[0]?.id;
+    if (claimedId) {
+      const release = await getReleaseById(String(claimedId));
+      if (release) {
+        try {
+          await executeScheduledRelease(release);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Falha na publicação";
+          await pool.query(
+            "UPDATE admin_releases SET status='blocked',last_error=$2,approval_fingerprint=NULL,approved_by=NULL,approved_at=NULL,updated_at=now() WHERE id=$1",
+            [release.id, message.slice(0, 12000)],
+          );
+        }
+      }
+    }
+
+    const monitoring = await pool.query(
+      "SELECT id,published_sha AS \"publishedSha\",started_at AS \"startedAt\" FROM admin_releases WHERE status='monitoring' AND published_sha IS NOT NULL ORDER BY started_at ASC LIMIT 3"
+    );
+    for (const row of monitoring.rows) {
+      try {
+        const validation = await validateProductionRevision(String(row.publishedSha));
+        if (validation.state !== "validated") continue;
+        const durationMs = row.startedAt ? Math.max(0, Date.now() - new Date(row.startedAt).getTime()) : null;
+        await pool.query(
+          "UPDATE admin_releases SET status='published',published_at=now(),duration_ms=$2,last_error=NULL,updated_at=now() WHERE id=$1",
+          [row.id, durationMs],
+        );
+        const release = await getReleaseById(String(row.id));
+        if (release) {
+          await pool.query(
+            "UPDATE admin_improvements SET status='producao_validada',production_url=COALESCE(production_url,$2),updated_at=now() WHERE id=ANY($1::uuid[])",
+            [release.improvementIds, process.env["PRODUCTION_URL"] ?? "https://app.appvendorai.com"],
+          );
+          await notifySupportRequestersAfterPublish(release);
+        }
+      } catch {
+        // A validação continua no próximo ciclo.
+      }
+    }
+  } finally {
+    workerRunning = false;
+  }
+}
+
+function startReleaseWorker() {
+  if (workerStarted) return;
+  workerStarted = true;
+  const timer = setInterval(() => { void runReleaseWorker(); }, 30000);
+  timer.unref();
+  void runReleaseWorker();
+}
+
+startReleaseWorker();
+
+router.post("/admin/releases/:id/execute", async (req, res) => {
+  await ensureSchema();
+  const release = await getReleaseById(String(req.params.id));
+  if (!release) return res.status(404).json({ error: "Publicação não encontrada" });
+  if (release.status !== "approved") return res.status(409).json({ error: "A publicação precisa estar aprovada." });
+  await pool.query("UPDATE admin_releases SET status='scheduled',scheduled_at=now(),updated_at=now() WHERE id=$1", [release.id]);
+  void runReleaseWorker();
+  return res.json({ ok: true, status: "scheduled" });
+});
+
+router.post("/admin/releases/:id/rollback", async (req, res) => {
+  await ensureSchema();
+  const release = await getReleaseById(String(req.params.id));
+  if (!release) return res.status(404).json({ error: "Publicação não encontrada" });
+  if (release.status !== "published" || !release.publishedSha) return res.status(409).json({ error: "Rollback só é permitido para uma publicação concluída." });
+
+  const config = githubConfig();
+  const mainRef = await githubJson("/repos/" + config.owner + "/" + config.repo + "/git/ref/heads/main");
+  const currentMainSha = String(mainRef.object?.sha ?? "");
+  if (currentMainSha !== String(release.publishedSha)) return res.status(409).json({ error: "Existem publicações posteriores. Rollback direto desta versão foi bloqueado." });
+
+  const publishedCommit = await githubJson("/repos/" + config.owner + "/" + config.repo + "/git/commits/" + encodeURIComponent(release.publishedSha));
+  const parentSha = String(publishedCommit.parents?.[0]?.sha ?? "");
+  if (!parentSha) return res.status(409).json({ error: "Commit anterior não encontrado para rollback." });
+  const parentCommit = await githubJson("/repos/" + config.owner + "/" + config.repo + "/git/commits/" + encodeURIComponent(parentSha));
+  const rollbackCommit = await githubJson("/repos/" + config.owner + "/" + config.repo + "/git/commits", {
+    method: "POST",
+    body: JSON.stringify({
+      message: "rollback: " + release.version + " — " + release.name,
+      tree: parentCommit.tree?.sha,
+      parents: [currentMainSha],
+    }),
+  });
+  await githubJson("/repos/" + config.owner + "/" + config.repo + "/git/refs/heads/main", {
+    method: "PATCH",
+    body: JSON.stringify({ sha: rollbackCommit.sha, force: false }),
+  });
+
+  await pool.query(
+    "UPDATE admin_releases SET status='rolled_back',last_error=$2,updated_at=now() WHERE id=$1",
+    [release.id, "Rollback autorizado por " + actor(req) + "; revisão " + rollbackCommit.sha + "."],
+  );
+  return res.json({ ok: true, rollbackSha: rollbackCommit.sha, previousSha: parentSha });
+});
+
+router.get("/admin/releases-metrics", async (_req, res) => {
+  await ensureSchema();
+  const result = await pool.query(
+    "SELECT count(*) FILTER (WHERE status='scheduled')::int AS scheduled,count(*) FILTER (WHERE status IN ('publishing','monitoring'))::int AS running,count(*) FILTER (WHERE status='blocked')::int AS blocked,avg(duration_ms) FILTER (WHERE status='published' AND duration_ms IS NOT NULL) AS avg_duration_ms FROM (SELECT * FROM admin_releases ORDER BY published_at DESC NULLS LAST LIMIT 10) recent"
+  );
+  return res.json(result.rows[0] ?? { scheduled: 0, running: 0, blocked: 0, avg_duration_ms: null });
+});
+
+export default router;
