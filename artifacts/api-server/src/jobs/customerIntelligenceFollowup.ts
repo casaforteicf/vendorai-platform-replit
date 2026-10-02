@@ -162,7 +162,7 @@ export async function runCustomerIntelligenceFollowup(log: Logger): Promise<void
             log,
           });
 
-          const executed = dispatch.status === "sent" || dispatch.status === "executed";
+          const executed = dispatch.status === "sent";
           await db.update(activitiesTable).set({
             titulo: executed
               ? `Vendi — acompanhamento executado · ${objective.stageLabel}`
