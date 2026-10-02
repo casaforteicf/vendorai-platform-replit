@@ -790,6 +790,17 @@ export function buildSdrPrompt(customPrompt: string | undefined, ctx: AgentConte
 
     if (ci) {
       const lines = ["## INTELIGÊNCIA DE CLIENTE (somente contexto interno; não trate inferências como fatos)"];
+      if (ci.healthScore != null)       lines.push(`Saúde do relacionamento: ${ci.healthScore}/100`);
+      if (ci.riskType)                  lines.push(`Tipo de risco atual: ${ci.riskType}`);
+      if (ci.riskLevel)                 lines.push(`Nível de risco: ${ci.riskLevel}`);
+      if (ci.riskTrend)                 lines.push(`Tendência: ${ci.riskTrend}`);
+      if (ci.analysisConfidence != null) lines.push(`Confiança da análise: ${ci.analysisConfidence}%`);
+      if (Array.isArray(ci.riskFactors) && ci.riskFactors.length > 0) {
+        lines.push(`Principais fatores de risco: ${ci.riskFactors.slice(0, 3).map((item: any) => item?.fator ?? item?.motivo ?? String(item)).join(" | ")}`);
+      }
+      if (Array.isArray(ci.positiveSignals) && ci.positiveSignals.length > 0) {
+        lines.push(`Sinais positivos: ${ci.positiveSignals.slice(0, 3).map((item: any) => item?.sinal ?? String(item)).join(" | ")}`);
+      }
       if (ci.journeyStage)         lines.push(`Estágio: ${ci.journeyStage}`);
       if (ci.intentAnalysis)       lines.push(`Intenção: ${ci.intentAnalysis}`);
       if (ci.goalAnalysis)         lines.push(`Objetivo: ${ci.goalAnalysis}`);
@@ -995,7 +1006,18 @@ export function buildSdrPrompt(customPrompt: string | undefined, ctx: AgentConte
 
   if (ci) {
     const lines = ["## INTELIGÊNCIA DE CLIENTE"];
-    if (ci.journeyStage)         lines.push(`Estágio: ${ci.journeyStage}`);
+    if (ci.healthScore != null)       lines.push(`Saúde do relacionamento: ${ci.healthScore}/100`);
+      if (ci.riskType)                  lines.push(`Tipo de risco atual: ${ci.riskType}`);
+      if (ci.riskLevel)                 lines.push(`Nível de risco: ${ci.riskLevel}`);
+      if (ci.riskTrend)                 lines.push(`Tendência: ${ci.riskTrend}`);
+      if (ci.analysisConfidence != null) lines.push(`Confiança da análise: ${ci.analysisConfidence}%`);
+      if (Array.isArray(ci.riskFactors) && ci.riskFactors.length > 0) {
+        lines.push(`Principais fatores de risco: ${ci.riskFactors.slice(0, 3).map((item: any) => item?.fator ?? item?.motivo ?? String(item)).join(" | ")}`);
+      }
+      if (Array.isArray(ci.positiveSignals) && ci.positiveSignals.length > 0) {
+        lines.push(`Sinais positivos: ${ci.positiveSignals.slice(0, 3).map((item: any) => item?.sinal ?? String(item)).join(" | ")}`);
+      }
+      if (ci.journeyStage)         lines.push(`Estágio: ${ci.journeyStage}`);
     if (ci.intentAnalysis)       lines.push(`Intenção: ${ci.intentAnalysis}`);
     if (ci.goalAnalysis)         lines.push(`Objetivo: ${ci.goalAnalysis}`);
     if (ci.nextBestAction)       lines.push(`Próxima ação: ${ci.nextBestAction}`);
@@ -1192,7 +1214,18 @@ export function buildCloserPrompt(customPrompt: string | undefined, ctx: AgentCo
   parts.push(buildLeadSection(lead));
   if (ci) {
     const lines = ["## INTELIGÊNCIA DE CLIENTE (use para personalizar a abordagem)"];
-    if (ci.journeyStage)   lines.push(`Estágio: ${ci.journeyStage}`);
+    if (ci.healthScore != null)       lines.push(`Saúde do relacionamento: ${ci.healthScore}/100`);
+      if (ci.riskType)                  lines.push(`Tipo de risco atual: ${ci.riskType}`);
+      if (ci.riskLevel)                 lines.push(`Nível de risco: ${ci.riskLevel}`);
+      if (ci.riskTrend)                 lines.push(`Tendência: ${ci.riskTrend}`);
+      if (ci.analysisConfidence != null) lines.push(`Confiança da análise: ${ci.analysisConfidence}%`);
+      if (Array.isArray(ci.riskFactors) && ci.riskFactors.length > 0) {
+        lines.push(`Principais fatores de risco: ${ci.riskFactors.slice(0, 3).map((item: any) => item?.fator ?? item?.motivo ?? String(item)).join(" | ")}`);
+      }
+      if (Array.isArray(ci.positiveSignals) && ci.positiveSignals.length > 0) {
+        lines.push(`Sinais positivos: ${ci.positiveSignals.slice(0, 3).map((item: any) => item?.sinal ?? String(item)).join(" | ")}`);
+      }
+      if (ci.journeyStage)   lines.push(`Estágio: ${ci.journeyStage}`);
     if (ci.intentAnalysis) lines.push(`Intenção: ${ci.intentAnalysis}`);
     if (ci.goalAnalysis)   lines.push(`Objetivo: ${ci.goalAnalysis}`);
     if (Array.isArray(ci.opportunities) && ci.opportunities.length > 0) {
@@ -1251,7 +1284,18 @@ export function buildFollowupPrompt(customPrompt: string | undefined, ctx: Agent
   parts.push(buildLeadSection(lead));
   if (ci) {
     const lines = ["## INTELIGÊNCIA DE CLIENTE"];
-    if (ci.journeyStage)         lines.push(`Estágio: ${ci.journeyStage}`);
+    if (ci.healthScore != null)       lines.push(`Saúde do relacionamento: ${ci.healthScore}/100`);
+      if (ci.riskType)                  lines.push(`Tipo de risco atual: ${ci.riskType}`);
+      if (ci.riskLevel)                 lines.push(`Nível de risco: ${ci.riskLevel}`);
+      if (ci.riskTrend)                 lines.push(`Tendência: ${ci.riskTrend}`);
+      if (ci.analysisConfidence != null) lines.push(`Confiança da análise: ${ci.analysisConfidence}%`);
+      if (Array.isArray(ci.riskFactors) && ci.riskFactors.length > 0) {
+        lines.push(`Principais fatores de risco: ${ci.riskFactors.slice(0, 3).map((item: any) => item?.fator ?? item?.motivo ?? String(item)).join(" | ")}`);
+      }
+      if (Array.isArray(ci.positiveSignals) && ci.positiveSignals.length > 0) {
+        lines.push(`Sinais positivos: ${ci.positiveSignals.slice(0, 3).map((item: any) => item?.sinal ?? String(item)).join(" | ")}`);
+      }
+      if (ci.journeyStage)         lines.push(`Estágio: ${ci.journeyStage}`);
     if (ci.intentAnalysis)       lines.push(`Intenção de busca: ${ci.intentAnalysis}`);
     if (ci.goalAnalysis)         lines.push(`Objetivo: ${ci.goalAnalysis}`);
     if (ci.nextBestAction)       lines.push(`Ação recomendada: ${ci.nextBestAction}`);
@@ -1334,7 +1378,18 @@ export function buildReactivationPrompt(customPrompt: string | undefined, ctx: A
   parts.push(buildLeadSection(lead));
   if (ci) {
     const lines = ["## INTELIGÊNCIA DE CLIENTE"];
-    if (ci.journeyStage)         lines.push(`Estágio: ${ci.journeyStage}`);
+    if (ci.healthScore != null)       lines.push(`Saúde do relacionamento: ${ci.healthScore}/100`);
+      if (ci.riskType)                  lines.push(`Tipo de risco atual: ${ci.riskType}`);
+      if (ci.riskLevel)                 lines.push(`Nível de risco: ${ci.riskLevel}`);
+      if (ci.riskTrend)                 lines.push(`Tendência: ${ci.riskTrend}`);
+      if (ci.analysisConfidence != null) lines.push(`Confiança da análise: ${ci.analysisConfidence}%`);
+      if (Array.isArray(ci.riskFactors) && ci.riskFactors.length > 0) {
+        lines.push(`Principais fatores de risco: ${ci.riskFactors.slice(0, 3).map((item: any) => item?.fator ?? item?.motivo ?? String(item)).join(" | ")}`);
+      }
+      if (Array.isArray(ci.positiveSignals) && ci.positiveSignals.length > 0) {
+        lines.push(`Sinais positivos: ${ci.positiveSignals.slice(0, 3).map((item: any) => item?.sinal ?? String(item)).join(" | ")}`);
+      }
+      if (ci.journeyStage)         lines.push(`Estágio: ${ci.journeyStage}`);
     if (ci.intentAnalysis)       lines.push(`Intenção de busca: ${ci.intentAnalysis}`);
     if (ci.goalAnalysis)         lines.push(isPrimeiroContato ? `O que está buscando: ${ci.goalAnalysis}` : `Objetivo original: ${ci.goalAnalysis}`);
     if (!isPrimeiroContato && Array.isArray(ci.opportunities) && ci.opportunities.length > 0) {
@@ -1456,7 +1511,18 @@ export function buildServicePrompt(customPrompt: string | undefined, ctx: AgentC
 
   if (ci) {
     const lines = ["## CONTEXTO DO CLIENTE"];
-    if (ci.journeyStage) lines.push(`Estágio: ${ci.journeyStage}`);
+    if (ci.healthScore != null)       lines.push(`Saúde do relacionamento: ${ci.healthScore}/100`);
+      if (ci.riskType)                  lines.push(`Tipo de risco atual: ${ci.riskType}`);
+      if (ci.riskLevel)                 lines.push(`Nível de risco: ${ci.riskLevel}`);
+      if (ci.riskTrend)                 lines.push(`Tendência: ${ci.riskTrend}`);
+      if (ci.analysisConfidence != null) lines.push(`Confiança da análise: ${ci.analysisConfidence}%`);
+      if (Array.isArray(ci.riskFactors) && ci.riskFactors.length > 0) {
+        lines.push(`Principais fatores de risco: ${ci.riskFactors.slice(0, 3).map((item: any) => item?.fator ?? item?.motivo ?? String(item)).join(" | ")}`);
+      }
+      if (Array.isArray(ci.positiveSignals) && ci.positiveSignals.length > 0) {
+        lines.push(`Sinais positivos: ${ci.positiveSignals.slice(0, 3).map((item: any) => item?.sinal ?? String(item)).join(" | ")}`);
+      }
+      if (ci.journeyStage) lines.push(`Estágio: ${ci.journeyStage}`);
     if (ci.goalAnalysis) lines.push(`Objetivo do cliente: ${ci.goalAnalysis}`);
     if (ci.churnRisk !== null && ci.churnRisk !== undefined && ci.churnRisk >= 40) {
       lines.push(`⚠️ Risco de churn: ${ci.churnRisk}% — atendimento especialmente cuidadoso`);
@@ -1489,7 +1555,18 @@ export function buildFinanceiroPrompt(customPrompt: string | undefined, ctx: Age
   parts.push(buildLeadSection(lead));
   if (ci) {
     const lines = ["## CONTEXTO DO CLIENTE"];
-    if (ci.journeyStage) lines.push(`Estágio: ${ci.journeyStage}`);
+    if (ci.healthScore != null)       lines.push(`Saúde do relacionamento: ${ci.healthScore}/100`);
+      if (ci.riskType)                  lines.push(`Tipo de risco atual: ${ci.riskType}`);
+      if (ci.riskLevel)                 lines.push(`Nível de risco: ${ci.riskLevel}`);
+      if (ci.riskTrend)                 lines.push(`Tendência: ${ci.riskTrend}`);
+      if (ci.analysisConfidence != null) lines.push(`Confiança da análise: ${ci.analysisConfidence}%`);
+      if (Array.isArray(ci.riskFactors) && ci.riskFactors.length > 0) {
+        lines.push(`Principais fatores de risco: ${ci.riskFactors.slice(0, 3).map((item: any) => item?.fator ?? item?.motivo ?? String(item)).join(" | ")}`);
+      }
+      if (Array.isArray(ci.positiveSignals) && ci.positiveSignals.length > 0) {
+        lines.push(`Sinais positivos: ${ci.positiveSignals.slice(0, 3).map((item: any) => item?.sinal ?? String(item)).join(" | ")}`);
+      }
+      if (ci.journeyStage) lines.push(`Estágio: ${ci.journeyStage}`);
     if (ci.goalAnalysis) lines.push(`Objetivo do cliente: ${ci.goalAnalysis}`);
     if (lines.length > 1) parts.push(lines.join("\n"));
   }
@@ -1518,7 +1595,18 @@ export function buildCobrancaPrompt(customPrompt: string | undefined, ctx: Agent
   parts.push(buildLeadSection(lead));
   if (ci) {
     const lines = ["## CONTEXTO DO CLIENTE"];
-    if (ci.journeyStage) lines.push(`Estágio: ${ci.journeyStage}`);
+    if (ci.healthScore != null)       lines.push(`Saúde do relacionamento: ${ci.healthScore}/100`);
+      if (ci.riskType)                  lines.push(`Tipo de risco atual: ${ci.riskType}`);
+      if (ci.riskLevel)                 lines.push(`Nível de risco: ${ci.riskLevel}`);
+      if (ci.riskTrend)                 lines.push(`Tendência: ${ci.riskTrend}`);
+      if (ci.analysisConfidence != null) lines.push(`Confiança da análise: ${ci.analysisConfidence}%`);
+      if (Array.isArray(ci.riskFactors) && ci.riskFactors.length > 0) {
+        lines.push(`Principais fatores de risco: ${ci.riskFactors.slice(0, 3).map((item: any) => item?.fator ?? item?.motivo ?? String(item)).join(" | ")}`);
+      }
+      if (Array.isArray(ci.positiveSignals) && ci.positiveSignals.length > 0) {
+        lines.push(`Sinais positivos: ${ci.positiveSignals.slice(0, 3).map((item: any) => item?.sinal ?? String(item)).join(" | ")}`);
+      }
+      if (ci.journeyStage) lines.push(`Estágio: ${ci.journeyStage}`);
     if (lines.length > 1) parts.push(lines.join("\n"));
   }
   return joinWithCalibration(parts);
@@ -1760,7 +1848,18 @@ export function buildRelacionamentoPrompt(
 
   if (ci) {
     const ciLines = ["## INTELIGÊNCIA DE CLIENTE"];
-    if (ci.journeyStage) ciLines.push(`Estágio: ${ci.journeyStage}`);
+    if (ci.healthScore != null)       lines.push(`Saúde do relacionamento: ${ci.healthScore}/100`);
+      if (ci.riskType)                  lines.push(`Tipo de risco atual: ${ci.riskType}`);
+      if (ci.riskLevel)                 lines.push(`Nível de risco: ${ci.riskLevel}`);
+      if (ci.riskTrend)                 lines.push(`Tendência: ${ci.riskTrend}`);
+      if (ci.analysisConfidence != null) lines.push(`Confiança da análise: ${ci.analysisConfidence}%`);
+      if (Array.isArray(ci.riskFactors) && ci.riskFactors.length > 0) {
+        lines.push(`Principais fatores de risco: ${ci.riskFactors.slice(0, 3).map((item: any) => item?.fator ?? item?.motivo ?? String(item)).join(" | ")}`);
+      }
+      if (Array.isArray(ci.positiveSignals) && ci.positiveSignals.length > 0) {
+        lines.push(`Sinais positivos: ${ci.positiveSignals.slice(0, 3).map((item: any) => item?.sinal ?? String(item)).join(" | ")}`);
+      }
+      if (ci.journeyStage) ciLines.push(`Estágio: ${ci.journeyStage}`);
     if (ci.intentAnalysis) ciLines.push(`Intenção: ${ci.intentAnalysis}`);
     if (ci.goalAnalysis) ciLines.push(`Objetivo: ${ci.goalAnalysis}`);
     if (ci.nextBestAction) ciLines.push(`Próxima ação: ${ci.nextBestAction}`);
