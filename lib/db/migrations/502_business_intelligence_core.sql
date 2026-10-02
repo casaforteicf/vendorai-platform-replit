@@ -1,12 +1,12 @@
--- Business Intelligence Core
--- Adds structured commercial intelligence to the existing master product.
--- Additive/non-breaking: existing tenants keep an empty JSON object until enriched.
+-- Núcleo de Inteligência do Negócio
+-- Adiciona inteligência comercial estruturada ao produto mestre existente.
+-- Alteração aditiva: tenants existentes mantêm JSON vazio até o enriquecimento.
 
 ALTER TABLE produtos_catalogo
-  ADD COLUMN IF NOT EXISTS commercial_intelligence jsonb NOT NULL DEFAULT '{}'::jsonb;
+  ADD COLUMN IF NOT EXISTS inteligencia_comercial jsonb NOT NULL DEFAULT '{}'::jsonb;
 
-CREATE INDEX IF NOT EXISTS produtos_catalogo_commercial_intelligence_gin_idx
-  ON produtos_catalogo USING gin (commercial_intelligence);
+CREATE INDEX IF NOT EXISTS produtos_catalogo_inteligencia_comercial_gin_idx
+  ON produtos_catalogo USING gin (inteligencia_comercial);
 
-COMMENT ON COLUMN produtos_catalogo.commercial_intelligence IS
-  'Structured approved commercial knowledge: features, differentials, benefits, pains, objections, proofs, personas, allowed/prohibited claims and complementary products.';
+COMMENT ON COLUMN produtos_catalogo.inteligencia_comercial IS
+  'Conhecimento comercial estruturado e aprovado: características, diferenciais, benefícios, dores, objeções, provas, personas, afirmações permitidas/proibidas e produtos complementares.';
