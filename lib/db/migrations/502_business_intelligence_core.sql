@@ -22,3 +22,11 @@ ALTER TABLE media_context_entries
     'case', 'equipe', 'campanha', 'conteudo', 'ferramenta', 'processo',
     'diferencial', 'promocao', 'prova', 'documento', 'referencia'
   ));
+
+
+-- Configuração de Jornada / Acompanhamento por etapa da pipeline.
+ALTER TABLE pipeline_stages
+  ADD COLUMN IF NOT EXISTS acompanhamento_config jsonb NOT NULL DEFAULT '{}'::jsonb;
+
+COMMENT ON COLUMN pipeline_stages.acompanhamento_config IS
+  'Objetivo, modo, canais, cadência, limites e regras do acompanhamento/follow-up da etapa.';
