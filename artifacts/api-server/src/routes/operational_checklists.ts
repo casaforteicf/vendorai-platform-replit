@@ -99,7 +99,7 @@ async function getDealContext(dealId: string) {
       : Promise.resolve(null),
     db.select({ id: tenantsTable.id, name: tenantsTable.name }).from(tenantsTable).where(eq(tenantsTable.id, deal.tenantId)).limit(1).then((rows) => rows[0] ?? null),
     deal.assignedTo
-      ? db.select({ id: usersTable.id, nome: usersTable.nome, email: usersTable.email }).from(usersTable).where(eq(usersTable.id, deal.assignedTo)).limit(1).then((rows) => rows[0] ?? null)
+      ? db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email }).from(usersTable).where(eq(usersTable.id, deal.assignedTo)).limit(1).then((rows) => rows[0] ?? null)
       : Promise.resolve(null),
   ]);
   const [proposal] = await db.select().from(propostasTable)
@@ -201,7 +201,7 @@ router.post("/operational-checklists/deals/:dealId/start", async (req, res) => {
       endereco: context.lead?.endereco ?? null,
       pedido: context.proposal.numero || context.proposal.titulo,
       obra: context.deal.titulo,
-      representante: context.assigned?.nome ?? context.assigned?.email ?? null,
+      representante: context.assigned?.name ?? context.assigned?.email ?? null,
       geradoEm: new Date().toISOString(),
     },
     items,
