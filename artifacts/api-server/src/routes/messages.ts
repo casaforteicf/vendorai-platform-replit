@@ -126,29 +126,6 @@ router.post("/messages", async (req, res): Promise<void> => {
       );
       res.status(201).json(message);
 
-      void recordIntelligenceEvent({
-        tenantId,
-        leadId,
-        eventType: "message_sent",
-        title: `Mensagem enviada via ${canal}`,
-        summary: conteudo?.slice(0, 500) ?? null,
-        sourceModule: "messages",
-        sourceId: message.id,
-        metadata: { canal, direcao: "saida" },
-        log: req.log,
-      });
-      void recordIntelligenceFact({
-        tenantId,
-        leadId,
-        kind: "evento_operacional",
-        factKey: "ultima_interacao_saida",
-        value: { canal, conteudo: conteudo?.slice(0, 1000) ?? "", em: new Date().toISOString() },
-        sourceType: "mensagem",
-        sourceModule: "messages",
-        sourceId: message.id,
-        title: "Última interação de saída",
-        log: req.log,
-      });
     } catch (err) {
       if (err instanceof WhatsAppNotConnectedError) {
         res.status(422).json({ error: "WhatsApp não configurado para este tenant. Configure as credenciais Z-API em Configurações." });
