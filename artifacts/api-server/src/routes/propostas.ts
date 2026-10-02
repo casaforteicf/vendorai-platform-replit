@@ -32,6 +32,7 @@ import {
   roundOrcamentoNumber,
 } from "../lib/orcamento-numbers.js";
 import { auditProposalBudget, calculateBudgetItemsTotal } from "../lib/budget-integrity.js";
+import { recordIntelligenceEvent } from "../services/customer-intelligence-history.js";
 import {
   defaultProposalBuilderTemplate,
   ensureTenantProposalBuilderTemplate,
@@ -750,6 +751,25 @@ router.post("/propostas", async (req, res) => {
       numero,
     })
     .returning();
+
+  void recordIntelligenceEvent({
+    tenantId: proposta.tenantId,
+    leadId: proposta.leadId,
+    eventType: "proposal_created",
+    title: `Orçamento/proposta criado: ${proposta.titulo}`,
+    summary: proposta.numero ? `Número ${proposta.numero} · status ${proposta.status}` : `Status ${proposta.status}`,
+    sourceModule: "propostas",
+    sourceId: proposta.id,
+    metadata: {
+      numero: proposta.numero ?? null,
+      status: proposta.status,
+      valorTotal: proposta.valorTotal ?? null,
+      recorrente: proposta.recorrente ?? false,
+      dealId: proposta.dealId ?? null,
+    },
+    log: req.log,
+  });
+
   res.status(201).json(proposta);
 });
 
@@ -1012,6 +1032,25 @@ router.get("/propostas/:id", async (req, res) => {
       if (repaired) proposta = repaired;
     }
   }
+
+  void recordIntelligenceEvent({
+    tenantId: proposta.tenantId,
+    leadId: proposta.leadId,
+    eventType: parsed.data.status && parsed.data.status !== existing.status ? "proposal_status_changed" : "proposal_updated",
+    title: parsed.data.status && parsed.data.status !== existing.status
+      ? `Proposta ${proposta.numero ?? proposta.titulo}: ${existing.status} → ${proposta.status}`
+      : `Proposta atualizada: ${proposta.titulo}`,
+    summary: proposta.observacoes?.slice(0, 500) ?? null,
+    sourceModule: "propostas",
+    sourceId: proposta.id,
+    metadata: {
+      previousStatus: existing.status,
+      status: proposta.status,
+      valorTotal: proposta.valorTotal ?? null,
+      dealId: proposta.dealId ?? null,
+    },
+    log: req.log,
+  });
 
   res.json(proposta);
 });
