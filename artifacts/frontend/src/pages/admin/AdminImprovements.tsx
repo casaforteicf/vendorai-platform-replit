@@ -164,15 +164,21 @@ function formatDuration(value?: number | string | null) {
 
 function improvementSimpleStatus(item: Improvement) {
   if (item.status === "producao_validada") return "Publicado";
-  if (item.testStatus === "passed" && ["pronto_staging", "em_homologacao", "homologado", "aguardando_producao"].includes(item.status)) return "Pronto";
   if (item.status === "bloqueada" || item.testStatus === "failed") return "Atenção";
-  return "Fazendo";
+  if (item.status === "testando" || item.testStatus === "running") return "Testando";
+  if (item.status === "solicitada") return "Solicitada";
+  if (item.status === "em_desenvolvimento") return "Fazendo";
+  if (item.status === "pronto_staging") return item.testStatus === "passed" ? "Pronto" : "Aguardando testes";
+  if (item.status === "em_homologacao") return "Em homologação";
+  if (item.status === "homologado") return "Homologado";
+  if (item.status === "aguardando_producao") return "Aguardando produção";
+  return "Aguardando";
 }
 
 function statusVariant(status: string): "default" | "secondary" | "outline" | "destructive" {
-  if (status === "Publicado" || status === "Pronto" || status === "published") return "default";
+  if (["Publicado", "Pronto", "Homologado", "published"].includes(status)) return "default";
   if (status === "Atenção" || status === "blocked") return "destructive";
-  if (status === "scheduled" || status === "monitoring" || status === "publishing") return "secondary";
+  if (["Testando", "Em homologação", "Aguardando produção", "scheduled", "monitoring", "publishing"].includes(status)) return "secondary";
   return "outline";
 }
 
