@@ -100,12 +100,11 @@ test('private OAuth: discovery, redirect restrictions, consent, PKCE, replay, re
     const legacyHtml = legacyAuth.html;
     const legacyCsrf = legacyHtml.match(/name="csrf" value="([^"]+)"/)?.[1];
     assert.ok(legacyCsrf);
-    const legacyApprove = await fetch(resource + '/oauth/approve', {
-      method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded', origin: resource },
-      body: new URLSearchParams({ csrf: legacyCsrf, credential: process.env.MCP_ACCESS_TOKEN, decision: 'approve' }),
-      redirect: 'manual',
-    });
+    const legacyApprove = await post('/oauth/approve', {
+      csrf: legacyCsrf,
+      credential: process.env.MCP_ACCESS_TOKEN,
+      decision: 'approve',
+    }, { Origin: base });
     const legacyCode = new URL(legacyApprove.headers.get('location')).searchParams.get('code');
     assert.ok(legacyCode);
     const legacyTokens = await (await post('/oauth/token', { client_id: legacyClient, redirect_uri: redirect, code: legacyCode, grant_type: 'authorization_code', code_verifier: verifier })).json();
@@ -137,6 +136,7 @@ test('real MCP server still initializes and lists tools behind authentication', 
   const secret = randomBytes(32).toString('hex');
   const base = `http://127.0.0.1:${port}`;
   const child = spawn(process.execPath, ['dist/index.js'], {
+    cwd: new URL('.', import.meta.url),
     env: { ...process.env, PORT: String(port), MCP_PUBLIC_URL: base, MCP_ACCESS_TOKEN: secret }, stdio: ['ignore', 'pipe', 'pipe'],
   });
   try {
