@@ -38,25 +38,25 @@ export interface ProdutoProjectTechnicalConfig {
 }
 
 export interface ProdutoInteligenciaComercial {
-  features?: string[];
-  differentials?: string[];
-  benefits?: string[];
-  painsSolved?: string[];
-  useCases?: string[];
+  caracteristicas?: string[];
+  diferenciais?: string[];
+  beneficios?: string[];
+  doresAtendidas?: string[];
+  casosUso?: string[];
   personas?: string[];
-  objections?: Array<{
-    objection: string;
-    response?: string;
-    proofIds?: string[];
+  objecoes?: Array<{
+    objecao: string;
+    resposta?: string;
+    idsProvas?: string[];
   }>;
-  proofIds?: string[];
-  complementaryProductIds?: string[];
-  allowedClaims?: string[];
-  prohibitedClaims?: string[];
-  salesNotes?: string[];
-  approvedAt?: string | null;
-  approvedBy?: string | null;
-  source?: "manual" | "ai_suggested" | "imported" | "mixed";
+  idsProvas?: string[];
+  idsProdutosComplementares?: string[];
+  afirmacoesPermitidas?: string[];
+  afirmacoesProibidas?: string[];
+  notasComerciais?: string[];
+  aprovadoEm?: string | null;
+  aprovadoPor?: string | null;
+  origem?: "manual" | "sugerido_ia" | "importado" | "misto";
   [key: string]: unknown;
 }
 
