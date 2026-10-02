@@ -88,6 +88,7 @@ function ensureSchema() {
     "duration_ms integer," +
     "release_pr_number integer," +
     "release_pr_url text," +
+    "release_branch text," +
     "published_sha text," +
     "rollback_version text," +
     "last_error text," +
@@ -95,6 +96,7 @@ function ensureSchema() {
     "created_at timestamptz NOT NULL DEFAULT now()," +
     "updated_at timestamptz NOT NULL DEFAULT now()" +
     ");" +
+    "ALTER TABLE admin_releases ADD COLUMN IF NOT EXISTS release_branch text;" +
     "CREATE INDEX IF NOT EXISTS admin_releases_status_idx ON admin_releases(status,scheduled_at);" +
     "CREATE TABLE IF NOT EXISTS admin_improvement_events (" +
     "id uuid PRIMARY KEY," +
@@ -144,7 +146,7 @@ async function getReleaseById(id: string) {
   return result.rows[0] ?? null;
 }
 
-async function collectReleaseImpact(ids: string[]) {
+async function collectReleaseImpact(ids: string[], candidateBranch = "staging") {
   const itemsResult = await pool.query(
     "SELECT id,title,module,status,test_status AS \"testStatus\",pr_number AS \"prNumber\",pr_url AS \"prUrl\",branch FROM admin_improvements WHERE id=ANY($1::uuid[]) ORDER BY created_at ASC",
     [ids],
@@ -181,17 +183,17 @@ async function collectReleaseImpact(ids: string[]) {
   }
 
   const mainRef = await githubJson("/repos/" + config.owner + "/" + config.repo + "/git/ref/heads/main");
-  let stagingRef: any;
-  let stagingExists = true;
+  let candidateRef: any;
+  let candidateExists = true;
   try {
-    stagingRef = await githubJson("/repos/" + config.owner + "/" + config.repo + "/git/ref/heads/staging");
+    candidateRef = await githubJson("/repos/" + config.owner + "/" + config.repo + "/git/ref/heads/" + encodeURIComponent(candidateBranch));
   } catch {
-    stagingRef = mainRef;
-    stagingExists = false;
+    candidateRef = mainRef;
+    candidateExists = false;
   }
 
   const baseSha = String(mainRef.object?.sha ?? "");
-  const headSha = String(stagingRef.object?.sha ?? "");
+  const headSha = String(candidateRef.object?.sha ?? "");
   const compare = baseSha === headSha
     ? { files: [] }
     : await githubJson("/repos/" + config.owner + "/" + config.repo + "/compare/" + encodeURIComponent(baseSha) + "..." + encodeURIComponent(headSha));
@@ -212,15 +214,64 @@ async function collectReleaseImpact(ids: string[]) {
     checkedAt: new Date().toISOString(),
     repository: config.repository,
     base: { branch: "main", sha: baseSha },
-    head: { branch: stagingExists ? "staging" : "main", sha: headSha },
+    head: { branch: candidateExists ? candidateBranch : "main", sha: headSha },
     prs,
     expectedFiles: expected,
     actualFiles,
     unexpectedFiles: unexpected,
     missingExpectedFiles: missing,
     notReady,
-    clean: stagingExists && unexpected.length === 0 && missing.length === 0 && notReady.length === 0 && baseSha !== headSha,
+    clean: candidateExists && unexpected.length === 0 && missing.length === 0 && notReady.length === 0 && baseSha !== headSha,
   };
+}
+
+
+async function createReleaseCandidateBranch(version: string, ids: string[]) {
+  const config = githubConfig();
+  const mainRef = await githubJson("/repos/" + config.owner + "/" + config.repo + "/git/ref/heads/main");
+  const mainSha = String(mainRef.object?.sha ?? "");
+  if (!mainSha) throw new Error("MAIN_SHA_NOT_FOUND");
+
+  const safeVersion = version.replace(/[^0-9A-Za-z._-]+/g, "-");
+  const branch = "release/" + safeVersion;
+
+  try {
+    await githubJson("/repos/" + config.owner + "/" + config.repo + "/git/refs", {
+      method: "POST",
+      body: JSON.stringify({ ref: "refs/heads/" + branch, sha: mainSha }),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/Reference already exists/i.test(message)) throw error;
+  }
+
+  const items = await pool.query(
+    "SELECT id,title,branch,pr_number AS \"prNumber\" FROM admin_improvements WHERE id=ANY($1::uuid[]) ORDER BY created_at ASC",
+    [ids],
+  );
+  if (items.rows.length !== ids.length) throw new Error("RELEASE_ITEMS_NOT_FOUND");
+
+  for (const item of items.rows) {
+    let head = item.branch ? String(item.branch) : "";
+    if (!head && item.prNumber) {
+      const pr = await githubJson("/repos/" + config.owner + "/" + config.repo + "/pulls/" + item.prNumber);
+      head = String(pr.head?.ref ?? "");
+    }
+    if (!head) throw new Error("Melhoria sem branch técnica: " + item.title);
+
+    const merged = await githubJson("/repos/" + config.owner + "/" + config.repo + "/merges", {
+      method: "POST",
+      body: JSON.stringify({
+        base: branch,
+        head,
+        commit_message: "[Release candidate " + version + "] " + item.title,
+      }),
+    });
+    if (!merged?.sha) throw new Error("Não foi possível incluir a melhoria na versão candidata: " + item.title);
+  }
+
+  const finalRef = await githubJson("/repos/" + config.owner + "/" + config.repo + "/git/ref/heads/" + encodeURIComponent(branch));
+  return { branch, baseSha: mainSha, headSha: String(finalRef.object?.sha ?? "") };
 }
 
 function releaseFingerprint(release: any, impact: any) {
@@ -481,7 +532,8 @@ router.post("/admin/releases", async (req, res) => {
   }
 
   const version = await nextReleaseVersion();
-  const impact = await collectReleaseImpact(parsed.data.ids);
+  const candidate = await createReleaseCandidateBranch(version, parsed.data.ids);
+  const impact = await collectReleaseImpact(parsed.data.ids, candidate.branch);
   const previous = await pool.query("SELECT version FROM admin_releases WHERE status='published' ORDER BY published_at DESC NULLS LAST LIMIT 1");
   const id = randomUUID();
   const summary = parsed.data.summary || checks.rows.map((row) => row.title).join(" • ").slice(0, 6000);
@@ -489,8 +541,8 @@ router.post("/admin/releases", async (req, res) => {
   const testUrl = process.env["HOMOLOGATION_URL"] ?? "https://homolog.appvendorai.com";
 
   await pool.query(
-    "INSERT INTO admin_releases (id,version,name,summary,status,improvement_ids,test_url,test_status,impact,base_sha,head_sha,rollback_version,created_by) VALUES ($1,$2,$3,$4,$5,$6::uuid[],$7,'pending',$8::jsonb,$9,$10,$11,$12)",
-    [id, version, parsed.data.name, summary, status, parsed.data.ids, testUrl, JSON.stringify(impact), impact.base.sha, impact.head.sha, previous.rows[0]?.version ?? null, actor(req)],
+    "INSERT INTO admin_releases (id,version,name,summary,status,improvement_ids,test_url,test_status,impact,base_sha,head_sha,release_branch,rollback_version,created_by) VALUES ($1,$2,$3,$4,$5,$6::uuid[],$7,'pending',$8::jsonb,$9,$10,$11,$12,$13)",
+    [id, version, parsed.data.name, summary, status, parsed.data.ids, testUrl, JSON.stringify(impact), impact.base.sha, impact.head.sha, candidate.branch, previous.rows[0]?.version ?? null, actor(req)],
   );
   await pool.query("UPDATE admin_improvements SET package_key=$1,updated_at=now() WHERE id=ANY($2::uuid[])", [version, parsed.data.ids]);
   return res.status(201).json({ id, version, name: parsed.data.name, status, impact, testUrl });
@@ -502,7 +554,7 @@ router.post("/admin/releases/:id/impact", async (req, res) => {
   if (!release) return res.status(404).json({ error: "Publicação não encontrada" });
   if (["publishing", "monitoring", "published", "rolled_back"].includes(release.status)) return res.status(409).json({ error: "Publicação já está em execução ou concluída." });
 
-  const impact = await collectReleaseImpact(release.improvementIds);
+  const impact = await collectReleaseImpact(release.improvementIds, release.releaseBranch ?? "staging");
   const fingerprint = releaseFingerprint(release, impact);
   const changedAfterApproval = Boolean(release.approvalFingerprint && release.approvalFingerprint !== fingerprint);
   const nextStatus = !impact.clean || changedAfterApproval ? "blocked" : release.status === "blocked" ? "ready" : release.status;
@@ -520,7 +572,7 @@ router.post("/admin/releases/:id/vendi-test", async (req, res) => {
   const release = await getReleaseById(String(req.params.id));
   if (!release) return res.status(404).json({ error: "Publicação não encontrada" });
 
-  const impact = await collectReleaseImpact(release.improvementIds);
+  const impact = await collectReleaseImpact(release.improvementIds, release.releaseBranch ?? "staging");
   if (!impact.clean) {
     return res.status(409).json({
       error: "O Vendi não pode validar uma versão com impacto inconsistente.",
@@ -609,7 +661,7 @@ router.post("/admin/releases/:id/tested", async (req, res) => {
   await ensureSchema();
   const release = await getReleaseById(String(req.params.id));
   if (!release) return res.status(404).json({ error: "Publicação não encontrada" });
-  const impact = await collectReleaseImpact(release.improvementIds);
+  const impact = await collectReleaseImpact(release.improvementIds, release.releaseBranch ?? "staging");
   if (!impact.clean) return res.status(409).json({ error: "Impacto da versão não está limpo.", impact });
 
   await pool.query(
@@ -625,7 +677,7 @@ router.post("/admin/releases/:id/approve", async (req, res) => {
   if (!release) return res.status(404).json({ error: "Publicação não encontrada" });
   if (release.testStatus !== "passed") return res.status(409).json({ error: "Teste da versão ainda não foi confirmado." });
 
-  const impact = await collectReleaseImpact(release.improvementIds);
+  const impact = await collectReleaseImpact(release.improvementIds, release.releaseBranch ?? "staging");
   if (!impact.clean) return res.status(409).json({ error: "A publicação possui alterações fora do escopo ou itens não prontos.", impact });
 
   const fingerprint = releaseFingerprint(release, impact);
@@ -644,7 +696,7 @@ router.post("/admin/releases/:id/schedule", async (req, res) => {
   if (!release) return res.status(404).json({ error: "Publicação não encontrada" });
   if (release.status !== "approved" || !release.approvalFingerprint) return res.status(409).json({ error: "A publicação precisa estar aprovada antes de ser agendada." });
 
-  const impact = await collectReleaseImpact(release.improvementIds);
+  const impact = await collectReleaseImpact(release.improvementIds, release.releaseBranch ?? "staging");
   const fingerprint = releaseFingerprint(release, impact);
   if (!impact.clean || fingerprint !== release.approvalFingerprint) {
     await pool.query(
@@ -670,17 +722,19 @@ router.post("/admin/releases/:id/cancel", async (req, res) => {
 });
 
 async function executeScheduledRelease(release: any) {
-  const impact = await collectReleaseImpact(release.improvementIds);
+  const impact = await collectReleaseImpact(release.improvementIds, release.releaseBranch ?? "staging");
   const fingerprint = releaseFingerprint(release, impact);
   if (!impact.clean || !release.approvalFingerprint || fingerprint !== release.approvalFingerprint) throw new Error("A versão mudou ou contém alterações fora do escopo aprovado.");
 
   const config = githubConfig();
   const currentMain = await githubJson("/repos/" + config.owner + "/" + config.repo + "/git/ref/heads/main");
-  const staging = await githubJson("/repos/" + config.owner + "/" + config.repo + "/git/ref/heads/staging");
+  const releaseBranch = String(release.releaseBranch ?? "");
+  if (!releaseBranch) throw new Error("Versão candidata sem branch de release.");
+  const candidate = await githubJson("/repos/" + config.owner + "/" + config.repo + "/git/ref/heads/" + encodeURIComponent(releaseBranch));
   if (String(currentMain.object?.sha ?? "") !== String(impact.base.sha ?? "")) throw new Error("A main mudou desde a aprovação. Nova comparação e aprovação são necessárias.");
-  if (String(staging.object?.sha ?? "") !== String(impact.head.sha ?? "")) throw new Error("A staging mudou desde a aprovação. Nova comparação e aprovação são necessárias.");
+  if (String(candidate.object?.sha ?? "") !== String(impact.head.sha ?? "")) throw new Error("A versão candidata mudou desde a aprovação. Nova comparação e aprovação são necessárias.");
 
-  const releaseEvidence = await collectDevAgentCheckEvidence(String(staging.object.sha));
+  const releaseEvidence = await collectDevAgentCheckEvidence(String(candidate.object.sha));
   if (releaseEvidence.codeFailures.length) {
     throw new Error("A versão possui falhas de código/teste: " + releaseEvidence.codeFailures.map((item) => item.name).join(", "));
   }
@@ -699,7 +753,7 @@ async function executeScheduledRelease(release: any) {
       body: JSON.stringify({
         title: ("[Release] " + release.version + " — " + release.name).slice(0, 120),
         body: ("Publicação aprovada pelo Super Admin.\n\nVersão: " + release.version + "\nNome: " + release.name + "\nMelhorias: " + (release.improvementIds ?? []).join(", ") + "\n\nFingerprint: " + release.approvalFingerprint).slice(0, 12000),
-        head: "staging",
+        head: releaseBranch,
         base: "main",
         draft: false,
       }),
