@@ -5,6 +5,33 @@ import { pgTable, text, timestamp, integer, boolean, jsonb } from "drizzle-orm/p
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { tenantsTable } from "./tenants";
 
+export type ConfiguracaoAcompanhamentoEtapa = {
+  ativo?: boolean;
+  objetivo?: string;
+  modo?: "automatico" | "gerar_aprovar" | "somente_sugestao";
+  canaisPermitidos?: Array<"whatsapp" | "instagram" | "messenger" | "email" | "chat" | "ligacao">;
+  atrasoInicialMinutos?: number;
+  intervaloMinimoMinutos?: number;
+  maxTentativas?: number;
+  pararAoResponder?: boolean;
+  priorizarLacunasDaEtapa?: boolean;
+  priorizarRiscoAtual?: boolean;
+  instrucoes?: string;
+};
+
+export type PipelineStageQuestion = {
+  id: string;
+  texto: string;
+  obrigatoria?: boolean;
+  iaPodeResponder?: boolean;
+  exigeConfirmacaoHumana?: boolean;
+  geraAtividade?: boolean;
+  campoDestino?: string | null;
+  objetivo?: string | null;
+  tipo?: "texto" | "sim_nao" | "numero" | "data" | "opcoes";
+  ordem?: number;
+};
+
 export const pipelineStagesTable = pgTable("pipeline_stages", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   tenantId: text("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
@@ -31,12 +58,8 @@ export const pipelineStagesTable = pgTable("pipeline_stages", {
   // Null = etapa sem agente IA responsável automático.
   responsavelAgenteKey: text("responsavel_agente_key"),
   // Perguntas-chave/playbook. Hoje são usadas principalmente na pipeline comercial.
-  perguntas: jsonb("perguntas").$type<{ id: string; texto: string }[]>().notNull().default([]),
-  // Próxima atividade sugerida ao entrar nesta etapa. O título vazio significa
-  // que a etapa não força uma atividade padrão e o usuário/agente pode definir manualmente.
-  atividadePadraoTitulo: text("atividade_padrao_titulo"),
-  atividadePadraoDescricao: text("atividade_padrao_descricao"),
-  atividadePadraoPrazoMinutos: integer("atividade_padrao_prazo_minutos"),
+  perguntas: jsonb("perguntas").$type<PipelineStageQuestion[]>().notNull().default([]),
+  acompanhamentoConfig: jsonb("acompanhamento_config").$type<ConfiguracaoAcompanhamentoEtapa>().notNull().default({}),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -53,7 +76,7 @@ export type PipelineStage = typeof pipelineStagesTable.$inferSelect;
 export type NewPipelineStage = typeof pipelineStagesTable.$inferInsert;
 
 // Etapas comerciais oficiais (mesmos valores usados por deals.etapa).
-export const SYSTEM_PIPELINE_STAGES: Array<{ key: string; label: string; color: string; bg: string; ordem: number; perguntas?: { id: string; texto: string }[] }> = [
+export const SYSTEM_PIPELINE_STAGES: Array<{ key: string; label: string; color: string; bg: string; ordem: number; perguntas?: PipelineStageQuestion[] }> = [
   { key: "em_aquecimento",      label: "Em Aquecimento", color: "text-orange-600",  bg: "bg-orange-100",  ordem: 0 },
   {
     key: "novo", label: "Novo", color: "text-slate-600", bg: "bg-slate-100", ordem: 1,

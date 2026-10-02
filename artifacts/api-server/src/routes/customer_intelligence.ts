@@ -9,6 +9,11 @@ import {
   leadsTable,
   tenantsTable,
   churnActionsTable,
+  customerIntelligenceSourcesTable,
+  customerIntelligenceFactsTable,
+  customerIntelligenceEventsTable,
+  customerIntelligenceSnapshotsTable,
+  leadStageDynamicQuestionsTable,
 } from "@workspace/db";
 import {
   analyzeLeadIntelligence,
@@ -16,6 +21,7 @@ import {
   ANALYSIS_COOLDOWN_MINUTES,
   MAX_ANALYSES_PER_TENANT_PER_HOUR,
 } from "../lib/analyze-intelligence.js";
+import { suggestDynamicStageQuestions } from "../services/stage-question-intelligence.js";
 
 const router: IRouter = Router();
 
@@ -143,6 +149,109 @@ router.get(
     }
 
     res.json(record);
+  }
+);
+
+router.get(
+  "/tenants/:tenantId/leads/:leadId/intelligence/full",
+  async (req, res) => {
+    // tenant-audit: reviewed route tenant is immediately checked against authenticated tenant or super_admin before tenant-scoped access
+    const tenantId = String(req.params.tenantId);
+    const leadId = String(req.params.leadId);
+
+    if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+      res.status(403).json({ error: "Access denied to this tenant" });
+      return;
+    }
+
+    const [lead] = await db
+      .select({ id: leadsTable.id })
+      .from(leadsTable)
+      .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)))
+      .limit(1);
+    if (!lead) {
+      res.status(404).json({ error: "Lead not found in this tenant" });
+      return;
+    }
+
+    const [profile, facts, events, snapshots, sources, dynamicQuestions] = await Promise.all([
+      db.select().from(customerIntelligenceTable)
+        .where(and(eq(customerIntelligenceTable.tenantId, tenantId), eq(customerIntelligenceTable.leadId, leadId)))
+        .limit(1)
+        .then((rows) => rows[0] ?? null),
+      db.select().from(customerIntelligenceFactsTable)
+        .where(and(eq(customerIntelligenceFactsTable.tenantId, tenantId), eq(customerIntelligenceFactsTable.leadId, leadId)))
+        .orderBy(desc(customerIntelligenceFactsTable.createdAt))
+        .limit(250),
+      db.select().from(customerIntelligenceEventsTable)
+        .where(and(eq(customerIntelligenceEventsTable.tenantId, tenantId), eq(customerIntelligenceEventsTable.leadId, leadId)))
+        .orderBy(desc(customerIntelligenceEventsTable.occurredAt))
+        .limit(250),
+      db.select().from(customerIntelligenceSnapshotsTable)
+        .where(and(eq(customerIntelligenceSnapshotsTable.tenantId, tenantId), eq(customerIntelligenceSnapshotsTable.leadId, leadId)))
+        .orderBy(desc(customerIntelligenceSnapshotsTable.createdAt))
+        .limit(100),
+      db.select().from(customerIntelligenceSourcesTable)
+        .where(and(eq(customerIntelligenceSourcesTable.tenantId, tenantId), eq(customerIntelligenceSourcesTable.leadId, leadId)))
+        .orderBy(desc(customerIntelligenceSourcesTable.capturedAt))
+        .limit(250),
+      db.select().from(leadStageDynamicQuestionsTable)
+        .where(and(eq(leadStageDynamicQuestionsTable.tenantId, tenantId), eq(leadStageDynamicQuestionsTable.leadId, leadId)))
+        .orderBy(desc(leadStageDynamicQuestionsTable.createdAt))
+        .limit(100),
+    ]);
+
+    res.json({
+      profile,
+      health: profile ? {
+        score: profile.healthScore,
+        status: profile.healthStatus,
+        riskType: profile.riskType,
+        riskLevel: profile.riskLevel,
+        trend: profile.riskTrend,
+        confidence: profile.analysisConfidence,
+        dimensions: profile.healthDimensions ?? {},
+        positiveSignals: profile.positiveSignals ?? [],
+        negativeSignals: profile.negativeSignals ?? [],
+        riskFactors: profile.riskFactors ?? [],
+        riskEvents: profile.riskEvents ?? [],
+        nextBestAction: profile.nextBestAction,
+        nextBestActionReason: profile.nextBestActionReason,
+      } : null,
+      facts,
+      events,
+      snapshots,
+      sources,
+      dynamicQuestions,
+    });
+  }
+);
+
+router.post(
+  "/tenants/:tenantId/leads/:leadId/deals/:dealId/intelligence/suggest-stage-questions",
+  async (req, res) => {
+    // tenant-audit: reviewed route tenant is immediately checked against authenticated tenant or super_admin before tenant-scoped access
+    const tenantId = String(req.params.tenantId);
+    const leadId = String(req.params.leadId);
+    const dealId = String(req.params.dealId);
+
+    if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+      res.status(403).json({ error: "Access denied to this tenant" });
+      return;
+    }
+
+    try {
+      const questions = await suggestDynamicStageQuestions({
+        tenantId,
+        leadId,
+        dealId,
+        log: req.log,
+      });
+      res.json({ questions });
+    } catch (err) {
+      req.log.warn({ err, tenantId, leadId, dealId }, "customer-intelligence: suggest-stage-questions failed");
+      res.status(502).json({ error: "Não foi possível sugerir perguntas adicionais agora." });
+    }
   }
 );
 

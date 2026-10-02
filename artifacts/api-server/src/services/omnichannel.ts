@@ -15,6 +15,7 @@ import type { Message, Conversation } from "@workspace/db";
 import type { Logger } from "pino";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { sendEvolutionWhatsAppMessage, sendEvolutionDocument, sendEvolutionMedia } from "./evolution-whatsapp.js";
+import { recordIntelligenceEvent, recordIntelligenceFact } from "./customer-intelligence-history.js";
 
 export interface AgentAttachment {
   name: string;
@@ -1076,6 +1077,30 @@ export async function sendOutgoingMessage(
     { messageId: message.id, enviadoPor, canal },
     "omnichannel: outgoing message inserted"
   );
+
+  void recordIntelligenceEvent({
+    tenantId,
+    leadId,
+    eventType: "message_sent",
+    title: `Mensagem enviada via ${canal}`,
+    summary: conteudo.slice(0, 500),
+    sourceModule: "messages",
+    sourceId: message.id,
+    metadata: { canal, enviadoPor, agentName: agentName ?? null },
+    log,
+  });
+  void recordIntelligenceFact({
+    tenantId,
+    leadId,
+    kind: "evento_operacional",
+    factKey: "ultima_interacao_saida",
+    value: { canal, conteudo: conteudo.slice(0, 1000), em: new Date().toISOString(), agentName: agentName ?? null },
+    sourceType: "mensagem",
+    sourceModule: "messages",
+    sourceId: message.id,
+    title: "Última interação de saída",
+    log,
+  });
 
   // ── 6. Update conversation: ultimaMensagemEm
   await db

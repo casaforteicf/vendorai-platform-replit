@@ -7,6 +7,7 @@ import {
   leadsTable,
   messagesTable,
 } from "@workspace/db";
+import { recordIntelligenceEvent, recordIntelligenceFact } from "./customer-intelligence-history.js";
 
 export type MetaEngagementInput = {
   externalEventId: string;
@@ -154,6 +155,28 @@ async function recordConversation(tenantId: string, leadId: string, input: MetaE
       status: "entregue",
     })
     .returning({ id: messagesTable.id });
+
+  void recordIntelligenceEvent({
+    tenantId,
+    leadId,
+    eventType: "message_received",
+    title: input.eventType === "dm" ? "Mensagem recebida via Instagram" : prefix,
+    summary: conteudo.slice(0, 500),
+    sourceModule: "messages",
+    sourceId: message.id,
+    metadata: { canal: "instagram", eventType: input.eventType, campaignId: input.campaignId ?? null },
+  });
+  void recordIntelligenceFact({
+    tenantId,
+    leadId,
+    kind: "declaracao_cliente",
+    factKey: "ultima_interacao_cliente",
+    value: { canal: "instagram", conteudo: conteudo.slice(0, 1000), em: new Date().toISOString(), eventType: input.eventType },
+    sourceType: "mensagem",
+    sourceModule: "messages",
+    sourceId: message.id,
+    title: prefix,
+  });
 
   await db
     .update(conversationsTable)

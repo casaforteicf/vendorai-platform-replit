@@ -56,6 +56,8 @@ import { finalizeVehicleReservation } from "../services/vehicle-reservation.js";
 import { finalizeItemReservation } from "../services/item-reservation.js";
 import { z } from "zod";
 import { COMMERCIAL_STAGE_ORDER, PARTNER_STAGE_ORDER, SAAS_STAGE_ORDER, TERMINAL_DEAL_STAGES, isBackwardMove } from "../lib/pipeline-progress.js";
+import { recordIntelligenceEvent, recordStageAnswers } from "../services/customer-intelligence-history.js";
+import { suggestDynamicStageQuestions } from "../services/stage-question-intelligence.js";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -835,6 +837,20 @@ router.patch("/deals/:id", async (req, res) => {
     return updatedDeal;
   });
 
+  if (deal.leadId && parsed.data.respostasEtapas) {
+    for (const [stageKey, answers] of Object.entries(parsed.data.respostasEtapas)) {
+      if (!answers || typeof answers !== "object") continue;
+      void recordStageAnswers({
+        tenantId: existing.tenantId,
+        leadId: deal.leadId,
+        dealId: deal.id,
+        stageKey,
+        answers: answers as Record<string, string>,
+        log: req.log,
+      });
+    }
+  }
+
   if (parsed.data.etapa && parsed.data.etapa !== existing.etapa && !handoff) {
     await recordDealJourney({
       tenantId: existing.tenantId, leadId: deal.leadId, dealId: deal.id,
@@ -843,6 +859,33 @@ router.patch("/deals/:id", async (req, res) => {
       responsavelId: req.user?.sub,
     });
       await ensureCommercialStageTask(deal);
+
+    void recordIntelligenceEvent({
+      tenantId: existing.tenantId,
+      leadId: deal.leadId,
+      eventType: "deal_stage_changed",
+      title: `Negócio avançou para ${DEAL_STAGE_LABELS[deal.etapa] ?? deal.etapa}`,
+      summary: `Etapa anterior: ${DEAL_STAGE_LABELS[existing.etapa] ?? existing.etapa}. Nova etapa: ${DEAL_STAGE_LABELS[deal.etapa] ?? deal.etapa}.`,
+      sourceModule: "deals",
+      sourceId: deal.id,
+      metadata: { previousStage: existing.etapa, stage: deal.etapa, assignedTo: deal.assignedTo ?? null },
+      log: req.log,
+    });
+
+    if (deal.leadId) {
+      void suggestDynamicStageQuestions({
+        tenantId: existing.tenantId,
+        leadId: deal.leadId,
+        dealId: deal.id,
+        log: req.log,
+      }).then((questions) => {
+        if (questions.length > 0) {
+          req.log.info({ dealId: deal.id, count: questions.length }, "customer-intelligence: dynamic stage questions suggested");
+        }
+      }).catch((err) => {
+        req.log.warn({ err, dealId: deal.id }, "customer-intelligence: dynamic stage question suggestion failed (non-fatal)");
+      });
+    }
   }
 
   // Notifica quando o negócio é repassado pra OUTRA pessoa (não pra si
