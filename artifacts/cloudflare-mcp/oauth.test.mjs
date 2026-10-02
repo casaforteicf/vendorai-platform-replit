@@ -30,6 +30,7 @@ test('private OAuth: discovery, redirect restrictions, consent, PKCE, replay, re
     assert.match((await fetch(resource)).headers.get('www-authenticate'), /resource_metadata=/);
     const metadata = await (await fetch(base + '/.well-known/oauth-authorization-server')).json();
     assert.deepEqual(metadata.code_challenge_methods_supported, ['S256']);
+    assert.equal(metadata.client_id_metadata_document_supported, true);
     assert.equal((await (await fetch(base + '/.well-known/oauth-protected-resource/mcp')).json()).resource, resource);
     assert.equal((await register({ redirect_uris: ['https://attacker.example/callback'] })).status, 400);
     assert.equal((await register({ redirect_uris: ['https://chatgpt.com@attacker.example/callback'] })).status, 400);
@@ -45,6 +46,12 @@ test('private OAuth: discovery, redirect restrictions, consent, PKCE, replay, re
     assert.equal((await form({ resource: 'https://attacker.example' })).response.status, 400);
     assert.equal((await form({ code_challenge_method: 'plain' })).response.status, 400);
     assert.equal((await form({ resource: '' })).response.status, 200);
+    const cimdClient = 'https://chatgpt.com/oauth/client.json';
+    const cimdAuthorize = await form({ client_id: cimdClient });
+    assert.equal(cimdAuthorize.response.status, 200);
+    const cimdSpecificWrong = await form({ client_id: 'https://chatgpt.com/oauth/abc123/client.json' });
+    assert.equal(cimdSpecificWrong.response.status, 400);
+
     const legacyClient = 'legacy-public-client-1234567890';
     const legacyAuthorize = await form({ client_id: legacyClient });
     assert.equal(legacyAuthorize.response.status, 200);
@@ -78,6 +85,16 @@ test('private OAuth: discovery, redirect restrictions, consent, PKCE, replay, re
     const noResourceCode = await grant();
     const noResourceTokens = await (await post('/oauth/token', { client_id: client, redirect_uri: redirect, code: noResourceCode, grant_type: 'authorization_code', code_verifier: verifier })).json();
     assert.ok(noResourceTokens.access_token);
+
+    const cimdAuth = await form({ client_id: cimdClient });
+    const cimdHtml = await cimdAuth.response.text();
+    const cimdCsrf = cimdHtml.match(/name="csrf" value="([^"]+)"/)?.[1];
+    assert.ok(cimdCsrf);
+    const cimdApprove = await post('/oauth/approve', { csrf: cimdCsrf, credential: process.env.MCP_ACCESS_TOKEN, decision: 'approve' }, { Origin: base });
+    const cimdCode = new URL(cimdApprove.headers.get('location')).searchParams.get('code');
+    assert.ok(cimdCode);
+    const cimdTokens = await (await post('/oauth/token', { client_id: cimdClient, redirect_uri: redirect, code: cimdCode, grant_type: 'authorization_code', code_verifier: verifier })).json();
+    assert.ok(cimdTokens.access_token);
 
     const legacyAuth = await form({ client_id: legacyClient });
     const legacyHtml = await legacyAuth.response.text();
