@@ -7,6 +7,26 @@ import {
   leadStageDynamicQuestionsTable,
   pipelineStagesTable,
 } from "@workspace/db";
+import type { AgentName } from "../lib/agent-engine.js";
+
+function selectAgent(input: {
+  stageKey: string;
+  objectiveSource: FollowupObjective["source"];
+  riskType: string | null | undefined;
+}): AgentName {
+  if (input.riskType === "financeiro") return "cobranca";
+  if (input.riskType === "operacional" || input.riskType === "insatisfacao") return "service";
+  if (input.riskType === "churn" || input.riskType === "desengajamento") return "reactivation";
+
+  if (input.objectiveSource === "stage_question" || input.objectiveSource === "dynamic_question") {
+    if (input.stageKey === "novo" || input.stageKey === "qualificado") return "sdr";
+    if (["proposta", "negociacao", "conferencia_estoque", "contrato"].includes(input.stageKey)) return "closer";
+  }
+
+  if (input.stageKey === "novo" || input.stageKey === "qualificado") return "sdr";
+  if (["proposta", "negociacao", "conferencia_estoque", "contrato"].includes(input.stageKey)) return "closer";
+  return "followup";
+}
 
 export type FollowupObjective = {
   source: "dynamic_question" | "stage_question" | "risk" | "stage_default";
@@ -25,6 +45,7 @@ export async function resolveFollowupObjective(input: {
   stageLabel: string;
   config: Record<string, unknown>;
   objective: FollowupObjective;
+  agentName: AgentName;
   health: {
     score: number | null;
     riskType: string | null;
@@ -112,11 +133,18 @@ export async function resolveFollowupObjective(input: {
     };
   }
 
+  const agentName = selectAgent({
+    stageKey: deal.etapa,
+    objectiveSource: objective.source,
+    riskType: ci?.riskType,
+  });
+
   return {
     stageKey: deal.etapa,
     stageLabel: stage?.label ?? deal.etapa,
     config,
     objective,
+    agentName,
     health: ci ? {
       score: ci.healthScore ?? null,
       riskType: ci.riskType ?? null,
