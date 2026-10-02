@@ -139,10 +139,12 @@ test('real MCP server still initializes and lists tools behind authentication', 
   const child = spawn(process.execPath, ['dist/index.js'], {
     env: { ...process.env, PORT: String(port), MCP_PUBLIC_URL: base, MCP_ACCESS_TOKEN: secret }, stdio: ['ignore', 'pipe', 'pipe'],
   });
+  let childErr = '';
+  child.stderr.on('data', chunk => { childErr += chunk.toString(); });
   try {
     await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('startup timeout')), 5000);
-      child.once('exit', code => { clearTimeout(timeout); reject(new Error(`server exited ${code}`)); });
+      const timeout = setTimeout(() => reject(new Error('startup timeout: ' + childErr.slice(-2000))), 5000);
+      child.once('exit', code => { clearTimeout(timeout); reject(new Error(`server exited ${code}: ${childErr.slice(-2000)}`)); });
       child.stdout.once('data', () => { clearTimeout(timeout); resolve(); });
     });
     assert.equal((await fetch(base + '/health')).status, 200);
