@@ -7,9 +7,21 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import { CheckCircle2, Circle, ClipboardList, Settings2, Plus, X, Loader2 } from "lucide-react";
 
-type Pergunta = { id: string; texto: string };
+type Pergunta = {
+  id: string;
+  texto: string;
+  obrigatoria?: boolean;
+  iaPodeResponder?: boolean;
+  exigeConfirmacaoHumana?: boolean;
+  geraAtividade?: boolean;
+  campoDestino?: string | null;
+  objetivo?: string | null;
+  tipo?: "texto" | "sim_nao" | "numero" | "data" | "opcoes";
+  ordem?: number;
+};
 type Stage = { id: string; key: string; label: string; perguntas?: Pergunta[] | null };
 
 function slug(s: string) {
@@ -31,6 +43,7 @@ export function StageQuestionsPanel({
 }) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { isEffectiveAdmin } = useAuth();
   const updateStage = useUpdatePipelineStage();
 
   const [draft, setDraft] = useState<Record<string, string>>(answers);
@@ -40,6 +53,10 @@ export function StageQuestionsPanel({
   const [editList, setEditList] = useState<Pergunta[]>(stage?.perguntas ?? []);
   useEffect(() => { setEditList(stage?.perguntas ?? []); }, [stage?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const [newQuestion, setNewQuestion] = useState("");
+
+  useEffect(() => {
+    if (!isEffectiveAdmin && editing) setEditing(false);
+  }, [isEffectiveAdmin, editing]);
 
   if (!stage) return null;
   const perguntas = stage.perguntas ?? [];
@@ -70,10 +87,12 @@ export function StageQuestionsPanel({
               <p className="truncate text-xs text-muted-foreground">Sem perguntas obrigatórias nesta etapa.</p>
             </div>
           </div>
-          <Button size="sm" variant="ghost" className="h-7 w-fit shrink-0 gap-1 px-2 text-xs text-muted-foreground" onClick={() => setEditing(true)}>
-            <Settings2 className="h-3.5 w-3.5" />
-            Configurar perguntas
-          </Button>
+          {isEffectiveAdmin && (
+            <Button size="sm" variant="ghost" className="h-7 w-fit shrink-0 gap-1 px-2 text-xs text-muted-foreground" onClick={() => setEditing(true)}>
+              <Settings2 className="h-3.5 w-3.5" />
+              Configurar perguntas
+            </Button>
+          )}
         </CardContent>
       </Card>
     );
@@ -97,10 +116,12 @@ export function StageQuestionsPanel({
               {stage.label} · registre somente o que ajuda a conduzir o próximo passo.
             </p>
           </div>
-          <Button size="sm" variant="ghost" className="h-7 shrink-0 gap-1 px-2 text-xs text-muted-foreground" onClick={() => setEditing((v) => !v)}>
-            <Settings2 className="h-3.5 w-3.5" />
-            Editar perguntas
-          </Button>
+          {isEffectiveAdmin && (
+            <Button size="sm" variant="ghost" className="h-7 shrink-0 gap-1 px-2 text-xs text-muted-foreground" onClick={() => setEditing((v) => !v)}>
+              <Settings2 className="h-3.5 w-3.5" />
+              Editar perguntas
+            </Button>
+          )}
         </div>
       </CardHeader>
       <CardContent className="px-4 pb-3 pt-1">
