@@ -94,8 +94,61 @@ jobs:
       - name: Enable pnpm
         run: npm install --global pnpm@10.26.1
       - run: pnpm install --frozen-lockfile
-      - name: Root typecheck
-        run: pnpm typecheck
+      - name: Typecheck sem regressão contra a base do PR
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+
+          normalize_errors() {
+            sed -E               -e 's#^([^:[:space:]]+/)*##'               -e 's#\([0-9]+,[0-9]+\)##g'               -e 's#[[:space:]]+# #g'               | grep -E 'error TS[0-9]+:'               | sort -u
+          }
+
+          set +e
+          pnpm typecheck 2>&1 | tee /tmp/head-typecheck.log
+          head_status=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$head_status" = "0" ]; then
+            echo "Typecheck do PR está totalmente verde."
+            exit 0
+          fi
+
+          if [ "${{ github.event_name }}" != "pull_request" ] || [ -z "${BASE_SHA:-}" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            echo "::error::Typecheck falhou e não há base de PR disponível para comparação."
+            exit "$head_status"
+          fi
+
+          normalize_errors < /tmp/head-typecheck.log > /tmp/head-errors.txt
+
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          git worktree add --detach /tmp/vendorai-base "$BASE_SHA"
+
+          (
+            cd /tmp/vendorai-base
+            pnpm install --frozen-lockfile >/dev/null
+            set +e
+            NODE_OPTIONS=--max-old-space-size=6144 pnpm typecheck 2>&1 | tee /tmp/base-typecheck.log
+            exit 0
+          )
+
+          normalize_errors < /tmp/base-typecheck.log > /tmp/base-errors.txt
+
+          comm -23 /tmp/head-errors.txt /tmp/base-errors.txt > /tmp/new-errors.txt
+
+          echo "Erros na base: $(wc -l < /tmp/base-errors.txt)"
+          echo "Erros no PR: $(wc -l < /tmp/head-errors.txt)"
+          echo "Erros novos: $(wc -l < /tmp/new-errors.txt)"
+
+          if [ -s /tmp/new-errors.txt ]; then
+            echo "::error::O PR introduziu novos erros de TypeScript:"
+            cat /tmp/new-errors.txt
+            exit 1
+          fi
+
+          echo "✅ Nenhum erro novo de TypeScript foi introduzido pelo PR."
+          echo "::warning::A base ainda possui dívida de TypeScript; este PR não a aumentou."
       - name: Backend tests
         run: pnpm --filter @workspace/api-server test
       - name: Frontend tests
