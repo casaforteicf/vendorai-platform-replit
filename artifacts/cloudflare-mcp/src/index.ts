@@ -68,7 +68,10 @@ async function vendorApi<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
-    const detail = payload && typeof payload === "object" ? JSON.stringify(payload) : response.statusText;
+    const detail =
+      payload && typeof payload === "object"
+        ? JSON.stringify(payload)
+        : response.statusText;
     throw new Error(`VendorAI API ${response.status}: ${detail}`);
   }
   return payload as T;
@@ -217,78 +220,6 @@ function createCloudflareMcpServer() {
 
 
   server.registerTool(
-    "cloudflare_list_dns_records",
-    {
-      description: "Lista registros DNS de uma zona Cloudflare. Use antes de criar ou editar para evitar duplicidades.",
-      inputSchema: z.object({ zoneId: z.string().min(1), name: z.string().optional(), type: z.string().optional() }),
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
-    },
-    async ({ zoneId, name, type }) => {
-      const query = new URLSearchParams({ per_page: "100" });
-      if (name) query.set("name", name);
-      if (type) query.set("type", type);
-      return toolText(await cloudflare<unknown[]>(`/zones/${encodeURIComponent(zoneId)}/dns_records?${query.toString()}`));
-    },
-  );
-
-  server.registerTool(
-    "cloudflare_create_dns_record",
-    {
-      description: "Cria um registro DNS em uma zona Cloudflare quando o usuário autorizar a alteração.",
-      inputSchema: z.object({
-        zoneId: z.string().min(1),
-        type: z.enum(["A","AAAA","CNAME","TXT","MX","SRV","CAA"]),
-        name: z.string().min(1),
-        content: z.string().min(1),
-        ttl: z.number().int().min(1).default(1),
-        proxied: z.boolean().optional(),
-        priority: z.number().int().optional(),
-      }),
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
-    },
-    async (input) => {
-      const { zoneId, ...record } = input;
-      return toolText(await cloudflare<unknown>(`/zones/${encodeURIComponent(zoneId)}/dns_records`, {
-        method: "POST", body: JSON.stringify(record),
-      }));
-    },
-  );
-
-  server.registerTool(
-    "cloudflare_update_dns_record",
-    {
-      description: "Edita um registro DNS existente em uma zona Cloudflare quando o usuário autorizar a alteração.",
-      inputSchema: z.object({
-        zoneId: z.string().min(1), recordId: z.string().min(1),
-        type: z.enum(["A","AAAA","CNAME","TXT","MX","SRV","CAA"]),
-        name: z.string().min(1), content: z.string().min(1),
-        ttl: z.number().int().min(1).default(1), proxied: z.boolean().optional(),
-        priority: z.number().int().optional(),
-      }),
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
-    },
-    async (input) => {
-      const { zoneId, recordId, ...record } = input;
-      return toolText(await cloudflare<unknown>(`/zones/${encodeURIComponent(zoneId)}/dns_records/${encodeURIComponent(recordId)}`, {
-        method: "PUT", body: JSON.stringify(record),
-      }));
-    },
-  );
-
-  server.registerTool(
-    "cloudflare_delete_dns_record",
-    {
-      description: "Exclui um registro DNS existente. Use somente quando o usuário pedir explicitamente a exclusão.",
-      inputSchema: z.object({ zoneId: z.string().min(1), recordId: z.string().min(1) }),
-      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
-    },
-    async ({ zoneId, recordId }) => toolText(await cloudflare<unknown>(
-      `/zones/${encodeURIComponent(zoneId)}/dns_records/${encodeURIComponent(recordId)}`, { method: "DELETE" }
-    )),
-  );
-
-
-  server.registerTool(
     "browser_agent_status",
     {
       description: "Verifica se o Browser Agent próprio do VendorAI está disponível. Não usa TinyFish.",
@@ -305,7 +236,9 @@ function createCloudflareMcpServer() {
     "browser_agent_connections",
     {
       description: "Lista as conexões de navegador salvas de um tenant VendorAI. Use tenantKey como ID, slug ou subdomínio.",
-      inputSchema: z.object({ tenantKey: z.string().min(1) }),
+      inputSchema: z.object({
+        tenantKey: z.string().min(1),
+      }),
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     },
     async ({ tenantKey }) => {
@@ -320,22 +253,21 @@ function createCloudflareMcpServer() {
   server.registerTool(
     "browser_agent_run",
     {
-      description: "Executa uma missão usando o Browser Agent próprio do VendorAI em Chromium remoto. Pode usar uma conexão salva ou uma URL inicial. Tenants com autonomia habilitada executam ações rotineiras automaticamente; ações de alto risco continuam protegidas.",
+      description: "Executa uma missão usando o Browser Agent próprio do VendorAI em Chromium remoto. Pode usar uma conexão salva ou uma URL inicial. Ações sensíveis exigem allowWrite=true.",
       inputSchema: z.object({
         tenantKey: z.string().min(1),
         goal: z.string().min(3).max(4000),
         connectionId: z.string().min(1).optional(),
         startUrl: z.string().url().optional(),
-        mode: z.enum(["assistido", "autonomo"]).optional(),
-        allowWrite: z.boolean().optional(),
+        allowWrite: z.boolean().default(false),
         maxSteps: z.number().int().min(1).max(30).default(12),
       }),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     },
-    async ({ tenantKey, goal, connectionId, startUrl, mode, allowWrite, maxSteps }) => {
+    async ({ tenantKey, goal, connectionId, startUrl, allowWrite, maxSteps }) => {
       const result = await vendorApi<unknown>("/internal/browser-mcp/run", {
         method: "POST",
-        body: JSON.stringify({ tenantKey, goal, connectionId, startUrl, mode, allowWrite, maxSteps }),
+        body: JSON.stringify({ tenantKey, goal, connectionId, startUrl, allowWrite, maxSteps }),
       });
       return toolText(result);
     },

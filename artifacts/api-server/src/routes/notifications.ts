@@ -1,6 +1,10 @@
 import { Router, type IRouter } from "express";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, or } from "drizzle-orm";
 import { db, notificationsTable } from "@workspace/db";
+import {
+  canViewAllScopedData,
+  leadOwnedByUserCondition,
+} from "../lib/lead-scope-access.js";
 
 const router: IRouter = Router();
 
@@ -15,6 +19,20 @@ router.get("/tenants/:tenantId/notifications", async (req, res) => {
   }
 
   const conditions = [eq(notificationsTable.tenantId, tenantId)];
+  if (!(await canViewAllScopedData(req, "notifications:view_all"))) {
+    const userId = req.user?.sub;
+    if (!userId) {
+      res.json([]);
+      return;
+    }
+    conditions.push(
+      or(
+        eq(notificationsTable.recipientUserId, userId),
+        leadOwnedByUserCondition(userId, notificationsTable.leadId),
+      )!,
+    );
+  }
+
   if (unread === "true") {
     conditions.push(isNull(notificationsTable.readAt));
   }
@@ -38,10 +56,29 @@ router.post("/tenants/:tenantId/notifications/:id/read", async (req, res) => {
     return;
   }
 
+  const conditions = [
+    eq(notificationsTable.id, notificationId),
+    eq(notificationsTable.tenantId, tenantId),
+  ];
+
+  if (!(await canViewAllScopedData(req, "notifications:view_all"))) {
+    const userId = req.user?.sub;
+    if (!userId) {
+      res.status(403).json({ error: "Access denied" });
+      return;
+    }
+    conditions.push(
+      or(
+        eq(notificationsTable.recipientUserId, userId),
+        leadOwnedByUserCondition(userId, notificationsTable.leadId),
+      )!,
+    );
+  }
+
   const [updated] = await db
     .update(notificationsTable)
     .set({ readAt: new Date() })
-    .where(and(eq(notificationsTable.id, notificationId), eq(notificationsTable.tenantId, tenantId)))
+    .where(and(...conditions))
     .returning();
 
   if (!updated) {
@@ -61,10 +98,29 @@ router.post("/tenants/:tenantId/notifications/read-all", async (req, res) => {
     return;
   }
 
+  const conditions = [
+    eq(notificationsTable.tenantId, tenantId),
+    isNull(notificationsTable.readAt),
+  ];
+
+  if (!(await canViewAllScopedData(req, "notifications:view_all"))) {
+    const userId = req.user?.sub;
+    if (!userId) {
+      res.status(204).send();
+      return;
+    }
+    conditions.push(
+      or(
+        eq(notificationsTable.recipientUserId, userId),
+        leadOwnedByUserCondition(userId, notificationsTable.leadId),
+      )!,
+    );
+  }
+
   await db
     .update(notificationsTable)
     .set({ readAt: new Date() })
-    .where(and(eq(notificationsTable.tenantId, tenantId), isNull(notificationsTable.readAt)));
+    .where(and(...conditions));
 
   res.status(204).send();
 });

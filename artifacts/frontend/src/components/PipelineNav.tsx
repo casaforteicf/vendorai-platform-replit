@@ -39,6 +39,9 @@ type PipelineStageSummary = {
   slaMinutos?: number | null;
   responsaveisFuncoes?: string[] | null;
   responsavelAgenteKey?: string | null;
+  atividadePadraoTitulo?: string | null;
+  atividadePadraoDescricao?: string | null;
+  atividadePadraoPrazoMinutos?: number | null;
 };
 
 const TABS: Array<{ key: PipelineTab; label: string; href: string }> = [
@@ -110,7 +113,7 @@ export function PipelineNav({ active }: { active: PipelineTab }) {
                   Etapas — {TABS.find((tab) => tab.key === active)?.label ?? "Pipeline"}
                 </DialogTitle>
                 <DialogDescription>
-                  Crie, renomeie, ordene, defina SLA e escolha os responsáveis de cada etapa — incluindo Agentes IA. Esta é a única configuração oficial das etapas da pipeline.
+                  Crie, renomeie, ordene, defina SLA, atividade padrão e escolha os responsáveis de cada etapa — incluindo Agentes IA. Esta é a única configuração oficial das etapas da pipeline.
                 </DialogDescription>
               </DialogHeader>
               <PipelineStageManager
@@ -145,6 +148,9 @@ function PipelineStageManager({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editLabel, setEditLabel] = useState("");
   const [editSla, setEditSla] = useState("");
+  const [editActivityTitle, setEditActivityTitle] = useState("");
+  const [editActivityDescription, setEditActivityDescription] = useState("");
+  const [editActivityDueMinutes, setEditActivityDueMinutes] = useState("");
 
   const invalidate = async () => {
     await Promise.all([
@@ -188,6 +194,9 @@ function PipelineStageManager({
     setEditingId(stage.id);
     setEditLabel(stage.label);
     setEditSla(stage.slaMinutos == null ? "" : String(stage.slaMinutos));
+    setEditActivityTitle(stage.atividadePadraoTitulo ?? "");
+    setEditActivityDescription(stage.atividadePadraoDescricao ?? "");
+    setEditActivityDueMinutes(stage.atividadePadraoPrazoMinutos == null ? "" : String(stage.atividadePadraoPrazoMinutos));
   }
 
   async function saveEdit(stage: PipelineStageSummary) {
@@ -200,6 +209,9 @@ function PipelineStageManager({
         body: JSON.stringify({
           label,
           slaMinutos: editSla.trim() ? Number(editSla) : null,
+          atividadePadraoTitulo: editActivityTitle.trim() || null,
+          atividadePadraoDescricao: editActivityDescription.trim() || null,
+          atividadePadraoPrazoMinutos: editActivityDueMinutes.trim() ? Number(editActivityDueMinutes) : null,
         }),
         responseType: "json",
       });
@@ -330,6 +342,28 @@ function PipelineStageManager({
                         placeholder="SLA em minutos"
                       />
                     </div>
+                    <div className="grid gap-2 rounded-md border bg-muted/20 p-3">
+                      <p className="text-xs font-medium">Atividade padrão ao entrar na etapa</p>
+                      <Input
+                        value={editActivityTitle}
+                        onChange={(event) => setEditActivityTitle(event.target.value)}
+                        placeholder="Ex.: Preparar solução e proposta"
+                      />
+                      <Input
+                        value={editActivityDescription}
+                        onChange={(event) => setEditActivityDescription(event.target.value)}
+                        placeholder="Orientações da atividade (opcional)"
+                      />
+                      <Input
+                        value={editActivityDueMinutes}
+                        onChange={(event) => setEditActivityDueMinutes(event.target.value.replace(/\D/g, ""))}
+                        inputMode="numeric"
+                        placeholder="Prazo da atividade em minutos (opcional)"
+                      />
+                      <p className="text-[11px] text-muted-foreground">
+                        Se o título ficar vazio, a Central usa o padrão do sistema e permite ajuste manual na passagem.
+                      </p>
+                    </div>
                     <DialogFooter className="gap-2 sm:justify-end">
                       <Button type="button" variant="outline" onClick={() => setEditingId(null)}>
                         Cancelar
@@ -350,6 +384,11 @@ function PipelineStageManager({
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {stage.slaMinutos ? `SLA: ${stage.slaMinutos} min` : "Sem SLA definido"}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {stage.atividadePadraoTitulo
+                          ? `Atividade padrão: ${stage.atividadePadraoTitulo}${stage.atividadePadraoPrazoMinutos ? ` · prazo ${stage.atividadePadraoPrazoMinutos} min` : ""}`
+                          : "Atividade padrão: usar sugestão do sistema / definir manualmente"}
                       </p>
                       <div className="mt-2">
                         <PipelineStageFunctionAccess

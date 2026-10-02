@@ -12,11 +12,9 @@ import { decrypt, encrypt } from "../lib/crypto.js";
 import { runBrowserAgent, type BrowserAgentInput } from "../services/browser-agent.js";
 import { signToken } from "../lib/jwt.js";
 
-import { createLiveBrowserSession, getLiveBrowserHandoff, startLiveBrowserMission } from "../services/browser-live-session.js";
+import { createLiveBrowserSession, startLiveBrowserMission } from "../services/browser-live-session.js";
 
 const router: IRouter = Router();
-
-const vendiAutonomyEnabled = () => String(process.env["VENDI_AUTONOMY_ENABLED"] ?? "").toLowerCase() === "true";
 
 function authorized(req: any): boolean {
   const expected = process.env["BROWSER_MCP_ACCESS_TOKEN"]?.trim();
@@ -71,7 +69,6 @@ router.get("/internal/browser-mcp/status", (_req, res) => {
     runtime: "cdp",
     secureSecretInjection: true,
     persistentConnections: true,
-    vendiAutonomyEnabled: vendiAutonomyEnabled(),
   });
 });
 
@@ -102,8 +99,7 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
     goal: z.string().min(3).max(4000),
     connectionId: z.string().min(1).optional(),
     startUrl: z.string().url().optional(),
-    mode: z.enum(["assistido", "autonomo"]).optional(),
-    allowWrite: z.boolean().optional(),
+    allowWrite: z.boolean().default(false),
     maxSteps: z.number().int().min(1).max(30).default(12),
   }).safeParse(req.body);
 
@@ -117,16 +113,6 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
     res.status(404).json({ error: "tenant_not_found" });
     return;
   }
-
-  const [tenantAutonomy] = await db
-    .select({ autonomyEnabledAt: tenantsTable.autonomyEnabledAt })
-    .from(tenantsTable)
-    .where(eq(tenantsTable.id, tenantId))
-    .limit(1);
-  const autonomyEnabled = Boolean(tenantAutonomy?.autonomyEnabledAt);
-  const globalVendiAutonomy = vendiAutonomyEnabled();
-  const mode = globalVendiAutonomy ? "autonomo" : (parsed.data.mode ?? (autonomyEnabled ? "autonomo" : "assistido"));
-  const allowWrite = globalVendiAutonomy ? true : (parsed.data.allowWrite ?? autonomyEnabled);
 
   let connection: typeof browserAgentConnectionsTable.$inferSelect | undefined;
   if (parsed.data.connectionId) {
@@ -144,34 +130,9 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
       res.status(404).json({ error: "browser_connection_not_found" });
       return;
     }
-  } else if (parsed.data.startUrl) {
-    const start = new URL(parsed.data.startUrl);
-    const normalizedStartUrl = start.origin + "/";
-    [connection] = await db
-      .select()
-      .from(browserAgentConnectionsTable)
-      .where(
-        and(
-          eq(browserAgentConnectionsTable.tenantId, tenantId),
-          eq(browserAgentConnectionsTable.startUrl, normalizedStartUrl),
-        ),
-      )
-      .limit(1);
-
-    if (!connection) {
-      [connection] = await db
-        .insert(browserAgentConnectionsTable)
-        .values({
-          tenantId,
-          name: `Auto — ${start.hostname}`,
-          startUrl: normalizedStartUrl,
-          allowedHosts: [start.hostname.toLowerCase()],
-        })
-        .returning();
-    }
   }
 
-  const startUrl = parsed.data.startUrl ?? connection?.startUrl;
+  const startUrl = connection?.startUrl ?? parsed.data.startUrl;
   if (!startUrl) {
     res.status(422).json({ error: "connectionId_or_startUrl_required" });
     return;
@@ -183,13 +144,12 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
       tenantId,
       agentName: "browser_mcp",
       actionType: "browser_mcp_run",
-      status: allowWrite ? "approved" : "pending",
+      status: parsed.data.allowWrite ? "approved" : "pending",
       payload: {
         goal: parsed.data.goal,
         startUrl,
         connectionId: connection?.id ?? null,
-        mode,
-        allowWrite,
+        allowWrite: parsed.data.allowWrite,
       },
     })
     .returning();
@@ -199,20 +159,44 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
       ? JSON.parse(decrypt(connection.cookiesEncrypted))
       : undefined;
 
+    // First-party Vendor.ai sessions do not require a human password. The MCP endpoint
+    // is already protected by BROWSER_MCP_ACCESS_TOKEN and tenant resolution above.
+    // Mint a short-lived browser JWT from an active tenant administrator, marked as AI,
+    // so the frontend can authenticate normally while downstream APIs retain actorType=ai.
     let firstPartyAuthToken: string | undefined;
     if (new URL(startUrl).hostname.toLowerCase() === "app.appvendorai.com") {
-      const [servicePrincipal] = await db.select({ id: usersTable.id, email: usersTable.email, platformRole: usersTable.platformRole, role: usersTable.role, userFunction: usersTable.userFunction, active: usersTable.active })
-        .from(usersTable).where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.active, true))).limit(1);
-      if (!servicePrincipal) throw new Error("VENDI_AUTH_PRINCIPAL_NOT_FOUND");
-      firstPartyAuthToken = signToken({ sub: servicePrincipal.id, email: servicePrincipal.email, platformRole: servicePrincipal.platformRole, tenantId, role: servicePrincipal.role, userFunction: servicePrincipal.userFunction ?? undefined, actorType: "ai" });
+      const [servicePrincipal] = await db
+        .select({
+          id: usersTable.id,
+          email: usersTable.email,
+          platformRole: usersTable.platformRole,
+          role: usersTable.role,
+          userFunction: usersTable.userFunction,
+          active: usersTable.active,
+        })
+        .from(usersTable)
+        .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.active, true)))
+        .limit(1);
+      if (!servicePrincipal) {
+        throw new Error("VENDI_AUTH_PRINCIPAL_NOT_FOUND: tenant sem usuário ativo para sessão interna");
+      }
+      firstPartyAuthToken = signToken({
+        sub: servicePrincipal.id,
+        email: servicePrincipal.email,
+        platformRole: servicePrincipal.platformRole,
+        tenantId,
+        role: servicePrincipal.role,
+        userFunction: servicePrincipal.userFunction ?? undefined,
+        actorType: "ai",
+      });
     }
 
     const agentInput: BrowserAgentInput = {
       tenantId,
       goal: parsed.data.goal,
       startUrl,
-      mode,
-      allowWrite,
+      mode: "assistido",
+      allowWrite: parsed.data.allowWrite,
       maxSteps: parsed.data.maxSteps,
       allowedHosts: connection?.allowedHosts ?? [],
       secrets: connection
@@ -241,26 +225,13 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
           }
         : undefined,
     };
-    agentInput.onHumanVerification = async (browser, page) => {
-      const session = await createLiveBrowserSession({ ...agentInput,
-        connectionId: connection?.id, existing: { browser, page },
-        onMissionResult: async (result) => {
-          if (audit?.id) await db.update(agentActionsLogTable)
-            .set({ status: result.ok ? "executed" : "rejected", payload: { ...(audit.payload ?? {}), result } })
-            .where(eq(agentActionsLogTable.id, audit.id));
-        },
-      });
-      startLiveBrowserMission(tenantId, session.id, agentInput.goal, agentInput.maxSteps, true);
-      const handoff = getLiveBrowserHandoff(session.id);
-      return { sessionId: session.id,
-        controlUrl: `https://homolog.appvendorai.com/agents/config?browserSession=${encodeURIComponent(session.id)}&handoff=${encodeURIComponent(handoff.handoffToken)}` };
-    };
+
     const result = await runBrowserAgent(agentInput);
 
     if (audit?.id) {
       await db
         .update(agentActionsLogTable)
-        .set({ status: result.ok ? "executed" : ("status" in result && result.status === "awaiting_human" ? "pending" : "rejected"), payload: { ...(audit.payload ?? {}), result } })
+        .set({ status: "executed", payload: { ...(audit.payload ?? {}), result } })
         .where(eq(agentActionsLogTable.id, audit.id));
     }
 
@@ -288,4 +259,3 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
 });
 
 export default router;
-

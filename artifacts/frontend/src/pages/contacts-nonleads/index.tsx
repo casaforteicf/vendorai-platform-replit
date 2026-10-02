@@ -9,9 +9,10 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Building2, Handshake, Heart, Loader2, Mail, Phone, Plus, Search, Smile, MoreHorizontal, UserCog, Users, Undo2 } from "lucide-react";
+import { Building2, Handshake, Heart, Loader2, Mail, Phone, Plus, Search, Smile, MoreHorizontal, UserCog, Users, Undo2, Settings2, Trash2 } from "lucide-react";
 
-type ContactType = "fornecedor" | "parceiro" | "familiar" | "colaborador" | "amigo" | "outro";
+type ContactType = string;
+type NonLeadClassification = { id: string; label: string; active?: boolean; description?: string };
 
 type ContactRecord = {
   id: string;
@@ -26,7 +27,7 @@ type ContactRecord = {
   excluidoEm?: string | null;
 };
 
-const typeConfig: Record<ContactType, { label: string; icon: typeof Building2 }> = {
+const typeConfig: Record<string, { label: string; icon: typeof Building2 }> = {
   fornecedor: { label: "Fornecedor", icon: Building2 },
   parceiro: { label: "Parceiro", icon: Handshake },
   familiar: { label: "Familiar", icon: Heart },
@@ -42,6 +43,8 @@ export default function NonLeadsKanban() {
   const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
+  const [classificationsOpen, setClassificationsOpen] = useState(false);
+  const [newClassificationLabel, setNewClassificationLabel] = useState("");
   const [form, setForm] = useState({ nome: "", telefone: "", email: "", empresa: "", tipo: "fornecedor" as ContactType, notas: "" });
 
   const headers = useMemo(() => ({
@@ -64,7 +67,57 @@ export default function NonLeadsKanban() {
     },
   });
 
-  const filteredContacts = useMemo(() => {
+  const { data: classifications = [] } = useQuery<NonLeadClassification[]>({
+    queryKey: ["non-lead-classifications", tenantId],
+    enabled: Boolean(token && tenantId),
+    queryFn: async () => {
+      const response = await fetch(`/api/tenants/${tenantId}/non-lead-classifications`, { headers });
+      if (!response.ok) throw new Error("Não foi possível carregar as classificações.");
+      return response.json();
+    },
+  });
+
+  const classificationMap = useMemo(
+    () => new Map(classifications.map((item) => [item.id, item])),
+    [classifications],
+  );
+
+  const saveClassifications = useMutation({
+    mutationFn: async (next: NonLeadClassification[]) => {
+      const response = await fetch(`/api/tenants/${tenantId}/non-lead-classifications`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ classifications: next }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error ?? "Não foi possível salvar as classificações.");
+      return data as NonLeadClassification[];
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(["non-lead-classifications", tenantId], data);
+      toast({ title: "Classificações atualizadas" });
+    },
+    onError: (error: Error) => toast({ title: "Falha ao salvar classificações", description: error.message, variant: "destructive" }),
+  });
+
+  function slugifyClassification(value: string) {
+    return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim()
+      .replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 50);
+  }
+
+  function addClassification() {
+    const label = newClassificationLabel.trim();
+    const id = slugifyClassification(label);
+    if (!label || !id) return;
+    if (classifications.some((item) => item.id === id)) {
+      toast({ title: "Essa classificação já existe", variant: "destructive" });
+      return;
+    }
+    saveClassifications.mutate([...classifications, { id, label, active: true }]);
+    setNewClassificationLabel("");
+  }
+
+    const filteredContacts = useMemo(() => {
     const term = search.trim().toLowerCase();
     if (!term) return contacts;
     return contacts.filter((contact) =>
@@ -138,7 +191,10 @@ export default function NonLeadsKanban() {
           <h1 className="text-2xl font-bold flex items-center gap-2"><Users className="h-6 w-6 text-primary" />Contatos não-leads</h1>
           <p className="text-sm text-muted-foreground mt-1">Fornecedores, parceiros, familiares e outros contatos fora do pipeline comercial e da análise de churn.</p>
         </div>
-        <Button onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4 mr-2" />Novo contato</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setClassificationsOpen(true)}><Settings2 className="h-4 w-4 mr-2" />Classificações</Button>
+          <Button onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4 mr-2" />Novo contato</Button>
+        </div>
       </div>
 
       <div className="relative max-w-md">
@@ -156,7 +212,8 @@ export default function NonLeadsKanban() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredContacts.map((contact) => {
             const type = (contact.naoLeadTipo as ContactType) ?? "outro";
-            const config = typeConfig[type] ?? typeConfig.outro;
+            const configured = classificationMap.get(type);
+            const config = { ...(typeConfig[type] ?? typeConfig.outro), label: configured?.label ?? typeConfig[type]?.label ?? type };
             const TypeIcon = config.icon;
             return (
               <div key={contact.id} className="rounded-xl border bg-background p-4 shadow-sm space-y-3">
@@ -189,11 +246,41 @@ export default function NonLeadsKanban() {
         </div>
       )}
 
+      <Dialog open={classificationsOpen} onOpenChange={setClassificationsOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader><DialogTitle>Classificações de Não Lead</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="flex gap-2">
+              <Input value={newClassificationLabel} onChange={(e) => setNewClassificationLabel(e.target.value)} placeholder="Ex: Futuro cliente" onKeyDown={(e) => e.key === "Enter" && addClassification()} />
+              <Button onClick={addClassification} disabled={saveClassifications.isPending || !newClassificationLabel.trim()}><Plus className="h-4 w-4 mr-1" />Criar</Button>
+            </div>
+            <div className="space-y-2 max-h-80 overflow-auto">
+              {classifications.map((item) => (
+                <div key={item.id} className="flex items-center justify-between gap-3 rounded-lg border p-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">{item.label}</p>
+                    <p className="text-xs text-muted-foreground">{item.id}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant={item.active === false ? "outline" : "secondary"} onClick={() => saveClassifications.mutate(classifications.map((current) => current.id === item.id ? { ...current, active: current.active === false } : current))}>
+                      {item.active === false ? "Ativar" : "Desativar"}
+                    </Button>
+                    <Button size="icon" variant="ghost" disabled={contacts.some((contact) => contact.naoLeadTipo === item.id)} onClick={() => saveClassifications.mutate(classifications.filter((current) => current.id !== item.id))} title={contacts.some((contact) => contact.naoLeadTipo === item.id) ? "Em uso por contatos" : "Excluir"}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader><DialogTitle>Novo contato não-lead</DialogTitle></DialogHeader>
           <div className="grid gap-4 py-2">
-            <div className="grid gap-2"><Label>Tipo</Label><Select value={form.tipo} onValueChange={(value) => setForm((current) => ({ ...current, tipo: value as ContactType }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(typeConfig).map(([value, config]) => <SelectItem key={value} value={value}>{config.label}</SelectItem>)}</SelectContent></Select></div>
+            <div className="grid gap-2"><Label>Tipo</Label><Select value={form.tipo} onValueChange={(value) => setForm((current) => ({ ...current, tipo: value as ContactType }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{classifications.filter((item) => item.active !== false).map((item) => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent></Select></div>
             <div className="grid gap-2"><Label>Nome *</Label><Input value={form.nome} onChange={(event) => setForm((current) => ({ ...current, nome: event.target.value }))} /></div>
             <div className="grid sm:grid-cols-2 gap-3"><div className="grid gap-2"><Label>Telefone</Label><Input value={form.telefone} onChange={(event) => setForm((current) => ({ ...current, telefone: event.target.value }))} /></div><div className="grid gap-2"><Label>E-mail</Label><Input type="email" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} /></div></div>
             <div className="grid gap-2"><Label>Empresa / vínculo</Label><Input value={form.empresa} onChange={(event) => setForm((current) => ({ ...current, empresa: event.target.value }))} /></div>

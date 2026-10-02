@@ -40,7 +40,8 @@ export const leadsTable = pgTable("leads", {
   // contato válido (colaborador, fornecedor, parceiro, familiar, amigo,
   // outro), só que não é prospect de venda. Sai da pipeline/análise de
   // churn quando setado; null = é lead de verdade.
-  naoLeadTipo: text("nao_lead_tipo").$type<"colaborador" | "fornecedor" | "parceiro" | "familiar" | "amigo" | "outro">(),
+  // Valor livre validado contra a configuração do tenant no backend.
+  naoLeadTipo: text("nao_lead_tipo"),
   naoLeadNotas: text("nao_lead_notas"),
   naoLeadClassificadoEm: timestamp("nao_lead_classificado_em"),
   // Pós-venda: quando setado, a próxima mensagem recebida do lead é tratada

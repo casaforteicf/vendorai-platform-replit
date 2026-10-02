@@ -101,26 +101,6 @@ function sha256(content: string): string {
   return crypto.createHash("sha256").update(content, "utf8").digest("hex");
 }
 
-function assertUniqueMigrationVersions(files: MigrationFile[]): void {
-  const filesByVersion = new Map<string, string[]>();
-  for (const file of files) {
-    const filenames = filesByVersion.get(file.version) ?? [];
-    filenames.push(path.basename(file.filePath));
-    filesByVersion.set(file.version, filenames);
-  }
-  const duplicates = [...filesByVersion.entries()].filter(
-    ([, filenames]) => filenames.length > 1,
-  );
-  if (duplicates.length === 0) return;
-  const details = duplicates
-    .map(([version, filenames]) => `  ${version}: ${filenames.join(", ")}`)
-    .join("\n");
-  throw new Error(
-    `Duplicate migration version(s) detected:\n${details}\n` +
-      "Each numeric migration version must be unique. Resolve the filename conflict before running migrations.",
-  );
-}
-
 export function readMigrationFiles(
   migrationsDir: string = MIGRATIONS_DIR,
 ): MigrationFile[] {
@@ -145,8 +125,17 @@ export function readMigrationFiles(
       ];
     });
 
-  assertUniqueMigrationVersions(files);
-  return files;
+  // Legacy databases recorded unique migrations by numeric prefix. Keep that
+  // identity where it is unambiguous. For historical duplicate-prefix groups,
+  // use the full filename as the stable identity so every SQL file can be
+  // tracked independently without renaming old migrations.
+  const counts = new Map<string, number>();
+  for (const file of files) counts.set(file.version, (counts.get(file.version) ?? 0) + 1);
+  return files.map((file) =>
+    (counts.get(file.version) ?? 0) > 1
+      ? { ...file, version: path.basename(file.filePath) }
+      : file,
+  );
 }
 
 export async function ensureControlTable(client: pg.PoolClient): Promise<void> {
@@ -185,15 +174,64 @@ export interface ApplyResult {
   applied: { version: string; name: string; ms: number }[];
 }
 
+function legacyNumericVersion(file: MigrationFile): string | null {
+  if (!file.version.endsWith(".sql")) return null;
+  return /^(\\d+)_/.exec(path.basename(file.filePath))?.[1] ?? null;
+}
+
+function appliedKeyForFile(
+  file: MigrationFile,
+  applied: Map<string, string>,
+): string | null {
+  if (applied.has(file.version)) return file.version;
+  const legacyVersion = legacyNumericVersion(file);
+  if (!legacyVersion) return null;
+  const stored = applied.get(legacyVersion);
+  if (!stored) return null;
+  const checksum = sha256(fs.readFileSync(file.filePath, "utf8"));
+  return isAcceptedMigrationChecksum(legacyVersion, checksum, stored)
+    ? legacyVersion
+    : null;
+}
+
+function assertLegacyDuplicateHistoryIsResolvable(
+  files: MigrationFile[],
+  applied: Map<string, string>,
+): void {
+  const groups = new Map<string, MigrationFile[]>();
+  for (const file of files) {
+    const legacyVersion = legacyNumericVersion(file);
+    if (!legacyVersion) continue;
+    const group = groups.get(legacyVersion) ?? [];
+    group.push(file);
+    groups.set(legacyVersion, group);
+  }
+  for (const [legacyVersion, group] of groups) {
+    const stored = applied.get(legacyVersion);
+    if (!stored) continue;
+    const matches = group.filter((file) => {
+      const checksum = sha256(fs.readFileSync(file.filePath, "utf8"));
+      return isAcceptedMigrationChecksum(legacyVersion, checksum, stored);
+    });
+    if (matches.length !== 1) {
+      throw new Error(
+        `Legacy migration history for duplicate version ${legacyVersion} is ambiguous. ` +
+          `Expected exactly one matching file by checksum, found ${matches.length}.`,
+      );
+    }
+  }
+}
+
 function assertAppliedChecksum(
   file: MigrationFile,
   applied: Map<string, string>,
 ): void {
-  const stored = applied.get(file.version);
-  if (!stored) return;
+  const appliedKey = appliedKeyForFile(file, applied);
+  if (!appliedKey) return;
+  const stored = applied.get(appliedKey)!;
   const content = fs.readFileSync(file.filePath, "utf8");
   const checksum = sha256(content);
-  if (!isAcceptedMigrationChecksum(file.version, checksum, stored)) {
+  if (!isAcceptedMigrationChecksum(appliedKey, checksum, stored)) {
     throw new Error(
       `Checksum mismatch for migration ${file.version} ("${file.name}"). ` +
         `Migration file was modified after being applied.`,
@@ -228,9 +266,13 @@ export async function applyPendingMigrations(
 
     // Valida checksum antes de qualquer lock. Em boot normal, quando não há
     // pendência, a função termina aqui sem poder ficar presa por lock antigo.
+    // Bancos legados podem ter uma única migration de um grupo duplicado
+    // registrada pelo prefixo numérico; nesse caso identificamos o arquivo
+    // exato pelo checksum e deixamos as demais migrations do grupo pendentes.
+    assertLegacyDuplicateHistoryIsResolvable(files, initialApplied);
     for (const file of files) assertAppliedChecksum(file, initialApplied);
 
-    const pending = files.filter((file) => !initialApplied.has(file.version));
+    const pending = files.filter((file) => !appliedKeyForFile(file, initialApplied));
     if (pending.length === 0) return result;
 
     for (const file of pending) {
@@ -245,8 +287,8 @@ export async function applyPendingMigrations(
         await client.query(`SELECT pg_advisory_lock($1::bigint)`, [ADVISORY_LOCK_KEY]);
         try {
           const appliedAfterLock = await getApplied(client);
-          const stored = appliedAfterLock.get(file.version);
-          if (stored) {
+          const appliedKey = appliedKeyForFile(file, appliedAfterLock);
+          if (appliedKey) {
             assertAppliedChecksum(file, appliedAfterLock);
             continue;
           }
@@ -264,8 +306,8 @@ export async function applyPendingMigrations(
           await client.query(`SELECT pg_advisory_xact_lock($1::bigint)`, [ADVISORY_LOCK_KEY]);
 
           const appliedAfterLock = await getApplied(client);
-          const stored = appliedAfterLock.get(file.version);
-          if (stored) {
+          const appliedKey = appliedKeyForFile(file, appliedAfterLock);
+          if (appliedKey) {
             assertAppliedChecksum(file, appliedAfterLock);
             await client.query("COMMIT");
             continue;
