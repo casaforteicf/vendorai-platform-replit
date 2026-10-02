@@ -17,6 +17,7 @@ export * from "./propostas";
 export * from "./orcamento_revisoes";
 export * from "./messages";
 export * from "./customer_intelligence";
+export * from "./customer_intelligence_history";
 export * from "./agent_tasks";
 export * from "./campaigns";
 export * from "./produtos_catalogo";
