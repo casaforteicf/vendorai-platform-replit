@@ -123,13 +123,13 @@ async function handleAgentProcess(
         ctx.ci?.nextBestAction,
       ].filter(Boolean).join(" | "),
     });
-    contextoNegocioDinamico = contextoNegocioResolvido.promptBlock;
+    contextoNegocioDinamico = contextoNegocioResolvido.blocoPrompt;
     req.log.debug(
       {
         tenantId,
         leadId,
-        sourceCount: contextoNegocioResolvido.sources.length,
-        sourceIds: contextoNegocioResolvido.sources.slice(0, 12).map((source) => source.id),
+        quantidadeFontes: contextoNegocioResolvido.fontes.length,
+        idsFontes: contextoNegocioResolvido.fontes.slice(0, 12).map((fonte) => fonte.id),
       },
       "agents: contexto dinâmico de inteligência do negócio resolvido",
     );
