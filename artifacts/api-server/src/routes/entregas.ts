@@ -17,6 +17,7 @@ import {
   activitiesTable,
   leadsTable,
   usersTable,
+  tenantsTable,
   type EntregaItem,
 } from "@workspace/db";
 import { buildUserFunctionFilter } from "../middlewares/auth.js";
@@ -28,6 +29,12 @@ import { requestSupportFeedback } from "../services/support-feedback.js";
 import { canAdvanceWorkCard, TERMINAL_WORK_STAGES } from "../lib/pipeline-progress.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { generateDeliveryAcceptancePdf } from "../lib/delivery-acceptance-pdf.js";
+import {
+  buildExpeditionChecklist,
+  buildTransportChecklist,
+  expeditionGateStatus,
+  transportGateStatus,
+} from "../lib/expedition-checklists.js";
 
 const router: IRouter = Router();
 
@@ -574,6 +581,14 @@ router.post("/tenants/:tenantId/entregas", async (req, res) => {
     itens: items,
   };
 
+  if (data.status === "em_transito") {
+    res.status(409).json({
+      error: "EXPEDITION_REQUIRED_BEFORE_INITIAL_TRANSIT",
+      message: "Crie o lote, conclua a expedição e somente depois libere a saída para transporte.",
+    });
+    return;
+  }
+
   if (data.modo === "agendada" && !data.assignedTo && data.dataPrevista && data.periodo) {
     const motoristaId = await pickNextMotorista(tenantId, new Date(data.dataPrevista), data.periodo);
     if (!motoristaId) {
@@ -614,6 +629,16 @@ router.post("/tenants/:tenantId/entregas", async (req, res) => {
 
   const [entrega] = await db.insert(entregasTable).values(data).returning();
   const stage = deliveryStage(entrega);
+  const [tenantContext] = await db.select({
+    segmento: tenantsTable.segmento,
+    vertical: tenantsTable.vertical,
+  }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1);
+  const checklistExpedicao = buildExpeditionChecklist({
+    segmento: tenantContext?.segmento,
+    vertical: tenantContext?.vertical,
+    deliveryItems: entrega.itens,
+    proposalItems: proposal?.itens ?? [],
+  });
   const [card] = await db.insert(workCardsTable).values({
     tenantId,
     codigo: workCode("ENT"),
@@ -637,6 +662,7 @@ router.post("/tenants/:tenantId/entregas", async (req, res) => {
       loteNumero: entrega.loteNumero,
       itens: entrega.itens,
       saldoParcial: true,
+      checklistExpedicao,
     },
   }).returning();
 
@@ -727,6 +753,22 @@ router.patch("/entregas/:id", async (req, res) => {
   }
 
   const data = { ...parsed.data };
+
+  if (data.status === "em_transito" && existing.status !== "em_transito") {
+    const [preflightCard] = await db.select().from(workCardsTable)
+      .where(eq(workCardsTable.entregaId, existing.id)).limit(1);
+    if (preflightCard) {
+      const gate = expeditionGateStatus(preflightCard.metadata as Record<string, unknown> | null);
+      if (!gate.ready) {
+        res.status(409).json({
+          error: "EXPEDITION_CHECKLIST_REQUIRED_DELIVERY",
+          message: gate.reason,
+        });
+        return;
+      }
+    }
+  }
+
   if (data.assignedTo && (data.dataPrevista || existing.dataPrevista) && (data.periodo || existing.periodo)) {
     const dataPrevista = new Date(data.dataPrevista ?? existing.dataPrevista!);
     const periodo = (data.periodo ?? existing.periodo) as "manha" | "tarde";
@@ -758,7 +800,18 @@ router.patch("/entregas/:id", async (req, res) => {
       dataInicioEfetiva: entrega.dataLiberacaoEfetiva,
       dataFimPrevista: entrega.dataPrevista,
       dataFimEfetiva: entrega.dataEntregue,
-      metadata: { ...(linkedCard.metadata ?? {}), loteNumero: entrega.loteNumero, itens: entrega.itens },
+      metadata: {
+        ...(linkedCard.metadata ?? {}),
+        loteNumero: entrega.loteNumero,
+        itens: entrega.itens,
+        ...(nextStage === "em_transporte" && linkedCard.etapa !== "em_transporte"
+          ? {
+              checklistTransporte:
+                (linkedCard.metadata as Record<string, unknown> | null)?.checklistTransporte
+                ?? buildTransportChecklist(entrega.itens),
+            }
+          : {}),
+      },
       updatedAt: new Date(),
     }).where(eq(workCardsTable.id, linkedCard.id)).returning();
 
@@ -1146,6 +1199,57 @@ router.patch("/work-cards/:id", async (req, res) => {
     return;
   }
 
+  if (
+    existing.pipeline === "execucao"
+    && existing.tipo === "entrega"
+    && targetStage === "em_transporte"
+    && existing.etapa !== "em_transporte"
+  ) {
+    const gate = expeditionGateStatus(existing.metadata as Record<string, unknown> | null);
+    const incomingMetadata = parsed.data.metadata as Record<string, unknown> | undefined;
+    const incomingOverride = incomingMetadata?.expedicaoOverride as {
+      aprovado?: boolean;
+      justificativa?: string;
+    } | undefined;
+    const overrideRequested = Boolean(incomingOverride?.aprovado);
+
+    if (overrideRequested) {
+      if (!isAdmin(req)) {
+        res.status(403).json({
+          error: "EXPEDITION_OVERRIDE_ADMIN_REQUIRED",
+          message: "Somente administrador pode liberar a expedição com ressalva.",
+        });
+        return;
+      }
+      if (!incomingOverride?.justificativa?.trim()) {
+        res.status(422).json({
+          error: "EXPEDITION_OVERRIDE_REASON_REQUIRED",
+          message: "Informe a justificativa da liberação com ressalva.",
+        });
+        return;
+      }
+      parsed.data.metadata = {
+        ...(existing.metadata ?? {}),
+        ...(incomingMetadata ?? {}),
+        expedicaoOverride: {
+          ...incomingOverride,
+          aprovado: true,
+          justificativa: incomingOverride.justificativa.trim(),
+          aprovadoPor: req.user?.sub ?? null,
+          aprovadoEm: new Date().toISOString(),
+        },
+      };
+    }
+
+    if (!gate.ready && !overrideRequested) {
+      res.status(409).json({
+        error: "EXPEDITION_CHECKLIST_REQUIRED",
+        message: gate.reason,
+      });
+      return;
+    }
+  }
+
   const advancingExecutionStage =
     targetPipeline === "execucao"
     && targetStage !== existing.etapa
@@ -1166,6 +1270,86 @@ router.patch("/work-cards/:id", async (req, res) => {
   }
 
   const data: Record<string, unknown> = { ...parsed.data, updatedAt: new Date() };
+
+  if (
+    existing.pipeline === "execucao"
+    && existing.tipo === "entrega"
+    && targetStage === "em_transporte"
+    && existing.etapa !== "em_transporte"
+  ) {
+    const metadata = ((data.metadata as Record<string, unknown> | undefined) ?? existing.metadata ?? {}) as Record<string, unknown>;
+    data.metadata = {
+      ...metadata,
+      checklistTransporte: metadata.checklistTransporte
+        ?? buildTransportChecklist(
+          Array.isArray(metadata.itens)
+            ? metadata.itens as Array<{ nome?: string; quantidade?: number; sku?: string | null; produtoId?: string | null }>
+            : [],
+        ),
+    };
+  }
+
+  if (parsed.data.metadata || data.metadata) {
+    const previousMetadata = (existing.metadata ?? {}) as Record<string, unknown>;
+    const nextMetadata = ((data.metadata as Record<string, unknown> | undefined) ?? previousMetadata) as Record<string, unknown>;
+
+    const transportGate = transportGateStatus(nextMetadata);
+    const stageGates = nextMetadata.stageGates && typeof nextMetadata.stageGates === "object"
+      ? { ...(nextMetadata.stageGates as Record<string, unknown>) }
+      : {};
+    if (nextMetadata.checklistTransporte) {
+      stageGates.checklist_transporte = transportGate.ready
+        ? {
+            completed: true,
+            completedAt: new Date().toISOString(),
+            completedBy: req.user?.sub ?? null,
+            stage: "em_transporte",
+            source: "structured_transport_checklist",
+          }
+        : {
+            completed: false,
+            completedAt: null,
+            stage: "em_transporte",
+            source: "structured_transport_checklist",
+          };
+    }
+
+    const expeditionChanged =
+      JSON.stringify(previousMetadata.checklistExpedicao ?? null)
+      !== JSON.stringify(nextMetadata.checklistExpedicao ?? null);
+    const transportChanged =
+      JSON.stringify(previousMetadata.checklistTransporte ?? null)
+      !== JSON.stringify(nextMetadata.checklistTransporte ?? null);
+    const overrideChanged =
+      JSON.stringify(previousMetadata.expedicaoOverride ?? null)
+      !== JSON.stringify(nextMetadata.expedicaoOverride ?? null);
+
+    const previousAudit = Array.isArray(previousMetadata.operationalAudit)
+      ? previousMetadata.operationalAudit
+      : [];
+
+    data.metadata = {
+      ...nextMetadata,
+      stageGates,
+      ...(expeditionChanged || transportChanged || overrideChanged
+        ? {
+            operationalAudit: [
+              ...previousAudit,
+              {
+                at: new Date().toISOString(),
+                userId: req.user?.sub ?? null,
+                action: overrideChanged
+                  ? "expedicao_liberada_com_ressalva"
+                  : expeditionChanged
+                    ? "checklist_expedicao_atualizado"
+                    : "checklist_transporte_atualizado",
+              },
+            ].slice(-200),
+          }
+        : {}),
+    };
+  }
+
   const starting = ["producao_em_andamento", "em_transporte", "instalacao_em_andamento", "execucao_assistencia"].includes(targetStage);
   const finishing = ["concluido", "entrega_obra", "instalacao_finalizada", "fechamento_assistencia"].includes(targetStage);
   if (starting && !existing.dataInicioEfetiva && !parsed.data.dataInicioEfetiva) data.dataInicioEfetiva = new Date();
