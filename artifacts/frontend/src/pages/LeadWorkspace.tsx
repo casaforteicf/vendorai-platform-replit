@@ -18,7 +18,19 @@ import { ArrowLeft, ArrowRight, AlertTriangle, Clock3, Loader2, Pencil, Settings
 const LeadDetail = lazy(() => import("@/pages/LeadDetail"));
 const StageQuestionsPanel = lazy(() => import("@/components/StageQuestionsPanel").then((m) => ({ default: m.StageQuestionsPanel })));
 
-const fallbackStages = [
+type WorkspaceStage = {
+  id?: string;
+  key: string;
+  label: string;
+  ordem: number;
+  perguntas?: Array<{ id: string; texto: string }> | null;
+  elegiveisUserIds?: string[] | null;
+  atividadePadraoTitulo?: string | null;
+  atividadePadraoDescricao?: string | null;
+  atividadePadraoPrazoMinutos?: number | null;
+};
+
+const fallbackStages: WorkspaceStage[] = [
   { key: "em_aquecimento", label: "Em aquecimento", ordem: 0 },
   { key: "novo", label: "Novo", ordem: 10 },
   { key: "qualificado", label: "Qualificado", ordem: 30 },
@@ -120,12 +132,12 @@ export default function LeadWorkspace() {
     const newestFirst = [...deals].reverse();
     const terminal = new Set(["ganho", "perdido", "entregue", "concluido", "cancelado"]);
     return newestFirst.find((d) => !terminal.has(d.etapa) && !["em_aquecimento", "parceiro"].includes(d.etapa))
-      ?? newestFirst.find((d) => d.etapa === "em_aquecimento" && d.relationshipStage !== "aquecimento_retomado")
+      ?? newestFirst.find((d) => d.etapa === "em_aquecimento" && (d as typeof d & { relationshipStage?: string | null }).relationshipStage !== "aquecimento_retomado")
       ?? newestFirst.find((d) => !terminal.has(d.etapa))
       ?? newestFirst[0]
       ?? null;
   }, [deals, requestedDealId]);
-  const stages = useMemo(() => [...(configuredStages.length ? configuredStages : fallbackStages)].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0)), [configuredStages]);
+  const stages = useMemo<WorkspaceStage[]>(() => [...(configuredStages.length ? (configuredStages as WorkspaceStage[]) : fallbackStages)].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0)), [configuredStages]);
   const currentIndex = stages.findIndex((s) => s.key === deal?.etapa);
   const currentStage = stages[currentIndex];
   const visualStages = useMemo(() => {
@@ -225,7 +237,7 @@ export default function LeadWorkspace() {
   }
 
   function saveEligible() {
-    if (!targetStage) return;
+    if (!targetStage?.id) return;
     updateStage.mutate(
       { tenantId, id: targetStage.id, data: { elegiveisUserIds: draftEligible } },
       {
@@ -442,7 +454,7 @@ export default function LeadWorkspace() {
     <Suspense fallback={null}>
       <StageQuestionsPanel
         tenantId={tenantId}
-        stage={currentStage}
+        stage={currentStage?.id ? currentStage as { id: string; key: string; label: string; perguntas?: Array<{ id: string; texto: string }> | null } : undefined}
         answers={(deal?.respostasEtapas as Record<string, Record<string, string>> | undefined)?.[currentStage?.key ?? ""] ?? {}}
         onSaveAnswers={saveStageAnswers}
         saving={savingAnswers}
