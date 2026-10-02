@@ -5,6 +5,23 @@ import { pgTable, text, timestamp, integer, boolean, jsonb } from "drizzle-orm/p
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { tenantsTable } from "./tenants";
 
+export type ConfiguracaoAcompanhamentoEtapa = {
+  ativo?: boolean;
+  objetivo?: string;
+  modo?: "automatico" | "gerar_aprovar" | "somente_sugestao";
+  canaisPermitidos?: Array<"whatsapp" | "instagram" | "messenger" | "email" | "chat" | "ligacao">;
+  atrasoInicialMinutos?: number;
+  intervaloMinimoMinutos?: number;
+  maxTentativas?: number;
+  conteudosPermitidos?: Array<"texto" | "imagem" | "video" | "audio" | "documento" | "proposta" | "case">;
+  usarBeneficios?: boolean;
+  usarDiferenciais?: boolean;
+  usarProvas?: boolean;
+  pararAoResponder?: boolean;
+  chamarHumanoEmNegociacaoSensivel?: boolean;
+  instrucoes?: string;
+};
+
 export const pipelineStagesTable = pgTable("pipeline_stages", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   tenantId: text("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
@@ -32,6 +49,9 @@ export const pipelineStagesTable = pgTable("pipeline_stages", {
   responsavelAgenteKey: text("responsavel_agente_key"),
   // Perguntas-chave/playbook. Hoje são usadas principalmente na pipeline comercial.
   perguntas: jsonb("perguntas").$type<{ id: string; texto: string }[]>().notNull().default([]),
+  // Jornada/follow-up da etapa. É configuração de intenção e governança;
+  // a execução é decidida pelo Orquestrador de Acompanhamento.
+  acompanhamentoConfig: jsonb("acompanhamento_config").$type<ConfiguracaoAcompanhamentoEtapa>().notNull().default({}),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

@@ -37,6 +37,34 @@ export interface ProdutoProjectTechnicalConfig {
   [key: string]: unknown;
 }
 
+export interface ProdutoInteligenciaComercial {
+  caracteristicas?: string[];
+  diferenciais?: string[];
+  beneficios?: string[];
+  doresAtendidas?: string[];
+  casosUso?: string[];
+  personas?: string[];
+  objecoes?: Array<{
+    objecao: string;
+    resposta?: string;
+    idsProvas?: string[];
+  }>;
+  idsProvas?: string[];
+  idsProdutosComplementares?: string[];
+  afirmacoesPermitidas?: string[];
+  afirmacoesProibidas?: string[];
+  notasComerciais?: string[];
+  duvidasFrequentes?: string[];
+  garantia?: string | null;
+  instalacaoUso?: string | null;
+  entregaPrazo?: string | null;
+  orientacoesIa?: string[];
+  aprovadoEm?: string | null;
+  aprovadoPor?: string | null;
+  origem?: "manual" | "sugerido_ia" | "importado" | "misto";
+  [key: string]: unknown;
+}
+
 // Compatibilidade veicular (Complemento Praça.ai — filtro "selecione seu
 // carro" tipo Tuning Parts). anoFim vazio/null = "até hoje" (ano corrente).
 export interface ProdutoCompatibilidadeVeicular {
@@ -227,6 +255,9 @@ export const produtosCatalogoTable = pgTable("produtos_catalogo", {
   // Cobertura logística por produto, incluindo regiões, taxas, rotas, dias de
   // entrega e exceções de calendário. Null = produto sem regra específica.
   deliveryConfig: jsonb("delivery_config").$type<ProdutoDeliveryConfig>(),
+  // Inteligência comercial estruturada usada por Vendi, SDR, Closer, MKT e Follow-up.
+  // Mantém fatos aprovados (benefícios/diferenciais/provas) separados de texto gerado por IA.
+  inteligenciaComercial: jsonb("inteligencia_comercial").$type<ProdutoInteligenciaComercial>().default({}),
   fornecedor: text("fornecedor"),
   prazoEntregaDias: integer("prazo_entrega_dias"),
   custoFornecedor: numeric("custo_fornecedor", { precision: 12, scale: 2 }),

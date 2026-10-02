@@ -17,6 +17,28 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 
 type ProductSpec = { label: string; value: string };
+type InteligenciaComercialProduto = {
+  caracteristicas?: string[];
+  diferenciais?: string[];
+  beneficios?: string[];
+  doresAtendidas?: string[];
+  casosUso?: string[];
+  personas?: string[];
+  objecoes?: Array<{ objecao: string; resposta?: string; idsProvas?: string[] }>;
+  idsProvas?: string[];
+  idsProdutosComplementares?: string[];
+  afirmacoesPermitidas?: string[];
+  afirmacoesProibidas?: string[];
+  notasComerciais?: string[];
+  duvidasFrequentes?: string[];
+  garantia?: string | null;
+  instalacaoUso?: string | null;
+  entregaPrazo?: string | null;
+  orientacoesIa?: string[];
+  aprovadoEm?: string | null;
+  aprovadoPor?: string | null;
+  origem?: "manual" | "sugerido_ia" | "importado" | "misto";
+};
 type MediaAsset = {
   id: string;
   type: "image" | "video" | "audio" | "document";
@@ -50,21 +72,25 @@ type CatalogProduct = {
   videoUrl?: string | null;
   tags?: string[] | null;
   especificacoes?: ProductSpec[] | null;
+  inteligenciaComercial?: InteligenciaComercialProduto | null;
 };
 type ProductForm = {
   descricaoCompleta: string;
   caracteristicas: string;
   beneficios: string;
   diferenciais: string;
+  doresAtendidas: string;
   aplicacoes: string;
   publicoIndicado: string;
   argumentosComerciais: string;
+  afirmacoesPermitidas: string;
   duvidasFrequentes: string;
   objecoesRespostas: string;
   garantia: string;
   instalacao: string;
   entrega: string;
   observacoesIa: string;
+  afirmacoesProibidas: string;
   condicoesPagamento: string;
   tags: string;
   aiEnabled: boolean;
@@ -78,15 +104,18 @@ const FIELD_SPECS: KnowledgeField[] = [
   { key: "caracteristicas", label: "Características", aliases: ["Características", "Caracteristicas", "Detalhes técnicos", "Detalhes tecnicos"], placeholder: "Características, materiais, medidas, composição ou detalhes técnicos relevantes." },
   { key: "beneficios", label: "Benefícios", aliases: ["Benefícios", "Benefício", "Beneficios", "Beneficio", "Vantagens"], placeholder: "Quais benefícios o cliente obtém com este produto?" },
   { key: "diferenciais", label: "Diferenciais", aliases: ["Diferenciais", "Diferencial"], placeholder: "O que diferencia este produto de alternativas e concorrentes?" },
+  { key: "doresAtendidas", label: "Dores que resolve", aliases: ["Dores que resolve", "Dores atendidas", "Problemas que resolve", "Necessidades atendidas"], placeholder: "Quais dores, problemas ou necessidades reais este produto ajuda a resolver?" },
   { key: "aplicacoes", label: "Aplicações", aliases: ["Aplicações", "Aplicação", "Aplicacoes", "Aplicacao", "Uso", "Usos"], placeholder: "Onde, como e em quais situações o produto pode ser utilizado?" },
   { key: "publicoIndicado", label: "Público / cliente indicado", aliases: ["Público / cliente indicado", "Público indicado", "Publico indicado", "Público", "Publico", "Cliente indicado"], placeholder: "Para quem este produto é mais indicado?" },
   { key: "argumentosComerciais", label: "Argumentos comerciais", aliases: ["Argumentos comerciais", "Argumento comercial", "Argumentos de venda", "Argumento de venda"], placeholder: "Pontos que vendedores e agentes de IA podem usar no atendimento." },
+  { key: "afirmacoesPermitidas", label: "Afirmações permitidas", aliases: ["Afirmações permitidas", "Afirmacoes permitidas", "Claims aprovados", "Informações aprovadas"], placeholder: "Fatos que a IA pode afirmar com segurança porque estão aprovados ou comprovados.", rows: 4 },
   { key: "duvidasFrequentes", label: "Dúvidas frequentes", aliases: ["Dúvidas frequentes", "Duvidas frequentes", "Dúvidas", "Duvidas", "FAQ"], placeholder: "Perguntas frequentes e respectivas respostas.", rows: 4 },
   { key: "objecoesRespostas", label: "Objeções e respostas", aliases: ["Objeções e respostas", "Objecoes e respostas", "Objeções", "Objecoes"], placeholder: "Principais objeções do cliente e como respondê-las com informações reais.", rows: 4 },
   { key: "garantia", label: "Garantia", aliases: ["Garantia", "Garantias"], placeholder: "Regras e informações de garantia." },
   { key: "instalacao", label: "Instalação / uso", aliases: ["Instalação / uso", "Instalacao / uso", "Instalação", "Instalacao", "Modo de uso"], placeholder: "Orientações de instalação, montagem ou utilização." },
   { key: "entrega", label: "Entrega / prazo", aliases: ["Entrega / prazo", "Entrega", "Prazo", "Prazo de entrega"], placeholder: "Informações relevantes sobre entrega, prazo e disponibilidade." },
   { key: "observacoesIa", label: "Observações para IA", aliases: ["Observações para IA", "Observacoes para IA", "Observações", "Observacoes", "Informações adicionais", "Informacoes adicionais"], placeholder: "Regras específicas que a IA deve respeitar ao falar deste produto.", rows: 4 },
+  { key: "afirmacoesProibidas", label: "O que a IA não pode afirmar", aliases: ["O que a IA não pode afirmar", "Afirmações proibidas", "Afirmacoes proibidas", "Restrições de afirmação", "Restricoes de afirmacao"], placeholder: "Ex.: não afirmar garantia vitalícia; não comparar desempenho sem laudo; não prometer prazo fixo.", rows: 4 },
 ];
 const PRICE_SPEC_ALIASES = ["Condições de pagamento", "Condicoes de pagamento", "Condição de pagamento", "Condicao de pagamento", "Pagamento", "Valor", "Preço", "Preco", "Investimento"];
 
@@ -133,6 +162,23 @@ function installmentCondition(value: string) {
     .trim();
 }
 function hasValue(value: unknown) { return value !== null && value !== undefined && String(value).trim() !== ""; }
+function textToList(value: string) {
+  return value.split(/\n|;/).map((item) => item.replace(/^[-•]\s*/, "").trim()).filter(Boolean);
+}
+function listToText(value?: string[] | null) {
+  return Array.isArray(value) ? value.filter(Boolean).join("\n") : "";
+}
+function parseObjections(value: string) {
+  return textToList(value).map((line) => {
+    const parts = line.split(/\s*(?:=>|→|\|)\s*/, 2);
+    return { objecao: parts[0] ?? "", ...(parts[1] ? { resposta: parts[1] } : {}) };
+  }).filter((item) => item.objecao);
+}
+function objectionsToText(value?: Array<{ objecao: string; resposta?: string }> | null) {
+  return Array.isArray(value)
+    ? value.map((item) => item.resposta ? `${item.objecao} → ${item.resposta}` : item.objecao).filter(Boolean).join("\n")
+    : "";
+}
 function formatPrice(value?: string | null) {
   if (!hasValue(value)) return "";
   const number = Number(value);
@@ -173,20 +219,39 @@ function typeLabel(type: MediaAsset["type"]) {
 }
 function emptyForm(): ProductForm {
   return {
-    descricaoCompleta: "", caracteristicas: "", beneficios: "", diferenciais: "", aplicacoes: "", publicoIndicado: "",
-    argumentosComerciais: "", duvidasFrequentes: "", objecoesRespostas: "", garantia: "", instalacao: "",
-    entrega: "", observacoesIa: "", condicoesPagamento: "", tags: "", aiEnabled: true,
+    descricaoCompleta: "", caracteristicas: "", beneficios: "", diferenciais: "", doresAtendidas: "", aplicacoes: "", publicoIndicado: "",
+    argumentosComerciais: "", afirmacoesPermitidas: "", duvidasFrequentes: "", objecoesRespostas: "", garantia: "", instalacao: "",
+    entrega: "", observacoesIa: "", afirmacoesProibidas: "", condicoesPagamento: "", tags: "", aiEnabled: true,
   };
 }
 function formFromProduct(product: CatalogProduct): ProductForm {
   const form = emptyForm();
   const originalDescription = stripGeneratedKnowledge(product.descricaoLonga) || product.descricao || "";
   const separated = splitDescriptionPrice(originalDescription);
+  const intelligence = product.inteligenciaComercial ?? {};
   form.descricaoCompleta = separated.description;
   form.condicoesPagamento = installmentCondition(specValueAny(product, PRICE_SPEC_ALIASES) || separated.payment);
   form.tags = (product.tags ?? []).join(", ");
   form.aiEnabled = aiEnabledFor(product);
+
   for (const field of FIELD_SPECS) form[field.key] = specValueAny(product, field.aliases);
+
+  form.caracteristicas = listToText(intelligence.caracteristicas) || form.caracteristicas;
+  form.beneficios = listToText(intelligence.beneficios) || form.beneficios;
+  form.diferenciais = listToText(intelligence.diferenciais) || form.diferenciais;
+  form.doresAtendidas = listToText(intelligence.doresAtendidas) || form.doresAtendidas;
+  form.aplicacoes = listToText(intelligence.casosUso) || form.aplicacoes;
+  form.publicoIndicado = listToText(intelligence.personas) || form.publicoIndicado;
+  form.argumentosComerciais = listToText(intelligence.notasComerciais) || form.argumentosComerciais;
+  form.afirmacoesPermitidas = listToText(intelligence.afirmacoesPermitidas) || form.afirmacoesPermitidas;
+  form.duvidasFrequentes = listToText(intelligence.duvidasFrequentes) || form.duvidasFrequentes;
+  form.objecoesRespostas = objectionsToText(intelligence.objecoes) || form.objecoesRespostas;
+  form.garantia = intelligence.garantia?.trim() || form.garantia;
+  form.instalacao = intelligence.instalacaoUso?.trim() || form.instalacao;
+  form.entrega = intelligence.entregaPrazo?.trim() || form.entrega;
+  form.observacoesIa = listToText(intelligence.orientacoesIa) || form.observacoesIa;
+  form.afirmacoesProibidas = listToText(intelligence.afirmacoesProibidas) || form.afirmacoesProibidas;
+
   if (!form.entrega && product.prazoEntregaDias != null) form.entrega = `Prazo de entrega: ${product.prazoEntregaDias} dia(s).`;
   return form;
 }
@@ -203,6 +268,7 @@ export default function ProductCatalogKnowledgeLibraryV2() {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [assets, setAssets] = useState<MediaAsset[]>([]);
@@ -275,6 +341,58 @@ export default function ProductCatalogKnowledgeLibraryV2() {
   useEffect(() => { if (tenantId) void load(); }, [tenantId]);
   useEffect(() => { if (selected) setForm(formFromProduct(selected)); }, [selected?.id]);
 
+  async function sugerirInteligenciaComercial() {
+    if (!selected) return;
+    setSuggesting(true);
+    try {
+      const response = await fetch(`/api/produtos-catalogo/${selected.id}/inteligencia-comercial/sugerir`, {
+        method: "POST",
+        headers: authHeaders(true),
+        body: JSON.stringify({}),
+      });
+      const body = await response.json().catch(() => ({})) as {
+        sugestoes?: InteligenciaComercialProduto;
+        fontes?: Array<{ id: string; titulo?: string }>;
+        aviso?: string;
+        error?: string;
+      };
+      if (!response.ok) throw new Error(body.error || "Não foi possível gerar sugestões.");
+      const intelligence = body.sugestoes ?? {};
+
+      setForm((current) => ({
+        ...current,
+        caracteristicas: listToText(intelligence.caracteristicas) || current.caracteristicas,
+        beneficios: listToText(intelligence.beneficios) || current.beneficios,
+        diferenciais: listToText(intelligence.diferenciais) || current.diferenciais,
+        doresAtendidas: listToText(intelligence.doresAtendidas) || current.doresAtendidas,
+        aplicacoes: listToText(intelligence.casosUso) || current.aplicacoes,
+        publicoIndicado: listToText(intelligence.personas) || current.publicoIndicado,
+        argumentosComerciais: listToText(intelligence.notasComerciais) || current.argumentosComerciais,
+        afirmacoesPermitidas: listToText(intelligence.afirmacoesPermitidas) || current.afirmacoesPermitidas,
+        duvidasFrequentes: listToText(intelligence.duvidasFrequentes) || current.duvidasFrequentes,
+        objecoesRespostas: objectionsToText(intelligence.objecoes) || current.objecoesRespostas,
+        garantia: intelligence.garantia?.trim() || current.garantia,
+        instalacao: intelligence.instalacaoUso?.trim() || current.instalacao,
+        entrega: intelligence.entregaPrazo?.trim() || current.entrega,
+        observacoesIa: listToText(intelligence.orientacoesIa) || current.observacoesIa,
+        afirmacoesProibidas: listToText(intelligence.afirmacoesProibidas) || current.afirmacoesProibidas,
+      }));
+
+      toast({
+        title: "Sugestões geradas",
+        description: `Revise antes de salvar. ${body.fontes?.length ?? 0} fonte(s) do negócio foram consideradas.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Não foi possível gerar sugestões",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setSuggesting(false);
+    }
+  }
+
   async function saveProduct() {
     if (!selected) return;
     setSaving(true);
@@ -289,8 +407,28 @@ export default function ProductCatalogKnowledgeLibraryV2() {
       const knowledgeText = form.aiEnabled ? knowledgeSpecs.map((spec) => `${spec.label}: ${spec.value}`).join("\n\n") : "";
       const descricaoLonga = [form.descricaoCompleta.trim(), knowledgeText ? `${KNOWLEDGE_MARKER}\n${knowledgeText}` : ""].filter(Boolean).join("\n\n");
       const tags = form.tags.split(",").map((tag) => tag.trim()).filter(Boolean);
+      const inteligenciaComercial: InteligenciaComercialProduto = {
+        caracteristicas: textToList(form.caracteristicas),
+        diferenciais: textToList(form.diferenciais),
+        beneficios: textToList(form.beneficios),
+        doresAtendidas: textToList(form.doresAtendidas),
+        casosUso: textToList(form.aplicacoes),
+        personas: textToList(form.publicoIndicado),
+        objecoes: parseObjections(form.objecoesRespostas),
+        afirmacoesPermitidas: textToList(form.afirmacoesPermitidas),
+        afirmacoesProibidas: textToList(form.afirmacoesProibidas),
+        notasComerciais: textToList(form.argumentosComerciais),
+        duvidasFrequentes: textToList(form.duvidasFrequentes),
+        garantia: form.garantia.trim() || null,
+        instalacaoUso: form.instalacao.trim() || null,
+        entregaPrazo: form.entrega.trim() || null,
+        orientacoesIa: textToList(form.observacoesIa),
+        aprovadoEm: form.aiEnabled ? new Date().toISOString() : null,
+        aprovadoPor: form.aiEnabled ? (user?.id ?? null) : null,
+        origem: "manual",
+      };
       const response = await fetch(`/api/produtos-catalogo/${selected.id}`, {
-        method: "PATCH", headers: authHeaders(true), body: JSON.stringify({ descricaoLonga, especificacoes, tags }),
+        method: "PATCH", headers: authHeaders(true), body: JSON.stringify({ descricaoLonga, especificacoes, tags, inteligenciaComercial }),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || "Não foi possível salvar as informações do produto.");
@@ -404,6 +542,26 @@ export default function ProductCatalogKnowledgeLibraryV2() {
               </div>
               <div className="max-h-[calc(100vh-190px)] space-y-5 overflow-y-auto p-4">
                 <div className="rounded-2xl border border-orange-200 bg-orange-50 p-3"><label className="flex cursor-pointer items-start justify-between gap-3"><div><p className="text-sm font-semibold text-orange-900">Disponível para IA</p><p className="mt-1 text-xs leading-relaxed text-orange-800/80">Libera o complemento deste produto para uso automatizado. Informações operacionais sensíveis devem ficar fora dos campos abaixo.</p></div><input type="checkbox" checked={form.aiEnabled} onChange={(event) => setForm((current) => ({ ...current, aiEnabled: event.target.checked }))} className="mt-1 h-4 w-4 accent-orange-500" /></label></div>
+
+                <div className="rounded-2xl border border-violet-200 bg-violet-50/70 p-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-violet-950">Inteligência comercial assistida</p>
+                      <p className="mt-1 text-xs leading-relaxed text-violet-800/80">
+                        A IA usa o cadastro do produto e informações aprovadas da empresa para sugerir benefícios, objeções, aplicações e cuidados. Nada é aprovado automaticamente.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={suggesting}
+                      onClick={() => void sugerirInteligenciaComercial()}
+                      className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl border border-violet-200 bg-background px-3 text-xs font-semibold text-violet-800 disabled:opacity-50"
+                    >
+                      {suggesting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                      Sugerir inteligência com IA
+                    </button>
+                  </div>
+                </div>
 
                 <section className="rounded-2xl border border-sky-200 bg-sky-50/70 p-3">
                   <div className="flex items-start gap-2"><CircleDollarSign className="mt-0.5 h-4 w-4 shrink-0 text-sky-700" /><div><p className="text-sm font-semibold text-sky-950">Preço e pagamento</p><p className="mt-0.5 text-[11px] leading-relaxed text-sky-800/80">Padrão único do catálogo: uma linha para o valor à vista e outra para o parcelamento.</p></div></div>
