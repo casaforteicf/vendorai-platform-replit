@@ -19,8 +19,6 @@ const STATUSES = [
 ] as const;
 
 const TEST_STATUSES = ["pending", "running", "passed", "failed"] as const;
-const GATE_STATUSES = ["pending", "passed", "failed", "not_applicable"] as const;
-const RELEASE_SCOPES = ["production", "homolog_only"] as const;
 
 const createSchema = z.object({
   title: z.string().trim().min(3).max(180),
@@ -32,13 +30,13 @@ const createSchema = z.object({
   prUrl: z.string().url().optional().nullable(),
   homologUrl: z.string().url().optional().nullable(),
   productionUrl: z.string().url().optional().nullable(),
-  releaseScope: z.enum(RELEASE_SCOPES).optional().default("production"),
-  dependencyIds: z.array(z.string().uuid()).max(100).optional().default([]),
-  securityGate: z.enum(GATE_STATUSES).optional().default("pending"),
-  migrationGate: z.enum(GATE_STATUSES).optional().default("pending"),
-  designGate: z.enum(GATE_STATUSES).optional().default("pending"),
-  performanceGate: z.enum(GATE_STATUSES).optional().default("pending"),
-  rollbackGate: z.enum(GATE_STATUSES).optional().default("pending"),
+  sourceType: z.enum(["super_admin", "support", "vendi", "system", "audit", "user_request", "bug", "security", "integration", "infrastructure", "hotfix"]).optional().default("super_admin"),
+  sourceRefId: z.string().trim().max(220).optional().nullable(),
+  sourceTenantId: z.string().trim().max(220).optional().nullable(),
+  packageKey: z.string().trim().max(120).optional().nullable(),
+  acceptanceCriteria: z.string().trim().max(12000).optional().default(""),
+  riskSummary: z.string().trim().max(8000).optional().default(""),
+  dependencies: z.string().trim().max(8000).optional().default(""),
 });
 
 const patchSchema = z.object({
@@ -55,13 +53,12 @@ const patchSchema = z.object({
   packageKey: z.string().trim().max(120).nullable().optional(),
   testStatus: z.enum(TEST_STATUSES).optional(),
   testSummary: z.string().trim().max(8000).nullable().optional(),
-  releaseScope: z.enum(RELEASE_SCOPES).optional(),
-  dependencyIds: z.array(z.string().uuid()).max(100).optional(),
-  securityGate: z.enum(GATE_STATUSES).optional(),
-  migrationGate: z.enum(GATE_STATUSES).optional(),
-  designGate: z.enum(GATE_STATUSES).optional(),
-  performanceGate: z.enum(GATE_STATUSES).optional(),
-  rollbackGate: z.enum(GATE_STATUSES).optional(),
+  ownerAgent: z.string().trim().max(120).nullable().optional(),
+  agentStatus: z.string().trim().max(120).nullable().optional(),
+  agentSummary: z.string().trim().max(12000).nullable().optional(),
+  acceptanceCriteria: z.string().trim().max(12000).optional(),
+  riskSummary: z.string().trim().max(8000).optional(),
+  dependencies: z.string().trim().max(8000).optional(),
 });
 
 const idsSchema = z.object({
@@ -133,30 +130,76 @@ function ensureSchema() {
       approved_production_by text,
       approved_production_at timestamptz,
       merged_staging_sha text,
-      release_scope text NOT NULL DEFAULT 'production',
-      dependency_ids uuid[] NOT NULL DEFAULT '{}',
-      security_gate text NOT NULL DEFAULT 'pending',
-      migration_gate text NOT NULL DEFAULT 'pending',
-      design_gate text NOT NULL DEFAULT 'pending',
-      performance_gate text NOT NULL DEFAULT 'pending',
-      rollback_gate text NOT NULL DEFAULT 'pending',
-      github_state jsonb,
-      github_synced_at timestamptz,
+      source_type text NOT NULL DEFAULT 'super_admin',
+      source_ref_id text,
+      source_tenant_id text,
+      owner_agent text NOT NULL DEFAULT 'vendi',
+      agent_status text NOT NULL DEFAULT 'idle',
+      agent_summary text,
+      requested_at timestamptz NOT NULL DEFAULT now(),
+      due_at timestamptz NOT NULL DEFAULT (now() + interval '24 hours'),
+      acceptance_criteria text NOT NULL DEFAULT '',
+      risk_summary text NOT NULL DEFAULT '',
+      dependencies text NOT NULL DEFAULT '',
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS admin_improvements_status_idx ON admin_improvements(status);
     CREATE INDEX IF NOT EXISTS admin_improvements_package_idx ON admin_improvements(package_key);
-    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS release_scope text NOT NULL DEFAULT 'production';
-    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS dependency_ids uuid[] NOT NULL DEFAULT '{}';
-    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS security_gate text NOT NULL DEFAULT 'pending';
-    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS migration_gate text NOT NULL DEFAULT 'pending';
-    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS design_gate text NOT NULL DEFAULT 'pending';
-    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS performance_gate text NOT NULL DEFAULT 'pending';
-    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS rollback_gate text NOT NULL DEFAULT 'pending';
-    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS github_state jsonb;
-    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS github_synced_at timestamptz;
     CREATE INDEX IF NOT EXISTS admin_improvements_pr_idx ON admin_improvements(pr_number);
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS source_type text NOT NULL DEFAULT 'super_admin';
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS source_ref_id text;
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS source_tenant_id text;
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS owner_agent text NOT NULL DEFAULT 'vendi';
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS agent_status text NOT NULL DEFAULT 'idle';
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS agent_summary text;
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS requested_at timestamptz NOT NULL DEFAULT now();
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS due_at timestamptz NOT NULL DEFAULT (now() + interval '24 hours');
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS acceptance_criteria text NOT NULL DEFAULT '';
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS risk_summary text NOT NULL DEFAULT '';
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS dependencies text NOT NULL DEFAULT '';
+
+    CREATE TABLE IF NOT EXISTS admin_improvement_events (
+      id uuid PRIMARY KEY,
+      improvement_id uuid NOT NULL REFERENCES admin_improvements(id) ON DELETE CASCADE,
+      event_type text NOT NULL,
+      message text NOT NULL DEFAULT '',
+      payload jsonb,
+      actor text,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS admin_improvement_events_improvement_idx
+      ON admin_improvement_events(improvement_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS admin_releases (
+      id uuid PRIMARY KEY,
+      version text NOT NULL UNIQUE,
+      name text NOT NULL,
+      summary text NOT NULL DEFAULT '',
+      status text NOT NULL DEFAULT 'draft',
+      improvement_ids uuid[] NOT NULL DEFAULT '{}',
+      test_url text,
+      test_status text NOT NULL DEFAULT 'pending',
+      test_summary text,
+      impact jsonb,
+      base_sha text,
+      head_sha text,
+      approval_fingerprint text,
+      approved_by text,
+      approved_at timestamptz,
+      scheduled_at timestamptz,
+      started_at timestamptz,
+      published_at timestamptz,
+      duration_ms integer,
+      release_pr_number integer,
+      release_pr_url text,
+      rollback_version text,
+      last_error text,
+      created_by text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS admin_releases_status_idx ON admin_releases(status, scheduled_at);
   `).then(() => undefined);
   return schemaReady;
 }
@@ -164,50 +207,6 @@ function ensureSchema() {
 function actor(req: any) {
   return String(req.user?.email ?? req.user?.sub ?? "super_admin");
 }
-
-function gateIssues(row: any) {
-  const issues: string[] = [];
-  if (row.release_scope === "homolog_only") issues.push("Item exclusivo de homologação");
-  if (row.test_status !== "passed") issues.push("Testes não aprovados");
-  const gateFields: Array<[string, string]> = [
-    ["security_gate", "Segurança"],
-    ["migration_gate", "Migration"],
-    ["design_gate", "Design"],
-    ["performance_gate", "Performance"],
-    ["rollback_gate", "Rollback"],
-  ];
-  for (const [field, label] of gateFields) {
-    if (!["passed", "not_applicable"].includes(row[field])) issues.push(`${label} não aprovado`);
-  }
-  return issues;
-}
-
-async function dependencyIssues(ids: string[]) {
-  if (!ids.length) return new Map<string, string[]>();
-  const result = await pool.query(
-    `SELECT id, title, status, dependency_ids FROM admin_improvements WHERE id = ANY($1::uuid[])`,
-    [ids],
-  );
-  const allDependencyIds = [...new Set(result.rows.flatMap((row) => row.dependency_ids ?? []))];
-  const dependencies = allDependencyIds.length
-    ? await pool.query(`SELECT id, title, status FROM admin_improvements WHERE id = ANY($1::uuid[])`, [allDependencyIds])
-    : { rows: [] as any[] };
-  const byId = new Map(dependencies.rows.map((row: any) => [row.id, row]));
-  const issues = new Map<string, string[]>();
-  for (const row of result.rows) {
-    const itemIssues: string[] = [];
-    for (const depId of row.dependency_ids ?? []) {
-      const dep = byId.get(depId);
-      if (!dep) itemIssues.push(`Dependência ${depId} não encontrada`);
-      else if (!["homologado", "aguardando_producao", "producao_validada"].includes(dep.status)) {
-        itemIssues.push(`Dependência "${dep.title}" ainda está em ${dep.status}`);
-      }
-    }
-    issues.set(row.id, itemIssues);
-  }
-  return issues;
-}
-
 
 router.use("/admin/improvements", requireRole("super_admin"));
 
@@ -225,11 +224,12 @@ router.get("/admin/improvements", async (_req, res) => {
       approved_production_by AS "approvedProductionBy",
       approved_production_at AS "approvedProductionAt",
       merged_staging_sha AS "mergedStagingSha",
-      release_scope AS "releaseScope", dependency_ids AS "dependencyIds",
-      security_gate AS "securityGate", migration_gate AS "migrationGate",
-      design_gate AS "designGate", performance_gate AS "performanceGate",
-      rollback_gate AS "rollbackGate", github_state AS "githubState",
-      github_synced_at AS "githubSyncedAt",
+      source_type AS "sourceType", source_ref_id AS "sourceRefId",
+      source_tenant_id AS "sourceTenantId", owner_agent AS "ownerAgent",
+      agent_status AS "agentStatus", agent_summary AS "agentSummary",
+      requested_at AS "requestedAt", due_at AS "dueAt",
+      acceptance_criteria AS "acceptanceCriteria", risk_summary AS "riskSummary",
+      dependencies,
       created_at AS "createdAt", updated_at AS "updatedAt"
     FROM admin_improvements
     ORDER BY
@@ -248,17 +248,21 @@ router.post("/admin/improvements", async (req, res) => {
   const result = await pool.query(`
     INSERT INTO admin_improvements (
       id, title, description, module, priority, branch, pr_number, pr_url,
-      homolog_url, production_url, created_by, release_scope, dependency_ids,
-      security_gate, migration_gate, design_gate, performance_gate, rollback_gate
+      homolog_url, production_url, created_by, source_type, source_ref_id, source_tenant_id,
+      package_key, acceptance_criteria, risk_summary, dependencies
     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
     RETURNING id
   `, [
     id, input.title, input.description, input.module, input.priority,
     input.branch ?? null, input.prNumber ?? null, input.prUrl ?? null,
     input.homologUrl ?? null, input.productionUrl ?? null, actor(req),
-    input.releaseScope, input.dependencyIds,
-    input.securityGate, input.migrationGate, input.designGate, input.performanceGate, input.rollbackGate,
+    input.sourceType, input.sourceRefId ?? null, input.sourceTenantId ?? null,
+    input.packageKey ?? null, input.acceptanceCriteria, input.riskSummary, input.dependencies,
   ]);
+  await pool.query(
+    "INSERT INTO admin_improvement_events (id,improvement_id,event_type,message,payload,actor) VALUES ($1,$2,'created',$3,$4::jsonb,$5)",
+    [randomUUID(), id, "Melhoria registrada no histórico oficial.", JSON.stringify({ sourceType: input.sourceType, packageKey: input.packageKey ?? null }), actor(req)],
+  );
   res.status(201).json({ id: result.rows[0]?.id ?? id });
 });
 
@@ -272,10 +276,8 @@ router.patch("/admin/improvements/:id", async (req, res) => {
     status: "status", branch: "branch", prNumber: "pr_number", prUrl: "pr_url",
     homologUrl: "homolog_url", productionUrl: "production_url", packageKey: "package_key",
     testStatus: "test_status", testSummary: "test_summary",
-    releaseScope: "release_scope", dependencyIds: "dependency_ids",
-    securityGate: "security_gate", migrationGate: "migration_gate",
-    designGate: "design_gate", performanceGate: "performance_gate",
-    rollbackGate: "rollback_gate",
+    ownerAgent: "owner_agent", agentStatus: "agent_status", agentSummary: "agent_summary",
+    acceptanceCriteria: "acceptance_criteria", riskSummary: "risk_summary", dependencies: "dependencies",
   };
   const sets: string[] = [];
   const values: unknown[] = [];
@@ -292,6 +294,10 @@ router.patch("/admin/improvements/:id", async (req, res) => {
     values,
   );
   if (!result.rowCount) return res.status(404).json({ error: "Melhoria não encontrada" });
+  await pool.query(
+    "INSERT INTO admin_improvement_events (id,improvement_id,event_type,message,payload,actor) VALUES ($1,$2,'updated',$3,$4::jsonb,$5)",
+    [randomUUID(), String(req.params.id), "Melhoria atualizada.", JSON.stringify(parsed.data), actor(req)],
+  );
   res.json({ ok: true });
 });
 
@@ -408,19 +414,14 @@ router.post("/admin/improvements/approve-production", async (req, res) => {
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
 
   const check = await pool.query(
-    `SELECT id, title, status, test_status, release_scope, dependency_ids,
-            security_gate, migration_gate, design_gate, performance_gate, rollback_gate
-       FROM admin_improvements WHERE id = ANY($1::uuid[])`,
+    `SELECT id, title, status FROM admin_improvements WHERE id = ANY($1::uuid[])`,
     [parsed.data.ids],
   );
-  const depIssues = await dependencyIssues(parsed.data.ids);
-  const blocked = check.rows
-    .map((row) => ({ row, issues: [...gateIssues(row), ...(depIssues.get(row.id) ?? [])] }))
-    .filter(({ row, issues }) => row.status !== "homologado" || issues.length);
+  const blocked = check.rows.filter((row) => row.status !== "homologado");
   if (blocked.length) {
     return res.status(409).json({
       error: "Somente melhorias homologadas podem ser aprovadas para produção.",
-      blocked: blocked.map(({ row, issues }) => ({ id: row.id, title: row.title, status: row.status, issues })),
+      blocked: blocked.map((row) => ({ id: row.id, title: row.title, status: row.status })),
     });
   }
 
@@ -435,63 +436,6 @@ router.post("/admin/improvements/approve-production", async (req, res) => {
     [actor(req), parsed.data.ids],
   );
   res.json({ approved: result.rowCount ?? 0 });
-});
-
-
-router.post("/admin/improvements/reconcile-github", async (_req, res) => {
-  await ensureSchema();
-  let config: GithubConfig;
-  try {
-    config = githubConfig();
-  } catch (error) {
-    return res.status(503).json({ error: error instanceof Error ? error.message : "GITHUB_CONFIG_ERROR" });
-  }
-
-  const compare = await githubJson(`/repos/${config.owner}/${config.repo}/compare/main...staging`);
-  const commits = Array.isArray(compare.commits) ? compare.commits : [];
-  const homologOnlyPatterns = [
-    /homolog/i, /seed.*homolog/i, /passwordless/i, /without password/i,
-    /preview railway/i, /capture.*staging/i, /dockerfile.*homolog/i,
-  ];
-
-  const summary = commits.map((commit: any) => {
-    const message = String(commit.commit?.message ?? "").split("\n")[0];
-    const scope = homologOnlyPatterns.some((pattern) => pattern.test(message)) ? "homolog_only" : "production";
-    return {
-      sha: commit.sha,
-      shortSha: String(commit.sha).slice(0, 8),
-      message,
-      authoredAt: commit.commit?.author?.date ?? null,
-      scope,
-    };
-  });
-
-  res.json({
-    repository: config.repository,
-    status: compare.status,
-    aheadBy: compare.ahead_by ?? 0,
-    behindBy: compare.behind_by ?? 0,
-    productionCandidates: summary.filter((item: any) => item.scope === "production"),
-    homologOnly: summary.filter((item: any) => item.scope === "homolog_only"),
-    total: summary.length,
-    syncedAt: new Date().toISOString(),
-  });
-});
-
-router.post("/admin/improvements/:id/evaluate-gates", async (req, res) => {
-  await ensureSchema();
-  const id = String(req.params.id);
-  const result = await pool.query(
-    `SELECT id, title, status, test_status, release_scope, dependency_ids,
-            security_gate, migration_gate, design_gate, performance_gate, rollback_gate
-       FROM admin_improvements WHERE id = $1 LIMIT 1`,
-    [id],
-  );
-  const row = result.rows[0];
-  if (!row) return res.status(404).json({ error: "Melhoria não encontrada" });
-  const deps = await dependencyIssues([id]);
-  const issues = [...gateIssues(row), ...(deps.get(id) ?? [])];
-  res.json({ ready: issues.length === 0 && row.status === "homologado", issues, item: row });
 });
 
 router.get("/admin/improvements/github-readiness", async (_req, res) => {
