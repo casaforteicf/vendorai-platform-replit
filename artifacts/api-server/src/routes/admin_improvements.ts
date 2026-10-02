@@ -1,9 +1,8 @@
 import { Router, type IRouter } from "express";
-import { createHash, randomUUID } from "crypto";
+import { randomUUID } from "crypto";
 import { z } from "zod/v4";
 import { pool } from "@workspace/db";
 import { requireRole } from "../middlewares/auth.js";
-import { executeDevAutonomousWork } from "./dev_agent_autonomy.js";
 
 const router: IRouter = Router();
 
