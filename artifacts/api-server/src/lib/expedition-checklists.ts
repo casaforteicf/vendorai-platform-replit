@@ -254,12 +254,28 @@ export function transportGateStatus(metadata: Record<string, unknown> | null | u
     concluidos?: number;
     totalCampos?: number;
     saida?: { motorista?: string; placa?: string; destino?: string };
+    itens?: Array<{
+      quantidadeCarregada?: number | null;
+      quantidadeRecebida?: number | null;
+      ocorrencia?: string;
+    }>;
   };
   const divergencias = Number(checklist.divergencias ?? 0);
   const concluidos = Number(checklist.concluidos ?? 0);
   const totalCampos = Number(checklist.totalCampos ?? 0);
 
   if (divergencias > 0) return { ready: false as const, reason: "Existem divergências no transporte." };
+  const quantityDivergences = (checklist.itens ?? []).filter((item) =>
+    item.quantidadeCarregada != null
+    && item.quantidadeRecebida != null
+    && Number(item.quantidadeCarregada) !== Number(item.quantidadeRecebida)
+  );
+  if (quantityDivergences.length > 0) {
+    return {
+      ready: false as const,
+      reason: `Existem ${quantityDivergences.length} divergência(s) entre quantidade carregada e recebida.`,
+    };
+  }
   if (!totalCampos || concluidos < totalCampos) return { ready: false as const, reason: "Checklist de transporte incompleto." };
   if (!checklist.saida?.motorista?.trim() || !checklist.saida?.placa?.trim() || !checklist.saida?.destino?.trim()) {
     return { ready: false as const, reason: "Informe motorista, placa e destino." };
