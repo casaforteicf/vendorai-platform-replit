@@ -30,6 +30,7 @@ import {
   InstagramScopedIdMissingError,
 } from "../services/omnichannel.js";
 import { dispatchAgentBackground } from "../services/agent-dispatch.js";
+import { recordIntelligenceEvent, recordIntelligenceFact } from "../services/customer-intelligence-history.js";
 import { runAutoQuotePipeline } from "../services/auto-quote.js";
 import { transcribeAudio, transcribeAudioBuffer } from "../services/audio-transcription.js";
 import { interpretImage, interpretPdf, interpretPdfBuffer } from "../services/media-interpretation.js";
@@ -638,6 +639,30 @@ router.post("/tenants/:tenantId/webhooks/whatsapp", async (req, res) => {
     .returning();
 
   req.log.info({ messageId: message.id }, "webhook: message inserted");
+
+  void recordIntelligenceEvent({
+    tenantId,
+    leadId: lead.id,
+    eventType: "message_received",
+    title: "Mensagem recebida via WhatsApp",
+    summary: mensagem.slice(0, 500),
+    sourceModule: "messages",
+    sourceId: message.id,
+    metadata: { canal: "whatsapp", direcao: "entrada" },
+    log: req.log,
+  });
+  void recordIntelligenceFact({
+    tenantId,
+    leadId: lead.id,
+    kind: "declaracao_cliente",
+    factKey: "ultima_interacao_cliente",
+    value: { canal: "whatsapp", conteudo: mensagem.slice(0, 1000), em: new Date().toISOString() },
+    sourceType: "mensagem",
+    sourceModule: "messages",
+    sourceId: message.id,
+    title: "Última interação recebida do cliente",
+    log: req.log,
+  });
 
   // ── 6. Update conversation: ultimaMensagemEm + lastInboundAt + naoLidas++ ──
   await db
