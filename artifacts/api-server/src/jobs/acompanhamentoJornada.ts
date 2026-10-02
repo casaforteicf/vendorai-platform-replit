@@ -4,14 +4,12 @@ import {
   activitiesTable,
   db,
   dealsTable,
-  leadsTable,
   messagesTable,
   pipelineStagesTable,
 } from "@workspace/db";
 import { tenantIsWithinBusinessHours } from "../lib/proactiveMessageGuard.js";
 import { executarAcompanhamento, planejarAcompanhamento } from "../services/orquestradorAcompanhamento.js";
 
-const DISTRIBUTED_LOCK_KEY = "vendorai:acompanhamento-jornada:v1";
 
 type Config = {
   ativo?: boolean;
