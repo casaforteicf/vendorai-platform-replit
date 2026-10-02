@@ -77,6 +77,7 @@ import { searchAllPlaces } from "../routes/prospector.js";
 import { runProspectorQueueWorker } from "./prospectorQueue.js";
 import { runDailyAgendaSummary } from "./dailyAgendaSummary.js";
 import { runSdrFollowup } from "./sdrFollowup.js";
+import { runCustomerIntelligenceFollowup } from "./customerIntelligenceFollowup.js";
 import { runObjectionsExtraction } from "./objectionsExtraction.js";
 import { runRecemAbertas } from "./recemAbertasJob.js";
 import { runMicroEventsRescan } from "./microEventsRescan.js";
@@ -1858,6 +1859,14 @@ export function startScheduler(log: Logger): void {
       log.error({ err }, "scheduler/sdr-followup: unhandled error");
     });
   });
+
+  // Customer Intelligence V2: acompanhamento orientado por lacunas e risco — a cada 30 minutos.
+  // Só atua em etapas explicitamente ativadas pelo admin.
+  cron.schedule("*/30 * * * *", () => {
+    runCustomerIntelligenceFollowup(log).catch((err) => {
+      log.error({ err }, "scheduler/customer-intelligence-followup: unhandled error");
+    });
+  }, { timezone: "America/Sao_Paulo" });
 
   // Job 20 (Cmd 22): Objections extraction — daily at 02:30 BRT
   cron.schedule("30 2 * * *", () => {
