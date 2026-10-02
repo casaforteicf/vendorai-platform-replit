@@ -1,13 +1,35 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, GitMerge, PackagePlus, Plus, RefreshCw, Rocket, ShieldCheck, TestTube2 } from "lucide-react";
+import {
+  AlertTriangle,
+  Bot,
+  CalendarClock,
+  CheckCircle2,
+  ExternalLink,
+  History,
+  Plus,
+  RefreshCw,
+  Rocket,
+  RotateCcw,
+  SearchCheck,
+  ShieldCheck,
+  TestTube2,
+  WandSparkles,
+} from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 
 type Improvement = {
@@ -25,41 +47,106 @@ type Improvement = {
   packageKey: string | null;
   testStatus: "pending" | "running" | "passed" | "failed";
   testSummary: string | null;
-  approvedHomologBy: string | null;
-  approvedHomologAt: string | null;
-  approvedProductionBy: string | null;
-  approvedProductionAt: string | null;
-  mergedStagingSha: string | null;
-  releaseScope: "production" | "homolog_only";
-  dependencyIds: string[];
-  securityGate: "pending" | "passed" | "failed" | "not_applicable";
-  migrationGate: "pending" | "passed" | "failed" | "not_applicable";
-  designGate: "pending" | "passed" | "failed" | "not_applicable";
-  performanceGate: "pending" | "passed" | "failed" | "not_applicable";
-  rollbackGate: "pending" | "passed" | "failed" | "not_applicable";
-  githubState?: unknown;
-  githubSyncedAt?: string | null;
+  sourceType?: "super_admin" | "support" | "vendi" | "system" | "audit" | "user_request" | "bug" | "security" | "integration" | "infrastructure" | "hotfix";
+  sourceRefId?: string | null;
+  sourceTenantId?: string | null;
+  ownerAgent?: string | null;
+  agentStatus?: string | null;
+  agentSummary?: string | null;
+  requestedAt?: string | null;
+  dueAt?: string | null;
+  acceptanceCriteria?: string | null;
+  riskSummary?: string | null;
+  dependencies?: string | null;
   createdAt: string;
   updatedAt: string;
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  solicitada: "Solicitada",
-  em_desenvolvimento: "Em desenvolvimento",
-  testando: "Testando",
-  pronto_staging: "Pronto para staging",
-  em_homologacao: "Em homologação",
-  homologado: "Homologado",
-  aguardando_producao: "Aguardando produção",
-  producao_validada: "Produção validada",
-  bloqueada: "Bloqueada",
+type ImpactFile = {
+  path: string;
+  status?: string;
+  additions?: number;
+  deletions?: number;
+  changes?: number;
 };
 
-const TEST_LABELS: Record<string, string> = {
-  pending: "Pendente",
-  running: "Executando",
-  passed: "Aprovado",
-  failed: "Falhou",
+type ReleaseImpact = {
+  clean: boolean;
+  checkedAt: string;
+  expectedFiles: string[];
+  actualFiles: ImpactFile[];
+  unexpectedFiles: ImpactFile[];
+  missingExpectedFiles: string[];
+  notReady: Array<{ id: string; title: string; reason?: string }>;
+  base?: { branch: string; sha: string };
+  head?: { branch: string; sha: string };
+};
+
+type Release = {
+  id: string;
+  version: string;
+  name: string;
+  summary: string;
+  status: string;
+  improvementIds: string[];
+  testUrl: string | null;
+  testStatus: string;
+  testSummary: string | null;
+  impact: ReleaseImpact | null;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  scheduledAt: string | null;
+  startedAt: string | null;
+  publishedAt: string | null;
+  durationMs: number | null;
+  releasePrNumber: number | null;
+  releasePrUrl: string | null;
+  publishedSha: string | null;
+  rollbackVersion: string | null;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type ReleaseMetrics = {
+  scheduled: number;
+  running: number;
+  blocked: number;
+  avg_duration_ms: number | string | null;
+};
+
+const RELEASE_LABELS: Record<string, string> = {
+  draft: "Montando",
+  ready: "Pronta",
+  approved: "Aprovada",
+  scheduled: "Agendada",
+  publishing: "Publicando",
+  monitoring: "Monitorando",
+  published: "Publicada",
+  blocked: "Bloqueada",
+  cancelled: "Cancelada",
+  rolled_back: "Rollback realizado",
+};
+
+const PRIORITY_LABELS: Record<string, string> = {
+  baixa: "Baixa",
+  media: "Normal",
+  alta: "Alta",
+  urgente: "Crítica",
+};
+
+const SOURCE_LABELS: Record<string, string> = {
+  super_admin: "Super Admin",
+  support: "Suporte",
+  vendi: "Vendi",
+  system: "Sistema",
+  audit: "Auditoria",
+  user_request: "Solicitação",
+  bug: "Bug",
+  security: "Segurança",
+  integration: "Integração",
+  infrastructure: "Infraestrutura",
+  hotfix: "Hotfix",
 };
 
 function formatDate(value?: string | null) {
@@ -67,42 +154,98 @@ function formatDate(value?: string | null) {
   return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
 }
 
+function formatDuration(value?: number | string | null) {
+  const ms = Number(value ?? 0);
+  if (!ms || !Number.isFinite(ms)) return "—";
+  const min = Math.floor(ms / 60000);
+  const sec = Math.floor((ms % 60000) / 1000);
+  return String(min) + "m " + String(sec).padStart(2, "0") + "s";
+}
+
+function improvementSimpleStatus(item: Improvement) {
+  if (item.status === "producao_validada") return "Publicado";
+  if (item.testStatus === "passed" && ["pronto_staging", "em_homologacao", "homologado", "aguardando_producao"].includes(item.status)) return "Pronto";
+  if (item.status === "bloqueada" || item.testStatus === "failed") return "Atenção";
+  return "Fazendo";
+}
+
+function statusVariant(status: string): "default" | "secondary" | "outline" | "destructive" {
+  if (status === "Publicado" || status === "Pronto" || status === "published") return "default";
+  if (status === "Atenção" || status === "blocked") return "destructive";
+  if (status === "scheduled" || status === "monitoring" || status === "publishing") return "secondary";
+  return "outline";
+}
+
 export default function AdminImprovements() {
   const { token } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
+  const [view, setView] = useState<"improvements" | "releases">("improvements");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [detail, setDetail] = useState<Improvement | null>(null);
+  const [releaseDetail, setReleaseDetail] = useState<Release | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-  const [packageOpen, setPackageOpen] = useState(false);
-  const [packageKey, setPackageKey] = useState("");
+  const [releaseOpen, setReleaseOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState<Release | null>(null);
+  const [adjustOpen, setAdjustOpen] = useState<Improvement | null>(null);
   const [busy, setBusy] = useState("");
+  const [scheduleAt, setScheduleAt] = useState("");
+  const [adjustment, setAdjustment] = useState("");
   const [form, setForm] = useState({
     title: "",
     description: "",
     module: "Plataforma",
     priority: "media",
-    branch: "",
-    prNumber: "",
-    prUrl: "",
-    homologUrl: "https://homolog.appvendorai.com",
-    releaseScope: "production",
+    sourceType: "user_request",
+    packageKey: "",
+    acceptanceCriteria: "",
+    riskSummary: "",
+    dependencies: "",
+  });
+  const [releaseForm, setReleaseForm] = useState({
+    name: "",
+    summary: "",
   });
 
   const headers = useMemo(() => ({
-    Authorization: `Bearer ${token}`,
+    Authorization: "Bearer " + token,
     "Content-Type": "application/json",
   }), [token]);
 
-  const query = useQuery<{ items: Improvement[] }>({
+  const improvementsQuery = useQuery<{ items: Improvement[] }>({
     queryKey: ["admin", "improvements"],
     enabled: !!token,
     queryFn: async () => {
       const response = await fetch("/api/admin/improvements", { headers });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body?.error ?? `HTTP ${response.status}`);
+      if (!response.ok) throw new Error(body?.error ?? "HTTP " + response.status);
       return body;
     },
+    refetchInterval: 30000,
+  });
+
+  const releasesQuery = useQuery<{ items: Release[] }>({
+    queryKey: ["admin", "releases"],
+    enabled: !!token,
+    queryFn: async () => {
+      const response = await fetch("/api/admin/releases", { headers });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error ?? "HTTP " + response.status);
+      return body;
+    },
+    refetchInterval: 30000,
+  });
+
+  const metricsQuery = useQuery<ReleaseMetrics>({
+    queryKey: ["admin", "releases-metrics"],
+    enabled: !!token,
+    queryFn: async () => {
+      const response = await fetch("/api/admin/releases-metrics", { headers });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error ?? "HTTP " + response.status);
+      return body;
+    },
+    refetchInterval: 30000,
   });
 
   const github = useQuery<{ ready: boolean; repository?: string; reason?: string }>({
@@ -112,48 +255,41 @@ export default function AdminImprovements() {
       const response = await fetch("/api/admin/improvements/github-readiness", { headers });
       return response.json();
     },
-    staleTime: 60_000,
+    staleTime: 60000,
   });
 
-  const reconcile = useQuery<{
-    repository: string;
-    status: string;
-    aheadBy: number;
-    behindBy: number;
-    total: number;
-    productionCandidates: Array<{ sha: string; shortSha: string; message: string; scope: string }>;
-    homologOnly: Array<{ sha: string; shortSha: string; message: string; scope: string }>;
-  }>({
-    queryKey: ["admin", "improvements", "github-reconcile"],
-    enabled: false,
-    queryFn: async () => {
-      const response = await fetch("/api/admin/improvements/reconcile-github", { method: "POST", headers, body: "{}" });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body?.error ?? `HTTP ${response.status}`);
-      return body;
-    },
-  });
-
-  const items = query.data?.items ?? [];
+  const items = improvementsQuery.data?.items ?? [];
+  const releases = releasesQuery.data?.items ?? [];
   const selectedItems = items.filter((item) => selected.has(item.id));
+  const readySelected = selectedItems.filter((item) => item.testStatus === "passed" && !!item.prNumber);
+  const doingCount = items.filter((item) => improvementSimpleStatus(item) === "Fazendo").length;
+  const readyCount = items.filter((item) => improvementSimpleStatus(item) === "Pronto").length;
+  const publishedCount = releases.filter((item) => item.status === "published").length;
+  const scheduledCount = releases.filter((item) => ["scheduled", "publishing", "monitoring"].includes(item.status)).length;
 
-  async function action(path: string, payload: unknown, successMessage: string) {
+  async function post(path: string, payload?: unknown, successMessage?: string) {
     setBusy(path);
     try {
-      const response = await fetch(path, { method: "POST", headers, body: JSON.stringify(payload) });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok && response.status !== 207) throw new Error(body?.error ?? `HTTP ${response.status}`);
-      const partialFailures = Array.isArray(body?.results) ? body.results.filter((item: any) => !item.ok) : [];
-      toast({
-        title: partialFailures.length ? "Ação concluída com pendências" : successMessage,
-        description: partialFailures.length ? partialFailures.map((item: any) => item.error).join(" • ").slice(0, 500) : undefined,
-        variant: partialFailures.length ? "destructive" : "default",
+      const response = await fetch(path, {
+        method: "POST",
+        headers,
+        body: payload === undefined ? undefined : JSON.stringify(payload),
       });
-      await qc.invalidateQueries({ queryKey: ["admin", "improvements"] });
-      setSelected(new Set());
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error ?? "HTTP " + response.status);
+      if (successMessage) toast({ title: successMessage });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["admin", "improvements"] }),
+        qc.invalidateQueries({ queryKey: ["admin", "releases"] }),
+        qc.invalidateQueries({ queryKey: ["admin", "releases-metrics"] }),
+      ]);
       return body;
     } catch (error) {
-      toast({ title: "Não foi possível concluir", description: error instanceof Error ? error.message : "Falha inesperada", variant: "destructive" });
+      toast({
+        title: "Não foi possível concluir",
+        description: error instanceof Error ? error.message : "Falha inesperada",
+        variant: "destructive",
+      });
       throw error;
     } finally {
       setBusy("");
@@ -163,55 +299,116 @@ export default function AdminImprovements() {
   async function createImprovement() {
     setBusy("create");
     try {
-      const payload = {
-        title: form.title,
-        description: form.description,
-        module: form.module,
-        priority: form.priority,
-        branch: form.branch || null,
-        prNumber: form.prNumber ? Number(form.prNumber) : null,
-        prUrl: form.prUrl || null,
-        homologUrl: form.homologUrl || null,
-        releaseScope: form.releaseScope as "production" | "homolog_only",
-      };
-      const response = await fetch("/api/admin/improvements", { method: "POST", headers, body: JSON.stringify(payload) });
+      const response = await fetch("/api/admin/improvements", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          title: form.title,
+          description: form.description,
+          module: form.module,
+          priority: form.priority,
+          sourceType: form.sourceType,
+          packageKey: form.packageKey || null,
+          acceptanceCriteria: form.acceptanceCriteria,
+          riskSummary: form.riskSummary,
+          dependencies: form.dependencies,
+          homologUrl: "https://homolog.appvendorai.com",
+        }),
+      });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body?.error ?? `HTTP ${response.status}`);
-      toast({ title: "Melhoria criada" });
+      if (!response.ok) throw new Error(body?.error ?? "HTTP " + response.status);
+      toast({ title: "Melhoria criada", description: "O Vendi já pode assumir o desenvolvimento." });
       setCreateOpen(false);
-      setForm({ title: "", description: "", module: "Plataforma", priority: "media", branch: "", prNumber: "", prUrl: "", homologUrl: "https://homolog.appvendorai.com", releaseScope: "production" });
+      setForm({
+        title: "",
+        description: "",
+        module: "Plataforma",
+        priority: "media",
+        sourceType: "user_request",
+        packageKey: "",
+        acceptanceCriteria: "",
+        riskSummary: "",
+        dependencies: "",
+      });
       await qc.invalidateQueries({ queryKey: ["admin", "improvements"] });
+      if (body?.id) {
+        void post("/api/admin/improvements/" + body.id + "/start-agent", undefined, "Vendi iniciou o desenvolvimento");
+      }
     } catch (error) {
-      toast({ title: "Falha ao criar melhoria", description: error instanceof Error ? error.message : "Erro inesperado", variant: "destructive" });
+      toast({
+        title: "Falha ao criar melhoria",
+        description: error instanceof Error ? error.message : "Erro inesperado",
+        variant: "destructive",
+      });
     } finally {
       setBusy("");
     }
   }
 
-  async function patch(item: Improvement, payload: Partial<Improvement>) {
-    setBusy(`patch-${item.id}`);
-    try {
-      const response = await fetch(`/api/admin/improvements/${item.id}`, { method: "PATCH", headers, body: JSON.stringify(payload) });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body?.error ?? `HTTP ${response.status}`);
-      await qc.invalidateQueries({ queryKey: ["admin", "improvements"] });
-      setDetail((current) => current?.id === item.id ? { ...current, ...payload } as Improvement : current);
-    } catch (error) {
-      toast({ title: "Falha ao atualizar", description: error instanceof Error ? error.message : "Erro inesperado", variant: "destructive" });
-    } finally {
-      setBusy("");
+  async function createRelease() {
+    if (!readySelected.length) return;
+    const body = await post("/api/admin/releases", {
+      name: releaseForm.name,
+      summary: releaseForm.summary,
+      ids: readySelected.map((item) => item.id),
+    }, "Publicação criada");
+    setReleaseOpen(false);
+    setReleaseForm({ name: "", summary: "" });
+    setSelected(new Set());
+    setView("releases");
+    if (body?.id) {
+      const fresh = await qc.fetchQuery<{ items: Release[] }>({
+        queryKey: ["admin", "releases"],
+        queryFn: async () => {
+          const response = await fetch("/api/admin/releases", { headers });
+          if (!response.ok) throw new Error("Falha ao atualizar publicações");
+          return response.json();
+        },
+      });
+      setReleaseDetail(fresh.items.find((item) => item.id === body.id) ?? null);
     }
   }
 
   function toggle(id: string) {
     setSelected((current) => {
       const next = new Set(current);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }
 
-  const allSelected = items.length > 0 && selected.size === items.length;
+  function defaultReleaseName() {
+    const modules = [...new Set(readySelected.map((item) => item.module))];
+    if (!modules.length) return "Melhorias da plataforma";
+    if (modules.length <= 2) return "Melhorias de " + modules.join(" e ");
+    return "Melhorias da plataforma";
+  }
+
+  function openReleaseDialog() {
+    setReleaseForm({
+      name: defaultReleaseName(),
+      summary: readySelected.map((item) => item.title).join(" • "),
+    });
+    setReleaseOpen(true);
+  }
+
+  async function confirmSchedule() {
+    if (!scheduleOpen || !scheduleAt) return;
+    const iso = new Date(scheduleAt).toISOString();
+    await post("/api/admin/releases/" + scheduleOpen.id + "/schedule", { scheduledAt: iso }, "Publicação agendada");
+    setScheduleOpen(null);
+    setScheduleAt("");
+  }
+
+  async function confirmAdjustment() {
+    if (!adjustOpen || adjustment.trim().length < 2) return;
+    await post("/api/admin/improvements/" + adjustOpen.id + "/adjustments", { message: adjustment }, "Ajuste enviado ao Vendi");
+    setAdjustOpen(null);
+    setAdjustment("");
+  }
+
+  const allReadySelected = readySelected.length === selectedItems.length && selectedItems.length > 0;
 
   return (
     <div className="mx-auto w-full max-w-[1600px] space-y-5 p-4 md:p-6">
@@ -222,225 +419,688 @@ export default function AdminImprovements() {
             <Badge variant={github.data?.ready ? "default" : "outline"}>
               GitHub {github.data?.ready ? "conectado" : "não conectado"}
             </Badge>
+            <Badge variant="outline">Produção protegida</Badge>
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight">Melhorias & Releases</h1>
-          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            Acompanhe melhorias, testes, PRs, pacotes, homologação e aprovações para produção em um único fluxo.
+          <h1 className="text-2xl font-semibold tracking-tight">Melhorias & Publicações</h1>
+          <p className="mt-1 max-w-4xl text-sm text-muted-foreground">
+            Histórico oficial de evolução do Vendor.ai: toda melhoria deve ser registrada aqui, da solicitação até a validação em produção.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => reconcile.refetch()} disabled={reconcile.isFetching || github.data?.ready === false}>
-            <GitMerge className={`mr-2 h-4 w-4 ${reconcile.isFetching ? "animate-pulse" : ""}`} />Reconciliar GitHub
+          <Button
+            variant="outline"
+            onClick={() => {
+              improvementsQuery.refetch();
+              releasesQuery.refetch();
+              metricsQuery.refetch();
+            }}
+            disabled={improvementsQuery.isFetching || releasesQuery.isFetching}
+          >
+            <RefreshCw className={"mr-2 h-4 w-4 " + ((improvementsQuery.isFetching || releasesQuery.isFetching) ? "animate-spin" : "")} />
+            Atualizar
           </Button>
-          <Button variant="outline" onClick={() => query.refetch()} disabled={query.isFetching}>
-            <RefreshCw className={`mr-2 h-4 w-4 ${query.isFetching ? "animate-spin" : ""}`} />Atualizar
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Nova melhoria
           </Button>
-          <Button onClick={() => setCreateOpen(true)}><Plus className="mr-2 h-4 w-4" />Nova melhoria</Button>
         </div>
       </div>
 
-      {reconcile.data && (
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <div className="rounded-2xl border bg-card p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="font-medium">Reconciliação GitHub</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                staging está {reconcile.data.aheadBy} commit(s) à frente e {reconcile.data.behindBy} atrás da main.
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Badge variant="outline">{reconcile.data.productionCandidates.length} produção</Badge>
-              <Badge variant="secondary">{reconcile.data.homologOnly.length} só homologação</Badge>
-            </div>
-          </div>
+          <p className="text-xs font-medium text-muted-foreground">Fazendo</p>
+          <p className="mt-1 text-2xl font-semibold">{doingCount}</p>
         </div>
-      )}
-
-      <div className="grid gap-3 md:grid-cols-4">
-        {[
-          ["Total", items.length],
-          ["Em desenvolvimento", items.filter((item) => ["em_desenvolvimento", "testando", "pronto_staging"].includes(item.status)).length],
-          ["Em homologação", items.filter((item) => item.status === "em_homologacao").length],
-          ["Aguardando produção", items.filter((item) => item.status === "aguardando_producao").length],
-        ].map(([label, value]) => (
-          <div key={String(label)} className="rounded-2xl border bg-card p-4">
-            <p className="text-xs font-medium text-muted-foreground">{label}</p>
-            <p className="mt-1 text-2xl font-semibold">{value}</p>
-          </div>
-        ))}
+        <div className="rounded-2xl border bg-card p-4">
+          <p className="text-xs font-medium text-muted-foreground">Prontas</p>
+          <p className="mt-1 text-2xl font-semibold">{readyCount}</p>
+        </div>
+        <div className="rounded-2xl border bg-card p-4">
+          <p className="text-xs font-medium text-muted-foreground">Agendadas / em execução</p>
+          <p className="mt-1 text-2xl font-semibold">{scheduledCount}</p>
+        </div>
+        <div className="rounded-2xl border bg-card p-4">
+          <p className="text-xs font-medium text-muted-foreground">Publicadas</p>
+          <p className="mt-1 text-2xl font-semibold">{publishedCount}</p>
+        </div>
+        <div className="rounded-2xl border bg-card p-4">
+          <p className="text-xs font-medium text-muted-foreground">Tempo médio</p>
+          <p className="mt-1 text-2xl font-semibold">{formatDuration(metricsQuery.data?.avg_duration_ms)}</p>
+        </div>
       </div>
 
-      {selected.size > 0 && (
-        <div className="sticky top-2 z-20 flex flex-col gap-3 rounded-2xl border bg-background/95 p-3 shadow-sm backdrop-blur-xl lg:flex-row lg:items-center lg:justify-between">
-          <div className="text-sm font-medium">{selected.size} melhoria(s) selecionada(s)</div>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => setPackageOpen(true)}><PackagePlus className="mr-2 h-4 w-4" />Preparar pacote</Button>
-            <Button variant="outline" size="sm" onClick={() => action("/api/admin/improvements/approve-homologation", { ids: [...selected] }, "Aprovado para homologação")} disabled={!!busy}>
-              <ShieldCheck className="mr-2 h-4 w-4" />Aprovar homologação
-            </Button>
-            <Button size="sm" onClick={() => action("/api/admin/improvements/merge-homologation", { ids: [...selected], target: "staging" }, "Merge para staging concluído")} disabled={!!busy || github.data?.ready === false}>
-              <GitMerge className="mr-2 h-4 w-4" />Merge staging
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => action("/api/admin/improvements/mark-homologated", { ids: [...selected] }, "Marcado como homologado")} disabled={!!busy}>
-              <TestTube2 className="mr-2 h-4 w-4" />Homologado
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => action("/api/admin/improvements/approve-production", { ids: [...selected] }, "Aprovado para produção")} disabled={!!busy}>
-              <Rocket className="mr-2 h-4 w-4" />Aprovar produção
-            </Button>
+      <div className="flex gap-2 border-b">
+        <button
+          className={"border-b-2 px-3 py-2 text-sm font-medium " + (view === "improvements" ? "border-primary text-foreground" : "border-transparent text-muted-foreground")}
+          onClick={() => setView("improvements")}
+        >
+          Melhorias
+        </button>
+        <button
+          className={"border-b-2 px-3 py-2 text-sm font-medium " + (view === "releases" ? "border-primary text-foreground" : "border-transparent text-muted-foreground")}
+          onClick={() => setView("releases")}
+        >
+          Publicações
+        </button>
+      </div>
+
+      {view === "improvements" && (
+        <>
+          {selected.size > 0 && (
+            <div className="sticky top-2 z-20 flex flex-col gap-3 rounded-2xl border bg-background/95 p-3 shadow-sm backdrop-blur-xl lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="text-sm font-medium">{selected.size} melhoria(s) selecionada(s)</p>
+                {!allReadySelected && (
+                  <p className="text-xs text-muted-foreground">
+                    Apenas melhorias com testes aprovados e PR podem entrar em uma publicação.
+                  </p>
+                )}
+              </div>
+              <Button size="sm" onClick={openReleaseDialog} disabled={!allReadySelected}>
+                <Rocket className="mr-2 h-4 w-4" />
+                Criar publicação
+              </Button>
+            </div>
+          )}
+
+          <div className="overflow-hidden rounded-2xl border bg-card">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[1120px] text-sm">
+                <thead className="border-b bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="w-12 px-4 py-3"></th>
+                    <th className="px-3 py-3">Melhoria</th>
+                    <th className="px-3 py-3">Origem</th>
+                    <th className="px-3 py-3">Vendi</th>
+                    <th className="px-3 py-3">Situação</th>
+                    <th className="px-3 py-3">Versão</th>
+                    <th className="px-3 py-3">Prazo 24h</th>
+                    <th className="px-3 py-3 text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((item) => {
+                    const simple = improvementSimpleStatus(item);
+                    return (
+                      <tr key={item.id} className="border-b last:border-0 hover:bg-muted/20">
+                        <td className="px-4 py-3">
+                          <Checkbox checked={selected.has(item.id)} onCheckedChange={() => toggle(item.id)} />
+                        </td>
+                        <td className="max-w-[380px] px-3 py-3">
+                          <button type="button" className="text-left font-medium hover:underline" onClick={() => setDetail(item)}>
+                            {item.title}
+                          </button>
+                          <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                            <span>{item.module}</span>
+                            <span>• {PRIORITY_LABELS[item.priority] ?? item.priority}</span>
+                            {item.prNumber && <span>• PR #{item.prNumber}</span>}
+                          </div>
+                        </td>
+                        <td className="px-3 py-3">
+                          <Badge variant="outline">
+                            {SOURCE_LABELS[item.sourceType ?? "super_admin"] ?? item.sourceType ?? "Super Admin"}
+                          </Badge>
+                        </td>
+                        <td className="px-3 py-3">
+                          <div className="flex items-center gap-2">
+                            <Bot className="h-4 w-4 text-muted-foreground" />
+                            <div>
+                              <p className="text-xs font-medium">{item.ownerAgent || "Vendi"}</p>
+                              <p className="text-xs text-muted-foreground">{item.agentStatus || "aguardando"}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-3 py-3">
+                          <Badge variant={statusVariant(simple)}>{simple}</Badge>
+                        </td>
+                        <td className="px-3 py-3">
+                          {item.packageKey ? <Badge variant="outline">{item.packageKey}</Badge> : "—"}
+                        </td>
+                        <td className="px-3 py-3 text-xs">
+                          {item.dueAt ? formatDate(item.dueAt) : "até 24h"}
+                        </td>
+                        <td className="px-3 py-3">
+                          <div className="flex justify-end gap-2">
+                            <Button variant="outline" size="sm" onClick={() => setDetail(item)}>
+                              Abrir
+                            </Button>
+                            {simple === "Fazendo" && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={!!busy}
+                                onClick={() => post("/api/admin/improvements/" + item.id + "/start-agent", undefined, "Vendi iniciou o trabalho")}
+                              >
+                                <WandSparkles className="mr-1 h-3.5 w-3.5" />
+                                Vendi
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {!improvementsQuery.isLoading && items.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="px-6 py-14 text-center text-muted-foreground">
+                        Nenhuma melhoria cadastrada.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        </>
       )}
 
-      <div className="overflow-hidden rounded-2xl border bg-card">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1180px] text-sm">
-            <thead className="border-b bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="w-12 px-4 py-3"><Checkbox checked={allSelected} onCheckedChange={() => setSelected(allSelected ? new Set() : new Set(items.map((item) => item.id)))} /></th>
-                <th className="px-3 py-3">Melhoria</th>
-                <th className="px-3 py-3">Módulo</th>
-                <th className="px-3 py-3">Pacote</th>
-                <th className="px-3 py-3">Status</th>
-                <th className="px-3 py-3">Escopo</th>
-                <th className="px-3 py-3">Gates</th>
-                <th className="px-3 py-3">Teste</th>
-                <th className="px-3 py-3">PR</th>
-                <th className="px-3 py-3">Atualização</th>
-                <th className="px-3 py-3 text-right">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr key={item.id} className="border-b last:border-0 hover:bg-muted/20">
-                  <td className="px-4 py-3"><Checkbox checked={selected.has(item.id)} onCheckedChange={() => toggle(item.id)} /></td>
-                  <td className="max-w-[360px] px-3 py-3">
-                    <button type="button" className="text-left font-medium hover:underline" onClick={() => setDetail(item)}>{item.title}</button>
-                    <div className="mt-1 flex gap-2 text-xs text-muted-foreground"><span>{item.priority}</span>{item.branch && <span className="truncate">• {item.branch}</span>}</div>
-                  </td>
-                  <td className="px-3 py-3">{item.module}</td>
-                  <td className="px-3 py-3">{item.packageKey ? <Badge variant="outline">{item.packageKey}</Badge> : "—"}</td>
-                  <td className="px-3 py-3"><Badge variant="outline">{STATUS_LABELS[item.status] ?? item.status}</Badge></td>
-                  <td className="px-3 py-3"><Badge variant={item.releaseScope === "production" ? "default" : "secondary"}>{item.releaseScope === "production" ? "Produção" : "Só homologação"}</Badge></td>
-                  <td className="px-3 py-3">
-                    <div className="flex flex-wrap gap-1">
-                      {[
-                        ["SEG", item.securityGate],
-                        ["DB", item.migrationGate],
-                        ["UI", item.designGate],
-                        ["PERF", item.performanceGate],
-                        ["RB", item.rollbackGate],
-                      ].map(([label, status]) => (
-                        <Badge key={String(label)} variant={status === "passed" || status === "not_applicable" ? "outline" : "secondary"}>
-                          {label}:{status === "passed" ? "OK" : status === "not_applicable" ? "N/A" : status === "failed" ? "FALHA" : "PEND"}
+      {view === "releases" && (
+        <div className="space-y-3">
+          {releases.map((release) => {
+            const impact = release.impact;
+            return (
+              <div key={release.id} className="rounded-2xl border bg-card p-4">
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline">{release.version}</Badge>
+                      <Badge variant={statusVariant(release.status)}>
+                        {RELEASE_LABELS[release.status] ?? release.status}
+                      </Badge>
+                      {impact && (
+                        <Badge variant={impact.clean ? "default" : "destructive"}>
+                          {impact.clean ? "Impacto conferido" : "Revisar impacto"}
                         </Badge>
-                      ))}
+                      )}
                     </div>
-                  </td>
-                  <td className="px-3 py-3">
-                    <button type="button" className="rounded-md border px-2 py-1 text-xs" onClick={() => patch(item, { testStatus: item.testStatus === "passed" ? "pending" : "passed" } as any)}>
-                      {TEST_LABELS[item.testStatus] ?? item.testStatus}
-                    </button>
-                  </td>
-                  <td className="px-3 py-3">{item.prNumber ? <a className="inline-flex items-center gap-1 text-primary hover:underline" href={item.prUrl ?? "#"} target="_blank" rel="noreferrer">#{item.prNumber}<ExternalLink className="h-3 w-3" /></a> : "—"}</td>
-                  <td className="px-3 py-3 text-xs text-muted-foreground">{formatDate(item.updatedAt)}</td>
-                  <td className="px-3 py-3">
-                    <div className="flex justify-end gap-2">
-                      <Button variant="outline" size="sm" onClick={() => setDetail(item)}>Abrir melhoria</Button>
-                      {item.homologUrl && <Button variant="ghost" size="sm" asChild><a href={item.homologUrl} target="_blank" rel="noreferrer">Homologação<ExternalLink className="ml-1 h-3 w-3" /></a></Button>}
+                    <h3 className="mt-2 text-lg font-semibold">{release.name}</h3>
+                    <p className="mt-1 max-w-4xl text-sm text-muted-foreground">{release.summary}</p>
+                    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                      <span>{release.improvementIds.length} melhoria(s)</span>
+                      <span>Teste: {release.testStatus === "passed" ? "confirmado" : "pendente"}</span>
+                      {release.scheduledAt && <span>Agendada: {formatDate(release.scheduledAt)}</span>}
+                      {release.publishedAt && <span>Publicada: {formatDate(release.publishedAt)}</span>}
+                      {release.durationMs && <span>Duração: {formatDuration(release.durationMs)}</span>}
                     </div>
-                  </td>
-                </tr>
-              ))}
-              {!query.isLoading && items.length === 0 && (
-                <tr><td colSpan={11} className="px-6 py-14 text-center text-muted-foreground">Nenhuma melhoria cadastrada ainda.</td></tr>
-              )}
-              {query.isLoading && <tr><td colSpan={11} className="px-6 py-14 text-center text-muted-foreground">Carregando melhorias…</td></tr>}
-            </tbody>
-          </table>
+                    {release.lastError && (
+                      <div className="mt-3 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                        <AlertTriangle className="mr-2 inline h-4 w-4" />
+                        {release.lastError}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setReleaseDetail(release)}>
+                      <History className="mr-1 h-3.5 w-3.5" />
+                      Detalhes
+                    </Button>
+                    {release.testUrl && !["published", "rolled_back", "cancelled"].includes(release.status) && (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={!!busy || release.testStatus === "running"}
+                          onClick={() => post("/api/admin/releases/" + release.id + "/vendi-test", undefined, "Vendi concluiu a validação da homologação")}
+                        >
+                          <Bot className="mr-1 h-3.5 w-3.5" />
+                          {release.testStatus === "running" ? "Vendi testando..." : "Vendi testar"}
+                        </Button>
+                        <Button variant="outline" size="sm" asChild>
+                          <a href={release.testUrl} target="_blank" rel="noreferrer">
+                            <TestTube2 className="mr-1 h-3.5 w-3.5" />
+                            Testar manualmente
+                          </a>
+                        </Button>
+                      </>
+                    )}
+                    {!["published", "rolled_back", "cancelled", "publishing", "monitoring"].includes(release.status) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={!!busy}
+                        onClick={() => post("/api/admin/releases/" + release.id + "/impact", undefined, "Impacto atualizado")}
+                      >
+                        <SearchCheck className="mr-1 h-3.5 w-3.5" />
+                        Conferir impacto
+                      </Button>
+                    )}
+                    {release.testStatus !== "passed" && release.status === "ready" && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={!!busy}
+                        onClick={() => post("/api/admin/releases/" + release.id + "/tested", undefined, "Teste manual confirmado")}
+                      >
+                        <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
+                        Confirmar teste manual
+                      </Button>
+                    )}
+                    {release.status === "ready" && release.testStatus === "passed" && (
+                      <Button
+                        size="sm"
+                        disabled={!!busy}
+                        onClick={() => post("/api/admin/releases/" + release.id + "/approve", undefined, "Publicação aprovada")}
+                      >
+                        <ShieldCheck className="mr-1 h-3.5 w-3.5" />
+                        Aprovar
+                      </Button>
+                    )}
+                    {release.status === "approved" && (
+                      <>
+                        <Button
+                          size="sm"
+                          disabled={!!busy}
+                          onClick={() => post("/api/admin/releases/" + release.id + "/execute", undefined, "Publicação enviada para execução")}
+                        >
+                          <Rocket className="mr-1 h-3.5 w-3.5" />
+                          Publicar agora
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => setScheduleOpen(release)}>
+                          <CalendarClock className="mr-1 h-3.5 w-3.5" />
+                          Agendar
+                        </Button>
+                      </>
+                    )}
+                    {release.status === "published" && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={!!busy}
+                        onClick={() => {
+                          if (window.confirm("Confirmar rollback desta publicação?")) {
+                            void post("/api/admin/releases/" + release.id + "/rollback", undefined, "Rollback iniciado");
+                          }
+                        }}
+                      >
+                        <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                        Rollback
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {!releasesQuery.isLoading && releases.length === 0 && (
+            <div className="rounded-2xl border bg-card px-6 py-14 text-center text-muted-foreground">
+              Nenhuma publicação criada ainda.
+            </div>
+          )}
         </div>
-      </div>
+      )}
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-2xl">
-          <DialogHeader><DialogTitle>Nova melhoria</DialogTitle><DialogDescription>Crie o registro operacional da melhoria. Branch e PR podem ser vinculados agora ou depois.</DialogDescription></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Nova melhoria</DialogTitle>
+            <DialogDescription>
+              Descreva a mudança em linguagem normal. O Vendi cuida da análise técnica, desenvolvimento, branch, PR e testes.
+            </DialogDescription>
+          </DialogHeader>
           <div className="grid gap-4 py-2">
-            <Input placeholder="Título da melhoria" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
-            <Textarea placeholder="Descrição, objetivo e critérios de aceite" rows={5} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+            <Input placeholder="Nome da mudança" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+            <Textarea
+              placeholder="O que precisa mudar? Como espera que funcione?"
+              rows={6}
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+            />
             <div className="grid gap-3 sm:grid-cols-2">
-              <Input placeholder="Módulo" value={form.module} onChange={(e) => setForm({ ...form, module: e.target.value })} />
-              <select className="h-10 rounded-md border bg-background px-3 text-sm" value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
-                <option value="baixa">Baixa</option><option value="media">Média</option><option value="alta">Alta</option><option value="urgente">Urgente</option>
+              <Input placeholder="Módulo / tela" value={form.module} onChange={(e) => setForm({ ...form, module: e.target.value })} />
+              <select
+                className="h-10 rounded-md border bg-background px-3 text-sm"
+                value={form.priority}
+                onChange={(e) => setForm({ ...form, priority: e.target.value })}
+              >
+                <option value="media">Normal</option>
+                <option value="alta">Alta</option>
+                <option value="urgente">Crítica</option>
+                <option value="baixa">Baixa</option>
               </select>
-              <Input placeholder="Branch" value={form.branch} onChange={(e) => setForm({ ...form, branch: e.target.value })} />
-              <Input placeholder="Número do PR" inputMode="numeric" value={form.prNumber} onChange={(e) => setForm({ ...form, prNumber: e.target.value })} />
-              <Input placeholder="URL do PR" value={form.prUrl} onChange={(e) => setForm({ ...form, prUrl: e.target.value })} />
-              <Input placeholder="URL da homologação" value={form.homologUrl} onChange={(e) => setForm({ ...form, homologUrl: e.target.value })} />
-              <select className="h-10 rounded-md border bg-background px-3 text-sm" value={form.releaseScope} onChange={(e) => setForm({ ...form, releaseScope: e.target.value })}>
-                <option value="production">Candidato à produção</option>
-                <option value="homolog_only">Somente homologação</option>
+              <select
+                className="h-10 rounded-md border bg-background px-3 text-sm"
+                value={form.sourceType}
+                onChange={(e) => setForm({ ...form, sourceType: e.target.value })}
+              >
+                <option value="user_request">Solicitação</option>
+                <option value="audit">Auditoria</option>
+                <option value="support">Suporte</option>
+                <option value="bug">Bug</option>
+                <option value="security">Segurança</option>
+                <option value="integration">Integração</option>
+                <option value="infrastructure">Infraestrutura</option>
+                <option value="hotfix">Hotfix</option>
+                <option value="vendi">Vendi</option>
+                <option value="system">Sistema</option>
+                <option value="super_admin">Super Admin</option>
               </select>
+              <Input placeholder="Pacote / onda (opcional)" value={form.packageKey} onChange={(e) => setForm({ ...form, packageKey: e.target.value })} />
+            </div>
+            <Textarea
+              placeholder="Critérios de aceite: como saberemos que a melhoria ficou correta?"
+              rows={3}
+              value={form.acceptanceCriteria}
+              onChange={(e) => setForm({ ...form, acceptanceCriteria: e.target.value })}
+            />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Textarea
+                placeholder="Riscos / cuidados (opcional)"
+                rows={3}
+                value={form.riskSummary}
+                onChange={(e) => setForm({ ...form, riskSummary: e.target.value })}
+              />
+              <Textarea
+                placeholder="Dependências (opcional)"
+                rows={3}
+                value={form.dependencies}
+                onChange={(e) => setForm({ ...form, dependencies: e.target.value })}
+              />
+            </div>
+            <div className="rounded-xl border bg-muted/20 p-3 text-sm text-muted-foreground">
+              Este registro passa a ser o histórico oficial da mudança. Desenvolvimento, testes, homologação, publicação e validação ficam vinculados à mesma melhoria.
             </div>
           </div>
-          <DialogFooter><Button variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button><Button onClick={createImprovement} disabled={busy === "create" || form.title.trim().length < 3}>Criar melhoria</Button></DialogFooter>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button>
+            <Button onClick={createImprovement} disabled={busy === "create" || form.title.trim().length < 3}>
+              Criar e iniciar Vendi
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={packageOpen} onOpenChange={setPackageOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Preparar pacote</DialogTitle><DialogDescription>Agrupe as {selected.size} melhorias selecionadas em uma única release/deploy.</DialogDescription></DialogHeader>
-          <Input placeholder="Ex.: UI-2026.10.01" value={packageKey} onChange={(e) => setPackageKey(e.target.value)} />
+      <Dialog open={releaseOpen} onOpenChange={setReleaseOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Criar publicação</DialogTitle>
+            <DialogDescription>
+              A versão será gerada automaticamente e ficará pronta para teste antes de qualquer alteração em produção.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <Input
+              placeholder="Nome da publicação"
+              value={releaseForm.name}
+              onChange={(e) => setReleaseForm({ ...releaseForm, name: e.target.value })}
+            />
+            <Textarea
+              rows={4}
+              placeholder="Resumo da publicação"
+              value={releaseForm.summary}
+              onChange={(e) => setReleaseForm({ ...releaseForm, summary: e.target.value })}
+            />
+            <div className="rounded-xl border p-3 text-sm">
+              <p className="font-medium">{readySelected.length} melhoria(s) serão incluídas:</p>
+              <div className="mt-2 space-y-1 text-muted-foreground">
+                {readySelected.map((item) => <p key={item.id}>• {item.title}</p>)}
+              </div>
+            </div>
+          </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPackageOpen(false)}>Cancelar</Button>
-            <Button onClick={async () => { await action("/api/admin/improvements/package", { ids: [...selected], packageKey }, "Pacote criado"); setPackageOpen(false); setPackageKey(""); }} disabled={packageKey.trim().length < 3 || !!busy}>Agrupar</Button>
+            <Button variant="outline" onClick={() => setReleaseOpen(false)}>Cancelar</Button>
+            <Button onClick={createRelease} disabled={releaseForm.name.trim().length < 3 || !!busy}>
+              Criar versão
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!scheduleOpen} onOpenChange={(open) => !open && setScheduleOpen(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Agendar publicação</DialogTitle>
+            <DialogDescription>
+              A autorização já foi dada. No horário escolhido o sistema executará exatamente esta versão.
+            </DialogDescription>
+          </DialogHeader>
+          <Input type="datetime-local" value={scheduleAt} onChange={(e) => setScheduleAt(e.target.value)} />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setScheduleOpen(null)}>Cancelar</Button>
+            <Button onClick={confirmSchedule} disabled={!scheduleAt || !!busy}>Agendar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!adjustOpen} onOpenChange={(open) => !open && setAdjustOpen(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Solicitar ajuste</DialogTitle>
+            <DialogDescription>
+              O ajuste fica no histórico da mesma melhoria. Se ela já estiver em uma publicação aprovada, a aprovação será invalidada.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea rows={5} placeholder="Descreva o ajuste..." value={adjustment} onChange={(e) => setAdjustment(e.target.value)} />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAdjustOpen(null)}>Cancelar</Button>
+            <Button onClick={confirmAdjustment} disabled={adjustment.trim().length < 2 || !!busy}>Enviar ajuste</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={!!detail} onOpenChange={(open) => !open && setDetail(null)}>
-        <DialogContent className="max-w-3xl">
-          {detail && <>
-            <DialogHeader><DialogTitle>{detail.title}</DialogTitle><DialogDescription>{detail.module} • criada em {formatDate(detail.createdAt)}</DialogDescription></DialogHeader>
-            <div className="grid gap-4">
-              <div className="rounded-xl border bg-muted/20 p-4 text-sm whitespace-pre-wrap">{detail.description || "Sem descrição."}</div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">Status</p><p className="mt-1 font-medium">{STATUS_LABELS[detail.status] ?? detail.status}</p></div>
-                <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">Teste</p><p className="mt-1 font-medium">{TEST_LABELS[detail.testStatus] ?? detail.testStatus}</p></div>
-                <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">Branch</p><p className="mt-1 break-all font-mono text-xs">{detail.branch || "—"}</p></div>
-                <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">Pacote</p><p className="mt-1">{detail.packageKey || "—"}</p></div>
-                <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">Escopo</p><p className="mt-1">{detail.releaseScope === "production" ? "Produção" : "Somente homologação"}</p></div>
-                <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">Dependências</p><p className="mt-1">{detail.dependencyIds?.length ?? 0}</p></div>
-              </div>
-              <div className="grid gap-2 sm:grid-cols-5">
-                {[
-                  ["Segurança", "securityGate"],
-                  ["Migration", "migrationGate"],
-                  ["Design", "designGate"],
-                  ["Performance", "performanceGate"],
-                  ["Rollback", "rollbackGate"],
-                ].map(([label, field]) => (
-                  <label key={field} className="rounded-xl border p-3">
-                    <span className="block text-xs text-muted-foreground">{label}</span>
-                    <select
-                      className="mt-2 h-9 w-full rounded-md border bg-background px-2 text-sm"
-                      value={(detail as any)[field]}
-                      onChange={(e) => patch(detail, { [field]: e.target.value } as any)}
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          {detail && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{detail.title}</DialogTitle>
+                <DialogDescription>
+                  {detail.module} • {improvementSimpleStatus(detail)} • criada em {formatDate(detail.createdAt)}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4">
+                <div className="rounded-xl border bg-muted/20 p-4 text-sm whitespace-pre-wrap">
+                  {detail.description || "Sem descrição."}
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-xl border p-3">
+                    <p className="text-xs text-muted-foreground">Origem</p>
+                    <p className="mt-1 font-medium">{SOURCE_LABELS[detail.sourceType ?? "super_admin"] ?? detail.sourceType ?? "Super Admin"}</p>
+                  </div>
+                  <div className="rounded-xl border p-3">
+                    <p className="text-xs text-muted-foreground">Responsável</p>
+                    <p className="mt-1 font-medium">{detail.ownerAgent || "Vendi"}</p>
+                  </div>
+                  <div className="rounded-xl border p-3">
+                    <p className="text-xs text-muted-foreground">Prazo do ciclo</p>
+                    <p className="mt-1 font-medium">{detail.dueAt ? formatDate(detail.dueAt) : "Até 24h"}</p>
+                  </div>
+                </div>
+
+                {(detail.acceptanceCriteria || detail.riskSummary || detail.dependencies) && (
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-xl border p-3">
+                      <p className="text-xs font-semibold uppercase text-muted-foreground">Critérios de aceite</p>
+                      <p className="mt-2 whitespace-pre-wrap text-sm">{detail.acceptanceCriteria || "Não informado."}</p>
+                    </div>
+                    <div className="rounded-xl border p-3">
+                      <p className="text-xs font-semibold uppercase text-muted-foreground">Riscos</p>
+                      <p className="mt-2 whitespace-pre-wrap text-sm">{detail.riskSummary || "Não informado."}</p>
+                    </div>
+                    <div className="rounded-xl border p-3">
+                      <p className="text-xs font-semibold uppercase text-muted-foreground">Dependências</p>
+                      <p className="mt-2 whitespace-pre-wrap text-sm">{detail.dependencies || "Nenhuma informada."}</p>
+                    </div>
+                  </div>
+                )}
+
+                {detail.agentSummary && (
+                  <div className="rounded-xl border p-4">
+                    <p className="text-xs font-semibold uppercase text-muted-foreground">Resumo do Vendi / Dev IA</p>
+                    <p className="mt-2 whitespace-pre-wrap text-sm">{detail.agentSummary}</p>
+                  </div>
+                )}
+
+                {detail.testSummary && (
+                  <div className="rounded-xl border p-4">
+                    <p className="text-xs font-semibold uppercase text-muted-foreground">Testes</p>
+                    <p className="mt-2 whitespace-pre-wrap break-words text-sm">{detail.testSummary}</p>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => post("/api/admin/improvements/" + detail.id + "/start-agent", undefined, "Vendi iniciou o trabalho")}
+                    disabled={!!busy}
+                  >
+                    <Bot className="mr-2 h-4 w-4" />
+                    Executar Vendi
+                  </Button>
+                  {detail.prNumber && (
+                    <Button
+                      variant="outline"
+                      onClick={() => post("/api/admin/improvements/" + detail.id + "/check-tests", undefined, "Testes verificados")}
+                      disabled={!!busy}
                     >
-                      <option value="pending">Pendente</option>
-                      <option value="passed">Aprovado</option>
-                      <option value="failed">Falhou</option>
-                      <option value="not_applicable">N/A</option>
-                    </select>
-                  </label>
-                ))}
+                      <SearchCheck className="mr-2 h-4 w-4" />
+                      Verificar testes
+                    </Button>
+                  )}
+                  {detail.testStatus === "passed" && detail.status !== "em_homologacao" && detail.status !== "producao_validada" && (
+                    <Button
+                      variant="outline"
+                      onClick={() => post("/api/admin/improvements/" + detail.id + "/prepare-test", undefined, "Versão enviada para ambiente de teste")}
+                      disabled={!!busy}
+                    >
+                      <TestTube2 className="mr-2 h-4 w-4" />
+                      Preparar teste
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setAdjustOpen(detail);
+                      setAdjustment("");
+                    }}
+                  >
+                    <WandSparkles className="mr-2 h-4 w-4" />
+                    Solicitar ajuste
+                  </Button>
+                  {detail.prUrl && (
+                    <Button variant="ghost" asChild>
+                      <a href={detail.prUrl} target="_blank" rel="noreferrer">
+                        Abrir PR
+                        <ExternalLink className="ml-2 h-4 w-4" />
+                      </a>
+                    </Button>
+                  )}
+                  {detail.homologUrl && (
+                    <Button variant="ghost" asChild>
+                      <a href={detail.homologUrl} target="_blank" rel="noreferrer">
+                        Abrir teste
+                        <ExternalLink className="ml-2 h-4 w-4" />
+                      </a>
+                    </Button>
+                  )}
+                </div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {detail.prUrl && <Button variant="outline" asChild><a href={detail.prUrl} target="_blank" rel="noreferrer">Abrir PR<ExternalLink className="ml-2 h-4 w-4" /></a></Button>}
-                {detail.homologUrl && <Button variant="outline" asChild><a href={detail.homologUrl} target="_blank" rel="noreferrer">Abrir homologação<ExternalLink className="ml-2 h-4 w-4" /></a></Button>}
-                {detail.productionUrl && <Button variant="outline" asChild><a href={detail.productionUrl} target="_blank" rel="noreferrer">Abrir produção<ExternalLink className="ml-2 h-4 w-4" /></a></Button>}
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!releaseDetail} onOpenChange={(open) => !open && setReleaseDetail(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          {releaseDetail && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{releaseDetail.version} — {releaseDetail.name}</DialogTitle>
+                <DialogDescription>
+                  {RELEASE_LABELS[releaseDetail.status] ?? releaseDetail.status} • criada em {formatDate(releaseDetail.createdAt)}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="grid gap-4">
+                <div className="grid gap-3 sm:grid-cols-4">
+                  <div className="rounded-xl border p-3">
+                    <p className="text-xs text-muted-foreground">Melhorias</p>
+                    <p className="mt-1 text-lg font-semibold">{releaseDetail.improvementIds.length}</p>
+                  </div>
+                  <div className="rounded-xl border p-3">
+                    <p className="text-xs text-muted-foreground">Teste</p>
+                    <p className="mt-1 font-medium">{releaseDetail.testStatus === "passed" ? "Confirmado" : "Pendente"}</p>
+                  </div>
+                  <div className="rounded-xl border p-3">
+                    <p className="text-xs text-muted-foreground">Aprovação</p>
+                    <p className="mt-1 font-medium">{releaseDetail.approvedAt ? formatDate(releaseDetail.approvedAt) : "—"}</p>
+                  </div>
+                  <div className="rounded-xl border p-3">
+                    <p className="text-xs text-muted-foreground">Publicação</p>
+                    <p className="mt-1 font-medium">{releaseDetail.scheduledAt ? formatDate(releaseDetail.scheduledAt) : releaseDetail.publishedAt ? formatDate(releaseDetail.publishedAt) : "—"}</p>
+                  </div>
+                </div>
+
+                {releaseDetail.impact && (
+                  <div className="rounded-xl border p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-medium">Comparação do que foi solicitado x o que mudou</p>
+                        <p className="text-xs text-muted-foreground">Qualquer alteração não esperada bloqueia a publicação.</p>
+                      </div>
+                      <Badge variant={releaseDetail.impact.clean ? "default" : "destructive"}>
+                        {releaseDetail.impact.clean ? "Sem mudança extra" : "Revisão necessária"}
+                      </Badge>
+                    </div>
+                    <div className="mt-4 grid gap-3 md:grid-cols-3">
+                      <div className="rounded-lg bg-muted/30 p-3">
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">Esperado</p>
+                        <p className="mt-1 text-2xl font-semibold">{releaseDetail.impact.expectedFiles.length}</p>
+                        <p className="text-xs text-muted-foreground">arquivos vinculados às melhorias</p>
+                      </div>
+                      <div className="rounded-lg bg-muted/30 p-3">
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">Alterado</p>
+                        <p className="mt-1 text-2xl font-semibold">{releaseDetail.impact.actualFiles.length}</p>
+                        <p className="text-xs text-muted-foreground">arquivos na versão de teste</p>
+                      </div>
+                      <div className="rounded-lg bg-muted/30 p-3">
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">Não esperado</p>
+                        <p className="mt-1 text-2xl font-semibold">{releaseDetail.impact.unexpectedFiles.length}</p>
+                        <p className="text-xs text-muted-foreground">bloqueia aprovação</p>
+                      </div>
+                    </div>
+
+                    {releaseDetail.impact.unexpectedFiles.length > 0 && (
+                      <div className="mt-4 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+                        <p className="text-sm font-medium text-destructive">Alterações fora do escopo</p>
+                        <div className="mt-2 space-y-1 text-xs">
+                          {releaseDetail.impact.unexpectedFiles.map((file) => (
+                            <p key={file.path} className="font-mono">{file.path}</p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {releaseDetail.impact.missingExpectedFiles.length > 0 && (
+                      <div className="mt-4 rounded-lg border p-3">
+                        <p className="text-sm font-medium">Mudanças esperadas ainda não chegaram à versão de teste</p>
+                        <div className="mt-2 space-y-1 text-xs">
+                          {releaseDetail.impact.missingExpectedFiles.map((file) => (
+                            <p key={file} className="font-mono">{file}</p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="rounded-xl border p-4">
+                  <p className="text-xs font-semibold uppercase text-muted-foreground">Resumo da publicação</p>
+                  <p className="mt-2 whitespace-pre-wrap text-sm">{releaseDetail.summary || "Sem resumo."}</p>
+                </div>
+
+                {releaseDetail.releasePrUrl && (
+                  <Button variant="outline" asChild className="w-fit">
+                    <a href={releaseDetail.releasePrUrl} target="_blank" rel="noreferrer">
+                      Abrir PR da publicação
+                      <ExternalLink className="ml-2 h-4 w-4" />
+                    </a>
+                  </Button>
+                )}
               </div>
-              {detail.testSummary && <div className="rounded-xl border p-4"><p className="text-xs font-semibold uppercase text-muted-foreground">Resultado dos testes</p><p className="mt-2 whitespace-pre-wrap text-sm">{detail.testSummary}</p></div>}
-            </div>
-          </>}
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>
