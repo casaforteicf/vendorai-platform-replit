@@ -309,7 +309,7 @@ router.patch("/messages/:id", async (req, res) => {
 
 router.delete("/messages/:id", async (req, res) => {
   const [existing] = await db
-    .select({ id: messagesTable.id, tenantId: messagesTable.tenantId })
+    .select({ id: messagesTable.id, tenantId: messagesTable.tenantId, conversationId: messagesTable.conversationId })
     .from(messagesTable)
     .where(eq(messagesTable.id, String(req.params.id)));
 
