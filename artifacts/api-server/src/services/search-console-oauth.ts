@@ -425,7 +425,7 @@ export async function verifyAndActivateSearchConsole(tenantId: string): Promise<
   // dá erro se já existir) e submete o sitemap logo em seguida.
   await fetch(`${SEARCH_CONSOLE_API}/sites/${encodeURIComponent(canonicalSiteUrl)}`, {
     method: "PUT",
-    headers: { Authorization: `Bearer ${conn.accessToken}` },
+    headers: { Authorization: `Bearer ${conn.accessToken!}` },
   });
 
   const sitemapSubmitted = await submitSitemap(conn.accessToken!, canonicalSiteUrl, tenantId);

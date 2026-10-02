@@ -4107,6 +4107,8 @@ export function renderOrcamentoPdf(args: {
     <td class="r fw">${fmtBRL(row.value)}</td>
     <td>${row.marcoPagamento ? escapeProposalText(row.marcoPagamento) : "Conforme condição comercial"}${row.observacao ? `<span class="schedule-note">${escapeProposalText(row.observacao)}</span>` : ""}</td>
   </tr>`).join("");
+  const showExecutionSchedule = presentation.mostrarCronogramaExecucao;
+  const showPhysicalFinancial = presentation.mostrarFisicoFinanceiro;
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">

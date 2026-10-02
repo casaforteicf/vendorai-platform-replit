@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
-import type { Pool } from "pg";
+
+type RenderGalleryClient = {
+  query: (text: string, values?: unknown[]) => Promise<{ rows: any[]; rowCount?: number | null }>;
+  release: () => void;
+};
+type RenderGalleryPool = { connect: () => Promise<RenderGalleryClient> };
 
 export class RenderGalleryError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -43,7 +48,7 @@ export function withLightingVariation(notes: unknown, lighting: string) {
 }
 
 export async function updateConceptRenderGallery(
-  pool: Pick<Pool, "connect">,
+  pool: RenderGalleryPool,
   input: { tenantId: string; renderId: string; action: "primary" | "regenerate"; requestId?: string; lighting?: string },
 ) {
   if (input.action === "regenerate" && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.requestId ?? "")) {

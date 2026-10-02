@@ -27,6 +27,22 @@ export const customerIntelligenceTable = pgTable("customer_intelligence", {
   nextBestActionReason: text("next_best_action_reason"),
   scoreExplicacao: text("score_explicacao"),
   churnRiskExplicacao: text("churn_risk_explicacao"),
+
+  // Customer Intelligence V2 — saúde do relacionamento é o indicador canônico.
+  // churnRisk permanece por compatibilidade com regras/relatórios legados.
+  healthScore: integer("health_score"),
+  healthStatus: text("health_status").$type<"saudavel" | "atencao" | "alto_risco" | "critico">(),
+  riskType: text("risk_type").$type<"perda_comercial" | "churn" | "operacional" | "insatisfacao" | "desengajamento" | "financeiro" | "nenhum">(),
+  riskLevel: text("risk_level").$type<"baixo" | "atencao" | "alto" | "critico">(),
+  riskTrend: text("risk_trend").$type<"melhorando" | "estavel" | "piorando">(),
+  analysisConfidence: integer("analysis_confidence"),
+  healthDimensions: jsonb("health_dimensions").$type<Record<string, number>>(),
+  positiveSignals: jsonb("positive_signals").$type<Array<Record<string, unknown>>>(),
+  negativeSignals: jsonb("negative_signals").$type<Array<Record<string, unknown>>>(),
+  riskFactors: jsonb("risk_factors").$type<Array<Record<string, unknown>>>(),
+  riskEvents: jsonb("risk_events").$type<Array<Record<string, unknown>>>(),
+  analysisVersion: integer("analysis_version").notNull().default(1),
+
   churnReasonsEditedBy: text("churn_reasons_edited_by").$type<"ai" | "rep">(),
   churnReasonsEditedAt: timestamp("churn_reasons_edited_at"),
   lastAnalyzedAt: timestamp("last_analyzed_at"),
@@ -40,6 +56,8 @@ export const customerIntelligenceTable = pgTable("customer_intelligence", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => [
   check("churn_risk_range", sql`${table.churnRisk} >= 0 AND ${table.churnRisk} <= 100`),
+  check("health_score_range", sql`${table.healthScore} >= 0 AND ${table.healthScore} <= 100`),
+  check("analysis_confidence_range", sql`${table.analysisConfidence} >= 0 AND ${table.analysisConfidence} <= 100`),
 ]);
 
 export const insertCustomerIntelligenceSchema = createInsertSchema(
@@ -47,6 +65,8 @@ export const insertCustomerIntelligenceSchema = createInsertSchema(
   {
     lastAnalyzedAt: z.coerce.date().optional(),
     churnRisk: z.number().int().min(0).max(100).optional(),
+    healthScore: z.number().int().min(0).max(100).optional(),
+    analysisConfidence: z.number().int().min(0).max(100).optional(),
     churnReasonsEditedBy: z.enum(["ai", "rep"]).nullable().optional(),
     churnReasonsEditedAt: z.coerce.date().optional(),
   }
@@ -57,6 +77,8 @@ export const updateCustomerIntelligenceSchema = createSelectSchema(
   {
     lastAnalyzedAt: z.coerce.date().optional(),
     churnRisk: z.number().int().min(0).max(100).optional(),
+    healthScore: z.number().int().min(0).max(100).optional(),
+    analysisConfidence: z.number().int().min(0).max(100).optional(),
     churnReasonsEditedBy: z.enum(["ai", "rep"]).nullable().optional(),
     churnReasonsEditedAt: z.coerce.date().optional(),
     nextBestAction: z.string().max(300).nullable().optional(),

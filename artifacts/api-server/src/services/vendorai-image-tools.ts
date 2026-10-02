@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import sharp from "sharp";
+import sharp, { type Sharp } from "sharp";
 import { db, mediaAssetsTable } from "@workspace/db";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import {
@@ -64,7 +64,7 @@ function mimeFor(format: "jpeg" | "png" | "webp"): string {
 }
 
 async function applyOutputFormat(
-  pipeline: sharp.Sharp,
+  pipeline: Sharp,
   format: "jpeg" | "png" | "webp",
   quality: number,
 ): Promise<Buffer> {

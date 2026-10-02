@@ -346,7 +346,7 @@ export async function controlLiveBrowserSession(
     const uploadRoot = path.resolve(process.env["BROWSER_UPLOAD_DIR"] ?? path.join(os.tmpdir(), "vendorai-uploads"));
     const requested = path.resolve(uploadRoot, command.fileName);
     if (!requested.startsWith(uploadRoot + path.sep)) throw new Error("Arquivo de upload fora do diretório permitido");
-    const handle = await session.page.$(command.selector);
+    const handle = await session.page.$(command.selector) as import("puppeteer-core").ElementHandle<HTMLInputElement> | null;
     if (!handle) throw new Error("Campo de upload não encontrado");
     await handle.uploadFile(requested);
   } else if (command.action === "download") {

@@ -4,10 +4,11 @@ import { db, mediaJobsTable } from "@workspace/db";
 export type MediaJobStatus = "running" | "done" | "error";
 
 export interface MediaJobResultItem {
-  name: string;
+  name?: string;
   status: "pending" | "generating" | "done" | "error";
   videoUrl?: string;
   error?: string;
+  [key: string]: unknown;
 }
 
 export interface MediaJobSnapshot {

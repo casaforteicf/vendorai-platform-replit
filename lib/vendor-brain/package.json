@@ -23,6 +23,7 @@
     "./media-retrieval-director": "./src/media-retrieval-director.ts",
     "./site-section-refinement": "./src/site-section-refinement.ts",
     "./site-generator-2": "./src/site-generator-2.ts",
+    "./web-runtime": "./src/web-runtime.ts",
     "./intelligence-routing": "./src/intelligence-routing.ts",
     "./revenue-scout-bridge": "./src/revenue-scout-bridge.ts",
     "./business-observer": "./src/business-observer.ts",

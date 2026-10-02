@@ -240,7 +240,13 @@ export async function runVerticalRevenueForTenant(tenantId: string, log: Logger)
   const snapshots = new Map<string, Snapshot>();
   for (const proposal of proposals) {
     if (!proposal.leadId) continue;
-    const snapshot = snapshots.get(proposal.leadId) ?? { dates:[], totals:[], products:new Map(), productPrices:new Map(), purchases:[] };
+    const snapshot: Snapshot = snapshots.get(proposal.leadId) ?? {
+      dates: [],
+      totals: [],
+      products: new Map<string, string>(),
+      productPrices: new Map<string, number[]>(),
+      purchases: [],
+    };
     const date = proposal.acceptedAt ?? proposal.updatedAt;
     const total = Number(proposal.valorTotal ?? 0);
     snapshot.dates.push(date);

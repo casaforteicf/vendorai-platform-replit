@@ -1,7 +1,11 @@
-import type { PoolClient } from "pg";
 import type { Logger } from "pino";
 import { vendorPool } from "../lib/vendorDb";
 import { logger } from "../lib/logger.js";
+
+type SqlClient = {
+  query: (text: string, values?: unknown[]) => Promise<{ rows: any[]; rowCount?: number | null }>;
+  release: () => void;
+};
 
 type Point = { latitude: number; longitude: number };
 type Candidate = {
@@ -47,7 +51,7 @@ function orderByNearest(origin: Point, candidates: Candidate[]): Candidate[] {
 }
 
 async function addPending(
-  client: PoolClient,
+  client: SqlClient,
   tenantId: string,
   waveId: string,
   orderId: string | null,

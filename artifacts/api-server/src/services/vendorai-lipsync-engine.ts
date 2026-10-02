@@ -148,8 +148,8 @@ export async function generateVendorAiLipSync(input: {
     const form = new FormData();
     form.append("job_id", jobId);
     form.append("bbox_shift", String(bboxShift));
-    form.append("source_face", new Blob([faceBuffer], { type: sources.face.mimeType }), sources.face.filename);
-    form.append("audio", new Blob([audioBuffer], { type: sources.audio.mimeType }), sources.audio.filename);
+    form.append("source_face", new Blob([new Uint8Array(faceBuffer)], { type: sources.face.mimeType }), sources.face.filename);
+    form.append("audio", new Blob([new Uint8Array(audioBuffer)], { type: sources.audio.mimeType }), sources.audio.filename);
 
     const headers: Record<string, string> = {};
     const secret = process.env["VENDORAI_LIPSYNC_WORKER_SECRET"];
