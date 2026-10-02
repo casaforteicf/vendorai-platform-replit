@@ -70,10 +70,14 @@ const pipelineDotClass: Record<string, string> = {
 
 const hiddenFromCommercialFlow = new Set(["em_aquecimento", "em_execucao", "entregue", "parceiro"]);
 
-function tomorrow() {
-  const d = new Date(Date.now() + 86400000);
+function deadlineFromNow(minutes = 24 * 60) {
+  const d = new Date(Date.now() + minutes * 60 * 1000);
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
   return d.toISOString().slice(0, 16);
+}
+
+function tomorrow() {
+  return deadlineFromNow();
 }
 
 function formatDeadline(value?: string | null) {
@@ -131,18 +135,23 @@ export default function LeadWorkspace() {
   }, [currentStage, stages]);
   const initialNext = requestedStage ?? stages[currentIndex + 1]?.key ?? "";
   const pending = useMemo(() => activities
-    .filter((a) => ["pendente", "planejado"].includes(a.status) && (!deal || !a.dealId || a.dealId === deal.id))
-    .sort((a, b) => new Date(a.dataVencimento ?? "9999").getTime() - new Date(b.dataVencimento ?? "9999").getTime()), [activities, deal]);
+    .filter((a) => ["pendente", "planejado", "em_andamento"].includes(a.status))
+    .sort((a, b) => new Date(a.dataVencimento ?? "9999").getTime() - new Date(b.dataVencimento ?? "9999").getTime()), [activities]);
   const nextPending = pending[0];
   const overduePendingCount = pending.filter((activity) => activity.dataVencimento && new Date(activity.dataVencimento).getTime() < Date.now()).length;
   const nextPendingOverdue = Boolean(nextPending?.dataVencimento && new Date(nextPending.dataVencimento).getTime() < Date.now());
   const displayUser = (uid?: string | null) => users.find((u) => u.id === uid)?.name ?? users.find((u) => u.id === uid)?.email ?? "Não definido";
+  const initialActivityConfig = stages.find((stage) => stage.key === initialNext) as (typeof stages[number] & {
+    atividadePadraoTitulo?: string | null;
+    atividadePadraoDescricao?: string | null;
+    atividadePadraoPrazoMinutos?: number | null;
+  }) | undefined;
   const [open, setOpen] = useState(Boolean(requestedStage));
   const [nextStage, setNextStage] = useState(initialNext);
   const [owner, setOwner] = useState(deal?.assignedTo ?? "");
-  const [title, setTitle] = useState(guidance[initialNext]?.[1] ?? "Dar continuidade ao atendimento");
-  const [due, setDue] = useState(tomorrow());
-  const [description, setDescription] = useState("");
+  const [title, setTitle] = useState(initialActivityConfig?.atividadePadraoTitulo?.trim() || guidance[initialNext]?.[1] || "Dar continuidade ao atendimento");
+  const [due, setDue] = useState(deadlineFromNow(initialActivityConfig?.atividadePadraoPrazoMinutos ?? undefined));
+  const [description, setDescription] = useState(initialActivityConfig?.atividadePadraoDescricao ?? "");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [editEligible, setEditEligible] = useState(false);
@@ -193,13 +202,24 @@ export default function LeadWorkspace() {
     }
   }
 
+  function applyStageActivityDefaults(stageKey: string) {
+    const stage = stages.find((item) => item.key === stageKey) as (typeof stages[number] & {
+      atividadePadraoTitulo?: string | null;
+      atividadePadraoDescricao?: string | null;
+      atividadePadraoPrazoMinutos?: number | null;
+    }) | undefined;
+    setTitle(stage?.atividadePadraoTitulo?.trim() || guidance[stageKey]?.[1] || "Dar continuidade ao atendimento");
+    setDescription(stage?.atividadePadraoDescricao ?? "");
+    setDue(deadlineFromNow(stage?.atividadePadraoPrazoMinutos ?? undefined));
+  }
+
   function showAdvance() {
     const stage = deal?.etapa === "em_aquecimento"
       ? "novo"
       : (requestedStage ?? stages[currentIndex + 1]?.key ?? "");
     setNextStage(stage);
     setOwner(deal?.assignedTo ?? user?.id ?? "");
-    setTitle(guidance[stage]?.[1] ?? "Dar continuidade ao atendimento");
+    applyStageActivityDefaults(stage);
     setEditEligible(false);
     setOpen(true);
   }
@@ -287,7 +307,17 @@ export default function LeadWorkspace() {
           qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }),
           qc.invalidateQueries({ queryKey: getListActivitiesQueryKey(tenantId, { leadId: id }) }),
         ]);
+        await qc.refetchQueries({ queryKey: getListDealsQueryKey(tenantId) });
         setOpen(false);
+
+        const activeDealId = result?.deal?.id as string | undefined;
+        if (activeDealId && activeDealId !== deal.id) {
+          const params = new URLSearchParams(window.location.search);
+          params.set("dealId", activeDealId);
+          params.delete("targetStage");
+          navigate(window.location.pathname + "?" + params.toString());
+        }
+
         toast({
           title: result.alreadyResumed ? "Atendimento já retomado" : "Novo ciclo comercial iniciado",
           description: "O Aquecimento ficou no histórico e a próxima atividade foi atribuída a " + displayUser(owner) + ".",
@@ -307,6 +337,7 @@ export default function LeadWorkspace() {
         qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }),
         qc.invalidateQueries({ queryKey: getListActivitiesQueryKey(tenantId, { leadId: id }) }),
       ]);
+      await qc.refetchQueries({ queryKey: getListDealsQueryKey(tenantId) });
       setOpen(false);
       toast({ title: "Etapa avançada", description: "Próxima atividade atribuída a " + displayUser(owner) + "." });
     } catch (e) {
@@ -437,7 +468,7 @@ export default function LeadWorkspace() {
           {pending.length > 0 && (
             <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>Há {pending.length} atividade(s) pendente(s) neste atendimento{overduePendingCount > 0 ? `, sendo ${overduePendingCount} vencida(s)` : ""}. Ao avançar, elas continuam registradas; conclua ou cancele o que não fizer mais sentido para evitar uma fila duplicada.</span>
+              <span>Há {pending.length} atividade(s) pendente(s) neste lead{overduePendingCount > 0 ? `, sendo ${overduePendingCount} vencida(s)` : ""}. Ao avançar, elas continuam registradas; conclua ou cancele o que não fizer mais sentido para evitar uma fila duplicada.</span>
             </div>
           )}
           {(() => {
@@ -454,7 +485,7 @@ export default function LeadWorkspace() {
             );
           })()}
           <Field label="Nova etapa">
-            <Select value={nextStage} onValueChange={(v) => { setNextStage(v); setTitle(guidance[v]?.[1] ?? "Dar continuidade ao atendimento"); setEditEligible(false); }}>
+            <Select value={nextStage} onValueChange={(v) => { setNextStage(v); applyStageActivityDefaults(v); setEditEligible(false); }}>
               <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
               <SelectContent>{stages.filter((s, index) => {
                 if (deal?.etapa === "em_aquecimento") return s.key === "novo";

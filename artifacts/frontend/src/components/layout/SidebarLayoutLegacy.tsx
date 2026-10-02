@@ -213,7 +213,7 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
   });
   const MODULE_TO_HREFS: Record<string, string[]> = {
     dashboard:  ["/", "/trabalho"],
-    leads:      ["/leads", "/deals", "/pipeline-operacional", "/pipeline-relacionamento"],
+    leads:      ["/leads", "/empresas", "/deals", "/pipeline-operacional", "/pipeline-relacionamento"],
     prospector: ["/app/prospector"],
     scheduler:  ["/agenda"],
     revenue:    ["/scout", "/scout/regras", "/scout/oportunidades", "/scout/pipeline", "/scout/seguros/renovacoes"],
@@ -443,6 +443,7 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
     { name: "Dashboard",     href: "/",             icon: LayoutDashboard, sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "suporte", "entrega", "administrador", "outro"] as UserFunction[] },
     { name: "Central de Trabalho", href: "/trabalho", icon: ClipboardCheck, sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "entrega", "administrador", "outro"] as UserFunction[] },
     { name: "Leads",         href: "/leads",         icon: Users,           sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "administrador", "outro"] as UserFunction[] },
+    { name: "Empresas",      href: "/empresas",      icon: Building2,       sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "administrador", "outro"] as UserFunction[] },
     { name: "Não-Leads",     href: "/contacts-nonleads", icon: UserCog,     sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "administrador", "outro"] as UserFunction[] },
     { name: "Prospector",    href: "/app/prospector", icon: Search,         sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "administrador", "outro"] as UserFunction[] },
     { name: "Negócios",      href: "/deals",         icon: Briefcase,       sellerHidden: false, section: "crm", fn: ["vendedor", "entrega", "administrador", "outro"] as UserFunction[] },

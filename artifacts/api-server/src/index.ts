@@ -94,6 +94,17 @@ async function runStartupMigrations(): Promise<boolean> {
   try {
     const roleResult = await pool.query<{ current_user: string }>("select current_user");
     const currentRole = roleResult.rows[0]?.current_user;
+    const homologationManagedSchema = ["1", "true"].includes(
+      String(process.env["VENDORAI_HOMOLOGATION_SEED"] ?? "").toLowerCase(),
+    );
+
+    if (homologationManagedSchema) {
+      await pool.query("select 1");
+      logger.info(
+        "startup migrations: homologação usa schema gerenciado; auto-migrations de produção foram ignoradas",
+      );
+      return true;
+    }
 
     if (currentRole === "vendorai_app") {
       await pool.query("select 1");

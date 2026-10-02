@@ -86,6 +86,20 @@ export const tenantsTable = pgTable(
       .$type<Record<string, unknown>>()
       .notNull()
       .default({}),
+    // Classificações configuráveis de contatos que não são leads.
+    // Cada tenant mantém sua própria lista sem misturar esses contatos
+    // com a pipeline comercial.
+    naoLeadClassificacoes: json("nao_lead_classificacoes")
+      .$type<Array<{ id: string; label: string; active?: boolean; description?: string }>>()
+      .notNull()
+      .default([
+        { id: "colaborador", label: "Colaborador", active: true },
+        { id: "fornecedor", label: "Fornecedor", active: true },
+        { id: "parceiro", label: "Parceiro", active: true },
+        { id: "familiar", label: "Familiar", active: true },
+        { id: "amigo", label: "Amigo", active: true },
+        { id: "outro", label: "Outro", active: true },
+      ]),
     setupCompletedAt: timestamp("setup_completed_at"),
     autonomyEnabledAt: timestamp("autonomy_enabled_at"),
     monthlyTokenLimit: integer("monthly_token_limit"),

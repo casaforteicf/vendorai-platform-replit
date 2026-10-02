@@ -10,14 +10,27 @@ import {
 } from "./helpers/auth.js";
 import { MockRow, createDbHelpers } from "./helpers/isolation.js";
 
-const { mockDbSelect, mockDbUpdate, mockDbDelete, mockDbInsert } = vi.hoisted(
-  () => ({
-    mockDbSelect: vi.fn(),
-    mockDbUpdate: vi.fn(),
-    mockDbDelete: vi.fn(),
-    mockDbInsert: vi.fn(),
-  })
-);
+const {
+  mockDbSelect,
+  mockDbUpdate,
+  mockDbDelete,
+  mockDbInsert,
+  mockCanAccessConversation,
+  mockCanViewAllConversations,
+} = vi.hoisted(() => ({
+  mockDbSelect: vi.fn(),
+  mockDbUpdate: vi.fn(),
+  mockDbDelete: vi.fn(),
+  mockDbInsert: vi.fn(),
+  mockCanAccessConversation: vi.fn(),
+  mockCanViewAllConversations: vi.fn(),
+}));
+
+vi.mock("../lib/conversation-access.js", () => ({
+  canAccessConversation: mockCanAccessConversation,
+  canViewAllConversations: mockCanViewAllConversations,
+  conversationOwnedByUserCondition: vi.fn(() => "ownership-condition"),
+}));
 
 vi.mock("@workspace/db", () => ({
   db: {
@@ -68,12 +81,27 @@ describe("GET /api/conversations/:id — cross-tenant isolation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     setupSelectReturning([recordOwnedByTenantB]);
+    mockCanViewAllConversations.mockResolvedValue(false);
+    mockCanAccessConversation.mockImplementation(async (req: any, tenantId: string) =>
+      req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId
+    );
   });
 
   it("returns 403 when tenant A requests a record owned by tenant B", async () => {
     const res = await request(app)
       .get(`/api/conversations/${RECORD_ID}`)
       .set("Authorization", `Bearer ${tokenA}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body).toMatchObject({ error: expect.stringContaining("Access denied") });
+  });
+
+  it("returns 403 when a same-tenant user is not authorized for the conversation", async () => {
+    mockCanAccessConversation.mockResolvedValueOnce(false);
+
+    const res = await request(app)
+      .get(`/api/conversations/${RECORD_ID}`)
+      .set("Authorization", `Bearer ${tokenB}`);
 
     expect(res.status).toBe(403);
     expect(res.body).toMatchObject({ error: expect.stringContaining("Access denied") });
@@ -113,6 +141,10 @@ describe("PATCH /api/conversations/:id — cross-tenant isolation", () => {
     vi.clearAllMocks();
     setupSelectReturning([recordOwnedByTenantB]);
     setupUpdateReturning([{ ...recordOwnedByTenantB, titulo: "Updated Chat" }]);
+    mockCanViewAllConversations.mockResolvedValue(false);
+    mockCanAccessConversation.mockImplementation(async (req: any, tenantId: string) =>
+      req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId
+    );
   });
 
   it("returns 403 when tenant A patches a record owned by tenant B", async () => {
@@ -160,6 +192,10 @@ describe("DELETE /api/conversations/:id — cross-tenant isolation", () => {
     vi.clearAllMocks();
     setupSelectReturning([recordOwnedByTenantB]);
     setupDeleteSuccess();
+    mockCanViewAllConversations.mockResolvedValue(false);
+    mockCanAccessConversation.mockImplementation(async (req: any, tenantId: string) =>
+      req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId
+    );
   });
 
   it("returns 403 when tenant A deletes a record owned by tenant B", async () => {

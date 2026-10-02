@@ -50,6 +50,12 @@ export type ArchConceptConfiguration = {
     sillHeight?: number;
     openingStyle?: "hinged" | "sliding" | "fixed" | "tilt_turn";
     swing?: "left" | "right";
+    swingSide?: "inside" | "outside";
+    leafCount?: number;
+    frameProfile?: string;
+    glassType?: string;
+    manufacturer?: string;
+    catalogProductId?: string;
   }>;
   spaceProfiles?: Array<{
     id: string;
@@ -128,6 +134,8 @@ export type ArchConceptConfiguration = {
       quantity: number;
       basis: "geometry" | "concept";
       compositionCode?: string;
+      catalogProductId?: string;
+      manufacturer?: string;
     }>;
     links: {
       archProjetoId: string;

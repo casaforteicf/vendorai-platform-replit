@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
-import { Maximize2, Move, ZoomIn, ZoomOut } from "lucide-react";
+import { Magnet, Maximize2, Move, Route, ZoomIn, ZoomOut } from "lucide-react";
 import type { ConceptGeometry, ConceptRoomShape, OpeningMarker } from "./conceptGeometry";
-import { orthogonalEnd, snapPointToWallNetwork, wallLength, wallMidpoint, type ClosedSpace, type WallTopologyEndpointRef, type WallTopologyNode } from "./conceptWallNetwork";
+import { orthogonalEnd, snapPointToWallNetwork, snapPointToWallNetworkDetailed, wallLength, wallMidpoint, type ClosedSpace, type WallSnapKind, type WallTopologyEndpointRef, type WallTopologyNode } from "./conceptWallNetwork";
 
 export type ConceptPlanObject = {
   id: string;
@@ -417,9 +417,14 @@ export default function ConceptPlan2D({
   const [wallDrawStart, setWallDrawStart] = useState<{ x: number; y: number } | null>(null);
   const [wallChainOrigin, setWallChainOrigin] = useState<{ x: number; y: number } | null>(null);
   const [wallDrawPreview, setWallDrawPreview] = useState<{ x: number; y: number } | null>(null);
+  const [wallLengthInput, setWallLengthInput] = useState("");
+  const [wallLengthError, setWallLengthError] = useState<string | null>(null);
+  const [snapEnabled, setSnapEnabled] = useState(true);
+  const [orthogonalEnabled, setOrthogonalEnabled] = useState(true);
   const pendingClosedSpaceSelectRef = useRef(false);
   const previousClosedSpaceIdsRef = useRef(new Set<string>());
   const [snapGuides, setSnapGuides] = useState<{ x?: number; y?: number }>({});
+  const [activeWallSnap, setActiveWallSnap] = useState<{ kind: WallSnapKind; point: { x: number; y: number } } | null>(null);
   const [gesture, setGesture] = useState<null | {
     roomId: string;
     openingId?: string;
@@ -453,6 +458,9 @@ export default function ConceptPlan2D({
       setWallDrawStart(null);
       setWallChainOrigin(null);
       setWallDrawPreview(null);
+      setWallLengthInput("");
+      setWallLengthError(null);
+      setActiveWallSnap(null);
       pendingClosedSpaceSelectRef.current = false;
     }
   }, [interactionMode]);
@@ -605,11 +613,72 @@ export default function ConceptPlan2D({
         return;
       }
 
+      if (interactionMode === "draw-wall" && wallDrawStart) {
+        if (/^[0-9]$/.test(event.key)) {
+          event.preventDefault();
+          setWallLengthError(null);
+          setWallLengthInput((current) => `${current}${event.key}`);
+          return;
+        }
+        if ((event.key === "," || event.key === ".") && !wallLengthInput.includes(",") && !wallLengthInput.includes(".")) {
+          event.preventDefault();
+          setWallLengthError(null);
+          setWallLengthInput((current) => current ? `${current},` : "0,");
+          return;
+        }
+        if (event.key === "Backspace" && wallLengthInput) {
+          event.preventDefault();
+          setWallLengthError(null);
+          setWallLengthInput((current) => current.slice(0, -1));
+          return;
+        }
+        if (event.key === "Enter" && wallLengthInput.trim()) {
+          event.preventDefault();
+          const requestedLength = Number(wallLengthInput.replace(",", "."));
+          if (Number.isFinite(requestedLength) && requestedLength >= 0.5 && wallDrawPreview && onCreateCustomWall) {
+            const dx = wallDrawPreview.x - wallDrawStart.x;
+            const dy = wallDrawPreview.y - wallDrawStart.y;
+            const magnitude = Math.hypot(dx, dy);
+            const direction = magnitude > 0.001
+              ? { x: dx / magnitude, y: dy / magnitude }
+              : { x: 1, y: 0 };
+            const rawEnd = {
+              x: wallDrawStart.x + direction.x * requestedLength,
+              y: wallDrawStart.y + direction.y * requestedLength,
+            };
+            if (rawEnd.x < 0 || rawEnd.x > lotWidth || rawEnd.y < 0 || rawEnd.y > lotDepth) {
+              setWallLengthError("A medida ultrapassa o limite do terreno.");
+              return;
+            }
+            const end = rawEnd;
+            const actualLength = Math.hypot(end.x - wallDrawStart.x, end.y - wallDrawStart.y);
+            if (actualLength >= 0.5) {
+              onCreateCustomWall({
+                id: `custom-wall-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+                floor: activeFloor,
+                x1: wallDrawStart.x,
+                y1: wallDrawStart.y,
+                x2: end.x,
+                y2: end.y,
+                thickness: 0.15,
+              });
+              setWallDrawStart(end);
+              setWallDrawPreview(end);
+              setWallLengthInput("");
+              setWallLengthError(null);
+            }
+          }
+          return;
+        }
+      }
+
       if (interactionMode === "draw-wall" && (event.key === "Escape" || event.key === "Enter")) {
         event.preventDefault();
         setWallDrawStart(null);
         setWallChainOrigin(null);
         setWallDrawPreview(null);
+        setWallLengthInput("");
+        setWallLengthError(null);
         setSnapGuides({});
       }
     };
@@ -624,7 +693,7 @@ export default function ConceptPlan2D({
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [fitView, interactionMode]);
+  }, [activeFloor, fitView, interactionMode, onCreateCustomWall, wallDrawPreview, wallDrawStart, wallLengthInput]);
 
 
 
@@ -672,7 +741,7 @@ export default function ConceptPlan2D({
     return { x: result.x, y: result.y };
   };
 
-  const snap = (value: number) => Math.round(value * 4) / 4;
+  const snap = (value: number) => snapEnabled ? Math.round(value * 4) / 4 : value;
 
   const wallNetwork = [
     ...geometry.walls.map((wall) => ({
@@ -685,25 +754,38 @@ export default function ConceptPlan2D({
     ...customWalls,
   ];
 
-  const clampPoint = (point: { x: number; y: number }) => ({
-    x: snap(Math.max(0, Math.min(lotWidth, point.x))),
-    y: snap(Math.max(0, Math.min(lotDepth, point.y))),
+  const boundPoint = (point: { x: number; y: number }) => ({
+    x: Math.max(0, Math.min(lotWidth, point.x)),
+    y: Math.max(0, Math.min(lotDepth, point.y)),
   });
+
+  const clampPoint = (point: { x: number; y: number }) => {
+    const bounded = boundPoint(point);
+    return { x: snap(bounded.x), y: snap(bounded.y) };
+  };
 
   const handleDrawWallPoint = (point: { x: number; y: number }) => {
     const clamped = clampPoint(point);
-    const snappedToNetwork = snapPointToWallNetwork(clamped, wallNetwork, 0.35);
-    const snapped = clampPoint(snappedToNetwork);
+    const snapResult = snapEnabled
+      ? snapPointToWallNetworkDetailed(clamped, wallNetwork, 0.35)
+      : { point: clamped, kind: "none" as const, distance: Number.POSITIVE_INFINITY };
+    const snapped = clampPoint(snapResult.point);
+    setActiveWallSnap(snapResult.kind === "none" ? null : { kind: snapResult.kind, point: snapped });
     if (!wallDrawStart) {
       setWallDrawStart(snapped);
       setWallChainOrigin(snapped);
       setWallDrawPreview(snapped);
+      setWallLengthInput("");
       return;
     }
 
-    const rawEnd = orthogonalEnd(wallDrawStart, snapped);
-    const networkEnd = snapPointToWallNetwork(rawEnd, wallNetwork, 0.35);
-    let end = clampPoint(orthogonalEnd(wallDrawStart, networkEnd));
+    const rawEnd = orthogonalEnabled ? orthogonalEnd(wallDrawStart, snapped) : snapped;
+    const endSnapResult = snapEnabled
+      ? snapPointToWallNetworkDetailed(rawEnd, wallNetwork, 0.35)
+      : { point: rawEnd, kind: "none" as const, distance: Number.POSITIVE_INFINITY };
+    const networkEnd = endSnapResult.point;
+    let end = clampPoint(orthogonalEnabled ? orthogonalEnd(wallDrawStart, networkEnd) : networkEnd);
+    setActiveWallSnap(endSnapResult.kind === "none" ? null : { kind: endSnapResult.kind, point: end });
     const closeThreshold = 0.42;
     const nearOrigin = wallChainOrigin
       ? Math.hypot(end.x - wallChainOrigin.x, end.y - wallChainOrigin.y) <= closeThreshold
@@ -728,9 +810,11 @@ export default function ConceptPlan2D({
         setWallDrawStart(null);
         setWallChainOrigin(null);
         setWallDrawPreview(null);
+        setWallLengthInput("");
       } else {
         setWallDrawStart(end);
         setWallDrawPreview(end);
+        setWallLengthInput("");
       }
       return;
     }
@@ -792,10 +876,18 @@ export default function ConceptPlan2D({
     }
     if (interactionMode === "draw-wall" && wallDrawStart) {
       const clamped = clampPoint(point);
-      const snapped = snapPointToWallNetwork(clamped, wallNetwork, 0.35);
-      const orthogonal = orthogonalEnd(wallDrawStart, snapped);
-      const networkEnd = snapPointToWallNetwork(orthogonal, wallNetwork, 0.35);
-      let preview = clampPoint(orthogonalEnd(wallDrawStart, networkEnd));
+      const initialSnap = snapEnabled
+        ? snapPointToWallNetworkDetailed(clamped, wallNetwork, 0.35)
+        : { point: clamped, kind: "none" as const, distance: Number.POSITIVE_INFINITY };
+      const snapped = initialSnap.point;
+      const orthogonal = orthogonalEnabled ? orthogonalEnd(wallDrawStart, snapped) : snapped;
+      const finalSnap = snapEnabled
+        ? snapPointToWallNetworkDetailed(orthogonal, wallNetwork, 0.35)
+        : { point: orthogonal, kind: "none" as const, distance: Number.POSITIVE_INFINITY };
+      const networkEnd = finalSnap.point;
+      let preview = clampPoint(orthogonalEnabled ? orthogonalEnd(wallDrawStart, networkEnd) : networkEnd);
+      const snapKind = finalSnap.kind !== "none" ? finalSnap.kind : initialSnap.kind;
+      setActiveWallSnap(snapKind === "none" ? null : { kind: snapKind, point: preview });
       if (wallChainOrigin && Math.hypot(preview.x - wallChainOrigin.x, preview.y - wallChainOrigin.y) <= 0.42) {
         preview = wallChainOrigin;
       }
@@ -953,15 +1045,26 @@ export default function ConceptPlan2D({
       const originalY1 = gesture.wallY1 ?? wall.y1;
       const originalX2 = gesture.wallX2 ?? wall.x2;
       const originalY2 = gesture.wallY2 ?? wall.y2;
-      const horizontal = Math.abs(originalY1 - originalY2) < 0.01;
 
-      if (horizontal) {
-        const nextY = snap(Math.max(0, Math.min(lotDepth, originalY1 + dy)));
-        onUpdateCustomWall(wall.id, { y1: nextY, y2: nextY });
-      } else {
-        const nextX = snap(Math.max(0, Math.min(lotWidth, originalX1 + dx)));
-        onUpdateCustomWall(wall.id, { x1: nextX, x2: nextX });
-      }
+      let moveX = dx;
+      let moveY = dy;
+      const minX = Math.min(originalX1, originalX2);
+      const maxX = Math.max(originalX1, originalX2);
+      const minY = Math.min(originalY1, originalY2);
+      const maxY = Math.max(originalY1, originalY2);
+      moveX = Math.max(-minX, Math.min(lotWidth - maxX, moveX));
+      moveY = Math.max(-minY, Math.min(lotDepth - maxY, moveY));
+
+      const nextX1 = snap(originalX1 + moveX);
+      const nextY1 = snap(originalY1 + moveY);
+      const snappedMoveX = nextX1 - originalX1;
+      const snappedMoveY = nextY1 - originalY1;
+      onUpdateCustomWall(wall.id, {
+        x1: nextX1,
+        y1: nextY1,
+        x2: originalX2 + snappedMoveX,
+        y2: originalY2 + snappedMoveY,
+      });
       return;
     }
 
@@ -976,22 +1079,21 @@ export default function ConceptPlan2D({
       const originalY1 = gesture.wallY1 ?? wall.y1;
       const originalX2 = gesture.wallX2 ?? wall.x2;
       const originalY2 = gesture.wallY2 ?? wall.y2;
-      const horizontal = Math.abs(originalY1 - originalY2) < 0.01;
       const clamped = clampPoint(point);
-      const snapped = snapPointToWallNetwork(clamped, wallNetwork, 0.35, wall.id);
-      setSnapGuides(horizontal ? { x: snapped.x } : { y: snapped.y });
+      const snapResult = snapEnabled
+        ? snapPointToWallNetworkDetailed(clamped, wallNetwork, 0.35, wall.id)
+        : { point: clamped, kind: "none" as const, distance: Number.POSITIVE_INFINITY };
+      const snapped = snapResult.point;
+      setActiveWallSnap(snapResult.kind === "none" ? null : { kind: snapResult.kind, point: snapped });
+      setSnapGuides({ x: snapped.x, y: snapped.y });
 
       if (gesture.mode === "custom-wall-start") {
-        const next = horizontal
-          ? { x1: snapped.x, y1: originalY1 }
-          : { x1: originalX1, y1: snapped.y };
+        const next = { x1: snapped.x, y1: snapped.y };
         if (Math.hypot(originalX2 - next.x1, originalY2 - next.y1) >= 0.5) {
           onUpdateCustomWall(wall.id, next);
         }
       } else {
-        const next = horizontal
-          ? { x2: snapped.x, y2: originalY2 }
-          : { x2: originalX2, y2: snapped.y };
+        const next = { x2: snapped.x, y2: snapped.y };
         if (Math.hypot(next.x2 - originalX1, next.y2 - originalY1) >= 0.5) {
           onUpdateCustomWall(wall.id, next);
         }
@@ -1016,10 +1118,16 @@ export default function ConceptPlan2D({
     ) {
       const opening = geometry.openings.find((item) => item.id === gesture.openingId);
       if (!opening) return;
-      const horizontal = opening.orientation === "horizontal";
-      const centerAxis = horizontal ? opening.x : opening.y;
-      const pointerAxis = horizontal ? point.x : point.y;
-      const halfWidth = Math.max(0.25, Math.abs(pointerAxis - centerAxis));
+      const wallId = opening.roomId.startsWith("custom-wall:") ? opening.roomId.slice("custom-wall:".length) : null;
+      const wall = wallId ? customWalls.find((item) => item.id === wallId) ?? null : null;
+      const wallLengthValue = wall ? Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1) : 0;
+      const unit = wall && wallLengthValue > 0.001
+        ? { x: (wall.x2 - wall.x1) / wallLengthValue, y: (wall.y2 - wall.y1) / wallLengthValue }
+        : opening.orientation === "horizontal"
+          ? { x: 1, y: 0 }
+          : { x: 0, y: 1 };
+      const projection = (point.x - opening.x) * unit.x + (point.y - opening.y) * unit.y;
+      const halfWidth = Math.max(0.25, Math.abs(projection));
       onOpeningWidthChange(opening.id, Math.max(0.5, Math.min(4, snap(halfWidth * 2))));
       return;
     }
@@ -1033,24 +1141,22 @@ export default function ConceptPlan2D({
         const wallId = opening.roomId.slice("custom-wall:".length);
         const wall = customWalls.find((item) => item.id === wallId);
         if (!wall) return;
-        const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
-        if (horizontal) {
-          const minX = Math.min(wall.x1, wall.x2) + Math.min(pad, Math.abs(wall.x2 - wall.x1) / 3);
-          const maxX = Math.max(wall.x1, wall.x2) - Math.min(pad, Math.abs(wall.x2 - wall.x1) / 3);
-          onOpeningChange(opening.id, {
-            x: snap(Math.max(minX, Math.min(maxX, opening.x + dx))),
-            y: wall.y1,
-            type: opening.type,
-          });
-        } else {
-          const minY = Math.min(wall.y1, wall.y2) + Math.min(pad, Math.abs(wall.y2 - wall.y1) / 3);
-          const maxY = Math.max(wall.y1, wall.y2) - Math.min(pad, Math.abs(wall.y2 - wall.y1) / 3);
-          onOpeningChange(opening.id, {
-            x: wall.x1,
-            y: snap(Math.max(minY, Math.min(maxY, opening.y + dy))),
-            type: opening.type,
-          });
-        }
+        const wx = wall.x2 - wall.x1;
+        const wy = wall.y2 - wall.y1;
+        const wallLengthValue = Math.hypot(wx, wy);
+        if (wallLengthValue < 0.001) return;
+        const ux = wx / wallLengthValue;
+        const uy = wy / wallLengthValue;
+        const projectedDistance = (point.x - wall.x1) * ux + (point.y - wall.y1) * uy;
+        const openingHalf = Math.max(0.25, (opening.width ?? (opening.type === "door" ? 0.9 : 1.2)) / 2);
+        const minDistance = Math.min(openingHalf, wallLengthValue / 2);
+        const maxDistance = Math.max(minDistance, wallLengthValue - openingHalf);
+        const distanceAlongWall = Math.max(minDistance, Math.min(maxDistance, projectedDistance));
+        onOpeningChange(opening.id, {
+          x: wall.x1 + ux * distanceAlongWall,
+          y: wall.y1 + uy * distanceAlongWall,
+          type: opening.type,
+        });
         return;
       }
 
@@ -1162,6 +1268,29 @@ export default function ConceptPlan2D({
         <div className="mx-0.5 h-6 w-px bg-slate-200" />
         <button
           type="button"
+          onClick={() => setSnapEnabled((value) => !value)}
+          className={snapEnabled
+            ? "flex h-9 items-center gap-1.5 rounded-xl bg-sky-50 px-2.5 text-[11px] font-bold text-sky-700"
+            : "flex h-9 items-center gap-1.5 rounded-xl px-2.5 text-[11px] font-semibold text-slate-500 hover:bg-slate-100"}
+          title={snapEnabled ? "Snap inteligente ativo" : "Ativar snap inteligente"}
+        >
+          <Magnet className="h-3.5 w-3.5" />
+          <span className="hidden xl:inline">Snap</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setOrthogonalEnabled((value) => !value)}
+          className={orthogonalEnabled
+            ? "flex h-9 items-center gap-1.5 rounded-xl bg-emerald-50 px-2.5 text-[11px] font-bold text-emerald-700"
+            : "flex h-9 items-center gap-1.5 rounded-xl px-2.5 text-[11px] font-semibold text-slate-500 hover:bg-slate-100"}
+          title={orthogonalEnabled ? "Trava ortogonal ativa" : "Ativar trava ortogonal"}
+        >
+          <Route className="h-3.5 w-3.5" />
+          <span className="hidden xl:inline">Orto</span>
+        </button>
+        <div className="mx-0.5 h-6 w-px bg-slate-200" />
+        <button
+          type="button"
           onClick={resetView}
           className="grid h-9 w-9 place-items-center rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-950"
           title="Enquadrar projeto (F)"
@@ -1174,8 +1303,17 @@ export default function ConceptPlan2D({
           </div>
         )}
         {interactionMode === "draw-wall" && wallDrawStart && (
-          <div className="hidden items-center rounded-xl bg-orange-50 px-2.5 py-2 text-[11px] font-semibold text-orange-700 xl:flex">
-            Clique para continuar · Esc/Enter finaliza
+          <div className="hidden items-center gap-2 rounded-xl bg-orange-50 px-2.5 py-2 text-[11px] font-semibold text-orange-700 xl:flex">
+            {wallLengthInput ? (
+              <>
+                <span className="rounded-md bg-white px-2 py-1 font-bold tabular-nums text-orange-700 shadow-sm">
+                  {wallLengthInput} m
+                </span>
+                <span>Enter cria a parede</span>
+              </>
+            ) : (
+              <span className={wallLengthError ? "font-semibold text-red-600" : ""}>{wallLengthError ?? <>Clique para continuar ou digite a medida + Enter · Snap {snapEnabled ? "ON" : "OFF"} · Orto {orthogonalEnabled ? "ON" : "OFF"}</>}</span>
+            )}
           </div>
         )}
       </div>
@@ -1448,6 +1586,38 @@ export default function ConceptPlan2D({
             <circle cx={lotWidth / 2} cy={snapGuides.y} r="0.09" fill="#f97316" />
           </g>
         )}
+        {interactionMode === "draw-wall" && activeWallSnap && (
+          <g pointerEvents="none">
+            <circle
+              cx={activeWallSnap.point.x}
+              cy={activeWallSnap.point.y}
+              r="0.18"
+              fill="#ffffff"
+              stroke={activeWallSnap.kind === "intersection" ? "#dc2626" : activeWallSnap.kind === "midpoint" ? "#2563eb" : activeWallSnap.kind === "endpoint" ? "#16a34a" : activeWallSnap.kind === "alignment" ? "#7c3aed" : "#f97316"}
+              strokeWidth="0.07"
+            />
+            <text
+              x={activeWallSnap.point.x + 0.28}
+              y={activeWallSnap.point.y - 0.28}
+              fontSize="0.24"
+              fontWeight="800"
+              fill="#334155"
+              paintOrder="stroke"
+              stroke="#ffffff"
+              strokeWidth="0.09"
+            >
+              {activeWallSnap.kind === "intersection"
+                ? "Interseção"
+                : activeWallSnap.kind === "midpoint"
+                  ? "Meio"
+                  : activeWallSnap.kind === "endpoint"
+                    ? "Extremidade"
+                    : activeWallSnap.kind === "alignment"
+                      ? "Alinhamento"
+                      : "Perpendicular"}
+            </text>
+          </g>
+        )}
 
         {showLotBoundary && showDimensions && (
           <g pointerEvents="none">
@@ -1581,16 +1751,6 @@ export default function ConceptPlan2D({
                         ))}
                       </text>
                     )}
-                    <text
-                      x={space.centroid.x}
-                      y={space.centroid.y + badgeHeight / 2 - 0.18}
-                      textAnchor="middle"
-                      fontSize={areaFontSize}
-                      fontWeight="800"
-                      fill={selectedSpace ? "#c2410c" : "#475569"}
-                    >
-                      {space.area.toFixed(1)} m²
-                    </text>
                   </g>
                 );
               })()}
@@ -1602,7 +1762,6 @@ export default function ConceptPlan2D({
           const selected = selectedId === room.id;
           const fill = floorMaterialFill(roomFloorMaterials[room.id]) ?? ROOM_FILL[room.kind] ?? "#ffffff";
           const isPool = room.kind === "piscina";
-          const area = room.width * room.depth;
           const labelLines = splitRoomLabel(room.label);
           const labelSize = room.kind === "escada" ? 0.25 : fitLabelSize(room.label, room.width, room.depth);
           return (
@@ -1707,18 +1866,6 @@ export default function ConceptPlan2D({
                           </tspan>
                         ))}
                       </text>
-                      {room.width >= 2.1 && room.depth >= 1.8 && (
-                        <text
-                          x={room.x + room.width / 2}
-                          y={room.y + room.depth / 2 + (labelLines.length > 1 ? 0.42 : 0.30)}
-                          textAnchor="middle"
-                          fontSize="0.21"
-                          fontWeight="650"
-                          fill="#64748b"
-                        >
-                          {area.toFixed(1)} m²
-                        </text>
-                      )}
                     </>
                   )}
                 </>
@@ -2354,7 +2501,7 @@ export default function ConceptPlan2D({
                     return (
                       <>
                         <g
-                          className={horizontal ? "cursor-ns-resize" : "cursor-ew-resize"}
+                          className="cursor-move"
                         onPointerDown={(event) => {
                           if ((interactionMode !== "wall" && interactionMode !== "navigate") || !onUpdateCustomWall) return;
                           event.stopPropagation();
@@ -2398,7 +2545,7 @@ export default function ConceptPlan2D({
                             height="0.72"
                             requiredExtensions="http://www.w3.org/1999/xhtml"
                           >
-                            <div xmlns="http://www.w3.org/1999/xhtml" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%", height: "100%" }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%", height: "100%" }}>
                               <input
                                 aria-label="Espessura da parede"
                                 type="number"
@@ -2449,7 +2596,7 @@ export default function ConceptPlan2D({
                             height="0.72"
                             requiredExtensions="http://www.w3.org/1999/xhtml"
                           >
-                            <div xmlns="http://www.w3.org/1999/xhtml" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%", height: "100%" }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%", height: "100%" }}>
                               <input
                                 aria-label="Comprimento da parede"
                                 type="number"
@@ -2794,7 +2941,7 @@ export default function ConceptPlan2D({
             })()}
 
             {customWalls
-              .filter((wall) => wall.id === selectedCustomWallId && wallLength(wall) >= 0.5)
+              .filter((wall) => wall.floor === activeFloor && wallLength(wall) >= 0.5)
               .map((wall) => {
                 const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
                 const length = wallLength(wall);
@@ -2803,17 +2950,26 @@ export default function ConceptPlan2D({
                 const offsetX = horizontal ? 0 : (wall.x1 <= lotWidth / 2 ? -offset : offset);
                 const offsetY = horizontal ? (wall.y1 <= lotDepth / 2 ? -offset : offset) : 0;
                 return (
-                  <DimensionLine
+                  <g
                     key={`dimension-${wall.id}`}
-                    x1={wall.x1}
-                    y1={wall.y1}
-                    x2={wall.x2}
-                    y2={wall.y2}
-                    offsetX={offsetX}
-                    offsetY={offsetY}
-                    label={`${length.toFixed(2).replace(".", ",")} m`}
-                    tone={selected ? "#ea580c" : "#64748b"}
-                  />
+                    role="button"
+                    className="cursor-pointer"
+                    onPointerDown={(event) => {
+                      event.stopPropagation();
+                      onSelectCustomWall?.(wall.id);
+                    }}
+                  >
+                    <DimensionLine
+                      x1={wall.x1}
+                      y1={wall.y1}
+                      x2={wall.x2}
+                      y2={wall.y2}
+                      offsetX={offsetX}
+                      offsetY={offsetY}
+                      label={`${length.toFixed(2).replace(".", ",")} m`}
+                      tone={selected ? "#ea580c" : "#64748b"}
+                    />
+                  </g>
                 );
               })}
           </g>
@@ -2826,6 +2982,25 @@ export default function ConceptPlan2D({
           const horizontal = opening.orientation === "horizontal";
           const sliding = opening.openingStyle === "sliding";
           const swingRight = opening.swing === "right";
+          const swingOutside = opening.swingSide === "outside";
+          const swingSideFactor = swingOutside ? -1 : 1;
+          const leafCount = Math.max(1, Math.min(6, Math.round(opening.leafCount ?? (opening.type === "door" ? 1 : 2))));
+          const customWallId = opening.roomId.startsWith("custom-wall:") ? opening.roomId.slice("custom-wall:".length) : null;
+          const parentCustomWall = customWallId ? customWalls.find((wall) => wall.id === customWallId) ?? null : null;
+          const parentWallLength = parentCustomWall ? wallLength(parentCustomWall) : 0;
+          const wallUnit = parentCustomWall && parentWallLength > 0.001
+            ? { x: (parentCustomWall.x2 - parentCustomWall.x1) / parentWallLength, y: (parentCustomWall.y2 - parentCustomWall.y1) / parentWallLength }
+            : horizontal
+              ? { x: 1, y: 0 }
+              : { x: 0, y: 1 };
+          const openingStart = { x: opening.x - wallUnit.x * half, y: opening.y - wallUnit.y * half };
+          const openingEnd = { x: opening.x + wallUnit.x * half, y: opening.y + wallUnit.y * half };
+          const centerDistanceFromWallStart = parentCustomWall
+            ? Math.max(0, Math.min(parentWallLength, (opening.x - parentCustomWall.x1) * wallUnit.x + (opening.y - parentCustomWall.y1) * wallUnit.y))
+            : 0;
+          const clearanceStart = parentCustomWall ? Math.max(0, centerDistanceFromWallStart - half) : 0;
+          const clearanceEnd = parentCustomWall ? Math.max(0, parentWallLength - centerDistanceFromWallStart - half) : 0;
+          const wallNormal = { x: -wallUnit.y, y: wallUnit.x };
           return (
             <g
               key={opening.id}
@@ -2855,56 +3030,48 @@ export default function ConceptPlan2D({
               }}
             >
               <line
-                x1={horizontal ? opening.x - half : opening.x}
-                y1={horizontal ? opening.y : opening.y - half}
-                x2={horizontal ? opening.x + half : opening.x}
-                y2={horizontal ? opening.y : opening.y + half}
+                x1={openingStart.x}
+                y1={openingStart.y}
+                x2={openingEnd.x}
+                y2={openingEnd.y}
                 stroke="transparent"
                 strokeWidth="0.72"
               />
               {opening.type === "door" ? (
                 <g pointerEvents="none" opacity={selectedOpening ? 1 : 0.92}>
                   <line
-                    x1={horizontal ? opening.x - half : opening.x}
-                    y1={horizontal ? opening.y : opening.y - half}
-                    x2={horizontal ? opening.x + half : opening.x}
-                    y2={horizontal ? opening.y : opening.y + half}
+                    x1={openingStart.x}
+                    y1={openingStart.y}
+                    x2={openingEnd.x}
+                    y2={openingEnd.y}
                     stroke="#ffffff"
                     strokeWidth="0.22"
                   />
                   {sliding ? (
                     <>
                       <line
-                        x1={horizontal ? opening.x - half : opening.x - 0.10}
-                        y1={horizontal ? opening.y - 0.10 : opening.y - half}
-                        x2={horizontal ? opening.x + 0.06 : opening.x - 0.10}
-                        y2={horizontal ? opening.y - 0.10 : opening.y + 0.06}
+                        x1={openingStart.x - wallNormal.x * 0.10}
+                        y1={openingStart.y - wallNormal.y * 0.10}
+                        x2={opening.x + wallUnit.x * 0.06 - wallNormal.x * 0.10}
+                        y2={opening.y + wallUnit.y * 0.06 - wallNormal.y * 0.10}
                         stroke={selectedOpening ? "#f97316" : "#475569"}
                         strokeWidth="0.055"
                       />
                       <line
-                        x1={horizontal ? opening.x - 0.06 : opening.x + 0.10}
-                        y1={horizontal ? opening.y + 0.10 : opening.y - 0.06}
-                        x2={horizontal ? opening.x + half : opening.x + 0.10}
-                        y2={horizontal ? opening.y + 0.10 : opening.y + half}
+                        x1={opening.x - wallUnit.x * 0.06 + wallNormal.x * 0.10}
+                        y1={opening.y - wallUnit.y * 0.06 + wallNormal.y * 0.10}
+                        x2={openingEnd.x + wallNormal.x * 0.10}
+                        y2={openingEnd.y + wallNormal.y * 0.10}
                         stroke={selectedOpening ? "#f97316" : "#475569"}
                         strokeWidth="0.055"
                       />
                     </>
                   ) : (
                     <line
-                      x1={horizontal
-                        ? opening.x + (swingRight ? half : -half)
-                        : opening.x}
-                      y1={horizontal
-                        ? opening.y
-                        : opening.y + (swingRight ? half : -half)}
-                      x2={horizontal
-                        ? opening.x + (swingRight ? half : -half)
-                        : opening.x + (swingRight ? -openingWidth : openingWidth)}
-                      y2={horizontal
-                        ? opening.y + (swingRight ? -openingWidth : openingWidth)
-                        : opening.y + (swingRight ? half : -half)}
+                      x1={swingRight ? openingEnd.x : openingStart.x}
+                      y1={swingRight ? openingEnd.y : openingStart.y}
+                      x2={(swingRight ? openingEnd.x : openingStart.x) + wallNormal.x * openingWidth * swingSideFactor}
+                      y2={(swingRight ? openingEnd.y : openingStart.y) + wallNormal.y * openingWidth * swingSideFactor}
                       stroke={selectedOpening ? "#f97316" : "#475569"}
                       strokeWidth="0.06"
                     />
@@ -2913,30 +3080,81 @@ export default function ConceptPlan2D({
               ) : (
                 <g pointerEvents="none">
                   <line
-                    x1={horizontal ? opening.x - half : opening.x}
-                    y1={horizontal ? opening.y : opening.y - half}
-                    x2={horizontal ? opening.x + half : opening.x}
-                    y2={horizontal ? opening.y : opening.y + half}
+                    x1={openingStart.x}
+                    y1={openingStart.y}
+                    x2={openingEnd.x}
+                    y2={openingEnd.y}
                     stroke="#ffffff"
                     strokeWidth="0.18"
                   />
                   <line
-                    x1={horizontal ? opening.x - half : opening.x}
-                    y1={horizontal ? opening.y : opening.y - half}
-                    x2={horizontal ? opening.x + half : opening.x}
-                    y2={horizontal ? opening.y : opening.y + half}
+                    x1={openingStart.x}
+                    y1={openingStart.y}
+                    x2={openingEnd.x}
+                    y2={openingEnd.y}
                     stroke={selectedOpening ? "#f97316" : "#0284c7"}
                     strokeWidth={selectedOpening ? "0.11" : "0.07"}
                   />
+                  {leafCount > 1 && Array.from({ length: leafCount - 1 }).map((_, leafIndex) => {
+                    const ratio = (leafIndex + 1) / leafCount;
+                    const axis = -half + openingWidth * ratio;
+                    const cx = opening.x + wallUnit.x * axis;
+                    const cy = opening.y + wallUnit.y * axis;
+                    return (
+                      <line
+                        key={`leaf-${leafIndex}`}
+                        x1={cx - wallNormal.x * 0.12}
+                        y1={cy - wallNormal.y * 0.12}
+                        x2={cx + wallNormal.x * 0.12}
+                        y2={cy + wallNormal.y * 0.12}
+                        stroke={selectedOpening ? "#f97316" : "#0369a1"}
+                        strokeWidth="0.035"
+                      />
+                    );
+                  })}
                 </g>
               )}
               {selectedOpening && (
                 <>
                   <circle cx={opening.x} cy={opening.y} r="0.26" fill="#f97316" stroke="#fff" strokeWidth="0.06" pointerEvents="none" />
+                  {parentCustomWall && (
+                    <g pointerEvents="none">
+                      <line
+                        x1={parentCustomWall.x1}
+                        y1={parentCustomWall.y1}
+                        x2={openingStart.x}
+                        y2={openingStart.y}
+                        stroke="#94a3b8"
+                        strokeWidth="0.035"
+                        strokeDasharray="0.12 0.10"
+                      />
+                      <line
+                        x1={openingEnd.x}
+                        y1={openingEnd.y}
+                        x2={parentCustomWall.x2}
+                        y2={parentCustomWall.y2}
+                        stroke="#94a3b8"
+                        strokeWidth="0.035"
+                        strokeDasharray="0.12 0.10"
+                      />
+                      <g transform={`translate(${(parentCustomWall.x1 + openingStart.x) / 2 + wallNormal.x * 0.34} ${(parentCustomWall.y1 + openingStart.y) / 2 + wallNormal.y * 0.34})`}>
+                        <rect x="-0.48" y="-0.18" width="0.96" height="0.36" rx="0.09" fill="#fff" fillOpacity="0.96" stroke="#cbd5e1" strokeWidth="0.02" />
+                        <text x="0" y="0.07" textAnchor="middle" fontSize="0.18" fontWeight="800" fill="#475569">
+                          {`${clearanceStart.toFixed(2)} m`}
+                        </text>
+                      </g>
+                      <g transform={`translate(${(openingEnd.x + parentCustomWall.x2) / 2 + wallNormal.x * 0.34} ${(openingEnd.y + parentCustomWall.y2) / 2 + wallNormal.y * 0.34})`}>
+                        <rect x="-0.48" y="-0.18" width="0.96" height="0.36" rx="0.09" fill="#fff" fillOpacity="0.96" stroke="#cbd5e1" strokeWidth="0.02" />
+                        <text x="0" y="0.07" textAnchor="middle" fontSize="0.18" fontWeight="800" fill="#475569">
+                          {`${clearanceEnd.toFixed(2)} m`}
+                        </text>
+                      </g>
+                    </g>
+                  )}
                   <g pointerEvents="none">
                     <rect
-                      x={horizontal ? opening.x - 0.72 : opening.x + 0.22}
-                      y={horizontal ? opening.y + 0.24 : opening.y - 0.20}
+                      x={opening.x + wallNormal.x * 0.44 - 0.72}
+                      y={opening.y + wallNormal.y * 0.44 - 0.20}
                       width="1.44"
                       height="0.40"
                       rx="0.10"
@@ -2946,8 +3164,8 @@ export default function ConceptPlan2D({
                       strokeWidth="0.025"
                     />
                     <text
-                      x={horizontal ? opening.x : opening.x + 0.94}
-                      y={horizontal ? opening.y + 0.50 : opening.y + 0.06}
+                      x={opening.x + wallNormal.x * 0.44}
+                      y={opening.y + wallNormal.y * 0.44 + 0.06}
                       textAnchor="middle"
                       fontSize="0.20"
                       fontWeight="800"
@@ -2957,13 +3175,13 @@ export default function ConceptPlan2D({
                     </text>
                   </g>
                   {opening.roomId.startsWith("custom-wall:") && onOpeningWidthChange && ([
-                    ["opening-resize-start", horizontal ? opening.x - half : opening.x, horizontal ? opening.y : opening.y - half],
-                    ["opening-resize-end", horizontal ? opening.x + half : opening.x, horizontal ? opening.y : opening.y + half],
+                    ["opening-resize-start", openingStart.x, openingStart.y],
+                    ["opening-resize-end", openingEnd.x, openingEnd.y],
                   ] as const).map(([mode, hx, hy]) => (
                     <g
                       key={mode}
                       role="button"
-                      className={horizontal ? "cursor-ew-resize" : "cursor-ns-resize"}
+                      className="cursor-crosshair"
                       onPointerDown={(event) => {
                         event.stopPropagation();
                         onEditStart?.();
