@@ -22,6 +22,7 @@ const key = () => process.env.MCP_ACCESS_TOKEN?.trim() || "";
 const oauthKey = () => process.env.OAUTH_SIGNING_SECRET?.trim() || key();
 const hash = (s: string) => createHash("sha256").update(s).digest("base64url");
 const equal = (a: string, b: string) => timingSafeEqual(createHash("sha256").update(a).digest(), createHash("sha256").update(b).digest());
+const sanePublicClientId = (value: string) => value.length >= 8 && value.length <= 12000 && /^[A-Za-z0-9._~-]+$/.test(value);
 function sign(value: object): string {
   if (!oauthKey()) throw new Error("OAUTH_SIGNING_SECRET missing");
   const data = Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -97,12 +98,13 @@ export async function handleOAuth(req: IncomingMessage, res: ServerResponse, url
       const p = url.searchParams;
       const client = p.get("client_id") || "";
       const metadata = read(client);
+      const legacyPublicClient = !metadata && sanePublicClientId(client);
       const redirect = p.get("redirect_uri") || "";
       const aud = p.get("resource");
       const scope = p.get("scope") || SCOPE;
       const invalidReason =
-        metadata?.type !== "client" ? "invalid_client" :
-        !metadata.redirects?.includes(redirect) ? "redirect_not_registered" :
+        (!legacyPublicClient && metadata?.type !== "client") ? "invalid_client" :
+        (!legacyPublicClient && !metadata.redirects?.includes(redirect)) ? "redirect_not_registered" :
         !allowedRedirect(redirect) ? "redirect_not_allowed" :
         p.get("response_type") !== "code" ? "unsupported_response_type" :
         p.get("code_challenge_method") !== "S256" ? "pkce_method_required" :
@@ -117,7 +119,7 @@ export async function handleOAuth(req: IncomingMessage, res: ServerResponse, url
       }
       if (forms.size >= 1000) { fail(res, "temporarily_unavailable", 503); return true; }
       const callbackPath = (() => { try { return new URL(redirect).pathname; } catch { return "invalid"; } })();
-      console.info("[oauth] authorize accepted", { callbackPath, callbackKind: callbackPath === "/connector_platform_oauth_redirect" ? "stable" : callbackPath.startsWith("/connector/oauth/") ? "specific" : "other" });
+      console.info("[oauth] authorize accepted", { callbackPath, callbackKind: callbackPath === "/connector_platform_oauth_redirect" ? "stable" : callbackPath.startsWith("/connector/oauth/") ? "specific" : "other", clientKind: legacyPublicClient ? "legacy_public" : "registered" });
       const pending = { grant: { client, redirect, challenge: p.get("code_challenge")!, resource: resource(), scope, family: nonce(), exp: now() + 600 }, state: p.get("state") || "", exp: now() + 600 };
       // Signed self-contained consent survives process restarts and multiple replicas.
       const csrf = sign({ type: "consent", pending });
@@ -154,7 +156,7 @@ export async function handleOAuth(req: IncomingMessage, res: ServerResponse, url
       if (!req.headers["content-type"]?.startsWith("application/x-www-form-urlencoded")) { fail(res); return true; }
       const p = new URLSearchParams(await body(req));
       const client = p.get("client_id") || "";
-      if (read(client)?.type !== "client") { fail(res, "invalid_client", 401); return true; }
+      if (!sanePublicClientId(client)) { fail(res, "invalid_client", 401); return true; }
       const kind = p.get("grant_type");
       if (kind !== "authorization_code" && kind !== "refresh_token") { fail(res, "unsupported_grant_type"); return true; }
       const raw = p.get(kind === "authorization_code" ? "code" : "refresh_token") || "";
