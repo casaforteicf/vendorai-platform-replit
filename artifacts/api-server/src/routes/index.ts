@@ -41,6 +41,7 @@ import { googleAdsCallbackRouter } from "./google-ads-auth";
 import { searchConsoleCallbackRouter } from "./search-console-auth";
 import { metaAdsCallbackRouter } from "./meta-ads-auth";
 import socialIntegrationsRouter, { socialIntegrationsCallbackRouter } from "./social-integrations";
+import sketchfabAuthRouter, { sketchfabCallbackRouter } from "./sketchfab-auth";
 import agendamentosRouter from "./agendamentos";
 import entregasRouter from "./entregas";
 import bloqueiosAgendaRouter from "./bloqueios_agenda";
@@ -237,6 +238,7 @@ router.use(googleAdsCallbackRouter);
 router.use(searchConsoleCallbackRouter);
 router.use(metaAdsCallbackRouter);
 router.use(socialIntegrationsCallbackRouter);
+router.use(sketchfabCallbackRouter);
 router.use(publicProposalsRouter);
 router.use(supermercadoPublicRouter);
 router.use(fretesPublicRouter);
@@ -264,6 +266,7 @@ router.use(enforceAccessScope);
 // Session endpoints must be mounted immediately after JWT validation. The
 // frontend needs /auth/me before tenant, onboarding or license checks.
 router.use(authProtectedRouter);
+router.use(sketchfabAuthRouter);
 
 // Trial status/continuity must remain reachable even after trial suspension or
 // before onboarding is complete; all other CRM routes keep the normal gates.
