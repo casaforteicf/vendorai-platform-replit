@@ -43,6 +43,7 @@ import socialIntegrationsRouter, { socialIntegrationsCallbackRouter } from "./so
 import agendamentosRouter from "./agendamentos";
 import entregasRouter from "./entregas";
 import operationalChecklistsRouter from "./operational_checklists";
+import installationChecklistsRouter from "./installation_checklists";
 import bloqueiosAgendaRouter from "./bloqueios_agenda";
 import subscriptionsRouter from "./subscriptions";
 import invoicesRouter from "./invoices";
@@ -437,6 +438,7 @@ router.use(agendasRouter);
 router.use(agendamentosRouter);
 router.use(entregasRouter);
 router.use(operationalChecklistsRouter);
+router.use(installationChecklistsRouter);
 router.use(bloqueiosAgendaRouter);
 
 // Billing Hub
