@@ -424,7 +424,7 @@ export function InstallationChecklistPanel({
         ))}
       </div>
 
-      {data.ready && (
+      {data.ready && ["instalacao_finalizada", "entrega_obra", "pos_venda", "concluido"].includes(card.etapa) && (
         <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
           <div>
             <h4 className="text-sm font-semibold">Aceite final da instalação</h4>
