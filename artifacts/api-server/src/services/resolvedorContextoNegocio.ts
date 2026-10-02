@@ -118,6 +118,11 @@ function formatInteligenciaComercial(product: ProductRow): string {
   add("Afirmações permitidas", ci.afirmacoesPermitidas);
   add("NÃO afirmar", ci.afirmacoesProibidas);
   add("Notas comerciais", ci.notasComerciais);
+  add("Dúvidas frequentes", ci.duvidasFrequentes);
+  add("Orientações para IA", ci.orientacoesIa);
+  if (typeof ci.garantia === "string" && ci.garantia.trim()) parts.push(`Garantia: ${compact(ci.garantia, 500)}`);
+  if (typeof ci.instalacaoUso === "string" && ci.instalacaoUso.trim()) parts.push(`Instalação/uso: ${compact(ci.instalacaoUso, 500)}`);
+  if (typeof ci.entregaPrazo === "string" && ci.entregaPrazo.trim()) parts.push(`Entrega/prazo: ${compact(ci.entregaPrazo, 500)}`);
 
   const objections = objectList(ci.objecoes)
     .map((item) => {
