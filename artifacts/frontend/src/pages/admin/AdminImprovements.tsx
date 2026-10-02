@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { type ChangeEvent, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -8,6 +8,9 @@ import {
   ExternalLink,
   History,
   Plus,
+  Paperclip,
+  X,
+  Loader2,
   RefreshCw,
   Rocket,
   RotateCcw,
@@ -60,6 +63,12 @@ type Improvement = {
   dependencies?: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+type ImprovementAttachment = {
+  name: string;
+  mimeType: string;
+  content: string;
 };
 
 type ImpactFile = {
@@ -164,15 +173,21 @@ function formatDuration(value?: number | string | null) {
 
 function improvementSimpleStatus(item: Improvement) {
   if (item.status === "producao_validada") return "Publicado";
-  if (item.testStatus === "passed" && ["pronto_staging", "em_homologacao", "homologado", "aguardando_producao"].includes(item.status)) return "Pronto";
   if (item.status === "bloqueada" || item.testStatus === "failed") return "Atenção";
-  return "Fazendo";
+  if (item.status === "testando" || item.testStatus === "running") return "Testando";
+  if (item.status === "solicitada") return "Solicitada";
+  if (item.status === "em_desenvolvimento") return "Fazendo";
+  if (item.status === "pronto_staging") return item.testStatus === "passed" ? "Pronto" : "Aguardando testes";
+  if (item.status === "em_homologacao") return "Em homologação";
+  if (item.status === "homologado") return "Homologado";
+  if (item.status === "aguardando_producao") return "Aguardando produção";
+  return "Aguardando";
 }
 
 function statusVariant(status: string): "default" | "secondary" | "outline" | "destructive" {
-  if (status === "Publicado" || status === "Pronto" || status === "published") return "default";
+  if (["Publicado", "Pronto", "Homologado", "published"].includes(status)) return "default";
   if (status === "Atenção" || status === "blocked") return "destructive";
-  if (status === "scheduled" || status === "monitoring" || status === "publishing") return "secondary";
+  if (["Testando", "Em homologação", "Aguardando produção", "scheduled", "monitoring", "publishing"].includes(status)) return "secondary";
   return "outline";
 }
 
@@ -191,6 +206,8 @@ export default function AdminImprovements() {
   const [busy, setBusy] = useState("");
   const [scheduleAt, setScheduleAt] = useState("");
   const [adjustment, setAdjustment] = useState("");
+  const [attachments, setAttachments] = useState<ImprovementAttachment[]>([]);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [form, setForm] = useState({
     title: "",
     description: "",
@@ -300,7 +317,7 @@ export default function AdminImprovements() {
     if (!github.data?.ready) {
       toast({
         title: "GitHub não está disponível",
-        description: github.data?.reason || "Verifique a configuração do GitHub neste ambiente.",
+        description: github.data?.reason || "Verifique a configuração do GitHub na homologação.",
         variant: "destructive",
       });
       return;
@@ -315,6 +332,37 @@ export default function AdminImprovements() {
       await github.refetch();
     } catch {
       // O helper post já apresenta o erro ao usuário.
+    }
+  }
+
+  async function handleImprovementAttachment(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || uploadingAttachment || attachments.length >= 5) return;
+    setUploadingAttachment(true);
+    try {
+      const payload = new FormData();
+      payload.append("file", file);
+      const response = await fetch("/api/support/file/interpret", {
+        method: "POST",
+        headers: token ? { Authorization: "Bearer " + token } : undefined,
+        body: payload,
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error ?? "Não foi possível interpretar o anexo.");
+      setAttachments((current) => [...current, {
+        name: String(body?.name ?? file.name),
+        mimeType: String(body?.mimeType ?? file.type ?? "application/octet-stream"),
+        content: String(body?.content ?? "").slice(0, 20000),
+      }]);
+    } catch (error) {
+      toast({
+        title: "Falha ao adicionar anexo",
+        description: error instanceof Error ? error.message : "Erro inesperado",
+        variant: "destructive",
+      });
+    } finally {
+      setUploadingAttachment(false);
     }
   }
 
@@ -334,6 +382,7 @@ export default function AdminImprovements() {
           acceptanceCriteria: form.acceptanceCriteria,
           riskSummary: form.riskSummary,
           dependencies: form.dependencies,
+          attachments,
           homologUrl: "https://homolog.appvendorai.com",
         }),
       });
@@ -341,6 +390,7 @@ export default function AdminImprovements() {
       if (!response.ok) throw new Error(body?.error ?? "HTTP " + response.status);
       toast({ title: "Melhoria criada", description: "O Vendi já pode assumir o desenvolvimento." });
       setCreateOpen(false);
+      setAttachments([]);
       setForm({
         title: "",
         description: "",
@@ -779,6 +829,46 @@ export default function AdminImprovements() {
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
             />
+            <div className="rounded-xl border p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium">Anexos <span className="font-normal text-muted-foreground">(opcional)</span></p>
+                  <p className="text-xs text-muted-foreground">Adicione prints, imagens, PDFs ou documentos. O Vendi usa o conteúdo como contexto da melhoria.</p>
+                </div>
+                <label className={"inline-flex cursor-pointer items-center rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted " + (uploadingAttachment || attachments.length >= 5 ? "pointer-events-none opacity-50" : "")}>
+                  {uploadingAttachment ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Paperclip className="mr-2 h-4 w-4" />}
+                  {uploadingAttachment ? "Analisando..." : "Adicionar"}
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept="image/*,.pdf,.txt,.csv,.doc,.docx"
+                    onChange={(event) => void handleImprovementAttachment(event)}
+                    disabled={uploadingAttachment || attachments.length >= 5}
+                  />
+                </label>
+              </div>
+              {attachments.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {attachments.map((attachment, index) => (
+                    <div key={attachment.name + index} className="flex items-center justify-between gap-2 rounded-lg bg-muted/40 px-3 py-2 text-sm">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{attachment.name}</p>
+                        <p className="truncate text-xs text-muted-foreground">{attachment.mimeType}</p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                        aria-label={"Remover " + attachment.name}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <Input placeholder="Módulo / tela" value={form.module} onChange={(e) => setForm({ ...form, module: e.target.value })} />
               <select
@@ -836,7 +926,7 @@ export default function AdminImprovements() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button>
-            <Button onClick={createImprovement} disabled={busy === "create" || form.title.trim().length < 3}>
+            <Button onClick={createImprovement} disabled={busy === "create" || uploadingAttachment || form.title.trim().length < 3}>
               Criar e iniciar Vendi
             </Button>
           </DialogFooter>
