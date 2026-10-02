@@ -600,12 +600,23 @@ export default function AdminImprovements() {
                       Detalhes
                     </Button>
                     {release.testUrl && !["published", "rolled_back", "cancelled"].includes(release.status) && (
-                      <Button variant="outline" size="sm" asChild>
-                        <a href={release.testUrl} target="_blank" rel="noreferrer">
-                          <TestTube2 className="mr-1 h-3.5 w-3.5" />
-                          Testar versão
-                        </a>
-                      </Button>
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={!!busy || release.testStatus === "running"}
+                          onClick={() => post("/api/admin/releases/" + release.id + "/vendi-test", undefined, "Vendi concluiu a validação da homologação")}
+                        >
+                          <Bot className="mr-1 h-3.5 w-3.5" />
+                          {release.testStatus === "running" ? "Vendi testando..." : "Vendi testar"}
+                        </Button>
+                        <Button variant="outline" size="sm" asChild>
+                          <a href={release.testUrl} target="_blank" rel="noreferrer">
+                            <TestTube2 className="mr-1 h-3.5 w-3.5" />
+                            Testar manualmente
+                          </a>
+                        </Button>
+                      </>
                     )}
                     {!["published", "rolled_back", "cancelled", "publishing", "monitoring"].includes(release.status) && (
                       <Button
@@ -620,13 +631,13 @@ export default function AdminImprovements() {
                     )}
                     {release.testStatus !== "passed" && release.status === "ready" && (
                       <Button
-                        variant="outline"
+                        variant="ghost"
                         size="sm"
                         disabled={!!busy}
-                        onClick={() => post("/api/admin/releases/" + release.id + "/tested", undefined, "Teste confirmado")}
+                        onClick={() => post("/api/admin/releases/" + release.id + "/tested", undefined, "Teste manual confirmado")}
                       >
                         <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
-                        Confirmar teste
+                        Confirmar teste manual
                       </Button>
                     )}
                     {release.status === "ready" && release.testStatus === "passed" && (
