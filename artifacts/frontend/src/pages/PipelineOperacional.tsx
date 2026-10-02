@@ -12,6 +12,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SupportReportPanel } from "@/components/SupportReportPanel";
 import { OperationalStageFormDialog } from "@/components/OperationalStageFormDialog";
+import { InstallationChecklistPanel } from "@/components/InstallationChecklistPanel";
 import { PipelineNav, PIPELINE_CARD_CLASS, PIPELINE_COLUMN_CLASS, PIPELINE_COLUMN_HEADER_CLASS } from "@/components/PipelineNav";
 import {
   AlertTriangle,
@@ -522,6 +523,27 @@ export default function PipelineOperacional() {
                       />
                     </div>
 
+                    {["instalacao_a_iniciar", "instalacao_em_andamento", "instalacao_finalizada", "entrega_obra", "pos_venda"].includes(selectedCard.etapa) && (
+                      <div id="installation-checklist-panel" className="scroll-mt-4">
+                        <InstallationChecklistPanel
+                          card={{
+                            id: selectedCard.id,
+                            tenantId: selectedCard.tenantId,
+                            etapa: selectedCard.etapa,
+                            codigo: selectedCard.codigo,
+                          }}
+                          token={token ?? ""}
+                          isAdmin={isAdmin}
+                          onChanged={async () => {
+                            const fresh = await api<WorkCard>(`/api/work-cards/${selectedCard.id}`);
+                            setSelectedCard(fresh);
+                            await queryClient.invalidateQueries({ queryKey: ["work-cards", tenantId, "execucao"] });
+                            await queryClient.invalidateQueries({ queryKey: ["work-card-attachments", selectedCard.id] });
+                          }}
+                        />
+                      </div>
+                    )}
+
                     {(EXECUTION_STAGE_REQUIREMENTS[selectedCard.etapa] ?? []).length > 0 && (
                       <div className="space-y-3 rounded-xl border bg-muted/20 p-3">
                         <div>
@@ -545,6 +567,13 @@ export default function PipelineOperacional() {
                                 variant={completed ? "secondary" : "default"}
                                 disabled={patchCard.isPending}
                                 onClick={() => {
+                                  if (
+                                    (requirement.key === "checklist_instalacao" || requirement.key === "vistoria_aceite")
+                                    && ["instalacao_a_iniciar", "instalacao_em_andamento", "instalacao_finalizada", "entrega_obra", "pos_venda"].includes(selectedCard.etapa)
+                                  ) {
+                                    document.getElementById("installation-checklist-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                                    return;
+                                  }
                                   if (OPERATIONAL_FORM_KEYS.has(requirement.key)) {
                                     setStageFormKey(requirement.key);
                                     return;
@@ -562,9 +591,11 @@ export default function PipelineOperacional() {
                                   patchCard.mutate({ id: selectedCard.id, data: { metadata: { ...metadata, stageGates: currentGates } } });
                                 }}
                               >
-                                {OPERATIONAL_FORM_KEYS.has(requirement.key)
-                                  ? (completed ? "Ver / nova versão" : "Preencher")
-                                  : (completed ? "Reabrir" : "Concluir")}
+                                {(requirement.key === "checklist_instalacao" || requirement.key === "vistoria_aceite")
+                                  ? (completed ? "Ver checklist" : "Abrir checklist")
+                                  : OPERATIONAL_FORM_KEYS.has(requirement.key)
+                                    ? (completed ? "Ver / nova versão" : "Preencher")
+                                    : (completed ? "Reabrir" : "Concluir")}
                               </Button>
                             </div>
                           );
