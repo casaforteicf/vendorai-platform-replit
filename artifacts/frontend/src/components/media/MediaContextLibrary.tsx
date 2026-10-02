@@ -20,6 +20,21 @@ type Entry = {
 };
 type CachedUser = { tenantId?: string | null };
 type CachedOverride = { id?: string | null };
+type FonteInteligencia = {
+  id: string;
+  tipo: "perfil_negocio" | "produto_catalogo" | "biblioteca_contexto" | "base_conhecimento";
+  categoria: string;
+  titulo: string;
+  resumo: string;
+  pontuacao: number;
+  aprovado: boolean;
+};
+type ContextoNegocioResolvido = {
+  blocoPrompt: string;
+  fontes: FonteInteligencia[];
+  idsProdutos: string[];
+  idsMidias: string[];
+};
 
 const KINDS = [
   ["assunto", "Assunto / conhecimento"],
@@ -108,6 +123,10 @@ export function MediaContextLibrary() {
   const [saving, setSaving] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickedAssets, setPickedAssets] = useState<MediaPickerAsset[]>([]);
+  const [testeInteligencia, setTesteInteligencia] = useState("");
+  const [resultadoInteligencia, setResultadoInteligencia] = useState<ContextoNegocioResolvido | null>(null);
+  const [testandoInteligencia, setTestandoInteligencia] = useState(false);
+  const [mostrarTesteInteligencia, setMostrarTesteInteligencia] = useState(false);
   const active = pathname === "/midias/informacoes";
 
   useEffect(() => {
@@ -184,6 +203,25 @@ export function MediaContextLibrary() {
     } finally { setSaving(false); }
   };
 
+  async function testarInteligenciaNegocio() {
+    if (!tenantId || !testeInteligencia.trim()) return;
+    setTestandoInteligencia(true);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/inteligencia-negocio/resolver`, {
+        method: "POST",
+        headers: headers(true),
+        body: JSON.stringify({ query: testeInteligencia.trim(), limit: 12 }),
+      });
+      const body = await response.json().catch(() => ({})) as ContextoNegocioResolvido & { error?: string };
+      if (!response.ok) throw new Error(body.error ?? "Não foi possível testar a inteligência.");
+      setResultadoInteligencia(body);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Não foi possível testar a inteligência do negócio.");
+    } finally {
+      setTestandoInteligencia(false);
+    }
+  }
+
   const remove = async (entry: Entry) => {
     if (!window.confirm(`Excluir “${entry.title}” da Biblioteca de Informações?`)) return;
     const response = await fetch(`/api/tenants/${tenantId}/context-library/${entry.id}`, { method: "DELETE", headers: headers() });
@@ -220,11 +258,84 @@ export function MediaContextLibrary() {
             <h1 className="truncate text-lg font-semibold">Biblioteca de Informações</h1>
             <p className="hidden text-xs text-muted-foreground sm:block">Conhecimento aprovado + itens da Biblioteca de Mídias que a IA consulta antes de gerar conteúdo.</p>
           </div>
-          <div className="ml-auto rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-            {entries.filter((item) => item.status === "approved").length} aprovadas
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setMostrarTesteInteligencia((value) => !value)}
+              className="hidden h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold hover:bg-muted sm:inline-flex"
+            >
+              <BookOpen className="h-3.5 w-3.5" /> Testar inteligência
+            </button>
+            <div className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+              {entries.filter((item) => item.status === "approved").length} aprovadas
+            </div>
           </div>
         </div>
       </header>
+
+      {mostrarTesteInteligencia && (
+        <section className="mx-auto mt-5 w-full max-w-7xl px-4 md:px-6">
+          <div className="rounded-2xl border border-primary/20 bg-card p-4 shadow-sm">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold">Como o Vendi interpreta este cenário</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Descreva uma necessidade, objeção ou momento da jornada. O teste mostra quais fontes aprovadas seriam usadas antes de gerar uma resposta.
+                </p>
+                <textarea
+                  value={testeInteligencia}
+                  onChange={(event) => setTesteInteligencia(event.target.value)}
+                  placeholder="Ex.: cliente está analisando a proposta, achou o preço alto e demonstrou preocupação com isolamento acústico."
+                  rows={3}
+                  className="mt-3 w-full resize-y rounded-xl border bg-background p-3 text-sm"
+                />
+              </div>
+              <button
+                type="button"
+                disabled={testandoInteligencia || !testeInteligencia.trim()}
+                onClick={() => void testarInteligenciaNegocio()}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+              >
+                {testandoInteligencia ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                Resolver contexto
+              </button>
+            </div>
+
+            {resultadoInteligencia && (
+              <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_360px]">
+                <div className="rounded-xl border bg-muted/20 p-3">
+                  <p className="text-xs font-semibold">Contexto entregue ao agente</p>
+                  <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed text-muted-foreground">
+                    {resultadoInteligencia.blocoPrompt || "Nenhum contexto relevante encontrado para este cenário."}
+                  </pre>
+                </div>
+                <div className="rounded-xl border bg-background p-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold">Fontes utilizadas</p>
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold">
+                      {resultadoInteligencia.fontes.length}
+                    </span>
+                  </div>
+                  <div className="mt-2 max-h-80 space-y-2 overflow-auto">
+                    {resultadoInteligencia.fontes.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">Nenhuma fonte correspondente.</p>
+                    ) : resultadoInteligencia.fontes.map((fonte) => (
+                      <div key={`${fonte.tipo}:${fonte.id}`} className="rounded-lg border bg-muted/20 px-3 py-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="truncate text-xs font-semibold">{fonte.titulo}</p>
+                          <span className="shrink-0 text-[10px] text-muted-foreground">{fonte.pontuacao}</span>
+                        </div>
+                        <p className="mt-0.5 text-[10px] uppercase tracking-wide text-primary">{fonte.categoria.replace(/_/g, " ")}</p>
+                        <p className="mt-1 line-clamp-3 text-[11px] leading-relaxed text-muted-foreground">{fonte.resumo}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       <main className="mx-auto grid max-w-7xl gap-5 px-4 py-5 md:px-6 lg:grid-cols-[410px_minmax(0,1fr)]">
         <section className="h-fit rounded-2xl border bg-card p-4 shadow-sm lg:sticky lg:top-20">
