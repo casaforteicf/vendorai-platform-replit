@@ -30,6 +30,9 @@ const createSchema = z.object({
   prUrl: z.string().url().optional().nullable(),
   homologUrl: z.string().url().optional().nullable(),
   productionUrl: z.string().url().optional().nullable(),
+  sourceType: z.enum(["super_admin", "support", "vendi", "system"]).optional().default("super_admin"),
+  sourceRefId: z.string().trim().max(220).optional().nullable(),
+  sourceTenantId: z.string().trim().max(220).optional().nullable(),
 });
 
 const patchSchema = z.object({
@@ -46,6 +49,9 @@ const patchSchema = z.object({
   packageKey: z.string().trim().max(120).nullable().optional(),
   testStatus: z.enum(TEST_STATUSES).optional(),
   testSummary: z.string().trim().max(8000).nullable().optional(),
+  ownerAgent: z.string().trim().max(120).nullable().optional(),
+  agentStatus: z.string().trim().max(120).nullable().optional(),
+  agentSummary: z.string().trim().max(12000).nullable().optional(),
 });
 
 const idsSchema = z.object({
@@ -117,12 +123,70 @@ function ensureSchema() {
       approved_production_by text,
       approved_production_at timestamptz,
       merged_staging_sha text,
+      source_type text NOT NULL DEFAULT 'super_admin',
+      source_ref_id text,
+      source_tenant_id text,
+      owner_agent text NOT NULL DEFAULT 'vendi',
+      agent_status text NOT NULL DEFAULT 'idle',
+      agent_summary text,
+      requested_at timestamptz NOT NULL DEFAULT now(),
+      due_at timestamptz NOT NULL DEFAULT (now() + interval '24 hours'),
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS admin_improvements_status_idx ON admin_improvements(status);
     CREATE INDEX IF NOT EXISTS admin_improvements_package_idx ON admin_improvements(package_key);
     CREATE INDEX IF NOT EXISTS admin_improvements_pr_idx ON admin_improvements(pr_number);
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS source_type text NOT NULL DEFAULT 'super_admin';
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS source_ref_id text;
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS source_tenant_id text;
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS owner_agent text NOT NULL DEFAULT 'vendi';
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS agent_status text NOT NULL DEFAULT 'idle';
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS agent_summary text;
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS requested_at timestamptz NOT NULL DEFAULT now();
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS due_at timestamptz NOT NULL DEFAULT (now() + interval '24 hours');
+
+    CREATE TABLE IF NOT EXISTS admin_improvement_events (
+      id uuid PRIMARY KEY,
+      improvement_id uuid NOT NULL REFERENCES admin_improvements(id) ON DELETE CASCADE,
+      event_type text NOT NULL,
+      message text NOT NULL DEFAULT '',
+      payload jsonb,
+      actor text,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS admin_improvement_events_improvement_idx
+      ON admin_improvement_events(improvement_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS admin_releases (
+      id uuid PRIMARY KEY,
+      version text NOT NULL UNIQUE,
+      name text NOT NULL,
+      summary text NOT NULL DEFAULT '',
+      status text NOT NULL DEFAULT 'draft',
+      improvement_ids uuid[] NOT NULL DEFAULT '{}',
+      test_url text,
+      test_status text NOT NULL DEFAULT 'pending',
+      test_summary text,
+      impact jsonb,
+      base_sha text,
+      head_sha text,
+      approval_fingerprint text,
+      approved_by text,
+      approved_at timestamptz,
+      scheduled_at timestamptz,
+      started_at timestamptz,
+      published_at timestamptz,
+      duration_ms integer,
+      release_pr_number integer,
+      release_pr_url text,
+      rollback_version text,
+      last_error text,
+      created_by text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS admin_releases_status_idx ON admin_releases(status, scheduled_at);
   `).then(() => undefined);
   return schemaReady;
 }
@@ -147,6 +211,10 @@ router.get("/admin/improvements", async (_req, res) => {
       approved_production_by AS "approvedProductionBy",
       approved_production_at AS "approvedProductionAt",
       merged_staging_sha AS "mergedStagingSha",
+      source_type AS "sourceType", source_ref_id AS "sourceRefId",
+      source_tenant_id AS "sourceTenantId", owner_agent AS "ownerAgent",
+      agent_status AS "agentStatus", agent_summary AS "agentSummary",
+      requested_at AS "requestedAt", due_at AS "dueAt",
       created_at AS "createdAt", updated_at AS "updatedAt"
     FROM admin_improvements
     ORDER BY
@@ -165,13 +233,14 @@ router.post("/admin/improvements", async (req, res) => {
   const result = await pool.query(`
     INSERT INTO admin_improvements (
       id, title, description, module, priority, branch, pr_number, pr_url,
-      homolog_url, production_url, created_by
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      homolog_url, production_url, created_by, source_type, source_ref_id, source_tenant_id
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
     RETURNING id
   `, [
     id, input.title, input.description, input.module, input.priority,
     input.branch ?? null, input.prNumber ?? null, input.prUrl ?? null,
     input.homologUrl ?? null, input.productionUrl ?? null, actor(req),
+    input.sourceType, input.sourceRefId ?? null, input.sourceTenantId ?? null,
   ]);
   res.status(201).json({ id: result.rows[0]?.id ?? id });
 });
@@ -186,6 +255,7 @@ router.patch("/admin/improvements/:id", async (req, res) => {
     status: "status", branch: "branch", prNumber: "pr_number", prUrl: "pr_url",
     homologUrl: "homolog_url", productionUrl: "production_url", packageKey: "package_key",
     testStatus: "test_status", testSummary: "test_summary",
+    ownerAgent: "owner_agent", agentStatus: "agent_status", agentSummary: "agent_summary",
   };
   const sets: string[] = [];
   const values: unknown[] = [];
