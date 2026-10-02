@@ -19,6 +19,7 @@ import type { Agendamento } from "@workspace/db";
 import { createGoogleEvent } from "../lib/google-calendar.js";
 import { detectMeetingIntent } from "../lib/detect-meeting-intent.js";
 import { prepareSupportAiIntake } from "../services/support-ai-intake.js";
+import { resolveBusinessContext } from "../services/businessContextResolver.js";
 import { formatCloserWinningResponsesPrompt, loadCloserWinningResponses } from "../lib/closer-winning-response-memory.js";
 import {
   loadContext,
@@ -106,6 +107,35 @@ async function handleAgentProcess(
 
   const ctx = await loadContext(tenantId, leadId);
   if (!ctx) { res.status(404).json({ error: `Lead "${leadId}" not found in this tenant` }); return; }
+
+  // Business Intelligence Core: resolve only the knowledge relevant to this
+  // lead/message instead of relying on a single static tenant briefing.
+  let dynamicBusinessContext = "";
+  try {
+    const resolvedBusiness = await resolveBusinessContext({
+      tenantId,
+      query: [
+        mensagem,
+        ctx.lead.objetivo,
+        ctx.lead.dorPrincipal,
+        ctx.ci?.intentAnalysis,
+        ctx.ci?.goalAnalysis,
+        ctx.ci?.nextBestAction,
+      ].filter(Boolean).join(" | "),
+    });
+    dynamicBusinessContext = resolvedBusiness.promptBlock;
+    req.log.debug(
+      {
+        tenantId,
+        leadId,
+        sourceCount: resolvedBusiness.sources.length,
+        sourceIds: resolvedBusiness.sources.slice(0, 12).map((source) => source.id),
+      },
+      "agents: dynamic business intelligence context resolved",
+    );
+  } catch (err) {
+    req.log.warn({ err, tenantId, leadId }, "agents: business intelligence resolver unavailable (non-fatal)");
+  }
 
   // ── SDR: classificar atividade do negócio (não-bloqueante, 1 vez por lead) ─
   if (agentName === "sdr") {
@@ -275,8 +305,13 @@ async function handleAgentProcess(
     }
   }
 
+  const basePrompt = buildPrompt(agentCfg.prompt, ctx, closerEnrichedScenario, resolvedSystemPrompt);
+  const systemPromptWithBusinessIntelligence = dynamicBusinessContext
+    ? `${basePrompt}\n\n---\n\n${dynamicBusinessContext}`
+    : basePrompt;
+
   const openaiMessages = [
-    { role: "system" as const, content: buildPrompt(agentCfg.prompt, ctx, closerEnrichedScenario, resolvedSystemPrompt) },
+    { role: "system" as const, content: systemPromptWithBusinessIntelligence },
     ...ctx.recentMessages.map(msgToOpenAI),
     { role: "user" as const, content: mensagem },
   ];
