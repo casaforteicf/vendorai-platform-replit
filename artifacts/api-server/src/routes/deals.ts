@@ -56,6 +56,7 @@ import { finalizeItemReservation } from "../services/item-reservation.js";
 import { z } from "zod";
 import { COMMERCIAL_STAGE_ORDER, PARTNER_STAGE_ORDER, SAAS_STAGE_ORDER, TERMINAL_DEAL_STAGES, isBackwardMove } from "../lib/pipeline-progress.js";
 import { recordIntelligenceEvent, recordStageAnswers } from "../services/customer-intelligence-history.js";
+import { suggestDynamicStageQuestions } from "../services/stage-question-intelligence.js";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -847,6 +848,21 @@ router.patch("/deals/:id", async (req, res) => {
       metadata: { previousStage: existing.etapa, stage: deal.etapa, assignedTo: deal.assignedTo ?? null },
       log: req.log,
     });
+
+    if (deal.leadId) {
+      void suggestDynamicStageQuestions({
+        tenantId: existing.tenantId,
+        leadId: deal.leadId,
+        dealId: deal.id,
+        log: req.log,
+      }).then((questions) => {
+        if (questions.length > 0) {
+          req.log.info({ dealId: deal.id, count: questions.length }, "customer-intelligence: dynamic stage questions suggested");
+        }
+      }).catch((err) => {
+        req.log.warn({ err, dealId: deal.id }, "customer-intelligence: dynamic stage question suggestion failed (non-fatal)");
+      });
+    }
   }
 
   // Notifica quando o negócio é repassado pra OUTRA pessoa (não pra si
