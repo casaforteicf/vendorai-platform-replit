@@ -53,6 +53,88 @@ function toolText(value: unknown) {
   };
 }
 
+type CustomHostnameResult = {
+  id: string;
+  status: string;
+  ssl?: { status?: string };
+  hostname: string;
+};
+
+function mapCustomHostname(result: CustomHostnameResult) {
+  return {
+    id: result.id,
+    status: result.status,
+    sslStatus: result.ssl?.status ?? "pending",
+    hostname: result.hostname,
+  };
+}
+
+async function resolveSaasZoneId(): Promise<string> {
+  const explicit = process.env["CLOUDFLARE_ZONE_ID"]?.trim();
+  if (explicit) return explicit;
+
+  const zoneName = (process.env["CLOUDFLARE_SAAS_ZONE_NAME"] || "appvendorai.com").trim().toLowerCase();
+  const query = new URLSearchParams({ name: zoneName, "account.id": accountId(), per_page: "50" });
+  const zones = await cloudflare<Array<{ id: string; name: string }>>(`/zones?${query.toString()}`);
+  const zone = zones.find((item) => item.name.toLowerCase() === zoneName);
+  if (!zone) throw new Error(`Cloudflare SaaS zone not found: ${zoneName}`);
+  return zone.id;
+}
+
+async function findSaasCustomHostname(hostname: string) {
+  const zoneId = await resolveSaasZoneId();
+  const result = await cloudflare<CustomHostnameResult[]>(
+    `/zones/${encodeURIComponent(zoneId)}/custom_hostnames?hostname=${encodeURIComponent(hostname)}`,
+    { method: "GET" },
+  );
+  const match = result.find((item) => item.hostname.toLowerCase() === hostname.toLowerCase());
+  return match ? mapCustomHostname(match) : null;
+}
+
+async function createSaasCustomHostname(hostname: string) {
+  const zoneId = await resolveSaasZoneId();
+  const result = await cloudflare<CustomHostnameResult>(
+    `/zones/${encodeURIComponent(zoneId)}/custom_hostnames`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        hostname,
+        ssl: { method: "http", type: "dv", settings: { min_tls_version: "1.2" } },
+      }),
+    },
+  );
+  return mapCustomHostname(result);
+}
+
+async function createOrGetSaasCustomHostname(hostname: string) {
+  const existing = await findSaasCustomHostname(hostname);
+  if (existing) return existing;
+  try {
+    return await createSaasCustomHostname(hostname);
+  } catch (error) {
+    const recovered = await findSaasCustomHostname(hostname).catch(() => null);
+    if (recovered) return recovered;
+    throw error;
+  }
+}
+
+async function getSaasCustomHostname(hostnameId: string) {
+  const zoneId = await resolveSaasZoneId();
+  const result = await cloudflare<CustomHostnameResult>(
+    `/zones/${encodeURIComponent(zoneId)}/custom_hostnames/${encodeURIComponent(hostnameId)}`,
+    { method: "GET" },
+  );
+  return mapCustomHostname(result);
+}
+
+async function deleteSaasCustomHostname(hostnameId: string) {
+  const zoneId = await resolveSaasZoneId();
+  await cloudflare<unknown>(
+    `/zones/${encodeURIComponent(zoneId)}/custom_hostnames/${encodeURIComponent(hostnameId)}`,
+    { method: "DELETE" },
+  );
+}
+
 
 async function vendorApi<T>(path: string, init: RequestInit = {}): Promise<T> {
   const base = (process.env["VENDORAI_API_BASE"] || "https://vendorai-platform-replit-production.up.railway.app").replace(/\/$/, "");
@@ -357,6 +439,58 @@ const httpServer = createServer(async (req, res) => {
   if (url.pathname === "/health") {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: true, service: "vendorai-cloudflare-mcp" }));
+    return;
+  }
+
+  if (url.pathname === "/internal/custom-hostname") {
+    if (!authorized(req)) {
+      res.writeHead(401, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "unauthorized" }));
+      return;
+    }
+    if (req.method !== "POST") {
+      res.writeHead(405, { "Content-Type": "application/json", "Allow": "POST" });
+      res.end(JSON.stringify({ error: "method_not_allowed" }));
+      return;
+    }
+
+    let raw = "";
+    for await (const chunk of req) {
+      raw += chunk.toString();
+      if (Buffer.byteLength(raw) > 32768) {
+        res.writeHead(413, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "payload_too_large" }));
+        return;
+      }
+    }
+
+    try {
+      const input = JSON.parse(raw || "{}") as {
+        action?: "find" | "createOrGet" | "get" | "delete";
+        hostname?: string;
+        hostnameId?: string;
+      };
+      let result: unknown;
+      if (input.action === "find" && input.hostname) {
+        result = await findSaasCustomHostname(input.hostname);
+      } else if (input.action === "createOrGet" && input.hostname) {
+        result = await createOrGetSaasCustomHostname(input.hostname);
+      } else if (input.action === "get" && input.hostnameId) {
+        result = await getSaasCustomHostname(input.hostnameId);
+      } else if (input.action === "delete" && input.hostnameId) {
+        await deleteSaasCustomHostname(input.hostnameId);
+        result = { deleted: true };
+      } else {
+        res.writeHead(422, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "invalid_action" }));
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+      res.end(JSON.stringify({ ok: true, result }));
+    } catch (error) {
+      res.writeHead(502, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+      res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+    }
     return;
   }
 
