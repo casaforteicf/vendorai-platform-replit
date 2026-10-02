@@ -43,6 +43,7 @@ import { detectBotPattern, BOT_SIGNAL_THRESHOLD } from "./bot-detection.js";
 import { classifyFinancialIntent } from "./financial-intent.js";
 import { handleDeliveryFeedbackReply } from "./post-venda.js";
 import { prepareSupportAiIntake } from "./support-ai-intake.js";
+import { resolveBusinessContext } from "./businessContextResolver.js";
 import { handleSequenceOfferReply } from "./sequence-offer.js";
 import { generateAgentHandoffSummary } from "./handoff.js";
 import { sendDirectWhatsAppMessage, sendDirectWhatsAppDocument, sendOutgoingMessage } from "./omnichannel.js";
@@ -1587,11 +1588,44 @@ export async function processAgentInternal(params: {
       log.debug({ tenantId, agentName: resolvedAgentName }, "dispatch: system prompt variables interpolated");
     }
 
-    // Inject handoff context at the start of the system prompt if available
+    // Resolve tenant intelligence dynamically for the current lead/message.
+    // Failure is non-fatal: legacy prompt/context remains available as fallback.
+    let dynamicBusinessContext = "";
+    try {
+      const resolvedBusiness = await resolveBusinessContext({
+        tenantId,
+        query: [
+          mensagem,
+          ctx.lead.objetivo,
+          ctx.lead.dorPrincipal,
+          ctx.ci?.intentAnalysis,
+          ctx.ci?.goalAnalysis,
+          ctx.ci?.nextBestAction,
+        ].filter(Boolean).join(" | "),
+      });
+      dynamicBusinessContext = resolvedBusiness.promptBlock;
+      log.debug(
+        {
+          tenantId,
+          leadId,
+          agentName: resolvedAgentName,
+          sourceCount: resolvedBusiness.sources.length,
+          sourceIds: resolvedBusiness.sources.slice(0, 12).map((source) => source.id),
+        },
+        "dispatch: dynamic business intelligence context resolved",
+      );
+    } catch (err) {
+      log.warn({ err, tenantId, leadId }, "dispatch: business intelligence resolver unavailable (non-fatal)");
+    }
+
+    // Inject handoff + Business Intelligence context at the start of the system prompt.
     const baseSystemContent = buildPrompt(resolvedAgentCfg?.prompt, ctx, enrichedScenario, dispatchSystemPrompt);
-    const systemContent = handoffContextForPrompt
-      ? `## Contexto recebido do agente anterior:\n${handoffContextForPrompt}\n\n---\n\n${baseSystemContent}`
+    const withBusinessIntelligence = dynamicBusinessContext
+      ? `${baseSystemContent}\n\n---\n\n${dynamicBusinessContext}`
       : baseSystemContent;
+    const systemContent = handoffContextForPrompt
+      ? `## Contexto recebido do agente anterior:\n${handoffContextForPrompt}\n\n---\n\n${withBusinessIntelligence}`
+      : withBusinessIntelligence;
 
     const openaiMessages = [
       { role: "system" as const, content: systemContent },
