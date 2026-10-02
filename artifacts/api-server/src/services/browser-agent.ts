@@ -371,7 +371,15 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
 
     if (input.firstPartyAuthToken) {
       const current = new URL(page.url());
-      if (current.hostname.toLowerCase() !== "app.appvendorai.com") throw new Error("VENDI_AUTH_ORIGIN_MISMATCH");
+      const host = current.hostname.toLowerCase();
+      const configuredHosts = (process.env["VENDI_FIRST_PARTY_HOSTS"] ?? "")
+        .split(",").map((value) => value.trim().toLowerCase()).filter(Boolean);
+      const trustedFirstParty =
+        host === "app.appvendorai.com" ||
+        host === "homolog.appvendorai.com" ||
+        host.endsWith(".vendorai.pages.dev") ||
+        configuredHosts.includes(host);
+      if (!trustedFirstParty) throw new Error("VENDI_AUTH_ORIGIN_MISMATCH");
       await page.evaluate((token) => localStorage.setItem("vendorai_token", token), input.firstPartyAuthToken);
       await page.reload({ waitUntil: "domcontentloaded", timeout: 30000 });
       await page.waitForNetworkIdle({ idleTime: 400, timeout: 5000 }).catch(() => undefined);
