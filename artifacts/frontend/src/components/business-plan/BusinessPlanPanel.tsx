@@ -10,6 +10,12 @@ type Entry = { id: string; title: string; values: Record<string, string>; source
 type Section = { draft: Entry[]; approved: Entry[]; approvedAt?: string; revision: number };
 type Plan = { version: number; sections: Record<string, Section>; history: Array<{ version: number; section: string; action: string; at: string }> };
 type Data = { plan: Plan; sections: Array<{ id: string; title: string; fields: string[] }>; sources: { profile: Record<string, unknown> | null; products: Array<{ id: string; nome: string; descricao?: string }>; assets: Array<{ id: string; title: string; url: string }> } };
+type DiagnosticoInteligencia = {
+  percentual: number;
+  nivel: "inicial" | "parcial" | "bom" | "forte";
+  itens: Array<{ id: string; titulo: string; concluido: boolean; peso: number; detalhe: string; acao?: string }>;
+  lacunas: Array<{ id: string; titulo: string; acao: string }>;
+};
 const selectClass = "w-full rounded-md border bg-background p-2 text-sm";
 const roleLabels: Record<string, string> = { marketing: "Marketing", prospector: "Prospector", sdr: "SDR", closer: "Closer", agendamento: "Agendamento", suporte: "Suporte", pos_venda: "Pós-venda", financeiro: "Financeiro", cobranca: "Cobrança", scout: "Revenue Scout" };
 export function BusinessPlanPanel() {
@@ -26,6 +32,12 @@ export function BusinessPlanPanel() {
     return data;
   }
   const query = useQuery<Data>({ queryKey, queryFn: () => request(""), enabled: !!tenantId, refetchOnWindowFocus: false });
+  const diagnosticoQuery = useQuery<DiagnosticoInteligencia>({
+    queryKey: ["diagnostico-inteligencia-negocio", tenantId, query.data?.plan.version],
+    queryFn: () => request("/diagnostico-inteligencia"),
+    enabled: !!tenantId,
+    refetchOnWindowFocus: false,
+  });
   const [tab, setTab] = useState("plan");
   const [sectionId, setSectionId] = useState("company");
   const [drafts, setDrafts] = useState<Record<string, Entry[]>>({});
@@ -79,6 +91,38 @@ export function BusinessPlanPanel() {
   }
   const approvedCount = Object.values(data.plan.sections).filter(s => s.approved.length).length;
   return <fieldset disabled={!!busy} className="min-w-0 space-y-4">
+    {diagnosticoQuery.data && (
+      <section className="rounded-xl border bg-card p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-base font-semibold">Inteligência do Negócio</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Cobertura atual das informações que o Vendi e os agentes podem consultar.
+            </p>
+          </div>
+          <div className="rounded-xl border bg-muted/30 px-4 py-3 text-center">
+            <div className="text-2xl font-semibold">{diagnosticoQuery.data.percentual}%</div>
+            <div className="text-xs capitalize text-muted-foreground">nível {diagnosticoQuery.data.nivel}</div>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+          {diagnosticoQuery.data.itens.map((item) => (
+            <div key={item.id} className="rounded-lg border bg-background px-3 py-3">
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-sm font-medium">{item.titulo}</p>
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${item.concluido ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                  {item.concluido ? "Coberto" : "Melhorar"}
+                </span>
+              </div>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{item.detalhe}</p>
+              {!item.concluido && item.acao && <p className="mt-2 text-xs font-medium text-amber-800">{item.acao}</p>}
+            </div>
+          ))}
+        </div>
+      </section>
+    )}
+
     <div className="rounded-xl border bg-card p-5"><h2 className="text-xl font-semibold">Plano de Negócios</h2><p className="mt-1 text-sm text-muted-foreground">Desenvolva sua estratégia com IA e transforme informações aprovadas em orientação para os agentes e campanhas.</p><p className="mt-3 text-sm">{approvedCount} de {data.sections.length} blocos aprovados · versão {data.plan.version}{dirty ? " · alterações não salvas" : ""}</p><div className="mt-4 flex flex-wrap gap-2">{[["plan", "Desenvolver plano"], ["agents", "Conexão com agentes"], ["campaign", "Criar campanha"], ["document", "Visualizar PN"]].map(([key, label]) => <Button key={key} variant={tab === key ? "default" : "outline"} onClick={() => setTab(key)}>{label}</Button>)}</div></div>
     {tab === "plan" && <div className="grid gap-4 lg:grid-cols-[230px_minmax(0,1fr)]"><nav className="flex gap-2 overflow-x-auto lg:flex-col" aria-label="Blocos do plano">{data.sections.map((s,i) => <button key={s.id} disabled={!!busy} onClick={() => { setSectionId(s.id); setSuggestion(null); setNotes(""); }} className={`shrink-0 rounded-lg border p-3 text-left text-sm ${sectionId === s.id ? "border-primary bg-primary/5 font-semibold" : "bg-card"}`}>{i+1}. {s.title}<span className="block text-xs font-normal text-muted-foreground">{drafts[s.id] ? "Alterações não salvas" : data.plan.sections[s.id]?.approved.length ? "Versão aprovada disponível" : "Em desenvolvimento"}</span></button>)}</nav>
       <div className="min-w-0 space-y-4"><div className="rounded-xl border bg-card p-4"><h3 className="font-semibold">{spec?.title}</h3><p className="mt-1 text-sm text-muted-foreground">Crie uma ficha por segmento, produto, oportunidade ou ação. Rascunhos e hipóteses não entram no atendimento dos agentes.</p><label className="mt-3 block text-sm">Como a IA pode ajudar?<Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Ex.: desenvolva oportunidades específicas para os públicos que atendemos" /></label><Button className="mt-2" disabled={!!busy} onClick={() => run("Desenvolvendo com IA...", async () => { const r = await request(`/sections/${sectionId}/suggest`, "POST", { records, notes }); setSuggestion(r.records); })}>Desenvolver com IA</Button></div>
