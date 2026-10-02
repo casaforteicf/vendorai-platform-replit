@@ -47,7 +47,7 @@ type Improvement = {
   packageKey: string | null;
   testStatus: "pending" | "running" | "passed" | "failed";
   testSummary: string | null;
-  sourceType?: "super_admin" | "support" | "vendi" | "system";
+  sourceType?: "super_admin" | "support" | "vendi" | "system" | "audit" | "user_request" | "bug" | "security" | "integration" | "infrastructure" | "hotfix";
   sourceRefId?: string | null;
   sourceTenantId?: string | null;
   ownerAgent?: string | null;
@@ -55,6 +55,9 @@ type Improvement = {
   agentSummary?: string | null;
   requestedAt?: string | null;
   dueAt?: string | null;
+  acceptanceCriteria?: string | null;
+  riskSummary?: string | null;
+  dependencies?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -132,6 +135,20 @@ const PRIORITY_LABELS: Record<string, string> = {
   urgente: "Crítica",
 };
 
+const SOURCE_LABELS: Record<string, string> = {
+  super_admin: "Super Admin",
+  support: "Suporte",
+  vendi: "Vendi",
+  system: "Sistema",
+  audit: "Auditoria",
+  user_request: "Solicitação",
+  bug: "Bug",
+  security: "Segurança",
+  integration: "Integração",
+  infrastructure: "Infraestrutura",
+  hotfix: "Hotfix",
+};
+
 function formatDate(value?: string | null) {
   if (!value) return "—";
   return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
@@ -179,6 +196,11 @@ export default function AdminImprovements() {
     description: "",
     module: "Plataforma",
     priority: "media",
+    sourceType: "user_request",
+    packageKey: "",
+    acceptanceCriteria: "",
+    riskSummary: "",
+    dependencies: "",
   });
   const [releaseForm, setReleaseForm] = useState({
     name: "",
@@ -285,7 +307,11 @@ export default function AdminImprovements() {
           description: form.description,
           module: form.module,
           priority: form.priority,
-          sourceType: "super_admin",
+          sourceType: form.sourceType,
+          packageKey: form.packageKey || null,
+          acceptanceCriteria: form.acceptanceCriteria,
+          riskSummary: form.riskSummary,
+          dependencies: form.dependencies,
           homologUrl: "https://homolog.appvendorai.com",
         }),
       });
@@ -293,7 +319,17 @@ export default function AdminImprovements() {
       if (!response.ok) throw new Error(body?.error ?? "HTTP " + response.status);
       toast({ title: "Melhoria criada", description: "O Vendi já pode assumir o desenvolvimento." });
       setCreateOpen(false);
-      setForm({ title: "", description: "", module: "Plataforma", priority: "media" });
+      setForm({
+        title: "",
+        description: "",
+        module: "Plataforma",
+        priority: "media",
+        sourceType: "user_request",
+        packageKey: "",
+        acceptanceCriteria: "",
+        riskSummary: "",
+        dependencies: "",
+      });
       await qc.invalidateQueries({ queryKey: ["admin", "improvements"] });
       if (body?.id) {
         void post("/api/admin/improvements/" + body.id + "/start-agent", undefined, "Vendi iniciou o desenvolvimento");
@@ -387,7 +423,7 @@ export default function AdminImprovements() {
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">Melhorias & Publicações</h1>
           <p className="mt-1 max-w-4xl text-sm text-muted-foreground">
-            Solicite mudanças, deixe o Vendi desenvolver e testar, valide a versão e publique agora ou agende para a madrugada.
+            Histórico oficial de evolução do Vendor.ai: toda melhoria deve ser registrada aqui, da solicitação até a validação em produção.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -502,7 +538,7 @@ export default function AdminImprovements() {
                         </td>
                         <td className="px-3 py-3">
                           <Badge variant="outline">
-                            {item.sourceType === "support" ? "Suporte" : item.sourceType === "vendi" ? "Vendi" : item.sourceType === "system" ? "Sistema" : "Super Admin"}
+                            {SOURCE_LABELS[item.sourceType ?? "super_admin"] ?? item.sourceType ?? "Super Admin"}
                           </Badge>
                         </td>
                         <td className="px-3 py-3">
@@ -722,9 +758,47 @@ export default function AdminImprovements() {
                 <option value="urgente">Crítica</option>
                 <option value="baixa">Baixa</option>
               </select>
+              <select
+                className="h-10 rounded-md border bg-background px-3 text-sm"
+                value={form.sourceType}
+                onChange={(e) => setForm({ ...form, sourceType: e.target.value })}
+              >
+                <option value="user_request">Solicitação</option>
+                <option value="audit">Auditoria</option>
+                <option value="support">Suporte</option>
+                <option value="bug">Bug</option>
+                <option value="security">Segurança</option>
+                <option value="integration">Integração</option>
+                <option value="infrastructure">Infraestrutura</option>
+                <option value="hotfix">Hotfix</option>
+                <option value="vendi">Vendi</option>
+                <option value="system">Sistema</option>
+                <option value="super_admin">Super Admin</option>
+              </select>
+              <Input placeholder="Pacote / onda (opcional)" value={form.packageKey} onChange={(e) => setForm({ ...form, packageKey: e.target.value })} />
+            </div>
+            <Textarea
+              placeholder="Critérios de aceite: como saberemos que a melhoria ficou correta?"
+              rows={3}
+              value={form.acceptanceCriteria}
+              onChange={(e) => setForm({ ...form, acceptanceCriteria: e.target.value })}
+            />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Textarea
+                placeholder="Riscos / cuidados (opcional)"
+                rows={3}
+                value={form.riskSummary}
+                onChange={(e) => setForm({ ...form, riskSummary: e.target.value })}
+              />
+              <Textarea
+                placeholder="Dependências (opcional)"
+                rows={3}
+                value={form.dependencies}
+                onChange={(e) => setForm({ ...form, dependencies: e.target.value })}
+              />
             </div>
             <div className="rounded-xl border bg-muted/20 p-3 text-sm text-muted-foreground">
-              Meta operacional: a solicitação é trabalhada no ciclo de até 24h e, quando pronta, pode entrar na publicação da madrugada.
+              Este registro passa a ser o histórico oficial da mudança. Desenvolvimento, testes, homologação, publicação e validação ficam vinculados à mesma melhoria.
             </div>
           </div>
           <DialogFooter>
@@ -822,7 +896,7 @@ export default function AdminImprovements() {
                 <div className="grid gap-3 sm:grid-cols-3">
                   <div className="rounded-xl border p-3">
                     <p className="text-xs text-muted-foreground">Origem</p>
-                    <p className="mt-1 font-medium">{detail.sourceType === "support" ? "Suporte" : "Super Admin"}</p>
+                    <p className="mt-1 font-medium">{SOURCE_LABELS[detail.sourceType ?? "super_admin"] ?? detail.sourceType ?? "Super Admin"}</p>
                   </div>
                   <div className="rounded-xl border p-3">
                     <p className="text-xs text-muted-foreground">Responsável</p>
@@ -833,6 +907,23 @@ export default function AdminImprovements() {
                     <p className="mt-1 font-medium">{detail.dueAt ? formatDate(detail.dueAt) : "Até 24h"}</p>
                   </div>
                 </div>
+
+                {(detail.acceptanceCriteria || detail.riskSummary || detail.dependencies) && (
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-xl border p-3">
+                      <p className="text-xs font-semibold uppercase text-muted-foreground">Critérios de aceite</p>
+                      <p className="mt-2 whitespace-pre-wrap text-sm">{detail.acceptanceCriteria || "Não informado."}</p>
+                    </div>
+                    <div className="rounded-xl border p-3">
+                      <p className="text-xs font-semibold uppercase text-muted-foreground">Riscos</p>
+                      <p className="mt-2 whitespace-pre-wrap text-sm">{detail.riskSummary || "Não informado."}</p>
+                    </div>
+                    <div className="rounded-xl border p-3">
+                      <p className="text-xs font-semibold uppercase text-muted-foreground">Dependências</p>
+                      <p className="mt-2 whitespace-pre-wrap text-sm">{detail.dependencies || "Nenhuma informada."}</p>
+                    </div>
+                  </div>
+                )}
 
                 {detail.agentSummary && (
                   <div className="rounded-xl border p-4">
