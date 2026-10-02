@@ -183,7 +183,10 @@ export async function handleOAuth(req: IncomingMessage, res: ServerResponse, url
       console.info("[oauth] approve redirect", { callbackPath: redirect.pathname, callbackKind: redirect.pathname === "/connector_platform_oauth_redirect" ? "stable" : redirect.pathname.startsWith("/connector/oauth/") ? "specific" : "other", hasCode: redirect.searchParams.has("code"), hasState: redirect.searchParams.has("state"), hasIss: redirect.searchParams.has("iss") });
       const handoffId = nonce();
       handoffs.set(handoffId, { redirect: redirect.toString(), exp: now() + 120 });
-      res.writeHead(303, { Location: `/oauth/complete?h=${handoffId}`, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" }); res.end();
+      const complete = new URL(`${issuer()}/oauth/complete`);
+      complete.searchParams.set("h", handoffId);
+      for (const [name, value] of redirect.searchParams) complete.searchParams.set(name, value);
+      res.writeHead(303, { Location: complete.toString(), "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" }); res.end();
 
     } else if (req.method === "POST" && path === "/oauth/token") {
       console.info("[oauth] token endpoint reached");
