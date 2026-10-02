@@ -164,15 +164,47 @@ function formatDuration(value?: number | string | null) {
 
 function improvementSimpleStatus(item: Improvement) {
   if (item.status === "producao_validada") return "Publicado";
-  if (item.testStatus === "passed" && ["pronto_staging", "em_homologacao", "homologado", "aguardando_producao"].includes(item.status)) return "Pronto";
-  if (item.status === "bloqueada" || item.testStatus === "failed") return "Atenção";
-  return "Fazendo";
+  if (item.status === "bloqueada" || item.testStatus === "failed") return "Bloqueado";
+  if (item.testStatus === "running") return "Testando";
+  if (item.status === "em_homologacao") return "Em homologação";
+  if (item.status === "homologado" || item.status === "aguardando_producao") return "Aguardando aprovação";
+  if (item.testStatus === "passed" && item.prNumber) return "Pronto";
+  if (item.prNumber) return "Validando código";
+  if (item.branch) return "Desenvolvendo";
+  if (item.agentStatus && item.agentStatus !== "aguardando") return "Agente executando";
+  return "Na fila";
+}
+
+function operationalProgress(item: Improvement) {
+  if (item.status === "producao_validada") return 100;
+  if (item.status === "bloqueada" || item.testStatus === "failed") return 55;
+  if (item.status === "aguardando_producao" || item.status === "homologado") return 90;
+  if (item.status === "em_homologacao") return 80;
+  if (item.testStatus === "passed" && item.prNumber) return 75;
+  if (item.testStatus === "running") return 65;
+  if (item.prNumber) return 55;
+  if (item.branch) return 35;
+  if (item.agentStatus && item.agentStatus !== "aguardando") return 20;
+  return 5;
+}
+
+function nextOperationalAction(item: Improvement) {
+  if (item.status === "producao_validada") return "Concluída e monitorada em produção";
+  if (item.status === "bloqueada" || item.testStatus === "failed") return "Vendi deve corrigir a falha e repetir os testes";
+  if (item.status === "aguardando_producao" || item.status === "homologado") return "Aguardando sua aprovação para produção";
+  if (item.status === "em_homologacao") return "Validar homologação e evidências";
+  if (item.testStatus === "running") return "Aguardando conclusão dos testes automáticos";
+  if (item.testStatus === "passed" && item.prNumber) return "Preparar homologação";
+  if (item.prNumber) return "Executar gates e testes do PR";
+  if (item.branch) return "Concluir implementação e abrir PR";
+  if (item.agentStatus && item.agentStatus !== "aguardando") return "Agente analisando e implementando";
+  return "Vendi assume automaticamente o desenvolvimento";
 }
 
 function statusVariant(status: string): "default" | "secondary" | "outline" | "destructive" {
   if (status === "Publicado" || status === "Pronto" || status === "published") return "default";
-  if (status === "Atenção" || status === "blocked") return "destructive";
-  if (status === "scheduled" || status === "monitoring" || status === "publishing") return "secondary";
+  if (status === "Bloqueado" || status === "blocked") return "destructive";
+  if (["Testando", "Em homologação", "Aguardando aprovação", "Validando código", "Desenvolvendo", "Agente executando", "scheduled", "monitoring", "publishing"].includes(status)) return "secondary";
   return "outline";
 }
 
@@ -221,7 +253,8 @@ export default function AdminImprovements() {
       if (!response.ok) throw new Error(body?.error ?? "HTTP " + response.status);
       return body;
     },
-    refetchInterval: 30000,
+    refetchInterval: 10000,
+    refetchIntervalInBackground: true,
   });
 
   const releasesQuery = useQuery<{ items: Release[] }>({
@@ -233,7 +266,8 @@ export default function AdminImprovements() {
       if (!response.ok) throw new Error(body?.error ?? "HTTP " + response.status);
       return body;
     },
-    refetchInterval: 30000,
+    refetchInterval: 10000,
+    refetchIntervalInBackground: true,
   });
 
   const metricsQuery = useQuery<ReleaseMetrics>({
@@ -245,7 +279,8 @@ export default function AdminImprovements() {
       if (!response.ok) throw new Error(body?.error ?? "HTTP " + response.status);
       return body;
     },
-    refetchInterval: 30000,
+    refetchInterval: 10000,
+    refetchIntervalInBackground: true,
   });
 
   const github = useQuery<{ ready: boolean; repository?: string; reason?: string; private?: boolean }>({
@@ -258,12 +293,33 @@ export default function AdminImprovements() {
     staleTime: 60000,
   });
 
+  useQuery({
+    queryKey: ["admin", "improvements", "github-auto-reconcile"],
+    enabled: !!token && github.data?.ready === true,
+    queryFn: async () => {
+      const response = await fetch("/api/admin/improvements/github-reconcile", {
+        method: "POST",
+        headers,
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error ?? "Falha ao sincronizar GitHub");
+      if ((body.created ?? 0) > 0 || (body.updated ?? 0) > 0) {
+        void qc.invalidateQueries({ queryKey: ["admin", "improvements"] });
+      }
+      return body;
+    },
+    refetchInterval: 15000,
+    refetchIntervalInBackground: true,
+    retry: false,
+  });
+
   const items = improvementsQuery.data?.items ?? [];
   const releases = releasesQuery.data?.items ?? [];
   const selectedItems = items.filter((item) => selected.has(item.id));
   const readySelected = selectedItems.filter((item) => item.testStatus === "passed" && !!item.prNumber);
-  const doingCount = items.filter((item) => improvementSimpleStatus(item) === "Fazendo").length;
-  const readyCount = items.filter((item) => improvementSimpleStatus(item) === "Pronto").length;
+  const doingCount = items.filter((item) => ["Agente executando", "Desenvolvendo", "Validando código", "Testando", "Em homologação"].includes(improvementSimpleStatus(item))).length;
+  const readyCount = items.filter((item) => ["Pronto", "Aguardando aprovação"].includes(improvementSimpleStatus(item))).length;
+  const blockedCount = items.filter((item) => improvementSimpleStatus(item) === "Bloqueado").length;
   const publishedCount = releases.filter((item) => item.status === "published").length;
   const scheduledCount = releases.filter((item) => ["scheduled", "publishing", "monitoring"].includes(item.status)).length;
 
@@ -445,6 +501,7 @@ export default function AdminImprovements() {
               GitHub {github.data?.ready ? "conectado" : "não conectado"}
             </Badge>
             <Badge variant="outline">Produção protegida</Badge>
+            <Badge variant="secondary">Acompanhamento automático • 15s</Badge>
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">Melhorias & Publicações</h1>
           <p className="mt-1 max-w-4xl text-sm text-muted-foreground">
@@ -481,7 +538,7 @@ export default function AdminImprovements() {
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <div className="rounded-2xl border bg-card p-4">
-          <p className="text-xs font-medium text-muted-foreground">Fazendo</p>
+          <p className="text-xs font-medium text-muted-foreground">Em execução agora</p>
           <p className="mt-1 text-2xl font-semibold">{doingCount}</p>
         </div>
         <div className="rounded-2xl border bg-card p-4">
@@ -497,8 +554,8 @@ export default function AdminImprovements() {
           <p className="mt-1 text-2xl font-semibold">{publishedCount}</p>
         </div>
         <div className="rounded-2xl border bg-card p-4">
-          <p className="text-xs font-medium text-muted-foreground">Tempo médio</p>
-          <p className="mt-1 text-2xl font-semibold">{formatDuration(metricsQuery.data?.avg_duration_ms)}</p>
+          <p className="text-xs font-medium text-muted-foreground">Bloqueadas / com erro</p>
+          <p className="mt-1 text-2xl font-semibold">{blockedCount}</p>
         </div>
       </div>
 
@@ -545,9 +602,9 @@ export default function AdminImprovements() {
                     <th className="px-3 py-3">Melhoria</th>
                     <th className="px-3 py-3">Origem</th>
                     <th className="px-3 py-3">Vendi</th>
-                    <th className="px-3 py-3">Situação</th>
-                    <th className="px-3 py-3">Versão</th>
-                    <th className="px-3 py-3">Prazo 24h</th>
+                    <th className="px-3 py-3">Execução</th>
+                    <th className="px-3 py-3">Próxima ação</th>
+                    <th className="px-3 py-3">Última atividade</th>
                     <th className="px-3 py-3 text-right">Ações</th>
                   </tr>
                 </thead>
@@ -580,32 +637,51 @@ export default function AdminImprovements() {
                             <div>
                               <p className="text-xs font-medium">{item.ownerAgent || "Vendi"}</p>
                               <p className="text-xs text-muted-foreground">{item.agentStatus || "aguardando"}</p>
+                              {item.agentSummary && (
+                                <p className="mt-1 max-w-[260px] line-clamp-2 text-xs text-muted-foreground" title={item.agentSummary}>
+                                  {item.agentSummary}
+                                </p>
+                              )}
                             </div>
                           </div>
                         </td>
-                        <td className="px-3 py-3">
-                          <Badge variant={statusVariant(simple)}>{simple}</Badge>
+                        <td className="min-w-[190px] px-3 py-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <Badge variant={statusVariant(simple)}>{simple}</Badge>
+                            <span className="text-xs font-medium">{operationalProgress(item)}%</span>
+                          </div>
+                          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+                            <div
+                              className="h-full rounded-full bg-primary transition-all"
+                              style={{ width: operationalProgress(item) + "%" }}
+                            />
+                          </div>
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            {item.testStatus === "failed" ? "Teste falhou" : item.testStatus === "running" ? "Testes em andamento" : item.testStatus === "passed" ? "Testes aprovados" : "Aguardando evidências"}
+                          </p>
                         </td>
-                        <td className="px-3 py-3">
-                          {item.packageKey ? <Badge variant="outline">{item.packageKey}</Badge> : "—"}
+                        <td className="max-w-[260px] px-3 py-3 text-xs">
+                          <p className="font-medium">{nextOperationalAction(item)}</p>
+                          {item.prNumber && <p className="mt-1 text-muted-foreground">PR #{item.prNumber}</p>}
                         </td>
                         <td className="px-3 py-3 text-xs">
-                          {item.dueAt ? formatDate(item.dueAt) : "até 24h"}
+                          <p>{formatDate(item.updatedAt)}</p>
+                          <p className="mt-1 text-muted-foreground">{item.dueAt ? "Prazo: " + formatDate(item.dueAt) : "SLA: até 24h"}</p>
                         </td>
                         <td className="px-3 py-3">
                           <div className="flex justify-end gap-2">
                             <Button variant="outline" size="sm" onClick={() => setDetail(item)}>
                               Abrir
                             </Button>
-                            {simple === "Fazendo" && (
+                            {simple !== "Publicado" && (
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 disabled={!!busy}
-                                onClick={() => post("/api/admin/improvements/" + item.id + "/start-agent", undefined, "Vendi iniciou o trabalho")}
+                                onClick={() => post("/api/admin/improvements/" + item.id + "/start-agent", undefined, "Vendi assumiu/reiniciou esta melhoria")}
                               >
                                 <WandSparkles className="mr-1 h-3.5 w-3.5" />
-                                Vendi
+                                {simple === "Bloqueado" ? "Corrigir" : "Reexecutar"}
                               </Button>
                             )}
                           </div>
