@@ -603,21 +603,6 @@ router.post(
       return;
     }
 
-    if (!(await canAccessAgentTask(req, String(tenantId), task.id))) {
-      res.status(403).json({ error: "Access denied to this agent task" });
-      return;
-    }
-
-    if (!(await canAccessAgentTask(req, String(tenantId), task.id))) {
-      res.status(403).json({ error: "Access denied to this agent task" });
-      return;
-    }
-
-    if (!(await canAccessAgentTask(req, String(tenantId), task.id))) {
-      res.status(403).json({ error: "Access denied to this agent task" });
-      return;
-    }
-
     if (task.status !== "pendente_aprovacao") {
       res.status(422).json({
         error: `Task cannot be approved from status "${task.status}"`,
@@ -712,6 +697,11 @@ router.post(
       return;
     }
 
+    if (!(await canAccessAgentTask(req, String(tenantId), task.id))) {
+      res.status(403).json({ error: "Access denied to this agent task" });
+      return;
+    }
+
     if (task.status !== "aprovado") {
       res.status(422).json({
         error: `Task cannot be executed from status "${task.status}" — must be "aprovado"`,
@@ -754,6 +744,11 @@ router.post(
 
     if (!task) {
       res.status(404).json({ error: "Agent task not found" });
+      return;
+    }
+
+    if (!(await canAccessAgentTask(req, String(tenantId), task.id))) {
+      res.status(403).json({ error: "Access denied to this agent task" });
       return;
     }
 
