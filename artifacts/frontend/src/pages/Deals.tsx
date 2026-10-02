@@ -2,6 +2,7 @@ import React, { lazy, Suspense, useState, useCallback, useEffect, useMemo, useRe
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import {
+  customFetch,
   useListDeals,
   getListDealsQueryKey,
   useCreateDeal,
@@ -611,20 +612,18 @@ function DealFollowupPreview({ deal }: { deal: Deal }) {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch(
+      const body = await customFetch<{ plano?: PlanoAcompanhamentoCard; error?: string }>(
         `/api/tenants/${deal.tenantId}/leads/${deal.leadId}/acompanhamento/planejar`,
         {
           method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             dealId: deal.id,
             motivoDisparo: "prévia solicitada no card da pipeline",
           }),
+          responseType: "json",
         },
       );
-      const body = await response.json().catch(() => ({})) as { plano?: PlanoAcompanhamentoCard; error?: string };
-      if (!response.ok || !body.plano) throw new Error(body.error || "Não foi possível calcular a próxima ação.");
+      if (!body.plano) throw new Error(body.error || "Não foi possível calcular a próxima ação.");
       setPlano(body.plano);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível calcular a próxima ação.");
