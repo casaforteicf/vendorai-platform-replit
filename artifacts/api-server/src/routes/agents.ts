@@ -19,7 +19,7 @@ import type { Agendamento } from "@workspace/db";
 import { createGoogleEvent } from "../lib/google-calendar.js";
 import { detectMeetingIntent } from "../lib/detect-meeting-intent.js";
 import { prepareSupportAiIntake } from "../services/support-ai-intake.js";
-import { resolveBusinessContext } from "../services/businessContextResolver.js";
+import { resolverContextoNegocio } from "../services/resolvedorContextoNegocio.js";
 import { formatCloserWinningResponsesPrompt, loadCloserWinningResponses } from "../lib/closer-winning-response-memory.js";
 import {
   loadContext,
@@ -110,9 +110,9 @@ async function handleAgentProcess(
 
   // Business Intelligence Core: resolve only the knowledge relevant to this
   // lead/message instead of relying on a single static tenant briefing.
-  let dynamicBusinessContext = "";
+  let contextoNegocioDinamico = "";
   try {
-    const resolvedBusiness = await resolveBusinessContext({
+    const contextoNegocioResolvido = await resolverContextoNegocio({
       tenantId,
       query: [
         mensagem,
@@ -123,18 +123,18 @@ async function handleAgentProcess(
         ctx.ci?.nextBestAction,
       ].filter(Boolean).join(" | "),
     });
-    dynamicBusinessContext = resolvedBusiness.promptBlock;
+    contextoNegocioDinamico = contextoNegocioResolvido.promptBlock;
     req.log.debug(
       {
         tenantId,
         leadId,
-        sourceCount: resolvedBusiness.sources.length,
-        sourceIds: resolvedBusiness.sources.slice(0, 12).map((source) => source.id),
+        sourceCount: contextoNegocioResolvido.sources.length,
+        sourceIds: contextoNegocioResolvido.sources.slice(0, 12).map((source) => source.id),
       },
-      "agents: dynamic business intelligence context resolved",
+      "agents: contexto dinâmico de inteligência do negócio resolvido",
     );
   } catch (err) {
-    req.log.warn({ err, tenantId, leadId }, "agents: business intelligence resolver unavailable (non-fatal)");
+    req.log.warn({ err, tenantId, leadId }, "agents: resolvedor de inteligência do negócio indisponível (não fatal)");
   }
 
   // ── SDR: classificar atividade do negócio (não-bloqueante, 1 vez por lead) ─
@@ -306,12 +306,12 @@ async function handleAgentProcess(
   }
 
   const basePrompt = buildPrompt(agentCfg.prompt, ctx, closerEnrichedScenario, resolvedSystemPrompt);
-  const systemPromptWithBusinessIntelligence = dynamicBusinessContext
-    ? `${basePrompt}\n\n---\n\n${dynamicBusinessContext}`
+  const promptSistemaComInteligenciaNegocio = contextoNegocioDinamico
+    ? `${basePrompt}\n\n---\n\n${contextoNegocioDinamico}`
     : basePrompt;
 
   const openaiMessages = [
-    { role: "system" as const, content: systemPromptWithBusinessIntelligence },
+    { role: "system" as const, content: promptSistemaComInteligenciaNegocio },
     ...ctx.recentMessages.map(msgToOpenAI),
     { role: "user" as const, content: mensagem },
   ];
