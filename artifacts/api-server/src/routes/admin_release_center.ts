@@ -6,6 +6,8 @@ import { requireRole } from "../middlewares/auth.js";
 import { executeDevAutonomousWork } from "./dev_agent_autonomy.js";
 import { validateProductionRevision } from "./dev_agent_validation.js";
 import { collectDevAgentCheckEvidence } from "../lib/dev-agent-check-evidence.js";
+import { runBrowserAgent } from "../services/browser-agent.js";
+import { signToken } from "../lib/jwt.js";
 
 const router: IRouter = Router();
 
@@ -510,6 +512,97 @@ router.post("/admin/releases/:id/impact", async (req, res) => {
     [release.id, JSON.stringify(impact), impact.base.sha, impact.head.sha, nextStatus, changedAfterApproval, !impact.clean],
   );
   return res.json({ impact, changedAfterApproval, status: nextStatus });
+});
+
+
+router.post("/admin/releases/:id/vendi-test", async (req, res) => {
+  await ensureSchema();
+  const release = await getReleaseById(String(req.params.id));
+  if (!release) return res.status(404).json({ error: "Publicação não encontrada" });
+
+  const impact = await collectReleaseImpact(release.improvementIds);
+  if (!impact.clean) {
+    return res.status(409).json({
+      error: "O Vendi não pode validar uma versão com impacto inconsistente.",
+      impact,
+    });
+  }
+
+  const baseUrl = String(release.testUrl ?? process.env["HOMOLOGATION_URL"] ?? "").replace(/\/+$/, "");
+  if (!baseUrl) return res.status(409).json({ error: "Ambiente de teste não configurado." });
+  const startUrl = baseUrl + "/admin/melhorias";
+  const host = new URL(startUrl).hostname.toLowerCase();
+
+  const user = req.user as any;
+  if (!user?.id && !user?.sub) return res.status(401).json({ error: "Super Admin não identificado." });
+  const firstPartyAuthToken = signToken({
+    sub: String(user.id ?? user.sub),
+    email: String(user.email ?? ""),
+    platformRole: "super_admin",
+    tenantId: String(user.tenantId ?? ""),
+    role: String(user.role ?? "admin"),
+    userFunction: user.userFunction ? String(user.userFunction) : undefined,
+    actorType: "ai",
+  });
+
+  await pool.query(
+    "UPDATE admin_releases SET test_status='running',test_summary='Vendi iniciou a validação funcional e visual.',updated_at=now() WHERE id=$1",
+    [release.id],
+  );
+
+  const goal = [
+    "Você é o Vendi validando uma versão de homologação do próprio VendorAI.",
+    "Valide SOMENTE leitura e navegação; não crie, aprove, publique, agende, exclua ou salve nada.",
+    "Na tela Super Admin > Melhorias & Publicações confirme:",
+    "1) título 'Melhorias & Publicações';",
+    "2) cards Fazendo, Prontas, Agendadas / em execução, Publicadas e Tempo médio;",
+    "3) abas Melhorias e Publicações e navegação entre elas;",
+    "4) botão Nova melhoria visível, sem submeter o formulário;",
+    "5) lista/tabela sem erro de renderização;",
+    "6) na aba Publicações, os controles e estados existentes carregam sem erro;",
+    "7) registre textos ausentes, tela quebrada, erro de rota, erro de autenticação ou comportamento inesperado.",
+    "Ao final retorne um resumo objetivo dizendo PASSOU ou FALHOU e os achados.",
+  ].join("\n");
+
+  try {
+    const result = await runBrowserAgent({
+      tenantId: String(user.tenantId ?? "platform"),
+      goal,
+      startUrl,
+      mode: "autonomo",
+      allowWrite: false,
+      maxSteps: 24,
+      allowedHosts: [host],
+      firstPartyAuthToken,
+    });
+
+    const passed = Boolean(result.ok);
+    const summary = JSON.stringify({
+      verdict: passed ? "passed" : "failed",
+      answer: result.answer,
+      finalUrl: result.finalUrl,
+      steps: result.steps,
+      checkedAt: new Date().toISOString(),
+    }).slice(0, 12000);
+
+    await pool.query(
+      "UPDATE admin_releases SET test_status=$2,test_summary=$3,status=CASE WHEN $2='passed' THEN 'ready' ELSE 'blocked' END,last_error=CASE WHEN $2='passed' THEN NULL ELSE $4 END,updated_at=now() WHERE id=$1",
+      [release.id, passed ? "passed" : "failed", summary, passed ? null : String(result.answer ?? "Validação do Vendi falhou.").slice(0, 4000)],
+    );
+
+    return res.status(passed ? 200 : 409).json({
+      ok: passed,
+      testStatus: passed ? "passed" : "failed",
+      result,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Falha na validação do Vendi";
+    await pool.query(
+      "UPDATE admin_releases SET test_status='failed',test_summary=$2,status='blocked',last_error=$2,updated_at=now() WHERE id=$1",
+      [release.id, message.slice(0, 12000)],
+    );
+    return res.status(409).json({ error: message, testStatus: "failed" });
+  }
 });
 
 router.post("/admin/releases/:id/tested", async (req, res) => {
