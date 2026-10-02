@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-: "${CLOUDFLARE_API_TOKEN:?CLOUDFLARE_API_TOKEN is required}"
-: "${CLOUDFLARE_ZONE_ID:?CLOUDFLARE_ZONE_ID is required}"
+CLOUDFLARE_PUBLISH_ENABLED="${CLOUDFLARE_PUBLISH_ENABLED:-true}"
+
+if [ "$CLOUDFLARE_PUBLISH_ENABLED" = "true" ]; then
+  : "${CLOUDFLARE_API_TOKEN:?CLOUDFLARE_API_TOKEN is required when Cloudflare publishing is enabled}"
+  : "${CLOUDFLARE_ZONE_ID:?CLOUDFLARE_ZONE_ID is required when Cloudflare publishing is enabled}"
+fi
 
 GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-casaforteicf/vendorai-platform-replit}"
 
@@ -63,20 +67,25 @@ test -f artifacts/frontend/dist/public/_worker.js
 test -f artifacts/website/dist/public/index.html
 test -f artifacts/website/dist/public/_worker.js
 
-cloudflare_ok=true
-pnpm dlx wrangler@3.90.0 whoami || true
-pnpm dlx wrangler@3.90.0 pages project create vendorai --production-branch main || true
-if ! pnpm dlx wrangler@3.90.0 pages deploy artifacts/frontend/dist/public --project-name vendorai --branch main; then
-  cloudflare_ok=false
-fi
+cloudflare_ok=false
+if [ "$CLOUDFLARE_PUBLISH_ENABLED" = "true" ]; then
+  cloudflare_ok=true
+  pnpm dlx wrangler@3.90.0 whoami || true
+  pnpm dlx wrangler@3.90.0 pages project create vendorai --production-branch main || true
+  if ! pnpm dlx wrangler@3.90.0 pages deploy artifacts/frontend/dist/public --project-name vendorai --branch main; then
+    cloudflare_ok=false
+  fi
 
-pnpm dlx wrangler@3.90.0 pages project create vendorai-website --production-branch main || true
-if ! pnpm dlx wrangler@3.90.0 pages deploy artifacts/website/dist/public --project-name vendorai-website --branch main; then
-  cloudflare_ok=false
+  pnpm dlx wrangler@3.90.0 pages project create vendorai-website --production-branch main || true
+  if ! pnpm dlx wrangler@3.90.0 pages deploy artifacts/website/dist/public --project-name vendorai-website --branch main; then
+    cloudflare_ok=false
+  fi
+else
+  echo "Cloudflare publishing disabled for this fallback service; validating Railway frontend + public site."
 fi
 
 if [ "$cloudflare_ok" != true ]; then
-  echo "Cloudflare route failed; switching automatically to Railway frontend fallback validation."
+  echo "Using Railway frontend fallback validation."
 fi
 
 prefix="${REVISION:0:12}"
