@@ -412,6 +412,212 @@ router.post("/admin/improvements/approve-production", async (req, res) => {
   res.json({ approved: result.rowCount ?? 0 });
 });
 
+
+const FAILED_GITHUB_CONCLUSIONS = new Set([
+  "failure",
+  "cancelled",
+  "timed_out",
+  "action_required",
+  "stale",
+  "startup_failure",
+]);
+
+async function githubCheckSummary(owner: string, repo: string, sha: string) {
+  const payload = await githubJson(`/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}/check-runs?per_page=100`);
+  const runs = Array.isArray(payload?.check_runs) ? payload.check_runs : [];
+  const failed = runs.filter((run: any) => FAILED_GITHUB_CONCLUSIONS.has(String(run?.conclusion ?? "")));
+  const running = runs.filter((run: any) => String(run?.status ?? "") !== "completed");
+  const completed = runs.filter((run: any) => String(run?.status ?? "") === "completed");
+
+  let testStatus: "pending" | "running" | "passed" | "failed" = "pending";
+  if (failed.length) testStatus = "failed";
+  else if (running.length) testStatus = "running";
+  else if (completed.length) testStatus = "passed";
+
+  const compact = runs.slice(0, 30).map((run: any) => ({
+    name: String(run?.name ?? "check"),
+    status: String(run?.status ?? "unknown"),
+    conclusion: run?.conclusion ? String(run.conclusion) : null,
+    url: run?.html_url ? String(run.html_url) : null,
+  }));
+
+  return {
+    testStatus,
+    summary: JSON.stringify({
+      source: "github",
+      sha,
+      total: runs.length,
+      failed: failed.length,
+      running: running.length,
+      checks: compact,
+      checkedAt: new Date().toISOString(),
+    }).slice(0, 8000),
+  };
+}
+
+router.post("/admin/improvements/github-reconcile", async (req, res) => {
+  await ensureSchema();
+
+  let config: GithubConfig;
+  try {
+    config = githubConfig();
+  } catch (error) {
+    return res.status(503).json({
+      error: "GitHub não está configurado no backend deste ambiente.",
+      code: error instanceof Error ? error.message : "GITHUB_CONFIG_ERROR",
+      required: ["GITHUB_DEV_TOKEN", "GITHUB_DEV_REPOSITORY"],
+    });
+  }
+
+  try {
+    const repoInfo = await githubJson(`/repos/${config.owner}/${config.repo}`);
+    const pulls = await githubJson(
+      `/repos/${config.owner}/${config.repo}/pulls?state=open&per_page=100&sort=updated&direction=desc`,
+    );
+    const list = Array.isArray(pulls) ? pulls : [];
+
+    let created = 0;
+    let updated = 0;
+    let skipped = 0;
+    const reconciled: Array<{ prNumber: number; id: string; created: boolean; testStatus: string }> = [];
+
+    for (const pr of list) {
+      const prNumber = Number(pr?.number ?? 0);
+      const headSha = String(pr?.head?.sha ?? "");
+      const headBranch = String(pr?.head?.ref ?? "");
+      const prUrl = pr?.html_url ? String(pr.html_url) : null;
+      const title = String(pr?.title ?? `PR #${prNumber}`).slice(0, 180);
+      const body = String(pr?.body ?? "").slice(0, 8000);
+      const sameRepository = !pr?.head?.repo?.full_name || String(pr.head.repo.full_name) === config.repository;
+
+      if (!prNumber || !headSha || !sameRepository) {
+        skipped += 1;
+        continue;
+      }
+
+      let check;
+      try {
+        check = await githubCheckSummary(config.owner, config.repo, headSha);
+      } catch (error) {
+        check = {
+          testStatus: "pending" as const,
+          summary: JSON.stringify({
+            source: "github",
+            sha: headSha,
+            warning: error instanceof Error ? error.message : "Falha ao consultar checks",
+            checkedAt: new Date().toISOString(),
+          }).slice(0, 8000),
+        };
+      }
+
+      const candidateStatus = check.testStatus === "failed"
+        ? "bloqueada"
+        : check.testStatus === "running"
+          ? "testando"
+          : "em_desenvolvimento";
+
+      const existing = await pool.query(
+        `SELECT id,status FROM admin_improvements WHERE pr_number=$1 LIMIT 1`,
+        [prNumber],
+      );
+
+      if (existing.rowCount) {
+        const id = String(existing.rows[0].id);
+        await pool.query(
+          `UPDATE admin_improvements
+             SET title=$2,
+                 branch=$3,
+                 pr_url=$4,
+                 test_status=$5,
+                 test_summary=$6,
+                 status=CASE
+                   WHEN status IN ('homologado','aguardando_producao','producao_validada') THEN status
+                   WHEN $5='failed' THEN 'bloqueada'
+                   WHEN $5='running' THEN 'testando'
+                   WHEN status='bloqueada' AND $5<>'failed' THEN 'em_desenvolvimento'
+                   ELSE status
+                 END,
+                 agent_status=CASE
+                   WHEN $5='failed' THEN 'bloqueado'
+                   WHEN $5='running' THEN 'validando'
+                   WHEN $5='passed' THEN 'pronto_para_revisao'
+                   ELSE 'desenvolvendo'
+                 END,
+                 updated_at=now()
+           WHERE id=$1`,
+          [id, title, headBranch || null, prUrl, check.testStatus, check.summary],
+        );
+        updated += 1;
+        reconciled.push({ prNumber, id, created: false, testStatus: check.testStatus });
+        continue;
+      }
+
+      const id = randomUUID();
+      await pool.query(
+        `INSERT INTO admin_improvements (
+           id,title,description,module,priority,status,branch,pr_number,pr_url,
+           test_status,test_summary,created_by,source_type,owner_agent,agent_status,
+           requested_at,due_at,created_at,updated_at
+         ) VALUES (
+           $1,$2,$3,'Plataforma','media',$4,$5,$6,$7,
+           $8,$9,$10,'system','vendi',$11,
+           now(),now()+interval '24 hours',now(),now()
+         )`,
+        [
+          id,
+          title,
+          body,
+          candidateStatus,
+          headBranch || null,
+          prNumber,
+          prUrl,
+          check.testStatus,
+          check.summary,
+          actor(req),
+          check.testStatus === "failed"
+            ? "bloqueado"
+            : check.testStatus === "running"
+              ? "validando"
+              : check.testStatus === "passed"
+                ? "pronto_para_revisao"
+                : "desenvolvendo",
+        ],
+      );
+
+      await pool.query(
+        `INSERT INTO admin_improvement_events (id,improvement_id,event_type,message,payload,actor)
+         VALUES ($1,$2,'github_reconciled',$3,$4::jsonb,$5)`,
+        [
+          randomUUID(),
+          id,
+          `PR #${prNumber} importado automaticamente do GitHub.`,
+          JSON.stringify({ prNumber, headBranch, headSha, repository: config.repository }),
+          actor(req),
+        ],
+      );
+
+      created += 1;
+      reconciled.push({ prNumber, id, created: true, testStatus: check.testStatus });
+    }
+
+    return res.json({
+      ok: true,
+      repository: repoInfo?.full_name ?? config.repository,
+      scanned: list.length,
+      created,
+      updated,
+      skipped,
+      reconciled,
+      reconciledAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    return res.status(502).json({
+      error: error instanceof Error ? error.message : "Falha ao reconciliar GitHub.",
+      code: "GITHUB_RECONCILE_FAILED",
+    });
+  }
+});
+
 router.get("/admin/improvements/github-readiness", async (_req, res) => {
   try {
     const config = githubConfig();
