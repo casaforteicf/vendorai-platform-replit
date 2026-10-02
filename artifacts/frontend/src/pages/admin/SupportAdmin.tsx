@@ -16,7 +16,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import {
   Bug, MessageSquare, Lightbulb, Loader2, Copy, Check,
-  AlertTriangle, Clock, CheckCircle2, Search, RefreshCw,
+  AlertTriangle, Clock, CheckCircle2, Search, RefreshCw, WandSparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -168,6 +168,30 @@ export default function SupportAdmin() {
       });
     },
     onError: () => toast({ title: "Erro", description: "Não foi possível atualizar.", variant: "destructive" }),
+  });
+
+  const createImprovement = useMutation({
+    mutationFn: async (bug: BugReport) => {
+      const r = await fetch("/api/admin/improvements/from-support/" + bug.id, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+      });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(body?.error ?? "Não foi possível gerar a demanda.");
+      return body;
+    },
+    onSuccess: (body) => {
+      qc.invalidateQueries({ queryKey: ["admin", "improvements"] });
+      toast({
+        title: body?.created ? "Demanda criada em Melhorias" : "Chamado vinculado à melhoria existente",
+        description: "O Vendi passa a acompanhar desenvolvimento, testes e publicação pelo fluxo controlado.",
+      });
+    },
+    onError: (error) => toast({
+      title: "Erro ao gerar demanda",
+      description: error instanceof Error ? error.message : "Não foi possível gerar a melhoria.",
+      variant: "destructive",
+    }),
   });
 
   function handleCopy() {
@@ -439,7 +463,19 @@ export default function SupportAdmin() {
                 </div>
 
                 {/* Ações */}
-                <div className="flex gap-2 pt-1">
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {selected.categoria !== "duvida" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                      disabled={createImprovement.isPending}
+                      onClick={() => createImprovement.mutate(selected)}
+                    >
+                      {createImprovement.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <WandSparkles className="h-3.5 w-3.5" />}
+                      Gerar demanda de melhoria
+                    </Button>
+                  )}
                   {selected.status !== "em_analise" && selected.status !== "resolvido" && (
                     <Button
                       variant="outline"
