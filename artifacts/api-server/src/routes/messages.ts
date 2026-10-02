@@ -9,6 +9,8 @@ import {
   updateMessageSchema,
 } from "@workspace/db";
 import { maybeReanalyze } from "../lib/analyze-intelligence.js";
+import { recordIntelligenceEvent, recordIntelligenceFact } from "../services/customer-intelligence-history.js";
+import { resolveStageQuestionsFromInboundMessage } from "../services/stage-question-resolution.js";
 import {
   sendOutgoingMessage,
   WhatsAppNotConnectedError,
@@ -124,6 +126,7 @@ router.post("/messages", async (req, res): Promise<void> => {
         req.log
       );
       res.status(201).json(message);
+
     } catch (err) {
       if (err instanceof WhatsAppNotConnectedError) {
         res.status(422).json({ error: "WhatsApp não configurado para este tenant. Configure as credenciais Z-API em Configurações." });
@@ -161,6 +164,49 @@ router.post("/messages", async (req, res): Promise<void> => {
     .returning();
 
   res.status(201).json(message);
+
+  void recordIntelligenceEvent({
+    tenantId: parsed.data.tenantId,
+    leadId: parsed.data.leadId,
+    eventType: parsed.data.direcao === "entrada" ? "message_received" : "message_sent",
+    title: parsed.data.direcao === "entrada"
+      ? `Mensagem recebida via ${parsed.data.canal}`
+      : `Mensagem enviada via ${parsed.data.canal}`,
+    summary: parsed.data.conteudo?.slice(0, 500) ?? null,
+    sourceModule: "messages",
+    sourceId: message.id,
+    metadata: { canal: parsed.data.canal, direcao: parsed.data.direcao },
+    log: req.log,
+  });
+
+  if (parsed.data.direcao === "entrada") {
+    void resolveStageQuestionsFromInboundMessage({
+      tenantId: parsed.data.tenantId,
+      leadId: parsed.data.leadId,
+      messageId: message.id,
+      message: parsed.data.conteudo,
+      log: req.log,
+    }).catch((err) => {
+      req.log.warn({ err, messageId: message.id }, "customer-intelligence: stage question resolution failed (non-fatal)");
+    });
+
+    void recordIntelligenceFact({
+      tenantId: parsed.data.tenantId,
+      leadId: parsed.data.leadId,
+      kind: "declaracao_cliente",
+      factKey: "ultima_interacao_cliente",
+      value: {
+        canal: parsed.data.canal,
+        conteudo: parsed.data.conteudo?.slice(0, 1000) ?? "",
+        em: new Date().toISOString(),
+      },
+      sourceType: "mensagem",
+      sourceModule: "messages",
+      sourceId: message.id,
+      title: "Última interação recebida do cliente",
+      log: req.log,
+    });
+  }
 
   // Fire-and-forget: check whether this lead's intelligence is stale or has
   // accumulated enough new messages to warrant automatic re-analysis.

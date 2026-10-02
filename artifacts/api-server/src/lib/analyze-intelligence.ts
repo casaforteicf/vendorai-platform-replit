@@ -5,6 +5,7 @@ import { callOpenAI as gatewayCallOpenAI } from "./ai-gateway.js";
 import {
   db,
   customerIntelligenceTable,
+  customerIntelligenceSnapshotsTable,
   intelligenceAnalysisLogTable,
   agentConfigsTable,
   leadsTable,
@@ -71,8 +72,21 @@ export class AnalysisAlreadyInFlightError extends Error {
 
 // ── AI response schema ────────────────────────────────────────────────────────
 const aiAnalysisSchema = z.object({
+  // Compatibilidade temporária: representa o risco principal em escala 0-100.
+  // A interface V2 usa healthScore/riskType/riskLevel como fonte canônica.
   churnRisk:            z.number().int().min(0).max(100),
   churnReasons:         z.array(z.string()).default([]),
+  healthScore:          z.number().int().min(0).max(100),
+  healthStatus:         z.enum(["saudavel", "atencao", "alto_risco", "critico"]),
+  riskType:             z.enum(["perda_comercial", "churn", "operacional", "insatisfacao", "desengajamento", "financeiro", "nenhum"]),
+  riskLevel:            z.enum(["baixo", "atencao", "alto", "critico"]),
+  riskTrend:            z.enum(["melhorando", "estavel", "piorando"]),
+  analysisConfidence:   z.number().int().min(0).max(100),
+  healthDimensions:     z.record(z.string(), z.number().int().min(0).max(100)).default({}),
+  positiveSignals:      z.array(z.object({ sinal: z.string(), evidencia: z.string().optional(), impacto: z.number().int().min(-100).max(100).optional() })).default([]),
+  negativeSignals:      z.array(z.object({ sinal: z.string(), evidencia: z.string().optional(), impacto: z.number().int().min(-100).max(100).optional() })).default([]),
+  riskFactors:          z.array(z.object({ fator: z.string(), motivo: z.string(), impacto: z.number().int().min(0).max(100).optional() })).default([]),
+  riskEvents:           z.array(z.object({ evento: z.string(), delta: z.number().int().min(-100).max(100), motivo: z.string() })).default([]),
   journeyStage:         z.string(),
   intentAnalysis:       z.string(),
   opportunities:        z.array(z.string()).default([]),
@@ -142,6 +156,16 @@ export async function analyzeLeadIntelligence(params: {
   if (!lead) {
     throw new Error(`Lead ${leadId} not found in tenant ${tenantId}`);
   }
+
+  const [tenantContext] = await db
+    .select({
+      name: tenantsTable.name,
+      vertical: tenantsTable.vertical,
+      segmento: tenantsTable.segmento,
+    })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId))
+    .limit(1);
 
   // D-003: contato classificado como não-lead (colaborador, fornecedor,
   // parceiro, familiar, amigo, outro) não passa por análise de churn --
@@ -321,24 +345,54 @@ export async function analyzeLeadIntelligence(params: {
     ? Math.floor((Date.now() - new Date(conversation.ultimaMensagemEm).getTime()) / (1000 * 60 * 60 * 24))
     : null;
 
-  const systemPrompt = `Você é um especialista em Customer Success e análise de risco de churn B2B SaaS.
-Analise os dados do lead abaixo — perfil, pipeline de negócios, estado das propostas/orçamentos, histórico de conversas e atividades — e retorne um objeto JSON com os seguintes campos:
+  const systemPrompt = `Você é o motor de Saúde do Relacionamento do Vendor.ai.
+Analise o relacionamento conforme a jornada REAL do tenant. Não assuma SaaS, assinatura ou recorrência se esses elementos não existirem.
 
+CONTEXTO DO TENANT
+- Empresa: ${tenantContext?.name ?? "não informado"}
+- Vertical: ${tenantContext?.vertical ?? "não informada"}
+- Segmento: ${tenantContext?.segmento ?? "não informado"}
+
+Antes de calcular risco, identifique a fase:
+- pré-venda/negociação: use riskType="perda_comercial";
+- cliente recorrente/assinatura: riskType="churn";
+- execução/obra/entrega: riskType="operacional" ou "insatisfacao";
+- pós-venda sem recorrência: riskType="desengajamento";
+- cobrança/inadimplência: riskType="financeiro";
+- sem risco relevante: riskType="nenhum".
+
+Retorne SOMENTE JSON:
 {
-  "churnRisk": <0-100, inteiro — probabilidade de churn/cancelamento>,
-  "churnReasons": ["razão 1", "razão 2", ...],
-  "journeyStage": "<estágio atual na jornada: ex. prospect, considerando, negociando, cliente_ativo, em_risco, inativo>",
-  "intentAnalysis": "<texto curto descrevendo a intenção real e motivação do lead>",
-  "opportunities": ["oportunidade 1", "oportunidade 2", ...],
-  "nextBestAction": "<ação concreta que a equipe deve realizar agora>",
-  "nextBestActionReason": "<justificativa curta para a ação recomendada>",
-  "scoreExplicacao": "<explicação de 1-2 frases sobre o que gerou o score de 0-100: quais fatores positivos/negativos pesaram mais>",
-  "churnRiskExplicacao": "<explicação de 1-2 frases sobre o que motivou o churnRisk: quais sinais de risco ou engajamento foram considerados>"
+  "churnRisk": <0-100, inteiro; campo legado que representa o risco principal atual>,
+  "churnReasons": ["fatores negativos observados"],
+  "healthScore": <0-100, onde 100 = relacionamento muito saudável>,
+  "healthStatus": "saudavel|atencao|alto_risco|critico",
+  "riskType": "perda_comercial|churn|operacional|insatisfacao|desengajamento|financeiro|nenhum",
+  "riskLevel": "baixo|atencao|alto|critico",
+  "riskTrend": "melhorando|estavel|piorando",
+  "analysisConfidence": <0-100; mede qualidade/quantidade das evidências, não o risco>,
+  "healthDimensions": { "engajamento": 0-100, "relacionamento": 0-100, "comercial": 0-100, "operacional": 0-100, "suporte": 0-100, "financeiro": 0-100 },
+  "positiveSignals": [{ "sinal": "...", "evidencia": "...", "impacto": -20 }],
+  "negativeSignals": [{ "sinal": "...", "evidencia": "...", "impacto": 20 }],
+  "riskFactors": [{ "fator": "...", "motivo": "...", "impacto": 0-100 }],
+  "riskEvents": [{ "evento": "...", "delta": -100..100, "motivo": "..." }],
+  "journeyStage": "<fase atual curta>",
+  "intentAnalysis": "<intenção real e motivação>",
+  "opportunities": ["oportunidade real observada"],
+  "nextBestAction": "<ação concreta agora>",
+  "nextBestActionReason": "<por que esta ação reduz o maior risco ou aproveita a melhor oportunidade>",
+  "scoreExplicacao": "<explicação curta da saúde>",
+  "churnRiskExplicacao": "<explicação curta do risco principal>"
 }
 
 Regras:
-- Responda SOMENTE com o JSON, sem texto adicional
-- churnRisk deve refletir a SITUAÇÃO REAL COMBINADA: considere o pipeline de negócios E o estado real das propostas como sinais prioritários de engajamento
+- Fatos observados e inferências devem ser tratados separadamente; não invente fatos.
+- Se os dados forem escassos, reduza analysisConfidence.
+- healthScore e churnRisk não são sinônimos: em geral risco alto reduz saúde, mas sinais positivos podem coexistir com fatores de risco.
+- Use sinais positivos E negativos; não penalize automaticamente ausência de dados.
+- Não trate silêncio como risco sem considerar o ritmo normal da etapa e sinais recentes de avanço.
+- churnRisk é mantido apenas para compatibilidade; interprete-o como intensidade do riskType atual.
+- considere o pipeline de negócios E o estado real das propostas como sinais prioritários de engajamento
 - DISTINGA obrigatoriamente proposta inexistente, rascunho, enviada/pendente, aceita, rejeitada e expirada
 - AUSÊNCIA DE PROPOSTA não é, por si só, razão de churn: nunca use "nenhuma proposta aceita" ou equivalente quando nenhuma proposta foi criada/apresentada
 - RASCUNHO também não equivale a rejeição: significa apenas que a oferta ainda está sendo preparada
@@ -428,6 +482,18 @@ Regras:
   const updateFields = {
     churnRisk:             parsed.churnRisk,
     ...churnReasonsFields,
+    healthScore:           parsed.healthScore,
+    healthStatus:          parsed.healthStatus,
+    riskType:              parsed.riskType,
+    riskLevel:             parsed.riskLevel,
+    riskTrend:             parsed.riskTrend,
+    analysisConfidence:    parsed.analysisConfidence,
+    healthDimensions:      parsed.healthDimensions,
+    positiveSignals:       parsed.positiveSignals,
+    negativeSignals:       parsed.negativeSignals,
+    riskFactors:           parsed.riskFactors,
+    riskEvents:            parsed.riskEvents,
+    analysisVersion:       2,
     journeyStage:          parsed.journeyStage,
     intentAnalysis:        parsed.intentAnalysis,
     opportunities:         parsed.opportunities,
@@ -446,9 +512,34 @@ Regras:
     .returning();
 
   log.info(
-    { leadId, tenantId, churnRisk: parsed.churnRisk, journeyStage: parsed.journeyStage },
+    {
+      leadId,
+      tenantId,
+      churnRisk: parsed.churnRisk,
+      healthScore: parsed.healthScore,
+      riskType: parsed.riskType,
+      riskLevel: parsed.riskLevel,
+      journeyStage: parsed.journeyStage,
+    },
     "intelligence/analyze: record upserted"
   );
+
+  // Snapshot imutável: preserva como a inteligência evoluiu ao longo da jornada.
+  try {
+    await db.insert(customerIntelligenceSnapshotsTable).values({
+      tenantId,
+      leadId,
+      intelligenceId: intelligence.id,
+      healthScore: parsed.healthScore,
+      riskType: parsed.riskType,
+      riskLevel: parsed.riskLevel,
+      riskTrend: parsed.riskTrend,
+      analysisConfidence: parsed.analysisConfidence,
+      payload: parsed,
+    });
+  } catch (err) {
+    log.warn({ err, leadId, tenantId }, "intelligence/analyze: snapshot failed (non-fatal)");
+  }
 
   // 8. Record this analysis call for cost attribution and bump monthly token counter (non-fatal if either fails)
   try {
