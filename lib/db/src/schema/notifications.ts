@@ -6,6 +6,8 @@ export const notificationsTable = pgTable("notifications", {
   tenantId: text("tenant_id")
     .notNull()
     .references(() => tenantsTable.id, { onDelete: "cascade" }),
+  recipientUserId: text("recipient_user_id"),
+  leadId: text("lead_id"),
   title: text("title").notNull(),
   message: text("message").notNull(),
   type: text("type").notNull().default("warning"), // warning, error, info
