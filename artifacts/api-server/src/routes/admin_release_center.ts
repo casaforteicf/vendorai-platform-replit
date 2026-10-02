@@ -743,7 +743,7 @@ async function notifySupportRequestersAfterPublish(release: any) {
 
     if (item.sourceRefId) {
       await pool.query(
-        "UPDATE bug_reports SET status='resolvido',resolvido_por='dev_ia',resolvido_em=COALESCE(resolvido_em,now()),updated_at=now() WHERE id=$1",
+        "UPDATE bug_reports SET status='resolvido',resolvido_por='dev_ia',resolvido_at=COALESCE(resolvido_at,now()),updated_at=now() WHERE id=$1",
         [String(item.sourceRefId)],
       ).catch(() => undefined);
     }
