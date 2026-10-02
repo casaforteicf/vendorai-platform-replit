@@ -4,6 +4,10 @@ function env(name: string): string {
   return value;
 }
 
+function bodyFromBuffer(data: Buffer): ArrayBuffer {
+  return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+}
+
 function baseUrl(): string {
   return env("SUPABASE_URL").replace(/\/$/, "");
 }
@@ -24,7 +28,7 @@ export async function saveExternalAsset(objectName:string, data:Buffer, contentT
   const response = await fetch(url, {
     method:"POST",
     headers:{ ...authHeaders(), "Content-Type":contentType, "x-upsert":"true" },
-    body:data,
+    body:bodyFromBuffer(data),
   });
   if (!response.ok) {
     const detail = await response.text().catch(()=> "");
