@@ -37,7 +37,7 @@ export interface ProdutoProjectTechnicalConfig {
   [key: string]: unknown;
 }
 
-export interface ProdutoCommercialIntelligence {
+export interface ProdutoInteligenciaComercial {
   features?: string[];
   differentials?: string[];
   benefits?: string[];
@@ -252,7 +252,7 @@ export const produtosCatalogoTable = pgTable("produtos_catalogo", {
   deliveryConfig: jsonb("delivery_config").$type<ProdutoDeliveryConfig>(),
   // Inteligência comercial estruturada usada por Vendi, SDR, Closer, MKT e Follow-up.
   // Mantém fatos aprovados (benefícios/diferenciais/provas) separados de texto gerado por IA.
-  commercialIntelligence: jsonb("commercial_intelligence").$type<ProdutoCommercialIntelligence>().default({}),
+  inteligenciaComercial: jsonb("inteligencia_comercial").$type<ProdutoInteligenciaComercial>().default({}),
   fornecedor: text("fornecedor"),
   prazoEntregaDias: integer("prazo_entrega_dias"),
   custoFornecedor: numeric("custo_fornecedor", { precision: 12, scale: 2 }),
