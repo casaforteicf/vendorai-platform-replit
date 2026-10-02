@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request } from "express";
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod/v4";
 import {
   db,
@@ -17,6 +17,15 @@ import {
   activitiesTable,
   leadsTable,
   usersTable,
+  tenantsTable,
+  installationChecklistTemplatesTable,
+  installationVisitsTable,
+  installationChecklistItemsTable,
+  installationOccurrencesTable,
+  insertInstallationTemplateSchema,
+  updateInstallationTemplateSchema,
+  updateInstallationVisitSchema,
+  updateInstallationChecklistItemSchema,
   type EntregaItem,
 } from "@workspace/db";
 import { buildUserFunctionFilter } from "../middlewares/auth.js";
@@ -26,6 +35,8 @@ import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 import { generateSupportReportDraft } from "../services/support-report.js";
 import { requestSupportFeedback } from "../services/support-feedback.js";
 import { canAdvanceWorkCard, TERMINAL_WORK_STAGES } from "../lib/pipeline-progress.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
+import { generateDeliveryAcceptancePdf } from "../lib/delivery-acceptance-pdf.js";
 
 const router: IRouter = Router();
 
@@ -50,6 +61,45 @@ const EXECUTION_STAGES = [
   "cancelado",
 ] as const;
 
+const EXECUTION_STAGE_REQUIREMENTS: Record<string, string[]> = {
+  pedido_confirmado: ["pedido_contexto"],
+  liberacao_financeira: ["liberacao_financeira"],
+  liberacao_medidas: ["relatorio_medidas"],
+  projeto: ["projeto_aprovado"],
+  producao_a_iniciar: ["pre_requisitos_producao"],
+  producao_em_andamento: ["registro_producao"],
+  producao_finalizada: ["qualidade_producao"],
+  aguardando_liberacao: ["motivo_bloqueio"],
+  liberado: ["liberacao_operacional"],
+  agenda_entrega: ["agenda_entrega"],
+  em_transporte: ["checklist_transporte"],
+  instalacao_a_iniciar: ["pre_instalacao"],
+  instalacao_em_andamento: ["checklist_instalacao"],
+  instalacao_finalizada: ["conferencia_instalacao"],
+  entrega_obra: ["vistoria_aceite"],
+  pos_venda: ["pacote_entrega"],
+};
+
+function completedStageGate(card: typeof workCardsTable.$inferSelect, key: string): boolean {
+  const metadata = (card.metadata ?? {}) as Record<string, unknown>;
+  const stageGates = (metadata.stageGates && typeof metadata.stageGates === "object")
+    ? metadata.stageGates as Record<string, unknown>
+    : {};
+  const value = stageGates[key];
+  return value === true || Boolean(value && typeof value === "object" && (value as Record<string, unknown>).completed === true);
+}
+
+function missingTransitionRequirements(card: typeof workCardsTable.$inferSelect, targetStage: string): Array<{ stage: string; key: string }> {
+  if (card.pipeline !== "execucao") return [];
+  const currentIndex = EXECUTION_STAGES.indexOf(card.etapa as typeof EXECUTION_STAGES[number]);
+  const targetIndex = EXECUTION_STAGES.indexOf(targetStage as typeof EXECUTION_STAGES[number]);
+  if (currentIndex < 0 || targetIndex <= currentIndex) return [];
+  return EXECUTION_STAGES
+    .slice(currentIndex, targetIndex)
+    .flatMap((stage) => (EXECUTION_STAGE_REQUIREMENTS[stage] ?? []).map((key) => ({ stage, key })))
+    .filter(({ key }) => !completedStageGate(card, key));
+}
+
 const SUPPORT_STAGES = [
   "chamado_cliente",
   "agendamento_assistencia",
@@ -59,6 +109,65 @@ const SUPPORT_STAGES = [
   "fechamento_assistencia",
   "cancelado",
 ] as const;
+
+
+const stageFormCompleteSchema = z.object({
+  key: z.string().min(1),
+  data: z.record(z.string(), z.unknown()),
+});
+
+const inspectionStatusSchema = z.enum(["conforme", "nao_conforme", "nao_se_aplica"]);
+
+const deliveryAcceptanceSchema = z.object({
+  receiver: z.object({
+    role: z.enum(["cliente", "delegado"]),
+    name: z.string().trim().min(2).max(200),
+    document: z.string().trim().max(100).optional().nullable(),
+    phone: z.string().trim().max(50).optional().nullable(),
+    email: z.string().trim().email().optional().nullable(),
+    relationship: z.string().trim().max(150).optional().nullable(),
+    authorization: z.string().trim().max(500).optional().nullable(),
+  }),
+  acceptanceType: z.enum(["sem_ressalvas", "com_ressalvas"]),
+  observations: z.string().max(10000).optional().nullable(),
+  items: z.array(z.object({
+    name: z.string().trim().min(1),
+    quantity: z.number().positive().optional().nullable(),
+    installation: inspectionStatusSchema,
+    functionality: inspectionStatusSchema,
+    interiorFinish: inspectionStatusSchema,
+    exteriorFinish: inspectionStatusSchema,
+    status: inspectionStatusSchema,
+    observation: z.string().max(5000).optional().nullable(),
+    evidenceAttachmentIds: z.array(z.string()).default([]),
+  })).min(1),
+  signatures: z.object({
+    client: z.object({
+      name: z.string().trim().min(2),
+      dataUrl: z.string().startsWith("data:image/").max(2_000_000),
+    }),
+    company: z.object({
+      name: z.string().trim().min(2),
+      dataUrl: z.string().startsWith("data:image/").max(2_000_000),
+    }),
+  }),
+  manualAttachmentIds: z.array(z.string()).default([]),
+});
+
+function stageFormDataValid(key: string, data: Record<string, unknown>): string | null {
+  const items = Array.isArray(data.items) ? data.items as Array<Record<string, unknown>> : [];
+  if (["relatorio_medidas", "checklist_transporte", "checklist_instalacao"].includes(key)) {
+    if (items.length === 0) return "O formulário precisa conter os itens do pedido/lote.";
+    if (items.some((item) => item.checked !== true)) return "Todos os itens precisam ser conferidos antes de concluir.";
+  }
+  if (key === "conferencia_instalacao") {
+    const checks = ["itensConferidos", "funcionamentoTestado", "acabamentoConferido", "limpezaFinal"];
+    if (checks.some((field) => data[field] !== true)) return "Conclua todas as verificações da instalação antes de liberar a vistoria.";
+  }
+  return null;
+}
+
+const objectStorage = new ObjectStorageService();
 
 const SUPPORT_CATEGORIES = [
   "defeito",
@@ -118,6 +227,257 @@ function workCode(prefix: "PED" | "ENT" | "AST" | "OP") {
   return `${prefix}-${Date.now().toString(36).toUpperCase()}-${randomUUID().slice(0, 4).toUpperCase()}`;
 }
 
+const INSTALLATION_DONE_STATUSES = new Set(["instalado", "conferido"]);
+
+function normalizeInstallationItemKey(item: Record<string, unknown>, index: number) {
+  const productId = typeof item.produtoId === "string" ? item.produtoId : "";
+  const sku = typeof item.sku === "string" ? item.sku : "";
+  const proposalIndex = Number.isInteger(item.propostaItemIndex) ? String(item.propostaItemIndex) : "";
+  const name = typeof item.nome === "string" ? item.nome : "";
+  return [proposalIndex, productId, sku, name, index].filter(Boolean).join(":");
+}
+
+function ensureInstallationChecklist(metadataInput: unknown) {
+  const metadata =
+    metadataInput && typeof metadataInput === "object" && !Array.isArray(metadataInput)
+      ? { ...(metadataInput as Record<string, unknown>) }
+      : {};
+  const sourceItems = Array.isArray(metadata.itens)
+    ? (metadata.itens as Array<Record<string, unknown>>)
+    : [];
+  const currentRaw =
+    metadata.installationChecklist &&
+    typeof metadata.installationChecklist === "object" &&
+    !Array.isArray(metadata.installationChecklist)
+      ? (metadata.installationChecklist as Record<string, unknown>)
+      : {};
+  const currentItems = Array.isArray(currentRaw.items)
+    ? (currentRaw.items as Array<Record<string, unknown>>)
+    : [];
+  const byKey = new Map(
+    currentItems
+      .map((item) => [String(item.key || ""), item] as const)
+      .filter(([key]) => Boolean(key)),
+  );
+
+  const items = sourceItems.map((source, index) => {
+    const key = normalizeInstallationItemKey(source, index);
+    const existing = byKey.get(key) ?? {};
+    return {
+      key,
+      sourceIndex: index,
+      status: typeof existing.status === "string" ? existing.status : "pendente",
+      observacao: typeof existing.observacao === "string" ? existing.observacao : "",
+      atualizadoEm: existing.atualizadoEm ?? null,
+      atualizadoPor: existing.atualizadoPor ?? null,
+    };
+  });
+
+  return {
+    ...metadata,
+    installationChecklist: {
+      version: 1,
+      generatedFrom: "order_items",
+      items,
+      updatedAt: new Date().toISOString(),
+    },
+  };
+}
+
+function installationChecklistComplete(metadataInput: unknown) {
+  if (!metadataInput || typeof metadataInput !== "object" || Array.isArray(metadataInput)) return false;
+  const metadata = metadataInput as Record<string, unknown>;
+  const sourceItems = Array.isArray(metadata.itens)
+    ? (metadata.itens as Array<Record<string, unknown>>)
+    : [];
+  if (sourceItems.length === 0) return true;
+  const checklist =
+    metadata.installationChecklist &&
+    typeof metadata.installationChecklist === "object" &&
+    !Array.isArray(metadata.installationChecklist)
+      ? (metadata.installationChecklist as Record<string, unknown>)
+      : null;
+  const checklistItems = checklist && Array.isArray(checklist.items)
+    ? (checklist.items as Array<Record<string, unknown>>)
+    : [];
+  if (checklistItems.length < sourceItems.length) return false;
+  return checklistItems.every((item) => INSTALLATION_DONE_STATUSES.has(String(item.status || "")));
+}
+
+const INSTALLATION_EXCEPTION_STATUSES = new Set([
+  "instalado_com_ressalva",
+  "nao_instalado",
+  "peca_faltante",
+  "produto_avariado",
+  "divergencia_medida",
+  "necessita_retorno",
+]);
+
+function installationAttributes(source: Record<string, unknown>) {
+  const hidden = new Set([
+    "nome", "name", "descricao", "produto", "quantidade", "quantity", "qtd",
+    "produtoId", "sku", "propostaItemIndex", "quantidadePedido",
+    "preco", "precoUnitario", "valor", "valorUnitario", "subtotal", "total", "custo",
+  ]);
+  return Object.fromEntries(Object.entries(source).filter(([key, value]) =>
+    !hidden.has(key) && value !== null && value !== undefined && value !== ""
+  ));
+}
+
+function sourceItemCategory(source: Record<string, unknown>) {
+  return String(source.categoryKey || source.categoria || source.category || "").trim() || null;
+}
+
+function sourceItemProductId(source: Record<string, unknown>) {
+  return String(source.produtoId || source.productId || "").trim() || null;
+}
+
+function templateScore(
+  template: typeof installationChecklistTemplatesTable.$inferSelect,
+  source: Record<string, unknown>,
+  metadata: Record<string, unknown>,
+) {
+  const productId = sourceItemProductId(source);
+  const category = sourceItemCategory(source);
+  const segment = String(source.segmentKey || metadata.segmentKey || metadata.segmento || "").trim() || null;
+  const niche = String(source.nicheKey || metadata.nicheKey || metadata.nicho || "").trim() || null;
+  let score = 0;
+  if (template.productId) score += template.productId === productId ? 100 : -1000;
+  if (template.categoryKey) score += template.categoryKey === category ? 40 : -100;
+  if (template.nicheKey) score += template.nicheKey === niche ? 20 : -50;
+  if (template.segmentKey) score += template.segmentKey === segment ? 10 : -25;
+  if (!template.productId && !template.categoryKey && !template.nicheKey && !template.segmentKey) score += 1;
+  return score;
+}
+
+async function ensureInstallationVisitForCard(card: typeof workCardsTable.$inferSelect, metadataInput?: unknown) {
+  const [existingVisit] = await db.select().from(installationVisitsTable)
+    .where(and(eq(installationVisitsTable.tenantId, card.tenantId), eq(installationVisitsTable.workCardId, card.id)))
+    .orderBy(desc(installationVisitsTable.visitNumber))
+    .limit(1);
+  if (existingVisit) return existingVisit;
+
+  const metadata =
+    metadataInput && typeof metadataInput === "object" && !Array.isArray(metadataInput)
+      ? metadataInput as Record<string, unknown>
+      : card.metadata ?? {};
+  const sourceItems = Array.isArray(metadata.itens)
+    ? metadata.itens as Array<Record<string, unknown>>
+    : [];
+
+  const [visit] = await db.insert(installationVisitsTable).values({
+    tenantId: card.tenantId,
+    workCardId: card.id,
+    visitNumber: 1,
+    status: card.etapa === "instalacao_em_andamento" ? "in_progress" : "scheduled",
+    startedAt: card.etapa === "instalacao_em_andamento" ? new Date() : null,
+    responsibleId: card.responsavelId,
+    teamUserIds: card.responsavelId ? [card.responsavelId] : [],
+    metadata: { generatedFrom: "work_card", cardCode: card.codigo },
+  }).returning();
+
+  if (sourceItems.length === 0) return visit;
+
+  const templates = await db.select().from(installationChecklistTemplatesTable)
+    .where(and(
+      eq(installationChecklistTemplatesTable.tenantId, card.tenantId),
+      eq(installationChecklistTemplatesTable.active, true),
+    ));
+
+  const rows: Array<typeof installationChecklistItemsTable.$inferInsert> = [];
+  sourceItems.forEach((source, sourceIndex) => {
+    const ranked = templates
+      .map((template) => ({ template, score: templateScore(template, source, metadata) }))
+      .filter((entry) => entry.score >= 0)
+      .sort((a, b) => b.score - a.score);
+    const template = ranked[0]?.template;
+    const rules = template?.rules ?? {};
+    const checks = template?.checks?.length
+      ? template.checks
+      : [
+          { key: "execution", label: "Instalação/execução conforme pedido", required: true, completed: false },
+          { key: "final_check", label: "Conferência final", required: true, completed: false },
+        ];
+    const rawQty = Number(source.quantidade ?? source.quantity ?? source.qtd ?? 1);
+    const quantity = Number.isFinite(rawQty) && rawQty > 0 ? Math.max(1, Math.floor(rawQty)) : 1;
+    const expand = rules.expandQuantity === true && quantity <= 200;
+    const units = expand ? quantity : 1;
+    for (let unit = 0; unit < units; unit += 1) {
+      rows.push({
+        tenantId: card.tenantId,
+        visitId: visit.id,
+        workCardId: card.id,
+        sourceItemKey: normalizeInstallationItemKey(source, sourceIndex),
+        sourceItemIndex: sourceIndex,
+        unitIndex: expand ? unit + 1 : null,
+        productId: sourceItemProductId(source),
+        sku: typeof source.sku === "string" ? source.sku : null,
+        productName: String(source.nome || source.name || source.descricao || source.produto || "Item"),
+        quantity: expand ? 1 : quantity,
+        location: String(source.localizacao || source.location || source.ambiente || "").trim() || null,
+        attributes: installationAttributes(source),
+        checks,
+        status: "pending",
+        evidenceRequired: rules.evidenceRequired === true,
+        required: rules.required !== false,
+      });
+    }
+  });
+
+  if (rows.length) await db.insert(installationChecklistItemsTable).values(rows);
+  return visit;
+}
+
+async function normalizedInstallationComplete(card: typeof workCardsTable.$inferSelect) {
+  const [latestVisit] = await db.select().from(installationVisitsTable).where(and(
+    eq(installationVisitsTable.tenantId, card.tenantId),
+    eq(installationVisitsTable.workCardId, card.id),
+  )).orderBy(desc(installationVisitsTable.visitNumber)).limit(1);
+
+  if (!latestVisit) return installationChecklistComplete(card.metadata);
+
+  const [items, occurrences, attachments] = await Promise.all([
+    db.select().from(installationChecklistItemsTable).where(and(
+      eq(installationChecklistItemsTable.tenantId, card.tenantId),
+      eq(installationChecklistItemsTable.visitId, latestVisit.id),
+    )),
+    db.select().from(installationOccurrencesTable).where(and(
+      eq(installationOccurrencesTable.tenantId, card.tenantId),
+      eq(installationOccurrencesTable.workCardId, card.id),
+    )),
+    db.select().from(workCardAttachmentsTable).where(and(
+      eq(workCardAttachmentsTable.tenantId, card.tenantId),
+      eq(workCardAttachmentsTable.workCardId, card.id),
+    )),
+  ]);
+
+  if (items.length === 0) return installationChecklistComplete(card.metadata);
+
+  const openOccurrence = occurrences.some((occurrence) =>
+    occurrence.status === "open" || occurrence.status === "in_progress"
+  );
+  if (openOccurrence) return false;
+
+  const evidenceItemIds = new Set(
+    attachments.map((attachment) => {
+      const metadata = attachment.metadata as Record<string, unknown> | null;
+      return typeof metadata?.installationChecklistItemId === "string"
+        ? metadata.installationChecklistItemId
+        : null;
+    }).filter(Boolean),
+  );
+
+  return items.filter((item) => item.required).every((item) => {
+    if (!["installed", "verified", "instalado", "conferido"].includes(item.status)) return false;
+    if (item.evidenceRequired && !evidenceItemIds.has(item.id)) return false;
+    const checks = Array.isArray(item.checks) ? item.checks as Array<Record<string, unknown>> : [];
+    return checks
+      .filter((check) => check.required !== false)
+      .every((check) => check.completed === true);
+  });
+}
+
+
 function deliveryStage(input: {
   status: string;
   dataPrevista?: Date | string | null;
@@ -148,6 +508,185 @@ function proposalItemIndexFor(
   }
   const normalized = item.nome.trim().toLocaleLowerCase("pt-BR");
   return proposalItems.findIndex((p) => p.nome.trim().toLocaleLowerCase("pt-BR") === normalized);
+}
+
+
+type ExpeditionCheckStatus = "pendente" | "ok" | "divergencia" | "na";
+
+function configuredExpeditionChecks(sourceItem: any): string[] {
+  const deliveryConfig = sourceItem?.sourceSnapshot?.deliveryConfig;
+  if (!deliveryConfig || typeof deliveryConfig !== "object") return [];
+  const configured = (deliveryConfig as Record<string, unknown>).checklistExpedicao
+    ?? (deliveryConfig as Record<string, unknown>).checklist;
+  if (!Array.isArray(configured)) return [];
+  return configured
+    .map((entry) => typeof entry === "string" ? entry.trim() : "")
+    .filter(Boolean);
+}
+
+function expeditionChecksFor(segmento: string | null | undefined, sourceItem: any): string[] {
+  const configured = configuredExpeditionChecks(sourceItem);
+  if (configured.length) return configured;
+
+  const text = [
+    segmento,
+    sourceItem?.nome,
+    sourceItem?.descricao,
+    sourceItem?.sourceSnapshot?.descricao,
+  ].filter(Boolean).join(" ").toLocaleLowerCase("pt-BR");
+
+  const isEsquadria = [
+    "esquadria", "janela", "porta", "vidro", "guarda corpo", "guarda-corpo",
+    "alumínio", "aluminio", "pvc", "brise",
+  ].some((term) => text.includes(term));
+
+  if (isEsquadria) return ["Marco", "Folha", "Tela", "Vidro", "Fecho", "Acabamento"];
+  return ["Identificação", "Quantidade", "Integridade", "Embalagem", "Acabamento"];
+}
+
+function buildExpeditionChecklist(input: {
+  segmento?: string | null;
+  vertical?: string | null;
+  deliveryItems: EntregaItem[];
+  proposalItems: any[];
+}) {
+  const checklistItems = input.deliveryItems.map((item) => {
+    const sourceIndex = item.propostaItemIndex ?? -1;
+    const sourceItem = sourceIndex >= 0 ? input.proposalItems[sourceIndex] : undefined;
+    const deliveryConfig = sourceItem?.sourceSnapshot?.deliveryConfig;
+    const config = deliveryConfig && typeof deliveryConfig === "object"
+      ? deliveryConfig as Record<string, unknown>
+      : {};
+    const labels = expeditionChecksFor(input.segmento, sourceItem ?? item);
+    return {
+      propostaItemIndex: item.propostaItemIndex ?? null,
+      produtoId: item.produtoId ?? null,
+      sku: item.sku ?? null,
+      nome: item.nome,
+      quantidade: item.quantidade,
+      modoConferencia: config.checklistModo === "por_unidade" || config.checklistMode === "per_unit" ? "por_unidade" : "por_lote",
+      snapshot: {
+        capturedAt: new Date().toISOString(),
+        nome: sourceItem?.nome ?? item.nome,
+        sku: sourceItem?.sku ?? item.sku ?? null,
+        descricao: sourceItem?.descricao ?? sourceItem?.sourceSnapshot?.descricao ?? null,
+        produtoId: sourceItem?.produtoId ?? item.produtoId ?? null,
+        quantidadePedido: sourceItem?.quantidade ?? item.quantidadePedido ?? null,
+      },
+      contexto: {
+        categoria: typeof config.categoria === "string" ? config.categoria : null,
+        nicho: typeof config.nicho === "string" ? config.nicho : null,
+      },
+      campos: labels.map((label, fieldIndex) => ({
+        id: `${item.propostaItemIndex ?? "item"}-${fieldIndex}`,
+        key: label.toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, ""),
+        label,
+        status: "pendente" as ExpeditionCheckStatus,
+        obrigatorio: true,
+        observacao: "",
+      })),
+    };
+  });
+
+  const totalCampos = checklistItems.reduce((total, item) => total + item.campos.length, 0);
+  return {
+    schemaVersion: 1,
+    tipo: "expedicao",
+    etapa: "liberado",
+    status: "pendente",
+    contexto: {
+      segmento: input.segmento ?? null,
+      vertical: input.vertical ?? null,
+    },
+    totalCampos,
+    concluidos: 0,
+    divergencias: 0,
+    itens: checklistItems,
+    verificacaoFinal: {
+      totalVolumes: null,
+      pesoTotalKg: null,
+      nomeVerificador: "",
+      data: null,
+      observacoes: "",
+    },
+  };
+}
+
+
+function expeditionGateStatus(metadata: Record<string, unknown> | null | undefined) {
+  const raw = metadata?.checklistExpedicao;
+  if (!raw || typeof raw !== "object") {
+    return { ready: false, reason: "Checklist de expedição ainda não foi gerado." };
+  }
+  const checklist = raw as {
+    status?: string;
+    divergencias?: number;
+    concluidos?: number;
+    totalCampos?: number;
+    verificacaoFinal?: { nomeVerificador?: string };
+  };
+  const divergencias = Number(checklist.divergencias ?? 0);
+  const concluidos = Number(checklist.concluidos ?? 0);
+  const totalCampos = Number(checklist.totalCampos ?? 0);
+  const verifier = checklist.verificacaoFinal?.nomeVerificador?.trim();
+  const override = metadata?.expedicaoOverride as { aprovado?: boolean; justificativa?: string; aprovadoPor?: string; aprovadoEm?: string } | undefined;
+  if (override?.aprovado && override.justificativa?.trim() && override.aprovadoPor && override.aprovadoEm) {
+    return { ready: true as const, reason: null, override: true as const };
+  }
+  if (divergencias > 0) return { ready: false, reason: `Existem ${divergencias} divergência(s) pendentes na expedição.` };
+  if (!totalCampos || concluidos < totalCampos) return { ready: false, reason: "A conferência de expedição ainda possui campos pendentes." };
+  if (!verifier) return { ready: false, reason: "Informe o verificador final da expedição." };
+  if (checklist.status !== "concluido") return { ready: false, reason: "Finalize o checklist de expedição antes do transporte." };
+  return { ready: true as const, reason: null };
+}
+
+function buildTransportChecklist(items: Array<{ nome?: string; quantidade?: number; sku?: string | null; produtoId?: string | null }> = []) {
+  const labels = [
+    "Volumes carregados conferidos",
+    "Integridade da carga",
+    "Veículo identificado",
+    "Motorista identificado",
+    "Destino confirmado",
+    "Fotos da carga",
+  ];
+  return {
+    schemaVersion: 1,
+    tipo: "transporte",
+    status: "pendente",
+    totalCampos: labels.length,
+    concluidos: 0,
+    divergencias: 0,
+    campos: labels.map((label, index) => ({
+      id: `transporte-${index}`,
+      key: label.toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, ""),
+      label,
+      status: "pendente",
+      observacao: "",
+    })),
+    itens: items.map((item, index) => ({
+      id: item.produtoId ?? item.sku ?? `item-${index}`,
+      produtoId: item.produtoId ?? null,
+      sku: item.sku ?? null,
+      nome: item.nome ?? `Item ${index + 1}`,
+      quantidadePrevista: Number(item.quantidade ?? 0),
+      quantidadeCarregada: null,
+      quantidadeRecebida: null,
+      ocorrencia: "",
+    })),
+    saida: {
+      veiculo: "",
+      placa: "",
+      motorista: "",
+      horarioSaida: null,
+      destino: "",
+      lacre: "",
+    },
+    recebimento: {
+      recebidoPor: "",
+      recebidoEm: null,
+      observacoes: "",
+    },
+  };
 }
 
 async function getProposalForDeal(tenantId: string, dealId: string, propostaId?: string | null) {
@@ -459,824 +998,3 @@ router.post("/tenants/:tenantId/entregas", async (req, res) => {
         sku: source.sku ?? item.sku,
         produtoId: source.produtoId ?? item.produtoId,
         propostaItemIndex: index,
-        quantidadePedido: Number(source.quantidade),
-      });
-    }
-    items = normalized;
-  }
-
-  const nextLot = Math.max(0, ...allDeliveries.map((d) => d.loteNumero ?? 0)) + 1;
-  const data = {
-    ...parsed.data,
-    propostaId: proposal?.id ?? parsed.data.propostaId ?? null,
-    leadId: parsed.data.leadId ?? deal.leadId ?? null,
-    loteNumero: parsed.data.loteNumero ?? nextLot,
-    itens: items,
-  };
-
-  if (data.modo === "agendada" && !data.assignedTo && data.dataPrevista && data.periodo) {
-    const motoristaId = await pickNextMotorista(tenantId, new Date(data.dataPrevista), data.periodo);
-    if (!motoristaId) {
-      res.status(409).json({ error: "Nenhum motorista disponível para esse turno" });
-      return;
-    }
-    data.assignedTo = motoristaId;
-    data.status = "agendada";
-  } else if (data.assignedTo && data.dataPrevista && data.periodo) {
-    const capacity = await checkTurnoCapacity(data.assignedTo, new Date(data.dataPrevista), data.periodo);
-    if (!capacity.ok) {
-      res.status(409).json({ error: capacity.reason });
-      return;
-    }
-  }
-
-  let [parentCard] = await db.select().from(workCardsTable)
-    .where(and(
-      eq(workCardsTable.tenantId, tenantId),
-      eq(workCardsTable.dealId, deal.id),
-      eq(workCardsTable.tipo, "pedido"),
-    ))
-    .limit(1);
-  if (!parentCard) {
-    [parentCard] = await db.insert(workCardsTable).values({
-      tenantId,
-      codigo: `PED-${deal.id.replaceAll("-", "").slice(0, 8).toUpperCase()}`,
-      pipeline: "execucao",
-      tipo: "pedido",
-      etapa: "pedido_confirmado",
-      titulo: `Pedido • ${deal.titulo}`,
-      leadId: deal.leadId,
-      dealId: deal.id,
-      responsavelId: deal.assignedTo,
-      metadata: { origem: "entrega_parcial" },
-    }).returning();
-  }
-
-  const [entrega] = await db.insert(entregasTable).values(data).returning();
-  const stage = deliveryStage(entrega);
-  const [card] = await db.insert(workCardsTable).values({
-    tenantId,
-    codigo: workCode("ENT"),
-    pipeline: "execucao",
-    tipo: "entrega",
-    etapa: stage,
-    titulo: `Entrega ${String(entrega.loteNumero ?? nextLot).padStart(2, "0")} • ${deal.titulo}`,
-    descricao: entrega.observacoes,
-    prioridade: "normal",
-    leadId: entrega.leadId,
-    dealId: deal.id,
-    propostaId: entrega.propostaId,
-    entregaId: entrega.id,
-    parentCardId: parentCard.id,
-    responsavelId: entrega.assignedTo,
-    dataInicioPrevista: entrega.dataLiberacaoPrevista,
-    dataInicioEfetiva: entrega.dataLiberacaoEfetiva,
-    dataFimPrevista: entrega.dataPrevista,
-    dataFimEfetiva: entrega.dataEntregue,
-    metadata: {
-      loteNumero: entrega.loteNumero,
-      itens: entrega.itens,
-      saldoParcial: true,
-    },
-  }).returning();
-
-  if (entrega.assignedTo && entrega.leadId) {
-    await recordWorkHistory({
-      tenantId,
-      leadId: entrega.leadId,
-      dealId: deal.id,
-      tipo: "tarefa",
-      titulo: `Acompanhar ${card.codigo} — ${card.titulo}`,
-      descricao: `Lote parcial criado com ${entrega.itens.length} item(ns). Etapa inicial: ${WORK_STAGE_LABELS[stage] ?? stage}.`,
-      responsavelId: entrega.assignedTo,
-      status: "planejado",
-      dataVencimento: entrega.dataPrevista,
-    });
-  }
-
-  res.status(201).json({ ...entrega, workCard: card });
-});
-
-const dispatchBodySchema = z.object({
-  data: z.coerce.date().optional(),
-  periodo: z.enum(["manha", "tarde"]).default("tarde"),
-});
-
-router.post("/tenants/:tenantId/entregas/dispatch", async (req, res) => {
-  const tenantId = String(req.params.tenantId);
-  const admin = isAdmin(req);
-  if (!admin || !canAccessTenant(req, tenantId)) {
-    res.status(403).json({ error: "Apenas administradores podem gerar rotas" });
-    return;
-  }
-
-  const parsed = dispatchBodySchema.safeParse(req.body ?? {});
-  if (!parsed.success) {
-    res.status(422).json({ error: parsed.error.message, issues: parsed.error.issues });
-    return;
-  }
-
-  const deliveryDate = parsed.data.data ?? new Date();
-  if (!parsed.data.data && parsed.data.periodo === "manha" && deliveryDate.getHours() >= 12) {
-    deliveryDate.setDate(deliveryDate.getDate() + 1);
-  }
-  if (deliveryDate.getDay() === 0) deliveryDate.setDate(deliveryDate.getDate() + 1);
-  deliveryDate.setHours(parsed.data.periodo === "manha" ? 9 : 14, 0, 0, 0);
-  const result = await dispatchPendingEntregas(tenantId, deliveryDate, parsed.data.periodo, req.log);
-  res.json(result);
-});
-
-router.get("/entregas/:id", async (req, res) => {
-  const [entrega] = await db.select().from(entregasTable).where(eq(entregasTable.id, String(req.params.id)));
-  if (!entrega) {
-    res.status(404).json({ error: "Entrega not found" });
-    return;
-  }
-  if (!canAccessTenant(req, entrega.tenantId)) {
-    res.status(403).json({ error: "Access denied to this tenant" });
-    return;
-  }
-  const userFn = req.user?.userFunction as string | undefined;
-  if (!isAdmin(req) && userFn === "entrega" && entrega.assignedTo !== req.user?.sub) {
-    res.status(403).json({ error: "Access denied to this entrega" });
-    return;
-  }
-  res.json(entrega);
-});
-
-router.patch("/entregas/:id", async (req, res) => {
-  const parsed = updateEntregaSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(422).json({ error: parsed.error.message, issues: parsed.error.issues });
-    return;
-  }
-
-  const [existing] = await db.select().from(entregasTable).where(eq(entregasTable.id, String(req.params.id)));
-  if (!existing) {
-    res.status(404).json({ error: "Entrega not found" });
-    return;
-  }
-  if (!canAccessTenant(req, existing.tenantId)) {
-    res.status(403).json({ error: "Access denied to this tenant" });
-    return;
-  }
-  const userFn = req.user?.userFunction as string | undefined;
-  if (!isAdmin(req) && userFn === "entrega" && existing.assignedTo !== req.user?.sub) {
-    res.status(403).json({ error: "Acesso negado: esta entrega pertence a outro motorista" });
-    return;
-  }
-
-  const data = { ...parsed.data };
-  if (data.assignedTo && (data.dataPrevista || existing.dataPrevista) && (data.periodo || existing.periodo)) {
-    const dataPrevista = new Date(data.dataPrevista ?? existing.dataPrevista!);
-    const periodo = (data.periodo ?? existing.periodo) as "manha" | "tarde";
-    if (data.assignedTo !== existing.assignedTo) {
-      const capacity = await checkTurnoCapacity(data.assignedTo, dataPrevista, periodo);
-      if (!capacity.ok) {
-        res.status(409).json({ error: capacity.reason });
-        return;
-      }
-    }
-  }
-  if (data.status === "entregue" && !data.dataEntregue) data.dataEntregue = new Date();
-
-  const [entrega] = await db.update(entregasTable)
-    .set({ ...data, updatedAt: new Date() })
-    .where(eq(entregasTable.id, existing.id))
-    .returning();
-
-  const [linkedCard] = await db.select().from(workCardsTable)
-    .where(eq(workCardsTable.entregaId, entrega.id)).limit(1);
-  if (linkedCard) {
-    const requestedStage = deliveryStage(entrega);
-    const nextStage = canAdvanceWorkCard("execucao", linkedCard.etapa, requestedStage) ? requestedStage : linkedCard.etapa;
-    const stageChanged = nextStage !== linkedCard.etapa;
-    const [updatedCard] = await db.update(workCardsTable).set({
-      etapa: nextStage,
-      responsavelId: entrega.assignedTo,
-      dataInicioPrevista: entrega.dataLiberacaoPrevista,
-      dataInicioEfetiva: entrega.dataLiberacaoEfetiva,
-      dataFimPrevista: entrega.dataPrevista,
-      dataFimEfetiva: entrega.dataEntregue,
-      metadata: { ...(linkedCard.metadata ?? {}), loteNumero: entrega.loteNumero, itens: entrega.itens },
-      updatedAt: new Date(),
-    }).where(eq(workCardsTable.id, linkedCard.id)).returning();
-
-    if (stageChanged) {
-      await recordWorkHistory({
-        tenantId: entrega.tenantId,
-        leadId: entrega.leadId,
-        dealId: entrega.dealId,
-        tipo: "tarefa",
-        titulo: `${updatedCard.codigo}: ${WORK_STAGE_LABELS[nextStage] ?? nextStage}`,
-        descricao: `A entrega avançou de ${WORK_STAGE_LABELS[linkedCard.etapa] ?? linkedCard.etapa} para ${WORK_STAGE_LABELS[nextStage] ?? nextStage}.`,
-        responsavelId: updatedCard.responsavelId,
-      });
-    }
-  }
-
-  if (entrega && data.status === "entregue" && existing.status !== "entregue") {
-    triggerDeliveryFeedbackRequest({ tenantId: entrega.tenantId, entregaId: entrega.id, log: req.log }).catch((err) => {
-      req.log.warn({ err, entregaId: entrega.id }, "entregas: falha ao disparar pesquisa de satisfação pós-venda");
-    });
-  }
-
-  if (linkedCard) await maybeCompleteOrder(linkedCard);
-  res.json(entrega);
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CARDS OPERACIONAIS — EXECUÇÃO E SUPORTE
-// ─────────────────────────────────────────────────────────────────────────────
-
-router.get("/tenants/:tenantId/work-cards", async (req, res) => {
-  const tenantId = String(req.params.tenantId);
-  if (!canAccessTenant(req, tenantId)) {
-    res.status(403).json({ error: "Access denied to this tenant" });
-    return;
-  }
-  const { pipeline, etapa, leadId, dealId, entregaId, includeClosed } = req.query as Record<string, string | undefined>;
-  const conditions = [eq(workCardsTable.tenantId, tenantId)];
-  if (pipeline) conditions.push(eq(workCardsTable.pipeline, pipeline));
-  if (etapa) conditions.push(eq(workCardsTable.etapa, etapa));
-  if (leadId) conditions.push(eq(workCardsTable.leadId, leadId));
-  if (dealId) conditions.push(eq(workCardsTable.dealId, dealId));
-  if (entregaId) conditions.push(eq(workCardsTable.entregaId, entregaId));
-  if (restrictedToOwnWork(req) && req.user?.sub) conditions.push(eq(workCardsTable.responsavelId, req.user.sub));
-
-  const storedCards = await db.select().from(workCardsTable)
-    .where(and(...conditions))
-    .orderBy(workCardsTable.updatedAt, workCardsTable.createdAt);
-  const cards = includeClosed === "1" ? storedCards : storedCards.filter((card) => !TERMINAL_WORK_STAGES.has(card.etapa));
-
-  const leadIds = [...new Set(cards.map((card) => card.leadId).filter((id): id is string => Boolean(id)))];
-  const userIds = [...new Set(cards.map((card) => card.responsavelId).filter((id): id is string => Boolean(id)))];
-  const dealIds = [...new Set(cards.map((card) => card.dealId).filter((id): id is string => Boolean(id)))];
-  const [leadRows, userRows, dealRows] = await Promise.all([
-    leadIds.length ? db.select({ id: leadsTable.id, nome: leadsTable.nome, empresa: leadsTable.empresa }).from(leadsTable).where(inArray(leadsTable.id, leadIds)) : Promise.resolve([]),
-    userIds.length ? db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email }).from(usersTable).where(inArray(usersTable.id, userIds)) : Promise.resolve([]),
-    dealIds.length ? db.select({ id: dealsTable.id, titulo: dealsTable.titulo }).from(dealsTable).where(inArray(dealsTable.id, dealIds)) : Promise.resolve([]),
-  ]);
-  const leadLabels = new Map(leadRows.map((lead) => [lead.id, lead.nome || lead.empresa || "Cliente"]));
-  const userLabels = new Map(userRows.map((user) => [user.id, user.name || user.email || "Responsável"]));
-  const dealLabels = new Map(dealRows.map((deal) => [deal.id, deal.titulo]));
-
-  res.json(cards.map((card) => ({
-    ...card,
-    leadLabel: card.leadId ? leadLabels.get(card.leadId) ?? null : null,
-    responsavelLabel: card.responsavelId ? userLabels.get(card.responsavelId) ?? null : null,
-    dealTitle: card.dealId ? dealLabels.get(card.dealId) ?? null : null,
-  })));
-});
-
-router.get("/tenants/:tenantId/leads-overview-context", async (req, res) => {
-  const tenantId = String(req.params.tenantId);
-  if (!canAccessTenant(req, tenantId)) {
-    res.status(403).json({ error: "Access denied to this tenant" });
-    return;
-  }
-
-  const dealConditions = [eq(dealsTable.tenantId, tenantId), ...buildUserFunctionFilter(req, dealsTable)];
-  const workConditions = [eq(workCardsTable.tenantId, tenantId)];
-  if (restrictedToOwnWork(req) && req.user?.sub) workConditions.push(eq(workCardsTable.responsavelId, req.user.sub));
-
-  const [deals, workCards, proposals, users] = await Promise.all([
-    db.select({
-      id: dealsTable.id,
-      leadId: dealsTable.leadId,
-      titulo: dealsTable.titulo,
-      etapa: dealsTable.etapa,
-      aquecimentoTipo: dealsTable.aquecimentoTipo,
-      relationshipStage: dealsTable.relationshipStage,
-    }).from(dealsTable).where(and(...dealConditions)),
-    db.select({
-      id: workCardsTable.id,
-      leadId: workCardsTable.leadId,
-      codigo: workCardsTable.codigo,
-      pipeline: workCardsTable.pipeline,
-      etapa: workCardsTable.etapa,
-    }).from(workCardsTable).where(and(...workConditions)),
-    db.select({ leadId: propostasTable.leadId, valorTotal: propostasTable.valorTotal }).from(propostasTable).where(eq(propostasTable.tenantId, tenantId)),
-    db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email }).from(usersTable).where(eq(usersTable.tenantId, tenantId)),
-  ]);
-
-  const byLeadId: Record<string, Array<{ pipeline: string; etapa: string; label: string; id: string; codigo?: string }>> = {};
-  const push = (leadId: string | null, process: { pipeline: string; etapa: string; label: string; id: string; codigo?: string }) => {
-    if (!leadId) return;
-    (byLeadId[leadId] ??= []).push(process);
-  };
-  const commercialLabels: Record<string, string> = {
-    novo: "Novo", qualificado: "Qualificado", proposta: "Orçamento", negociacao: "Negociação",
-    conferencia_estoque: "Fechamento", contrato: "Contrato",
-  };
-  const partnerLabels: Record<string, string> = {
-    parceiro_identificado: "Parceiro identificado", contato: "Contato", qualificacao: "Qualificação",
-    proposta_parceria: "Proposta de parceria", negociacao: "Negociação",
-  };
-
-  for (const deal of deals) {
-    if (!deal.leadId) continue;
-    if (commercialLabels[deal.etapa]) {
-      push(deal.leadId, { pipeline: "comercial", etapa: deal.etapa, label: commercialLabels[deal.etapa], id: deal.id });
-      continue;
-    }
-    if (deal.etapa === "em_aquecimento" && deal.relationshipStage !== "aquecimento_retomado") {
-      push(deal.leadId, { pipeline: "aquecimento", etapa: deal.relationshipStage || "aquecimento_lead", label: deal.aquecimentoTipo === "cliente" ? "Cliente em aquecimento" : "Lead em aquecimento", id: deal.id });
-      continue;
-    }
-    if (deal.etapa === "parceiro" && !["parceiro_ativo", "inativo"].includes(deal.relationshipStage || "parceiro_identificado")) {
-      const relationshipStage = deal.relationshipStage || "parceiro_identificado";
-      push(deal.leadId, { pipeline: "parceiros", etapa: relationshipStage, label: partnerLabels[relationshipStage] || relationshipStage, id: deal.id });
-    }
-  }
-  for (const card of workCards) {
-    if (!card.leadId || TERMINAL_WORK_STAGES.has(card.etapa)) continue;
-    push(card.leadId, {
-      pipeline: card.pipeline,
-      etapa: card.etapa,
-      label: WORK_STAGE_LABELS[card.etapa] ?? card.etapa,
-      id: card.id,
-      codigo: card.codigo,
-    });
-  }
-
-  const proposalTotalsByLeadId: Record<string, string> = {};
-  for (const proposal of proposals) {
-    if (!proposal.leadId || !proposal.valorTotal) continue;
-    const current = Number(proposalTotalsByLeadId[proposal.leadId] || 0);
-    const next = Number(proposal.valorTotal || 0);
-    if (next > current) proposalTotalsByLeadId[proposal.leadId] = proposal.valorTotal;
-  }
-  const userLabelsById = Object.fromEntries(users.map((user) => [user.id, user.name || user.email || user.id]));
-  res.json({ activeProcessesByLeadId: byLeadId, proposalTotalsByLeadId, userLabelsById });
-});
-
-router.post("/tenants/:tenantId/work-cards", async (req, res) => {
-  const tenantId = String(req.params.tenantId);
-  if (!canAccessTenant(req, tenantId)) {
-    res.status(403).json({ error: "Access denied to this tenant" });
-    return;
-  }
-  const parsed = insertWorkCardSchema.safeParse({ ...req.body, tenantId });
-  if (!parsed.success) {
-    res.status(422).json({ error: parsed.error.message, issues: parsed.error.issues });
-    return;
-  }
-  if (parsed.data.pipeline === "suporte" && !parsed.data.responsavelId) {
-    res.status(422).json({ error: "Assistência/suporte exige um responsável" });
-    return;
-  }
-  if (parsed.data.pipeline === "execucao" && !EXECUTION_STAGES.includes(parsed.data.etapa as typeof EXECUTION_STAGES[number])) {
-    res.status(422).json({ error: "Etapa inválida para pipeline de execução" });
-    return;
-  }
-  if (parsed.data.pipeline === "suporte" && !SUPPORT_STAGES.includes(parsed.data.etapa as typeof SUPPORT_STAGES[number])) {
-    res.status(422).json({ error: "Etapa inválida para pipeline de suporte" });
-    return;
-  }
-
-  const [card] = await db.insert(workCardsTable).values(parsed.data).returning();
-  if (card.leadId) {
-    await recordWorkHistory({
-      tenantId,
-      leadId: card.leadId,
-      dealId: card.dealId,
-      tipo: card.pipeline === "suporte" ? "assistencia" : "tarefa",
-      titulo: `${card.codigo} — ${card.titulo}`,
-      descricao: card.descricao,
-      responsavelId: card.responsavelId,
-      status: "planejado",
-      dataVencimento: card.dataFimPrevista,
-    });
-  }
-  res.status(201).json(card);
-});
-
-const supportCaseSchema = z.object({
-  leadId: z.string().min(1),
-  dealId: z.string().optional().nullable(),
-  propostaId: z.string().optional().nullable(),
-  titulo: z.string().trim().min(2).max(200),
-  relato: z.string().trim().min(10).max(10000),
-  categoria: z.enum(SUPPORT_CATEGORIES),
-  produtos: z.array(z.string().trim().min(1)).max(50).default([]),
-  responsavelId: z.string().min(1),
-  prioridade: z.enum(["baixa", "normal", "alta", "urgente"]).default("normal"),
-  dataVencimento: z.coerce.date().optional(),
-  origem: z.enum(["humano", "ia", "whatsapp", "telefone", "presencial"]).default("humano"),
-});
-
-router.post("/tenants/:tenantId/support-cases", async (req, res) => {
-  const tenantId = String(req.params.tenantId);
-  if (!canAccessTenant(req, tenantId)) {
-    res.status(403).json({ error: "Access denied to this tenant" });
-    return;
-  }
-  const parsed = supportCaseSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(422).json({ error: parsed.error.message, issues: parsed.error.issues });
-    return;
-  }
-
-  const [lead] = await db.select({
-    id: leadsTable.id,
-    nome: leadsTable.nome,
-    empresa: leadsTable.empresa,
-    telefone: leadsTable.telefone,
-    endereco: leadsTable.endereco,
-    tipoPessoa: leadsTable.tipoPessoa,
-    dadosPj: leadsTable.dadosPj,
-  })
-    .from(leadsTable)
-    .where(and(eq(leadsTable.id, parsed.data.leadId), eq(leadsTable.tenantId, tenantId)));
-  if (!lead) {
-    res.status(404).json({ error: "Cliente não encontrado" });
-    return;
-  }
-  const [responsavel] = await db.select({ id: usersTable.id, name: usersTable.name, telefone: usersTable.telefone })
-    .from(usersTable)
-    .where(and(eq(usersTable.id, parsed.data.responsavelId), eq(usersTable.tenantId, tenantId)));
-  if (!responsavel) {
-    res.status(422).json({ error: "Responsável não pertence a este tenant" });
-    return;
-  }
-
-  if (parsed.data.dealId) {
-    const [deal] = await db.select({ id: dealsTable.id }).from(dealsTable)
-      .where(and(eq(dealsTable.id, parsed.data.dealId), eq(dealsTable.tenantId, tenantId)));
-    if (!deal) {
-      res.status(422).json({ error: "Pedido/negócio informado não pertence a este cliente/tenant" });
-      return;
-    }
-  }
-
-  const codigo = workCode("AST");
-  const [card] = await db.insert(workCardsTable).values({
-    tenantId,
-    codigo,
-    pipeline: "suporte",
-    tipo: "assistencia",
-    etapa: "chamado_cliente",
-    titulo: parsed.data.titulo,
-    descricao: parsed.data.relato,
-    prioridade: parsed.data.prioridade,
-    leadId: parsed.data.leadId,
-    dealId: parsed.data.dealId ?? null,
-    propostaId: parsed.data.propostaId ?? null,
-    responsavelId: parsed.data.responsavelId,
-    dataFimPrevista: parsed.data.dataVencimento ?? null,
-    metadata: {
-      categoria: parsed.data.categoria,
-      relato: parsed.data.relato,
-      produtos: parsed.data.produtos,
-      origem: parsed.data.origem,
-      substatus: null,
-    },
-  }).returning();
-
-  const [activity] = await db.insert(activitiesTable).values({
-    tenantId,
-    leadId: parsed.data.leadId,
-    dealId: parsed.data.dealId ?? null,
-    tipo: "assistencia",
-    titulo: `${codigo} — ${parsed.data.titulo}`,
-    descricao: [
-      `Categoria: ${parsed.data.categoria}`,
-      parsed.data.produtos.length ? `Itens/produtos: ${parsed.data.produtos.join(", ")}` : null,
-      `Relato: ${parsed.data.relato}`,
-    ].filter(Boolean).join("\n"),
-    status: "planejado",
-    dataVencimento: parsed.data.dataVencimento ?? null,
-    responsavelId: parsed.data.responsavelId,
-  }).returning();
-
-  if (responsavel.telefone) {
-    const clienteNome = lead.empresa || lead.nome || "Cliente";
-    const socios = Array.isArray((lead.dadosPj as { socios?: unknown } | null)?.socios)
-      ? ((lead.dadosPj as { socios?: Array<{ nome?: string | null; telefone?: string | null }> }).socios ?? [])
-      : [];
-    const contatoNome = lead.empresa ? lead.nome : (lead.tipoPessoa === "juridica" ? socios[0]?.nome ?? null : null);
-    const contatoTelefone = lead.telefone || socios[0]?.telefone || null;
-    const dataPrevista = parsed.data.dataVencimento
-      ? parsed.data.dataVencimento.toLocaleDateString("pt-BR", { timeZone: "UTC" })
-      : "Não informada";
-    const whatsappText = [
-      `🛠️ Nova assistência ${codigo}`,
-      `Cliente: ${clienteNome}`,
-      contatoNome && contatoNome !== clienteNome ? `Contato: ${contatoNome}` : null,
-      contatoTelefone ? `Telefone: ${contatoTelefone}` : null,
-      lead.endereco ? `Endereço: ${lead.endereco}` : null,
-      `Data prevista: ${dataPrevista}`,
-      `Categoria: ${parsed.data.categoria}`,
-      `Prioridade: ${parsed.data.prioridade}`,
-      `Responsável: ${responsavel.name || "não informado"}`,
-      `Relato: ${parsed.data.relato}`,
-      `🔗 Abrir atendimento: https://app.appvendorai.com/pipeline-operacional/suporte?card=${encodeURIComponent(card.id)}`,
-    ].filter(Boolean).join("\n");
-    sendDirectWhatsAppMessage(tenantId, responsavel.telefone, whatsappText, req.log).catch((err) => {
-      req.log.warn({ err, workCardId: card.id }, "support-case: WhatsApp do responsável não enviado (não fatal)");
-    });
-  }
-
-  res.status(201).json({ card, activity });
-});
-
-router.get("/work-cards/:id", async (req, res) => {
-  const [card] = await db.select().from(workCardsTable).where(eq(workCardsTable.id, String(req.params.id)));
-  if (!card) {
-    res.status(404).json({ error: "Card operacional não encontrado" });
-    return;
-  }
-  if (!canAccessTenant(req, card.tenantId)) {
-    res.status(403).json({ error: "Access denied to this tenant" });
-    return;
-  }
-  if (restrictedToOwnWork(req) && card.responsavelId && card.responsavelId !== req.user?.sub) {
-    res.status(403).json({ error: "Este card pertence a outro responsável" });
-    return;
-  }
-  res.json(card);
-});
-
-router.patch("/work-cards/:id", async (req, res) => {
-  const parsed = updateWorkCardSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(422).json({ error: parsed.error.message, issues: parsed.error.issues });
-    return;
-  }
-  const [existing] = await db.select().from(workCardsTable).where(eq(workCardsTable.id, String(req.params.id)));
-  if (!existing) {
-    res.status(404).json({ error: "Card operacional não encontrado" });
-    return;
-  }
-  if (!canAccessTenant(req, existing.tenantId)) {
-    res.status(403).json({ error: "Access denied to this tenant" });
-    return;
-  }
-  if (restrictedToOwnWork(req) && existing.responsavelId && existing.responsavelId !== req.user?.sub) {
-    res.status(403).json({ error: "Este card pertence a outro responsável" });
-    return;
-  }
-
-  const targetPipeline = parsed.data.pipeline ?? existing.pipeline;
-  const targetStage = parsed.data.etapa ?? existing.etapa;
-  if (parsed.data.pipeline && parsed.data.pipeline !== existing.pipeline) {
-    res.status(409).json({ error: "CARD_PIPELINE_IMMUTABLE", message: "Um card não muda de pipeline. A transferência cria um novo processo vinculado ao anterior." });
-    return;
-  }
-  const manualAdminCorrection =
-    targetStage !== existing.etapa
-    && !canAdvanceWorkCard(existing.pipeline, existing.etapa, targetStage)
-    && isAdmin(req);
-
-  if (targetStage !== existing.etapa && !canAdvanceWorkCard(existing.pipeline, existing.etapa, targetStage) && !manualAdminCorrection) {
-    res.status(409).json({ error: "CARD_BACKWARD_FORBIDDEN", message: "O card só pode avançar. Administradores podem corrigir manualmente a etapa quando necessário." });
-    return;
-  }
-  if (targetPipeline === "execucao" && !EXECUTION_STAGES.includes(targetStage as typeof EXECUTION_STAGES[number])) {
-    res.status(422).json({ error: "Etapa inválida para pipeline de execução" });
-    return;
-  }
-  if (targetPipeline === "suporte" && !SUPPORT_STAGES.includes(targetStage as typeof SUPPORT_STAGES[number])) {
-    res.status(422).json({ error: "Etapa inválida para pipeline de suporte" });
-    return;
-  }
-  if (targetPipeline === "suporte" && parsed.data.responsavelId === null) {
-    res.status(422).json({ error: "Card de suporte não pode ficar sem responsável" });
-    return;
-  }
-
-  const data: Record<string, unknown> = { ...parsed.data, updatedAt: new Date() };
-  const starting = ["producao_em_andamento", "em_transporte", "instalacao_em_andamento", "execucao_assistencia"].includes(targetStage);
-  const finishing = ["concluido", "entrega_obra", "instalacao_finalizada", "fechamento_assistencia"].includes(targetStage);
-  if (starting && !existing.dataInicioEfetiva && !parsed.data.dataInicioEfetiva) data.dataInicioEfetiva = new Date();
-  if (finishing && !existing.dataFimEfetiva && !parsed.data.dataFimEfetiva) data.dataFimEfetiva = new Date();
-
-  const [card] = await db.update(workCardsTable).set(data).where(eq(workCardsTable.id, existing.id)).returning();
-
-  if (card.etapa !== existing.etapa && card.leadId) {
-    await recordWorkHistory({
-      tenantId: card.tenantId,
-      leadId: card.leadId,
-      dealId: card.dealId,
-      tipo: card.pipeline === "suporte" ? "assistencia" : "tarefa",
-      titulo: `${card.codigo}: ${WORK_STAGE_LABELS[card.etapa] ?? card.etapa}`,
-      descricao: [
-        `Etapa anterior: ${WORK_STAGE_LABELS[existing.etapa] ?? existing.etapa}. Nova etapa: ${WORK_STAGE_LABELS[card.etapa] ?? card.etapa}.`,
-        manualAdminCorrection ? "Alteração manual/correção realizada por administrador." : null,
-      ].filter(Boolean).join(" "),
-      responsavelId: card.responsavelId,
-    });
-    await ensureWorkStageTask(card);
-    if (card.pipeline === "suporte" && card.etapa === "feedback_cliente") {
-      void requestSupportFeedback(card.tenantId, card.id, req.log);
-    }
-    if (card.pipeline === "execucao") await maybeCompleteOrder(card);
-  }
-
-  if (card.leadId && card.etapa === existing.etapa) {
-    const changedFields: string[] = [];
-    if (card.titulo !== existing.titulo) changedFields.push("título");
-    if (card.descricao !== existing.descricao) changedFields.push("observações");
-    if (card.prioridade !== existing.prioridade) changedFields.push("prioridade");
-    if (card.responsavelId !== existing.responsavelId) changedFields.push("responsável");
-    if (String(card.dataInicioPrevista ?? "") !== String(existing.dataInicioPrevista ?? "")) changedFields.push("início previsto");
-    if (String(card.dataInicioEfetiva ?? "") !== String(existing.dataInicioEfetiva ?? "")) changedFields.push("início efetivo");
-    if (String(card.dataFimPrevista ?? "") !== String(existing.dataFimPrevista ?? "")) changedFields.push("fim previsto");
-    if (String(card.dataFimEfetiva ?? "") !== String(existing.dataFimEfetiva ?? "")) changedFields.push("fim efetivo");
-    if (changedFields.length > 0) {
-      await recordWorkHistory({
-        tenantId: card.tenantId,
-        leadId: card.leadId,
-        dealId: card.dealId,
-        tipo: card.pipeline === "suporte" ? "assistencia" : "tarefa",
-        titulo: `${card.codigo}: edição manual`,
-        descricao: `Campos alterados manualmente: ${changedFields.join(", ")}.`,
-        responsavelId: card.responsavelId,
-      });
-    }
-  }
-
-  res.json(card);
-});
-
-const supportReportSchema = z.object({
-  problemaRelatado: z.string().trim().min(1).max(10000),
-  diagnostico: z.string().max(10000).default(""),
-  servicoExecutado: z.string().max(10000).default(""),
-  materiaisUtilizados: z.array(z.string().trim().min(1)).max(100).default([]),
-  situacaoFinal: z.enum(["resolvido", "parcial", "nao_resolvido", "aguardando_peca", "aguardando_retorno"]),
-  clienteAcompanhou: z.boolean().nullable().default(null),
-  recomendacoes: z.string().max(10000).default(""),
-  observacoes: z.string().max(10000).default(""),
-});
-
-router.post("/work-cards/:id/support-report/draft", async (req, res) => {
-  const [card] = await db.select().from(workCardsTable).where(eq(workCardsTable.id, String(req.params.id))).limit(1);
-  if (!card || card.pipeline !== "suporte") { res.status(404).json({ error: "Assistência não encontrada" }); return; }
-  if (!canAccessTenant(req, card.tenantId)) { res.status(403).json({ error: "Access denied to this tenant" }); return; }
-  if (restrictedToOwnWork(req) && card.responsavelId && card.responsavelId !== req.user?.sub) { res.status(403).json({ error: "Este card pertence a outro responsável" }); return; }
-  try {
-    const draft = await generateSupportReportDraft(card.tenantId, card.id, req.log);
-    res.json({ draft });
-  } catch (error) {
-    req.log.error({ err: error, workCardId: card.id }, "support-report: falha ao gerar rascunho");
-    res.status(500).json({ error: "Não foi possível gerar o relatório da assistência" });
-  }
-});
-
-router.post("/work-cards/:id/support-report/confirm", async (req, res) => {
-  const parsed = supportReportSchema.safeParse(req.body);
-  if (!parsed.success) { res.status(422).json({ error: parsed.error.message, issues: parsed.error.issues }); return; }
-  const [card] = await db.select().from(workCardsTable).where(eq(workCardsTable.id, String(req.params.id))).limit(1);
-  if (!card || card.pipeline !== "suporte") { res.status(404).json({ error: "Assistência não encontrada" }); return; }
-  if (!canAccessTenant(req, card.tenantId)) { res.status(403).json({ error: "Access denied to this tenant" }); return; }
-  if (restrictedToOwnWork(req) && card.responsavelId && card.responsavelId !== req.user?.sub) { res.status(403).json({ error: "Este card pertence a outro responsável" }); return; }
-
-  const solved = parsed.data.situacaoFinal === "resolvido";
-  const now = new Date();
-  if (solved) {
-    const [updated] = await db.update(workCardsTable).set({
-      etapa: "feedback_cliente",
-      metadata: {
-        ...(card.metadata ?? {}),
-        supportReport: parsed.data,
-        supportReportConfirmed: true,
-        supportReportConfirmedAt: now.toISOString(),
-        supportReportConfirmedBy: req.user?.sub ?? null,
-      },
-      updatedAt: now,
-    }).where(eq(workCardsTable.id, card.id)).returning();
-    await recordWorkHistory({
-      tenantId: card.tenantId, leadId: card.leadId, dealId: card.dealId, tipo: "assistencia",
-      titulo: `${card.codigo}: relatório da assistência confirmado`,
-      descricao: `Diagnóstico: ${parsed.data.diagnostico || "não informado"}
-Serviço: ${parsed.data.servicoExecutado || "não informado"}
-Situação: resolvido.`,
-      responsavelId: card.responsavelId,
-    });
-    await ensureWorkStageTask(updated);
-    void requestSupportFeedback(card.tenantId, card.id, req.log);
-    res.json({ card: updated, feedbackRequested: true });
-    return;
-  }
-
-  const [closedAttempt] = await db.update(workCardsTable).set({
-    etapa: "fechamento_assistencia",
-    dataFimEfetiva: now,
-    metadata: {
-      ...(card.metadata ?? {}),
-      supportReport: parsed.data,
-      supportReportConfirmed: true,
-      supportReportConfirmedAt: now.toISOString(),
-      supportReportConfirmedBy: req.user?.sub ?? null,
-      supportCycleOutcome: "necessita_continuidade",
-      substatus: parsed.data.situacaoFinal,
-    },
-    updatedAt: now,
-  }).where(eq(workCardsTable.id, card.id)).returning();
-  const [continuation] = await db.insert(workCardsTable).values({
-    tenantId: card.tenantId,
-    codigo: workCode("AST"),
-    pipeline: "suporte",
-    tipo: "assistencia_retorno",
-    etapa: "execucao_assistencia",
-    titulo: `Retorno • ${card.titulo}`,
-    descricao: parsed.data.observacoes || parsed.data.recomendacoes || card.descricao,
-    prioridade: card.prioridade,
-    leadId: card.leadId,
-    dealId: card.dealId,
-    propostaId: card.propostaId,
-    parentCardId: card.id,
-    responsavelId: card.responsavelId,
-    dataInicioEfetiva: now,
-    metadata: {
-      categoria: (card.metadata as any)?.categoria ?? null,
-      produtos: (card.metadata as any)?.produtos ?? [],
-      origem: "continuidade_relatorio",
-      continuationOf: card.codigo,
-      previousWorkCardId: card.id,
-      previousOutcome: parsed.data.situacaoFinal,
-      supportCycle: Number((card.metadata as any)?.supportCycle ?? 1) + 1,
-    },
-  }).returning();
-  await recordWorkHistory({
-    tenantId: card.tenantId, leadId: card.leadId, dealId: card.dealId, tipo: "assistencia",
-    titulo: `${closedAttempt.codigo}: ciclo encerrado com necessidade de continuidade`,
-    descricao: `O card não retrocedeu. Foi criado o retorno ${continuation.codigo} para continuar a execução. Situação: ${parsed.data.situacaoFinal}.`,
-    responsavelId: card.responsavelId,
-  });
-  await ensureWorkStageTask(continuation);
-  res.json({ card: continuation, previousCard: closedAttempt, feedbackRequested: false, continuationCreated: true });
-});
-
-router.get("/work-cards/:id/attachments", async (req, res) => {
-  const [card] = await db.select().from(workCardsTable).where(eq(workCardsTable.id, String(req.params.id)));
-  if (!card) {
-    res.status(404).json({ error: "Card operacional não encontrado" });
-    return;
-  }
-  if (!canAccessTenant(req, card.tenantId)) {
-    res.status(403).json({ error: "Access denied to this tenant" });
-    return;
-  }
-  if (restrictedToOwnWork(req) && card.responsavelId && card.responsavelId !== req.user?.sub) {
-    res.status(403).json({ error: "Este card pertence a outro responsável" });
-    return;
-  }
-  const attachments = await db.select().from(workCardAttachmentsTable)
-    .where(eq(workCardAttachmentsTable.workCardId, card.id))
-    .orderBy(desc(workCardAttachmentsTable.createdAt));
-  res.json(attachments);
-});
-
-router.post("/work-cards/:id/attachments", async (req, res) => {
-  const [card] = await db.select().from(workCardsTable).where(eq(workCardsTable.id, String(req.params.id)));
-  if (!card) {
-    res.status(404).json({ error: "Card operacional não encontrado" });
-    return;
-  }
-  if (!canAccessTenant(req, card.tenantId)) {
-    res.status(403).json({ error: "Access denied to this tenant" });
-    return;
-  }
-  if (restrictedToOwnWork(req) && card.responsavelId && card.responsavelId !== req.user?.sub) {
-    res.status(403).json({ error: "Este card pertence a outro responsável" });
-    return;
-  }
-
-  const parsed = insertWorkCardAttachmentSchema.safeParse({
-    ...req.body,
-    tenantId: card.tenantId,
-    workCardId: card.id,
-    leadId: card.leadId,
-    criadoPor: req.user?.sub ?? null,
-  });
-  if (!parsed.success) {
-    res.status(422).json({ error: parsed.error.message, issues: parsed.error.issues });
-    return;
-  }
-  const [attachment] = await db.insert(workCardAttachmentsTable).values(parsed.data).returning();
-
-  if (card.leadId) {
-    await recordWorkHistory({
-      tenantId: card.tenantId,
-      leadId: card.leadId,
-      dealId: card.dealId,
-      tipo: card.pipeline === "suporte" ? "assistencia" : "tarefa",
-      titulo: `${card.codigo}: anexo registrado`,
-      descricao: [attachment.descricao, attachment.transcricao ? `Transcrição: ${attachment.transcricao}` : null, `Origem: ${attachment.origem}`].filter(Boolean).join("\n"),
-      responsavelId: card.responsavelId,
-      anexo: {
-        nome: attachment.nome,
-        url: attachment.url,
-        mimeType: attachment.mimeType,
-        tamanho: attachment.tamanho,
-      },
-    });
-  }
-
-  res.status(201).json(attachment);
-});
-
-export default router;

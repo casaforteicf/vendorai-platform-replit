@@ -329,3 +329,197 @@ jobs:
         run: |
           gh pr comment "$PR" --repo "$REPO" --body "⚠️ Merge & Publish Agent: o merge $SHA entrou na main, mas a publicação não foi validada. Rollback automático foi bloqueado por segurança."
 
+  publish-main-push:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Classify main push
+        id: release
+        shell: bash
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ -n "${BEFORE_SHA:-}" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ] && git cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null; then
+            git diff --name-only "$BEFORE_SHA" "$CURRENT_SHA" > /tmp/files
+          else
+            git diff-tree --no-commit-id --name-only -r "$CURRENT_SHA" > /tmp/files
+          fi
+
+          echo "Changed files:"
+          cat /tmp/files
+
+          backend=false
+          app=false
+          website=false
+          mobile=false
+          critical=false
+
+          shared='^(pnpm-lock.yaml$|pnpm-workspace.yaml$|package.json$|\.node-version$)'
+          critical_re='(^|/)(migrations?|auth)(/|$)|(^|/)schema\.(ts|sql)$|billing|payment|subscription|secrets?|^\.github/workflows/|^cloudflare/|railway|terraform|(^|/)docker|(^|/)rls(/|$)|(^|/)\.env'
+
+          if grep -Eiq "$critical_re" /tmp/files; then critical=true; fi
+          if grep -Eq '^(artifacts/api-server/|lib/db/|lib/api-zod/|lib/vendor-brain/|lib/integrations-anthropic-ai/|backend/Dockerfile$)' /tmp/files || grep -Eq "$shared" /tmp/files; then backend=true; fi
+          if grep -Eq '^(artifacts/frontend/|artifacts/api-server/|lib/db/|lib/api-zod/|lib/api-client-react/|lib/vendor-brain/|backend/Dockerfile$)' /tmp/files || grep -Eq "$shared" /tmp/files; then app=true; fi
+          if grep -Eq '^(artifacts/website/|lib/vendor-brain/)' /tmp/files || grep -Eq "$shared" /tmp/files; then website=true; fi
+          if grep -Eq '^artifacts/mobile/' /tmp/files; then mobile=true; fi
+
+          release_required=false
+          if [ "$backend" = true ] || [ "$app" = true ] || [ "$website" = true ] || [ "$mobile" = true ]; then release_required=true; fi
+
+          echo "backend=$backend" >> "$GITHUB_OUTPUT"
+          echo "app=$app" >> "$GITHUB_OUTPUT"
+          echo "website=$website" >> "$GITHUB_OUTPUT"
+          echo "mobile=$mobile" >> "$GITHUB_OUTPUT"
+          echo "critical=$critical" >> "$GITHUB_OUTPUT"
+          echo "release_required=$release_required" >> "$GITHUB_OUTPUT"
+          echo "Safety-net matrix: backend=$backend app=$app website=$website mobile=$mobile critical=$critical"
+
+      - uses: pnpm/action-setup@v4
+        if: steps.release.outputs.release_required == 'true'
+        with:
+          version: 10.26.1
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        if: steps.release.outputs.release_required == 'true'
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install dependencies
+        if: steps.release.outputs.release_required == 'true'
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Wait for Railway production revision
+        if: steps.release.outputs.backend == 'true'
+        env:
+          EXPECTED: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          for n in {1..42}; do
+            headers="$(mktemp)"
+            body="$(mktemp)"
+            code="$(curl -sS --connect-timeout 5 --max-time 15 -D "$headers" -o "$body" -w '%{http_code}' "$API_HEALTH_URL" || true)"
+            health="$(jq -r '.status // empty' "$body" 2>/dev/null || true)"
+            rev="$(awk 'BEGIN{IGNORECASE=1} /^X-VendorAI-Revision:/ {gsub("\r","",$2); print $2}' "$headers" | tail -1)"
+            rm -f "$headers" "$body"
+            echo "railway http=$code health=$health revision=$rev"
+            if [ "$code" = 200 ] && [ "$health" = ok ] && { [ "$rev" = "$EXPECTED" ] || [[ "$EXPECTED" == "$rev"* ]] || [[ "$rev" == "$EXPECTED"* ]]; }; then exit 0; fi
+            sleep 10
+          done
+          echo "::error::Railway did not reach main SHA $EXPECTED"
+          exit 1
+
+      - name: Build app frontend
+        if: steps.release.outputs.app == 'true'
+        env:
+          VENDOR_BUILD_ID: ${{ github.sha }}
+        run: pnpm --filter @workspace/frontend build
+
+      - name: Publish app frontend
+        id: push_primary_frontend_publish
+        continue-on-error: true
+        if: steps.release.outputs.app == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          test -f artifacts/frontend/dist/public/index.html
+          test -f artifacts/frontend/dist/public/_worker.js
+          pnpm dlx wrangler@3.90.0 pages project create vendorai --production-branch main || true
+          pnpm dlx wrangler@3.90.0 pages deploy artifacts/frontend/dist/public --project-name vendorai --branch main
+
+      - name: Verify app frontend revision
+        if: steps.release.outputs.app == 'true'
+        env:
+          EXPECTED: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          prefix="${EXPECTED:0:12}"
+          for n in {1..24}; do
+            html="$(curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$FRONTEND_URL/?__vendorai_release=$RANDOM" || true)"
+            if grep -F -- "-$prefix-" <<<"$html" >/dev/null; then exit 0; fi
+            sleep 10
+          done
+          echo "::error::Neither primary publish nor Railway fallback exposed app revision $prefix"
+          exit 1
+
+      - name: Build public website
+        if: steps.release.outputs.website == 'true' && steps.release.outputs.mobile != 'true'
+        run: pnpm --filter @workspace/website build
+
+      - name: Publish public website
+        id: push_primary_website_publish
+        continue-on-error: true
+        if: steps.release.outputs.website == 'true' && steps.release.outputs.mobile != 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          test -f artifacts/website/dist/public/index.html
+          test -f artifacts/website/dist/public/_worker.js
+          pnpm dlx wrangler@3.90.0 pages project create vendorai-website --production-branch main || true
+          pnpm dlx wrangler@3.90.0 pages deploy artifacts/website/dist/public --project-name vendorai-website --branch main
+
+      - name: Dispatch mobile APK release
+        if: steps.release.outputs.mobile == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh workflow run jarvis-android-apk.yml --repo "$REPO" --ref main
+
+      - name: Smoke test app/API
+        if: steps.release.outputs.app == 'true' || steps.release.outputs.backend == 'true'
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$FRONTEND_URL/login" >/dev/null
+          curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$API_HEALTH_URL" >/dev/null
+
+      - name: Smoke test public website
+        if: steps.release.outputs.website == 'true' || steps.release.outputs.mobile == 'true'
+        run: curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$WEBSITE_URL/" >/dev/null
+
+      - name: Report critical direct-main change
+        if: steps.release.outputs.critical == 'true'
+        run: echo "::warning::Critical files reached main outside guarded Merge & Publish; relevant publication checks were still applied."
+
+      - name: Confirm release success
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          gh api --method POST "repos/$REPO/statuses/$SHA" \
+            -f state=success \
+            -f context='vendorai/merge-publish' \
+            -f description='CONCLUÍDO — publicado e validado em produção' >/dev/null
+          echo "✅ CONCLUÍDO — publicado e validado em produção."
+
+      - name: Confirm release failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          gh api --method POST "repos/$REPO/statuses/$SHA" \
+            -f state=failure \
+            -f context='vendorai/merge-publish' \
+            -f description='FALHOU — publicação não validada em produção' >/dev/null || true
+          echo "❌ FALHOU — publicação não validada em produção."

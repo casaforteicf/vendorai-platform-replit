@@ -1,4 +1,4 @@
-User-agent: *
+User-agent: Googlebot\nAllow: /\n\nUser-agent: *
 Allow: /
 
 Disallow: /login

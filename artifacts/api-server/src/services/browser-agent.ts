@@ -126,7 +126,7 @@ export interface BrowserAgentInput {
   allowedHosts?: string[];
   secrets?: { login?: string; passcode?: string };
   sessionCookies?: CookieData[];
-  sessionProfile?: BrowserProfileState;
+  /** Short-lived JWT minted server-side only for the first-party Vendor.ai frontend. */
   firstPartyAuthToken?: string;
   onSessionPersist?: (cookies: CookieData[]) => Promise<void>;
   onProfilePersist?: (profile: BrowserProfileState) => Promise<void>;
@@ -372,6 +372,18 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
     if (input.firstPartyAuthToken) {
       const current = new URL(page.url());
       if (current.hostname.toLowerCase() !== "app.appvendorai.com") throw new Error("VENDI_AUTH_ORIGIN_MISMATCH");
+      await page.evaluate((token) => localStorage.setItem("vendorai_token", token), input.firstPartyAuthToken);
+      await page.reload({ waitUntil: "domcontentloaded", timeout: 30000 });
+      await page.waitForNetworkIdle({ idleTime: 400, timeout: 5000 }).catch(() => undefined);
+    }
+
+    // First-party Vendor.ai auth: inject only after reaching the trusted origin, then
+    // reload so AuthContext follows the exact same /api/auth/me path as a human login.
+    if (input.firstPartyAuthToken) {
+      const current = new URL(page.url());
+      if (current.hostname.toLowerCase() !== "app.appvendorai.com") {
+        throw new Error("VENDI_AUTH_ORIGIN_MISMATCH: token interno recusado fora do Vendor.ai");
+      }
       await page.evaluate((token) => localStorage.setItem("vendorai_token", token), input.firstPartyAuthToken);
       await page.reload({ waitUntil: "domcontentloaded", timeout: 30000 });
       await page.waitForNetworkIdle({ idleTime: 400, timeout: 5000 }).catch(() => undefined);

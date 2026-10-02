@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, lt, isNotNull } from "drizzle-orm";
+import { and, eq, lt, isNotNull, or } from "drizzle-orm";
 import {
   db,
   activitiesTable,
@@ -11,6 +11,12 @@ import {
 } from "@workspace/db";
 import { createGoogleEvent, updateGoogleEvent, deleteGoogleEvent } from "../lib/google-calendar.js";
 import { generateSpinForActivity } from "./spin.js";
+import {
+  canAccessActivity,
+  canAccessLead,
+  canViewAllScopedData,
+  leadOwnedByUserCondition,
+} from "../lib/lead-scope-access.js";
 
 const router: IRouter = Router();
 
@@ -23,6 +29,11 @@ router.post("/activities", async (req, res) => {
 
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== parsed.data.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  if (!(await canAccessLead(req, parsed.data.tenantId, parsed.data.leadId, "activities:view_all"))) {
+    res.status(403).json({ error: "Access denied to this lead activity" });
     return;
   }
 
@@ -107,16 +118,27 @@ router.post("/activities", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/activities", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
   const { leadId, dealId, status } = req.query as Record<string, string | undefined>;
 
-  const conditions = [eq(activitiesTable.tenantId, String(req.params.tenantId))];
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
 
-  const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
-  const isSeller = req.user?.platformRole === "tenant_seller";
-  const userFn = req.user?.userFunction as string | undefined;
-  const userId = req.user?.sub;
-  if (!isAdmin && userId && (isSeller || userFn === "vendedor" || userFn === "entrega")) {
-    conditions.push(eq(activitiesTable.responsavelId, userId));
+  const conditions = [eq(activitiesTable.tenantId, tenantId)];
+  if (!(await canViewAllScopedData(req, "activities:view_all"))) {
+    const userId = req.user?.sub;
+    if (!userId) {
+      res.json([]);
+      return;
+    }
+    conditions.push(
+      or(
+        eq(activitiesTable.responsavelId, userId),
+        leadOwnedByUserCondition(userId, activitiesTable.leadId),
+      )!,
+    );
   }
 
   if (leadId) conditions.push(eq(activitiesTable.leadId, leadId));
@@ -136,19 +158,32 @@ router.get("/tenants/:tenantId/activities", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/activities/overdue", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   const overdueConditions = [
-    eq(activitiesTable.tenantId, String(req.params.tenantId)),
+    eq(activitiesTable.tenantId, tenantId),
     eq(activitiesTable.status, "pendente"),
     isNotNull(activitiesTable.dataVencimento),
     lt(activitiesTable.dataVencimento, new Date()),
   ];
 
-  const isAdminOverdue = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
-  const isSellerOverdue = req.user?.platformRole === "tenant_seller";
-  const userFnOverdue = req.user?.userFunction as string | undefined;
-  const userIdOverdue = req.user?.sub;
-  if (!isAdminOverdue && userIdOverdue && (isSellerOverdue || userFnOverdue === "vendedor" || userFnOverdue === "entrega")) {
-    overdueConditions.push(eq(activitiesTable.responsavelId, userIdOverdue));
+  if (!(await canViewAllScopedData(req, "activities:view_all"))) {
+    const userId = req.user?.sub;
+    if (!userId) {
+      res.json([]);
+      return;
+    }
+    overdueConditions.push(
+      or(
+        eq(activitiesTable.responsavelId, userId),
+        leadOwnedByUserCondition(userId, activitiesTable.leadId),
+      )!,
+    );
   }
 
   const activities = await db
@@ -176,14 +211,7 @@ router.get("/activities/:id", async (req, res) => {
     return;
   }
 
-  const actRole = req.user?.platformRole;
-  const actFn = req.user?.userFunction as string | undefined;
-  const actIsSeller =
-    actRole === "tenant_seller" || actFn === "vendedor" || actFn === "representante_comercial" || actFn === "entrega";
-  const actIsAdmin =
-    actRole === "super_admin" || actRole === "tenant_admin";
-
-  if (!actIsAdmin && actIsSeller && activity.responsavelId !== req.user?.sub) {
+  if (!(await canAccessActivity(req, activity.tenantId, activity.id))) {
     res.status(403).json({ error: "Access denied to this activity" });
     return;
   }
@@ -213,15 +241,9 @@ router.patch("/activities/:id", async (req, res) => {
     return;
   }
 
-  const isAdminPatch = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
-  const isSellerPatch = req.user?.platformRole === "tenant_seller";
-  const userFnPatch = req.user?.userFunction as string | undefined;
-  const userIdPatch = req.user?.sub;
-  if (!isAdminPatch && userIdPatch && (isSellerPatch || userFnPatch === "vendedor" || userFnPatch === "entrega")) {
-    if (existing.responsavelId !== userIdPatch) {
-      res.status(403).json({ error: "Acesso negado: esta atividade pertence a outro responsável" });
-      return;
-    }
+  if (!(await canAccessActivity(req, existing.tenantId, existing.id))) {
+    res.status(403).json({ error: "Acesso negado: esta atividade pertence a outro responsável" });
+    return;
   }
 
   const data = { ...parsed.data, updatedAt: new Date() };
@@ -278,15 +300,9 @@ router.delete("/activities/:id", async (req, res) => {
     return;
   }
 
-  const isAdminDelete = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
-  const isSellerDelete = req.user?.platformRole === "tenant_seller";
-  const userFnDelete = req.user?.userFunction as string | undefined;
-  const userIdDelete = req.user?.sub;
-  if (!isAdminDelete && userIdDelete && (isSellerDelete || userFnDelete === "vendedor" || userFnDelete === "entrega")) {
-    if (existing.responsavelId !== userIdDelete) {
-      res.status(403).json({ error: "Acesso negado: esta atividade pertence a outro responsável" });
-      return;
-    }
+  if (!(await canAccessActivity(req, existing.tenantId, existing.id))) {
+    res.status(403).json({ error: "Acesso negado: esta atividade pertence a outro responsável" });
+    return;
   }
 
   await db.delete(activitiesTable).where(eq(activitiesTable.id, existing.id));

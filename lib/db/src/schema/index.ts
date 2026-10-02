@@ -10,6 +10,7 @@ export * from "./agent_configs";
 export * from "./funis";
 export * from "./deals";
 export * from "./pipeline_stages";
+export * from "./operational_checklists";
 export * from "./activities";
 export * from "./propostas";
 export * from "./orcamento_revisoes";
@@ -247,3 +248,5 @@ export * from "./tenant_expansion_recommendations";
 export * from "./browser_agent_connections";
 export * from "./browser_agent_skills";
 export * from "./vendi_missions";
+
+export * from "./installation_checklists";

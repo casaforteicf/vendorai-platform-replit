@@ -34,6 +34,12 @@ export type OpeningMarker = {
   sillHeight?: number;
   openingStyle?: "hinged" | "sliding" | "fixed" | "tilt_turn";
   swing?: "left" | "right";
+  swingSide?: "inside" | "outside";
+  leafCount?: number;
+  frameProfile?: string;
+  glassType?: string;
+  manufacturer?: string;
+  catalogProductId?: string;
 };
 
 export type ConceptGeometry = {
