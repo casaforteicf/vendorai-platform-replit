@@ -8,19 +8,19 @@ export type TipoFonteContextoNegocio =
 
 export type FonteContextoNegocio = {
   id: string;
-  type: TipoFonteContextoNegocio;
-  kind: string;
-  title: string;
-  summary: string;
-  score: number;
-  approved: boolean;
+  tipo: TipoFonteContextoNegocio;
+  categoria: string;
+  titulo: string;
+  resumo: string;
+  pontuacao: number;
+  aprovado: boolean;
 };
 
 export type ContextoNegocioResolvido = {
-  promptBlock: string;
-  sources: FonteContextoNegocio[];
-  productIds: string[];
-  assetIds: string[];
+  blocoPrompt: string;
+  fontes: FonteContextoNegocio[];
+  idsProdutos: string[];
+  idsMidias: string[];
 };
 
 type ProfileRow = {
@@ -37,7 +37,7 @@ type ProfileRow = {
 type ProductRow = {
   id: string;
   nome: string;
-  product_type: string;
+  product_tipo: string;
   descricao: string | null;
   descricao_longa: string | null;
   marca: string | null;
@@ -47,9 +47,9 @@ type ProductRow = {
 
 type ContextRow = {
   id: string;
-  title: string;
-  kind: string;
-  summary: string;
+  titulo: string;
+  categoria: string;
+  resumo: string;
   details: string | null;
   tags: string[] | null;
   asset_ids: string[] | null;
@@ -187,10 +187,10 @@ export async function resolverContextoNegocio(input: {
     ).catch(() => ({ rows: [] as KnowledgeRow[] })),
   ]);
 
-  const sources: FonteContextoNegocio[] = [];
+  const fontes: FonteContextoNegocio[] = [];
   const blocks: string[] = [];
-  const assetIds = new Set<string>();
-  const selectedProductIds: string[] = [];
+  const idsMidias = new Set<string>();
+  const idsProdutosSelecionados: string[] = [];
 
   const profile = profileResult.rows[0];
   if (profile) {
@@ -207,14 +207,14 @@ export async function resolverContextoNegocio(input: {
     ].filter(Boolean).join("\n");
     if (profileText) {
       blocks.push(`### EMPRESA\n${profileText}`);
-      sources.push({
+      fontes.push({
         id: profile.id,
-        type: "perfil_negocio",
-        kind: "empresa",
-        title: profile.nome_fantasia || "Perfil da empresa",
-        summary: compact(profileText, 500),
-        score: 1000,
-        approved: true,
+        tipo: "perfil_negocio",
+        categoria: "empresa",
+        titulo: profile.nome_fantasia || "Perfil da empresa",
+        resumo: compact(profileText, 500),
+        pontuacao: 1000,
+        aprovado: true,
       });
     }
   }
@@ -231,15 +231,15 @@ export async function resolverContextoNegocio(input: {
 
   if (rankedProducts.length) {
     const productBlocks = rankedProducts.map(({ item, textoComercial, score }) => {
-      selectedProductIds.push(item.id);
-      sources.push({
+      idsProdutosSelecionados.push(item.id);
+      fontes.push({
         id: item.id,
-        type: "produto_catalogo",
-        kind: item.product_type,
-        title: item.nome,
-        summary: compact([item.descricao, textoComercial].filter(Boolean).join(" | "), 600),
+        tipo: "produto_catalogo",
+        categoria: item.product_type,
+        titulo: item.nome,
+        resumo: compact([item.descricao, textoComercial].filter(Boolean).join(" | "), 600),
         score,
-        approved: true,
+        aprovado: true,
       });
       return [
         `#### ${item.nome}`,
@@ -262,15 +262,15 @@ export async function resolverContextoNegocio(input: {
 
   if (rankedContexts.length) {
     const lines = rankedContexts.map(({ item, score }) => {
-      for (const assetId of item.asset_ids ?? []) assetIds.add(assetId);
-      sources.push({
+      for (const assetId of item.asset_ids ?? []) idsMidias.add(assetId);
+      fontes.push({
         id: item.id,
-        type: "biblioteca_contexto",
-        kind: item.kind,
-        title: item.title,
-        summary: compact(item.summary, 500),
+        tipo: "biblioteca_contexto",
+        categoria: item.kind,
+        titulo: item.title,
+        resumo: compact(item.summary, 500),
         score,
-        approved: true,
+        aprovado: true,
       });
       return `- [${item.kind}] ${item.title}: ${compact([item.summary, item.details].filter(Boolean).join(" — "), 850)}`;
     });
@@ -288,14 +288,14 @@ export async function resolverContextoNegocio(input: {
 
   if (rankedKnowledge.length) {
     const lines = rankedKnowledge.map(({ item, score }) => {
-      sources.push({
+      fontes.push({
         id: item.id,
-        type: "base_conhecimento",
-        kind: item.categoria,
-        title: item.titulo,
-        summary: compact(item.conteudo, 500),
+        tipo: "base_conhecimento",
+        categoria: item.categoria,
+        titulo: item.titulo,
+        resumo: compact(item.conteudo, 500),
         score,
-        approved: true,
+        aprovado: true,
       });
       return `- ${item.titulo} [${item.categoria}]: ${compact(item.conteudo, 1000)}`;
     });
@@ -310,14 +310,14 @@ export async function resolverContextoNegocio(input: {
     "- Conhecimento aprovado da Context Library tem prioridade sobre inferências do modelo.\n" +
     "- Personalize a comunicação ao interesse do cliente; não despeje todos os benefícios de uma vez.";
 
-  const promptBlock = blocks.length
+  const blocoPrompt = blocks.length
     ? `## INTELIGÊNCIA DO NEGÓCIO — CONTEXTO DINÂMICO\n${guardrails}\n\n${blocks.join("\n\n")}`
     : "";
 
   return {
-    promptBlock,
-    sources: sources.sort((a, b) => b.score - a.score),
-    productIds: selectedProductIds,
-    assetIds: [...assetIds],
+    blocoPrompt,
+    fontes: fontes.sort((a, b) => b.score - a.score),
+    idsProdutos: idsProdutosSelecionados,
+    idsMidias: [...idsMidias],
   };
 }
