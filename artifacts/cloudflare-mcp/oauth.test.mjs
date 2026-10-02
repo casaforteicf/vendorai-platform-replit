@@ -44,6 +44,7 @@ test('private OAuth: discovery, redirect restrictions, consent, PKCE, replay, re
     };
     assert.equal((await form({ resource: 'https://attacker.example' })).response.status, 400);
     assert.equal((await form({ code_challenge_method: 'plain' })).response.status, 400);
+    assert.equal((await form({ resource: '' })).response.status, 200);
     let f = await form();
     assert.equal(f.response.headers.get("referrer-policy"), "same-origin");
     assert.match(f.response.headers.get("content-security-policy"), /form-action 'self' https:\/\/chatgpt\.com;/);
@@ -71,6 +72,9 @@ test('private OAuth: discovery, redirect restrictions, consent, PKCE, replay, re
     assert.equal((await post('/oauth/token', { ...exchange, resource: 'https://attacker.example' })).status, 400);
     const tokens = await (await post('/oauth/token', exchange)).json();
     assert.ok(tokens.access_token); assert.ok(tokens.refresh_token);
+    const noResourceCode = await grant();
+    const noResourceTokens = await (await post('/oauth/token', { client_id: client, redirect_uri: redirect, code: noResourceCode, grant_type: 'authorization_code', code_verifier: verifier })).json();
+    assert.ok(noResourceTokens.access_token);
     assert.equal((await post('/oauth/token', exchange)).status, 400);
     assert.equal((await fetch(resource, { headers: { Authorization: 'Bearer ' + tokens.access_token } })).status, 200);
     assert.equal((await fetch(resource, { headers: { Authorization: 'Bearer ' + tokens.access_token + 'x' } })).status, 401);
