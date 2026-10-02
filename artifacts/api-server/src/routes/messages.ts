@@ -10,6 +10,7 @@ import {
 } from "@workspace/db";
 import { maybeReanalyze } from "../lib/analyze-intelligence.js";
 import { recordIntelligenceEvent, recordIntelligenceFact } from "../services/customer-intelligence-history.js";
+import { resolveStageQuestionsFromInboundMessage } from "../services/stage-question-resolution.js";
 import {
   sendOutgoingMessage,
   WhatsAppNotConnectedError,
@@ -179,6 +180,16 @@ router.post("/messages", async (req, res): Promise<void> => {
   });
 
   if (parsed.data.direcao === "entrada") {
+    void resolveStageQuestionsFromInboundMessage({
+      tenantId: parsed.data.tenantId,
+      leadId: parsed.data.leadId,
+      messageId: message.id,
+      message: parsed.data.conteudo,
+      log: req.log,
+    }).catch((err) => {
+      req.log.warn({ err, messageId: message.id }, "customer-intelligence: stage question resolution failed (non-fatal)");
+    });
+
     void recordIntelligenceFact({
       tenantId: parsed.data.tenantId,
       leadId: parsed.data.leadId,
