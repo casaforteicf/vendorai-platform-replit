@@ -41,6 +41,7 @@ import { metaAdsCallbackRouter } from "./meta-ads-auth";
 import socialIntegrationsRouter, { socialIntegrationsCallbackRouter } from "./social-integrations";
 import agendamentosRouter from "./agendamentos";
 import entregasRouter from "./entregas";
+import operationalChecklistsRouter from "./operational_checklists";
 import bloqueiosAgendaRouter from "./bloqueios_agenda";
 import subscriptionsRouter from "./subscriptions";
 import invoicesRouter from "./invoices";
@@ -432,6 +433,7 @@ router.use(categoriasProdutoRouter);
 router.use(agendasRouter);
 router.use(agendamentosRouter);
 router.use(entregasRouter);
+router.use(operationalChecklistsRouter);
 router.use(bloqueiosAgendaRouter);
 
 // Billing Hub
