@@ -153,7 +153,9 @@ jobs:
             test "$conclusion" = "success"
           }
 
-          require_workflow "VendorAI Stability Gate"
+          if [ "$BACKEND" = "true" ] || [ "$APP" = "true" ]; then
+            require_workflow "VendorAI Stability Gate"
+          fi
 
           if [ "$BACKEND" = "true" ]; then
             require_workflow "VendorAI API CI"
