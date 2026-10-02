@@ -30,9 +30,13 @@ const createSchema = z.object({
   prUrl: z.string().url().optional().nullable(),
   homologUrl: z.string().url().optional().nullable(),
   productionUrl: z.string().url().optional().nullable(),
-  sourceType: z.enum(["super_admin", "support", "vendi", "system"]).optional().default("super_admin"),
+  sourceType: z.enum(["super_admin", "support", "vendi", "system", "audit", "user_request", "bug", "security", "integration", "infrastructure", "hotfix"]).optional().default("super_admin"),
   sourceRefId: z.string().trim().max(220).optional().nullable(),
   sourceTenantId: z.string().trim().max(220).optional().nullable(),
+  packageKey: z.string().trim().max(120).optional().nullable(),
+  acceptanceCriteria: z.string().trim().max(12000).optional().default(""),
+  riskSummary: z.string().trim().max(8000).optional().default(""),
+  dependencies: z.string().trim().max(8000).optional().default(""),
 });
 
 const patchSchema = z.object({
@@ -52,6 +56,9 @@ const patchSchema = z.object({
   ownerAgent: z.string().trim().max(120).nullable().optional(),
   agentStatus: z.string().trim().max(120).nullable().optional(),
   agentSummary: z.string().trim().max(12000).nullable().optional(),
+  acceptanceCriteria: z.string().trim().max(12000).optional(),
+  riskSummary: z.string().trim().max(8000).optional(),
+  dependencies: z.string().trim().max(8000).optional(),
 });
 
 const idsSchema = z.object({
@@ -131,6 +138,9 @@ function ensureSchema() {
       agent_summary text,
       requested_at timestamptz NOT NULL DEFAULT now(),
       due_at timestamptz NOT NULL DEFAULT (now() + interval '24 hours'),
+      acceptance_criteria text NOT NULL DEFAULT '',
+      risk_summary text NOT NULL DEFAULT '',
+      dependencies text NOT NULL DEFAULT '',
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     );
@@ -145,6 +155,9 @@ function ensureSchema() {
     ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS agent_summary text;
     ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS requested_at timestamptz NOT NULL DEFAULT now();
     ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS due_at timestamptz NOT NULL DEFAULT (now() + interval '24 hours');
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS acceptance_criteria text NOT NULL DEFAULT '';
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS risk_summary text NOT NULL DEFAULT '';
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS dependencies text NOT NULL DEFAULT '';
 
     CREATE TABLE IF NOT EXISTS admin_improvement_events (
       id uuid PRIMARY KEY,
@@ -215,6 +228,8 @@ router.get("/admin/improvements", async (_req, res) => {
       source_tenant_id AS "sourceTenantId", owner_agent AS "ownerAgent",
       agent_status AS "agentStatus", agent_summary AS "agentSummary",
       requested_at AS "requestedAt", due_at AS "dueAt",
+      acceptance_criteria AS "acceptanceCriteria", risk_summary AS "riskSummary",
+      dependencies,
       created_at AS "createdAt", updated_at AS "updatedAt"
     FROM admin_improvements
     ORDER BY
@@ -233,15 +248,21 @@ router.post("/admin/improvements", async (req, res) => {
   const result = await pool.query(`
     INSERT INTO admin_improvements (
       id, title, description, module, priority, branch, pr_number, pr_url,
-      homolog_url, production_url, created_by, source_type, source_ref_id, source_tenant_id
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+      homolog_url, production_url, created_by, source_type, source_ref_id, source_tenant_id,
+      package_key, acceptance_criteria, risk_summary, dependencies
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
     RETURNING id
   `, [
     id, input.title, input.description, input.module, input.priority,
     input.branch ?? null, input.prNumber ?? null, input.prUrl ?? null,
     input.homologUrl ?? null, input.productionUrl ?? null, actor(req),
     input.sourceType, input.sourceRefId ?? null, input.sourceTenantId ?? null,
+    input.packageKey ?? null, input.acceptanceCriteria, input.riskSummary, input.dependencies,
   ]);
+  await pool.query(
+    "INSERT INTO admin_improvement_events (id,improvement_id,event_type,message,payload,actor) VALUES ($1,$2,'created',$3,$4::jsonb,$5)",
+    [randomUUID(), id, "Melhoria registrada no histórico oficial.", JSON.stringify({ sourceType: input.sourceType, packageKey: input.packageKey ?? null }), actor(req)],
+  );
   res.status(201).json({ id: result.rows[0]?.id ?? id });
 });
 
@@ -256,6 +277,7 @@ router.patch("/admin/improvements/:id", async (req, res) => {
     homologUrl: "homolog_url", productionUrl: "production_url", packageKey: "package_key",
     testStatus: "test_status", testSummary: "test_summary",
     ownerAgent: "owner_agent", agentStatus: "agent_status", agentSummary: "agent_summary",
+    acceptanceCriteria: "acceptance_criteria", riskSummary: "risk_summary", dependencies: "dependencies",
   };
   const sets: string[] = [];
   const values: unknown[] = [];
@@ -272,6 +294,10 @@ router.patch("/admin/improvements/:id", async (req, res) => {
     values,
   );
   if (!result.rowCount) return res.status(404).json({ error: "Melhoria não encontrada" });
+  await pool.query(
+    "INSERT INTO admin_improvement_events (id,improvement_id,event_type,message,payload,actor) VALUES ($1,$2,'updated',$3,$4::jsonb,$5)",
+    [randomUUID(), String(req.params.id), "Melhoria atualizada.", JSON.stringify(parsed.data), actor(req)],
+  );
   res.json({ ok: true });
 });
 
