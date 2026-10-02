@@ -97,11 +97,14 @@ async function runStartupMigrations(): Promise<boolean> {
     const homologationManagedSchema = ["1", "true"].includes(
       String(process.env["VENDORAI_HOMOLOGATION_SEED"] ?? "").toLowerCase(),
     );
+    const railwayEnvironment = String(process.env["RAILWAY_ENVIRONMENT_NAME"] ?? "").toLowerCase();
+    const productionManagedSchema = railwayEnvironment === "production";
 
-    if (homologationManagedSchema) {
+    if (homologationManagedSchema || productionManagedSchema) {
       await pool.query("select 1");
       logger.info(
-        "startup migrations: homologação usa schema gerenciado; auto-migrations de produção foram ignoradas",
+        { railwayEnvironment, homologationManagedSchema },
+        "startup migrations: schema gerenciado detectado; migrations ficam a cargo do pipeline privilegiado",
       );
       return true;
     }
