@@ -26,6 +26,12 @@ import type { Logger } from "pino";
 import { proposalAccepted } from "../lib/proposal-accepted.js";
 import { runDealClosure, type ConfirmClosureBody } from "./confirm_closure.js";
 import { triggerCloserStockRejectionOffer } from "../lib/agent-engine.js";
+import {
+  canAccessAgentTask,
+  canAccessLead,
+  canViewAllScopedData,
+  leadOwnedByUserCondition,
+} from "../lib/lead-scope-access.js";
 
 const router: IRouter = Router();
 
@@ -426,6 +432,8 @@ async function handleConferenciaEstoqueRejected(
 
   await db.insert(notificationsTable).values({
     tenantId: task.tenantId,
+    recipientUserId: deal.assignedTo ?? null,
+    leadId: deal.leadId ?? task.leadId,
     title: "Conferência de estoque reprovada",
     message: `A conferência de estoque do negócio "${deal.titulo}" foi reprovada. Motivo: ${motivoTexto}.`,
     type: "warning",
@@ -474,6 +482,11 @@ router.post("/agent-tasks", async (req, res) => {
     return;
   }
 
+  if (!(await canAccessLead(req, parsed.data.tenantId, parsed.data.leadId, "tasks:view_all"))) {
+    res.status(403).json({ error: "Access denied to this lead task" });
+    return;
+  }
+
   const { tenantId, agentName } = parsed.data;
 
   const [config] = await db
@@ -503,25 +516,55 @@ router.post("/agent-tasks", async (req, res) => {
 
 // ── GET /tenants/:tenantId/agent-tasks ────────────────────────────────────────
 router.get("/tenants/:tenantId/agent-tasks", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const conditions = [eq(agentTasksTable.tenantId, tenantId)];
+  if (!(await canViewAllScopedData(req, "tasks:view_all"))) {
+    const userId = req.user?.sub;
+    if (!userId) {
+      res.json([]);
+      return;
+    }
+    conditions.push(leadOwnedByUserCondition(userId, agentTasksTable.leadId));
+  }
+
   const tasks = await db
     .select()
     .from(agentTasksTable)
-    .where(eq(agentTasksTable.tenantId, String(req.params.tenantId)))
+    .where(and(...conditions))
     .orderBy(agentTasksTable.createdAt);
   res.json(tasks);
 });
 
 // ── GET /tenants/:tenantId/agent-tasks/pending ────────────────────────────────
 router.get("/tenants/:tenantId/agent-tasks/pending", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const conditions = [
+    eq(agentTasksTable.tenantId, tenantId),
+    eq(agentTasksTable.status, "pendente_aprovacao"),
+  ];
+  if (!(await canViewAllScopedData(req, "tasks:view_all"))) {
+    const userId = req.user?.sub;
+    if (!userId) {
+      res.json([]);
+      return;
+    }
+    conditions.push(leadOwnedByUserCondition(userId, agentTasksTable.leadId));
+  }
+
   const tasks = await db
     .select()
     .from(agentTasksTable)
-    .where(
-      and(
-        eq(agentTasksTable.tenantId, String(req.params.tenantId)),
-        eq(agentTasksTable.status, "pendente_aprovacao")
-      )
-    )
+    .where(and(...conditions))
     .orderBy(agentTasksTable.createdAt);
   res.json(tasks);
 });
@@ -552,6 +595,26 @@ router.post(
 
     if (!task) {
       res.status(404).json({ error: "Agent task not found" });
+      return;
+    }
+
+    if (!(await canAccessAgentTask(req, String(tenantId), task.id))) {
+      res.status(403).json({ error: "Access denied to this agent task" });
+      return;
+    }
+
+    if (!(await canAccessAgentTask(req, String(tenantId), task.id))) {
+      res.status(403).json({ error: "Access denied to this agent task" });
+      return;
+    }
+
+    if (!(await canAccessAgentTask(req, String(tenantId), task.id))) {
+      res.status(403).json({ error: "Access denied to this agent task" });
+      return;
+    }
+
+    if (!(await canAccessAgentTask(req, String(tenantId), task.id))) {
+      res.status(403).json({ error: "Access denied to this agent task" });
       return;
     }
 
@@ -740,6 +803,11 @@ router.get("/agent-tasks/:id", async (req, res) => {
     return;
   }
 
+  if (!(await canAccessAgentTask(req, task.tenantId, task.id))) {
+    res.status(403).json({ error: "Access denied to this agent task" });
+    return;
+  }
+
   res.json(task);
 });
 
@@ -761,8 +829,8 @@ router.patch("/agent-tasks/:id", async (req, res) => {
     return;
   }
 
-  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
-    res.status(403).json({ error: "Access denied to this tenant" });
+  if (!(await canAccessAgentTask(req, existing.tenantId, existing.id))) {
+    res.status(403).json({ error: "Access denied to this agent task" });
     return;
   }
 
@@ -787,8 +855,8 @@ router.delete("/agent-tasks/:id", async (req, res) => {
     return;
   }
 
-  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
-    res.status(403).json({ error: "Access denied to this tenant" });
+  if (!(await canAccessAgentTask(req, existing.tenantId, existing.id))) {
+    res.status(403).json({ error: "Access denied to this agent task" });
     return;
   }
 
