@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useLocation, useParams } from "wouter";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCreateDeal, useGetLead, useListActivities, useListDeals, useListPipelineStages, useListTenantUsers, useUpdatePipelineStage, getGetLeadQueryKey, getListActivitiesQueryKey, getListDealsQueryKey, getListPipelineStagesQueryKey, getListTenantUsersQueryKey } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, ArrowRight, AlertTriangle, Clock3, Loader2, Pencil, Settings2, UserRound } from "lucide-react";
+import { ArrowLeft, ArrowRight, AlertTriangle, BrainCircuit, Clock3, Loader2, Pencil, Settings2, Sparkles, UserRound } from "lucide-react";
 
 const LeadDetail = lazy(() => import("@/pages/LeadDetail"));
 const StageQuestionsPanel = lazy(() => import("@/components/StageQuestionsPanel").then((m) => ({ default: m.StageQuestionsPanel })));
@@ -70,6 +70,34 @@ const pipelineDotClass: Record<string, string> = {
 
 const hiddenFromCommercialFlow = new Set(["em_aquecimento", "em_execucao", "entregue", "parceiro"]);
 
+type FullIntelligenceResponse = {
+  health: null | {
+    score: number | null;
+    status: "saudavel" | "atencao" | "alto_risco" | "critico" | null;
+    riskType: string | null;
+    riskLevel: string | null;
+    trend: "melhorando" | "estavel" | "piorando" | null;
+    confidence: number | null;
+    dimensions: Record<string, number>;
+    positiveSignals: Array<Record<string, unknown>>;
+    negativeSignals: Array<Record<string, unknown>>;
+    riskFactors: Array<Record<string, unknown>>;
+    riskEvents: Array<Record<string, unknown>>;
+    nextBestAction: string | null;
+    nextBestActionReason: string | null;
+  };
+  dynamicQuestions: Array<{
+    id: string;
+    stageKey: string;
+    questionText: string;
+    objective: string | null;
+    status: string;
+    confidence: number | null;
+  }>;
+  events: Array<{ id: string }>;
+  facts: Array<{ id: string }>;
+};
+
 function tomorrow() {
   const d = new Date(Date.now() + 86400000);
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
@@ -107,6 +135,19 @@ export default function LeadWorkspace() {
   const { data: activities = [] } = useListActivities(tenantId, { leadId: id }, { request, query: { enabled, queryKey: getListActivitiesQueryKey(tenantId, { leadId: id }), staleTime: 15_000, refetchOnWindowFocus: false } });
   const { data: users = [] } = useListTenantUsers(tenantId, { request, query: { enabled, queryKey: getListTenantUsersQueryKey(tenantId), staleTime: 60_000, refetchOnWindowFocus: false } });
   const { data: configuredStages = [] } = useListPipelineStages(tenantId, { request, query: { enabled, queryKey: getListPipelineStagesQueryKey(tenantId), staleTime: 60_000, refetchOnWindowFocus: false } });
+  const { data: fullIntelligence } = useQuery<FullIntelligenceResponse>({
+    queryKey: ["customer-intelligence-v2", tenantId, id],
+    enabled,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      const response = await fetch(`/api/tenants/${tenantId}/leads/${id}/intelligence/full`, {
+        headers: { Authorization: "Bearer " + token },
+      });
+      if (!response.ok) throw new Error("Não foi possível carregar a inteligência do cliente.");
+      return response.json();
+    },
+  });
   const createDeal = useCreateDeal({ request });
   const updateStage = useUpdatePipelineStage();
   const deal = useMemo(() => {
@@ -403,6 +444,69 @@ export default function LeadWorkspace() {
                 );
               })}
             </div>
+          </div>
+        </CardContent>
+      </Card>
+    )}
+
+    {fullIntelligence?.health && (
+      <Card className="border-border/70 shadow-sm">
+        <CardContent className="p-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <BrainCircuit className="h-4 w-4 text-primary" />
+                <span className="text-sm font-semibold">Inteligência do Cliente</span>
+                {fullIntelligence.health.score != null && (
+                  <Badge variant="secondary" className="h-5 px-2 text-[11px]">
+                    Saúde {fullIntelligence.health.score}/100
+                  </Badge>
+                )}
+                {fullIntelligence.health.trend && (
+                  <Badge variant="outline" className="h-5 px-2 text-[11px]">
+                    {fullIntelligence.health.trend === "melhorando" ? "↑ Melhorando" : fullIntelligence.health.trend === "piorando" ? "↓ Piorando" : "→ Estável"}
+                  </Badge>
+                )}
+                {fullIntelligence.health.confidence != null && (
+                  <span className="text-[11px] text-muted-foreground">Confiança {fullIntelligence.health.confidence}%</span>
+                )}
+              </div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <div>
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Risco principal</p>
+                  <p className="mt-1 text-sm font-medium">{fullIntelligence.health.riskType?.replace(/_/g, " ") ?? "Sem risco relevante"}</p>
+                  {fullIntelligence.health.riskLevel && <p className="text-xs text-muted-foreground">Nível: {fullIntelligence.health.riskLevel}</p>}
+                </div>
+                <div className="sm:col-span-1 lg:col-span-2">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Próxima melhor ação</p>
+                  <p className="mt-1 text-sm font-medium">{fullIntelligence.health.nextBestAction ?? "Aguardando dados suficientes para recomendar uma ação."}</p>
+                  {fullIntelligence.health.nextBestActionReason && <p className="mt-0.5 text-xs text-muted-foreground">{fullIntelligence.health.nextBestActionReason}</p>}
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+                <span>{fullIntelligence.events.length} evento(s) no histórico inteligente</span>
+                <span>{fullIntelligence.facts.length} conhecimento(s) estruturado(s)</span>
+              </div>
+            </div>
+            {deal && fullIntelligence.dynamicQuestions.some((question) => question.stageKey === deal.etapa && question.status === "pendente") && (
+              <div className="w-full rounded-lg border border-primary/15 bg-primary/[0.025] p-3 lg:w-[330px]">
+                <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold">
+                  <Sparkles className="h-3.5 w-3.5 text-primary" />
+                  Vendi identificou lacunas nesta etapa
+                </div>
+                <div className="space-y-2">
+                  {fullIntelligence.dynamicQuestions
+                    .filter((question) => question.stageKey === deal.etapa && question.status === "pendente")
+                    .slice(0, 3)
+                    .map((question) => (
+                      <div key={question.id}>
+                        <p className="text-xs font-medium leading-snug">{question.questionText}</p>
+                        {question.objective && <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{question.objective}</p>}
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
