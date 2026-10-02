@@ -66,6 +66,41 @@ let schemaReady: Promise<void> | null = null;
 function ensureSchema() {
   if (schemaReady) return schemaReady;
   schemaReady = pool.query(
+    "CREATE TABLE IF NOT EXISTS admin_improvements (" +
+    "id uuid PRIMARY KEY," +
+    "title text NOT NULL," +
+    "description text NOT NULL DEFAULT ''," +
+    "module text NOT NULL DEFAULT 'Plataforma'," +
+    "priority text NOT NULL DEFAULT 'media'," +
+    "status text NOT NULL DEFAULT 'solicitada'," +
+    "branch text," +
+    "pr_number integer," +
+    "pr_url text," +
+    "homolog_url text," +
+    "production_url text," +
+    "package_key text," +
+    "test_status text NOT NULL DEFAULT 'pending'," +
+    "test_summary text," +
+    "created_by text," +
+    "approved_homolog_by text," +
+    "approved_homolog_at timestamptz," +
+    "approved_production_by text," +
+    "approved_production_at timestamptz," +
+    "merged_staging_sha text," +
+    "source_type text NOT NULL DEFAULT 'super_admin'," +
+    "source_ref_id text," +
+    "source_tenant_id text," +
+    "owner_agent text NOT NULL DEFAULT 'vendi'," +
+    "agent_status text NOT NULL DEFAULT 'idle'," +
+    "agent_summary text," +
+    "requested_at timestamptz NOT NULL DEFAULT now()," +
+    "due_at timestamptz NOT NULL DEFAULT (now() + interval '24 hours')," +
+    "created_at timestamptz NOT NULL DEFAULT now()," +
+    "updated_at timestamptz NOT NULL DEFAULT now()" +
+    ");" +
+    "CREATE INDEX IF NOT EXISTS admin_improvements_status_idx ON admin_improvements(status);" +
+    "CREATE INDEX IF NOT EXISTS admin_improvements_package_idx ON admin_improvements(package_key);" +
+    "CREATE INDEX IF NOT EXISTS admin_improvements_pr_idx ON admin_improvements(pr_number);" +
     "CREATE TABLE IF NOT EXISTS admin_releases (" +
     "id uuid PRIMARY KEY," +
     "version text NOT NULL UNIQUE," +
