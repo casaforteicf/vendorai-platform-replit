@@ -721,6 +721,35 @@ router.post("/admin/releases/:id/cancel", async (req, res) => {
   return res.json({ ok: true });
 });
 
+
+async function notifySupportRequestersAfterPublish(release: any) {
+  const linked = await pool.query(
+    "SELECT id,title,source_ref_id AS \"sourceRefId\",source_tenant_id AS \"sourceTenantId\" FROM admin_improvements WHERE id=ANY($1::uuid[]) AND source_type='support' AND source_tenant_id IS NOT NULL",
+    [release.improvementIds],
+  );
+
+  for (const item of linked.rows) {
+    const tenantId = String(item.sourceTenantId ?? "");
+    if (!tenantId) continue;
+    await pool.query(
+      "INSERT INTO notifications (id,tenant_id,title,message,type,category,created_at) VALUES ($1,$2,$3,$4,'info','product_improvement',now())",
+      [
+        randomUUID(),
+        tenantId,
+        "Melhoria publicada",
+        "A solicitação \"" + String(item.title) + "\" foi implementada na versão " + String(release.version) + " — " + String(release.name) + ".",
+      ],
+    ).catch(() => undefined);
+
+    if (item.sourceRefId) {
+      await pool.query(
+        "UPDATE bug_reports SET status='resolvido',resolvido_por='dev_ia',resolvido_em=COALESCE(resolvido_em,now()),updated_at=now() WHERE id=$1",
+        [String(item.sourceRefId)],
+      ).catch(() => undefined);
+    }
+  }
+}
+
 async function executeScheduledRelease(release: any) {
   const impact = await collectReleaseImpact(release.improvementIds, release.releaseBranch ?? "staging");
   const fingerprint = releaseFingerprint(release, impact);
@@ -828,6 +857,7 @@ async function runReleaseWorker() {
             "UPDATE admin_improvements SET status='producao_validada',production_url=COALESCE(production_url,$2),updated_at=now() WHERE id=ANY($1::uuid[])",
             [release.improvementIds, process.env["PRODUCTION_URL"] ?? "https://app.appvendorai.com"],
           );
+          await notifySupportRequestersAfterPublish(release);
         }
       } catch {
         // A validação continua no próximo ciclo.
