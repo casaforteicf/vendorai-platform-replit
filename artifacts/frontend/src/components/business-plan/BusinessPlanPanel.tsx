@@ -29,6 +29,12 @@ type DiscoveryInteligente = {
   status: "rascunho";
   aviso: string;
 };
+type DiscoveryDocumentos = {
+  extracao: Record<string, unknown>;
+  sugestoes: Array<{ secao: string; records: Entry[] }>;
+  status: "rascunho";
+  aviso: string;
+};
 const selectClass = "w-full rounded-md border bg-background p-2 text-sm";
 const roleLabels: Record<string, string> = { marketing: "Marketing", prospector: "Prospector", sdr: "SDR", closer: "Closer", agendamento: "Agendamento", suporte: "Suporte", pos_venda: "Pós-venda", financeiro: "Financeiro", cobranca: "Cobrança", scout: "Revenue Scout" };
 export function BusinessPlanPanel() {
@@ -58,6 +64,7 @@ export function BusinessPlanPanel() {
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState("");
   const busyRef = useRef(false);
+  const documentInputRef = useRef<HTMLInputElement>(null);
   const [role, setRole] = useState("marketing");
   const [agentContext, setAgentContext] = useState("");
   const [campaign, setCampaign] = useState({ segmentId: "", productId: "", goal: "", channel: "instagram", assetIds: [] as string[] });
@@ -65,6 +72,7 @@ export function BusinessPlanPanel() {
   const [savedCampaign, setSavedCampaign] = useState("");
   const [discoveryInteligente, setDiscoveryInteligente] = useState<DiscoveryInteligente | null>(null);
   const [focoDiscovery, setFocoDiscovery] = useState("");
+  const [discoveryDocumentos, setDiscoveryDocumentos] = useState<DiscoveryDocumentos | null>(null);
   const campaignId = useRef(crypto.randomUUID());
   const previewVersion = useRef<number | null>(null);
   const data = query.data;
@@ -85,6 +93,24 @@ export function BusinessPlanPanel() {
   }
   function update(index: number, patch: Partial<Entry>) { setDrafts(v => ({ ...v, [sectionId]: records.map((r, i) => i === index ? { ...r, ...patch } : r) })); }
   function newEntry(): Entry { return { id: crypto.randomUUID(), title: "Nova ficha", values: {}, evidence: "declared", source: "Informado pela empresa", productIds: [], assetIds: [] }; }
+  async function analisarDocumentosDiscovery(files: FileList | null) {
+    if (!files?.length || !tenantId) return;
+    await run("Analisando documentos...", async () => {
+      const body = new FormData();
+      Array.from(files).slice(0, 5).forEach((file) => body.append("files", file));
+      const response = await fetch(`${base}/discovery-documentos`, {
+        method: "POST",
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body,
+      });
+      const data = await response.json().catch(() => ({})) as DiscoveryDocumentos & { error?: string };
+      if (!response.ok) throw new Error(data.error || "Não foi possível analisar os documentos.");
+      setDiscoveryDocumentos(data);
+      if (documentInputRef.current) documentInputRef.current.value = "";
+    });
+  }
+
   async function executarDiscoveryInteligente() {
     await run("Analisando inteligência do negócio...", async () => {
       const response = await request("/discovery-inteligente", "POST", { foco: focoDiscovery });
@@ -127,6 +153,77 @@ export function BusinessPlanPanel() {
             <div className="text-xs capitalize text-muted-foreground">nível {diagnosticoQuery.data.nivel}</div>
           </div>
         </div>
+
+        <div className="mt-4 grid gap-2 rounded-lg border bg-muted/20 p-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+          <div>
+            <p className="text-xs font-semibold">Importar documentos para Discovery</p>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              Envie PDF, Word, texto ou imagem. O Vendi extrai fatos e propõe rascunhos nos blocos corretos; nada é aprovado automaticamente.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              ref={documentInputRef}
+              type="file"
+              multiple
+              accept=".pdf,.doc,.docx,.txt,.md,image/*"
+              className="hidden"
+              onChange={(event) => void analisarDocumentosDiscovery(event.target.files)}
+            />
+            <Button variant="outline" disabled={!!busy} onClick={() => documentInputRef.current?.click()}>
+              Analisar documentos
+            </Button>
+          </div>
+        </div>
+
+        {discoveryDocumentos && (
+          <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50/50 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold">Sugestões extraídas dos documentos</p>
+                <p className="mt-1 text-xs text-muted-foreground">{discoveryDocumentos.aviso}</p>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setDiscoveryDocumentos(null)}>Fechar</Button>
+            </div>
+            <div className="mt-3 grid gap-2 lg:grid-cols-2">
+              {discoveryDocumentos.sugestoes.map((grupo) => {
+                const secao = data.sections.find((item) => item.id === grupo.secao);
+                return (
+                  <article key={grupo.secao} className="rounded-lg border bg-background p-3">
+                    <p className="text-xs font-semibold">{secao?.title ?? grupo.secao}</p>
+                    <p className="mt-1 text-[11px] text-muted-foreground">{grupo.records.length} ficha(s) sugerida(s)</p>
+                    <div className="mt-2 space-y-2">
+                      {grupo.records.slice(0, 5).map((registro) => (
+                        <details key={registro.id} className="rounded-md border bg-muted/20 px-2 py-1.5">
+                          <summary className="cursor-pointer text-xs font-medium">{registro.title}</summary>
+                          {Object.entries(registro.values).map(([chave, valor]) => (
+                            <p key={chave} className="mt-1 whitespace-pre-wrap text-[11px] text-muted-foreground"><strong>{chave}: </strong>{valor}</p>
+                          ))}
+                        </details>
+                      ))}
+                    </div>
+                    <Button
+                      className="mt-3"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const atuais = drafts[grupo.secao] ?? data.plan.sections[grupo.secao]?.draft ?? [];
+                        setDrafts((value) => ({
+                          ...value,
+                          [grupo.secao]: [...atuais, ...grupo.records].slice(0, 30),
+                        }));
+                        setTab("plan");
+                        setSectionId(grupo.secao);
+                      }}
+                    >
+                      Adicionar ao rascunho deste bloco
+                    </Button>
+                  </article>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="mt-4 flex flex-col gap-2 rounded-lg border bg-muted/20 p-3 sm:flex-row sm:items-end">
           <label className="min-w-0 flex-1 text-xs font-medium">
