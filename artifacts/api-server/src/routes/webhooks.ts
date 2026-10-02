@@ -31,6 +31,7 @@ import {
 } from "../services/omnichannel.js";
 import { dispatchAgentBackground } from "../services/agent-dispatch.js";
 import { recordIntelligenceEvent, recordIntelligenceFact } from "../services/customer-intelligence-history.js";
+import { resolveStageQuestionsFromInboundMessage } from "../services/stage-question-resolution.js";
 import { runAutoQuotePipeline } from "../services/auto-quote.js";
 import { transcribeAudio, transcribeAudioBuffer } from "../services/audio-transcription.js";
 import { interpretImage, interpretPdf, interpretPdfBuffer } from "../services/media-interpretation.js";
@@ -651,6 +652,16 @@ router.post("/tenants/:tenantId/webhooks/whatsapp", async (req, res) => {
     metadata: { canal: "whatsapp", direcao: "entrada" },
     log: req.log,
   });
+  void resolveStageQuestionsFromInboundMessage({
+    tenantId,
+    leadId: lead.id,
+    messageId: message.id,
+    message: mensagem,
+    log: req.log,
+  }).catch((err) => {
+    req.log.warn({ err, messageId: message.id }, "customer-intelligence: WhatsApp stage question resolution failed (non-fatal)");
+  });
+
   void recordIntelligenceFact({
     tenantId,
     leadId: lead.id,
