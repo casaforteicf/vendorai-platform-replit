@@ -18,6 +18,9 @@ const recordSchema = z.object({
 });
 const saveSchema = z.object({ version: z.number().int().nonnegative(), action: z.enum(["save", "approve", "revoke"]), records: z.array(recordSchema).max(30) });
 const suggestSchema = z.object({ records: z.array(recordSchema).max(30), notes: z.string().max(4000).default("") });
+const discoveryInteligenteSchema = z.object({
+  foco: z.string().trim().max(2000).default(""),
+});
 function validSection(value: string): value is PlanSectionId { return PLAN_SECTIONS.some(s => s.id === value); }
 type DiagnosticoItem = {
   id: string;
@@ -233,6 +236,127 @@ router.put(`${base}/sections/:section`, async (req, res) => {
     res.json({ plan });
   } catch (error) { handleError(res, error); }
 });
+router.post(`${base}/discovery-inteligente`, async (req, res) => {
+  const parsed = discoveryInteligenteSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(422).json({ error: "Parâmetros inválidos" });
+    return;
+  }
+
+  try {
+    const tenantId = String(req.params.tenantId);
+    const [plan, sources, contextEntries, knowledgeItems, catalogIntelligence] = await Promise.all([
+      loadBusinessPlan(tenantId),
+      loadBusinessPlanSources(tenantId),
+      pool.query(
+        `SELECT title, kind, summary, tags
+           FROM media_context_entries
+          WHERE tenant_id=$1
+            AND status='approved'
+            AND (valid_until IS NULL OR valid_until >= now())
+          ORDER BY updated_at DESC
+          LIMIT 80`,
+        [tenantId],
+      ),
+      pool.query(
+        `SELECT titulo, categoria, tags
+           FROM knowledge_base
+          WHERE tenant_id=$1
+            AND ativo=true
+          ORDER BY updated_at DESC
+          LIMIT 80`,
+        [tenantId],
+      ),
+      pool.query(
+        `SELECT id, nome, descricao, inteligencia_comercial
+           FROM produtos_catalogo
+          WHERE tenant_id=$1
+            AND ativo=true
+          ORDER BY destaque DESC, nome
+          LIMIT 120`,
+        [tenantId],
+      ),
+    ]);
+
+    const result = await callOpenAI(
+      tenantId,
+      "agent_onboarding",
+      [
+        {
+          role: "system",
+          content:
+            "Você é o Vendi fazendo Discovery Inteligente de uma empresa. " +
+            "Sua função é identificar lacunas reais na inteligência do negócio usando somente os dados fornecidos. " +
+            "Não invente fatos, mercado, concorrentes, números, cases ou diferenciais. " +
+            "Tudo que não estiver sustentado deve virar pergunta ou evidência a solicitar. " +
+            "Nunca aprove nada automaticamente. Retorne somente JSON válido.",
+        },
+        {
+          role: "user",
+          content: JSON.stringify({
+            objetivo: "Priorizar o que falta desenvolver/aprovar para que os agentes entendam bem a empresa e a jornada comercial.",
+            focoUsuario: parsed.data.foco,
+            secoesDisponiveis: PLAN_SECTIONS,
+            planoAtual: plan,
+            perfil: sources.profile,
+            produtos: catalogIntelligence.rows,
+            bibliotecaInformacoes: contextEntries.rows,
+            baseConhecimento: knowledgeItems.rows,
+            formatoResposta: {
+              resumo: "texto curto",
+              prioridades: [{
+                secao: "id de uma seção válida",
+                titulo: "prioridade",
+                motivo: "por que falta ou precisa revisão",
+                perguntas: ["perguntas objetivas para a empresa"],
+                evidenciasNecessarias: ["documentos, cases, provas ou dados que devem ser vinculados"],
+                impacto: "alto|medio|baixo"
+              }]
+            }
+          }).slice(0, 70000),
+        },
+      ],
+      {
+        maxTokens: 3200,
+        temperature: 0.2,
+        responseFormat: { type: "json_object" },
+        log: req.log,
+      },
+    );
+
+    const raw = JSON.parse(result.content);
+    const sectionIds = new Set(PLAN_SECTIONS.map((section) => section.id));
+    const prioridades = Array.isArray(raw.prioridades)
+      ? raw.prioridades
+          .filter((item: any) => item && sectionIds.has(item.secao))
+          .slice(0, 8)
+          .map((item: any) => ({
+            secao: String(item.secao),
+            titulo: String(item.titulo ?? "Prioridade de Discovery").slice(0, 180),
+            motivo: String(item.motivo ?? "").slice(0, 2000),
+            perguntas: Array.isArray(item.perguntas)
+              ? item.perguntas.map((value: unknown) => String(value)).filter(Boolean).slice(0, 8)
+              : [],
+            evidenciasNecessarias: Array.isArray(item.evidenciasNecessarias)
+              ? item.evidenciasNecessarias.map((value: unknown) => String(value)).filter(Boolean).slice(0, 8)
+              : [],
+            impacto: ["alto", "medio", "baixo"].includes(String(item.impacto)) ? String(item.impacto) : "medio",
+          }))
+      : [];
+
+    res.setHeader("Cache-Control", "no-store");
+    res.json({
+      resumo: String(raw.resumo ?? "Discovery analisado. Revise as prioridades sugeridas."),
+      prioridades,
+      status: "rascunho",
+      aviso: "Nenhuma informação foi gravada ou aprovada automaticamente.",
+      tokens: result.inputTokens + result.outputTokens,
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
 router.post(`${base}/sections/:section/suggest`, async (req, res) => {
   const section = String(req.params.section);
   const parsed = suggestSchema.safeParse(req.body);
