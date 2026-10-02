@@ -4,7 +4,8 @@ export type TipoFonteContextoNegocio =
   | "perfil_negocio"
   | "produto_catalogo"
   | "biblioteca_contexto"
-  | "base_conhecimento";
+  | "base_conhecimento"
+  | "plano_negocio";
 
 export type FonteContextoNegocio = {
   id: string;
@@ -61,6 +62,10 @@ type KnowledgeRow = {
   conteudo: string;
   categoria: string;
   tags: string[] | null;
+};
+
+type PlanoNegocioRow = {
+  plano: Record<string, unknown> | null;
 };
 
 function normalize(value: unknown): string {
@@ -146,7 +151,7 @@ export async function resolverContextoNegocio(input: {
   const queryTokens = tokens(input.query);
   const limit = Math.min(Math.max(input.limit ?? 10, 3), 20);
 
-  const [profileResult, productResult, contextResult, knowledgeResult] = await Promise.all([
+  const [profileResult, productResult, contextResult, knowledgeResult, planoResult] = await Promise.all([
     pool.query<ProfileRow>(
       `SELECT id, nome_fantasia, vertical, diferenciais, publico_alvo, metodo_vendas,
               canais_venda, discovery_data
@@ -185,6 +190,13 @@ export async function resolverContextoNegocio(input: {
         LIMIT 200`,
       [input.tenantId],
     ).catch(() => ({ rows: [] as KnowledgeRow[] })),
+    pool.query<PlanoNegocioRow>(
+      `SELECT discovery_data->'businessPlan' AS plano
+         FROM business_profiles
+        WHERE tenant_id = $1
+        LIMIT 1`,
+      [input.tenantId],
+    ).catch(() => ({ rows: [] as PlanoNegocioRow[] })),
   ]);
 
   const fontes: FonteContextoNegocio[] = [];
@@ -300,6 +312,46 @@ export async function resolverContextoNegocio(input: {
       return `- ${item.titulo} [${item.categoria}]: ${compact(item.conteudo, 1000)}`;
     });
     blocks.push(`### DOCUMENTAÇÃO RELEVANTE\n${lines.join("\n")}`);
+  }
+
+  const plano = planoResult.rows[0]?.plano as any;
+  const secoesPlano = plano?.sections && typeof plano.sections === "object" ? plano.sections : {};
+  const registrosPlano: Array<{ secao: string; titulo: string; valores: Record<string, string>; fonte: string }> = [];
+  for (const [secao, conteudo] of Object.entries(secoesPlano)) {
+    const aprovados = Array.isArray((conteudo as any)?.approved) ? (conteudo as any).approved : [];
+    for (const registro of aprovados) {
+      if (!registro || registro.evidence === "hypothesis") continue;
+      const valores = registro.values && typeof registro.values === "object" ? registro.values : {};
+      const texto = [registro.title, registro.source, ...Object.values(valores)].join(" ");
+      const pontuacao = relevance(texto, queryTokens, false);
+      if (pontuacao <= 0 && queryTokens.length > 0) continue;
+      registrosPlano.push({
+        secao,
+        titulo: String(registro.title ?? "Registro aprovado"),
+        valores,
+        fonte: String(registro.source ?? "Plano de Negócios"),
+      });
+      fontes.push({
+        id: String(registro.id ?? `${secao}:${registrosPlano.length}`),
+        tipo: "plano_negocio",
+        categoria: secao,
+        titulo: String(registro.title ?? "Plano de Negócios"),
+        resumo: compact(Object.entries(valores).map(([chave, valor]) => `${chave}: ${valor}`).join(" | "), 600),
+        pontuacao,
+        aprovado: true,
+      });
+    }
+  }
+
+  if (registrosPlano.length) {
+    const linhas = registrosPlano.slice(0, 8).map((registro) => {
+      const detalhes = Object.entries(registro.valores)
+        .filter(([, valor]) => String(valor ?? "").trim())
+        .map(([chave, valor]) => `${chave}: ${compact(valor, 500)}`)
+        .join(" | ");
+      return `- [${registro.secao}] ${registro.titulo}: ${detalhes} (fonte: ${registro.fonte})`;
+    });
+    blocks.push(`### PLANO DE NEGÓCIOS APROVADO\n${linhas.join("\n")}`);
   }
 
   const guardrails =
