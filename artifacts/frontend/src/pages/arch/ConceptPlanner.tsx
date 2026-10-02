@@ -63,11 +63,9 @@ import { buildTypologyPlan, buildTypologyRooms, CONCEPT_TYPOLOGIES, DEFAULT_LAYO
 import { generateTypologyLayout } from "./conceptTypologyLayout";
 
 import { inspectConceptVisualQuality } from "./conceptVisualQuality";
-import { buildConceptKontextSummary, buildConceptRenderBrief, svgElementToPngDataUrl } from "./conceptRender";
-import { buildDerivedFacadeModel } from "./conceptFacadeGeometry";
+
 import { buildOrthogonalWallTopology, detectClosedSpaces, type ClosedSpace, type WallTopologyEndpointRef } from "./conceptWallNetwork";
 import { conceptStepCta, nextConceptStep, normalizeConceptStep, previousConceptStep } from "./conceptNavigation";
-import { CONCEPT_OPENING_FAMILIES } from "./catalogs/conceptOpeningCatalog";
 import { blockingConceptIssues, canAdvanceConceptLayout } from "./conceptWorkflow";
 import { evaluateConceptAcceptance } from "./conceptAcceptance";
 import { autoRepairConceptLayout } from "./conceptAutoRepair";
@@ -82,6 +80,8 @@ const ConceptClientBriefPanel = lazy(() => import("./ConceptClientBriefPanel"));
 const ConceptSitePlacementPanel = lazy(() => import("./ConceptSitePlacementPanel"));
 const ConceptModel3D = lazy(() => import("./ConceptModel3D"));
 const ConceptRenderGalleryActions = lazy(() => import("./ConceptRenderGalleryActions").then((m) => ({ default: m.ConceptRenderGalleryActions })));
+const ConceptCatalogPanels = lazy(() => import("./ConceptCatalogPanels"));
+const ConceptConstructionLibraryPanel = lazy(() => import("./ConceptConstructionLibraryPanel"));
 
 
 type RoomKind =
@@ -155,6 +155,12 @@ type CustomOpening = {
   sillHeight?: number;
   openingStyle?: "hinged" | "sliding" | "fixed" | "tilt_turn";
   swing?: "left" | "right";
+  swingSide?: "inside" | "outside";
+  leafCount?: number;
+  frameProfile?: string;
+  glassType?: string;
+  manufacturer?: string;
+  catalogProductId?: string;
   familyId?: string;
   familyLabel?: string;
 };
@@ -344,6 +350,38 @@ function catalogDimensions(item: RealCatalogProduct) {
   const depth = Number(record.depth);
   if (!Number.isFinite(width) || !Number.isFinite(depth) || width <= 0 || depth <= 0) return null;
   return { width, depth };
+}
+
+function catalogOpeningDimensions(item: RealCatalogProduct) {
+  const specs = item.especificacoes;
+  if (!specs || typeof specs !== "object") return {};
+  const record = specs as Record<string, unknown>;
+  const dims = record.dimensionsM && typeof record.dimensionsM === "object"
+    ? record.dimensionsM as Record<string, unknown>
+    : record;
+  const width = Number(dims.width ?? dims.largura);
+  const height = Number(dims.height ?? dims.altura);
+  return {
+    width: Number.isFinite(width) && width > 0 ? width : undefined,
+    height: Number.isFinite(height) && height > 0 ? height : undefined,
+    profile: typeof record.profile === "string"
+      ? record.profile
+      : typeof record.perfil === "string"
+        ? record.perfil
+        : undefined,
+    glass: typeof record.glassType === "string"
+      ? record.glassType
+      : typeof record.vidro === "string"
+        ? record.vidro
+        : undefined,
+  };
+}
+
+function catalogOpeningKind(item: RealCatalogProduct): "door" | "window" | null {
+  const text = `${item.nome} ${item.categoria ?? ""} ${item.subcategoria ?? ""}`.toLocaleLowerCase("pt-BR");
+  if (/porta|door|pivotante|camar[aã]o|porta de correr/.test(text)) return "door";
+  if (/janela|window|maxim[- ]?ar|basculante|veneziana|esquadria/.test(text)) return "window";
+  return null;
 }
 
 function inferCatalogFurniturePreset(item: RealCatalogProduct): {
@@ -1080,7 +1118,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
   const [furnitureSearch, setFurnitureSearch] = useState("");
   const [furnitureCategory, setFurnitureCategory] = useState<"Todos" | "Sala" | "Quarto" | "Jantar" | "Cozinha" | "Escritório" | "Decoração" | "Iluminação" | "Exterior">("Todos");
-  const [libraryMode, setLibraryMode] = useState<"all" | "favorites" | "recent">("all");
+  const [libraryMode, setLibraryMode] = useState<"all" | "favorites" | "recent" | "project">("all");
   const [itemLibrarySection, setItemLibrarySection] = useState<"products" | "materials">("products");
   const [favoriteItemIds, setFavoriteItemIds] = useState<string[]>(() => {
     if (typeof window === "undefined") return [];
@@ -1105,6 +1143,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [savedTourPoints, setSavedTourPoints] = useState<SavedTourPoint[]>([]);
   const [tourShareState, setTourShareState] = useState<"idle" | "sharing" | "copied" | "error">("idle");
   const [realCatalogProducts, setRealCatalogProducts] = useState<RealCatalogProduct[]>([]);
+  const [openingProductPickerId, setOpeningProductPickerId] = useState<string | null>(null);
   const [realCatalogLoading, setRealCatalogLoading] = useState(false);
   const [polyHavenModels, setPolyHavenModels] = useState<PolyHavenModel[]>([]);
   const [polyHavenLoading, setPolyHavenLoading] = useState(false);
@@ -1183,7 +1222,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       const modeMatch = libraryMode === "all"
         || (libraryMode === "favorites" && favoriteItemIds.includes(itemId))
         || (libraryMode === "recent" && recentItemIds.includes(itemId));
-      return categoryMatch && queryMatch && modeMatch;
+      return libraryMode !== "project" && categoryMatch && queryMatch && modeMatch;
     }).sort((a, b) => {
       if (libraryMode !== "recent") return 0;
       const aIndex = recentItemIds.indexOf(libraryItemKey(a.label, a.category));
@@ -2076,6 +2115,22 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const safeWallFirstFloors = Array.isArray(wallFirstFloors) ? wallFirstFloors : [];
   const safeSpaceProfiles = Array.isArray(spaceProfiles) ? spaceProfiles : [];
   const safeObjects = Array.isArray(objects) ? objects : [];
+  const usedProjectProductCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const object of safeObjects) {
+      if (!object.catalogProductId) continue;
+      counts.set(object.catalogProductId, (counts.get(object.catalogProductId) ?? 0) + 1);
+    }
+    for (const opening of safeCustomOpenings) {
+      if (!opening.catalogProductId) continue;
+      counts.set(opening.catalogProductId, (counts.get(opening.catalogProductId) ?? 0) + 1);
+    }
+    return counts;
+  }, [safeCustomOpenings, safeObjects]);
+  const usedProjectProducts = useMemo(
+    () => realCatalogProducts.filter((item) => usedProjectProductCounts.has(item.id)),
+    [realCatalogProducts, usedProjectProductCounts],
+  );
   // Etapa 1 é exclusivamente o terreno. Mesmo que um rascunho antigo já tenha
   // planta salva, ela fica oculta até o usuário avançar para Casa/Ajustes.
   const terrainOnly = terrainDefined && editorView === "plan" && editorLibraryTab === "site";
@@ -2487,14 +2542,16 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     if (custom) {
       const wall = safeCustomWalls.find((item) => item.id === custom.wallId);
       if (!wall) return;
-      const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
-      const start = horizontal ? wall.x1 : wall.y1;
-      const end = horizontal ? wall.x2 : wall.y2;
-      const current = horizontal ? patch.x : patch.y;
-      const denominator = end - start;
-      const offset = Math.abs(denominator) < 0.001
-        ? custom.offset
-        : Math.max(0.08, Math.min(0.92, (current - start) / denominator));
+      const dx = wall.x2 - wall.x1;
+      const dy = wall.y2 - wall.y1;
+      const wallLength = Math.hypot(dx, dy);
+      if (wallLength < 0.001) return;
+      const projectedDistance = ((patch.x - wall.x1) * dx + (patch.y - wall.y1) * dy) / wallLength;
+      const halfOpening = Math.min(wallLength / 2, Math.max(0.25, (custom.width ?? (custom.type === "door" ? 0.9 : 1.2)) / 2));
+      const minDistance = Math.min(halfOpening, wallLength / 2);
+      const maxDistance = Math.max(minDistance, wallLength - halfOpening);
+      const clampedDistance = Math.max(minDistance, Math.min(maxDistance, projectedDistance));
+      const offset = Math.max(0, Math.min(1, clampedDistance / wallLength));
       setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((opening) =>
         opening.id === openingId ? { ...opening, offset, type: patch.type } : opening
       ));
@@ -2508,11 +2565,17 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   };
 
   const updateOpeningWidth = (openingId: string, width: number) => {
-    const safeWidth = Math.max(0.5, Math.min(4, Number(width) || 0.5));
     const custom = safeCustomOpenings.find((opening) => opening.id === openingId);
-    if (!custom || Math.abs((custom.width ?? (custom.type === "door" ? 0.9 : 1.2)) - safeWidth) < 0.001) return;
+    const wall = custom ? safeCustomWalls.find((item) => item.id === custom.wallId) : null;
+    if (!custom || !wall) return;
+    const wallLength = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    const maximumWidth = Math.max(0.3, wallLength - 0.1);
+    const safeWidth = Math.max(0.3, Math.min(4, maximumWidth, Number(width) || 0.5));
+    if (Math.abs((custom.width ?? (custom.type === "door" ? 0.9 : 1.2)) - safeWidth) < 0.001) return;
     setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((opening) =>
-      opening.id === openingId ? { ...opening, width: safeWidth } : opening
+      opening.id === openingId
+        ? constrainOpeningToWall({ ...opening, width: safeWidth }, wallLength)
+        : opening
     ));
   };
 
@@ -2628,6 +2691,31 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     pushRoomHistory(before);
     void saveConcept(4, undefined, { objects: nextObjects });
   };
+
+  useEffect(() => {
+    if (!selectedObjectId || (editorView !== "plan" && editorView !== "model3d")) return;
+    const handleObjectShortcut = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.tagName === "SELECT" || target?.isContentEditable) return;
+
+      if (event.key === "Delete" || event.key === "Backspace") {
+        event.preventDefault();
+        deleteObject(selectedObjectId);
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "d") {
+        event.preventDefault();
+        duplicateObject(selectedObjectId);
+        return;
+      }
+      if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === "r") {
+        event.preventDefault();
+        rotateObject(selectedObjectId);
+      }
+    };
+    window.addEventListener("keydown", handleObjectShortcut);
+    return () => window.removeEventListener("keydown", handleObjectShortcut);
+  }, [editorView, selectedObjectId]);
 
   const armPaintTool = (
     target: "object" | "wall" | "floor",
@@ -3006,6 +3094,12 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
             sillHeight: opening.sillHeight,
             openingStyle: opening.openingStyle,
             swing: opening.swing,
+            swingSide: opening.swingSide,
+            leafCount: opening.leafCount,
+            frameProfile: opening.frameProfile,
+            glassType: opening.glassType,
+            manufacturer: opening.manufacturer,
+            catalogProductId: opening.catalogProductId,
           }];
         }),
     [safeCustomOpenings, safeCustomWalls, activeFloor],
@@ -3343,33 +3437,94 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     setSelectedWallId(null);
   };
 
+  const constrainOpeningToWall = (
+    opening: CustomOpening,
+    wallLength: number,
+    preserveFrom: "start" | "end" | "ratio" = "ratio",
+    previousWallLength = wallLength,
+  ): CustomOpening => {
+    const requestedWidth = opening.width ?? (opening.type === "door" ? 0.9 : 1.2);
+    const maxWidth = Math.max(0.3, wallLength - 0.1);
+    const width = Math.max(0.3, Math.min(requestedWidth, maxWidth));
+    const halfRatio = wallLength > 0.001 ? Math.min(0.49, width / 2 / wallLength) : 0.49;
+    const minOffset = halfRatio;
+    const maxOffset = 1 - halfRatio;
+
+    let offset = opening.offset;
+    if (previousWallLength > 0.001 && wallLength > 0.001) {
+      if (preserveFrom === "start") {
+        offset = (opening.offset * previousWallLength) / wallLength;
+      } else if (preserveFrom === "end") {
+        const distanceFromEnd = (1 - opening.offset) * previousWallLength;
+        offset = 1 - distanceFromEnd / wallLength;
+      }
+    }
+
+    return {
+      ...opening,
+      width,
+      offset: Math.max(minOffset, Math.min(maxOffset, offset)),
+    };
+  };
+
+  const reconcileOpeningsForWall = (
+    wallId: string,
+    previousWall: CustomWall,
+    nextWall: CustomWall,
+  ) => {
+    const previousLength = Math.hypot(previousWall.x2 - previousWall.x1, previousWall.y2 - previousWall.y1);
+    const nextLength = Math.hypot(nextWall.x2 - nextWall.x1, nextWall.y2 - nextWall.y1);
+    const startChanged = Math.hypot(nextWall.x1 - previousWall.x1, nextWall.y1 - previousWall.y1) > 0.001;
+    const endChanged = Math.hypot(nextWall.x2 - previousWall.x2, nextWall.y2 - previousWall.y2) > 0.001;
+    const preserveFrom: "start" | "end" | "ratio" =
+      startChanged && !endChanged ? "end" : endChanged && !startChanged ? "start" : "ratio";
+
+    setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((opening) =>
+      opening.wallId === wallId
+        ? constrainOpeningToWall(opening, nextLength, preserveFrom, previousLength)
+        : opening
+    ));
+  };
+
   const updateCustomWall = (
     wallId: string,
     patch: Partial<{ x1: number; y1: number; x2: number; y2: number; thickness: number }>,
     recordHistory = false,
   ) => {
+    const wall = safeCustomWalls.find((item) => item.id === wallId);
+    if (!wall) return;
+    const nextWall = { ...wall, ...patch };
+    const nextLength = Math.hypot(nextWall.x2 - nextWall.x1, nextWall.y2 - nextWall.y1);
+    const widestOpening = safeCustomOpenings
+      .filter((opening) => opening.wallId === wallId)
+      .reduce((max, opening) => Math.max(max, opening.width ?? (opening.type === "door" ? 0.9 : 1.2)), 0);
+    const minimumWallLength = widestOpening > 0 ? Math.max(0.5, widestOpening + 0.1) : 0.5;
+    if (nextLength < minimumWallLength) return;
+
     const before = recordHistory ? snapshotEditor() : null;
-    setCustomWalls((prev) => (Array.isArray(prev) ? prev : []).map((wall) => wall.id === wallId ? { ...wall, ...patch } : wall));
+    setCustomWalls((prev) => (Array.isArray(prev) ? prev : []).map((item) => item.id === wallId ? nextWall : item));
+    reconcileOpeningsForWall(wallId, wall, nextWall);
     if (before) pushRoomHistory(before);
   };
 
   const setCustomWallLength = (wallId: string, rawLength: number) => {
     const wall = safeCustomWalls.find((item) => item.id === wallId);
     if (!wall || !Number.isFinite(rawLength)) return;
-    const length = Math.max(0.5, Math.min(Math.max(lotWidth, lotDepth), rawLength));
-    const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
+    const openingMinimum = safeCustomOpenings
+      .filter((opening) => opening.wallId === wallId)
+      .reduce((max, opening) => Math.max(max, (opening.width ?? (opening.type === "door" ? 0.9 : 1.2)) + 0.1), 0.5);
+    const length = Math.max(openingMinimum, Math.min(Math.hypot(lotWidth, lotDepth), rawLength));
+    const dx = wall.x2 - wall.x1;
+    const dy = wall.y2 - wall.y1;
+    const currentLength = Math.hypot(dx, dy);
+    if (currentLength < 0.001) return;
+    const ux = dx / currentLength;
+    const uy = dy / currentLength;
     const before = snapshotEditor();
+    const target = { x: wall.x1 + ux * length, y: wall.y1 + uy * length };
+    if (target.x < 0 || target.x > lotWidth || target.y < 0 || target.y > lotDepth) return;
 
-    if (horizontal) {
-      const direction = wall.x2 >= wall.x1 ? 1 : -1;
-      const x2 = Math.max(0, Math.min(lotWidth, wall.x1 + length * direction));
-      setCustomWalls((prev) => (Array.isArray(prev) ? prev : []).map((item) => item.id === wallId ? { ...item, x2, y2: item.y1 } : item));
-    } else {
-      const direction = wall.y2 >= wall.y1 ? 1 : -1;
-      const y2 = Math.max(0, Math.min(lotDepth, wall.y1 + length * direction));
-      setCustomWalls((prev) => (Array.isArray(prev) ? prev : []).map((item) => item.id === wallId ? { ...item, x2: item.x1, y2 } : item));
-    }
-
+    updateCustomWall(wallId, { x2: target.x, y2: target.y });
     pushRoomHistory(before);
   };
 
@@ -3413,24 +3568,109 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const updateCustomWallLength = (wallId: string, requestedLength: number) => {
     const wall = safeCustomWalls.find((item) => item.id === wallId);
     if (!wall) return;
-    const length = Math.max(0.5, Math.min(Math.max(lotWidth, lotDepth), Number(requestedLength) || 0.5));
+    const length = Math.max(0.5, Math.min(Math.hypot(lotWidth, lotDepth), Number(requestedLength) || 0.5));
+    const dx = wall.x2 - wall.x1;
+    const dy = wall.y2 - wall.y1;
+    const currentLength = Math.hypot(dx, dy);
+    if (currentLength < 0.001) return;
     const before = snapshotEditor();
-    const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
-    const direction = horizontal
-      ? (wall.x2 >= wall.x1 ? 1 : -1)
-      : (wall.y2 >= wall.y1 ? 1 : -1);
+    const ux = dx / currentLength;
+    const uy = dy / currentLength;
+    const x2 = Math.max(0, Math.min(lotWidth, wall.x1 + ux * length));
+    const y2 = Math.max(0, Math.min(lotDepth, wall.y1 + uy * length));
+    updateCustomWall(wall.id, { x2, y2 });
+    pushRoomHistory(before);
+  };
 
-    if (horizontal) {
-      const x2 = Math.max(0, Math.min(lotWidth, wall.x1 + direction * length));
-      updateCustomWall(wall.id, { x2, y2: wall.y1 });
-    } else {
-      const y2 = Math.max(0, Math.min(lotDepth, wall.y1 + direction * length));
-      updateCustomWall(wall.id, { x2: wall.x1, y2 });
-    }
+  const duplicateCustomWall = (wallId: string) => {
+    const wall = safeCustomWalls.find((item) => item.id === wallId);
+    if (!wall) return;
+    const before = snapshotEditor();
+    const dx = wall.x2 - wall.x1;
+    const dy = wall.y2 - wall.y1;
+    const length = Math.max(0.001, Math.hypot(dx, dy));
+    const offset = 0.25;
+    const ox = (-dy / length) * offset;
+    const oy = (dx / length) * offset;
+    const copy: CustomWall = {
+      ...wall,
+      id: `custom-wall-${uid()}`,
+      x1: Math.max(0, Math.min(lotWidth, wall.x1 + ox)),
+      y1: Math.max(0, Math.min(lotDepth, wall.y1 + oy)),
+      x2: Math.max(0, Math.min(lotWidth, wall.x2 + ox)),
+      y2: Math.max(0, Math.min(lotDepth, wall.y2 + oy)),
+    };
+    setCustomWalls((prev) => [...(Array.isArray(prev) ? prev : []), copy]);
+    setSelectedCustomWallId(copy.id);
+    setSelectedWallId(null);
+    pushRoomHistory(before);
+  };
+
+  const splitCustomWall = (wallId: string) => {
+    const wall = safeCustomWalls.find((item) => item.id === wallId);
+    if (!wall) return;
+    const length = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    if (length < 1) return;
+
+    const before = snapshotEditor();
+    const midpoint = {
+      x: (wall.x1 + wall.x2) / 2,
+      y: (wall.y1 + wall.y2) / 2,
+    };
+    const secondWallId = `custom-wall-${uid()}`;
+    const secondWall: CustomWall = {
+      ...wall,
+      id: secondWallId,
+      x1: midpoint.x,
+      y1: midpoint.y,
+    };
+
+    setCustomWalls((prev) => (Array.isArray(prev) ? prev : []).flatMap((item) => {
+      if (item.id !== wallId) return [item];
+      return [
+        { ...item, x2: midpoint.x, y2: midpoint.y },
+        secondWall,
+      ];
+    }));
+
+    setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((opening) => {
+      if (opening.wallId !== wallId) return opening;
+      if (opening.offset < 0.5) {
+        return { ...opening, offset: Math.max(0.02, Math.min(0.98, opening.offset * 2)) };
+      }
+      return {
+        ...opening,
+        wallId: secondWallId,
+        offset: Math.max(0.02, Math.min(0.98, (opening.offset - 0.5) * 2)),
+      };
+    }));
+
+    setSelectedCustomWallId(secondWallId);
+    setSelectedWallId(null);
     pushRoomHistory(before);
   };
 
   const selectedCustomWall = safeCustomWalls.find((wall) => wall.id === selectedCustomWallId) ?? null;
+
+  useEffect(() => {
+    if (!selectedCustomWallId || editorView !== "plan") return;
+    const handleWallShortcut = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.tagName === "SELECT" || target?.isContentEditable) return;
+
+      if (event.key === "Delete" || event.key === "Backspace") {
+        event.preventDefault();
+        deleteCustomWall(selectedCustomWallId);
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "d") {
+        event.preventDefault();
+        duplicateCustomWall(selectedCustomWallId);
+      }
+    };
+    window.addEventListener("keydown", handleWallShortcut);
+    return () => window.removeEventListener("keydown", handleWallShortcut);
+  }, [editorView, selectedCustomWallId]);
 
   const visibleLibraryMaterials = useMemo(() => {
     const query = furnitureSearch.trim().toLocaleLowerCase("pt-BR");
@@ -3574,17 +3814,24 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     const wall = safeCustomWalls.find((item) => item.id === wallId);
     if (!wall) return;
     const before = snapshotEditor();
+    const wallLength = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    const requestedWidth = type === "door" ? 0.90 : 1.20;
+    const openingWidth = Math.max(0.3, Math.min(requestedWidth, wallLength - 0.1));
     const opening: CustomOpening = {
       id: `custom-opening-${uid()}`,
       wallId,
       floor: wall.floor,
       type,
       offset: 0.5,
-      width: type === "door" ? 0.90 : 1.20,
+      width: openingWidth,
       height: type === "door" ? 2.10 : 1.20,
       sillHeight: type === "door" ? 0 : 0.90,
       openingStyle: type === "door" ? "hinged" : "sliding",
       swing: "left",
+      swingSide: "inside",
+      leafCount: type === "door" ? 1 : 2,
+      frameProfile: "",
+      glassType: type === "door" ? "" : "Incolor",
     };
     setCustomOpenings((prev) => [...(Array.isArray(prev) ? prev : []), opening]);
     pushRoomHistory(before);
@@ -4062,6 +4309,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       sillHeight: preset.type === "door" ? 0 : preset.sillHeight,
       openingStyle: preset.openingStyle,
       swing: preset.swing ?? "left",
+      swingSide: "inside",
+      leafCount: preset.type === "door" ? 1 : 2,
+      frameProfile: "",
+      glassType: preset.type === "door" ? "" : "Incolor",
       familyId: preset.familyId,
       familyLabel: preset.familyLabel,
     };
@@ -4075,18 +4326,113 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
   const updateCustomOpeningParams = (
     openingId: string,
-    patch: Partial<Pick<CustomOpening, "width" | "height" | "sillHeight" | "openingStyle" | "swing">>,
+    patch: Partial<Pick<CustomOpening, "width" | "height" | "sillHeight" | "openingStyle" | "swing" | "swingSide" | "leafCount" | "frameProfile" | "glassType" | "manufacturer" | "catalogProductId">>,
   ) => {
     const before = snapshotEditor();
     setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((opening) => {
       if (opening.id !== openingId) return opening;
       const next = { ...opening, ...patch };
+      const normalized = {
+        ...next,
+        ...normalizeOpeningDimensions(next),
+      };
+      const wall = safeCustomWalls.find((item) => item.id === normalized.wallId);
+      if (!wall) return normalized;
+      const wallLength = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+      return constrainOpeningToWall(normalized, wallLength);
+    }));
+    pushRoomHistory(before);
+  };
+
+  const setCustomOpeningOffset = (openingId: string, rawPercent: number) => {
+    const opening = safeCustomOpenings.find((item) => item.id === openingId);
+    const wall = opening ? safeCustomWalls.find((item) => item.id === opening.wallId) : null;
+    if (!opening || !wall || !Number.isFinite(rawPercent)) return;
+    const wallLength = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    if (wallLength < 0.001) return;
+    const halfOpening = Math.min(wallLength / 2, Math.max(0.25, (opening.width ?? (opening.type === "door" ? 0.9 : 1.2)) / 2));
+    const minOffset = halfOpening / wallLength;
+    const maxOffset = 1 - minOffset;
+    const nextOffset = Math.max(minOffset, Math.min(maxOffset, rawPercent / 100));
+    const before = snapshotEditor();
+    setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((item) =>
+      item.id === openingId ? { ...item, offset: nextOffset } : item
+    ));
+    pushRoomHistory(before);
+  };
+
+  const toggleCustomOpeningSwing = (openingId: string) => {
+    const opening = safeCustomOpenings.find((item) => item.id === openingId);
+    if (!opening) return;
+    updateCustomOpeningParams(openingId, { swing: opening.swing === "right" ? "left" : "right" });
+  };
+
+  const toggleCustomOpeningSide = (openingId: string) => {
+    const opening = safeCustomOpenings.find((item) => item.id === openingId);
+    if (!opening) return;
+    updateCustomOpeningParams(openingId, { swingSide: opening.swingSide === "outside" ? "inside" : "outside" });
+  };
+
+  const duplicateCustomOpening = (openingId: string) => {
+    const opening = safeCustomOpenings.find((item) => item.id === openingId);
+    const wall = opening ? safeCustomWalls.find((item) => item.id === opening.wallId) : null;
+    if (!opening || !wall) return;
+    const wallLength = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    if (wallLength < 0.001) return;
+    const before = snapshotEditor();
+    const shift = Math.max((opening.width ?? (opening.type === "door" ? 0.9 : 1.2)) / wallLength + 0.04, 0.08);
+    const candidate = opening.offset + shift <= 0.92 ? opening.offset + shift : opening.offset - shift;
+    const copy: CustomOpening = {
+      ...opening,
+      id: `custom-opening-${uid()}`,
+      offset: Math.max(0.08, Math.min(0.92, candidate)),
+    };
+    setCustomOpenings((prev) => [...(Array.isArray(prev) ? prev : []), copy]);
+    setSelectedOpeningId(copy.id);
+    setSelectedCustomWallId(null);
+    pushRoomHistory(before);
+  };
+
+  const openOpeningProductPicker = (openingId: string) => {
+    const opening = safeCustomOpenings.find((item) => item.id === openingId);
+    if (!opening) return;
+    setOpeningProductPickerId(openingId);
+    setEditorLibraryTab("furniture");
+    setItemLibrarySection("products");
+    setFurnitureCategory("Todos");
+    setLibraryMode("all");
+    setFurnitureSearch(opening.type === "door" ? "porta" : "janela");
+    setLibraryOpen(true);
+  };
+
+  const applyCatalogProductToOpening = (openingId: string, item: RealCatalogProduct) => {
+    const opening = safeCustomOpenings.find((candidate) => candidate.id === openingId);
+    if (!opening) return;
+    const kind = catalogOpeningKind(item);
+    if (!kind || kind !== opening.type) return;
+    const dims = catalogOpeningDimensions(item);
+    const before = snapshotEditor();
+    setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((candidate) => {
+      if (candidate.id !== openingId) return candidate;
+      const next: CustomOpening = {
+        ...candidate,
+        catalogProductId: item.id,
+        manufacturer: item.fornecedor ?? candidate.manufacturer,
+        frameProfile: dims.profile ?? candidate.frameProfile,
+        glassType: kind === "window" ? (dims.glass ?? candidate.glassType) : candidate.glassType,
+        width: dims.width ?? candidate.width,
+        height: dims.height ?? candidate.height,
+      };
       return {
         ...next,
         ...normalizeOpeningDimensions(next),
       };
     }));
     pushRoomHistory(before);
+    rememberRecentItem(realLibraryItemKey(item.id));
+    setOpeningProductPickerId(null);
+    setFurnitureSearch("");
+    closeLibraryOnMobile();
   };
 
   const deleteCustomOpening = (openingId: string) => {
@@ -4186,6 +4532,25 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     }
     pushRoomHistory(before);
   };
+
+  useEffect(() => {
+    if (!selectedCustomOpening || editorView !== "plan") return;
+    const handleOpeningShortcut = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.tagName === "SELECT" || target?.isContentEditable) return;
+      if (event.key === "Delete" || event.key === "Backspace") {
+        event.preventDefault();
+        deleteCustomOpening(selectedCustomOpening.id);
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "d") {
+        event.preventDefault();
+        duplicateCustomOpening(selectedCustomOpening.id);
+      }
+    };
+    window.addEventListener("keydown", handleOpeningShortcut);
+    return () => window.removeEventListener("keydown", handleOpeningShortcut);
+  }, [editorView, selectedCustomOpening?.id]);
 
   const setSelectedWallMaterial = (materialId: string) => {
     const wallId = selectedCustomWall?.id ?? selectedWall?.id;
@@ -5002,6 +5367,13 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     setConceptRender((prev) => ({ ...prev, status: "processing", error: undefined }));
 
     try {
+      const [
+        { buildConceptKontextSummary, buildConceptRenderBrief, svgElementToPngDataUrl },
+        { buildDerivedFacadeModel },
+      ] = await Promise.all([
+        import("./conceptRender"),
+        import("./conceptFacadeGeometry"),
+      ]);
       let originalImage: string;
       if (source === "model3d") {
         const canvas = document.querySelector<HTMLCanvasElement>("canvas[data-concept-model3d-source='true']");
@@ -6239,13 +6611,13 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       setEditorLibraryTab("furniture");
                       setLibraryOpen((open) => !(open && editorLibraryTab === "furniture"));
                     }}
-                    title="Abrir biblioteca de itens"
+                    title="Abrir biblioteca de móveis e objetos"
                     className={libraryOpen && editorLibraryTab === "furniture"
                       ? "hidden h-10 items-center gap-2 rounded-xl bg-white px-3 text-xs font-bold text-slate-950 shadow-sm sm:inline-flex"
                       : "hidden h-10 items-center gap-2 rounded-xl text-slate-300 hover:bg-white/10 sm:inline-flex"}
                   >
                     <Box className="h-4 w-4" />
-                    Itens
+                    Móveis
                   </button>
                 )}
                 <button
@@ -6736,6 +7108,87 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
               </div>
             )}
 
+            {editorView === "plan" && !terrainOnly && (
+              <div className="flex items-center gap-1.5 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <button
+                  type="button"
+                  onClick={() => setInteractionMode("navigate")}
+                  className={interactionMode === "navigate"
+                    ? "shrink-0 rounded-xl bg-slate-950 px-3 py-2 text-xs font-bold text-white"
+                    : "shrink-0 rounded-xl border bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"}
+                >
+                  Selecionar / editar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!wallFirstActive) activateWallFirstFloor();
+                    setEditorLibraryTab("build");
+                    setLibraryOpen(true);
+                    setInteractionMode("draw-wall");
+                    setSelectedId(null);
+                    setSelectedOpeningId(null);
+                  }}
+                  className={interactionMode === "draw-wall"
+                    ? "shrink-0 rounded-xl bg-orange-500 px-3 py-2 text-xs font-bold text-white"
+                    : "shrink-0 rounded-xl border bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-orange-300 hover:bg-orange-50"}
+                >
+                  + Parede
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditorLibraryTab("rooms");
+                    setLibraryOpen(true);
+                    setInteractionMode(wallFirstActive ? "space" : "room");
+                    setSelectedOpeningId(null);
+                  }}
+                  className={(interactionMode === "room" || interactionMode === "space")
+                    ? "shrink-0 rounded-xl bg-orange-500 px-3 py-2 text-xs font-bold text-white"
+                    : "shrink-0 rounded-xl border bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-orange-300 hover:bg-orange-50"}
+                >
+                  Ambientes
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditorLibraryTab("build");
+                    setLibraryOpen(true);
+                    setInteractionMode("opening");
+                    setSelectedId(null);
+                    setSelectedOpeningId(null);
+                  }}
+                  className={interactionMode === "opening"
+                    ? "shrink-0 rounded-xl bg-orange-500 px-3 py-2 text-xs font-bold text-white"
+                    : "shrink-0 rounded-xl border bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-orange-300 hover:bg-orange-50"}
+                >
+                  Portas / janelas
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditorLibraryTab("furniture");
+                    setLibraryOpen(true);
+                    setInteractionMode("navigate");
+                  }}
+                  className={editorLibraryTab === "furniture" && libraryOpen
+                    ? "shrink-0 rounded-xl bg-orange-500 px-3 py-2 text-xs font-bold text-white"
+                    : "shrink-0 rounded-xl border bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-orange-300 hover:bg-orange-50"}
+                >
+                  Móveis
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowDimensions((value) => !value)}
+                  className={showDimensions
+                    ? "shrink-0 rounded-xl bg-sky-50 px-3 py-2 text-xs font-bold text-sky-700 ring-1 ring-sky-200"
+                    : "shrink-0 rounded-xl border bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"}
+                >
+                  Cotas {showDimensions ? "✓" : ""}
+                </button>
+              </div>
+            )}
+
             <div className="arq-workspace-shell relative min-h-[calc(100dvh-112px)] overflow-hidden bg-[#f6f7f8]">
               <aside className={editorView !== "plan"
                   ? "arq-workspace-sidebar hidden"
@@ -6752,7 +7205,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         ["models", LayoutGrid, "Modelos"],
                         ["rooms", DoorOpen, "Ambientes"],
                         ["build", Layers3, "Construir"],
-                        ["furniture", Sofa, editorExperienceMode === "guided" ? "Mobiliar" : "Itens"],
+                        ["furniture", Sofa, editorExperienceMode === "guided" ? "Mobiliar" : "Produtos"],
                         ["materials", Paintbrush, editorExperienceMode === "guided" ? "Acabamentos" : "Materiais"],
                         ["outdoor", Trees, "Externo"],
                       ] as Array<[EditorLibraryTab, typeof Ruler, string]>)
@@ -6783,7 +7236,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       <div className="my-1 h-px w-8 bg-slate-200" />
                     </div>
                   </div>
-                  <div className={libraryOpen ? "fixed inset-x-2 bottom-20 z-40 max-h-[68vh] overflow-y-auto rounded-3xl border bg-white shadow-2xl md:static md:inset-auto md:z-auto md:max-h-none md:w-[260px] md:overflow-visible md:rounded-none md:border-0 md:shadow-none" : "hidden"}>
+                  <div className={libraryOpen
+                    ? `fixed inset-x-2 bottom-20 z-40 max-h-[68vh] overflow-y-auto rounded-3xl border bg-white shadow-2xl md:static md:inset-auto md:z-auto md:max-h-none md:overflow-visible md:rounded-none md:border-0 md:shadow-none ${editorLibraryTab === "furniture" || editorLibraryTab === "materials" ? "md:w-[340px]" : "md:w-[260px]"}`
+                    : "hidden"}>
                 <div className="sticky top-0 z-10 rounded-t-3xl border-b bg-white px-4 py-3 md:rounded-none md:px-5 md:py-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -6801,7 +7256,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                               : editorLibraryTab === "rooms"
                                 ? "Ambientes"
                                 : editorLibraryTab === "furniture"
-                                  ? "Biblioteca de itens"
+                                  ? "Biblioteca de produtos"
                                   : editorLibraryTab === "materials"
                                     ? "Materiais"
                                     : "Área externa"}
@@ -6950,166 +7405,34 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   )}
 
                   {editorLibraryTab === "build" && (
-                    <>
-                      <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Construção</div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (!wallFirstActive) activateWallFirstFloor();
-                            setInteractionMode("draw-wall");
-                            setSelectedId(null);
-                            setSelectedOpeningId(null);
-                            setSelectedWallId(null);
-                            setSelectedCustomWallId(null);
-                            closeLibraryOnMobile();
-                          }}
-                          className={interactionMode === "draw-wall"
-                            ? "group overflow-hidden rounded-xl border-2 border-orange-500 bg-orange-50 text-left"
-                            : "group overflow-hidden rounded-xl border bg-white text-left hover:border-slate-300 hover:shadow-sm"}
-                        >
-                          <div className="grid h-24 place-items-center bg-gradient-to-br from-slate-50 to-slate-100">
-                            <div className="relative h-12 w-14">
-                              <span className="absolute left-1 top-1 h-10 w-1.5 rounded-full bg-slate-700" />
-                              <span className="absolute left-1 top-1 h-1.5 w-11 rounded-full bg-slate-700" />
-                              <span className="absolute bottom-1 right-1 h-10 w-1.5 rounded-full bg-orange-400" />
-                              <span className="absolute bottom-1 right-1 h-1.5 w-11 rounded-full bg-orange-400" />
-                            </div>
-                          </div>
-                          <div className="p-3">
-                            <div className="text-sm font-semibold">Paredes</div>
-                            <div className="mt-0.5 text-[10px] text-muted-foreground">Desenhar livre</div>
-                          </div>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setInteractionMode(wallFirstActive ? "space" : "room");
-                            setSelectedOpeningId(null);
-                            setSelectedWallId(null);
-                            setSelectedCustomWallId(null);
-                          }}
-                          className={(interactionMode === "room" || interactionMode === "space")
-                            ? "group overflow-hidden rounded-xl border-2 border-orange-500 bg-orange-50 text-left"
-                            : "group overflow-hidden rounded-xl border bg-white text-left hover:border-slate-300 hover:shadow-sm"}
-                        >
-                          <div className="grid h-24 place-items-center bg-gradient-to-br from-orange-50 to-amber-50">
-                            <Home className="h-10 w-10 text-orange-500" />
-                          </div>
-                          <div className="p-3">
-                            <div className="text-sm font-semibold">Ambiente</div>
-                            <div className="mt-0.5 text-[10px] text-muted-foreground">{wallFirstActive ? "Nomear espaços" : "Criar cômodo"}</div>
-                          </div>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setInteractionMode("opening");
-                            setSelectedId(null);
-                            setSelectedWallId(null);
-                            setSelectedCustomWallId(null);
-                            closeLibraryOnMobile();
-                          }}
-                          className={interactionMode === "opening"
-                            ? "group overflow-hidden rounded-xl border-2 border-orange-500 bg-orange-50 text-left"
-                            : "group overflow-hidden rounded-xl border bg-white text-left hover:border-slate-300 hover:shadow-sm"}
-                        >
-                          <div className="grid h-24 place-items-center bg-gradient-to-br from-sky-50 to-slate-50">
-                            <div className="grid h-12 w-9 place-items-center rounded-t-lg border-4 border-slate-600 bg-white">
-                              <span className="h-1.5 w-1.5 rounded-full bg-slate-500" />
-                            </div>
-                          </div>
-                          <div className="p-3">
-                            <div className="text-sm font-semibold">Portas e janelas</div>
-                            <div className="mt-0.5 text-[10px] text-muted-foreground">Selecionar / editar</div>
-                          </div>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => { addRoom("escada"); closeLibraryOnMobile(); }}
-                          className="group overflow-hidden rounded-xl border bg-white text-left hover:border-orange-300 hover:shadow-sm"
-                        >
-                          <div className="grid h-24 place-items-center bg-gradient-to-br from-stone-50 to-slate-100">
-                            <div className="flex items-end gap-0.5">
-                              {[2,3,4,5,6].map((height) => (
-                                <span key={height} className="w-2 rounded-sm bg-slate-600" style={{ height: `${height * 5}px` }} />
-                              ))}
-                            </div>
-                          </div>
-                          <div className="p-3">
-                            <div className="text-sm font-semibold">Escada</div>
-                            <div className="mt-0.5 text-[10px] text-muted-foreground">{wallFirstActive ? "Inserir na planta" : "Adicionar"}</div>
-                          </div>
-                        </button>
-                      </div>
-
-                      <div className="mt-5 border-t pt-4">
-                        <div className="mb-3 flex items-center justify-between">
-                          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Portas e janelas</div>
-                          <span className="text-[10px] text-slate-400">{selectedCustomWall ? "Parede selecionada" : "Selecione uma parede"}</span>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          {CONCEPT_OPENING_FAMILIES.map((family) => (
-                            <button
-                              key={family.id}
-                              type="button"
-                              disabled={!selectedCustomWall}
-                              onClick={() => selectedCustomWall && addOpeningPreset(selectedCustomWall.id, {
-                                type: family.type,
-                                width: family.width,
-                                height: family.height,
-                                sillHeight: family.sillHeight,
-                                openingStyle: family.openingStyle,
-                                swing: family.swing,
-                                familyId: family.id,
-                                familyLabel: family.label,
-                              })}
-                              className="rounded-xl border bg-white px-3 py-3 text-left disabled:cursor-not-allowed disabled:opacity-40 hover:border-orange-300 hover:bg-orange-50/40"
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="text-xs font-semibold">{family.label}</div>
-                                <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-500">{family.type === "door" ? "porta" : "janela"}</span>
-                              </div>
-                              <div className="mt-1 text-[10px] text-slate-500">
-                                {family.width.toFixed(2).replace(".", ",")} × {family.height.toFixed(2).replace(".", ",")} m · {family.openingStyle === "hinged" ? "giro" : family.openingStyle === "sliding" ? "correr" : family.openingStyle === "fixed" ? "fixa" : "oscilo/maxim"}
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="mt-5 border-t pt-4">
-                        <div className="flex items-center justify-between">
-                          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Pavimentos</div>
-                          {floors < 3 && (
-                            <button
-                              type="button"
-                              onClick={() => setFloors((value) => Math.min(3, value + 1))}
-                              className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-semibold"
-                            >
-                              <Plus className="h-3 w-3" /> Adicionar
-                            </button>
-                          )}
-                        </div>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {Array.from({ length: floors }).map((_, floor) => (
-                            <button
-                              key={floor}
-                              type="button"
-                              onClick={() => { setActiveFloor(floor); setSelectedId(null); setEditorView("plan"); }}
-                              className={activeFloor === floor
-                                ? "rounded-xl bg-foreground px-3 py-2 text-xs font-semibold text-background"
-                                : "rounded-xl border bg-background px-3 py-2 text-xs font-semibold"}
-                            >
-                              {floor === 0 ? "Térreo" : floor === 1 ? "Superior" : `Pav. ${floor + 1}`}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </>
+                    <ConceptConstructionLibraryPanel
+                      mode="build"
+                      interactionMode={interactionMode}
+                      wallFirstActive={wallFirstActive}
+                      selectedCustomWall={selectedCustomWall}
+                      floors={floors}
+                      activeFloor={activeFloor}
+                      activateWallFirstFloor={activateWallFirstFloor}
+                      setInteractionMode={setInteractionMode}
+                      clearSelectionForWall={() => {
+                        setSelectedId(null);
+                        setSelectedOpeningId(null);
+                        setSelectedWallId(null);
+                        setSelectedCustomWallId(null);
+                      }}
+                      clearOpeningAndWalls={() => {
+                        setSelectedOpeningId(null);
+                        setSelectedWallId(null);
+                        setSelectedCustomWallId(null);
+                      }}
+                      closeLibraryOnMobile={closeLibraryOnMobile}
+                      addRoom={addRoom}
+                      addOpeningPreset={addOpeningPreset}
+                      setFloors={setFloors}
+                      setActiveFloor={setActiveFloor}
+                      setEditorViewPlan={() => setEditorView("plan")}
+                      clearRoomSelection={() => setSelectedId(null)}
+                    />
                   )}
 
                   {editorLibraryTab === "brief" && (
@@ -7150,52 +7473,34 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   )}
 
                   {editorLibraryTab === "rooms" && (
-                    <>
-                      <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                        {wallFirstActive ? "Classificar espaços" : "Adicionar ambientes"}
-                      </div>
-                      {wallFirstActive ? (
-                        <div className="rounded-2xl border border-dashed bg-muted/30 p-4 text-sm text-muted-foreground">
-                          Desenhe as paredes, feche os espaços e clique dentro da planta para nomear cada ambiente.
-                          <button
-                            type="button"
-                            onClick={() => setInteractionMode("space")}
-                            className="mt-3 w-full rounded-xl bg-foreground px-3 py-2.5 text-xs font-semibold text-background"
-                          >
-                            Nomear espaços na planta
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-2 gap-3">
-                          {([
-                            ["sala", Home, "Sala"],
-                            ["cozinha", ChefHat, "Cozinha"],
-                            ["quarto", BedDouble, "Quarto"],
-                            ["suite", BedDouble, "Suíte"],
-                            ["banheiro", Bath, "Banheiro"],
-                            ["lavanderia", Home, "Lavanderia"],
-                            ["garagem", CarFront, "Garagem"],
-                            ["gourmet", ChefHat, "Área gourmet"],
-                            ["piscina", Waves, "Piscina"],
-                          ] as Array<[RoomKind, typeof Home, string]>).map(([kind, Icon, label]) => (
-                            <button
-                              key={kind}
-                              type="button"
-                              onClick={() => addRoom(kind)}
-                              className="overflow-hidden rounded-xl border bg-white text-left hover:border-slate-300 hover:shadow-sm"
-                            >
-                              <div className="grid h-20 place-items-center bg-gradient-to-br from-slate-50 to-orange-50">
-                                <Icon className="h-8 w-8 text-slate-600" />
-                              </div>
-                              <div className="flex items-center justify-between p-3">
-                                <span className="text-sm font-semibold">{label}</span>
-                                <Plus className="h-3.5 w-3.5 text-muted-foreground" />
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </>
+                    <ConceptConstructionLibraryPanel
+                      mode="rooms"
+                      interactionMode={interactionMode}
+                      wallFirstActive={wallFirstActive}
+                      selectedCustomWall={selectedCustomWall}
+                      floors={floors}
+                      activeFloor={activeFloor}
+                      activateWallFirstFloor={activateWallFirstFloor}
+                      setInteractionMode={setInteractionMode}
+                      clearSelectionForWall={() => {
+                        setSelectedId(null);
+                        setSelectedOpeningId(null);
+                        setSelectedWallId(null);
+                        setSelectedCustomWallId(null);
+                      }}
+                      clearOpeningAndWalls={() => {
+                        setSelectedOpeningId(null);
+                        setSelectedWallId(null);
+                        setSelectedCustomWallId(null);
+                      }}
+                      closeLibraryOnMobile={closeLibraryOnMobile}
+                      addRoom={addRoom}
+                      addOpeningPreset={addOpeningPreset}
+                      setFloors={setFloors}
+                      setActiveFloor={setActiveFloor}
+                      setEditorViewPlan={() => setEditorView("plan")}
+                      clearRoomSelection={() => setSelectedId(null)}
+                    />
                   )}
 
                   {editorLibraryTab === "furniture" && (
@@ -7245,11 +7550,12 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
                       {itemLibrarySection === "products" && (
                         <>
-                        <div className="mb-3 grid grid-cols-3 gap-2">
+                        <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
                           {([
                             ["all", LayoutGrid, "Todos"],
                             ["favorites", Heart, "Favoritos"],
                             ["recent", Clock3, "Recentes"],
+                            ["project", Box, "No projeto"],
                           ] as const).map(([mode, Icon, label]) => (
                             <button
                               key={mode}
@@ -7341,7 +7647,45 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
                       {itemLibrarySection === "products" && (
                         <>
-                      {(polyHavenLoading || polyHavenModels.length > 0) && (
+                      <ConceptCatalogPanels
+                        openingPickerId={openingProductPickerId}
+                        opening={openingProductPickerId ? safeCustomOpenings.find((item) => item.id === openingProductPickerId) ?? null : null}
+                        catalogProducts={realCatalogProducts}
+                        search={furnitureSearch}
+                        loading={realCatalogLoading}
+                        projectMode={!openingProductPickerId && libraryMode === "project"}
+                        usedCounts={Object.fromEntries(usedProjectProductCounts)}
+                        usedProducts={usedProjectProducts}
+                        onCancelOpening={() => {
+                          setOpeningProductPickerId(null);
+                          setFurnitureSearch("");
+                        }}
+                        onApplyOpening={(item) => {
+                          if (openingProductPickerId) applyCatalogProductToOpening(openingProductPickerId, item as RealCatalogProduct);
+                        }}
+                        onSelectUsed={(productId) => {
+                          const objectInstance = safeObjects.find((object) => object.catalogProductId === productId);
+                          const openingInstance = safeCustomOpenings.find((opening) => opening.catalogProductId === productId);
+                          if (objectInstance) {
+                            setSelectedObjectId(objectInstance.id);
+                            setSelectedOpeningId(null);
+                            setSelectedCustomWallId(null);
+                            setSelectedWallId(null);
+                            setSelectedId(null);
+                            setSelectedClosedSpaceId(null);
+                          } else if (openingInstance) {
+                            setSelectedOpeningId(openingInstance.id);
+                            setSelectedObjectId(null);
+                            setSelectedCustomWallId(null);
+                            setSelectedWallId(null);
+                            setSelectedId(null);
+                            setSelectedClosedSpaceId(null);
+                          }
+                          closeLibraryOnMobile();
+                        }}
+                      />
+
+                      {!openingProductPickerId && libraryMode !== "project" && (polyHavenLoading || polyHavenModels.length > 0) && (
                         <div className="mb-5">
                           <div className="mb-3 flex items-center justify-between gap-2">
                             <div>
@@ -7417,7 +7761,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         </div>
                       )}
 
-                      {(realCatalogLoading || visibleRealCatalogProducts.length > 0) && (
+                      {!openingProductPickerId && libraryMode !== "project" && (realCatalogLoading || visibleRealCatalogProducts.length > 0) && (
                         <div className="mb-5">
                           <div className="mb-3 flex items-center justify-between gap-2">
                             <div>
@@ -8075,7 +8419,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   {editorView === "plan" && !terrainOnly && (
                       <div className={`absolute top-3 z-30 flex snap-x items-center gap-1.5 overflow-x-auto rounded-2xl border border-slate-200 bg-white/96 p-1.5 shadow-md backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
                         left-16 right-3 md:right-auto
-                        ${libraryOpen ? "md:left-[380px]" : "md:left-20"}
+                        ${libraryOpen ? (editorLibraryTab === "furniture" || editorLibraryTab === "materials" ? "md:left-[460px]" : "md:left-[380px]") : "md:left-20"}
                       `}>
                         <button
                           type="button"
@@ -8137,6 +8481,34 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                             : "shrink-0 rounded-xl border bg-background px-3 py-2 text-xs font-semibold"}
                         >
                           Portas / janelas
+                        </button>
+                        <button
+                          type="button"
+                          title="Abrir biblioteca de produtos e objetos"
+                          onClick={() => {
+                            setEditorLibraryTab("furniture");
+                            setItemLibrarySection("products");
+                            setLibraryOpen(true);
+                          }}
+                          className={libraryOpen && editorLibraryTab === "furniture" && itemLibrarySection === "products"
+                            ? "shrink-0 rounded-xl bg-slate-950 px-3 py-2 text-xs font-semibold text-white"
+                            : "shrink-0 rounded-xl border bg-background px-3 py-2 text-xs font-semibold"}
+                        >
+                          Produtos
+                        </button>
+                        <button
+                          type="button"
+                          title="Abrir biblioteca de materiais para pintar e especificar"
+                          onClick={() => {
+                            setEditorLibraryTab("furniture");
+                            setItemLibrarySection("materials");
+                            setLibraryOpen(true);
+                          }}
+                          className={libraryOpen && editorLibraryTab === "furniture" && itemLibrarySection === "materials"
+                            ? "shrink-0 rounded-xl bg-slate-950 px-3 py-2 text-xs font-semibold text-white"
+                            : "shrink-0 rounded-xl border bg-background px-3 py-2 text-xs font-semibold"}
+                        >
+                          Materiais
                         </button>
                         <button
                           type="button"
@@ -8569,10 +8941,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                                 </div>
                               </div>
                               <div className="flex items-center gap-2">
-                                {conceptRender.status === "processing" && (
+                                {conceptRender?.status === "processing" && (
                                   <span className="rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700">{renderQueued ? "Render na fila" : "Gerando render…"}</span>
                                 )}
-                                {displayedRender.resultImageUrl && conceptRender.status !== "processing" && (
+                                {displayedRender.resultImageUrl && conceptRender?.status !== "processing" && (
                                   <a
                                     href={displayedRender.resultImageUrl}
                                     target="_blank"
@@ -8611,10 +8983,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                               <button
                                 type="button"
                                 onClick={() => setEditorView("facade")}
-                                disabled={conceptRender?.status === "processing"}
-                                className="mt-4 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                                className="mt-4 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white"
                               >
-                                {conceptRender?.status === "processing" ? "Gerando..." : "Gerar fachada"}
+                                Gerar fachada
                               </button>
                             </div>
                           </div>
@@ -8748,17 +9119,20 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       </label>
                     ))}
                     <label className="text-[10px] font-semibold text-slate-500">
-                      Rotação
-                      <select
+                      Rotação (°)
+                      <input
+                        type="number"
+                        step="1"
+                        min="-360"
+                        max="360"
                         value={selectedObject.rotation}
-                        onChange={(event) => updateObjectById(selectedObject.id, { rotation: Number(event.target.value) })}
-                        className="mt-1 h-9 w-[100px] rounded-lg border bg-white px-2 text-xs"
-                      >
-                        <option value={0}>0°</option>
-                        <option value={90}>90°</option>
-                        <option value={180}>180°</option>
-                        <option value={270}>270°</option>
-                      </select>
+                        onChange={(event) => {
+                          const value = Number(event.target.value);
+                          if (!Number.isFinite(value)) return;
+                          updateObjectById(selectedObject.id, { rotation: ((value % 360) + 360) % 360 });
+                        }}
+                        className="mt-1 h-9 w-[100px] rounded-lg border bg-white px-2 text-xs font-semibold"
+                      />
                     </label>
                     {editorView === "model3d" && (
                       <div className="flex items-end gap-1">
@@ -8795,8 +9169,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           Editar no 2D
                         </button>
                       )}
-                      <button type="button" onClick={duplicateSelectedObject} className="h-9 rounded-lg border px-3 text-xs font-semibold">Duplicar</button>
-                      <button type="button" onClick={deleteSelectedObject} className="h-9 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600">Excluir</button>
+                      <button type="button" onClick={() => rotateObject(selectedObject.id)} className="h-9 rounded-lg border px-3 text-xs font-semibold" title="Girar 90° (R)">Girar</button>
+                      <button type="button" onClick={duplicateSelectedObject} className="h-9 rounded-lg border px-3 text-xs font-semibold" title="Duplicar (Ctrl/Cmd+D)">Duplicar</button>
+                      <button type="button" onClick={deleteSelectedObject} className="h-9 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600" title="Excluir (Del)">Excluir</button>
                     </div>
                   </div>
                 ) : selectedCustomWall ? (
@@ -8808,11 +9183,15 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     <label className="text-[10px] font-semibold text-slate-500">
                       Comprimento (m)
                       <input
+                        key={`${selectedCustomWall.id}-${selectedCustomWall.x1}-${selectedCustomWall.y1}-${selectedCustomWall.x2}-${selectedCustomWall.y2}`}
                         type="number"
                         min="0.5"
-                        step="0.05"
-                        value={Math.hypot(selectedCustomWall.x2 - selectedCustomWall.x1, selectedCustomWall.y2 - selectedCustomWall.y1).toFixed(2)}
-                        onChange={(event) => setCustomWallLength(selectedCustomWall.id, Number(event.target.value))}
+                        step="0.01"
+                        defaultValue={Math.hypot(selectedCustomWall.x2 - selectedCustomWall.x1, selectedCustomWall.y2 - selectedCustomWall.y1).toFixed(2)}
+                        onBlur={(event) => setCustomWallLength(selectedCustomWall.id, Number(event.currentTarget.value))}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") event.currentTarget.blur();
+                        }}
                         className="mt-1 h-9 w-[105px] rounded-lg border px-2 text-xs font-semibold"
                       />
                     </label>
@@ -8837,7 +9216,17 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       )}
                       <button type="button" onClick={() => addOpeningToCustomWall(selectedCustomWall.id, "door")} className="h-9 rounded-lg border px-3 text-xs font-semibold hover:bg-slate-50">+ Porta</button>
                       <button type="button" onClick={() => addOpeningToCustomWall(selectedCustomWall.id, "window")} className="h-9 rounded-lg border px-3 text-xs font-semibold hover:bg-slate-50">+ Janela</button>
-                      <button type="button" onClick={() => deleteCustomWall(selectedCustomWall.id)} className="h-9 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600 hover:bg-red-50">Excluir</button>
+                      <button
+                        type="button"
+                        onClick={() => splitCustomWall(selectedCustomWall.id)}
+                        disabled={Math.hypot(selectedCustomWall.x2 - selectedCustomWall.x1, selectedCustomWall.y2 - selectedCustomWall.y1) < 1}
+                        className="h-9 rounded-lg border px-3 text-xs font-semibold hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                        title="Dividir a parede no ponto médio"
+                      >
+                        Dividir
+                      </button>
+                      <button type="button" onClick={() => duplicateCustomWall(selectedCustomWall.id)} className="h-9 rounded-lg border px-3 text-xs font-semibold hover:bg-slate-50" title="Duplicar parede (Ctrl/Cmd+D)">Duplicar</button>
+                      <button type="button" onClick={() => deleteCustomWall(selectedCustomWall.id)} className="h-9 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600 hover:bg-red-50" title="Excluir parede (Del)">Excluir</button>
                     </div>
                   </div>
                 ) : selectedOpening ? (
@@ -8889,6 +9278,18 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           </label>
                         )}
                         <label className="text-[10px] font-semibold text-slate-500">
+                          Posição na parede (%)
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="1"
+                            value={Math.round((selectedCustomOpening.offset ?? 0.5) * 100)}
+                            onChange={(event) => setCustomOpeningOffset(selectedOpening.id, Number(event.target.value))}
+                            className="mt-1 h-9 w-[110px] rounded-lg border px-2 text-xs font-semibold"
+                          />
+                        </label>
+                        <label className="text-[10px] font-semibold text-slate-500">
                           Abertura
                           <select
                             value={selectedCustomOpening.openingStyle ?? (selectedOpening.type === "door" ? "hinged" : "sliding")}
@@ -8901,6 +9302,50 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                             {selectedOpening.type === "window" && <option value="tilt_turn">Oscilobatente</option>}
                           </select>
                         </label>
+                        <label className="text-[10px] font-semibold text-slate-500">
+                          Folhas
+                          <select
+                            value={Math.max(1, Math.min(6, selectedCustomOpening.leafCount ?? (selectedOpening.type === "door" ? 1 : 2)))}
+                            onChange={(event) => updateCustomOpeningParams(selectedOpening.id, { leafCount: Number(event.target.value) })}
+                            className="mt-1 h-9 w-[82px] rounded-lg border bg-white px-2 text-xs"
+                          >
+                            {[1, 2, 3, 4, 6].map((count) => <option key={count} value={count}>{count}</option>)}
+                          </select>
+                        </label>
+                        <label className="min-w-[130px] text-[10px] font-semibold text-slate-500">
+                          Perfil
+                          <input
+                            value={selectedCustomOpening.frameProfile ?? ""}
+                            onChange={(event) => updateCustomOpeningParams(selectedOpening.id, { frameProfile: event.target.value })}
+                            placeholder="Ex.: PVC branco"
+                            className="mt-1 h-9 w-full rounded-lg border px-2 text-xs font-semibold"
+                          />
+                        </label>
+                        {selectedOpening.type === "window" && (
+                          <label className="min-w-[120px] text-[10px] font-semibold text-slate-500">
+                            Vidro
+                            <select
+                              value={selectedCustomOpening.glassType ?? "Incolor"}
+                              onChange={(event) => updateCustomOpeningParams(selectedOpening.id, { glassType: event.target.value })}
+                              className="mt-1 h-9 w-full rounded-lg border bg-white px-2 text-xs"
+                            >
+                              <option value="Incolor">Incolor</option>
+                              <option value="Fumê">Fumê</option>
+                              <option value="Refletivo">Refletivo</option>
+                              <option value="Laminado">Laminado</option>
+                              <option value="Duplo">Duplo / insulado</option>
+                            </select>
+                          </label>
+                        )}
+                        <label className="min-w-[130px] text-[10px] font-semibold text-slate-500">
+                          Fabricante
+                          <input
+                            value={selectedCustomOpening.manufacturer ?? ""}
+                            onChange={(event) => updateCustomOpeningParams(selectedOpening.id, { manufacturer: event.target.value })}
+                            placeholder="Fabricante"
+                            className="mt-1 h-9 w-full rounded-lg border px-2 text-xs font-semibold"
+                          />
+                        </label>
                       </>
                     )}
                     <div className="mt-2 flex w-full items-center gap-1.5 md:ml-auto md:mt-0 md:w-auto">
@@ -8911,8 +9356,24 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       )}
                       <button type="button" onClick={() => moveOpening(-0.25)} className="h-9 rounded-lg border px-3 text-xs font-semibold">− 25 cm</button>
                       <button type="button" onClick={() => moveOpening(0.25)} className="h-9 rounded-lg border px-3 text-xs font-semibold">+ 25 cm</button>
-                      {safeCustomOpenings.some((opening) => opening.id === selectedOpening.id) && (
-                        <button type="button" onClick={() => deleteCustomOpening(selectedOpening.id)} className="h-9 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600">Excluir</button>
+                      {selectedCustomOpening && (
+                        <>
+                          {selectedOpening.type === "door" && selectedCustomOpening.openingStyle === "hinged" && (
+                            <>
+                              <button type="button" onClick={() => toggleCustomOpeningSwing(selectedOpening.id)} className="h-9 rounded-lg border px-3 text-xs font-semibold">
+                                Inverter mão · {selectedCustomOpening.swing === "right" ? "Direita" : "Esquerda"}
+                              </button>
+                              <button type="button" onClick={() => toggleCustomOpeningSide(selectedOpening.id)} className="h-9 rounded-lg border px-3 text-xs font-semibold">
+                                Sentido · {selectedCustomOpening.swingSide === "outside" ? "Exterior" : "Interior"}
+                              </button>
+                            </>
+                          )}
+                          <button type="button" onClick={() => openOpeningProductPicker(selectedOpening.id)} className="h-9 rounded-lg border border-sky-200 bg-sky-50 px-3 text-xs font-semibold text-sky-700">
+                            Substituir produto
+                          </button>
+                          <button type="button" onClick={() => duplicateCustomOpening(selectedOpening.id)} className="h-9 rounded-lg border px-3 text-xs font-semibold" title="Duplicar (Ctrl/Cmd+D)">Duplicar</button>
+                          <button type="button" onClick={() => deleteCustomOpening(selectedOpening.id)} className="h-9 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600" title="Excluir (Del)">Excluir</button>
+                        </>
                       )}
                     </div>
                   </div>

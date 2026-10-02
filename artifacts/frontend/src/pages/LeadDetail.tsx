@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { useRelativeTime } from "@/hooks/useRelativeTime";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { PropostaModal } from "./Propostas";
@@ -117,6 +117,48 @@ import {
 
 function getBase()  { return (import.meta.env.BASE_URL ?? "/").replace(/\/$/, ""); }
 function getToken() { return localStorage.getItem("vendorai_token") ?? ""; }
+
+type CompanyContextContact = {
+  relationId: string;
+  personId: string;
+  nome: string;
+  cargo?: string | null;
+  qualificacao?: string | null;
+  telefones?: string[] | null;
+  emails?: string[] | null;
+  roles?: string[] | null;
+  isPrimary?: boolean;
+  preferredChannel?: string | null;
+  roleEvidence?: Array<{ source: string; detail?: string; observedAt?: string }> | null;
+  roleConfidence?: string | null;
+  verifiedAt?: string | null;
+  validUntil?: string | null;
+  metadata?: Record<string, unknown> | null;
+};
+
+type CompanyContext = {
+  company: {
+    id: string;
+    cnpj: string;
+    razaoSocial?: string | null;
+    nomeFantasia?: string | null;
+    situacaoCadastral?: string | null;
+    porte?: string | null;
+    cnaePrincipal?: string | null;
+    endereco?: Record<string, string | null> | null;
+    telefone?: string | null;
+    email?: string | null;
+  };
+  tenantCompany: {
+    id: string;
+    relationshipType: string;
+  };
+  contacts: CompanyContextContact[];
+  relationships?: {
+    parents?: Array<{ id: string; parentCompanyId: string; childCompanyId: string; relationshipType: string; source: string }>;
+    children?: Array<{ id: string; parentCompanyId: string; childCompanyId: string; relationshipType: string; source: string }>;
+  };
+};
 
 function normalizeWhatsAppNumber(value?: string | null): string {
   let digits = String(value ?? "").replace(/\D/g, "");
@@ -327,8 +369,25 @@ export default function LeadDetail() {
   const [naoLeadTipoSel, setNaoLeadTipoSel] = useState<string>("fornecedor");
   const [naoLeadNotasInput, setNaoLeadNotasInput] = useState("");
   const [naoLeadSalvando, setNaoLeadSalvando] = useState(false);
+  const { data: nonLeadClassifications = [] } = useQuery<Array<{ id: string; label: string; active?: boolean }>>({
+    queryKey: ["non-lead-classifications", tenantId],
+    enabled: Boolean(tenantId),
+    queryFn: async () => {
+      const r = await fetch(`/api/tenants/${tenantId}/non-lead-classifications`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!r.ok) throw new Error("Falha ao carregar classificações de Não Lead");
+      return r.json();
+    },
+  });
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [lightboxTitle, setLightboxTitle] = useState<string>("");
+  const [companyContext, setCompanyContext] = useState<CompanyContext | null>(null);
+  const [companyContextLoading, setCompanyContextLoading] = useState(false);
+  const [companyContextError, setCompanyContextError] = useState<string | null>(null);
+  const [contactRoleDialog, setContactRoleDialog] = useState<CompanyContextContact | null>(null);
+  const [contactRoleDraft, setContactRoleDraft] = useState<string>("comercial");
+  const [contactRoleSaving, setContactRoleSaving] = useState(false);
 
   const { data: catalog = [] } = useListProdutosCatalogo(tenantId, {
     query: { queryKey: getListProdutosCatalogoQueryKey(tenantId), enabled: !!tenantId },
@@ -662,9 +721,101 @@ export default function LeadDetail() {
     void openIniciarConversa("whatsapp");
   }
 
+  async function loadOrEnrichCompanyContext(forceEnrich = false) {
+    if (!id || !lead || !tenantId) return;
+    const tipoPessoa = (lead as any).tipoPessoa;
+    const rawCnpj = String((lead as any).dadosPj?.cnpj ?? lead.documento ?? "").replace(/\D/g, "");
+    if (tipoPessoa !== "juridica" || rawCnpj.length !== 14) {
+      setCompanyContext(null);
+      return;
+    }
+
+    setCompanyContextLoading(true);
+    setCompanyContextError(null);
+    try {
+      if (!forceEnrich) {
+        const existing = await fetch(`${getBase()}/api/crm/leads/${id}/company-context`, {
+          headers: { Authorization: `Bearer ${getToken()}` },
+        });
+        if (existing.ok) {
+          setCompanyContext(await existing.json() as CompanyContext);
+          return;
+        }
+      }
+
+      const enriched = await fetch(`${getBase()}/api/crm/companies/enrich`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getToken()}`,
+        },
+        body: JSON.stringify({ cnpj: rawCnpj, leadId: id, tenantId }),
+      });
+      const payload = await enriched.json().catch(() => ({}));
+      if (!enriched.ok) {
+        throw new Error((payload as any)?.error ?? "Não foi possível enriquecer a empresa.");
+      }
+      setCompanyContext(payload as CompanyContext);
+      void queryClient.invalidateQueries({ queryKey: getGetLeadQueryKey(id) });
+    } catch (err) {
+      setCompanyContextError(err instanceof Error ? err.message : "Falha ao carregar empresa.");
+    } finally {
+      setCompanyContextLoading(false);
+    }
+  }
+
+  async function confirmCompanyContactRole() {
+    if (!companyContext || !contactRoleDialog) return;
+    setContactRoleSaving(true);
+    try {
+      const response = await fetch(
+        `${getBase()}/api/crm/companies/${companyContext.company.id}/contacts/${contactRoleDialog.relationId}/roles`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${getToken()}`,
+          },
+          body: JSON.stringify({
+            tenantId,
+            roles: [contactRoleDraft],
+            isPrimary: contactRoleDraft === "decisor" ? contactRoleDialog.isPrimary ?? false : contactRoleDialog.isPrimary ?? false,
+            evidence: {
+              source: "tenant_user_confirmation",
+              detail: `Papel ${contactRoleDraft} confirmado na ficha do lead`,
+            },
+          }),
+        },
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error((payload as any)?.error ?? "Não foi possível confirmar o papel.");
+      setCompanyContext(payload as CompanyContext);
+      setContactRoleDialog(null);
+      toast({ title: "Papel do contato confirmado" });
+    } catch (err) {
+      toast({
+        title: err instanceof Error ? err.message : "Falha ao confirmar o papel do contato.",
+        variant: "destructive",
+      });
+    } finally {
+      setContactRoleSaving(false);
+    }
+  }
+
   async function handleStartWhatsappConversation() {
     await handleIniciarConversa();
   }
+
+  useEffect(() => {
+    if (!lead || !id || !tenantId) return;
+    const cnpj = String((lead as any).dadosPj?.cnpj ?? lead.documento ?? "").replace(/\D/g, "");
+    if ((lead as any).tipoPessoa === "juridica" && cnpj.length === 14) {
+      void loadOrEnrichCompanyContext(false);
+    } else {
+      setCompanyContext(null);
+      setCompanyContextError(null);
+    }
+  }, [id, tenantId, lead?.documento, (lead as any)?.tipoPessoa]);
 
   const [editingPessoal, setEditingPessoal] = useState(false);
   const [pessoalDraft, setPessoalDraft] = useState({
@@ -1713,6 +1864,189 @@ export default function LeadDetail() {
               </div>
             </CardContent>
           </Card>
+
+          {(lead as any).tipoPessoa === "juridica" && (
+            <Card data-testid="card-company-context">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-semibold flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-2">
+                    <Building2 className="h-4 w-4" />
+                    Empresa e contatos
+                  </span>
+                  <div className="flex items-center gap-1">
+                    {companyContext?.company?.id && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setLocation(`/empresas/${companyContext.company.id}`)}
+                        className="h-7 text-xs"
+                      >
+                        Abrir empresa
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void loadOrEnrichCompanyContext(true)}
+                      disabled={companyContextLoading}
+                      className="h-7 text-xs"
+                    >
+                      {companyContextLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                      <span className="ml-1">Enriquecer</span>
+                    </Button>
+                  </div>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                {companyContextLoading && !companyContext && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Buscando dados empresariais e QSA...
+                  </div>
+                )}
+                {companyContextError && (
+                  <p className="text-xs text-destructive">{companyContextError}</p>
+                )}
+                {companyContext && (
+                  <>
+                    <div className="space-y-1">
+                      <p className="font-medium">{companyContext.company.nomeFantasia || companyContext.company.razaoSocial || lead.empresa}</p>
+                      <p className="text-xs text-muted-foreground font-mono">CNPJ {companyContext.company.cnpj}</p>
+                      {companyContext.company.razaoSocial && companyContext.company.razaoSocial !== companyContext.company.nomeFantasia && (
+                        <p className="text-xs text-muted-foreground">{companyContext.company.razaoSocial}</p>
+                      )}
+                      {companyContext.company.cnaePrincipal && (
+                        <p className="text-xs text-muted-foreground">{companyContext.company.cnaePrincipal}</p>
+                      )}
+                      <div className="flex flex-wrap gap-1 pt-1">
+                        {companyContext.company.situacaoCadastral && <Badge variant="outline">{companyContext.company.situacaoCadastral}</Badge>}
+                        {companyContext.company.porte && <Badge variant="outline">{companyContext.company.porte}</Badge>}
+                      </div>
+                    </div>
+                    {!!((companyContext.relationships?.parents?.length ?? 0) + (companyContext.relationships?.children?.length ?? 0)) && (
+                      <div className="border-t pt-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Estrutura societária</p>
+                        <div className="flex flex-wrap gap-1">
+                          {companyContext.relationships?.parents?.map((rel) => (
+                            <Badge key={rel.id} variant="outline" className="text-[10px] capitalize">
+                              ↑ {rel.relationshipType.replace(/_/g, " ")}
+                            </Badge>
+                          ))}
+                          {companyContext.relationships?.children?.map((rel) => (
+                            <Badge key={rel.id} variant="outline" className="text-[10px] capitalize">
+                              ↓ {rel.relationshipType.replace(/_/g, " ")}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div className="border-t pt-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Contatos relacionados</p>
+                        <Badge variant="secondary">{companyContext.contacts.length}</Badge>
+                      </div>
+                      {companyContext.contacts.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">Nenhum contato vinculado ainda.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {companyContext.contacts.map((contact) => (
+                            <div key={contact.personId} className="rounded-md border p-2.5">
+                              <div className="flex items-start justify-between gap-2">
+                                <div>
+                                  <p className="text-sm font-medium">{contact.nome}</p>
+                                  {(contact.cargo || contact.qualificacao) && (
+                                    <p className="text-xs text-muted-foreground">{contact.cargo || contact.qualificacao}</p>
+                                  )}
+                                </div>
+                                {contact.verifiedAt && contact.isPrimary && <Badge className="text-[10px]">Principal</Badge>}
+                              </div>
+                              {contact.verifiedAt && !!contact.roles?.length ? (
+                                <div className="flex flex-wrap gap-1 mt-2">
+                                  {contact.roles.map((role) => <Badge key={role} variant="outline" className="text-[10px] capitalize">{role}</Badge>)}
+                                  <Badge variant="secondary" className="text-[10px]">papel confirmado</Badge>
+                                </div>
+                              ) : (
+                                <div className="flex flex-wrap gap-1 mt-2">
+                                  {contact.metadata?.discoveredBy === "qsa" && (
+                                    <Badge variant="outline" className="text-[10px]">QSA</Badge>
+                                  )}
+                                  <Badge variant="secondary" className="text-[10px]">papel comercial a confirmar</Badge>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 px-2 text-[10px]"
+                                    onClick={() => {
+                                      setContactRoleDraft("comercial");
+                                      setContactRoleDialog(contact);
+                                    }}
+                                  >
+                                    Confirmar papel
+                                  </Button>
+                                </div>
+                              )}
+                              {(contact.telefones?.[0] || contact.emails?.[0]) && (
+                                <div className="mt-2 space-y-1 text-xs">
+                                  {contact.telefones?.[0] && <p className="flex items-center gap-1.5"><Phone className="h-3 w-3" />{contact.telefones[0]}</p>}
+                                  {contact.emails?.[0] && <p className="flex items-center gap-1.5"><Mail className="h-3 w-3" />{contact.emails[0]}</p>}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          <Dialog open={!!contactRoleDialog} onOpenChange={(open) => !open && setContactRoleDialog(null)}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>Confirmar papel do contato</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3">
+                <div>
+                  <p className="text-sm font-medium">{contactRoleDialog?.nome}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {contactRoleDialog?.qualificacao || contactRoleDialog?.cargo || "Vínculo identificado"}
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium">Papel nesta empresa</p>
+                  <Select value={contactRoleDraft} onValueChange={setContactRoleDraft}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="comercial">Comercial</SelectItem>
+                      <SelectItem value="decisor">Decisor</SelectItem>
+                      <SelectItem value="compras">Compras</SelectItem>
+                      <SelectItem value="financeiro">Financeiro</SelectItem>
+                      <SelectItem value="tecnico">Técnico</SelectItem>
+                      <SelectItem value="administrativo">Administrativo</SelectItem>
+                      <SelectItem value="suporte">Suporte</SelectItem>
+                      <SelectItem value="outro">Outro</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11px] text-muted-foreground">
+                    O QSA comprova o vínculo societário, mas este papel só será usado pelos agentes após sua confirmação.
+                  </p>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setContactRoleDialog(null)} disabled={contactRoleSaving}>
+                  Cancelar
+                </Button>
+                <Button onClick={() => void confirmCompanyContactRole()} disabled={contactRoleSaving}>
+                  {contactRoleSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Confirmar
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           {/* Dados Pessoais */}
           <Card data-testid="card-dados-pessoais">
@@ -4308,12 +4642,9 @@ export default function LeadDetail() {
               <Select value={naoLeadTipoSel} onValueChange={setNaoLeadTipoSel}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="colaborador">Colaborador</SelectItem>
-                  <SelectItem value="fornecedor">Fornecedor</SelectItem>
-                  <SelectItem value="parceiro">Parceiro</SelectItem>
-                  <SelectItem value="familiar">Familiar</SelectItem>
-                  <SelectItem value="amigo">Amigo</SelectItem>
-                  <SelectItem value="outro">Outro</SelectItem>
+                  {nonLeadClassifications.filter((item) => item.active !== false).map((item) => (
+                    <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

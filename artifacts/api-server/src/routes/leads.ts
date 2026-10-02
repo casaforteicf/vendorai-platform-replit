@@ -35,6 +35,7 @@ import {
   adCampaignsTable,
   leadResponsavelHistoricoTable,
   tenantUserFunctionsTable,
+  tenantsTable,
 } from "@workspace/db";
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { buildUserFunctionFilter, requireAdminOrUserFunction, type UserFunction } from "../middlewares/auth.js";
@@ -49,6 +50,26 @@ import { reserveUniqueItem } from "../services/item-reservation.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 
 const router: IRouter = Router();
+
+const DEFAULT_NON_LEAD_CLASSIFICATIONS = [
+  { id: "colaborador", label: "Colaborador", active: true },
+  { id: "fornecedor", label: "Fornecedor", active: true },
+  { id: "parceiro", label: "Parceiro", active: true },
+  { id: "familiar", label: "Familiar", active: true },
+  { id: "amigo", label: "Amigo", active: true },
+  { id: "outro", label: "Outro", active: true },
+];
+
+const nonLeadClassificationSchema = z.object({
+  id: z.string().trim().min(2).max(50).regex(/^[a-z0-9_-]+$/),
+  label: z.string().trim().min(2).max(80),
+  active: z.boolean().optional().default(true),
+  description: z.string().trim().max(240).optional(),
+});
+
+const nonLeadClassificationsBodySchema = z.object({
+  classifications: z.array(nonLeadClassificationSchema).min(1).max(50),
+});
 
 async function validateRepresentativeFunction(tenantId: string, functionId: string | null | undefined) {
   if (!functionId) return null;
@@ -457,11 +478,56 @@ router.get("/tenants/:tenantId/leads", async (req, res) => {
   res.json(leads);
 });
 
+router.get("/tenants/:tenantId/non-lead-classifications", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]); // tenant-audit: reviewed immediate authenticated-tenant equality guard below
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+  const [tenant] = await db.select({ classifications: tenantsTable.naoLeadClassificacoes })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId))
+    .limit(1);
+  if (!tenant) {
+    res.status(404).json({ error: "Tenant not found" });
+    return;
+  }
+  res.json(tenant.classifications?.length ? tenant.classifications : DEFAULT_NON_LEAD_CLASSIFICATIONS);
+});
+
+router.put("/tenants/:tenantId/non-lead-classifications", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]); // tenant-audit: reviewed admin role plus authenticated-tenant equality guard below
+  const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  if (!isAdmin || (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId)) {
+    res.status(403).json({ error: "Apenas administradores podem alterar classificações de Não Lead." });
+    return;
+  }
+  const parsed = nonLeadClassificationsBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+  const ids = parsed.data.classifications.map((item) => item.id);
+  if (new Set(ids).size !== ids.length) {
+    res.status(422).json({ error: "Existem identificadores de classificação duplicados." });
+    return;
+  }
+  const [tenant] = await db.update(tenantsTable)
+    .set({ naoLeadClassificacoes: parsed.data.classifications, updatedAt: new Date() })
+    .where(eq(tenantsTable.id, tenantId))
+    .returning({ classifications: tenantsTable.naoLeadClassificacoes });
+  if (!tenant) {
+    res.status(404).json({ error: "Tenant not found" });
+    return;
+  }
+  res.json(tenant.classifications);
+});
+
 // Classifica um lead como não-lead -- sai da pipeline, análise de churn
 // e contagem de "novos" a partir de agora, mas continua acessível na
 // aba "Não-Leads".
 const classificarNaoLeadSchema = z.object({
-  tipo: z.enum(["colaborador", "fornecedor", "parceiro", "familiar", "amigo", "outro"]),
+  tipo: z.string().trim().min(2).max(50).regex(/^[a-z0-9_-]+$/),
   notas: z.string().optional(),
 });
 
@@ -479,6 +545,17 @@ router.post("/leads/:id/classificar-nao-lead", async (req, res) => {
   }
   if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const [tenant] = await db.select({ classifications: tenantsTable.naoLeadClassificacoes })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, existing.tenantId))
+    .limit(1);
+  const classifications = tenant?.classifications?.length ? tenant.classifications : DEFAULT_NON_LEAD_CLASSIFICATIONS;
+  const selectedClassification = classifications.find((item) => item.id === parsed.data.tipo && item.active !== false);
+  if (!selectedClassification) {
+    res.status(422).json({ error: "Classificação de Não Lead inválida ou inativa para este tenant." });
     return;
   }
 

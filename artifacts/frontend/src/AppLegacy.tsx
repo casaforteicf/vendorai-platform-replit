@@ -37,13 +37,16 @@ const Dashboard          = lazy(() => import("@/pages/dashboard/Dashboard"));
 const WorkCenterHome     = lazy(() => import("@/pages/WorkCenterHome"));
 const ComissoesVendedor  = lazy(() => import("@/pages/ComissoesVendedor"));
 const Leads              = lazy(() => import("@/pages/Leads"));
+const Companies          = lazy(() => import("@/pages/Companies"));
 const ImportConfig       = lazy(() => import("@/pages/leads/import-config"));
 const NonLeadContacts    = lazy(() => import("@/pages/contacts-nonleads"));
 const LeadWorkspace      = lazy(() => import("@/pages/LeadWorkspace"));
+const CompanyCenter      = lazy(() => import("@/pages/CompanyCenter"));
 const Prospector         = lazy(() => import("@/pages/Prospector"));
 const FlowBuilder        = lazy(() => import("@/pages/prospector/FlowBuilder"));
 const FlowExecutions     = lazy(() => import("@/pages/prospector/FlowExecutions"));
 const Deals              = lazy(() => import("@/pages/Deals"));
+const OperationalMeasurementChecklist = lazy(() => import("@/pages/OperationalMeasurementChecklist"));
 const PipelineOperacional = lazy(() => import("@/pages/PipelineOperacional"));
 const PipelineRelacionamento = lazy(() => import("@/pages/PipelineRelacionamento"));
 const Conversations      = lazy(() => import("@/pages/Conversations"));
@@ -655,12 +658,15 @@ function AppRoutes() {
         <Route path="/leads/import-config"><ProtectedRoute component={ImportConfig} /></Route>
         <Route path="/contacts-nonleads"><ProtectedRoute component={NonLeadContacts} /></Route>
         <Route path="/leads"><ProtectedRoute component={Leads} /></Route>
+        <Route path="/empresas"><ProtectedRoute component={Companies} /></Route>
         <Route path="/leads/:id"><ProtectedRoute component={LeadWorkspace} /></Route>
+        <Route path="/empresas/:id"><ProtectedRoute component={CompanyCenter} /></Route>
         <Route path="/app/prospector"><ProtectedRoute component={Prospector} /></Route>
         <Route path="/prospector"><ProtectedRoute component={Prospector} /></Route>
         <Route path="/prospector/flows"><ProtectedRoute component={FlowBuilder} /></Route>
         <Route path="/prospector/flows/:id/executions"><ProtectedRoute component={FlowExecutions} /></Route>
         <Route path="/deals"><ProtectedRoute component={Deals} /></Route>
+        <Route path="/checklists/medidas/:dealId"><ProtectedRoute component={OperationalMeasurementChecklist} /></Route>
         <Route path="/negocios"><ProtectedRoute component={Deals} /></Route>
         <Route path="/pipeline-operacional/:tab"><ProtectedRoute component={PipelineOperacional} /></Route>
         <Route path="/pipeline-operacional"><ProtectedRoute component={PipelineOperacional} /></Route>

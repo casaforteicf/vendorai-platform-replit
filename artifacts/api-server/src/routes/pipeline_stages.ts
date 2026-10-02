@@ -32,6 +32,9 @@ type SystemStage = {
   bg: string;
   ordem: number;
   perguntas?: { id: string; texto: string }[];
+  atividadePadraoTitulo?: string;
+  atividadePadraoDescricao?: string;
+  atividadePadraoPrazoMinutos?: number;
 };
 
 const simpleStage = (key: string, label: string, ordem: number): SystemStage => ({
@@ -308,6 +311,9 @@ router.post("/tenants/:tenantId/pipeline-stages", async (req, res) => {
     slaMinutos: z.number().int().positive().nullable().optional(),
     responsaveisFuncoes: z.array(z.string()).optional(),
     responsavelAgenteKey: z.string().min(1).nullable().optional(),
+    atividadePadraoTitulo: z.string().trim().max(200).nullable().optional(),
+    atividadePadraoDescricao: z.string().trim().max(2000).nullable().optional(),
+    atividadePadraoPrazoMinutos: z.number().int().positive().nullable().optional(),
   });
   const parsed = bodySchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });

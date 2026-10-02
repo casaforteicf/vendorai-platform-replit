@@ -3068,9 +3068,69 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
   const derivedWindows = indoorRooms.filter((room: any) => windowKinds.has(String(room.kind ?? "").toLowerCase())).length;
   const customDoorCount = customOpenings.filter((opening: any) => opening?.type === "door").length;
   const customWindowCount = customOpenings.filter((opening: any) => opening?.type === "window").length;
+  const linkedCustomOpenings = customOpenings.filter((opening: any) =>
+    (opening?.type === "door" || opening?.type === "window")
+    && typeof opening?.catalogProductId === "string"
+    && opening.catalogProductId.trim().length > 0
+  );
+  const linkedDoorCount = linkedCustomOpenings.filter((opening: any) => opening.type === "door").length;
+  const linkedWindowCount = linkedCustomOpenings.filter((opening: any) => opening.type === "window").length;
+  const unlinkedDoorCount = customDoorCount > 0 ? Math.max(0, customDoorCount - linkedDoorCount) : derivedDoors;
+  const unlinkedWindowCount = customWindowCount > 0 ? Math.max(0, customWindowCount - linkedWindowCount) : derivedWindows;
   const doorCount = customDoorCount > 0 ? customDoorCount : derivedDoors;
   const windowCount = customWindowCount > 0 ? customWindowCount : derivedWindows;
   const openingCount = Math.max(1, doorCount + windowCount);
+
+  const linkedOpeningProductIds = [...new Set(
+    linkedCustomOpenings.map((opening: any) => String(opening.catalogProductId))
+  )];
+  const linkedOpeningCatalogRows = linkedOpeningProductIds.length
+    ? await tx
+        .select({
+          id: produtosCatalogoTable.id,
+          nome: produtosCatalogoTable.nome,
+          fornecedor: produtosCatalogoTable.fornecedor,
+          marca: produtosCatalogoTable.marca,
+          precoBase: produtosCatalogoTable.precoBase,
+          unidade: produtosCatalogoTable.unidade,
+          ativo: produtosCatalogoTable.ativo,
+        })
+        .from(produtosCatalogoTable)
+        .where(and(
+          eq(produtosCatalogoTable.tenantId, tid),
+          inArray(produtosCatalogoTable.id, linkedOpeningProductIds),
+        ))
+    : [];
+  const linkedOpeningCatalogById = new Map(linkedOpeningCatalogRows.map((row) => [row.id, row]));
+  const linkedOpeningGroups = new Map<string, {
+    catalogProductId: string;
+    type: "door" | "window";
+    quantity: number;
+    width: number;
+    height: number;
+    manufacturer: string | null;
+    profile: string | null;
+    glass: string | null;
+  }>();
+  for (const opening of linkedCustomOpenings) {
+    const catalogProductId = String(opening.catalogProductId);
+    const key = catalogProductId;
+    const existing = linkedOpeningGroups.get(key);
+    if (existing) {
+      existing.quantity += 1;
+      continue;
+    }
+    linkedOpeningGroups.set(key, {
+      catalogProductId,
+      type: opening.type === "door" ? "door" : "window",
+      quantity: 1,
+      width: Math.max(0.4, Number(opening.width ?? (opening.type === "door" ? 0.9 : 1.2))),
+      height: Math.max(0.4, Number(opening.height ?? (opening.type === "door" ? 2.1 : 1.2))),
+      manufacturer: typeof opening.manufacturer === "string" && opening.manufacturer.trim() ? opening.manufacturer.trim() : null,
+      profile: typeof opening.frameProfile === "string" && opening.frameProfile.trim() ? opening.frameProfile.trim() : null,
+      glass: typeof opening.glassType === "string" && opening.glassType.trim() ? opening.glassType.trim() : null,
+    });
+  }
 
   const customOpeningArea = customOpenings.reduce((sum: number, opening: any) => {
     const width = Math.max(0.4, Number(opening?.width ?? (opening?.type === "door" ? 0.9 : 1.2)));
@@ -3105,6 +3165,8 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     quantity: number;
     basis: "geometry" | "concept";
     compositionCode?: string;
+    catalogProductId?: string;
+    manufacturer?: string;
   };
   const quantityItems: ConceptQuantityItem[] = [
     { stage: "Projeto", item: "Desenvolvimento e compatibilização do projeto", unit: "un", quantity: 1, basis: "concept" },
@@ -3113,8 +3175,21 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     { stage: "Estrutura e vedações", item: "Paredes — comprimento total medido", unit: "m", quantity: totalWallLength, basis: "geometry" },
     { stage: "Estrutura e vedações", item: "Paredes externas — área bruta", unit: "m²", quantity: exteriorWallAreaGross, basis: "geometry" },
     { stage: "Cobertura", item: `Cobertura — ${facade.roof ?? "conforme projeto"}`, unit: "m²", quantity: roofArea, basis: "geometry" },
-    { stage: "Esquadrias", item: "Portas previstas na planta", unit: "un", quantity: Math.max(0, doorCount), basis: "geometry" },
-    { stage: "Esquadrias", item: "Janelas previstas na planta", unit: "un", quantity: Math.max(0, windowCount), basis: "geometry" },
+    ...(unlinkedDoorCount > 0 ? [{ stage: "Esquadrias", item: "Portas sem produto especificado", unit: "un", quantity: unlinkedDoorCount, basis: "geometry" as const }] : []),
+    ...(unlinkedWindowCount > 0 ? [{ stage: "Esquadrias", item: "Janelas sem produto especificado", unit: "un", quantity: unlinkedWindowCount, basis: "geometry" as const }] : []),
+    ...[...linkedOpeningGroups.values()].map((group) => {
+      const product = linkedOpeningCatalogById.get(group.catalogProductId);
+      const manufacturer = product?.fornecedor ?? product?.marca ?? group.manufacturer;
+      const kindLabel = group.type === "door" ? "Porta" : "Janela";
+      const dimensions = `${group.width.toFixed(2)} × ${group.height.toFixed(2)} m`;
+      return {
+        stage: "Esquadrias",
+        item: [kindLabel, product?.nome ?? group.catalogProductId, manufacturer, dimensions].filter(Boolean).join(" · "),
+        unit: product?.unidade || "un",
+        quantity: group.quantity,
+        basis: "geometry" as const,
+      };
+    }),
     ...(technicalCounts.outlet ? [{ stage: "Instalações elétricas e hidráulicas", item: "Tomadas lançadas na planta", unit: "un", quantity: technicalCounts.outlet, basis: "geometry" as const, compositionCode: "ARQ-ELE-002" }] : []),
     ...(technicalCounts.switch ? [{ stage: "Instalações elétricas e hidráulicas", item: "Interruptores lançados na planta", unit: "un", quantity: technicalCounts.switch, basis: "geometry" as const, compositionCode: "ARQ-ELE-004" }] : []),
     ...(technicalCounts.light_point ? [{ stage: "Instalações elétricas e hidráulicas", item: "Pontos de luz / plafon lançados na planta", unit: "un", quantity: technicalCounts.light_point, basis: "geometry" as const, compositionCode: "ARQ-ELE-001" }] : []),
@@ -3157,6 +3232,7 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
       const configuredPrice = Number(object.configuredPrice ?? basePrice) || basePrice;
       return {
         id: String(object.id ?? ""),
+        kind: String(object.kind ?? ""),
         catalogProductId: String(object.catalogProductId),
         label: String(object.label ?? "Produto do projeto"),
         supplier: typeof object.supplier === "string" ? object.supplier : null,
@@ -3165,6 +3241,58 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
         selections,
       };
     });
+
+  const configuredCatalogObjectGroups = new Map<string, {
+    kind: string;
+    catalogProductId: string;
+    label: string;
+    supplier: string | null;
+    configuredPrice: number;
+    selections: Array<{ surface: string; materialId: string; materialName: string; grupo: string | null; priceDelta: number }>;
+    quantity: number;
+  }>();
+  for (const product of configuredCatalogObjects) {
+    const selectionKey = JSON.stringify(
+      [...product.selections]
+        .sort((a, b) => a.surface.localeCompare(b.surface))
+        .map((selection) => [selection.surface, selection.materialId, selection.grupo, selection.priceDelta]),
+    );
+    const key = `${product.catalogProductId}::${product.configuredPrice}::${selectionKey}`;
+    const existing = configuredCatalogObjectGroups.get(key);
+    if (existing) {
+      existing.quantity += 1;
+      continue;
+    }
+    configuredCatalogObjectGroups.set(key, {
+      kind: product.kind,
+      catalogProductId: product.catalogProductId,
+      label: product.label,
+      supplier: product.supplier,
+      configuredPrice: product.configuredPrice,
+      selections: product.selections,
+      quantity: 1,
+    });
+  }
+
+  const objectStage = (kind: string) => {
+    if (kind === "appliance") return "Eletrodomésticos";
+    if (kind === "sanitary") return "Louças e metais";
+    if (kind === "lamp" || kind === "light_point") return "Iluminação";
+    if (kind === "outdoor") return "Área externa";
+    return "Mobiliário e decoração";
+  };
+
+  for (const group of configuredCatalogObjectGroups.values()) {
+    quantityItems.push({
+      stage: objectStage(group.kind),
+      item: [group.label, group.supplier].filter(Boolean).join(" · "),
+      unit: "un",
+      quantity: group.quantity,
+      basis: "geometry",
+      catalogProductId: group.catalogProductId,
+      manufacturer: group.supplier ?? undefined,
+    });
+  }
 
   let obra: any = null;
   let obraId = String(project?.obraId ?? "");
@@ -3303,8 +3431,9 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     `);
   }
 
-  for (let index = 0; index < configuredCatalogObjects.length; index++) {
-    const product = configuredCatalogObjects[index]!;
+  const configuredCatalogBudgetGroups = [...configuredCatalogObjectGroups.values()];
+  for (let index = 0; index < configuredCatalogBudgetGroups.length; index++) {
+    const product = configuredCatalogBudgetGroups[index]!;
     const itemId = crypto.randomUUID();
     const selectionsText = product.selections.length
       ? product.selections.map((selection) =>
@@ -3314,9 +3443,13 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     const description = [
       product.supplier ? `Fornecedor: ${product.supplier}` : null,
       `Catálogo: ${product.catalogProductId}`,
+      `Categoria de projeto: ${objectStage(product.kind)}`,
       `Acabamentos: ${selectionsText}`,
+      `Quantidade aplicada no projeto: ${product.quantity}`,
     ].filter(Boolean).join(". ");
     const unitPrice = Math.max(0, Number(product.configuredPrice) || 0);
+    const quantity = Math.max(1, product.quantity);
+    const total = unitPrice * quantity;
 
     await tx.execute(sql`
       INSERT INTO arch_budget_items (
@@ -3328,10 +3461,46 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
         ${itemId}, ${tid}, ${preBudgetId}, ${project.id},
         ${product.label},
         ${description},
-        'product', 1, 'un',
+        'product', ${quantity}, 'un',
         ${unitPrice}, 0, ${unitPrice},
-        ${unitPrice}, 0, ${unitPrice}, null,
+        ${total}, 0, ${total}, null,
         true, ${quantityItems.length + index + 1}, now(), now()
+      )
+    `);
+  }
+
+  const linkedOpeningBudgetGroups = [...linkedOpeningGroups.values()];
+  for (let index = 0; index < linkedOpeningBudgetGroups.length; index++) {
+    const group = linkedOpeningBudgetGroups[index]!;
+    const catalog = linkedOpeningCatalogById.get(group.catalogProductId);
+    const itemId = crypto.randomUUID();
+    const unitPrice = Math.max(0, Number(catalog?.precoBase ?? 0) || 0);
+    const quantity = Math.max(1, group.quantity);
+    const total = unitPrice * quantity;
+    const manufacturer = catalog?.fornecedor ?? catalog?.marca ?? group.manufacturer;
+    const description = [
+      `Catálogo: ${group.catalogProductId}`,
+      manufacturer ? `Fabricante/fornecedor: ${manufacturer}` : null,
+      `Dimensão aplicada: ${group.width.toFixed(2)} × ${group.height.toFixed(2)} m`,
+      group.profile ? `Perfil: ${group.profile}` : null,
+      group.type === "window" && group.glass ? `Vidro: ${group.glass}` : null,
+      "Gerado automaticamente a partir da esquadria especificada no Arqdor.",
+    ].filter(Boolean).join(". ");
+
+    await tx.execute(sql`
+      INSERT INTO arch_budget_items (
+        id, tenant_id, budget_id, project_id, item, description, type,
+        quantity, unit, material_value, labor_value, unit_total,
+        total_material, total_labor, total, composition_code,
+        visible_to_client, sort_order, created_at, updated_at
+      ) VALUES (
+        ${itemId}, ${tid}, ${preBudgetId}, ${project.id},
+        ${catalog?.nome ?? (group.type === "door" ? "Porta especificada" : "Janela especificada")},
+        ${description},
+        'product', ${quantity}, ${catalog?.unidade || "un"},
+        ${unitPrice}, 0, ${unitPrice},
+        ${total}, 0, ${total}, null,
+        true, ${quantityItems.length + configuredCatalogBudgetGroups.length + index + 1}, now(), now()
       )
     `);
   }
