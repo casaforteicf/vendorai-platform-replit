@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import {
   db,
   customerIntelligenceFactsTable,
@@ -59,6 +59,25 @@ type RecordFactInput = {
 export async function recordIntelligenceFact(input: RecordFactInput): Promise<void> {
   if (!input.leadId) return;
   try {
+    const [latest] = await db.select({
+      id: customerIntelligenceFactsTable.id,
+      value: customerIntelligenceFactsTable.value,
+    }).from(customerIntelligenceFactsTable).where(and(
+      eq(customerIntelligenceFactsTable.tenantId, input.tenantId),
+      eq(customerIntelligenceFactsTable.leadId, input.leadId),
+      eq(customerIntelligenceFactsTable.factKey, input.factKey),
+    )).orderBy(desc(customerIntelligenceFactsTable.createdAt)).limit(1);
+
+    if (latest && JSON.stringify(latest.value) === JSON.stringify(input.value)) {
+      return;
+    }
+
+    if (latest) {
+      await db.update(customerIntelligenceFactsTable)
+        .set({ validTo: new Date(), updatedAt: new Date() })
+        .where(eq(customerIntelligenceFactsTable.id, latest.id));
+    }
+
     const [source] = await db.insert(customerIntelligenceSourcesTable).values({
       tenantId: input.tenantId,
       leadId: input.leadId,
