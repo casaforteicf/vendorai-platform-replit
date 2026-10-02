@@ -16,6 +16,19 @@ type DiagnosticoInteligencia = {
   itens: Array<{ id: string; titulo: string; concluido: boolean; peso: number; detalhe: string; acao?: string }>;
   lacunas: Array<{ id: string; titulo: string; acao: string }>;
 };
+type DiscoveryInteligente = {
+  resumo: string;
+  prioridades: Array<{
+    secao: string;
+    titulo: string;
+    motivo: string;
+    perguntas: string[];
+    evidenciasNecessarias: string[];
+    impacto: "alto" | "medio" | "baixo";
+  }>;
+  status: "rascunho";
+  aviso: string;
+};
 const selectClass = "w-full rounded-md border bg-background p-2 text-sm";
 const roleLabels: Record<string, string> = { marketing: "Marketing", prospector: "Prospector", sdr: "SDR", closer: "Closer", agendamento: "Agendamento", suporte: "Suporte", pos_venda: "Pós-venda", financeiro: "Financeiro", cobranca: "Cobrança", scout: "Revenue Scout" };
 export function BusinessPlanPanel() {
@@ -50,6 +63,8 @@ export function BusinessPlanPanel() {
   const [campaign, setCampaign] = useState({ segmentId: "", productId: "", goal: "", channel: "instagram", assetIds: [] as string[] });
   const [message, setMessage] = useState("");
   const [savedCampaign, setSavedCampaign] = useState("");
+  const [discoveryInteligente, setDiscoveryInteligente] = useState<DiscoveryInteligente | null>(null);
+  const [focoDiscovery, setFocoDiscovery] = useState("");
   const campaignId = useRef(crypto.randomUUID());
   const previewVersion = useRef<number | null>(null);
   const data = query.data;
@@ -70,6 +85,13 @@ export function BusinessPlanPanel() {
   }
   function update(index: number, patch: Partial<Entry>) { setDrafts(v => ({ ...v, [sectionId]: records.map((r, i) => i === index ? { ...r, ...patch } : r) })); }
   function newEntry(): Entry { return { id: crypto.randomUUID(), title: "Nova ficha", values: {}, evidence: "declared", source: "Informado pela empresa", productIds: [], assetIds: [] }; }
+  async function executarDiscoveryInteligente() {
+    await run("Analisando inteligência do negócio...", async () => {
+      const response = await request("/discovery-inteligente", "POST", { foco: focoDiscovery });
+      setDiscoveryInteligente(response);
+    });
+  }
+
   async function save(action: "save" | "approve" | "revoke") {
     await run("Salvando...", async () => {
       const response = await request(`/sections/${sectionId}`, "PUT", { version: data!.plan.version, action, records });
@@ -105,6 +127,78 @@ export function BusinessPlanPanel() {
             <div className="text-xs capitalize text-muted-foreground">nível {diagnosticoQuery.data.nivel}</div>
           </div>
         </div>
+
+        <div className="mt-4 flex flex-col gap-2 rounded-lg border bg-muted/20 p-3 sm:flex-row sm:items-end">
+          <label className="min-w-0 flex-1 text-xs font-medium">
+            Foco opcional do Discovery
+            <Input
+              value={focoDiscovery}
+              onChange={(event) => setFocoDiscovery(event.target.value)}
+              placeholder="Ex.: melhorar abordagem comercial para construtoras"
+              className="mt-1"
+            />
+          </label>
+          <Button variant="outline" disabled={!!busy} onClick={() => void executarDiscoveryInteligente()}>
+            Discovery Inteligente
+          </Button>
+        </div>
+
+        {discoveryInteligente && (
+          <div className="mt-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold">Prioridades sugeridas pelo Vendi</p>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{discoveryInteligente.resumo}</p>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setDiscoveryInteligente(null)}>Fechar</Button>
+            </div>
+            <div className="mt-3 grid gap-2 lg:grid-cols-2">
+              {discoveryInteligente.prioridades.map((prioridade, index) => (
+                <article key={`${prioridade.secao}:${index}`} className="rounded-lg border bg-background p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold">{prioridade.titulo}</p>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${prioridade.impacto === "alto" ? "bg-red-50 text-red-700" : prioridade.impacto === "medio" ? "bg-amber-50 text-amber-700" : "bg-sky-50 text-sky-700"}`}>
+                      impacto {prioridade.impacto}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{prioridade.motivo}</p>
+                  {!!prioridade.perguntas.length && (
+                    <div className="mt-2">
+                      <p className="text-[11px] font-semibold">Perguntas para completar</p>
+                      <ul className="mt-1 list-disc space-y-1 pl-4 text-[11px] text-muted-foreground">
+                        {prioridade.perguntas.map((pergunta) => <li key={pergunta}>{pergunta}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  {!!prioridade.evidenciasNecessarias.length && (
+                    <div className="mt-2">
+                      <p className="text-[11px] font-semibold">Evidências necessárias</p>
+                      <p className="mt-1 text-[11px] text-muted-foreground">{prioridade.evidenciasNecessarias.join(" · ")}</p>
+                    </div>
+                  )}
+                  <Button
+                    className="mt-3"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setTab("plan");
+                      setSectionId(prioridade.secao);
+                      setNotes([
+                        prioridade.titulo,
+                        prioridade.motivo,
+                        prioridade.perguntas.length ? `Perguntas a responder: ${prioridade.perguntas.join(" | ")}` : "",
+                        prioridade.evidenciasNecessarias.length ? `Evidências a buscar: ${prioridade.evidenciasNecessarias.join(" | ")}` : "",
+                      ].filter(Boolean).join("\n"));
+                    }}
+                  >
+                    Desenvolver este bloco
+                  </Button>
+                </article>
+              ))}
+            </div>
+            <p className="mt-3 text-[11px] text-muted-foreground">{discoveryInteligente.aviso}</p>
+          </div>
+        )}
 
         <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
           {diagnosticoQuery.data.itens.map((item) => (
