@@ -16,7 +16,7 @@ import { buildGenerationDesignQa } from "../services/contentCreativeRuntime";
 import { enrichSiteGeneratorServicesContext, inspectGeneratedSite, resolveSiteCreativeRuntime } from "../services/siteCreativeRuntime";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import { ensureTenantProposalBuilderTemplate } from "../lib/proposal-builder.js";
-import { resolveBusinessContext } from "../services/businessContextResolver.js";
+import { resolverContextoNegocio } from "../services/resolvedorContextoNegocio.js";
 
 const router: IRouter = Router();
 
@@ -215,7 +215,7 @@ ${JSON.stringify(businessContext)}`,
   }
 });
 
-router.post("/tenants/:tenantId/business-intelligence/resolve", async (req, res) => {
+router.post("/tenants/:tenantId/inteligencia-negocio/resolver", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   if (!canAccessTenant(req, tenantId)) {
     res.status(403).json({ error: "Access denied to this tenant" });
@@ -228,7 +228,7 @@ router.post("/tenants/:tenantId/business-intelligence/resolve", async (req, res)
     : [];
 
   try {
-    const resolved = await resolveBusinessContext({
+    const resolved = await resolverContextoNegocio({
       tenantId,
       query,
       productIds,
@@ -237,7 +237,7 @@ router.post("/tenants/:tenantId/business-intelligence/resolve", async (req, res)
     res.setHeader("Cache-Control", "no-store");
     res.status(200).json(resolved);
   } catch (error) {
-    req.log?.error({ error, tenantId }, "business-intelligence: resolve failed");
+    req.log?.error({ error, tenantId }, "inteligencia-negocio: falha ao resolver");
     res.status(500).json({ error: "Não foi possível resolver a inteligência do negócio agora." });
   }
 });
