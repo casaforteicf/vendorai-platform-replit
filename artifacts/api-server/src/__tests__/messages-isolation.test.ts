@@ -9,14 +9,29 @@ import {
 } from "./helpers/auth.js";
 import { MockRow, createDbHelpers } from "./helpers/isolation.js";
 
-const { mockDbSelect, mockDbUpdate, mockDbDelete, mockDbInsert, mockInsertSchema } =
-  vi.hoisted(() => ({
-    mockDbSelect: vi.fn(),
-    mockDbUpdate: vi.fn(),
-    mockDbDelete: vi.fn(),
-    mockDbInsert: vi.fn(),
-    mockInsertSchema: vi.fn(),
-  }));
+const {
+  mockDbSelect,
+  mockDbUpdate,
+  mockDbDelete,
+  mockDbInsert,
+  mockInsertSchema,
+  mockCanAccessConversation,
+  mockCanViewAllConversations,
+} = vi.hoisted(() => ({
+  mockDbSelect: vi.fn(),
+  mockDbUpdate: vi.fn(),
+  mockDbDelete: vi.fn(),
+  mockDbInsert: vi.fn(),
+  mockInsertSchema: vi.fn(),
+  mockCanAccessConversation: vi.fn(),
+  mockCanViewAllConversations: vi.fn(),
+}));
+
+vi.mock("../lib/conversation-access.js", () => ({
+  canAccessConversation: mockCanAccessConversation,
+  canViewAllConversations: mockCanViewAllConversations,
+  conversationOwnedByUserCondition: vi.fn(() => "ownership-condition"),
+}));
 
 vi.mock("@workspace/db", () => ({
   db: {
@@ -31,6 +46,13 @@ vi.mock("@workspace/db", () => ({
     leadId: "leadId",
     conversationId: "conversationId",
     createdAt: "createdAt",
+  },
+  conversationsTable: {
+    id: "id",
+    tenantId: "tenantId",
+    leadId: "leadId",
+    assignedTo: "assignedTo",
+    whatsappConnectionId: "whatsappConnectionId",
   },
   insertMessageSchema: {
     safeParse: (data: unknown) => mockInsertSchema(data),
@@ -64,12 +86,17 @@ const RECORD_ID = "message-owned-by-b";
 const recordOwnedByTenantB: MockRow = {
   id: RECORD_ID,
   tenantId: TENANT_B,
+  conversationId: "conv-1",
   conteudo: "Hello",
 };
 
 describe("POST /api/messages — cross-tenant isolation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockCanViewAllConversations.mockResolvedValue(false);
+    mockCanAccessConversation.mockImplementation(async (req: any, tenantId: string) =>
+      req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId
+    );
   });
 
   it("returns 403 when body.tenantId does not match the authenticated tenant", async () => {
@@ -85,6 +112,36 @@ describe("POST /api/messages — cross-tenant isolation", () => {
 
     expect(res.status).toBe(403);
     expect(res.body).toMatchObject({ error: expect.stringContaining("Access denied") });
+  });
+
+  it("returns 403 when a same-tenant user cannot access the conversation", async () => {
+    mockInsertSchema.mockReturnValue({
+      success: true,
+      data: {
+        tenantId: TENANT_B,
+        leadId: "lead-1",
+        conversationId: "conv-private",
+        conteudo: "hi",
+        canal: "chat",
+        direcao: "saida",
+      },
+    });
+    mockCanAccessConversation.mockResolvedValueOnce(false);
+
+    const res = await request(app)
+      .post("/api/messages")
+      .set("Authorization", `Bearer ${tokenB}`)
+      .send({
+        tenantId: TENANT_B,
+        leadId: "lead-1",
+        conversationId: "conv-private",
+        conteudo: "hi",
+        canal: "chat",
+        direcao: "saida",
+      });
+
+    expect(res.status).toBe(403);
+    expect(res.body).toMatchObject({ error: expect.stringContaining("conversation") });
   });
 
   it("returns 201 when tenant posts a message for their own tenant", async () => {
@@ -126,6 +183,10 @@ describe("PATCH /api/messages/:id — cross-tenant isolation", () => {
     vi.clearAllMocks();
     setupSelectReturning([recordOwnedByTenantB]);
     setupUpdateReturning([{ ...recordOwnedByTenantB, conteudo: "Updated" }]);
+    mockCanViewAllConversations.mockResolvedValue(false);
+    mockCanAccessConversation.mockImplementation(async (req: any, tenantId: string) =>
+      req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId
+    );
   });
 
   it("returns 403 when tenant A patches a record owned by tenant B", async () => {
@@ -173,6 +234,10 @@ describe("DELETE /api/messages/:id — cross-tenant isolation", () => {
     vi.clearAllMocks();
     setupSelectReturning([recordOwnedByTenantB]);
     setupDeleteSuccess();
+    mockCanViewAllConversations.mockResolvedValue(false);
+    mockCanAccessConversation.mockImplementation(async (req: any, tenantId: string) =>
+      req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId
+    );
   });
 
   it("returns 403 when tenant A deletes a record owned by tenant B", async () => {

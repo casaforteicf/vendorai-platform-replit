@@ -7,14 +7,38 @@ import {
   insertConversationSchema,
   updateConversationSchema,
 } from "@workspace/db";
-import { buildUserFunctionFilter, type UserFunction } from "../middlewares/auth.js";
+import {
+  canAccessConversation,
+  canViewAllConversations,
+  conversationOwnedByUserCondition,
+} from "../lib/conversation-access.js";
 
 const router: IRouter = Router();
 
 router.get("/conversations", async (req, res) => {
+  const tenantId = req.user?.tenantId;
+  if (req.user?.platformRole !== "super_admin" && !tenantId) {
+    res.status(403).json({ error: "Conversation access requires tenant context" });
+    return;
+  }
+
+  const conditions = [];
+  if (req.user?.platformRole !== "super_admin" && tenantId) {
+    conditions.push(eq(conversationsTable.tenantId, tenantId));
+  }
+  if (!(await canViewAllConversations(req))) {
+    const userId = req.user?.sub;
+    if (!userId) {
+      res.json([]);
+      return;
+    }
+    conditions.push(conversationOwnedByUserCondition(userId));
+  }
+
   const conversations = await db
     .select()
     .from(conversationsTable)
+    .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(conversationsTable.createdAt);
   res.json(conversations);
 });
@@ -40,8 +64,20 @@ router.post("/conversations", async (req, res) => {
 
 router.get("/tenants/:tenantId/conversations", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   const conditions = [eq(conversationsTable.tenantId, tenantId)];
-  conditions.push(...buildUserFunctionFilter(req, conversationsTable));
+  if (!(await canViewAllConversations(req))) {
+    const userId = req.user?.sub;
+    if (!userId) {
+      res.json([]);
+      return;
+    }
+    conditions.push(conversationOwnedByUserCondition(userId));
+  }
 
   const conversations = await db
     .select()
@@ -58,6 +94,11 @@ router.post(
 
     if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
       res.status(403).json({ error: "Access denied to this tenant" });
+      return;
+    }
+
+    if (!(await canAccessConversation(req, tenantId, String(req.params.conversationId)))) {
+      res.status(403).json({ error: "Access denied to this conversation" });
       return;
     }
 
@@ -89,14 +130,7 @@ router.get("/conversations/:id", async (req, res) => {
     return;
   }
 
-  if (req.user?.platformRole !== "super_admin" && conversation.tenantId !== req.user?.tenantId) {
-    res.status(403).json({ error: "Access denied to this tenant" });
-    return;
-  }
-
-  const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
-  const userFn = req.user?.userFunction as UserFunction | undefined;
-  if (!isAdmin && (userFn === "vendedor" || userFn === "suporte") && conversation.assignedTo !== req.user?.sub) {
+  if (!(await canAccessConversation(req, conversation.tenantId, conversation.id))) {
     res.status(403).json({ error: "Access denied to this conversation" });
     return;
   }
@@ -121,14 +155,7 @@ router.patch("/conversations/:id", async (req, res) => {
     return;
   }
 
-  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
-    res.status(403).json({ error: "Access denied to this tenant" });
-    return;
-  }
-
-  const isAdmin2 = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
-  const userFn2 = req.user?.userFunction as UserFunction | undefined;
-  if (!isAdmin2 && (userFn2 === "vendedor" || userFn2 === "suporte") && existing.assignedTo !== req.user?.sub) {
+  if (!(await canAccessConversation(req, existing.tenantId, existing.id))) {
     res.status(403).json({ error: "Access denied to this conversation" });
     return;
   }
@@ -158,14 +185,7 @@ router.patch("/conversations/:id/release-lock", async (req, res) => {
     return;
   }
 
-  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
-    res.status(403).json({ error: "Access denied to this tenant" });
-    return;
-  }
-
-  const isAdminRl = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
-  const userFnRl = req.user?.userFunction as UserFunction | undefined;
-  if (!isAdminRl && (userFnRl === "vendedor" || userFnRl === "suporte") && existing.assignedTo !== req.user?.sub) {
+  if (!(await canAccessConversation(req, existing.tenantId, existing.id))) {
     res.status(403).json({ error: "Access denied — conversation not assigned to you" });
     return;
   }
@@ -202,14 +222,7 @@ router.delete("/conversations/:id", async (req, res) => {
     return;
   }
 
-  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
-    res.status(403).json({ error: "Access denied to this tenant" });
-    return;
-  }
-
-  const isAdmin3 = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
-  const userFn3 = req.user?.userFunction as UserFunction | undefined;
-  if (!isAdmin3 && (userFn3 === "vendedor" || userFn3 === "suporte") && existing.assignedTo !== req.user?.sub) {
+  if (!(await canAccessConversation(req, existing.tenantId, existing.id))) {
     res.status(403).json({ error: "Access denied to this conversation" });
     return;
   }
