@@ -11,6 +11,7 @@ import {
 } from "@workspace/db";
 import { createGoogleEvent, updateGoogleEvent, deleteGoogleEvent } from "../lib/google-calendar.js";
 import { generateSpinForActivity } from "./spin.js";
+import { recordIntelligenceEvent } from "../services/customer-intelligence-history.js";
 
 const router: IRouter = Router();
 
@@ -31,6 +32,24 @@ router.post("/activities", async (req, res) => {
     .values(parsed.data)
     .returning();
   res.status(201).json(activity);
+
+  void recordIntelligenceEvent({
+    tenantId: activity.tenantId,
+    leadId: activity.leadId,
+    eventType: "activity_created",
+    title: `Atividade criada: ${activity.titulo}`,
+    summary: activity.descricao ?? null,
+    sourceModule: "activities",
+    sourceId: activity.id,
+    metadata: {
+      tipo: activity.tipo,
+      status: activity.status,
+      dealId: activity.dealId ?? null,
+      dataVencimento: activity.dataVencimento?.toISOString?.() ?? activity.dataVencimento ?? null,
+      responsavelId: activity.responsavelId ?? null,
+    },
+    log: req.log,
+  });
 
   // Async tasks for reuniao (SPIN briefing + Google Calendar)
   if (activity.tipo === "reuniao") {
@@ -238,6 +257,25 @@ router.patch("/activities/:id", async (req, res) => {
     .returning();
 
   res.json(activity);
+
+  void recordIntelligenceEvent({
+    tenantId: activity.tenantId,
+    leadId: activity.leadId,
+    eventType: parsed.data.status === "concluida" ? "activity_completed" : "activity_updated",
+    title: parsed.data.status === "concluida"
+      ? `Atividade concluída: ${activity.titulo}`
+      : `Atividade atualizada: ${activity.titulo}`,
+    summary: activity.descricao ?? null,
+    sourceModule: "activities",
+    sourceId: activity.id,
+    metadata: {
+      tipo: activity.tipo,
+      status: activity.status,
+      dealId: activity.dealId ?? null,
+      concluidaEm: activity.concluidaEm?.toISOString?.() ?? activity.concluidaEm ?? null,
+    },
+    log: req.log,
+  });
 
   // Async Google Calendar sync on update
   const agendaId = activity.agendaId ?? existing.agendaId;
