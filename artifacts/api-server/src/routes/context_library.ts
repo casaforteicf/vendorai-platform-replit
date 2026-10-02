@@ -3,8 +3,9 @@ import { pool } from "@workspace/db";
 
 const router: IRouter = Router();
 const KINDS = new Set([
-  "assunto", "produto", "servico", "obra", "case", "ferramenta",
-  "processo", "diferencial", "promocao", "prova", "referencia",
+  "assunto", "empresa", "marca", "produto", "servico", "obra", "projeto",
+  "case", "equipe", "campanha", "conteudo", "ferramenta", "processo",
+  "diferencial", "promocao", "prova", "documento", "referencia",
 ]);
 const STATUSES = new Set(["draft", "approved", "archived"]);
 
