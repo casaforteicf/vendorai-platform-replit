@@ -213,15 +213,39 @@ export async function handleOAuth(req: IncomingMessage, res: ServerResponse, url
         const claims = read(raw);
         if (claims?.type !== "refresh" || claims.iss !== issuer() || claims.instance !== instance() || claims.client !== client || claims.exp <= now() ||
             revokedFamilies.has(claims.family) || (p.get("resource") && p.get("resource") !== claims.aud) || (p.get("scope") && p.get("scope") !== claims.scope)) { fail(res, "invalid_grant"); return true; }
+        const replayKey = String(claims.jti || hash(raw));
+        if (usedRefreshes.has(replayKey)) {
+          revokedFamilies.set(claims.family, { exp: claims.exp });
+          fail(res, "invalid_grant");
+          return true;
+        }
+        usedRefreshes.set(replayKey, {
+          client: claims.client,
+          redirect: "",
+          challenge: "",
+          resource: claims.aud,
+          scope: claims.scope,
+          family: claims.family,
+          exp: claims.exp,
+        });
         grant = { client: claims.client, redirect: "", challenge: "", resource: claims.aud, scope: claims.scope, family: claims.family, exp: claims.exp };
       }
       if (!grant) { fail(res, "invalid_grant"); return true; }
       issue(res, grant);
     } else if (req.method === "POST" && path === "/oauth/revoke") {
       const p = new URLSearchParams(await body(req));
-      const id = hash(p.get("token") || "");
-      const grant = refreshes.get(id);
-      if (grant?.client === p.get("client_id")) { revokedFamilies.set(grant.family, { exp: now() + 31 * 86400 }); refreshes.delete(id); }
+      const rawToken = p.get("token") || "";
+      const claims = read(rawToken);
+      if (claims?.type === "refresh" && claims.client === p.get("client_id") && claims.family) {
+        revokedFamilies.set(claims.family, { exp: Number(claims.exp) || now() + 31 * 86400 });
+      } else {
+        const id = hash(rawToken);
+        const grant = refreshes.get(id);
+        if (grant?.client === p.get("client_id")) {
+          revokedFamilies.set(grant.family, { exp: grant.exp });
+          refreshes.delete(id);
+        }
+      }
       json(res, 200, {});
     } else fail(res, "not_found", 404);
   } catch { if (!res.headersSent) fail(res); else res.end(); }
