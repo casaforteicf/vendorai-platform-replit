@@ -26,6 +26,8 @@ import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 import { generateSupportReportDraft } from "../services/support-report.js";
 import { requestSupportFeedback } from "../services/support-feedback.js";
 import { canAdvanceWorkCard, TERMINAL_WORK_STAGES } from "../lib/pipeline-progress.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
+import { generateDeliveryAcceptancePdf } from "../lib/delivery-acceptance-pdf.js";
 
 const router: IRouter = Router();
 
@@ -50,6 +52,45 @@ const EXECUTION_STAGES = [
   "cancelado",
 ] as const;
 
+const EXECUTION_STAGE_REQUIREMENTS: Record<string, string[]> = {
+  pedido_confirmado: ["pedido_contexto"],
+  liberacao_financeira: ["liberacao_financeira"],
+  liberacao_medidas: ["relatorio_medidas"],
+  projeto: ["projeto_aprovado"],
+  producao_a_iniciar: ["pre_requisitos_producao"],
+  producao_em_andamento: ["registro_producao"],
+  producao_finalizada: ["qualidade_producao"],
+  aguardando_liberacao: ["motivo_bloqueio"],
+  liberado: ["liberacao_operacional"],
+  agenda_entrega: ["agenda_entrega"],
+  em_transporte: ["checklist_transporte"],
+  instalacao_a_iniciar: ["pre_instalacao"],
+  instalacao_em_andamento: ["checklist_instalacao"],
+  instalacao_finalizada: ["conferencia_instalacao"],
+  entrega_obra: ["vistoria_aceite"],
+  pos_venda: ["pacote_entrega"],
+};
+
+function completedStageGate(card: typeof workCardsTable.$inferSelect, key: string): boolean {
+  const metadata = (card.metadata ?? {}) as Record<string, unknown>;
+  const stageGates = (metadata.stageGates && typeof metadata.stageGates === "object")
+    ? metadata.stageGates as Record<string, unknown>
+    : {};
+  const value = stageGates[key];
+  return value === true || Boolean(value && typeof value === "object" && (value as Record<string, unknown>).completed === true);
+}
+
+function missingTransitionRequirements(card: typeof workCardsTable.$inferSelect, targetStage: string): Array<{ stage: string; key: string }> {
+  if (card.pipeline !== "execucao") return [];
+  const currentIndex = EXECUTION_STAGES.indexOf(card.etapa as typeof EXECUTION_STAGES[number]);
+  const targetIndex = EXECUTION_STAGES.indexOf(targetStage as typeof EXECUTION_STAGES[number]);
+  if (currentIndex < 0 || targetIndex <= currentIndex) return [];
+  return EXECUTION_STAGES
+    .slice(currentIndex, targetIndex)
+    .flatMap((stage) => (EXECUTION_STAGE_REQUIREMENTS[stage] ?? []).map((key) => ({ stage, key })))
+    .filter(({ key }) => !completedStageGate(card, key));
+}
+
 const SUPPORT_STAGES = [
   "chamado_cliente",
   "agendamento_assistencia",
@@ -59,6 +100,65 @@ const SUPPORT_STAGES = [
   "fechamento_assistencia",
   "cancelado",
 ] as const;
+
+
+const stageFormCompleteSchema = z.object({
+  key: z.string().min(1),
+  data: z.record(z.string(), z.unknown()),
+});
+
+const inspectionStatusSchema = z.enum(["conforme", "nao_conforme", "nao_se_aplica"]);
+
+const deliveryAcceptanceSchema = z.object({
+  receiver: z.object({
+    role: z.enum(["cliente", "delegado"]),
+    name: z.string().trim().min(2).max(200),
+    document: z.string().trim().max(100).optional().nullable(),
+    phone: z.string().trim().max(50).optional().nullable(),
+    email: z.string().trim().email().optional().nullable(),
+    relationship: z.string().trim().max(150).optional().nullable(),
+    authorization: z.string().trim().max(500).optional().nullable(),
+  }),
+  acceptanceType: z.enum(["sem_ressalvas", "com_ressalvas"]),
+  observations: z.string().max(10000).optional().nullable(),
+  items: z.array(z.object({
+    name: z.string().trim().min(1),
+    quantity: z.number().positive().optional().nullable(),
+    installation: inspectionStatusSchema,
+    functionality: inspectionStatusSchema,
+    interiorFinish: inspectionStatusSchema,
+    exteriorFinish: inspectionStatusSchema,
+    status: inspectionStatusSchema,
+    observation: z.string().max(5000).optional().nullable(),
+    evidenceAttachmentIds: z.array(z.string()).default([]),
+  })).min(1),
+  signatures: z.object({
+    client: z.object({
+      name: z.string().trim().min(2),
+      dataUrl: z.string().startsWith("data:image/").max(2_000_000),
+    }),
+    company: z.object({
+      name: z.string().trim().min(2),
+      dataUrl: z.string().startsWith("data:image/").max(2_000_000),
+    }),
+  }),
+  manualAttachmentIds: z.array(z.string()).default([]),
+});
+
+function stageFormDataValid(key: string, data: Record<string, unknown>): string | null {
+  const items = Array.isArray(data.items) ? data.items as Array<Record<string, unknown>> : [];
+  if (["relatorio_medidas", "checklist_transporte", "checklist_instalacao"].includes(key)) {
+    if (items.length === 0) return "O formulário precisa conter os itens do pedido/lote.";
+    if (items.some((item) => item.checked !== true)) return "Todos os itens precisam ser conferidos antes de concluir.";
+  }
+  if (key === "conferencia_instalacao") {
+    const checks = ["itensConferidos", "funcionamentoTestado", "acabamentoConferido", "limpezaFinal"];
+    if (checks.some((field) => data[field] !== true)) return "Conclua todas as verificações da instalação antes de liberar a vistoria.";
+  }
+  return null;
+}
+
+const objectStorage = new ObjectStorageService();
 
 const SUPPORT_CATEGORIES = [
   "defeito",
@@ -1046,6 +1146,25 @@ router.patch("/work-cards/:id", async (req, res) => {
     return;
   }
 
+  const advancingExecutionStage =
+    targetPipeline === "execucao"
+    && targetStage !== existing.etapa
+    && targetStage !== "cancelado"
+    && canAdvanceWorkCard(existing.pipeline, existing.etapa, targetStage)
+    && !manualAdminCorrection;
+  if (advancingExecutionStage) {
+    const missing = missingTransitionRequirements(existing, targetStage);
+    if (missing.length > 0) {
+      res.status(409).json({
+        error: "STAGE_REQUIREMENTS_PENDING",
+        message: "Conclua os requisitos obrigatórios das etapas anteriores antes de avançar.",
+        stage: existing.etapa,
+        missing,
+      });
+      return;
+    }
+  }
+
   const data: Record<string, unknown> = { ...parsed.data, updatedAt: new Date() };
   const starting = ["producao_em_andamento", "em_transporte", "instalacao_em_andamento", "execucao_assistencia"].includes(targetStage);
   const finishing = ["concluido", "entrega_obra", "instalacao_finalizada", "fechamento_assistencia"].includes(targetStage);
@@ -1084,6 +1203,7 @@ router.patch("/work-cards/:id", async (req, res) => {
     if (String(card.dataInicioEfetiva ?? "") !== String(existing.dataInicioEfetiva ?? "")) changedFields.push("início efetivo");
     if (String(card.dataFimPrevista ?? "") !== String(existing.dataFimPrevista ?? "")) changedFields.push("fim previsto");
     if (String(card.dataFimEfetiva ?? "") !== String(existing.dataFimEfetiva ?? "")) changedFields.push("fim efetivo");
+    if (JSON.stringify((card.metadata as any)?.stageGates ?? {}) !== JSON.stringify((existing.metadata as any)?.stageGates ?? {})) changedFields.push("requisitos da etapa");
     if (changedFields.length > 0) {
       await recordWorkHistory({
         tenantId: card.tenantId,
@@ -1098,6 +1218,433 @@ router.patch("/work-cards/:id", async (req, res) => {
   }
 
   res.json(card);
+});
+
+
+router.post("/work-cards/:id/stage-form/complete", async (req, res) => {
+  const parsed = stageFormCompleteSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message, issues: parsed.error.issues });
+    return;
+  }
+  const [card] = await db.select().from(workCardsTable).where(eq(workCardsTable.id, String(req.params.id))).limit(1);
+  if (!card || card.pipeline !== "execucao") {
+    res.status(404).json({ error: "Card de execução não encontrado" });
+    return;
+  }
+  if (!canAccessTenant(req, card.tenantId)) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+  if (restrictedToOwnWork(req) && card.responsavelId && card.responsavelId !== req.user?.sub) {
+    res.status(403).json({ error: "Este card pertence a outro responsável" });
+    return;
+  }
+  const required = EXECUTION_STAGE_REQUIREMENTS[card.etapa] ?? [];
+  if (!required.includes(parsed.data.key)) {
+    res.status(409).json({ error: "FORM_NOT_REQUIRED_FOR_STAGE", message: "Este formulário não pertence à etapa atual." });
+    return;
+  }
+  const validationError = stageFormDataValid(parsed.data.key, parsed.data.data);
+  if (validationError) {
+    res.status(422).json({ error: "FORM_INCOMPLETE", message: validationError });
+    return;
+  }
+
+  const metadata = (card.metadata ?? {}) as Record<string, unknown>;
+  const currentForms = metadata.stageForms && typeof metadata.stageForms === "object"
+    ? { ...(metadata.stageForms as Record<string, unknown>) }
+    : {};
+  const currentGates = metadata.stageGates && typeof metadata.stageGates === "object"
+    ? { ...(metadata.stageGates as Record<string, unknown>) }
+    : {};
+  const previous = currentForms[parsed.data.key] && typeof currentForms[parsed.data.key] === "object"
+    ? currentForms[parsed.data.key] as Record<string, unknown>
+    : {};
+  const version = Number(previous.version ?? 0) + 1;
+  const completedAt = new Date().toISOString();
+
+  currentForms[parsed.data.key] = {
+    version,
+    data: parsed.data.data,
+    completedAt,
+    completedBy: req.user?.sub ?? null,
+    stage: card.etapa,
+  };
+  currentGates[parsed.data.key] = {
+    completed: true,
+    completedAt,
+    completedBy: req.user?.sub ?? null,
+    stage: card.etapa,
+    source: "stage_form",
+    version,
+  };
+
+  const [updated] = await db.update(workCardsTable).set({
+    metadata: { ...metadata, stageForms: currentForms, stageGates: currentGates },
+    updatedAt: new Date(),
+  }).where(eq(workCardsTable.id, card.id)).returning();
+
+  if (card.leadId) {
+    await recordWorkHistory({
+      tenantId: card.tenantId,
+      leadId: card.leadId,
+      dealId: card.dealId,
+      tipo: "tarefa",
+      titulo: `${card.codigo}: formulário da etapa concluído`,
+      descricao: `Requisito ${parsed.data.key} concluído pela versão ${version} do formulário.`,
+      responsavelId: card.responsavelId,
+    });
+  }
+  res.json({ card: updated, key: parsed.data.key, version });
+});
+
+router.post("/work-cards/:id/delivery-acceptance/confirm", async (req, res) => {
+  const parsed = deliveryAcceptanceSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message, issues: parsed.error.issues });
+    return;
+  }
+  const [card] = await db.select().from(workCardsTable).where(eq(workCardsTable.id, String(req.params.id))).limit(1);
+  if (!card || card.pipeline !== "execucao") {
+    res.status(404).json({ error: "Card de execução não encontrado" });
+    return;
+  }
+  if (!canAccessTenant(req, card.tenantId)) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+  if (restrictedToOwnWork(req) && card.responsavelId && card.responsavelId !== req.user?.sub) {
+    res.status(403).json({ error: "Este card pertence a outro responsável" });
+    return;
+  }
+  if (card.etapa !== "entrega_obra") {
+    res.status(409).json({ error: "DELIVERY_ACCEPTANCE_STAGE_REQUIRED", message: "O aceite só pode ser concluído na etapa Entrega da obra." });
+    return;
+  }
+  const nonConforming = parsed.data.items.filter((item) =>
+    [item.installation, item.functionality, item.interiorFinish, item.exteriorFinish, item.status].includes("nao_conforme")
+  );
+  if (nonConforming.some((item) => !item.observation?.trim())) {
+    res.status(422).json({ error: "NON_CONFORMITY_OBSERVATION_REQUIRED", message: "Toda não conformidade exige observação." });
+    return;
+  }
+  if (nonConforming.some((item) => item.evidenceAttachmentIds.length === 0)) {
+    res.status(422).json({ error: "NON_CONFORMITY_EVIDENCE_REQUIRED", message: "Toda não conformidade exige ao menos uma evidência anexada." });
+    return;
+  }
+  if (parsed.data.receiver.role === "delegado" && !parsed.data.receiver.authorization?.trim()) {
+    res.status(422).json({ error: "DELEGATE_AUTHORIZATION_REQUIRED", message: "Informe como a pessoa foi autorizada pelo cliente." });
+    return;
+  }
+
+  const [lead] = card.leadId
+    ? await db.select({
+        nome: leadsTable.nome, empresa: leadsTable.empresa, telefone: leadsTable.telefone, endereco: leadsTable.endereco,
+      }).from(leadsTable).where(and(eq(leadsTable.id, card.leadId), eq(leadsTable.tenantId, card.tenantId))).limit(1)
+    : [];
+  const signedAt = new Date();
+  const metadata = (card.metadata ?? {}) as Record<string, unknown>;
+  const previous = metadata.deliveryAcceptance && typeof metadata.deliveryAcceptance === "object"
+    ? metadata.deliveryAcceptance as Record<string, unknown>
+    : {};
+  const version = Number(previous.version ?? 0) + 1;
+  const acceptanceId = randomUUID();
+
+  const pdf = await generateDeliveryAcceptancePdf({
+    code: `${card.codigo}-R${version}`,
+    title: card.titulo,
+    client: lead?.empresa || lead?.nome || card.leadId || "Cliente",
+    order: card.dealId,
+    address: lead?.endereco ?? null,
+    receiverName: parsed.data.receiver.name,
+    receiverDocument: parsed.data.receiver.document,
+    receiverRole: parsed.data.receiver.role,
+    acceptanceType: parsed.data.acceptanceType,
+    observations: parsed.data.observations,
+    items: parsed.data.items,
+    clientSignatureDataUrl: parsed.data.signatures.client.dataUrl,
+    companySignatureDataUrl: parsed.data.signatures.company.dataUrl,
+    companySignerName: parsed.data.signatures.company.name,
+    signedAt,
+  });
+
+  let documentUrl: string | null = null;
+  let attachmentId: string | null = null;
+  try {
+    const stored = await objectStorage.savePrivateBuffer(
+      pdf,
+      "application/pdf",
+      `Termo-de-Entrega-e-Aceite-${card.codigo}-R${version}.pdf`,
+    );
+    documentUrl = `/api/storage${stored}`;
+    const [attachment] = await db.insert(workCardAttachmentsTable).values({
+      tenantId: card.tenantId,
+      workCardId: card.id,
+      leadId: card.leadId,
+      criadoPor: req.user?.sub ?? null,
+      origem: "entrega_aceite",
+      nome: `Termo de Entrega e Aceite - ${card.codigo} - R${version}.pdf`,
+      url: documentUrl,
+      mimeType: "application/pdf",
+      tamanho: pdf.length,
+      descricao: "Termo de entrega, vistoria e aceite assinado digitalmente.",
+      metadata: { kind: "termo_entrega_aceite", acceptanceId, version, immutable: true },
+    }).returning();
+    attachmentId = attachment.id;
+  } catch (error) {
+    req.log.warn({ err: error, workCardId: card.id }, "delivery-acceptance: storage indisponível; arquivando PDF como data URL");
+    documentUrl = `data:application/pdf;base64,${pdf.toString("base64")}`;
+    const [attachment] = await db.insert(workCardAttachmentsTable).values({
+      tenantId: card.tenantId,
+      workCardId: card.id,
+      leadId: card.leadId,
+      criadoPor: req.user?.sub ?? null,
+      origem: "entrega_aceite",
+      nome: `Termo de Entrega e Aceite - ${card.codigo} - R${version}.pdf`,
+      url: documentUrl,
+      mimeType: "application/pdf",
+      tamanho: pdf.length,
+      descricao: "Termo de entrega, vistoria e aceite assinado digitalmente.",
+      metadata: { kind: "termo_entrega_aceite", acceptanceId, version, immutable: true, storageFallback: "data_url" },
+    }).returning();
+    attachmentId = attachment.id;
+  }
+
+  const completedAt = signedAt.toISOString();
+  const currentGates = metadata.stageGates && typeof metadata.stageGates === "object"
+    ? { ...(metadata.stageGates as Record<string, unknown>) }
+    : {};
+  currentGates.vistoria_aceite = {
+    completed: true,
+    completedAt,
+    completedBy: req.user?.sub ?? null,
+    stage: card.etapa,
+    source: "delivery_acceptance",
+    version,
+  };
+  const acceptance = {
+    id: acceptanceId,
+    version,
+    immutable: true,
+    ...parsed.data,
+    signedAt: completedAt,
+    signedBy: req.user?.sub ?? null,
+    generatedDocumentAttachmentId: attachmentId,
+    documentUrl,
+  };
+
+  const manualAttachments = parsed.data.manualAttachmentIds.length
+    ? await db.select().from(workCardAttachmentsTable).where(and(
+        eq(workCardAttachmentsTable.workCardId, card.id),
+        inArray(workCardAttachmentsTable.id, parsed.data.manualAttachmentIds),
+      ))
+    : [];
+  let packageSent = false;
+  let packageSendError: string | null = null;
+  const publicDocumentUrl = Boolean(documentUrl && !documentUrl.startsWith("data:"));
+  if (
+    lead?.telefone
+    && publicDocumentUrl
+    && parsed.data.manualAttachmentIds.length > 0
+    && manualAttachments.length === parsed.data.manualAttachmentIds.length
+  ) {
+    try {
+      await sendDirectWhatsAppMessage(
+        card.tenantId,
+        lead.telefone,
+        [
+          "✅ Entrega e vistoria concluídas.",
+          `Termo assinado: ${documentUrl}`,
+          ...manualAttachments.map((attachment) => `Manual: ${attachment.url}`),
+        ].join("\n"),
+        req.log,
+      );
+      packageSent = true;
+      currentGates.pacote_entrega = {
+        completed: true,
+        completedAt,
+        completedBy: req.user?.sub ?? null,
+        stage: "pos_venda",
+        source: "delivery_acceptance_auto_package",
+      };
+    } catch (error) {
+      packageSendError = error instanceof Error ? error.message : String(error);
+      req.log.warn({ err: error, workCardId: card.id }, "delivery-acceptance: pacote automático não enviado; pós-venda ficará pendente");
+    }
+  }
+
+  const deliveryPackage = {
+    status: packageSent ? "sent" : "pending",
+    attemptedAt: completedAt,
+    sentAt: packageSent ? completedAt : null,
+    sentBy: packageSent ? (req.user?.sub ?? null) : null,
+    channel: "whatsapp",
+    termAttachmentId: attachmentId,
+    manualAttachmentIds: parsed.data.manualAttachmentIds,
+    error: packageSendError,
+  };
+
+  const [updated] = await db.update(workCardsTable).set({
+    etapa: "pos_venda",
+    metadata: {
+      ...metadata,
+      stageGates: currentGates,
+      deliveryAcceptance: acceptance,
+      deliveryPackage,
+    },
+    updatedAt: signedAt,
+  }).where(eq(workCardsTable.id, card.id)).returning();
+
+  if (card.leadId) {
+    await recordWorkHistory({
+      tenantId: card.tenantId,
+      leadId: card.leadId,
+      dealId: card.dealId,
+      tipo: "tarefa",
+      titulo: `${card.codigo}: entrega vistoriada e assinada`,
+      descricao: [
+        `Aceite ${parsed.data.acceptanceType === "sem_ressalvas" ? "sem ressalvas" : "com ressalvas"} · versão R${version} · recebedor: ${parsed.data.receiver.name}.`,
+        "Card avançado automaticamente para Pós-venda.",
+        packageSent ? `Pacote com termo e ${manualAttachments.length} manual(is) enviado automaticamente.` : "Pacote de entrega pendente de envio.",
+      ].join(" "),
+      responsavelId: card.responsavelId,
+    });
+  }
+
+  res.json({
+    card: updated,
+    acceptance,
+    pdfStored: Boolean(documentUrl),
+    publicDocumentUrl,
+    documentUrl,
+    attachmentId,
+    advancedToPostSale: true,
+    packageSent,
+    packagePending: !packageSent,
+  });
+});
+
+router.post("/work-cards/:id/delivery-package/send", async (req, res) => {
+  const bodySchema = z.object({ manualAttachmentIds: z.array(z.string()).min(1) });
+  const parsed = bodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: "MANUAL_REQUIRED", message: "Selecione ao menos um manual para o pacote de entrega." });
+    return;
+  }
+  const [card] = await db.select().from(workCardsTable).where(eq(workCardsTable.id, String(req.params.id))).limit(1);
+  if (!card || card.pipeline !== "execucao") { res.status(404).json({ error: "Card não encontrado" }); return; }
+  if (!canAccessTenant(req, card.tenantId)) { res.status(403).json({ error: "Access denied to this tenant" }); return; }
+  if (card.etapa !== "pos_venda") {
+    res.status(409).json({ error: "POST_SALE_STAGE_REQUIRED", message: "O pacote de entrega é enviado na etapa Pós-venda." });
+    return;
+  }
+  const acceptance = (card.metadata as Record<string, unknown> | null)?.deliveryAcceptance as any;
+  if (!acceptance?.generatedDocumentAttachmentId) {
+    res.status(409).json({ error: "SIGNED_TERM_REQUIRED", message: "O termo de entrega assinado precisa existir antes do envio do pacote." });
+    return;
+  }
+  const [lead] = card.leadId
+    ? await db.select({ nome: leadsTable.nome, empresa: leadsTable.empresa, telefone: leadsTable.telefone })
+        .from(leadsTable).where(and(eq(leadsTable.id, card.leadId), eq(leadsTable.tenantId, card.tenantId))).limit(1)
+    : [];
+  if (!lead?.telefone) {
+    res.status(422).json({ error: "CLIENT_PHONE_REQUIRED", message: "O cliente precisa ter telefone para receber o pacote pelo WhatsApp." });
+    return;
+  }
+  const attachmentIds = [acceptance.generatedDocumentAttachmentId, ...parsed.data.manualAttachmentIds];
+  const attachments = await db.select().from(workCardAttachmentsTable).where(and(
+    eq(workCardAttachmentsTable.workCardId, card.id),
+    inArray(workCardAttachmentsTable.id, attachmentIds),
+  ));
+  const term = attachments.find((a) => a.id === acceptance.generatedDocumentAttachmentId);
+  const manuals = attachments.filter((a) => parsed.data.manualAttachmentIds.includes(a.id));
+  if (!term || manuals.length !== parsed.data.manualAttachmentIds.length) {
+    res.status(422).json({ error: "PACKAGE_ATTACHMENTS_INVALID", message: "Um ou mais documentos do pacote não foram encontrados neste card." });
+    return;
+  }
+  if (term.url.startsWith("data:")) {
+    res.status(409).json({
+      error: "PUBLIC_DOCUMENT_URL_REQUIRED",
+      message: "O PDF está arquivado internamente, mas o storage público de homologação não está disponível para envio por WhatsApp.",
+    });
+    return;
+  }
+
+  await sendDirectWhatsAppMessage(
+    card.tenantId,
+    lead.telefone,
+    [
+      "✅ Pacote de entrega",
+      `Cliente: ${lead.empresa || lead.nome || "Cliente"}`,
+      `Termo assinado: ${term.url}`,
+      ...manuals.map((attachment) => `Manual: ${attachment.url}`),
+    ].join("\n"),
+    req.log,
+  );
+
+  const metadata = (card.metadata ?? {}) as Record<string, unknown>;
+  const currentGates = metadata.stageGates && typeof metadata.stageGates === "object"
+    ? { ...(metadata.stageGates as Record<string, unknown>) }
+    : {};
+  const sentAt = new Date().toISOString();
+  currentGates.pacote_entrega = {
+    completed: true, completedAt: sentAt, completedBy: req.user?.sub ?? null,
+    stage: card.etapa, source: "delivery_package",
+  };
+  const deliveryPackage = {
+    sentAt, sentBy: req.user?.sub ?? null, channel: "whatsapp",
+    termAttachmentId: term.id, manualAttachmentIds: parsed.data.manualAttachmentIds,
+  };
+  const [updated] = await db.update(workCardsTable).set({
+    metadata: { ...metadata, stageGates: currentGates, deliveryPackage },
+    updatedAt: new Date(),
+  }).where(eq(workCardsTable.id, card.id)).returning();
+
+  if (card.leadId) {
+    await recordWorkHistory({
+      tenantId: card.tenantId, leadId: card.leadId, dealId: card.dealId, tipo: "tarefa",
+      titulo: `${card.codigo}: pacote de entrega enviado`,
+      descricao: `Termo assinado + ${manuals.length} manual(is) enviados ao cliente por WhatsApp.`,
+      responsavelId: card.responsavelId,
+    });
+  }
+  res.json({ card: updated, sent: true, manualCount: manuals.length });
+});
+
+router.get("/work-cards/:id/delivery-acceptance/pdf", async (req, res) => {
+  const [card] = await db.select().from(workCardsTable).where(eq(workCardsTable.id, String(req.params.id))).limit(1);
+  if (!card) { res.status(404).json({ error: "Card não encontrado" }); return; }
+  if (!canAccessTenant(req, card.tenantId)) { res.status(403).json({ error: "Access denied to this tenant" }); return; }
+  const acceptance = (card.metadata as Record<string, unknown> | null)?.deliveryAcceptance as any;
+  if (!acceptance?.signatures?.client?.dataUrl || !acceptance?.signatures?.company?.dataUrl) {
+    res.status(404).json({ error: "Aceite assinado não encontrado" });
+    return;
+  }
+  const [lead] = card.leadId
+    ? await db.select({ nome: leadsTable.nome, empresa: leadsTable.empresa, endereco: leadsTable.endereco })
+        .from(leadsTable).where(and(eq(leadsTable.id, card.leadId), eq(leadsTable.tenantId, card.tenantId))).limit(1)
+    : [];
+  const pdf = await generateDeliveryAcceptancePdf({
+    code: `${card.codigo}-R${acceptance.version ?? 1}`,
+    title: card.titulo,
+    client: lead?.empresa || lead?.nome || card.leadId || "Cliente",
+    order: card.dealId,
+    address: lead?.endereco ?? null,
+    receiverName: acceptance.receiver.name,
+    receiverDocument: acceptance.receiver.document,
+    receiverRole: acceptance.receiver.role,
+    acceptanceType: acceptance.acceptanceType,
+    observations: acceptance.observations,
+    items: acceptance.items,
+    clientSignatureDataUrl: acceptance.signatures.client.dataUrl,
+    companySignatureDataUrl: acceptance.signatures.company.dataUrl,
+    companySignerName: acceptance.signatures.company.name,
+    signedAt: new Date(acceptance.signedAt),
+  });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `inline; filename="Termo-Entrega-${card.codigo}-R${acceptance.version ?? 1}.pdf"`);
+  res.send(pdf);
 });
 
 const supportReportSchema = z.object({
