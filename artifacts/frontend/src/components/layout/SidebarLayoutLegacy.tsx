@@ -998,3 +998,427 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
                 <Clapperboard className="h-3.5 w-3.5" /> Vídeo com IA
               </Link>
               <Link
+                href="/content-autopilot"
+                onClick={onNavigate}
+                aria-label="Sites — Gerador de Sites e Content Autopilot"
+                title="Sites — Gerador de Sites e Content Autopilot"
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+                  location === "/content-autopilot"
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <Globe className="h-3.5 w-3.5" /> Sites
+              </Link>
+              <Link
+                href="/content?tab=campanhas"
+                onClick={onNavigate}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+                  isCampanhas
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <Megaphone className="h-3.5 w-3.5" /> Campanhas
+              </Link>
+              <Link
+                href="/ads"
+                onClick={onNavigate}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+                  location === "/ads"
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <Target className="h-3.5 w-3.5" /> Anúncios Patrocinados
+              </Link>
+              <Link
+                href="/marketing/facebook-marketplace"
+                onClick={onNavigate}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+                  location === "/marketing/facebook-marketplace"
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <Store className="h-3.5 w-3.5" /> Marketplace Facebook
+              </Link>
+              <Link
+                href="/marketing/plano-de-midia"
+                onClick={onNavigate}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+                  location === "/marketing/plano-de-midia"
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <Sparkles className="h-3.5 w-3.5" /> Plano de Mídia (IA)
+              </Link>
+            </div>
+          )}
+        </div>
+
+        {/* Relatórios submenu */}
+        <div>
+          <button
+            onClick={() => setRelatoriosOpen((v) => {
+              const next = !v;
+              window.localStorage.setItem(relatoriosStorageKey, String(next));
+              return next;
+            })}
+            className={cn(
+              "w-full flex min-h-[44px] items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition-all",
+              isRelatorio
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:bg-sidebar-accent/80 hover:text-foreground"
+            )}
+          >
+            <div className="flex items-center gap-3">
+              <BarChart3 className="h-4 w-4" />
+              Relatórios
+            </div>
+            {relatoriosOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          </button>
+          {relatoriosOpen && (
+            <div className="ml-6 mt-1 space-y-1">
+              {analyticsNav.map((item) => (
+                <NavItem key={item.href} item={item} onNavigate={onNavigate} />
+              ))}
+              <Link
+                href="/relatorios"
+                onClick={onNavigate}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+                  location === "/relatorios"
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <BarChart3 className="h-3.5 w-3.5" /> Visão Geral
+              </Link>
+              <Link
+                href="/relatorios/ganhos-mes"
+                onClick={onNavigate}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+                  location === "/relatorios/ganhos-mes"
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <Trophy className="h-3.5 w-3.5" /> Ganhos do mês
+              </Link>
+              <Link
+                href="/relatorios/tipo-cliente"
+                onClick={onNavigate}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+                  location === "/relatorios/tipo-cliente"
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <Users className="h-3.5 w-3.5" /> Tipo de cliente
+              </Link>
+              <Link
+                href="/relatorios/dores"
+                onClick={onNavigate}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+                  location === "/relatorios/dores"
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <Target className="h-3.5 w-3.5" /> Dores dos leads
+              </Link>
+            </div>
+          )}
+        </div>
+
+        {aiKnowledgeNav.length > 0 && (
+          <GroupedNavSection
+            label="IA & Conhecimento"
+            icon={Bot}
+            active={groupActive(aiKnowledgeNav)}
+          >
+            {aiKnowledgeNav.map((item) => (
+              <NavItem key={item.href} item={item} onNavigate={onNavigate} />
+            ))}
+          </GroupedNavSection>
+        )}
+
+        {administrationNav.length > 0 && (
+          <GroupedNavSection
+            label="Administração"
+            icon={Settings}
+            active={groupActive(administrationNav)}
+          >
+            {administrationNav.map((item) => (
+              <NavItem key={item.href} item={item} onNavigate={onNavigate} />
+            ))}
+          </GroupedNavSection>
+        )}
+
+        {inteligenciaNav.length > 0 && (
+          <GroupedNavSection
+            label={scoutVerticalLabel ? `Inteligência · ${scoutVerticalLabel}` : "Inteligência"}
+            icon={TrendingUp}
+            active={groupActive(inteligenciaNav)}
+          >
+            {inteligenciaNav.map((item) => (
+              <NavItem key={item.href} item={item} onNavigate={onNavigate} />
+            ))}
+          </GroupedNavSection>
+        )}
+
+        {hubNav.length > 0 && (
+          <GroupedNavSection
+            label="Rede & Ecossistema"
+            icon={Handshake}
+            active={groupActive(hubNav)}
+          >
+            {hubNav.map((item) => (
+              <NavItem key={item.href} item={item} onNavigate={onNavigate} />
+            ))}
+          </GroupedNavSection>
+        )}
+
+        {adminNavigation.length > 0 && (
+          <GroupedNavSection
+            label="Super Admin"
+            icon={Shield}
+            active={groupActive(adminNavigation)}
+          >
+            {adminNavigation.map((item) => (
+              <NavItem key={item.href} item={item} onNavigate={onNavigate} />
+            ))}
+          </GroupedNavSection>
+        )}
+      </>
+    );
+  }
+
+  function UserFooter({ mobile = false }: { mobile?: boolean }) {
+    const canShowUtilities = mobile || sidebarExpanded;
+    const showUtilities = canShowUtilities && sidebarUtilitiesExpanded;
+
+    return (
+      <div
+        data-vendorai-sidebar-footer="true"
+        data-vendorai-sidebar-utilities-expanded={showUtilities ? "true" : "false"}
+        className="border-t border-sidebar-border/70"
+      >
+        {canShowUtilities && (
+          <button
+            type="button"
+            onClick={toggleSidebarUtilities}
+            className="flex min-h-[40px] w-full items-center justify-between gap-2 px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent/80 hover:text-foreground"
+            aria-expanded={showUtilities}
+            aria-label={showUtilities ? "Ocultar usuário e atalhos" : "Mostrar usuário e atalhos"}
+            title={showUtilities ? "Ocultar IA Assistente, usuário, ajuda, novidades e sair" : "Mostrar IA Assistente, usuário, ajuda, novidades e sair"}
+          >
+            <span className="flex items-center gap-2">
+              <User2 className="h-4 w-4" />
+              Conta e atalhos
+            </span>
+            {showUtilities ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+          </button>
+        )}
+
+        {showUtilities && (
+          <>
+            {/* O UnifiedAssistantLauncher usa este slot por portal; quando
+                os atalhos estão recolhidos o slot some e o botão de IA
+                também fica oculto automaticamente. */}
+            <div data-vendorai-unified-assistant-slot className="px-3 pb-2" />
+
+            <div className="px-4 pb-4">
+              <div className="flex items-center gap-3 mb-3 px-2">
+                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm shrink-0">
+                  {user?.name?.charAt(0).toUpperCase() || "U"}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{user?.name}</p>
+                  <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+                </div>
+              </div>
+
+              <div className="mb-1 space-y-1">
+                <Link
+                  href="/faq"
+                  className={cn(
+                    "flex min-h-[40px] items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                    location === "/faq"
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:bg-sidebar-accent/80 hover:text-foreground"
+                  )}
+                >
+                  <HelpCircle className="h-4 w-4" />
+                  Central de Ajuda
+                </Link>
+                <Suspense fallback={null}><NovidadesBell /></Suspense>
+                <div
+                  data-ai-budget-sidebar-slot
+                  className="flex min-h-7 items-center justify-end px-2 pt-1"
+                  aria-label="Uso de IA"
+                />
+              </div>
+
+              <Button
+                variant="outline"
+                className="w-full justify-start text-muted-foreground hover:text-foreground min-h-[44px]"
+                onClick={logout}
+              >
+                <LogOut className="h-4 w-4 mr-2" />
+                Sair
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <>
+    <div className="flex h-screen bg-background">
+      {/* ── Desktop sidebar ────────────────────────────────── */}
+      <div
+        className={`hidden md:flex sticky top-0 h-screen ${sidebarExpanded ? "w-[clamp(240px,14.2vw,272px)]" : "w-[68px]"} bg-sidebar/92 backdrop-blur-2xl border-r border-sidebar-border/70 shrink-0 overflow-hidden transition-[width] duration-200 ease-out`}
+      >
+        <div className="w-[clamp(240px,14.2vw,272px)] shrink-0 flex flex-col h-full">
+          <div className="p-3 border-b border-sidebar-border/70 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              className="shrink-0 h-9 w-9 flex items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-foreground transition-colors"
+              aria-label={sidebarExpanded ? "Recolher menu" : "Expandir menu"}
+              title={sidebarExpanded ? "Recolher menu" : "Expandir menu"}
+            >
+              {sidebarExpanded ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            </button>
+            {sidebarExpanded && (
+              <div className="min-w-0 flex-1">
+                <LogoBranding size="lg" />
+              </div>
+            )}
+          </div>
+          <div className="px-3 py-2 border-b">
+            <Suspense fallback={null}><StoreSwitcher /></Suspense>
+          </div>
+          <div className="vendor-scrollbar flex-1 py-4 flex flex-col gap-1 px-3 overflow-y-auto">
+            <NavLinks />
+          </div>
+          <UserFooter />
+        </div>
+      </div>
+
+      {/* ── Mobile drawer overlay ───────────────────────────── */}
+      {mobileOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setMobileOpen(false)}
+          />
+          <div className="absolute left-0 top-0 h-full w-[min(88vw,320px)] bg-sidebar/98 backdrop-blur-2xl flex flex-col shadow-2xl">
+            <div className="flex items-center justify-between p-4 border-b">
+              <LogoBranding size="md" />
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setMobileOpen(false)}
+                className="h-9 w-9"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+            <div className="px-3 py-2 border-b">
+              <Suspense fallback={null}><StoreSwitcher /></Suspense>
+            </div>
+            <div className="flex-1 py-3 flex flex-col gap-1 px-3 overflow-y-auto">
+              <NavLinks onNavigate={() => setMobileOpen(false)} />
+            </div>
+            <UserFooter mobile />
+          </div>
+        </div>
+      )}
+
+      {/* ── Main content ────────────────────────────────────── */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Mobile top bar */}
+        <header className="md:hidden flex items-center gap-3 px-4 py-3 border-b border-border/70 bg-background/90 backdrop-blur-xl shrink-0">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setMobileOpen(true)}
+            className="h-9 w-9"
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+          <LogoBranding size="sm" />
+        </header>
+
+        {isSuperAdmin && tenantOverride && (
+          <div className="shrink-0 flex items-center justify-between gap-3 px-4 py-2 bg-amber-50 border-b border-amber-200 text-amber-800 text-sm">
+            <div className="flex items-center gap-2 min-w-0">
+              <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
+              <span className="truncate">
+                {tenantOverride.preview ? (
+                  <>
+                    Preview de <strong>{tenantOverride.vertical}</strong> — somente layout, sem tenant
+                  </>
+                ) : (
+                  <>
+                    Visualizando módulo de{" "}
+                    <strong>{tenantOverride.vertical}</strong> — Tenant:{" "}
+                    <strong>{tenantOverride.name}</strong>
+                  </>
+                )}
+              </span>
+            </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-amber-700 hover:text-amber-900 hover:bg-amber-100 shrink-0 gap-1.5"
+              onClick={() => { clearTenantOverride(); }}
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              {tenantOverride.preview ? "Sair do preview" : "Sair do tenant"}
+            </Button>
+          </div>
+        )}
+        <Suspense fallback={null}><AccessLicenseBanner /></Suspense>
+        {/* Achado real: /conversas (painel duplo tipo WhatsApp Business) e
+            /deals /negocios (kanban horizontal) têm SUAS PRÓPRIAS áreas de
+            rolagem internas -- mas o <main> aqui tinha overflow-y-auto
+            sempre ligado, então a página inteira rolava junto, empurrando
+            a barra de rolagem horizontal do kanban lá pro final da página
+            (achado real: D-006, "precisa abrir até o último card embaixo
+            pra rolar"). Pra essas telas, o <main> não deve rolar por conta
+            própria -- quem rola é o conteúdo interno (que já usa h-full +
+            flex-1 min-h-0 certinho, só faltava a altura vir contida). */}
+        {(() => {
+          const semRolagemPropria = location === "/conversations" || location === "/deals" || location === "/negocios";
+          return (
+            <main className={`vendor-scrollbar min-h-0 flex-1 touch-pan-y overscroll-y-contain ${semRolagemPropria ? "overflow-hidden" : "overflow-y-auto"}`}>
+              <div className={semRolagemPropria ? "h-full" : "vendor-page-canvas"}>{children}</div>
+            </main>
+          );
+        })()}
+      </div>
+    </div>
+    {/* Hide global support widget on /arch/* routes (ARQDOR has its own shell) */}
+    {!location.startsWith("/arch") && supportReady ? (
+      <Suspense fallback={null}>
+        <SupportChatWidget />
+      </Suspense>
+    ) : null}
+    </>
+  );
+}
