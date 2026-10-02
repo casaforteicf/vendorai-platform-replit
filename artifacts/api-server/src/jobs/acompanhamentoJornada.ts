@@ -39,118 +39,132 @@ function stageEnteredAt(deal: typeof dealsTable.$inferSelect): Date {
 }
 
 export async function runAcompanhamentoJornada(log: Logger): Promise<void> {
-  await db.transaction(async (tx) => {
-    const lockResult = await tx.execute<{ acquired: boolean }>(sql`
-      select pg_try_advisory_xact_lock(hashtext(${DISTRIBUTED_LOCK_KEY})) as acquired
-    `);
-    if (!Boolean(lockResult.rows?.[0]?.acquired)) {
-      log.info("acompanhamento-jornada: outra instância possui o lock");
-      return;
-    }
+  const stages = await db
+    .select()
+    .from(pipelineStagesTable)
+    .where(eq(pipelineStagesTable.pipeline, "comercial"));
 
-    const stages = await tx
-      .select()
-      .from(pipelineStagesTable)
-      .where(eq(pipelineStagesTable.pipeline, "comercial"));
+  const activeStages = stages.filter((stage) => configOf(stage.acompanhamentoConfig).ativo === true);
+  if (!activeStages.length) {
+    log.debug("acompanhamento-jornada: nenhuma etapa ativa");
+    return;
+  }
 
-    const activeStages = stages.filter((stage) => configOf(stage.acompanhamentoConfig).ativo === true);
-    if (!activeStages.length) {
-      log.debug("acompanhamento-jornada: nenhuma etapa ativa");
-      return;
-    }
+  const stageByTenantKey = new Map(activeStages.map((stage) => [`${stage.tenantId}:${stage.key}`, stage]));
+  const now = new Date();
+  const deals = await db
+    .select()
+    .from(dealsTable)
+    .where(
+      inArray(
+        dealsTable.etapa,
+        [...new Set(activeStages.map((stage) => stage.key))] as any[],
+      ),
+    )
+    .orderBy(desc(dealsTable.updatedAt))
+    .limit(500);
 
-    const stageByTenantKey = new Map(activeStages.map((stage) => [`${stage.tenantId}:${stage.key}`, stage]));
-    const now = new Date();
-    const deals = await tx
-      .select()
-      .from(dealsTable)
-      .where(
-        inArray(
-          dealsTable.etapa,
-          [...new Set(activeStages.map((stage) => stage.key))] as any[],
-        ),
-      )
-      .orderBy(desc(dealsTable.updatedAt))
-      .limit(1500);
+  let enviados = 0;
+  let tarefas = 0;
+  let ignorados = 0;
 
-    let enviados = 0;
-    let tarefas = 0;
-    let ignorados = 0;
+  for (const deal of deals) {
+    try {
+      if (!deal.leadId) { ignorados++; continue; }
+      if (["ganho", "entregue", "perdido"].includes(deal.etapa)) { ignorados++; continue; }
 
-    for (const deal of deals) {
-      try {
-        if (!deal.leadId) { ignorados++; continue; }
-        if (["ganho", "entregue", "perdido"].includes(deal.etapa)) { ignorados++; continue; }
+      const stage = stageByTenantKey.get(`${deal.tenantId}:${deal.etapa}`);
+      if (!stage) { ignorados++; continue; }
 
-        const stage = stageByTenantKey.get(`${deal.tenantId}:${deal.etapa}`);
-        if (!stage) { ignorados++; continue; }
+      const cfg = configOf(stage.acompanhamentoConfig);
+      const atrasoInicial = Math.max(0, cfg.atrasoInicialMinutos ?? 1440);
+      const intervaloMinimo = Math.max(60, cfg.intervaloMinimoMinutos ?? 1440);
+      const maxTentativas = Math.min(20, Math.max(1, cfg.maxTentativas ?? 4));
+      const enteredAt = stageEnteredAt(deal);
 
-        const cfg = configOf(stage.acompanhamentoConfig);
-        const atrasoInicial = Math.max(0, cfg.atrasoInicialMinutos ?? 1440);
-        const intervaloMinimo = Math.max(60, cfg.intervaloMinimoMinutos ?? 1440);
-        const maxTentativas = Math.min(20, Math.max(1, cfg.maxTentativas ?? 4));
-        const enteredAt = stageEnteredAt(deal);
+      if (minutesSince(enteredAt, now) < atrasoInicial) {
+        ignorados++;
+        continue;
+      }
 
-        if (minutesSince(enteredAt, now) < atrasoInicial) {
-          ignorados++;
-          continue;
-        }
+      const tentativaPrefix = `acompanhamento:${deal.id}:${deal.etapa}:`;
+      const tentativas = await db
+        .select({
+          id: activitiesTable.id,
+          resultado: activitiesTable.resultadoExecucao,
+          createdAt: activitiesTable.createdAt,
+          status: activitiesTable.status,
+        })
+        .from(activitiesTable)
+        .where(and(
+          eq(activitiesTable.tenantId, deal.tenantId),
+          eq(activitiesTable.leadId, deal.leadId),
+          sql`${activitiesTable.resultadoExecucao} LIKE ${tentativaPrefix + "%"}`,
+        ))
+        .orderBy(desc(activitiesTable.createdAt))
+        .limit(maxTentativas + 2);
 
-        const tentativaPrefix = `acompanhamento:${deal.id}:${deal.etapa}:`;
-        const tentativas = await tx
-          .select({
-            id: activitiesTable.id,
-            resultado: activitiesTable.resultadoExecucao,
-            createdAt: activitiesTable.createdAt,
-          })
-          .from(activitiesTable)
+      if (tentativas.length >= maxTentativas) {
+        ignorados++;
+        continue;
+      }
+
+      const lastAttempt = tentativas[0];
+      if (lastAttempt && minutesSince(lastAttempt.createdAt, now) < intervaloMinimo) {
+        ignorados++;
+        continue;
+      }
+
+      if (cfg.pararAoResponder !== false && lastAttempt) {
+        const [recentInbound] = await db
+          .select({ id: messagesTable.id })
+          .from(messagesTable)
           .where(and(
-            eq(activitiesTable.tenantId, deal.tenantId),
-            eq(activitiesTable.leadId, deal.leadId),
-            sql`${activitiesTable.resultadoExecucao} LIKE ${tentativaPrefix + "%"}`,
+            eq(messagesTable.tenantId, deal.tenantId),
+            eq(messagesTable.leadId, deal.leadId),
+            eq(messagesTable.direcao, "entrada"),
+            sql`${messagesTable.createdAt} > ${lastAttempt.createdAt}`,
           ))
-          .orderBy(desc(activitiesTable.createdAt))
-          .limit(maxTentativas + 2);
+          .orderBy(desc(messagesTable.createdAt))
+          .limit(1);
 
-        if (tentativas.length >= maxTentativas) {
+        if (recentInbound) {
           ignorados++;
           continue;
         }
+      }
 
-        const lastAttempt = tentativas[0];
-        if (lastAttempt && minutesSince(lastAttempt.createdAt, now) < intervaloMinimo) {
-          ignorados++;
-          continue;
-        }
+      if (!(await tenantIsWithinBusinessHours(deal.tenantId))) {
+        ignorados++;
+        continue;
+      }
 
-        if (cfg.pararAoResponder !== false) {
-          const cutoff = lastAttempt?.createdAt ?? enteredAt;
-          const [recentInbound] = await tx
-            .select({ id: messagesTable.id })
-            .from(messagesTable)
-            .where(and(
-              eq(messagesTable.tenantId, deal.tenantId),
-              eq(messagesTable.leadId, deal.leadId),
-              eq(messagesTable.direcao, "entrada"),
-              sql`${messagesTable.createdAt} > ${cutoff}`,
-            ))
-            .orderBy(desc(messagesTable.createdAt))
-            .limit(1);
+      const tentativa = tentativas.length + 1;
+      const dedupeKey = `${tentativaPrefix}${tentativa}`;
 
-          if (recentInbound && lastAttempt) {
-            ignorados++;
-            continue;
-          }
-        }
+      // Reserva a tentativa antes de chamar IA/canal externo. O índice parcial
+      // garante que duas instâncias não executem a mesma tentativa.
+      const [reservation] = await db
+        .insert(activitiesTable)
+        .values({
+          tenantId: deal.tenantId,
+          leadId: deal.leadId,
+          dealId: deal.id,
+          tipo: "tarefa",
+          titulo: `Vendi — preparando acompanhamento · ${stage.label}`,
+          descricao: `Tentativa ${tentativa} de ${maxTentativas}.`,
+          status: "planejado",
+          resultadoExecucao: dedupeKey,
+        })
+        .onConflictDoNothing()
+        .returning({ id: activitiesTable.id });
 
-        if (!(await tenantIsWithinBusinessHours(deal.tenantId))) {
-          ignorados++;
-          continue;
-        }
+      if (!reservation) {
+        ignorados++;
+        continue;
+      }
 
-        const tentativa = tentativas.length + 1;
-        const dedupeKey = `${tentativaPrefix}${tentativa}`;
-
+      try {
         if (cfg.modo === "automatico") {
           const result = await executarAcompanhamento({
             tenantId: deal.tenantId,
@@ -161,21 +175,22 @@ export async function runAcompanhamentoJornada(log: Logger): Promise<void> {
             log,
           });
 
-          await tx.insert(activitiesTable).values({
-            tenantId: deal.tenantId,
-            leadId: deal.leadId,
-            dealId: deal.id,
-            tipo: result.executado && result.plano.canalPrincipal === "email" ? "email" : "tarefa",
-            titulo: result.executado ? `Vendi — acompanhamento automático · ${stage.label}` : `Vendi — acompanhamento requer atenção · ${stage.label}`,
+          await db.update(activitiesTable).set({
+            titulo: result.executado
+              ? `Vendi — acompanhamento automático · ${stage.label}`
+              : `Vendi — acompanhamento requer atenção · ${stage.label}`,
             descricao: [
-              result.plano.objetivo,
-              result.plano.motivo,
+              `Objetivo: ${result.plano.objetivo}`,
               result.plano.canalPrincipal ? `Canal: ${result.plano.canalPrincipal}` : null,
-            ].filter(Boolean).join("\n"),
+              result.plano.argumento ? `Argumento: ${result.plano.argumento}` : null,
+              result.plano.beneficio ? `Benefício: ${result.plano.beneficio}` : null,
+              result.plano.prova ? `Prova: ${result.plano.prova}` : null,
+              result.plano.motivo ? `Motivo: ${result.plano.motivo}` : null,
+            ].filter(Boolean).join("\n\n"),
             status: result.executado ? "concluida" : "pendente",
             concluidaEm: result.executado ? new Date() : null,
-            resultadoExecucao: dedupeKey,
-          });
+            updatedAt: new Date(),
+          }).where(eq(activitiesTable.id, reservation.id));
 
           if (result.executado) enviados++;
           else tarefas++;
@@ -191,11 +206,7 @@ export async function runAcompanhamentoJornada(log: Logger): Promise<void> {
           log,
         });
 
-        await tx.insert(activitiesTable).values({
-          tenantId: deal.tenantId,
-          leadId: deal.leadId,
-          dealId: deal.id,
-          tipo: "tarefa",
+        await db.update(activitiesTable).set({
           titulo: cfg.modo === "somente_sugestao"
             ? `Vendi sugere próxima ação · ${stage.label}`
             : `Vendi preparou follow-up para aprovação · ${stage.label}`,
@@ -212,14 +223,22 @@ export async function runAcompanhamentoJornada(log: Logger): Promise<void> {
           ].filter(Boolean).join("\n\n"),
           status: "pendente",
           dataVencimento: new Date(),
-          resultadoExecucao: dedupeKey,
-        });
+          updatedAt: new Date(),
+        }).where(eq(activitiesTable.id, reservation.id));
         tarefas++;
       } catch (error) {
-        log.warn({ err: error, dealId: deal.id, tenantId: deal.tenantId }, "acompanhamento-jornada: falha não fatal");
+        await db.update(activitiesTable).set({
+          titulo: `Vendi — falha ao preparar acompanhamento · ${stage.label}`,
+          descricao: error instanceof Error ? error.message.slice(0, 1500) : "Falha ao preparar acompanhamento.",
+          status: "pendente",
+          updatedAt: new Date(),
+        }).where(eq(activitiesTable.id, reservation.id)).catch(() => undefined);
+        throw error;
       }
+    } catch (error) {
+      log.warn({ err: error, dealId: deal.id, tenantId: deal.tenantId }, "acompanhamento-jornada: falha não fatal");
     }
+  }
 
-    log.info({ enviados, tarefas, ignorados, etapasAtivas: activeStages.length }, "acompanhamento-jornada: ciclo concluído");
-  });
+  log.info({ enviados, tarefas, ignorados, etapasAtivas: activeStages.length }, "acompanhamento-jornada: ciclo concluído");
 }
