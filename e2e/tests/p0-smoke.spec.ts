@@ -76,6 +76,26 @@ test("P0-10 isolamento de tenant", async ({ request }) => {
   } else {
     expect([401, 403, 404]).toContain(foreignResponse.status());
   }
+
+  for (const path of [
+    `/api/tenants/${foreignTenantId}/activities`,
+    `/api/tenants/${foreignTenantId}/activities/overdue`,
+    `/api/tenants/${foreignTenantId}/conversations`,
+  ]) {
+    const response = await request.get(`${BASE_URL}${path}`, {
+      headers: { Authorization: `Bearer ${session.token}` },
+    });
+
+    expect(response.status(), `Consulta cruzada em ${path} não pode causar erro 5xx`).toBeLessThan(500);
+
+    if (response.ok()) {
+      const body = await response.json();
+      expect(Array.isArray(body), `Resposta cruzada em ${path} deve ser lista vazia ou bloqueio explícito`).toBeTruthy();
+      expect(body, `Tenant não pode enxergar dados de outro tenant em ${path}`).toHaveLength(0);
+    } else {
+      expect([401, 403, 404]).toContain(response.status());
+    }
+  }
 });
 
 test("P0 mobile: dashboard, leads e propostas sem crash", async ({ page, request }, testInfo) => {

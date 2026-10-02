@@ -126,9 +126,15 @@ router.post("/activities", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/activities", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
   const { leadId, dealId, status } = req.query as Record<string, string | undefined>;
 
-  const conditions = [eq(activitiesTable.tenantId, String(req.params.tenantId))];
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const conditions = [eq(activitiesTable.tenantId, tenantId)];
 
   const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
   const isSeller = req.user?.platformRole === "tenant_seller";
@@ -155,8 +161,15 @@ router.get("/tenants/:tenantId/activities", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/activities/overdue", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   const overdueConditions = [
-    eq(activitiesTable.tenantId, String(req.params.tenantId)),
+    eq(activitiesTable.tenantId, tenantId),
     eq(activitiesTable.status, "pendente"),
     isNotNull(activitiesTable.dataVencimento),
     lt(activitiesTable.dataVencimento, new Date()),
