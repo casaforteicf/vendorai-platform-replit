@@ -5,6 +5,7 @@ import { pool } from "@workspace/db";
 import { requireRole } from "../middlewares/auth.js";
 import { executeDevAutonomousWork } from "./dev_agent_autonomy.js";
 import { validateProductionRevision } from "./dev_agent_validation.js";
+import { collectDevAgentCheckEvidence } from "../lib/dev-agent-check-evidence.js";
 
 const router: IRouter = Router();
 
@@ -348,22 +349,27 @@ router.post("/admin/improvements/:id/check-tests", async (req, res) => {
 
   const config = githubConfig();
   const pr = await githubJson("/repos/" + config.owner + "/" + config.repo + "/pulls/" + item.prNumber);
-  const statuses = await githubJson("/repos/" + config.owner + "/" + config.repo + "/commits/" + pr.head.sha + "/status");
-  const checks = (statuses.statuses ?? []).map((status: any) => ({
-    context: String(status.context ?? ""),
-    state: String(status.state ?? "pending"),
-    url: status.target_url ?? null,
-  }));
-  const failed = checks.filter((check: any) => check.state === "failure" || check.state === "error");
-  const pending = checks.filter((check: any) => check.state !== "success");
-  const passed = pr.mergeable !== false && failed.length === 0 && (checks.length === 0 || pending.length === 0);
-  const nextTest = passed ? "passed" : failed.length ? "failed" : "running";
+  const evidence = await collectDevAgentCheckEvidence(String(pr.head.sha));
+  const passed = pr.mergeable !== false
+    && evidence.codeFailures.length === 0
+    && evidence.pending.length === 0
+    && evidence.successes.length > 0;
+  const nextTest = passed ? "passed" : evidence.codeFailures.length > 0 ? "failed" : "running";
+  const summary = {
+    mergeable: pr.mergeable,
+    successes: evidence.successes,
+    codeFailures: evidence.codeFailures,
+    infrastructureFailures: evidence.infrastructureFailures,
+    externalFailures: evidence.externalFailures,
+    pending: evidence.pending,
+    regressionTestEvidence: evidence.regressionTestEvidence,
+  };
 
   await pool.query(
     "UPDATE admin_improvements SET test_status=$2,test_summary=$3,agent_status=CASE WHEN $2='passed' THEN 'ready' WHEN $2='failed' THEN 'needs_attention' ELSE 'waiting_tests' END,status=CASE WHEN $2='passed' THEN 'pronto_staging' WHEN $2='failed' THEN 'em_desenvolvimento' ELSE 'testando' END,updated_at=now() WHERE id=$1",
-    [improvementId, nextTest, JSON.stringify({ mergeable: pr.mergeable, combined: statuses.state ?? null, checks }).slice(0, 8000)],
+    [improvementId, nextTest, JSON.stringify(summary).slice(0, 8000)],
   );
-  return res.json({ passed, state: nextTest, mergeable: pr.mergeable, combined: statuses.state ?? null, checks });
+  return res.json({ passed, state: nextTest, mergeable: pr.mergeable, evidence });
 });
 
 router.post("/admin/improvements/:id/prepare-test", async (req, res) => {
@@ -581,10 +587,16 @@ async function executeScheduledRelease(release: any) {
   if (String(currentMain.object?.sha ?? "") !== String(impact.base.sha ?? "")) throw new Error("A main mudou desde a aprovação. Nova comparação e aprovação são necessárias.");
   if (String(staging.object?.sha ?? "") !== String(impact.head.sha ?? "")) throw new Error("A staging mudou desde a aprovação. Nova comparação e aprovação são necessárias.");
 
-  const status = await githubJson("/repos/" + config.owner + "/" + config.repo + "/commits/" + staging.object.sha + "/status");
-  const vercelChecks = (status.statuses ?? []).filter((item: any) => /vercel/i.test(String(item.context ?? "")));
-  const blocking = vercelChecks.filter((item: any) => String(item.state) !== "success");
-  if (blocking.length) throw new Error("Gates de frontend ainda não estão verdes: " + blocking.map((item: any) => item.context).join(", "));
+  const releaseEvidence = await collectDevAgentCheckEvidence(String(staging.object.sha));
+  if (releaseEvidence.codeFailures.length) {
+    throw new Error("A versão possui falhas de código/teste: " + releaseEvidence.codeFailures.map((item) => item.name).join(", "));
+  }
+  if (releaseEvidence.pending.length) {
+    throw new Error("Os testes da versão ainda estão em execução: " + releaseEvidence.pending.map((item) => item.name).join(", "));
+  }
+  if (!releaseEvidence.successes.length) {
+    throw new Error("Nenhum gate técnico concluído com sucesso foi comprovado para a versão.");
+  }
 
   let prNumber = release.releasePrNumber ? Number(release.releasePrNumber) : null;
   let prUrl = release.releasePrUrl ?? null;
