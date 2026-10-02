@@ -1,5 +1,5 @@
-import { and, asc, eq, isNotNull } from "drizzle-orm";
-import { bugReportsTable, db } from "@workspace/db";
+import { and, asc, eq, isNotNull, or } from "drizzle-orm";
+import { bugReportsTable, db, pool } from "@workspace/db";
 import { executeDevAutonomousWork } from "../routes/dev_agent_autonomy.js";
 import { recordExecutionMemory } from "../routes/dev_agent_memory.js";
 import { validateProductionRevision } from "../routes/dev_agent_validation.js";
@@ -137,6 +137,40 @@ function buildExecutionDiagnostic(result: any) {
   return lines.join("\n").slice(0, 12000);
 }
 
+
+async function syncImprovementFromSupport(report: typeof bugReportsTable.$inferSelect, result: any) {
+  const pr = actionDetail(result, "create_pr");
+  const branch = actionDetail(result, "create_branch")?.branch ?? null;
+  const summary = sanitizeTechnicalText(result?.summary ?? result?.error ?? "Execução técnica do chamado concluída.").slice(0, 12000);
+  const existing = await pool.query(
+    "SELECT id FROM admin_improvements WHERE source_type='support' AND source_ref_id=$1 LIMIT 1",
+    [report.id],
+  );
+  const id = existing.rows[0]?.id ?? crypto.randomUUID();
+  const priorityMap: Record<string, string> = { critica: "urgente", alta: "alta", media: "media", baixa: "baixa" };
+  const status = pr?.number ? "testando" : result?.status === "approval_required" ? "bloqueada" : "em_desenvolvimento";
+  const agentStatus = pr?.number ? "waiting_tests" : result?.status === "approval_required" ? "needs_attention" : "failed";
+
+  if (existing.rowCount) {
+    await pool.query(
+      "UPDATE admin_improvements SET title=$2,description=$3,priority=$4,status=$5,branch=COALESCE($6,branch),pr_number=COALESCE($7,pr_number),pr_url=COALESCE($8,pr_url),owner_agent='vendi',agent_status=$9,agent_summary=$10,test_status=CASE WHEN $7 IS NOT NULL THEN 'running' ELSE test_status END,updated_at=now() WHERE id=$1",
+      [id, report.titulo, ticketRequest(report), priorityMap[String(report.prioridade)] ?? "media", status, branch, pr?.number ? Number(pr.number) : null, pr?.url ?? null, agentStatus, summary],
+    );
+  } else {
+    await pool.query(
+      "INSERT INTO admin_improvements (id,title,description,module,priority,status,branch,pr_number,pr_url,homolog_url,source_type,source_ref_id,source_tenant_id,owner_agent,agent_status,agent_summary,test_status,created_by) VALUES ($1,$2,$3,'Plataforma',$4,$5,$6,$7,$8,$9,'support',$10,$11,'vendi',$12,$13,$14,'support_handoff')",
+      [id, report.titulo, ticketRequest(report), priorityMap[String(report.prioridade)] ?? "media", status, branch, pr?.number ? Number(pr.number) : null, pr?.url ?? null, process.env["HOMOLOGATION_URL"] ?? "https://homolog.appvendorai.com", report.id, report.tenantId, agentStatus, summary, pr?.number ? "running" : "pending"],
+    );
+  }
+
+  await pool.query(
+    "INSERT INTO admin_improvement_events (id,improvement_id,event_type,message,actor,payload) VALUES ($1,$2,'support_handoff',$3,'vendi',$4::jsonb)",
+    [crypto.randomUUID(), id, summary.slice(0, 6000), JSON.stringify({ bugReportId: report.id, prNumber: pr?.number ?? null, prUrl: pr?.url ?? null, branch, executorStatus: result?.status ?? null })],
+  ).catch(() => undefined);
+
+  return id;
+}
+
 async function processTicket(report: typeof bugReportsTable.$inferSelect, logger: HandoffLogger) {
   const claimed = await claimTicket(report.id);
   if (!claimed) return;
@@ -160,6 +194,9 @@ async function processTicket(report: typeof bugReportsTable.$inferSelect, logger
 
     await persistExecutorOutcome(claimed, result, route).catch((error) => {
       logger.warn({ err: error, bugReportId: claimed.id }, "support handoff: execution memory persistence failed");
+    });
+    await syncImprovementFromSupport(claimed, result).catch((error) => {
+      logger.warn({ err: error, bugReportId: claimed.id }, "support handoff: improvement sync failed");
     });
 
     await db.update(bugReportsTable).set({
@@ -269,7 +306,7 @@ async function runSupportHandoffCycle(logger: HandoffLogger) {
       .from(bugReportsTable)
       .where(and(
         eq(bugReportsTable.status, "aberto"),
-        eq(bugReportsTable.categoria, "bug"),
+        or(eq(bugReportsTable.categoria, "bug"), eq(bugReportsTable.categoria, "sugestao")),
         isNotNull(bugReportsTable.conversationId),
       ))
       .orderBy(asc(bugReportsTable.createdAt))
