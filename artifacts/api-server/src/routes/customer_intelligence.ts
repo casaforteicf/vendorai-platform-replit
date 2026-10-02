@@ -21,6 +21,7 @@ import {
   ANALYSIS_COOLDOWN_MINUTES,
   MAX_ANALYSES_PER_TENANT_PER_HOUR,
 } from "../lib/analyze-intelligence.js";
+import { suggestDynamicStageQuestions } from "../services/stage-question-intelligence.js";
 
 const router: IRouter = Router();
 
@@ -222,6 +223,33 @@ router.get(
       sources,
       dynamicQuestions,
     });
+  }
+);
+
+router.post(
+  "/tenants/:tenantId/leads/:leadId/deals/:dealId/intelligence/suggest-stage-questions",
+  async (req, res) => {
+    const tenantId = String(req.params.tenantId);
+    const leadId = String(req.params.leadId);
+    const dealId = String(req.params.dealId);
+
+    if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+      res.status(403).json({ error: "Access denied to this tenant" });
+      return;
+    }
+
+    try {
+      const questions = await suggestDynamicStageQuestions({
+        tenantId,
+        leadId,
+        dealId,
+        log: req.log,
+      });
+      res.json({ questions });
+    } catch (err) {
+      req.log.warn({ err, tenantId, leadId, dealId }, "customer-intelligence: suggest-stage-questions failed");
+      res.status(502).json({ error: "Não foi possível sugerir perguntas adicionais agora." });
+    }
   }
 );
 
