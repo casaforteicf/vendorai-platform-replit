@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { createHash, randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 
-test('private OAuth: discovery, redirect restrictions, consent, PKCE, replay, refresh and revocation', async () => {
+test('private OAuth: discovery, redirect restrictions, consent, PKCE, replay, refresh and revocation', { timeout: 20000 }, async () => {
   process.env.MCP_ACCESS_TOKEN = randomBytes(32).toString('hex');
   const { handleOAuth, authorized, challenge } = await import('./dist/oauth.js');
   const server = createServer(async (req, res) => {
@@ -123,10 +123,13 @@ test('private OAuth: discovery, redirect restrictions, consent, PKCE, replay, re
     await post('/oauth/revoke', { client_id: client, token: other.refresh_token });
     assert.equal((await fetch(resource, { headers: { Authorization: 'Bearer ' + other.access_token } })).status, 401);
     assert.equal((await fetch(resource, { headers: { Authorization: 'Bearer ' + process.env.MCP_ACCESS_TOKEN } })).status, 200);
-  } finally { await new Promise(resolve => server.close(resolve)); }
+  } finally {
+    server.closeAllConnections?.();
+    await new Promise(resolve => server.close(resolve));
+  }
 });
 
-test('real MCP server still initializes and lists tools behind authentication', async () => {
+test('real MCP server still initializes and lists tools behind authentication', { timeout: 20000 }, async () => {
   const probe = createServer();
   await new Promise(resolve => probe.listen(0, '127.0.0.1', resolve));
   const port = probe.address().port;
@@ -157,5 +160,12 @@ test('real MCP server still initializes and lists tools behind authentication', 
     const tools = await call('tools/list', {}, 2);
     assert.equal(tools.result.tools.length, 10);
     assert.ok(tools.result.tools.some(x => x.name === 'browser_agent_run'));
-  } finally { child.kill('SIGTERM'); await new Promise(resolve => child.once('exit', resolve)); }
+  } finally {
+    if (!child.killed) child.kill('SIGTERM');
+    await Promise.race([
+      new Promise(resolve => child.once('exit', resolve)),
+      new Promise(resolve => setTimeout(resolve, 3000)),
+    ]);
+    if (child.exitCode === null) child.kill('SIGKILL');
+  }
 });
