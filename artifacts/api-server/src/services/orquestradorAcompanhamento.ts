@@ -22,6 +22,7 @@ export type CanalAcompanhamento =
   | "ligacao";
 
 export type PlanoAcompanhamento = {
+  ativo: boolean;
   etapa: string;
   objetivo: string;
   modo: "automatico" | "gerar_aprovar" | "somente_sugestao";
@@ -282,6 +283,7 @@ export async function planejarAcompanhamento(params: {
     .filter((channel) => channel !== canalPrincipal && disponiveis.includes(channel));
 
   return {
+    ativo: cfg.ativo === true,
     etapa: context.etapa,
     objetivo,
     modo,
@@ -319,6 +321,7 @@ export async function executarAcompanhamento(params: {
   const plano = await planejarAcompanhamento(params);
 
   if (
+    !plano.ativo ||
     plano.modo !== "automatico" ||
     plano.requerHumano ||
     !plano.canalPrincipal ||
