@@ -12,6 +12,7 @@ import {
 } from "@workspace/db";
 import { z } from "zod/v4";
 import { logger } from "../lib/logger.js";
+import { planejarAcompanhamento } from "../services/orquestradorAcompanhamento.js";
 
 const router: IRouter = Router();
 
@@ -286,6 +287,35 @@ async function ensureSystemStages(tenantId: string, pipeline: PipelineKey) {
 
 // GET — lista/configura apenas a pipeline solicitada. Sem query mantém
 // `comercial`, preservando todos os consumidores antigos da API.
+router.post("/tenants/:tenantId/leads/:leadId/acompanhamento/planejar", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  const leadId = String(req.params.leadId);
+  if (!hasAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const bodySchema = z.object({
+    dealId: z.string().min(1).nullable().optional(),
+    motivoDisparo: z.string().max(2000).optional(),
+  });
+  const parsed = bodySchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(422).json({ error: "Parâmetros inválidos." });
+
+  try {
+    const plano = await planejarAcompanhamento({
+      tenantId,
+      leadId,
+      dealId: parsed.data.dealId ?? null,
+      motivoDisparo: parsed.data.motivoDisparo ?? "prévia manual da próxima ação",
+      modoPadrao: "somente_sugestao",
+      log: req.log ?? logger,
+    });
+    res.setHeader("Cache-Control", "no-store");
+    return res.json({ plano, executado: false });
+  } catch (error) {
+    req.log?.error({ error, tenantId, leadId }, "acompanhamento: falha ao planejar");
+    return res.status(500).json({ error: "Não foi possível planejar o acompanhamento agora." });
+  }
+});
+
 router.get("/tenants/:tenantId/pipeline-stages", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   if (!hasAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
