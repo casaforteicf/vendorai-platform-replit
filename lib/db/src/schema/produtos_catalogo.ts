@@ -37,6 +37,29 @@ export interface ProdutoProjectTechnicalConfig {
   [key: string]: unknown;
 }
 
+export interface ProdutoCommercialIntelligence {
+  features?: string[];
+  differentials?: string[];
+  benefits?: string[];
+  painsSolved?: string[];
+  useCases?: string[];
+  personas?: string[];
+  objections?: Array<{
+    objection: string;
+    response?: string;
+    proofIds?: string[];
+  }>;
+  proofIds?: string[];
+  complementaryProductIds?: string[];
+  allowedClaims?: string[];
+  prohibitedClaims?: string[];
+  salesNotes?: string[];
+  approvedAt?: string | null;
+  approvedBy?: string | null;
+  source?: "manual" | "ai_suggested" | "imported" | "mixed";
+  [key: string]: unknown;
+}
+
 // Compatibilidade veicular (Complemento Praça.ai — filtro "selecione seu
 // carro" tipo Tuning Parts). anoFim vazio/null = "até hoje" (ano corrente).
 export interface ProdutoCompatibilidadeVeicular {
@@ -227,6 +250,9 @@ export const produtosCatalogoTable = pgTable("produtos_catalogo", {
   // Cobertura logística por produto, incluindo regiões, taxas, rotas, dias de
   // entrega e exceções de calendário. Null = produto sem regra específica.
   deliveryConfig: jsonb("delivery_config").$type<ProdutoDeliveryConfig>(),
+  // Inteligência comercial estruturada usada por Vendi, SDR, Closer, MKT e Follow-up.
+  // Mantém fatos aprovados (benefícios/diferenciais/provas) separados de texto gerado por IA.
+  commercialIntelligence: jsonb("commercial_intelligence").$type<ProdutoCommercialIntelligence>().default({}),
   fornecedor: text("fornecedor"),
   prazoEntregaDias: integer("prazo_entrega_dias"),
   custoFornecedor: numeric("custo_fornecedor", { precision: 12, scale: 2 }),
