@@ -545,6 +545,10 @@ export default function PipelineOperacional() {
                                 variant={completed ? "secondary" : "default"}
                                 disabled={patchCard.isPending}
                                 onClick={() => {
+                                  if (requirement.key === "relatorio_medidas" && selectedCard.dealId) {
+                                    navigate(`/checklists/medidas/${selectedCard.dealId}`);
+                                    return;
+                                  }
                                   if (OPERATIONAL_FORM_KEYS.has(requirement.key)) {
                                     setStageFormKey(requirement.key);
                                     return;
@@ -562,9 +566,11 @@ export default function PipelineOperacional() {
                                   patchCard.mutate({ id: selectedCard.id, data: { metadata: { ...metadata, stageGates: currentGates } } });
                                 }}
                               >
-                                {OPERATIONAL_FORM_KEYS.has(requirement.key)
-                                  ? (completed ? "Ver / nova versão" : "Preencher")
-                                  : (completed ? "Reabrir" : "Concluir")}
+                                {requirement.key === "relatorio_medidas" && selectedCard.dealId
+                                  ? (completed ? "Ver / nova revisão" : "Abrir conferência")
+                                  : OPERATIONAL_FORM_KEYS.has(requirement.key)
+                                    ? (completed ? "Ver / nova versão" : "Preencher")
+                                    : (completed ? "Reabrir" : "Concluir")}
                               </Button>
                             </div>
                           );
