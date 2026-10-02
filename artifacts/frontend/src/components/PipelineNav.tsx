@@ -26,6 +26,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { PipelineStageFunctionAccess } from "@/components/PipelineStageFunctionAccess";
+import { PipelineStageFollowupConfig, type ConfiguracaoAcompanhamento } from "@/components/PipelineStageFollowupConfig";
 import "./pipeline-layout.css";
 
 export type PipelineTab = "comercial" | "execucao" | "suporte" | "aquecimento" | "parceiros" | "scout";
@@ -39,6 +40,7 @@ type PipelineStageSummary = {
   slaMinutos?: number | null;
   responsaveisFuncoes?: string[] | null;
   responsavelAgenteKey?: string | null;
+  acompanhamentoConfig?: ConfiguracaoAcompanhamento | null;
 };
 
 const TABS: Array<{ key: PipelineTab; label: string; href: string }> = [
@@ -110,7 +112,7 @@ export function PipelineNav({ active }: { active: PipelineTab }) {
                   Etapas — {TABS.find((tab) => tab.key === active)?.label ?? "Pipeline"}
                 </DialogTitle>
                 <DialogDescription>
-                  Crie, renomeie, ordene, defina SLA e escolha os responsáveis de cada etapa — incluindo Agentes IA. Esta é a única configuração oficial das etapas da pipeline.
+                  Crie, renomeie, ordene, defina SLA, responsáveis e o acompanhamento inteligente de cada etapa — incluindo Agentes IA, canais, cadência e regras de follow-up. Esta é a única configuração oficial das etapas da pipeline.
                 </DialogDescription>
               </DialogHeader>
               <PipelineStageManager
@@ -359,6 +361,15 @@ function PipelineStageManager({
                           value={stage.responsaveisFuncoes ?? []}
                           agentValue={stage.responsavelAgenteKey ?? null}
                           className="w-full sm:w-64"
+                        />
+                      </div>
+                      <div className="mt-2">
+                        <PipelineStageFollowupConfig
+                          tenantId={tenantId}
+                          pipeline={pipeline}
+                          stageId={stage.id}
+                          stageLabel={stage.label}
+                          value={stage.acompanhamentoConfig ?? null}
                         />
                       </div>
                     </div>
