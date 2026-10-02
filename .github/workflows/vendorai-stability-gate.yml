@@ -94,7 +94,9 @@ jobs:
         run: npm install --global pnpm@10.26.1
       - run: pnpm install --frozen-lockfile
       - name: Root typecheck
-        run: pnpm typecheck
+        run: |
+          pnpm run typecheck:libs
+          pnpm -r --workspace-concurrency=1 --filter "./artifacts/**" --filter "./scripts" --if-present run typecheck
       - name: Backend tests
         run: pnpm --filter @workspace/api-server test
       - name: Frontend tests
