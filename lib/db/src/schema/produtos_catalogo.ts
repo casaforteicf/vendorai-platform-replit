@@ -54,6 +54,11 @@ export interface ProdutoInteligenciaComercial {
   afirmacoesPermitidas?: string[];
   afirmacoesProibidas?: string[];
   notasComerciais?: string[];
+  duvidasFrequentes?: string[];
+  garantia?: string | null;
+  instalacaoUso?: string | null;
+  entregaPrazo?: string | null;
+  orientacoesIa?: string[];
   aprovadoEm?: string | null;
   aprovadoPor?: string | null;
   origem?: "manual" | "sugerido_ia" | "importado" | "misto";
