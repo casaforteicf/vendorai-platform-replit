@@ -155,6 +155,7 @@ router.get(
 router.get(
   "/tenants/:tenantId/leads/:leadId/intelligence/full",
   async (req, res) => {
+    // tenant-audit: reviewed route tenant is immediately checked against authenticated tenant or super_admin before tenant-scoped access
     const tenantId = String(req.params.tenantId);
     const leadId = String(req.params.leadId);
 
@@ -229,6 +230,7 @@ router.get(
 router.post(
   "/tenants/:tenantId/leads/:leadId/deals/:dealId/intelligence/suggest-stage-questions",
   async (req, res) => {
+    // tenant-audit: reviewed route tenant is immediately checked against authenticated tenant or super_admin before tenant-scoped access
     const tenantId = String(req.params.tenantId);
     const leadId = String(req.params.leadId);
     const dealId = String(req.params.dealId);
