@@ -30,3 +30,9 @@ ALTER TABLE pipeline_stages
 
 COMMENT ON COLUMN pipeline_stages.acompanhamento_config IS
   'Objetivo, modo, canais, cadência, limites e regras do acompanhamento/follow-up da etapa.';
+
+
+-- Idempotência do ciclo de acompanhamento entre múltiplas instâncias.
+CREATE UNIQUE INDEX IF NOT EXISTS activities_acompanhamento_attempt_unique_idx
+  ON activities (tenant_id, resultado_execucao)
+  WHERE resultado_execucao LIKE 'acompanhamento:%';
