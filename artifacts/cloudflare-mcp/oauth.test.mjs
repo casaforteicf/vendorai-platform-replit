@@ -100,9 +100,9 @@ test('private OAuth: discovery, redirect restrictions, consent, PKCE, replay, re
     const legacyHtml = legacyAuth.html;
     const legacyCsrf = legacyHtml.match(/name="csrf" value="([^"]+)"/)?.[1];
     assert.ok(legacyCsrf);
-    const legacyApprove = await fetch(resource + '/oauth/approve', {
+    const legacyApprove = await fetch(base + '/oauth/approve', {
       method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded', origin: resource },
+      headers: { 'content-type': 'application/x-www-form-urlencoded', origin: base },
       body: new URLSearchParams({ csrf: legacyCsrf, credential: process.env.MCP_ACCESS_TOKEN, decision: 'approve' }),
       redirect: 'manual',
     });
