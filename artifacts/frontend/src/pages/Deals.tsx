@@ -2,6 +2,7 @@ import React, { lazy, Suspense, useState, useCallback, useEffect, useMemo, useRe
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import {
+  customFetch,
   useListDeals,
   getListDealsQueryKey,
   useCreateDeal,
@@ -62,7 +63,7 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Plus, GripVertical, DollarSign, User, UserRound, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles, BarChart3, RefreshCw, Users, Package, AlertTriangle, Paperclip, FileCheck, CreditCard, HandCoins, Flame, Cloud, Snowflake, FileText, Clock, CalendarDays, Pen, KanbanSquare, ArrowRight, UserMinus, Ruler } from "lucide-react";
+import { Plus, GripVertical, DollarSign, User, UserRound, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles, BarChart3, RefreshCw, Users, Package, AlertTriangle, Paperclip, FileCheck, CreditCard, HandCoins, Flame, Cloud, Snowflake, FileText, Clock, CalendarDays, Pen, KanbanSquare, ArrowRight, UserMinus, Ruler, Bot, ChevronDown, ChevronUp } from "lucide-react";
 import { PipelineNav } from "@/components/PipelineNav";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
@@ -305,6 +306,24 @@ type PropostaSnap = {
   valorTotal?: string | null;
 };
 
+type PlanoAcompanhamentoCard = {
+  etapa: string;
+  objetivo: string;
+  modo: "automatico" | "gerar_aprovar" | "somente_sugestao";
+  canalPrincipal: "whatsapp" | "instagram" | "messenger" | "email" | "chat" | "ligacao" | null;
+  canaisAlternativos: Array<"whatsapp" | "instagram" | "messenger" | "email" | "chat" | "ligacao">;
+  tipoConteudo: "texto" | "imagem" | "video" | "audio" | "documento" | "proposta" | "case";
+  argumento: string;
+  beneficio?: string | null;
+  diferencial?: string | null;
+  prova?: string | null;
+  chamadaParaAcao: string;
+  conteudo: string;
+  motivo: string;
+  requerHumano: boolean;
+  fontes: Array<{ id: string; tipo: string; categoria: string; titulo: string; resumo: string }>;
+};
+
 function propostaLabel(status: string): { text: string; className: string } {
   if (status === "aceita")    return { text: "Aprovado",    className: "bg-green-100 text-green-700 border-green-200" };
   if (status === "rejeitada") return { text: "Descartado",  className: "bg-red-100 text-red-600 border-red-200" };
@@ -505,6 +524,10 @@ function DealCard({
         <ContractCardButton deal={deal} />
       )}
 
+      {!overlay && deal.leadId && !TERMINAL_ETAPAS.has(deal.etapa ?? "") && (
+        <DealFollowupPreview deal={deal} />
+      )}
+
       {!overlay && /medid/i.test(String(deal.etapa ?? "")) && (
         <div
           className="pt-1 border-t border-border/50"
@@ -584,6 +607,123 @@ function DealCard({
             <CalendarDays className="h-3 w-3 shrink-0" />
             Agendar reunião
           </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DealFollowupPreview({ deal }: { deal: Deal }) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [plano, setPlano] = useState<PlanoAcompanhamentoCard | null>(null);
+  const [error, setError] = useState("");
+
+  async function loadPreview() {
+    if (!deal.leadId) return;
+    if (plano) {
+      setOpen((value) => !value);
+      return;
+    }
+
+    setOpen(true);
+    setLoading(true);
+    setError("");
+    try {
+      const body = await customFetch<{ plano?: PlanoAcompanhamentoCard; error?: string }>(
+        `/api/tenants/${deal.tenantId}/leads/${deal.leadId}/acompanhamento/planejar`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            dealId: deal.id,
+            motivoDisparo: "prévia solicitada no card da pipeline",
+          }),
+          responseType: "json",
+        },
+      );
+      if (!body.plano) throw new Error(body.error || "Não foi possível calcular a próxima ação.");
+      setPlano(body.plano);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível calcular a próxima ação.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const canalLabel: Record<string, string> = {
+    whatsapp: "WhatsApp",
+    instagram: "Instagram",
+    messenger: "Messenger",
+    email: "E-mail",
+    chat: "Chat",
+    ligacao: "Ligação",
+  };
+
+  return (
+    <div className="pt-1 border-t border-border/50" onClick={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
+      <button
+        type="button"
+        onClick={() => void loadPreview()}
+        className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-[11px] font-medium text-primary hover:bg-primary/5"
+        data-testid={`deal-followup-preview-${deal.id}`}
+      >
+        <span className="inline-flex min-w-0 items-center gap-1.5">
+          {loading ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" /> : <Bot className="h-3.5 w-3.5 shrink-0" />}
+          <span className="truncate">Vendi acompanhando</span>
+        </span>
+        {open ? <ChevronUp className="h-3.5 w-3.5 shrink-0" /> : <ChevronDown className="h-3.5 w-3.5 shrink-0" />}
+      </button>
+
+      {open && (
+        <div className="mt-1 rounded-lg border bg-muted/20 p-2.5">
+          {loading ? (
+            <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Analisando jornada, histórico e inteligência do negócio...
+            </div>
+          ) : error ? (
+            <div>
+              <p className="text-[11px] text-red-600">{error}</p>
+              <button type="button" className="mt-1 text-[10px] font-medium text-primary underline" onClick={() => { setPlano(null); void loadPreview(); }}>
+                Tentar novamente
+              </button>
+            </div>
+          ) : plano ? (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold">Próxima ação sugerida</p>
+                <span className="rounded-full bg-background px-2 py-0.5 text-[9px] font-semibold text-muted-foreground">
+                  {plano.canalPrincipal ? canalLabel[plano.canalPrincipal] ?? plano.canalPrincipal : "Sem canal"}
+                </span>
+              </div>
+              <p className="text-[11px] leading-relaxed text-foreground">{plano.argumento || plano.objetivo}</p>
+              {(plano.beneficio || plano.diferencial || plano.prova) && (
+                <div className="grid gap-1">
+                  {plano.beneficio && <p className="text-[10px] text-muted-foreground"><strong>Benefício:</strong> {plano.beneficio}</p>}
+                  {plano.diferencial && <p className="text-[10px] text-muted-foreground"><strong>Diferencial:</strong> {plano.diferencial}</p>}
+                  {plano.prova && <p className="text-[10px] text-muted-foreground"><strong>Prova:</strong> {plano.prova}</p>}
+                </div>
+              )}
+              {plano.chamadaParaAcao && <p className="rounded-md bg-background px-2 py-1.5 text-[10px]"><strong>CTA:</strong> {plano.chamadaParaAcao}</p>}
+              {plano.conteudo && (
+                <details className="rounded-md border bg-background px-2 py-1.5">
+                  <summary className="cursor-pointer text-[10px] font-semibold">Ver conteúdo sugerido</summary>
+                  <p className="mt-1 whitespace-pre-wrap text-[10px] leading-relaxed text-muted-foreground">{plano.conteudo}</p>
+                </details>
+              )}
+              <div className="flex flex-wrap items-center gap-1">
+                {plano.canaisAlternativos.slice(0, 3).map((canal) => (
+                  <span key={canal} className="rounded bg-background px-1.5 py-0.5 text-[9px] text-muted-foreground">Plano B: {canalLabel[canal] ?? canal}</span>
+                ))}
+                {plano.requerHumano && <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700">Requer humano</span>}
+              </div>
+              {plano.motivo && <p className="text-[10px] leading-relaxed text-muted-foreground"><strong>Por quê:</strong> {plano.motivo}</p>}
+              <div className="flex items-center justify-between border-t pt-1.5 text-[9px] text-muted-foreground">
+                <span>{plano.fontes.length} fonte(s) consultada(s)</span>
+                <button type="button" className="font-medium text-primary hover:underline" onClick={() => { setPlano(null); void loadPreview(); }}>Recalcular</button>
+              </div>
+            </div>
+          ) : null}
         </div>
       )}
     </div>

@@ -10,6 +10,31 @@ type Entry = { id: string; title: string; values: Record<string, string>; source
 type Section = { draft: Entry[]; approved: Entry[]; approvedAt?: string; revision: number };
 type Plan = { version: number; sections: Record<string, Section>; history: Array<{ version: number; section: string; action: string; at: string }> };
 type Data = { plan: Plan; sections: Array<{ id: string; title: string; fields: string[] }>; sources: { profile: Record<string, unknown> | null; products: Array<{ id: string; nome: string; descricao?: string }>; assets: Array<{ id: string; title: string; url: string }> } };
+type DiagnosticoInteligencia = {
+  percentual: number;
+  nivel: "inicial" | "parcial" | "bom" | "forte";
+  itens: Array<{ id: string; titulo: string; concluido: boolean; peso: number; detalhe: string; acao?: string }>;
+  lacunas: Array<{ id: string; titulo: string; acao: string }>;
+};
+type DiscoveryInteligente = {
+  resumo: string;
+  prioridades: Array<{
+    secao: string;
+    titulo: string;
+    motivo: string;
+    perguntas: string[];
+    evidenciasNecessarias: string[];
+    impacto: "alto" | "medio" | "baixo";
+  }>;
+  status: "rascunho";
+  aviso: string;
+};
+type DiscoveryDocumentos = {
+  extracao: Record<string, unknown>;
+  sugestoes: Array<{ secao: string; records: Entry[] }>;
+  status: "rascunho";
+  aviso: string;
+};
 const selectClass = "w-full rounded-md border bg-background p-2 text-sm";
 const roleLabels: Record<string, string> = { marketing: "Marketing", prospector: "Prospector", sdr: "SDR", closer: "Closer", agendamento: "Agendamento", suporte: "Suporte", pos_venda: "Pós-venda", financeiro: "Financeiro", cobranca: "Cobrança", scout: "Revenue Scout" };
 export function BusinessPlanPanel() {
@@ -26,6 +51,12 @@ export function BusinessPlanPanel() {
     return data;
   }
   const query = useQuery<Data>({ queryKey, queryFn: () => request(""), enabled: !!tenantId, refetchOnWindowFocus: false });
+  const diagnosticoQuery = useQuery<DiagnosticoInteligencia>({
+    queryKey: ["diagnostico-inteligencia-negocio", tenantId, query.data?.plan.version],
+    queryFn: () => request("/diagnostico-inteligencia"),
+    enabled: !!tenantId,
+    refetchOnWindowFocus: false,
+  });
   const [tab, setTab] = useState("plan");
   const [sectionId, setSectionId] = useState("company");
   const [drafts, setDrafts] = useState<Record<string, Entry[]>>({});
@@ -33,11 +64,15 @@ export function BusinessPlanPanel() {
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState("");
   const busyRef = useRef(false);
+  const documentInputRef = useRef<HTMLInputElement>(null);
   const [role, setRole] = useState("marketing");
   const [agentContext, setAgentContext] = useState("");
   const [campaign, setCampaign] = useState({ segmentId: "", productId: "", goal: "", channel: "instagram", assetIds: [] as string[] });
   const [message, setMessage] = useState("");
   const [savedCampaign, setSavedCampaign] = useState("");
+  const [discoveryInteligente, setDiscoveryInteligente] = useState<DiscoveryInteligente | null>(null);
+  const [focoDiscovery, setFocoDiscovery] = useState("");
+  const [discoveryDocumentos, setDiscoveryDocumentos] = useState<DiscoveryDocumentos | null>(null);
   const campaignId = useRef(crypto.randomUUID());
   const previewVersion = useRef<number | null>(null);
   const data = query.data;
@@ -58,6 +93,31 @@ export function BusinessPlanPanel() {
   }
   function update(index: number, patch: Partial<Entry>) { setDrafts(v => ({ ...v, [sectionId]: records.map((r, i) => i === index ? { ...r, ...patch } : r) })); }
   function newEntry(): Entry { return { id: crypto.randomUUID(), title: "Nova ficha", values: {}, evidence: "declared", source: "Informado pela empresa", productIds: [], assetIds: [] }; }
+  async function analisarDocumentosDiscovery(files: FileList | null) {
+    if (!files?.length || !tenantId) return;
+    await run("Analisando documentos...", async () => {
+      const body = new FormData();
+      Array.from(files).slice(0, 5).forEach((file) => body.append("files", file));
+      const response = await fetch(`${base}/discovery-documentos`, {
+        method: "POST",
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body,
+      });
+      const data = await response.json().catch(() => ({})) as DiscoveryDocumentos & { error?: string };
+      if (!response.ok) throw new Error(data.error || "Não foi possível analisar os documentos.");
+      setDiscoveryDocumentos(data);
+      if (documentInputRef.current) documentInputRef.current.value = "";
+    });
+  }
+
+  async function executarDiscoveryInteligente() {
+    await run("Analisando inteligência do negócio...", async () => {
+      const response = await request("/discovery-inteligente", "POST", { foco: focoDiscovery });
+      setDiscoveryInteligente(response);
+    });
+  }
+
   async function save(action: "save" | "approve" | "revoke") {
     await run("Salvando...", async () => {
       const response = await request(`/sections/${sectionId}`, "PUT", { version: data!.plan.version, action, records });
@@ -79,6 +139,181 @@ export function BusinessPlanPanel() {
   }
   const approvedCount = Object.values(data.plan.sections).filter(s => s.approved.length).length;
   return <fieldset disabled={!!busy} className="min-w-0 space-y-4">
+    {diagnosticoQuery.data && (
+      <section className="rounded-xl border bg-card p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-base font-semibold">Inteligência do Negócio</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Cobertura atual das informações que o Vendi e os agentes podem consultar.
+            </p>
+          </div>
+          <div className="rounded-xl border bg-muted/30 px-4 py-3 text-center">
+            <div className="text-2xl font-semibold">{diagnosticoQuery.data.percentual}%</div>
+            <div className="text-xs capitalize text-muted-foreground">nível {diagnosticoQuery.data.nivel}</div>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-2 rounded-lg border bg-muted/20 p-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+          <div>
+            <p className="text-xs font-semibold">Importar documentos para Discovery</p>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              Envie PDF, Word, texto ou imagem. O Vendi extrai fatos e propõe rascunhos nos blocos corretos; nada é aprovado automaticamente.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              ref={documentInputRef}
+              type="file"
+              multiple
+              accept=".pdf,.doc,.docx,.txt,.md,image/*"
+              className="hidden"
+              onChange={(event) => void analisarDocumentosDiscovery(event.target.files)}
+            />
+            <Button variant="outline" disabled={!!busy} onClick={() => documentInputRef.current?.click()}>
+              Analisar documentos
+            </Button>
+          </div>
+        </div>
+
+        {discoveryDocumentos && (
+          <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50/50 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold">Sugestões extraídas dos documentos</p>
+                <p className="mt-1 text-xs text-muted-foreground">{discoveryDocumentos.aviso}</p>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setDiscoveryDocumentos(null)}>Fechar</Button>
+            </div>
+            <div className="mt-3 grid gap-2 lg:grid-cols-2">
+              {discoveryDocumentos.sugestoes.map((grupo) => {
+                const secao = data.sections.find((item) => item.id === grupo.secao);
+                return (
+                  <article key={grupo.secao} className="rounded-lg border bg-background p-3">
+                    <p className="text-xs font-semibold">{secao?.title ?? grupo.secao}</p>
+                    <p className="mt-1 text-[11px] text-muted-foreground">{grupo.records.length} ficha(s) sugerida(s)</p>
+                    <div className="mt-2 space-y-2">
+                      {grupo.records.slice(0, 5).map((registro) => (
+                        <details key={registro.id} className="rounded-md border bg-muted/20 px-2 py-1.5">
+                          <summary className="cursor-pointer text-xs font-medium">{registro.title}</summary>
+                          {Object.entries(registro.values).map(([chave, valor]) => (
+                            <p key={chave} className="mt-1 whitespace-pre-wrap text-[11px] text-muted-foreground"><strong>{chave}: </strong>{valor}</p>
+                          ))}
+                        </details>
+                      ))}
+                    </div>
+                    <Button
+                      className="mt-3"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const atuais = drafts[grupo.secao] ?? data.plan.sections[grupo.secao]?.draft ?? [];
+                        setDrafts((value) => ({
+                          ...value,
+                          [grupo.secao]: [...atuais, ...grupo.records].slice(0, 30),
+                        }));
+                        setTab("plan");
+                        setSectionId(grupo.secao);
+                      }}
+                    >
+                      Adicionar ao rascunho deste bloco
+                    </Button>
+                  </article>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <div className="mt-4 flex flex-col gap-2 rounded-lg border bg-muted/20 p-3 sm:flex-row sm:items-end">
+          <label className="min-w-0 flex-1 text-xs font-medium">
+            Foco opcional do Discovery
+            <Input
+              value={focoDiscovery}
+              onChange={(event) => setFocoDiscovery(event.target.value)}
+              placeholder="Ex.: melhorar abordagem comercial para construtoras"
+              className="mt-1"
+            />
+          </label>
+          <Button variant="outline" disabled={!!busy} onClick={() => void executarDiscoveryInteligente()}>
+            Discovery Inteligente
+          </Button>
+        </div>
+
+        {discoveryInteligente && (
+          <div className="mt-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold">Prioridades sugeridas pelo Vendi</p>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{discoveryInteligente.resumo}</p>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setDiscoveryInteligente(null)}>Fechar</Button>
+            </div>
+            <div className="mt-3 grid gap-2 lg:grid-cols-2">
+              {discoveryInteligente.prioridades.map((prioridade, index) => (
+                <article key={`${prioridade.secao}:${index}`} className="rounded-lg border bg-background p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold">{prioridade.titulo}</p>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${prioridade.impacto === "alto" ? "bg-red-50 text-red-700" : prioridade.impacto === "medio" ? "bg-amber-50 text-amber-700" : "bg-sky-50 text-sky-700"}`}>
+                      impacto {prioridade.impacto}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{prioridade.motivo}</p>
+                  {!!prioridade.perguntas.length && (
+                    <div className="mt-2">
+                      <p className="text-[11px] font-semibold">Perguntas para completar</p>
+                      <ul className="mt-1 list-disc space-y-1 pl-4 text-[11px] text-muted-foreground">
+                        {prioridade.perguntas.map((pergunta) => <li key={pergunta}>{pergunta}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  {!!prioridade.evidenciasNecessarias.length && (
+                    <div className="mt-2">
+                      <p className="text-[11px] font-semibold">Evidências necessárias</p>
+                      <p className="mt-1 text-[11px] text-muted-foreground">{prioridade.evidenciasNecessarias.join(" · ")}</p>
+                    </div>
+                  )}
+                  <Button
+                    className="mt-3"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setTab("plan");
+                      setSectionId(prioridade.secao);
+                      setNotes([
+                        prioridade.titulo,
+                        prioridade.motivo,
+                        prioridade.perguntas.length ? `Perguntas a responder: ${prioridade.perguntas.join(" | ")}` : "",
+                        prioridade.evidenciasNecessarias.length ? `Evidências a buscar: ${prioridade.evidenciasNecessarias.join(" | ")}` : "",
+                      ].filter(Boolean).join("\n"));
+                    }}
+                  >
+                    Desenvolver este bloco
+                  </Button>
+                </article>
+              ))}
+            </div>
+            <p className="mt-3 text-[11px] text-muted-foreground">{discoveryInteligente.aviso}</p>
+          </div>
+        )}
+
+        <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+          {diagnosticoQuery.data.itens.map((item) => (
+            <div key={item.id} className="rounded-lg border bg-background px-3 py-3">
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-sm font-medium">{item.titulo}</p>
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${item.concluido ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                  {item.concluido ? "Coberto" : "Melhorar"}
+                </span>
+              </div>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{item.detalhe}</p>
+              {!item.concluido && item.acao && <p className="mt-2 text-xs font-medium text-amber-800">{item.acao}</p>}
+            </div>
+          ))}
+        </div>
+      </section>
+    )}
+
     <div className="rounded-xl border bg-card p-5"><h2 className="text-xl font-semibold">Plano de Negócios</h2><p className="mt-1 text-sm text-muted-foreground">Desenvolva sua estratégia com IA e transforme informações aprovadas em orientação para os agentes e campanhas.</p><p className="mt-3 text-sm">{approvedCount} de {data.sections.length} blocos aprovados · versão {data.plan.version}{dirty ? " · alterações não salvas" : ""}</p><div className="mt-4 flex flex-wrap gap-2">{[["plan", "Desenvolver plano"], ["agents", "Conexão com agentes"], ["campaign", "Criar campanha"], ["document", "Visualizar PN"]].map(([key, label]) => <Button key={key} variant={tab === key ? "default" : "outline"} onClick={() => setTab(key)}>{label}</Button>)}</div></div>
     {tab === "plan" && <div className="grid gap-4 lg:grid-cols-[230px_minmax(0,1fr)]"><nav className="flex gap-2 overflow-x-auto lg:flex-col" aria-label="Blocos do plano">{data.sections.map((s,i) => <button key={s.id} disabled={!!busy} onClick={() => { setSectionId(s.id); setSuggestion(null); setNotes(""); }} className={`shrink-0 rounded-lg border p-3 text-left text-sm ${sectionId === s.id ? "border-primary bg-primary/5 font-semibold" : "bg-card"}`}>{i+1}. {s.title}<span className="block text-xs font-normal text-muted-foreground">{drafts[s.id] ? "Alterações não salvas" : data.plan.sections[s.id]?.approved.length ? "Versão aprovada disponível" : "Em desenvolvimento"}</span></button>)}</nav>
       <div className="min-w-0 space-y-4"><div className="rounded-xl border bg-card p-4"><h3 className="font-semibold">{spec?.title}</h3><p className="mt-1 text-sm text-muted-foreground">Crie uma ficha por segmento, produto, oportunidade ou ação. Rascunhos e hipóteses não entram no atendimento dos agentes.</p><label className="mt-3 block text-sm">Como a IA pode ajudar?<Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Ex.: desenvolva oportunidades específicas para os públicos que atendemos" /></label><Button className="mt-2" disabled={!!busy} onClick={() => run("Desenvolvendo com IA...", async () => { const r = await request(`/sections/${sectionId}/suggest`, "POST", { records, notes }); setSuggestion(r.records); })}>Desenvolver com IA</Button></div>
