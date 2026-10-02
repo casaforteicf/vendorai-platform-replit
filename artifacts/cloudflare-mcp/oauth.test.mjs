@@ -41,7 +41,7 @@ test('private OAuth: discovery, redirect restrictions, consent, PKCE, replay, re
       const response = await fetch(base + '/oauth/authorize?' + new URLSearchParams({ ...params, ...changes }));
       const html = await response.text();
       assert.ok(!html.includes(process.env.MCP_ACCESS_TOKEN));
-      return { response, csrf: html.match(/name="csrf" value="([^"]+)"/)?.[1] };
+      return { response, html, csrf: html.match(/name="csrf" value="([^"]+)"/)?.[1] };
     };
     assert.equal((await form({ resource: 'https://attacker.example' })).response.status, 400);
     assert.equal((await form({ code_challenge_method: 'plain' })).response.status, 400);
@@ -87,7 +87,7 @@ test('private OAuth: discovery, redirect restrictions, consent, PKCE, replay, re
     assert.ok(noResourceTokens.access_token);
 
     const cimdAuth = await form({ client_id: cimdClient });
-    const cimdHtml = await cimdAuth.response.text();
+    const cimdHtml = cimdAuth.html;
     const cimdCsrf = cimdHtml.match(/name="csrf" value="([^"]+)"/)?.[1];
     assert.ok(cimdCsrf);
     const cimdApprove = await post('/oauth/approve', { csrf: cimdCsrf, credential: process.env.MCP_ACCESS_TOKEN, decision: 'approve' }, { Origin: base });
@@ -97,7 +97,7 @@ test('private OAuth: discovery, redirect restrictions, consent, PKCE, replay, re
     assert.ok(cimdTokens.access_token);
 
     const legacyAuth = await form({ client_id: legacyClient });
-    const legacyHtml = await legacyAuth.response.text();
+    const legacyHtml = legacyAuth.html;
     const legacyCsrf = legacyHtml.match(/name="csrf" value="([^"]+)"/)?.[1];
     assert.ok(legacyCsrf);
     const legacyApprove = await fetch(resource + '/oauth/approve', {
@@ -140,9 +140,11 @@ test('real MCP server still initializes and lists tools behind authentication', 
     env: { ...process.env, PORT: String(port), MCP_PUBLIC_URL: base, MCP_ACCESS_TOKEN: secret }, stdio: ['ignore', 'pipe', 'pipe'],
   });
   try {
+    let stderr = "";
+    child.stderr.on("data", chunk => { stderr += chunk.toString(); });
     await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('startup timeout')), 5000);
-      child.once('exit', code => { clearTimeout(timeout); reject(new Error(`server exited ${code}`)); });
+      const timeout = setTimeout(() => reject(new Error('startup timeout: ' + stderr.slice(-2000))), 5000);
+      child.once('exit', code => { clearTimeout(timeout); reject(new Error(`server exited ${code}: ${stderr.slice(-2000)}`)); });
       child.stdout.once('data', () => { clearTimeout(timeout); resolve(); });
     });
     assert.equal((await fetch(base + '/health')).status, 200);
