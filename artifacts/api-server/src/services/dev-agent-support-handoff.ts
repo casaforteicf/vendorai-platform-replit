@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { and, asc, eq, isNotNull, or } from "drizzle-orm";
 import { bugReportsTable, db, pool } from "@workspace/db";
 import { executeDevAutonomousWork } from "../routes/dev_agent_autonomy.js";
@@ -146,7 +147,7 @@ async function syncImprovementFromSupport(report: typeof bugReportsTable.$inferS
     "SELECT id FROM admin_improvements WHERE source_type='support' AND source_ref_id=$1 LIMIT 1",
     [report.id],
   );
-  const id = existing.rows[0]?.id ?? crypto.randomUUID();
+  const id = existing.rows[0]?.id ?? randomUUID();
   const priorityMap: Record<string, string> = { critica: "urgente", alta: "alta", media: "media", baixa: "baixa" };
   const status = pr?.number ? "testando" : result?.status === "approval_required" ? "bloqueada" : "em_desenvolvimento";
   const agentStatus = pr?.number ? "waiting_tests" : result?.status === "approval_required" ? "needs_attention" : "failed";
@@ -165,7 +166,7 @@ async function syncImprovementFromSupport(report: typeof bugReportsTable.$inferS
 
   await pool.query(
     "INSERT INTO admin_improvement_events (id,improvement_id,event_type,message,actor,payload) VALUES ($1,$2,'support_handoff',$3,'vendi',$4::jsonb)",
-    [crypto.randomUUID(), id, summary.slice(0, 6000), JSON.stringify({ bugReportId: report.id, prNumber: pr?.number ?? null, prUrl: pr?.url ?? null, branch, executorStatus: result?.status ?? null })],
+    [randomUUID(), id, summary.slice(0, 6000), JSON.stringify({ bugReportId: report.id, prNumber: pr?.number ?? null, prUrl: pr?.url ?? null, branch, executorStatus: result?.status ?? null })],
   ).catch(() => undefined);
 
   return id;
