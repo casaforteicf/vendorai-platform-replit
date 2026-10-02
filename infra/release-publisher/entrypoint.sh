@@ -82,7 +82,7 @@ fi
 prefix="${REVISION:0:12}"
 for attempt in {1..24}; do
   app_html="$(curl -fsSL --connect-timeout 5 --max-time 15 "https://app.appvendorai.com/?__vendorai_release=$RANDOM" || true)"
-  railway_html="$(curl -fsSL --connect-timeout 5 --max-time 15 "https://workspacefrontend-production-a59d.up.railway.app/?__vendorai_release=$RANDOM" || true)"
+  railway_html="$(curl -fsSL --connect-timeout 5 --max-time 15 "https://vendorai-frontend-live-v2-production-9fa6.up.railway.app/?__vendorai_release=$RANDOM" || true)"
   app_ok=false
   railway_ok=false
   site_ok=false
@@ -104,6 +104,13 @@ for attempt in {1..24}; do
   if [ "$app_ok" = true ] && [ "$site_ok" = true ]; then
     echo "✅ CONCLUÍDO — revisão $REVISION publicada e validada em produção."
     github_status success "CONCLUÍDO — publicado e validado em produção"
+    trap - EXIT
+    exec tail -f /dev/null
+  fi
+
+  if [ "$cloudflare_ok" != true ] && [ "$railway_ok" = true ] && [ "$site_ok" = true ]; then
+    echo "✅ CONCLUÍDO — Cloudflare indisponível, mas o frontend Railway e o site público estão saudáveis para a revisão $REVISION."
+    github_status success "CONCLUÍDO — frontend Railway validado; Cloudflare indisponível"
     trap - EXIT
     exec tail -f /dev/null
   fi
