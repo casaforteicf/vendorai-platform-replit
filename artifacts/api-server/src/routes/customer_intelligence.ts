@@ -217,6 +217,7 @@ router.get(
         riskEvents: profile.riskEvents ?? [],
         nextBestAction: profile.nextBestAction,
         nextBestActionReason: profile.nextBestActionReason,
+        outreachPlan: profile.outreachPlan,
       } : null,
       facts,
       events,
