@@ -1,4 +1,5 @@
 import businessPlanRouter from "./business_plan.js";
+import { diagnosticPlanningPublicRouter, diagnosticPlanningProtectedRouter } from "./diagnostic_planning.js";
 import { Router, type IRouter } from "express";
 // Deploy marker: Arqdor Concept production validation 2026-09-19
 import healthRouter from "./health";
@@ -229,6 +230,7 @@ router.use(siteBlogPublicRouter);
 router.use(publicSegmentTemplatesRouter);
 router.use(inventorySyncRouter);
 router.use(intakeRouter);
+router.use(diagnosticPlanningPublicRouter);
 router.use(portalRouter);
 router.use(archPublicRouter);
 router.use(googleCallbackRouter);
@@ -358,6 +360,7 @@ router.use(consentsRouter);
 
 // Business Hub
 router.use(businessPlanRouter);
+router.use(diagnosticPlanningProtectedRouter);
 router.use(businessProfilesRouter);
 router.use(leadCaptureRouter);
 
