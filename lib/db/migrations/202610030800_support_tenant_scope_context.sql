@@ -2,7 +2,10 @@
 ALTER TABLE bug_reports
   ADD COLUMN IF NOT EXISTS change_scope text,
   ADD COLUMN IF NOT EXISTS scope_reason text,
-  ADD COLUMN IF NOT EXISTS tenant_context_snapshot jsonb;
+  ADD COLUMN IF NOT EXISTS tenant_context_snapshot jsonb,
+  ADD COLUMN IF NOT EXISTS source_channel text,
+  ADD COLUMN IF NOT EXISTS source_sender text,
+  ADD COLUMN IF NOT EXISTS source_message_id text;
 
 CREATE INDEX IF NOT EXISTS bug_reports_change_scope_idx
   ON bug_reports (change_scope);
