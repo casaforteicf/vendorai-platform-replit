@@ -1,6 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
-import { db, bugReportsTable, relatosTecnicosTable, tenantsTable } from "@workspace/db";
+import { db, bugReportsTable, relatosTecnicosTable, tenantsTable, usersTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
@@ -123,6 +123,17 @@ const chatBodySchema = z.object({
   attachments: z.array(attachmentSchema).max(3).optional(),
 });
 
+const externalSupportSchema = z.object({
+  channel: z.enum(["whatsapp", "instagram", "email", "form", "other"]),
+  text: z.string().trim().min(2).max(12000),
+  senderPhone: z.string().trim().max(80).optional().nullable(),
+  senderEmail: z.string().email().optional().nullable(),
+  senderName: z.string().trim().max(180).optional().nullable(),
+  sourceMessageId: z.string().trim().max(220).optional().nullable(),
+  provider: z.string().trim().max(120).optional().nullable(),
+  metadata: z.record(z.string(), z.unknown()).optional().default({}),
+});
+
 const devGithubTaskSchema = z.object({
   requestId: z.string().uuid(),
   title: z.string().min(3).max(120),
@@ -153,6 +164,103 @@ function buildJarvisSystemPrompt(
   return [SUPPORT_SYSTEM_PROMPT, JARVIS_UNIVERSAL_PROFILE, requestContext, capabilityContext, contextLines, operationalContext]
     .filter(Boolean)
     .join("\n");
+}
+
+function normalizePhone(value: string | null | undefined) {
+  return String(value ?? "").replace(/\D/g, "");
+}
+
+async function resolveExternalSupportTenant(input: {
+  senderPhone?: string | null;
+  senderEmail?: string | null;
+}) {
+  const phone = normalizePhone(input.senderPhone);
+  const email = String(input.senderEmail ?? "").trim().toLowerCase();
+
+  const rows = await db
+    .select({
+      userId: usersTable.id,
+      userName: usersTable.name,
+      userEmail: usersTable.email,
+      userPhone: usersTable.telefone,
+      tenantId: usersTable.tenantId,
+      platformRole: usersTable.platformRole,
+      active: usersTable.active,
+      tenantName: tenantsTable.name,
+      tenantSlug: tenantsTable.slug,
+      vertical: tenantsTable.vertical,
+      verticalSecundaria: tenantsTable.verticalSecundaria,
+      planId: tenantsTable.planId,
+    })
+    .from(usersTable)
+    .innerJoin(tenantsTable, eq(usersTable.tenantId, tenantsTable.id));
+
+  const matches = rows.filter((row) => {
+    if (!row.active) return false;
+    const emailMatch = email && row.userEmail.trim().toLowerCase() === email;
+    const rowPhone = normalizePhone(row.userPhone);
+    const phoneMatch = phone && rowPhone && (
+      rowPhone === phone ||
+      (Math.min(rowPhone.length, phone.length) >= 10 && (rowPhone.endsWith(phone) || phone.endsWith(rowPhone)))
+    );
+    return Boolean(emailMatch || phoneMatch);
+  });
+
+  const uniqueTenants = new Map<string, typeof matches[number]>();
+  for (const match of matches) {
+    if (!uniqueTenants.has(match.tenantId)) uniqueTenants.set(match.tenantId, match);
+  }
+  return [...uniqueTenants.values()];
+}
+
+async function classifyExternalSupportRequest(tenantId: string, text: string) {
+  const fallback = {
+    categoria: "sugestao" as const,
+    prioridade: "media" as const,
+    titulo: text.length > 100 ? text.slice(0, 97) + "..." : text,
+    descricao: text,
+    escopoSugerido: "tenant" as const,
+    motivoEscopo: "Solicitação externa classificada de forma conservadora até análise técnica.",
+    precisaAcompanhamento: true,
+  };
+
+  try {
+    const openai = await getOpenAIForTenant(tenantId);
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0,
+      max_tokens: 700,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content: [
+            "Você classifica solicitações de suporte de usuários do VendorAI.",
+            "Retorne JSON com: categoria (duvida|bug|sugestao), prioridade (baixa|media|alta|critica), titulo, descricao, escopoSugerido (tenant|vertical|global_opcional|global|bug), motivoEscopo, precisaAcompanhamento (boolean).",
+            "Regras: dúvida simples não precisa acompanhamento técnico; bug e melhoria precisam.",
+            "Preferência/regra específica da empresa => tenant. Processo comum ao segmento => vertical. Recurso amplo configurável => global_opcional. Comportamento estrutural essencial => global. Defeito => bug.",
+            "Nunca promova para global apenas porque um único tenant pediu. Em dúvida, escolha o menor escopo reutilizável."
+          ].join("\n"),
+        },
+        { role: "user", content: text },
+      ],
+    });
+    const raw = JSON.parse(response.choices[0]?.message?.content ?? "{}") as Record<string, unknown>;
+    const categoria = ["duvida", "bug", "sugestao"].includes(String(raw.categoria)) ? String(raw.categoria) : fallback.categoria;
+    const prioridade = ["baixa", "media", "alta", "critica"].includes(String(raw.prioridade)) ? String(raw.prioridade) : fallback.prioridade;
+    const escopo = ["tenant", "vertical", "global_opcional", "global", "bug"].includes(String(raw.escopoSugerido)) ? String(raw.escopoSugerido) : fallback.escopoSugerido;
+    return {
+      categoria: categoria as "duvida" | "bug" | "sugestao",
+      prioridade: prioridade as "baixa" | "media" | "alta" | "critica",
+      titulo: String(raw.titulo ?? fallback.titulo).slice(0, 255),
+      descricao: String(raw.descricao ?? text).slice(0, 12000),
+      escopoSugerido: escopo as "tenant" | "vertical" | "global_opcional" | "global" | "bug",
+      motivoEscopo: String(raw.motivoEscopo ?? fallback.motivoEscopo).slice(0, 4000),
+      precisaAcompanhamento: raw.precisaAcompanhamento !== false && categoria !== "duvida",
+    };
+  } catch {
+    return fallback;
+  }
 }
 
 function setSseHeaders(res: any) {
@@ -289,6 +397,89 @@ router.post("/support/dev/github-task", async (req, res) => {
     req.log?.error({ err }, "dev-ia: GitHub task request failed");
     return res.status(502).json({ error: "Não foi possível conectar ao GitHub." });
   }
+});
+
+router.post("/support/external/intake", async (req, res) => {
+  const expectedSecret = process.env["SUPPORT_EXTERNAL_INGEST_SECRET"];
+  const providedSecret = req.headers["x-vendorai-support-secret"];
+  if (!expectedSecret || typeof providedSecret !== "string" || providedSecret !== expectedSecret) {
+    return res.status(401).json({ error: "Canal de suporte externo não autorizado." });
+  }
+
+  const parsed = externalSupportSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: "Payload de suporte externo inválido." });
+
+  const matches = await resolveExternalSupportTenant(parsed.data);
+  if (matches.length === 0) {
+    return res.status(202).json({
+      status: "tenant_unresolved",
+      needsTenantConfirmation: true,
+      instruction: "Não foi possível identificar o tenant pelo remetente. Confirme a empresa antes de criar uma demanda.",
+    });
+  }
+  if (matches.length > 1) {
+    return res.status(202).json({
+      status: "tenant_ambiguous",
+      needsTenantConfirmation: true,
+      tenantOptions: matches.map((item) => ({ tenantId: item.tenantId, tenantName: item.tenantName })),
+      instruction: "O remetente está associado a mais de um tenant. Confirme qual empresa está solicitando antes de continuar.",
+    });
+  }
+
+  const requester = matches[0];
+  const classification = await classifyExternalSupportRequest(requester.tenantId, parsed.data.text);
+  const snapshot = {
+    tenantId: requester.tenantId,
+    tenantName: requester.tenantName,
+    tenantSlug: requester.tenantSlug,
+    vertical: requester.vertical ?? null,
+    verticalSecundaria: requester.verticalSecundaria ?? null,
+    planId: requester.planId ?? null,
+    userId: requester.userId,
+    userName: requester.userName,
+    platformRole: requester.platformRole,
+    sourceChannel: parsed.data.channel,
+    provider: parsed.data.provider ?? null,
+    capturedAt: new Date().toISOString(),
+  };
+
+  if (!classification.precisaAcompanhamento) {
+    return res.json({
+      status: "answered_without_technical_demand",
+      tenantId: requester.tenantId,
+      tenantName: requester.tenantName,
+      category: classification.categoria,
+      suggestedReply: "A solicitação foi identificada como dúvida operacional e pode ser respondida pelo Agente de Suporte sem abrir melhoria técnica.",
+    });
+  }
+
+  const [saved] = await db.insert(bugReportsTable).values({
+    tenantId: requester.tenantId,
+    titulo: classification.titulo,
+    descricao: classification.descricao,
+    categoria: classification.categoria,
+    prioridade: classification.prioridade,
+    status: "aberto",
+    changeScope: classification.escopoSugerido,
+    scopeReason: classification.motivoEscopo,
+    tenantContextSnapshot: snapshot,
+    sourceChannel: parsed.data.channel,
+    sourceSender: parsed.data.senderEmail ?? parsed.data.senderPhone ?? parsed.data.senderName ?? null,
+    sourceMessageId: parsed.data.sourceMessageId ?? null,
+    respostaSuporte: "Solicitação recebida por canal externo, tenant identificado e encaminhada para análise técnica.",
+  } as any).returning();
+
+  return res.status(201).json({
+    status: "technical_demand_created",
+    bugReportId: saved?.id ?? null,
+    protocol: saved?.id ? "#" + saved.id.substring(0, 8).toUpperCase() : null,
+    tenantId: requester.tenantId,
+    tenantName: requester.tenantName,
+    category: classification.categoria,
+    priority: classification.prioridade,
+    changeScope: classification.escopoSugerido,
+    scopeReason: classification.motivoEscopo,
+  });
 });
 
 router.post("/support/file/interpret", jarvisUpload.single("file"), async (req, res) => {
