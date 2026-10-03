@@ -6,6 +6,7 @@ import {
   browserAgentConnectionsTable,
   tenantsTable,
   usersTable,
+  notificationsTable,
 } from "@workspace/db";
 import { and, eq, or } from "drizzle-orm";
 import { decrypt, encrypt } from "../lib/crypto.js";
@@ -319,6 +320,16 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
           payload: { ...(audit.payload ?? {}), error: message },
         })
         .where(eq(agentActionsLogTable.id, audit.id));
+    }
+
+    if (approvalRequired) {
+      await db.insert(notificationsTable).values({
+        tenantId,
+        type: "warning",
+        category: "browser_agent_approval_required",
+        title: "Browser Agent aguardando aprovação",
+        message: `A execução foi pausada porque precisa de aprovação humana. Objetivo: ${parsed.data.goal}. Abra a Central para aprovar e continuar.`,
+      });
     }
 
     res.status(approvalRequired ? 409 : 500).json({
