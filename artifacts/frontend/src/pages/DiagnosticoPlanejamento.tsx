@@ -137,7 +137,7 @@ export default function DiagnosticoPlanejamento() {
           <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><Megaphone className="h-4 w-4" /> Executar marketing</CardTitle></CardHeader>
           <CardContent className="space-y-3 text-sm text-muted-foreground">
             <p>Público, produto, posicionamento e evidências aprovadas passam a orientar conteúdo e campanhas sem duplicar cadastro.</p>
-            <Button variant="outline" size="sm" onClick={() => navigate("/content")}>Abrir Marketing</Button>
+            <Button variant="outline" size="sm" onClick={() => navigate("/content?tab=planejamento")}>Abrir Planejamento de Mídia</Button>
           </CardContent>
         </Card>
         <Card>
