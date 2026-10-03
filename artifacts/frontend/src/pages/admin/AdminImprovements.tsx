@@ -545,7 +545,7 @@ export default function AdminImprovements() {
   const allReadySelected = readySelected.length === selectedItems.length && selectedItems.length > 0;
 
   return (
-    <div className="mx-auto w-full max-w-[1600px] space-y-5 p-4 md:p-6">
+    <div className="mx-auto w-full max-w-[1600px] min-w-0 space-y-5 overflow-x-hidden px-3 pb-24 pt-4 sm:px-4 md:p-6 md:pb-24">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -564,8 +564,8 @@ export default function AdminImprovements() {
             Histórico oficial de evolução do Vendor.ai: toda melhoria deve ser registrada aqui, da solicitação até a validação em produção.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
+        <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:w-auto sm:flex-wrap">
+          <Button className="w-full sm:w-auto"
             variant="outline"
             onClick={() => void reconcileGithub()}
             disabled={!github.data?.ready || busy === "/api/admin/improvements/github-reconcile"}
@@ -574,6 +574,7 @@ export default function AdminImprovements() {
             Reconciliar GitHub
           </Button>
           <Button
+            className="w-full sm:w-auto"
             variant="outline"
             onClick={() => {
               improvementsQuery.refetch();
@@ -585,31 +586,31 @@ export default function AdminImprovements() {
             <RefreshCw className={"mr-2 h-4 w-4 " + ((improvementsQuery.isFetching || releasesQuery.isFetching) ? "animate-spin" : "")} />
             Atualizar
           </Button>
-          <Button onClick={() => setCreateOpen(true)}>
+          <Button className="w-full sm:w-auto" onClick={() => setCreateOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Nova melhoria
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
-        <div className="rounded-2xl border bg-card p-4">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-5">
+        <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4">
           <p className="text-xs font-medium text-muted-foreground">Em execução agora</p>
           <p className="mt-1 text-2xl font-semibold">{doingCount}</p>
         </div>
-        <div className="rounded-2xl border bg-card p-4">
+        <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4">
           <p className="text-xs font-medium text-muted-foreground">Prontas</p>
           <p className="mt-1 text-2xl font-semibold">{readyCount}</p>
         </div>
-        <div className="rounded-2xl border bg-card p-4">
+        <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4">
           <p className="text-xs font-medium text-muted-foreground">Agendadas / em execução</p>
           <p className="mt-1 text-2xl font-semibold">{scheduledCount}</p>
         </div>
-        <div className="rounded-2xl border bg-card p-4">
+        <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4">
           <p className="text-xs font-medium text-muted-foreground">Publicadas</p>
           <p className="mt-1 text-2xl font-semibold">{publishedCount}</p>
         </div>
-        <div className="rounded-2xl border bg-card p-4">
+        <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4">
           <p className="text-xs font-medium text-muted-foreground">Bloqueadas / com erro</p>
           <p className="mt-1 text-2xl font-semibold">{blockedCount}</p>
         </div>
@@ -649,7 +650,7 @@ export default function AdminImprovements() {
             </div>
           )}
 
-          <div className="grid gap-3 md:hidden">
+          <div className="grid min-w-0 gap-3 lg:hidden">
             {items.map((item) => {
               const simple = improvementSimpleStatus(item);
               const progress = operationalProgress(item);
@@ -745,7 +746,7 @@ export default function AdminImprovements() {
             })}
           </div>
 
-          <div className="hidden overflow-hidden rounded-2xl border bg-card md:block">
+          <div className="hidden overflow-hidden rounded-2xl border bg-card lg:block">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1120px] text-sm">
                 <thead className="border-b bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -858,7 +859,7 @@ export default function AdminImprovements() {
           {releases.map((release) => {
             const impact = release.impact;
             return (
-              <div key={release.id} className="rounded-2xl border bg-card p-4">
+              <div key={release.id} className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4">
                 <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
