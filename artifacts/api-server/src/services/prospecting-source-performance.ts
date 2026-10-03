@@ -55,7 +55,7 @@ export async function getProspectingSourcePerformance(tenantId: string, days = 9
       count(DISTINCT ls.lead_id) FILTER (WHERE coalesce(dr.qualified, false))::int AS qualified,
       count(DISTINCT ls.lead_id) FILTER (WHERE coalesce(dr.proposal, false))::int AS proposals,
       count(DISTINCT ls.lead_id) FILTER (WHERE coalesce(dr.won, false))::int AS wins,
-      coalesce(sum(DISTINCT dr.won_value), 0)::text AS won_value
+      coalesce(sum(dr.won_value), 0)::text AS won_value
     FROM lead_sources ls
     LEFT JOIN deal_rollup dr ON dr.lead_id = ls.lead_id
     GROUP BY ls.source_name
