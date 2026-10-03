@@ -585,13 +585,6 @@ export async function reconcileGithubImprovements(actorName = "vendi:reconcile")
             reason = "PR mergeado em main; aguardando confirmação do deploy/validação";
           }
           merged += 1;
-        } else if (isChainedLegacy) {
-          nextStatus = "em_desenvolvimento";
-          nextAgentStatus = "pr_legado_encadeado";
-          reason = `PR legado/encadeado sobre ${baseBranch}; não conta como bloqueio atual da plataforma`;
-          if (check.testStatus === "running") nextTestStatus = "running";
-          else if (check.testStatus === "passed") nextTestStatus = "passed";
-          else nextTestStatus = "pending";
         } else if (isSuperseded) {
           nextStatus = "cancelada";
           nextTestStatus = "pending";
@@ -603,6 +596,13 @@ export async function reconcileGithubImprovements(actorName = "vendi:reconcile")
           nextAgentStatus = "substituido_historico";
           reason = "PR encerrado sem merge; preservado apenas no histórico e removido dos bloqueios ativos";
           closedWithoutMerge += 1;
+        } else if (isChainedLegacy) {
+          nextStatus = "em_desenvolvimento";
+          nextAgentStatus = "pr_legado_encadeado";
+          reason = `PR legado/encadeado sobre ${baseBranch}; preservado como legado e fora da contagem de execução ativa`;
+          if (check.testStatus === "running") nextTestStatus = "running";
+          else if (check.testStatus === "passed") nextTestStatus = "passed";
+          else nextTestStatus = "pending";
         } else if (hasConflict) {
           nextStatus = "bloqueada";
           nextTestStatus = "failed";
