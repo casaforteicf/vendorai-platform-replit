@@ -3,8 +3,12 @@ import {
   db,
   vendiMissionsTable,
   vendiMissionEventsTable,
+  notificationsTable,
+  usersTable,
 } from "@workspace/db";
 import { callOpenAI } from "../lib/ai-gateway.js";
+import { sendDirectWhatsAppMessage } from "./omnichannel.js";
+import { logger } from "../lib/logger.js";
 import {
   executeVendiTool,
   getVendiTool,
@@ -213,6 +217,37 @@ export async function executeVendiMission(input: {
       await db.update(vendiMissionsTable)
         .set({ status: "paused_approval", updatedAt: new Date() })
         .where(eq(vendiMissionsTable.id, mission.id));
+
+      const approvalMessage = `A missão "${mission.objective}" precisa da sua aprovação para executar ${tool.label ?? tool.id}. Motivo: ${step.reason || "ação de alto risco"}.`;
+      await db.insert(notificationsTable).values({
+        tenantId: input.tenantId,
+        recipientUserId: mission.createdByUserId ?? null,
+        type: "warning",
+        category: "vendi_approval_required",
+        title: "Vendi aguardando sua aprovação",
+        message: approvalMessage,
+      });
+
+      if (mission.createdByUserId) {
+        try {
+          const [owner] = await db
+            .select({ telefone: usersTable.telefone })
+            .from(usersTable)
+            .where(eq(usersTable.id, mission.createdByUserId))
+            .limit(1);
+          if (owner?.telefone) {
+            await sendDirectWhatsAppMessage(
+              input.tenantId,
+              owner.telefone,
+              `⚠️ Vendi precisa da sua aprovação\n\n${approvalMessage}\n\nAbra a Central para aprovar ou rejeitar.`,
+              logger,
+            );
+          }
+        } catch (notificationError) {
+          logger.warn({ notificationError, missionId: mission.id }, "vendi: falha ao enviar aprovação por WhatsApp");
+        }
+      }
+
       return {
         ok: false,
         status: "paused_approval" as const,
