@@ -339,6 +339,92 @@ async function validateReleaseAutonomously(release: any) {
   return { passed: Boolean(result.ok), reason: result.ok ? "passed" : String(result.answer ?? "browser_validation_failed"), impact, result };
 }
 
+async function advanceAutonomousImprovement() {
+  const found = await pool.query(
+    "SELECT id,title,description,module,priority,source_type AS \"sourceType\",source_ref_id AS \"sourceRefId\" FROM admin_improvements WHERE agent_status IN ('queued','idle') AND status IN ('solicitada','em_desenvolvimento') ORDER BY CASE priority WHEN 'urgente' THEN 0 WHEN 'alta' THEN 1 WHEN 'media' THEN 2 ELSE 3 END, created_at ASC LIMIT 1"
+  );
+  const item = found.rows[0];
+  if (!item) return false;
+
+  await pool.query(
+    "UPDATE admin_improvements SET status='em_desenvolvimento',owner_agent='vendi',agent_status='running',updated_at=now() WHERE id=$1",
+    [item.id],
+  );
+  await pool.query(
+    "INSERT INTO admin_improvement_events (id,improvement_id,event_type,message,actor,payload) VALUES ($1,$2,'agent_started','Vendi iniciou execução autônoma com Dev IA.','vendi:auto',$3::jsonb)",
+    [randomUUID(), item.id, JSON.stringify({ sourceType: item.sourceType, sourceRefId: item.sourceRefId })],
+  );
+
+  try {
+    const result = await executeDevAutonomousWork({
+      requestId: String(item.id),
+      request: String(item.title) + "\n\n" + String(item.description ?? ""),
+      diagnosis: "Módulo: " + String(item.module ?? "Plataforma") + "\nPrioridade: " + String(item.priority ?? "media") + "\nOrigem: " + String(item.sourceType ?? "central"),
+      route: "/admin/melhorias/" + String(item.id),
+      source: "release_center_autonomous",
+    });
+    const pr = result.pullRequest ?? extractAction(result, "create_pr");
+    const branch = extractAction(result, "create_branch")?.branch ?? null;
+    const state = result.status === "approval_required"
+      ? "needs_attention"
+      : result.success && pr
+        ? "waiting_tests"
+        : result.success
+          ? "completed"
+          : "failed";
+    const summary = String(result.summary ?? result.error ?? "Execução autônoma concluída sem resumo.").slice(0, 12000);
+
+    await pool.query(
+      "UPDATE admin_improvements SET branch=COALESCE($2,branch),pr_number=COALESCE($3,pr_number),pr_url=COALESCE($4,pr_url),status=CASE WHEN $5 IN ('waiting_tests','completed') THEN 'testando' WHEN $5='needs_attention' THEN 'bloqueada' ELSE 'em_desenvolvimento' END,test_status=CASE WHEN $6 THEN 'running' ELSE test_status END,test_summary=$7,agent_status=$5,agent_summary=$7,updated_at=now() WHERE id=$1",
+      [item.id, branch, pr?.number ? Number(pr.number) : null, pr?.url ?? null, state, Boolean(pr?.preflight?.passed), summary],
+    );
+    await pool.query(
+      "INSERT INTO admin_improvement_events (id,improvement_id,event_type,message,actor,payload) VALUES ($1,$2,'agent_result',$3,'vendi:auto',$4::jsonb)",
+      [randomUUID(), item.id, summary.slice(0, 6000), JSON.stringify({ status: result.status, prNumber: pr?.number ?? null, prUrl: pr?.url ?? null, branch })],
+    );
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Falha na execução autônoma";
+    await pool.query(
+      "UPDATE admin_improvements SET agent_status='failed',agent_summary=$2,status='em_desenvolvimento',updated_at=now() WHERE id=$1",
+      [item.id, message.slice(0, 12000)],
+    );
+    return false;
+  }
+}
+
+async function refreshAutonomousImprovementChecks() {
+  const found = await pool.query(
+    "SELECT id,pr_number AS \"prNumber\" FROM admin_improvements WHERE pr_number IS NOT NULL AND status='testando' AND test_status IN ('pending','running') ORDER BY updated_at ASC LIMIT 1"
+  );
+  const item = found.rows[0];
+  if (!item?.prNumber) return false;
+
+  const config = githubConfig();
+  const pr = await githubJson("/repos/" + config.owner + "/" + config.repo + "/pulls/" + item.prNumber);
+  const evidence = await collectDevAgentCheckEvidence(String(pr.head.sha));
+  const passed = pr.mergeable !== false
+    && evidence.codeFailures.length === 0
+    && evidence.pending.length === 0
+    && evidence.successes.length > 0;
+  const nextTest = passed ? "passed" : evidence.codeFailures.length > 0 ? "failed" : "running";
+  const summary = {
+    mergeable: pr.mergeable,
+    successes: evidence.successes,
+    codeFailures: evidence.codeFailures,
+    infrastructureFailures: evidence.infrastructureFailures,
+    externalFailures: evidence.externalFailures,
+    pending: evidence.pending,
+    regressionTestEvidence: evidence.regressionTestEvidence,
+  };
+
+  await pool.query(
+    "UPDATE admin_improvements SET test_status=$2,test_summary=$3,agent_status=CASE WHEN $2='passed' THEN 'ready' WHEN $2='failed' THEN 'needs_attention' ELSE 'waiting_tests' END,status=CASE WHEN $2='passed' THEN 'pronto_staging' WHEN $2='failed' THEN 'em_desenvolvimento' ELSE 'testando' END,updated_at=now() WHERE id=$1",
+    [item.id, nextTest, JSON.stringify(summary).slice(0, 8000)],
+  );
+  return passed;
+}
+
 async function createAutonomousReleaseIfReady() {
   const ready = await pool.query(
     "SELECT id,title FROM admin_improvements WHERE package_key IS NULL AND test_status='passed' AND pr_number IS NOT NULL AND status IN ('pronto_staging','em_homologacao','testando') ORDER BY CASE priority WHEN 'urgente' THEN 0 WHEN 'alta' THEN 1 WHEN 'media' THEN 2 ELSE 3 END, created_at ASC LIMIT 10"
@@ -937,6 +1023,12 @@ async function runReleaseWorker() {
   try {
     await ensureSchema();
     if (fullAutonomyEnabled()) {
+      await advanceAutonomousImprovement().catch((error) => {
+        console.error("[release-worker] autonomous development failed:", error instanceof Error ? error.message : error);
+      });
+      await refreshAutonomousImprovementChecks().catch((error) => {
+        console.error("[release-worker] autonomous checks failed:", error instanceof Error ? error.message : error);
+      });
       await createAutonomousReleaseIfReady().catch((error) => {
         console.error("[release-worker] autonomous package failed:", error instanceof Error ? error.message : error);
       });
