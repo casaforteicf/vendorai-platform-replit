@@ -201,16 +201,11 @@ function isStaleActive(item: Improvement) {
 }
 
 function improvementSimpleStatus(item: Improvement) {
-  if (item.status === "producao_validada") return "Publicada";
-  if (item.status === "mergeado_main") return "Validando produção";
-  if (item.status === "bloqueada" || item.testStatus === "failed") return "Bloqueada / com erro";
-  if (item.status === "homologado" || item.status === "aguardando_producao") return "Aguardando publicação";
-  if (item.status === "em_homologacao") return "Em homologação";
-  if (item.status === "pronto_staging" && item.testStatus === "passed") return "Pronta para homologação";
-  if (item.status === "testando" || item.testStatus === "running" || item.agentStatus === "aguardando_checks") return "Em testes";
-  if (item.prNumber || item.branch || item.status === "em_desenvolvimento" || (item.agentStatus && item.agentStatus !== "aguardando")) return "Em desenvolvimento";
-  if (item.status === "solicitada") return "Fila";
-  return "Fila";
+  if (item.status === "producao_validada") return "Concluído";
+  if (item.status === "mergeado_main") return "Publicando";
+  if (item.status === "homologado" || item.status === "aguardando_producao") return "Aguardando sua aprovação";
+  if ((item.status === "bloqueada" || item.testStatus === "failed") && isStaleActive(item)) return "Precisa de atenção";
+  return "Em andamento";
 }
 
 function operationalProgress(item: Improvement) {
@@ -231,26 +226,19 @@ function operationalProgress(item: Improvement) {
 }
 
 function nextOperationalAction(item: Improvement) {
-  if (item.status === "producao_validada") return "Concluída e monitorada em produção";
-  if (item.status === "mergeado_main") return "Confirmar deploy e validação em produção";
-  if (item.agentStatus === "substituido_historico" || item.status === "cancelada") return "Sem ação: item substituído e preservado no histórico";
-  if (item.agentStatus === "pr_legado_encadeado") return "Reconciliar com a cadeia atual; não conta como erro ativo";
-  if (item.agentStatus === "aguardando_checks" && item.testStatus !== "failed") return "Aguardar evidências dos checks do GitHub";
-  if (item.status === "bloqueada" || item.testStatus === "failed") return "Vendi corrige a falha e repete os testes";
-  if (item.status === "aguardando_producao" || item.status === "homologado") return "Aguardando sua aprovação para produção";
-  if (item.status === "em_homologacao") return "Validar homologação e evidências";
-  if (item.testStatus === "running" || item.status === "testando") return "Aguardando conclusão dos testes";
-  if (item.testStatus === "passed" && item.prNumber) return "Preparar homologação";
-  if (item.prNumber) return "Executar gates e testes do PR";
-  if (item.branch || item.status === "em_desenvolvimento") return "Concluir implementação e abrir PR";
-  if (item.agentStatus && item.agentStatus !== "aguardando") return "Agente analisando e implementando";
-  return "Vendi assume automaticamente o desenvolvimento";
+  const status = improvementSimpleStatus(item);
+  if (status === "Concluído") return "Nenhuma ação necessária";
+  if (status === "Publicando") return "O sistema publica, valida e troca de rota automaticamente se necessário";
+  if (status === "Aguardando sua aprovação") return "Aprovar produção ou pedir alteração";
+  if (status === "Precisa de atenção") return "Todos os caminhos automáticos precisam ser revisados";
+  if (item.status === "bloqueada" || item.testStatus === "failed") return "Vendi está corrigindo e repetindo os testes automaticamente";
+  return "Vendi cuida das etapas técnicas automaticamente";
 }
 
 function statusVariant(status: string): "default" | "secondary" | "outline" | "destructive" {
-  if (["Publicada", "Pronta para homologação", "published"].includes(status)) return "default";
-  if (status === "Bloqueada / com erro" || status === "blocked") return "destructive";
-  if (["Em testes", "Aguardando checks", "PR legado / encadeado", "Substituído / histórico", "Em homologação", "Aguardando publicação", "Validando produção", "Em desenvolvimento", "scheduled", "monitoring", "publishing"].includes(status)) return "secondary";
+  if (["Concluído", "published"].includes(status)) return "default";
+  if (status === "Precisa de atenção" || status === "blocked") return "destructive";
+  if (["Em andamento", "Aguardando sua aprovação", "Publicando", "scheduled", "monitoring", "publishing"].includes(status)) return "secondary";
   return "outline";
 }
 
@@ -378,14 +366,11 @@ export default function AdminImprovements() {
   const totalHistoryCount = items.length;
   const uniqueImprovementCount = canonicalItems.length;
   const duplicateCount = Math.max(0, totalHistoryCount - uniqueImprovementCount);
-  const queueCount = canonicalItems.filter((item) => improvementSimpleStatus(item) === "Fila").length;
-  const developmentCount = canonicalItems.filter((item) => improvementSimpleStatus(item) === "Em desenvolvimento").length;
-  const testingCount = canonicalItems.filter((item) => ["Em testes", "Aguardando checks"].includes(improvementSimpleStatus(item))).length;
-  const legacyCount = canonicalItems.filter((item) => improvementSimpleStatus(item) === "PR legado / encadeado").length;
-  const homologReadyCount = canonicalItems.filter((item) => improvementSimpleStatus(item) === "Pronta para homologação").length;
-  const awaitingPublicationCount = canonicalItems.filter((item) => improvementSimpleStatus(item) === "Aguardando publicação").length;
-  const blockedCount = canonicalItems.filter((item) => improvementSimpleStatus(item) === "Bloqueada / com erro").length;
-  const publishedCount = canonicalItems.filter((item) => improvementSimpleStatus(item) === "Publicada").length;
+  const inProgressCount = canonicalItems.filter((item) => improvementSimpleStatus(item) === "Em andamento").length;
+  const awaitingApprovalCount = canonicalItems.filter((item) => improvementSimpleStatus(item) === "Aguardando sua aprovação").length;
+  const publishingCount = canonicalItems.filter((item) => improvementSimpleStatus(item) === "Publicando").length;
+  const completedCount = canonicalItems.filter((item) => improvementSimpleStatus(item) === "Concluído").length;
+  const attentionCount = canonicalItems.filter((item) => improvementSimpleStatus(item) === "Precisa de atenção").length;
 
   async function post(path: string, payload?: unknown, successMessage?: string) {
     setBusy(path);
@@ -602,7 +587,7 @@ export default function AdminImprovements() {
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">Melhorias & Publicações</h1>
           <p className="mt-1 max-w-4xl text-sm text-muted-foreground">
-            Histórico oficial de evolução do Vendor.ai: toda melhoria deve ser registrada aqui, da solicitação até a validação em produção.
+            Você acompanha só o que importa: andamento, sua aprovação, publicação e conclusão. Testes, retries, homologação e failover ficam automáticos por trás.
           </p>
         </div>
         <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:w-auto sm:flex-wrap">
@@ -634,34 +619,26 @@ export default function AdminImprovements() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4">
-          <p className="text-xs font-medium text-muted-foreground">Fila</p>
-          <p className="mt-1 text-2xl font-semibold">{queueCount}</p>
+          <p className="text-xs font-medium text-muted-foreground">Em andamento</p>
+          <p className="mt-1 text-2xl font-semibold">{inProgressCount}</p>
         </div>
         <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4">
-          <p className="text-xs font-medium text-muted-foreground">Em desenvolvimento</p>
-          <p className="mt-1 text-2xl font-semibold">{developmentCount}</p>
+          <p className="text-xs font-medium text-muted-foreground">Sua aprovação</p>
+          <p className="mt-1 text-2xl font-semibold">{awaitingApprovalCount}</p>
         </div>
         <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4">
-          <p className="text-xs font-medium text-muted-foreground">Em testes</p>
-          <p className="mt-1 text-2xl font-semibold">{testingCount}</p>
+          <p className="text-xs font-medium text-muted-foreground">Publicando</p>
+          <p className="mt-1 text-2xl font-semibold">{publishingCount}</p>
         </div>
         <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4">
-          <p className="text-xs font-medium text-muted-foreground">Prontas para homologação</p>
-          <p className="mt-1 text-2xl font-semibold">{homologReadyCount}</p>
+          <p className="text-xs font-medium text-muted-foreground">Concluídas</p>
+          <p className="mt-1 text-2xl font-semibold">{completedCount}</p>
         </div>
         <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4">
-          <p className="text-xs font-medium text-muted-foreground">Aguardando publicação</p>
-          <p className="mt-1 text-2xl font-semibold">{awaitingPublicationCount}</p>
-        </div>
-        <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4">
-          <p className="text-xs font-medium text-muted-foreground">Publicadas</p>
-          <p className="mt-1 text-2xl font-semibold">{publishedCount}</p>
-        </div>
-        <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4">
-          <p className="text-xs font-medium text-muted-foreground">Bloqueadas / com erro</p>
-          <p className="mt-1 text-2xl font-semibold">{blockedCount}</p>
+          <p className="text-xs font-medium text-muted-foreground">Precisa de atenção</p>
+          <p className="mt-1 text-2xl font-semibold">{attentionCount}</p>
         </div>
       </div>
 
@@ -743,13 +720,7 @@ export default function AdminImprovements() {
                     <div>
                       <p className="text-muted-foreground">Agora</p>
                       <p className="mt-1 font-medium">
-                        {item.testStatus === "failed"
-                          ? "Teste falhou"
-                          : item.testStatus === "running"
-                            ? "Testes em andamento"
-                            : item.testStatus === "passed"
-                              ? "Testes aprovados"
-                              : nextOperationalAction(item)}
+                        {nextOperationalAction(item)}
                       </p>
                     </div>
                     <div>
@@ -782,28 +753,18 @@ export default function AdminImprovements() {
                     <Button variant="outline" className="h-11" onClick={() => setDetail(item)}>
                       Ver detalhes
                     </Button>
-                    {item.prUrl ? (
-                      <Button variant="outline" className="h-11" asChild>
-                        <a href={item.prUrl} target="_blank" rel="noreferrer">
-                          Abrir PR
-                          <ExternalLink className="ml-2 h-4 w-4" />
-                        </a>
-                      </Button>
-                    ) : simple !== "Publicada" ? (
-                      <Button
-                        variant="outline"
-                        className="h-11"
-                        disabled={!!busy}
-                        onClick={() => post("/api/admin/improvements/" + item.id + "/start-agent", undefined, simple === "Bloqueada / com erro" ? "Vendi iniciou a correção" : "Vendi assumiu esta melhoria")}
-                      >
-                        <WandSparkles className="mr-2 h-4 w-4" />
-                        {simple === "Bloqueada / com erro" ? "Corrigir" : "Executar"}
-                      </Button>
-                    ) : (
-                      <Button variant="outline" className="h-11" disabled>
-                        Concluído
-                      </Button>
-                    )}
+                    <Button
+                      variant="outline"
+                      className="h-11"
+                      onClick={() => {
+                        setAdjustOpen(item);
+                        setAdjustment("");
+                      }}
+                      disabled={simple === "Concluído"}
+                    >
+                      <WandSparkles className="mr-2 h-4 w-4" />
+                      {simple === "Concluído" ? "Concluído" : "Pedir alteração"}
+                    </Button>
                   </div>
                 </article>
               );
@@ -1267,15 +1228,10 @@ export default function AdminImprovements() {
                   <p className="text-xs font-semibold uppercase text-muted-foreground">Linha do tempo</p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {[
-                      ["Solicitação", 5],
-                      ["Análise", 15],
-                      ["Escopo", 25],
-                      ["Desenvolvimento", 35],
-                      ["Testes", 65],
-                      ["Homologação", 80],
-                      ["Aprovação", 90],
-                      ["Publicação", 98],
-                      ["Monitoramento", 100],
+                      ["Em andamento", 5],
+                      ["Sua aprovação", 90],
+                      ["Publicando", 95],
+                      ["Concluído", 100],
                     ].map(([label, threshold]) => (
                       <Badge key={String(label)} variant={operationalProgress(detail) >= Number(threshold) ? "default" : "outline"}>
                         {String(label)}
@@ -1348,59 +1304,74 @@ export default function AdminImprovements() {
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline"
-                    onClick={() => post("/api/admin/improvements/" + detail.id + "/start-agent", undefined, "Vendi iniciou o trabalho")}
-                    disabled={!!busy}
-                  >
-                    <Bot className="mr-2 h-4 w-4" />
-                    Executar Vendi
-                  </Button>
-                  {detail.prNumber && (
-                    <Button
-                      variant="outline"
-                      onClick={() => post("/api/admin/improvements/" + detail.id + "/check-tests", undefined, "Testes verificados")}
-                      disabled={!!busy}
-                    >
-                      <SearchCheck className="mr-2 h-4 w-4" />
-                      Verificar testes
-                    </Button>
-                  )}
-                  {detail.testStatus === "passed" && detail.status !== "em_homologacao" && detail.status !== "producao_validada" && (
-                    <Button
-                      variant="outline"
-                      onClick={() => post("/api/admin/improvements/" + detail.id + "/prepare-test", undefined, "Versão enviada para ambiente de teste")}
-                      disabled={!!busy}
-                    >
-                      <TestTube2 className="mr-2 h-4 w-4" />
-                      Preparar teste
-                    </Button>
-                  )}
-                  <Button
-                    variant="outline"
                     onClick={() => {
                       setAdjustOpen(detail);
                       setAdjustment("");
                     }}
                   >
                     <WandSparkles className="mr-2 h-4 w-4" />
-                    Solicitar ajuste
+                    Pedir alteração
                   </Button>
-                  {detail.prUrl && (
-                    <Button variant="ghost" asChild>
-                      <a href={detail.prUrl} target="_blank" rel="noreferrer">
-                        Abrir PR
-                        <ExternalLink className="ml-2 h-4 w-4" />
-                      </a>
-                    </Button>
-                  )}
-                  {detail.homologUrl && (
-                    <Button variant="ghost" asChild>
-                      <a href={detail.homologUrl} target="_blank" rel="noreferrer">
-                        Abrir teste
-                        <ExternalLink className="ml-2 h-4 w-4" />
-                      </a>
+                  {(detail.status === "homologado" || detail.status === "aguardando_producao") && (
+                    <Button
+                      disabled={!!busy || detail.status === "aguardando_producao"}
+                      onClick={() => post("/api/admin/improvements/approve-production", { ids: [detail.id] }, "Produção aprovada")}
+                    >
+                      <ShieldCheck className="mr-2 h-4 w-4" />
+                      {detail.status === "aguardando_producao" ? "Produção aprovada" : "Aprovar produção"}
                     </Button>
                   )}
                 </div>
+
+                <details className="rounded-xl border bg-muted/10 p-4">
+                  <summary className="cursor-pointer text-sm font-medium">Detalhes e ações técnicas</summary>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => post("/api/admin/improvements/" + detail.id + "/start-agent", undefined, "Vendi iniciou o trabalho")}
+                      disabled={!!busy}
+                    >
+                      <Bot className="mr-2 h-4 w-4" />
+                      Reexecutar Vendi
+                    </Button>
+                    {detail.prNumber && (
+                      <Button
+                        variant="outline"
+                        onClick={() => post("/api/admin/improvements/" + detail.id + "/check-tests", undefined, "Testes verificados")}
+                        disabled={!!busy}
+                      >
+                        <SearchCheck className="mr-2 h-4 w-4" />
+                        Verificar testes
+                      </Button>
+                    )}
+                    {detail.testStatus === "passed" && detail.status !== "em_homologacao" && detail.status !== "producao_validada" && (
+                      <Button
+                        variant="outline"
+                        onClick={() => post("/api/admin/improvements/" + detail.id + "/prepare-test", undefined, "Versão enviada para ambiente de teste")}
+                        disabled={!!busy}
+                      >
+                        <TestTube2 className="mr-2 h-4 w-4" />
+                        Preparar homologação
+                      </Button>
+                    )}
+                    {detail.prUrl && (
+                      <Button variant="ghost" asChild>
+                        <a href={detail.prUrl} target="_blank" rel="noreferrer">
+                          Abrir PR
+                          <ExternalLink className="ml-2 h-4 w-4" />
+                        </a>
+                      </Button>
+                    )}
+                    {detail.homologUrl && (
+                      <Button variant="ghost" asChild>
+                        <a href={detail.homologUrl} target="_blank" rel="noreferrer">
+                          Abrir homologação
+                          <ExternalLink className="ml-2 h-4 w-4" />
+                        </a>
+                      </Button>
+                    )}
+                  </div>
+                </details>
               </div>
             </>
           )}
