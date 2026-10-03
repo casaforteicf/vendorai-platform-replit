@@ -28,6 +28,7 @@ import { getUpcomingRelationshipEvents } from "./customer-relationship-events.js
 import { searchProspectorCompanies } from "./prospector-company-search.js";
 import { searchConstructionWorkSignals } from "./construction-radar-search.js";
 import { runAutonomousProspectingCycle } from "./vendi-autonomous-prospecting.js";
+import { listProspectingSources } from "./prospecting-source-catalog.js";
 
 export type VendiToolRisk = "low" | "medium" | "high";
 export type VendiToolDomain =
@@ -234,6 +235,29 @@ register({
       evidence: {
         source: "prospector:construction-radar",
         count: data.works.length,
+      },
+    };
+  },
+});
+
+register({
+  id: "prospector.sources_catalog",
+  domain: "prospector",
+  description: "Lista todas as fontes de prospecção conhecidas, indicando se estão ativas, planejadas ou dependem de conector externo.",
+  risk: "low",
+  mutates: false,
+  externalEffect: false,
+  inputHint: "{}",
+  execute: async () => {
+    const data = listProspectingSources();
+    return {
+      ok: true,
+      data,
+      evidence: {
+        source: "prospector:source-catalog",
+        total: data.length,
+        active: data.filter((item) => item.status === "active").length,
+        connectorRequired: data.filter((item) => item.status === "connector_required").length,
       },
     };
   },
