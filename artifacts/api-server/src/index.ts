@@ -154,6 +154,9 @@ async function start() {
     startMainGovernanceGuard(logger);
     startServerRuntimeSentinel(logger);
 
+    // O auditor inicia mesmo em modo degradado para detectar falhas de schema/runtime.
+    startContinuousAuditAgent(logger);
+
     if (!databaseReady) {
       logger.warn(
         "Database/schema startup validation failed; schedulers, social workers and lifecycle jobs were not started. Review migration and database logs before redeploying.",
@@ -168,7 +171,6 @@ async function start() {
     startArchConceptRenderRunner(logger);
     startDevAgentSupportHandoff(logger);
     startVieIntelligenceCycle(logger);
-    startContinuousAuditAgent(logger);
 
     const syncMarketingLifecycle = async () => {
       try {
