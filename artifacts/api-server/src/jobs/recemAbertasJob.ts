@@ -31,13 +31,15 @@ const DEFAULT_CNAES = [
   "4771-7/01", // Farmácias
 ];
 
-export async function runRecemAbertas(log: Logger = rootLogger): Promise<void> {
+export async function runRecemAbertas(log: Logger = rootLogger, onlyTenantId?: string): Promise<{ created: number; tenants: number }> {
   log.info("recem-abertas: starting weekly new-companies scan");
 
   const tenants = await db
     .select({ id: tenantsTable.id })
     .from(tenantsTable)
-    .where(eq(tenantsTable.status, "active"));
+    .where(onlyTenantId
+      ? and(eq(tenantsTable.status, "active"), eq(tenantsTable.id, onlyTenantId))
+      : eq(tenantsTable.status, "active"));
 
   let totalCreated = 0;
 
@@ -182,5 +184,6 @@ export async function runRecemAbertas(log: Logger = rootLogger): Promise<void> {
     }
   }
 
-  log.info({ totalCreated }, "recem-abertas: done");
+  log.info({ totalCreated, tenants: tenants.length, onlyTenantId: onlyTenantId ?? null }, "recem-abertas: done");
+  return { created: totalCreated, tenants: tenants.length };
 }
