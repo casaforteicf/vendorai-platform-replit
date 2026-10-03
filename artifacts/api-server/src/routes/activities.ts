@@ -8,6 +8,8 @@ import {
   tenantsTable,
   insertActivitySchema,
   updateActivitySchema,
+  dealsTable,
+  pipelineStagesTable,
 } from "@workspace/db";
 import { createGoogleEvent, updateGoogleEvent, deleteGoogleEvent } from "../lib/google-calendar.js";
 import { generateSpinForActivity } from "./spin.js";
@@ -27,9 +29,58 @@ router.post("/activities", async (req, res) => {
     return;
   }
 
+  let insertData = { ...parsed.data };
+
+  // Selecionar “IA” precisa representar um agente real da etapa, e não um
+  // responsável fictício. Quando a atividade está ligada a um negócio,
+  // herdamos o agente IA configurado na etapa atual.
+  if (insertData.categoriaExecucao === "automatica" && !insertData.agenteResponsavelKey) {
+    if (!insertData.dealId) {
+      res.status(422).json({
+        error: "AI_STAGE_REQUIRED",
+        message: "Para atribuir uma atividade à IA, vincule-a a um negócio com etapa e Agente IA configurados.",
+      });
+      return;
+    }
+
+    const [deal] = await db
+      .select({ etapa: dealsTable.etapa })
+      .from(dealsTable)
+      .where(and(
+        eq(dealsTable.id, insertData.dealId),
+        eq(dealsTable.tenantId, insertData.tenantId),
+      ))
+      .limit(1);
+
+    if (!deal) {
+      res.status(422).json({ error: "DEAL_NOT_FOUND", message: "Negócio vinculado não encontrado." });
+      return;
+    }
+
+    const [stage] = await db
+      .select({ agentKey: pipelineStagesTable.responsavelAgenteKey })
+      .from(pipelineStagesTable)
+      .where(and(
+        eq(pipelineStagesTable.tenantId, insertData.tenantId),
+        eq(pipelineStagesTable.pipeline, "comercial"),
+        eq(pipelineStagesTable.key, deal.etapa),
+      ))
+      .limit(1);
+
+    if (!stage?.agentKey) {
+      res.status(422).json({
+        error: "AI_AGENT_NOT_CONFIGURED",
+        message: "Configure o Agente IA responsável desta etapa antes de atribuir a atividade à IA.",
+      });
+      return;
+    }
+
+    insertData = { ...insertData, agenteResponsavelKey: stage.agentKey, responsavelId: null };
+  }
+
   const [activity] = await db
     .insert(activitiesTable)
-    .values(parsed.data)
+    .values(insertData)
     .returning();
   res.status(201).json(activity);
 
@@ -316,7 +367,7 @@ router.patch("/activities/:id", async (req, res) => {
     nextActivity = createdNext ?? null;
   }
 
-  res.json({ ...activity, nextActivity });
+  res.json(activity);
 
   void recordIntelligenceEvent({
     tenantId: activity.tenantId,
