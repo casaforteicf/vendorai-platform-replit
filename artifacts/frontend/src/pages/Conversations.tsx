@@ -400,6 +400,7 @@ function ChatPanel({
   lead,
   leadName,
   tenantId,
+  currentUserId,
   onBack,
   onLockChanged,
 }: {
@@ -407,6 +408,7 @@ function ChatPanel({
   lead: Lead | undefined;
   leadName: string | undefined;
   tenantId: string;
+  currentUserId?: string;
   onBack?: () => void;
   onLockChanged?: () => void;
 }) {
@@ -643,6 +645,7 @@ function ChatPanel({
           titulo: title,
           descricao: `Atividade criada a partir da conversa ${channelLabel(conv.channel)}.`,
           status: "pendente",
+          responsavelId: currentUserId || undefined,
           resultadoExecucao: `origem_chat:${conv.id}`,
           ...(activityDue
             ? { dataVencimento: new Date(activityDue).toISOString() }
@@ -2283,6 +2286,7 @@ export default function Conversations() {
                     : undefined
                 }
                 tenantId={tenantId}
+                currentUserId={user?.id}
                 onBack={() => setShowMobileChat(false)}
                 onLockChanged={() => {
                   queryClient.invalidateQueries({
