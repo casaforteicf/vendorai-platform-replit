@@ -1,9 +1,10 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt } from "drizzle-orm";
 import {
   db,
   dealsTable,
   leadsTable,
   agendamentosTable,
+  activitiesTable,
   customerIntelligenceTable,
   propostasTable,
   obrasTable,
@@ -292,6 +293,63 @@ register({
       .orderBy(desc(agendamentosTable.dataHoraInicio))
       .limit(limit);
     return { ok: true, data: rows, evidence: { source: "db:agendamentos", count: rows.length } };
+  },
+});
+
+register({
+  id: "admin.operational_attention",
+  domain: "admin",
+  description: "Lista exceções operacionais que exigem atenção: tarefas vencidas e leads ativos sem responsável.",
+  risk: "low",
+  mutates: false,
+  externalEffect: false,
+  inputHint: "{limit?:1..100}",
+  execute: async ({ tenantId }, input) => {
+    const limit = Math.min(Math.max(Number(input.limit ?? 50), 1), 100);
+    const now = new Date();
+    const [overdueTasks, unassignedLeads] = await Promise.all([
+      db.select({
+        id: activitiesTable.id,
+        leadId: activitiesTable.leadId,
+        dealId: activitiesTable.dealId,
+        titulo: activitiesTable.titulo,
+        status: activitiesTable.status,
+        responsavelId: activitiesTable.responsavelId,
+        dataVencimento: activitiesTable.dataVencimento,
+      }).from(activitiesTable)
+        .where(and(
+          eq(activitiesTable.tenantId, tenantId),
+          inArray(activitiesTable.status, ["pendente", "planejado"]),
+          lt(activitiesTable.dataVencimento, now),
+        ))
+        .orderBy(activitiesTable.dataVencimento)
+        .limit(limit),
+      db.select({
+        id: leadsTable.id,
+        nome: leadsTable.nome,
+        empresa: leadsTable.empresa,
+        status: leadsTable.status,
+        createdAt: leadsTable.createdAt,
+      }).from(leadsTable)
+        .where(and(
+          eq(leadsTable.tenantId, tenantId),
+          isNull(leadsTable.assignedTo),
+          isNull(leadsTable.naoLeadTipo),
+        ))
+        .orderBy(desc(leadsTable.createdAt))
+        .limit(limit),
+    ]);
+
+    return {
+      ok: true,
+      data: { overdueTasks, unassignedLeads },
+      evidence: {
+        source: "db:operational-attention",
+        overdueTasks: overdueTasks.length,
+        unassignedLeads: unassignedLeads.length,
+        observedAt: now.toISOString(),
+      },
+    };
   },
 });
 
