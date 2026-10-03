@@ -159,26 +159,36 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
       ? JSON.parse(decrypt(connection.cookiesEncrypted))
       : undefined;
 
-    // First-party Vendor.ai sessions do not require a human password. The MCP endpoint
-    // is already protected by BROWSER_MCP_ACCESS_TOKEN and tenant resolution above.
-    // Mint a short-lived browser JWT from an active tenant administrator, marked as AI,
-    // so the frontend can authenticate normally while downstream APIs retain actorType=ai.
+    // Internal Vendor.ai screens use a backend-minted AI session. Prefer an active
+    // platform superadmin so platform-only routes (such as the release center) can be
+    // inspected without a recurring human login. The token never enters the prompt.
     let firstPartyAuthToken: string | undefined;
-    if (new URL(startUrl).hostname.toLowerCase() === "app.appvendorai.com") {
-      const [servicePrincipal] = await db
-        .select({
-          id: usersTable.id,
-          email: usersTable.email,
-          platformRole: usersTable.platformRole,
-          role: usersTable.role,
-          userFunction: usersTable.userFunction,
-          active: usersTable.active,
-        })
+    let firstPartyAuthUserCache: Record<string, unknown> | undefined;
+    const firstPartyHost = new URL(startUrl).hostname.toLowerCase();
+    if (firstPartyHost === "app.appvendorai.com" || firstPartyHost === "homolog.appvendorai.com") {
+      const principalSelect = {
+        id: usersTable.id,
+        email: usersTable.email,
+        platformRole: usersTable.platformRole,
+        role: usersTable.role,
+        userFunction: usersTable.userFunction,
+        active: usersTable.active,
+      };
+      const [platformPrincipal] = await db
+        .select(principalSelect)
         .from(usersTable)
-        .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.active, true)))
+        .where(and(eq(usersTable.platformRole, "super_admin"), eq(usersTable.active, true)))
         .limit(1);
+      const [tenantPrincipal] = platformPrincipal
+        ? []
+        : await db
+            .select(principalSelect)
+            .from(usersTable)
+            .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.active, true)))
+            .limit(1);
+      const servicePrincipal = platformPrincipal ?? tenantPrincipal;
       if (!servicePrincipal) {
-        throw new Error("VENDI_AUTH_PRINCIPAL_NOT_FOUND: tenant sem usuário ativo para sessão interna");
+        throw new Error("VENDI_AUTH_PRINCIPAL_NOT_FOUND: nenhum principal ativo para sessão interna");
       }
       firstPartyAuthToken = signToken({
         sub: servicePrincipal.id,
@@ -189,6 +199,15 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
         userFunction: servicePrincipal.userFunction ?? undefined,
         actorType: "ai",
       });
+      firstPartyAuthUserCache = {
+        id: servicePrincipal.id,
+        email: servicePrincipal.email,
+        platformRole: servicePrincipal.platformRole,
+        tenantId,
+        role: servicePrincipal.role,
+        userFunction: servicePrincipal.userFunction ?? null,
+        actorType: "ai",
+      };
     }
 
     const agentInput: BrowserAgentInput = {
@@ -207,6 +226,7 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
         : undefined,
       sessionCookies,
       firstPartyAuthToken,
+      firstPartyAuthUserCache,
       onSessionPersist: connection
         ? async (cookies) => {
             await db
