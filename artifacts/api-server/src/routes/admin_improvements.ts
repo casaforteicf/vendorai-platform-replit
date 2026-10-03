@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { z } from "zod/v4";
 import { pool } from "@workspace/db";
 import { requireRole } from "../middlewares/auth.js";
+import { validateProductionRevision } from "./dev_agent_validation.js";
 
 const router: IRouter = Router();
 // Control-plane P0 #2873: keep this route in the homologation watch scope.
@@ -564,7 +565,8 @@ router.post("/admin/improvements/github-reconcile", async (req, res) => {
     const terminalStatuses = new Set(["producao_validada", "cancelada"]);
     const tracked = await pool.query(
       `SELECT id,title,status,test_status AS "testStatus",pr_number AS "prNumber",
-              pr_url AS "prUrl",branch,due_at AS "dueAt",updated_at AS "updatedAt"
+              pr_url AS "prUrl",branch,due_at AS "dueAt",updated_at AS "updatedAt",
+              source_type AS "sourceType",source_ref_id AS "sourceRefId",agent_status AS "agentStatus"
          FROM admin_improvements
         WHERE pr_number IS NOT NULL
         ORDER BY updated_at DESC`,
@@ -598,12 +600,19 @@ router.post("/admin/improvements/github-reconcile", async (req, res) => {
         const prState = String(pr?.state ?? "unknown");
         const isMerged = Boolean(pr?.merged || pr?.merged_at);
         const isClosedWithoutMerge = prState === "closed" && !isMerged;
+        const supersededMatch = String(pr?.body ?? "").match(/substitu[ií]do\s+por\s+#(\d+)/i);
+        const supersededByPr = supersededMatch ? Number(supersededMatch[1]) : null;
+        const isSuperseded = isClosedWithoutMerge && Boolean(supersededByPr);
         const hasConflict = prState === "open" && pr?.mergeable === false;
         const isOverdue = Boolean(
           item.dueAt &&
           new Date(item.dueAt).getTime() < now &&
           !terminalStatuses.has(String(item.status)),
         );
+
+        const isPrimaryBase = baseBranch === "main" || baseBranch === "staging";
+        const isChainedLegacy = Boolean(baseBranch && !isPrimaryBase);
+        const mergeRevision = String(pr?.merge_commit_sha ?? pr?.merged_commit_sha ?? "");
 
         const check = headSha
           ? await githubCheckSummary(config.owner, config.repo, headSha)
@@ -616,6 +625,32 @@ router.post("/admin/improvements/github-reconcile", async (req, res) => {
 
         if (terminalStatuses.has(nextStatus)) {
           nextAgentStatus = "concluido";
+        } else if (isMerged && baseBranch === "main" && mergeRevision) {
+          const production = await validateProductionRevision(mergeRevision).catch(() => null);
+          if (production?.state === "validated") {
+            nextStatus = "producao_validada";
+            nextTestStatus = check.testStatus === "failed" ? "failed" : "passed";
+            nextAgentStatus = "concluido";
+            reason = "PR mergeado em main e revisão confirmada no runtime de produção";
+          } else {
+            nextStatus = "mergeado_main";
+            nextTestStatus = check.testStatus === "failed" ? "failed" : "passed";
+            nextAgentStatus = "validando_producao";
+            reason = "PR mergeado em main; aguardando confirmação do deploy/validação";
+          }
+          merged += 1;
+        } else if (isChainedLegacy) {
+          nextStatus = "em_desenvolvimento";
+          nextAgentStatus = "pr_legado_encadeado";
+          reason = `PR legado/encadeado sobre ${baseBranch}; não conta como bloqueio atual da plataforma`;
+          if (check.testStatus === "running") nextTestStatus = "running";
+          else if (check.testStatus === "passed") nextTestStatus = "passed";
+          else nextTestStatus = "pending";
+        } else if (isSuperseded) {
+          nextStatus = "cancelada";
+          nextTestStatus = "pending";
+          nextAgentStatus = "substituido_historico";
+          reason = `PR substituído por #${supersededByPr}; preservado somente no histórico`;
         } else if (isClosedWithoutMerge) {
           nextStatus = "bloqueada";
           nextTestStatus = "failed";
@@ -642,9 +677,6 @@ router.post("/admin/improvements/github-reconcile", async (req, res) => {
               nextStatus = "em_homologacao";
             }
             reason = "PR mergeado em staging";
-          } else if (baseBranch === "main") {
-            nextStatus = "mergeado_main";
-            reason = "PR mergeado em main; aguardando confirmação do deploy/validação";
           } else {
             nextStatus = "pronto_staging";
             reason = `PR mergeado em ${baseBranch || "base desconhecida"}`;
@@ -688,6 +720,9 @@ router.post("/admin/improvements/github-reconcile", async (req, res) => {
           merged: isMerged,
           mergeable: pr?.mergeable ?? null,
           baseBranch,
+          isChainedLegacy,
+          isSuperseded,
+          supersededByPr,
           headBranch,
           headSha,
           overdue: isOverdue,
@@ -804,6 +839,16 @@ router.post("/admin/improvements/github-reconcile", async (req, res) => {
 
       if (!prNumber || !headSha || !sameRepository || trackedPrNumbers.has(prNumber)) {
         if (!prNumber || !headSha || !sameRepository) skipped += 1;
+        continue;
+      }
+
+      const existingByPr = await pool.query(
+        "SELECT id FROM admin_improvements WHERE pr_number=$1 OR source_ref_id=$2 ORDER BY updated_at DESC LIMIT 1",
+        [prNumber, `github-pr:${prNumber}`],
+      );
+      if (existingByPr.rowCount) {
+        trackedPrNumbers.add(prNumber);
+        skipped += 1;
         continue;
       }
 
