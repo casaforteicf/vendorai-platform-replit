@@ -27,6 +27,7 @@ import { sendOutgoingMessage } from "./omnichannel.js";
 import { getUpcomingRelationshipEvents } from "./customer-relationship-events.js";
 import { searchProspectorCompanies } from "./prospector-company-search.js";
 import { searchConstructionWorkSignals } from "./construction-radar-search.js";
+import { runAutonomousProspectingCycle } from "./vendi-autonomous-prospecting.js";
 
 export type VendiToolRisk = "low" | "medium" | "high";
 export type VendiToolDomain =
@@ -233,6 +234,36 @@ register({
       evidence: {
         source: "prospector:construction-radar",
         count: data.works.length,
+      },
+    };
+  },
+});
+
+register({
+  id: "prospector.autonomous_cycle",
+  domain: "prospector",
+  description: "Executa um ciclo unificado de descoberta: Google Places, empresas recém-abertas/CNPJ, Radar de Obras quando aplicável e Revenue Scout; empresas estruturadas entram na fila oficial para deduplicação, distribuição e enriquecimento.",
+  risk: "medium",
+  mutates: true,
+  externalEffect: false,
+  inputHint: "{maxPerConfig?:3..20}",
+  execute: async ({ tenantId }, input) => {
+    const data = await runAutonomousProspectingCycle({
+      tenantId,
+      log: logger.child({ subsystem: "vendi:prospecting" }),
+      maxPerConfig: Math.min(Math.max(Number(input.maxPerConfig ?? 10), 3), 20),
+    });
+    return {
+      ok: true,
+      data,
+      evidence: {
+        source: "prospector:autonomous-cycle",
+        queued: data.queued,
+        googleFound: data.googleFound,
+        cnpjFound: data.cnpjFound,
+        constructionSignals: data.constructionSignals,
+        revenueOpportunities: data.revenueOpportunities,
+        sourceErrors: data.sourceErrors,
       },
     };
   },
