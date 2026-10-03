@@ -2731,15 +2731,67 @@ export default function LeadDetail() {
                             {intelligence.nextBestActionReason}
                           </p>
                         )}
-                        <div className="flex items-center gap-2 pt-1">
+                        {(() => {
+                          const plan = (intelligence as any).outreachPlan as {
+                            objective?: string;
+                            currentContactRole?: string;
+                            decisionMakerStatus?: string;
+                            decisionMakerHint?: string;
+                            freeValueOffer?: string;
+                            messageSuggestion?: string;
+                            expectedResult?: string;
+                            nextStepIfPositive?: string;
+                            approvalRequired?: boolean;
+                          } | null;
+                          if (!plan) return null;
+                          return (
+                            <div className="mt-2 rounded-md border bg-background/70 p-2.5 space-y-2 text-xs">
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                {plan.objective && <div><span className="font-medium">Objetivo:</span> {plan.objective}</div>}
+                                {plan.currentContactRole && <div><span className="font-medium">Contato atual:</span> {plan.currentContactRole}</div>}
+                              </div>
+                              {plan.decisionMakerHint && (
+                                <div><span className="font-medium">Decisor:</span> {plan.decisionMakerHint}</div>
+                              )}
+                              {plan.freeValueOffer && (
+                                <div><span className="font-medium">Entrega gratuita:</span> {plan.freeValueOffer}</div>
+                              )}
+                              {plan.messageSuggestion && (
+                                <div className="rounded border bg-muted/30 p-2">
+                                  <span className="font-medium">Mensagem sugerida:</span>
+                                  <p className="mt-1 whitespace-pre-wrap">{plan.messageSuggestion}</p>
+                                </div>
+                              )}
+                              {plan.expectedResult && <div><span className="font-medium">Resultado esperado:</span> {plan.expectedResult}</div>}
+                              {plan.nextStepIfPositive && <div><span className="font-medium">Se houver interesse:</span> {plan.nextStepIfPositive}</div>}
+                              {plan.approvalRequired !== false && (
+                                <Badge variant="secondary" className="text-[10px]">Aguardando aprovação para executar</Badge>
+                              )}
+                            </div>
+                          );
+                        })()}
+                        <div className="flex flex-wrap items-center gap-2 pt-1">
                           <Button
                             size="sm"
-                            className="h-6 text-xs px-2 gap-1"
+                            className="h-7 text-xs px-2 gap-1"
                             onClick={() => openNewActivityDialog(intelligence.nextBestAction ?? "")}
                             data-testid="btn-criar-atividade-nba"
                           >
-                            <Plus className="h-3 w-3" />
-                            Criar como Atividade
+                            <Check className="h-3 w-3" />
+                            Preparar para aprovação
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs px-2 gap-1"
+                            onClick={() => {
+                              const plan = (intelligence as any).outreachPlan;
+                              setNextBestActionDraft(plan?.messageSuggestion ?? intelligence.nextBestAction ?? "");
+                              setEditingNextBestAction(true);
+                            }}
+                          >
+                            <Pencil className="h-3 w-3" />
+                            Editar abordagem
                           </Button>
                           {intelligence.lastAnalyzedAt && (
                             <span className="text-xs text-muted-foreground">
