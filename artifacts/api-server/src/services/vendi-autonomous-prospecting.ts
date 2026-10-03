@@ -90,6 +90,7 @@ export async function runAutonomousProspectingCycle(input: {
     constructionSignals: 0,
     revenueOpportunities: 0,
     sourceErrors: [] as Array<{ source: string; message: string }>,
+    sourceRuns: [] as Array<{ source: string; ok: boolean; found: number; detail?: string }>,
     dryRun,
   };
 
@@ -105,6 +106,7 @@ export async function runAutonomousProspectingCycle(input: {
         maxResults: maxPerConfig,
       });
       totals.googleFound += google.results.length;
+      totals.sourceRuns.push({ source: "google_places", ok: true, found: google.results.length });
       for (const company of google.results) {
         const externalId = stableId([company.nomeEmpresa, company.endereco, company.telefone, company.siteOficial]);
         if (dryRun) {
@@ -126,7 +128,9 @@ export async function runAutonomousProspectingCycle(input: {
         }
       }
     } catch (error: any) {
-      totals.sourceErrors.push({ source: "google_places", message: error?.message ?? "falha" });
+      const message = error?.message ?? "falha";
+      totals.sourceErrors.push({ source: "google_places", message });
+      totals.sourceRuns.push({ source: "google_places", ok: false, found: 0, detail: message });
     }
 
 
@@ -141,6 +145,7 @@ export async function runAutonomousProspectingCycle(input: {
           maxResults: Math.min(maxPerConfig, 10),
         });
         totals.constructionSignals += radar.works.length;
+        totals.sourceRuns.push({ source: "construction_radar", ok: true, found: radar.works.length });
         for (const work of radar.works) {
           if (dryRun) continue;
           await upsertProspectingSignal({
@@ -175,7 +180,9 @@ export async function runAutonomousProspectingCycle(input: {
           });
         }
       } catch (error: any) {
-        totals.sourceErrors.push({ source: "construction_radar", message: error?.message ?? "falha" });
+        const message = error?.message ?? "falha";
+        totals.sourceErrors.push({ source: "construction_radar", message });
+        totals.sourceRuns.push({ source: "construction_radar", ok: false, found: 0, detail: message });
       }
     }
   }
@@ -183,8 +190,11 @@ export async function runAutonomousProspectingCycle(input: {
   try {
     const fresh = await runRecemAbertas(input.log, input.tenantId, dryRun);
     totals.cnpjFound = fresh.created;
+    totals.sourceRuns.push({ source: "cnpj_new_companies", ok: true, found: fresh.created, detail: dryRun ? "dry-run" : undefined });
   } catch (error: any) {
-    totals.sourceErrors.push({ source: "cnpj_new_companies", message: error?.message ?? "falha" });
+    const message = error?.message ?? "falha";
+    totals.sourceErrors.push({ source: "cnpj_new_companies", message });
+    totals.sourceRuns.push({ source: "cnpj_new_companies", ok: false, found: 0, detail: message });
   }
 
   try {
@@ -200,8 +210,11 @@ export async function runAutonomousProspectingCycle(input: {
             : Array.isArray(raw?.items)
               ? raw.items.length
               : 0;
+    totals.sourceRuns.push({ source: "revenue_scout", ok: true, found: totals.revenueOpportunities });
   } catch (error: any) {
-    totals.sourceErrors.push({ source: "revenue_scout", message: error?.message ?? "falha" });
+    const message = error?.message ?? "falha";
+    totals.sourceErrors.push({ source: "revenue_scout", message });
+    totals.sourceRuns.push({ source: "revenue_scout", ok: false, found: 0, detail: message });
   }
 
   input.log.info({ tenantId: input.tenantId, ...totals }, "vendi/prospecting: autonomous discovery cycle complete");
