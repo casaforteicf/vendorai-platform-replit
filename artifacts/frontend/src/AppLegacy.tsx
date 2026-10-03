@@ -27,6 +27,7 @@ const ContactSales       = lazy(() => import("@/pages/demo/contact-sales"));
 const PortalObra         = lazy(() => import("@/pages/PortalObra"));
 const ObraCampo           = lazy(() => import("@/pages/ObraCampo"));
 const PublicProposta     = lazy(() => import("@/pages/PublicProposta"));
+const PublicDiagnosticoNegocio = lazy(() => import("@/pages/PublicDiagnosticoNegocio"));
 const PublicDeliveryRuntime = lazy(() => import("@/pages/PublicDeliveryRuntime"));
 const ForcePasswordChange= lazy(() => import("@/pages/ForcePasswordChange"));
 const AcceptInvite       = lazy(() => import("@/pages/AcceptInvite"));
@@ -97,8 +98,6 @@ const Marketplace        = lazy(() => import("@/pages/Marketplace"));
 const Estoque            = lazy(() => import("@/pages/Estoque"));
 const GestaoErp          = lazy(() => import("@/pages/GestaoErp"));
 const ErpCapture         = lazy(() => import("@/pages/erp"));
-const Onboarding         = lazy(() => import("@/pages/Onboarding"));
-const OnboardingIntegracoes = lazy(() => import("@/pages/OnboardingIntegracoes"));
 const Content            = lazy(() => import("@/pages/ContentHub"));
 const MarketingInstagram = lazy(() => import("@/pages/MarketingInstagram"));
 const MediaCenter        = lazy(() => import("@/pages/MediaCenter"));
@@ -322,9 +321,8 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
   const [location, setLocation] = useLocation();
 
   const isTenantAdmin = user?.platformRole === "tenant_admin";
-  const isOnboardingRoute = location === "/onboarding" || location.startsWith("/onboarding/");
   const isInstallationAction = location.split("?")[0] === "/configuracoes" && new URLSearchParams(window.location.search).get("installation") === "1";
-  const isSetupRoute = isOnboardingRoute || isInstallationAction;
+  const isSetupRoute = isInstallationAction;
 
   const { data: tenant, isLoading: tenantLoading } = useGetTenant(
     user?.tenantId ?? "",
@@ -364,17 +362,6 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
       setLocation("/login");
     }
   }, [token, isLoading, setLocation]);
-
-  useEffect(() => {
-    if (!isTenantAdmin || tenantLoading || !tenant || tenant.isDemo) return;
-    if (tenant.status !== "suspended" && !hasOverdueInvoice) {
-      if (!tenant.onboardingConcluido && !tenant.setupCompletedAt) {
-        setLocation("/onboarding");
-      } else if (!tenant.integracoesConcluido && !isInstallationAction) {
-        setLocation("/onboarding/integracoes");
-      }
-    }
-  }, [tenant, tenantLoading, isTenantAdmin, hasOverdueInvoice, isInstallationAction, setLocation]);
 
   if (isLoading || !token || !user) {
     return (
@@ -469,38 +456,14 @@ function PartnerRoute({ component: Component }: any) {
 }
 
 function OnboardingRoute() {
-  const { token, user, isLoading } = useAuth();
+  const { token, isLoading } = useAuth();
   const [, setLocation] = useLocation();
 
-  const isTenantAdmin = user?.platformRole === "tenant_admin";
-
-  const { data: tenant, isLoading: tenantLoading } = useGetTenant(
-    user?.tenantId ?? "",
-    {
-      query: {
-        enabled: !isLoading && !!token && isTenantAdmin && !!user?.tenantId,
-        queryKey: getGetTenantQueryKey(user?.tenantId ?? ""),
-      },
-    }
-  );
-
   useEffect(() => {
-    if (!isLoading && !token) setLocation("/login");
+    if (!isLoading) setLocation(token ? "/diagnostico-planejamento" : "/login", { replace: true });
   }, [token, isLoading, setLocation]);
 
-  useEffect(() => {
-    if (!isTenantAdmin || tenantLoading || !tenant) return;
-    // Either completion marker grants access to the app. Keep this in sync with
-    // ProtectedRoute so a partially migrated tenant cannot bounce indefinitely.
-    if (tenant.onboardingConcluido || tenant.setupCompletedAt) {
-      setLocation("/dashboard", { replace: true });
-    }
-  }, [tenant, tenantLoading, isTenantAdmin, setLocation]);
-
-  if (isLoading || !token) return <Spinner />;
-  if (isTenantAdmin && tenantLoading) return <Spinner />;
-
-  return <Onboarding />;
+  return <Spinner />;
 }
 
 function VarejoRoute({ component: Component, ...rest }: any) {
@@ -602,14 +565,14 @@ function ConstrucaoRoute({ component: Component, ...rest }: any) {
 }
 
 function PublicRoute({ component: Component }: any) {
-  const { token, isLoading } = useAuth();
+  const { token, user, isLoading } = useAuth();
   const [, setLocation] = useLocation();
 
   useEffect(() => {
-    if (!isLoading && token) {
-      setLocation("/dashboard");
+    if (!isLoading && token && user) {
+      setLocation(user.platformRole === "partner" ? "/partner" : user.platformRole === "tenant_admin" ? "/diagnostico-planejamento" : "/dashboard");
     }
-  }, [token, isLoading, setLocation]);
+  }, [token, user, isLoading, setLocation]);
 
   if (isLoading) return <Spinner />;
 
@@ -643,13 +606,14 @@ function AppRoutes() {
         <Route path="/portal/obra/:token"><PublicRoute component={PortalObra} /></Route>
         <Route path="/obra/campo/:obraId">{() => <ObraCampo />}</Route>
         <Route path="/p/:token">{() => <PublicProposta />}</Route>
+        <Route path="/diagnostico-negocio/:token">{() => <PublicDiagnosticoNegocio />}</Route>
         <Route path="/rastreio/:id">{() => <RastreioFrete />}</Route>
         <Route path="/acompanhar-entrega/:token">{() => <AcompanharEntrega />}</Route>
         <Route path="/entrega/agente/:agentKey">{() => <PublicDeliveryRuntime />}</Route>
         <Route path="/entrega/simulador/sdr">{() => <PublicDeliveryRuntime />}</Route>
         <Route path="/entrega/arqdor/pre-projeto">{() => <PublicDeliveryRuntime />}</Route>
         <Route path="/onboarding"><OnboardingRoute /></Route>
-        <Route path="/onboarding/integracoes">{() => <Suspense fallback={<Spinner />}><OnboardingIntegracoes /></Suspense>}</Route>
+        <Route path="/onboarding/integracoes"><RedirectPage to="/configuracoes" /></Route>
         <Route path="/"><PublicRoute component={Login} /></Route>
         <Route path="/app"><RedirectPage to="/" /></Route>
         <Route path="/app/"><RedirectPage to="/" /></Route>

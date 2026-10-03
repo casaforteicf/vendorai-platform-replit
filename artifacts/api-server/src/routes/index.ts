@@ -1,4 +1,5 @@
 import businessPlanRouter from "./business_plan.js";
+import { diagnosticPlanningPublicRouter, diagnosticPlanningProtectedRouter } from "./diagnostic_planning.js";
 import { Router, type IRouter } from "express";
 // Deploy marker: Arqdor Concept production validation 2026-09-19
 import healthRouter from "./health";
@@ -229,6 +230,7 @@ router.use(siteBlogPublicRouter);
 router.use(publicSegmentTemplatesRouter);
 router.use(inventorySyncRouter);
 router.use(intakeRouter);
+router.use(diagnosticPlanningPublicRouter);
 router.use(portalRouter);
 router.use(archPublicRouter);
 router.use(googleCallbackRouter);
@@ -274,46 +276,6 @@ router.use(trialJourneyRouter);
 
 router.use(blockPartnerFromCRM);
 router.use(blockSuspendedTenants);
-
-// Onboarding gate — keep only the wizard and the exact business-profile calls
-// required by step 1 reachable before onboarding is complete.
-router.use(async (req, res, next) => {
-  const tenantId = req.user?.tenantId;
-  if (!tenantId) return next(); // super_admin or partner — skip
-
-  const onboardingBusinessProfilePath =
-    (req.method === "GET" && /^\/tenants\/[A-Za-z0-9-]+\/business-profile$/.test(req.path)) ||
-    (req.method === "POST" && req.path === "/business-profiles") ||
-    (req.method === "PATCH" && /^\/business-profiles\/[A-Za-z0-9-]+$/.test(req.path));
-
-  const arqdorConceptPath =
-    req.path.startsWith("/arch/concept-projects") ||
-    req.path.startsWith("/arch/ai-render");
-
-  if (
-    req.path.startsWith("/onboarding") ||
-    req.path.startsWith("/auth") ||
-    onboardingBusinessProfilePath ||
-    arqdorConceptPath
-  ) {
-    return next();
-  }
-
-  const [tenant] = await db
-    .select({
-      onboardingConcluido: tenantsTable.onboardingConcluido,
-      setupCompletedAt: tenantsTable.setupCompletedAt,
-    })
-    .from(tenantsTable)
-    .where(eq(tenantsTable.id, tenantId));
-
-  if (!tenant?.onboardingConcluido && !tenant?.setupCompletedAt) {
-    res.status(403).json({ error: "ONBOARDING_REQUIRED", redirectTo: "/onboarding" });
-    return;
-  }
-
-  next();
-});
 
 // License endpoints must remain reachable in read-only mode.
 router.use(accessLicenseRouter);
@@ -398,6 +360,7 @@ router.use(consentsRouter);
 
 // Business Hub
 router.use(businessPlanRouter);
+router.use(diagnosticPlanningProtectedRouter);
 router.use(businessProfilesRouter);
 router.use(leadCaptureRouter);
 
