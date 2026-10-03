@@ -355,13 +355,29 @@ export default function AdminImprovements() {
   const releases = releasesQuery.data?.items ?? [];
   const selectedItems = items.filter((item) => selected.has(item.id));
   const readySelected = selectedItems.filter((item) => item.testStatus === "passed" && !!item.prNumber);
-  const queueCount = items.filter((item) => improvementSimpleStatus(item) === "Fila").length;
-  const developmentCount = items.filter((item) => improvementSimpleStatus(item) === "Em desenvolvimento").length;
-  const testingCount = items.filter((item) => improvementSimpleStatus(item) === "Em testes").length;
-  const homologReadyCount = items.filter((item) => improvementSimpleStatus(item) === "Pronta para homologação").length;
-  const awaitingPublicationCount = items.filter((item) => improvementSimpleStatus(item) === "Aguardando publicação").length;
-  const blockedCount = items.filter((item) => improvementSimpleStatus(item) === "Bloqueada / com erro").length;
-  const publishedCount = items.filter((item) => improvementSimpleStatus(item) === "Publicada").length;
+
+  const canonicalItems = useMemo(() => {
+    const byKey = new Map<string, Improvement>();
+    for (const item of items) {
+      const key = item.prNumber ? `pr:${item.prNumber}` : `id:${item.id}`;
+      const current = byKey.get(key);
+      if (!current || new Date(item.updatedAt).getTime() > new Date(current.updatedAt).getTime()) {
+        byKey.set(key, item);
+      }
+    }
+    return [...byKey.values()];
+  }, [items]);
+
+  const totalHistoryCount = items.length;
+  const uniqueImprovementCount = canonicalItems.length;
+  const duplicateCount = Math.max(0, totalHistoryCount - uniqueImprovementCount);
+  const queueCount = canonicalItems.filter((item) => improvementSimpleStatus(item) === "Fila").length;
+  const developmentCount = canonicalItems.filter((item) => improvementSimpleStatus(item) === "Em desenvolvimento").length;
+  const testingCount = canonicalItems.filter((item) => improvementSimpleStatus(item) === "Em testes").length;
+  const homologReadyCount = canonicalItems.filter((item) => improvementSimpleStatus(item) === "Pronta para homologação").length;
+  const awaitingPublicationCount = canonicalItems.filter((item) => improvementSimpleStatus(item) === "Aguardando publicação").length;
+  const blockedCount = canonicalItems.filter((item) => improvementSimpleStatus(item) === "Bloqueada / com erro").length;
+  const publishedCount = canonicalItems.filter((item) => improvementSimpleStatus(item) === "Publicada").length;
 
   async function post(path: string, payload?: unknown, successMessage?: string) {
     setBusy(path);
@@ -609,7 +625,22 @@ export default function AdminImprovements() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-5">
+        <div className="rounded-2xl border bg-card p-4">
+          <p className="text-xs font-medium text-muted-foreground">Total histórico</p>
+          <p className="mt-1 text-2xl font-semibold">{totalHistoryCount}</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">Nenhum registro é removido do histórico</p>
+        </div>
+        <div className="rounded-2xl border bg-card p-4">
+          <p className="text-xs font-medium text-muted-foreground">Melhorias únicas</p>
+          <p className="mt-1 text-2xl font-semibold">{uniqueImprovementCount}</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">Consolidadas por PR</p>
+        </div>
+        <div className="rounded-2xl border bg-card p-4">
+          <p className="text-xs font-medium text-muted-foreground">Duplicações históricas</p>
+          <p className="mt-1 text-2xl font-semibold">{duplicateCount}</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">Preservadas para auditoria</p>
+        </div>
         <div className="rounded-2xl border bg-card p-4">
           <p className="text-xs font-medium text-muted-foreground">Fila</p>
           <p className="mt-1 text-2xl font-semibold">{queueCount}</p>
