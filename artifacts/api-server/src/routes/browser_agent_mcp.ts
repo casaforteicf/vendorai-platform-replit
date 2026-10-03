@@ -200,11 +200,52 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
       : undefined;
 
     let firstPartyAuthToken: string | undefined;
-    if (new URL(startUrl).hostname.toLowerCase() === "app.appvendorai.com") {
-      const [servicePrincipal] = await db.select({ id: usersTable.id, email: usersTable.email, platformRole: usersTable.platformRole, role: usersTable.role, userFunction: usersTable.userFunction, active: usersTable.active })
-        .from(usersTable).where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.active, true))).limit(1);
+    let firstPartyAuthUserCache: Record<string, unknown> | undefined;
+    const firstPartyHost = new URL(startUrl).hostname.toLowerCase();
+    if (firstPartyHost === "app.appvendorai.com" || firstPartyHost === "homolog.appvendorai.com") {
+      const principalSelect = {
+        id: usersTable.id,
+        email: usersTable.email,
+        name: usersTable.name,
+        platformRole: usersTable.platformRole,
+        role: usersTable.role,
+        userFunction: usersTable.userFunction,
+        active: usersTable.active,
+      };
+
+      // Para rotas internas (ex.: Central de Melhorias), a Vendi precisa de uma
+      // identidade técnica com as mesmas permissões de plataforma do superadmin.
+      // Preferimos um super_admin ativo e só fazemos fallback para um admin do tenant.
+      const [platformPrincipal] = await db.select(principalSelect)
+        .from(usersTable)
+        .where(and(eq(usersTable.platformRole, "super_admin"), eq(usersTable.active, true)))
+        .limit(1);
+      const [tenantPrincipal] = platformPrincipal ? [] : await db.select(principalSelect)
+        .from(usersTable)
+        .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.active, true)))
+        .limit(1);
+      const servicePrincipal = platformPrincipal ?? tenantPrincipal;
       if (!servicePrincipal) throw new Error("VENDI_AUTH_PRINCIPAL_NOT_FOUND");
-      firstPartyAuthToken = signToken({ sub: servicePrincipal.id, email: servicePrincipal.email, platformRole: servicePrincipal.platformRole, tenantId, role: servicePrincipal.role, userFunction: servicePrincipal.userFunction ?? undefined, actorType: "ai" });
+
+      firstPartyAuthToken = signToken({
+        sub: servicePrincipal.id,
+        email: servicePrincipal.email,
+        platformRole: servicePrincipal.platformRole,
+        tenantId,
+        role: servicePrincipal.role,
+        userFunction: servicePrincipal.userFunction ?? undefined,
+        actorType: "ai",
+      });
+      firstPartyAuthUserCache = {
+        id: servicePrincipal.id,
+        email: servicePrincipal.email,
+        name: servicePrincipal.name,
+        platformRole: servicePrincipal.platformRole,
+        tenantId,
+        role: servicePrincipal.role,
+        userFunction: servicePrincipal.userFunction ?? null,
+        actorType: "ai",
+      };
     }
 
     const agentInput: BrowserAgentInput = {
@@ -223,6 +264,7 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
         : undefined,
       sessionCookies,
       firstPartyAuthToken,
+      firstPartyAuthUserCache,
       onSessionPersist: connection
         ? async (cookies) => {
             await db
@@ -288,4 +330,3 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
 });
 
 export default router;
-
