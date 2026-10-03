@@ -5,6 +5,7 @@ const RECOVERY_AT_KEY = "vendorai_stale_asset_recovery_at";
 const RECOVERY_WINDOW_MS = 30_000;
 const STUCK_SPINNER_MS = 12_000;
 const VERSION_CHECK_MS = 60_000;
+const UPDATE_DISMISS_PREFIX = "vendorai_update_dismissed";
 const REFRESH_PROTECTION_SELECTOR = '[data-vendorai-refresh-protected="true"]';
 
 const CHUNK_ERROR_PATTERN =
@@ -123,15 +124,19 @@ async function latestEntryAsset() {
   }
 }
 
-async function recoverIfDeploymentChanged() {
-  if (isFrontendRefreshProtected()) return;
-
+async function findAvailableDeployment() {
   const current = currentEntryAsset();
-  if (!current) return;
+  if (!current) return "";
   const latest = await latestEntryAsset();
-  if (!latest || latest === current) return;
-  if (isFrontendRefreshProtected()) return;
-  await recoverFrontendOnce("nova versão publicada");
+  if (!latest || latest === current) return "";
+
+  try {
+    if (sessionStorage.getItem(`${UPDATE_DISMISS_PREFIX}:${latest}`) === "1") return "";
+  } catch {
+    // sessionStorage indisponível não deve interromper a detecção.
+  }
+
+  return latest;
 }
 
 function isFullScreenRouteSpinnerVisible() {
@@ -153,12 +158,21 @@ function warmCriticalRoutes() {
 
 export function FrontendRecoveryGuard() {
   const [stalled, setStalled] = useState(false);
+  const [availableDeployment, setAvailableDeployment] = useState("");
   const spinnerSinceRef = useRef<number | null>(null);
 
   useEffect(() => {
     void clearObsoleteFrontendState();
     warmCriticalRoutes();
-    void recoverIfDeploymentChanged();
+
+    const checkForAvailableDeployment = () => {
+      if (document.visibilityState !== "visible" || isFrontendRefreshProtected()) return;
+      void findAvailableDeployment().then((latest) => {
+        if (latest) setAvailableDeployment(latest);
+      });
+    };
+
+    checkForAvailableDeployment();
 
     const markStalledIfNotRecovered = (reason: string) => {
       void recoverFrontendOnce(reason).then((recovered) => {
@@ -198,7 +212,7 @@ export function FrontendRecoveryGuard() {
     };
 
     const onVisibilityOrFocus = () => {
-      if (document.visibilityState === "visible") void recoverIfDeploymentChanged();
+      checkForAvailableDeployment();
     };
 
     window.addEventListener("vite:preloadError", onPreloadError);
@@ -209,7 +223,7 @@ export function FrontendRecoveryGuard() {
     document.addEventListener("visibilitychange", onVisibilityOrFocus);
 
     const versionInterval = window.setInterval(() => {
-      if (document.visibilityState === "visible") void recoverIfDeploymentChanged();
+      checkForAvailableDeployment();
     }, VERSION_CHECK_MS);
 
     const interval = window.setInterval(() => {
@@ -240,7 +254,45 @@ export function FrontendRecoveryGuard() {
     };
   }, []);
 
-  if (!stalled) return null;
+  if (!stalled && !availableDeployment) return null;
+
+  if (!stalled) {
+    return (
+      <div className="fixed bottom-4 right-4 z-[9999] w-[min(92vw,380px)] rounded-2xl border bg-card p-4 shadow-xl">
+        <p className="text-sm font-semibold">Nova versão disponível</p>
+        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+          A atualização foi publicada sem interromper seu trabalho. Você pode continuar normalmente e atualizar quando for conveniente.
+        </p>
+        <div className="mt-3 flex gap-2">
+          <button
+            type="button"
+            className="rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground"
+            onClick={async () => {
+              const now = Date.now();
+              await clearObsoleteFrontendState();
+              navigateToLatestVersion(now);
+            }}
+          >
+            Atualizar agora
+          </button>
+          <button
+            type="button"
+            className="rounded-md border px-3 py-2 text-xs font-medium"
+            onClick={() => {
+              try {
+                sessionStorage.setItem(`${UPDATE_DISMISS_PREFIX}:${availableDeployment}`, "1");
+              } catch {
+                // O aviso pode ser dispensado mesmo sem sessionStorage.
+              }
+              setAvailableDeployment("");
+            }}
+          >
+            Continuar trabalhando
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-background/95 p-6 backdrop-blur-sm">
