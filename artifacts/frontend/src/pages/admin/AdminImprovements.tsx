@@ -185,6 +185,7 @@ function formatDuration(value?: number | string | null) {
 function improvementSimpleStatus(item: Improvement) {
   if (item.status === "producao_validada") return "Publicado";
   if (item.status === "mergeado_main") return "Validando produção";
+  if (item.agentStatus === "aguardando_checks" && item.testStatus !== "failed") return "Aguardando checks";
   if (item.status === "bloqueada" || item.testStatus === "failed") return "Bloqueado";
   if (item.status === "testando" || item.testStatus === "running") return "Testando";
   if (item.status === "em_homologacao") return "Em homologação";
@@ -200,6 +201,7 @@ function improvementSimpleStatus(item: Improvement) {
 function operationalProgress(item: Improvement) {
   if (item.status === "producao_validada") return 100;
   if (item.status === "mergeado_main") return 95;
+  if (item.agentStatus === "aguardando_checks" && item.testStatus !== "failed") return 55;
   if (item.status === "bloqueada" || item.testStatus === "failed") return 55;
   if (item.status === "aguardando_producao" || item.status === "homologado") return 90;
   if (item.status === "em_homologacao") return 80;
@@ -214,6 +216,7 @@ function operationalProgress(item: Improvement) {
 function nextOperationalAction(item: Improvement) {
   if (item.status === "producao_validada") return "Concluída e monitorada em produção";
   if (item.status === "mergeado_main") return "Confirmar deploy e validação em produção";
+  if (item.agentStatus === "aguardando_checks" && item.testStatus !== "failed") return "Aguardar evidências dos checks do GitHub";
   if (item.status === "bloqueada" || item.testStatus === "failed") return "Vendi corrige a falha e repete os testes";
   if (item.status === "aguardando_producao" || item.status === "homologado") return "Aguardando sua aprovação para produção";
   if (item.status === "em_homologacao") return "Validar homologação e evidências";
@@ -228,7 +231,7 @@ function nextOperationalAction(item: Improvement) {
 function statusVariant(status: string): "default" | "secondary" | "outline" | "destructive" {
   if (["Publicado", "Pronto", "published"].includes(status)) return "default";
   if (status === "Bloqueado" || status === "blocked") return "destructive";
-  if (["Testando", "Em homologação", "Aguardando aprovação", "Validando produção", "Validando código", "Desenvolvendo", "Agente executando", "scheduled", "monitoring", "publishing"].includes(status)) return "secondary";
+  if (["Testando", "Aguardando checks", "Em homologação", "Aguardando aprovação", "Validando produção", "Validando código", "Desenvolvendo", "Agente executando", "scheduled", "monitoring", "publishing"].includes(status)) return "secondary";
   return "outline";
 }
 
