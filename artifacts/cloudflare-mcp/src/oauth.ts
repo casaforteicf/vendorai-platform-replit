@@ -11,6 +11,7 @@ const usedRefreshes = new Map<string, Grant>();
 const revokedFamilies = new Map<string, { exp: number }>();
 const forms = new Map<string, { grant: Grant; state: string; exp: number }>();
 const attempts = new Map<string, { count: number; exp: number }>();
+const handoffs = new Map<string, { redirect: string; exp: number }>();
 const now = () => Math.floor(Date.now() / 1000);
 const nonce = () => randomBytes(32).toString("base64url");
 // Stable across deploys/replicas as long as MCP_ACCESS_TOKEN is unchanged.
@@ -62,7 +63,7 @@ function json(res: ServerResponse, status: number, value: unknown) {
 }
 const fail = (res: ServerResponse, error = "invalid_request", status = 400) => json(res, status, { error });
 function prune() {
-  for (const map of [codes, refreshes, usedRefreshes, revokedFamilies, forms, attempts]) for (const [id, value] of map) if (value.exp < now()) map.delete(id);
+  for (const map of [codes, refreshes, usedRefreshes, revokedFamilies, forms, attempts, handoffs]) for (const [id, value] of map) if (value.exp < now()) map.delete(id);
 }
 function allowedRedirect(value: string): boolean {
   try {
@@ -84,6 +85,7 @@ function issue(res: ServerResponse, grant: Grant) {
   // ChatGPT to reconnect when Railway replaces the process. Access remains short-lived.
   const refreshExp = now() + 365 * 86400;
   const refresh = sign({ type: "refresh", iss: issuer(), aud: grant.resource, scope: grant.scope, client: grant.client, family: grant.family, instance: instance(), exp: refreshExp, jti: nonce() });
+  refreshes.set(hash(refresh), { ...grant, exp: refreshExp });
   json(res, 200, {
     access_token: sign({ type: "access", iss: issuer(), aud: grant.resource, scope: grant.scope, sub: "administrator", family: grant.family, instance: instance(), exp: now() + 3600, jti: nonce() }),
     token_type: "Bearer", expires_in: 3600, refresh_token: refresh, scope: grant.scope,
@@ -150,6 +152,12 @@ export async function handleOAuth(req: IncomingMessage, res: ServerResponse, url
       const csrf = sign({ type: "consent", pending });
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Referrer-Policy": "same-origin", "X-Frame-Options": "DENY", "Content-Security-Policy": "default-src 'none'; form-action 'self' https://chatgpt.com; frame-ancestors 'none'; base-uri 'none'" });
       res.end(`<!doctype html><html lang="pt-BR"><meta charset="utf-8"><title>Autorizar Vendor.ai</title><body><h1>Conectar Vendor.ai ao ChatGPT</h1><p>Esta integração administrativa permite consultar e alterar Cloudflare e executar missões no navegador do Vendor.ai. Autorize somente na sua conta.</p><form method="post" action="/oauth/approve"><input type="hidden" name="csrf" value="${csrf}"><label>Chave privada MCP do administrador <input type="password" name="credential" autocomplete="off" required></label><p>Use o valor de MCP_ACCESS_TOKEN do serviço cloudflare-mcp-v2 no Railway. A chave fica neste servidor e não é enviada ao ChatGPT.</p><button name="decision" value="approve">Autorizar acesso administrativo</button><button name="decision" value="deny" formnovalidate>Cancelar</button></form></body></html>`);
+    } else if (req.method === "GET" && path === "/oauth/complete") {
+      const id = url.searchParams.get("h") || "";
+      const handoff = handoffs.get(id);
+      if (!handoff || handoff.exp < now()) { fail(res, "invalid_request", 400); return true; }
+      handoffs.delete(id);
+      res.writeHead(302, { Location: handoff.redirect, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" }); res.end();
     } else if (req.method === "POST" && path === "/oauth/approve") {
       if (req.headers.origin !== issuer()) { json(res, 400, { error: "invalid_request", error_description: "Origem inválida. Abra uma nova autorização pelo ChatGPT.", reason: "invalid_origin" }); return true; }
       if (!req.headers["content-type"]?.startsWith("application/x-www-form-urlencoded")) { fail(res); return true; }
@@ -174,7 +182,12 @@ export async function handleOAuth(req: IncomingMessage, res: ServerResponse, url
         redirect.searchParams.set("code", code);
       }
       console.info("[oauth] approve redirect", { callbackPath: redirect.pathname, callbackKind: redirect.pathname === "/connector_platform_oauth_redirect" ? "stable" : redirect.pathname.startsWith("/connector/oauth/") ? "specific" : "other", hasCode: redirect.searchParams.has("code"), hasState: redirect.searchParams.has("state"), hasIss: redirect.searchParams.has("iss") });
-      res.writeHead(303, { Location: redirect.toString(), "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" }); res.end();
+      const handoffId = nonce();
+      handoffs.set(handoffId, { redirect: redirect.toString(), exp: now() + 120 });
+      const complete = new URL(`${issuer()}/oauth/complete`);
+      complete.searchParams.set("h", handoffId);
+      for (const [name, value] of redirect.searchParams) complete.searchParams.set(name, value);
+      res.writeHead(303, { Location: complete.toString(), "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" }); res.end();
 
     } else if (req.method === "POST" && path === "/oauth/token") {
       console.info("[oauth] token endpoint reached");
@@ -210,18 +223,33 @@ export async function handleOAuth(req: IncomingMessage, res: ServerResponse, url
         }
         codes.delete(id);
       } else {
+        const id = hash(raw);
+        const reused = usedRefreshes.get(id);
+        if (reused) {
+          revokedFamilies.set(reused.family, { exp: now() + 365 * 86400 });
+          fail(res, "invalid_grant"); return true;
+        }
         const claims = read(raw);
         if (claims?.type !== "refresh" || claims.iss !== issuer() || claims.instance !== instance() || claims.client !== client || claims.exp <= now() ||
             revokedFamilies.has(claims.family) || (p.get("resource") && p.get("resource") !== claims.aud) || (p.get("scope") && p.get("scope") !== claims.scope)) { fail(res, "invalid_grant"); return true; }
         grant = { client: claims.client, redirect: "", challenge: "", resource: claims.aud, scope: claims.scope, family: claims.family, exp: claims.exp };
+        usedRefreshes.set(id, grant);
+        refreshes.delete(id);
       }
       if (!grant) { fail(res, "invalid_grant"); return true; }
       issue(res, grant);
     } else if (req.method === "POST" && path === "/oauth/revoke") {
       const p = new URLSearchParams(await body(req));
-      const id = hash(p.get("token") || "");
+      const raw = p.get("token") || "";
+      const id = hash(raw);
       const grant = refreshes.get(id);
-      if (grant?.client === p.get("client_id")) { revokedFamilies.set(grant.family, { exp: now() + 31 * 86400 }); refreshes.delete(id); }
+      const claims = read(raw);
+      const family = grant?.client === p.get("client_id") ? grant.family :
+        (claims?.type === "refresh" && claims.client === p.get("client_id") ? claims.family : undefined);
+      if (family) {
+        revokedFamilies.set(family, { exp: now() + 365 * 86400 });
+        refreshes.delete(id);
+      }
       json(res, 200, {});
     } else fail(res, "not_found", 404);
   } catch { if (!res.headersSent) fail(res); else res.end(); }
