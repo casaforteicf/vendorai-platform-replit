@@ -50,6 +50,33 @@ function digitsOnly(s: string | null | undefined): string | null {
   return d.length > 0 ? d : null;
 }
 
+function normalizedDomain(value: string | null | undefined): string | null {
+  if (!value) return null;
+  try {
+    const raw = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+    return new URL(raw).hostname.toLocaleLowerCase("pt-BR").replace(/^www\./, "") || null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeIdentityText(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const normalized = value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+  return normalized || null;
+}
+
+function queueSource(placeId: string | null | undefined): string {
+  const prefix = String(placeId ?? "").split(":")[0]?.trim();
+  return prefix || "prospector_auto";
+}
+
 function cleanUnique(values: string[]): string[] {
   const seen = new Set<string>();
   const output: string[] = [];
@@ -229,11 +256,26 @@ async function processQueueItem(params: {
 
   // ── Duplicate detection ────────────────────────────────────────────────────
   const phoneDigits = digitsOnly(item.telefone);
+  const websiteDomain = normalizedDomain(item.website);
+  const normalizedName = normalizeIdentityText(item.nome);
+  const normalizedAddress = normalizeIdentityText(item.endereco);
+  const source = queueSource(item.placeId);
 
   const matchers: ReturnType<typeof eq>[] = [];
   if (phoneDigits) {
     matchers.push(
       sql`regexp_replace(${leadsTable.telefone}, '[^0-9]', '', 'g') = ${phoneDigits}` as ReturnType<typeof eq>,
+    );
+  }
+  if (websiteDomain) {
+    matchers.push(
+      sql`lower(regexp_replace(regexp_replace(coalesce(${leadsTable.websiteUrl}, ''), '^https?://', ''), '^www\\.', '')) LIKE ${websiteDomain + '%'}` as ReturnType<typeof eq>,
+    );
+  }
+  if (normalizedName && normalizedAddress) {
+    matchers.push(
+      sql`lower(regexp_replace(unaccent(coalesce(${leadsTable.empresa}, ${leadsTable.nome})), '[^a-zA-Z0-9]+', ' ', 'g')) = ${normalizedName}
+        AND lower(regexp_replace(unaccent(coalesce(${leadsTable.endereco}, '')), '[^a-zA-Z0-9]+', ' ', 'g')) = ${normalizedAddress}` as ReturnType<typeof eq>,
     );
   }
 
@@ -267,7 +309,7 @@ async function processQueueItem(params: {
         metadata: mergeProspectorMetadata((dup.metadata ?? {}) as Record<string, unknown>, {
           setor: item.setor,
           cidade: item.cidade,
-          fonte: "prospector_auto",
+          fonte: source,
           placeId: item.placeId,
         }),
         updatedAt: now,
@@ -336,7 +378,7 @@ async function processQueueItem(params: {
       metadata: mergeProspectorMetadata({}, {
         setor: item.setor,
         cidade: item.cidade,
-        fonte: "prospector_auto",
+        fonte: source,
         placeId: item.placeId,
         prospectadoEm: now.toISOString(),
       }),
