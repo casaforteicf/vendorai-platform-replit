@@ -40,6 +40,9 @@ const createSchema = z.object({
   sourceType: z.enum(["super_admin", "support", "vendi", "system", "audit", "user_request", "bug", "security", "integration", "infrastructure", "hotfix"]).optional().default("super_admin"),
   sourceRefId: z.string().trim().max(220).optional().nullable(),
   sourceTenantId: z.string().trim().max(220).optional().nullable(),
+  changeScope: z.enum(["tenant", "vertical", "global_opcional", "global", "bug"]).optional().nullable(),
+  scopeReason: z.string().trim().max(4000).optional().nullable(),
+  tenantContextSnapshot: z.record(z.string(), z.unknown()).optional().nullable(),
   packageKey: z.string().trim().max(120).optional().nullable(),
   acceptanceCriteria: z.string().trim().max(12000).optional().default(""),
   riskSummary: z.string().trim().max(8000).optional().default(""),
@@ -68,6 +71,9 @@ const patchSchema = z.object({
   riskSummary: z.string().trim().max(8000).optional(),
   dependencies: z.string().trim().max(8000).optional(),
   attachments: z.array(improvementAttachmentSchema).max(5).optional(),
+  changeScope: z.enum(["tenant", "vertical", "global_opcional", "global", "bug"]).nullable().optional(),
+  scopeReason: z.string().trim().max(4000).nullable().optional(),
+  tenantContextSnapshot: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 
 const idsSchema = z.object({
@@ -142,6 +148,9 @@ function ensureSchema() {
       source_type text NOT NULL DEFAULT 'super_admin',
       source_ref_id text,
       source_tenant_id text,
+      change_scope text,
+      scope_reason text,
+      tenant_context_snapshot jsonb,
       owner_agent text NOT NULL DEFAULT 'vendi',
       agent_status text NOT NULL DEFAULT 'idle',
       agent_summary text,
@@ -160,6 +169,9 @@ function ensureSchema() {
     ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS source_type text NOT NULL DEFAULT 'super_admin';
     ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS source_ref_id text;
     ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS source_tenant_id text;
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS change_scope text;
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS scope_reason text;
+    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS tenant_context_snapshot jsonb;
     ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS owner_agent text NOT NULL DEFAULT 'vendi';
     ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS agent_status text NOT NULL DEFAULT 'idle';
     ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS agent_summary text;
@@ -236,7 +248,8 @@ router.get("/admin/improvements", async (_req, res) => {
       approved_production_at AS "approvedProductionAt",
       merged_staging_sha AS "mergedStagingSha",
       source_type AS "sourceType", source_ref_id AS "sourceRefId",
-      source_tenant_id AS "sourceTenantId", owner_agent AS "ownerAgent",
+      source_tenant_id AS "sourceTenantId", change_scope AS "changeScope", scope_reason AS "scopeReason",
+      tenant_context_snapshot AS "tenantContextSnapshot", owner_agent AS "ownerAgent",
       agent_status AS "agentStatus", agent_summary AS "agentSummary",
       requested_at AS "requestedAt", due_at AS "dueAt",
       acceptance_criteria AS "acceptanceCriteria", risk_summary AS "riskSummary",
@@ -260,14 +273,16 @@ router.post("/admin/improvements", async (req, res) => {
     INSERT INTO admin_improvements (
       id, title, description, module, priority, branch, pr_number, pr_url,
       homolog_url, production_url, created_by, source_type, source_ref_id, source_tenant_id,
+      change_scope, scope_reason, tenant_context_snapshot,
       package_key, acceptance_criteria, risk_summary, dependencies, attachments
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19::jsonb)
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18,$19,$20,$21,$22::jsonb)
     RETURNING id
   `, [
     id, input.title, input.description, input.module, input.priority,
     input.branch ?? null, input.prNumber ?? null, input.prUrl ?? null,
     input.homologUrl ?? null, input.productionUrl ?? null, actor(req),
     input.sourceType, input.sourceRefId ?? null, input.sourceTenantId ?? null,
+    input.changeScope ?? null, input.scopeReason ?? null, JSON.stringify(input.tenantContextSnapshot ?? null),
     input.packageKey ?? null, input.acceptanceCriteria, input.riskSummary, input.dependencies,
     JSON.stringify(input.attachments ?? []),
   ]);
@@ -290,6 +305,7 @@ router.patch("/admin/improvements/:id", async (req, res) => {
     testStatus: "test_status", testSummary: "test_summary",
     ownerAgent: "owner_agent", agentStatus: "agent_status", agentSummary: "agent_summary",
     acceptanceCriteria: "acceptance_criteria", riskSummary: "risk_summary", dependencies: "dependencies", attachments: "attachments",
+    changeScope: "change_scope", scopeReason: "scope_reason", tenantContextSnapshot: "tenant_context_snapshot",
   };
   const sets: string[] = [];
   const values: unknown[] = [];
