@@ -1230,6 +1230,7 @@ export default function LeadDetail() {
   const [activityStatusEditId, setActivityStatusEditId] = useState<string | null>(null);
   const [activityStatusDraft, setActivityStatusDraft] = useState<string>("");
   const [activityResultadoDraft, setActivityResultadoDraft] = useState("");
+  const [activityNextActionDraft, setActivityNextActionDraft] = useState("");
   const [activityDueEditId, setActivityDueEditId] = useState<string | null>(null);
   const [activityDueDateDraft, setActivityDueDateDraft] = useState("");
 
@@ -1239,6 +1240,7 @@ export default function LeadDetail() {
         void queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey(tenantId, { leadId: id }) });
         setActivityStatusEditId(null);
         setActivityResultadoDraft("");
+        setActivityNextActionDraft("");
         setActivityDueEditId(null);
         setActivityDueDateDraft("");
         toast({ title: "Atividade atualizada." });
@@ -1254,6 +1256,7 @@ export default function LeadDetail() {
       setActivityStatusEditId(activityId);
       setActivityStatusDraft("concluida");
       setActivityResultadoDraft("");
+      setActivityNextActionDraft("");
     } else {
       updateActivity({ id: activityId, data: { status: newStatus as "pendente" | "planejado" | "cancelada" } });
     }
@@ -1265,7 +1268,9 @@ export default function LeadDetail() {
       data: {
         status: "concluida",
         resultadoExecucao: activityResultadoDraft.trim() || undefined,
-      },
+        proximaAcaoTexto: activityNextActionDraft.trim() || undefined,
+        estadoExecucao: "concluida",
+      } as any,
     });
   }
 
@@ -3069,6 +3074,22 @@ export default function LeadDetail() {
                                 Alterar status
                               </span>
                               <div className="flex flex-wrap gap-1.5">
+                                <button
+                                  type="button"
+                                  className="px-2.5 py-1 text-xs rounded border font-medium border-border text-muted-foreground hover:bg-muted"
+                                  disabled={isUpdatingActivity}
+                                  onClick={(e) => { e.stopPropagation(); updateActivity({ id: activity.id, data: { estadoExecucao: "em_execucao" } as any }); }}
+                                >
+                                  ▶ Iniciar
+                                </button>
+                                <button
+                                  type="button"
+                                  className="px-2.5 py-1 text-xs rounded border font-medium border-border text-muted-foreground hover:bg-muted"
+                                  disabled={isUpdatingActivity}
+                                  onClick={(e) => { e.stopPropagation(); updateActivity({ id: activity.id, data: { estadoExecucao: "aguardando" } as any }); }}
+                                >
+                                  ⏸ Aguardando
+                                </button>
                                 {(
                                   [
                                     { value: "planejado", label: "Planejado", cls: "bg-blue-100 text-blue-700 border-blue-200" },
@@ -3103,6 +3124,13 @@ export default function LeadDetail() {
                                     className="text-sm resize-none"
                                     onClick={(e) => e.stopPropagation()}
                                   />
+                                  <Input
+                                    placeholder="Próxima ação (opcional) — se preenchida, será criada automaticamente"
+                                    value={activityNextActionDraft}
+                                    onChange={(e) => setActivityNextActionDraft(e.target.value)}
+                                    className="text-sm"
+                                    onClick={(e) => e.stopPropagation()}
+                                  />
                                   <div className="flex gap-2">
                                     <Button
                                       size="sm"
@@ -3117,7 +3145,7 @@ export default function LeadDetail() {
                                       size="sm"
                                       variant="ghost"
                                       className="h-7 text-xs"
-                                      onClick={(e) => { e.stopPropagation(); setActivityStatusEditId(null); setActivityResultadoDraft(""); }}
+                                      onClick={(e) => { e.stopPropagation(); setActivityStatusEditId(null); setActivityResultadoDraft(""); setActivityNextActionDraft(""); }}
                                     >
                                       Cancelar
                                     </Button>
