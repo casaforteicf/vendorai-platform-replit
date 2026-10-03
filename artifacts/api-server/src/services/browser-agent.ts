@@ -242,28 +242,55 @@ export async function planBrowserAction(
     "Não tente contornar CAPTCHA ou verificações de segurança; finalize com outcome blocked.",
   ].join("\n");
 
-  for (let attempt = 0; attempt < 2; attempt++) {
-  const result = await callOpenAI(
-    tenantId,
-    "agent_runtime" as any,
-    [
-      { role: "system", content: system },
-      { role: "user", content: JSON.stringify({ goal, page: state, recentSteps: steps.slice(-6), secretsAvailable, ...(attempt ? { correction: "A resposta anterior era inválida. Retorne uma única ação no formato indicado, com todos os campos obrigatórios." } : {}) }) },
-    ],
-    {
-      temperature: 0,
-      maxTokens: 600,
-      responseFormat: { type: "json_object" },
-      billingScope: "platform_runtime",
-    },
-  );
+  let lastValidationError = "";
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const result = await callOpenAI(
+      tenantId,
+      "agent_runtime" as any,
+      [
+        { role: "system", content: system },
+        {
+          role: "user",
+          content: JSON.stringify({
+            goal,
+            page: state,
+            recentSteps: steps.slice(-6),
+            secretsAvailable,
+            ...(attempt ? {
+              correction: [
+                "A resposta anterior era inválida.",
+                "Retorne UMA única ação JSON no formato indicado, sem markdown.",
+                "Use somente selectors presentes em page.interactive[].selector.",
+                lastValidationError ? "Erro de validação anterior: " + lastValidationError : "",
+              ].filter(Boolean).join(" "),
+            } : {}),
+          }),
+        },
+      ],
+      {
+        temperature: 0,
+        maxTokens: 600,
+        responseFormat: { type: "json_object" },
+        billingScope: "platform_runtime",
+      },
+    );
 
-  try {
-    const parsed = actionSchema.safeParse(JSON.parse(result.content));
-    if (parsed.success) return parsed.data as PlannedAction;
-  } catch { /* Retry malformed JSON once, without executing it. */ }
+    try {
+      const raw = JSON.parse(result.content);
+      const parsed = actionSchema.safeParse(raw);
+      if (parsed.success) return parsed.data as PlannedAction;
+      lastValidationError = parsed.error.issues
+        .slice(0, 4)
+        .map((issue) => `${issue.path.join(".") || "root"}: ${issue.message}`)
+        .join("; ");
+    } catch (error: any) {
+      lastValidationError = error?.message ?? "JSON inválido";
+    }
   }
-  throw new Error("BROWSER_PLAN_INVALID: a IA não retornou uma ação válida após duas tentativas.");
+  throw new Error(
+    "BROWSER_PLAN_INVALID: a IA não retornou uma ação válida após quatro tentativas." +
+    (lastValidationError ? " Último erro: " + lastValidationError : ""),
+  );
 }
 
 export function isRecoverableSelectorError(error: unknown) {
