@@ -36,6 +36,8 @@ function ticketRequest(report: typeof bugReportsTable.$inferSelect) {
     `Descrição: ${report.descricao}`,
     `Prioridade do suporte: ${report.prioridade}`,
     report.rotaAfetada ? `Rota afetada: ${report.rotaAfetada}` : "Rota afetada: não informada",
+    report.changeScope ? `Escopo sugerido: ${report.changeScope}` : "Escopo sugerido: não classificado",
+    report.scopeReason ? `Motivo do escopo: ${report.scopeReason}` : "",
   ].join("\n");
 }
 
@@ -154,19 +156,19 @@ async function syncImprovementFromSupport(report: typeof bugReportsTable.$inferS
 
   if (existing.rowCount) {
     await pool.query(
-      "UPDATE admin_improvements SET title=$2,description=$3,priority=$4,status=$5,branch=COALESCE($6,branch),pr_number=COALESCE($7,pr_number),pr_url=COALESCE($8,pr_url),owner_agent='vendi',agent_status=$9,agent_summary=$10,test_status=CASE WHEN $7 IS NOT NULL THEN 'running' ELSE test_status END,updated_at=now() WHERE id=$1",
-      [id, report.titulo, ticketRequest(report), priorityMap[String(report.prioridade)] ?? "media", status, branch, pr?.number ? Number(pr.number) : null, pr?.url ?? null, agentStatus, summary],
+      "UPDATE admin_improvements SET title=$2,description=$3,priority=$4,status=$5,branch=COALESCE($6,branch),pr_number=COALESCE($7,pr_number),pr_url=COALESCE($8,pr_url),change_scope=$9,scope_reason=$10,tenant_context_snapshot=$11::jsonb,owner_agent='vendi',agent_status=$12,agent_summary=$13,test_status=CASE WHEN $7 IS NOT NULL THEN 'running' ELSE test_status END,updated_at=now() WHERE id=$1",
+      [id, report.titulo, ticketRequest(report), priorityMap[String(report.prioridade)] ?? "media", status, branch, pr?.number ? Number(pr.number) : null, pr?.url ?? null, report.changeScope ?? null, report.scopeReason ?? null, JSON.stringify(report.tenantContextSnapshot ?? null), agentStatus, summary],
     );
   } else {
     await pool.query(
-      "INSERT INTO admin_improvements (id,title,description,module,priority,status,branch,pr_number,pr_url,homolog_url,source_type,source_ref_id,source_tenant_id,owner_agent,agent_status,agent_summary,test_status,created_by) VALUES ($1,$2,$3,'Plataforma',$4,$5,$6,$7,$8,$9,'support',$10,$11,'vendi',$12,$13,$14,'support_handoff')",
-      [id, report.titulo, ticketRequest(report), priorityMap[String(report.prioridade)] ?? "media", status, branch, pr?.number ? Number(pr.number) : null, pr?.url ?? null, process.env["HOMOLOGATION_URL"] ?? "https://homolog.appvendorai.com", report.id, report.tenantId, agentStatus, summary, pr?.number ? "running" : "pending"],
+      "INSERT INTO admin_improvements (id,title,description,module,priority,status,branch,pr_number,pr_url,homolog_url,source_type,source_ref_id,source_tenant_id,change_scope,scope_reason,tenant_context_snapshot,owner_agent,agent_status,agent_summary,test_status,created_by) VALUES ($1,$2,$3,'Plataforma',$4,$5,$6,$7,$8,$9,'support',$10,$11,$12,$13,$14::jsonb,'vendi',$15,$16,$17,'support_handoff')",
+      [id, report.titulo, ticketRequest(report), priorityMap[String(report.prioridade)] ?? "media", status, branch, pr?.number ? Number(pr.number) : null, pr?.url ?? null, process.env["HOMOLOGATION_URL"] ?? "https://homolog.appvendorai.com", report.id, report.tenantId, report.changeScope ?? null, report.scopeReason ?? null, JSON.stringify(report.tenantContextSnapshot ?? null), agentStatus, summary, pr?.number ? "running" : "pending"],
     );
   }
 
   await pool.query(
     "INSERT INTO admin_improvement_events (id,improvement_id,event_type,message,actor,payload) VALUES ($1,$2,'support_handoff',$3,'vendi',$4::jsonb)",
-    [randomUUID(), id, summary.slice(0, 6000), JSON.stringify({ bugReportId: report.id, prNumber: pr?.number ?? null, prUrl: pr?.url ?? null, branch, executorStatus: result?.status ?? null })],
+    [randomUUID(), id, summary.slice(0, 6000), JSON.stringify({ bugReportId: report.id, tenantId: report.tenantId, changeScope: report.changeScope ?? null, scopeReason: report.scopeReason ?? null, prNumber: pr?.number ?? null, prUrl: pr?.url ?? null, branch, executorStatus: result?.status ?? null })],
   ).catch(() => undefined);
 
   return id;
