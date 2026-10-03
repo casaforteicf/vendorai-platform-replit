@@ -200,7 +200,7 @@ function isStaleActive(item: Improvement) {
 function improvementSimpleStatus(item: Improvement) {
   if (item.status === "producao_validada") return "Publicada";
   if (item.status === "mergeado_main") return "Validando produção";
-  if (item.status === "bloqueada" || item.testStatus === "failed" || isStaleActive(item)) return "Bloqueada / com erro";
+  if (item.status === "bloqueada" || item.testStatus === "failed") return "Bloqueada / com erro";
   if (item.status === "homologado" || item.status === "aguardando_producao") return "Aguardando publicação";
   if (item.status === "em_homologacao") return "Em homologação";
   if (item.status === "pronto_staging" && item.testStatus === "passed") return "Pronta para homologação";
@@ -562,7 +562,7 @@ export default function AdminImprovements() {
   const allReadySelected = readySelected.length === selectedItems.length && selectedItems.length > 0;
 
   return (
-    <div className="mx-auto w-full max-w-[1600px] space-y-5 p-4 md:p-6">
+    <div className="mx-auto w-full max-w-[1600px] min-w-0 space-y-5 overflow-x-hidden px-3 pb-24 pt-4 sm:px-4 md:p-6 md:pb-24">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -581,8 +581,8 @@ export default function AdminImprovements() {
             Histórico oficial de evolução do Vendor.ai: toda melhoria deve ser registrada aqui, da solicitação até a validação em produção.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
+        <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:w-auto sm:flex-wrap">
+          <Button className="w-full sm:w-auto"
             variant="outline"
             onClick={() => void reconcileGithub()}
             disabled={!github.data?.ready || busy === "/api/admin/improvements/github-reconcile"}
@@ -591,6 +591,7 @@ export default function AdminImprovements() {
             Reconciliar GitHub
           </Button>
           <Button
+            className="w-full sm:w-auto"
             variant="outline"
             onClick={() => {
               improvementsQuery.refetch();
@@ -602,7 +603,7 @@ export default function AdminImprovements() {
             <RefreshCw className={"mr-2 h-4 w-4 " + ((improvementsQuery.isFetching || releasesQuery.isFetching) ? "animate-spin" : "")} />
             Atualizar
           </Button>
-          <Button onClick={() => setCreateOpen(true)}>
+          <Button className="w-full sm:w-auto" onClick={() => setCreateOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Nova melhoria
           </Button>
@@ -610,31 +611,31 @@ export default function AdminImprovements() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
-        <div className="rounded-2xl border bg-card p-4">
+        <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4">
           <p className="text-xs font-medium text-muted-foreground">Fila</p>
           <p className="mt-1 text-2xl font-semibold">{queueCount}</p>
         </div>
-        <div className="rounded-2xl border bg-card p-4">
+        <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4">
           <p className="text-xs font-medium text-muted-foreground">Em desenvolvimento</p>
           <p className="mt-1 text-2xl font-semibold">{developmentCount}</p>
         </div>
-        <div className="rounded-2xl border bg-card p-4">
+        <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4">
           <p className="text-xs font-medium text-muted-foreground">Em testes</p>
           <p className="mt-1 text-2xl font-semibold">{testingCount}</p>
         </div>
-        <div className="rounded-2xl border bg-card p-4">
+        <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4">
           <p className="text-xs font-medium text-muted-foreground">Prontas para homologação</p>
           <p className="mt-1 text-2xl font-semibold">{homologReadyCount}</p>
         </div>
-        <div className="rounded-2xl border bg-card p-4">
+        <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4">
           <p className="text-xs font-medium text-muted-foreground">Aguardando publicação</p>
           <p className="mt-1 text-2xl font-semibold">{awaitingPublicationCount}</p>
         </div>
-        <div className="rounded-2xl border bg-card p-4">
+        <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4">
           <p className="text-xs font-medium text-muted-foreground">Publicadas</p>
           <p className="mt-1 text-2xl font-semibold">{publishedCount}</p>
         </div>
-        <div className="rounded-2xl border bg-card p-4">
+        <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4">
           <p className="text-xs font-medium text-muted-foreground">Bloqueadas / com erro</p>
           <p className="mt-1 text-2xl font-semibold">{blockedCount}</p>
         </div>
@@ -674,7 +675,7 @@ export default function AdminImprovements() {
             </div>
           )}
 
-          <div className="grid gap-3 md:hidden">
+          <div className="grid min-w-0 gap-3 lg:hidden">
             {items.map((item) => {
               const simple = improvementSimpleStatus(item);
               const progress = operationalProgress(item);
@@ -711,8 +712,8 @@ export default function AdminImprovements() {
 
                   <div className="mt-4 grid gap-3 rounded-xl bg-muted/25 p-3 text-xs">
                     {isStaleActive(item) && (
-                      <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-2 text-destructive">
-                        Sem atividade há mais de 30 minutos. A melhoria deixou de contar como execução ativa e requer atenção.
+                      <div className="rounded-lg border border-amber-300/50 bg-amber-50 p-2 text-amber-800">
+                        Sem atividade recente. A execução não é considerada ativa neste momento, mas isso não significa falha.
                       </div>
                     )}
                     <div>
@@ -785,7 +786,7 @@ export default function AdminImprovements() {
             })}
           </div>
 
-          <div className="hidden overflow-hidden rounded-2xl border bg-card md:block">
+          <div className="hidden overflow-hidden rounded-2xl border bg-card lg:block">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1120px] text-sm">
                 <thead className="border-b bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -1233,8 +1234,8 @@ export default function AdminImprovements() {
                 </div>
 
                 {isStaleActive(detail) && (
-                  <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-                    Esta melhoria está sem atividade há mais de 30 minutos. Ela não é contabilizada como execução ativa e foi sinalizada para atenção.
+                  <div className="rounded-xl border border-amber-300/50 bg-amber-50 p-4 text-sm text-amber-800">
+                    Esta melhoria está sem atividade recente. Ela não conta como execução ativa neste momento, mas permanece no estágio atual até haver evidência real de falha ou avanço.
                   </div>
                 )}
 
