@@ -27,8 +27,9 @@ type Diagnostic = {
   lacunas: Array<{ id: string; titulo: string; acao: string }>;
 };
 
+type PlanRecord = { title: string; values: Record<string, string>; source?: string };
 type BusinessPlanSnapshot = {
-  plan: { version: number; sections: Record<string, { approved?: unknown[] }> };
+  plan: { version: number; sections: Record<string, { approved?: PlanRecord[] }> };
   sources: { profile?: Record<string, unknown> | null };
 };
 
@@ -57,7 +58,7 @@ type GrowthData = {
     cac: number | null;
   };
   scenarios: GrowthScenario[];
-  planVsExecution: Array<{ metric_key: string; label: string; target_value: string; unit: string; starts_at: string; ends_at: string }>;
+  planVsExecution: Array<{ metric_key: string; label: string; target_value: string; unit: string; starts_at: string; ends_at: string; actualValue: number; actualBasis: string; progressPercent: number | null }>;
   valueGenerated: { trackedRevenue: number; trackedOrders: number; trackedMarketingSpend: number; trackedMonths: number; source: string };
   recommendations: Array<{ priority: "alta" | "media" | "baixa"; title: string; action: string; reason: string }>;
   assumptions: string[];
@@ -129,6 +130,7 @@ export default function DiagnosticoPlanejamento() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState("");
   const [publicLink, setPublicLink] = useState("");
+  const [actionPlanSaved, setActionPlanSaved] = useState(false);
 
   const snapshot = useQuery<BusinessPlanSnapshot>({
     queryKey: ["diagnostico-planejamento", "business-plan", tenantId],
@@ -197,6 +199,63 @@ export default function DiagnosticoPlanejamento() {
       setBusy("");
       if (fileRef.current) fileRef.current.value = "";
     }
+  }
+
+  async function saveActionPlan() {
+    const recommendations = growth.data?.recommendations ?? [];
+    if (!recommendations.length) return;
+    setBusy("action-plan");
+    try {
+      await apiJson(`/api/tenants/${tenantId}/diagnostico-planejamento/action-plan`, {
+        method: "POST",
+        body: JSON.stringify({
+          actions: recommendations.map((item) => ({
+            ...item,
+            executionType: item.priority === "alta" ? "assisted" : "human",
+          })),
+        }),
+      });
+      setActionPlanSaved(true);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  function downloadHtml(filename: string, title: string, sections: string[]) {
+    const html = `<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{font:16px/1.6 system-ui;max-width:980px;margin:40px auto;padding:24px;color:#172033}h1,h2{line-height:1.2}section{margin:28px 0;padding-top:18px;border-top:1px solid #ddd}.metric{display:inline-block;margin:4px 12px 4px 0;padding:8px 12px;border:1px solid #ddd;border-radius:8px}small{color:#667085}</style><h1>${title}</h1><p>${companyName} · gerado em ${new Date().toLocaleString("pt-BR")}</p>${sections.join("")}</html>`;
+    const url = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = filename; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function generateExecutiveSummary() {
+    const approved = Object.values(snapshot.data?.plan.sections ?? {}).flatMap((section) => section.approved ?? []);
+    const strategic = approved.slice(0, 20).map((record) => `<h3>${record.title}</h3>${Object.entries(record.values).map(([k,v]) => `<p><strong>${k}:</strong> ${String(v)}</p>`).join("")}`).join("");
+    downloadHtml("Resumo_Executivo_Empresa.html", "Resumo Executivo da Empresa", [
+      `<section><h2>Perfil</h2><p><strong>Empresa:</strong> ${companyName}</p><p><strong>Público-alvo:</strong> ${String(profile?.["publico_alvo"] ?? "Não informado")}</p><p><strong>Diferenciais:</strong> ${String(profile?.["diferenciais"] ?? "Não informado")}</p></section>`,
+      `<section><h2>Indicadores observados</h2><div class="metric">Receita média/mês: ${money(growth.data?.baseline.avgMonthlyRevenue)}</div><div class="metric">Ticket: ${money(growth.data?.baseline.avgTicket)}</div><div class="metric">Conversão: ${growth.data?.baseline.conversionPercent?.toFixed(2) ?? "—"}%</div></section>`,
+      `<section><h2>Estratégia aprovada</h2>${strategic || "<p>Ainda não há blocos estratégicos aprovados.</p>"}</section>`,
+    ]);
+  }
+
+  function generateCompanyManual() {
+    const approved = Object.values(snapshot.data?.plan.sections ?? {}).flatMap((section) => section.approved ?? []);
+    const body = approved.map((record) => `<section><h2>${record.title}</h2>${Object.entries(record.values).map(([k,v]) => `<p><strong>${k}:</strong> ${String(v)}</p>`).join("")}<small>Fonte: ${record.source ?? "Perfil Mestre"}</small></section>`).join("");
+    downloadHtml("Manual_da_Empresa.html", "Manual da Empresa", [
+      `<section><h2>Fonte oficial</h2><p>Este manual é derivado do Perfil Mestre e do Plano de Negócios aprovado no Vendor.ai.</p></section>`,
+      body || "<section><p>Complete e aprove os blocos do Plano de Negócios para gerar um manual mais completo.</p></section>",
+    ]);
+  }
+
+  function generateValueReport() {
+    const value = growth.data?.valueGenerated;
+    const scenarios = growth.data?.scenarios ?? [];
+    downloadHtml("Relatorio_Mensal_de_Valor.html", "Relatório de Valor e Planejamento", [
+      `<section><h2>Valor acompanhado</h2><div class="metric">Receita rastreada: ${money(value?.trackedRevenue)}</div><div class="metric">Vendas: ${value?.trackedOrders ?? 0}</div><div class="metric">Mídia rastreada: ${money(value?.trackedMarketingSpend)}</div><div class="metric">Histórico: ${value?.trackedMonths ?? 0} meses</div></section>`,
+      `<section><h2>Cenários</h2>${scenarios.map((s) => `<h3>${s.label}</h3><p>Receita: ${money(s.projectedMonthlyRevenue)} · Vendas: ${s.projectedSales.toFixed(1)} · Investimento: ${money(s.projectedMarketingInvestment)} · ROAS: ${s.projectedROAS?.toFixed(2) ?? "—"}x</p>`).join("")}</section>`,
+      `<section><h2>Ações recomendadas</h2>${(growth.data?.recommendations ?? []).map((r) => `<p><strong>${r.title}:</strong> ${r.action}<br><small>${r.reason}</small></p>`).join("") || "<p>Sem recomendações disponíveis.</p>"}</section>`,
+    ]);
   }
 
   const refresh = () => {
@@ -275,7 +334,10 @@ export default function DiagnosticoPlanejamento() {
                 <p className="mt-1 text-sm">{item.action}</p><p className="mt-1 text-xs text-muted-foreground">{item.reason}</p>
               </div>
             ))}
-            <Button variant="outline" size="sm" onClick={() => navigate("/trabalho")}>Executar na Central de Trabalho</Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={() => void saveActionPlan()} disabled={busy === "action-plan" || !(growth.data?.recommendations?.length)}>{busy === "action-plan" ? "Salvando..." : actionPlanSaved ? "Plano salvo" : "Salvar Plano de Ação"}</Button>
+              <Button variant="outline" size="sm" onClick={() => navigate("/trabalho")}>Executar na Central de Trabalho</Button>
+            </div>
           </CardContent>
         </Card>
       </section>
@@ -286,8 +348,8 @@ export default function DiagnosticoPlanejamento() {
           <CardContent className="space-y-2">
             {(growth.data?.planVsExecution ?? []).length ? growth.data!.planVsExecution.map((goal) => (
               <div key={`${goal.metric_key}-${goal.ends_at}`} className="flex items-center justify-between gap-4 rounded-lg border p-3 text-sm">
-                <div><p className="font-medium">{goal.label}</p><p className="text-xs text-muted-foreground">{goal.metric_key} · até {new Date(goal.ends_at).toLocaleDateString("pt-BR")}</p></div>
-                <strong>{Number(goal.target_value).toLocaleString("pt-BR")} {goal.unit}</strong>
+                <div><p className="font-medium">{goal.label}</p><p className="text-xs text-muted-foreground">{goal.metric_key} · até {new Date(goal.ends_at).toLocaleDateString("pt-BR")}</p><p className="mt-1 text-xs text-muted-foreground">Realizado: {goal.actualBasis === "sem_mapeamento_automatico" ? "sem mapeamento automático" : `${goal.actualValue.toLocaleString("pt-BR")} ${goal.unit}`}</p></div>
+                <div className="text-right"><strong>Meta: {Number(goal.target_value).toLocaleString("pt-BR")} {goal.unit}</strong><p className="text-xs text-muted-foreground">{goal.progressPercent == null ? "—" : `${goal.progressPercent.toFixed(1)}% da meta`}</p></div>
               </div>
             )) : <p className="text-sm text-muted-foreground">Ainda não há metas oficiais ativas. Cadastre metas no BI para comparar plano x execução.</p>}
           </CardContent>
@@ -306,6 +368,15 @@ export default function DiagnosticoPlanejamento() {
       <section className="grid gap-4 lg:grid-cols-[1.2fr_.8fr]">
         <Card><CardHeader><CardTitle>Diagnóstico do Perfil Mestre</CardTitle></CardHeader><CardContent>{diagnostic.data?.lacunas?.length ? <div className="space-y-3">{diagnostic.data.lacunas.slice(0,8).map((item,index)=><div key={item.id} className="flex gap-3 rounded-xl border p-3"><div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-semibold text-primary">{index+1}</div><div><p className="text-sm font-semibold">{item.titulo}</p><p className="mt-1 text-sm text-muted-foreground">{item.acao}</p></div></div>)}</div> : <div className="flex gap-3 rounded-xl border p-4"><CheckCircle2 className="h-5 w-5 text-emerald-700"/><p className="text-sm">Base essencial consistente.</p></div>}</CardContent></Card>
         <Card><CardHeader><CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5" /> Fonte única</CardTitle></CardHeader><CardContent className="space-y-3 text-sm">{["CRM e vendas alimentam histórico real.","Agentes usam contexto aprovado.","Marketing consome público, oferta e restrições.","BI mede execução e metas.","PN, manual e apresentação devem ser derivados desta mesma base."].map(text=><div key={text} className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary"/><span>{text}</span></div>)}</CardContent></Card>
+      </section>
+
+      <section>
+        <div className="mb-4"><h2 className="text-xl font-semibold">Documentos derivados</h2><p className="mt-1 text-sm text-muted-foreground">Gerados sempre da mesma fonte oficial, sem criar outro cadastro.</p></div>
+        <div className="flex flex-wrap gap-2 rounded-2xl border bg-card p-4">
+          <Button variant="outline" onClick={generateExecutiveSummary}>Gerar Resumo Executivo</Button>
+          <Button variant="outline" onClick={generateCompanyManual}>Gerar Manual da Empresa</Button>
+          <Button variant="outline" onClick={generateValueReport}>Gerar Relatório de Valor</Button>
+        </div>
       </section>
 
       <section id="perfil-mestre" className="scroll-mt-6">
