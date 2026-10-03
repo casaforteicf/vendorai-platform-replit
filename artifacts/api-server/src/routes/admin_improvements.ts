@@ -496,7 +496,7 @@ async function githubCheckSummary(owner: string, repo: string, sha: string) {
     return {
       testStatus,
       summary: JSON.stringify({
-        source: "github",
+        source: "github-check-runs",
         sha,
         total: runs.length,
         failed: failed.length,
@@ -510,16 +510,47 @@ async function githubCheckSummary(owner: string, repo: string, sha: string) {
         checkedAt: new Date().toISOString(),
       }).slice(0, 8000),
     };
-  } catch (error) {
-    return {
-      testStatus: "pending" as const,
-      summary: JSON.stringify({
-        source: "github",
-        sha,
-        warning: error instanceof Error ? error.message : "Falha ao consultar checks",
-        checkedAt: new Date().toISOString(),
-      }).slice(0, 8000),
-    };
+  } catch (checkRunsError) {
+    try {
+      const payload = await githubJson(
+        `/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}/status`,
+      );
+      const state = String(payload?.state ?? "pending");
+      const statuses = Array.isArray(payload?.statuses) ? payload.statuses : [];
+      const testStatus: "pending" | "running" | "passed" | "failed" =
+        state === "success" ? "passed" :
+        state === "failure" || state === "error" ? "failed" :
+        state === "pending" ? "running" : "pending";
+
+      return {
+        testStatus,
+        summary: JSON.stringify({
+          source: "github-combined-status",
+          sha,
+          state,
+          total: statuses.length,
+          fallbackFrom: checkRunsError instanceof Error ? checkRunsError.message : "check-runs unavailable",
+          checks: statuses.slice(0, 30).map((status: any) => ({
+            name: String(status?.context ?? "status"),
+            status: String(status?.state ?? "unknown"),
+            conclusion: String(status?.state ?? "unknown"),
+            url: status?.target_url ? String(status.target_url) : null,
+          })),
+          checkedAt: new Date().toISOString(),
+        }).slice(0, 8000),
+      };
+    } catch (statusError) {
+      return {
+        testStatus: "pending" as const,
+        summary: JSON.stringify({
+          source: "github-unavailable",
+          sha,
+          warning: statusError instanceof Error ? statusError.message : "Falha ao consultar checks",
+          checkRunsWarning: checkRunsError instanceof Error ? checkRunsError.message : "Falha ao consultar check-runs",
+          checkedAt: new Date().toISOString(),
+        }).slice(0, 8000),
+      };
+    }
   }
 }
 
@@ -648,8 +679,9 @@ router.post("/admin/improvements/github-reconcile", async (req, res) => {
           overdue += 1;
           inconsistent += 1;
         } else {
+          nextStatus = "testando";
           nextAgentStatus = "aguardando_checks";
-          reason = "Aguardando evidências dos checks";
+          reason = "Aguardando checks do GitHub";
         }
 
         const summary = JSON.stringify({
@@ -725,17 +757,20 @@ router.post("/admin/improvements/github-reconcile", async (req, res) => {
           updated += 1;
         }
       } catch (error) {
-        inconsistent += 1;
         await pool.query(
           `UPDATE admin_improvements
-              SET status=CASE WHEN status='producao_validada' THEN status ELSE 'bloqueada' END,
-                  agent_status='needs_attention',
+              SET status=CASE
+                    WHEN status IN ('producao_validada','cancelada','homologado','aguardando_producao','mergeado_main') THEN status
+                    WHEN test_status='failed' THEN status
+                    ELSE 'testando'
+                  END,
+                  agent_status='github_indisponivel',
                   agent_summary=$2,
                   updated_at=now()
             WHERE id=$1`,
           [
             String(item.id),
-            ("Falha ao reconciliar PR #" + prNumber + ": " +
+            ("GitHub temporariamente indisponível para reconciliar PR #" + prNumber + ": " +
               (error instanceof Error ? error.message : "erro desconhecido")).slice(0, 12000),
           ],
         );
