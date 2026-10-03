@@ -600,6 +600,9 @@ router.post("/admin/improvements/github-reconcile", async (req, res) => {
         const prState = String(pr?.state ?? "unknown");
         const isMerged = Boolean(pr?.merged || pr?.merged_at);
         const isClosedWithoutMerge = prState === "closed" && !isMerged;
+        const supersededMatch = String(pr?.body ?? "").match(/substitu[ií]do\s+por\s+#(\d+)/i);
+        const supersededByPr = supersededMatch ? Number(supersededMatch[1]) : null;
+        const isSuperseded = isClosedWithoutMerge && Boolean(supersededByPr);
         const hasConflict = prState === "open" && pr?.mergeable === false;
         const isOverdue = Boolean(
           item.dueAt &&
@@ -643,6 +646,11 @@ router.post("/admin/improvements/github-reconcile", async (req, res) => {
           if (check.testStatus === "running") nextTestStatus = "running";
           else if (check.testStatus === "passed") nextTestStatus = "passed";
           else nextTestStatus = "pending";
+        } else if (isSuperseded) {
+          nextStatus = "cancelada";
+          nextTestStatus = "pending";
+          nextAgentStatus = "substituido_historico";
+          reason = `PR substituído por #${supersededByPr}; preservado somente no histórico`;
         } else if (isClosedWithoutMerge) {
           nextStatus = "bloqueada";
           nextTestStatus = "failed";
@@ -713,6 +721,8 @@ router.post("/admin/improvements/github-reconcile", async (req, res) => {
           mergeable: pr?.mergeable ?? null,
           baseBranch,
           isChainedLegacy,
+          isSuperseded,
+          supersededByPr,
           headBranch,
           headSha,
           overdue: isOverdue,
