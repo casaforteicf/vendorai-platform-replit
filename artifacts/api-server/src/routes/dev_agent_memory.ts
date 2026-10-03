@@ -1,5 +1,7 @@
 import { Router } from "express";
+import { randomUUID } from "crypto";
 import { z } from "zod/v4";
+import { pool } from "@workspace/db";
 
 const router = Router();
 const MEMORY_ISSUE_TITLE = "[Dev IA] Memória de Engenharia";
@@ -31,6 +33,22 @@ export type ExecutionMemoryEntry = {
   failures: string[];
   evidence: string[];
 };
+
+async function loadDbMemory(kind: "engineering" | "execution", limit: number) {
+  const result = await pool.query(
+    "SELECT payload FROM dev_agent_memory_entries WHERE kind=$1 ORDER BY created_at DESC LIMIT $2",
+    [kind, Math.max(1, Math.min(25, limit))],
+  );
+  return result.rows.map((row) => row.payload).reverse();
+}
+
+async function recordDbMemory(kind: "engineering" | "execution", requestId: string, signature: string, payload: unknown) {
+  const result = await pool.query(
+    "INSERT INTO dev_agent_memory_entries (id,kind,request_id,signature,payload,created_at) VALUES ($1,$2,$3,$4,$5::jsonb,now()) ON CONFLICT (signature) DO NOTHING RETURNING id",
+    [randomUUID(), kind, requestId, signature, JSON.stringify(payload)],
+  );
+  return result.rows[0]?.id ?? null;
+}
 
 function githubConfig() {
   const token = process.env["GITHUB_DEV_TOKEN"] ?? process.env["GITHUB_PERSONAL_ACCESS_TOKEN"] ?? process.env["GITHUB_TOKEN"];
@@ -140,6 +158,10 @@ async function loadMemoryComments() {
 }
 
 export async function loadEngineeringMemory(limit = 12): Promise<EngineeringMemoryEntry[]> {
+  try {
+    const rows = await loadDbMemory("engineering", limit);
+    if (rows.length) return rows as EngineeringMemoryEntry[];
+  } catch {}
   const comments = await loadMemoryComments();
   return comments
     .map((comment: any) => parseMemoryComment(comment.body))
@@ -148,6 +170,10 @@ export async function loadEngineeringMemory(limit = 12): Promise<EngineeringMemo
 }
 
 export async function loadExecutionMemory(limit = 12): Promise<ExecutionMemoryEntry[]> {
+  try {
+    const rows = await loadDbMemory("execution", limit);
+    if (rows.length) return rows as ExecutionMemoryEntry[];
+  } catch {}
   const comments = await loadMemoryComments();
   return comments
     .map((comment: any) => parseExecutionComment(comment.body))
@@ -156,10 +182,6 @@ export async function loadExecutionMemory(limit = 12): Promise<ExecutionMemoryEn
 }
 
 export async function recordEngineeringMemory(entry: EngineeringMemoryEntry) {
-  const issue = await ensureMemoryIssue();
-  const existing = await loadEngineeringMemory(25);
-  if (existing.some((item) => item.requestId === entry.requestId)) return { skipped: true, reason: "duplicate_request_id" };
-
   const safeEntry: EngineeringMemoryEntry = {
     requestId: String(entry.requestId).slice(0, 120),
     route: String(entry.route).slice(0, 500),
@@ -172,21 +194,24 @@ export async function recordEngineeringMemory(entry: EngineeringMemoryEntry) {
     confidence: Math.max(0, Math.min(1, Number(entry.confidence))),
   };
 
-  const { owner, repo } = githubConfig();
-  const comment = await gh(`/repos/${owner}/${repo}/issues/${issue.number}/comments`, {
-    method: "POST",
-    body: JSON.stringify({ body: `${MEMORY_MARKER}\n${JSON.stringify(safeEntry)}` }),
-  });
-  return { skipped: false, issueNumber: issue.number, commentId: comment.id };
+  const signature = `engineering:${safeEntry.requestId}`;
+  const dbId = await recordDbMemory("engineering", safeEntry.requestId, signature, safeEntry);
+  if (!dbId) return { skipped: true, reason: "duplicate_request_id", storage: "database" };
+
+  try {
+    const issue = await ensureMemoryIssue();
+    const { owner, repo } = githubConfig();
+    const comment = await gh(`/repos/${owner}/${repo}/issues/${issue.number}/comments`, {
+      method: "POST",
+      body: JSON.stringify({ body: `${MEMORY_MARKER}\n${JSON.stringify(safeEntry)}` }),
+    });
+    return { skipped: false, storage: "database+github", id: dbId, issueNumber: issue.number, commentId: comment.id };
+  } catch {
+    return { skipped: false, storage: "database", id: dbId };
+  }
 }
 
 export async function recordExecutionMemory(entry: ExecutionMemoryEntry) {
-  const issue = await ensureMemoryIssue();
-  const existing = await loadExecutionMemory(25);
-  const signature = `${entry.requestId}:${entry.status}:${entry.mergeSha ?? ""}:${entry.pullRequestNumber ?? ""}`;
-  const duplicate = existing.some((item) => `${item.requestId}:${item.status}:${item.mergeSha ?? ""}:${item.pullRequestNumber ?? ""}` === signature);
-  if (duplicate) return { skipped: true, reason: "duplicate_execution_outcome" };
-
   const safeEntry: ExecutionMemoryEntry = {
     requestId: String(entry.requestId).slice(0, 120),
     route: String(entry.route || "/").slice(0, 500),
@@ -201,12 +226,27 @@ export async function recordExecutionMemory(entry: ExecutionMemoryEntry) {
     evidence: entry.evidence.slice(0, 8).map((v) => String(v).slice(0, 500)),
   };
 
-  const { owner, repo } = githubConfig();
-  const comment = await gh(`/repos/${owner}/${repo}/issues/${issue.number}/comments`, {
-    method: "POST",
-    body: JSON.stringify({ body: `${EXECUTION_MARKER}\n${JSON.stringify(safeEntry)}` }),
-  });
-  return { skipped: false, issueNumber: issue.number, commentId: comment.id };
+  const signature = [
+    "execution",
+    safeEntry.requestId,
+    safeEntry.status,
+    safeEntry.mergeSha ?? "",
+    safeEntry.pullRequestNumber ?? "",
+  ].join(":");
+  const dbId = await recordDbMemory("execution", safeEntry.requestId, signature, safeEntry);
+  if (!dbId) return { skipped: true, reason: "duplicate_execution_outcome", storage: "database" };
+
+  try {
+    const issue = await ensureMemoryIssue();
+    const { owner, repo } = githubConfig();
+    const comment = await gh(`/repos/${owner}/${repo}/issues/${issue.number}/comments`, {
+      method: "POST",
+      body: JSON.stringify({ body: `${EXECUTION_MARKER}\n${JSON.stringify(safeEntry)}` }),
+    });
+    return { skipped: false, storage: "database+github", id: dbId, issueNumber: issue.number, commentId: comment.id };
+  } catch {
+    return { skipped: false, storage: "database", id: dbId };
+  }
 }
 
 const appendSchema = z.object({
