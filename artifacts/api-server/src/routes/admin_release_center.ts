@@ -493,6 +493,10 @@ async function repairAutonomousBlockedImprovement() {
       "UPDATE admin_improvements SET agent_status='needs_attention',agent_summary=$2,updated_at=now() WHERE id=$1",
       [item.id, message.slice(0,12000)],
     );
+    await pool.query(
+      "INSERT INTO admin_improvement_events (id,improvement_id,event_type,message,actor,payload) VALUES ($1,$2,'auto_repair_result',$3,'vendi:auto',$4::jsonb)",
+      [randomUUID(), item.id, message.slice(0,6000), JSON.stringify({ success: false, prNumber: item.pr_number ?? null })],
+    ).catch(() => undefined);
     return false;
   }
 }
@@ -1143,6 +1147,26 @@ async function executeScheduledRelease(release: any) {
   return { sha: merged.sha ?? null, prNumber, prUrl };
 }
 
+const RELEASE_WORKER_LOCK = 731001;
+const GITHUB_RECONCILE_WORKER_LOCK = 731002;
+
+async function withWorkerAdvisoryLock(lockKey: number, fn: () => Promise<void>) {
+  const client = await pool.connect();
+  let acquired = false;
+  try {
+    const lock = await client.query("SELECT pg_try_advisory_lock($1) AS acquired", [lockKey]);
+    acquired = Boolean(lock.rows[0]?.acquired);
+    if (!acquired) return false;
+    await fn();
+    return true;
+  } finally {
+    if (acquired) {
+      await client.query("SELECT pg_advisory_unlock($1)", [lockKey]).catch(() => undefined);
+    }
+    client.release();
+  }
+}
+
 let workerStarted = false;
 let workerRunning = false;
 let githubReconcileRunning = false;
@@ -1151,8 +1175,10 @@ async function runGithubReconcileWorker() {
   if (githubReconcileRunning) return;
   githubReconcileRunning = true;
   try {
-    await ensureSchema();
-    await reconcileGithubImprovements("vendi:worker");
+    await withWorkerAdvisoryLock(GITHUB_RECONCILE_WORKER_LOCK, async () => {
+      await ensureSchema();
+      await reconcileGithubImprovements("vendi:worker");
+    });
   } catch (error) {
     console.error("[github-reconcile-worker] cycle failed:", error instanceof Error ? error.message : error);
   } finally {
@@ -1160,9 +1186,7 @@ async function runGithubReconcileWorker() {
   }
 }
 
-async function runReleaseWorker() {
-  if (workerRunning) return;
-  workerRunning = true;
+async function runReleaseWorkerCycle() {
   try {
     await ensureSchema();
 
@@ -1235,6 +1259,18 @@ async function runReleaseWorker() {
     // O worker de publicações é auxiliar e não pode derrubar a API inteira
     // quando o usuário runtime do banco não possui DDL no schema public.
     console.error("[release-worker] ciclo ignorado:", error instanceof Error ? error.message : error);
+  }
+}
+
+async function runReleaseWorker() {
+  if (workerRunning) return;
+  workerRunning = true;
+  try {
+    await withWorkerAdvisoryLock(RELEASE_WORKER_LOCK, async () => {
+      await runReleaseWorkerCycle();
+    });
+  } catch (error) {
+    console.error("[release-worker] lock/cycle failed:", error instanceof Error ? error.message : error);
   } finally {
     workerRunning = false;
   }
