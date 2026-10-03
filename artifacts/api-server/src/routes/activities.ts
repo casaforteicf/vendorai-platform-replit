@@ -347,9 +347,8 @@ router.patch("/activities/:id", async (req, res) => {
     .where(eq(activitiesTable.id, existing.id))
     .returning();
 
-  let nextActivity = null;
   if (data.status === "concluida" && parsed.data.proximaAcaoTexto?.trim()) {
-    const [createdNext] = await db.insert(activitiesTable).values({
+    await db.insert(activitiesTable).values({
       tenantId: existing.tenantId,
       leadId: existing.leadId,
       dealId: existing.dealId,
@@ -363,8 +362,7 @@ router.patch("/activities/:id", async (req, res) => {
       atividadePaiId: existing.id,
       responsavelId: existing.responsavelId,
       agenteResponsavelKey: existing.agenteResponsavelKey,
-    }).returning();
-    nextActivity = createdNext ?? null;
+    });
   }
 
   res.json(activity);
