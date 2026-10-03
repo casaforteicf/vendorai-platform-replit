@@ -674,6 +674,19 @@ router.post("/tenants/:tenantId/webhooks/whatsapp", async (req, res) => {
 
   const { telefone, nome, mensagem } = parsed.data;
 
+  const platformSupport = await tryVendorAiPlatformSupportInbound({
+    receivingTenantId: tenantId,
+    channel: "whatsapp",
+    text: mensagem,
+    senderPhone: telefone,
+    senderName: nome ?? null,
+    provider: "normalized",
+  });
+  if (platformSupport.handled) {
+    res.status(200).json({ platformSupport: true, ...platformSupport });
+    return;
+  }
+
   // ── 3. Find or create lead by phone (dedup-aware) ────────────────────
   const normalized = storePhone(telefone);
   const supportIngest = await tryIngestTechnicianSupportMessage({
@@ -1053,6 +1066,19 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
   }
 
   const telefone = normalizeZapiPhone(payload.phone);
+  const platformSupport = await tryVendorAiPlatformSupportInbound({
+    receivingTenantId: tenantId,
+    channel: "whatsapp",
+    text: mensagem,
+    senderPhone: telefone,
+    senderName: payload.chatName ?? payload.senderName ?? null,
+    provider: "zapi",
+  });
+  if (platformSupport.handled) {
+    res.status(200).json({ platformSupport: true, ...platformSupport });
+    return;
+  }
+
   const zapiMediaUrl =
     tipoConteudo === "audio" ? payload.audio?.audioUrl :
     tipoConteudo === "imagem" ? payload.image?.imageUrl :
@@ -1562,6 +1588,20 @@ router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
   }
 
   const telefone = remoteJid.replace(/@.*$/, "").replace(/\D/g, "");
+  const platformSupport = await tryVendorAiPlatformSupportInbound({
+    receivingTenantId: tenantId,
+    channel: "whatsapp",
+    text: mensagem,
+    senderPhone: telefone,
+    senderName: (data as { pushName?: string }).pushName ?? null,
+    sourceMessageId: key.id ?? null,
+    provider: "evolution",
+  });
+  if (platformSupport.handled) {
+    res.status(200).json({ platformSupport: true, ...platformSupport });
+    return;
+  }
+
   const evolutionFileName =
     tipoConteudo === "audio" ? "audio.ogg" :
     tipoConteudo === "imagem" ? "foto.jpg" :
@@ -2402,6 +2442,20 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
           }
 
           if (!mensagem.trim()) continue;
+
+          const platformSupport = await tryVendorAiPlatformSupportInbound({
+            receivingTenantId: tenantId,
+            channel: "whatsapp",
+            text: mensagem,
+            senderPhone: phone,
+            senderName: senderName ?? null,
+            sourceMessageId: String(msg["id"] ?? "") || null,
+            provider: "meta",
+          });
+          if (platformSupport.handled) {
+            req.log.info({ platformSupport, phone }, "meta-webhook: mensagem encaminhada ao suporte da plataforma VendorAI");
+            continue;
+          }
 
           const supportIngest = await tryIngestTechnicianSupportMessage({
             tenantId,
