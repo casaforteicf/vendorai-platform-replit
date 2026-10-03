@@ -646,6 +646,7 @@ function ChatPanel({
           descricao: `Atividade criada a partir da conversa ${channelLabel(conv.channel)}.`,
           status: "pendente",
           responsavelId: currentUserId || undefined,
+          origem: `chat:${conv.id}`,
           resultadoExecucao: `origem_chat:${conv.id}`,
           ...(activityDue
             ? { dataVencimento: new Date(activityDue).toISOString() }
