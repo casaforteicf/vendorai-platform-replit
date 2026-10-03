@@ -104,7 +104,7 @@ async function nextReleaseVersion() {
 
 async function getReleaseById(id: string) {
   const result = await pool.query(
-    "SELECT id,version,name,summary,status,improvement_ids AS \"improvementIds\",test_url AS \"testUrl\",test_status AS \"testStatus\",test_summary AS \"testSummary\",impact,base_sha AS \"baseSha\",head_sha AS \"headSha\",approval_fingerprint AS \"approvalFingerprint\",approved_by AS \"approvedBy\",approved_at AS \"approvedAt\",scheduled_at AS \"scheduledAt\",started_at AS \"startedAt\",published_at AS \"publishedAt\",duration_ms AS \"durationMs\",release_pr_number AS \"releasePrNumber\",release_pr_url AS \"releasePrUrl\",published_sha AS \"publishedSha\",rollback_version AS \"rollbackVersion\",last_error AS \"lastError\",created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\" FROM admin_releases WHERE id=$1",
+    "SELECT id,version,name,summary,status,improvement_ids AS \"improvementIds\",test_url AS \"testUrl\",test_status AS \"testStatus\",test_summary AS \"testSummary\",impact,base_sha AS \"baseSha\",head_sha AS \"headSha\",approval_fingerprint AS \"approvalFingerprint\",approved_by AS \"approvedBy\",approved_at AS \"approvedAt\",scheduled_at AS \"scheduledAt\",started_at AS \"startedAt\",published_at AS \"publishedAt\",duration_ms AS \"durationMs\",release_pr_number AS \"releasePrNumber\",release_pr_url AS \"releasePrUrl\",release_branch AS \"releaseBranch\",published_sha AS \"publishedSha\",rollback_version AS \"rollbackVersion\",last_error AS \"lastError\",created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\" FROM admin_releases WHERE id=$1",
     [id],
   );
   return result.rows[0] ?? null;
@@ -249,6 +249,163 @@ function releaseFingerprint(release: any, impact: any) {
     expectedFiles: [...(impact?.expectedFiles ?? [])].sort(),
     actualFiles: (impact?.actualFiles ?? []).map((file: any) => file.path).sort(),
   });
+}
+
+
+const fullAutonomyEnabled = () => {
+  const value = process.env["VENDI_FULL_AUTONOMY_ENABLED"] ?? process.env["VENDI_AUTONOMY_ENABLED"] ?? "";
+  return String(value).toLowerCase() === "true";
+};
+
+const protectedAutonomyPath = (path: string) => {
+  const value = path.toLowerCase();
+  return [
+    "billing",
+    "payment",
+    "pagamento",
+    "secret",
+    "credential",
+    "auth/",
+    "middlewares/auth",
+    "rls",
+    "security",
+    ".github/workflows/",
+    "railway",
+    "cloudflare",
+  ].some((needle) => value.includes(needle));
+};
+
+function autonomyRisk(impact: any) {
+  const files = Array.isArray(impact?.actualFiles) ? impact.actualFiles.map((file: any) => String(file?.path ?? "")) : [];
+  const protectedFiles = files.filter(protectedAutonomyPath);
+  return {
+    protected: protectedFiles.length > 0,
+    protectedFiles,
+  };
+}
+
+async function autonomyPrincipal() {
+  const result = await pool.query(
+    "SELECT id,email,platform_role AS \"platformRole\",role,user_function AS \"userFunction\",tenant_id AS \"tenantId\" FROM users WHERE active=true ORDER BY CASE WHEN platform_role='super_admin' THEN 0 ELSE 1 END, created_at ASC LIMIT 1"
+  );
+  return result.rows[0] ?? null;
+}
+
+async function validateReleaseAutonomously(release: any) {
+  const impact = await collectReleaseImpact(release.improvementIds, release.releaseBranch ?? "staging");
+  if (!impact.clean) return { passed: false, reason: "impact_not_clean", impact };
+
+  const risk = autonomyRisk(impact);
+  if (risk.protected) {
+    return { passed: false, reason: "protected_change", impact, risk };
+  }
+
+  const baseUrl = String(release.testUrl ?? process.env["HOMOLOGATION_URL"] ?? "").replace(/\/+$/, "");
+  if (!baseUrl) return { passed: false, reason: "homologation_url_missing", impact };
+
+  const principal = await autonomyPrincipal();
+  if (!principal?.id) return { passed: false, reason: "autonomy_principal_missing", impact };
+
+  const startUrl = baseUrl + "/admin/melhorias";
+  const host = new URL(startUrl).hostname.toLowerCase();
+  const firstPartyAuthToken = signToken({
+    sub: String(principal.id),
+    email: String(principal.email ?? ""),
+    platformRole: "super_admin",
+    tenantId: String(principal.tenantId ?? ""),
+    role: String(principal.role ?? "admin"),
+    userFunction: principal.userFunction ? String(principal.userFunction) : undefined,
+    actorType: "ai",
+  });
+
+  const result = await runBrowserAgent({
+    tenantId: String(principal.tenantId ?? "platform"),
+    goal: [
+      "Você é a Vendi validando automaticamente uma versão de homologação do VendorAI.",
+      "Apenas navegue e leia. Não crie, aprove, publique, exclua ou salve dados.",
+      "Confirme que Super Admin > Melhorias & Publicações carrega sem erro;",
+      "confirme cards de status, abas Melhorias/Publicações, lista de itens e controles visíveis;",
+      "registre qualquer erro de autenticação, renderização, rota ou navegação.",
+      "Retorne PASSOU somente se a tela e o fluxo básico estiverem íntegros.",
+    ].join("\n"),
+    startUrl,
+    mode: "autonomo",
+    allowWrite: false,
+    maxSteps: 24,
+    allowedHosts: [host],
+    firstPartyAuthToken,
+  });
+
+  return { passed: Boolean(result.ok), reason: result.ok ? "passed" : String(result.answer ?? "browser_validation_failed"), impact, result };
+}
+
+async function createAutonomousReleaseIfReady() {
+  const ready = await pool.query(
+    "SELECT id,title FROM admin_improvements WHERE package_key IS NULL AND test_status='passed' AND pr_number IS NOT NULL AND status IN ('pronto_staging','em_homologacao','testando') ORDER BY CASE priority WHEN 'urgente' THEN 0 WHEN 'alta' THEN 1 WHEN 'media' THEN 2 ELSE 3 END, created_at ASC LIMIT 10"
+  );
+  if (!ready.rowCount) return null;
+
+  const ids = ready.rows.map((row) => String(row.id));
+  const version = await nextReleaseVersion();
+  const candidate = await createReleaseCandidateBranch(version, ids);
+  const impact = await collectReleaseImpact(ids, candidate.branch);
+  const previous = await pool.query("SELECT version FROM admin_releases WHERE status='published' ORDER BY published_at DESC NULLS LAST LIMIT 1");
+  const id = randomUUID();
+  const summary = ready.rows.map((row) => String(row.title)).join(" • ").slice(0, 6000);
+  const risk = autonomyRisk(impact);
+  const status = impact.clean && !risk.protected ? "ready" : "blocked";
+  const lastError = risk.protected
+    ? "Autonomia bloqueada por alteração protegida: " + risk.protectedFiles.join(", ")
+    : !impact.clean
+      ? "Impacto inconsistente na versão autônoma."
+      : null;
+  const testUrl = process.env["HOMOLOGATION_URL"] ?? "https://homolog.appvendorai.com";
+
+  await pool.query(
+    "INSERT INTO admin_releases (id,version,name,summary,status,improvement_ids,test_url,test_status,impact,base_sha,head_sha,release_branch,rollback_version,last_error,created_by) VALUES ($1,$2,$3,$4,$5,$6::uuid[],$7,'pending',$8::jsonb,$9,$10,$11,$12,$13,'vendi:auto')",
+    [id, version, "Publicação autônoma " + version, summary, status, ids, testUrl, JSON.stringify(impact), impact.base.sha, impact.head.sha, candidate.branch, previous.rows[0]?.version ?? null, lastError],
+  );
+  await pool.query("UPDATE admin_improvements SET package_key=$1,agent_status='autonomous_release',updated_at=now() WHERE id=ANY($2::uuid[])", [version, ids]);
+  return id;
+}
+
+async function advanceAutonomousRelease() {
+  const pending = await pool.query(
+    "SELECT id FROM admin_releases WHERE status='ready' AND test_status='pending' ORDER BY created_at ASC LIMIT 1"
+  );
+  const id = pending.rows[0]?.id;
+  if (!id) return false;
+
+  const release = await getReleaseById(String(id));
+  if (!release) return false;
+
+  await pool.query(
+    "UPDATE admin_releases SET test_status='running',test_summary='Vendi iniciou validação autônoma.',updated_at=now() WHERE id=$1",
+    [release.id],
+  );
+
+  const validation = await validateReleaseAutonomously(release);
+  if (!validation.passed) {
+    await pool.query(
+      "UPDATE admin_releases SET status='blocked',test_status='failed',test_summary=$2,last_error=$2,updated_at=now() WHERE id=$1",
+      [release.id, JSON.stringify({ reason: validation.reason, risk: (validation as any).risk ?? null }).slice(0, 12000)],
+    );
+    return false;
+  }
+
+  const fingerprint = releaseFingerprint(release, validation.impact);
+  await pool.query(
+    "UPDATE admin_releases SET test_status='passed',test_summary=$2,status='scheduled',impact=$3::jsonb,base_sha=$4,head_sha=$5,approval_fingerprint=$6,approved_by='vendi:auto',approved_at=now(),scheduled_at=now(),last_error=NULL,updated_at=now() WHERE id=$1",
+    [
+      release.id,
+      JSON.stringify({ verdict: "passed", answer: (validation as any).result?.answer ?? "PASSOU", checkedAt: new Date().toISOString() }).slice(0, 12000),
+      JSON.stringify(validation.impact),
+      validation.impact.base.sha,
+      validation.impact.head.sha,
+      fingerprint,
+    ],
+  );
+  return true;
 }
 
 async function invalidateReleasesForImprovement(improvementId: string, reason: string) {
@@ -779,6 +936,14 @@ async function runReleaseWorker() {
   workerRunning = true;
   try {
     await ensureSchema();
+    if (fullAutonomyEnabled()) {
+      await createAutonomousReleaseIfReady().catch((error) => {
+        console.error("[release-worker] autonomous package failed:", error instanceof Error ? error.message : error);
+      });
+      await advanceAutonomousRelease().catch((error) => {
+        console.error("[release-worker] autonomous validation failed:", error instanceof Error ? error.message : error);
+      });
+    }
     const queueBlock = await pool.query(
       "SELECT id,status FROM admin_releases WHERE status IN ('publishing','monitoring') OR (status='blocked' AND scheduled_at IS NOT NULL) ORDER BY updated_at DESC LIMIT 1"
     );
