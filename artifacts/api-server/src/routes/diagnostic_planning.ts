@@ -75,6 +75,16 @@ const salesHistorySchema = z.object({
   sourceName: z.string().trim().max(240).optional(),
 });
 
+const actionPlanSchema = z.object({
+  actions: z.array(z.object({
+    title: z.string().trim().min(1).max(240),
+    action: z.string().trim().min(1).max(4000),
+    reason: z.string().trim().max(4000).default(""),
+    priority: z.enum(["alta", "media", "baixa"]),
+    executionType: z.enum(["automatic", "assisted", "human"]).default("assisted"),
+  })).min(1).max(30),
+});
+
 function safeDiscovery(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
@@ -212,6 +222,38 @@ function monthKey(value: Date) {
   return `${value.getUTCFullYear()}-${String(value.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
+diagnosticPlanningProtectedRouter.post("/tenants/:tenantId/diagnostico-planejamento/action-plan", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Acesso negado" });
+  const parsed = actionPlanSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const current = await profileForTenant(tenantId);
+  if (!current) return res.status(409).json({ error: "Cadastre primeiro o Perfil Mestre da empresa" });
+  const now = new Date().toISOString();
+  const actions = parsed.data.actions.map((item, index) => ({
+    id: `diagnostic-action-${Date.now()}-${index + 1}`,
+    ...item,
+    status: "pending",
+    createdAt: now,
+  }));
+  const discoveryData = {
+    ...safeDiscovery(current.discoveryData),
+    diagnosticActionPlan: { generatedAt: now, actions },
+  };
+  await db.update(businessProfilesTable)
+    .set({ discoveryData, updatedAt: new Date() })
+    .where(eq(businessProfilesTable.id, current.id));
+  return res.status(201).json({ generatedAt: now, actions });
+});
+
+diagnosticPlanningProtectedRouter.get("/tenants/:tenantId/diagnostico-planejamento/action-plan", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Acesso negado" });
+  const current = await profileForTenant(tenantId);
+  return res.json(safeDiscovery(current?.discoveryData)["diagnosticActionPlan"] ?? { generatedAt: null, actions: [] });
+});
+
 diagnosticPlanningProtectedRouter.get("/tenants/:tenantId/diagnostico-planejamento/growth-scenarios", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Acesso negado" });
@@ -323,6 +365,36 @@ diagnosticPlanningProtectedRouter.get("/tenants/:tenantId/diagnostico-planejamen
   if (cpl > 0 && cac > 0) recommendations.push({ priority: "media", title: "Otimizar aquisição por resultado", action: "Priorizar canais e campanhas que sustentem CAC e ROAS melhores, não apenas CPL menor.", reason: `CPL observado R$ ${cpl.toFixed(2)} e CAC R$ ${cac.toFixed(2)}.` });
   if (baseRevenue > 0) recommendations.push({ priority: "media", title: "Acompanhar cenário base", action: "Comparar semanalmente realizado x cenário e recalibrar investimento com o BI.", reason: "Há histórico suficiente para usar o cenário como referência operacional." });
 
+  const goalRows = ((goals as any).rows ?? []) as Array<Record<string, any>>;
+  const planVsExecution = goalRows.map((goal) => {
+    const key = String(goal.metric_key ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    const startsAt = new Date(goal.starts_at);
+    const endsAt = new Date(goal.ends_at);
+    const relevant = series.filter((row) => {
+      const date = new Date(`${row.month}-01T00:00:00Z`);
+      return date >= startsAt && date <= endsAt;
+    });
+    let actual = 0;
+    let actualBasis = "historico";
+    if (/receita|revenue|faturamento/.test(key)) actual = relevant.reduce((sum, row) => sum + row.revenue, 0);
+    else if (/vendas|sales|pedidos|orders|won/.test(key)) actual = relevant.reduce((sum, row) => sum + row.orders, 0);
+    else if (/leads|oportunidades/.test(key)) actual = relevant.reduce((sum, row) => sum + row.leads, 0);
+    else if (/investimento|spend|marketing/.test(key)) actual = relevant.reduce((sum, row) => sum + row.marketingSpend, 0);
+    else if (/conversao|conversion/.test(key)) {
+      actual = conversion * 100;
+      actualBasis = "conversao_global_observada";
+    } else {
+      actualBasis = "sem_mapeamento_automatico";
+    }
+    const target = Number(goal.target_value ?? 0) || 0;
+    return {
+      ...goal,
+      actualValue: Math.round(actual * 100) / 100,
+      actualBasis,
+      progressPercent: target > 0 ? Math.round((actual / target) * 10000) / 100 : null,
+    };
+  });
+
   return res.json({
     generatedAt: new Date().toISOString(),
     source: imported.length > 0 ? "imported_sales_history" : "crm_won_deals",
@@ -339,7 +411,7 @@ diagnosticPlanningProtectedRouter.get("/tenants/:tenantId/diagnostico-planejamen
     },
     series,
     scenarios,
-    planVsExecution: (goals as any).rows ?? [],
+    planVsExecution,
     valueGenerated: {
       trackedRevenue: Math.round(revenueTotal * 100) / 100,
       trackedOrders: ordersTotal,
