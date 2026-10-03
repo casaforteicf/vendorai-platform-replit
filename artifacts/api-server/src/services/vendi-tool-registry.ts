@@ -312,6 +312,37 @@ register({
 });
 
 register({
+  id: "prospector.autonomous_preview",
+  domain: "prospector",
+  description: "Executa uma prévia ponta a ponta da prospecção com fontes reais, sem criar fila, leads, deals ou sinais persistentes.",
+  risk: "low",
+  mutates: false,
+  externalEffect: false,
+  inputHint: "{maxPerConfig?:3..20}",
+  execute: async ({ tenantId }, input) => {
+    const data = await runAutonomousProspectingCycle({
+      tenantId,
+      log: logger.child({ subsystem: "vendi:prospecting-preview" }),
+      maxPerConfig: Math.min(Math.max(Number(input.maxPerConfig ?? 5), 3), 20),
+      dryRun: true,
+    });
+    return {
+      ok: true,
+      data,
+      evidence: {
+        source: "prospector:autonomous-preview",
+        dryRun: true,
+        googleFound: data.googleFound,
+        cnpjFound: data.cnpjFound,
+        constructionSignals: data.constructionSignals,
+        revenueOpportunities: data.revenueOpportunities,
+        sourceErrors: data.sourceErrors,
+      },
+    };
+  },
+});
+
+register({
   id: "prospector.autonomous_cycle",
   domain: "prospector",
   description: "Executa um ciclo unificado de descoberta: Google Places, empresas recém-abertas/CNPJ, Radar de Obras quando aplicável e Revenue Scout; empresas estruturadas entram na fila oficial para deduplicação, distribuição e enriquecimento.",
