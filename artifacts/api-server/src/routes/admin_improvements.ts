@@ -477,12 +477,13 @@ export async function reconcileGithubImprovements(actorName = "vendi:reconcile")
     const now = Date.now();
     const terminalStatuses = new Set(["producao_validada", "cancelada"]);
     const tracked = await pool.query(
-      `SELECT id,title,status,test_status AS "testStatus",pr_number AS "prNumber",
+      `SELECT DISTINCT ON (pr_number)
+              id,title,status,test_status AS "testStatus",pr_number AS "prNumber",
               pr_url AS "prUrl",branch,due_at AS "dueAt",updated_at AS "updatedAt",
               source_type AS "sourceType",source_ref_id AS "sourceRefId",agent_status AS "agentStatus"
          FROM admin_improvements
         WHERE pr_number IS NOT NULL
-        ORDER BY updated_at DESC`,
+        ORDER BY pr_number,updated_at DESC,created_at DESC`,
     );
 
     let created = 0;
@@ -497,6 +498,10 @@ export async function reconcileGithubImprovements(actorName = "vendi:reconcile")
     const trackedPrNumbers = new Set<number>();
 
     for (const item of tracked.rows) {
+      if (String(item.agentStatus ?? "") === "repairing") {
+        skipped += 1;
+        continue;
+      }
       const prNumber = Number(item.prNumber ?? 0);
       if (!prNumber) {
         skipped += 1;

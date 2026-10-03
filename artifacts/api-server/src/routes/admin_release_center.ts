@@ -208,6 +208,10 @@ async function createReleaseCandidateBranch(version: string, ids: string[]) {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (!/Reference already exists/i.test(message)) throw error;
+    await githubJson("/repos/" + config.owner + "/" + config.repo + "/git/refs/heads/" + encodeURIComponent(branch), {
+      method: "PATCH",
+      body: JSON.stringify({ sha: mainSha, force: true }),
+    });
   }
 
   const items = await pool.query(
@@ -216,27 +220,42 @@ async function createReleaseCandidateBranch(version: string, ids: string[]) {
   );
   if (items.rows.length !== ids.length) throw new Error("RELEASE_ITEMS_NOT_FOUND");
 
+  const includedIds: string[] = [];
   for (const item of items.rows) {
-    let head = item.branch ? String(item.branch) : "";
-    if (!head && item.prNumber) {
-      const pr = await githubJson("/repos/" + config.owner + "/" + config.repo + "/pulls/" + item.prNumber);
-      head = String(pr.head?.ref ?? "");
-    }
-    if (!head) throw new Error("Melhoria sem branch técnica: " + item.title);
+    try {
+      let head = item.branch ? String(item.branch) : "";
+      if (!head && item.prNumber) {
+        const pr = await githubJson("/repos/" + config.owner + "/" + config.repo + "/pulls/" + item.prNumber);
+        head = String(pr.head?.ref ?? "");
+      }
+      if (!head) throw new Error("Melhoria sem branch técnica");
 
-    const merged = await githubJson("/repos/" + config.owner + "/" + config.repo + "/merges", {
-      method: "POST",
-      body: JSON.stringify({
-        base: branch,
-        head,
-        commit_message: "[Release candidate " + version + "] " + item.title,
-      }),
-    });
-    if (!merged?.sha) throw new Error("Não foi possível incluir a melhoria na versão candidata: " + item.title);
+      const merged = await githubJson("/repos/" + config.owner + "/" + config.repo + "/merges", {
+        method: "POST",
+        body: JSON.stringify({
+          base: branch,
+          head,
+          commit_message: "[Release candidate " + version + "] " + item.title,
+        }),
+      });
+      if (!merged?.sha) throw new Error("GitHub não confirmou merge na candidata");
+      includedIds.push(String(item.id));
+    } catch (error) {
+      const reason = "Falha ao montar versão candidata: " + (error instanceof Error ? error.message : String(error));
+      await pool.query(
+        "UPDATE admin_improvements SET status='bloqueada',test_status='failed',agent_status='needs_attention',agent_summary=$2,package_key=NULL,updated_at=now() WHERE id=$1",
+        [item.id, reason.slice(0,12000)],
+      );
+      await pool.query(
+        "INSERT INTO admin_improvement_events (id,improvement_id,event_type,message,actor,payload) VALUES ($1,$2,'release_candidate_rejected',$3,'vendi:auto',$4::jsonb)",
+        [randomUUID(), item.id, reason.slice(0,6000), JSON.stringify({ version, prNumber: item.prNumber ?? null, branch: item.branch ?? null })],
+      );
+    }
   }
 
+  if (!includedIds.length) throw new Error("RELEASE_NO_MERGEABLE_ITEMS");
   const finalRef = await githubJson("/repos/" + config.owner + "/" + config.repo + "/git/ref/heads/" + encodeURIComponent(branch));
-  return { branch, baseSha: mainSha, headSha: String(finalRef.object?.sha ?? "") };
+  return { branch, baseSha: mainSha, headSha: String(finalRef.object?.sha ?? ""), includedIds };
 }
 
 function releaseFingerprint(release: any, impact: any) {
@@ -474,6 +493,10 @@ async function repairAutonomousBlockedImprovement() {
       "UPDATE admin_improvements SET agent_status='needs_attention',agent_summary=$2,updated_at=now() WHERE id=$1",
       [item.id, message.slice(0,12000)],
     );
+    await pool.query(
+      "INSERT INTO admin_improvement_events (id,improvement_id,event_type,message,actor,payload) VALUES ($1,$2,'auto_repair_result',$3,'vendi:auto',$4::jsonb)",
+      [randomUUID(), item.id, message.slice(0,6000), JSON.stringify({ success: false, prNumber: item.pr_number ?? null })],
+    ).catch(() => undefined);
     return false;
   }
 }
@@ -488,7 +511,17 @@ async function refreshAutonomousImprovementChecks() {
 
   const config = githubConfig();
   const pr = await githubJson("/repos/" + config.owner + "/" + config.repo + "/pulls/" + item.prNumber);
-  const evidence = await collectDevAgentCheckEvidence(String(pr.head.sha));
+  let evidence: Awaited<ReturnType<typeof collectDevAgentCheckEvidence>>;
+  try {
+    evidence = await collectDevAgentCheckEvidence(String(pr.head.sha));
+  } catch (error) {
+    const warning = error instanceof Error ? error.message : "GitHub check evidence unavailable";
+    await pool.query(
+      "UPDATE admin_improvements SET test_status='pending',test_summary=$2,agent_status='aguardando_checks',status='testando',updated_at=now() WHERE id=$1",
+      [item.id, JSON.stringify({ warning, semanticStatus: "awaiting_evidence", checkedAt: new Date().toISOString() }).slice(0,8000)],
+    );
+    return false;
+  }
   const passed = pr.mergeable !== false
     && evidence.codeFailures.length === 0
     && evidence.pending.length === 0
@@ -531,10 +564,13 @@ async function createAutonomousReleaseIfReady() {
   const ids = ready.rows.map((row) => String(row.id));
   const version = await nextReleaseVersion();
   const candidate = await createReleaseCandidateBranch(version, ids);
-  const impact = await collectReleaseImpact(ids, candidate.branch);
+  const includedIds = candidate.includedIds;
+  const includedSet = new Set(includedIds);
+  const includedRows = ready.rows.filter((row) => includedSet.has(String(row.id)));
+  const impact = await collectReleaseImpact(includedIds, candidate.branch);
   const previous = await pool.query("SELECT version FROM admin_releases WHERE status='published' ORDER BY published_at DESC NULLS LAST LIMIT 1");
   const id = randomUUID();
-  const summary = ready.rows.map((row) => String(row.title)).join(" • ").slice(0, 6000);
+  const summary = includedRows.map((row) => String(row.title)).join(" • ").slice(0, 6000);
   const risk = autonomyRisk(impact);
   const status = impact.clean && !risk.protected ? "ready" : "blocked";
   const lastError = risk.protected
@@ -546,9 +582,9 @@ async function createAutonomousReleaseIfReady() {
 
   await pool.query(
     "INSERT INTO admin_releases (id,version,name,summary,status,improvement_ids,test_url,test_status,impact,base_sha,head_sha,release_branch,rollback_version,last_error,created_by) VALUES ($1,$2,$3,$4,$5,$6::uuid[],$7,'pending',$8::jsonb,$9,$10,$11,$12,$13,'vendi:auto')",
-    [id, version, "Publicação autônoma " + version, summary, status, ids, testUrl, JSON.stringify(impact), impact.base.sha, impact.head.sha, candidate.branch, previous.rows[0]?.version ?? null, lastError],
+    [id, version, "Publicação autônoma " + version, summary, status, includedIds, testUrl, JSON.stringify(impact), impact.base.sha, impact.head.sha, candidate.branch, previous.rows[0]?.version ?? null, lastError],
   );
-  await pool.query("UPDATE admin_improvements SET package_key=$1,agent_status='autonomous_release',updated_at=now() WHERE id=ANY($2::uuid[])", [version, ids]);
+  await pool.query("UPDATE admin_improvements SET package_key=$1,agent_status='autonomous_release',updated_at=now() WHERE id=ANY($2::uuid[])", [version, includedIds]);
   return id;
 }
 
@@ -1111,22 +1147,48 @@ async function executeScheduledRelease(release: any) {
   return { sha: merged.sha ?? null, prNumber, prUrl };
 }
 
+const RELEASE_WORKER_LOCK = 731001;
+const GITHUB_RECONCILE_WORKER_LOCK = 731002;
+
+async function withWorkerAdvisoryLock(lockKey: number, fn: () => Promise<void>) {
+  const client = await pool.connect();
+  let acquired = false;
+  try {
+    const lock = await client.query("SELECT pg_try_advisory_lock($1) AS acquired", [lockKey]);
+    acquired = Boolean(lock.rows[0]?.acquired);
+    if (!acquired) return false;
+    await fn();
+    return true;
+  } finally {
+    if (acquired) {
+      await client.query("SELECT pg_advisory_unlock($1)", [lockKey]).catch(() => undefined);
+    }
+    client.release();
+  }
+}
+
 let workerStarted = false;
 let workerRunning = false;
-let lastGithubReconcileAt = 0;
+let githubReconcileRunning = false;
 
-async function runReleaseWorker() {
-  if (workerRunning) return;
-  workerRunning = true;
+async function runGithubReconcileWorker() {
+  if (githubReconcileRunning) return;
+  githubReconcileRunning = true;
+  try {
+    await withWorkerAdvisoryLock(GITHUB_RECONCILE_WORKER_LOCK, async () => {
+      await ensureSchema();
+      await reconcileGithubImprovements("vendi:worker");
+    });
+  } catch (error) {
+    console.error("[github-reconcile-worker] cycle failed:", error instanceof Error ? error.message : error);
+  } finally {
+    githubReconcileRunning = false;
+  }
+}
+
+async function runReleaseWorkerCycle() {
   try {
     await ensureSchema();
-
-    if (Date.now() - lastGithubReconcileAt >= 60000) {
-      lastGithubReconcileAt = Date.now();
-      await reconcileGithubImprovements("vendi:worker").catch((error) => {
-        console.error("[release-worker] github reconcile failed:", error instanceof Error ? error.message : error);
-      });
-    }
 
     if (fullAutonomyEnabled()) {
       await repairAutonomousBlockedImprovement().catch((error) => {
@@ -1197,6 +1259,18 @@ async function runReleaseWorker() {
     // O worker de publicações é auxiliar e não pode derrubar a API inteira
     // quando o usuário runtime do banco não possui DDL no schema public.
     console.error("[release-worker] ciclo ignorado:", error instanceof Error ? error.message : error);
+  }
+}
+
+async function runReleaseWorker() {
+  if (workerRunning) return;
+  workerRunning = true;
+  try {
+    await withWorkerAdvisoryLock(RELEASE_WORKER_LOCK, async () => {
+      await runReleaseWorkerCycle();
+    });
+  } catch (error) {
+    console.error("[release-worker] lock/cycle failed:", error instanceof Error ? error.message : error);
   } finally {
     workerRunning = false;
   }
@@ -1205,9 +1279,16 @@ async function runReleaseWorker() {
 function startReleaseWorker() {
   if (workerStarted) return;
   workerStarted = true;
-  const timer = setInterval(() => { void runReleaseWorker(); }, 30000);
-  timer.unref();
+
+  const releaseTimer = setInterval(() => { void runReleaseWorker(); }, 30000);
+  releaseTimer.unref();
+
+  const reconcileTimer = setInterval(() => { void runGithubReconcileWorker(); }, 300000);
+  reconcileTimer.unref();
+
   void runReleaseWorker();
+  const initialReconcile = setTimeout(() => { void runGithubReconcileWorker(); }, 10000);
+  initialReconcile.unref();
 }
 
 startReleaseWorker();
