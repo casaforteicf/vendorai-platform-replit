@@ -12,6 +12,7 @@ import {
 } from "@workspace/db";
 import type { Logger } from "pino";
 import { sendSdrFollowup } from "../services/sdrService.js";
+import { executarAcompanhamento } from "../services/orquestradorAcompanhamento.js";
 import { tenantIsWithinBusinessHours } from "../lib/proactiveMessageGuard.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 
@@ -207,6 +208,36 @@ export async function runSdrFollowup(log: Logger): Promise<void> {
         log.warn({ err, tenantId, leadId }, "sdr-followup: failed to record lead_cooling");
       });
 
+      const acompanhamento = await executarAcompanhamento({
+        tenantId,
+        leadId,
+        dealId: dealId ?? null,
+        motivoDisparo: "verificação do gatilho legado de 48 horas",
+        // O motor novo só deve executar por este job quando a etapa não
+        // estiver governada pela jornada inteligente. Etapa ativa é tratada
+        // pelo ciclo geral de acompanhamento, evitando duplicidade.
+        modoPadrao: "somente_sugestao",
+        log,
+      }).catch((err) => {
+        log.warn({ err, tenantId, leadId }, "sdr-followup: orquestrador indisponível; usando fallback legado");
+        return null;
+      });
+
+      if (acompanhamento?.plano.ativo) {
+        log.info(
+          {
+            tenantId,
+            leadId,
+            modo: acompanhamento.plano.modo,
+            canal: acompanhamento.plano.canalPrincipal,
+          },
+          "sdr-followup: etapa governada pelo Acompanhamento Inteligente; gatilho legado ignorado",
+        );
+        continue;
+      }
+
+      // Compatibilidade integral para tenants/etapas que ainda não ativaram
+      // o novo acompanhamento.
       await sendSdrFollowup(leadId, dealId ?? null, tenantId, lead.nome, lead.telefone, log);
       sent++;
 
