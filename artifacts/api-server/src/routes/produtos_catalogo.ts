@@ -998,3 +998,115 @@ router.post("/produtos-catalogo/:id/promocao", async (req, res) => {
     .returning();
 
   res.json(product);
+});
+
+router.delete("/produtos-catalogo/:id/promocao", async (req, res) => {
+  const [existing] = await db
+    .select({ id: produtosCatalogoTable.id, tenantId: produtosCatalogoTable.tenantId })
+    .from(produtosCatalogoTable)
+    .where(eq(produtosCatalogoTable.id, String(req.params.id)));
+
+  if (!existing) {
+    res.status(404).json({ error: "Product not found" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const [product] = await db
+    .update(produtosCatalogoTable)
+    .set({ precoPromocional: null, promocaoAtivaAte: null, updatedAt: new Date() })
+    .where(eq(produtosCatalogoTable.id, existing.id))
+    .returning();
+
+  res.json(product);
+});
+
+// ── Pergunta de produto respondida por IA (chamado pelo Praça.ai) ──────────
+const perguntaProdutoBodySchema = z.object({ pergunta: z.string().min(1).max(1000) });
+
+const PRODUTO_QA_SYSTEM_PROMPT = `Você responde perguntas de clientes sobre um produto específico, no
+contexto de um marketplace (Praça.ai). Use APENAS as informações do produto
+fornecidas — nunca invente característica, preço, prazo ou disponibilidade que
+não esteja nos dados. Se a pergunta não puder ser respondida com o que foi
+fornecido, diga isso claramente e sugira que o cliente use o chat direto com
+o vendedor para tirar a dúvida. Responda em português brasileiro, direto e
+em no máximo 3 frases — sem saudação, sem se apresentar, só a resposta.`;
+
+router.post("/produtos-catalogo/:id/responder-pergunta", async (req, res) => {
+  const parsed = perguntaProdutoBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const [product] = await db
+    .select()
+    .from(produtosCatalogoTable)
+    .where(eq(produtosCatalogoTable.id, String(req.params.id)));
+
+  if (!product) {
+    res.status(404).json({ error: "Product not found" });
+    return;
+  }
+
+  const contexto = [
+    `Nome: ${product.nome}`,
+    product.descricaoLonga ? `Descrição: ${product.descricaoLonga}` : product.descricao ? `Descrição: ${product.descricao}` : null,
+    product.marca ? `Marca: ${product.marca}` : null,
+    `Preço: R$ ${product.precoBase}`,
+    product.precoPromocional ? `Preço promocional ativo: R$ ${product.precoPromocional}` : null,
+    product.unidade ? `Unidade de venda: ${product.unidade}` : null,
+    product.peso ? `Peso: ${product.peso}kg` : null,
+  ].filter(Boolean).join("\n");
+
+  try {
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 300,
+      system: PRODUTO_QA_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: `Dados do produto:\n${contexto}\n\nPergunta do cliente: ${parsed.data.pergunta}` }],
+    });
+
+    const textBlock = response.content.find((b) => b.type === "text");
+    const resposta = textBlock && textBlock.type === "text" ? textBlock.text.trim() : null;
+
+    if (!resposta) {
+      res.status(502).json({ error: "IA não retornou resposta de texto." });
+      return;
+    }
+
+    res.json({ resposta });
+  } catch (err) {
+    console.error("[produtos_catalogo] erro ao responder pergunta via IA:", err);
+    res.status(500).json({ error: "Não foi possível gerar a resposta agora." });
+  }
+});
+
+router.delete("/produtos-catalogo/:id", async (req, res) => {
+  const [existing] = await db
+    .select({ id: produtosCatalogoTable.id, tenantId: produtosCatalogoTable.tenantId })
+    .from(produtosCatalogoTable)
+    .where(eq(produtosCatalogoTable.id, String(req.params.id)));
+
+  if (!existing) {
+    res.status(404).json({ error: "Product not found" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  // Delete inventory items first (FK restrict → cascade in DB not yet applied)
+  await db.delete(inventoryItemsTable).where(eq(inventoryItemsTable.produtoId, existing.id));
+  await db.delete(produtosCatalogoTable).where(eq(produtosCatalogoTable.id, existing.id));
+
+  res.status(204).send();
+});
+
+export default router;
