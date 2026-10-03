@@ -69,8 +69,10 @@ export async function runAutonomousProspectingCycle(input: {
   tenantId: string;
   log: Logger;
   maxPerConfig?: number;
+  dryRun?: boolean;
 }) {
   const maxPerConfig = Math.min(Math.max(Number(input.maxPerConfig ?? 10), 3), 20);
+  const dryRun = input.dryRun === true;
   const configs = await db
     .select()
     .from(prospectorConfigTable)
@@ -88,6 +90,7 @@ export async function runAutonomousProspectingCycle(input: {
     constructionSignals: 0,
     revenueOpportunities: 0,
     sourceErrors: [] as Array<{ source: string; message: string }>,
+    dryRun,
   };
 
   for (const config of configs) {
@@ -104,19 +107,23 @@ export async function runAutonomousProspectingCycle(input: {
       totals.googleFound += google.results.length;
       for (const company of google.results) {
         const externalId = stableId([company.nomeEmpresa, company.endereco, company.telefone, company.siteOficial]);
-        const queued = await queueCompany({
-          tenantId: input.tenantId,
-          source: "google_places",
-          externalId,
-          nome: company.nomeEmpresa,
-          telefone: company.telefone,
-          endereco: company.endereco,
-          setor,
-          cidade,
-          website: company.siteOficial,
-        });
-        if (queued.queued) totals.queued++;
-        if (queued.duplicate) totals.duplicates++;
+        if (dryRun) {
+          totals.queued++;
+        } else {
+          const queued = await queueCompany({
+            tenantId: input.tenantId,
+            source: "google_places",
+            externalId,
+            nome: company.nomeEmpresa,
+            telefone: company.telefone,
+            endereco: company.endereco,
+            setor,
+            cidade,
+            website: company.siteOficial,
+          });
+          if (queued.queued) totals.queued++;
+          if (queued.duplicate) totals.duplicates++;
+        }
       }
     } catch (error: any) {
       totals.sourceErrors.push({ source: "google_places", message: error?.message ?? "falha" });
@@ -135,6 +142,7 @@ export async function runAutonomousProspectingCycle(input: {
         });
         totals.constructionSignals += radar.works.length;
         for (const work of radar.works) {
+          if (dryRun) continue;
           await upsertProspectingSignal({
             tenantId: input.tenantId,
             source: "construction_radar",
@@ -173,7 +181,7 @@ export async function runAutonomousProspectingCycle(input: {
   }
 
   try {
-    const fresh = await runRecemAbertas(input.log, input.tenantId);
+    const fresh = await runRecemAbertas(input.log, input.tenantId, dryRun);
     totals.cnpjFound = fresh.created;
   } catch (error: any) {
     totals.sourceErrors.push({ source: "cnpj_new_companies", message: error?.message ?? "falha" });
