@@ -29,6 +29,7 @@ import { searchProspectorCompanies } from "./prospector-company-search.js";
 import { searchConstructionWorkSignals } from "./construction-radar-search.js";
 import { runAutonomousProspectingCycle } from "./vendi-autonomous-prospecting.js";
 import { listProspectingSources } from "./prospecting-source-catalog.js";
+import { summarizeProspectingSourceHealth } from "./prospecting-source-health.js";
 
 export type VendiToolRisk = "low" | "medium" | "high";
 export type VendiToolDomain =
@@ -235,6 +236,29 @@ register({
       evidence: {
         source: "prospector:construction-radar",
         count: data.works.length,
+      },
+    };
+  },
+});
+
+register({
+  id: "prospector.sources_health",
+  domain: "prospector",
+  description: "Verifica quais fontes de prospecção estão operacionais, sem configuração ou ainda dependem de conector.",
+  risk: "low",
+  mutates: false,
+  externalEffect: false,
+  inputHint: "{}",
+  execute: async () => {
+    const data = summarizeProspectingSourceHealth();
+    return {
+      ok: true,
+      data,
+      evidence: {
+        source: "prospector:source-health",
+        operational: data.operational,
+        missingConfiguration: data.missingConfiguration,
+        connectorRequired: data.connectorRequired,
       },
     };
   },
