@@ -197,6 +197,65 @@ async function auditRuntimeUrls(): Promise<AuditFinding[]> {
   return findings;
 }
 
+async function auditFrontendRoutes(): Promise<AuditFinding[]> {
+  const findings: AuditFinding[] = [];
+  const base = (process.env["HOMOLOGATION_URL"] || process.env["PUBLIC_APP_URL"] || process.env["APP_URL"] || "").replace(/\/$/, "");
+  if (!base) return findings;
+
+  const routes = [
+    "/dashboard",
+    "/leads",
+    "/negocios",
+    "/conversas",
+    "/agenda",
+    "/propostas",
+    "/app/prospector",
+    "/configuracoes",
+    "/admin/melhorias",
+  ];
+
+  for (const path of routes) {
+    const url = `${base}${path}`;
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      const startedAt = Date.now();
+      const response = await fetch(url, {
+        method: "GET",
+        signal: controller.signal,
+        redirect: "follow",
+        headers: { "User-Agent": "VendorAI-Continuous-Audit/1.0" },
+      });
+      clearTimeout(timeout);
+      const latency = Date.now() - startedAt;
+
+      if (response.status >= 500 || latency > 5000) {
+        findings.push({
+          key: `ui-route:${path}:${response.status >= 500 ? "server-error" : "slow"}`,
+          title: `Rota degradada: ${path}`,
+          description: `A auditoria de UI recebeu HTTP ${response.status} em ${latency} ms ao abrir ${path}. A rota deve ser validada no Browser Agent em desktop e mobile antes da publicação.`,
+          module: "UI / UX",
+          priority: response.status >= 500 ? "alta" : "media",
+          riskSummary: "Rota lenta ou com erro quebra a experiência do tenant e pode esconder regressões visuais/funcionais.",
+          acceptanceCriteria: `${path} deve carregar sem 5xx, sem timeout e passar no smoke visual desktop/mobile sem overflow, sobreposição ou loading infinito.`,
+        });
+      }
+    } catch (error) {
+      findings.push({
+        key: `ui-route:${path}:unreachable`,
+        title: `Rota inacessível: ${path}`,
+        description: `A auditoria não conseguiu abrir ${url}: ${error instanceof Error ? error.message : String(error)}`,
+        module: "UI / UX",
+        priority: "alta",
+        riskSummary: "A rota pode estar indisponível ou presa em falha de runtime.",
+        acceptanceCriteria: `${path} deve responder de forma estável e ser validada pelo Browser Agent em desktop e mobile.`,
+      });
+    }
+  }
+
+  return findings;
+}
+
 async function runAudit(log: Logger, mode: "fast" | "deep") {
   if ((mode === "fast" && fastRunning) || (mode === "deep" && deepRunning)) return;
   if (mode === "fast") fastRunning = true; else deepRunning = true;
@@ -205,7 +264,7 @@ async function runAudit(log: Logger, mode: "fast" | "deep") {
     const batches = await Promise.all([
       auditDatabaseSchema(),
       auditImprovementFlow(),
-      ...(mode === "deep" ? [auditRuntimeUrls()] : []),
+      ...(mode === "deep" ? [auditRuntimeUrls(), auditFrontendRoutes()] : []),
     ]);
     const findings = batches.flat();
     for (const finding of findings) await upsertFinding(finding, log);
