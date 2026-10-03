@@ -1,5 +1,5 @@
 import { and, desc, eq } from "drizzle-orm";
-import { db, dealsTable, leadsTable, propostasTable, usersTable } from "@workspace/db";
+import { db, dealsTable, leadsTable, propostasTable, tenantsTable, usersTable } from "@workspace/db";
 
 function compact(value: string | null | undefined, max = 240) {
   if (!value) return "";
@@ -26,6 +26,19 @@ export async function loadJarvisRequestContext(input: {
   const { tenantId, userId, route } = input;
   const entity = routeEntity(route);
 
+  const tenantPromise = db
+    .select({
+      id: tenantsTable.id,
+      name: tenantsTable.name,
+      slug: tenantsTable.slug,
+      vertical: tenantsTable.vertical,
+      verticalSecundaria: tenantsTable.verticalSecundaria,
+      planId: tenantsTable.planId,
+    })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId))
+    .limit(1);
+
   const userPromise = userId
     ? db
         .select({
@@ -42,16 +55,26 @@ export async function loadJarvisRequestContext(input: {
         .limit(1)
     : Promise.resolve([]);
 
-  const [userRows, entityContext] = await Promise.all([
+  const [tenantRows, userRows, entityContext] = await Promise.all([
+    tenantPromise,
     userPromise,
     entity ? loadEntityContext(tenantId, entity) : Promise.resolve(""),
   ]);
 
+  const tenant = tenantRows[0] ?? null;
   const user = userRows[0] ?? null;
   const lines = [
     "## Contexto executivo verificado no servidor",
     "Este bloco é derivado da sessão autenticada e de registros tenant-scoped. Ele tem precedência sobre nome, papel, permissões ou entidade enviados apenas pelo navegador.",
   ];
+
+  if (tenant) {
+    lines.push(
+      `- tenant_id=${tenant.id} | tenant_nome=${compact(tenant.name, 160)} | tenant_slug=${tenant.slug} | vertical=${tenant.vertical ?? "não_definida"} | vertical_secundária=${tenant.verticalSecundaria ?? "não_definida"} | plano=${tenant.planId ?? "não_definido"}`,
+    );
+  } else {
+    lines.push("- Tenant autenticado não pôde ser resolvido no cadastro. Não invente nome, vertical ou plano.");
+  }
 
   if (user) {
     const firstName = compact(user.name, 100).split(/\s+/)[0] ?? "";
