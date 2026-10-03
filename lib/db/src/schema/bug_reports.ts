@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, pgEnum, uuid, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, pgEnum, uuid, uniqueIndex, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -37,6 +37,12 @@ export const bugReportsTable = pgTable("bug_reports", {
   status: bugReportStatusEnum("status").notNull().default("aberto"),
   prioridade: bugReportPrioridadeEnum("prioridade").notNull().default("media"),
   rotaAfetada: text("rota_afetada"),
+  changeScope: text("change_scope"),
+  scopeReason: text("scope_reason"),
+  tenantContextSnapshot: jsonb("tenant_context_snapshot").$type<Record<string, unknown> | null>(),
+  sourceChannel: text("source_channel"),
+  sourceSender: text("source_sender"),
+  sourceMessageId: text("source_message_id"),
   erroTecnico: text("erro_tecnico"),
   stackTrace: text("stack_trace"),
   respostaSuporte: text("resposta_suporte"),
