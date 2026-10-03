@@ -182,20 +182,32 @@ function formatDuration(value?: number | string | null) {
   return String(min) + "m " + String(sec).padStart(2, "0") + "s";
 }
 
+const ACTIVE_STALE_MS = 30 * 60 * 1000;
+
+function isStaleActive(item: Improvement) {
+  const active =
+    item.status === "em_desenvolvimento" ||
+    item.status === "testando" ||
+    item.status === "em_homologacao" ||
+    item.agentStatus === "executando" ||
+    item.agentStatus === "aguardando_checks" ||
+    (!!item.branch && item.status !== "homologado" && item.status !== "aguardando_producao");
+  if (!active) return false;
+  const updatedAt = new Date(item.updatedAt).getTime();
+  return Number.isFinite(updatedAt) && Date.now() - updatedAt > ACTIVE_STALE_MS;
+}
+
 function improvementSimpleStatus(item: Improvement) {
-  if (item.status === "producao_validada") return "Publicado";
+  if (item.status === "producao_validada") return "Publicada";
   if (item.status === "mergeado_main") return "Validando produção";
-  if (item.agentStatus === "aguardando_checks" && item.testStatus !== "failed") return "Aguardando checks";
-  if (item.status === "bloqueada" || item.testStatus === "failed") return "Bloqueado";
-  if (item.status === "testando" || item.testStatus === "running") return "Testando";
+  if (item.status === "bloqueada" || item.testStatus === "failed" || isStaleActive(item)) return "Bloqueada / com erro";
+  if (item.status === "homologado" || item.status === "aguardando_producao") return "Aguardando publicação";
   if (item.status === "em_homologacao") return "Em homologação";
-  if (item.status === "homologado" || item.status === "aguardando_producao") return "Aguardando aprovação";
-  if (item.status === "pronto_staging" && item.testStatus === "passed") return "Pronto";
-  if (item.prNumber) return "Validando código";
-  if (item.branch || item.status === "em_desenvolvimento") return "Desenvolvendo";
-  if (item.agentStatus && item.agentStatus !== "aguardando") return "Agente executando";
-  if (item.status === "solicitada") return "Na fila";
-  return "Aguardando";
+  if (item.status === "pronto_staging" && item.testStatus === "passed") return "Pronta para homologação";
+  if (item.status === "testando" || item.testStatus === "running" || item.agentStatus === "aguardando_checks") return "Em testes";
+  if (item.prNumber || item.branch || item.status === "em_desenvolvimento" || (item.agentStatus && item.agentStatus !== "aguardando")) return "Em desenvolvimento";
+  if (item.status === "solicitada") return "Fila";
+  return "Fila";
 }
 
 function operationalProgress(item: Improvement) {
@@ -229,9 +241,9 @@ function nextOperationalAction(item: Improvement) {
 }
 
 function statusVariant(status: string): "default" | "secondary" | "outline" | "destructive" {
-  if (["Publicado", "Pronto", "published"].includes(status)) return "default";
-  if (status === "Bloqueado" || status === "blocked") return "destructive";
-  if (["Testando", "Aguardando checks", "Em homologação", "Aguardando aprovação", "Validando produção", "Validando código", "Desenvolvendo", "Agente executando", "scheduled", "monitoring", "publishing"].includes(status)) return "secondary";
+  if (["Publicada", "Pronta para homologação", "published"].includes(status)) return "default";
+  if (status === "Bloqueada / com erro" || status === "blocked") return "destructive";
+  if (["Em testes", "Em homologação", "Aguardando publicação", "Validando produção", "Em desenvolvimento", "scheduled", "monitoring", "publishing"].includes(status)) return "secondary";
   return "outline";
 }
 
@@ -343,11 +355,13 @@ export default function AdminImprovements() {
   const releases = releasesQuery.data?.items ?? [];
   const selectedItems = items.filter((item) => selected.has(item.id));
   const readySelected = selectedItems.filter((item) => item.testStatus === "passed" && !!item.prNumber);
-  const doingCount = items.filter((item) => ["Agente executando", "Desenvolvendo", "Validando código", "Testando", "Em homologação"].includes(improvementSimpleStatus(item))).length;
-  const readyCount = items.filter((item) => ["Pronto", "Aguardando aprovação"].includes(improvementSimpleStatus(item))).length;
-  const blockedCount = items.filter((item) => improvementSimpleStatus(item) === "Bloqueado").length;
-  const publishedCount = releases.filter((item) => item.status === "published").length;
-  const scheduledCount = releases.filter((item) => ["scheduled", "publishing", "monitoring"].includes(item.status)).length;
+  const queueCount = items.filter((item) => improvementSimpleStatus(item) === "Fila").length;
+  const developmentCount = items.filter((item) => improvementSimpleStatus(item) === "Em desenvolvimento").length;
+  const testingCount = items.filter((item) => improvementSimpleStatus(item) === "Em testes").length;
+  const homologReadyCount = items.filter((item) => improvementSimpleStatus(item) === "Pronta para homologação").length;
+  const awaitingPublicationCount = items.filter((item) => improvementSimpleStatus(item) === "Aguardando publicação").length;
+  const blockedCount = items.filter((item) => improvementSimpleStatus(item) === "Bloqueada / com erro").length;
+  const publishedCount = items.filter((item) => improvementSimpleStatus(item) === "Publicada").length;
 
   async function post(path: string, payload?: unknown, successMessage?: string) {
     setBusy(path);
@@ -595,18 +609,26 @@ export default function AdminImprovements() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
         <div className="rounded-2xl border bg-card p-4">
-          <p className="text-xs font-medium text-muted-foreground">Em execução agora</p>
-          <p className="mt-1 text-2xl font-semibold">{doingCount}</p>
+          <p className="text-xs font-medium text-muted-foreground">Fila</p>
+          <p className="mt-1 text-2xl font-semibold">{queueCount}</p>
         </div>
         <div className="rounded-2xl border bg-card p-4">
-          <p className="text-xs font-medium text-muted-foreground">Prontas</p>
-          <p className="mt-1 text-2xl font-semibold">{readyCount}</p>
+          <p className="text-xs font-medium text-muted-foreground">Em desenvolvimento</p>
+          <p className="mt-1 text-2xl font-semibold">{developmentCount}</p>
         </div>
         <div className="rounded-2xl border bg-card p-4">
-          <p className="text-xs font-medium text-muted-foreground">Agendadas / em execução</p>
-          <p className="mt-1 text-2xl font-semibold">{scheduledCount}</p>
+          <p className="text-xs font-medium text-muted-foreground">Em testes</p>
+          <p className="mt-1 text-2xl font-semibold">{testingCount}</p>
+        </div>
+        <div className="rounded-2xl border bg-card p-4">
+          <p className="text-xs font-medium text-muted-foreground">Prontas para homologação</p>
+          <p className="mt-1 text-2xl font-semibold">{homologReadyCount}</p>
+        </div>
+        <div className="rounded-2xl border bg-card p-4">
+          <p className="text-xs font-medium text-muted-foreground">Aguardando publicação</p>
+          <p className="mt-1 text-2xl font-semibold">{awaitingPublicationCount}</p>
         </div>
         <div className="rounded-2xl border bg-card p-4">
           <p className="text-xs font-medium text-muted-foreground">Publicadas</p>
@@ -688,6 +710,11 @@ export default function AdminImprovements() {
                   </div>
 
                   <div className="mt-4 grid gap-3 rounded-xl bg-muted/25 p-3 text-xs">
+                    {isStaleActive(item) && (
+                      <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-2 text-destructive">
+                        Sem atividade há mais de 30 minutos. A melhoria deixou de contar como execução ativa e requer atenção.
+                      </div>
+                    )}
                     <div>
                       <p className="text-muted-foreground">Agora</p>
                       <p className="mt-1 font-medium">
@@ -704,14 +731,24 @@ export default function AdminImprovements() {
                       <p className="text-muted-foreground">Próximo passo</p>
                       <p className="mt-1 font-medium">{nextOperationalAction(item)}</p>
                     </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
                         <p className="text-muted-foreground">Última atividade</p>
                         <p className="mt-1 font-medium">{formatDate(item.updatedAt)}</p>
                       </div>
-                      <div className="text-right">
+                      <div>
                         <p className="text-muted-foreground">Responsável</p>
                         <p className="mt-1 font-medium">{item.ownerAgent || "Vendi"}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Ambiente</p>
+                        <p className="mt-1 font-medium">
+                          {item.status === "producao_validada" || item.status === "mergeado_main" ? "Produção" : item.status === "em_homologacao" || item.status === "homologado" || item.status === "pronto_staging" ? "Homologação" : "Desenvolvimento"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Release</p>
+                        <p className="mt-1 font-medium">{item.packageKey || (item.status === "aguardando_producao" ? "Aguardando publicação" : "Ainda não criada")}</p>
                       </div>
                     </div>
                   </div>
@@ -727,15 +764,15 @@ export default function AdminImprovements() {
                           <ExternalLink className="ml-2 h-4 w-4" />
                         </a>
                       </Button>
-                    ) : simple !== "Publicado" ? (
+                    ) : simple !== "Publicada" ? (
                       <Button
                         variant="outline"
                         className="h-11"
                         disabled={!!busy}
-                        onClick={() => post("/api/admin/improvements/" + item.id + "/start-agent", undefined, simple === "Bloqueado" ? "Vendi iniciou a correção" : "Vendi assumiu esta melhoria")}
+                        onClick={() => post("/api/admin/improvements/" + item.id + "/start-agent", undefined, simple === "Bloqueada / com erro" ? "Vendi iniciou a correção" : "Vendi assumiu esta melhoria")}
                       >
                         <WandSparkles className="mr-2 h-4 w-4" />
-                        {simple === "Bloqueado" ? "Corrigir" : "Executar"}
+                        {simple === "Bloqueada / com erro" ? "Corrigir" : "Executar"}
                       </Button>
                     ) : (
                       <Button variant="outline" className="h-11" disabled>
@@ -1193,6 +1230,33 @@ export default function AdminImprovements() {
               <div className="grid gap-4">
                 <div className="rounded-xl border bg-muted/20 p-4 text-sm whitespace-pre-wrap">
                   {detail.description || "Sem descrição."}
+                </div>
+
+                {isStaleActive(detail) && (
+                  <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+                    Esta melhoria está sem atividade há mais de 30 minutos. Ela não é contabilizada como execução ativa e foi sinalizada para atenção.
+                  </div>
+                )}
+
+                <div className="rounded-xl border p-4">
+                  <p className="text-xs font-semibold uppercase text-muted-foreground">Linha do tempo</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {[
+                      ["Solicitação", 5],
+                      ["Análise", 15],
+                      ["Escopo", 25],
+                      ["Desenvolvimento", 35],
+                      ["Testes", 65],
+                      ["Homologação", 80],
+                      ["Aprovação", 90],
+                      ["Publicação", 98],
+                      ["Monitoramento", 100],
+                    ].map(([label, threshold]) => (
+                      <Badge key={String(label)} variant={operationalProgress(detail) >= Number(threshold) ? "default" : "outline"}>
+                        {String(label)}
+                      </Badge>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-4">
