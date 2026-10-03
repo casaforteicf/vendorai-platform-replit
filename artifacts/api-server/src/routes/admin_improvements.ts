@@ -345,12 +345,40 @@ router.post("/admin/improvements/mark-homologated", async (req, res) => {
   await ensureSchema();
   const parsed = idsSchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
   const result = await pool.query(
     `UPDATE admin_improvements SET status = 'homologado', updated_at = now()
-      WHERE id = ANY($1::uuid[]) AND status = 'em_homologacao' RETURNING id`,
+      WHERE id = ANY($1::uuid[]) AND status = 'em_homologacao'
+      RETURNING id,title,module`,
     [parsed.data.ids],
   );
-  res.json({ updated: result.rowCount ?? 0 });
+
+  if ((result.rowCount ?? 0) > 0) {
+    const recipients = await pool.query(
+      `SELECT id,tenant_id AS "tenantId"
+         FROM users
+        WHERE active=true
+          AND platform_role='super_admin'
+          AND tenant_id IS NOT NULL`,
+    );
+    const items = result.rows.map((row) => String(row.title)).join(" • ").slice(0, 1200);
+    for (const recipient of recipients.rows) {
+      await pool.query(
+        `INSERT INTO notifications
+           (id,tenant_id,recipient_user_id,title,message,type,category,created_at)
+         VALUES ($1,$2,$3,$4,$5,'warning','release_approval_required',now())`,
+        [
+          randomUUID(),
+          String(recipient.tenantId),
+          String(recipient.id),
+          "Aprovação necessária para publicar",
+          ("Há " + String(result.rowCount ?? 0) + " melhoria(s) homologada(s) aguardando sua aprovação para produção. " + items + ". Abra Melhorias & Publicações para aprovar ou pedir alteração.").slice(0, 4000),
+        ],
+      ).catch(() => undefined);
+    }
+  }
+
+  res.json({ updated: result.rowCount ?? 0, approvalNotificationSent: (result.rowCount ?? 0) > 0 });
 });
 
 router.post("/admin/improvements/approve-production", async (req, res) => {
@@ -565,12 +593,11 @@ export async function reconcileGithubImprovements(actorName = "vendi:reconcile")
           nextAgentStatus = "substituido_historico";
           reason = `PR substituído por #${supersededByPr}; preservado somente no histórico`;
         } else if (isClosedWithoutMerge) {
-          nextStatus = "bloqueada";
-          nextTestStatus = "failed";
-          nextAgentStatus = "needs_attention";
-          reason = "PR fechado sem merge";
+          nextStatus = "cancelada";
+          nextTestStatus = "pending";
+          nextAgentStatus = "substituido_historico";
+          reason = "PR encerrado sem merge; preservado apenas no histórico e removido dos bloqueios ativos";
           closedWithoutMerge += 1;
-          inconsistent += 1;
         } else if (hasConflict) {
           nextStatus = "bloqueada";
           nextTestStatus = "failed";
