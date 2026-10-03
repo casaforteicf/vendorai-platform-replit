@@ -965,27 +965,11 @@ export default function AdminImprovements() {
                       <Button
                         size="sm"
                         disabled={!!busy}
-                        onClick={() => post("/api/admin/releases/" + release.id + "/approve", undefined, "Publicação aprovada")}
+                        onClick={() => post("/api/admin/releases/" + release.id + "/approve", undefined, "Aprovado — publicação iniciada automaticamente")}
                       >
                         <ShieldCheck className="mr-1 h-3.5 w-3.5" />
-                        Aprovar
+                        Aprovar e publicar
                       </Button>
-                    )}
-                    {release.status === "approved" && (
-                      <>
-                        <Button
-                          size="sm"
-                          disabled={!!busy}
-                          onClick={() => post("/api/admin/releases/" + release.id + "/execute", undefined, "Publicação enviada para execução")}
-                        >
-                          <Rocket className="mr-1 h-3.5 w-3.5" />
-                          Publicar agora
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={() => setScheduleOpen(release)}>
-                          <CalendarClock className="mr-1 h-3.5 w-3.5" />
-                          Agendar
-                        </Button>
-                      </>
                     )}
                     {release.status === "published" && (
                       <Button
@@ -1176,7 +1160,7 @@ export default function AdminImprovements() {
           <DialogHeader>
             <DialogTitle>Agendar publicação</DialogTitle>
             <DialogDescription>
-              A autorização já foi dada. No horário escolhido o sistema executará exatamente esta versão.
+              Opção técnica de agendamento. No fluxo normal, aprovar já inicia a publicação automaticamente.
             </DialogDescription>
           </DialogHeader>
           <Input type="datetime-local" value={scheduleAt} onChange={(e) => setScheduleAt(e.target.value)} />
