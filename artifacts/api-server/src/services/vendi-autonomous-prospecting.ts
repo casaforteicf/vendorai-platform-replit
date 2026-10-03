@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, asc, eq, ilike, or } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import {
   cnaeVerticalMapTable,
   db,
@@ -10,7 +10,7 @@ import type { Logger } from "pino";
 import { searchProspectorCompanies } from "./prospector-company-search.js";
 import { searchByCnae } from "./cnpjService.js";
 import { searchConstructionWorkSignals } from "./construction-radar-search.js";
-import { getLaunchRevenueScout } from "./launchRevenueScout.js";
+import { getLaunchRevenueScout } from "./launchRevenueScout.js";\nimport { runRecemAbertas } from "../jobs/recemAbertasJob.js";
 
 type DiscoverySource = "google_places" | "cnpj_new_companies";
 
@@ -57,25 +57,6 @@ async function queueCompany(input: {
     dadosCompletos: Boolean(input.nome && (input.telefone || input.website)),
   });
   return { queued: true, duplicate: false };
-}
-
-async function resolveCnaes(setor: string) {
-  const term = setor.trim();
-  if (!term) return [];
-  return db
-    .select({
-      cnae: cnaeVerticalMapTable.cnae,
-      label: cnaeVerticalMapTable.label,
-      vertical: cnaeVerticalMapTable.vertical,
-      prioridade: cnaeVerticalMapTable.prioridade,
-    })
-    .from(cnaeVerticalMapTable)
-    .where(or(
-      ilike(cnaeVerticalMapTable.label, `%${term}%`),
-      ilike(cnaeVerticalMapTable.vertical, `%${term}%`),
-    ))
-    .orderBy(asc(cnaeVerticalMapTable.prioridade))
-    .limit(5);
 }
 
 function constructionRelevant(setor: string) {
@@ -139,39 +120,6 @@ export async function runAutonomousProspectingCycle(input: {
       totals.sourceErrors.push({ source: "google_places", message: error?.message ?? "falha" });
     }
 
-    try {
-      const cnaes = await resolveCnaes(setor);
-      for (const row of cnaes.slice(0, 3)) {
-        const result = await searchByCnae({
-          cnae: row.cnae,
-          municipio: cidade,
-          aberturaDias: 60,
-          limit: Math.min(maxPerConfig, 10),
-        });
-        if (result.apiKeyRequired) {
-          totals.sourceErrors.push({ source: "cnpj_new_companies", message: "CNPJ_API_KEY não configurada" });
-          break;
-        }
-        totals.cnpjFound += result.empresas.length;
-        for (const company of result.empresas) {
-          if (company.situacao.toUpperCase() !== "ATIVA") continue;
-          const queued = await queueCompany({
-            tenantId: input.tenantId,
-            source: "cnpj_new_companies",
-            externalId: company.cnpj,
-            nome: company.nomeFantasia || company.razaoSocial,
-            telefone: company.telefone,
-            endereco: company.enderecoCompleto,
-            setor: company.cnaeDescricao || setor,
-            cidade: company.municipio || cidade,
-          });
-          if (queued.queued) totals.queued++;
-          if (queued.duplicate) totals.duplicates++;
-        }
-      }
-    } catch (error: any) {
-      totals.sourceErrors.push({ source: "cnpj_new_companies", message: error?.message ?? "falha" });
-    }
 
     if (constructionRelevant(setor)) {
       try {
@@ -188,6 +136,13 @@ export async function runAutonomousProspectingCycle(input: {
         totals.sourceErrors.push({ source: "construction_radar", message: error?.message ?? "falha" });
       }
     }
+  }
+
+  try {
+    const fresh = await runRecemAbertas(input.log, input.tenantId);
+    totals.cnpjFound = fresh.created;
+  } catch (error: any) {
+    totals.sourceErrors.push({ source: "cnpj_new_companies", message: error?.message ?? "falha" });
   }
 
   try {
