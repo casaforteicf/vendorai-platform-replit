@@ -61,6 +61,7 @@ function json(res: ServerResponse, status: number, value: unknown) {
   res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store", "Pragma": "no-cache" });
   res.end(JSON.stringify(value));
 }
+const htmlEscape = (value: string) => value.replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]!));
 const fail = (res: ServerResponse, error = "invalid_request", status = 400) => json(res, status, { error });
 function prune() {
   for (const map of [codes, refreshes, usedRefreshes, revokedFamilies, forms, attempts, handoffs]) for (const [id, value] of map) if (value.exp < now()) map.delete(id);
@@ -156,8 +157,16 @@ export async function handleOAuth(req: IncomingMessage, res: ServerResponse, url
       const id = url.searchParams.get("h") || "";
       const handoff = handoffs.get(id);
       if (!handoff || handoff.exp < now()) { fail(res, "invalid_request", 400); return true; }
-      handoffs.delete(id);
-      res.writeHead(302, { Location: handoff.redirect, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" }); res.end();
+      const target = htmlEscape(handoff.redirect);
+      res.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+        "Pragma": "no-cache",
+        "Referrer-Policy": "no-referrer",
+        "X-Frame-Options": "DENY",
+        "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'",
+      });
+      res.end(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=${target}"><title>Retornar ao ChatGPT</title><style>body{font-family:system-ui,sans-serif;padding:32px;line-height:1.45}a{display:inline-block;padding:12px 16px;border:1px solid #111;border-radius:8px;text-decoration:none;color:#111}</style></head><body><h1>Autorização concluída</h1><p>Se o ChatGPT não abrir automaticamente, toque no botão abaixo.</p><p><a href="${target}">Continuar no ChatGPT</a></p></body></html>`);
     } else if (req.method === "POST" && path === "/oauth/approve") {
       if (req.headers.origin !== issuer()) { json(res, 400, { error: "invalid_request", error_description: "Origem inválida. Abra uma nova autorização pelo ChatGPT.", reason: "invalid_origin" }); return true; }
       if (!req.headers["content-type"]?.startsWith("application/x-www-form-urlencoded")) { fail(res); return true; }
