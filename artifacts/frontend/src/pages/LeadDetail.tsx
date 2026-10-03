@@ -1301,6 +1301,9 @@ export default function LeadDetail() {
   const [newActivityTipo, setNewActivityTipo] = useState<"ligacao" | "whatsapp" | "email" | "visita" | "tarefa" | "reuniao" | "assistencia">("tarefa");
   const [newActivityTitulo, setNewActivityTitulo] = useState("");
   const [newActivityDescricao, setNewActivityDescricao] = useState("");
+  const [newActivityObjetivo, setNewActivityObjetivo] = useState("");
+  const [newActivityResultadoEsperado, setNewActivityResultadoEsperado] = useState("");
+  const [newActivityPrioridade, setNewActivityPrioridade] = useState<"baixa" | "normal" | "alta" | "urgente">("normal");
   const [newActivityData, setNewActivityData] = useState("");
   const [newActivityResponsavelId, setNewActivityResponsavelId] = useState<string>("__ia__");
   // Reunião online
@@ -1337,6 +1340,9 @@ export default function LeadDetail() {
         setIsNewActivityOpen(false);
         setNewActivityTitulo("");
         setNewActivityDescricao("");
+        setNewActivityObjetivo("");
+        setNewActivityResultadoEsperado("");
+        setNewActivityPrioridade("normal");
         setNewActivityData("");
         setNewActivityTipo("tarefa");
         setNewActivityResponsavelId("__ia__");
@@ -1359,7 +1365,10 @@ export default function LeadDetail() {
   function openNewActivityDialog(prefillTitulo?: string) {
     setNewActivityTitulo(prefillTitulo ?? "");
     setNewActivityDescricao("");
-    setNewActivityData("");
+    setNewActivityObjetivo("");
+        setNewActivityResultadoEsperado("");
+        setNewActivityPrioridade("normal");
+        setNewActivityData("");
     setNewActivityTipo("tarefa");
     setNewActivityResponsavelId("__ia__");
     setNewActivityDataHoraInicio("");
@@ -1539,6 +1548,13 @@ export default function LeadDetail() {
       })(),
       dataVencimento: isReuniao ? undefined : (newActivityData || undefined),
       status: "planejado",
+      estadoExecucao: "planejada",
+      prioridade: newActivityPrioridade,
+      objetivo: newActivityObjetivo.trim() || undefined,
+      resultadoEsperado: newActivityResultadoEsperado.trim() || undefined,
+      categoriaExecucao: newActivityResponsavelId === "__ia__" ? "automatica" : "sugerida",
+      origem: "manual",
+      agenteResponsavelKey: newActivityResponsavelId === "__ia__" ? "sdr" : undefined,
       responsavelId,
       anexoNome,
       anexoUrl,
@@ -4207,6 +4223,39 @@ export default function LeadDetail() {
                 data-testid="input-activity-descricao"
               />
             </div>
+            {newActivityTipo !== "assistencia" && (
+              <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
+                <p className="text-xs font-semibold">Execução e resultado</p>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Objetivo <span className="text-xs text-muted-foreground">(opcional)</span></label>
+                  <Input
+                    placeholder="Ex.: conseguir uma definição sobre a proposta"
+                    value={newActivityObjetivo}
+                    onChange={(e) => setNewActivityObjetivo(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Resultado esperado <span className="text-xs text-muted-foreground">(opcional)</span></label>
+                  <Input
+                    placeholder="Ex.: aceite, pedido de alteração ou nova data de decisão"
+                    value={newActivityResultadoEsperado}
+                    onChange={(e) => setNewActivityResultadoEsperado(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Prioridade</label>
+                  <Select value={newActivityPrioridade} onValueChange={(v) => setNewActivityPrioridade(v as typeof newActivityPrioridade)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="baixa">Baixa</SelectItem>
+                      <SelectItem value="normal">Normal</SelectItem>
+                      <SelectItem value="alta">Alta</SelectItem>
+                      <SelectItem value="urgente">Urgente</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
 
             {/* Data de vencimento — apenas para tipos que não são reunião */}
             {newActivityTipo !== "reuniao" && (
