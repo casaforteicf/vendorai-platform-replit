@@ -505,10 +505,12 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          gh api --method POST "repos/$REPO/statuses/$SHA" \
+          if ! gh api --method POST "repos/$REPO/statuses/$SHA" \
             -f state=success \
             -f context='vendorai/merge-publish' \
-            -f description='CONCLUÍDO — publicado e validado em produção' >/dev/null
+            -f description='CONCLUÍDO — publicado e validado em produção' >/dev/null; then
+            echo "::warning::Publicação foi validada, mas o token do GitHub não pôde gravar o commit status."
+          fi
           echo "✅ CONCLUÍDO — publicado e validado em produção."
 
       - name: Confirm release failure
