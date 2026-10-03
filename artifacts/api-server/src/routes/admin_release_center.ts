@@ -578,7 +578,7 @@ async function advanceAutonomousRelease() {
 
   const fingerprint = releaseFingerprint(release, validation.impact);
   await pool.query(
-    "UPDATE admin_releases SET test_status='passed',test_summary=$2,status='scheduled',impact=$3::jsonb,base_sha=$4,head_sha=$5,approval_fingerprint=$6,approved_by='vendi:auto',approved_at=now(),scheduled_at=now(),last_error=NULL,updated_at=now() WHERE id=$1",
+    "UPDATE admin_releases SET test_status='passed',test_summary=$2,status='ready',impact=$3::jsonb,base_sha=$4,head_sha=$5,approval_fingerprint=$6,approved_by=NULL,approved_at=NULL,scheduled_at=NULL,last_error=NULL,updated_at=now() WHERE id=$1",
     [
       release.id,
       JSON.stringify({ verdict: "passed", answer: (validation as any).result?.answer ?? "PASSOU", checkedAt: new Date().toISOString() }).slice(0, 12000),
@@ -588,6 +588,10 @@ async function advanceAutonomousRelease() {
       fingerprint,
     ],
   );
+  await notifySuperAdminsApprovalRequired({
+    title: "Publicação pronta para sua aprovação",
+    message: ("A versão " + String(release.version) + " — " + String(release.name) + " passou por desenvolvimento, testes e homologação automáticos. Falta somente sua aprovação para produção. Ao aprovar, a publicação começa automaticamente."),
+  });
   return true;
 }
 
@@ -997,10 +1001,17 @@ router.post("/admin/releases/:id/approve", async (req, res) => {
 
   const fingerprint = releaseFingerprint(release, impact);
   await pool.query(
-    "UPDATE admin_releases SET status='approved',impact=$2::jsonb,base_sha=$3,head_sha=$4,approval_fingerprint=$5,approved_by=$6,approved_at=now(),last_error=NULL,updated_at=now() WHERE id=$1",
+    "UPDATE admin_releases SET status='scheduled',impact=$2::jsonb,base_sha=$3,head_sha=$4,approval_fingerprint=$5,approved_by=$6,approved_at=now(),scheduled_at=now(),last_error=NULL,updated_at=now() WHERE id=$1",
     [release.id, JSON.stringify(impact), impact.base.sha, impact.head.sha, fingerprint, actor(req)],
   );
-  return res.json({ ok: true, fingerprint, approvedBy: actor(req) });
+  void runReleaseWorker();
+  return res.json({
+    ok: true,
+    status: "scheduled",
+    fingerprint,
+    approvedBy: actor(req),
+    publicationStarted: true,
+  });
 });
 
 router.post("/admin/releases/:id/schedule", async (req, res) => {
