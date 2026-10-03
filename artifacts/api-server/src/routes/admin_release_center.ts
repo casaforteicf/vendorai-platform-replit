@@ -946,6 +946,13 @@ router.post("/admin/releases/:id/vendi-test", async (req, res) => {
       [release.id, passed ? "passed" : "failed", summary, passed ? null : String(result.answer ?? "Validação do Vendi falhou.").slice(0, 4000)],
     );
 
+    if (passed) {
+      await notifySuperAdminsApprovalRequired({
+        title: "Publicação pronta para sua aprovação",
+        message: ("A versão " + String(release.version) + " — " + String(release.name) + " passou pela validação da Vendi e está aguardando sua aprovação para produção. Abra Melhorias & Publicações para aprovar ou pedir alteração."),
+      });
+    }
+
     return res.status(passed ? 200 : 409).json({
       ok: passed,
       testStatus: passed ? "passed" : "failed",
@@ -972,6 +979,10 @@ router.post("/admin/releases/:id/tested", async (req, res) => {
     "UPDATE admin_releases SET test_status='passed',test_summary='Teste manual confirmado pelo Super Admin.',impact=$2::jsonb,base_sha=$3,head_sha=$4,status='ready',updated_at=now() WHERE id=$1",
     [release.id, JSON.stringify(impact), impact.base.sha, impact.head.sha],
   );
+  await notifySuperAdminsApprovalRequired({
+    title: "Publicação pronta para sua aprovação",
+    message: ("A versão " + String(release.version) + " — " + String(release.name) + " está testada e pronta. Abra Melhorias & Publicações para aprovar a produção ou pedir alteração."),
+  });
   return res.json({ ok: true });
 });
 
@@ -1025,6 +1036,30 @@ router.post("/admin/releases/:id/cancel", async (req, res) => {
   return res.json({ ok: true });
 });
 
+
+async function notifySuperAdminsApprovalRequired(params: { title: string; message: string }) {
+  const recipients = await pool.query(
+    `SELECT id,tenant_id AS "tenantId"
+       FROM users
+      WHERE active=true
+        AND platform_role='super_admin'
+        AND tenant_id IS NOT NULL`,
+  );
+  for (const recipient of recipients.rows) {
+    await pool.query(
+      `INSERT INTO notifications
+         (id,tenant_id,recipient_user_id,title,message,type,category,created_at)
+       VALUES ($1,$2,$3,$4,$5,'warning','release_approval_required',now())`,
+      [
+        randomUUID(),
+        String(recipient.tenantId),
+        String(recipient.id),
+        params.title.slice(0, 180),
+        params.message.slice(0, 4000),
+      ],
+    ).catch(() => undefined);
+  }
+}
 
 async function notifySupportRequestersAfterPublish(release: any) {
   const linked = await pool.query(
