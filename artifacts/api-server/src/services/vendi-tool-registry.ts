@@ -30,6 +30,7 @@ import { searchConstructionWorkSignals } from "./construction-radar-search.js";
 import { runAutonomousProspectingCycle } from "./vendi-autonomous-prospecting.js";
 import { listProspectingSources } from "./prospecting-source-catalog.js";
 import { summarizeProspectingSourceHealth } from "./prospecting-source-health.js";
+import { getProspectingSourcePerformance } from "./prospecting-source-performance.js";
 
 export type VendiToolRisk = "low" | "medium" | "high";
 export type VendiToolDomain =
@@ -236,6 +237,29 @@ register({
       evidence: {
         source: "prospector:construction-radar",
         count: data.works.length,
+      },
+    };
+  },
+});
+
+register({
+  id: "prospector.source_performance",
+  domain: "prospector",
+  description: "Compara desempenho por fonte de prospecção: leads, qualificados, propostas, vendas, receita e taxa lead→venda.",
+  risk: "low",
+  mutates: false,
+  externalEffect: false,
+  inputHint: "{days?:7..365}",
+  execute: async ({ tenantId }, input) => {
+    const days = Math.min(Math.max(Number(input.days ?? 90), 7), 365);
+    const data = await getProspectingSourcePerformance(tenantId, days);
+    return {
+      ok: true,
+      data,
+      evidence: {
+        source: "prospector:source-performance",
+        days,
+        sources: data.length,
       },
     };
   },
