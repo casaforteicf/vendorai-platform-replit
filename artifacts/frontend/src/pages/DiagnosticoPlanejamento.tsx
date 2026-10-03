@@ -14,7 +14,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import BusinessPlanPanel from "@/components/business-plan/BusinessPlanPanel";
+import { BusinessPlanPanel } from "@/components/business-plan/BusinessPlanPanel";
 
 type DiagnosticItem = {
   id: string;
