@@ -13,6 +13,11 @@ export type ConfiguracaoAcompanhamentoEtapa = {
   atrasoInicialMinutos?: number;
   intervaloMinimoMinutos?: number;
   maxTentativas?: number;
+  conteudosPermitidos?: Array<"texto" | "imagem" | "video" | "audio" | "documento" | "proposta" | "case">;
+  usarBeneficios?: boolean;
+  usarDiferenciais?: boolean;
+  usarProvas?: boolean;
+  chamarHumanoEmNegociacaoSensivel?: boolean;
   pararAoResponder?: boolean;
   priorizarLacunasDaEtapa?: boolean;
   priorizarRiscoAtual?: boolean;
