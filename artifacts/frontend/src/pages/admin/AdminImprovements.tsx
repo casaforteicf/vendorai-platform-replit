@@ -53,6 +53,9 @@ type Improvement = {
   sourceType?: "super_admin" | "support" | "vendi" | "system" | "audit" | "user_request" | "bug" | "security" | "integration" | "infrastructure" | "hotfix";
   sourceRefId?: string | null;
   sourceTenantId?: string | null;
+  changeScope?: "tenant" | "vertical" | "global_opcional" | "global" | "bug" | null;
+  scopeReason?: string | null;
+  tenantContextSnapshot?: Record<string, unknown> | null;
   ownerAgent?: string | null;
   agentStatus?: string | null;
   agentSummary?: string | null;
@@ -142,6 +145,14 @@ const PRIORITY_LABELS: Record<string, string> = {
   media: "Normal",
   alta: "Alta",
   urgente: "Crítica",
+};
+
+const SCOPE_LABELS: Record<string, string> = {
+  tenant: "Somente tenant",
+  vertical: "Vertical",
+  global_opcional: "Global opcional",
+  global: "Global",
+  bug: "Bug / investigar alcance",
 };
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -669,6 +680,7 @@ export default function AdminImprovements() {
                             <span>{item.module}</span>
                             <span>• {PRIORITY_LABELS[item.priority] ?? item.priority}</span>
                             {item.prNumber && <span>• PR #{item.prNumber}</span>}
+                            {item.changeScope && <span>• {SCOPE_LABELS[item.changeScope] ?? item.changeScope}</span>}
                           </div>
                         </td>
                         <td className="px-3 py-3">
@@ -1084,10 +1096,14 @@ export default function AdminImprovements() {
                   {detail.description || "Sem descrição."}
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-3">
+                <div className="grid gap-3 sm:grid-cols-4">
                   <div className="rounded-xl border p-3">
                     <p className="text-xs text-muted-foreground">Origem</p>
                     <p className="mt-1 font-medium">{SOURCE_LABELS[detail.sourceType ?? "super_admin"] ?? detail.sourceType ?? "Super Admin"}</p>
+                  </div>
+                  <div className="rounded-xl border p-3">
+                    <p className="text-xs text-muted-foreground">Escopo sugerido</p>
+                    <p className="mt-1 font-medium">{detail.changeScope ? (SCOPE_LABELS[detail.changeScope] ?? detail.changeScope) : "Ainda não classificado"}</p>
                   </div>
                   <div className="rounded-xl border p-3">
                     <p className="text-xs text-muted-foreground">Responsável</p>
@@ -1098,6 +1114,17 @@ export default function AdminImprovements() {
                     <p className="mt-1 font-medium">{detail.dueAt ? formatDate(detail.dueAt) : "Até 24h"}</p>
                   </div>
                 </div>
+
+                {(detail.scopeReason || detail.sourceTenantId || detail.tenantContextSnapshot) && (
+                  <div className="rounded-xl border bg-muted/10 p-4 text-sm">
+                    <p className="font-medium">Contexto da solicitação</p>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      <p><span className="text-muted-foreground">Tenant:</span> {String(detail.tenantContextSnapshot?.tenantName ?? detail.sourceTenantId ?? "Não identificado")}</p>
+                      <p><span className="text-muted-foreground">Vertical:</span> {String(detail.tenantContextSnapshot?.vertical ?? "Não definida")}</p>
+                    </div>
+                    {detail.scopeReason && <p className="mt-2 text-muted-foreground">{detail.scopeReason}</p>}
+                  </div>
+                )}
 
                 {(detail.acceptanceCriteria || detail.riskSummary || detail.dependencies) && (
                   <div className="grid gap-3 sm:grid-cols-3">
