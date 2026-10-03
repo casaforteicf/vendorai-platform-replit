@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useRoute } from "wouter";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -12,6 +13,7 @@ type PublicData = {
 export default function PublicDiagnosticoNegocio() {
   const [, params] = useRoute("/diagnostico-negocio/:token");
   const token = params?.token ?? "";
+  const { toast } = useToast();
   const [data, setData] = useState<PublicData | null>(null);
   const [form, setForm] = useState<Record<string, any>>({});
   const [status, setStatus] = useState<"loading"|"ready"|"saving"|"saved"|"error">("loading");
@@ -47,7 +49,14 @@ export default function PublicDiagnosticoNegocio() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    setStatus(response.ok ? "saved" : "error");
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({})) as { error?: string };
+      setStatus("error");
+      toast({ title: "Não foi possível salvar", description: body.error || "Revise os dados e tente novamente.", variant: "destructive" });
+      return;
+    }
+    setStatus("saved");
+    toast({ title: "Informações salvas", description: "O Perfil Mestre foi atualizado com sucesso." });
   }
 
   if (status === "loading") return <div className="grid min-h-screen place-items-center text-sm text-muted-foreground">Carregando diagnóstico...</div>;
