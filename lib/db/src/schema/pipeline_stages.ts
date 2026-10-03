@@ -24,6 +24,21 @@ export type ConfiguracaoAcompanhamentoEtapa = {
   instrucoes?: string;
 };
 
+export type PipelineStageActivityTemplate = {
+  id: string;
+  titulo: string;
+  descricao?: string | null;
+  objetivo?: string | null;
+  resultadoEsperado?: string | null;
+  tipo?: "ligacao" | "whatsapp" | "email" | "visita" | "tarefa" | "reuniao";
+  categoria: "obrigatoria" | "sugerida" | "automatica";
+  prazoMinutos?: number | null;
+  responsavel?: "deal_owner" | "stage_agent" | "unassigned";
+  prioridade?: "baixa" | "normal" | "alta" | "urgente";
+  bloqueiaAvanco?: boolean;
+  condicao?: "sempre" | "sem_resposta_cliente" | "sem_atividade_aberta";
+};
+
 export type PipelineStageQuestion = {
   id: string;
   texto: string;
@@ -65,6 +80,12 @@ export const pipelineStagesTable = pgTable("pipeline_stages", {
   // Perguntas-chave/playbook. Hoje são usadas principalmente na pipeline comercial.
   perguntas: jsonb("perguntas").$type<PipelineStageQuestion[]>().notNull().default([]),
   acompanhamentoConfig: jsonb("acompanhamento_config").$type<ConfiguracaoAcompanhamentoEtapa>().notNull().default({}),
+  // Compatibilidade com o modelo anterior de uma única atividade por etapa.
+  atividadePadraoTitulo: text("atividade_padrao_titulo"),
+  atividadePadraoDescricao: text("atividade_padrao_descricao"),
+  atividadePadraoPrazoMinutos: integer("atividade_padrao_prazo_minutos"),
+  // Modelo V2: múltiplas atividades configuráveis por etapa.
+  atividadesPadrao: jsonb("atividades_padrao").$type<PipelineStageActivityTemplate[]>().notNull().default([]),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

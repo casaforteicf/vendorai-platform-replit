@@ -8,6 +8,8 @@ import {
   tenantsTable,
   insertActivitySchema,
   updateActivitySchema,
+  dealsTable,
+  pipelineStagesTable,
 } from "@workspace/db";
 import { createGoogleEvent, updateGoogleEvent, deleteGoogleEvent } from "../lib/google-calendar.js";
 import { generateSpinForActivity } from "./spin.js";
@@ -27,9 +29,58 @@ router.post("/activities", async (req, res) => {
     return;
   }
 
+  let insertData = { ...parsed.data };
+
+  // Selecionar “IA” precisa representar um agente real da etapa, e não um
+  // responsável fictício. Quando a atividade está ligada a um negócio,
+  // herdamos o agente IA configurado na etapa atual.
+  if (insertData.categoriaExecucao === "automatica" && !insertData.agenteResponsavelKey) {
+    if (!insertData.dealId) {
+      res.status(422).json({
+        error: "AI_STAGE_REQUIRED",
+        message: "Para atribuir uma atividade à IA, vincule-a a um negócio com etapa e Agente IA configurados.",
+      });
+      return;
+    }
+
+    const [deal] = await db
+      .select({ etapa: dealsTable.etapa })
+      .from(dealsTable)
+      .where(and(
+        eq(dealsTable.id, insertData.dealId),
+        eq(dealsTable.tenantId, insertData.tenantId),
+      ))
+      .limit(1);
+
+    if (!deal) {
+      res.status(422).json({ error: "DEAL_NOT_FOUND", message: "Negócio vinculado não encontrado." });
+      return;
+    }
+
+    const [stage] = await db
+      .select({ agentKey: pipelineStagesTable.responsavelAgenteKey })
+      .from(pipelineStagesTable)
+      .where(and(
+        eq(pipelineStagesTable.tenantId, insertData.tenantId),
+        eq(pipelineStagesTable.pipeline, "comercial"),
+        eq(pipelineStagesTable.key, deal.etapa),
+      ))
+      .limit(1);
+
+    if (!stage?.agentKey) {
+      res.status(422).json({
+        error: "AI_AGENT_NOT_CONFIGURED",
+        message: "Configure o Agente IA responsável desta etapa antes de atribuir a atividade à IA.",
+      });
+      return;
+    }
+
+    insertData = { ...insertData, agenteResponsavelKey: stage.agentKey, responsavelId: null };
+  }
+
   const [activity] = await db
     .insert(activitiesTable)
-    .values(parsed.data)
+    .values(insertData)
     .returning();
   res.status(201).json(activity);
 
@@ -231,7 +282,18 @@ router.patch("/activities/:id", async (req, res) => {
   }
 
   const [existing] = await db
-    .select({ id: activitiesTable.id, tenantId: activitiesTable.tenantId, agendaId: activitiesTable.agendaId, googleEventId: activitiesTable.googleEventId, responsavelId: activitiesTable.responsavelId })
+    .select({
+      id: activitiesTable.id,
+      tenantId: activitiesTable.tenantId,
+      leadId: activitiesTable.leadId,
+      dealId: activitiesTable.dealId,
+      titulo: activitiesTable.titulo,
+      agendaId: activitiesTable.agendaId,
+      googleEventId: activitiesTable.googleEventId,
+      responsavelId: activitiesTable.responsavelId,
+      bloqueiaAvanco: activitiesTable.bloqueiaAvanco,
+      agenteResponsavelKey: activitiesTable.agenteResponsavelKey,
+    })
     .from(activitiesTable)
     .where(eq(activitiesTable.id, String(req.params.id)));
 
@@ -256,11 +318,27 @@ router.patch("/activities/:id", async (req, res) => {
     }
   }
 
+  if (parsed.data.status === "concluida" && existing.bloqueiaAvanco && !parsed.data.resultadoExecucao?.trim()) {
+    res.status(422).json({
+      error: "ACTIVITY_RESULT_REQUIRED",
+      message: "Registre o resultado da atividade obrigatória antes de concluí-la.",
+    });
+    return;
+  }
+
   const data = { ...parsed.data, updatedAt: new Date() };
 
+  // Mantém o status legado sincronizado com o estado operacional detalhado.
+  if (parsed.data.estadoExecucao === "concluida") data.status = "concluida";
+  if (parsed.data.estadoExecucao === "cancelada") data.status = "cancelada";
+  if (parsed.data.estadoExecucao === "em_execucao" || parsed.data.estadoExecucao === "aguardando") data.status = "pendente";
+
   // Auto-set concluidaEm when status transitions to "concluida"
-  if (parsed.data.status === "concluida" && !parsed.data.concluidaEm) {
+  if (data.status === "concluida" && !parsed.data.concluidaEm) {
     data.concluidaEm = new Date();
+    data.estadoExecucao = "concluida";
+  } else if (data.status === "cancelada") {
+    data.estadoExecucao = "cancelada";
   }
 
   const [activity] = await db
@@ -268,6 +346,24 @@ router.patch("/activities/:id", async (req, res) => {
     .set(data)
     .where(eq(activitiesTable.id, existing.id))
     .returning();
+
+  if (data.status === "concluida" && parsed.data.proximaAcaoTexto?.trim()) {
+    await db.insert(activitiesTable).values({
+      tenantId: existing.tenantId,
+      leadId: existing.leadId,
+      dealId: existing.dealId,
+      tipo: "tarefa",
+      titulo: parsed.data.proximaAcaoTexto.trim(),
+      descricao: `Próxima ação criada a partir da conclusão de “${existing.titulo}”.`,
+      status: "planejado",
+      estadoExecucao: "planejada",
+      prioridade: "normal",
+      origem: "activity-next-action",
+      atividadePaiId: existing.id,
+      responsavelId: existing.responsavelId,
+      agenteResponsavelKey: existing.agenteResponsavelKey,
+    });
+  }
 
   res.json(activity);
 

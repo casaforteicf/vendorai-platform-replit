@@ -103,6 +103,21 @@ export const SYSTEM_STAGES_BY_PIPELINE: Record<PipelineKey, SystemStage[]> = {
   ],
 };
 
+const activityTemplateSchema = z.object({
+  id: z.string().min(1).max(120),
+  titulo: z.string().trim().min(1).max(200),
+  descricao: z.string().trim().max(2000).nullable().optional(),
+  objetivo: z.string().trim().max(1000).nullable().optional(),
+  resultadoEsperado: z.string().trim().max(1000).nullable().optional(),
+  tipo: z.enum(["ligacao", "whatsapp", "email", "visita", "tarefa", "reuniao"]).default("tarefa"),
+  categoria: z.enum(["obrigatoria", "sugerida", "automatica"]),
+  prazoMinutos: z.number().int().positive().max(525600).nullable().optional(),
+  responsavel: z.enum(["deal_owner", "stage_agent", "unassigned"]).default("deal_owner"),
+  prioridade: z.enum(["baixa", "normal", "alta", "urgente"]).default("normal"),
+  bloqueiaAvanco: z.boolean().default(false),
+  condicao: z.enum(["sempre", "sem_resposta_cliente", "sem_atividade_aberta"]).default("sempre"),
+});
+
 const BUILTIN_FUNCTIONS = new Set([
   "vendedor",
   "representante_comercial",
@@ -345,6 +360,7 @@ router.post("/tenants/:tenantId/pipeline-stages", async (req, res) => {
     atividadePadraoTitulo: z.string().trim().max(200).nullable().optional(),
     atividadePadraoDescricao: z.string().trim().max(2000).nullable().optional(),
     atividadePadraoPrazoMinutos: z.number().int().positive().nullable().optional(),
+    atividadesPadrao: z.array(activityTemplateSchema).max(30).optional(),
   });
   const parsed = bodySchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
@@ -383,6 +399,10 @@ router.post("/tenants/:tenantId/pipeline-stages", async (req, res) => {
       slaMinutos: parsed.data.slaMinutos ?? null,
       responsaveisFuncoes: validatedFunctions.values,
       responsavelAgenteKey: validatedAgent.value,
+      atividadePadraoTitulo: parsed.data.atividadePadraoTitulo ?? null,
+      atividadePadraoDescricao: parsed.data.atividadePadraoDescricao ?? null,
+      atividadePadraoPrazoMinutos: parsed.data.atividadePadraoPrazoMinutos ?? null,
+      atividadesPadrao: parsed.data.atividadesPadrao ?? [],
     })
     .returning();
 
@@ -396,6 +416,13 @@ router.patch("/tenants/:tenantId/pipeline-stages/:id", async (req, res) => {
 
   const parsed = updatePipelineStageSchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  if (parsed.data.atividadesPadrao !== undefined) {
+    const templates = z.array(activityTemplateSchema).max(30).safeParse(parsed.data.atividadesPadrao);
+    if (!templates.success) return res.status(422).json({ error: templates.error.message });
+    parsed.data.atividadesPadrao = templates.data;
+  }
+  // atividadesPadrao validated templates
 
   let responsaveisFuncoes = parsed.data.responsaveisFuncoes;
   if (responsaveisFuncoes !== undefined) {
