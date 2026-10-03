@@ -1130,26 +1130,26 @@ export default function LeadDetail() {
     if (!tenantId || !id || executingApprovedApproach) return;
     setExecutingApprovedApproach(true);
     try {
-      const prepareRes = await fetch(`/api/sdr-templates/send-approach?tenantId=${encodeURIComponent(tenantId)}`, {
+      let res = await fetch(`/api/sdr-templates/send-approach?tenantId=${encodeURIComponent(tenantId)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ leadId: id }),
       });
-      const prepared = await prepareRes.json().catch(() => ({}));
-      if (!prepareRes.ok) throw new Error(prepared?.error ?? "Não foi possível preparar a abordagem");
+      const prepared = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(prepared?.error ?? "Não foi possível preparar a abordagem");
 
       if (prepared.sent) {
         toast({ title: "Abordagem executada", description: "A mensagem aprovada foi enviada e registrada no histórico." });
       } else if (prepared.taskId) {
-        const approveRes = await fetch(`/api/tenants/${tenantId}/agent-tasks/${prepared.taskId}/approve`, { method: "POST" });
-        const approved = await approveRes.json().catch(() => ({}));
-        if (!approveRes.ok) throw new Error(approved?.error ?? "Não foi possível aprovar a abordagem");
+        res = await fetch(`/api/tenants/${tenantId}/agent-tasks/${prepared.taskId}/approve`, { method: "POST" });
+        const approved = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(approved?.error ?? "Não foi possível aprovar a abordagem");
 
         let finished = approved;
         if (approved.status === "aprovado") {
-          const executeRes = await fetch(`/api/tenants/${tenantId}/agent-tasks/${prepared.taskId}/execute`, { method: "POST" });
-          finished = await executeRes.json().catch(() => ({}));
-          if (!executeRes.ok) throw new Error(finished?.error ?? "A abordagem foi aprovada, mas não pôde ser executada");
+          res = await fetch(`/api/tenants/${tenantId}/agent-tasks/${prepared.taskId}/execute`, { method: "POST" });
+          finished = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(finished?.error ?? "A abordagem foi aprovada, mas não pôde ser executada");
         }
 
         if (finished.status === "concluido") {
