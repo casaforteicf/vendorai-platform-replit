@@ -477,11 +477,7 @@ const FAILED_GITHUB_CONCLUSIONS = new Set([
 ]);
 
 async function githubCheckSummary(owner: string, repo: string, sha: string) {
-  try {
-    const payload = await githubJson(
-      `/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}/check-runs?per_page=100`,
-    );
-    const runs = Array.isArray(payload?.check_runs) ? payload.check_runs : [];
+  const summarize = (runs: any[], source: string) => {
     const failed = runs.filter((run: any) =>
       FAILED_GITHUB_CONCLUSIONS.has(String(run?.conclusion ?? "")),
     );
@@ -494,15 +490,17 @@ async function githubCheckSummary(owner: string, repo: string, sha: string) {
     else if (completed.length) testStatus = "passed";
 
     return {
+      available: true,
+      source,
       testStatus,
       summary: JSON.stringify({
-        source: "github",
+        source,
         sha,
         total: runs.length,
         failed: failed.length,
         running: running.length,
         checks: runs.slice(0, 30).map((run: any) => ({
-          name: String(run?.name ?? "check"),
+          name: String(run?.name ?? run?.workflow_name ?? "check"),
           status: String(run?.status ?? "unknown"),
           conclusion: run?.conclusion ? String(run.conclusion) : null,
           url: run?.html_url ? String(run.html_url) : null,
@@ -510,16 +508,40 @@ async function githubCheckSummary(owner: string, repo: string, sha: string) {
         checkedAt: new Date().toISOString(),
       }).slice(0, 8000),
     };
-  } catch (error) {
-    return {
-      testStatus: "pending" as const,
-      summary: JSON.stringify({
-        source: "github",
-        sha,
-        warning: error instanceof Error ? error.message : "Falha ao consultar checks",
-        checkedAt: new Date().toISOString(),
-      }).slice(0, 8000),
-    };
+  };
+
+  try {
+    const payload = await githubJson(
+      `/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}/check-runs?per_page=100`,
+    );
+    const runs = Array.isArray(payload?.check_runs) ? payload.check_runs : [];
+    return summarize(runs, "github-check-runs");
+  } catch (checkError) {
+    try {
+      const payload = await githubJson(
+        `/repos/${owner}/${repo}/actions/runs?head_sha=${encodeURIComponent(sha)}&per_page=100`,
+      );
+      const runs = Array.isArray(payload?.workflow_runs) ? payload.workflow_runs : [];
+      return summarize(runs, "github-actions-runs");
+    } catch (actionsError) {
+      const warning = actionsError instanceof Error
+        ? actionsError.message
+        : checkError instanceof Error
+          ? checkError.message
+          : "Falha ao consultar checks";
+      return {
+        available: false,
+        source: "github-unavailable",
+        testStatus: "pending" as const,
+        summary: JSON.stringify({
+          source: "github-unavailable",
+          sha,
+          warning,
+          semanticStatus: "awaiting_evidence",
+          checkedAt: new Date().toISOString(),
+        }).slice(0, 8000),
+      };
+    }
   }
 }
 
@@ -641,15 +663,21 @@ router.post("/admin/improvements/github-reconcile", async (req, res) => {
           nextStatus = "pronto_staging";
           nextAgentStatus = "pronto_para_revisao";
           reason = "Checks do PR aprovados";
-        } else if (isOverdue) {
+        } else if (isOverdue && check.available) {
           nextStatus = "bloqueada";
           nextAgentStatus = "needs_attention";
           reason = "Prazo da melhoria venceu sem conclusão";
           overdue += 1;
           inconsistent += 1;
         } else {
+          if (nextStatus === "bloqueada" && String(item.testStatus) !== "failed") {
+            nextStatus = "testando";
+          }
+          nextTestStatus = "pending";
           nextAgentStatus = "aguardando_checks";
-          reason = "Aguardando evidências dos checks";
+          reason = check.available
+            ? "Aguardando evidências dos checks"
+            : "Checks indisponíveis para leitura; aguardando evidências sem classificar como falha";
         }
 
         const summary = JSON.stringify({
@@ -725,17 +753,22 @@ router.post("/admin/improvements/github-reconcile", async (req, res) => {
           updated += 1;
         }
       } catch (error) {
-        inconsistent += 1;
         await pool.query(
           `UPDATE admin_improvements
-              SET status=CASE WHEN status='producao_validada' THEN status ELSE 'bloqueada' END,
-                  agent_status='needs_attention',
+              SET status=CASE
+                    WHEN status='producao_validada' THEN status
+                    WHEN test_status='failed' THEN status
+                    WHEN pr_number IS NOT NULL THEN 'testando'
+                    ELSE status
+                  END,
+                  test_status=CASE WHEN test_status='failed' THEN test_status ELSE 'pending' END,
+                  agent_status='aguardando_checks',
                   agent_summary=$2,
                   updated_at=now()
             WHERE id=$1`,
           [
             String(item.id),
-            ("Falha ao reconciliar PR #" + prNumber + ": " +
+            ("Checks temporariamente indisponíveis para o PR #" + prNumber + ": " +
               (error instanceof Error ? error.message : "erro desconhecido")).slice(0, 12000),
           ],
         );
@@ -783,7 +816,9 @@ router.post("/admin/improvements/github-reconcile", async (req, res) => {
             ? "testando"
             : check.testStatus === "passed"
               ? "pronto_staging"
-              : "em_desenvolvimento";
+              : check.available
+                ? "em_desenvolvimento"
+                : "testando";
 
       await pool.query(
         `INSERT INTO admin_improvements (
@@ -813,7 +848,9 @@ router.post("/admin/improvements/github-reconcile", async (req, res) => {
               ? "validando"
               : check.testStatus === "passed"
                 ? "pronto_para_revisao"
-                : "desenvolvendo",
+                : check.available
+                  ? "desenvolvendo"
+                  : "aguardando_checks",
         ],
       );
 
