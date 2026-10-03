@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, eq, or } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   cnaeVerticalMapTable,
   db,
@@ -12,7 +12,7 @@ import { searchByCnae } from "./cnpjService.js";
 import { searchConstructionWorkSignals } from "./construction-radar-search.js";
 import { getLaunchRevenueScout } from "./launchRevenueScout.js";\nimport { runRecemAbertas } from "../jobs/recemAbertasJob.js";
 
-type DiscoverySource = "google_places" | "cnpj_new_companies";
+type DiscoverySource = "google_places";
 
 function stableId(parts: Array<string | null | undefined>) {
   return createHash("sha256")
