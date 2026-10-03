@@ -86,7 +86,7 @@ function upsertLink(selector: string, attrs: Record<string, string>) {
 function schemaFor(meta: SeoRoute, canonical: string, locale: string) {
   const graph: Record<string, unknown>[] = [];
   if (meta.pathname === "/") {
-    graph.push({ "@type": "Organization", "@id": "https://appvendorai.com/#organization", name: "VendorAI", url: "https://appvendorai.com/", logo: "https://appvendorai.com/logo-icon.svg" });
+    graph.push({ "@type": "Organization", "@id": "https://appvendorai.com/#organization", name: "VendorAI", url: "https://appvendorai.com/", logo: "https://appvendorai.com/apple-touch-icon.png" });
     graph.push({ "@type": "WebSite", url: "https://appvendorai.com/", name: "VendorAI", inLanguage: locale });
     graph.push({ "@type": "SoftwareApplication", name: "VendorAI", applicationCategory: "BusinessApplication", operatingSystem: "Web, Android, iOS", url: canonical, description: meta.description });
   } else if (meta.type === "product") {
