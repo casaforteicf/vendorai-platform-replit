@@ -228,6 +228,128 @@ async function auditDatabaseSchema(): Promise<AuditFinding[]> {
   }));
 }
 
+async function recoverStalledImprovements(log: Logger) {
+  const candidates = await pool.query(
+    `SELECT id,title,description,module,priority,status,test_status AS "testStatus",
+            agent_status AS "agentStatus",agent_summary AS "agentSummary",updated_at AS "updatedAt"
+       FROM admin_improvements
+      WHERE status NOT IN ('producao_validada','cancelada','homologado','aguardando_producao','mergeado_main')
+        AND (
+          status='bloqueada'
+          OR test_status='failed'
+          OR agent_status IN ('failed','needs_attention','emergency_failed')
+          OR (
+            status IN ('em_desenvolvimento','testando','em_homologacao')
+            AND updated_at < now() - interval '30 minutes'
+          )
+        )
+        AND COALESCE(agent_status,'') NOT IN ('executando','repairing','emergency_running','recovery_running')
+      ORDER BY
+        CASE priority WHEN 'urgente' THEN 0 WHEN 'alta' THEN 1 WHEN 'media' THEN 2 ELSE 3 END,
+        updated_at ASC
+      LIMIT 5`,
+  );
+
+  for (const item of candidates.rows) {
+    const recent = await pool.query(
+      `SELECT 1 FROM admin_improvement_events
+        WHERE improvement_id=$1
+          AND event_type='automatic_recovery_started'
+          AND created_at > now() - interval '30 minutes'
+        LIMIT 1`,
+      [item.id],
+    );
+    if (recent.rowCount) continue;
+
+    await pool.query(
+      `UPDATE admin_improvements
+          SET owner_agent='vendi',
+              agent_status='recovery_running',
+              agent_summary='Recuperação automática iniciada pela auditoria 24/7.',
+              updated_at=now()
+        WHERE id=$1`,
+      [item.id],
+    );
+    await pool.query(
+      `INSERT INTO admin_improvement_events
+        (id, improvement_id, event_type, message, actor, payload)
+       VALUES ($1,$2,'automatic_recovery_started',$3,'audit_24x7',$4::jsonb)`,
+      [
+        randomUUID(),
+        item.id,
+        "Execução parada detectada. Vendi iniciou recuperação automática antes de exigir intervenção humana.",
+        JSON.stringify({ previousStatus: item.status, previousAgentStatus: item.agentStatus, previousTestStatus: item.testStatus }),
+      ],
+    ).catch(() => undefined);
+
+    try {
+      const result = await executeDevAutonomousWork({
+        requestId: String(item.id),
+        request: [
+          "RECUPERAÇÃO AUTOMÁTICA DE MELHORIA PARADA.",
+          "Retome esta demanda a partir do estado real atual.",
+          "Não recrie trabalho já concluído. Identifique a causa do bloqueio, aplique retry/fallback seguro,",
+          "avance desenvolvimento, checks e homologação automaticamente quando possível.",
+          "Se a única dependência restante for aprovação humana para produção, retorne approval_required",
+          "com mensagem objetiva para o superadmin. Não deixe a atividade silenciosamente em espera.",
+          "",
+          String(item.title ?? ""),
+          String(item.description ?? ""),
+        ].join("\n"),
+        diagnosis: [
+          `Módulo: ${String(item.module ?? "Plataforma")}`,
+          `Prioridade: ${String(item.priority ?? "media")}`,
+          `Status anterior: ${String(item.status ?? "")}`,
+          `Agente anterior: ${String(item.agentStatus ?? "")}`,
+          `Teste anterior: ${String(item.testStatus ?? "")}`,
+          `Resumo anterior: ${String(item.agentSummary ?? "").slice(0, 3000)}`,
+        ].join("\n"),
+        route: "/admin/melhorias/" + String(item.id),
+        source: "release_center_autonomous",
+      });
+
+      const resultStatus = String((result as any)?.status ?? ((result as any)?.success === false ? "failed" : "completed"));
+      const summary = String((result as any)?.summary ?? (result as any)?.error ?? "Recuperação concluída sem resumo.").slice(0, 12000);
+      const approvalRequired = resultStatus === "approval_required";
+
+      await pool.query(
+        `UPDATE admin_improvements
+            SET agent_status=$2,
+                agent_summary=$3,
+                status=CASE
+                  WHEN $4 THEN 'aguardando_producao'
+                  WHEN $2 IN ('failed','error') THEN 'bloqueada'
+                  WHEN status='bloqueada' THEN 'em_desenvolvimento'
+                  ELSE status
+                END,
+                updated_at=now()
+          WHERE id=$1`,
+        [item.id, resultStatus, summary, approvalRequired],
+      );
+      await pool.query(
+        `INSERT INTO admin_improvement_events
+          (id, improvement_id, event_type, message, actor, payload)
+         VALUES ($1,$2,'automatic_recovery_result',$3,'audit_24x7',$4::jsonb)`,
+        [randomUUID(), item.id, summary.slice(0, 6000), JSON.stringify({ status: resultStatus, approvalRequired })],
+      ).catch(() => undefined);
+
+      log.warn({ improvementId: item.id, status: resultStatus }, "continuous-audit: recuperação automática executada");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await pool.query(
+        `UPDATE admin_improvements
+            SET agent_status='needs_attention',
+                agent_summary=$2,
+                status='bloqueada',
+                updated_at=now()
+          WHERE id=$1`,
+        [item.id, message.slice(0, 12000)],
+      ).catch(() => undefined);
+      log.error({ err: error, improvementId: item.id }, "continuous-audit: recuperação automática falhou");
+    }
+  }
+}
+
 async function auditImprovementFlow(): Promise<AuditFinding[]> {
   const findings: AuditFinding[] = [];
 
@@ -383,6 +505,9 @@ async function runAudit(log: Logger, mode: "fast" | "deep") {
   if (mode === "fast") fastRunning = true; else deepRunning = true;
 
   try {
+    if (mode === "fast") {
+      await recoverStalledImprovements(log);
+    }
     const batches = await Promise.all([
       auditDatabaseSchema(),
       auditImprovementFlow(),
