@@ -72,7 +72,9 @@ function normalizeIdentityText(value: string | null | undefined): string | null 
 
 function queueSource(placeId: string | null | undefined): string {
   const prefix = String(placeId ?? "").split(":")[0]?.trim();
-  return prefix || "prospector_auto";
+  return ["google_places", "cnpj_new_companies", "business_directory"].includes(prefix)
+    ? prefix
+    : "prospector_auto";
 }
 
 function cleanUnique(values: string[]): string[] {
