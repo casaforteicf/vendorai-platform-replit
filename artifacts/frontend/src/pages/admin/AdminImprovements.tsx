@@ -190,8 +190,11 @@ function isStaleActive(item: Improvement) {
     item.status === "testando" ||
     item.status === "em_homologacao" ||
     item.agentStatus === "executando" ||
-    item.agentStatus === "aguardando_checks" ||
-    (!!item.branch && item.status !== "homologado" && item.status !== "aguardando_producao");
+    (!!item.branch &&
+      item.agentStatus !== "aguardando_checks" &&
+      item.agentStatus !== "pr_legado_encadeado" &&
+      item.status !== "homologado" &&
+      item.status !== "aguardando_producao");
   if (!active) return false;
   const updatedAt = new Date(item.updatedAt).getTime();
   return Number.isFinite(updatedAt) && Date.now() - updatedAt > ACTIVE_STALE_MS;
@@ -213,6 +216,7 @@ function improvementSimpleStatus(item: Improvement) {
 function operationalProgress(item: Improvement) {
   if (item.status === "producao_validada") return 100;
   if (item.status === "mergeado_main") return 95;
+  if (item.agentStatus === "pr_legado_encadeado") return 25;
   if (item.agentStatus === "aguardando_checks" && item.testStatus !== "failed") return 55;
   if (item.status === "bloqueada" || item.testStatus === "failed") return 55;
   if (item.status === "aguardando_producao" || item.status === "homologado") return 90;
@@ -228,6 +232,7 @@ function operationalProgress(item: Improvement) {
 function nextOperationalAction(item: Improvement) {
   if (item.status === "producao_validada") return "Concluída e monitorada em produção";
   if (item.status === "mergeado_main") return "Confirmar deploy e validação em produção";
+  if (item.agentStatus === "pr_legado_encadeado") return "Reconciliar com a cadeia atual; não conta como erro ativo";
   if (item.agentStatus === "aguardando_checks" && item.testStatus !== "failed") return "Aguardar evidências dos checks do GitHub";
   if (item.status === "bloqueada" || item.testStatus === "failed") return "Vendi corrige a falha e repete os testes";
   if (item.status === "aguardando_producao" || item.status === "homologado") return "Aguardando sua aprovação para produção";
@@ -243,7 +248,7 @@ function nextOperationalAction(item: Improvement) {
 function statusVariant(status: string): "default" | "secondary" | "outline" | "destructive" {
   if (["Publicada", "Pronta para homologação", "published"].includes(status)) return "default";
   if (status === "Bloqueada / com erro" || status === "blocked") return "destructive";
-  if (["Em testes", "Em homologação", "Aguardando publicação", "Validando produção", "Em desenvolvimento", "scheduled", "monitoring", "publishing"].includes(status)) return "secondary";
+  if (["Em testes", "Aguardando checks", "PR legado / encadeado", "Em homologação", "Aguardando publicação", "Validando produção", "Em desenvolvimento", "scheduled", "monitoring", "publishing"].includes(status)) return "secondary";
   return "outline";
 }
 
@@ -355,13 +360,30 @@ export default function AdminImprovements() {
   const releases = releasesQuery.data?.items ?? [];
   const selectedItems = items.filter((item) => selected.has(item.id));
   const readySelected = selectedItems.filter((item) => item.testStatus === "passed" && !!item.prNumber);
-  const queueCount = items.filter((item) => improvementSimpleStatus(item) === "Fila").length;
-  const developmentCount = items.filter((item) => improvementSimpleStatus(item) === "Em desenvolvimento").length;
-  const testingCount = items.filter((item) => improvementSimpleStatus(item) === "Em testes").length;
-  const homologReadyCount = items.filter((item) => improvementSimpleStatus(item) === "Pronta para homologação").length;
-  const awaitingPublicationCount = items.filter((item) => improvementSimpleStatus(item) === "Aguardando publicação").length;
-  const blockedCount = items.filter((item) => improvementSimpleStatus(item) === "Bloqueada / com erro").length;
-  const publishedCount = items.filter((item) => improvementSimpleStatus(item) === "Publicada").length;
+
+  const canonicalItems = useMemo(() => {
+    const byKey = new Map<string, Improvement>();
+    for (const item of items) {
+      const key = item.prNumber ? `pr:${item.prNumber}` : `id:${item.id}`;
+      const current = byKey.get(key);
+      if (!current || new Date(item.updatedAt).getTime() > new Date(current.updatedAt).getTime()) {
+        byKey.set(key, item);
+      }
+    }
+    return [...byKey.values()];
+  }, [items]);
+
+  const totalHistoryCount = items.length;
+  const uniqueImprovementCount = canonicalItems.length;
+  const duplicateCount = Math.max(0, totalHistoryCount - uniqueImprovementCount);
+  const queueCount = canonicalItems.filter((item) => improvementSimpleStatus(item) === "Fila").length;
+  const developmentCount = canonicalItems.filter((item) => improvementSimpleStatus(item) === "Em desenvolvimento").length;
+  const testingCount = canonicalItems.filter((item) => ["Em testes", "Aguardando checks"].includes(improvementSimpleStatus(item))).length;
+  const legacyCount = canonicalItems.filter((item) => improvementSimpleStatus(item) === "PR legado / encadeado").length;
+  const homologReadyCount = canonicalItems.filter((item) => improvementSimpleStatus(item) === "Pronta para homologação").length;
+  const awaitingPublicationCount = canonicalItems.filter((item) => improvementSimpleStatus(item) === "Aguardando publicação").length;
+  const blockedCount = canonicalItems.filter((item) => improvementSimpleStatus(item) === "Bloqueada / com erro").length;
+  const publishedCount = canonicalItems.filter((item) => improvementSimpleStatus(item) === "Publicada").length;
 
   async function post(path: string, payload?: unknown, successMessage?: string) {
     setBusy(path);
