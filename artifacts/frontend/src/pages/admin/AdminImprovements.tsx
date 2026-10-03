@@ -53,6 +53,9 @@ type Improvement = {
   sourceType?: "super_admin" | "support" | "vendi" | "system" | "audit" | "user_request" | "bug" | "security" | "integration" | "infrastructure" | "hotfix";
   sourceRefId?: string | null;
   sourceTenantId?: string | null;
+  changeScope?: "tenant" | "vertical" | "global_opcional" | "global" | "bug" | null;
+  scopeReason?: string | null;
+  tenantContextSnapshot?: Record<string, unknown> | null;
   ownerAgent?: string | null;
   agentStatus?: string | null;
   agentSummary?: string | null;
@@ -144,6 +147,14 @@ const PRIORITY_LABELS: Record<string, string> = {
   urgente: "Crítica",
 };
 
+const SCOPE_LABELS: Record<string, string> = {
+  tenant: "Somente tenant",
+  vertical: "Vertical",
+  global_opcional: "Global opcional",
+  global: "Global",
+  bug: "Bug / investigar alcance",
+};
+
 const SOURCE_LABELS: Record<string, string> = {
   super_admin: "Super Admin",
   support: "Suporte",
@@ -171,23 +182,63 @@ function formatDuration(value?: number | string | null) {
   return String(min) + "m " + String(sec).padStart(2, "0") + "s";
 }
 
+const ACTIVE_STALE_MS = 30 * 60 * 1000;
+
+function isStaleActive(item: Improvement) {
+  const active =
+    item.status === "em_desenvolvimento" ||
+    item.status === "testando" ||
+    item.status === "em_homologacao" ||
+    item.agentStatus === "executando" ||
+    (!!item.branch &&
+      item.agentStatus !== "aguardando_checks" &&
+      item.agentStatus !== "pr_legado_encadeado" &&
+      item.status !== "homologado" &&
+      item.status !== "aguardando_producao");
+  if (!active) return false;
+  const updatedAt = new Date(item.updatedAt).getTime();
+  return Number.isFinite(updatedAt) && Date.now() - updatedAt > ACTIVE_STALE_MS;
+}
+
 function improvementSimpleStatus(item: Improvement) {
-  if (item.status === "producao_validada") return "Publicado";
-  if (item.status === "bloqueada" || item.testStatus === "failed") return "Atenção";
-  if (item.status === "testando" || item.testStatus === "running") return "Testando";
-  if (item.status === "solicitada") return "Solicitada";
-  if (item.status === "em_desenvolvimento") return "Fazendo";
-  if (item.status === "pronto_staging") return item.testStatus === "passed" ? "Pronto" : "Aguardando testes";
-  if (item.status === "em_homologacao") return "Em homologação";
-  if (item.status === "homologado") return "Homologado";
-  if (item.status === "aguardando_producao") return "Aguardando produção";
-  return "Aguardando";
+  if (item.status === "producao_validada") return "Concluído";
+  if (item.status === "mergeado_main") return "Publicando";
+  if (item.status === "homologado" || item.status === "aguardando_producao") return "Aguardando sua aprovação";
+  if ((item.status === "bloqueada" || item.testStatus === "failed") && isStaleActive(item)) return "Precisa de atenção";
+  return "Em andamento";
+}
+
+function operationalProgress(item: Improvement) {
+  if (item.status === "producao_validada") return 100;
+  if (item.status === "mergeado_main") return 95;
+  if (item.agentStatus === "substituido_historico" || item.status === "cancelada") return 100;
+  if (item.agentStatus === "pr_legado_encadeado") return 25;
+  if (item.agentStatus === "aguardando_checks" && item.testStatus !== "failed") return 55;
+  if (item.status === "bloqueada" || item.testStatus === "failed") return 55;
+  if (item.status === "aguardando_producao" || item.status === "homologado") return 90;
+  if (item.status === "em_homologacao") return 80;
+  if (item.testStatus === "passed" && item.prNumber) return 75;
+  if (item.testStatus === "running" || item.status === "testando") return 65;
+  if (item.prNumber) return 55;
+  if (item.branch || item.status === "em_desenvolvimento") return 35;
+  if (item.agentStatus && item.agentStatus !== "aguardando") return 20;
+  return 5;
+}
+
+function nextOperationalAction(item: Improvement) {
+  const status = improvementSimpleStatus(item);
+  if (status === "Concluído") return "Nenhuma ação necessária";
+  if (status === "Publicando") return "O sistema publica, valida e troca de rota automaticamente se necessário";
+  if (status === "Aguardando sua aprovação") return "Aprovar produção ou pedir alteração";
+  if (status === "Precisa de atenção") return "Todos os caminhos automáticos precisam ser revisados";
+  if (item.status === "bloqueada" || item.testStatus === "failed") return "Vendi está corrigindo e repetindo os testes automaticamente";
+  return "Vendi cuida das etapas técnicas automaticamente";
 }
 
 function statusVariant(status: string): "default" | "secondary" | "outline" | "destructive" {
-  if (["Publicado", "Pronto", "Homologado", "published"].includes(status)) return "default";
-  if (status === "Atenção" || status === "blocked") return "destructive";
-  if (["Testando", "Em homologação", "Aguardando produção", "scheduled", "monitoring", "publishing"].includes(status)) return "secondary";
+  if (["Concluído", "published"].includes(status)) return "default";
+  if (status === "Precisa de atenção" || status === "blocked") return "destructive";
+  if (["Em andamento", "Aguardando sua aprovação", "Publicando", "scheduled", "monitoring", "publishing"].includes(status)) return "secondary";
   return "outline";
 }
 
@@ -238,7 +289,8 @@ export default function AdminImprovements() {
       if (!response.ok) throw new Error(body?.error ?? "HTTP " + response.status);
       return body;
     },
-    refetchInterval: 30000,
+    refetchInterval: 10000,
+    refetchIntervalInBackground: true,
   });
 
   const releasesQuery = useQuery<{ items: Release[] }>({
@@ -250,7 +302,8 @@ export default function AdminImprovements() {
       if (!response.ok) throw new Error(body?.error ?? "HTTP " + response.status);
       return body;
     },
-    refetchInterval: 30000,
+    refetchInterval: 10000,
+    refetchIntervalInBackground: true,
   });
 
   const metricsQuery = useQuery<ReleaseMetrics>({
@@ -262,7 +315,8 @@ export default function AdminImprovements() {
       if (!response.ok) throw new Error(body?.error ?? "HTTP " + response.status);
       return body;
     },
-    refetchInterval: 30000,
+    refetchInterval: 10000,
+    refetchIntervalInBackground: true,
   });
 
   const github = useQuery<{ ready: boolean; repository?: string; reason?: string; private?: boolean }>({
@@ -275,14 +329,48 @@ export default function AdminImprovements() {
     staleTime: 60000,
   });
 
+  useQuery({
+    queryKey: ["admin", "improvements", "github-auto-reconcile"],
+    enabled: !!token && github.data?.ready === true,
+    queryFn: async () => {
+      const response = await fetch("/api/admin/improvements/github-reconcile", { method: "POST", headers });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error ?? "Falha ao sincronizar GitHub");
+      if ((body.created ?? 0) > 0 || (body.updated ?? 0) > 0) {
+        void qc.invalidateQueries({ queryKey: ["admin", "improvements"] });
+      }
+      return body;
+    },
+    refetchInterval: 15000,
+    refetchIntervalInBackground: true,
+    retry: false,
+  });
+
   const items = improvementsQuery.data?.items ?? [];
   const releases = releasesQuery.data?.items ?? [];
   const selectedItems = items.filter((item) => selected.has(item.id));
   const readySelected = selectedItems.filter((item) => item.testStatus === "passed" && !!item.prNumber);
-  const doingCount = items.filter((item) => improvementSimpleStatus(item) === "Fazendo").length;
-  const readyCount = items.filter((item) => improvementSimpleStatus(item) === "Pronto").length;
-  const publishedCount = releases.filter((item) => item.status === "published").length;
-  const scheduledCount = releases.filter((item) => ["scheduled", "publishing", "monitoring"].includes(item.status)).length;
+
+  const canonicalItems = useMemo(() => {
+    const byKey = new Map<string, Improvement>();
+    for (const item of items) {
+      const key = item.prNumber ? `pr:${item.prNumber}` : `id:${item.id}`;
+      const current = byKey.get(key);
+      if (!current || new Date(item.updatedAt).getTime() > new Date(current.updatedAt).getTime()) {
+        byKey.set(key, item);
+      }
+    }
+    return [...byKey.values()];
+  }, [items]);
+
+  const totalHistoryCount = items.length;
+  const uniqueImprovementCount = canonicalItems.length;
+  const duplicateCount = Math.max(0, totalHistoryCount - uniqueImprovementCount);
+  const inProgressCount = canonicalItems.filter((item) => improvementSimpleStatus(item) === "Em andamento").length;
+  const awaitingApprovalCount = canonicalItems.filter((item) => improvementSimpleStatus(item) === "Aguardando sua aprovação").length;
+  const publishingCount = canonicalItems.filter((item) => improvementSimpleStatus(item) === "Publicando").length;
+  const completedCount = canonicalItems.filter((item) => improvementSimpleStatus(item) === "Concluído").length;
+  const attentionCount = canonicalItems.filter((item) => improvementSimpleStatus(item) === "Precisa de atenção").length;
 
   async function post(path: string, payload?: unknown, successMessage?: string) {
     setBusy(path);
@@ -327,7 +415,7 @@ export default function AdminImprovements() {
       const result = await post("/api/admin/improvements/github-reconcile");
       toast({
         title: "GitHub reconciliado",
-        description: `${result.created ?? 0} criada(s) e ${result.updated ?? 0} atualizada(s), de ${result.scanned ?? 0} PR(s) aberto(s).`,
+        description: `${result.updated ?? 0} atualizada(s), ${result.created ?? 0} criada(s), ${result.inconsistent ?? 0} inconsistência(s), ${result.closedWithoutMerge ?? 0} fechado(s) sem merge e ${result.conflicted ?? 0} conflito(s).`,
       });
       await github.refetch();
     } catch {
@@ -483,7 +571,7 @@ export default function AdminImprovements() {
   const allReadySelected = readySelected.length === selectedItems.length && selectedItems.length > 0;
 
   return (
-    <div className="mx-auto w-full max-w-[1600px] space-y-5 p-4 md:p-6">
+    <div className="mx-auto w-full max-w-[1600px] min-w-0 space-y-5 overflow-x-hidden px-3 pb-24 pt-4 sm:px-4 md:p-6 md:pb-24">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -495,14 +583,15 @@ export default function AdminImprovements() {
               GitHub {github.data?.ready ? "conectado" : "não conectado"}
             </Badge>
             <Badge variant="outline">Produção protegida</Badge>
+            <Badge variant="secondary">Acompanhamento automático • 15s</Badge>
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">Melhorias & Publicações</h1>
           <p className="mt-1 max-w-4xl text-sm text-muted-foreground">
-            Histórico oficial de evolução do Vendor.ai: toda melhoria deve ser registrada aqui, da solicitação até a validação em produção.
+            Você acompanha só o que importa: andamento, sua aprovação, publicação e conclusão. Testes, retries, homologação e failover ficam automáticos por trás.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
+        <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:w-auto sm:flex-wrap">
+          <Button className="w-full sm:w-auto"
             variant="outline"
             onClick={() => void reconcileGithub()}
             disabled={!github.data?.ready || busy === "/api/admin/improvements/github-reconcile"}
@@ -511,6 +600,7 @@ export default function AdminImprovements() {
             Reconciliar GitHub
           </Button>
           <Button
+            className="w-full sm:w-auto"
             variant="outline"
             onClick={() => {
               improvementsQuery.refetch();
@@ -522,33 +612,33 @@ export default function AdminImprovements() {
             <RefreshCw className={"mr-2 h-4 w-4 " + ((improvementsQuery.isFetching || releasesQuery.isFetching) ? "animate-spin" : "")} />
             Atualizar
           </Button>
-          <Button onClick={() => setCreateOpen(true)}>
+          <Button className="w-full sm:w-auto" onClick={() => setCreateOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Nova melhoria
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
-        <div className="rounded-2xl border bg-card p-4">
-          <p className="text-xs font-medium text-muted-foreground">Fazendo</p>
-          <p className="mt-1 text-2xl font-semibold">{doingCount}</p>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+        <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4">
+          <p className="text-xs font-medium text-muted-foreground">Em andamento</p>
+          <p className="mt-1 text-2xl font-semibold">{inProgressCount}</p>
         </div>
-        <div className="rounded-2xl border bg-card p-4">
-          <p className="text-xs font-medium text-muted-foreground">Prontas</p>
-          <p className="mt-1 text-2xl font-semibold">{readyCount}</p>
+        <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4">
+          <p className="text-xs font-medium text-muted-foreground">Sua aprovação</p>
+          <p className="mt-1 text-2xl font-semibold">{awaitingApprovalCount}</p>
         </div>
-        <div className="rounded-2xl border bg-card p-4">
-          <p className="text-xs font-medium text-muted-foreground">Agendadas / em execução</p>
-          <p className="mt-1 text-2xl font-semibold">{scheduledCount}</p>
+        <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4">
+          <p className="text-xs font-medium text-muted-foreground">Publicando</p>
+          <p className="mt-1 text-2xl font-semibold">{publishingCount}</p>
         </div>
-        <div className="rounded-2xl border bg-card p-4">
-          <p className="text-xs font-medium text-muted-foreground">Publicadas</p>
-          <p className="mt-1 text-2xl font-semibold">{publishedCount}</p>
+        <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4">
+          <p className="text-xs font-medium text-muted-foreground">Concluídas</p>
+          <p className="mt-1 text-2xl font-semibold">{completedCount}</p>
         </div>
-        <div className="rounded-2xl border bg-card p-4">
-          <p className="text-xs font-medium text-muted-foreground">Tempo médio</p>
-          <p className="mt-1 text-2xl font-semibold">{formatDuration(metricsQuery.data?.avg_duration_ms)}</p>
+        <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4">
+          <p className="text-xs font-medium text-muted-foreground">Precisa de atenção</p>
+          <p className="mt-1 text-2xl font-semibold">{attentionCount}</p>
         </div>
       </div>
 
@@ -586,7 +676,7 @@ export default function AdminImprovements() {
             </div>
           )}
 
-          <div className="grid gap-3 md:hidden">
+          <div className="grid min-w-0 gap-3 lg:hidden">
             {items.map((item) => {
               const simple = improvementSimpleStatus(item);
               const progress = operationalProgress(item);
@@ -622,30 +712,39 @@ export default function AdminImprovements() {
                   </div>
 
                   <div className="mt-4 grid gap-3 rounded-xl bg-muted/25 p-3 text-xs">
+                    {isStaleActive(item) && (
+                      <div className="rounded-lg border border-amber-300/50 bg-amber-50 p-2 text-amber-800">
+                        Sem atividade recente. A execução não é considerada ativa neste momento, mas isso não significa falha.
+                      </div>
+                    )}
                     <div>
                       <p className="text-muted-foreground">Agora</p>
                       <p className="mt-1 font-medium">
-                        {item.testStatus === "failed"
-                          ? "Teste falhou"
-                          : item.testStatus === "running"
-                            ? "Testes em andamento"
-                            : item.testStatus === "passed"
-                              ? "Testes aprovados"
-                              : nextOperationalAction(item)}
+                        {nextOperationalAction(item)}
                       </p>
                     </div>
                     <div>
                       <p className="text-muted-foreground">Próximo passo</p>
                       <p className="mt-1 font-medium">{nextOperationalAction(item)}</p>
                     </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
                         <p className="text-muted-foreground">Última atividade</p>
                         <p className="mt-1 font-medium">{formatDate(item.updatedAt)}</p>
                       </div>
-                      <div className="text-right">
+                      <div>
                         <p className="text-muted-foreground">Responsável</p>
                         <p className="mt-1 font-medium">{item.ownerAgent || "Vendi"}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Ambiente</p>
+                        <p className="mt-1 font-medium">
+                          {item.status === "producao_validada" || item.status === "mergeado_main" ? "Produção" : item.status === "em_homologacao" || item.status === "homologado" || item.status === "pronto_staging" ? "Homologação" : "Desenvolvimento"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Release</p>
+                        <p className="mt-1 font-medium">{item.packageKey || (item.status === "aguardando_producao" ? "Aguardando publicação" : "Ainda não criada")}</p>
                       </div>
                     </div>
                   </div>
@@ -654,35 +753,25 @@ export default function AdminImprovements() {
                     <Button variant="outline" className="h-11" onClick={() => setDetail(item)}>
                       Ver detalhes
                     </Button>
-                    {item.prUrl ? (
-                      <Button variant="outline" className="h-11" asChild>
-                        <a href={item.prUrl} target="_blank" rel="noreferrer">
-                          Abrir PR
-                          <ExternalLink className="ml-2 h-4 w-4" />
-                        </a>
-                      </Button>
-                    ) : simple !== "Publicado" ? (
-                      <Button
-                        variant="outline"
-                        className="h-11"
-                        disabled={!!busy}
-                        onClick={() => post("/api/admin/improvements/" + item.id + "/start-agent", undefined, simple === "Bloqueado" ? "Vendi iniciou a correção" : "Vendi assumiu esta melhoria")}
-                      >
-                        <WandSparkles className="mr-2 h-4 w-4" />
-                        {simple === "Bloqueado" ? "Corrigir" : "Executar"}
-                      </Button>
-                    ) : (
-                      <Button variant="outline" className="h-11" disabled>
-                        Concluído
-                      </Button>
-                    )}
+                    <Button
+                      variant="outline"
+                      className="h-11"
+                      onClick={() => {
+                        setAdjustOpen(item);
+                        setAdjustment("");
+                      }}
+                      disabled={simple === "Concluído"}
+                    >
+                      <WandSparkles className="mr-2 h-4 w-4" />
+                      {simple === "Concluído" ? "Concluído" : "Pedir alteração"}
+                    </Button>
                   </div>
                 </article>
               );
             })}
           </div>
 
-          <div className="hidden overflow-hidden rounded-2xl border bg-card md:block">
+          <div className="hidden overflow-hidden rounded-2xl border bg-card lg:block">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1120px] text-sm">
                 <thead className="border-b bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -691,9 +780,9 @@ export default function AdminImprovements() {
                     <th className="px-3 py-3">Melhoria</th>
                     <th className="px-3 py-3">Origem</th>
                     <th className="px-3 py-3">Vendi</th>
-                    <th className="px-3 py-3">Situação</th>
-                    <th className="px-3 py-3">Versão</th>
-                    <th className="px-3 py-3">Prazo 24h</th>
+                    <th className="px-3 py-3">Execução</th>
+                    <th className="px-3 py-3">Próxima ação</th>
+                    <th className="px-3 py-3">Última atividade</th>
                     <th className="px-3 py-3 text-right">Ações</th>
                   </tr>
                 </thead>
@@ -713,6 +802,7 @@ export default function AdminImprovements() {
                             <span>{item.module}</span>
                             <span>• {PRIORITY_LABELS[item.priority] ?? item.priority}</span>
                             {item.prNumber && <span>• PR #{item.prNumber}</span>}
+                            {item.changeScope && <span>• {SCOPE_LABELS[item.changeScope] ?? item.changeScope}</span>}
                           </div>
                         </td>
                         <td className="px-3 py-3">
@@ -726,32 +816,48 @@ export default function AdminImprovements() {
                             <div>
                               <p className="text-xs font-medium">{item.ownerAgent || "Vendi"}</p>
                               <p className="text-xs text-muted-foreground">{item.agentStatus || "aguardando"}</p>
+                              {item.agentSummary && (
+                                <p className="mt-1 max-w-[260px] line-clamp-2 text-xs text-muted-foreground" title={item.agentSummary}>
+                                  {item.agentSummary}
+                                </p>
+                              )}
                             </div>
                           </div>
                         </td>
-                        <td className="px-3 py-3">
-                          <Badge variant={statusVariant(simple)}>{simple}</Badge>
+                        <td className="min-w-[190px] px-3 py-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <Badge variant={statusVariant(simple)}>{simple}</Badge>
+                            <span className="text-xs font-medium">{operationalProgress(item)}%</span>
+                          </div>
+                          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+                            <div className="h-full rounded-full bg-primary transition-all" style={{ width: operationalProgress(item) + "%" }} />
+                          </div>
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            {item.testStatus === "failed" ? "Teste falhou" : item.testStatus === "running" ? "Testes em andamento" : item.testStatus === "passed" ? "Testes aprovados" : "Aguardando evidências"}
+                          </p>
                         </td>
-                        <td className="px-3 py-3">
-                          {item.packageKey ? <Badge variant="outline">{item.packageKey}</Badge> : "—"}
+                        <td className="max-w-[260px] px-3 py-3 text-xs">
+                          <p className="font-medium">{nextOperationalAction(item)}</p>
+                          {item.prNumber && <p className="mt-1 text-muted-foreground">PR #{item.prNumber}</p>}
                         </td>
                         <td className="px-3 py-3 text-xs">
-                          {item.dueAt ? formatDate(item.dueAt) : "até 24h"}
+                          <p>{formatDate(item.updatedAt)}</p>
+                          <p className="mt-1 text-muted-foreground">{item.dueAt ? "Prazo: " + formatDate(item.dueAt) : "SLA: até 24h"}</p>
                         </td>
                         <td className="px-3 py-3">
                           <div className="flex justify-end gap-2">
                             <Button variant="outline" size="sm" onClick={() => setDetail(item)}>
                               Abrir
                             </Button>
-                            {simple === "Fazendo" && (
+                            {simple !== "Publicado" && (
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 disabled={!!busy}
-                                onClick={() => post("/api/admin/improvements/" + item.id + "/start-agent", undefined, "Vendi iniciou o trabalho")}
+                                onClick={() => post("/api/admin/improvements/" + item.id + "/start-agent", undefined, "Vendi assumiu/reiniciou esta melhoria")}
                               >
                                 <WandSparkles className="mr-1 h-3.5 w-3.5" />
-                                Vendi
+                                {simple === "Bloqueado" ? "Corrigir" : "Reexecutar"}
                               </Button>
                             )}
                           </div>
@@ -1112,10 +1218,36 @@ export default function AdminImprovements() {
                   {detail.description || "Sem descrição."}
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-3">
+                {isStaleActive(detail) && (
+                  <div className="rounded-xl border border-amber-300/50 bg-amber-50 p-4 text-sm text-amber-800">
+                    Esta melhoria está sem atividade recente. Ela não conta como execução ativa neste momento, mas permanece no estágio atual até haver evidência real de falha ou avanço.
+                  </div>
+                )}
+
+                <div className="rounded-xl border p-4">
+                  <p className="text-xs font-semibold uppercase text-muted-foreground">Linha do tempo</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {[
+                      ["Em andamento", 5],
+                      ["Sua aprovação", 90],
+                      ["Publicando", 95],
+                      ["Concluído", 100],
+                    ].map(([label, threshold]) => (
+                      <Badge key={String(label)} variant={operationalProgress(detail) >= Number(threshold) ? "default" : "outline"}>
+                        {String(label)}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-4">
                   <div className="rounded-xl border p-3">
                     <p className="text-xs text-muted-foreground">Origem</p>
                     <p className="mt-1 font-medium">{SOURCE_LABELS[detail.sourceType ?? "super_admin"] ?? detail.sourceType ?? "Super Admin"}</p>
+                  </div>
+                  <div className="rounded-xl border p-3">
+                    <p className="text-xs text-muted-foreground">Escopo sugerido</p>
+                    <p className="mt-1 font-medium">{detail.changeScope ? (SCOPE_LABELS[detail.changeScope] ?? detail.changeScope) : "Ainda não classificado"}</p>
                   </div>
                   <div className="rounded-xl border p-3">
                     <p className="text-xs text-muted-foreground">Responsável</p>
@@ -1126,6 +1258,17 @@ export default function AdminImprovements() {
                     <p className="mt-1 font-medium">{detail.dueAt ? formatDate(detail.dueAt) : "Até 24h"}</p>
                   </div>
                 </div>
+
+                {(detail.scopeReason || detail.sourceTenantId || detail.tenantContextSnapshot) && (
+                  <div className="rounded-xl border bg-muted/10 p-4 text-sm">
+                    <p className="font-medium">Contexto da solicitação</p>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      <p><span className="text-muted-foreground">Tenant:</span> {String(detail.tenantContextSnapshot?.tenantName ?? detail.sourceTenantId ?? "Não identificado")}</p>
+                      <p><span className="text-muted-foreground">Vertical:</span> {String(detail.tenantContextSnapshot?.vertical ?? "Não definida")}</p>
+                    </div>
+                    {detail.scopeReason && <p className="mt-2 text-muted-foreground">{detail.scopeReason}</p>}
+                  </div>
+                )}
 
                 {(detail.acceptanceCriteria || detail.riskSummary || detail.dependencies) && (
                   <div className="grid gap-3 sm:grid-cols-3">
@@ -1161,59 +1304,74 @@ export default function AdminImprovements() {
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline"
-                    onClick={() => post("/api/admin/improvements/" + detail.id + "/start-agent", undefined, "Vendi iniciou o trabalho")}
-                    disabled={!!busy}
-                  >
-                    <Bot className="mr-2 h-4 w-4" />
-                    Executar Vendi
-                  </Button>
-                  {detail.prNumber && (
-                    <Button
-                      variant="outline"
-                      onClick={() => post("/api/admin/improvements/" + detail.id + "/check-tests", undefined, "Testes verificados")}
-                      disabled={!!busy}
-                    >
-                      <SearchCheck className="mr-2 h-4 w-4" />
-                      Verificar testes
-                    </Button>
-                  )}
-                  {detail.testStatus === "passed" && detail.status !== "em_homologacao" && detail.status !== "producao_validada" && (
-                    <Button
-                      variant="outline"
-                      onClick={() => post("/api/admin/improvements/" + detail.id + "/prepare-test", undefined, "Versão enviada para ambiente de teste")}
-                      disabled={!!busy}
-                    >
-                      <TestTube2 className="mr-2 h-4 w-4" />
-                      Preparar teste
-                    </Button>
-                  )}
-                  <Button
-                    variant="outline"
                     onClick={() => {
                       setAdjustOpen(detail);
                       setAdjustment("");
                     }}
                   >
                     <WandSparkles className="mr-2 h-4 w-4" />
-                    Solicitar ajuste
+                    Pedir alteração
                   </Button>
-                  {detail.prUrl && (
-                    <Button variant="ghost" asChild>
-                      <a href={detail.prUrl} target="_blank" rel="noreferrer">
-                        Abrir PR
-                        <ExternalLink className="ml-2 h-4 w-4" />
-                      </a>
-                    </Button>
-                  )}
-                  {detail.homologUrl && (
-                    <Button variant="ghost" asChild>
-                      <a href={detail.homologUrl} target="_blank" rel="noreferrer">
-                        Abrir teste
-                        <ExternalLink className="ml-2 h-4 w-4" />
-                      </a>
+                  {(detail.status === "homologado" || detail.status === "aguardando_producao") && (
+                    <Button
+                      disabled={!!busy || detail.status === "aguardando_producao"}
+                      onClick={() => post("/api/admin/improvements/approve-production", { ids: [detail.id] }, "Produção aprovada")}
+                    >
+                      <ShieldCheck className="mr-2 h-4 w-4" />
+                      {detail.status === "aguardando_producao" ? "Produção aprovada" : "Aprovar produção"}
                     </Button>
                   )}
                 </div>
+
+                <details className="rounded-xl border bg-muted/10 p-4">
+                  <summary className="cursor-pointer text-sm font-medium">Detalhes e ações técnicas</summary>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => post("/api/admin/improvements/" + detail.id + "/start-agent", undefined, "Vendi iniciou o trabalho")}
+                      disabled={!!busy}
+                    >
+                      <Bot className="mr-2 h-4 w-4" />
+                      Reexecutar Vendi
+                    </Button>
+                    {detail.prNumber && (
+                      <Button
+                        variant="outline"
+                        onClick={() => post("/api/admin/improvements/" + detail.id + "/check-tests", undefined, "Testes verificados")}
+                        disabled={!!busy}
+                      >
+                        <SearchCheck className="mr-2 h-4 w-4" />
+                        Verificar testes
+                      </Button>
+                    )}
+                    {detail.testStatus === "passed" && detail.status !== "em_homologacao" && detail.status !== "producao_validada" && (
+                      <Button
+                        variant="outline"
+                        onClick={() => post("/api/admin/improvements/" + detail.id + "/prepare-test", undefined, "Versão enviada para ambiente de teste")}
+                        disabled={!!busy}
+                      >
+                        <TestTube2 className="mr-2 h-4 w-4" />
+                        Preparar homologação
+                      </Button>
+                    )}
+                    {detail.prUrl && (
+                      <Button variant="ghost" asChild>
+                        <a href={detail.prUrl} target="_blank" rel="noreferrer">
+                          Abrir PR
+                          <ExternalLink className="ml-2 h-4 w-4" />
+                        </a>
+                      </Button>
+                    )}
+                    {detail.homologUrl && (
+                      <Button variant="ghost" asChild>
+                        <a href={detail.homologUrl} target="_blank" rel="noreferrer">
+                          Abrir homologação
+                          <ExternalLink className="ml-2 h-4 w-4" />
+                        </a>
+                      </Button>
+                    )}
+                  </div>
+                </details>
               </div>
             </>
           )}
