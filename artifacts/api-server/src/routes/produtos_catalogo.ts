@@ -115,24 +115,33 @@ async function attachCategoriaInfo<T extends { categoriaId: string | null }>(
     return products.map((p) => ({ ...p, categoriaNome: null, categoriaDescontoMaximoPercentual: null }));
   }
 
-  const categorias = await db
-    .select({
-      id: categoriasProdutoTable.id,
-      nome: categoriasProdutoTable.nome,
-      descontoMaximoPercentual: categoriasProdutoTable.descontoMaximoPercentual,
-    })
-    .from(categoriasProdutoTable);
+  try {
+    const categorias = await db
+      .select({
+        id: categoriasProdutoTable.id,
+        nome: categoriasProdutoTable.nome,
+        descontoMaximoPercentual: categoriasProdutoTable.descontoMaximoPercentual,
+      })
+      .from(categoriasProdutoTable);
 
-  const map = new Map(categorias.map((c) => [c.id, c]));
+    const map = new Map(categorias.map((c) => [c.id, c]));
 
-  return products.map((p) => {
-    const cat = p.categoriaId ? map.get(p.categoriaId) : undefined;
-    return {
+    return products.map((p) => {
+      const cat = p.categoriaId ? map.get(p.categoriaId) : undefined;
+      return {
+        ...p,
+        categoriaNome: cat?.nome ?? null,
+        categoriaDescontoMaximoPercentual: cat?.descontoMaximoPercentual ?? null,
+      };
+    });
+  } catch (error) {
+    console.error("[produtos_catalogo] falha ao enriquecer categorias; retornando catálogo sem metadados de categoria", error);
+    return products.map((p) => ({
       ...p,
-      categoriaNome: cat?.nome ?? null,
-      categoriaDescontoMaximoPercentual: cat?.descontoMaximoPercentual ?? null,
-    };
-  });
+      categoriaNome: null,
+      categoriaDescontoMaximoPercentual: null,
+    }));
+  }
 }
 
 // ── CSV parser (handles quoted fields) ───────────────────────────────────────
