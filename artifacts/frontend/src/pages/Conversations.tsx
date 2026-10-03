@@ -60,6 +60,9 @@ import {
   ShieldCheck,
   Eye,
   CheckCircle2,
+  ClipboardList,
+  Plus,
+  CalendarClock,
 } from "lucide-react";
 import { formatDistanceToNow, format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -317,6 +320,45 @@ interface HandoffEvent {
   toAgent: string;
 }
 
+interface ChatActivity {
+  id: string;
+  tipo: string;
+  titulo: string;
+  descricao?: string | null;
+  status: string;
+  dataVencimento?: string | null;
+  concluidaEm?: string | null;
+  resultadoExecucao?: string | null;
+  createdAt: string;
+}
+
+function ActivityTimelineSeparator({
+  activity,
+  completed,
+}: {
+  activity: ChatActivity;
+  completed: boolean;
+}) {
+  const timestamp = completed ? activity.concluidaEm : activity.createdAt;
+  if (!timestamp) return null;
+
+  return (
+    <div className="my-1 flex items-center gap-2 py-2">
+      <div className="flex-1 border-t border-dashed border-sky-200 dark:border-sky-800" />
+      <span className="flex max-w-[78%] items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[10px] font-medium text-sky-700 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-300">
+        <ClipboardList className="h-3 w-3 shrink-0" />
+        <span className="truncate">
+          {completed ? "Atividade concluída" : "Atividade criada"} · {activity.titulo}
+        </span>
+        <span className="shrink-0 font-normal text-sky-500">
+          · {formatDistanceToNow(new Date(timestamp), { locale: ptBR, addSuffix: true })}
+        </span>
+      </span>
+      <div className="flex-1 border-t border-dashed border-sky-200 dark:border-sky-800" />
+    </div>
+  );
+}
+
 function HandoffSeparator({
   fromAgent,
   toAgent,
@@ -372,7 +414,13 @@ function ChatPanel({
   const [releasingLock, setReleasingLock] = useState(false);
   const [takingLock, setTakingLock] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+  const [showActivities, setShowActivities] = useState(false);
   const [handoffEvents, setHandoffEvents] = useState<HandoffEvent[]>([]);
+  const [chatActivities, setChatActivities] = useState<ChatActivity[]>([]);
+  const [activityTitle, setActivityTitle] = useState("");
+  const [activityDue, setActivityDue] = useState("");
+  const [activitySaving, setActivitySaving] = useState(false);
+  const [activityUpdatingId, setActivityUpdatingId] = useState<string | null>(null);
   const [pendingAttachment, setPendingAttachment] = useState<{
     file: File;
     previewUrl: string;
@@ -493,40 +541,43 @@ function ChatPanel({
     }
   );
 
-  useEffect(() => {
-    if (!conv.leadId) return;
+  const refreshLeadActivities = useCallback(async () => {
+    if (!conv.leadId) {
+      setHandoffEvents([]);
+      setChatActivities([]);
+      return;
+    }
+
     const token = localStorage.getItem("vendorai_token");
+    const response = await fetch(
+      `/api/tenants/${tenantId}/activities?leadId=${conv.leadId}`,
+      { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+    );
 
-    fetch(`/api/tenants/${tenantId}/activities?leadId=${conv.leadId}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
-      .then((r) => r.json())
-      .then((data: unknown) => {
-        if (!Array.isArray(data)) return;
-        const events: HandoffEvent[] = [];
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data: unknown = await response.json();
+    if (!Array.isArray(data)) return;
 
-        for (const a of data) {
-          if (typeof a !== "object" || a === null) continue;
-          const act = a as Record<string, unknown>;
-          if (
-            act.tipo !== "handoff_agente" ||
-            typeof act.resultadoExecucao !== "string"
-          ) {
-            continue;
-          }
+    const events: HandoffEvent[] = [];
+    const activities: ChatActivity[] = [];
 
-          const match = act.resultadoExecucao.match(/^de:(.+)\|para:(.+)$/);
-          if (!match) continue;
+    for (const a of data) {
+      if (typeof a !== "object" || a === null) continue;
+      const act = a as Record<string, unknown>;
 
-          const ts =
-            typeof act.concluidaEm === "string"
-              ? act.concluidaEm
-              : typeof act.createdAt === "string"
-                ? act.createdAt
-                : null;
+      if (
+        act.tipo === "handoff_agente" &&
+        typeof act.resultadoExecucao === "string"
+      ) {
+        const match = act.resultadoExecucao.match(/^de:(.+)\|para:(.+)$/);
+        const ts =
+          typeof act.concluidaEm === "string"
+            ? act.concluidaEm
+            : typeof act.createdAt === "string"
+              ? act.createdAt
+              : null;
 
-          if (!ts) continue;
-
+        if (match && ts) {
           events.push({
             id:
               typeof act.id === "string"
@@ -537,11 +588,130 @@ function ChatPanel({
             toAgent: match[2],
           });
         }
+      }
 
-        setHandoffEvents(events);
-      })
-      .catch(() => undefined);
+      if (
+        typeof act.id === "string" &&
+        typeof act.titulo === "string" &&
+        typeof act.status === "string" &&
+        typeof act.createdAt === "string"
+      ) {
+        activities.push({
+          id: act.id,
+          tipo: typeof act.tipo === "string" ? act.tipo : "tarefa",
+          titulo: act.titulo,
+          descricao: typeof act.descricao === "string" ? act.descricao : null,
+          status: act.status,
+          dataVencimento:
+            typeof act.dataVencimento === "string" ? act.dataVencimento : null,
+          concluidaEm:
+            typeof act.concluidaEm === "string" ? act.concluidaEm : null,
+          resultadoExecucao:
+            typeof act.resultadoExecucao === "string"
+              ? act.resultadoExecucao
+              : null,
+          createdAt: act.createdAt,
+        });
+      }
+    }
+
+    setHandoffEvents(events);
+    setChatActivities(activities);
   }, [conv.leadId, tenantId]);
+
+  useEffect(() => {
+    void refreshLeadActivities().catch(() => undefined);
+  }, [refreshLeadActivities]);
+
+  async function handleCreateChatActivity() {
+    const title = activityTitle.trim();
+    if (!title || !conv.leadId) return;
+
+    setActivitySaving(true);
+    try {
+      const token = localStorage.getItem("vendorai_token");
+      const response = await fetch("/api/activities", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          tenantId,
+          leadId: conv.leadId,
+          tipo: "tarefa",
+          titulo: title,
+          descricao: `Atividade criada a partir da conversa ${channelLabel(conv.channel)}.`,
+          status: "pendente",
+          resultadoExecucao: `origem_chat:${conv.id}`,
+          ...(activityDue
+            ? { dataVencimento: new Date(activityDue).toISOString() }
+            : {}),
+        }),
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(
+          typeof body?.error === "string"
+            ? body.error
+            : `Não foi possível criar a atividade (HTTP ${response.status}).`,
+        );
+      }
+
+      setActivityTitle("");
+      setActivityDue("");
+      setShowActivities(true);
+      await refreshLeadActivities();
+      toast({
+        title: "Atividade criada",
+        description: "A tarefa ficou vinculada a este contato e registrada na conversa.",
+      });
+    } catch (err) {
+      toast({
+        title: "Erro ao criar atividade",
+        description: err instanceof Error ? err.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setActivitySaving(false);
+    }
+  }
+
+  async function handleCompleteChatActivity(activityId: string) {
+    setActivityUpdatingId(activityId);
+    try {
+      const token = localStorage.getItem("vendorai_token");
+      const response = await fetch(`/api/activities/${activityId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ status: "concluida" }),
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(
+          typeof body?.error === "string"
+            ? body.error
+            : `Não foi possível concluir a atividade (HTTP ${response.status}).`,
+        );
+      }
+
+      await refreshLeadActivities();
+      toast({ title: "Atividade concluída" });
+    } catch (err) {
+      toast({
+        title: "Erro ao concluir atividade",
+        description: err instanceof Error ? err.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setActivityUpdatingId(null);
+    }
+  }
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -792,7 +962,13 @@ function ChatPanel({
 
   type TimelineItem =
     | { kind: "msg"; msg: Message; date: string }
-    | { kind: "handoff"; event: HandoffEvent };
+    | { kind: "handoff"; event: HandoffEvent }
+    | {
+        kind: "activity";
+        activity: ChatActivity;
+        completed: boolean;
+        timestamp: string;
+      };
 
   const timelineItems: TimelineItem[] = [];
 
@@ -808,16 +984,38 @@ function ChatPanel({
     timelineItems.push({ kind: "handoff", event });
   }
 
+  for (const activity of chatActivities) {
+    if (activity.resultadoExecucao !== `origem_chat:${conv.id}`) continue;
+    timelineItems.push({
+      kind: "activity",
+      activity,
+      completed: false,
+      timestamp: activity.createdAt,
+    });
+    if (activity.concluidaEm) {
+      timelineItems.push({
+        kind: "activity",
+        activity,
+        completed: true,
+        timestamp: activity.concluidaEm,
+      });
+    }
+  }
+
   timelineItems.sort((a, b) => {
     const ta =
       a.kind === "msg"
         ? new Date(a.msg.createdAt).getTime()
-        : new Date(a.event.timestamp).getTime();
+        : a.kind === "handoff"
+          ? new Date(a.event.timestamp).getTime()
+          : new Date(a.timestamp).getTime();
 
     const tb =
       b.kind === "msg"
         ? new Date(b.msg.createdAt).getTime()
-        : new Date(b.event.timestamp).getTime();
+        : b.kind === "handoff"
+          ? new Date(b.event.timestamp).getTime()
+          : new Date(b.timestamp).getTime();
 
     return ta - tb;
   });
@@ -893,17 +1091,40 @@ function ChatPanel({
 
           <div className="flex shrink-0 items-center gap-2">
             {lead?.id && (
-              <Button
-                variant={showDetails ? "secondary" : "outline"}
-                size="sm"
-                className="h-8 gap-1.5 text-xs"
-                onClick={() => setShowDetails((value) => !value)}
-              >
-                <Info className="h-3.5 w-3.5" />
-                <span className="hidden lg:inline">
-                  {showDetails ? "Ocultar" : "Detalhes"}
-                </span>
-              </Button>
+              <>
+                <Button
+                  variant={showActivities ? "secondary" : "outline"}
+                  size="sm"
+                  className="h-8 gap-1.5 text-xs"
+                  onClick={() => setShowActivities((value) => !value)}
+                >
+                  <ClipboardList className="h-3.5 w-3.5" />
+                  <span className="hidden lg:inline">Atividades</span>
+                  {chatActivities.filter((activity) =>
+                    ["pendente", "planejado"].includes(activity.status),
+                  ).length > 0 && (
+                    <Badge className="ml-0.5 h-5 min-w-5 justify-center rounded-full px-1.5 text-[10px]">
+                      {
+                        chatActivities.filter((activity) =>
+                          ["pendente", "planejado"].includes(activity.status),
+                        ).length
+                      }
+                    </Badge>
+                  )}
+                </Button>
+
+                <Button
+                  variant={showDetails ? "secondary" : "outline"}
+                  size="sm"
+                  className="h-8 gap-1.5 text-xs"
+                  onClick={() => setShowDetails((value) => !value)}
+                >
+                  <Info className="h-3.5 w-3.5" />
+                  <span className="hidden lg:inline">
+                    {showDetails ? "Ocultar" : "Detalhes"}
+                  </span>
+                </Button>
+              </>
             )}
 
             {isHumanLocked ? (
@@ -1035,7 +1256,120 @@ function ChatPanel({
         </div>
       )}
 
-      {isHumanLocked && (
+      {showActivities && lead && (
+        <div className="shrink-0 border-b border-border bg-background px-4 py-3 md:px-5">
+          <div className="mx-auto max-w-4xl">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold">Atividades do atendimento</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Crie e conclua próximos passos sem sair da conversa.
+                </p>
+              </div>
+              <span className="text-[11px] text-muted-foreground">
+                {
+                  chatActivities.filter((activity) =>
+                    ["pendente", "planejado"].includes(activity.status),
+                  ).length
+                } pendente(s)
+              </span>
+            </div>
+
+            <div className="mt-3 grid gap-2 md:grid-cols-[1fr_210px_auto]">
+              <Input
+                value={activityTitle}
+                onChange={(event) => setActivityTitle(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    void handleCreateChatActivity();
+                  }
+                }}
+                placeholder="Ex.: Retornar com orçamento, confirmar medida..."
+                className="h-9 text-xs"
+              />
+              <Input
+                type="datetime-local"
+                value={activityDue}
+                onChange={(event) => setActivityDue(event.target.value)}
+                className="h-9 text-xs"
+                aria-label="Prazo da atividade"
+              />
+              <Button
+                size="sm"
+                className="h-9 gap-1.5 text-xs"
+                onClick={() => void handleCreateChatActivity()}
+                disabled={activitySaving || !activityTitle.trim()}
+              >
+                {activitySaving ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Plus className="h-3.5 w-3.5" />
+                )}
+                Criar
+              </Button>
+            </div>
+
+            <div className="mt-3 space-y-2">
+              {chatActivities.filter((activity) =>
+                ["pendente", "planejado"].includes(activity.status),
+              ).length === 0 ? (
+                <div className="rounded-xl border border-dashed px-3 py-3 text-center text-[11px] text-muted-foreground">
+                  Nenhuma atividade pendente para este contato.
+                </div>
+              ) : (
+                chatActivities
+                  .filter((activity) =>
+                    ["pendente", "planejado"].includes(activity.status),
+                  )
+                  .slice(0, 6)
+                  .map((activity) => (
+                    <div
+                      key={activity.id}
+                      className="flex items-center gap-3 rounded-xl border bg-muted/20 px-3 py-2"
+                    >
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-background text-primary">
+                        <CalendarClock className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-medium">{activity.titulo}</p>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+                          <span className="capitalize">{activity.tipo.replace(/_/g, " ")}</span>
+                          {activity.dataVencimento && (
+                            <span>
+                              Prazo {format(new Date(activity.dataVencimento), "dd/MM HH:mm")}
+                            </span>
+                          )}
+                          {activity.resultadoExecucao === `origem_chat:${conv.id}` && (
+                            <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-primary">
+                              desta conversa
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 shrink-0 gap-1.5 text-xs"
+                        onClick={() => void handleCompleteChatActivity(activity.id)}
+                        disabled={activityUpdatingId === activity.id}
+                      >
+                        {activityUpdatingId === activity.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                        )}
+                        Concluir
+                      </Button>
+                    </div>
+                  ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+{isHumanLocked && (
         <div className="flex shrink-0 items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-700 md:px-5">
           <ShieldCheck className="h-4 w-4 shrink-0" />
           <span>
@@ -1081,6 +1415,16 @@ function ChatPanel({
                       fromAgent={item.event.fromAgent}
                       toAgent={item.event.toAgent}
                       timestamp={item.event.timestamp}
+                    />
+                  );
+                }
+
+                if (item.kind === "activity") {
+                  return (
+                    <ActivityTimelineSeparator
+                      key={`activity-${item.activity.id}-${item.completed ? "done" : "created"}`}
+                      activity={item.activity}
+                      completed={item.completed}
                     />
                   );
                 }
