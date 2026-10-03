@@ -398,6 +398,7 @@ export default function LeadDetail() {
 
   const [editingNextBestAction, setEditingNextBestAction] = useState(false);
   const [nextBestActionDraft, setNextBestActionDraft] = useState<string>("");
+  const [executingApprovedApproach, setExecutingApprovedApproach] = useState(false);
 
   const [editingChurnReasons, setEditingChurnReasons] = useState(false);
   const [churnReasonsDraft, setChurnReasonsDraft] = useState<string[]>([]);
@@ -1123,6 +1124,57 @@ export default function LeadDetail() {
       data: { nextBestAction: nextBestActionDraft },
     });
     setEditingNextBestAction(false);
+  }
+
+  async function approveAndExecuteSuggestedApproach() {
+    if (!tenantId || !id || executingApprovedApproach) return;
+    setExecutingApprovedApproach(true);
+    try {
+      const prepareRes = await fetch(`/api/sdr-templates/send-approach?tenantId=${encodeURIComponent(tenantId)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leadId: id }),
+      });
+      const prepared = await prepareRes.json().catch(() => ({}));
+      if (!prepareRes.ok) throw new Error(prepared?.error ?? "Não foi possível preparar a abordagem");
+
+      if (prepared.sent) {
+        toast({ title: "Abordagem executada", description: "A mensagem aprovada foi enviada e registrada no histórico." });
+      } else if (prepared.taskId) {
+        const approveRes = await fetch(`/api/tenants/${tenantId}/agent-tasks/${prepared.taskId}/approve`, { method: "POST" });
+        const approved = await approveRes.json().catch(() => ({}));
+        if (!approveRes.ok) throw new Error(approved?.error ?? "Não foi possível aprovar a abordagem");
+
+        let finished = approved;
+        if (approved.status === "aprovado") {
+          const executeRes = await fetch(`/api/tenants/${tenantId}/agent-tasks/${prepared.taskId}/execute`, { method: "POST" });
+          finished = await executeRes.json().catch(() => ({}));
+          if (!executeRes.ok) throw new Error(finished?.error ?? "A abordagem foi aprovada, mas não pôde ser executada");
+        }
+
+        if (finished.status === "concluido") {
+          toast({ title: "Aprovado e executado", description: "O agente enviou a abordagem aprovada pelo WhatsApp." });
+        } else {
+          toast({ title: "Abordagem aprovada", description: "A ação ficou registrada para execução conforme o nível de autonomia configurado." });
+        }
+      } else {
+        throw new Error("Não há uma abordagem executável para este lead neste momento.");
+      }
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey(tenantId, { leadId: id }) }),
+        queryClient.invalidateQueries({ queryKey: getListTenantConversationsQueryKey(tenantId) }),
+        queryClient.invalidateQueries({ queryKey: getGetOrCreateLeadIntelligenceQueryKey(tenantId, id) }),
+      ]);
+    } catch (error) {
+      toast({
+        title: "Não foi possível executar a abordagem",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
+    } finally {
+      setExecutingApprovedApproach(false);
+    }
   }
 
   function saveChurnReasons() {
@@ -2765,7 +2817,7 @@ export default function LeadDetail() {
                               {plan.expectedResult && <div><span className="font-medium">Resultado esperado:</span> {plan.expectedResult}</div>}
                               {plan.nextStepIfPositive && <div><span className="font-medium">Se houver interesse:</span> {plan.nextStepIfPositive}</div>}
                               {plan.approvalRequired !== false && (
-                                <Badge variant="secondary" className="text-[10px]">Aguardando aprovação para executar</Badge>
+                                <Badge variant="secondary" className="text-[10px]">Requer aprovação antes de executar</Badge>
                               )}
                             </div>
                           );
@@ -2774,11 +2826,12 @@ export default function LeadDetail() {
                           <Button
                             size="sm"
                             className="h-7 text-xs px-2 gap-1"
-                            onClick={() => openNewActivityDialog(intelligence.nextBestAction ?? "")}
-                            data-testid="btn-criar-atividade-nba"
+                            onClick={() => void approveAndExecuteSuggestedApproach()}
+                            disabled={executingApprovedApproach}
+                            data-testid="btn-aprovar-executar-nba"
                           >
-                            <Check className="h-3 w-3" />
-                            Preparar para aprovação
+                            {executingApprovedApproach ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                            Aprovar e executar
                           </Button>
                           <Button
                             size="sm"
