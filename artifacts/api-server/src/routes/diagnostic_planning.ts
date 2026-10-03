@@ -13,6 +13,7 @@ import {
 
 const secret = process.env["JWT_SECRET"] ?? process.env["SESSION_SECRET"];
 if (!secret) throw new Error("JWT_SECRET (or SESSION_SECRET) is required");
+const diagnosticSecret = `${secret}:business-diagnostic-v1`;
 
 export const diagnosticPlanningPublicRouter: IRouter = Router();
 export const diagnosticPlanningProtectedRouter: IRouter = Router();
@@ -29,12 +30,12 @@ function canAccess(req: any, tenantId: string) {
 }
 
 function signPublicLink(tenantId: string) {
-  return jwt.sign({ scope: "business_diagnostic", tenantId } satisfies Omit<LinkPayload, "iat" | "exp">, secret!, { expiresIn: "7d" });
+  return jwt.sign({ scope: "business_diagnostic", tenantId } satisfies Omit<LinkPayload, "iat" | "exp">, diagnosticSecret, { expiresIn: "7d" });
 }
 
 function verifyPublicLink(token: string): LinkPayload | null {
   try {
-    const payload = jwt.verify(token, secret!) as LinkPayload;
+    const payload = jwt.verify(token, diagnosticSecret) as LinkPayload;
     return payload?.scope === "business_diagnostic" && typeof payload.tenantId === "string" ? payload : null;
   } catch {
     return null;
@@ -42,7 +43,7 @@ function verifyPublicLink(token: string): LinkPayload | null {
 }
 
 const publicProfileSchema = z.object({
-  razaoSocial: z.string().trim().min(1).max(240).optional(),
+  razaoSocial: z.string().trim().max(240).optional(),
   nomeFantasia: z.string().trim().max(240).optional(),
   cnpj: z.string().trim().max(40).optional(),
   telefone: z.string().trim().max(60).optional(),
@@ -155,7 +156,7 @@ diagnosticPlanningPublicRouter.put("/public/diagnostico-negocio/:token", async (
 
   if (current) {
     await db.update(businessProfilesTable).set({
-      razaoSocial: d.razaoSocial ?? current.razaoSocial,
+      razaoSocial: d.razaoSocial || current.razaoSocial,
       nomeFantasia: d.nomeFantasia ?? current.nomeFantasia,
       cnpj: d.cnpj ?? current.cnpj,
       telefone: d.telefone ?? current.telefone,
