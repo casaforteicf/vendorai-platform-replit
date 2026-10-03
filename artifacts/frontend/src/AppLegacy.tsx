@@ -98,8 +98,6 @@ const Marketplace        = lazy(() => import("@/pages/Marketplace"));
 const Estoque            = lazy(() => import("@/pages/Estoque"));
 const GestaoErp          = lazy(() => import("@/pages/GestaoErp"));
 const ErpCapture         = lazy(() => import("@/pages/erp"));
-const Onboarding         = lazy(() => import("@/pages/Onboarding"));
-const OnboardingIntegracoes = lazy(() => import("@/pages/OnboardingIntegracoes"));
 const Content            = lazy(() => import("@/pages/ContentHub"));
 const MarketingInstagram = lazy(() => import("@/pages/MarketingInstagram"));
 const MediaCenter        = lazy(() => import("@/pages/MediaCenter"));
@@ -323,9 +321,8 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
   const [location, setLocation] = useLocation();
 
   const isTenantAdmin = user?.platformRole === "tenant_admin";
-  const isOnboardingRoute = location === "/onboarding" || location.startsWith("/onboarding/");
   const isInstallationAction = location.split("?")[0] === "/configuracoes" && new URLSearchParams(window.location.search).get("installation") === "1";
-  const isSetupRoute = isOnboardingRoute || isInstallationAction;
+  const isSetupRoute = isInstallationAction;
 
   const { data: tenant, isLoading: tenantLoading } = useGetTenant(
     user?.tenantId ?? "",
