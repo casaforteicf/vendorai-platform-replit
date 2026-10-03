@@ -25,6 +25,18 @@ export const customerIntelligenceTable = pgTable("customer_intelligence", {
   churnReasons: jsonb("churn_reasons").$type<unknown[]>(),
   nextBestAction: text("next_best_action"),
   nextBestActionReason: text("next_best_action_reason"),
+  outreachPlan: jsonb("outreach_plan").$type<{
+    objective?: string;
+    currentContactRole?: string;
+    decisionMakerStatus?: "identified" | "likely" | "unknown";
+    decisionMakerHint?: string;
+    freeValueOffer?: string;
+    messageSuggestion?: string;
+    expectedResult?: string;
+    nextStepIfPositive?: string;
+    approvalRequired?: boolean;
+    strategyVersion?: string;
+  }>(),
   scoreExplicacao: text("score_explicacao"),
   churnRiskExplicacao: text("churn_risk_explicacao"),
 
