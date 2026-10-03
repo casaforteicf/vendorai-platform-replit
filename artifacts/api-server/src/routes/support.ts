@@ -1,6 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
-import { db, bugReportsTable, relatosTecnicosTable } from "@workspace/db";
+import { db, bugReportsTable, relatosTecnicosTable, tenantsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
@@ -50,10 +50,18 @@ Colete sistematicamente:
 3. O que era esperado
 4. Mensagem de erro, se houver
 
-Após coletar as informações, classifique automaticamente categoria e prioridade.
+Após coletar as informações, classifique automaticamente categoria, prioridade e abrangência da mudança.
+
+## Classificação de abrangência
+- tenant: preferência, regra, nomenclatura, automação ou processo exclusivo daquela empresa.
+- vertical: necessidade reutilizável por empresas da mesma vertical/segmento.
+- global_opcional: recurso útil de forma ampla, mas que deve poder ser ativado/configurado por tenant.
+- global: comportamento estrutural essencial da plataforma e seguro como padrão geral.
+- bug: defeito que deve ser investigado no nível real em que ocorre; não trate automaticamente como personalização.
+Quando houver dúvida, escolha o menor escopo reutilizável e explique o motivo. Nunca promova uma solicitação de tenant diretamente para global só porque foi solicitada uma vez.
 
 Ao registrar, inclua EXATAMENTE ao final da sua resposta:
-<!--VENDORAI_REPORT:{"titulo":"...","descricao":"...","categoria":"bug|duvida|sugestao","prioridade":"baixa|media|alta|critica","rotaAfetada":"...ou null"}-->
+<!--VENDORAI_REPORT:{"titulo":"...","descricao":"...","categoria":"bug|duvida|sugestao","prioridade":"baixa|media|alta|critica","rotaAfetada":"...ou null","escopoSugerido":"tenant|vertical|global_opcional|global|bug","motivoEscopo":"..."}-->
 
 ## Regras
 - Responda sempre em português brasileiro
@@ -315,9 +323,18 @@ router.post("/support/chat", async (req, res) => {
   const tenantId = req.user?.tenantId ?? null;
   let operationalContext = "";
   let requestContext = "";
+  let tenantSnapshot: Record<string, unknown> | null = null;
   if (tenantId) {
     try {
-      [operationalContext, requestContext] = await Promise.all([
+      const [tenantRows, loadedOperationalContext, loadedRequestContext] = await Promise.all([
+        db.select({
+          id: tenantsTable.id,
+          name: tenantsTable.name,
+          slug: tenantsTable.slug,
+          vertical: tenantsTable.vertical,
+          verticalSecundaria: tenantsTable.verticalSecundaria,
+          planId: tenantsTable.planId,
+        }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1),
         loadJarvisOperationalContext(tenantId),
         loadJarvisRequestContext({
           tenantId,
@@ -325,6 +342,22 @@ router.post("/support/chat", async (req, res) => {
           route: parsed.data.context?.route ?? null,
         }),
       ]);
+      operationalContext = loadedOperationalContext;
+      requestContext = loadedRequestContext;
+      const tenant = tenantRows[0] ?? null;
+      tenantSnapshot = {
+        tenantId,
+        tenantName: tenant?.name ?? null,
+        tenantSlug: tenant?.slug ?? null,
+        vertical: tenant?.vertical ?? null,
+        verticalSecundaria: tenant?.verticalSecundaria ?? null,
+        planId: tenant?.planId ?? null,
+        userId: req.user?.sub ?? null,
+        platformRole: req.user?.platformRole ?? null,
+        route: parsed.data.context?.route ?? null,
+        title: parsed.data.context?.title ?? null,
+        capturedAt: new Date().toISOString(),
+      };
     } catch (err) {
       req.log?.warn({ err, tenantId }, "jarvis: falha ao carregar contexto interno (não bloqueia chat)");
     }
@@ -423,12 +456,16 @@ router.post("/support/chat", async (req, res) => {
           categoria: "bug" | "duvida" | "sugestao";
           prioridade: "baixa" | "media" | "alta" | "critica";
           rotaAfetada?: string | null;
+          escopoSugerido?: "tenant" | "vertical" | "global_opcional" | "global" | "bug";
+          motivoEscopo?: string | null;
         } = {
           titulo: tituloPadrao,
           descricao: primeiraMensagem,
           categoria: "duvida",
           prioridade: "baixa",
           rotaAfetada: parsed.data.context?.route ?? null,
+          escopoSugerido: "tenant",
+          motivoEscopo: "Escopo conservador até a solicitação ser classificada.",
         };
 
         if (match?.[1]) {
@@ -456,6 +493,9 @@ router.post("/support/chat", async (req, res) => {
           categoria: reportData.categoria || "duvida",
           prioridade: reportData.prioridade || "baixa",
           rotaAfetada: reportData.rotaAfetada ?? parsed.data.context?.route ?? null,
+          changeScope: reportData.escopoSugerido ?? (reportData.categoria === "bug" ? "bug" : "tenant"),
+          scopeReason: reportData.motivoEscopo ?? null,
+          tenantContextSnapshot: tenantSnapshot,
           erroTecnico: null,
           stackTrace: null,
           status: atendimentoStatus,
