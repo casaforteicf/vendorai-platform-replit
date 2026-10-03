@@ -16,6 +16,7 @@ import { buildGenerationDesignQa } from "../services/contentCreativeRuntime";
 import { enrichSiteGeneratorServicesContext, inspectGeneratedSite, resolveSiteCreativeRuntime } from "../services/siteCreativeRuntime";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import { ensureTenantProposalBuilderTemplate } from "../lib/proposal-builder.js";
+import { resolverContextoNegocio } from "../services/resolvedorContextoNegocio.js";
 
 const router: IRouter = Router();
 
@@ -211,6 +212,33 @@ ${JSON.stringify(businessContext)}`,
   } catch (error) {
     req.log?.error({ error, tenantId, requestedField }, "business-context: AI generation failed");
     res.status(500).json({ error: "Não foi possível gerar as sugestões com IA agora." });
+  }
+});
+
+router.post("/tenants/:tenantId/inteligencia-negocio/resolver", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccessTenant(req, tenantId)) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const query = typeof req.body?.query === "string" ? req.body.query.trim().slice(0, 8000) : "";
+  const productIds = Array.isArray(req.body?.productIds)
+    ? req.body.productIds.map((value: unknown) => String(value)).filter(Boolean).slice(0, 30)
+    : [];
+
+  try {
+    const resolved = await resolverContextoNegocio({
+      tenantId,
+      query,
+      productIds,
+      limit: typeof req.body?.limit === "number" ? req.body.limit : undefined,
+    });
+    res.setHeader("Cache-Control", "no-store");
+    res.status(200).json(resolved);
+  } catch (error) {
+    req.log?.error({ error, tenantId }, "inteligencia-negocio: falha ao resolver");
+    res.status(500).json({ error: "Não foi possível resolver a inteligência do negócio agora." });
   }
 });
 
