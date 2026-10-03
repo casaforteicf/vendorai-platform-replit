@@ -19,8 +19,11 @@ import {
   instagramConnectionsTable,
   whatsappConnectionsTable,
   adCampaignsTable,
+  usersTable,
+  bugReportsTable,
 } from "@workspace/db";
 import { dispatchSkuDelivery } from "../lib/product-delivery.js";
+import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import { z } from "zod";
 import { verifyToken } from "../lib/jwt.js";
 import {
@@ -47,6 +50,113 @@ import { startVoiceSession, registerVoiceTurn, endVoiceSession } from "../servic
 import { createVendorAiVoiceStream, resolveDefaultVendorAiVoice } from "../services/vendorai-voice-engine.js";
 
 const objectStorage = new ObjectStorageService();
+
+async function resolveVendorAiSupportSender(receivingTenantId: string, phone?: string | null, email?: string | null) {
+  const [receivingTenant] = await db.select({ slug: tenantsTable.slug }).from(tenantsTable).where(eq(tenantsTable.id, receivingTenantId)).limit(1);
+  const supportSlug = process.env["VENDORAI_SUPPORT_TENANT_SLUG"]?.trim() || "vendorai";
+  if (receivingTenant?.slug !== supportSlug) return [];
+
+  const normalizedPhone = String(phone ?? "").replace(/\D/g, "");
+  const normalizedEmail = String(email ?? "").trim().toLowerCase();
+  const rows = await db.select({
+    userId: usersTable.id,
+    userName: usersTable.name,
+    userEmail: usersTable.email,
+    userPhone: usersTable.telefone,
+    tenantId: usersTable.tenantId,
+    tenantName: tenantsTable.name,
+    tenantSlug: tenantsTable.slug,
+    vertical: tenantsTable.vertical,
+    verticalSecundaria: tenantsTable.verticalSecundaria,
+    planId: tenantsTable.planId,
+    platformRole: usersTable.platformRole,
+  }).from(usersTable).innerJoin(tenantsTable, eq(usersTable.tenantId, tenantsTable.id)).where(eq(usersTable.active, true));
+
+  const matched = rows.filter((row) => {
+    if (row.tenantId === receivingTenantId) return false;
+    const rowPhone = String(row.userPhone ?? "").replace(/\D/g, "");
+    const byPhone = Boolean(normalizedPhone && rowPhone && (rowPhone === normalizedPhone || (Math.min(rowPhone.length, normalizedPhone.length) >= 10 && (rowPhone.endsWith(normalizedPhone) || normalizedPhone.endsWith(rowPhone)))));
+    const byEmail = Boolean(normalizedEmail && row.userEmail.trim().toLowerCase() === normalizedEmail);
+    return byPhone || byEmail;
+  });
+  const unique = new Map<string, typeof matched[number]>();
+  for (const row of matched) if (!unique.has(row.tenantId)) unique.set(row.tenantId, row);
+  return [...unique.values()];
+}
+
+async function classifyVendorAiPlatformSupport(tenantId: string, text: string) {
+  const fallback = { categoria: "sugestao" as const, prioridade: "media" as const, titulo: text.slice(0, 255), descricao: text, escopo: "tenant" as const, motivo: "Escopo conservador até análise técnica.", precisaAcompanhamento: true };
+  try {
+    const openai = await getOpenAIForTenant(tenantId);
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0,
+      max_tokens: 500,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: "Classifique suporte do VendorAI em JSON: categoria duvida|bug|sugestao; prioridade baixa|media|alta|critica; titulo; descricao; escopo tenant|vertical|global_opcional|global|bug; motivo; precisaAcompanhamento boolean. Dúvida simples não vira demanda. Bug e melhoria viram. Em dúvida use o menor escopo reutilizável." },
+        { role: "user", content: text }
+      ]
+    });
+    const raw = JSON.parse(response.choices[0]?.message?.content ?? "{}") as Record<string, unknown>;
+    const categoria = ["duvida","bug","sugestao"].includes(String(raw["categoria"])) ? String(raw["categoria"]) : fallback.categoria;
+    const prioridade = ["baixa","media","alta","critica"].includes(String(raw["prioridade"])) ? String(raw["prioridade"]) : fallback.prioridade;
+    const escopo = ["tenant","vertical","global_opcional","global","bug"].includes(String(raw["escopo"])) ? String(raw["escopo"]) : fallback.escopo;
+    return {
+      categoria: categoria as "duvida"|"bug"|"sugestao",
+      prioridade: prioridade as "baixa"|"media"|"alta"|"critica",
+      titulo: String(raw["titulo"] ?? fallback.titulo).slice(0,255),
+      descricao: String(raw["descricao"] ?? text).slice(0,12000),
+      escopo: escopo as "tenant"|"vertical"|"global_opcional"|"global"|"bug",
+      motivo: String(raw["motivo"] ?? fallback.motivo).slice(0,4000),
+      precisaAcompanhamento: raw["precisaAcompanhamento"] !== false && categoria !== "duvida",
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+async function tryVendorAiPlatformSupportInbound(input: {
+  receivingTenantId: string;
+  channel: "whatsapp" | "instagram";
+  text: string;
+  senderPhone?: string | null;
+  senderEmail?: string | null;
+  senderName?: string | null;
+  sourceMessageId?: string | null;
+  provider: string;
+}) {
+  const matches = await resolveVendorAiSupportSender(input.receivingTenantId, input.senderPhone, input.senderEmail);
+  if (!matches.length) return { handled: false as const };
+  if (matches.length > 1) return { handled: true as const, status: "tenant_ambiguous" as const, tenantOptions: matches.map((x) => ({ tenantId: x.tenantId, tenantName: x.tenantName })) };
+
+  const requester = matches[0];
+  const classification = await classifyVendorAiPlatformSupport(requester.tenantId, input.text);
+  if (!classification.precisaAcompanhamento) return { handled: true as const, status: "duvida" as const, tenantId: requester.tenantId, tenantName: requester.tenantName };
+
+  const [saved] = await db.insert(bugReportsTable).values({
+    tenantId: requester.tenantId,
+    titulo: classification.titulo,
+    descricao: classification.descricao,
+    categoria: classification.categoria,
+    prioridade: classification.prioridade,
+    status: "aberto",
+    changeScope: classification.escopo,
+    scopeReason: classification.motivo,
+    tenantContextSnapshot: {
+      tenantId: requester.tenantId, tenantName: requester.tenantName, tenantSlug: requester.tenantSlug,
+      vertical: requester.vertical ?? null, verticalSecundaria: requester.verticalSecundaria ?? null,
+      planId: requester.planId ?? null, userId: requester.userId, userName: requester.userName,
+      platformRole: requester.platformRole, sourceChannel: input.channel, provider: input.provider,
+      receivingTenantId: input.receivingTenantId, capturedAt: new Date().toISOString()
+    },
+    sourceChannel: input.channel,
+    sourceSender: input.senderEmail ?? input.senderPhone ?? input.senderName ?? null,
+    sourceMessageId: input.sourceMessageId ?? null,
+  } as any).returning();
+
+  return { handled: true as const, status: "technical_demand_created" as const, tenantId: requester.tenantId, tenantName: requester.tenantName, bugReportId: saved?.id ?? null };
+}
 
 function routeTenantId(req: any): string {
   // tenant-audit: reviewed route tenant; webhook handlers validate the tenant-scoped secret or dualAuth before processing tenant data.
