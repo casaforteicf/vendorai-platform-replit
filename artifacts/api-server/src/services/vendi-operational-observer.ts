@@ -141,7 +141,7 @@ export async function runVendiOperationalObserver(log: Logger) {
 
       const result = await createAndRunMission({
         tenantId: tenant.tenantId,
-        sourceRefId: `operational-observer:${bucket}`,
+        sourceRefId: "operational-observer",
         objective: [
           "Faça a triagem operacional autônoma deste tenant.",
           "Analise as exceções informadas e use somente as ferramentas oficiais do Vendi.",
