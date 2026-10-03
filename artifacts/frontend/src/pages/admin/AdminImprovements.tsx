@@ -592,7 +592,7 @@ export default function AdminImprovements() {
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
         <div className="rounded-2xl border bg-card p-4">
           <p className="text-xs font-medium text-muted-foreground">Em execução agora</p>
           <p className="mt-1 text-2xl font-semibold">{doingCount}</p>
@@ -649,7 +649,103 @@ export default function AdminImprovements() {
             </div>
           )}
 
-          <div className="overflow-hidden rounded-2xl border bg-card">
+          <div className="grid gap-3 md:hidden">
+            {items.map((item) => {
+              const simple = improvementSimpleStatus(item);
+              const progress = operationalProgress(item);
+              return (
+                <article key={item.id} className="rounded-2xl border bg-card p-4 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <Checkbox
+                      className="mt-1"
+                      checked={selected.has(item.id)}
+                      onCheckedChange={() => toggle(item.id)}
+                      aria-label={"Selecionar " + item.title}
+                    />
+                    <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setDetail(item)}>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant={statusVariant(simple)}>{simple}</Badge>
+                        {item.prNumber && <span className="text-xs font-medium text-muted-foreground">PR #{item.prNumber}</span>}
+                      </div>
+                      <h2 className="mt-2 line-clamp-2 text-base font-semibold leading-snug">{item.title}</h2>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {item.module} • {PRIORITY_LABELS[item.priority] ?? item.priority}
+                      </p>
+                    </button>
+                  </div>
+
+                  <div className="mt-4">
+                    <div className="flex items-center justify-between gap-3 text-xs">
+                      <span className="font-medium">Progresso</span>
+                      <span className="font-semibold">{progress}%</span>
+                    </div>
+                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+                      <div className="h-full rounded-full bg-primary transition-all" style={{ width: progress + "%" }} />
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 rounded-xl bg-muted/25 p-3 text-xs">
+                    <div>
+                      <p className="text-muted-foreground">Agora</p>
+                      <p className="mt-1 font-medium">
+                        {item.testStatus === "failed"
+                          ? "Teste falhou"
+                          : item.testStatus === "running"
+                            ? "Testes em andamento"
+                            : item.testStatus === "passed"
+                              ? "Testes aprovados"
+                              : nextOperationalAction(item)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Próximo passo</p>
+                      <p className="mt-1 font-medium">{nextOperationalAction(item)}</p>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-muted-foreground">Última atividade</p>
+                        <p className="mt-1 font-medium">{formatDate(item.updatedAt)}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-muted-foreground">Responsável</p>
+                        <p className="mt-1 font-medium">{item.ownerAgent || "Vendi"}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <Button variant="outline" className="h-11" onClick={() => setDetail(item)}>
+                      Ver detalhes
+                    </Button>
+                    {item.prUrl ? (
+                      <Button variant="outline" className="h-11" asChild>
+                        <a href={item.prUrl} target="_blank" rel="noreferrer">
+                          Abrir PR
+                          <ExternalLink className="ml-2 h-4 w-4" />
+                        </a>
+                      </Button>
+                    ) : simple !== "Publicado" ? (
+                      <Button
+                        variant="outline"
+                        className="h-11"
+                        disabled={!!busy}
+                        onClick={() => post("/api/admin/improvements/" + item.id + "/start-agent", undefined, simple === "Bloqueado" ? "Vendi iniciou a correção" : "Vendi assumiu esta melhoria")}
+                      >
+                        <WandSparkles className="mr-2 h-4 w-4" />
+                        {simple === "Bloqueado" ? "Corrigir" : "Executar"}
+                      </Button>
+                    ) : (
+                      <Button variant="outline" className="h-11" disabled>
+                        Concluído
+                      </Button>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+
+          <div className="hidden overflow-hidden rounded-2xl border bg-card md:block">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1120px] text-sm">
                 <thead className="border-b bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground">
