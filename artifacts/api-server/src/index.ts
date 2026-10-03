@@ -23,6 +23,7 @@ import { startArchConceptRenderRunner } from "./services/arch-concept-render-run
 import { startMediaVideoGenerateRunner } from "./services/media-video-generate.js";
 import { startDevAgentSupportHandoff } from "./services/dev-agent-support-handoff.js";
 import { startVieIntelligenceCycle } from "./services/vie-intelligence-cycle.js";
+import { startContinuousAuditAgent } from "./services/continuous-audit-agent.js";
 import { startProductionSentinel } from "./routes/dev_agent_operational_context.js";
 import { applyPendingMigrations, pool } from "@workspace/db";
 
@@ -181,6 +182,7 @@ async function start() {
     startArchConceptRenderRunner(logger);
     startDevAgentSupportHandoff(logger);
     startVieIntelligenceCycle(logger);
+    startContinuousAuditAgent(logger);
 
     const syncMarketingLifecycle = async () => {
       try {

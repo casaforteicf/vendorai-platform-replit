@@ -1479,7 +1479,7 @@ export default function Conversations() {
     },
     {
       key: "unread",
-      label: "Não lidas",
+      label: "Conversas não lidas",
       count: unreadConversationCount,
       icon: <Eye className="h-3.5 w-3.5" />,
     },
@@ -1614,7 +1614,7 @@ export default function Conversations() {
                 className="rounded-xl border bg-background px-3 py-2 text-left transition-colors hover:bg-muted"
               >
                 <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                  Não lidas
+                  Mensagens não lidas
                 </p>
                 <p className="text-sm font-semibold">{totalUnread}</p>
               </button>
