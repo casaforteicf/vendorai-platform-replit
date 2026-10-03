@@ -231,7 +231,18 @@ router.patch("/activities/:id", async (req, res) => {
   }
 
   const [existing] = await db
-    .select({ id: activitiesTable.id, tenantId: activitiesTable.tenantId, agendaId: activitiesTable.agendaId, googleEventId: activitiesTable.googleEventId, responsavelId: activitiesTable.responsavelId })
+    .select({
+      id: activitiesTable.id,
+      tenantId: activitiesTable.tenantId,
+      leadId: activitiesTable.leadId,
+      dealId: activitiesTable.dealId,
+      titulo: activitiesTable.titulo,
+      agendaId: activitiesTable.agendaId,
+      googleEventId: activitiesTable.googleEventId,
+      responsavelId: activitiesTable.responsavelId,
+      bloqueiaAvanco: activitiesTable.bloqueiaAvanco,
+      agenteResponsavelKey: activitiesTable.agenteResponsavelKey,
+    })
     .from(activitiesTable)
     .where(eq(activitiesTable.id, String(req.params.id)));
 
@@ -256,11 +267,27 @@ router.patch("/activities/:id", async (req, res) => {
     }
   }
 
+  if (parsed.data.status === "concluida" && existing.bloqueiaAvanco && !parsed.data.resultadoExecucao?.trim()) {
+    res.status(422).json({
+      error: "ACTIVITY_RESULT_REQUIRED",
+      message: "Registre o resultado da atividade obrigatória antes de concluí-la.",
+    });
+    return;
+  }
+
   const data = { ...parsed.data, updatedAt: new Date() };
 
+  // Mantém o status legado sincronizado com o estado operacional detalhado.
+  if (parsed.data.estadoExecucao === "concluida") data.status = "concluida";
+  if (parsed.data.estadoExecucao === "cancelada") data.status = "cancelada";
+  if (parsed.data.estadoExecucao === "em_execucao" || parsed.data.estadoExecucao === "aguardando") data.status = "pendente";
+
   // Auto-set concluidaEm when status transitions to "concluida"
-  if (parsed.data.status === "concluida" && !parsed.data.concluidaEm) {
+  if (data.status === "concluida" && !parsed.data.concluidaEm) {
     data.concluidaEm = new Date();
+    data.estadoExecucao = "concluida";
+  } else if (data.status === "cancelada") {
+    data.estadoExecucao = "cancelada";
   }
 
   const [activity] = await db
@@ -269,7 +296,27 @@ router.patch("/activities/:id", async (req, res) => {
     .where(eq(activitiesTable.id, existing.id))
     .returning();
 
-  res.json(activity);
+  let nextActivity = null;
+  if (data.status === "concluida" && parsed.data.proximaAcaoTexto?.trim()) {
+    const [createdNext] = await db.insert(activitiesTable).values({
+      tenantId: existing.tenantId,
+      leadId: existing.leadId,
+      dealId: existing.dealId,
+      tipo: "tarefa",
+      titulo: parsed.data.proximaAcaoTexto.trim(),
+      descricao: `Próxima ação criada a partir da conclusão de “${existing.titulo}”.`,
+      status: "planejado",
+      estadoExecucao: "planejada",
+      prioridade: "normal",
+      origem: "activity-next-action",
+      atividadePaiId: existing.id,
+      responsavelId: existing.responsavelId,
+      agenteResponsavelKey: existing.agenteResponsavelKey,
+    }).returning();
+    nextActivity = createdNext ?? null;
+  }
+
+  res.json({ ...activity, nextActivity });
 
   void recordIntelligenceEvent({
     tenantId: activity.tenantId,
