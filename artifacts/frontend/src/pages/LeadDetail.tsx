@@ -1559,7 +1559,7 @@ export default function LeadDetail() {
       resultadoEsperado: newActivityResultadoEsperado.trim() || undefined,
       categoriaExecucao: newActivityResponsavelId === "__ia__" ? "automatica" : "sugerida",
       origem: "manual",
-      agenteResponsavelKey: newActivityResponsavelId === "__ia__" ? "sdr" : undefined,
+      dealId: activeLeadDeal?.id || undefined,
       responsavelId,
       anexoNome,
       anexoUrl,
