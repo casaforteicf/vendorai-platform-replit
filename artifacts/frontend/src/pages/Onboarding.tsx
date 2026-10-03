@@ -248,7 +248,7 @@ export default function Onboarding() {
       });
       await saveCanonicalBusinessBrand(companyName, s1Logo || undefined);
       await apiPatch("/api/onboarding/step/4", {});
-      window.location.assign("/dashboard");
+      window.location.assign("/diagnostico-planejamento?source=onboarding");
     } catch (err) {
       toast({ title: String(err instanceof Error ? err.message : t("onboarding.error.save")), variant: "destructive" });
     } finally {
@@ -332,7 +332,7 @@ export default function Onboarding() {
         await apiPatch("/api/onboarding/step/4", {});
       }
       // Full navigation intentionally clears stale tenant cache used by ProtectedRoute.
-      window.location.assign("/dashboard");
+      window.location.assign("/diagnostico-planejamento?source=onboarding");
     } catch (err) {
       toast({
         title: String(err instanceof Error ? err.message : t("onboarding.error.finish")),

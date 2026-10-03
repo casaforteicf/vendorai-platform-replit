@@ -3,7 +3,7 @@ import ConfiguracoesLegacy from "./ConfiguracoesLegacy";
 
 const SECTION_LABELS: Record<string, { label: string; title: string }> = {
   Perfil: { label: "Empresa", title: "Dados da empresa, marca, posicionamento e contexto institucional" },
-  Marketing: { label: "Marca e Negócio", title: "Identidade, Plano de Negócios, públicos, oportunidades e base compartilhada dos agentes" },
+  Marketing: { label: "Identidade da Marca", title: "Logo, cores, linguagem visual e padrões de comunicação; estratégia e PN ficam em Diagnóstico & Planejamento" },
   "Análise": { label: "Comercial", title: "Parâmetros comerciais, análises e sinais usados pela inteligência" },
   "Calendário": { label: "Agenda e Automações", title: "Regras de agenda, disponibilidade, calendários e automações relacionadas" },
   "Integrações": { label: "Integrações", title: "WhatsApp, Meta, Google e demais conexões externas" },
@@ -328,6 +328,7 @@ export default function Configuracoes() {
           <div class="config-governance__sources" aria-label="Fontes oficiais">
             <span><b>Empresa</b> dados cadastrais e institucionais</span>
             <span><b>Marketing</b> Kit da Marca e identidade de comunicação</span>
+            <span><b>Planejamento</b> Perfil Mestre, PN, diagnóstico e prioridades</span>
             <span><b>Catálogo</b> produtos, serviços, preços e estoque</span>
             <span><b>IA e Agentes</b> comportamento e limites</span>
             <span><b>Integrações</b> conexões e saúde</span>
