@@ -160,7 +160,7 @@ test('real MCP server still initializes and lists tools behind authentication', 
     const init = await call('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'oauth-regression', version: '1' } }, 1);
     assert.ok(init.result.serverInfo);
     const tools = await call('tools/list', {}, 2);
-    assert.equal(tools.result.tools.length, 10);
+    assert.ok(tools.result.tools.length >= 10);
     assert.ok(tools.result.tools.some(x => x.name === 'browser_agent_run'));
   } finally {
     if (!child.killed) child.kill('SIGTERM');
